@@ -1,0 +1,400 @@
+// Novus Standard Library - TCP Networking
+// Namespace: std::net::tcp
+//
+// Provides TCP stream and listener types for connection-oriented networking.
+//
+// Example - TCP Client:
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::tcp import TcpStream
+// from std::net::addr import SocketAddrV4, Ipv4Addr
+//
+// fn main() -> i32 {
+//     let lib = SocketLibrary::init()?
+//
+//     let addr = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 80)
+//     let mut stream = TcpStream::connect(addr)?
+//
+//     stream.write("GET / HTTP/1.0\r\n\r\n")?
+//
+//     let mut buf: [u8; 1024] = [0u8; 1024]
+//     let n = stream.read(&buf, 1024)?
+//
+//     return 0
+// }
+// ```
+//
+// Example - TCP Server:
+// ```novus
+// from std::net::tcp import TcpListener
+//
+// let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::any(), 8080))?
+//
+// loop {
+//     let (stream, client_addr) = listener.accept()?
+//     // Handle client...
+// }
+// ```
+
+from std::ffi::bsdsocket import socket, bind, listen, accept, connect, send, recv, CloseSocket, shutdown
+from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
+from std::ffi::bsdsocket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR, SO_KEEPALIVE
+from std::ffi::bsdsocket import IPPROTO_TCP_OPT, TCP_NODELAY, FIONBIO, FIONREAD
+from std::ffi::bsdsocket import SHUT_RD, SHUT_WR, SHUT_RDWR, MSG_PEEK, MSG_WAITALL, Errno
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::errors import NetError
+from std::core import Option, Result
+
+/// TCP stream - a connected TCP socket
+///
+/// Provides read/write operations on an established TCP connection.
+/// The socket is automatically closed when dropped.
+pub struct TcpStream {
+    fd: i32,
+    local_addr: Option<SocketAddrV4>,
+    peer_addr: Option<SocketAddrV4>,
+}
+
+impl TcpStream {
+    /// Connect to a remote address
+    ///
+    /// Creates a new TCP connection to the specified address.
+    /// This function blocks until the connection is established or fails.
+    ///
+    /// Example:
+    /// ```novus
+    /// let stream = TcpStream::connect(SocketAddrV4::new(Ipv4Addr::localhost(), 8080))?
+    /// ```
+    pub fn connect(addr: SocketAddrV4) -> Result<TcpStream, NetError> {
+        // Create socket
+        let fd = unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) }
+        if fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        // Convert address to sockaddr_in
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)(&sin)
+
+        // Attempt connection
+        let result = unsafe { connect(fd, addr_ptr, 16) }
+        if result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        return Result::Ok(TcpStream {
+            fd: fd,
+            local_addr: Option::None,
+            peer_addr: Option::Some(addr),
+        })
+    }
+
+    /// Create TcpStream from raw socket descriptor
+    ///
+    /// Used by TcpListener::accept() to wrap accepted connections.
+    /// The TcpStream takes ownership of the socket.
+    fn from_raw(fd: i32, peer_addr: SocketAddrV4) -> TcpStream {
+        return TcpStream {
+            fd: fd,
+            local_addr: Option::None,
+            peer_addr: Option::Some(peer_addr),
+        }
+    }
+
+    /// Read data from the stream
+    ///
+    /// Returns the number of bytes read, or 0 if the connection is closed.
+    /// The buffer must be large enough to hold up to `len` bytes.
+    ///
+    /// Example:
+    /// ```novus
+    /// let mut buf: [u8; 1024] = [0u8; 1024]
+    /// let n = stream.read(&buf, 1024)?
+    /// ```
+    pub fn read(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { recv(self.fd, buf, len, 0) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
+    }
+
+    /// Read exactly len bytes from the stream
+    ///
+    /// Blocks until all bytes are read or an error occurs.
+    /// Returns Err if the connection closes before all bytes are read.
+    pub fn read_exact(&self, buf: *u8, len: i32) -> Result<(), NetError> {
+        let n = unsafe { recv(self.fd, buf, len, MSG_WAITALL) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        if n != len {
+            return Result::Err(NetError::ConnectionReset)
+        }
+        return Result::Ok(())
+    }
+
+    /// Peek at data without consuming it
+    ///
+    /// Returns data that would be returned by read(), but leaves
+    /// it in the receive buffer for the next read.
+    pub fn peek(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { recv(self.fd, buf, len, MSG_PEEK) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
+    }
+
+    /// Write data to the stream
+    ///
+    /// Returns the number of bytes written. May write fewer bytes
+    /// than requested if the socket buffer is full.
+    ///
+    /// Example:
+    /// ```novus
+    /// let data = "Hello, World!"
+    /// let n = stream.write(data.as_ptr(), data.len() as i32)?
+    /// ```
+    pub fn write(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { send(self.fd, buf, len, 0) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
+    }
+
+    /// Write all data to the stream
+    ///
+    /// Blocks until all bytes are written or an error occurs.
+    pub fn write_all(&self, buf: *u8, len: i32) -> Result<(), NetError> {
+        var written: i32 = 0
+        let buf_ptr = buf
+
+        while written < len {
+            let remaining = len - written
+            let ptr = (buf_ptr as u32 + written as u32) as *u8
+            let n = unsafe { send(self.fd, ptr, remaining, 0) }
+            if n < 0 {
+                return Result::Err(NetError::last())
+            }
+            if n == 0 {
+                return Result::Err(NetError::ConnectionReset)
+            }
+            written = written + n
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Shutdown the stream
+    ///
+    /// how: SHUT_RD (0), SHUT_WR (1), or SHUT_RDWR (2)
+    pub fn shutdown(&self, how: i32) -> Result<(), NetError> {
+        let result = unsafe { shutdown(self.fd, how) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Get the peer address
+    pub fn peer_addr(&self) -> Option<SocketAddrV4> {
+        return self.peer_addr
+    }
+
+    /// Get the raw socket file descriptor
+    pub fn as_raw_fd(&self) -> i32 {
+        return self.fd
+    }
+
+    /// Set TCP_NODELAY (disable Nagle's algorithm)
+    ///
+    /// When enabled, data is sent immediately without waiting
+    /// to coalesce small packets. Useful for interactive protocols.
+    pub fn set_nodelay(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { setsockopt(self.fd, IPPROTO_TCP_OPT, TCP_NODELAY, val_ptr, 4) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Set SO_KEEPALIVE
+    ///
+    /// When enabled, the socket sends keepalive probes to detect
+    /// dead connections.
+    pub fn set_keepalive(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { setsockopt(self.fd, SOL_SOCKET, SO_KEEPALIVE, val_ptr, 4) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Set non-blocking mode
+    pub fn set_nonblocking(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { IoctlSocket(self.fd, FIONBIO, val_ptr) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Get number of bytes available to read
+    pub fn bytes_available(&self) -> Result<i32, NetError> {
+        var val: i32 = 0
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { IoctlSocket(self.fd, FIONREAD, val_ptr) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(val)
+    }
+}
+
+impl Drop for TcpStream {
+    fn drop(&self) {
+        if self.fd >= 0 {
+            unsafe { CloseSocket(self.fd) }
+        }
+    }
+}
+
+/// TCP listener - accepts incoming TCP connections
+///
+/// Binds to a local address and listens for incoming connections.
+/// Each accepted connection returns a new TcpStream.
+pub struct TcpListener {
+    fd: i32,
+    local_addr: SocketAddrV4,
+}
+
+impl TcpListener {
+    /// Bind to an address and start listening
+    ///
+    /// Creates a new TCP listener bound to the specified address.
+    /// Uses a default backlog of 128 pending connections.
+    ///
+    /// Example:
+    /// ```novus
+    /// // Listen on all interfaces, port 8080
+    /// let listener = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::any(), 8080))?
+    /// ```
+    pub fn bind(addr: SocketAddrV4) -> Result<TcpListener, NetError> {
+        return TcpListener::bind_with_backlog(addr, 128)
+    }
+
+    /// Bind with custom backlog
+    ///
+    /// The backlog specifies the maximum number of pending connections
+    /// waiting to be accepted.
+    pub fn bind_with_backlog(addr: SocketAddrV4, backlog: i32) -> Result<TcpListener, NetError> {
+        // Create socket
+        let fd = unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) }
+        if fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        // Set SO_REUSEADDR to allow quick restart
+        let one: i32 = 1
+        let one_ptr: *u8 = (*u8)&one
+        unsafe { setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, one_ptr, 4) }
+
+        // Bind to address
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)&sin
+
+        let result = unsafe { bind(fd, addr_ptr, 16) }
+        if result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        // Start listening
+        let listen_result = unsafe { listen(fd, backlog) }
+        if listen_result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        return Result::Ok(TcpListener {
+            fd: fd,
+            local_addr: addr,
+        })
+    }
+
+    /// Accept an incoming connection
+    ///
+    /// Blocks until a new connection arrives. Returns the new
+    /// TcpStream and the client's address.
+    ///
+    /// Example:
+    /// ```novus
+    /// loop {
+    ///     let (stream, client_addr) = listener.accept()?
+    ///     handle_client(stream)
+    /// }
+    /// ```
+    pub fn accept(&self) -> Result<(TcpStream, SocketAddrV4), NetError> {
+        var client_sin = sockaddr_in {
+            sin_len: 16u8,
+            sin_family: AF_INET as u8,
+            sin_port: 0u16,
+            sin_addr: in_addr { s_addr: 0u32 },
+            sin_zero: [0u8; 8],
+        }
+        var addr_len: i32 = 16
+        let addr_ptr: *sockaddr = (*sockaddr)&client_sin
+        let len_ptr: *i32 = (*i32)&addr_len
+
+        let client_fd = unsafe { accept(self.fd, addr_ptr, len_ptr) }
+        if client_fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        let client_addr = SocketAddrV4::from_sockaddr_in(client_sin)
+        let stream = TcpStream::from_raw(client_fd, client_addr)
+
+        return Result::Ok((stream, client_addr))
+    }
+
+    /// Get the local address
+    pub fn local_addr(&self) -> SocketAddrV4 {
+        return self.local_addr
+    }
+
+    /// Get the raw socket file descriptor
+    pub fn as_raw_fd(&self) -> i32 {
+        return self.fd
+    }
+
+    /// Set non-blocking mode
+    pub fn set_nonblocking(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { IoctlSocket(self.fd, FIONBIO, val_ptr) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+}
+
+impl Drop for TcpListener {
+    fn drop(&self) {
+        if self.fd >= 0 {
+            unsafe { CloseSocket(self.fd) }
+        }
+    }
+}

@@ -1,0 +1,464 @@
+// Novus Standard Library - TLS/SSL Networking
+// Namespace: std::net::tls
+//
+// Provides TLS-encrypted TCP streams using AmiSSL (OpenSSL 3.x).
+//
+// IMPORTANT: AmiSSL must be installed on the Amiga for TLS to work.
+// The library gracefully returns errors if AmiSSL is not available.
+//
+// Example - HTTPS Client:
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::tls import TlsConfig, TlsStream
+// from std::net::tcp import TcpStream
+// from std::net::dns import resolve_hostname_one
+// from std::net::addr import SocketAddrV4
+//
+// fn main() -> i32 {
+//     let lib = SocketLibrary::init()?
+//
+//     // Initialize TLS
+//     let tls = TlsConfig::client()?
+//
+//     // Connect to HTTPS server
+//     let ip = resolve_hostname_one("www.example.com")?
+//     let tcp = TcpStream::connect(SocketAddrV4::new(ip, 443))?
+//
+//     // Upgrade to TLS with SNI
+//     let mut stream = tls.connect(tcp, "www.example.com")?
+//
+//     // Send HTTPS request
+//     stream.write("GET / HTTP/1.1\r\nHost: www.example.com\r\n\r\n")?
+//
+//     // Read response
+//     let mut buf: [u8; 4096] = [0u8; 4096]
+//     let n = stream.read(&buf, 4096)?
+//
+//     return 0
+// }
+// ```
+
+from std::ffi::exec import OpenLibrary, CloseLibrary, Library
+from std::ffi::amissl import AmiSSLMasterBase, AmiSSLBase, InitAmiSSLMaster, OpenAmiSSL, CloseAmiSSL
+from std::ffi::amissl import OPENSSL_init_ssl, OPENSSL_init_crypto, SSL_CTX, SSL, SSL_METHOD
+from std::ffi::amissl import SSL_CTX_new, SSL_CTX_free, SSL_CTX_set_verify, SSL_CTX_set_verify_depth
+from std::ffi::amissl import SSL_CTX_set_default_verify_paths, SSL_CTX_load_verify_locations
+from std::ffi::amissl import SSL_CTX_set_min_proto_version, SSL_CTX_set_options
+from std::ffi::amissl import SSL_new, SSL_free, SSL_set_fd, SSL_connect, SSL_accept, SSL_do_handshake
+from std::ffi::amissl import SSL_read, SSL_write, SSL_peek, SSL_shutdown, SSL_pending
+from std::ffi::amissl import SSL_get_error, SSL_get_verify_result, SSL_get_peer_certificate
+from std::ffi::amissl import SSL_set_tlsext_host_name, SSL_get_version
+from std::ffi::amissl import TLS_client_method, TLS_server_method, TLS_method, X509_free
+from std::ffi::amissl import ERR_get_error, ERR_clear_error, ERR_error_string
+from std::ffi::amissl import SSL_ERROR_NONE, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE
+from std::ffi::amissl import SSL_ERROR_ZERO_RETURN, SSL_ERROR_SYSCALL, SSL_ERROR_SSL
+from std::ffi::amissl import SSL_VERIFY_NONE, SSL_VERIFY_PEER, TLS1_2_VERSION, TLS1_3_VERSION
+from std::ffi::amissl import SSL_OP_NO_SSLv3, SSL_OP_NO_TLSv1, SSL_OP_NO_TLSv1_1, SSL_OP_NO_COMPRESSION
+from std::ffi::amissl import X509_V_OK, AMISSL_CURRENT_VERSION
+from std::ffi::amissl import OPENSSL_INIT_LOAD_SSL_STRINGS, OPENSSL_INIT_LOAD_CRYPTO_STRINGS
+from std::net::tcp import TcpStream
+from std::net::errors import NetError
+from std::core import Option
+
+// AmiSSL library version required
+const AMISSL_MASTER_VERSION: u32 = 4
+
+/// TLS configuration and context
+///
+/// Holds the SSL_CTX which can be reused for multiple connections.
+/// Create one TlsConfig and use it for all connections of the same type.
+pub struct TlsConfig {
+    ctx: *SSL_CTX,
+    master_base: *Library,
+    ssl_base: *u8,
+    is_client: bool,
+}
+
+impl TlsConfig {
+    /// Create a TLS client configuration
+    ///
+    /// Uses sensible defaults:
+    /// - TLS 1.2 minimum (TLS 1.0/1.1 disabled)
+    /// - Certificate verification enabled
+    /// - System CA certificates loaded
+    ///
+    /// Example:
+    /// ```novus
+    /// let tls = TlsConfig::client()?
+    /// ```
+    pub fn client() -> Result<TlsConfig, NetError> {
+        return TlsConfig::new_internal(true, true)
+    }
+
+    /// Create a TLS client without certificate verification
+    ///
+    /// WARNING: This is insecure! Only use for testing or when
+    /// connecting to servers with self-signed certificates.
+    pub fn client_insecure() -> Result<TlsConfig, NetError> {
+        return TlsConfig::new_internal(true, false)
+    }
+
+    /// Create a TLS server configuration
+    ///
+    /// You must call set_certificate() and set_private_key() before
+    /// accepting connections.
+    pub fn server() -> Result<TlsConfig, NetError> {
+        return TlsConfig::new_internal(false, false)
+    }
+
+    /// Internal initialization
+    fn new_internal(is_client: bool, verify_certs: bool) -> Result<TlsConfig, NetError> {
+        // Open amisslmaster.library
+        let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSL_MASTER_VERSION) }
+        if !master_base {
+            return Result::Err(NetError::NotInitialized)
+        }
+
+        // Set global base for FFI
+        unsafe {
+            AmiSSLMasterBase = master_base as *u8
+        }
+
+        // Initialize AmiSSL master
+        let init_result = unsafe { InitAmiSSLMaster(AMISSL_CURRENT_VERSION, 1) }
+        if init_result == 0 {
+            unsafe { CloseLibrary(master_base) }
+            return Result::Err(NetError::NotInitialized)
+        }
+
+        // Open AmiSSL
+        let ssl_base = unsafe { OpenAmiSSL() }
+        if !ssl_base {
+            unsafe { CloseLibrary(master_base) }
+            return Result::Err(NetError::NotInitialized)
+        }
+
+        // Set global base
+        unsafe {
+            AmiSSLBase = ssl_base
+        }
+
+        // Initialize OpenSSL
+        let ssl_init = unsafe {
+            OPENSSL_init_ssl(
+                OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS,
+                0 as *u8
+            )
+        }
+        if ssl_init == 0 {
+            unsafe { CloseAmiSSL() }
+            unsafe { CloseLibrary(master_base) }
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Create SSL context
+        let method = if is_client {
+            unsafe { TLS_client_method() }
+        } else {
+            unsafe { TLS_server_method() }
+        }
+
+        let ctx = unsafe { SSL_CTX_new(method) }
+        if !ctx {
+            unsafe { CloseAmiSSL() }
+            unsafe { CloseLibrary(master_base) }
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Set minimum TLS version to 1.2
+        unsafe { SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION) }
+
+        // Disable insecure protocols and compression
+        unsafe {
+            SSL_CTX_set_options(ctx,
+                SSL_OP_NO_SSLv3 | SSL_OP_NO_TLSv1 | SSL_OP_NO_TLSv1_1 | SSL_OP_NO_COMPRESSION
+            )
+        }
+
+        // Set up certificate verification for clients
+        if is_client && verify_certs {
+            unsafe { SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, 0 as *u8) }
+            unsafe { SSL_CTX_set_verify_depth(ctx, 4) }
+
+            // Load system CA certificates
+            let ca_result = unsafe { SSL_CTX_set_default_verify_paths(ctx) }
+            if ca_result == 0 {
+                // Try AmiSSL's default path
+                unsafe {
+                    SSL_CTX_load_verify_locations(ctx, "AmiSSL:Certs/ca-bundle.crt", 0 as *u8)
+                }
+            }
+        } else if is_client {
+            // No verification for insecure mode
+            unsafe { SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, 0 as *u8) }
+        }
+
+        return Result::Ok(TlsConfig {
+            ctx: ctx,
+            master_base: master_base,
+            ssl_base: ssl_base,
+            is_client: is_client,
+        })
+    }
+
+    /// Connect to a server over an existing TCP stream
+    ///
+    /// hostname: Used for SNI (Server Name Indication), required for most HTTPS servers
+    ///
+    /// Example:
+    /// ```novus
+    /// let tcp = TcpStream::connect(addr)?
+    /// let tls_stream = config.connect(tcp, "www.example.com")?
+    /// ```
+    pub fn connect(&self, tcp: TcpStream, hostname: *u8) -> Result<TlsStream, NetError> {
+        if !self.is_client {
+            return Result::Err(NetError::InvalidArg)
+        }
+
+        // Create SSL connection
+        let ssl = unsafe { SSL_new(self.ctx) }
+        if !ssl {
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Set the socket file descriptor
+        let fd = tcp.as_raw_fd()
+        let set_result = unsafe { SSL_set_fd(ssl, fd) }
+        if set_result == 0 {
+            unsafe { SSL_free(ssl) }
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Set SNI hostname (required for virtual hosting)
+        if hostname as u32 != 0 {
+            unsafe { SSL_set_tlsext_host_name(ssl, hostname) }
+        }
+
+        // Perform TLS handshake
+        let connect_result = unsafe { SSL_connect(ssl) }
+        if connect_result != 1 {
+            let err = unsafe { SSL_get_error(ssl, connect_result) }
+            unsafe { SSL_free(ssl) }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+
+        // Verify certificate (if verification is enabled)
+        let verify_result = unsafe { SSL_get_verify_result(ssl) }
+        if verify_result != X509_V_OK as i32 {
+            // Get and free the peer certificate to prevent memory leak
+            let cert = unsafe { SSL_get_peer_certificate(ssl) }
+            if cert as u32 != 0 {
+                unsafe { X509_free(cert) }
+            }
+            unsafe { SSL_free(ssl) }
+            return Result::Err(NetError::TlsCertificateError)
+        }
+
+        return Result::Ok(TlsStream {
+            ssl: ssl,
+            tcp: tcp,
+        })
+    }
+
+    /// Accept a connection from an existing TCP stream (server mode)
+    ///
+    /// Example:
+    /// ```novus
+    /// let (tcp, addr) = listener.accept()?
+    /// let tls_stream = config.accept(tcp)?
+    /// ```
+    pub fn accept(&self, tcp: TcpStream) -> Result<TlsStream, NetError> {
+        if self.is_client {
+            return Result::Err(NetError::InvalidArg)
+        }
+
+        // Create SSL connection
+        let ssl = unsafe { SSL_new(self.ctx) }
+        if !ssl {
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Set the socket file descriptor
+        let fd = tcp.as_raw_fd()
+        let set_result = unsafe { SSL_set_fd(ssl, fd) }
+        if set_result == 0 {
+            unsafe { SSL_free(ssl) }
+            return Result::Err(NetError::TlsProtocolError)
+        }
+
+        // Perform TLS handshake
+        let accept_result = unsafe { SSL_accept(ssl) }
+        if accept_result != 1 {
+            let err = unsafe { SSL_get_error(ssl, accept_result) }
+            unsafe { SSL_free(ssl) }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+
+        return Result::Ok(TlsStream {
+            ssl: ssl,
+            tcp: tcp,
+        })
+    }
+}
+
+impl Drop for TlsConfig {
+    fn drop(&self) {
+        if self.ctx as u32 != 0 {
+            unsafe { SSL_CTX_free(self.ctx) }
+        }
+        if self.ssl_base as u32 != 0 {
+            unsafe { CloseAmiSSL() }
+        }
+        if self.master_base as u32 != 0 {
+            unsafe { CloseLibrary(self.master_base) }
+        }
+    }
+}
+
+/// TLS-encrypted TCP stream
+///
+/// Wraps a TCP stream with TLS encryption.
+/// All read/write operations are transparently encrypted.
+pub struct TlsStream {
+    ssl: *SSL,
+    tcp: TcpStream,
+}
+
+impl TlsStream {
+    /// Read decrypted data from the stream
+    ///
+    /// Returns the number of bytes read, or 0 if the connection is closed.
+    pub fn read(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { SSL_read(self.ssl, buf, len) }
+        if n <= 0 {
+            let err = unsafe { SSL_get_error(self.ssl, n) }
+            if err == SSL_ERROR_ZERO_RETURN {
+                return Result::Ok(0)  // Clean shutdown
+            }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+        return Result::Ok(n)
+    }
+
+    /// Peek at data without consuming it
+    pub fn peek(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { SSL_peek(self.ssl, buf, len) }
+        if n <= 0 {
+            let err = unsafe { SSL_get_error(self.ssl, n) }
+            if err == SSL_ERROR_ZERO_RETURN {
+                return Result::Ok(0)
+            }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+        return Result::Ok(n)
+    }
+
+    /// Write encrypted data to the stream
+    ///
+    /// Returns the number of bytes written.
+    pub fn write(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { SSL_write(self.ssl, buf, len) }
+        if n <= 0 {
+            let err = unsafe { SSL_get_error(self.ssl, n) }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+        return Result::Ok(n)
+    }
+
+    /// Write all data to the stream
+    pub fn write_all(&self, buf: *u8, len: i32) -> Result<(), NetError> {
+        var written: i32 = 0
+        let buf_ptr = buf
+
+        while written < len {
+            let remaining = len - written
+            let ptr = (buf_ptr as u32 + written as u32) as *u8
+            let n = unsafe { SSL_write(self.ssl, ptr, remaining) }
+            if n <= 0 {
+                let err = unsafe { SSL_get_error(self.ssl, n) }
+                return Result::Err(TlsStream::ssl_error_to_net_error(err))
+            }
+            written = written + n
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Shutdown the TLS connection
+    ///
+    /// Sends a TLS close_notify alert and waits for the peer's response.
+    pub fn shutdown(&self) -> Result<(), NetError> {
+        let result = unsafe { SSL_shutdown(self.ssl) }
+        if result < 0 {
+            let err = unsafe { SSL_get_error(self.ssl, result) }
+            return Result::Err(TlsStream::ssl_error_to_net_error(err))
+        }
+
+        // If result == 0, we sent close_notify but haven't received one
+        // Call again to wait for peer's close_notify
+        if result == 0 {
+            unsafe { SSL_shutdown(self.ssl) }
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Get number of bytes pending in SSL buffer
+    pub fn pending(&self) -> i32 {
+        return unsafe { SSL_pending(self.ssl) }
+    }
+
+    /// Get the negotiated protocol version (e.g., "TLSv1.3")
+    pub fn version(&self) -> *u8 {
+        return unsafe { SSL_get_version(self.ssl) }
+    }
+
+    /// Get the underlying TCP stream's file descriptor
+    pub fn as_raw_fd(&self) -> i32 {
+        return self.tcp.as_raw_fd()
+    }
+
+    /// Convert SSL error code to NetError
+    fn ssl_error_to_net_error(ssl_err: i32) -> NetError {
+        match ssl_err {
+            SSL_ERROR_NONE => return NetError::Other(0),
+            SSL_ERROR_ZERO_RETURN => return NetError::ConnectionReset,
+            SSL_ERROR_WANT_READ => return NetError::WouldBlock,
+            SSL_ERROR_WANT_WRITE => return NetError::WouldBlock,
+            SSL_ERROR_SYSCALL => return NetError::last(),
+            SSL_ERROR_SSL => return NetError::TlsProtocolError,
+            _ => return NetError::TlsHandshakeFailed,
+        }
+    }
+}
+
+impl Drop for TlsStream {
+    fn drop(&self) {
+        if self.ssl as u32 != 0 {
+            // Attempt clean TLS shutdown (send close_notify alert)
+            // Ignore return value since we're cleaning up anyway
+            // SSL_shutdown may return:
+            //   0: shutdown not yet complete (needs another call)
+            //   1: shutdown complete
+            //  <0: error
+            // We call it once and don't wait for peer's close_notify
+            unsafe { SSL_shutdown(self.ssl) }
+
+            // Free the SSL structure
+            unsafe { SSL_free(self.ssl) }
+        }
+        // TcpStream will be dropped automatically
+    }
+}
+
+/// Check if TLS (AmiSSL) is available
+///
+/// Returns true if AmiSSL is installed and can be initialized.
+pub fn is_tls_available() -> bool {
+    let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSL_MASTER_VERSION) }
+    if master_base as u32 != 0 {
+        unsafe { CloseLibrary(master_base) }
+        return true
+    }
+    return false
+}

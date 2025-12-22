@@ -1,0 +1,210 @@
+// Novus Standard Library - Network Error Types
+// Namespace: std::net::errors
+//
+// Network error types that map errno codes to Novus-style Result errors.
+// All networking APIs return Result[T, NetError] for safe error handling.
+
+from std::ffi::bsdsocket import ECONNREFUSED, ECONNRESET, ETIMEDOUT, EADDRINUSE, EADDRNOTAVAIL, ENETDOWN, ENETUNREACH, ECONNABORTED, ENOTCONN, EISCONN, EWOULDBLOCK, EAGAIN, EINPROGRESS, EINVAL, EACCES, EPERM, ENOTSOCK, EDESTADDRREQ, EMSGSIZE, EPROTONOSUPPORT, ESOCKTNOSUPPORT, EOPNOTSUPP, EAFNOSUPPORT, ENOBUFS, ESHUTDOWN, EHOSTDOWN, EHOSTUNREACH, EIO, EINTR, ENOMEM, EBADF, HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA, Errno
+
+/// Network error type
+/// Represents all possible networking errors with human-readable messages
+pub enum NetError {
+    /// Connection refused by remote host
+    ConnectionRefused,
+    /// Connection reset by remote host
+    ConnectionReset,
+    /// Connection timed out
+    TimedOut,
+    /// Address already in use
+    AddrInUse,
+    /// Address not available
+    AddrNotAvail,
+    /// Network is down
+    NetworkDown,
+    /// Network is unreachable
+    NetworkUnreach,
+    /// Connection aborted
+    ConnectionAborted,
+    /// Socket not connected
+    NotConnected,
+    /// Socket already connected
+    AlreadyConnected,
+    /// Operation would block (non-blocking mode)
+    WouldBlock,
+    /// Operation in progress (non-blocking connect)
+    InProgress,
+    /// Invalid argument
+    InvalidArg,
+    /// Permission denied
+    PermissionDenied,
+    /// Host not found (DNS error)
+    HostNotFound,
+    /// Temporary DNS failure
+    DnsTryAgain,
+    /// Non-recoverable DNS error
+    DnsNoRecovery,
+    /// Valid name but no data
+    DnsNoData,
+    /// Socket operation on non-socket
+    NotASocket,
+    /// Bad file descriptor (invalid socket fd)
+    BadFileDescriptor,
+    /// Destination address required
+    DestAddrRequired,
+    /// Message too long
+    MessageTooLong,
+    /// Protocol not supported
+    ProtocolNotSupported,
+    /// Socket type not supported
+    SocketTypeNotSupported,
+    /// Operation not supported
+    OperationNotSupported,
+    /// Address family not supported
+    AddressFamilyNotSupported,
+    /// No buffer space available
+    NoBufferSpace,
+    /// Socket shutdown
+    Shutdown,
+    /// Host is down
+    HostDown,
+    /// Host unreachable
+    HostUnreach,
+    /// I/O error
+    IoError,
+    /// Interrupted system call
+    Interrupted,
+    /// Out of memory
+    OutOfMemory,
+    /// Socket library not initialized
+    NotInitialized,
+    /// SSL/TLS handshake failed
+    TlsHandshakeFailed,
+    /// SSL/TLS certificate verification failed
+    TlsCertificateError,
+    /// SSL/TLS protocol error
+    TlsProtocolError,
+    /// Generic error with errno code
+    Other(i32),
+}
+
+impl NetError {
+    /// Create NetError from errno value
+    pub fn from_errno(errno: i32) -> NetError {
+        match errno {
+            ECONNREFUSED => NetError::ConnectionRefused,
+            ECONNRESET => NetError::ConnectionReset,
+            ETIMEDOUT => NetError::TimedOut,
+            EADDRINUSE => NetError::AddrInUse,
+            EADDRNOTAVAIL => NetError::AddrNotAvail,
+            ENETDOWN => NetError::NetworkDown,
+            ENETUNREACH => NetError::NetworkUnreach,
+            ECONNABORTED => NetError::ConnectionAborted,
+            ENOTCONN => NetError::NotConnected,
+            EISCONN => NetError::AlreadyConnected,
+            EWOULDBLOCK => NetError::WouldBlock,
+            EAGAIN => NetError::WouldBlock,
+            EINPROGRESS => NetError::InProgress,
+            EINVAL => NetError::InvalidArg,
+            EACCES => NetError::PermissionDenied,
+            EPERM => NetError::PermissionDenied,
+            ENOTSOCK => NetError::NotASocket,
+            EBADF => NetError::BadFileDescriptor,
+            EDESTADDRREQ => NetError::DestAddrRequired,
+            EMSGSIZE => NetError::MessageTooLong,
+            EPROTONOSUPPORT => NetError::ProtocolNotSupported,
+            ESOCKTNOSUPPORT => NetError::SocketTypeNotSupported,
+            EOPNOTSUPP => NetError::OperationNotSupported,
+            EAFNOSUPPORT => NetError::AddressFamilyNotSupported,
+            ENOBUFS => NetError::NoBufferSpace,
+            ESHUTDOWN => NetError::Shutdown,
+            EHOSTDOWN => NetError::HostDown,
+            EHOSTUNREACH => NetError::HostUnreach,
+            EIO => NetError::IoError,
+            EINTR => NetError::Interrupted,
+            ENOMEM => NetError::OutOfMemory,
+            _ => NetError::Other(errno),
+        }
+    }
+
+    /// Create NetError from DNS h_errno value
+    pub fn from_h_errno(h_err: i32) -> NetError {
+        match h_err {
+            HOST_NOT_FOUND => NetError::HostNotFound,
+            TRY_AGAIN => NetError::DnsTryAgain,
+            NO_RECOVERY => NetError::DnsNoRecovery,
+            NO_DATA => NetError::DnsNoData,
+            _ => NetError::HostNotFound,
+        }
+    }
+
+    /// Get the last socket error
+    pub fn last() -> NetError {
+        let errno = Errno()
+        NetError::from_errno(errno)
+    }
+
+    /// Check if error is a "would block" condition
+    /// These errors are expected in non-blocking I/O
+    pub fn would_block(self) -> bool {
+        match self {
+            NetError::WouldBlock => true,
+            NetError::InProgress => true,
+            _ => false,
+        }
+    }
+
+    /// Check if error is transient and operation can be retried
+    pub fn is_transient(self) -> bool {
+        match self {
+            NetError::WouldBlock => true,
+            NetError::InProgress => true,
+            NetError::Interrupted => true,
+            NetError::DnsTryAgain => true,
+            _ => false,
+        }
+    }
+
+    /// Get human-readable error message
+    pub fn message(self) -> *u8 {
+        match self {
+            NetError::ConnectionRefused => return "connection refused",
+            NetError::ConnectionReset => return "connection reset by peer",
+            NetError::TimedOut => return "connection timed out",
+            NetError::AddrInUse => return "address already in use",
+            NetError::AddrNotAvail => return "address not available",
+            NetError::NetworkDown => return "network is down",
+            NetError::NetworkUnreach => return "network is unreachable",
+            NetError::ConnectionAborted => return "connection aborted",
+            NetError::NotConnected => return "socket not connected",
+            NetError::AlreadyConnected => return "socket already connected",
+            NetError::WouldBlock => return "operation would block",
+            NetError::InProgress => return "operation in progress",
+            NetError::InvalidArg => return "invalid argument",
+            NetError::PermissionDenied => return "permission denied",
+            NetError::HostNotFound => return "host not found",
+            NetError::DnsTryAgain => return "DNS lookup failed, try again",
+            NetError::DnsNoRecovery => return "non-recoverable DNS error",
+            NetError::DnsNoData => return "no address associated with name",
+            NetError::NotASocket => return "not a socket",
+            NetError::BadFileDescriptor => return "bad file descriptor",
+            NetError::DestAddrRequired => return "destination address required",
+            NetError::MessageTooLong => return "message too long",
+            NetError::ProtocolNotSupported => return "protocol not supported",
+            NetError::SocketTypeNotSupported => return "socket type not supported",
+            NetError::OperationNotSupported => return "operation not supported",
+            NetError::AddressFamilyNotSupported => return "address family not supported",
+            NetError::NoBufferSpace => return "no buffer space available",
+            NetError::Shutdown => return "socket has been shutdown",
+            NetError::HostDown => return "host is down",
+            NetError::HostUnreach => return "host is unreachable",
+            NetError::IoError => return "I/O error",
+            NetError::Interrupted => return "operation interrupted",
+            NetError::OutOfMemory => return "out of memory",
+            NetError::NotInitialized => return "socket library not initialized",
+            NetError::TlsHandshakeFailed => return "TLS handshake failed",
+            NetError::TlsCertificateError => return "TLS certificate verification failed",
+            NetError::TlsProtocolError => return "TLS protocol error",
+            NetError::Other(_) => return "unknown network error",
+        }
+    }
+}

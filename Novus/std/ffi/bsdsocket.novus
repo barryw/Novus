@@ -1,0 +1,532 @@
+// Novus Standard Library - BSD Socket FFI Bindings
+// Namespace: std::ffi::bsdsocket
+//
+// Low-level FFI bindings for AmigaOS bsdsocket.library.
+// This API is compatible with AmiTCP, Miami, and Roadshow TCP/IP stacks.
+//
+// IMPORTANT: Each task must open bsdsocket.library separately.
+// The library stores task-specific data in the library base.
+//
+// For high-level networking, use std::net instead.
+
+// ============================================================================
+// Library Base
+// ============================================================================
+
+// The socket library base - must be opened per-task
+// This is handled automatically by std::net, but exposed for advanced use
+// NOTE: Storage for this variable is provided by bsdsocket_bases.s
+extern var SocketBase: *u8
+
+// ============================================================================
+// Core Socket Functions
+// ============================================================================
+
+/// Create a socket
+/// Returns socket descriptor on success, -1 on error
+@library("bsdsocket.library")
+extern fn socket(domain: i32, type: i32, protocol: i32) -> i32
+
+/// Bind socket to local address
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn bind(s: i32, name: *sockaddr, namelen: i32) -> i32
+
+/// Mark socket as listening for connections
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn listen(s: i32, backlog: i32) -> i32
+
+/// Accept incoming connection
+/// Returns new socket descriptor on success, -1 on error
+@library("bsdsocket.library")
+extern fn accept(s: i32, addr: *sockaddr, addrlen: *i32) -> i32
+
+/// Initiate connection on socket
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn connect(s: i32, name: *sockaddr, namelen: i32) -> i32
+
+/// Send data on connected socket
+/// Returns bytes sent on success, -1 on error
+@library("bsdsocket.library")
+extern fn send(s: i32, buf: *u8, len: i32, flags: i32) -> i32
+
+/// Receive data from connected socket
+/// Returns bytes received on success, 0 on close, -1 on error
+@library("bsdsocket.library")
+extern fn recv(s: i32, buf: *u8, len: i32, flags: i32) -> i32
+
+/// Send data to specific address (UDP)
+/// Returns bytes sent on success, -1 on error
+@library("bsdsocket.library")
+extern fn sendto(s: i32, buf: *u8, len: i32, flags: i32, to: *sockaddr, tolen: i32) -> i32
+
+/// Receive data with sender address (UDP)
+/// Returns bytes received on success, -1 on error
+@library("bsdsocket.library")
+extern fn recvfrom(s: i32, buf: *u8, len: i32, flags: i32, from_addr: *sockaddr, fromlen: *i32) -> i32
+
+/// Close a socket - MUST use this, not close()!
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn CloseSocket(s: i32) -> i32
+
+/// Shutdown socket for reading/writing
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn shutdown(s: i32, how: i32) -> i32
+
+// ============================================================================
+// Socket Control
+// ============================================================================
+
+/// Control socket parameters - MUST use this, not ioctl()!
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn IoctlSocket(s: i32, request: u32, argp: *u8) -> i32
+
+/// Set socket option
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn setsockopt(s: i32, level: i32, optname: i32, optval: *u8, optlen: i32) -> i32
+
+/// Get socket option
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn getsockopt(s: i32, level: i32, optname: i32, optval: *u8, optlen: *i32) -> i32
+
+/// Get local socket address
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn getsockname(s: i32, name: *sockaddr, namelen: *i32) -> i32
+
+/// Get peer socket address
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn getpeername(s: i32, name: *sockaddr, namelen: *i32) -> i32
+
+// ============================================================================
+// Async I/O - Key for Novus async runtime integration
+// ============================================================================
+
+/// Wait for socket events with Exec signal integration
+/// Unlike POSIX select(), this takes a signal mask for unified waiting.
+/// Returns number of ready sockets, 0 on timeout, -1 on error/signal
+///
+/// The signals parameter is IN/OUT:
+/// - IN: Additional Exec signals to wait for (combined with socket events)
+/// - OUT: Which signals were received (if interrupted)
+@library("bsdsocket.library")
+extern fn WaitSelect(nfds: i32, readfds: *fd_set, writefds: *fd_set,
+                     exceptfds: *fd_set, timeout: *timeval, signals: *u32) -> i32
+
+/// Configure which signals affect socket operations
+/// sigurg: Signal for SIGURG (out-of-band data)
+/// sigio: Signal for SIGIO (socket ready)
+/// sigint: Signal for break/interrupt
+@library("bsdsocket.library")
+extern fn SetSocketSignals(sigurg: u32, sigio: u32, sigint: u32) -> i32
+
+/// Get pending socket events without blocking
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn GetSocketEvents(s: i32, eventmask: *u32) -> i32
+
+/// Obtain a socket event signal
+/// Returns signal bit number, or -1 on error
+@library("bsdsocket.library")
+extern fn ObtainSocket(id: i32, domain: i32, type: i32, protocol: i32) -> i32
+
+/// Release a socket for another task to obtain
+@library("bsdsocket.library")
+extern fn ReleaseSocket(s: i32, id: i32) -> i32
+
+/// Release copy of socket to another task
+@library("bsdsocket.library")
+extern fn ReleaseCopyOfSocket(s: i32, id: i32) -> i32
+
+// ============================================================================
+// DNS Resolution
+// ============================================================================
+
+/// Resolve hostname to IP address
+/// Returns pointer to static hostent, or null on error
+/// WARNING: Not thread-safe - result is overwritten on next call
+@library("bsdsocket.library")
+extern fn gethostbyname(name: *u8) -> *hostent
+
+/// Reverse DNS lookup (IP to hostname)
+/// Returns pointer to static hostent, or null on error
+@library("bsdsocket.library")
+extern fn gethostbyaddr(addr: *u8, len: i32, type: i32) -> *hostent
+
+/// Get protocol by name ("tcp", "udp", etc.)
+@library("bsdsocket.library")
+extern fn getprotobyname(name: *u8) -> *protoent
+
+/// Get protocol by number
+@library("bsdsocket.library")
+extern fn getprotobynumber(proto: i32) -> *protoent
+
+/// Get service by name ("http", "ftp", etc.)
+@library("bsdsocket.library")
+extern fn getservbyname(name: *u8, proto: *u8) -> *servent
+
+/// Get service by port number
+@library("bsdsocket.library")
+extern fn getservbyport(port: i32, proto: *u8) -> *servent
+
+/// Get local hostname
+/// Returns 0 on success, -1 on error
+@library("bsdsocket.library")
+extern fn gethostname(name: *u8, namelen: i32) -> i32
+
+// ============================================================================
+// Address Conversion
+// ============================================================================
+
+/// Convert dotted-decimal string to network address
+/// Returns address in network byte order, or INADDR_NONE on error
+@library("bsdsocket.library")
+extern fn inet_addr(cp: *u8) -> u32
+
+/// Convert network address to dotted-decimal string
+/// Returns pointer to static string (overwritten on next call)
+@library("bsdsocket.library")
+extern fn Inet_NtoA(addr: u32) -> *u8
+
+/// Convert dotted-decimal string to in_addr
+/// Returns 1 on success, 0 on error
+@library("bsdsocket.library")
+extern fn inet_aton(cp: *u8, pin: *in_addr) -> i32
+
+/// Convert presentation format to network format (IPv4/IPv6)
+/// Returns 1 on success, 0 on invalid, -1 on error
+@library("bsdsocket.library")
+extern fn inet_pton(af: i32, src: *u8, dst: *u8) -> i32
+
+/// Convert network format to presentation format (IPv4/IPv6)
+/// Returns pointer to dst on success, null on error
+@library("bsdsocket.library")
+extern fn inet_ntop(af: i32, src: *u8, dst: *u8, size: i32) -> *u8
+
+// ============================================================================
+// Byte Order Functions
+// ============================================================================
+
+/// Host to network short (16-bit)
+@library("bsdsocket.library")
+extern fn htons(host: u16) -> u16
+
+/// Network to host short (16-bit)
+@library("bsdsocket.library")
+extern fn ntohs(net: u16) -> u16
+
+/// Host to network long (32-bit)
+@library("bsdsocket.library")
+extern fn htonl(host: u32) -> u32
+
+/// Network to host long (32-bit)
+@library("bsdsocket.library")
+extern fn ntohl(net: u32) -> u32
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+/// Get current errno value
+@library("bsdsocket.library")
+extern fn Errno() -> i32
+
+/// Set errno pointer for this task (required for multi-tasking)
+@library("bsdsocket.library")
+extern fn SetErrnoPtr(ptr: *i32, size: i32) -> i32
+
+/// Get h_errno for DNS errors
+@library("bsdsocket.library")
+extern fn h_errno() -> i32
+
+/// Set socket library tags (for configuration)
+@library("bsdsocket.library")
+extern fn SocketBaseTags(...tags) -> i32
+
+// ============================================================================
+// Structures
+// ============================================================================
+
+/// Generic socket address
+pub struct sockaddr {
+    sa_len: u8,        // Total length (AmigaOS extension)
+    sa_family: u8,     // Address family (AF_INET, etc.)
+    sa_data: [u8; 14], // Family-specific address data
+}
+
+/// Internet socket address (IPv4)
+pub struct sockaddr_in {
+    sin_len: u8,       // sizeof(sockaddr_in) = 16
+    sin_family: u8,    // AF_INET
+    sin_port: u16,     // Port number (NETWORK byte order - use htons!)
+    sin_addr: in_addr, // IP address
+    sin_zero: [u8; 8], // Padding (must be zero)
+}
+
+/// IPv4 address
+pub struct in_addr {
+    s_addr: u32,  // 32-bit IPv4 address (NETWORK byte order)
+}
+
+/// Host database entry (returned by gethostbyname)
+pub struct hostent {
+    h_name: *u8,       // Official hostname
+    h_aliases: **u8,   // NULL-terminated alias list
+    h_addrtype: i32,   // Address type (AF_INET)
+    h_length: i32,     // Address length (4 for IPv4)
+    h_addr_list: **u8, // NULL-terminated address list
+}
+
+/// Protocol database entry
+pub struct protoent {
+    p_name: *u8,     // Official protocol name
+    p_aliases: **u8, // Alias list
+    p_proto: i32,    // Protocol number
+}
+
+/// Service database entry
+pub struct servent {
+    s_name: *u8,     // Official service name
+    s_aliases: **u8, // Alias list
+    s_port: i32,     // Port number (network byte order)
+    s_proto: *u8,    // Protocol name
+}
+
+/// File descriptor set for select/WaitSelect
+/// FD_SETSIZE is typically 64 on AmigaOS
+pub struct fd_set {
+    fds_bits: [u32; 2],  // 64 bits
+}
+
+/// Timeout for select/WaitSelect
+pub struct timeval {
+    tv_sec: i32,   // Seconds
+    tv_usec: i32,  // Microseconds
+}
+
+// ============================================================================
+// fd_set Manipulation Functions
+// ============================================================================
+
+/// Clear all bits in fd_set
+@inline
+pub fn FD_ZERO(set: *fd_set) {
+    // Cast to raw pointer for mutation
+    let bits_ptr: *u32 = (*u32)&(*set).fds_bits[0]
+    *bits_ptr = 0u32
+    let bits_ptr1: *u32 = (*u32)&(*set).fds_bits[1]
+    *bits_ptr1 = 0u32
+}
+
+/// Set a bit in fd_set
+@inline
+pub fn FD_SET(fd: i32, set: *fd_set) {
+    if fd >= 0 && fd < 64 {
+        let idx = fd / 32
+        let bit: u32 = (fd % 32) as u32
+        let bits_ptr: *u32 = (*u32)&(*set).fds_bits[idx]
+        *bits_ptr = *bits_ptr | (1u32 << bit)
+    }
+}
+
+/// Clear a bit in fd_set
+@inline
+pub fn FD_CLR(fd: i32, set: *fd_set) {
+    if fd >= 0 && fd < 64 {
+        let idx = fd / 32
+        let bit: u32 = (fd % 32) as u32
+        let bits_ptr: *u32 = (*u32)&(*set).fds_bits[idx]
+        *bits_ptr = *bits_ptr & ~(1u32 << bit)
+    }
+}
+
+/// Test if a bit is set in fd_set
+@inline
+pub fn FD_ISSET(fd: i32, set: *fd_set) -> bool {
+    if fd >= 0 && fd < 64 {
+        let idx = fd / 32
+        let bit: u32 = (fd % 32) as u32
+        return ((*set).fds_bits[idx] & (1u32 << bit)) != 0u32
+    }
+    return false
+}
+
+// ============================================================================
+// Constants - Address Families
+// ============================================================================
+
+pub const AF_UNSPEC: i32 = 0   // Unspecified
+pub const AF_UNIX: i32 = 1     // Unix domain sockets
+pub const AF_INET: i32 = 2     // Internet (IPv4)
+pub const AF_INET6: i32 = 28   // Internet (IPv6) - Roadshow only
+
+// ============================================================================
+// Constants - Socket Types
+// ============================================================================
+
+pub const SOCK_STREAM: i32 = 1  // TCP - reliable, ordered, connection-based
+pub const SOCK_DGRAM: i32 = 2   // UDP - unreliable, unordered, connectionless
+pub const SOCK_RAW: i32 = 3     // Raw IP packets
+pub const SOCK_SEQPACKET: i32 = 5  // Sequenced packet stream
+
+// ============================================================================
+// Constants - Protocols
+// ============================================================================
+
+pub const IPPROTO_IP: i32 = 0      // Dummy for IP
+pub const IPPROTO_ICMP: i32 = 1    // ICMP
+pub const IPPROTO_TCP: i32 = 6     // TCP
+pub const IPPROTO_UDP: i32 = 17    // UDP
+pub const IPPROTO_RAW: i32 = 255   // Raw IP
+
+// ============================================================================
+// Constants - Special Addresses
+// ============================================================================
+
+pub const INADDR_ANY: u32 = 0x00000000        // Bind to all interfaces
+pub const INADDR_BROADCAST: u32 = 0xffffffff  // Broadcast address
+pub const INADDR_LOOPBACK: u32 = 0x7f000001   // 127.0.0.1
+pub const INADDR_NONE: u32 = 0xffffffff       // Error return from inet_addr
+
+// ============================================================================
+// Constants - Socket Options (for setsockopt/getsockopt)
+// ============================================================================
+
+pub const SOL_SOCKET: i32 = 0xffff  // Socket level options
+
+pub const SO_DEBUG: i32 = 0x0001       // Enable debugging
+pub const SO_ACCEPTCONN: i32 = 0x0002  // Socket is listening
+pub const SO_REUSEADDR: i32 = 0x0004   // Allow local address reuse
+pub const SO_KEEPALIVE: i32 = 0x0008   // Keep connections alive
+pub const SO_DONTROUTE: i32 = 0x0010   // Don't route
+pub const SO_BROADCAST: i32 = 0x0020   // Permit broadcast
+pub const SO_LINGER: i32 = 0x0080      // Linger on close
+pub const SO_OOBINLINE: i32 = 0x0100   // OOB data inline
+pub const SO_SNDBUF: i32 = 0x1001      // Send buffer size
+pub const SO_RCVBUF: i32 = 0x1002      // Receive buffer size
+pub const SO_SNDLOWAT: i32 = 0x1003    // Send low-water mark
+pub const SO_RCVLOWAT: i32 = 0x1004    // Receive low-water mark
+pub const SO_SNDTIMEO: i32 = 0x1005    // Send timeout
+pub const SO_RCVTIMEO: i32 = 0x1006    // Receive timeout
+pub const SO_ERROR: i32 = 0x1007       // Get and clear error
+pub const SO_TYPE: i32 = 0x1008        // Get socket type
+
+// TCP level options
+pub const IPPROTO_TCP_OPT: i32 = 6
+pub const TCP_NODELAY: i32 = 0x0001    // Disable Nagle algorithm
+pub const TCP_MAXSEG: i32 = 0x0002     // Max segment size
+
+// ============================================================================
+// Constants - ioctl Requests (for IoctlSocket)
+// ============================================================================
+
+pub const FIONREAD: u32 = 0x4004667f   // Get bytes available to read
+pub const FIONBIO: u32 = 0x8004667e    // Set non-blocking mode
+pub const FIOASYNC: u32 = 0x8004667d   // Enable async I/O
+
+pub const SIOCATMARK: u32 = 0x40047307  // At OOB mark?
+pub const SIOCGIFCONF: u32 = 0xc0086912 // Get interface list
+pub const SIOCGIFFLAGS: u32 = 0xc0206911 // Get interface flags
+pub const SIOCSIFFLAGS: u32 = 0x80206910 // Set interface flags
+
+// ============================================================================
+// Constants - send/recv Flags
+// ============================================================================
+
+pub const MSG_OOB: i32 = 0x01       // Out-of-band data
+pub const MSG_PEEK: i32 = 0x02      // Peek at incoming data
+pub const MSG_DONTROUTE: i32 = 0x04 // Don't route
+pub const MSG_WAITALL: i32 = 0x40   // Wait for full request
+
+// ============================================================================
+// Constants - shutdown() How
+// ============================================================================
+
+pub const SHUT_RD: i32 = 0      // Shutdown reading
+pub const SHUT_WR: i32 = 1      // Shutdown writing
+pub const SHUT_RDWR: i32 = 2    // Shutdown both
+
+// ============================================================================
+// Constants - Error Codes (errno)
+// ============================================================================
+
+pub const EPERM: i32 = 1           // Operation not permitted
+pub const ENOENT: i32 = 2          // No such file or directory
+pub const EINTR: i32 = 4           // Interrupted system call
+pub const EIO: i32 = 5             // I/O error
+pub const ENXIO: i32 = 6           // No such device or address
+pub const EBADF: i32 = 9           // Bad file descriptor
+pub const EAGAIN: i32 = 11         // Try again (same as EWOULDBLOCK)
+pub const ENOMEM: i32 = 12         // Out of memory
+pub const EACCES: i32 = 13         // Permission denied
+pub const EFAULT: i32 = 14         // Bad address
+pub const EBUSY: i32 = 16          // Device busy
+pub const EINVAL: i32 = 22         // Invalid argument
+pub const EMFILE: i32 = 24         // Too many open files
+pub const EPIPE: i32 = 32          // Broken pipe
+pub const EWOULDBLOCK: i32 = 35    // Operation would block
+pub const EINPROGRESS: i32 = 36    // Operation in progress
+pub const EALREADY: i32 = 37       // Operation already in progress
+pub const ENOTSOCK: i32 = 38       // Not a socket
+pub const EDESTADDRREQ: i32 = 39   // Destination address required
+pub const EMSGSIZE: i32 = 40       // Message too long
+pub const EPROTOTYPE: i32 = 41     // Protocol wrong type
+pub const ENOPROTOOPT: i32 = 42    // Protocol not available
+pub const EPROTONOSUPPORT: i32 = 43 // Protocol not supported
+pub const ESOCKTNOSUPPORT: i32 = 44 // Socket type not supported
+pub const EOPNOTSUPP: i32 = 45     // Operation not supported
+pub const EPFNOSUPPORT: i32 = 46   // Protocol family not supported
+pub const EAFNOSUPPORT: i32 = 47   // Address family not supported
+pub const EADDRINUSE: i32 = 48     // Address already in use
+pub const EADDRNOTAVAIL: i32 = 49  // Address not available
+pub const ENETDOWN: i32 = 50       // Network is down
+pub const ENETUNREACH: i32 = 51    // Network unreachable
+pub const ENETRESET: i32 = 52      // Network dropped connection
+pub const ECONNABORTED: i32 = 53   // Connection aborted
+pub const ECONNRESET: i32 = 54     // Connection reset by peer
+pub const ENOBUFS: i32 = 55        // No buffer space available
+pub const EISCONN: i32 = 56        // Socket is connected
+pub const ENOTCONN: i32 = 57       // Socket not connected
+pub const ESHUTDOWN: i32 = 58      // Socket shutdown
+pub const ETIMEDOUT: i32 = 60      // Connection timed out
+pub const ECONNREFUSED: i32 = 61   // Connection refused
+pub const EHOSTDOWN: i32 = 64      // Host is down
+pub const EHOSTUNREACH: i32 = 65   // Host unreachable
+
+// ============================================================================
+// Constants - DNS Error Codes (h_errno)
+// ============================================================================
+
+pub const HOST_NOT_FOUND: i32 = 1  // Unknown host
+pub const TRY_AGAIN: i32 = 2       // Temporary failure, try again
+pub const NO_RECOVERY: i32 = 3     // Non-recoverable error
+pub const NO_DATA: i32 = 4         // Valid name, no data for type
+
+// ============================================================================
+// Constants - SocketBaseTags
+// ============================================================================
+
+pub const SBTC_BREAKMASK: u32 = 1
+pub const SBTC_SIGIOMASK: u32 = 2
+pub const SBTC_SIGURGMASK: u32 = 3
+pub const SBTC_SIGEVENTMASK: u32 = 4
+pub const SBTC_ERRNO: u32 = 6
+pub const SBTC_HERRNO: u32 = 7
+pub const SBTC_ERRNOSTRPTR: u32 = 9
+pub const SBTC_HERRNOSTRPTR: u32 = 10
+pub const SBTC_ERRNOPTR: u32 = 11
+pub const SBTC_HERRNOPTR: u32 = 12
+pub const SBTC_LOGTAGPTR: u32 = 13
+
+// Tag manipulation macros
+pub const SBTM_GETVAL: u32 = 0x00010000
+pub const SBTM_SETVAL: u32 = 0x80010000
+pub const SBTM_GETREF: u32 = 0x00020000

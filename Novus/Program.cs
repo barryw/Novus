@@ -1393,7 +1393,9 @@ class Program
             if (!isLibrary && !isDevice)
             {
                 // Only executables need startup code and library initialization
-                var coreFiles = new[] { "novus_startup", "library_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase" };
+                // NOTE: bsdsocket_bases and amissl_bases are included to support optional networking/TLS
+                // They just provide BSS storage for library bases (one longword each)
+                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");

@@ -1,0 +1,68 @@
+// TCP Client Demo - Tests the networking stdlib
+// This demonstrates a simple TCP connection with graceful error handling
+
+from std::net::socket import SocketLibrary
+from std::net::tcp import TcpStream
+from std::net::addr import SocketAddrV4, Ipv4Addr
+from std::net::errors import NetError
+from std::core import Result
+from std::ffi::dos import PutStr
+
+fn main() -> i32 {
+    // Initialize the socket library
+    // This returns Err if no TCP/IP stack is installed - NO CRASH!
+    let socket_lib = match SocketLibrary::init() {
+        Result::Ok(lib) => lib,
+        Result::Err(_) => {
+            unsafe { PutStr("No TCP/IP stack installed\n") }
+            return 1
+        }
+    }
+
+    // Create address for localhost:8080
+    let addr = SocketAddrV4::new(Ipv4Addr::localhost(), 8080u16)
+
+    // Try to connect
+    let stream = match TcpStream::connect(addr) {
+        Result::Ok(s) => s,
+        Result::Err(e) => {
+            unsafe { PutStr("Connection failed: ") }
+            unsafe { PutStr(e.message()) }
+            unsafe { PutStr("\n") }
+            return 2
+        }
+    }
+
+    // Send a message
+    let msg: *u8 = "Hello from Novus!\n"
+    let len: i32 = 18
+    match stream.write(msg, len) {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            unsafe { PutStr("Write failed: ") }
+            unsafe { PutStr(e.message()) }
+            unsafe { PutStr("\n") }
+            return 3
+        }
+    }
+
+    // Read response
+    var buf = [0u8; 256]
+    let buf_ptr: *u8 = (*u8)&buf
+    match stream.read(buf_ptr, 256) {
+        Result::Ok(n) => {
+            if n > 0 {
+                unsafe { PutStr("Received: ") }
+                unsafe { PutStr(buf_ptr) }
+            }
+        },
+        Result::Err(e) => {
+            unsafe { PutStr("Read failed: ") }
+            unsafe { PutStr(e.message()) }
+            unsafe { PutStr("\n") }
+        }
+    }
+
+    // stream and socket_lib cleaned up automatically via Drop
+    return 0
+}

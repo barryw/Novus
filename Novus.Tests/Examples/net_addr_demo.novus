@@ -1,0 +1,177 @@
+// Address Types Demo
+// Demonstrates IP address and socket address types from std::net
+
+from std::io::file import write
+from std::net::addr import Ipv4Addr, SocketAddrV4, SocketAddr
+
+pub fn main() -> i32 {
+    write("Address Types Demo\n")
+    write("==================\n\n")
+
+    // Example 1: Creating IPv4 addresses
+    write("IPv4 Addresses:\n")
+    write("---------------\n")
+
+    // From octets
+    let addr1 = Ipv4Addr::new(192, 168, 1, 100)
+    write("From octets: ")
+    print_ip(addr1)
+    write("\n")
+
+    // Special addresses
+    write("Localhost: ")
+    print_ip(Ipv4Addr::localhost())
+    write("\n")
+
+    write("Any: ")
+    print_ip(Ipv4Addr::any())
+    write("\n")
+
+    write("Broadcast: ")
+    print_ip(Ipv4Addr::broadcast())
+    write("\n")
+
+    // From u32
+    let addr2 = Ipv4Addr::from_u32(0xC0A80164u32) // 192.168.1.100
+    write("From u32 (0xC0A80164): ")
+    print_ip(addr2)
+    write("\n")
+
+    // Example 2: Address classification
+    write("\nAddress Classification:\n")
+    write("-----------------------\n")
+
+    check_address(Ipv4Addr::new(127, 0, 0, 1))
+    check_address(Ipv4Addr::new(0, 0, 0, 0))
+    check_address(Ipv4Addr::new(255, 255, 255, 255))
+    check_address(Ipv4Addr::new(10, 0, 0, 1))
+    check_address(Ipv4Addr::new(172, 16, 0, 1))
+    check_address(Ipv4Addr::new(192, 168, 1, 1))
+    check_address(Ipv4Addr::new(224, 0, 0, 1))
+    check_address(Ipv4Addr::new(8, 8, 8, 8))
+
+    // Example 3: Socket addresses
+    write("\nSocket Addresses:\n")
+    write("-----------------\n")
+
+    let sock1 = SocketAddrV4::new(Ipv4Addr::localhost(), 8080)
+    write("Socket: ")
+    print_socket_addr(sock1)
+    write("\n")
+
+    // Example 4: Conversion to/from u32
+    write("\nConversion to u32:\n")
+    write("------------------\n")
+
+    let addr = Ipv4Addr::new(192, 168, 1, 100)
+    let as_u32 = addr.to_u32()
+    write("192.168.1.100 as u32 (host order): 0x")
+    print_hex32(as_u32)
+    write("\n")
+
+    let as_network = addr.to_network_order()
+    write("192.168.1.100 as u32 (network order): 0x")
+    print_hex32(as_network)
+    write("\n")
+
+    // Round-trip
+    let back = Ipv4Addr::from_u32(as_u32)
+    write("Round-trip: ")
+    print_ip(back)
+    write("\n")
+
+    write("\nDone!\n")
+    return 0
+}
+
+fn check_address(ip: Ipv4Addr) {
+    print_ip(ip)
+    write(": ")
+
+    if ip.is_loopback() {
+        write("[loopback] ")
+    }
+    if ip.is_any() {
+        write("[any] ")
+    }
+    if ip.is_broadcast() {
+        write("[broadcast] ")
+    }
+    if ip.is_private() {
+        write("[private] ")
+    }
+    if ip.is_multicast() {
+        write("[multicast] ")
+    }
+
+    // If none of the above
+    if !ip.is_loopback() && !ip.is_any() && !ip.is_broadcast() && !ip.is_private() && !ip.is_multicast() {
+        write("[public]")
+    }
+
+    write("\n")
+}
+
+fn print_ip(ip: Ipv4Addr) {
+    // Access octets via to_u32 and bit extraction to avoid array-by-value issue
+    let addr = ip.to_u32()
+    print_u32((addr >> 24u32) & 0xFFu32)
+    write(".")
+    print_u32((addr >> 16u32) & 0xFFu32)
+    write(".")
+    print_u32((addr >> 8u32) & 0xFFu32)
+    write(".")
+    print_u32(addr & 0xFFu32)
+}
+
+fn print_socket_addr(addr: SocketAddrV4) {
+    print_ip(addr.ip())
+    write(":")
+    print_u32(addr.port() as u32)
+}
+
+fn print_u32(n: u32) {
+    if n == 0 {
+        write("0")
+        return
+    }
+
+    var buf = [0u8; 12]
+    var i = 11
+    var val = n
+
+    while val > 0u32 {
+        i = i - 1
+        buf[i] = 48u8 + ((val % 10u32) as u8)  // '0' = 48
+        val = val / 10u32
+    }
+
+    while i < 11 {
+        print_char(buf[i])
+        i = i + 1
+    }
+}
+
+fn print_hex32(n: u32) {
+    var buf = [0u8; 9]
+    var i = 8
+    var val = n
+
+    while i > 0 {
+        i = i - 1
+        let digit = (val & 0xFu32) as u8
+        if digit < 10u8 {
+            buf[i] = 48u8 + digit  // '0' = 48
+        } else {
+            buf[i] = 65u8 + digit - 10u8  // 'A' = 65
+        }
+        val = val >> 4u32
+    }
+
+    write(&buf[0])
+}
+
+fn print_char(c: u8) {
+    var buf = [c, 0u8]
+    write(&buf[0])
+}

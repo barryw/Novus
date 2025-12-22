@@ -1,0 +1,150 @@
+// Novus Standard Library - Socket Library Management
+// Namespace: std::net::socket
+//
+// Handles bsdsocket.library initialization with graceful failure.
+// All networking functions require calling init() first.
+//
+// CRITICAL: Each Exec task must call init() before using networking.
+// The library stores per-task data in the library base, so sharing
+// between tasks is not possible.
+//
+// Example:
+// ```novus
+// from std::net::socket import SocketLibrary
+//
+// fn main() -> i32 {
+//     // Try to initialize networking - returns Err if no TCP stack
+//     let lib = match SocketLibrary::init() {
+//         Result::Ok(l) => l,
+//         Result::Err(e) => {
+//             print("No TCP/IP stack installed: ")
+//             println(e.message())
+//             return 1
+//         }
+//     }
+//
+//     // Now networking is available...
+//     // Library automatically cleaned up when lib goes out of scope
+//     return 0
+// }
+// ```
+
+from std::ffi::exec import OpenLibrary, CloseLibrary, Library
+from std::net::errors import NetError
+from std::ffi::bsdsocket import SetErrnoPtr, SocketBaseTags, SBTM_SETVAL, SBTC_ERRNOPTR, SocketBase
+from std::core import Result
+
+// Minimum required bsdsocket.library version
+// Version 4 is provided by all major stacks (AmiTCP, Miami, Roadshow)
+const BSDSOCKET_VERSION: u32 = 4
+
+// Thread-local errno storage for this task
+// This is set per-task via SetErrnoPtr
+static var _task_errno: i32 = 0
+
+/// Socket library handle with automatic cleanup
+///
+/// This type manages the per-task bsdsocket.library initialization.
+/// When dropped, it properly cleans up the socket library resources.
+pub struct SocketLibrary {
+    base: *Library,
+    initialized: bool,
+}
+
+impl SocketLibrary {
+    /// Initialize the socket library for the current task
+    ///
+    /// This MUST be called before any networking operations.
+    /// Returns Err if no TCP/IP stack is installed.
+    ///
+    /// Example:
+    /// ```novus
+    /// let socket_lib = SocketLibrary::init()?
+    /// // Now you can use TCP, UDP, DNS, etc.
+    /// ```
+    pub fn init() -> Result<SocketLibrary, NetError> {
+        // Try to open bsdsocket.library
+        let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
+
+        if !base {
+            return Result::Err(NetError::NotInitialized)
+        }
+
+        // IMPORTANT: Set SocketBase TEMPORARILY so FFI functions work
+        // This is needed because SetErrnoPtr uses the library base internally
+        unsafe {
+            SocketBase = base as *u8
+        }
+
+        // Set up per-task errno pointer
+        // This is CRITICAL for multi-tasking - each task needs its own errno
+        let errno_ptr: *i32 = (*i32)&_task_errno
+        let result = unsafe { SetErrnoPtr(errno_ptr, 4) }
+
+        if result != 0 {
+            // Failed to set errno pointer - MUST clear SocketBase and close library
+            unsafe { SocketBase = 0 as *u8 }
+            unsafe { CloseLibrary(base) }
+            return Result::Err(NetError::NotInitialized)
+        }
+
+        // SocketBase is already set and all initialization succeeded
+        return Result::Ok(SocketLibrary {
+            base: base,
+            initialized: true
+        })
+    }
+
+    /// Check if socket library is initialized for this task
+    pub fn is_initialized(&self) -> bool {
+        return self.initialized
+    }
+
+    /// Get the library base pointer (for advanced use)
+    pub fn base(&self) -> *Library {
+        return self.base
+    }
+
+    /// Get a reference to the per-task errno
+    pub fn errno_ptr() -> *i32 {
+        return (*i32)&_task_errno
+    }
+}
+
+impl Drop for SocketLibrary {
+    fn drop(&self) {
+        if self.initialized && self.base as u32 != 0 {
+            // Clear the global SocketBase
+            unsafe {
+                SocketBase = 0 as *u8
+            }
+
+            // Close the library
+            unsafe {
+                CloseLibrary(self.base)
+            }
+        }
+    }
+}
+
+/// Check if a TCP/IP stack is available without initializing
+///
+/// This is useful for optional networking features where you want
+/// to check availability before attempting to use networking.
+///
+/// Example:
+/// ```novus
+/// if is_tcp_available() {
+///     println("Networking available!")
+/// } else {
+///     println("No TCP/IP stack installed")
+/// }
+/// ```
+pub fn is_tcp_available() -> bool {
+    let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
+    if base as u32 != 0 {
+        unsafe { CloseLibrary(base) }
+        return true
+    }
+    return false
+}

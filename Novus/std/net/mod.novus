@@ -1,0 +1,140 @@
+// Novus Standard Library - Networking Module
+// Namespace: std::net
+//
+// Complete networking support for AmigaOS with TCP, UDP, DNS, and TLS.
+// Built on top of bsdsocket.library (AmiTCP/Miami/Roadshow compatible)
+// and amissl.library for TLS encryption.
+//
+// ## Modules
+//
+// - `socket` - Socket library initialization (REQUIRED first!)
+// - `addr`   - IP address and socket address types
+// - `errors` - Network error types
+// - `tcp`    - TCP streams and listeners
+// - `udp`    - UDP sockets
+// - `dns`    - DNS hostname resolution
+// - `tls`    - TLS/SSL encryption (requires AmiSSL)
+//
+// ## Quick Start
+//
+// All networking code must first initialize the socket library:
+//
+// ```novus
+// from std::net::socket import SocketLibrary
+//
+// fn main() -> i32 {
+//     // Initialize networking - returns Err if no TCP stack
+//     let lib = match SocketLibrary::init() {
+//         Result::Ok(l) => l,
+//         Result::Err(e) => {
+//             println("No TCP/IP stack installed!")
+//             return 1
+//         }
+//     }
+//
+//     // Now you can use TCP, UDP, DNS, TLS...
+//     return 0
+// }
+// ```
+//
+// ## TCP Client Example
+//
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::tcp import TcpStream
+// from std::net::dns import resolve_hostname_one
+// from std::net::addr import SocketAddrV4
+//
+// fn fetch_http(host: *u8, path: *u8) -> Result<(), NetError> {
+//     let lib = SocketLibrary::init()?
+//
+//     let ip = resolve_hostname_one(host)?
+//     let mut stream = TcpStream::connect(SocketAddrV4::new(ip, 80))?
+//
+//     // Send HTTP request
+//     stream.write("GET ", 4)?
+//     stream.write(path, strlen(path))?
+//     stream.write(" HTTP/1.0\r\nHost: ", 17)?
+//     stream.write(host, strlen(host))?
+//     stream.write("\r\n\r\n", 4)?
+//
+//     // Read response
+//     let mut buf: [u8; 4096] = [0u8; 4096]
+//     loop {
+//         let n = stream.read(&buf, 4096)?
+//         if n == 0 { break }
+//         // Process data...
+//     }
+//
+//     return Result::Ok(())
+// }
+// ```
+//
+// ## TCP Server Example
+//
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::tcp import TcpListener, TcpStream
+// from std::net::addr import SocketAddrV4, Ipv4Addr
+//
+// fn run_server() -> Result<(), NetError> {
+//     let lib = SocketLibrary::init()?
+//
+//     let addr = SocketAddrV4::new(Ipv4Addr::any(), 8080)
+//     let listener = TcpListener::bind(addr)?
+//
+//     println("Listening on port 8080...")
+//
+//     loop {
+//         let (stream, client_addr) = listener.accept()?
+//         handle_client(stream)
+//     }
+// }
+// ```
+//
+// ## HTTPS Client Example (TLS)
+//
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::tls import TlsConfig, TlsStream
+// from std::net::tcp import TcpStream
+// from std::net::dns import resolve_hostname_one
+// from std::net::addr import SocketAddrV4
+//
+// fn fetch_https(host: *u8) -> Result<(), NetError> {
+//     let lib = SocketLibrary::init()?
+//     let tls = TlsConfig::client()?
+//
+//     let ip = resolve_hostname_one(host)?
+//     let tcp = TcpStream::connect(SocketAddrV4::new(ip, 443))?
+//     let mut stream = tls.connect(tcp, host)?
+//
+//     stream.write("GET / HTTP/1.1\r\nHost: ", 22)?
+//     stream.write(host, strlen(host))?
+//     stream.write("\r\nConnection: close\r\n\r\n", 23)?
+//
+//     // Read response...
+//     return Result::Ok(())
+// }
+// ```
+//
+// ## Requirements
+//
+// - **TCP/UDP/DNS**: bsdsocket.library v4+ (AmiTCP, Miami, or Roadshow)
+// - **TLS**: amissl.library v4+ (AmiSSL from Aminet)
+//
+// All functions return Result types and handle missing libraries gracefully.
+// No crashes will occur if the TCP stack or AmiSSL is not installed.
+//
+// ## Error Handling
+//
+// All networking functions return `Result<T, NetError>`. The `NetError` enum
+// covers all possible errors including missing library errors:
+//
+// - `NetError::NotInitialized` - bsdsocket.library not available
+// - `NetError::TlsHandshakeFailed` - TLS handshake failed
+// - `NetError::TlsCertificateError` - Certificate verification failed
+// - `NetError::ConnectionRefused` - Remote host refused connection
+// - And many more...
+//
+// Use `NetError::message()` to get a human-readable error string.

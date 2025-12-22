@@ -1,0 +1,236 @@
+// Novus Standard Library - UDP Networking
+// Namespace: std::net::udp
+//
+// Provides UDP socket for connectionless networking.
+//
+// Example - UDP Client:
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::udp import UdpSocket
+// from std::net::addr import SocketAddrV4, Ipv4Addr
+//
+// fn main() -> i32 {
+//     let lib = SocketLibrary::init()?
+//
+//     // Bind to any port
+//     let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 0))?
+//
+//     // Send to specific address
+//     let server = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 53)
+//     sock.send_to("Hello", server)?
+//
+//     // Receive response
+//     let mut buf: [u8; 512] = [0u8; 512]
+//     let (n, from) = sock.recv_from(&buf, 512)?
+//
+//     return 0
+// }
+// ```
+//
+// Example - UDP Server:
+// ```novus
+// let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 8080))?
+//
+// loop {
+//     let mut buf: [u8; 1024] = [0u8; 1024]
+//     let (n, client) = sock.recv_from(&buf, 1024)?
+//
+//     // Echo back
+//     sock.send_to(&buf, n, client)?
+// }
+// ```
+
+from std::ffi::bsdsocket import socket, bind, sendto, recvfrom, CloseSocket
+from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
+from std::ffi::bsdsocket import AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET, SO_BROADCAST, SO_RCVBUF, SO_SNDBUF
+from std::ffi::bsdsocket import FIONBIO, FIONREAD, Errno
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::errors import NetError
+from std::core import Option, Result
+
+/// UDP socket - connectionless datagram socket
+///
+/// Provides send/receive operations for UDP datagrams.
+/// The socket is automatically closed when dropped.
+pub struct UdpSocket {
+    fd: i32,
+    local_addr: SocketAddrV4,
+}
+
+impl UdpSocket {
+    /// Bind to a local address
+    ///
+    /// Creates a new UDP socket bound to the specified address.
+    /// Use port 0 to let the system assign an available port.
+    ///
+    /// Example:
+    /// ```novus
+    /// // Bind to specific port
+    /// let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 8080))?
+    ///
+    /// // Let system choose port
+    /// let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 0))?
+    /// ```
+    pub fn bind(addr: SocketAddrV4) -> Result<UdpSocket, NetError> {
+        // Create socket
+        let fd = unsafe { socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP) }
+        if fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        // Bind to address
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)&sin
+
+        let result = unsafe { bind(fd, addr_ptr, 16) }
+        if result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        return Result::Ok(UdpSocket {
+            fd: fd,
+            local_addr: addr,
+        })
+    }
+
+    /// Create an unbound socket
+    ///
+    /// The socket can be used to send datagrams without binding.
+    /// Useful when you only need to send and don't care about the local port.
+    pub fn unbound() -> Result<UdpSocket, NetError> {
+        let fd = unsafe { socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP) }
+        if fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        return Result::Ok(UdpSocket {
+            fd: fd,
+            local_addr: SocketAddrV4::new(Ipv4Addr::any(), 0),
+        })
+    }
+
+    /// Send a datagram to a specific address
+    ///
+    /// Returns the number of bytes sent.
+    ///
+    /// Example:
+    /// ```novus
+    /// let addr = SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 53)
+    /// sock.send_to(data.as_ptr(), data.len() as i32, addr)?
+    /// ```
+    pub fn send_to(&self, buf: *u8, len: i32, addr: SocketAddrV4) -> Result<i32, NetError> {
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)&sin
+
+        let n = unsafe { sendto(self.fd, buf, len, 0, addr_ptr, 16) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
+    }
+
+    /// Receive a datagram with sender address
+    ///
+    /// Returns the number of bytes received and the sender's address.
+    ///
+    /// Example:
+    /// ```novus
+    /// let mut buf: [u8; 512] = [0u8; 512]
+    /// let (n, from_addr) = sock.recv_from(&buf, 512)?
+    /// ```
+    pub fn recv_from(&self, buf: *u8, len: i32) -> Result<(i32, SocketAddrV4), NetError> {
+        var from_sin = sockaddr_in {
+            sin_len: 16u8,
+            sin_family: AF_INET as u8,
+            sin_port: 0u16,
+            sin_addr: in_addr { s_addr: 0u32 },
+            sin_zero: [0u8; 8],
+        }
+        var addr_len: i32 = 16
+        let addr_ptr: *sockaddr = (*sockaddr)&from_sin
+        let len_ptr: *i32 = (*i32)&addr_len
+
+        let n = unsafe { recvfrom(self.fd, buf, len, 0, addr_ptr, len_ptr) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        let from_addr = SocketAddrV4::from_sockaddr_in(from_sin)
+        return Result::Ok((n, from_addr))
+    }
+
+    /// Get the local address
+    pub fn local_addr(&self) -> SocketAddrV4 {
+        return self.local_addr
+    }
+
+    /// Get the raw socket file descriptor
+    pub fn as_raw_fd(&self) -> i32 {
+        return self.fd
+    }
+
+    /// Enable broadcast sending
+    ///
+    /// Must be enabled before sending to broadcast addresses.
+    pub fn set_broadcast(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { setsockopt(self.fd, SOL_SOCKET, SO_BROADCAST, val_ptr, 4) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Set receive buffer size
+    pub fn set_recv_buffer_size(&self, size: i32) -> Result<(), NetError> {
+        let val_ptr: *u8 = (*u8)&size
+        let result = unsafe { setsockopt(self.fd, SOL_SOCKET, SO_RCVBUF, val_ptr, 4) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Set send buffer size
+    pub fn set_send_buffer_size(&self, size: i32) -> Result<(), NetError> {
+        let val_ptr: *u8 = (*u8)&size
+        let result = unsafe { setsockopt(self.fd, SOL_SOCKET, SO_SNDBUF, val_ptr, 4) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Set non-blocking mode
+    pub fn set_nonblocking(&self, enabled: bool) -> Result<(), NetError> {
+        let val: i32 = if enabled { 1 } else { 0 }
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { IoctlSocket(self.fd, FIONBIO, val_ptr) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Get number of bytes available to read
+    pub fn bytes_available(&self) -> Result<i32, NetError> {
+        var val: i32 = 0
+        let val_ptr: *u8 = (*u8)&val
+        let result = unsafe { IoctlSocket(self.fd, FIONREAD, val_ptr) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(val)
+    }
+}
+
+impl Drop for UdpSocket {
+    fn drop(&self) {
+        if self.fd >= 0 {
+            unsafe { CloseSocket(self.fd) }
+        }
+    }
+}

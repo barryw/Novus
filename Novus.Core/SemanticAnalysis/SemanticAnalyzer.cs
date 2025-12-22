@@ -614,6 +614,23 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         _importedNames[traitName] = moduleNamespace;
                     }
                 }
+
+                // Register global variables (extern var)
+                foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+                {
+                    var varName = globalVarDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(varName))
+                    {
+                        if (!_globalVariables.ContainsKey(varName))
+                        {
+                            var varType = ParseType(globalVarDecl.type());
+                            var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+                            // extern var is always mutable (the var keyword indicates mutability)
+                            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: true, varLocation, Id: _nextVariableId++);
+                        }
+                        _importedNames[varName] = moduleNamespace;
+                    }
+                }
             }
 
             return; // Don't reprocess the entire module
@@ -913,7 +930,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             var varType = ParseType(globalVarDecl.type());
             var varLocation = SourceLocationHelper.FromToken(globalVarDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: false, varLocation, Id: _nextVariableId++);
+            // extern var is always mutable (the var keyword indicates mutability)
+            _globalVariables[varName] = new VariableSymbol(varName, varType, IsMutable: true, varLocation, Id: _nextVariableId++);
             _importedNames[varName] = moduleNamespace;
         }
 
@@ -1416,7 +1434,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return;
         }
 
-        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: false, location, Id: _nextVariableId++);
+        // extern var is always mutable (the var keyword indicates mutability)
+        _globalVariables[name] = new VariableSymbol(name, type, IsMutable: true, location, Id: _nextVariableId++);
     }
 
     private void RegisterFunction(NovusParser.FunctionDeclarationContext context)

@@ -790,6 +790,24 @@ public partial class CCodeGenerator
                 codegen.CollectStructTypesFromEnumPayloads(enumType, structsUsedByEnumPayloads);
             }
 
+            // CRITICAL: Collect tuple types that are used in enum variant payloads
+            // These tuple types must be defined BEFORE the enums that contain them
+            // Example: Result<(i32, SocketAddrV4), NetError> needs the tuple (i32, SocketAddrV4) defined first
+            var tuplesUsedByEnumPayloads = new HashSet<IrTupleType>();
+            foreach (var enumType in enumsUsedByStructs)
+            {
+                foreach (var variant in enumType.Variants)
+                {
+                    if (variant.HasAssociatedData && variant.AssociatedData != null)
+                    {
+                        foreach (var dataType in variant.AssociatedData)
+                        {
+                            codegen.CollectTupleTypesFromType(dataType, tuplesUsedByEnumPayloads);
+                        }
+                    }
+                }
+            }
+
             // PASS 1: Forward declarations for all user-defined structs
             // This is required for self-referential structs (e.g., Gadget* NextGadget in Gadget)
             sb.AppendLine("// Forward declarations");
@@ -802,18 +820,44 @@ public partial class CCodeGenerator
 
             // PASS 2: Emit structs that are needed by enum payloads FIRST
             // This ensures enums like Option<Str> can reference Str by value
+            // CRITICAL: We must also include all transitive dependencies of these structs
+            // (e.g., if SocketAddrV4 is used by an enum, we need Ipv4Addr too)
+            var structsNeededByEnumsWithDeps = new HashSet<IrStructType>();
+            var visitedStructs = new HashSet<string>();
+
+            foreach (var structType in structsUsedByEnumPayloads)
+            {
+                // Collect this struct and all its transitive dependencies
+                codegen.CollectStructDependenciesRecursively(structType, structsNeededByEnumsWithDeps, visitedStructs);
+            }
+
+            // Filter to only user-defined structs (not NDK or extern_type structs)
             var structsNeededByEnums = userStructs
-                .Where(s => structsUsedByEnumPayloads.Any(e =>
+                .Where(s => structsNeededByEnumsWithDeps.Any(e =>
                     (e.CacheKey ?? e.StructName) == (s.CacheKey ?? s.StructName)))
                 .ToHashSet();
 
             if (structsNeededByEnums.Any())
             {
                 sb.AppendLine("// Struct types used by enum payloads (defined early)");
-                foreach (var structType in structsNeededByEnums.OrderBy(s => codegen.MangleName(s)))
+                // Topologically sort to ensure dependencies are emitted before dependents
+                var sortedEnumDependentStructs = codegen.TopologicalSortStructTypes(structsNeededByEnums);
+                foreach (var structType in sortedEnumDependentStructs)
                 {
                     codegen.EmitStructTypeToBuilder(sb, structType);
                 }
+            }
+
+            // PASS 2.5: Emit tuple types used by enum payloads BEFORE enum definitions
+            // This ensures enums like Result<(i32, SocketAddrV4), NetError> can reference the tuple type
+            if (tuplesUsedByEnumPayloads.Any())
+            {
+                sb.AppendLine("// Tuple types used by enum payloads (defined before enums)");
+                foreach (var tupleType in tuplesUsedByEnumPayloads.OrderBy(t => codegen.GetTupleTypeName(t)))
+                {
+                    codegen.EmitTupleTypeToBuilder(sb, tupleType);
+                }
+                sb.AppendLine();
             }
 
             // PASS 3: Emit enum types that depend on those struct definitions
@@ -1344,6 +1388,33 @@ public partial class CCodeGenerator
                     sb.AppendLine();
                 }
 
+                // CRITICAL: Collect tuple types used by enum payloads and emit them BEFORE enums
+                // Without this, Result<(i32, SocketAddrV4), NetError> would reference the tuple but it wouldn't be defined.
+                var tuplesUsedByEnumPayloads = new HashSet<IrTupleType>();
+                foreach (var enumType in concreteEnums)
+                {
+                    foreach (var variant in enumType.Variants)
+                    {
+                        if (variant.HasAssociatedData && variant.AssociatedData != null)
+                        {
+                            foreach (var dataType in variant.AssociatedData)
+                            {
+                                CollectTupleTypesFromType(dataType, tuplesUsedByEnumPayloads);
+                            }
+                        }
+                    }
+                }
+
+                if (tuplesUsedByEnumPayloads.Any())
+                {
+                    sb.AppendLine("// Tuple types used by enum payloads (must be defined before enums)");
+                    foreach (var tupleType in tuplesUsedByEnumPayloads.OrderBy(t => GetTupleTypeName(t)))
+                    {
+                        EmitTupleTypeToBuilder(sb, tupleType);
+                    }
+                    sb.AppendLine();
+                }
+
                 sb.AppendLine("// Enum types used by this function");
                 // Sort enum types in dependency order: emit leaf types first, then types that depend on them
                 var sortedEnumTypes = TopologicalSortEnumTypes(concreteEnums);
@@ -1363,6 +1434,28 @@ public partial class CCodeGenerator
             foreach (var staticVar in _module.StaticVariables)
             {
                 EmitStaticVariableExternToBuilder(sb, staticVar);
+            }
+            sb.AppendLine();
+        }
+
+        // Emit external variables (extern var) as extern declarations
+        // These are provided by external libraries (e.g., SocketBase for bsdsocket.library)
+        if (_module.ExternalVariables.Count > 0)
+        {
+            sb.AppendLine("// External variables (extern declarations)");
+            foreach (var externVar in _module.ExternalVariables)
+            {
+                var cType = GetCType(externVar.Type);
+                if (externVar.Address.HasValue)
+                {
+                    // Hardware register at specific address - define as volatile pointer
+                    sb.AppendLine($"#define {externVar.Name} (*(volatile {cType}*)0x{externVar.Address.Value:X})");
+                }
+                else
+                {
+                    // Extern variable resolved by linker
+                    sb.AppendLine($"extern {cType} {externVar.Name};");
+                }
             }
             sb.AppendLine();
         }
@@ -1435,7 +1528,7 @@ public partial class CCodeGenerator
 
                     // VBCC FIX: Use output parameter for struct/enum returns EXCEPT for extern functions
                     // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
-                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType or IrTupleType;
+                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr2 = shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType);
                     var parameters2 = GetParameterList(funcObj, shouldUseOutParam);
@@ -1491,14 +1584,18 @@ public partial class CCodeGenerator
                     }
 
                     // Apply VBCC out-parameter workaround for struct/enum returns
-                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType;
+                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
                     var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(returnType);
                     var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
 
                     // If using out-parameter, add output parameter as first parameter
                     if (isStructOrEnumReturn)
                     {
-                        paramTypes.Insert(0, GetCType(returnType) + "* __out");
+                        // ARRAY FIX: For array returns, GetCType already returns T*, no extra * needed
+                        var outParamType = returnType is IrArrayType
+                            ? GetCType(returnType) + " __out"
+                            : GetCType(returnType) + "* __out";
+                        paramTypes.Insert(0, outParamType);
                     }
 
                     var paramList = paramTypes.Count > 0 ? string.Join(", ", paramTypes) : "void";
@@ -1568,9 +1665,9 @@ public partial class CCodeGenerator
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
         CollectReachableLabels(function);
 
-        // VBCC FIX: For struct/enum/tuple returns on 68k, use output parameter pattern
-        // VBCC can't reliably return structs by value on 68k
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrTupleType;
+        // VBCC FIX: For struct/enum/tuple/array returns on 68k, use output parameter pattern
+        // VBCC can't reliably return structs/arrays by value on 68k
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -1604,10 +1701,10 @@ public partial class CCodeGenerator
                 continue;
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
-            // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
+            // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType)
+            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType || slotType is IrArrayType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
                 : GetCVariableDeclaration(slotType, slotName, "= 0");
 
@@ -1663,8 +1760,8 @@ public partial class CCodeGenerator
                     if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
-                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
-                    if (IsModuleStaticVariable(localDecl.Name))
+                    // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
+                    if (IsGlobalVariable(localDecl.Name))
                         continue;
 
                     var varName = SanitizeVariableName(localDecl.Name);
@@ -1686,8 +1783,8 @@ public partial class CCodeGenerator
                     if (IsMappedToSlot(store.VariableName))
                         continue;
 
-                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
-                    if (IsModuleStaticVariable(store.VariableName))
+                    // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
+                    if (IsGlobalVariable(store.VariableName))
                         continue;
 
                     var varName = SanitizeVariableName(store.VariableName);
@@ -4205,15 +4302,19 @@ public partial class CCodeGenerator
             _output.AppendLine("// Cross-module function declarations");
             foreach (var (funcName, (returnType, paramTypes)) in crossModuleCalls)
             {
-                // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
-                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType;
+                // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
+                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
                 var cReturnType = isStructOrEnumReturn ? "void" : GetCType(returnType);
 
                 // Build parameter list with __out if needed
                 var paramList = new List<string>();
                 if (isStructOrEnumReturn)
                 {
-                    paramList.Add($"{GetCType(returnType)}* __out");
+                    // ARRAY FIX: For array returns, GetCType already returns T*, no extra * needed
+                    var outParamType = returnType is IrArrayType
+                        ? $"{GetCType(returnType)} __out"
+                        : $"{GetCType(returnType)}* __out";
+                    paramList.Add(outParamType);
                 }
                 paramList.AddRange(paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
 
@@ -4238,8 +4339,8 @@ public partial class CCodeGenerator
         _output.AppendLine("// Forward declarations");
         foreach (var function in implementedFunctions)
         {
-            // VBCC FIX: Match function definition signature (use void + __out for struct/enum returns)
-            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType;
+            // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
+            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
             var shouldUseOutParam = isStructOrEnumReturn;
             var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
             var parameters = GetParameterList(function, shouldUseOutParam);
@@ -4526,9 +4627,9 @@ public partial class CCodeGenerator
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
         CollectReachableLabels(function);
 
-        // VBCC FIX: For struct/enum/tuple returns on 68k, use output parameter pattern
-        // VBCC can't reliably return structs by value on 68k
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrTupleType;
+        // VBCC FIX: For struct/enum/tuple/array returns on 68k, use output parameter pattern
+        // VBCC can't reliably return structs/arrays by value on 68k
+        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -4608,10 +4709,10 @@ public partial class CCodeGenerator
                 continue;
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
-            // 1. Structs/enums MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
+            // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType)
+            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType || slotType is IrArrayType)
                 ? GetCVariableDeclaration(slotType, slotName, "= {0}")
                 : GetCVariableDeclaration(slotType, slotName, "= 0");
 
@@ -4646,8 +4747,8 @@ public partial class CCodeGenerator
                     if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
                         continue;
 
-                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
-                    if (IsModuleStaticVariable(localDecl.Name))
+                    // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
+                    if (IsGlobalVariable(localDecl.Name))
                         continue;
 
                     if (!localDeclVars.ContainsKey(varName))
@@ -4665,8 +4766,8 @@ public partial class CCodeGenerator
                     if (IsMappedToSlot(store.VariableName))
                         continue;
 
-                    // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
-                    if (IsModuleStaticVariable(store.VariableName))
+                    // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
+                    if (IsGlobalVariable(store.VariableName))
                         continue;
 
                     if (!storedVars.ContainsKey(varName))
@@ -5301,9 +5402,9 @@ public partial class CCodeGenerator
         if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
             return;
 
-        // BUG FIX: Skip if this variable is a module static - don't shadow it with a local
-        // Module statics are already declared as extern at the top of the file
-        if (IsModuleStaticVariable(localDecl.Name))
+        // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
+        // Module statics and externs are already declared at the top of the file
+        if (IsGlobalVariable(localDecl.Name))
             return;
 
         var varName = SanitizeVariableName(localDecl.Name);
@@ -5485,7 +5586,9 @@ public partial class CCodeGenerator
                     else
                     {
                         var sourceAddr = sourceIsPointerConvertedParam ? $"(uint8_t*){initValue}" : $"(uint8_t*)&{initValue}";
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, {sourceAddr}, sizeof({cType}));");
+                        // Use GetSizeofExpression to handle arrays correctly (element size * length)
+                        var sizeExpr = GetSizeofExpression(localDecl.Type);
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, {sourceAddr}, {sizeExpr});");
                     }
 
                     // CRITICAL FIX: Implement move semantics when copying from ANY local variable.
@@ -5688,7 +5791,8 @@ public partial class CCodeGenerator
             else if (localDecl.InitialValue != null && TypeRequiresMemcpy(localDecl.InitialValue.Type))
             {
                 var decl = GetCVariableDeclaration(localDecl.Type, varName);
-                var cType = GetCType(localDecl.Type);
+                // Use GetSizeofExpression to handle arrays correctly (element size * length)
+                var sizeExpr = GetSizeofExpression(localDecl.Type);
                 _output.AppendLine($"    {decl};");
 
                 // OPTIMIZATION: Use field-by-field copy for small simple structs
@@ -5698,7 +5802,7 @@ public partial class CCodeGenerator
                 }
                 else
                 {
-                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, sizeof({cType}));");
+                    _output.AppendLine($"    __novus_memcpy((uint8_t*)&{varName}, (uint8_t*)&{initValue}, {sizeExpr});");
                 }
 
                 // CRITICAL FIX: Move semantics when copying from local variable
@@ -5707,7 +5811,7 @@ public partial class CCodeGenerator
                 if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(localDecl.Type))
                 {
                     _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
-                    _output.AppendLine($"    __novus_memset(&{initValue}, 0, sizeof({cType}));");
+                    _output.AppendLine($"    __novus_memset(&{initValue}, 0, {sizeExpr});");
                 }
             }
             else
@@ -5873,7 +5977,6 @@ public partial class CCodeGenerator
         // Solution: Use __novus_memcpy() or field-by-field copy instead of direct assignment.
         if (TypeRequiresMemcpy(store.Value.Type))
         {
-            var cType = GetCType(store.Value.Type);
             // OPTIMIZATION: Use field-by-field copy for small simple structs
             EmitStructCopy(varName, value, store.Value.Type);
 
@@ -5882,8 +5985,9 @@ public partial class CCodeGenerator
             var sourceIsSlot = value != null && value.StartsWith("_slot_");
             if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(store.Value.Type))
             {
+                var sizeExpr = GetSizeofExpression(store.Value.Type);
                 _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
-                _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                _output.AppendLine($"    __novus_memset(&{value}, 0, {sizeExpr});");
             }
         }
         else
@@ -5896,9 +6000,9 @@ public partial class CCodeGenerator
             var sourceIsSlot = value != null && value.StartsWith("_slot_");
             if ((sourceIsLocalVar || sourceIsSlot) && TypeContainsDroppableContent(store.Value.Type))
             {
-                var cType = GetCType(store.Value.Type);
+                var sizeExpr = GetSizeofExpression(store.Value.Type);
                 _output.AppendLine($"    /* Move semantics: zero source to prevent double-free */");
-                _output.AppendLine($"    __novus_memset(&{value}, 0, sizeof({cType}));");
+                _output.AppendLine($"    __novus_memset(&{value}, 0, {sizeExpr});");
             }
         }
     }
@@ -6253,9 +6357,9 @@ public partial class CCodeGenerator
             args.Add(argValue);
         }
 
-        // VBCC FIX: For struct/enum returns on 68k, use output parameter pattern to avoid vbcc bugs
+        // VBCC FIX: For struct/enum/array returns on 68k, use output parameter pattern to avoid vbcc bugs
         // BUT: Extern functions use their actual C signatures and return values directly
-        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType or IrTupleType;
+        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
         var shouldUseOutParam = isStructOrEnumReturn && (function == null || !function.IsExtern);
 
         // WORKAROUND: Strip type suffixes from cross-module function calls BEFORE mangling
@@ -6569,9 +6673,9 @@ public partial class CCodeGenerator
         // Step 2: For struct/enum returns, copy to __out BEFORE running deferred cleanup
         if (returnInst.Value != null)
         {
-            // VBCC FIX: For struct/enum returns, write to output parameter instead of returning directly
+            // VBCC FIX: For struct/enum/array returns, write to output parameter instead of returning directly
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType);
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType);
             var shouldUseOutParam = isStructOrEnumReturn;
 
             if (shouldUseOutParam)
@@ -6816,12 +6920,13 @@ public partial class CCodeGenerator
                     // This handles cases like `return event;` where event is WindowEvent (enum with data).
                     if (TypeRequiresMemcpy(returnInst.Value.Type))
                     {
-                        var cType = GetCType(returnInst.Value.Type);
+                        // Use correct sizeof expression (arrays need element size * length)
+                        var sizeExpr = GetSizeofExpression(returnInst.Value.Type);
 
                         // For pointer-converted parameters, use the pointer directly (no &)
                         // For local variables, take address with &
                         var srcExpr = isPointerConvertedParam ? value : $"&{value}";
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*){srcExpr}, sizeof({cType}));");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)__out, (uint8_t*){srcExpr}, {sizeExpr});");
 
                         // CRITICAL FIX: Move semantics when copying local variable to return value.
                         // Zero the source to prevent deferred cleanup from double-freeing.
@@ -6831,7 +6936,7 @@ public partial class CCodeGenerator
                             _output.AppendLine($"    /* Move semantics: zero source to prevent double-free on return */");
                             // For pointer-converted params, dereference to get struct for memset
                             var zeroTarget = isPointerConvertedParam ? value : $"&{value}";
-                            _output.AppendLine($"    __novus_memset({zeroTarget}, 0, sizeof({cType}));");
+                            _output.AppendLine($"    __novus_memset({zeroTarget}, 0, {sizeExpr});");
                         }
                     }
                     else
@@ -6907,11 +7012,11 @@ public partial class CCodeGenerator
         if (returnInst.Value != null)
         {
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType);
+                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType);
 
             if (isStructOrEnumReturn)
             {
-                // Struct/enum was already copied to __out above
+                // Struct/enum/array was already copied to __out above
                 _output.AppendLine("    return;");
             }
             else
@@ -7754,32 +7859,29 @@ public partial class CCodeGenerator
                 // VBCC FIX: VBCC cannot compile struct-by-value assignment for complex types:
                 // - Structs containing nested structs (e.g., SpriteData with ChipMemHandle)
                 // - Enums with associated data (e.g., Result<T,E>, Option<T> - these become tagged unions)
+                // - Arrays (cannot be assigned directly in C)
                 // VBCC generates illegal instructions on 68040 for these types.
                 // Solution: Use __novus_memcpy() instead of direct assignment.
-                //
-                // EXCEPTION: Array fields decay to pointers in C. When accessing an array field,
-                // the result is a pointer, and we should use direct assignment (array decay),
-                // NOT memcpy. Using memcpy would incorrectly copy the first bytes of the array
-                // into the pointer variable instead of getting the array's address.
-                bool isArrayField = memberAccess.FieldType is IrArrayType;
-                bool useMemcpy = !isArrayField && TypeRequiresMemcpy(memberAccess.FieldType);
+                bool useMemcpy = TypeRequiresMemcpy(memberAccess.FieldType);
 
                 if (useMemcpy)
                 {
-                    // For structs with nested structs, use memcpy
+                    // For structs with nested structs or arrays, use memcpy
+                    var sizeExpr = GetSizeofExpression(memberAccess.FieldType);
                     if (alreadyDeclared)
                     {
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), {sizeExpr});");
                     }
                     else
                     {
-                        _output.AppendLine($"    {fieldType} {resultName};");
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), sizeof({fieldType}));");
+                        var decl = GetCVariableDeclaration(memberAccess.FieldType, resultName);
+                        _output.AppendLine($"    {decl};");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), {sizeExpr});");
                     }
                 }
                 else
                 {
-                    // For simple types, arrays (which decay to pointers), and structs without nested structs,
+                    // For simple types and structs without nested structs,
                     // direct assignment works correctly
                     if (alreadyDeclared)
                     {
@@ -8125,6 +8227,25 @@ public partial class CCodeGenerator
     {
         var sanitizedName = SanitizeVariableName(varName);
         return _module.StaticVariables.Any(sv => SanitizeVariableName(sv.Name) == sanitizedName);
+    }
+
+    /// <summary>
+    /// Check if a variable name matches an external variable (extern var).
+    /// Used to prevent local variables from shadowing extern globals.
+    /// </summary>
+    private bool IsExternalVariable(string varName)
+    {
+        var sanitizedName = SanitizeVariableName(varName);
+        return _module.ExternalVariables.Any(ev => SanitizeVariableName(ev.Name) == sanitizedName);
+    }
+
+    /// <summary>
+    /// Check if a variable name matches either a module static or external variable.
+    /// Used to prevent local variables from shadowing globals.
+    /// </summary>
+    private bool IsGlobalVariable(string varName)
+    {
+        return IsModuleStaticVariable(varName) || IsExternalVariable(varName);
     }
 
     /// <summary>
@@ -9529,6 +9650,22 @@ public partial class CCodeGenerator
         };
     }
 
+    /// <summary>
+    /// Get the correct sizeof expression for a type.
+    /// For arrays, returns sizeof(element_type) * length (actual byte size).
+    /// For other types, returns sizeof(C_type_name).
+    /// GetCType returns T* for arrays, which would give pointer size, not array size.
+    /// </summary>
+    private string GetSizeofExpression(IrType type)
+    {
+        if (type is IrArrayType arrayType)
+        {
+            var elemCType = GetCType(arrayType.ElementType);
+            return $"(sizeof({elemCType}) * {arrayType.Length})";
+        }
+        return $"sizeof({GetCType(type)})";
+    }
+
     internal string GetFunctionPointerType(IrFunctionPointerType fpType)
     {
         // Generate C function pointer type: return_type (*)(param1_type, param2_type, ...)
@@ -9630,6 +9767,14 @@ public partial class CCodeGenerator
             {
                 // Mut reference to something containing a function pointer
                 return GetCDeclaratorForType(mutRefType.PointeeType, $"*{declarator}");
+            }
+
+            case IrArrayType arrayType:
+            {
+                // Arrays must be declared with proper C array syntax: T name[N]
+                // GetCType returns T* for arrays, but for variable declarations we need T name[N]
+                var elementType = GetCType(arrayType.ElementType);
+                return $"{elementType} {declarator}[{arrayType.Length}]";
             }
 
             default:
@@ -9786,9 +9931,12 @@ public partial class CCodeGenerator
                 // VBCC generates illegal instructions when copying these struct-by-value.
                 return enumType.Variants.Any(v => v.HasAssociatedData);
 
-            case IrArrayType arrayType:
-                // Arrays might contain structs
-                return TypeRequiresMemcpy(arrayType.ElementType);
+            case IrArrayType:
+                // Arrays ALWAYS require memcpy - you cannot assign a pointer to an array in C.
+                // Array function returns use out-parameters that return pointers, but the
+                // destination may be declared as an actual array (e.g., uint8_t arr[4]).
+                // Direct assignment like "arr = ptr" is invalid C - must use memcpy.
+                return true;
 
             default:
                 // Primitives, pointers, etc. don't contain nested structs
@@ -9859,8 +10007,6 @@ public partial class CCodeGenerator
     /// <param name="type">The type being copied</param>
     private void EmitStructCopy(string destExpr, string sourceExpr, IrType type)
     {
-        var cType = GetCType(type);
-
         if (type is IrStructType structType && CanUseFieldByFieldCopy(structType))
         {
             // OPTIMIZATION: Field-by-field copy for small simple structs
@@ -9872,8 +10018,10 @@ public partial class CCodeGenerator
         }
         else
         {
-            // Use memcpy for larger or complex structs
-            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{destExpr}, (uint8_t*)&{sourceExpr}, sizeof({cType}));");
+            // Use memcpy for larger or complex structs/arrays
+            // Note: GetSizeofExpression handles arrays correctly (element size * length)
+            var sizeExpr = GetSizeofExpression(type);
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{destExpr}, (uint8_t*)&{sourceExpr}, {sizeExpr});");
         }
     }
 
@@ -9884,8 +10032,19 @@ public partial class CCodeGenerator
         // VBCC FIX: Add output parameter as first parameter for struct/enum returns
         if (hasOutputParameter)
         {
-            var returnType = GetCType(function.ReturnType);
-            parameters.Add($"{returnType}* __out");
+            // ARRAY FIX: For array returns, GetCType already returns T* (e.g., uint8_t*),
+            // so we don't add another * - the __out parameter IS the destination buffer.
+            // For structs/enums, GetCType returns the struct name, so we add * for pointer-to-struct.
+            if (function.ReturnType is IrArrayType)
+            {
+                var returnType = GetCType(function.ReturnType);
+                parameters.Add($"{returnType} __out");
+            }
+            else
+            {
+                var returnType = GetCType(function.ReturnType);
+                parameters.Add($"{returnType}* __out");
+            }
         }
 
         // Add regular parameters

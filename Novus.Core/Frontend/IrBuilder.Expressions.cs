@@ -4671,7 +4671,26 @@ public partial class IrBuilder
         foreach (var fieldInit in context.structFieldInit())
         {
             var fieldName = fieldInit.IDENTIFIER().GetText();
+
+            // Get the field to set expected type for bidirectional type checking
+            var field = structType.GetField(fieldName);
+            if (field == null)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Field '{fieldName}' does not exist in struct '{structName}'",
+                    errorLocation
+                );
+                return null;
+            }
+
+            // Set expected type to the field's type before visiting the expression
+            // This allows enum constructors like Option::None to use the concrete type
+            var savedExpectedType = _expectedType;
+            _expectedType = field.Type;
             var fieldValue = (IrValue?)Visit(fieldInit.expression());
+            _expectedType = savedExpectedType;
 
             if (fieldValue == null)
             {
@@ -4686,9 +4705,7 @@ public partial class IrBuilder
 
             // Apply automatic Str → u32 coercion for fields that expect u32
             // This allows passing string literals/variables to TagItem.ti_Data and similar fields
-            var field = structType.GetField(fieldName);
-            if (field != null &&
-                field.Type is IrIntType intType && intType == IrIntType.U32 &&
+            if (field.Type is IrIntType intType && intType == IrIntType.U32 &&
                 fieldValue.Type is IrStructType strStructType && strStructType.StructName == "Str")
             {
                 // Extract the .ptr field from the Str struct

@@ -1,0 +1,312 @@
+// Novus Standard Library - DNS Resolution
+// Namespace: std::net::dns
+//
+// Provides hostname resolution and reverse DNS lookups.
+//
+// Example:
+// ```novus
+// from std::net::socket import SocketLibrary
+// from std::net::dns import resolve_hostname, reverse_lookup
+// from std::net::addr import Ipv4Addr
+//
+// fn main() -> i32 {
+//     let lib = SocketLibrary::init()?
+//
+//     // Resolve hostname to IP
+//     let addrs = resolve_hostname("www.aminet.net")?
+//     for addr in addrs {
+//         print_ip(addr)
+//     }
+//
+//     // Reverse lookup
+//     let hostname = reverse_lookup(Ipv4Addr::new(192, 168, 1, 1))?
+//     println(hostname)
+//
+//     return 0
+// }
+// ```
+//
+// NOTE: DNS functions are NOT thread-safe. The underlying bsdsocket.library
+// uses static buffers that are overwritten on each call. For multi-tasking,
+// copy results immediately after each call.
+
+from std::ffi::bsdsocket import gethostbyname, gethostbyaddr, gethostname
+from std::ffi::bsdsocket import getprotobyname, getprotobynumber, getservbyname, getservbyport
+from std::ffi::bsdsocket import hostent, protoent, servent, AF_INET, h_errno
+from std::ffi::bsdsocket import HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
+from std::net::addr import Ipv4Addr
+from std::net::errors import NetError
+from std::core import Option, Result
+from std::collections::vec import Vec
+
+/// Maximum number of addresses to return from DNS lookup
+const MAX_DNS_RESULTS: i32 = 16
+
+/// Resolve a hostname to IPv4 addresses
+///
+/// Returns a vector of IP addresses for the hostname.
+/// Multiple addresses may be returned for load-balanced services.
+///
+/// Example:
+/// ```novus
+/// let addrs = resolve_hostname("www.example.com")?
+/// let first_addr = addrs.get(0).unwrap()
+/// ```
+pub fn resolve_hostname(hostname: *u8) -> Result<Vec<Ipv4Addr>, NetError> {
+    let he = unsafe { gethostbyname(hostname) }
+
+    if !he {
+        let h_err = unsafe { h_errno() }
+        return Result::Err(NetError::from_h_errno(h_err))
+    }
+
+    // hostent structure contains h_addr_list which is a null-terminated
+    // array of pointers to addresses
+    var addrs: Vec<Ipv4Addr> = Vec::new()
+
+    // Read addresses from h_addr_list
+    // Each entry is a pointer to a 4-byte IPv4 address
+    let addr_list = unsafe { (*he).h_addr_list }
+
+    var i: i32 = 0
+    while i < MAX_DNS_RESULTS {
+        // Get pointer at index i
+        let addr_ptr_ptr = unsafe { (addr_list as u32 + (i as u32 * 4)) as **u8 }
+        let addr_ptr = unsafe { *addr_ptr_ptr }
+
+        // Null pointer marks end of list
+        if !addr_ptr {
+            break
+        }
+
+        // Read 4-byte address in network byte order
+        let byte0 = unsafe { *addr_ptr }
+        let byte1 = unsafe { *((addr_ptr as u32 + 1) as *u8) }
+        let byte2 = unsafe { *((addr_ptr as u32 + 2) as *u8) }
+        let byte3 = unsafe { *((addr_ptr as u32 + 3) as *u8) }
+
+        let addr = Ipv4Addr::new(byte0, byte1, byte2, byte3)
+        addrs.push(addr)
+
+        i = i + 1
+    }
+
+    return Result::Ok(addrs)
+}
+
+/// Resolve a hostname to a single IPv4 address
+///
+/// Returns the first address for the hostname, or an error.
+/// Use resolve_hostname() if you need all addresses.
+///
+/// Example:
+/// ```novus
+/// let addr = resolve_hostname_one("www.example.com")?
+/// ```
+pub fn resolve_hostname_one(hostname: *u8) -> Result<Ipv4Addr, NetError> {
+    let he = unsafe { gethostbyname(hostname) }
+
+    if !he {
+        let h_err = unsafe { h_errno() }
+        return Result::Err(NetError::from_h_errno(h_err))
+    }
+
+    let addr_list = unsafe { (*he).h_addr_list }
+
+    // Get first address pointer
+    let addr_ptr = unsafe { *addr_list }
+
+    if !addr_ptr {
+        return Result::Err(NetError::DnsNoData)
+    }
+
+    // Read 4-byte address in network byte order
+    let byte0 = unsafe { *addr_ptr }
+    let byte1 = unsafe { *((addr_ptr as u32 + 1) as *u8) }
+    let byte2 = unsafe { *((addr_ptr as u32 + 2) as *u8) }
+    let byte3 = unsafe { *((addr_ptr as u32 + 3) as *u8) }
+
+    return Result::Ok(Ipv4Addr::new(byte0, byte1, byte2, byte3))
+}
+
+/// Reverse DNS lookup (IP to hostname)
+///
+/// Returns the hostname for an IP address, if available.
+///
+/// Example:
+/// ```novus
+/// let hostname = reverse_lookup(Ipv4Addr::new(8, 8, 8, 8))?
+/// println(hostname)  // "dns.google"
+/// ```
+pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
+    let octets = addr.octets()
+    let addr_bytes: [u8; 4] = [octets[0], octets[1], octets[2], octets[3]]
+    let addr_ptr: *u8 = (*u8)&addr_bytes
+
+    let he = unsafe { gethostbyaddr(addr_ptr, 4, AF_INET) }
+
+    if !he {
+        let h_err = unsafe { h_errno() }
+        return Result::Err(NetError::from_h_errno(h_err))
+    }
+
+    let name = unsafe { (*he).h_name }
+    return Result::Ok(name)
+}
+
+/// Get the local hostname
+///
+/// Returns the hostname of the local machine.
+///
+/// Example:
+/// ```novus
+/// var buf: [u8; 256] = [0u8; 256]
+/// get_local_hostname((*u8)&buf, 256)?
+/// println((*u8)&buf)
+/// ```
+pub fn get_local_hostname(buf: *u8, len: i32) -> Result<(), NetError> {
+    let result = unsafe { gethostname(buf, len) }
+    if result < 0 {
+        return Result::Err(NetError::last())
+    }
+    return Result::Ok(())
+}
+
+/// Protocol information
+pub struct Protocol {
+    name: *u8,
+    number: i32,
+}
+
+impl Protocol {
+    /// Get name
+    pub fn name(&self) -> *u8 {
+        return self.name
+    }
+
+    /// Get protocol number
+    pub fn number(&self) -> i32 {
+        return self.number
+    }
+}
+
+/// Look up a protocol by name
+///
+/// Common names: "tcp", "udp", "icmp"
+///
+/// Example:
+/// ```novus
+/// let proto = lookup_protocol_by_name("tcp")?
+/// println(proto.number())  // 6
+/// ```
+pub fn lookup_protocol_by_name(name: *u8) -> Result<Protocol, NetError> {
+    let pe = unsafe { getprotobyname(name) }
+
+    if !pe {
+        return Result::Err(NetError::HostNotFound)
+    }
+
+    return Result::Ok(Protocol {
+        name: unsafe { (*pe).p_name },
+        number: unsafe { (*pe).p_proto },
+    })
+}
+
+/// Look up a protocol by number
+///
+/// Example:
+/// ```novus
+/// let proto = lookup_protocol_by_number(6)?
+/// println(proto.name())  // "tcp"
+/// ```
+pub fn lookup_protocol_by_number(number: i32) -> Result<Protocol, NetError> {
+    let pe = unsafe { getprotobynumber(number) }
+
+    if !pe {
+        return Result::Err(NetError::HostNotFound)
+    }
+
+    return Result::Ok(Protocol {
+        name: unsafe { (*pe).p_name },
+        number: unsafe { (*pe).p_proto },
+    })
+}
+
+/// Service information
+pub struct Service {
+    name: *u8,
+    port: i32,
+    protocol: *u8,
+}
+
+impl Service {
+    /// Get service name
+    pub fn name(&self) -> *u8 {
+        return self.name
+    }
+
+    /// Get port number (host byte order)
+    pub fn port(&self) -> i32 {
+        return self.port
+    }
+
+    /// Get protocol name ("tcp" or "udp")
+    pub fn protocol(&self) -> *u8 {
+        return self.protocol
+    }
+}
+
+/// Look up a service by name
+///
+/// Common names: "http", "https", "ftp", "ssh", "smtp"
+/// proto: "tcp" or "udp" (or null for any)
+///
+/// Example:
+/// ```novus
+/// let svc = lookup_service_by_name("http", "tcp")?
+/// println(svc.port())  // 80
+/// ```
+pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError> {
+    let se = unsafe { getservbyname(name, proto) }
+
+    if !se {
+        return Result::Err(NetError::HostNotFound)
+    }
+
+    // Port is in network byte order, convert to host order
+    let net_port = unsafe { (*se).s_port }
+    // On big-endian Amiga, network order == host order
+    let host_port = net_port
+
+    return Result::Ok(Service {
+        name: unsafe { (*se).s_name },
+        port: host_port,
+        protocol: unsafe { (*se).s_proto },
+    })
+}
+
+/// Look up a service by port number
+///
+/// port: Port number (host byte order)
+/// proto: "tcp" or "udp" (or null for any)
+///
+/// Example:
+/// ```novus
+/// let svc = lookup_service_by_port(80, "tcp")?
+/// println(svc.name())  // "http"
+/// ```
+pub fn lookup_service_by_port(port: i32, proto: *u8) -> Result<Service, NetError> {
+    // Port needs to be in network byte order for the API
+    // On big-endian Amiga, no conversion needed
+    let se = unsafe { getservbyport(port, proto) }
+
+    if !se {
+        return Result::Err(NetError::HostNotFound)
+    }
+
+    return Result::Ok(Service {
+        name: unsafe { (*se).s_name },
+        port: port,
+        protocol: unsafe { (*se).s_proto },
+    })
+}

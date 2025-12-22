@@ -1,0 +1,279 @@
+// Novus Standard Library - Network Address Types
+// Namespace: std::net::addr
+//
+// IP address and socket address types for networking.
+// These provide safe, ergonomic wrappers around raw sockaddr structures.
+
+from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
+from std::core import Option
+
+// Inline byte swap functions for Amiga (68k)
+// The Amiga is big-endian, same as network byte order, so these are identity functions.
+// We use inline implementations rather than FFI calls because:
+// 1. On big-endian systems, these are simply identity functions
+// 2. Inline avoids function call overhead
+// 3. The FFI versions do the exact same thing on 68k
+@inline
+fn htons(host: u16) -> u16 {
+    // Big-endian (68k): host byte order == network byte order
+    return host
+}
+
+@inline
+fn ntohs(net: u16) -> u16 {
+    // Big-endian (68k): network byte order == host byte order
+    return net
+}
+
+/// IPv4 address (32-bit)
+pub struct Ipv4Addr {
+    octets: [u8; 4],
+}
+
+impl Ipv4Addr {
+    /// Create from four octets
+    pub fn new(a: u8, b: u8, c: u8, d: u8) -> Ipv4Addr {
+        return Ipv4Addr { octets: [a, b, c, d] }
+    }
+
+    /// Create from 32-bit integer in host byte order
+    pub fn from_u32(addr: u32) -> Ipv4Addr {
+        return Ipv4Addr {
+            octets: [
+                ((addr >> 24) & 0xff) as u8,
+                ((addr >> 16) & 0xff) as u8,
+                ((addr >> 8) & 0xff) as u8,
+                (addr & 0xff) as u8,
+            ]
+        }
+    }
+
+    /// Create from in_addr structure
+    pub fn from_in_addr(addr: in_addr) -> Ipv4Addr {
+        return Ipv4Addr::from_network_order(addr.s_addr)
+    }
+
+    /// Create from network byte order u32
+    /// On big-endian Amiga, network byte order = host byte order
+    /// The MSB contains the first octet (e.g., 192 in 192.168.1.100)
+    pub fn from_network_order(net: u32) -> Ipv4Addr {
+        return Ipv4Addr {
+            octets: [
+                ((net >> 24) & 0xff) as u8,  // First octet (MSB)
+                ((net >> 16) & 0xff) as u8,  // Second octet
+                ((net >> 8) & 0xff) as u8,   // Third octet
+                (net & 0xff) as u8,          // Fourth octet (LSB)
+            ]
+        }
+    }
+
+    /// Get octets as array
+    pub fn octets(self) -> [u8; 4] {
+        return self.octets
+    }
+
+    /// Convert to 32-bit integer in host byte order
+    pub fn to_u32(self) -> u32 {
+        return ((self.octets[0] as u32) << 24) | ((self.octets[1] as u32) << 16) | ((self.octets[2] as u32) << 8) | (self.octets[3] as u32)
+    }
+
+    /// Convert to network byte order for socket APIs
+    /// On big-endian Amiga, network byte order = host byte order
+    /// So this is identical to to_u32()
+    pub fn to_network_order(self) -> u32 {
+        return ((self.octets[0] as u32) << 24) | ((self.octets[1] as u32) << 16) | ((self.octets[2] as u32) << 8) | (self.octets[3] as u32)
+    }
+
+    /// Convert to in_addr structure
+    pub fn to_in_addr(self) -> in_addr {
+        return in_addr { s_addr: self.to_network_order() }
+    }
+
+    /// Localhost (127.0.0.1)
+    pub fn localhost() -> Ipv4Addr {
+        return Ipv4Addr::new(127, 0, 0, 1)
+    }
+
+    /// Any address (0.0.0.0) - bind to all interfaces
+    pub fn any() -> Ipv4Addr {
+        return Ipv4Addr::new(0, 0, 0, 0)
+    }
+
+    /// Broadcast address (255.255.255.255)
+    pub fn broadcast() -> Ipv4Addr {
+        return Ipv4Addr::new(255, 255, 255, 255)
+    }
+
+    /// Check if this is the loopback address (127.x.x.x)
+    pub fn is_loopback(self) -> bool {
+        return self.octets[0] == 127
+    }
+
+    /// Check if this is the any address (0.0.0.0)
+    pub fn is_any(self) -> bool {
+        return self.octets[0] == 0 && self.octets[1] == 0 && self.octets[2] == 0 && self.octets[3] == 0
+    }
+
+    /// Check if this is the broadcast address
+    pub fn is_broadcast(self) -> bool {
+        return self.octets[0] == 255 && self.octets[1] == 255 && self.octets[2] == 255 && self.octets[3] == 255
+    }
+
+    /// Check if this is a private address (RFC 1918)
+    /// 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    pub fn is_private(self) -> bool {
+        // 10.x.x.x
+        if self.octets[0] == 10 {
+            return true
+        }
+        // 172.16.x.x - 172.31.x.x
+        if self.octets[0] == 172 && self.octets[1] >= 16 && self.octets[1] <= 31 {
+            return true
+        }
+        // 192.168.x.x
+        if self.octets[0] == 192 && self.octets[1] == 168 {
+            return true
+        }
+        return false
+    }
+
+    /// Check if this is a multicast address (224.0.0.0 - 239.255.255.255)
+    pub fn is_multicast(self) -> bool {
+        return self.octets[0] >= 224 && self.octets[0] <= 239
+    }
+
+    /// Format IP address as dotted-decimal string into a buffer
+    ///
+    /// Writes the IP address in "X.X.X.X" format to the provided buffer.
+    /// Returns the number of bytes written (not including null terminator).
+    /// The buffer must be at least 16 bytes to hold any valid IP address.
+    ///
+    /// Example:
+    /// ```novus
+    /// let addr = Ipv4Addr::new(192, 168, 1, 100)
+    /// let mut buf: [u8; 16] = [0u8; 16]
+    /// let len = addr.format(&buf)
+    /// // buf now contains "192.168.1.100\0"
+    /// ```
+    pub fn format(self, buf: *u8) -> i32 {
+        let pos0 = write_u8_to_buf(self.octets[0], buf, 0)
+        write_byte(buf, pos0, 46u8)
+        let pos1 = write_u8_to_buf(self.octets[1], buf, pos0 + 1)
+        write_byte(buf, pos0 + 1 + pos1, 46u8)
+        let pos2 = write_u8_to_buf(self.octets[2], buf, pos0 + pos1 + 2)
+        write_byte(buf, pos0 + pos1 + pos2 + 2, 46u8)
+        let pos3 = write_u8_to_buf(self.octets[3], buf, pos0 + pos1 + pos2 + 3)
+        let total = pos0 + pos1 + pos2 + pos3 + 3
+        write_byte(buf, total, 0u8)
+        return total
+    }
+}
+
+/// Helper: write a single byte to buffer at offset
+fn write_byte(buf: *u8, offset: i32, val: u8) {
+    let ptr: *u8 = (buf as u32 + offset as u32) as *u8
+    unsafe { *ptr = val }
+}
+
+/// Helper: write a u8 value as decimal digits to buffer at position
+/// Returns number of digits written (1-3)
+fn write_u8_to_buf(val: u8, buf: *u8, pos: i32) -> i32 {
+    let v = val as i32
+
+    if v >= 100 {
+        let d0 = (v / 100) as u8
+        let d1 = ((v / 10) % 10) as u8
+        let d2 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        write_byte(buf, pos + 2, 48u8 + d2)
+        return 3
+    } else if v >= 10 {
+        let d0 = (v / 10) as u8
+        let d1 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        return 2
+    } else {
+        write_byte(buf, pos, 48u8 + v as u8)
+        return 1
+    }
+}
+
+/// Socket address for IPv4
+pub struct SocketAddrV4 {
+    ip: Ipv4Addr,
+    port: u16,
+}
+
+impl SocketAddrV4 {
+    /// Create a new socket address
+    pub fn new(ip: Ipv4Addr, port: u16) -> SocketAddrV4 {
+        return SocketAddrV4 { ip: ip, port: port }
+    }
+
+    /// Get the IP address
+    pub fn ip(self) -> Ipv4Addr {
+        return self.ip
+    }
+
+    /// Get the port number
+    pub fn port(self) -> u16 {
+        return self.port
+    }
+
+    /// Set the IP address
+    pub fn set_ip(&self, ip: Ipv4Addr) {
+        self.ip = ip
+    }
+
+    /// Set the port number
+    pub fn set_port(&self, port: u16) {
+        self.port = port
+    }
+
+    /// Convert to sockaddr_in for socket APIs
+    pub fn to_sockaddr_in(self) -> sockaddr_in {
+        return sockaddr_in {
+            sin_len: 16u8,
+            sin_family: AF_INET as u8,
+            sin_port: htons(self.port),
+            sin_addr: self.ip.to_in_addr(),
+            sin_zero: [0u8; 8],
+        }
+    }
+
+    /// Create from sockaddr_in
+    pub fn from_sockaddr_in(addr: sockaddr_in) -> SocketAddrV4 {
+        return SocketAddrV4 {
+            ip: Ipv4Addr::from_in_addr(addr.sin_addr),
+            port: ntohs(addr.sin_port),
+        }
+    }
+}
+
+/// Generic socket address enum (for future IPv6 support)
+pub enum SocketAddr {
+    V4(SocketAddrV4),
+}
+
+impl SocketAddr {
+    /// Create from IPv4 address and port
+    pub fn new_v4(ip: Ipv4Addr, port: u16) -> SocketAddr {
+        return SocketAddr::V4(SocketAddrV4::new(ip, port))
+    }
+
+    /// Get the port number
+    pub fn port(self) -> u16 {
+        match self {
+            SocketAddr::V4(addr) => return addr.port(),
+        }
+    }
+
+    /// Check if this is an IPv4 address
+    pub fn is_ipv4(self) -> bool {
+        match self {
+            SocketAddr::V4(_) => return true,
+        }
+    }
+}
