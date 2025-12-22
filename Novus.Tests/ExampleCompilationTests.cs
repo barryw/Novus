@@ -72,11 +72,19 @@ public abstract class ExampleCompilationTestBase
 
 /// <summary>
 /// Fast ASM-only compilation tests that run IN PARALLEL.
-/// These tests use --emit-asm to skip VBCC, testing only parsing/IR/C codegen.
-/// Since they don't write to shared caches, they can safely run in parallel.
+/// These tests use in-process compilation to test parsing/IR/C codegen.
+/// Since they don't spawn processes or write to shared caches, they can safely run in parallel.
 /// </summary>
 public class ExampleAsmTests : ExampleCompilationTestBase
 {
+    // Shared compiler instance (thread-safe - stateless except for readonly fields)
+    private static readonly Lazy<InProcessCompiler> _compiler = new(() =>
+    {
+        var projectRoot = GetProjectRoot();
+        var stdLibPath = Path.Combine(projectRoot, "Novus", "std");
+        return new InProcessCompiler(stdLibPath);
+    });
+
     /// <summary>
     /// Gets all example files for ASM-only compilation tests (fast)
     /// </summary>
@@ -89,7 +97,7 @@ public class ExampleAsmTests : ExampleCompilationTestBase
 
     /// <summary>
     /// Fast test: verify parsing, semantic analysis, IR generation, and C codegen.
-    /// Uses --emit-asm to skip VBCC assembler/linker for speed.
+    /// Uses IN-PROCESS compilation (no external processes) for blazing speed.
     /// These tests run in PARALLEL for maximum performance.
     /// </summary>
     [Theory]
@@ -98,73 +106,16 @@ public class ExampleAsmTests : ExampleCompilationTestBase
     {
         var projectRoot = GetProjectRoot();
         var inputFile = Path.Combine(projectRoot, "Novus.Tests", "Examples", $"{exampleName}.novus");
-        // Use unique temp directory per test to avoid conflicts
-        var testDir = Path.Combine(Path.GetTempPath(), $"novus_test_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(testDir);
-        var outputFile = Path.Combine(testDir, exampleName);
 
-        try
-        {
-            // Verify input file exists
-            Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
+        // Verify input file exists
+        Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
 
-            // Run the compiler with --emit-asm (skip VBCC)
-            var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
-            Assert.True(File.Exists(compilerPath),
-                $"Compiler not found at {compilerPath}. Build the project first.");
+        // Compile in-process (no external process spawning)
+        var (success, errorMessage) = await _compiler.Value.CompileAndVerifyAsync(inputFile);
 
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"\"{compilerPath}\" \"{inputFile}\" -o \"{outputFile}\" --emit-asm",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(startInfo);
-            Assert.NotNull(process);
-
-            // Read output asynchronously to avoid deadlock when buffer fills
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-
-            var exited = process.WaitForExit(timeout: TimeSpan.FromSeconds(60));
-
-            // If process didn't exit within timeout, kill it and fail the test
-            if (!exited)
-            {
-                process.Kill();
-                Assert.Fail($"Example '{exampleName}' ASM generation timed out after 60 seconds.");
-            }
-
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-
-            // Check that code generation succeeded
-            // With --emit-asm, success is indicated by exit code 0 and "C files and header written" message
-            var success = process.ExitCode == 0 && stdout.Contains("C files and header written");
-
-            Assert.True(success,
-                $"Example '{exampleName}' failed to generate assembly.\n" +
-                $"Exit code: {process.ExitCode}\n" +
-                $"Output:\n{stdout}\n" +
-                $"Errors:\n{stderr}");
-        }
-        finally
-        {
-            // Clean up temp directory
-            try
-            {
-                if (Directory.Exists(testDir))
-                    Directory.Delete(testDir, recursive: true);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
-        }
+        Assert.True(success,
+            $"Example '{exampleName}' failed to generate C code.\n" +
+            $"Errors:\n{errorMessage}");
     }
 }
 
