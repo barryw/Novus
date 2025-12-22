@@ -32,6 +32,7 @@
 from std::ffi::exec import OpenLibrary, CloseLibrary, Library
 from std::net::errors import NetError
 from std::ffi::bsdsocket import SetErrnoPtr, SocketBaseTags, SBTM_SETVAL, SBTC_ERRNOPTR, SocketBase
+from std::ffi::bsdsocket import socket, CloseSocket, AF_INET, SOCK_STREAM
 from std::core import Result
 
 // Minimum required bsdsocket.library version
@@ -142,9 +143,66 @@ impl Drop for SocketLibrary {
 /// ```
 pub fn is_tcp_available() -> bool {
     let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
-    if base as u32 != 0 {
+    if (u32)base != 0 {
         unsafe { CloseLibrary(base) }
         return true
     }
     return false
 }
+
+/// Check if the TCP/IP stack is fully functional
+///
+/// This does more than just checking if bsdsocket.library exists:
+/// it actually opens the library, sets up errno, and tries to create
+/// a socket. This verifies the stack is properly running.
+///
+/// NOTE: This is more expensive than is_tcp_available() - only use it
+/// when you need to verify the stack is actually working, not just installed.
+///
+/// Example:
+/// ```novus
+/// if is_tcp_functional() {
+///     println("TCP/IP stack is working!")
+/// } else {
+///     println("TCP/IP stack not functional")
+/// }
+/// ```
+pub fn is_tcp_functional() -> bool {
+    // Try to open the library
+    let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
+    if (u32)base == 0 {
+        return false
+    }
+
+    // Temporarily set SocketBase for FFI calls
+    let old_base = unsafe { SocketBase }
+    unsafe { SocketBase = base as *u8 }
+
+    // Set up errno pointer (required before any socket operations)
+    var temp_errno: i32 = 0
+    let errno_ptr: *i32 = (*i32)&temp_errno
+    let errno_result = unsafe { SetErrnoPtr(errno_ptr, 4) }
+
+    if errno_result != 0 {
+        unsafe { SocketBase = old_base }
+        unsafe { CloseLibrary(base) }
+        return false
+    }
+
+    // Try to create a socket - this tests if the stack is actually running
+    let sock = unsafe { socket(AF_INET, SOCK_STREAM, 0) }
+    let socket_works = sock >= 0
+
+    // Clean up
+    if sock >= 0 {
+        unsafe { CloseSocket(sock) }
+    }
+
+    unsafe { SocketBase = old_base }
+    unsafe { CloseLibrary(base) }
+
+    return socket_works
+}
+
+// Note: For TLS/SSL availability checking, use is_tls_available() from std::net::tls
+// That function lives in the tls module where it semantically belongs.

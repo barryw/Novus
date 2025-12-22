@@ -4434,11 +4434,23 @@ public partial class IrBuilder
             return new IrGlobalVariable(name, staticVar.Type);
         }
 
-        // Check if it's an extern variable
+        // Check if it's an extern variable (from module)
         var externVar = _module.ExternalVariables.FirstOrDefault(ev => ev.Name == name);
         if (externVar != null)
         {
             return new IrGlobalVariable(name, externVar.Type);
+        }
+
+        // Check if it's a global variable from the symbol table (imported extern vars)
+        var globalVar = _symbols.LookupGlobalVariable(name);
+        if (globalVar != null)
+        {
+            // Add to module's ExternalVariables if not already there (for code generation)
+            if (!_module.ExternalVariables.Any(ev => ev.Name == name))
+            {
+                _module.ExternalVariables.Add(new IrExternalVariable(name, globalVar.Type));
+            }
+            return new IrGlobalVariable(name, globalVar.Type);
         }
 
         // Check if it's a local variable

@@ -18,7 +18,17 @@
 ; Must be initialized by calling SocketLibrary::init() before use.
 ; ============================================================================
 	xdef	_SocketBase		; bsdsocket.library base
+	xdef	_h_errno		; DNS error variable
 
 _SocketBase:
 	ds.l	1			; Reserve 1 longword for SocketBase
+
+; ============================================================================
+; DNS Error Variable (h_errno)
+; ============================================================================
+; Used by gethostbyname() and friends to report DNS errors.
+; Set by the bsdsocket.library stubs after DNS operations fail.
+; ============================================================================
+_h_errno:
+	ds.l	1			; Reserve 1 longword for h_errno
 

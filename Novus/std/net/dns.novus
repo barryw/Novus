@@ -56,7 +56,7 @@ pub fn resolve_hostname(hostname: *u8) -> Result<Vec<Ipv4Addr>, NetError> {
     let he = unsafe { gethostbyname(hostname) }
 
     if !he {
-        let h_err = unsafe { h_errno() }
+        let h_err = unsafe { h_errno }
         return Result::Err(NetError::from_h_errno(h_err))
     }
 
@@ -107,7 +107,7 @@ pub fn resolve_hostname_one(hostname: *u8) -> Result<Ipv4Addr, NetError> {
     let he = unsafe { gethostbyname(hostname) }
 
     if !he {
-        let h_err = unsafe { h_errno() }
+        let h_err = unsafe { h_errno }
         return Result::Err(NetError::from_h_errno(h_err))
     }
 
@@ -146,7 +146,7 @@ pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
     let he = unsafe { gethostbyaddr(addr_ptr, 4, AF_INET) }
 
     if !he {
-        let h_err = unsafe { h_errno() }
+        let h_err = unsafe { h_errno }
         return Result::Err(NetError::from_h_errno(h_err))
     }
 

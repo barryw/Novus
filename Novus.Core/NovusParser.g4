@@ -393,6 +393,8 @@ expression
     | expression MINUSMINUS                                # PostDecrementExpr
     | expression QUESTION                                  # TryExpr
     | expression KW_AS type                                # AsCastExpr
+    | LPAREN type RPAREN expression                        # CastExpr
+    | LPAREN NEWLINE* expression NEWLINE* RPAREN          # ParenExpr
     | AMPERSAND KW_VAR? expression                         # BorrowExpr
     | (BANG | TILDE | MINUS) expression                    # UnaryExpr
     | PLUSPLUS expression                                  # PreIncrementExpr
@@ -439,9 +441,7 @@ primaryExpression
     | copperList                                   # CopperExpr
     | blitterJob                                   # BlitterExpr
     | LPAREN RPAREN                                # UnitLiteral
-    | LPAREN type RPAREN expression                # CastExpr
     | LPAREN NEWLINE* expression (COMMA NEWLINE* expression)+ NEWLINE* RPAREN  # TupleLiteral
-    | LPAREN NEWLINE* expression NEWLINE* RPAREN  # ParenExpr
     | LBRACKET NEWLINE* expression NEWLINE* SEMI NEWLINE* expression NEWLINE* RBRACKET  # ArrayRepeatLiteral
     | LBRACKET NEWLINE* (expression (COMMA NEWLINE* expression)* (COMMA NEWLINE*)?)? NEWLINE* RBRACKET  # ArrayLiteral
     | KW_MATCHES LPAREN expression COMMA NEWLINE* pattern NEWLINE* RPAREN  # MatchesExpr

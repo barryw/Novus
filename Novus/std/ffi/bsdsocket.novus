@@ -243,9 +243,9 @@ extern fn Errno() -> i32
 @library("bsdsocket.library")
 extern fn SetErrnoPtr(ptr: *i32, size: i32) -> i32
 
-/// Get h_errno for DNS errors
-@library("bsdsocket.library")
-extern fn h_errno() -> i32
+/// DNS error variable - set by gethostbyname() and similar functions
+/// Values: HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
+extern var h_errno: i32
 
 /// Set socket library tags (for configuration)
 @library("bsdsocket.library")

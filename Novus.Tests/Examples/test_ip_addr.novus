@@ -1,0 +1,1125 @@
+// Comprehensive tests for std::net::addr - IP address and CIDR functionality
+// Run with: novus test test_ip_addr.novus
+
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_u8, expect_eq_u16, expect_eq_bool
+from std::net::addr import Ipv4Addr, SocketAddrV4, Cidr
+
+// ============================================================================
+// Ipv4Addr Construction Tests
+// ============================================================================
+
+@test("Ipv4Addr::new creates correct octets")
+pub fn test_ipv4_new() {
+    let addr = Ipv4Addr::new(192, 168, 1, 100)
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 192, "first octet")
+    expect_eq_u8(octets[1], 168, "second octet")
+    expect_eq_u8(octets[2], 1, "third octet")
+    expect_eq_u8(octets[3], 100, "fourth octet")
+}
+
+@test("Ipv4Addr::new with zeros")
+pub fn test_ipv4_new_zeros() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 0, "first octet zero")
+    expect_eq_u8(octets[1], 0, "second octet zero")
+    expect_eq_u8(octets[2], 0, "third octet zero")
+    expect_eq_u8(octets[3], 0, "fourth octet zero")
+}
+
+@test("Ipv4Addr::new with max values")
+pub fn test_ipv4_new_max() {
+    let addr = Ipv4Addr::new(255, 255, 255, 255)
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 255, "first octet max")
+    expect_eq_u8(octets[1], 255, "second octet max")
+    expect_eq_u8(octets[2], 255, "third octet max")
+    expect_eq_u8(octets[3], 255, "fourth octet max")
+}
+
+@test("Ipv4Addr::from_u32 creates correct address")
+pub fn test_ipv4_from_u32() {
+    // 192.168.1.100 = 0xC0A80164
+    let addr = Ipv4Addr::from_u32(0xC0A80164u32)
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 192, "from_u32 first octet")
+    expect_eq_u8(octets[1], 168, "from_u32 second octet")
+    expect_eq_u8(octets[2], 1, "from_u32 third octet")
+    expect_eq_u8(octets[3], 100, "from_u32 fourth octet")
+}
+
+@test("Ipv4Addr::from_u32 with zero")
+pub fn test_ipv4_from_u32_zero() {
+    let addr = Ipv4Addr::from_u32(0)
+    expect_true(addr.is_any(), "from_u32(0) should be any address")
+}
+
+@test("Ipv4Addr::from_u32 with max")
+pub fn test_ipv4_from_u32_max() {
+    let addr = Ipv4Addr::from_u32(0xFFFFFFFFu32)
+    expect_true(addr.is_broadcast(), "from_u32(max) should be broadcast")
+}
+
+@test("Ipv4Addr::to_u32 roundtrip")
+pub fn test_ipv4_to_u32_roundtrip() {
+    let original: u32 = 0xC0A80164u32
+    let addr = Ipv4Addr::from_u32(original)
+    let result = addr.to_u32()
+    expect_eq_u32(result, original, "to_u32 should roundtrip")
+}
+
+@test("Ipv4Addr::from_network_order on big-endian")
+pub fn test_ipv4_from_network_order() {
+    // On Amiga (big-endian), network order = host order
+    let addr = Ipv4Addr::from_network_order(0x0A000001)  // 10.0.0.1
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 10, "network order first octet")
+    expect_eq_u8(octets[1], 0, "network order second octet")
+    expect_eq_u8(octets[2], 0, "network order third octet")
+    expect_eq_u8(octets[3], 1, "network order fourth octet")
+}
+
+// ============================================================================
+// Ipv4Addr Special Address Constructors
+// ============================================================================
+
+@test("Ipv4Addr::localhost returns 127.0.0.1")
+pub fn test_ipv4_localhost() {
+    let addr = Ipv4Addr::localhost()
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 127, "localhost first octet")
+    expect_eq_u8(octets[1], 0, "localhost second octet")
+    expect_eq_u8(octets[2], 0, "localhost third octet")
+    expect_eq_u8(octets[3], 1, "localhost fourth octet")
+}
+
+@test("Ipv4Addr::any returns 0.0.0.0")
+pub fn test_ipv4_any() {
+    let addr = Ipv4Addr::any()
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 0, "any first octet")
+    expect_eq_u8(octets[1], 0, "any second octet")
+    expect_eq_u8(octets[2], 0, "any third octet")
+    expect_eq_u8(octets[3], 0, "any fourth octet")
+}
+
+@test("Ipv4Addr::broadcast returns 255.255.255.255")
+pub fn test_ipv4_broadcast() {
+    let addr = Ipv4Addr::broadcast()
+    let octets = addr.octets()
+    expect_eq_u8(octets[0], 255, "broadcast first octet")
+    expect_eq_u8(octets[1], 255, "broadcast second octet")
+    expect_eq_u8(octets[2], 255, "broadcast third octet")
+    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Loopback Tests
+// ============================================================================
+
+@test("is_loopback positive - 127.0.0.1")
+pub fn test_is_loopback_127_0_0_1() {
+    let addr = Ipv4Addr::new(127, 0, 0, 1)
+    expect_true(addr.is_loopback(), "127.0.0.1 is loopback")
+}
+
+@test("is_loopback positive - 127.255.255.255")
+pub fn test_is_loopback_127_max() {
+    let addr = Ipv4Addr::new(127, 255, 255, 255)
+    expect_true(addr.is_loopback(), "127.255.255.255 is loopback")
+}
+
+@test("is_loopback positive - 127.0.0.0")
+pub fn test_is_loopback_127_0_0_0() {
+    let addr = Ipv4Addr::new(127, 0, 0, 0)
+    expect_true(addr.is_loopback(), "127.0.0.0 is loopback")
+}
+
+@test("is_loopback negative - 126.0.0.1")
+pub fn test_is_loopback_126() {
+    let addr = Ipv4Addr::new(126, 0, 0, 1)
+    expect_false(addr.is_loopback(), "126.0.0.1 is not loopback")
+}
+
+@test("is_loopback negative - 128.0.0.1")
+pub fn test_is_loopback_128() {
+    let addr = Ipv4Addr::new(128, 0, 0, 1)
+    expect_false(addr.is_loopback(), "128.0.0.1 is not loopback")
+}
+
+@test("is_loopback negative - public IP")
+pub fn test_is_loopback_public() {
+    let addr = Ipv4Addr::new(8, 8, 8, 8)
+    expect_false(addr.is_loopback(), "8.8.8.8 is not loopback")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Any Address Tests
+// ============================================================================
+
+@test("is_any positive - 0.0.0.0")
+pub fn test_is_any_zero() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    expect_true(addr.is_any(), "0.0.0.0 is any")
+}
+
+@test("is_any negative - 0.0.0.1")
+pub fn test_is_any_0_0_0_1() {
+    let addr = Ipv4Addr::new(0, 0, 0, 1)
+    expect_false(addr.is_any(), "0.0.0.1 is not any")
+}
+
+@test("is_any negative - 1.0.0.0")
+pub fn test_is_any_1_0_0_0() {
+    let addr = Ipv4Addr::new(1, 0, 0, 0)
+    expect_false(addr.is_any(), "1.0.0.0 is not any")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Broadcast Tests
+// ============================================================================
+
+@test("is_broadcast positive - 255.255.255.255")
+pub fn test_is_broadcast_all_ones() {
+    let addr = Ipv4Addr::new(255, 255, 255, 255)
+    expect_true(addr.is_broadcast(), "255.255.255.255 is broadcast")
+}
+
+@test("is_broadcast negative - 255.255.255.254")
+pub fn test_is_broadcast_almost() {
+    let addr = Ipv4Addr::new(255, 255, 255, 254)
+    expect_false(addr.is_broadcast(), "255.255.255.254 is not broadcast")
+}
+
+@test("is_broadcast negative - 0.0.0.0")
+pub fn test_is_broadcast_zero() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    expect_false(addr.is_broadcast(), "0.0.0.0 is not broadcast")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Private Address Tests (RFC 1918)
+// ============================================================================
+
+@test("is_private positive - 10.0.0.0 (Class A start)")
+pub fn test_is_private_10_start() {
+    let addr = Ipv4Addr::new(10, 0, 0, 0)
+    expect_true(addr.is_private(), "10.0.0.0 is private")
+}
+
+@test("is_private positive - 10.255.255.255 (Class A end)")
+pub fn test_is_private_10_end() {
+    let addr = Ipv4Addr::new(10, 255, 255, 255)
+    expect_true(addr.is_private(), "10.255.255.255 is private")
+}
+
+@test("is_private positive - 10.100.50.25 (Class A middle)")
+pub fn test_is_private_10_middle() {
+    let addr = Ipv4Addr::new(10, 100, 50, 25)
+    expect_true(addr.is_private(), "10.100.50.25 is private")
+}
+
+@test("is_private positive - 172.16.0.0 (Class B start)")
+pub fn test_is_private_172_16_start() {
+    let addr = Ipv4Addr::new(172, 16, 0, 0)
+    expect_true(addr.is_private(), "172.16.0.0 is private")
+}
+
+@test("is_private positive - 172.31.255.255 (Class B end)")
+pub fn test_is_private_172_31_end() {
+    let addr = Ipv4Addr::new(172, 31, 255, 255)
+    expect_true(addr.is_private(), "172.31.255.255 is private")
+}
+
+@test("is_private positive - 172.20.10.5 (Class B middle)")
+pub fn test_is_private_172_middle() {
+    let addr = Ipv4Addr::new(172, 20, 10, 5)
+    expect_true(addr.is_private(), "172.20.10.5 is private")
+}
+
+@test("is_private negative - 172.15.255.255 (before Class B)")
+pub fn test_is_private_172_15() {
+    let addr = Ipv4Addr::new(172, 15, 255, 255)
+    expect_false(addr.is_private(), "172.15.255.255 is not private")
+}
+
+@test("is_private negative - 172.32.0.0 (after Class B)")
+pub fn test_is_private_172_32() {
+    let addr = Ipv4Addr::new(172, 32, 0, 0)
+    expect_false(addr.is_private(), "172.32.0.0 is not private")
+}
+
+@test("is_private positive - 192.168.0.0 (Class C start)")
+pub fn test_is_private_192_168_start() {
+    let addr = Ipv4Addr::new(192, 168, 0, 0)
+    expect_true(addr.is_private(), "192.168.0.0 is private")
+}
+
+@test("is_private positive - 192.168.255.255 (Class C end)")
+pub fn test_is_private_192_168_end() {
+    let addr = Ipv4Addr::new(192, 168, 255, 255)
+    expect_true(addr.is_private(), "192.168.255.255 is private")
+}
+
+@test("is_private positive - 192.168.1.100 (typical home IP)")
+pub fn test_is_private_typical_home() {
+    let addr = Ipv4Addr::new(192, 168, 1, 100)
+    expect_true(addr.is_private(), "192.168.1.100 is private")
+}
+
+@test("is_private negative - 192.167.1.1")
+pub fn test_is_private_192_167() {
+    let addr = Ipv4Addr::new(192, 167, 1, 1)
+    expect_false(addr.is_private(), "192.167.1.1 is not private")
+}
+
+@test("is_private negative - 192.169.1.1")
+pub fn test_is_private_192_169() {
+    let addr = Ipv4Addr::new(192, 169, 1, 1)
+    expect_false(addr.is_private(), "192.169.1.1 is not private")
+}
+
+@test("is_private negative - public IP 8.8.8.8")
+pub fn test_is_private_google_dns() {
+    let addr = Ipv4Addr::new(8, 8, 8, 8)
+    expect_false(addr.is_private(), "8.8.8.8 is not private")
+}
+
+@test("is_private negative - public IP 1.1.1.1")
+pub fn test_is_private_cloudflare() {
+    let addr = Ipv4Addr::new(1, 1, 1, 1)
+    expect_false(addr.is_private(), "1.1.1.1 is not private")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Multicast Tests
+// ============================================================================
+
+@test("is_multicast positive - 224.0.0.0 (start)")
+pub fn test_is_multicast_224_start() {
+    let addr = Ipv4Addr::new(224, 0, 0, 0)
+    expect_true(addr.is_multicast(), "224.0.0.0 is multicast")
+}
+
+@test("is_multicast positive - 239.255.255.255 (end)")
+pub fn test_is_multicast_239_end() {
+    let addr = Ipv4Addr::new(239, 255, 255, 255)
+    expect_true(addr.is_multicast(), "239.255.255.255 is multicast")
+}
+
+@test("is_multicast positive - 224.0.0.1 (all hosts)")
+pub fn test_is_multicast_all_hosts() {
+    let addr = Ipv4Addr::new(224, 0, 0, 1)
+    expect_true(addr.is_multicast(), "224.0.0.1 is multicast")
+}
+
+@test("is_multicast negative - 223.255.255.255")
+pub fn test_is_multicast_223() {
+    let addr = Ipv4Addr::new(223, 255, 255, 255)
+    expect_false(addr.is_multicast(), "223.255.255.255 is not multicast")
+}
+
+@test("is_multicast negative - 240.0.0.0")
+pub fn test_is_multicast_240() {
+    let addr = Ipv4Addr::new(240, 0, 0, 0)
+    expect_false(addr.is_multicast(), "240.0.0.0 is not multicast")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Link-Local Tests
+// ============================================================================
+
+@test("is_link_local positive - 169.254.0.0")
+pub fn test_is_link_local_start() {
+    let addr = Ipv4Addr::new(169, 254, 0, 0)
+    expect_true(addr.is_link_local(), "169.254.0.0 is link-local")
+}
+
+@test("is_link_local positive - 169.254.255.255")
+pub fn test_is_link_local_end() {
+    let addr = Ipv4Addr::new(169, 254, 255, 255)
+    expect_true(addr.is_link_local(), "169.254.255.255 is link-local")
+}
+
+@test("is_link_local positive - 169.254.100.50")
+pub fn test_is_link_local_middle() {
+    let addr = Ipv4Addr::new(169, 254, 100, 50)
+    expect_true(addr.is_link_local(), "169.254.100.50 is link-local")
+}
+
+@test("is_link_local negative - 169.253.0.0")
+pub fn test_is_link_local_169_253() {
+    let addr = Ipv4Addr::new(169, 253, 0, 0)
+    expect_false(addr.is_link_local(), "169.253.0.0 is not link-local")
+}
+
+@test("is_link_local negative - 169.255.0.0")
+pub fn test_is_link_local_169_255() {
+    let addr = Ipv4Addr::new(169, 255, 0, 0)
+    expect_false(addr.is_link_local(), "169.255.0.0 is not link-local")
+}
+
+@test("is_link_local negative - 168.254.0.0")
+pub fn test_is_link_local_168_254() {
+    let addr = Ipv4Addr::new(168, 254, 0, 0)
+    expect_false(addr.is_link_local(), "168.254.0.0 is not link-local")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Documentation Tests (RFC 5737)
+// ============================================================================
+
+@test("is_documentation positive - 192.0.2.0 (TEST-NET-1)")
+pub fn test_is_documentation_test_net_1_start() {
+    let addr = Ipv4Addr::new(192, 0, 2, 0)
+    expect_true(addr.is_documentation(), "192.0.2.0 is documentation")
+}
+
+@test("is_documentation positive - 192.0.2.255 (TEST-NET-1 end)")
+pub fn test_is_documentation_test_net_1_end() {
+    let addr = Ipv4Addr::new(192, 0, 2, 255)
+    expect_true(addr.is_documentation(), "192.0.2.255 is documentation")
+}
+
+@test("is_documentation positive - 198.51.100.0 (TEST-NET-2)")
+pub fn test_is_documentation_test_net_2() {
+    let addr = Ipv4Addr::new(198, 51, 100, 0)
+    expect_true(addr.is_documentation(), "198.51.100.0 is documentation")
+}
+
+@test("is_documentation positive - 203.0.113.0 (TEST-NET-3)")
+pub fn test_is_documentation_test_net_3() {
+    let addr = Ipv4Addr::new(203, 0, 113, 0)
+    expect_true(addr.is_documentation(), "203.0.113.0 is documentation")
+}
+
+@test("is_documentation negative - 192.0.3.0")
+pub fn test_is_documentation_192_0_3() {
+    let addr = Ipv4Addr::new(192, 0, 3, 0)
+    expect_false(addr.is_documentation(), "192.0.3.0 is not documentation")
+}
+
+@test("is_documentation negative - 192.0.1.0")
+pub fn test_is_documentation_192_0_1() {
+    let addr = Ipv4Addr::new(192, 0, 1, 0)
+    expect_false(addr.is_documentation(), "192.0.1.0 is not documentation")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Reserved Tests
+// ============================================================================
+
+@test("is_reserved positive - 0.0.0.0")
+pub fn test_is_reserved_0() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    expect_true(addr.is_reserved(), "0.0.0.0 is reserved")
+}
+
+@test("is_reserved positive - 0.255.255.255")
+pub fn test_is_reserved_0_network_end() {
+    let addr = Ipv4Addr::new(0, 255, 255, 255)
+    expect_true(addr.is_reserved(), "0.255.255.255 is reserved")
+}
+
+@test("is_reserved positive - 240.0.0.0 (Class E start)")
+pub fn test_is_reserved_class_e_start() {
+    let addr = Ipv4Addr::new(240, 0, 0, 0)
+    expect_true(addr.is_reserved(), "240.0.0.0 is reserved")
+}
+
+@test("is_reserved positive - 255.255.255.255")
+pub fn test_is_reserved_broadcast() {
+    let addr = Ipv4Addr::new(255, 255, 255, 255)
+    expect_true(addr.is_reserved(), "255.255.255.255 is reserved")
+}
+
+@test("is_reserved positive - 250.0.0.1")
+pub fn test_is_reserved_class_e_middle() {
+    let addr = Ipv4Addr::new(250, 0, 0, 1)
+    expect_true(addr.is_reserved(), "250.0.0.1 is reserved")
+}
+
+@test("is_reserved negative - 1.0.0.0")
+pub fn test_is_reserved_1_0_0_0() {
+    let addr = Ipv4Addr::new(1, 0, 0, 0)
+    expect_false(addr.is_reserved(), "1.0.0.0 is not reserved")
+}
+
+@test("is_reserved negative - 239.255.255.255")
+pub fn test_is_reserved_239() {
+    let addr = Ipv4Addr::new(239, 255, 255, 255)
+    expect_false(addr.is_reserved(), "239.255.255.255 is not reserved")
+}
+
+// ============================================================================
+// Ipv4Addr Classification - Global (Routable) Tests
+// ============================================================================
+
+@test("is_global positive - 8.8.8.8 (Google DNS)")
+pub fn test_is_global_google_dns() {
+    let addr = Ipv4Addr::new(8, 8, 8, 8)
+    expect_true(addr.is_global(), "8.8.8.8 is global")
+}
+
+@test("is_global positive - 1.1.1.1 (Cloudflare)")
+pub fn test_is_global_cloudflare() {
+    let addr = Ipv4Addr::new(1, 1, 1, 1)
+    expect_true(addr.is_global(), "1.1.1.1 is global")
+}
+
+@test("is_global positive - 93.184.216.34 (example.com)")
+pub fn test_is_global_example_com() {
+    let addr = Ipv4Addr::new(93, 184, 216, 34)
+    expect_true(addr.is_global(), "93.184.216.34 is global")
+}
+
+@test("is_global negative - 127.0.0.1 (loopback)")
+pub fn test_is_global_loopback() {
+    let addr = Ipv4Addr::new(127, 0, 0, 1)
+    expect_false(addr.is_global(), "127.0.0.1 is not global")
+}
+
+@test("is_global negative - 10.0.0.1 (private)")
+pub fn test_is_global_private_10() {
+    let addr = Ipv4Addr::new(10, 0, 0, 1)
+    expect_false(addr.is_global(), "10.0.0.1 is not global")
+}
+
+@test("is_global negative - 192.168.1.1 (private)")
+pub fn test_is_global_private_192() {
+    let addr = Ipv4Addr::new(192, 168, 1, 1)
+    expect_false(addr.is_global(), "192.168.1.1 is not global")
+}
+
+@test("is_global negative - 169.254.1.1 (link-local)")
+pub fn test_is_global_link_local() {
+    let addr = Ipv4Addr::new(169, 254, 1, 1)
+    expect_false(addr.is_global(), "169.254.1.1 is not global")
+}
+
+@test("is_global negative - 224.0.0.1 (multicast)")
+pub fn test_is_global_multicast() {
+    let addr = Ipv4Addr::new(224, 0, 0, 1)
+    expect_false(addr.is_global(), "224.0.0.1 is not global")
+}
+
+@test("is_global negative - 0.0.0.0 (any)")
+pub fn test_is_global_any() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    expect_false(addr.is_global(), "0.0.0.0 is not global")
+}
+
+@test("is_global negative - 255.255.255.255 (broadcast)")
+pub fn test_is_global_broadcast() {
+    let addr = Ipv4Addr::new(255, 255, 255, 255)
+    expect_false(addr.is_global(), "255.255.255.255 is not global")
+}
+
+@test("is_global negative - 240.0.0.1 (reserved)")
+pub fn test_is_global_reserved() {
+    let addr = Ipv4Addr::new(240, 0, 0, 1)
+    expect_false(addr.is_global(), "240.0.0.1 is not global")
+}
+
+@test("is_global negative - 192.0.2.1 (documentation)")
+pub fn test_is_global_documentation() {
+    let addr = Ipv4Addr::new(192, 0, 2, 1)
+    expect_false(addr.is_global(), "192.0.2.1 is not global")
+}
+
+// ============================================================================
+// Ipv4Addr Format Tests
+// ============================================================================
+
+@test("Ipv4Addr::format writes correct string")
+pub fn test_ipv4_format() {
+    let addr = Ipv4Addr::new(192, 168, 1, 100)
+    var buf = [0u8; 16]
+    let len = addr.format((*u8)&buf[0])
+
+    // Check length (192.168.1.100 = 13 chars)
+    expect_eq_i32(len, 13, "format length for 192.168.1.100")
+
+    // Check individual characters
+    expect_eq_u8(buf[0], 49, "char '1'")   // '1'
+    expect_eq_u8(buf[1], 57, "char '9'")   // '9'
+    expect_eq_u8(buf[2], 50, "char '2'")   // '2'
+    expect_eq_u8(buf[3], 46, "char '.'")   // '.'
+}
+
+@test("Ipv4Addr::format single digit octets")
+pub fn test_ipv4_format_single_digits() {
+    let addr = Ipv4Addr::new(1, 2, 3, 4)
+    var buf = [0u8; 16]
+    let len = addr.format((*u8)&buf[0])
+
+    // 1.2.3.4 = 7 chars
+    expect_eq_i32(len, 7, "format length for 1.2.3.4")
+}
+
+@test("Ipv4Addr::format max value octets")
+pub fn test_ipv4_format_max() {
+    let addr = Ipv4Addr::new(255, 255, 255, 255)
+    var buf = [0u8; 16]
+    let len = addr.format((*u8)&buf[0])
+
+    // 255.255.255.255 = 15 chars
+    expect_eq_i32(len, 15, "format length for 255.255.255.255")
+}
+
+@test("Ipv4Addr::format zero address")
+pub fn test_ipv4_format_zero() {
+    let addr = Ipv4Addr::new(0, 0, 0, 0)
+    var buf = [0u8; 16]
+    let len = addr.format((*u8)&buf[0])
+
+    // 0.0.0.0 = 7 chars
+    expect_eq_i32(len, 7, "format length for 0.0.0.0")
+}
+
+// ============================================================================
+// SocketAddrV4 Tests
+// ============================================================================
+
+@test("SocketAddrV4::new creates correct address")
+pub fn test_socket_addr_new() {
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    let addr = SocketAddrV4::new(ip, 8080)
+
+    expect_eq_u16(addr.port(), 8080, "port should be 8080")
+    let got_ip = addr.ip()
+    let octets = got_ip.octets()
+    expect_eq_u8(octets[0], 192, "ip first octet")
+}
+
+@test("SocketAddrV4 with port 0")
+pub fn test_socket_addr_port_zero() {
+    let ip = Ipv4Addr::new(0, 0, 0, 0)
+    let addr = SocketAddrV4::new(ip, 0)
+    expect_eq_u16(addr.port(), 0, "port should be 0")
+}
+
+@test("SocketAddrV4 with max port")
+pub fn test_socket_addr_port_max() {
+    let ip = Ipv4Addr::localhost()
+    let addr = SocketAddrV4::new(ip, 65535)
+    expect_eq_u16(addr.port(), 65535, "port should be 65535")
+}
+
+@test("SocketAddrV4 common ports")
+pub fn test_socket_addr_common_ports() {
+    let ip = Ipv4Addr::new(8, 8, 8, 8)
+
+    let http = SocketAddrV4::new(ip, 80)
+    expect_eq_u16(http.port(), 80, "HTTP port")
+
+    let https = SocketAddrV4::new(ip, 443)
+    expect_eq_u16(https.port(), 443, "HTTPS port")
+
+    let ssh = SocketAddrV4::new(ip, 22)
+    expect_eq_u16(ssh.port(), 22, "SSH port")
+}
+
+// ============================================================================
+// CIDR Tests - Construction
+// ============================================================================
+
+@test("Cidr::new creates correct block")
+pub fn test_cidr_new() {
+    let ip = Ipv4Addr::new(192, 168, 1, 0)
+    let cidr = Cidr::new(ip, 24)
+
+    expect_eq_u8(cidr.prefix_len(), 24, "prefix length")
+}
+
+@test("Cidr::new clamps prefix > 32")
+pub fn test_cidr_new_clamp_high() {
+    let ip = Ipv4Addr::new(10, 0, 0, 0)
+    let cidr = Cidr::new(ip, 64)  // Invalid, should clamp to 32
+
+    expect_eq_u8(cidr.prefix_len(), 32, "prefix should be clamped to 32")
+}
+
+@test("Cidr::new allows prefix 0")
+pub fn test_cidr_new_prefix_zero() {
+    let ip = Ipv4Addr::new(0, 0, 0, 0)
+    let cidr = Cidr::new(ip, 0)
+
+    expect_eq_u8(cidr.prefix_len(), 0, "prefix 0 allowed")
+}
+
+// ============================================================================
+// CIDR Tests - Network Address
+// ============================================================================
+
+@test("Cidr::network for /24")
+pub fn test_cidr_network_24() {
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    let cidr = Cidr::new(ip, 24)
+    let network = cidr.network()
+    let octets = network.octets()
+
+    expect_eq_u8(octets[0], 192, "network first octet")
+    expect_eq_u8(octets[1], 168, "network second octet")
+    expect_eq_u8(octets[2], 1, "network third octet")
+    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+}
+
+@test("Cidr::network for /16")
+pub fn test_cidr_network_16() {
+    let ip = Ipv4Addr::new(172, 16, 45, 123)
+    let cidr = Cidr::new(ip, 16)
+    let network = cidr.network()
+    let octets = network.octets()
+
+    expect_eq_u8(octets[0], 172, "network first octet")
+    expect_eq_u8(octets[1], 16, "network second octet")
+    expect_eq_u8(octets[2], 0, "network third octet (masked)")
+    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+}
+
+@test("Cidr::network for /8")
+pub fn test_cidr_network_8() {
+    let ip = Ipv4Addr::new(10, 123, 45, 67)
+    let cidr = Cidr::new(ip, 8)
+    let network = cidr.network()
+    let octets = network.octets()
+
+    expect_eq_u8(octets[0], 10, "network first octet")
+    expect_eq_u8(octets[1], 0, "network second octet (masked)")
+    expect_eq_u8(octets[2], 0, "network third octet (masked)")
+    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+}
+
+@test("Cidr::network for /32")
+pub fn test_cidr_network_32() {
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    let cidr = Cidr::new(ip, 32)
+    let network = cidr.network()
+    let octets = network.octets()
+
+    expect_eq_u8(octets[0], 192, "network first octet unchanged")
+    expect_eq_u8(octets[1], 168, "network second octet unchanged")
+    expect_eq_u8(octets[2], 1, "network third octet unchanged")
+    expect_eq_u8(octets[3], 100, "network fourth octet unchanged")
+}
+
+// ============================================================================
+// CIDR Tests - Broadcast Address
+// ============================================================================
+
+@test("Cidr::broadcast for /24")
+pub fn test_cidr_broadcast_24() {
+    let ip = Ipv4Addr::new(192, 168, 1, 0)
+    let cidr = Cidr::new(ip, 24)
+    let broadcast = cidr.broadcast()
+    let octets = broadcast.octets()
+
+    expect_eq_u8(octets[0], 192, "broadcast first octet")
+    expect_eq_u8(octets[1], 168, "broadcast second octet")
+    expect_eq_u8(octets[2], 1, "broadcast third octet")
+    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+}
+
+@test("Cidr::broadcast for /16")
+pub fn test_cidr_broadcast_16() {
+    let ip = Ipv4Addr::new(172, 16, 0, 0)
+    let cidr = Cidr::new(ip, 16)
+    let broadcast = cidr.broadcast()
+    let octets = broadcast.octets()
+
+    expect_eq_u8(octets[0], 172, "broadcast first octet")
+    expect_eq_u8(octets[1], 16, "broadcast second octet")
+    expect_eq_u8(octets[2], 255, "broadcast third octet")
+    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+}
+
+@test("Cidr::broadcast for /8")
+pub fn test_cidr_broadcast_8() {
+    let ip = Ipv4Addr::new(10, 0, 0, 0)
+    let cidr = Cidr::new(ip, 8)
+    let broadcast = cidr.broadcast()
+    let octets = broadcast.octets()
+
+    expect_eq_u8(octets[0], 10, "broadcast first octet")
+    expect_eq_u8(octets[1], 255, "broadcast second octet")
+    expect_eq_u8(octets[2], 255, "broadcast third octet")
+    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+}
+
+// ============================================================================
+// CIDR Tests - Netmask
+// ============================================================================
+
+@test("Cidr::netmask for /24")
+pub fn test_cidr_netmask_24() {
+    let cidr = Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 24)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "netmask first octet")
+    expect_eq_u8(octets[1], 255, "netmask second octet")
+    expect_eq_u8(octets[2], 255, "netmask third octet")
+    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+}
+
+@test("Cidr::netmask for /16")
+pub fn test_cidr_netmask_16() {
+    let cidr = Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 16)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "netmask first octet")
+    expect_eq_u8(octets[1], 255, "netmask second octet")
+    expect_eq_u8(octets[2], 0, "netmask third octet")
+    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+}
+
+@test("Cidr::netmask for /8")
+pub fn test_cidr_netmask_8() {
+    let cidr = Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 8)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "netmask first octet")
+    expect_eq_u8(octets[1], 0, "netmask second octet")
+    expect_eq_u8(octets[2], 0, "netmask third octet")
+    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+}
+
+@test("Cidr::netmask for /32")
+pub fn test_cidr_netmask_32() {
+    let cidr = Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 32)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "netmask first octet")
+    expect_eq_u8(octets[1], 255, "netmask second octet")
+    expect_eq_u8(octets[2], 255, "netmask third octet")
+    expect_eq_u8(octets[3], 255, "netmask fourth octet")
+}
+
+@test("Cidr::netmask for /0")
+pub fn test_cidr_netmask_0() {
+    let cidr = Cidr::new(Ipv4Addr::new(0, 0, 0, 0), 0)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 0, "netmask first octet")
+    expect_eq_u8(octets[1], 0, "netmask second octet")
+    expect_eq_u8(octets[2], 0, "netmask third octet")
+    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+}
+
+// ============================================================================
+// CIDR Tests - Contains (IP in range)
+// ============================================================================
+
+@test("Cidr::contains positive - network address")
+pub fn test_cidr_contains_network() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    let ip = Ipv4Addr::new(192, 168, 1, 0)
+    expect_true(cidr.contains(ip), "192.168.1.0 in 192.168.1.0/24")
+}
+
+@test("Cidr::contains positive - broadcast address")
+pub fn test_cidr_contains_broadcast() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    let ip = Ipv4Addr::new(192, 168, 1, 255)
+    expect_true(cidr.contains(ip), "192.168.1.255 in 192.168.1.0/24")
+}
+
+@test("Cidr::contains positive - middle of range")
+pub fn test_cidr_contains_middle() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    expect_true(cidr.contains(ip), "192.168.1.100 in 192.168.1.0/24")
+}
+
+@test("Cidr::contains negative - different subnet")
+pub fn test_cidr_contains_different_subnet() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    let ip = Ipv4Addr::new(192, 168, 2, 1)
+    expect_false(cidr.contains(ip), "192.168.2.1 not in 192.168.1.0/24")
+}
+
+@test("Cidr::contains negative - completely different network")
+pub fn test_cidr_contains_different_network() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    let ip = Ipv4Addr::new(10, 0, 0, 1)
+    expect_false(cidr.contains(ip), "10.0.0.1 not in 192.168.1.0/24")
+}
+
+@test("Cidr::contains /16 range")
+pub fn test_cidr_contains_16() {
+    let cidr = Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 16)
+
+    expect_true(cidr.contains(Ipv4Addr::new(172, 16, 0, 1)), "172.16.0.1 in 172.16.0.0/16")
+    expect_true(cidr.contains(Ipv4Addr::new(172, 16, 255, 255)), "172.16.255.255 in 172.16.0.0/16")
+    expect_false(cidr.contains(Ipv4Addr::new(172, 17, 0, 0)), "172.17.0.0 not in 172.16.0.0/16")
+}
+
+@test("Cidr::contains /8 range")
+pub fn test_cidr_contains_8() {
+    let cidr = Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
+
+    expect_true(cidr.contains(Ipv4Addr::new(10, 0, 0, 1)), "10.0.0.1 in 10.0.0.0/8")
+    expect_true(cidr.contains(Ipv4Addr::new(10, 255, 255, 255)), "10.255.255.255 in 10.0.0.0/8")
+    expect_false(cidr.contains(Ipv4Addr::new(11, 0, 0, 0)), "11.0.0.0 not in 10.0.0.0/8")
+}
+
+@test("Cidr::contains /32 single host")
+pub fn test_cidr_contains_32() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 100), 32)
+
+    expect_true(cidr.contains(Ipv4Addr::new(192, 168, 1, 100)), "exact match for /32")
+    expect_false(cidr.contains(Ipv4Addr::new(192, 168, 1, 101)), "192.168.1.101 not in /32")
+    expect_false(cidr.contains(Ipv4Addr::new(192, 168, 1, 99)), "192.168.1.99 not in /32")
+}
+
+// ============================================================================
+// CIDR Tests - Host Count
+// ============================================================================
+
+@test("Cidr::host_count for /24")
+pub fn test_cidr_host_count_24() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    expect_eq_u32(cidr.host_count(), 254, "/24 has 254 hosts")
+}
+
+@test("Cidr::host_count for /16")
+pub fn test_cidr_host_count_16() {
+    let cidr = Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 16)
+    expect_eq_u32(cidr.host_count(), 65534, "/16 has 65534 hosts")
+}
+
+@test("Cidr::host_count for /8")
+pub fn test_cidr_host_count_8() {
+    let cidr = Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
+    expect_eq_u32(cidr.host_count(), 16777214, "/8 has 16777214 hosts")
+}
+
+@test("Cidr::host_count for /32")
+pub fn test_cidr_host_count_32() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 100), 32)
+    expect_eq_u32(cidr.host_count(), 1, "/32 has 1 host")
+}
+
+@test("Cidr::host_count for /31 point-to-point")
+pub fn test_cidr_host_count_31() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 31)
+    expect_eq_u32(cidr.host_count(), 2, "/31 has 2 hosts (point-to-point)")
+}
+
+@test("Cidr::host_count for /30")
+pub fn test_cidr_host_count_30() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 30)
+    expect_eq_u32(cidr.host_count(), 2, "/30 has 2 hosts")
+}
+
+// ============================================================================
+// CIDR Tests - Address Count
+// ============================================================================
+
+@test("Cidr::address_count for /24")
+pub fn test_cidr_address_count_24() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    expect_eq_u32(cidr.address_count(), 256, "/24 has 256 addresses")
+}
+
+@test("Cidr::address_count for /16")
+pub fn test_cidr_address_count_16() {
+    let cidr = Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 16)
+    expect_eq_u32(cidr.address_count(), 65536, "/16 has 65536 addresses")
+}
+
+@test("Cidr::address_count for /32")
+pub fn test_cidr_address_count_32() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 100), 32)
+    expect_eq_u32(cidr.address_count(), 1, "/32 has 1 address")
+}
+
+// ============================================================================
+// CIDR Tests - Common Blocks
+// ============================================================================
+
+@test("Cidr::private_class_a is 10.0.0.0/8")
+pub fn test_cidr_private_class_a() {
+    let cidr = Cidr::private_class_a()
+    let ip = cidr.ip()
+    let octets = ip.octets()
+
+    expect_eq_u8(octets[0], 10, "private class A first octet")
+    expect_eq_u8(octets[1], 0, "private class A second octet")
+    expect_eq_u8(octets[2], 0, "private class A third octet")
+    expect_eq_u8(octets[3], 0, "private class A fourth octet")
+    expect_eq_u8(cidr.prefix_len(), 8, "private class A prefix")
+}
+
+@test("Cidr::private_class_b is 172.16.0.0/12")
+pub fn test_cidr_private_class_b() {
+    let cidr = Cidr::private_class_b()
+    let ip = cidr.ip()
+    let octets = ip.octets()
+
+    expect_eq_u8(octets[0], 172, "private class B first octet")
+    expect_eq_u8(octets[1], 16, "private class B second octet")
+    expect_eq_u8(cidr.prefix_len(), 12, "private class B prefix")
+}
+
+@test("Cidr::private_class_c is 192.168.0.0/16")
+pub fn test_cidr_private_class_c() {
+    let cidr = Cidr::private_class_c()
+    let ip = cidr.ip()
+    let octets = ip.octets()
+
+    expect_eq_u8(octets[0], 192, "private class C first octet")
+    expect_eq_u8(octets[1], 168, "private class C second octet")
+    expect_eq_u8(cidr.prefix_len(), 16, "private class C prefix")
+}
+
+@test("Cidr::loopback is 127.0.0.0/8")
+pub fn test_cidr_loopback() {
+    let cidr = Cidr::loopback()
+    let ip = cidr.ip()
+    let octets = ip.octets()
+
+    expect_eq_u8(octets[0], 127, "loopback first octet")
+    expect_eq_u8(cidr.prefix_len(), 8, "loopback prefix")
+}
+
+@test("Cidr::link_local is 169.254.0.0/16")
+pub fn test_cidr_link_local() {
+    let cidr = Cidr::link_local()
+    let ip = cidr.ip()
+    let octets = ip.octets()
+
+    expect_eq_u8(octets[0], 169, "link-local first octet")
+    expect_eq_u8(octets[1], 254, "link-local second octet")
+    expect_eq_u8(cidr.prefix_len(), 16, "link-local prefix")
+}
+
+// ============================================================================
+// CIDR Tests - is_private
+// ============================================================================
+
+@test("Cidr::is_private for 10.0.0.0/8")
+pub fn test_cidr_is_private_10() {
+    let cidr = Cidr::private_class_a()
+    expect_true(cidr.is_private(), "10.0.0.0/8 is private")
+}
+
+@test("Cidr::is_private for 192.168.1.0/24")
+pub fn test_cidr_is_private_192_168() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    expect_true(cidr.is_private(), "192.168.1.0/24 is private")
+}
+
+@test("Cidr::is_private negative for public")
+pub fn test_cidr_is_private_public() {
+    let cidr = Cidr::new(Ipv4Addr::new(8, 8, 8, 0), 24)
+    expect_false(cidr.is_private(), "8.8.8.0/24 is not private")
+}
+
+// ============================================================================
+// CIDR Tests - Format
+// ============================================================================
+
+@test("Cidr::format for 192.168.1.0/24")
+pub fn test_cidr_format_24() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    var buf = [0u8; 20]
+    let len = cidr.format((*u8)&buf[0])
+
+    // 192.168.1.0/24 = 14 chars
+    expect_eq_i32(len, 14, "format length for 192.168.1.0/24")
+}
+
+@test("Cidr::format for 10.0.0.0/8")
+pub fn test_cidr_format_8() {
+    let cidr = Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
+    var buf = [0u8; 20]
+    let len = cidr.format((*u8)&buf[0])
+
+    // 10.0.0.0/8 = 10 chars
+    expect_eq_i32(len, 10, "format length for 10.0.0.0/8")
+}
+
+// ============================================================================
+// Ipv4Addr::in_cidr Tests
+// ============================================================================
+
+@test("Ipv4Addr::in_cidr positive")
+pub fn test_ip_in_cidr_positive() {
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    expect_true(ip.in_cidr(cidr), "192.168.1.100 in 192.168.1.0/24")
+}
+
+@test("Ipv4Addr::in_cidr negative")
+pub fn test_ip_in_cidr_negative() {
+    let ip = Ipv4Addr::new(192, 168, 2, 100)
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
+    expect_false(ip.in_cidr(cidr), "192.168.2.100 not in 192.168.1.0/24")
+}
+
+@test("Ipv4Addr in private Class A range")
+pub fn test_ip_in_private_class_a() {
+    let ip = Ipv4Addr::new(10, 50, 100, 200)
+    let cidr = Cidr::private_class_a()
+    expect_true(ip.in_cidr(cidr), "10.50.100.200 in 10.0.0.0/8")
+}
+
+@test("Ipv4Addr not in private Class A range")
+pub fn test_ip_not_in_private_class_a() {
+    let ip = Ipv4Addr::new(11, 0, 0, 1)
+    let cidr = Cidr::private_class_a()
+    expect_false(ip.in_cidr(cidr), "11.0.0.1 not in 10.0.0.0/8")
+}
+
+// ============================================================================
+// Edge Cases and Boundary Tests
+// ============================================================================
+
+@test("Boundary: /25 subnet")
+pub fn test_boundary_25() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 25)
+
+    expect_true(cidr.contains(Ipv4Addr::new(192, 168, 1, 0)), "192.168.1.0 in /25")
+    expect_true(cidr.contains(Ipv4Addr::new(192, 168, 1, 127)), "192.168.1.127 in /25")
+    expect_false(cidr.contains(Ipv4Addr::new(192, 168, 1, 128)), "192.168.1.128 not in first /25")
+}
+
+@test("Boundary: second half of /24 as /25")
+pub fn test_boundary_25_second_half() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 128), 25)
+
+    expect_false(cidr.contains(Ipv4Addr::new(192, 168, 1, 127)), "192.168.1.127 not in second /25")
+    expect_true(cidr.contains(Ipv4Addr::new(192, 168, 1, 128)), "192.168.1.128 in second /25")
+    expect_true(cidr.contains(Ipv4Addr::new(192, 168, 1, 255)), "192.168.1.255 in second /25")
+}
+
+@test("Netmask boundary: /17")
+pub fn test_netmask_17() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 17)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "/17 first octet")
+    expect_eq_u8(octets[1], 255, "/17 second octet")
+    expect_eq_u8(octets[2], 128, "/17 third octet")  // 0x80
+    expect_eq_u8(octets[3], 0, "/17 fourth octet")
+}
+
+@test("Netmask boundary: /23")
+pub fn test_netmask_23() {
+    let cidr = Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 23)
+    let mask = cidr.netmask()
+    let octets = mask.octets()
+
+    expect_eq_u8(octets[0], 255, "/23 first octet")
+    expect_eq_u8(octets[1], 255, "/23 second octet")
+    expect_eq_u8(octets[2], 254, "/23 third octet")  // 0xFE
+    expect_eq_u8(octets[3], 0, "/23 fourth octet")
+}

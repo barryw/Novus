@@ -6694,11 +6694,16 @@ public partial class CCodeGenerator
                         _output.AppendLine($"    __novus_memset(__out, 0, sizeof(*__out));");
                         foreach (var kvp in structLit.FieldValues)
                         {
-                            // Skip array fields (already zeroed by memset, would need element-by-element copy)
-                            if (kvp.Value.Type is IrArrayType arrayType)
+                            // Handle array fields with proper element-by-element assignment
+                            if (kvp.Value is IrArrayLiteral arrayLit && kvp.Value.Type is IrArrayType arrayType)
                             {
-                                // For now, array literals in struct returns are assumed to be zero-initialized
-                                // This matches the common case. Full array literal support would need element-by-element assignment
+                                // Emit element-by-element assignment for non-constant arrays
+                                EmitSafeArrayCopy($"__out->{kvp.Key}", arrayLit, arrayType);
+                                continue;
+                            }
+                            // Skip other array types (already zeroed by memset)
+                            if (kvp.Value.Type is IrArrayType)
+                            {
                                 continue;
                             }
                             // CRITICAL FIX: If field value is a pointer-converted parameter, dereference it

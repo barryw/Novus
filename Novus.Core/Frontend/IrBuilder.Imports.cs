@@ -145,6 +145,16 @@ public partial class IrBuilder
                 }
             }
 
+            // Check global variables (extern var)
+            foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+            {
+                if (globalVarDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterExternalVariable(globalVarDecl);
+                    goto nextSymbol; // Found it, move to next symbol
+                }
+            }
+
             nextSymbol:
                 ; // Continue to next symbol
         }
@@ -323,6 +333,9 @@ public partial class IrBuilder
 
                 // Step 2: Register constants
                 RegisterConstantsForImport(moduleContext, selectiveImports);
+
+                // Step 2.5: Register global variables (extern var)
+                RegisterGlobalVariablesForImport(moduleContext, selectiveImports);
 
                 // Step 3: Register structs (with dependency expansion)
                 // CRITICAL FIX: Before expanding struct dependencies, we need to scan function signatures
@@ -593,6 +606,9 @@ public partial class IrBuilder
 
         // Step 2b: Register imported constants
         RegisterConstantsForImport(moduleContext, namesToImport);
+
+        // Step 2b2: Register imported global variables (extern var)
+        RegisterGlobalVariablesForImport(moduleContext, namesToImport);
 
         // Step 2c: Expand struct import list to include dependencies and fill in fields
         // CRITICAL FIX: Before expanding struct dependencies, scan function signatures for struct dependencies
@@ -1690,6 +1706,22 @@ public partial class IrBuilder
                 if (!_symbols.HasTrait(traitName))
                 {
                     RegisterTrait(traitDecl);
+                }
+            }
+        }
+    }
+
+    private void RegisterGlobalVariablesForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
+    {
+        foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+        {
+            var varName = globalVarDecl.IDENTIFIER().GetText();
+            if (namesToImport.Contains(varName))
+            {
+                // Check if already registered in module's ExternalVariables
+                if (!_module.ExternalVariables.Any(ev => ev.Name == varName))
+                {
+                    RegisterExternalVariable(globalVarDecl);
                 }
             }
         }

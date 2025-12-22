@@ -1144,6 +1144,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             case NovusParser.MultiplicativeExprContext multExpr:
                 return IsConstantExpression(multExpr.expression(0)) && IsConstantExpression(multExpr.expression(1));
 
+            // Parenthesized expressions delegate to the inner expression
+            case NovusParser.ParenExprContext parenExpr:
+                return IsConstantExpression(parenExpr.expression());
+
             case NovusParser.PrimaryExprContext primaryExpr:
                 return IsConstantPrimaryExpression(primaryExpr.primaryExpression());
 
@@ -1177,10 +1181,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             case NovusParser.IdentifierExprContext identExpr:
                 var name = identExpr.identifier().GetText();
                 return _symbols.HasConstant(name);
-
-            // Parenthesized expressions delegate to the inner expression
-            case NovusParser.ParenExprContext parenExpr:
-                return IsConstantExpression(parenExpr.expression());
 
             // All other primary expressions are not constant
             default:

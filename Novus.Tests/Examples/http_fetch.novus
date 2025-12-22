@@ -1,0 +1,142 @@
+// Simple HTTP fetch example for AmigaOS
+// Fetches http://barrywalker.io and writes HTML to stdout
+//
+// Requirements:
+// - TCP/IP stack (AmiTCP, Miami, or Roadshow)
+//
+// Usage: http_fetch
+//
+// Note: This is HTTP (not HTTPS) to keep the example simple.
+// For HTTPS, use the TLS module which requires AmiSSL.
+
+from std::io::file import write
+from std::net::socket import SocketLibrary, is_tcp_available, is_tcp_functional
+from std::net::tcp import TcpStream
+from std::net::dns import resolve_hostname
+from std::net::addr import SocketAddrV4, Ipv4Addr
+from std::net::errors import NetError
+from std::strings::core import strlen
+
+fn main() -> i32 {
+    // Quick check if bsdsocket.library exists
+    if !is_tcp_available() {
+        write("Error: bsdsocket.library not found.\n")
+        write("Please install a TCP/IP stack (AmiTCP, Miami, or Roadshow).\n")
+        return 1
+    }
+
+    // More thorough check - can we actually create sockets?
+    if !is_tcp_functional() {
+        write("Error: TCP/IP stack not functional.\n")
+        write("The library exists but socket creation failed.\n")
+        write("Check if your TCP/IP stack is properly started.\n")
+        return 1
+    }
+
+    // Initialize socket library
+    let socket_lib = match SocketLibrary::init() {
+        Result::Ok(lib) => lib,
+        Result::Err(e) => {
+            write("Error: Failed to initialize socket library.\n")
+            write("Details: %s\n", e.message())
+            return 1
+        }
+    }
+
+    // Resolve hostname
+    write("Resolving barrywalker.io...\n")
+    let addrs = match resolve_hostname("barrywalker.io") {
+        Result::Ok(a) => a,
+        Result::Err(e) => {
+            write("Error: DNS lookup failed.\n")
+            write("Details: %s\n", e.message())
+            return 1
+        }
+    }
+
+    if addrs.len() == 0 {
+        write("Error: No IP addresses found for barrywalker.io\n")
+        return 1
+    }
+
+    let ip = addrs.get(0).unwrap()
+
+    // Check if DNS returned a usable address
+    // 0.0.0.0 can mean:
+    // - No network interface configured
+    // - DNS server unreachable
+    // - Domain blocked by DNS filter (e.g., Pi-hole)
+    if ip.is_any() {
+        write("Error: DNS returned 0.0.0.0 for barrywalker.io\n")
+        write("Possible causes:\n")
+        write("  - No network interface configured\n")
+        write("  - DNS server unreachable\n")
+        write("  - Domain blocked by DNS filter\n")
+        return 1
+    }
+
+    // Format IP address for display
+    var ip_buf = [0u8; 16]
+    ip.format((*u8)&ip_buf[0])
+    write("Connecting to %s:80...\n", (*u8)&ip_buf[0])
+
+    // Connect TCP
+    let addr = SocketAddrV4::new(ip, 80)
+    var tcp_stream = match TcpStream::connect(addr) {
+        Result::Ok(s) => s,
+        Result::Err(e) => {
+            write("Error: TCP connection failed.\n")
+            write("Details: %s\n", e.message())
+            return 1
+        }
+    }
+
+    // Send HTTP request
+    write("Sending HTTP request...\n")
+    let request: *u8 = "GET / HTTP/1.1\r\nHost: barrywalker.io\r\nConnection: close\r\nUser-Agent: Novus/1.0 (AmigaOS)\r\n\r\n"
+    match tcp_stream.write(request, strlen(request) as i32) {
+        Result::Ok(_) => {},
+        Result::Err(e) => {
+            write("Error: Failed to send request.\n")
+            write("Details: %s\n", e.message())
+            return 1
+        }
+    }
+
+    // Read response
+    write("Reading response...\n")
+    write("---\n")
+
+    var buf = [0u8; 4097]  // Extra byte for null terminator
+    let buf_ptr: *u8 = (*u8)&buf[0]
+
+    while true {
+        match tcp_stream.read(buf_ptr, 4096) {
+            Result::Ok(n) => {
+                if n == 0 {
+                    // Connection closed
+                    break
+                }
+                // Null terminate for write()
+                buf[n as u32] = 0
+                write("%s", buf_ptr)
+            },
+            Result::Err(e) => {
+                // Check if it's just end of stream (e.g. connection closed)
+                match e {
+                    NetError::NotConnected => { break },
+                    NetError::WouldBlock => { break },
+                    _ => {
+                        write("\nError: Failed to read response.\n")
+                        write("Details: %s\n", e.message())
+                        return 1
+                    }
+                }
+            }
+        }
+    }
+
+    write("\n---\n")
+    write("Done.\n")
+    return 0
+}

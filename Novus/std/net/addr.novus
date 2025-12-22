@@ -6,6 +6,8 @@
 
 from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
 from std::core import Option
+from std::strings::format import Formatter, Display
+from std::strings::core import Str
 
 // Inline byte swap functions for Amiga (68k)
 // The Amiga is big-endian, same as network byte order, so these are identity functions.
@@ -142,6 +144,64 @@ impl Ipv4Addr {
         return self.octets[0] >= 224 && self.octets[0] <= 239
     }
 
+    /// Check if this is a link-local address (169.254.0.0/16)
+    /// These are auto-assigned when DHCP fails
+    pub fn is_link_local(self) -> bool {
+        return self.octets[0] == 169 && self.octets[1] == 254
+    }
+
+    /// Check if this is a documentation address (RFC 5737)
+    /// 192.0.2.0/24 (TEST-NET-1), 198.51.100.0/24 (TEST-NET-2), 203.0.113.0/24 (TEST-NET-3)
+    pub fn is_documentation(self) -> bool {
+        // 192.0.2.0/24
+        if self.octets[0] == 192 && self.octets[1] == 0 && self.octets[2] == 2 {
+            return true
+        }
+        // 198.51.100.0/24
+        if self.octets[0] == 198 && self.octets[1] == 51 && self.octets[2] == 100 {
+            return true
+        }
+        // 203.0.113.0/24
+        if self.octets[0] == 203 && self.octets[1] == 0 && self.octets[2] == 113 {
+            return true
+        }
+        return false
+    }
+
+    /// Check if this is a reserved address
+    /// Includes 0.0.0.0/8, 240.0.0.0/4 (class E), and 255.255.255.255
+    pub fn is_reserved(self) -> bool {
+        // 0.0.0.0/8 - current network (only valid as source)
+        if self.octets[0] == 0 {
+            return true
+        }
+        // 240.0.0.0/4 - Class E (reserved for future use)
+        if self.octets[0] >= 240 {
+            return true
+        }
+        return false
+    }
+
+    /// Check if this address is globally routable (public internet)
+    /// Returns false for private, loopback, link-local, multicast, reserved, etc.
+    pub fn is_global(self) -> bool {
+        // Not routable if any special address type
+        if self.is_loopback() { return false }
+        if self.is_private() { return false }
+        if self.is_link_local() { return false }
+        if self.is_multicast() { return false }
+        if self.is_broadcast() { return false }
+        if self.is_any() { return false }
+        if self.is_reserved() { return false }
+        if self.is_documentation() { return false }
+        return true
+    }
+
+    /// Check if this is contained within a CIDR block
+    pub fn in_cidr(self, cidr: Cidr) -> bool {
+        return cidr.contains(self)
+    }
+
     /// Format IP address as dotted-decimal string into a buffer
     ///
     /// Writes the IP address in "X.X.X.X" format to the provided buffer.
@@ -166,6 +226,14 @@ impl Ipv4Addr {
         let total = pos0 + pos1 + pos2 + pos3 + 3
         write_byte(buf, total, 0u8)
         return total
+    }
+}
+
+impl Display for Ipv4Addr {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        var buf = [0u8; 16]
+        let len = (*self).format((*u8)&buf[0])
+        return f.write_str(Str::from_raw((*u8)&buf[0], len as u32))
     }
 }
 
@@ -249,6 +317,201 @@ impl SocketAddrV4 {
             ip: Ipv4Addr::from_in_addr(addr.sin_addr),
             port: ntohs(addr.sin_port),
         }
+    }
+}
+
+impl Display for SocketAddrV4 {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        // Format as "IP:port"
+        var buf = [0u8; 22]  // max IP (15) + ':' (1) + port (5) + null
+        let ip_len = (*self).ip.format((*u8)&buf[0])
+
+        // Add colon
+        let colon_pos = ip_len as u32
+        buf[colon_pos] = 58u8  // ':'
+
+        // Add port number
+        let port_pos = colon_pos + 1u32
+        let port_len = write_u16_to_buf((*self).port, (*u8)&buf[0], port_pos as i32)
+
+        let total_len = port_pos + port_len as u32
+        return f.write_str(Str::from_raw((*u8)&buf[0], total_len))
+    }
+}
+
+/// Helper: write a u16 value as decimal digits to buffer at position
+/// Returns number of digits written (1-5)
+fn write_u16_to_buf(val: u16, buf: *u8, pos: i32) -> i32 {
+    let v = val as i32
+
+    if v >= 10000 {
+        let d0 = (v / 10000) as u8
+        let d1 = ((v / 1000) % 10) as u8
+        let d2 = ((v / 100) % 10) as u8
+        let d3 = ((v / 10) % 10) as u8
+        let d4 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        write_byte(buf, pos + 2, 48u8 + d2)
+        write_byte(buf, pos + 3, 48u8 + d3)
+        write_byte(buf, pos + 4, 48u8 + d4)
+        return 5
+    } else if v >= 1000 {
+        let d0 = (v / 1000) as u8
+        let d1 = ((v / 100) % 10) as u8
+        let d2 = ((v / 10) % 10) as u8
+        let d3 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        write_byte(buf, pos + 2, 48u8 + d2)
+        write_byte(buf, pos + 3, 48u8 + d3)
+        return 4
+    } else if v >= 100 {
+        let d0 = (v / 100) as u8
+        let d1 = ((v / 10) % 10) as u8
+        let d2 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        write_byte(buf, pos + 2, 48u8 + d2)
+        return 3
+    } else if v >= 10 {
+        let d0 = (v / 10) as u8
+        let d1 = (v % 10) as u8
+        write_byte(buf, pos, 48u8 + d0)
+        write_byte(buf, pos + 1, 48u8 + d1)
+        return 2
+    } else {
+        write_byte(buf, pos, 48u8 + v as u8)
+        return 1
+    }
+}
+
+/// CIDR block (IPv4 address with prefix length)
+/// Used for representing network ranges like 192.168.1.0/24
+pub struct Cidr {
+    ip: Ipv4Addr,
+    prefix_len: u8,
+}
+
+impl Cidr {
+    /// Create a new CIDR block
+    /// Example: Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24) for 192.168.1.0/24
+    pub fn new(ip: Ipv4Addr, prefix_len: u8) -> Cidr {
+        // Clamp prefix length to valid range (0-32)
+        let len = if prefix_len > 32 { 32 } else { prefix_len }
+        return Cidr { ip: ip, prefix_len: len }
+    }
+
+    /// Get the network address (masked IP)
+    pub fn network(self) -> Ipv4Addr {
+        let mask = self.netmask_u32()
+        return Ipv4Addr::from_u32(self.ip.to_u32() & mask)
+    }
+
+    /// Get the broadcast address for this network
+    pub fn broadcast(self) -> Ipv4Addr {
+        let mask = self.netmask_u32()
+        let host_mask = ~mask
+        return Ipv4Addr::from_u32(self.ip.to_u32() | host_mask)
+    }
+
+    /// Get the IP address
+    pub fn ip(self) -> Ipv4Addr {
+        return self.ip
+    }
+
+    /// Get the prefix length
+    pub fn prefix_len(self) -> u8 {
+        return self.prefix_len
+    }
+
+    /// Get the netmask as an IPv4 address
+    pub fn netmask(self) -> Ipv4Addr {
+        return Ipv4Addr::from_u32(self.netmask_u32())
+    }
+
+    /// Get the netmask as a u32
+    fn netmask_u32(self) -> u32 {
+        if self.prefix_len == 0 {
+            return 0u32
+        }
+        if self.prefix_len >= 32 {
+            return 0xffffffffu32
+        }
+        // Create mask with prefix_len leading 1s
+        return 0xffffffffu32 << (32 - self.prefix_len as u32)
+    }
+
+    /// Check if an IP address is contained within this CIDR block
+    pub fn contains(self, ip: Ipv4Addr) -> bool {
+        let mask = self.netmask_u32()
+        return (self.ip.to_u32() & mask) == (ip.to_u32() & mask)
+    }
+
+    /// Get the number of host addresses in this network
+    /// (excluding network and broadcast addresses)
+    pub fn host_count(self) -> u32 {
+        if self.prefix_len >= 31 {
+            // /31 and /32 are special cases
+            if self.prefix_len == 32 {
+                return 1u32
+            }
+            return 2u32  // /31 point-to-point links
+        }
+        return (1u32 << (32 - self.prefix_len as u32)) - 2
+    }
+
+    /// Get the total number of addresses (including network and broadcast)
+    pub fn address_count(self) -> u32 {
+        if self.prefix_len == 0 {
+            return 0xffffffffu32  // Can't represent 2^32 in u32
+        }
+        return 1u32 << (32 - self.prefix_len as u32)
+    }
+
+    /// Check if this is a private network (RFC 1918)
+    pub fn is_private(self) -> bool {
+        return self.network().is_private()
+    }
+
+    /// Common CIDR blocks
+    pub fn private_class_a() -> Cidr {
+        return Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
+    }
+
+    pub fn private_class_b() -> Cidr {
+        return Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 12)
+    }
+
+    pub fn private_class_c() -> Cidr {
+        return Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 16)
+    }
+
+    pub fn loopback() -> Cidr {
+        return Cidr::new(Ipv4Addr::new(127, 0, 0, 0), 8)
+    }
+
+    pub fn link_local() -> Cidr {
+        return Cidr::new(Ipv4Addr::new(169, 254, 0, 0), 16)
+    }
+
+    /// Format CIDR as "IP/prefix" into a buffer
+    /// Returns the number of bytes written
+    pub fn format(self, buf: *u8) -> i32 {
+        let ip_len = self.ip.format(buf)
+        write_byte(buf, ip_len, 47u8)  // '/'
+        let prefix_len = write_u8_to_buf(self.prefix_len, buf, ip_len + 1)
+        let total = ip_len + 1 + prefix_len
+        write_byte(buf, total, 0u8)
+        return total
+    }
+}
+
+impl Display for Cidr {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        var buf = [0u8; 20]  // max IP (15) + '/' (1) + prefix (2) + null
+        let len = (*self).format((*u8)&buf[0])
+        return f.write_str(Str::from_raw((*u8)&buf[0], len as u32))
     }
 }
 

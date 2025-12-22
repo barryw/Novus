@@ -615,7 +615,8 @@ pub const AMISSL_V4: u32 = 4   // AmiSSL v4 (OpenSSL 1.1.x)
 pub const AMISSL_V5: u32 = 5   // AmiSSL v5 (OpenSSL 3.x)
 
 // Current AmiSSL API version to request (v5 for OpenSSL 3.x API)
-pub const AMISSL_CURRENT_VERSION: u32 = AMISSL_V5
+// Note: Using literal 5 because constant-to-constant references aren't supported yet
+pub const AMISSL_CURRENT_VERSION: u32 = 5
 
 // AmiSSL certificate paths
 // These are the default locations on AmigaOS

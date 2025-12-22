@@ -512,6 +512,17 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             _symbols.RegisterConstant(name, constant.Type, constant.Value);
         }
+
+        // Register global (extern) variables in both symbol table and module
+        foreach (var (name, varSymbol) in analysisResult.GlobalVariables)
+        {
+            _symbols.RegisterGlobalVariable(name, varSymbol);
+            // Also add to module's ExternalVariables so code generator emits extern declarations
+            if (!_module.ExternalVariables.Any(ev => ev.Name == name))
+            {
+                _module.ExternalVariables.Add(new IrExternalVariable(name, varSymbol.Type));
+            }
+        }
     }
 
     /// <summary>
