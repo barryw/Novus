@@ -5,11 +5,168 @@ using Novus.SemanticAnalysis;
 namespace Novus.Frontend;
 
 /// <summary>
+/// Extension methods for parser contexts to support const generics.
+/// </summary>
+public static class ParserContextExtensions
+{
+    /// <summary>
+    /// Get all generic param identifiers (handles both TypeGenericParam and ConstGenericParam).
+    /// </summary>
+    public static IEnumerable<string> GetAllParamNames(this NovusParser.GenericParamsContext? context)
+    {
+        if (context == null)
+            yield break;
+
+        foreach (var param in context.genericParam())
+        {
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                yield return typeParam.IDENTIFIER().GetText();
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                yield return constParam.IDENTIFIER().GetText();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get type generic param names only.
+    /// </summary>
+    public static IEnumerable<string> GetTypeParamNames(this NovusParser.GenericParamsContext? context)
+    {
+        if (context == null)
+            yield break;
+
+        foreach (var param in context.genericParam())
+        {
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                yield return typeParam.IDENTIFIER().GetText();
+            }
+        }
+    }
+}
+
+/// <summary>
+/// Result of parsing a single generic argument (either type or const)
+/// </summary>
+public class GenericArgResult
+{
+    /// <summary>
+    /// The type (for type args) or const value type (for const args)
+    /// For const args, this will be IrConstGenericValue
+    /// </summary>
+    public IrType Type { get; set; } = null!;
+
+    /// <summary>
+    /// True if this is a const generic argument
+    /// </summary>
+    public bool IsConst { get; set; }
+
+    /// <summary>
+    /// The const value (for const args only)
+    /// </summary>
+    public object? ConstValue { get; set; }
+
+    /// <summary>
+    /// For const identifier references (like SIZE where SIZE is a const)
+    /// </summary>
+    public string? ConstIdentifier { get; set; }
+}
+
+/// <summary>
+/// Result of parsing generic parameters, including both type and const parameters.
+/// </summary>
+public class GenericParametersResult
+{
+    /// <summary>
+    /// Type generic parameter names (e.g., ["T", "E"])
+    /// </summary>
+    public List<string> TypeParameters { get; } = new();
+
+    /// <summary>
+    /// Const generic parameters: name -> type (e.g., {"N" -> u32})
+    /// </summary>
+    public Dictionary<string, IrType> ConstParameters { get; } = new();
+
+    /// <summary>
+    /// All parameter names in declaration order (for cache key generation)
+    /// </summary>
+    public List<string> AllParameterNames { get; } = new();
+
+    /// <summary>
+    /// Whether a parameter is const (by name)
+    /// </summary>
+    public Dictionary<string, bool> IsConstParameter { get; } = new();
+
+    /// <summary>
+    /// Get all type parameter names (for backwards compatibility)
+    /// </summary>
+    public List<string> GetTypeParameters() => TypeParameters;
+
+    /// <summary>
+    /// Check if there are any const parameters
+    /// </summary>
+    public bool HasConstParameters => ConstParameters.Count > 0;
+}
+
+/// <summary>
 /// Shared AST parsing utilities used by both SemanticAnalyzer and IrBuilder.
 /// This eliminates code duplication for common parsing patterns.
 /// </summary>
 public static class AstParsingHelpers
 {
+    /// <summary>
+    /// Parse generic parameters from context (both type and const parameters).
+    /// This is the new unified method that supports const generics.
+    /// </summary>
+    /// <param name="context">The generic parameters context from the parser</param>
+    /// <param name="typeParser">Type parser for resolving const parameter types (optional)</param>
+    /// <returns>GenericParametersResult containing both type and const parameters</returns>
+    public static GenericParametersResult ParseGenericParametersEx(
+        NovusParser.GenericParamsContext? context,
+        Func<NovusParser.TypeContext, IrType>? typeParser = null)
+    {
+        var result = new GenericParametersResult();
+
+        if (context == null)
+            return result;
+
+        foreach (var param in context.genericParam())
+        {
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                var paramName = typeParam.IDENTIFIER().GetText();
+                result.TypeParameters.Add(paramName);
+                result.AllParameterNames.Add(paramName);
+                result.IsConstParameter[paramName] = false;
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                var paramName = constParam.IDENTIFIER().GetText();
+                IrType constType = IrIntType.U32; // Default to u32 if no type parser
+
+                if (typeParser != null && constParam.type() != null)
+                {
+                    constType = typeParser(constParam.type());
+                }
+                else if (constParam.type() != null)
+                {
+                    // Try to parse primitive type from text
+                    var typeText = constParam.type().GetText();
+                    constType = MapPrimitiveTypeName(typeText) ?? IrIntType.U32;
+                }
+
+                result.ConstParameters[paramName] = constType;
+                result.AllParameterNames.Add(paramName);
+                result.IsConstParameter[paramName] = true;
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// Parse generic parameters from context and optionally register them in the symbol table.
     /// This consolidates the repeated pattern found in both SemanticAnalyzer and IrBuilder.
@@ -17,7 +174,7 @@ public static class AstParsingHelpers
     /// <param name="context">The generic parameters context from the parser</param>
     /// <param name="symbols">The symbol table to register parameters in (optional)</param>
     /// <param name="registerInSymbolTable">Whether to register parameters as generic types</param>
-    /// <returns>List of generic parameter names</returns>
+    /// <returns>List of type generic parameter names (for backwards compatibility)</returns>
     public static List<string> ParseGenericParameters(
         NovusParser.GenericParamsContext? context,
         SymbolTable? symbols = null,
@@ -27,16 +184,36 @@ public static class AstParsingHelpers
             return new List<string>();
 
         var genericParams = new List<string>();
-        foreach (var paramId in context.IDENTIFIER())
-        {
-            var paramName = paramId.GetText();
-            genericParams.Add(paramName);
 
-            if (registerInSymbolTable && symbols != null)
+        foreach (var param in context.genericParam())
+        {
+            if (param is NovusParser.TypeGenericParamContext typeParam)
             {
-                symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                var paramName = typeParam.IDENTIFIER().GetText();
+                genericParams.Add(paramName);
+
+                if (registerInSymbolTable && symbols != null)
+                {
+                    symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                }
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                // For now, we also add const parameters to the list for backwards compatibility
+                // The name will be used for substitution mapping
+                var paramName = constParam.IDENTIFIER().GetText();
+                genericParams.Add(paramName);
+
+                if (registerInSymbolTable && symbols != null)
+                {
+                    // Parse the const type from the context
+                    var typeText = constParam.type().GetText();
+                    var constType = MapPrimitiveTypeName(typeText) ?? IrIntType.U32;
+                    symbols.RegisterConstGenericParameter(paramName, new IrConstGenericParam(paramName, constType));
+                }
             }
         }
+
         return genericParams;
     }
 
@@ -45,8 +222,8 @@ public static class AstParsingHelpers
     /// Used by SemanticAnalyzer which maintains its own generic param scope.
     /// </summary>
     /// <param name="context">The generic parameters context from the parser</param>
-    /// <param name="genericParamScope">Dictionary to register parameters in</param>
-    /// <returns>List of generic parameter names</returns>
+    /// <param name="genericParamScope">Dictionary to register type parameters in</param>
+    /// <returns>List of type generic parameter names</returns>
     public static List<string> ParseGenericParameters(
         NovusParser.GenericParamsContext? context,
         Dictionary<string, IrGenericType> genericParamScope)
@@ -55,12 +232,25 @@ public static class AstParsingHelpers
             return new List<string>();
 
         var genericParams = new List<string>();
-        foreach (var paramId in context.IDENTIFIER())
+
+        foreach (var param in context.genericParam())
         {
-            var paramName = paramId.GetText();
-            genericParams.Add(paramName);
-            genericParamScope[paramName] = new IrGenericType(paramName);
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                var paramName = typeParam.IDENTIFIER().GetText();
+                genericParams.Add(paramName);
+                genericParamScope[paramName] = new IrGenericType(paramName);
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                // Const generic parameters are handled separately
+                // For backwards compatibility, we still add the name to the list
+                var paramName = constParam.IDENTIFIER().GetText();
+                genericParams.Add(paramName);
+                // Note: We don't add to genericParamScope since it's a const, not a type
+            }
         }
+
         return genericParams;
     }
 
@@ -74,9 +264,13 @@ public static class AstParsingHelpers
         if (context == null)
             return;
 
-        foreach (var paramId in context.IDENTIFIER())
+        foreach (var param in context.genericParam())
         {
-            genericParamScope.Remove(paramId.GetText());
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                genericParamScope.Remove(typeParam.IDENTIFIER().GetText());
+            }
+            // Note: Const params aren't in genericParamScope
         }
     }
 
@@ -152,6 +346,77 @@ public static class AstParsingHelpers
         int maxChildrenToCheck = 4)
     {
         return AstModifierHelper.ParseModifiers(context, maxChildrenToCheck);
+    }
+
+    /// <summary>
+    /// Parse an integer literal string into value and type (for const generics)
+    /// </summary>
+    public static (object Value, IrType Type) ParseIntegerLiteral(string text)
+    {
+        // Remove suffix if present
+        var suffix = "";
+        var numPart = text;
+
+        if (text.EndsWith("u8")) { suffix = "u8"; numPart = text[..^2]; }
+        else if (text.EndsWith("u16")) { suffix = "u16"; numPart = text[..^3]; }
+        else if (text.EndsWith("u32")) { suffix = "u32"; numPart = text[..^3]; }
+        else if (text.EndsWith("u64")) { suffix = "u64"; numPart = text[..^3]; }
+        else if (text.EndsWith("i8")) { suffix = "i8"; numPart = text[..^2]; }
+        else if (text.EndsWith("i16")) { suffix = "i16"; numPart = text[..^3]; }
+        else if (text.EndsWith("i32")) { suffix = "i32"; numPart = text[..^3]; }
+        else if (text.EndsWith("i64")) { suffix = "i64"; numPart = text[..^3]; }
+
+        var value = long.Parse(numPart);
+        IrType type = suffix switch
+        {
+            "u8" => IrIntType.U8,
+            "u16" => IrIntType.U16,
+            "u32" => IrIntType.U32,
+            "u64" => IrIntType.U64,
+            "i8" => IrIntType.I8,
+            "i16" => IrIntType.I16,
+            "i32" => IrIntType.I32,
+            "i64" => IrIntType.I64,
+            _ => IrIntType.U32 // Default to u32 for const generics
+        };
+
+        return (value, type);
+    }
+
+    /// <summary>
+    /// Parse a hex literal string into value and type (for const generics)
+    /// </summary>
+    public static (object Value, IrType Type) ParseHexLiteral(string text)
+    {
+        // Remove 0x prefix
+        var numPart = text.StartsWith("0x") || text.StartsWith("0X") ? text[2..] : text;
+
+        // Remove suffix if present
+        var suffix = "";
+        if (numPart.EndsWith("u8")) { suffix = "u8"; numPart = numPart[..^2]; }
+        else if (numPart.EndsWith("u16")) { suffix = "u16"; numPart = numPart[..^3]; }
+        else if (numPart.EndsWith("u32")) { suffix = "u32"; numPart = numPart[..^3]; }
+        else if (numPart.EndsWith("u64")) { suffix = "u64"; numPart = numPart[..^3]; }
+        else if (numPart.EndsWith("i8")) { suffix = "i8"; numPart = numPart[..^2]; }
+        else if (numPart.EndsWith("i16")) { suffix = "i16"; numPart = numPart[..^3]; }
+        else if (numPart.EndsWith("i32")) { suffix = "i32"; numPart = numPart[..^3]; }
+        else if (numPart.EndsWith("i64")) { suffix = "i64"; numPart = numPart[..^3]; }
+
+        var value = Convert.ToInt64(numPart, 16);
+        IrType type = suffix switch
+        {
+            "u8" => IrIntType.U8,
+            "u16" => IrIntType.U16,
+            "u32" => IrIntType.U32,
+            "u64" => IrIntType.U64,
+            "i8" => IrIntType.I8,
+            "i16" => IrIntType.I16,
+            "i32" => IrIntType.I32,
+            "i64" => IrIntType.I64,
+            _ => IrIntType.U32 // Default to u32 for const generics
+        };
+
+        return (value, type);
     }
 
     /// <summary>
@@ -236,12 +501,11 @@ public static class AstParsingHelpers
                 dependencies.Add(typeName);
             }
 
-            if (namedCtx.genericTypeArgs()?.typeList() != null)
+            // Get type contexts from generic args
+            var typeArgs = namedCtx.genericTypeArgs()?.typeList()?.type() ?? [];
+            foreach (var typeArg in typeArgs)
             {
-                foreach (var typeArg in namedCtx.genericTypeArgs().typeList().type())
-                {
-                    ExtractTypeNameDependenciesRecursive(typeArg, dependencies);
-                }
+                ExtractTypeNameDependenciesRecursive(typeArg, dependencies);
             }
         }
         else if (typeContext is NovusParser.FunctionPointerTypeContext fpCtx)

@@ -1,0 +1,25 @@
+// Test enum Drop support
+from std::io::file import println
+from std::strings::core import String
+
+pub fn main() -> i32 {
+    println("=== Test 1: Option containing String ===")
+    {
+        let opt: Option<String> = Option::Some(String::new())
+        // opt should be dropped here, and the String inside should be freed
+    }
+    println("Test 1 done")
+
+    println("")
+    println("=== Test 2: Nested options ===")
+    {
+        let inner = String::new()
+        let opt2: Option<Option<String>> = Option::Some(Option::Some(inner))
+        // Both levels should be dropped correctly
+    }
+    println("Test 2 done")
+
+    println("")
+    println("=== All tests passed ===")
+    return 0
+}

@@ -55,6 +55,9 @@ public class SymbolTable
     // Generic type parameters (for template definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
+    // Const generic parameters (for const generics support, e.g., const N: u32)
+    private readonly Dictionary<string, IrConstGenericParam> _constGenericParams = new();
+
     // Monomorphization caches (shared across all scopes via root table)
     private readonly Dictionary<string, IrEnumType> _monomorphizedEnums = new();
     private readonly Dictionary<string, IrStructType> _monomorphizedStructs = new();
@@ -433,6 +436,41 @@ public class SymbolTable
     public void ClearGenericParameters()
     {
         _genericParams.Clear();
+        _constGenericParams.Clear();
+    }
+
+    /// <summary>
+    /// Registers a const generic parameter in the current scope (e.g., const N: u32)
+    /// </summary>
+    public void RegisterConstGenericParameter(string name, IrConstGenericParam constParam)
+    {
+        _constGenericParams[name] = constParam;
+    }
+
+    /// <summary>
+    /// Looks up a const generic parameter, checking parent scopes if not found locally
+    /// </summary>
+    public IrConstGenericParam? LookupConstGenericParameter(string name)
+    {
+        if (_constGenericParams.TryGetValue(name, out var param))
+            return param;
+        return _parent?.LookupConstGenericParameter(name);
+    }
+
+    /// <summary>
+    /// Checks if a const generic parameter is defined in this scope or any parent scope
+    /// </summary>
+    public bool HasConstGenericParameter(string name)
+    {
+        return LookupConstGenericParameter(name) != null;
+    }
+
+    /// <summary>
+    /// Gets all const generic parameters from the current scope
+    /// </summary>
+    public IReadOnlyDictionary<string, IrConstGenericParam> GetConstGenericParameters()
+    {
+        return _constGenericParams;
     }
 
     // ============================================================================

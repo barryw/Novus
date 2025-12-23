@@ -615,11 +615,22 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     public override object? VisitGenericParams(NovusParser.GenericParamsContext context)
     {
         Write("<");
-        var identifiers = context.IDENTIFIER();
-        for (int i = 0; i < identifiers.Length; i++)
+        var genericParams = context.genericParam();
+        for (int i = 0; i < genericParams.Length; i++)
         {
             if (i > 0) Write(", ");
-            Write(identifiers[i].GetText());
+            var param = genericParams[i];
+            if (param is NovusParser.TypeGenericParamContext typeParam)
+            {
+                Write(typeParam.IDENTIFIER().GetText());
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                Write("const ");
+                Write(constParam.IDENTIFIER().GetText());
+                Write(": ");
+                Visit(constParam.type());
+            }
         }
         Write(">");
         return null;

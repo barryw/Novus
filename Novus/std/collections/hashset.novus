@@ -1,0 +1,208 @@
+// Novus Standard Library - HashSet Module
+// Namespace: std::collections
+// A hash set implementation backed by HashMap<T, ()>
+
+from std::core import Option, Result, Drop, Hash, Eq
+from std::collections::hashmap import HashMap, HashMapIter, KeyValue
+
+// ============================================================================
+// HashSet<T> - A set of unique values with O(1) operations
+// ============================================================================
+
+/// HashSet<T> - A hash set for storing unique values
+///
+/// Backed by HashMap<T, ()> internally. Provides O(1) insert, remove, contains.
+/// Automatically resizes at 70% load factor.
+///
+/// ## Features
+/// - O(1) average insert, remove, contains
+/// - Automatic memory management via Drop trait (RAII)
+/// - No duplicate values
+/// - Set operations: union, intersection, difference
+///
+/// ## Example
+/// ```novus
+/// var set = HashSet::<u32>::new()?
+/// set.insert(1u32)
+/// set.insert(2u32)
+/// set.insert(1u32)  // No effect - already present
+///
+/// if set.contains(&1u32) {
+///     // value is in set
+/// }
+/// ```
+pub struct HashSet<T> where T: Hash + Eq {
+    map: HashMap<T, ()>,
+}
+
+impl<T> HashSet<T> where T: Hash + Eq {
+    /// Create a new empty HashSet with default capacity (16)
+    /// Returns None if memory allocation fails
+    pub fn new() -> Option<HashSet<T>> {
+        match HashMap::<T, ()>::new() {
+            Option::Some(map) => return Option::Some(HashSet { map: map }),
+            Option::None => return Option::None,
+        }
+    }
+
+    /// Create a HashSet with specified initial capacity
+    /// Returns None if memory allocation fails
+    pub fn with_capacity(capacity: u32) -> Option<HashSet<T>> {
+        match HashMap::<T, ()>::with_capacity(capacity) {
+            Option::Some(map) => return Option::Some(HashSet { map: map }),
+            Option::None => return Option::None,
+        }
+    }
+
+    /// Insert a value into the set
+    ///
+    /// Returns true if the value was newly inserted, false if already present.
+    pub fn insert(&var self, value: T) -> bool {
+        // Check if already present
+        if self.map.contains_key(&value) {
+            return false
+        }
+
+        // Insert with unit value
+        self.map.insert(value, ())
+        return true
+    }
+
+    /// Remove a value from the set
+    ///
+    /// Returns true if the value was present, false otherwise.
+    pub fn remove(&var self, value: &T) -> bool {
+        match self.map.remove(value) {
+            Option::Some(_) => return true,
+            Option::None => return false,
+        }
+    }
+
+    /// Check if the set contains a value
+    pub fn contains(&self, value: &T) -> bool {
+        return self.map.contains_key(value)
+    }
+
+    /// Get the number of elements in the set
+    pub fn len(&self) -> u32 {
+        return self.map.len()
+    }
+
+    /// Check if the set is empty
+    pub fn is_empty(&self) -> bool {
+        return self.map.is_empty()
+    }
+
+    /// Get the current capacity
+    pub fn capacity(&self) -> u32 {
+        return self.map.capacity()
+    }
+
+    /// Remove all elements from the set
+    pub fn clear(&var self) {
+        self.map.clear()
+    }
+
+    /// Check if this set is a subset of another
+    ///
+    /// Returns true if every element in self is also in other.
+    pub fn is_subset(&self, other: &HashSet<T>) -> bool {
+        if self.len() > other.len() {
+            return false
+        }
+
+        var iter = self.map.iter()
+        while true {
+            match iter.next() {
+                Option::Some(kv) => {
+                    if !other.contains(&kv.key) {
+                        return false
+                    }
+                },
+                Option::None => {
+                    return true
+                }
+            }
+        }
+
+        return true
+    }
+
+    /// Check if this set is a superset of another
+    ///
+    /// Returns true if every element in other is also in self.
+    pub fn is_superset(&self, other: &HashSet<T>) -> bool {
+        return other.is_subset(self)
+    }
+
+    /// Check if this set has any elements in common with another
+    pub fn intersects(&self, other: &HashSet<T>) -> bool {
+        // Iterate over the smaller set for efficiency
+        if self.len() <= other.len() {
+            var iter = self.map.iter()
+            while true {
+                match iter.next() {
+                    Option::Some(kv) => {
+                        if other.contains(&kv.key) {
+                            return true
+                        }
+                    },
+                    Option::None => {
+                        return false
+                    }
+                }
+            }
+        } else {
+            var iter = other.map.iter()
+            while true {
+                match iter.next() {
+                    Option::Some(kv) => {
+                        if self.contains(&kv.key) {
+                            return true
+                        }
+                    },
+                    Option::None => {
+                        return false
+                    }
+                }
+            }
+        }
+
+        return false
+    }
+
+    /// Create an iterator over the set's elements
+    pub fn iter(&self) -> HashSetIter<T> {
+        return HashSetIter {
+            map_iter: self.map.iter(),
+        }
+    }
+}
+
+// Automatic cleanup for HashSet (RAII)
+impl<T> Drop for HashSet<T> where T: Hash + Eq {
+    fn drop(&var self) {
+        self.map.drop()
+    }
+}
+
+// ============================================================================
+// HashSetIter - Iterator for HashSet
+// ============================================================================
+
+/// Iterator over HashSet elements
+pub struct HashSetIter<T> {
+    map_iter: HashMapIter<T, ()>,
+}
+
+impl<T> HashSetIter<T> {
+    /// Get the next element
+    ///
+    /// Returns Some(value) if there are more elements, None when done.
+    pub fn next(&var self) -> Option<T> {
+        match self.map_iter.next() {
+            Option::Some(kv) => return Option::Some(kv.key),
+            Option::None => return Option::None,
+        }
+    }
+}

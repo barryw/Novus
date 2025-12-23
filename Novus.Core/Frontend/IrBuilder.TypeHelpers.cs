@@ -412,14 +412,28 @@ public partial class IrBuilder
             return new List<string>();
 
         var genericParams = new List<string>();
-        foreach (var paramId in genericParamsContext.IDENTIFIER())
+        foreach (var param in genericParamsContext.genericParam())
         {
-            var paramName = paramId.GetText();
-            genericParams.Add(paramName);
-
-            if (registerInSymbolTable)
+            if (param is NovusParser.TypeGenericParamContext typeParam)
             {
-                _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                var paramName = typeParam.IDENTIFIER().GetText();
+                genericParams.Add(paramName);
+
+                if (registerInSymbolTable)
+                {
+                    _symbols.RegisterGenericParameter(paramName, new IrGenericType(paramName));
+                }
+            }
+            else if (param is NovusParser.ConstGenericParamContext constParam)
+            {
+                var paramName = constParam.IDENTIFIER().GetText();
+                var constType = ParseType(constParam.type());
+                genericParams.Add(paramName);
+
+                if (registerInSymbolTable)
+                {
+                    _symbols.RegisterConstGenericParameter(paramName, new IrConstGenericParam(paramName, constType));
+                }
             }
         }
         return genericParams;

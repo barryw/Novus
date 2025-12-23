@@ -1498,6 +1498,7 @@ public class IrStructType : IrType
     public string StructName { get; }
     public List<IrStructField> Fields { get; }
     public List<string> GenericParameters { get; }  // Type parameter names (e.g., ["T"])
+    public Dictionary<string, IrType>? ConstGenericParameters { get; }  // Const parameter names to types (e.g., {"N" -> u32})
     public List<IrType>? TypeArguments { get; set; }  // Actual type arguments for monomorphized types (e.g., [Str])
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Vec<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
@@ -1508,11 +1509,12 @@ public class IrStructType : IrType
     // -1 means not computed yet, any other value is the computed size.
     private volatile int _cachedSize = -1;
 
-    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null, Dictionary<string, IrType>? constGenericParams = null)
     {
         StructName = structName;
         Fields = fields;
         GenericParameters = genericParams ?? new List<string>();
+        ConstGenericParameters = constGenericParams;
         TypeArguments = typeArguments;
         CacheKey = cacheKey;
         Attributes = attributes;
@@ -1604,9 +1606,19 @@ public class IrStructType : IrType
     {
         get
         {
-            // For generic structs, show the generic parameters
-            if (GenericParameters.Count > 0)
-                return $"{StructName}<{string.Join(", ", GenericParameters)}>";
+            // For generic structs, show the generic parameters (type + const)
+            if (GenericParameters.Count > 0 || (ConstGenericParameters?.Count > 0))
+            {
+                var allParams = new List<string>(GenericParameters);
+                if (ConstGenericParameters != null)
+                {
+                    foreach (var kvp in ConstGenericParameters)
+                    {
+                        allParams.Add($"const {kvp.Key}");
+                    }
+                }
+                return $"{StructName}<{string.Join(", ", allParams)}>";
+            }
             // For monomorphized structs, show the concrete type arguments
             if (TypeArguments != null && TypeArguments.Count > 0)
                 return $"{StructName}<{string.Join(", ", TypeArguments.Select(t => t.Name))}>";

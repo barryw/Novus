@@ -1,0 +1,69 @@
+// Minimal test to isolate double-free issue
+from std::strings::core import String, Str
+from std::collections::vec import Vec
+from std::core import Drop
+from std::io::file import println
+
+struct Entry {
+    key: String,
+    value: String,
+}
+
+impl Drop for Entry {
+    fn drop(&var self) {
+        println("Dropping Entry")
+        self.key.drop()
+        self.value.drop()
+    }
+}
+
+pub fn main() -> i32 {
+    println("=== Test 1: Create and drop empty Vec ===")
+    {
+        var entries: Vec<Entry> = match Vec::<Entry>::with_capacity(4) {
+            Option::Some(v) => v,
+            Option::None => return 1,
+        }
+        println("Created Vec")
+        // Vec goes out of scope here
+    }
+    println("After test 1")
+
+    println("")
+    println("=== Test 2: Create Vec, add entry, pop ===")
+    {
+        var entries2: Vec<Entry> = match Vec::<Entry>::with_capacity(4) {
+            Option::Some(v) => v,
+            Option::None => return 1,
+        }
+        println("Created Vec")
+
+        // Create and add an entry
+        let key2 = match String::new_from_str("mykey") {
+            Result::Ok(s) => s,
+            Result::Err(_) => return 2,
+        }
+        let value2 = match String::new_from_str("myvalue") {
+            Result::Ok(s) => s,
+            Result::Err(_) => return 3,
+        }
+        let entry2 = Entry { key: key2, value: value2 }
+        println("Created Entry")
+
+        entries2.push(entry2)
+        println("Pushed Entry")
+
+        // Pop the entry - returned Option<Entry> should be dropped
+        println("About to pop...")
+        entries2.pop()
+        println("After pop")
+
+        // Now drop the Vec
+        println("About to drop Vec...")
+    }
+    println("After test 2")
+
+    println("")
+    println("=== All tests passed ===")
+    return 0
+}

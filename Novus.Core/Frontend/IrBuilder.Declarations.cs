@@ -70,14 +70,20 @@ public partial class IrBuilder
     {
         if (selfParam == null) return;
 
-        var isBorrowed = selfParam.GetChild(0).GetText() == "&";
-
+        var selfText = selfParam.GetText();
         IrType selfType = implementingType;
-        if (isBorrowed)
+
+        if (selfText.StartsWith("&var"))
         {
-            // Use pointer types for borrowed self parameters (& in Novus produces *T, not &T)
-            selfType = _typeInterner.GetPointerType(selfType);
+            // &var self - mutable reference
+            selfType = _typeInterner.GetMutReferenceType(selfType);
         }
+        else if (selfText.StartsWith("&"))
+        {
+            // &self - immutable reference
+            selfType = _typeInterner.GetReferenceType(selfType);
+        }
+        // else: self by value - keep as implementingType
 
         function.Parameters.Add(new IrParameter("self", selfType));
     }

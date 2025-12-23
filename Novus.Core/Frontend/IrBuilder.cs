@@ -179,6 +179,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
         // Lookups
         public IrType? LookupGenericParameter(string name) => _builder._symbols.LookupGenericParameter(name);
+        public IrConstGenericParam? LookupConstGenericParameter(string name) => _builder._symbols.LookupConstGenericParameter(name);
         public IrStructType? LookupStruct(string name) => _builder._symbols.LookupStruct(name);
         public IrEnumType? LookupEnum(string name) => _builder._symbols.LookupEnum(name);
         public IrStructType? LookupMonomorphizedStruct(string cacheKey) => _builder._symbols.LookupMonomorphizedStruct(cacheKey);

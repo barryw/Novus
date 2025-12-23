@@ -165,7 +165,13 @@ implItem
     ;
 
 genericParams
-    : LESS IDENTIFIER (COMMA IDENTIFIER)* GREATER
+    : LESS genericParam (COMMA genericParam)* GREATER
+    ;
+
+// A generic parameter can be either a type parameter (T) or a const parameter (const N: u32)
+genericParam
+    : IDENTIFIER                                    # TypeGenericParam
+    | KW_CONST IDENTIFIER COLON type                # ConstGenericParam
     ;
 
 genericTypeArgs
@@ -209,6 +215,8 @@ type
     | KW_FIXED16                                                    # PrimitiveType
     | KW_FIXED32                                                    # PrimitiveType
     | typeName genericTypeArgs?                                     # NamedType
+    | INTEGER_LITERAL                                               # ConstIntType
+    | HEX_LITERAL                                                   # ConstHexType
     ;
 
 typeName

@@ -1,0 +1,418 @@
+// Novus Standard Library - BitSet Module
+// Namespace: std::collections
+// A compact bit storage for boolean flags
+
+from std::core import Option, Result, Drop
+from std::memory::block import MemoryBlock
+from std::ffi::exec import FreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+// ============================================================================
+// BitSet - Compact bit storage for boolean flags
+// ============================================================================
+
+/// BitSet - Compact storage for boolean flags using 1 bit per element
+///
+/// Uses u32 words internally, so 32 booleans fit in 4 bytes.
+/// Essential for resource-constrained Amiga development.
+///
+/// ## Features
+/// - 1 bit per boolean (32x more compact than bool array)
+/// - O(1) set, get, toggle operations
+/// - Bitwise operations: and, or, xor, not
+/// - Population count and first-set-bit search
+/// - Automatic memory management via Drop trait (RAII)
+///
+/// ## Example
+/// ```novus
+/// var flags = BitSet::with_capacity(64)?  // 64 bits = 8 bytes
+/// flags.set(5)
+/// flags.set(10)
+///
+/// if flags.get(5) {
+///     // bit 5 is set
+/// }
+///
+/// let count = flags.count_ones()  // Returns 2
+/// ```
+pub struct BitSet {
+    data: *u32,      // Array of u32 words (32 bits each)
+    num_bits: u32,   // Total number of bits
+    num_words: u32,  // Number of u32 words
+}
+
+impl BitSet {
+    /// Create an empty BitSet with zero capacity
+    pub fn new() -> BitSet {
+        return BitSet {
+            data: null,
+            num_bits: 0u32,
+            num_words: 0u32,
+        }
+    }
+
+    /// Create a BitSet with capacity for num_bits
+    ///
+    /// All bits are initially cleared (false).
+    /// Returns None if memory allocation fails.
+    pub fn with_capacity(num_bits: u32) -> Option<BitSet> {
+        if num_bits == 0u32 {
+            return Option::Some(BitSet {
+                data: null,
+                num_bits: 0u32,
+                num_words: 0u32,
+            })
+        }
+
+        // Calculate number of u32 words needed (round up)
+        let num_words: u32 = (num_bits + 31u32) / 32u32
+        let bytes_needed: u32 = num_words * 4u32
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Option::Some(var block) => {
+                let (raw_ptr, _size) = block.into_raw()
+                let data: *u32 = (*u32)raw_ptr
+                return Option::Some(BitSet {
+                    data: data,
+                    num_bits: num_bits,
+                    num_words: num_words,
+                })
+            },
+            Option::None => return Option::None,
+        }
+    }
+
+    /// Set bit at index to true
+    ///
+    /// Returns true if successful, false if index is out of bounds.
+    pub fn set(&var self, index: u32) -> bool {
+        if index >= self.num_bits {
+            return false
+        }
+
+        let word_index: u32 = index / 32u32
+        let bit_index: u32 = index % 32u32
+        let mask: u32 = 1u32 << bit_index
+
+        self.data[word_index] = self.data[word_index] | mask
+        return true
+    }
+
+    /// Clear bit at index to false
+    ///
+    /// Returns true if successful, false if index is out of bounds.
+    pub fn clear(&var self, index: u32) -> bool {
+        if index >= self.num_bits {
+            return false
+        }
+
+        let word_index: u32 = index / 32u32
+        let bit_index: u32 = index % 32u32
+        let mask: u32 = 1u32 << bit_index
+
+        self.data[word_index] = self.data[word_index] & (~mask)
+        return true
+    }
+
+    /// Set bit at index to the given value
+    ///
+    /// Returns true if successful, false if index is out of bounds.
+    pub fn set_value(&var self, index: u32, value: bool) -> bool {
+        if value {
+            return self.set(index)
+        } else {
+            return self.clear(index)
+        }
+    }
+
+    /// Get bit at index
+    ///
+    /// Returns false if index is out of bounds.
+    pub fn get(&self, index: u32) -> bool {
+        if index >= self.num_bits {
+            return false
+        }
+
+        let word_index: u32 = index / 32u32
+        let bit_index: u32 = index % 32u32
+        let mask: u32 = 1u32 << bit_index
+
+        return (self.data[word_index] & mask) != 0u32
+    }
+
+    /// Toggle bit at index (flip true<->false)
+    ///
+    /// Returns true if successful, false if index is out of bounds.
+    pub fn toggle(&var self, index: u32) -> bool {
+        if index >= self.num_bits {
+            return false
+        }
+
+        let word_index: u32 = index / 32u32
+        let bit_index: u32 = index % 32u32
+        let mask: u32 = 1u32 << bit_index
+
+        self.data[word_index] = self.data[word_index] ^ mask
+        return true
+    }
+
+    /// Set all bits to true
+    pub fn set_all(&var self) {
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = 0xFFFFFFFFu32
+            i = i + 1u32
+        }
+
+        // Clear any unused bits in the last word
+        let used_bits_in_last: u32 = self.num_bits % 32u32
+        if used_bits_in_last != 0u32 && self.num_words > 0u32 {
+            let mask: u32 = (1u32 << used_bits_in_last) - 1u32
+            self.data[self.num_words - 1u32] = self.data[self.num_words - 1u32] & mask
+        }
+    }
+
+    /// Clear all bits to false
+    pub fn clear_all(&var self) {
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = 0u32
+            i = i + 1u32
+        }
+    }
+
+    /// Count number of set bits (population count)
+    pub fn count_ones(&self) -> u32 {
+        var count: u32 = 0u32
+        var i: u32 = 0u32
+
+        while i < self.num_words {
+            count = count + BitSet::popcount(self.data[i])
+            i = i + 1u32
+        }
+
+        return count
+    }
+
+    /// Count number of cleared bits
+    pub fn count_zeros(&self) -> u32 {
+        return self.num_bits - self.count_ones()
+    }
+
+    /// Find index of first set bit
+    ///
+    /// Returns None if no bits are set.
+    pub fn find_first_set(&self) -> Option<u32> {
+        var word_idx: u32 = 0u32
+
+        while word_idx < self.num_words {
+            let word: u32 = self.data[word_idx]
+            if word != 0u32 {
+                // Find first set bit in this word
+                let bit_pos: u32 = BitSet::find_first_set_bit(word)
+                let index: u32 = word_idx * 32u32 + bit_pos
+
+                // Make sure we don't return an index beyond num_bits
+                if index < self.num_bits {
+                    return Option::Some(index)
+                } else {
+                    return Option::None
+                }
+            }
+            word_idx = word_idx + 1u32
+        }
+
+        return Option::None
+    }
+
+    /// Find index of first cleared bit
+    ///
+    /// Returns None if all bits are set.
+    pub fn find_first_clear(&self) -> Option<u32> {
+        var word_idx: u32 = 0u32
+
+        while word_idx < self.num_words {
+            let word: u32 = self.data[word_idx]
+            if word != 0xFFFFFFFFu32 {
+                // Find first clear bit in this word (first set bit in inverted word)
+                let bit_pos: u32 = BitSet::find_first_set_bit(~word)
+                let index: u32 = word_idx * 32u32 + bit_pos
+
+                // Make sure we don't return an index beyond num_bits
+                if index < self.num_bits {
+                    return Option::Some(index)
+                } else {
+                    return Option::None
+                }
+            }
+            word_idx = word_idx + 1u32
+        }
+
+        return Option::None
+    }
+
+    /// Bitwise AND with another bitset (self &= other)
+    ///
+    /// Sets require same size. Returns false if sizes don't match.
+    pub fn and(&var self, other: &BitSet) -> bool {
+        if self.num_bits != other.num_bits {
+            return false
+        }
+
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = self.data[i] & other.data[i]
+            i = i + 1u32
+        }
+
+        return true
+    }
+
+    /// Bitwise OR with another bitset (self |= other)
+    ///
+    /// Sets require same size. Returns false if sizes don't match.
+    pub fn or(&var self, other: &BitSet) -> bool {
+        if self.num_bits != other.num_bits {
+            return false
+        }
+
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = self.data[i] | other.data[i]
+            i = i + 1u32
+        }
+
+        return true
+    }
+
+    /// Bitwise XOR with another bitset (self ^= other)
+    ///
+    /// Sets require same size. Returns false if sizes don't match.
+    pub fn xor(&var self, other: &BitSet) -> bool {
+        if self.num_bits != other.num_bits {
+            return false
+        }
+
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = self.data[i] ^ other.data[i]
+            i = i + 1u32
+        }
+
+        return true
+    }
+
+    /// Bitwise NOT (complement all bits)
+    pub fn not(&var self) {
+        var i: u32 = 0u32
+        while i < self.num_words {
+            self.data[i] = ~self.data[i]
+            i = i + 1u32
+        }
+
+        // Clear any unused bits in the last word
+        let used_bits_in_last: u32 = self.num_bits % 32u32
+        if used_bits_in_last != 0u32 && self.num_words > 0u32 {
+            let mask: u32 = (1u32 << used_bits_in_last) - 1u32
+            self.data[self.num_words - 1u32] = self.data[self.num_words - 1u32] & mask
+        }
+    }
+
+    /// Get the number of bits
+    pub fn len(&self) -> u32 {
+        return self.num_bits
+    }
+
+    /// Check if the bitset is empty (has zero capacity)
+    pub fn is_empty(&self) -> bool {
+        return self.num_bits == 0u32
+    }
+
+    /// Check if all bits are set
+    pub fn all(&self) -> bool {
+        return self.count_ones() == self.num_bits
+    }
+
+    /// Check if any bit is set
+    pub fn any(&self) -> bool {
+        var i: u32 = 0u32
+        while i < self.num_words {
+            if self.data[i] != 0u32 {
+                return true
+            }
+            i = i + 1u32
+        }
+        return false
+    }
+
+    /// Check if no bits are set
+    pub fn none(&self) -> bool {
+        return !self.any()
+    }
+
+    // Internal: Population count (number of set bits in a u32)
+    // Uses Brian Kernighan's algorithm
+    fn popcount(n: u32) -> u32 {
+        var count: u32 = 0u32
+        var value: u32 = n
+
+        while value != 0u32 {
+            value = value & (value - 1u32)
+            count = count + 1u32
+        }
+
+        return count
+    }
+
+    // Internal: Find position of first set bit in a u32 (0-31)
+    // Returns 0 if n is 0 (caller should check for 0)
+    fn find_first_set_bit(n: u32) -> u32 {
+        if n == 0u32 {
+            return 0u32
+        }
+
+        var pos: u32 = 0u32
+        var value: u32 = n
+
+        // Binary search for the first set bit
+        if (value & 0x0000FFFFu32) == 0u32 {
+            pos = pos + 16u32
+            value = value >> 16
+        }
+        if (value & 0x000000FFu32) == 0u32 {
+            pos = pos + 8u32
+            value = value >> 8
+        }
+        if (value & 0x0000000Fu32) == 0u32 {
+            pos = pos + 4u32
+            value = value >> 4
+        }
+        if (value & 0x00000003u32) == 0u32 {
+            pos = pos + 2u32
+            value = value >> 2
+        }
+        if (value & 0x00000001u32) == 0u32 {
+            pos = pos + 1u32
+        }
+
+        return pos
+    }
+}
+
+// Automatic cleanup for BitSet (RAII)
+impl Drop for BitSet {
+    fn drop(&var self) {
+        if self.num_words > 0u32 {
+            let bytes: u32 = self.num_words * 4u32
+            let mem: *u8 = (*u8)(self.data)
+            unsafe {
+                FreeMem(mem, bytes)
+            }
+            self.data = null
+            self.num_bits = 0u32
+            self.num_words = 0u32
+        }
+    }
+}

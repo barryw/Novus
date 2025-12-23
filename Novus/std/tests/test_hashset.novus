@@ -1,0 +1,322 @@
+// Standard Library Tests - HashSet<T> Type
+// Tests for std::collections::hashset::HashSet
+//
+// Run with: novus test Novus/std/tests/test_hashset.novus
+
+from std::collections::hashset import HashSet
+from std::core import Option
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32
+
+// ============================================================================
+// Creation Tests
+// ============================================================================
+
+@test("HashSet::new creates empty set")
+pub fn test_hashset_new() {
+    match HashSet::<u32>::new() {
+        Option::Some(set) => {
+            expect_eq_u32(set.len(), 0u32, "new set has len 0")
+            expect_true(set.is_empty(), "new set is empty")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::with_capacity allocates capacity")
+pub fn test_hashset_with_capacity() {
+    match HashSet::<u32>::with_capacity(32u32) {
+        Option::Some(set) => {
+            expect_eq_u32(set.len(), 0u32, "set has len 0")
+            expect_true(set.capacity() >= 32u32, "capacity is at least 32")
+        },
+        Option::None => expect(false, "with_capacity should succeed")
+    }
+}
+
+// ============================================================================
+// Insert Tests
+// ============================================================================
+
+@test("HashSet::insert adds new values")
+pub fn test_hashset_insert() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            let r1 = set.insert(10u32)
+            expect_true(r1, "first insert returns true (new)")
+            expect_eq_u32(set.len(), 1u32, "len is 1")
+
+            let r2 = set.insert(20u32)
+            expect_true(r2, "second insert returns true (new)")
+            expect_eq_u32(set.len(), 2u32, "len is 2")
+
+            let r3 = set.insert(30u32)
+            expect_true(r3, "third insert returns true (new)")
+            expect_eq_u32(set.len(), 3u32, "len is 3")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::insert returns false for duplicates")
+pub fn test_hashset_insert_duplicate() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+
+            let r = set.insert(10u32)
+            expect_false(r, "duplicate insert returns false")
+            expect_eq_u32(set.len(), 2u32, "len unchanged")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::insert many values")
+pub fn test_hashset_insert_many() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            var i: u32 = 0u32
+            while i < 100u32 {
+                set.insert(i)
+                i = i + 1u32
+            }
+
+            expect_eq_u32(set.len(), 100u32, "len is 100")
+
+            // Insert duplicates - should not change len
+            i = 0u32
+            while i < 50u32 {
+                set.insert(i)
+                i = i + 1u32
+            }
+
+            expect_eq_u32(set.len(), 100u32, "len still 100 after duplicates")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+// ============================================================================
+// Contains Tests
+// ============================================================================
+
+@test("HashSet::contains finds inserted values")
+pub fn test_hashset_contains() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+            set.insert(30u32)
+
+            expect_true(set.contains(&10u32), "contains 10")
+            expect_true(set.contains(&20u32), "contains 20")
+            expect_true(set.contains(&30u32), "contains 30")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::contains returns false for missing values")
+pub fn test_hashset_contains_missing() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+
+            expect_false(set.contains(&5u32), "does not contain 5")
+            expect_false(set.contains(&15u32), "does not contain 15")
+            expect_false(set.contains(&100u32), "does not contain 100")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::contains on empty set")
+pub fn test_hashset_contains_empty() {
+    match HashSet::<u32>::new() {
+        Option::Some(set) => {
+            expect_false(set.contains(&10u32), "empty set contains nothing")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+// ============================================================================
+// Remove Tests
+// ============================================================================
+
+@test("HashSet::remove removes existing values")
+pub fn test_hashset_remove() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+            set.insert(30u32)
+
+            let r = set.remove(&20u32)
+            expect_true(r, "remove returns true")
+            expect_eq_u32(set.len(), 2u32, "len is 2")
+            expect_false(set.contains(&20u32), "no longer contains 20")
+            expect_true(set.contains(&10u32), "still contains 10")
+            expect_true(set.contains(&30u32), "still contains 30")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::remove returns false for missing values")
+pub fn test_hashset_remove_missing() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+
+            let r = set.remove(&20u32)
+            expect_false(r, "remove missing returns false")
+            expect_eq_u32(set.len(), 1u32, "len unchanged")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+// ============================================================================
+// Clear Tests
+// ============================================================================
+
+@test("HashSet::clear removes all elements")
+pub fn test_hashset_clear() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+            set.insert(30u32)
+
+            set.clear()
+
+            expect_eq_u32(set.len(), 0u32, "len is 0")
+            expect_true(set.is_empty(), "set is empty")
+            expect_false(set.contains(&10u32), "no longer contains 10")
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+// ============================================================================
+// Set Operation Tests
+// ============================================================================
+
+@test("HashSet::is_subset works correctly")
+pub fn test_hashset_is_subset() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set1) => {
+            match HashSet::<u32>::new() {
+                Option::Some(var set2) => {
+                    // Empty set is subset of any set
+                    expect_true(set1.is_subset(&set2), "empty is subset of empty")
+
+                    set2.insert(1u32)
+                    set2.insert(2u32)
+                    set2.insert(3u32)
+
+                    expect_true(set1.is_subset(&set2), "empty is subset of non-empty")
+
+                    set1.insert(1u32)
+                    set1.insert(2u32)
+
+                    expect_true(set1.is_subset(&set2), "{1,2} is subset of {1,2,3}")
+
+                    set1.insert(3u32)
+                    expect_true(set1.is_subset(&set2), "{1,2,3} is subset of {1,2,3}")
+
+                    set1.insert(4u32)
+                    expect_false(set1.is_subset(&set2), "{1,2,3,4} is not subset of {1,2,3}")
+                },
+                Option::None => expect(false, "new should succeed")
+            }
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::is_superset works correctly")
+pub fn test_hashset_is_superset() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set1) => {
+            match HashSet::<u32>::new() {
+                Option::Some(var set2) => {
+                    set1.insert(1u32)
+                    set1.insert(2u32)
+                    set1.insert(3u32)
+
+                    set2.insert(1u32)
+                    set2.insert(2u32)
+
+                    expect_true(set1.is_superset(&set2), "{1,2,3} is superset of {1,2}")
+                    expect_false(set2.is_superset(&set1), "{1,2} is not superset of {1,2,3}")
+                },
+                Option::None => expect(false, "new should succeed")
+            }
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+@test("HashSet::intersects works correctly")
+pub fn test_hashset_intersects() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set1) => {
+            match HashSet::<u32>::new() {
+                Option::Some(var set2) => {
+                    set1.insert(1u32)
+                    set1.insert(2u32)
+                    set1.insert(3u32)
+
+                    set2.insert(3u32)
+                    set2.insert(4u32)
+                    set2.insert(5u32)
+
+                    expect_true(set1.intersects(&set2), "{1,2,3} intersects {3,4,5}")
+
+                    set2.remove(&3u32)
+                    expect_false(set1.intersects(&set2), "{1,2,3} does not intersect {4,5}")
+                },
+                Option::None => expect(false, "new should succeed")
+            }
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}
+
+// ============================================================================
+// Iterator Tests
+// ============================================================================
+
+@test("HashSet::iter iterates over all elements")
+pub fn test_hashset_iter() {
+    match HashSet::<u32>::new() {
+        Option::Some(var set) => {
+            set.insert(10u32)
+            set.insert(20u32)
+            set.insert(30u32)
+
+            var count: u32 = 0u32
+            var sum: u32 = 0u32
+            var iter = set.iter()
+
+            while true {
+                match iter.next() {
+                    Option::Some(val) => {
+                        count = count + 1u32
+                        sum = sum + val
+                    },
+                    Option::None => {
+                        expect_eq_u32(count, 3u32, "iterated 3 elements")
+                        expect_eq_u32(sum, 60u32, "sum is 60")
+                        return
+                    }
+                }
+            }
+        },
+        Option::None => expect(false, "new should succeed")
+    }
+}

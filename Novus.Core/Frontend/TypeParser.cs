@@ -13,6 +13,7 @@ public interface ITypeParsingContext
 {
     // Lookups
     IrType? LookupGenericParameter(string name);
+    IrConstGenericParam? LookupConstGenericParameter(string name);
     IrStructType? LookupStruct(string name);
     IrEnumType? LookupEnum(string name);
     IrStructType? LookupMonomorphizedStruct(string cacheKey);
@@ -157,6 +158,8 @@ public class TypeParser : ITypeSubstitutionEngine
                 NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
                 NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
                 NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
+                NovusParser.ConstIntTypeContext constIntCtx => ParseConstIntType(constIntCtx),
+                NovusParser.ConstHexTypeContext constHexCtx => ParseConstHexType(constHexCtx),
                 _ => throw new TypeParseException($"Unknown type context: {context.GetType().Name}")
             };
             return TypeParseResult.Ok(type);
@@ -696,6 +699,28 @@ public class TypeParser : ITypeSubstitutionEngine
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
         return _context.GetClosureType(paramTypes, returnType);
+    }
+
+    /// <summary>
+    /// Parse const integer literal as a type argument (for const generics)
+    /// e.g., SmallVec&lt;i32, 16&gt; - the 16 becomes IrConstGenericValue
+    /// </summary>
+    private IrType ParseConstIntType(NovusParser.ConstIntTypeContext context)
+    {
+        var text = context.INTEGER_LITERAL().GetText();
+        var (value, constType) = AstParsingHelpers.ParseIntegerLiteral(text);
+        return new IrConstGenericValue(constType, value);
+    }
+
+    /// <summary>
+    /// Parse const hex literal as a type argument (for const generics)
+    /// e.g., Buffer&lt;0x100&gt; - the 0x100 becomes IrConstGenericValue
+    /// </summary>
+    private IrType ParseConstHexType(NovusParser.ConstHexTypeContext context)
+    {
+        var text = context.HEX_LITERAL().GetText();
+        var (value, constType) = AstParsingHelpers.ParseHexLiteral(text);
+        return new IrConstGenericValue(constType, value);
     }
 
     /// <summary>
@@ -1458,6 +1483,16 @@ public class TypeParser : ITypeSubstitutionEngine
         else if (type is IrGenericType gt)
         {
             return gt.ParameterName;
+        }
+        else if (type is IrConstGenericParam cgp)
+        {
+            return cgp.ParameterName;
+        }
+        else if (type is IrConstGenericValue cgv)
+        {
+            // For const generic values, include the value in the cache key
+            // e.g., SmallVec<i32, 16> vs SmallVec<i32, 32> should have different cache keys
+            return cgv.Value?.ToString() ?? "0";
         }
         else if (type is IrPointerType ptrType)
         {

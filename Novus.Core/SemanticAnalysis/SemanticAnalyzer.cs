@@ -84,6 +84,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     // Generic type parameters in scope (for generic enum/struct definitions)
     private readonly Dictionary<string, IrGenericType> _genericParams = new();
 
+    // Const generic parameters in scope (for const generics like <const N: u32>)
+    private readonly Dictionary<string, IrConstGenericParam> _constGenericParams = new();
+
     // Note: Monomorphization caches are now managed by SymbolTable to ensure consistency
     // and avoid duplication. Use _symbols.RegisterMonomorphized*() and _symbols.LookupMonomorphized*()
     // instead of maintaining separate caches here.
@@ -1577,8 +1580,22 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private ImplBlockInfo ParseImplBlockInfo(NovusParser.ImplDeclarationContext context)
     {
-        // Handle generic parameters if present (e.g., impl<T> Vec<T>)
-        var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
+        // Handle generic parameters if present (e.g., impl<T> Vec<T> or impl<const N: u32> Buffer<N>)
+        var genericParamsResult = AstParsingHelpers.ParseGenericParametersEx(context.genericParams(), ParseType);
+
+        // Register type generic params
+        foreach (var paramName in genericParamsResult.TypeParameters)
+        {
+            _genericParams[paramName] = new IrGenericType(paramName);
+        }
+
+        // Register const generic params
+        foreach (var (paramName, constType) in genericParamsResult.ConstParameters)
+        {
+            _constGenericParams[paramName] = new IrConstGenericParam(paramName, constType);
+        }
+
+        var genericParams = genericParamsResult.AllParameterNames;
 
         // Determine if this is a trait impl or inherent impl
         bool isTraitImpl = context.KW_FOR() != null;
@@ -1633,12 +1650,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     /// <summary>
     /// Clear generic params from scope (typically called after processing an impl block).
+    /// Clears both type generic params and const generic params.
     /// </summary>
     private void ClearImplGenericParams(List<string> genericParams)
     {
         foreach (var paramName in genericParams)
         {
             _genericParams.Remove(paramName);
+            _constGenericParams.Remove(paramName);
         }
     }
 
@@ -1788,13 +1807,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     }
                 }
 
-                // Now wrap in pointer if needed based on parameter form
+                // Now wrap in reference/pointer if needed based on parameter form
                 IrType selfType;
                 bool isConsumingSelf = false;
-                if (selfParam.GetText().StartsWith("&var") || selfParam.GetText().StartsWith("&"))
+                if (selfParam.GetText().StartsWith("&var"))
                 {
-                    // &self or &var self - use pointer type (& in Novus produces *T, not &T)
-                    selfType = _typeInterner.GetPointerType(baseType);
+                    // &var self - mutable reference
+                    selfType = _typeInterner.GetMutReferenceType(baseType);
+                }
+                else if (selfParam.GetText().StartsWith("&"))
+                {
+                    // &self - immutable reference
+                    selfType = _typeInterner.GetReferenceType(baseType);
                 }
                 else
                 {
@@ -11026,6 +11050,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return _genericParams[typeName];
         }
 
+        // Check if it's a const generic parameter (N where const N: u32)
+        if (_constGenericParams.ContainsKey(typeName))
+        {
+            return _constGenericParams[typeName];
+        }
+
         // Check if it's a struct type
         var structType = _symbols.LookupStruct(typeName);
         if (structType != null)
@@ -11276,6 +11306,22 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (expected is IrPointerType expectedPtr && actual is IrPointerType actualPtr)
         {
             return TypesCompatible(expectedPtr.PointeeType, actualPtr.PointeeType);
+        }
+
+        // Reference to pointer coercion (allow &T or &var T where *T is expected)
+        // This is safe since references are essentially pointers at runtime
+        if (expected is IrPointerType expectedPtrForRef)
+        {
+            if (actual is IrReferenceType refForPtrCoerce &&
+                TypesCompatible(expectedPtrForRef.PointeeType, refForPtrCoerce.PointeeType))
+            {
+                return true;
+            }
+            if (actual is IrMutReferenceType mutRefForPtrCoerce &&
+                TypesCompatible(expectedPtrForRef.PointeeType, mutRefForPtrCoerce.PointeeType))
+            {
+                return true;
+            }
         }
 
         // Array types - must have same element type and length
@@ -12165,6 +12211,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         public IrType? LookupGenericParameter(string name)
         {
             return _analyzer._genericParams.ContainsKey(name) ? _analyzer._genericParams[name] : null;
+        }
+
+        public IrConstGenericParam? LookupConstGenericParameter(string name)
+        {
+            return _analyzer._symbols.LookupConstGenericParameter(name);
         }
 
         public IrStructType? LookupStruct(string name)

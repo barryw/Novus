@@ -430,6 +430,105 @@ public class IrGenericType : IrType
 }
 
 /// <summary>
+/// Const generic parameter (used during semantic analysis before monomorphization)
+/// Represents a compile-time constant parameter like N in SmallVec<T, const N: u32>
+/// </summary>
+public class IrConstGenericParam : IrType
+{
+    public string ParameterName { get; }
+    public IrType ConstType { get; }  // The type of the const (e.g., u32, i32)
+
+    public IrConstGenericParam(string parameterName, IrType constType)
+    {
+        ParameterName = parameterName;
+        ConstType = constType;
+    }
+
+    public override int SizeInBytes => throw new InvalidOperationException(
+        "Const generic parameters must be monomorphized before code generation");
+
+    public override string Name => $"const {ParameterName}";
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is IrConstGenericParam other)
+        {
+            return ParameterName == other.ParameterName;
+        }
+        return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine("const", ParameterName);
+    }
+}
+
+/// <summary>
+/// Resolved const generic value - represents a concrete const generic argument
+/// E.g., 16 in SmallVec<i32, 16>
+/// </summary>
+public class IrConstGenericValue : IrType
+{
+    public IrType ConstType { get; }  // The type of the const (e.g., u32)
+    public object Value { get; }       // The actual value (e.g., 16)
+
+    public IrConstGenericValue(IrType constType, object value)
+    {
+        ConstType = constType;
+        Value = value;
+    }
+
+    public override int SizeInBytes => ConstType.SizeInBytes;
+
+    public override string Name => Value.ToString() ?? "0";
+
+    /// <summary>
+    /// Get the value as a u32 (most common case for array sizes)
+    /// </summary>
+    public uint AsU32()
+    {
+        return Value switch
+        {
+            uint u => u,
+            int i => (uint)i,
+            long l => (uint)l,
+            ulong ul => (uint)ul,
+            _ => throw new InvalidOperationException($"Cannot convert {Value.GetType()} to u32")
+        };
+    }
+
+    /// <summary>
+    /// Get the value as an i32
+    /// </summary>
+    public int AsI32()
+    {
+        return Value switch
+        {
+            int i => i,
+            uint u => (int)u,
+            long l => (int)l,
+            ulong ul => (int)ul,
+            _ => throw new InvalidOperationException($"Cannot convert {Value.GetType()} to i32")
+        };
+    }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj is IrConstGenericValue other)
+        {
+            return ConstType.Equals(other.ConstType) && Value.Equals(other.Value);
+        }
+        return false;
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(ConstType, Value);
+    }
+}
+
+/// <summary>
 /// Monomorphized (concretized) generic type instance
 /// E.g., Option<i32> is a monomorphization of Option<T> with T=i32
 /// </summary>

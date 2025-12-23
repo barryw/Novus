@@ -1,0 +1,377 @@
+// Novus Standard Library - VecDeque Module
+// Namespace: std::collections
+// A double-ended queue implemented with a ring buffer
+
+from std::core import Option, Result, Drop
+from std::memory::block import MemoryBlock
+from std::ffi::exec import FreeMem, CopyMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+// ============================================================================
+// VecDeque<T> - Double-ended queue using ring buffer
+// ============================================================================
+
+/// VecDeque<T> - Double-ended queue with O(1) push/pop at both ends
+///
+/// Uses a ring buffer internally for efficient push/pop from both front and back.
+/// Much better cache locality than LinkedList while providing similar operations.
+///
+/// ## Features
+/// - O(1) push_front, push_back, pop_front, pop_back
+/// - O(1) indexed access (wrapping around the buffer)
+/// - Automatic resize when capacity is exceeded
+/// - Automatic memory management via Drop trait (RAII)
+///
+/// ## Memory Layout
+/// The ring buffer uses head and len to track the valid region:
+/// - head: index of first element
+/// - len: number of elements
+/// - Elements wrap around: index i maps to (head + i) % capacity
+///
+/// ## Example
+/// ```novus
+/// var deque = VecDeque::<Message>::new()?
+/// deque.push_back(msg1)
+/// deque.push_front(urgent_msg)
+///
+/// match deque.pop_front() {
+///     Some(msg) => process(msg),
+///     None => // empty
+/// }
+/// ```
+pub struct VecDeque<T> {
+    ptr: *T,
+    head: u32,      // Index of first element
+    len: u32,       // Number of elements
+    capacity: u32,  // Total capacity
+}
+
+impl<T> VecDeque<T> {
+    /// Create an empty VecDeque with zero capacity
+    pub fn new() -> VecDeque<T> {
+        return VecDeque {
+            ptr: null,
+            head: 0u32,
+            len: 0u32,
+            capacity: 0u32,
+        }
+    }
+
+    /// Create a VecDeque with specified initial capacity
+    /// Returns None if memory allocation fails
+    pub fn with_capacity(capacity: u32) -> Option<VecDeque<T>> {
+        if capacity == 0u32 {
+            return Option::Some(VecDeque {
+                ptr: null,
+                head: 0u32,
+                len: 0u32,
+                capacity: 0u32,
+            })
+        }
+
+        let element_size: u32 = @sizeof(T)
+        let bytes_needed: u32 = capacity * element_size
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Option::Some(var block) => {
+                let (raw_ptr, _size) = block.into_raw()
+                let ptr: *T = (*T)raw_ptr
+                return Option::Some(VecDeque {
+                    ptr: ptr,
+                    head: 0u32,
+                    len: 0u32,
+                    capacity: capacity,
+                })
+            },
+            Option::None => return Option::None,
+        }
+    }
+
+    /// Get the number of elements
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    /// Get the current capacity
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    /// Add element to the back (enqueue)
+    ///
+    /// Returns true on success, false if allocation fails during resize.
+    pub fn push_back(&var self, value: T) -> bool {
+        // Ensure we have capacity
+        if self.len >= self.capacity {
+            let success: bool = self.grow()
+            if !success {
+                return false
+            }
+        }
+
+        // Calculate the index for the new element (one past the last)
+        let index: u32 = self.wrap_index(self.head + self.len)
+        self.ptr[index] = value
+        self.len = self.len + 1u32
+        return true
+    }
+
+    /// Add element to the front
+    ///
+    /// Returns true on success, false if allocation fails during resize.
+    pub fn push_front(&var self, value: T) -> bool {
+        // Ensure we have capacity
+        if self.len >= self.capacity {
+            let success: bool = self.grow()
+            if !success {
+                return false
+            }
+        }
+
+        // Move head back one position (with wrap-around)
+        if self.head == 0u32 {
+            self.head = self.capacity - 1u32
+        } else {
+            self.head = self.head - 1u32
+        }
+
+        self.ptr[self.head] = value
+        self.len = self.len + 1u32
+        return true
+    }
+
+    /// Remove and return element from the back
+    pub fn pop_back(&var self) -> Option<T> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        // Calculate the index of the last element
+        let last_index: u32 = self.wrap_index(self.head + self.len - 1u32)
+        let value: T = self.ptr[last_index]
+        self.len = self.len - 1u32
+
+        return Option::Some(value)
+    }
+
+    /// Remove and return element from the front (dequeue)
+    pub fn pop_front(&var self) -> Option<T> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        let value: T = self.ptr[self.head]
+        self.head = self.wrap_index(self.head + 1u32)
+        self.len = self.len - 1u32
+
+        return Option::Some(value)
+    }
+
+    /// Get reference to front element without removing
+    pub fn front(&self) -> Option<T> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+        return Option::Some(self.ptr[self.head])
+    }
+
+    /// Get reference to back element without removing
+    pub fn back(&self) -> Option<T> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+        let last_index: u32 = self.wrap_index(self.head + self.len - 1u32)
+        return Option::Some(self.ptr[last_index])
+    }
+
+    /// Get element at index (0 = front)
+    ///
+    /// Returns None if index is out of bounds.
+    pub fn get(&self, index: u32) -> Option<T> {
+        if index >= self.len {
+            return Option::None
+        }
+
+        let actual_index: u32 = self.wrap_index(self.head + index)
+        return Option::Some(self.ptr[actual_index])
+    }
+
+    /// Set element at index
+    ///
+    /// Returns true if successful, false if index is out of bounds.
+    pub fn set(&var self, index: u32, value: T) -> bool {
+        if index >= self.len {
+            return false
+        }
+
+        let actual_index: u32 = self.wrap_index(self.head + index)
+        self.ptr[actual_index] = value
+        return true
+    }
+
+    /// Remove all elements (keeps capacity)
+    pub fn clear(&var self) {
+        self.head = 0u32
+        self.len = 0u32
+    }
+
+    /// Reserve additional capacity
+    ///
+    /// Returns true on success, false if allocation fails.
+    pub fn reserve(&var self, additional: u32) -> bool {
+        let needed_capacity: u32 = self.len + additional
+        if needed_capacity <= self.capacity {
+            return true
+        }
+
+        return self.resize_to(needed_capacity)
+    }
+
+    /// Rotate elements left by n positions
+    ///
+    /// The element at the front moves to the back.
+    /// rotate_left(1) is equivalent to: let x = pop_front(); push_back(x)
+    pub fn rotate_left(&var self, n: u32) {
+        if self.len == 0u32 || n == 0u32 {
+            return
+        }
+
+        // Normalize rotation amount
+        let rotation: u32 = n % self.len
+        if rotation == 0u32 {
+            return
+        }
+
+        // Simply adjust the head pointer
+        self.head = self.wrap_index(self.head + rotation)
+    }
+
+    /// Rotate elements right by n positions
+    ///
+    /// The element at the back moves to the front.
+    /// rotate_right(1) is equivalent to: let x = pop_back(); push_front(x)
+    pub fn rotate_right(&var self, n: u32) {
+        if self.len == 0u32 || n == 0u32 {
+            return
+        }
+
+        // Normalize rotation amount
+        let rotation: u32 = n % self.len
+        if rotation == 0u32 {
+            return
+        }
+
+        // Move head back by rotation amount
+        if self.head >= rotation {
+            self.head = self.head - rotation
+        } else {
+            self.head = self.capacity - (rotation - self.head)
+        }
+    }
+
+    /// Shrink capacity to fit the current length
+    ///
+    /// Returns true on success, false if reallocation fails.
+    pub fn shrink_to_fit(&var self) -> bool {
+        if self.len == self.capacity {
+            return true
+        }
+
+        if self.len == 0u32 {
+            if self.capacity > 0u32 {
+                let element_size: u32 = @sizeof(T)
+                let bytes: u32 = self.capacity * element_size
+                let mem: *u8 = (*u8)(self.ptr)
+                unsafe {
+                    FreeMem(mem, bytes)
+                }
+                self.ptr = null
+                self.capacity = 0u32
+            }
+            return true
+        }
+
+        return self.resize_to(self.len)
+    }
+
+    // Internal: wrap index around the buffer
+    fn wrap_index(&self, index: u32) -> u32 {
+        if self.capacity == 0u32 {
+            return 0u32
+        }
+        return index % self.capacity
+    }
+
+    // Internal: grow the buffer (double capacity, min 4)
+    fn grow(&var self) -> bool {
+        var new_capacity: u32 = self.capacity * 2u32
+        if new_capacity < 4u32 {
+            new_capacity = 4u32
+        }
+        return self.resize_to(new_capacity)
+    }
+
+    // Internal: resize to a specific capacity
+    fn resize_to(&var self, new_capacity: u32) -> bool {
+        let element_size: u32 = @sizeof(T)
+        let new_bytes: u32 = new_capacity * element_size
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Option::Some(var block) => {
+                let (raw_ptr, _size) = block.into_raw()
+                let new_ptr: *T = (*T)raw_ptr
+
+                // Copy elements in order (unwrapping the ring buffer)
+                var i: u32 = 0u32
+                while i < self.len {
+                    let old_index: u32 = self.wrap_index(self.head + i)
+                    new_ptr[i] = self.ptr[old_index]
+                    i = i + 1u32
+                }
+
+                // Free old memory if it exists
+                if self.capacity > 0u32 {
+                    let old_bytes: u32 = self.capacity * element_size
+                    let old_mem: *u8 = (*u8)(self.ptr)
+                    unsafe {
+                        FreeMem(old_mem, old_bytes)
+                    }
+                }
+
+                // Update fields
+                self.ptr = new_ptr
+                self.head = 0u32
+                self.capacity = new_capacity
+                return true
+            },
+            Option::None => return false,
+        }
+    }
+}
+
+// Automatic cleanup for VecDeque (RAII)
+impl<T> Drop for VecDeque<T> {
+    fn drop(&var self) {
+        if self.capacity > 0u32 {
+            let element_size: u32 = @sizeof(T)
+            let bytes: u32 = self.capacity * element_size
+            let mem: *u8 = (*u8)(self.ptr)
+            unsafe {
+                FreeMem(mem, bytes)
+            }
+            self.ptr = null
+            self.head = 0u32
+            self.len = 0u32
+            self.capacity = 0u32
+        }
+    }
+}
