@@ -36,6 +36,14 @@ public static class TypeSubstitutionHelper
                 }
                 break;
 
+            case IrConstGenericParam cgp:
+                // Const generic parameter - map it to the concrete const value
+                if (!substitutions.ContainsKey(cgp.ParameterName))
+                {
+                    substitutions[cgp.ParameterName] = monomorphizedType;
+                }
+                break;
+
             case IrPointerType basePtrType when monomorphizedType is IrPointerType monoPtrType:
                 // Recurse into pointer pointee types
                 ExtractGenericTypeMappingInternal(basePtrType.PointeeType, monoPtrType.PointeeType, substitutions, visited);

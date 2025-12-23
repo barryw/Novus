@@ -4455,6 +4455,25 @@ public partial class IrBuilder
         {
         }
 
+        // Check if it's a const generic parameter (e.g., N in Buffer<const N: u32>)
+        // If we have current type substitutions, the value may already be resolved
+        if (_currentTypeSubstitutions != null && _currentTypeSubstitutions.TryGetValue(name, out var substType))
+        {
+            if (substType is IrConstGenericValue cgv)
+            {
+                // During monomorphization, emit the concrete value directly
+                return new IrConstant((long)cgv.AsU32(), cgv.ConstType);
+            }
+        }
+
+        // Check if it's a const generic parameter in the symbol table
+        var constGenericParam = _symbols.LookupConstGenericParameter(name);
+        if (constGenericParam != null)
+        {
+            // During template creation, emit a reference that will be substituted later
+            return new IrConstGenericParamRef(name, constGenericParam.ConstType);
+        }
+
         // Check if it's a static variable
         var staticVar = _module.StaticVariables.FirstOrDefault(sv => sv.Name == name);
         if (staticVar != null)

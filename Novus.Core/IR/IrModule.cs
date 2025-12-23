@@ -1010,6 +1010,20 @@ public class IrBoolConstant : IrValue
 }
 
 /// <summary>
+/// Const generic parameter reference (e.g., N in Buffer<const N: u32>)
+/// This is a placeholder that gets substituted with an IrConstant during monomorphization
+/// </summary>
+public class IrConstGenericParamRef : IrValue
+{
+    public string ParameterName { get; }
+
+    public IrConstGenericParamRef(string parameterName, IrType constType) : base(constType)
+    {
+        ParameterName = parameterName;
+    }
+}
+
+/// <summary>
 /// Floating point constant value
 /// </summary>
 public class IrFloatConstant : IrValue

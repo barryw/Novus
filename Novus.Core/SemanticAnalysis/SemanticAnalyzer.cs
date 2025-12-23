@@ -9387,6 +9387,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
+        // Check if this is a const generic parameter (e.g., N in Buffer<const N: u32>)
+        if (_constGenericParams.TryGetValue(name, out var constGenericParam))
+        {
+            // Return the const generic parameter's type (e.g., u32 for `const N: u32`)
+            // The actual value substitution happens during monomorphization in IrBuilder
+            return constGenericParam.ConstType;
+        }
+
         if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_symbols.HasConstant(name))
         {
             var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);

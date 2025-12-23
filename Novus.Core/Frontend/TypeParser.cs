@@ -765,6 +765,7 @@ public class TypeParser : ITypeSubstitutionEngine
         return type switch
         {
             IrGenericType => true,
+            IrConstGenericParam => true,  // Const generic params are also unresolved generics
             IrPointerType ptrType => ContainsGenericTypesInternal(ptrType.PointeeType, visited),
             IrReferenceType refType => ContainsGenericTypesInternal(refType.PointeeType, visited),
             IrMutReferenceType mutRefType => ContainsGenericTypesInternal(mutRefType.PointeeType, visited),
@@ -791,6 +792,18 @@ public class TypeParser : ITypeSubstitutionEngine
         if (a is IrGenericType gtA && b is IrGenericType gtB)
         {
             return gtA.ParameterName == gtB.ParameterName;
+        }
+
+        // Const generic params: compare parameter names
+        if (a is IrConstGenericParam cgpA && b is IrConstGenericParam cgpB)
+        {
+            return cgpA.ParameterName == cgpB.ParameterName;
+        }
+
+        // Const generic values: compare type and value
+        if (a is IrConstGenericValue cgvA && b is IrConstGenericValue cgvB)
+        {
+            return TypesAreEqual(cgvA.ConstType, cgvB.ConstType) && cgvA.Value.Equals(cgvB.Value);
         }
 
         // Pointer types: compare pointee types recursively
@@ -890,6 +903,14 @@ public class TypeParser : ITypeSubstitutionEngine
         if (type is IrGenericType gt && substitutions.ContainsKey(gt.ParameterName))
         {
             return substitutions[gt.ParameterName];
+        }
+
+        // Const generic parameter substitution
+        // If we have a const generic param (like N in Buffer<const N: u32>),
+        // substitute it with the concrete value (like IrConstGenericValue(u32, 16))
+        if (type is IrConstGenericParam cgp && substitutions.ContainsKey(cgp.ParameterName))
+        {
+            return substitutions[cgp.ParameterName];
         }
 
         // Pointer type substitution
@@ -1002,6 +1023,12 @@ public class TypeParser : ITypeSubstitutionEngine
                         needsParameterSubstitution = true;
                         break;
                     }
+                    // Also check const generic parameters (like N in Buffer<N>)
+                    if (typeArg is IrConstGenericParam cgpArg && substitutions.ContainsKey(cgpArg.ParameterName))
+                    {
+                        needsParameterSubstitution = true;
+                        break;
+                    }
                     // Also check nested generic types (like Option<K> where K needs substitution)
                     if (typeArg is IrStructType || typeArg is IrEnumType || typeArg is IrPointerType || typeArg is IrReferenceType)
                     {
@@ -1086,7 +1113,9 @@ public class TypeParser : ITypeSubstitutionEngine
                         var remainingGenericParams = new List<string>();
                         foreach (var paramName in typeParamNames)
                         {
-                            if (!substitutions.ContainsKey(paramName) || substitutions[paramName] is IrGenericType)
+                            if (!substitutions.ContainsKey(paramName) ||
+                                substitutions[paramName] is IrGenericType ||
+                                substitutions[paramName] is IrConstGenericParam)
                             {
                                 remainingGenericParams.Add(paramName);
                             }
@@ -1147,7 +1176,9 @@ public class TypeParser : ITypeSubstitutionEngine
                 var remainingGenericParams = new List<string>();
                 foreach (var genericParam in structType.GenericParameters)
                 {
-                    if (!substitutions.ContainsKey(genericParam) || substitutions[genericParam] is IrGenericType)
+                    if (!substitutions.ContainsKey(genericParam) ||
+                        substitutions[genericParam] is IrGenericType ||
+                        substitutions[genericParam] is IrConstGenericParam)
                     {
                         // This parameter wasn't substituted or was substituted with another generic
                         remainingGenericParams.Add(genericParam);
@@ -1269,6 +1300,12 @@ public class TypeParser : ITypeSubstitutionEngine
                         needsParameterSubstitution = true;
                         break;
                     }
+                    // Also check const generic parameters (like N in Array<N>)
+                    if (typeArg is IrConstGenericParam cgpArg && substitutions.ContainsKey(cgpArg.ParameterName))
+                    {
+                        needsParameterSubstitution = true;
+                        break;
+                    }
                     // Also check nested generic types (like HashMap<K, V> where K and V need substitution)
                     if (typeArg is IrStructType || typeArg is IrEnumType || typeArg is IrPointerType || typeArg is IrReferenceType)
                     {
@@ -1292,7 +1329,7 @@ public class TypeParser : ITypeSubstitutionEngine
                 // Still check if variants contain generics (they shouldn't, but be safe)
                 // If there are no generics anywhere, we can safely return unchanged
                 bool hasGenericInVariants = enumType.Variants.Any(v =>
-                    v.AssociatedData.Any(d => d is IrGenericType));
+                    v.AssociatedData.Any(d => d is IrGenericType || d is IrConstGenericParam));
                 if (!hasGenericInVariants)
                 {
                     return enumType;
@@ -1328,7 +1365,9 @@ public class TypeParser : ITypeSubstitutionEngine
                 var remainingGenericParams = new List<string>();
                 foreach (var genericParam in enumType.GenericParameters)
                 {
-                    if (!substitutions.ContainsKey(genericParam) || substitutions[genericParam] is IrGenericType)
+                    if (!substitutions.ContainsKey(genericParam) ||
+                        substitutions[genericParam] is IrGenericType ||
+                        substitutions[genericParam] is IrConstGenericParam)
                     {
                         // This parameter wasn't substituted or was substituted with another generic
                         remainingGenericParams.Add(genericParam);
@@ -1429,7 +1468,7 @@ public class TypeParser : ITypeSubstitutionEngine
             // An enum is only fully monomorphized if it has no generic parameters
             // AND no generic types in its variant data
             bool hasGenericData = enumType.Variants.Any(v =>
-                v.AssociatedData.Any(d => d is IrGenericType));
+                v.AssociatedData.Any(d => d is IrGenericType || d is IrConstGenericParam));
 
             if (enumType.GenericParameters.Count > 0 || hasGenericData)
             {
@@ -1445,6 +1484,10 @@ public class TypeParser : ITypeSubstitutionEngine
                             if (data is IrGenericType gt)
                             {
                                 genericNames.Add(gt.ParameterName);
+                            }
+                            else if (data is IrConstGenericParam cgp)
+                            {
+                                genericNames.Add(cgp.ParameterName);
                             }
                         }
                     }

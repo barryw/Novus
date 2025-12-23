@@ -1,0 +1,133 @@
+// Test SmallVec<T, N> const generic implementation
+
+from std::collections::smallvec import SmallVec
+from std::core import Result
+
+pub fn main() -> i32 {
+    // Test 1: Create SmallVec and check default capacity
+    var sv = SmallVec::<u32, 4>::new()
+
+    // SmallVec::default_capacity() should return N (4)
+    if SmallVec::<u32, 4>::default_capacity() != 4 {
+        return 1
+    }
+
+    if sv.len() != 0 {
+        return 2
+    }
+
+    if !sv.is_empty() {
+        return 3
+    }
+
+    // Initial capacity should be 0 (lazy allocation)
+    if sv.capacity() != 0 {
+        return 4
+    }
+
+    // Test 2: Push elements - first push allocates N capacity
+    match sv.push(10) {
+        Result::Err(_) => return 10,
+        Result::Ok(_) => { },
+    }
+
+    // After first push, capacity should be N (4)
+    if sv.capacity() != 4 {
+        return 5
+    }
+
+    match sv.push(20) {
+        Result::Err(_) => return 11,
+        Result::Ok(_) => { },
+    }
+
+    match sv.push(30) {
+        Result::Err(_) => return 12,
+        Result::Ok(_) => { },
+    }
+
+    if sv.len() != 3 {
+        return 6
+    }
+
+    // Test 3: Get elements (using different variable names to avoid type conflict)
+    match sv.get(0) {
+        Option::None => return 20,
+        Option::Some(val_ref) => {
+            if *val_ref != 10 {
+                return 21
+            }
+        },
+    }
+
+    match sv.get(1) {
+        Option::None => return 22,
+        Option::Some(val_ref2) => {
+            if *val_ref2 != 20 {
+                return 23
+            }
+        },
+    }
+
+    // Test 4: Pop element (using different variable name)
+    match sv.pop() {
+        Option::None => return 30,
+        Option::Some(popped_val) => {
+            if popped_val != 30 {
+                return 31
+            }
+        },
+    }
+
+    if sv.len() != 2 {
+        return 7
+    }
+
+    // Test 5: Push beyond initial capacity (should grow to 8)
+    match sv.push(40) {
+        Result::Err(_) => return 40,
+        Result::Ok(_) => { },
+    }
+
+    match sv.push(50) {
+        Result::Err(_) => return 41,
+        Result::Ok(_) => { },
+    }
+
+    // Now at capacity (4 elements), next push grows
+    match sv.push(60) {
+        Result::Err(_) => return 42,
+        Result::Ok(_) => { },
+    }
+
+    if sv.len() != 5 {
+        return 8
+    }
+
+    // Capacity should have doubled to 8
+    if sv.capacity() != 8 {
+        return 9
+    }
+
+    // Test 6: Verify values after growth (using unique variable names)
+    match sv.get(0) {
+        Option::None => return 50,
+        Option::Some(check0) => {
+            if *check0 != 10 {
+                return 51
+            }
+        },
+    }
+
+    match sv.get(4) {
+        Option::None => return 52,
+        Option::Some(check4) => {
+            if *check4 != 60 {
+                return 53
+            }
+        },
+    }
+
+    // All tests passed
+    return 0
+}

@@ -1,0 +1,204 @@
+// Novus Standard Library - SmallVec<T, N>
+// A small vector optimization: starts with capacity N
+
+from std::core import Option, Result, Drop, Clone
+from std::memory::block import MemoryBlock
+from std::error::errors import ExecError
+from std::ffi::exec import CopyMem, FreeMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+/// SmallVec<T, N> - Small vector with configurable initial capacity
+///
+/// A vector-like container that pre-allocates N elements worth of capacity
+/// on first use. This is useful when you know a typical size and want to
+/// minimize reallocations.
+///
+/// ## Use Cases
+/// - Known typical sizes (e.g., SmallVec<u32, 16> for most cases)
+/// - Reducing allocation overhead for small collections
+/// - Temporary buffers where size is usually bounded
+///
+/// ## Example
+/// ```novus
+/// var sv = SmallVec::<u32, 8>::new()
+/// sv.push(1)?  // First push allocates N=8 capacity
+/// sv.push(2)?  // Uses existing capacity
+/// ```
+///
+/// NOTE: This is a simplified version. True inline storage requires
+/// array types with const generic sizes, which is not yet implemented.
+pub struct SmallVec<T, const N: u32> {
+    ptr: *T,            // Heap pointer (null when empty)
+    len: u32,           // Current number of elements
+    capacity: u32,      // Current capacity
+}
+
+impl<T, const N: u32> SmallVec<T, N> {
+    /// Create a new empty SmallVec
+    /// First push will allocate N elements of capacity
+    pub fn new() -> SmallVec<T, N> {
+        return SmallVec {
+            ptr: null,
+            len: 0,
+            capacity: 0,
+        }
+    }
+
+    /// Create a SmallVec with pre-allocated capacity
+    /// Uses the const generic N as the initial capacity
+    pub fn with_capacity() -> Result<SmallVec<T, N>, ExecError> {
+        if N == 0 {
+            return Result::Ok(SmallVec { ptr: null, len: 0, capacity: 0 })
+        }
+
+        let element_size: u32 = @sizeof(T)
+        let bytes_needed: u32 = N * element_size
+
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Option::Some(var block) => {
+                let (raw_ptr, _size) = block.into_raw()
+                let ptr: *T = (*T)raw_ptr
+                return Result::Ok(SmallVec {
+                    ptr: ptr,
+                    len: 0,
+                    capacity: N,
+                })
+            },
+            Option::None => {
+                return Result::Err(ExecError::NoMem)
+            }
+        }
+    }
+
+    /// Returns the number of elements in the SmallVec
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Returns true if the SmallVec is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0
+    }
+
+    /// Returns the current capacity
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    /// Returns the default initial capacity (const generic N)
+    pub fn default_capacity() -> u32 {
+        return N
+    }
+
+    /// Push an element onto the end of the SmallVec
+    /// Returns Err if allocation fails
+    pub fn push(&var self, value: T) -> Result<(), ExecError> {
+        if self.len >= self.capacity {
+            // Need to grow - use N as initial capacity, then double
+            let new_capacity = if self.capacity == 0 { N } else { self.capacity * 2 }
+            let result = self.grow(new_capacity)
+            match result {
+                Result::Err(e) => return Result::Err(e),
+                Result::Ok(_) => { },
+            }
+        }
+
+        // Store the element
+        self.ptr[self.len] = value
+        self.len = self.len + 1
+        return Result::Ok(())
+    }
+
+    /// Pop an element from the end of the SmallVec
+    /// Returns None if the SmallVec is empty
+    pub fn pop(&var self) -> Option<T> {
+        if self.len == 0 {
+            return Option::None
+        }
+        self.len = self.len - 1
+        return Option::Some(self.ptr[self.len])
+    }
+
+    /// Get a reference to an element by index
+    /// Returns None if index is out of bounds
+    pub fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len {
+            return Option::None
+        }
+        return Option::Some(&self.ptr[index])
+    }
+
+    /// Get a mutable reference to an element by index
+    /// Returns None if index is out of bounds
+    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+        if index >= self.len {
+            return Option::None
+        }
+        return Option::Some(&var self.ptr[index])
+    }
+
+    /// Set an element at the given index
+    /// Returns false if index is out of bounds
+    pub fn set(&var self, index: u32, value: T) -> bool {
+        if index >= self.len {
+            return false
+        }
+        self.ptr[index] = value
+        return true
+    }
+
+    /// Clear all elements without deallocating
+    pub fn clear(&var self) {
+        self.len = 0
+    }
+
+    /// Internal: grow the storage to at least new_capacity
+    fn grow(&var self, new_capacity: u32) -> Result<(), ExecError> {
+        let element_size: u32 = @sizeof(T)
+        let bytes_needed: u32 = new_capacity * element_size
+
+        // Allocate new heap storage
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+
+        match block_opt {
+            Option::Some(var block) => {
+                let (new_ptr, _size) = block.into_raw()
+                let typed_ptr: *T = (*T)new_ptr
+
+                // Copy existing elements if any
+                if self.len > 0 && self.ptr != null {
+                    let copy_bytes = self.len * element_size
+                    unsafe {
+                        CopyMem((*u8)self.ptr, (*u8)typed_ptr, copy_bytes)
+
+                        // Free old heap storage
+                        let old_bytes = self.capacity * element_size
+                        FreeMem((*u8)self.ptr, old_bytes)
+                    }
+                }
+
+                self.ptr = typed_ptr
+                self.capacity = new_capacity
+                return Result::Ok(())
+            },
+            Option::None => {
+                return Result::Err(ExecError::NoMem)
+            }
+        }
+    }
+}
+
+impl<T, const N: u32> Drop for SmallVec<T, N> {
+    fn drop(&var self) {
+        if self.ptr != null {
+            let element_size: u32 = @sizeof(T)
+            let bytes = self.capacity * element_size
+            unsafe {
+                FreeMem((*u8)self.ptr, bytes)
+            }
+            self.ptr = null
+        }
+    }
+}

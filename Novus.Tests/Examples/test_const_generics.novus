@@ -1,0 +1,48 @@
+// Test const generics basic functionality
+
+pub struct Buffer<const N: u32> {
+    len: u32
+}
+
+impl<const N: u32> Buffer<N> {
+    pub fn new() -> Buffer<N> {
+        return Buffer { len: 0 }
+    }
+
+    pub fn capacity(&self) -> u32 {
+        return N
+    }
+}
+
+pub fn main() -> i32 {
+    // Test with type inference
+    let buf1 = Buffer::<16>::new()
+    if buf1.capacity() != 16 {
+        return 1
+    }
+
+    // Test with explicit type annotation
+    let buf2: Buffer<16> = Buffer::<16>::new()
+    if buf2.capacity() != 16 {
+        return 2
+    }
+
+    // Test with different const values
+    let buf3: Buffer<32> = Buffer::<32>::new()
+    if buf3.capacity() != 32 {
+        return 3
+    }
+
+    let buf4: Buffer<64> = Buffer::<64>::new()
+    if buf4.capacity() != 64 {
+        return 4
+    }
+
+    // Test that different const values create distinct types
+    let buf5 = Buffer::<8>::new()
+    if buf5.capacity() != 8 {
+        return 5
+    }
+
+    return 0
+}

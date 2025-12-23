@@ -9000,6 +9000,7 @@ public partial class CCodeGenerator
             IrFieldReference fieldRef => EmitFieldReference(fieldRef),  // Field reference for borrowing
             IrIndexedFieldAccess indexedField => EmitIndexedFieldAccess(indexedField),
             IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
+            IrConstGenericParamRef constGenericRef => throw new InvalidOperationException($"Const generic parameter '{constGenericRef.ParameterName}' must be substituted with a concrete value before code generation"),
             IrNever _ => "/* unreachable */",  // Never type - code is unreachable after panic
             _ => throw new NotSupportedException($"Unsupported value type: {value.GetType().Name}")
         };
