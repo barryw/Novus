@@ -1,0 +1,261 @@
+// Novus Standard Library - IntrusiveList
+// AmigaOS-compatible intrusive doubly-linked list
+
+from std::core import Option
+from std::ffi::amiga_structs import MinNode, MinList
+
+/// IntrusiveList - AmigaOS-compatible intrusive doubly-linked list
+///
+/// An intrusive list where nodes embed their link pointers directly in the
+/// data structure. This matches AmigaOS Exec's MinList/MinNode pattern exactly.
+///
+/// ## AmigaOS Compatibility
+/// The list head is a MinList and nodes must have a MinNode as their FIRST field.
+/// This allows direct interop with Exec list functions (AddHead, AddTail, Remove, etc.)
+///
+/// ## Memory Model
+/// - Zero allocation overhead - nodes contain their own links
+/// - Nodes can only be in ONE list at a time
+/// - List does NOT own the nodes - caller manages node lifetime
+///
+/// ## Example
+/// ```novus
+/// struct MyData {
+///     node: MinNode,  // MUST be first field
+///     value: u32,
+/// }
+///
+/// var list = IntrusiveList::<MyData>::new()
+/// var item = MyData { node: MinNode::new(), value: 42 }
+/// list.add_tail(&var item)
+/// ```
+///
+/// ## Safety
+/// The caller must ensure:
+/// - Nodes outlive the list operations
+/// - A node is not added to multiple lists simultaneously
+/// - Nodes are removed before being freed
+pub struct IntrusiveList<T> {
+    list: MinList,
+}
+
+impl<T> IntrusiveList<T> {
+    /// Create a new empty intrusive list
+    pub fn new() -> IntrusiveList<T> {
+        // Initialize MinList with head pointing to tail marker and vice versa
+        // This is the standard AmigaOS empty list initialization
+        var result = IntrusiveList {
+            list: MinList {
+                mlh_Head: null,
+                mlh_Tail: null,
+                mlh_TailPred: null,
+            },
+        }
+        // Set up the circular pointers for empty list
+        // Head points to address of Tail (which is null, acting as end marker)
+        // TailPred points to address of Head
+        result.list.mlh_Head = (*MinNode)&result.list.mlh_Tail
+        result.list.mlh_Tail = null  // End marker
+        result.list.mlh_TailPred = (*MinNode)&result.list.mlh_Head
+        return result
+    }
+
+    /// Check if the list is empty
+    pub fn is_empty(&self) -> bool {
+        // List is empty when Head points to the Tail marker (mlh_Tail field address)
+        return self.list.mlh_Head == (*MinNode)&self.list.mlh_Tail
+    }
+
+    /// Add a node to the head of the list
+    ///
+    /// The node's first field must be a MinNode.
+    pub fn add_head(&var self, node: *T) {
+        let min_node = (*MinNode)node
+
+        // New node's successor is current head
+        min_node.mln_Succ = self.list.mlh_Head
+        // New node's predecessor is the list head marker
+        min_node.mln_Pred = (*MinNode)&self.list.mlh_Head
+
+        // Old head's predecessor becomes new node
+        self.list.mlh_Head.mln_Pred = min_node
+        // List head now points to new node
+        self.list.mlh_Head = min_node
+    }
+
+    /// Add a node to the tail of the list
+    ///
+    /// The node's first field must be a MinNode.
+    pub fn add_tail(&var self, node: *T) {
+        let min_node = (*MinNode)node
+
+        // New node's successor is the tail marker
+        min_node.mln_Succ = (*MinNode)&self.list.mlh_Tail
+        // New node's predecessor is current tail
+        min_node.mln_Pred = self.list.mlh_TailPred
+
+        // Old tail's successor becomes new node
+        self.list.mlh_TailPred.mln_Succ = min_node
+        // List tail pred now points to new node
+        self.list.mlh_TailPred = min_node
+    }
+
+    /// Remove and return the head node
+    ///
+    /// Returns None if the list is empty.
+    pub fn remove_head(&var self) -> Option<*T> {
+        if self.is_empty() {
+            return Option::None
+        }
+
+        let node = self.list.mlh_Head
+        let next = node.mln_Succ
+
+        // Update list head to point to next node
+        self.list.mlh_Head = next
+        // Update next node's predecessor to point to list head marker
+        next.mln_Pred = (*MinNode)&self.list.mlh_Head
+
+        return Option::Some((*T)node)
+    }
+
+    /// Remove and return the tail node
+    ///
+    /// Returns None if the list is empty.
+    pub fn remove_tail(&var self) -> Option<*T> {
+        if self.is_empty() {
+            return Option::None
+        }
+
+        let node = self.list.mlh_TailPred
+        let prev = node.mln_Pred
+
+        // Update list tail pred to point to previous node
+        self.list.mlh_TailPred = prev
+        // Update previous node's successor to point to tail marker
+        prev.mln_Succ = (*MinNode)&self.list.mlh_Tail
+
+        return Option::Some((*T)node)
+    }
+
+    /// Remove a specific node from the list
+    ///
+    /// The node must be in this list. Removing a node not in the list
+    /// or removing the same node twice is undefined behavior.
+    pub fn remove(&var self, node: *T) {
+        let min_node = (*MinNode)node
+
+        // Unlink: prev.next = node.next, next.prev = node.prev
+        min_node.mln_Pred.mln_Succ = min_node.mln_Succ
+        min_node.mln_Succ.mln_Pred = min_node.mln_Pred
+    }
+
+    /// Get the first node without removing it
+    ///
+    /// Returns None if the list is empty.
+    pub fn first(&self) -> Option<*T> {
+        if self.is_empty() {
+            return Option::None
+        }
+        return Option::Some((*T)self.list.mlh_Head)
+    }
+
+    /// Get the last node without removing it
+    ///
+    /// Returns None if the list is empty.
+    pub fn last(&self) -> Option<*T> {
+        if self.is_empty() {
+            return Option::None
+        }
+        return Option::Some((*T)self.list.mlh_TailPred)
+    }
+
+    /// Insert a node after another node
+    ///
+    /// Both nodes must have MinNode as their first field.
+    pub fn insert_after(&var self, after: *T, node: *T) {
+        let after_min = (*MinNode)after
+        let min_node = (*MinNode)node
+
+        // New node's links
+        min_node.mln_Succ = after_min.mln_Succ
+        min_node.mln_Pred = after_min
+
+        // Update surrounding nodes
+        after_min.mln_Succ.mln_Pred = min_node
+        after_min.mln_Succ = min_node
+    }
+
+    /// Insert a node before another node
+    ///
+    /// Both nodes must have MinNode as their first field.
+    pub fn insert_before(&var self, before: *T, node: *T) {
+        let before_min = (*MinNode)before
+        let min_node = (*MinNode)node
+
+        // New node's links
+        min_node.mln_Succ = before_min
+        min_node.mln_Pred = before_min.mln_Pred
+
+        // Update surrounding nodes
+        before_min.mln_Pred.mln_Succ = min_node
+        before_min.mln_Pred = min_node
+    }
+
+    /// Get the raw MinList pointer for AmigaOS interop
+    ///
+    /// Use this when you need to pass the list to Exec functions.
+    pub fn as_min_list(&var self) -> *MinList {
+        return &var self.list
+    }
+
+    /// Get the next node in the list
+    ///
+    /// Returns None if node is the last node.
+    pub fn next(&self, node: *T) -> Option<*T> {
+        let min_node = (*MinNode)node
+        let next = min_node.mln_Succ
+
+        // Check if next is the tail marker (end of list)
+        if next == (*MinNode)&self.list.mlh_Tail {
+            return Option::None
+        }
+        return Option::Some((*T)next)
+    }
+
+    /// Get the previous node in the list
+    ///
+    /// Returns None if node is the first node.
+    pub fn prev(&self, node: *T) -> Option<*T> {
+        let min_node = (*MinNode)node
+        let prev = min_node.mln_Pred
+
+        // Check if prev is the head marker (start of list)
+        if prev == (*MinNode)&self.list.mlh_Head {
+            return Option::None
+        }
+        return Option::Some((*T)prev)
+    }
+
+    /// Count the number of nodes in the list
+    ///
+    /// This is O(n) - use sparingly.
+    pub fn len(&self) -> u32 {
+        var count: u32 = 0
+        var current = self.list.mlh_Head
+
+        // Walk until we hit the tail marker
+        while current != (*MinNode)&self.list.mlh_Tail {
+            count = count + 1
+            current = current.mln_Succ
+        }
+
+        return count
+    }
+}
+
+/// Helper function to initialize a MinNode
+pub fn init_min_node(node: *MinNode) {
+    node.mln_Succ = null
+    node.mln_Pred = null
+}

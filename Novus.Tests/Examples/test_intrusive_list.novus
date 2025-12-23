@@ -1,0 +1,229 @@
+// Test IntrusiveList<T> - AmigaOS-compatible intrusive linked list
+
+from std::collections::intrusive_list import IntrusiveList, init_min_node
+from std::ffi::amiga_structs import MinNode
+
+// Test struct - MinNode MUST be the first field
+struct TestItem {
+    node: MinNode,
+    value: u32,
+}
+
+fn new_test_item(val: u32) -> TestItem {
+    var item = TestItem {
+        node: MinNode {
+            mln_Succ: null,
+            mln_Pred: null,
+        },
+        value: val,
+    }
+    return item
+}
+
+pub fn main() -> i32 {
+    // Test 1: Create empty list
+    var list = IntrusiveList::<TestItem>::new()
+
+    if !list.is_empty() {
+        return 1
+    }
+
+    if list.len() != 0 {
+        return 2
+    }
+
+    // Test 2: Add items to tail
+    var item1 = new_test_item(10)
+    var item2 = new_test_item(20)
+    var item3 = new_test_item(30)
+
+    list.add_tail(&item1)
+
+    if list.is_empty() {
+        return 3
+    }
+
+    if list.len() != 1 {
+        return 4
+    }
+
+    list.add_tail(&item2)
+    list.add_tail(&item3)
+
+    if list.len() != 3 {
+        return 5
+    }
+
+    // Test 3: Check first/last
+    match list.first() {
+        Option::None => return 10,
+        Option::Some(ptr) => {
+            if ptr.value != 10 {
+                return 11
+            }
+        },
+    }
+
+    match list.last() {
+        Option::None => return 12,
+        Option::Some(ptr) => {
+            if ptr.value != 30 {
+                return 13
+            }
+        },
+    }
+
+    // Test 4: Remove head
+    match list.remove_head() {
+        Option::None => return 20,
+        Option::Some(ptr) => {
+            if ptr.value != 10 {
+                return 21
+            }
+        },
+    }
+
+    if list.len() != 2 {
+        return 22
+    }
+
+    // Test 5: Remove tail
+    match list.remove_tail() {
+        Option::None => return 30,
+        Option::Some(ptr) => {
+            if ptr.value != 30 {
+                return 31
+            }
+        },
+    }
+
+    if list.len() != 1 {
+        return 32
+    }
+
+    // Only item2 (value=20) should remain
+    match list.first() {
+        Option::None => return 33,
+        Option::Some(ptr) => {
+            if ptr.value != 20 {
+                return 34
+            }
+        },
+    }
+
+    // Test 6: Add to head
+    var item4 = new_test_item(40)
+    list.add_head(&item4)
+
+    if list.len() != 2 {
+        return 40
+    }
+
+    match list.first() {
+        Option::None => return 41,
+        Option::Some(ptr) => {
+            if ptr.value != 40 {
+                return 42
+            }
+        },
+    }
+
+    // Test 7: Remove specific node
+    list.remove(&item4)
+
+    if list.len() != 1 {
+        return 50
+    }
+
+    match list.first() {
+        Option::None => return 51,
+        Option::Some(ptr) => {
+            if ptr.value != 20 {
+                return 52
+            }
+        },
+    }
+
+    // Test 8: Insert after
+    var item5 = new_test_item(50)
+    var item6 = new_test_item(60)
+
+    // List is: [20]
+    // Add 50 after 20: [20, 50]
+    list.insert_after(&item2, &item5)
+
+    if list.len() != 2 {
+        return 60
+    }
+
+    match list.last() {
+        Option::None => return 61,
+        Option::Some(ptr) => {
+            if ptr.value != 50 {
+                return 62
+            }
+        },
+    }
+
+    // Test 9: Insert before
+    // List is: [20, 50]
+    // Add 60 before 50: [20, 60, 50]
+    list.insert_before(&item5, &item6)
+
+    if list.len() != 3 {
+        return 70
+    }
+
+    // Check order: 20 -> 60 -> 50
+    match list.first() {
+        Option::None => return 71,
+        Option::Some(first_ptr) => {
+            if first_ptr.value != 20 {
+                return 72
+            }
+            match list.next(first_ptr) {
+                Option::None => return 73,
+                Option::Some(second_ptr) => {
+                    if second_ptr.value != 60 {
+                        return 74
+                    }
+                    match list.next(second_ptr) {
+                        Option::None => return 75,
+                        Option::Some(third_ptr) => {
+                            if third_ptr.value != 50 {
+                                return 76
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+
+    // Test 10: Empty the list
+    list.remove_head()
+    list.remove_head()
+    list.remove_head()
+
+    if !list.is_empty() {
+        return 80
+    }
+
+    if list.len() != 0 {
+        return 81
+    }
+
+    // Test 11: Remove from empty list returns None
+    match list.remove_head() {
+        Option::Some(_) => return 90,
+        Option::None => { },
+    }
+
+    match list.remove_tail() {
+        Option::Some(_) => return 91,
+        Option::None => { },
+    }
+
+    // All tests passed
+    return 0
+}

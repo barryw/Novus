@@ -648,7 +648,9 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct TTextAttr TTextAttr;");
         sb.AppendLine("typedef struct Task Task;");
         sb.AppendLine("typedef struct Node Node;");
+        sb.AppendLine("typedef struct MinNode MinNode;");
         sb.AppendLine("typedef struct List List;");
+        sb.AppendLine("typedef struct MinList MinList;");
         sb.AppendLine("typedef struct Library Library;");
         sb.AppendLine("typedef struct Menu Menu;");
         sb.AppendLine("typedef struct MenuItem MenuItem;");
@@ -855,7 +857,8 @@ public partial class CCodeGenerator
                 var sortedEnumDependentStructs = codegen.TopologicalSortStructTypes(structsNeededByEnums);
                 foreach (var structType in sortedEnumDependentStructs)
                 {
-                    codegen.EmitStructTypeToBuilder(sb, structType);
+                    // Pass emitTypedef: false because forward declarations already provide typedef
+                    codegen.EmitStructTypeToBuilder(sb, structType, emitTypedef: false);
                 }
             }
 
@@ -887,7 +890,8 @@ public partial class CCodeGenerator
             {
                 if (!structsNeededByEnums.Contains(structType))
                 {
-                    codegen.EmitStructTypeToBuilder(sb, structType);
+                    // Pass emitTypedef: false because forward declarations already provide typedef
+                    codegen.EmitStructTypeToBuilder(sb, structType, emitTypedef: false);
                 }
             }
 
@@ -2279,7 +2283,7 @@ public partial class CCodeGenerator
         sb.AppendLine();
     }
 
-    private void EmitStructTypeToBuilder(StringBuilder sb, IrStructType structType)
+    private void EmitStructTypeToBuilder(StringBuilder sb, IrStructType structType, bool emitTypedef = true)
     {
         var structName = MangleName(structType);
         _currentEmittingStruct = structName;  // For error messages
@@ -2370,8 +2374,12 @@ public partial class CCodeGenerator
             sb.AppendLine($"#pragma pack()");
         }
         // Add typedef so we can use the struct name without "struct" prefix
-        // This is essential for per-function files where forward declarations aren't shared
-        sb.AppendLine($"typedef struct {structName} {structName};");
+        // Skip when forward declarations already provide "typedef struct X X;" (shared types header)
+        // to avoid VBCC warning 226 about redeclaring typedef
+        if (emitTypedef)
+        {
+            sb.AppendLine($"typedef struct {structName} {structName};");
+        }
         sb.AppendLine($"#endif // {guardName}");
         sb.AppendLine();
 
