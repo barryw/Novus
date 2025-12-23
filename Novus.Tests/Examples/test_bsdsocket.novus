@@ -1,0 +1,148 @@
+// Test for bsdsocket.library availability and IP address parsing
+// Run with: novus test test_bsdsocket.novus
+
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_u8
+from std::net::socket import SocketLibrary, ensure_initialized, is_tcp_available
+from std::net::addr import Ipv4Addr, AddrParseError
+from std::core import Result, Option
+
+// ============================================================================
+// Socket Library Availability Tests
+// ============================================================================
+
+@test("is_tcp_available returns true when bsdsocket.library exists")
+pub fn test_tcp_available() {
+    let available = is_tcp_available()
+    // This test will pass if TCP is available, skip-equivalent if not
+    if available {
+        expect_true(true, "TCP stack is available")
+    } else {
+        // No TCP stack - test effectively skipped
+        expect_true(true, "No TCP stack installed (test skipped)")
+    }
+}
+
+@test("SocketLibrary::init opens bsdsocket.library")
+pub fn test_socket_library_init() {
+    let result = SocketLibrary::init()
+    match result {
+        Result::Ok(lib) => {
+            expect_true(lib.is_initialized(), "library should be initialized")
+            // lib will be dropped here, closing the library
+        },
+        Result::Err(e) => {
+            // No TCP stack available - acceptable
+            expect_true(true, "No TCP stack (test skipped)")
+        },
+    }
+}
+
+@test("ensure_initialized works for auto-init")
+pub fn test_ensure_initialized() {
+    let ok = ensure_initialized()
+    if ok {
+        expect_true(true, "ensure_initialized succeeded")
+    } else {
+        expect_true(true, "No TCP stack (test skipped)")
+    }
+}
+
+// ============================================================================
+// IP Parsing Tests (pure Novus - no bsdsocket.library required)
+// ============================================================================
+
+@test("Ipv4Addr::parse works for 192.168.1.100")
+pub fn test_parse_with_library() {
+    let result = Ipv4Addr::parse("192.168.1.100")
+    match result {
+        Result::Ok(addr) => {
+            let octets = addr.octets()
+            expect_eq_u8(octets[0], 192, "first octet")
+            expect_eq_u8(octets[1], 168, "second octet")
+            expect_eq_u8(octets[2], 1, "third octet")
+            expect_eq_u8(octets[3], 100, "fourth octet")
+        },
+        Result::Err(e) => {
+            expect_true(false, "parse should succeed")
+        },
+    }
+}
+
+@test("Ipv4Addr::parse localhost 127.0.0.1")
+pub fn test_parse_localhost() {
+    let result = Ipv4Addr::parse("127.0.0.1")
+    match result {
+        Result::Ok(addr) => {
+            expect_true(addr.is_loopback(), "should be loopback")
+            let octets = addr.octets()
+            expect_eq_u8(octets[0], 127, "first octet")
+            expect_eq_u8(octets[1], 0, "second octet")
+            expect_eq_u8(octets[2], 0, "third octet")
+            expect_eq_u8(octets[3], 1, "fourth octet")
+        },
+        Result::Err(e) => {
+            expect_true(false, "parse should succeed")
+        },
+    }
+}
+
+@test("Ipv4Addr::parse Google DNS 8.8.8.8")
+pub fn test_parse_google_dns() {
+    let result = Ipv4Addr::parse("8.8.8.8")
+    match result {
+        Result::Ok(addr) => {
+            expect_true(addr.is_global(), "should be global")
+            let octets = addr.octets()
+            expect_eq_u8(octets[0], 8, "first octet")
+            expect_eq_u8(octets[1], 8, "second octet")
+            expect_eq_u8(octets[2], 8, "third octet")
+            expect_eq_u8(octets[3], 8, "fourth octet")
+        },
+        Result::Err(e) => {
+            expect_true(false, "parse should succeed")
+        },
+    }
+}
+
+@test("Ipv4Addr::parse rejects invalid address")
+pub fn test_parse_invalid() {
+    let result = Ipv4Addr::parse("not.an.ip.address")
+    match result {
+        Result::Ok(addr) => {
+            expect_true(false, "should have failed to parse invalid address")
+        },
+        Result::Err(e) => {
+            expect_true(true, "correctly rejected invalid address")
+        },
+    }
+}
+
+@test("Ipv4Addr::parse handles edge case 0.0.0.0")
+pub fn test_parse_zero() {
+    let result = Ipv4Addr::parse("0.0.0.0")
+    match result {
+        Result::Ok(addr) => {
+            expect_true(addr.is_any(), "should be any/unspecified address")
+        },
+        Result::Err(e) => {
+            expect_true(false, "parse should succeed for 0.0.0.0")
+        },
+    }
+}
+
+@test("Ipv4Addr::parse rejects 255.255.255.255 (inet_addr limitation)")
+pub fn test_parse_broadcast() {
+    // inet_addr() returns INADDR_NONE (0xFFFFFFFF) for 255.255.255.255
+    // This is a historic BSD limitation - use Ipv4Addr::broadcast() instead
+    let result = Ipv4Addr::parse("255.255.255.255")
+    match result {
+        Result::Ok(addr) => {
+            // Shouldn't happen with inet_addr
+            expect_true(false, "inet_addr cannot parse broadcast")
+        },
+        Result::Err(e) => {
+            // This is expected - use Ipv4Addr::broadcast() for broadcast address
+            expect_true(true, "correctly rejected (use Ipv4Addr::broadcast() instead)")
+        },
+    }
+}

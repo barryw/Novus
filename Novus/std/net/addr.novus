@@ -4,7 +4,7 @@
 // IP address and socket address types for networking.
 // These provide safe, ergonomic wrappers around raw sockaddr structures.
 
-from std::ffi::bsdsocket import inet_addr, inet_aton, in_addr, sockaddr_in, AF_INET, INADDR_NONE
+from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
 from std::core import Option, Result
 from std::strings::format import Formatter, Display
 from std::strings::core import Str
@@ -80,14 +80,18 @@ impl Ipv4Addr {
 
     /// Parse an IPv4 address from a dotted-decimal string
     ///
-    /// Uses bsdsocket.library's inet_aton function. The socket library is
+    /// Uses bsdsocket.library's inet_addr function. The socket library is
     /// automatically initialized if needed.
     ///
     /// The string must be null-terminated.
     ///
+    /// Note: Due to a historic BSD limitation, 255.255.255.255 cannot be
+    /// parsed (it returns the same value as an error). Use Ipv4Addr::broadcast()
+    /// to get the broadcast address directly.
+    ///
     /// Example:
     /// ```novus
-    /// let addr = Ipv4Addr::parse("192.168.1.100\0")?
+    /// let addr = Ipv4Addr::parse("192.168.1.100")?
     /// ```
     pub fn parse(s: *u8) -> Result<Ipv4Addr, AddrParseError> {
         // Ensure bsdsocket.library is initialized
@@ -95,19 +99,18 @@ impl Ipv4Addr {
             return Result::Err(AddrParseError::NoTcpStack)
         }
 
-        // Use bsdsocket.library inet_aton function for parsing
-        // It returns 1 on success, 0 on failure
-        var addr = in_addr { s_addr: 0u32 }
-        let result = unsafe { inet_aton(s, (*in_addr)&addr) }
-        if result == 0 {
+        // Use bsdsocket.library inet_addr function for parsing
+        // It returns INADDR_NONE (0xFFFFFFFF) on failure
+        let result = unsafe { inet_addr(s) }
+        if result == INADDR_NONE {
             return Result::Err(AddrParseError::InvalidAddress)
         }
-        return Result::Ok(Ipv4Addr::from_in_addr(addr))
+        return Result::Ok(Ipv4Addr::from_network_order(result))
     }
 
     /// Try to parse an IPv4 address, returning None on failure
     ///
-    /// Uses bsdsocket.library's inet_aton function. The socket library is
+    /// Uses bsdsocket.library's inet_addr function. The socket library is
     /// automatically initialized if needed.
     ///
     /// The string must be null-terminated.
