@@ -244,12 +244,16 @@ impl TlsConfig {
 
         // Verify certificate (if verification is enabled)
         let verify_result = unsafe { SSL_get_verify_result(ssl) }
+
+        // Always get and free the peer certificate to prevent memory leak
+        // SSL_get_peer_certificate() increments the reference count, so we must
+        // call X509_free() to decrement it, regardless of verification result
+        let cert = unsafe { SSL_get_peer_certificate(ssl) }
+        if cert as u32 != 0 {
+            unsafe { X509_free(cert) }
+        }
+
         if verify_result != X509_V_OK as i32 {
-            // Get and free the peer certificate to prevent memory leak
-            let cert = unsafe { SSL_get_peer_certificate(ssl) }
-            if cert as u32 != 0 {
-                unsafe { X509_free(cert) }
-            }
             unsafe { SSL_free(ssl) }
             return Result::Err(NetError::TlsCertificateError)
         }

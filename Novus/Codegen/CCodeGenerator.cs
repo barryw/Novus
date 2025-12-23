@@ -601,7 +601,10 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <clib/graphics_protos.h>");
         sb.AppendLine("#include <clib/gadtools_protos.h>");
         sb.AppendLine("#include <clib/alib_protos.h>"); // DoMethodA, etc.
-        sb.AppendLine("#include <devices/timer.h>");
+        // NOTE: Do NOT include <devices/timer.h> here - it defines struct timeval with
+        // AmigaOS-style field names (tv_secs/tv_micro) which conflicts with the POSIX
+        // names (tv_sec/tv_usec) used by bsdsocket.library. Timer device code should
+        // include the header directly when needed.
         // ReAction class headers (OS 3.5+) - tag definitions
         sb.AppendLine("#include <classes/window.h>");
         sb.AppendLine("#include <gadgets/layout.h>");
@@ -646,7 +649,9 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct NewMenu NewMenu;");
         sb.AppendLine("typedef struct VisualInfo VisualInfo;");
         sb.AppendLine("typedef struct EasyStruct EasyStruct;");
-        sb.AppendLine("typedef struct timeval timeval;");
+        // NOTE: timeval is NOT typedefed here because we emit our own definition from
+        // bsdsocket.novus FFI (with POSIX tv_sec/tv_usec field names, not NDK's tv_secs/tv_micro)
+        // fd_set is also defined with fields from bsdsocket.novus FFI
         sb.AppendLine("typedef struct timerequest timerequest;");
         sb.AppendLine("typedef struct EClockVal EClockVal;");
         sb.AppendLine("typedef struct IORequest IORequest;");
@@ -1498,13 +1503,47 @@ public partial class CCodeGenerator
                     {
                         // AmigaOS library functions (WaitTOF, AllocMem, etc.) are provided by proto headers
                         // which define macros that expand to inline library calls through the library base.
-                        // We skip these because the proto headers already handle them.
-                        // EXCEPTION: MUI functions (MUI_*) are provided by our stubs, not proto headers.
+                        // We skip these ONLY for libraries whose proto headers are included in novus_types.h.
+                        //
+                        // Libraries with proto headers in novus_types.h:
+                        // - exec.library (clib/exec_protos.h)
+                        // - dos.library (clib/dos_protos.h)
+                        // - intuition.library (clib/intuition_protos.h)
+                        // - graphics.library (clib/graphics_protos.h)
+                        // - gadtools.library (clib/gadtools_protos.h)
+                        // - alib_protos (utility functions)
+                        //
+                        // Functions from OTHER libraries (bsdsocket.library, etc.) MUST have
+                        // extern declarations emitted because their proto headers are NOT included.
+                        //
+                        // Check the @library attribute to determine if proto header is available.
+                        string? libraryName = null;
+                        var libAttr = funcObj.Attributes?.Get(SemanticAnalysis.KnownAttributes.Library);
+                        if (libAttr != null)
+                        {
+                            libraryName = libAttr.GetPositionalArg<string>(0);
+                        }
+
+                        // Libraries whose proto headers are included in novus_types.h
+                        var librariesWithProtoHeaders = new HashSet<string>
+                        {
+                            "exec.library",
+                            "dos.library",
+                            "intuition.library",
+                            "graphics.library",
+                            "gadtools.library",
+                            "timer.device",  // timer protos are also included
+                            // Note: MUI_* functions are handled by our stubs, not proto headers
+                        };
+
+                        bool hasProtoHeader = libraryName == null || librariesWithProtoHeaders.Contains(libraryName);
+
                         bool isAmigaOSFunction = funcName.Length > 0 &&
                                                  char.IsUpper(funcName[0]) &&
                                                  !funcName.StartsWith("__") &&
                                                  !funcName.StartsWith("MUI_") &&
-                                                 !funcObj.IsVariadic;
+                                                 !funcObj.IsVariadic &&
+                                                 hasProtoHeader;
 
                         if (isAmigaOSFunction)
                         {
@@ -2458,8 +2497,9 @@ public partial class CCodeGenerator
         "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
         // GadTools types
         "NewMenu", "Menu", "MenuItem", "VisualInfo", "NewGadget",
-        // DOS types
-        "IORequest", "IOStdReq", "timeval", "EClockVal", "timerequest",
+        // DOS types - NOTE: timeval is NOT included here because NDK timeval uses tv_secs/tv_micro
+        // but bsdsocket.library uses tv_sec/tv_usec (POSIX names). We emit our own timeval from FFI.
+        "IORequest", "IOStdReq", "EClockVal", "timerequest",
         "DateStamp", "FileInfoBlock", "InfoData", "FileHandle", "DosPacket",
         "StandardPacket", "ErrorString", "RootNode", "DosLibrary", "CliProcList",
         "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",

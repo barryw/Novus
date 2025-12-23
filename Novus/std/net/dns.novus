@@ -3,6 +3,20 @@
 //
 // Provides hostname resolution and reverse DNS lookups.
 //
+// IMPORTANT: Static Buffer Warning
+// ================================
+// The bsdsocket.library DNS functions (gethostbyname, gethostbyaddr) return
+// pointers to STATIC internal buffers. These buffers are:
+// 1. Overwritten on EVERY subsequent DNS call
+// 2. NOT safe to hold across multiple DNS lookups
+// 3. NOT safe across task switches (other tasks may call DNS)
+//
+// The resolve_hostname() and resolve_hostname_one() functions in this module
+// COPY the address data into Vec/Ipv4Addr to avoid this issue.
+//
+// However, reverse_lookup() returns a pointer to the static hostname string.
+// You MUST copy this string immediately if you need to keep it!
+//
 // Example:
 // ```novus
 // from std::net::socket import SocketLibrary
@@ -12,23 +26,20 @@
 // fn main() -> i32 {
 //     let lib = SocketLibrary::init()?
 //
-//     // Resolve hostname to IP
+//     // Resolve hostname to IP - returns copies, safe to keep
 //     let addrs = resolve_hostname("www.aminet.net")?
 //     for addr in addrs {
 //         print_ip(addr)
 //     }
 //
-//     // Reverse lookup
+//     // Reverse lookup - returns pointer to static buffer!
+//     // Copy immediately if you need to keep the hostname
 //     let hostname = reverse_lookup(Ipv4Addr::new(192, 168, 1, 1))?
-//     println(hostname)
+//     println(hostname)  // Use immediately before next DNS call
 //
 //     return 0
 // }
 // ```
-//
-// NOTE: DNS functions are NOT thread-safe. The underlying bsdsocket.library
-// uses static buffers that are overwritten on each call. For multi-tasking,
-// copy results immediately after each call.
 
 from std::ffi::bsdsocket import gethostbyname, gethostbyaddr, gethostname
 from std::ffi::bsdsocket import getprotobyname, getprotobynumber, getservbyname, getservbyport
@@ -273,10 +284,10 @@ pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError
         return Result::Err(NetError::HostNotFound)
     }
 
-    // Port is in network byte order, convert to host order
-    let net_port = unsafe { (*se).s_port }
-    // On big-endian Amiga, network order == host order
-    let host_port = net_port
+    // Port is in network byte order
+    // On big-endian 68k Amiga, network byte order == host byte order
+    // so no conversion is needed (unlike on little-endian systems)
+    let host_port = unsafe { (*se).s_port }
 
     return Result::Ok(Service {
         name: unsafe { (*se).s_name },
@@ -287,7 +298,7 @@ pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError
 
 /// Look up a service by port number
 ///
-/// port: Port number (host byte order)
+/// port: Port number in host byte order (which equals network byte order on 68k Amiga)
 /// proto: "tcp" or "udp" (or null for any)
 ///
 /// Example:
@@ -296,8 +307,8 @@ pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError
 /// println(svc.name())  // "http"
 /// ```
 pub fn lookup_service_by_port(port: i32, proto: *u8) -> Result<Service, NetError> {
-    // Port needs to be in network byte order for the API
-    // On big-endian Amiga, no conversion needed
+    // On big-endian 68k Amiga, host byte order == network byte order
+    // so the port value can be passed directly
     let se = unsafe { getservbyport(port, proto) }
 
     if !se {

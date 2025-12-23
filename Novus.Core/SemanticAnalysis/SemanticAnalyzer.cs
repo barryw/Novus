@@ -1766,16 +1766,25 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
                 else
                 {
-                    // Check for primitive types (bool, i8, u8, etc.)
-                    var primitiveType = GetPrimitiveType(implTypeName);
-                    if (primitiveType != null)
+                    // Check for enum types
+                    var lookupEnum = _symbols.LookupEnum(implTypeName);
+                    if (lookupEnum != null)
                     {
-                        baseType = primitiveType;
+                        baseType = lookupEnum;
                     }
                     else
                     {
-                        // Fallback to generic type if neither struct nor primitive found
-                        baseType = new IrGenericType(implTypeName);
+                        // Check for primitive types (bool, i8, u8, etc.)
+                        var primitiveType = GetPrimitiveType(implTypeName);
+                        if (primitiveType != null)
+                        {
+                            baseType = primitiveType;
+                        }
+                        else
+                        {
+                            // Fallback to generic type if neither struct, enum, nor primitive found
+                            baseType = new IrGenericType(implTypeName);
+                        }
                     }
                 }
 

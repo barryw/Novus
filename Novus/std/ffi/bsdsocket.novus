@@ -119,7 +119,7 @@ extern fn getpeername(s: i32, name: *sockaddr, namelen: *i32) -> i32
 /// - OUT: Which signals were received (if interrupted)
 @library("bsdsocket.library")
 extern fn WaitSelect(nfds: i32, readfds: *fd_set, writefds: *fd_set,
-                     exceptfds: *fd_set, timeout: *timeval, signals: *u32) -> i32
+                     exceptfds: *fd_set, timeout: *bsd_timeval, signals: *u32) -> i32
 
 /// Configure which signals affect socket operations
 /// sigurg: Signal for SIGURG (out-of-band data)
@@ -307,7 +307,10 @@ pub struct fd_set {
 }
 
 /// Timeout for select/WaitSelect
-pub struct timeval {
+/// NOTE: Named bsd_timeval to avoid conflict with AmigaOS timeval from devices/timer.h
+/// which uses tv_secs/tv_micro (AmigaOS naming) instead of tv_sec/tv_usec (POSIX naming).
+/// bsdsocket.library uses POSIX naming convention.
+pub struct bsd_timeval {
     tv_sec: i32,   // Seconds
     tv_usec: i32,  // Microseconds
 }

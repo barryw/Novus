@@ -4,10 +4,19 @@
 // IP address and socket address types for networking.
 // These provide safe, ergonomic wrappers around raw sockaddr structures.
 
-from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
-from std::core import Option
+from std::ffi::bsdsocket import inet_addr, inet_aton, in_addr, sockaddr_in, AF_INET, INADDR_NONE
+from std::core import Option, Result
 from std::strings::format import Formatter, Display
 from std::strings::core import Str
+from std::net::socket import ensure_initialized
+
+/// Error returned when parsing an IP address fails
+pub enum AddrParseError {
+    /// The string was not a valid IPv4 address
+    InvalidAddress,
+    /// No TCP/IP stack is installed
+    NoTcpStack,
+}
 
 // Inline byte swap functions for Amiga (68k)
 // The Amiga is big-endian, same as network byte order, so these are identity functions.
@@ -66,6 +75,54 @@ impl Ipv4Addr {
                 ((net >> 8) & 0xff) as u8,   // Third octet
                 (net & 0xff) as u8,          // Fourth octet (LSB)
             ]
+        }
+    }
+
+    /// Parse an IPv4 address from a dotted-decimal string
+    ///
+    /// Uses bsdsocket.library's inet_aton function. The socket library is
+    /// automatically initialized if needed.
+    ///
+    /// The string must be null-terminated.
+    ///
+    /// Example:
+    /// ```novus
+    /// let addr = Ipv4Addr::parse("192.168.1.100\0")?
+    /// ```
+    pub fn parse(s: *u8) -> Result<Ipv4Addr, AddrParseError> {
+        // Ensure bsdsocket.library is initialized
+        if !ensure_initialized() {
+            return Result::Err(AddrParseError::NoTcpStack)
+        }
+
+        // Use bsdsocket.library inet_aton function for parsing
+        // It returns 1 on success, 0 on failure
+        var addr = in_addr { s_addr: 0u32 }
+        let result = unsafe { inet_aton(s, (*in_addr)&addr) }
+        if result == 0 {
+            return Result::Err(AddrParseError::InvalidAddress)
+        }
+        return Result::Ok(Ipv4Addr::from_in_addr(addr))
+    }
+
+    /// Try to parse an IPv4 address, returning None on failure
+    ///
+    /// Uses bsdsocket.library's inet_aton function. The socket library is
+    /// automatically initialized if needed.
+    ///
+    /// The string must be null-terminated.
+    ///
+    /// Example:
+    /// ```novus
+    /// match Ipv4Addr::try_parse("192.168.1.100\0") {
+    ///     Option::Some(addr) => println("Valid IP"),
+    ///     Option::None => println("Invalid IP"),
+    /// }
+    /// ```
+    pub fn try_parse(s: *u8) -> Option<Ipv4Addr> {
+        match Ipv4Addr::parse(s) {
+            Result::Ok(addr) => return Option::Some(addr),
+            Result::Err(e) => return Option::None,
         }
     }
 

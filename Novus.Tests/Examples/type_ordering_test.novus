@@ -1,0 +1,22 @@
+// Test case to verify struct dependency ordering in enums
+// This should compile without "incomplete type" errors
+
+struct Inner {
+    value: u32
+}
+
+struct Outer {
+    inner: Inner,
+    extra: u8
+}
+
+enum MyEnum {
+    Variant1(Outer),
+    Variant2
+}
+
+fn main() {
+    let inner = Inner { value: 42 }
+    let outer = Outer { inner: inner, extra: 1 }
+    let e = MyEnum::Variant1(outer)
+}

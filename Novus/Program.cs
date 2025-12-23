@@ -1931,6 +1931,34 @@ ___stack:
                     requiredLibraries.Add("rexxsyslib");
                     Console.WriteLine($"  ✓ Detected ARexx library usage in {Path.GetFileName(cFile)}");
                 }
+
+                // Check for BSD Socket library function calls (AmiTCP, Miami, Roadshow)
+                if (cCode.Contains("_SocketBase") ||
+                    cCode.Contains("socket(") ||
+                    cCode.Contains("bind(") ||
+                    cCode.Contains("listen(") ||
+                    cCode.Contains("accept(") ||
+                    cCode.Contains("connect(") ||
+                    cCode.Contains("send(") ||
+                    cCode.Contains("recv(") ||
+                    cCode.Contains("sendto(") ||
+                    cCode.Contains("recvfrom(") ||
+                    cCode.Contains("gethostbyname(") ||
+                    cCode.Contains("gethostbyaddr(") ||
+                    cCode.Contains("inet_aton(") ||
+                    cCode.Contains("inet_ntoa(") ||
+                    cCode.Contains("SetErrnoPtr(") ||
+                    cCode.Contains("SocketBaseTags(") ||
+                    cCode.Contains("CloseSocket(") ||
+                    cCode.Contains("shutdown(") ||
+                    cCode.Contains("setsockopt(") ||
+                    cCode.Contains("getsockopt(") ||
+                    cCode.Contains("select(") ||
+                    cCode.Contains("WaitSelect("))
+                {
+                    requiredLibraries.Add("bsdsocket");
+                    Console.WriteLine($"  ✓ Detected BSD Socket library usage in {Path.GetFileName(cFile)}");
+                }
             }
 
             Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
@@ -1958,6 +1986,22 @@ ___stack:
 
                         // NOTE: dos_init.o is already assembled earlier for executables
                         // No need to assemble it again here
+                    }
+
+                    // Also check for library base storage files (e.g., bsdsocket_bases.s)
+                    // These provide storage for extern vars like SocketBase
+                    // Skip if already included in coreFiles (bsdsocket_bases, amissl_bases are core)
+                    var basesSource = Path.Combine(compilerDir, "stubs", $"{stub}_bases.s");
+                    var isCoreBase = stub == "bsdsocket" || stub == "amissl";
+                    if (!isCoreBase && File.Exists(basesSource))
+                    {
+                        var basesObj = Path.Combine(outputDir, $"{stub}_bases.o");
+                        if (!await toolchain.Assemble(basesSource, basesObj, assemblyCpu, false))
+                        {
+                            Console.WriteLine($"Failed to assemble {stub} bases");
+                            return 1;
+                        }
+                        objectFiles.Add(basesObj);
                     }
                 }
             }

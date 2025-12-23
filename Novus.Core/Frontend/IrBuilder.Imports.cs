@@ -388,6 +388,11 @@ public partial class IrBuilder
                             var function = new IrFunction(funcName, returnType, visibility, isExtern);
                             function.IsConstFn = isConstFn;
 
+                            // Parse and store function attributes (for @library, etc.)
+                            // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
+                            var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                            function.Attributes = attributes;
+
                             // Parse parameters
                             ParseFunctionParameters(funcDecl, function);
 
@@ -818,6 +823,11 @@ public partial class IrBuilder
                 // Parse and import the extern function
                 var returnType = ParseReturnType(funcDecl.type());
                 var function = new IrFunction(funcName, returnType, Visibility.Private, true);
+
+                // Parse and store function attributes (for @library, etc.)
+                // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
+                var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                function.Attributes = attributes;
 
                 // Parse parameters
                 ParseFunctionParameters(funcDecl, function);
@@ -1808,6 +1818,12 @@ public partial class IrBuilder
             // CRITICAL: Preserve visibility when importing - pub functions must stay pub!
             var visibility = isPub ? Visibility.Public : Visibility.Private;
             var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+            // Parse and store function attributes (for @library, @test, @export, etc.)
+            // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
+            // Without this, the code generator won't know which library the function belongs to.
+            var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+            function.Attributes = attributes;
 
             // Parse parameters
             ParseFunctionParameters(funcDecl, function);

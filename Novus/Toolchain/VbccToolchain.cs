@@ -715,6 +715,22 @@ public class VbccToolchain
             {
                 Console.WriteLine($"Warning: {library} functions used but stubs not found at {stubsSource}");
             }
+
+            // Also check for library base storage files (e.g., bsdsocket_bases.s)
+            // These provide storage for extern vars like SocketBase
+            var basesSource = Path.Combine(compilerDir, "stubs", $"{library}_bases.s");
+            if (File.Exists(basesSource))
+            {
+                var basesObj = Path.Combine(outputPath, $"{library}_bases.o");
+
+                if (!await AssembleInfrastructureFile(basesSource, basesObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine($"{library} bases assembly failed");
+                    return false;
+                }
+
+                objFiles.Add(basesObj);
+            }
         }
 
         // Link with appropriate math library (novus_startup.o already in objFiles)
@@ -884,6 +900,22 @@ public class VbccToolchain
             {
                 Console.WriteLine($"Warning: {library} functions used but stubs not found at {stubsSource}");
             }
+
+            // Also check for library base storage files (e.g., bsdsocket_bases.s)
+            // These provide storage for extern vars like SocketBase
+            var basesSource = Path.Combine(compilerDir, "stubs", $"{library}_bases.s");
+            if (File.Exists(basesSource))
+            {
+                var basesObj = Path.Combine(outputPath, $"{library}_bases.o");
+
+                if (!await AssembleInfrastructureFile(basesSource, basesObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine($"{library} bases assembly failed");
+                    return false;
+                }
+
+                objFiles.Add(basesObj);
+            }
         }
 
         // Link all object files (novus_startup.o already in objFiles)
@@ -973,7 +1005,9 @@ public class VbccToolchain
             ["iffparse"] = new[] { "_OpenIFF", "_CloseIFF", "_ParseIFF" },
             ["timer"] = new[] { "_GetSysTime", "_AddTime", "_SubTime" },
             ["mathieeedoubbas"] = new[] { "_IEEEDPAdd", "_IEEEDPSub", "_IEEEDPMul", "_IEEEDPDiv" },
-            ["mathieeesingbas"] = new[] { "_IEEESPAdd", "_IEEESPSub", "_IEEESPMul", "_IEEESPDiv" }
+            ["mathieeesingbas"] = new[] { "_IEEESPAdd", "_IEEESPSub", "_IEEESPMul", "_IEEESPDiv" },
+            // BSD Socket library (AmiTCP, Miami, Roadshow)
+            ["bsdsocket"] = new[] { "_socket", "_bind", "_listen", "_accept", "_connect", "_send", "_recv", "_sendto", "_recvfrom", "_gethostbyname", "_gethostbyaddr", "_inet_aton", "_inet_ntoa", "_SetErrnoPtr", "_SocketBaseTags", "_CloseSocket", "_shutdown", "_setsockopt", "_getsockopt", "_select", "_WaitSelect", "_Errno", "_gethostname", "_getservbyname", "_getprotobyname" }
         };
 
         // Check each library's functions

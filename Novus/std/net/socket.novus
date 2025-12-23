@@ -39,9 +39,11 @@ from std::core import Result
 // Version 4 is provided by all major stacks (AmiTCP, Miami, Roadshow)
 const BSDSOCKET_VERSION: u32 = 4
 
-// Thread-local errno storage for this task
+// Task-local errno storage for this task
 // This is set per-task via SetErrnoPtr
-static var _task_errno: i32 = 0
+// NOTE: This variable is accessed from std::net::errors for NetError::last()
+//       It is exported as _net_task_errno to avoid name collisions
+pub static var _net_task_errno: i32 = 0
 
 /// Socket library handle with automatic cleanup
 ///
@@ -79,7 +81,7 @@ impl SocketLibrary {
 
         // Set up per-task errno pointer
         // This is CRITICAL for multi-tasking - each task needs its own errno
-        let errno_ptr: *i32 = (*i32)&_task_errno
+        let errno_ptr: *i32 = (*i32)&_net_task_errno
         let result = unsafe { SetErrnoPtr(errno_ptr, 4) }
 
         if result != 0 {
@@ -108,7 +110,7 @@ impl SocketLibrary {
 
     /// Get a reference to the per-task errno
     pub fn errno_ptr() -> *i32 {
-        return (*i32)&_task_errno
+        return (*i32)&_net_task_errno
     }
 }
 
@@ -126,6 +128,47 @@ impl Drop for SocketLibrary {
             }
         }
     }
+}
+
+/// Ensure the socket library is initialized for the current task
+///
+/// This is called automatically by functions that need bsdsocket.library
+/// (like inet_aton). If the library is already initialized (either via
+/// SocketLibrary::init() or a previous ensure_initialized() call), this
+/// is a no-op.
+///
+/// Returns true if the library is available, false if no TCP/IP stack.
+pub fn ensure_initialized() -> bool {
+    // Check if already initialized via SocketLibrary::init() or previous auto-init
+    let current_base = unsafe { SocketBase }
+    if current_base as u32 != 0 {
+        return true
+    }
+
+    // Try to open bsdsocket.library
+    let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
+
+    if base as u32 == 0 {
+        return false
+    }
+
+    // Set SocketBase so FFI functions work
+    unsafe {
+        SocketBase = base as *u8
+    }
+
+    // Set up per-task errno pointer
+    let errno_ptr: *i32 = (*i32)&_net_task_errno
+    let result = unsafe { SetErrnoPtr(errno_ptr, 4) }
+
+    if result != 0 {
+        // Failed to set errno pointer - cleanup
+        unsafe { SocketBase = 0 as *u8 }
+        unsafe { CloseLibrary(base) }
+        return false
+    }
+
+    return true
 }
 
 /// Check if a TCP/IP stack is available without initializing
@@ -159,6 +202,11 @@ pub fn is_tcp_available() -> bool {
 /// NOTE: This is more expensive than is_tcp_available() - only use it
 /// when you need to verify the stack is actually working, not just installed.
 ///
+/// IMPORTANT: This function temporarily modifies the global SocketBase.
+/// Do NOT call this if you already have an active SocketLibrary instance
+/// or from a multi-tasking context where other tasks may be using sockets.
+/// For multi-tasking safety, use SocketLibrary::init() and handle the error.
+///
 /// Example:
 /// ```novus
 /// if is_tcp_functional() {
@@ -168,14 +216,23 @@ pub fn is_tcp_available() -> bool {
 /// }
 /// ```
 pub fn is_tcp_functional() -> bool {
+    // Check if SocketBase is already in use - if so, the stack is
+    // already initialized and functional for this task
+    let current_base = unsafe { SocketBase }
+    if current_base as u32 != 0 {
+        // Already initialized - assume functional
+        // (If it wasn't, init() would have failed)
+        return true
+    }
+
     // Try to open the library
     let base = unsafe { OpenLibrary("bsdsocket.library", BSDSOCKET_VERSION) }
     if (u32)base == 0 {
         return false
     }
 
-    // Temporarily set SocketBase for FFI calls
-    let old_base = unsafe { SocketBase }
+    // Set SocketBase for FFI calls
+    // Safe because we checked it was 0 above
     unsafe { SocketBase = base as *u8 }
 
     // Set up errno pointer (required before any socket operations)
@@ -184,7 +241,7 @@ pub fn is_tcp_functional() -> bool {
     let errno_result = unsafe { SetErrnoPtr(errno_ptr, 4) }
 
     if errno_result != 0 {
-        unsafe { SocketBase = old_base }
+        unsafe { SocketBase = 0 as *u8 }
         unsafe { CloseLibrary(base) }
         return false
     }
@@ -198,7 +255,8 @@ pub fn is_tcp_functional() -> bool {
         unsafe { CloseSocket(sock) }
     }
 
-    unsafe { SocketBase = old_base }
+    // Clear SocketBase since we're closing the library
+    unsafe { SocketBase = 0 as *u8 }
     unsafe { CloseLibrary(base) }
 
     return socket_works

@@ -1,0 +1,291 @@
+// Tests for networking features added in stdlib fixes
+// Run with: novus test test_net_features.novus
+//
+// These tests validate functionality that requires bsdsocket.library
+// and will only work on AmigaOS with TCP/IP stack installed.
+
+from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_bool
+from std::net::errors import NetError
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import is_tcp_functional
+from std::ffi::bsdsocket import bsd_timeval, fd_set, FD_ZERO, FD_SET, FD_CLR, FD_ISSET
+
+// ============================================================================
+// NetError Display Tests
+// ============================================================================
+
+@test("NetError::Other message returns correct string")
+pub fn test_neterror_other_message() {
+    let err = NetError::Other(0)
+    let msg = err.message()
+    // message() returns a *u8 to a null-terminated string
+    expect_true(msg as u32 != 0, "Other message not null")
+}
+
+@test("NetError::ConnectionRefused has message")
+pub fn test_neterror_refused_message() {
+    let err = NetError::ConnectionRefused
+    let msg = err.message()
+    // Should not be null
+    expect_true(msg as u32 != 0, "message should not be null")
+}
+
+@test("NetError::TimedOut has message")
+pub fn test_neterror_timeout_message() {
+    let err = NetError::TimedOut
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "timeout message not null")
+}
+
+@test("NetError::WouldBlock has message")
+pub fn test_neterror_wouldblock_message() {
+    let err = NetError::WouldBlock
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "wouldblock message not null")
+}
+
+@test("NetError::NotConnected has message")
+pub fn test_neterror_notconnected_message() {
+    let err = NetError::NotConnected
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "notconnected message not null")
+}
+
+@test("NetError::AddrInUse has message")
+pub fn test_neterror_addrinuse_message() {
+    let err = NetError::AddrInUse
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "addrinuse message not null")
+}
+
+@test("NetError::NetworkUnreach has message")
+pub fn test_neterror_networkunreach_message() {
+    let err = NetError::NetworkUnreach
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "networkunreach message not null")
+}
+
+@test("NetError::HostUnreach has message")
+pub fn test_neterror_hostunreach_message() {
+    let err = NetError::HostUnreach
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "hostunreach message not null")
+}
+
+@test("NetError::PermissionDenied has message")
+pub fn test_neterror_permissiondenied_message() {
+    let err = NetError::PermissionDenied
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "permissiondenied message not null")
+}
+
+@test("NetError::InvalidArg has message")
+pub fn test_neterror_invalidarg_message() {
+    let err = NetError::InvalidArg
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "invalidarg message not null")
+}
+
+@test("NetError::OutOfMemory has message")
+pub fn test_neterror_outofmemory_message() {
+    let err = NetError::OutOfMemory
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "outofmemory message not null")
+}
+
+@test("NetError::Shutdown has message")
+pub fn test_neterror_shutdown_message() {
+    let err = NetError::Shutdown
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "shutdown message not null")
+}
+
+@test("NetError::Other(999) has message")
+pub fn test_neterror_other_code_message() {
+    let err = NetError::Other(999)
+    let msg = err.message()
+    expect_true(msg as u32 != 0, "Other message not null")
+}
+
+// ============================================================================
+// NetError from_errno Tests
+// ============================================================================
+
+@test("NetError::from_errno(0) returns Other(0)")
+pub fn test_neterror_from_errno_zero() {
+    let err = NetError::from_errno(0)
+    match err {
+        NetError::Other(code) => expect_eq_i32(code, 0, "errno 0 is Other(0)"),
+        _ => expect_true(false, "errno 0 should be Other(0)"),
+    }
+}
+
+@test("NetError::from_errno(ECONNREFUSED) returns ConnectionRefused")
+pub fn test_neterror_from_errno_refused() {
+    let err = NetError::from_errno(61)  // ECONNREFUSED on BSD
+    match err {
+        NetError::ConnectionRefused => expect_true(true, "errno 61 is ConnectionRefused"),
+        _ => expect_true(false, "errno 61 should be ConnectionRefused"),
+    }
+}
+
+@test("NetError::from_errno(ETIMEDOUT) returns TimedOut")
+pub fn test_neterror_from_errno_timeout() {
+    let err = NetError::from_errno(60)  // ETIMEDOUT on BSD
+    match err {
+        NetError::TimedOut => expect_true(true, "errno 60 is TimedOut"),
+        _ => expect_true(false, "errno 60 should be TimedOut"),
+    }
+}
+
+@test("NetError::from_errno(unknown) returns Other")
+pub fn test_neterror_from_errno_unknown() {
+    let err = NetError::from_errno(9999)
+    match err {
+        NetError::Other(code) => {
+            expect_eq_i32(code, 9999, "unknown code preserved")
+        },
+        _ => expect_true(false, "unknown errno should be Other"),
+    }
+}
+
+// ============================================================================
+// is_tcp_functional Tests
+// ============================================================================
+
+@test("is_tcp_functional returns consistent result")
+pub fn test_is_tcp_functional_consistent() {
+    // Call twice - should return same result
+    let result1 = is_tcp_functional()
+    let result2 = is_tcp_functional()
+    expect_eq_bool(result1, result2, "is_tcp_functional should be consistent")
+}
+
+// ============================================================================
+// SocketAddrV4 Tests (additional)
+// ============================================================================
+
+@test("SocketAddrV4::new creates correct address")
+pub fn test_socketaddr_new() {
+    let ip = Ipv4Addr::new(192, 168, 1, 100)
+    let addr = SocketAddrV4::new(ip, 8080)
+
+    expect_eq_u32(addr.port() as u32, 8080, "port should be 8080")
+}
+
+@test("SocketAddrV4 localhost with port 80")
+pub fn test_socketaddr_localhost() {
+    let ip = Ipv4Addr::localhost()
+    let addr = SocketAddrV4::new(ip, 80)
+
+    expect_eq_u32(addr.port() as u32, 80, "port should be 80")
+    let ip_back = addr.ip()
+    expect_true(ip_back.is_loopback(), "should be loopback")
+}
+
+// ============================================================================
+// bsd_timeval struct Tests
+// ============================================================================
+
+@test("bsd_timeval has correct layout")
+pub fn test_bsd_timeval_layout() {
+    var tv = bsd_timeval {
+        tv_sec: 5,
+        tv_usec: 500000,
+    }
+    expect_eq_i32(tv.tv_sec, 5, "tv_sec should be 5")
+    expect_eq_i32(tv.tv_usec, 500000, "tv_usec should be 500000")
+}
+
+@test("bsd_timeval can represent 1 second")
+pub fn test_bsd_timeval_one_second() {
+    var tv = bsd_timeval {
+        tv_sec: 1,
+        tv_usec: 0,
+    }
+    expect_eq_i32(tv.tv_sec, 1, "1 second")
+    expect_eq_i32(tv.tv_usec, 0, "0 microseconds")
+}
+
+@test("bsd_timeval can represent 100ms")
+pub fn test_bsd_timeval_100ms() {
+    var tv = bsd_timeval {
+        tv_sec: 0,
+        tv_usec: 100000,  // 100ms = 100000 us
+    }
+    expect_eq_i32(tv.tv_sec, 0, "0 seconds")
+    expect_eq_i32(tv.tv_usec, 100000, "100000 microseconds")
+}
+
+// ============================================================================
+// fd_set Tests
+// ============================================================================
+
+@test("FD_ZERO clears all bits")
+pub fn test_fd_zero() {
+    var fds = fd_set { fds_bits: [0xFFFFFFFFu32; 2] }
+    FD_ZERO((*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[0], 0, "first word should be 0")
+    expect_eq_u32(fds.fds_bits[1], 0, "second word should be 0")
+}
+
+@test("FD_SET sets correct bit for fd 0")
+pub fn test_fd_set_zero() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(0, (*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[0] & 1, 1, "bit 0 should be set")
+}
+
+@test("FD_SET sets correct bit for fd 1")
+pub fn test_fd_set_one() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(1, (*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[0] & 2, 2, "bit 1 should be set")
+}
+
+@test("FD_SET sets correct bit for fd 31")
+pub fn test_fd_set_31() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(31, (*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[0] & 0x80000000u32, 0x80000000u32, "bit 31 should be set")
+}
+
+@test("FD_SET sets correct bit for fd 32")
+pub fn test_fd_set_32() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(32, (*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[1] & 1, 1, "bit 0 of second word should be set")
+}
+
+@test("FD_CLR clears correct bit")
+pub fn test_fd_clr() {
+    var fds = fd_set { fds_bits: [0xFFFFFFFFu32; 2] }
+    FD_CLR(5, (*fd_set)&fds)
+    expect_eq_u32(fds.fds_bits[0] & 0x20, 0, "bit 5 should be clear")
+}
+
+@test("FD_ISSET returns true for set bit")
+pub fn test_fd_isset_true() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(7, (*fd_set)&fds)
+    expect_true(FD_ISSET(7, (*fd_set)&fds), "fd 7 should be set")
+}
+
+@test("FD_ISSET returns false for clear bit")
+pub fn test_fd_isset_false() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    expect_false(FD_ISSET(7, (*fd_set)&fds), "fd 7 should not be set")
+}
+
+@test("Multiple FD_SET operations work")
+pub fn test_fd_set_multiple() {
+    var fds = fd_set { fds_bits: [0u32; 2] }
+    FD_SET(3, (*fd_set)&fds)
+    FD_SET(10, (*fd_set)&fds)
+    FD_SET(40, (*fd_set)&fds)
+
+    expect_true(FD_ISSET(3, (*fd_set)&fds), "fd 3 set")
+    expect_true(FD_ISSET(10, (*fd_set)&fds), "fd 10 set")
+    expect_true(FD_ISSET(40, (*fd_set)&fds), "fd 40 set")
+    expect_false(FD_ISSET(4, (*fd_set)&fds), "fd 4 not set")
+}

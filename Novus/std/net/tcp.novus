@@ -38,11 +38,14 @@
 
 from std::ffi::bsdsocket import socket, bind, listen, accept, connect, send, recv, CloseSocket, shutdown
 from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
-from std::ffi::bsdsocket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR, SO_KEEPALIVE
+from std::ffi::bsdsocket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR, SO_KEEPALIVE, SO_ERROR
 from std::ffi::bsdsocket import IPPROTO_TCP_OPT, TCP_NODELAY, FIONBIO, FIONREAD
-from std::ffi::bsdsocket import SHUT_RD, SHUT_WR, SHUT_RDWR, MSG_PEEK, MSG_WAITALL, Errno
+from std::ffi::bsdsocket import SHUT_RD, SHUT_WR, SHUT_RDWR, MSG_PEEK, MSG_WAITALL
+from std::ffi::bsdsocket import WaitSelect, fd_set, bsd_timeval, FD_ZERO, FD_SET, FD_ISSET
+from std::ffi::bsdsocket import EINPROGRESS, EWOULDBLOCK
 from std::net::addr import Ipv4Addr, SocketAddrV4
 from std::net::errors import NetError
+from std::net::socket import SocketLibrary
 from std::core import Option, Result
 
 /// TCP stream - a connected TCP socket
@@ -83,6 +86,110 @@ impl TcpStream {
             unsafe { CloseSocket(fd) }
             return Result::Err(err)
         }
+
+        return Result::Ok(TcpStream {
+            fd: fd,
+            local_addr: Option::None,
+            peer_addr: Option::Some(addr),
+        })
+    }
+
+    /// Connect to a remote address with a timeout
+    ///
+    /// Creates a new TCP connection with a specified timeout in milliseconds.
+    /// Returns TimedOut error if the connection cannot be established within
+    /// the specified time.
+    ///
+    /// Example:
+    /// ```novus
+    /// // Connect with 5 second timeout
+    /// let stream = TcpStream::connect_timeout(addr, 5000)?
+    /// ```
+    pub fn connect_timeout(addr: SocketAddrV4, timeout_ms: u32) -> Result<TcpStream, NetError> {
+        // Create socket
+        let fd = unsafe { socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) }
+        if fd < 0 {
+            return Result::Err(NetError::last())
+        }
+
+        // Set non-blocking mode for the connect
+        let one: i32 = 1
+        let one_ptr: *u8 = (*u8)&one
+        let ioctl_result = unsafe { IoctlSocket(fd, FIONBIO, one_ptr) }
+        if ioctl_result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        // Convert address to sockaddr_in
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)(&sin)
+
+        // Start non-blocking connection
+        let connect_result = unsafe { connect(fd, addr_ptr, 16) }
+
+        if connect_result < 0 {
+            let errno = unsafe { *SocketLibrary::errno_ptr() }
+
+            // EINPROGRESS means connection is in progress (expected for non-blocking)
+            if errno != EINPROGRESS {
+                unsafe { CloseSocket(fd) }
+                return Result::Err(NetError::from_errno(errno))
+            }
+        }
+
+        // Connection either succeeded immediately or is in progress
+        // Use WaitSelect to wait for connection completion with timeout
+        var write_fds = fd_set { fds_bits: [0u32; 2] }
+        FD_ZERO((*fd_set)&write_fds)
+        FD_SET(fd, (*fd_set)&write_fds)
+
+        var tv = bsd_timeval {
+            tv_sec: (timeout_ms / 1000) as i32,
+            tv_usec: ((timeout_ms % 1000) * 1000) as i32,
+        }
+
+        var signals: u32 = 0
+        let nfds = fd + 1
+        let select_result = unsafe {
+            WaitSelect(nfds, 0 as *fd_set, (*fd_set)&write_fds, 0 as *fd_set, (*bsd_timeval)&tv, (*u32)&signals)
+        }
+
+        if select_result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        if select_result == 0 {
+            // Timeout
+            unsafe { CloseSocket(fd) }
+            return Result::Err(NetError::TimedOut)
+        }
+
+        // Check if connection succeeded by getting SO_ERROR
+        var sock_err: i32 = 0
+        var sock_err_len: i32 = 4
+        let getsockopt_result = unsafe {
+            getsockopt(fd, SOL_SOCKET, SO_ERROR, (*u8)&sock_err, (*i32)&sock_err_len)
+        }
+
+        if getsockopt_result < 0 {
+            let err = NetError::last()
+            unsafe { CloseSocket(fd) }
+            return Result::Err(err)
+        }
+
+        if sock_err != 0 {
+            unsafe { CloseSocket(fd) }
+            return Result::Err(NetError::from_errno(sock_err))
+        }
+
+        // Switch back to blocking mode
+        let zero: i32 = 0
+        let zero_ptr: *u8 = (*u8)&zero
+        unsafe { IoctlSocket(fd, FIONBIO, zero_ptr) }
 
         return Result::Ok(TcpStream {
             fd: fd,

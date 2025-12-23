@@ -29,9 +29,11 @@ public partial class IrBuilder
         // Clear emitted defer blocks tracking for this new function
         _emittedDeferBlocks.Clear();
 
-        // Check for #[export] attribute
+        // Parse and store function attributes (for @library, @test, @export, etc.)
+        // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
         // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
         var attributes = ProcessAndFilterModuleAttributes(context.attribute());
+        function.Attributes = attributes;
         if (attributes.Has("export"))
         {
             function.IsExported = true;

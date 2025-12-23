@@ -40,10 +40,10 @@
 // }
 // ```
 
-from std::ffi::bsdsocket import socket, bind, sendto, recvfrom, CloseSocket
+from std::ffi::bsdsocket import socket, bind, sendto, recvfrom, CloseSocket, connect, send, recv
 from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
 from std::ffi::bsdsocket import AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET, SO_BROADCAST, SO_RCVBUF, SO_SNDBUF
-from std::ffi::bsdsocket import FIONBIO, FIONREAD, Errno
+from std::ffi::bsdsocket import FIONBIO, FIONREAD
 from std::net::addr import Ipv4Addr, SocketAddrV4
 from std::net::errors import NetError
 from std::core import Option, Result
@@ -109,6 +109,69 @@ impl UdpSocket {
             fd: fd,
             local_addr: SocketAddrV4::new(Ipv4Addr::any(), 0),
         })
+    }
+
+    /// Connect the socket to a remote address
+    ///
+    /// For UDP, "connecting" sets a default destination address so you can
+    /// use send()/recv() instead of send_to()/recv_from().
+    ///
+    /// This also:
+    /// - Filters incoming datagrams to only those from the connected address
+    /// - Allows receiving ICMP errors (port unreachable, etc.)
+    /// - Slightly more efficient for sending multiple datagrams to same address
+    ///
+    /// Example:
+    /// ```novus
+    /// let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 0))?
+    /// sock.connect(SocketAddrV4::new(Ipv4Addr::new(8, 8, 8, 8), 53))?
+    /// sock.send(query_data, query_len)?  // Uses connected address
+    /// let n = sock.recv(&buf, 512)?       // Only receives from connected address
+    /// ```
+    pub fn connect(&self, addr: SocketAddrV4) -> Result<(), NetError> {
+        let sin = addr.to_sockaddr_in()
+        let addr_ptr: *sockaddr = (*sockaddr)&sin
+
+        let result = unsafe { connect(self.fd, addr_ptr, 16) }
+        if result < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(())
+    }
+
+    /// Send a datagram to the connected address
+    ///
+    /// Only works after calling connect(). Returns the number of bytes sent.
+    ///
+    /// Example:
+    /// ```novus
+    /// sock.connect(server_addr)?
+    /// sock.send(data, len)?
+    /// ```
+    pub fn send(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { send(self.fd, buf, len, 0) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
+    }
+
+    /// Receive a datagram from the connected address
+    ///
+    /// Only works after calling connect(). Returns the number of bytes received.
+    /// Only receives datagrams from the connected address; others are silently dropped.
+    ///
+    /// Example:
+    /// ```novus
+    /// sock.connect(server_addr)?
+    /// let n = sock.recv(&buf, 512)?
+    /// ```
+    pub fn recv(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
+        let n = unsafe { recv(self.fd, buf, len, 0) }
+        if n < 0 {
+            return Result::Err(NetError::last())
+        }
+        return Result::Ok(n)
     }
 
     /// Send a datagram to a specific address

@@ -4,7 +4,15 @@
 // Network error types that map errno codes to Novus-style Result errors.
 // All networking APIs return Result[T, NetError] for safe error handling.
 
-from std::ffi::bsdsocket import ECONNREFUSED, ECONNRESET, ETIMEDOUT, EADDRINUSE, EADDRNOTAVAIL, ENETDOWN, ENETUNREACH, ECONNABORTED, ENOTCONN, EISCONN, EWOULDBLOCK, EAGAIN, EINPROGRESS, EINVAL, EACCES, EPERM, ENOTSOCK, EDESTADDRREQ, EMSGSIZE, EPROTONOSUPPORT, ESOCKTNOSUPPORT, EOPNOTSUPP, EAFNOSUPPORT, ENOBUFS, ESHUTDOWN, EHOSTDOWN, EHOSTUNREACH, EIO, EINTR, ENOMEM, EBADF, HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA, Errno
+from std::ffi::bsdsocket import ECONNREFUSED, ECONNRESET, ETIMEDOUT, EADDRINUSE, EADDRNOTAVAIL, ENETDOWN, ENETUNREACH, ECONNABORTED, ENOTCONN, EISCONN, EWOULDBLOCK, EAGAIN, EINPROGRESS, EINVAL, EACCES, EPERM, ENOTSOCK, EDESTADDRREQ, EMSGSIZE, EPROTONOSUPPORT, ESOCKTNOSUPPORT, EOPNOTSUPP, EAFNOSUPPORT, ENOBUFS, ESHUTDOWN, EHOSTDOWN, EHOSTUNREACH, EIO, EINTR, ENOMEM, EBADF, HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
+from std::strings::format import Formatter, Display
+from std::strings::core import Str
+
+// Import the task-local errno storage from socket module
+// This variable is defined in socket.novus and set up via SetErrnoPtr
+// NOTE: We can't import SocketLibrary here due to circular dependency
+//       (socket imports errors for NetError)
+extern var _net_task_errno: i32
 
 /// Network error type
 /// Represents all possible networking errors with human-readable messages
@@ -138,8 +146,16 @@ impl NetError {
     }
 
     /// Get the last socket error
+    ///
+    /// This reads the per-task errno that was set up via SetErrnoPtr.
+    /// IMPORTANT: This only works after SocketLibrary::init() has been called
+    /// for the current task.
     pub fn last() -> NetError {
-        let errno = Errno()
+        // Read from the per-task errno set up by SocketLibrary::init()
+        // This is CRITICAL: The bsdsocket.library Errno() function reads from
+        // a global, not the per-task errno we set up. We MUST read directly
+        // from the variable we passed to SetErrnoPtr.
+        let errno = _net_task_errno
         NetError::from_errno(errno)
     }
 
@@ -205,6 +221,27 @@ impl NetError {
             NetError::TlsCertificateError => return "TLS certificate verification failed",
             NetError::TlsProtocolError => return "TLS protocol error",
             NetError::Other(_) => return "unknown network error",
+        }
+    }
+
+    /// Get the errno value for Other errors, or 0 for named errors
+    pub fn errno(self) -> i32 {
+        match self {
+            NetError::Other(code) => return code,
+            _ => return 0,
+        }
+    }
+}
+
+impl Display for NetError {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        // Get the error message as a C string
+        let err = *self
+        let msg = err.message()
+        // from_cstr returns Option<Str>, so we need to handle that
+        match Str::from_cstr(msg) {
+            Option::Some(s) => return f.write_str(s),
+            Option::None => return false,
         }
     }
 }
