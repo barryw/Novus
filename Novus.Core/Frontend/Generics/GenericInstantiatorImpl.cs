@@ -129,7 +129,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             }
 
             // Substitute generic types in return type
-            returnType = _context.SubstitutionEngine.SubstituteGenericTypes(returnType, typeSubstitutions);
+            returnType = _context.SubstitutionEngine.SubstituteGenericTypes(returnType!, typeSubstitutions);
 
             // Generate mangled name
             var mangledTypeName = monomorphizedStruct.CacheKey ?? baseTypeName;
@@ -141,7 +141,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                 traitTypeArgs ?? new List<IrType>()
             );
 
-            var function = new IrFunction(mangledMethodName, returnType, Visibility.Private, false);
+            var function = new IrFunction(mangledMethodName, returnType!, Visibility.Private, false);
 
             // Parse parameters with substitutions
             if (funcDecl.parameterList() != null)

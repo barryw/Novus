@@ -209,22 +209,40 @@ public partial class IrBuilder
         // Use annotated type if specified, otherwise infer from value
         IrType type = annotatedType ?? value.Type;
 
+        // CRITICAL FIX: Generate unique names for local variables with type conflicts
+        // Different scopes (e.g., match arms) can declare the same variable name with different types.
+        // In C, we can't have multiple variables with the same name but different types
+        // at function scope. Generate unique names like "v_1", "v_2", etc. when types differ.
+        var uniqueName = name;
+        if (_localVariables.TryGetValue(name, out var existingVar))
+        {
+            // Check if types differ - if so, we need a unique name
+            if (!_typeParser.TypesAreEqual(existingVar.Type, type))
+            {
+                uniqueName = $"{name}_{_tempCounter++}";
+            }
+        }
+
         // Create local variable
-        var localVar = new IrLocalVariable(name, type, isMutable);
+        var localVar = new IrLocalVariable(uniqueName, type, isMutable);
         _currentFunction!.LocalVariables.Add(localVar);
-        _localVariables[name] = localVar;
+        // Map BOTH the unique name and original name to this variable.
+        // The unique name is needed for C code generation (avoids type conflicts).
+        // The original name is needed so subsequent references find this variable.
+        _localVariables[uniqueName] = localVar;
+        _localVariables[name] = localVar;  // Overwrite so references find the new variable
 
         // If initializing from a variable with Drop, deactivate its defer to prevent double-free
         DeactivateVariableDeferIfMove(value);
 
         // Generate IR for the declaration with initial value
-        Emit(new IrLocalDecl(name, type, isMutable, value));
+        Emit(new IrLocalDecl(uniqueName, type, isMutable, value));
 
         // Automatic defer for types with drop() method (RAII-style cleanup)
         // For generic types, eagerly instantiate the drop() method if it exists as a template
         if (EnsureDropMethodInstantiated(type))
         {
-            InjectAutomaticDrop(name, type);
+            InjectAutomaticDrop(uniqueName, type);
         }
 
         return null;

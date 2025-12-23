@@ -268,6 +268,14 @@ public class TypeParser : ITypeSubstitutionEngine
                 return MonomorphizeEnum(enumType, context);
             }
 
+            // DEBUG: If enum has generics but no type args, print warning
+            if (enumType.GenericParameters.Count > 0)
+            {
+                System.Console.Error.WriteLine($"DEBUG ParseNamedType: returning generic enum without type args: {typeName}");
+                System.Console.Error.WriteLine($"  context text: {context.GetText()}");
+                System.Console.Error.WriteLine($"  genericTypeArgs: {context.genericTypeArgs()?.GetText() ?? "null"}");
+            }
+
             return enumType;
         }
 
@@ -314,12 +322,38 @@ public class TypeParser : ITypeSubstitutionEngine
                 bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
                 if (needsSubstitution)
                 {
-                    // Complex case: the type arg contains generic parameters (e.g., "HashMap<K,V>")
-                    // We can't parse it yet (would cause infinite recursion), so do string substitution
+                    // Complex case: the type arg contains generic parameters
+                    // Handle prefixes like "&var", "&", "*" which get concatenated with the type name
                     var substitutedText = rawText;
+
+                    // Handle reference/pointer prefixes
+                    string prefix = "";
+                    string remaining = rawText;
+                    if (rawText.StartsWith("&var"))
+                    {
+                        prefix = "&var ";
+                        remaining = rawText.Substring(4);
+                    }
+                    else if (rawText.StartsWith("&"))
+                    {
+                        prefix = "&";
+                        remaining = rawText.Substring(1);
+                    }
+                    else if (rawText.StartsWith("*"))
+                    {
+                        prefix = "*";
+                        remaining = rawText.Substring(1);
+                    }
+
+                    // Try to substitute the remaining part
+                    if (_context.CurrentTypeSubstitutions.TryGetValue(remaining, out var substitutedType2))
+                    {
+                        return prefix + GetTypeCacheKey(substitutedType2);
+                    }
+
+                    // Fallback to regex for nested cases like "HashMap<K,V>"
                     foreach (var kvp in _context.CurrentTypeSubstitutions)
                     {
-                        // Replace generic param with its concrete type's cache key
                         // Be careful to replace whole words only (K but not KV)
                         var pattern = $@"\b{kvp.Key}\b";
                         substitutedText = System.Text.RegularExpressions.Regex.Replace(
@@ -471,12 +505,38 @@ public class TypeParser : ITypeSubstitutionEngine
                 bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
                 if (needsSubstitution)
                 {
-                    // Complex case: the type arg contains generic parameters (e.g., "HashMap<K,V>")
-                    // We can't parse it yet (would cause infinite recursion), so do string substitution
+                    // Complex case: the type arg contains generic parameters
+                    // Handle prefixes like "&var", "&", "*" which get concatenated with the type name
                     var substitutedText = rawText;
+
+                    // Handle reference/pointer prefixes
+                    string prefix = "";
+                    string remaining = rawText;
+                    if (rawText.StartsWith("&var"))
+                    {
+                        prefix = "&var ";
+                        remaining = rawText.Substring(4);
+                    }
+                    else if (rawText.StartsWith("&"))
+                    {
+                        prefix = "&";
+                        remaining = rawText.Substring(1);
+                    }
+                    else if (rawText.StartsWith("*"))
+                    {
+                        prefix = "*";
+                        remaining = rawText.Substring(1);
+                    }
+
+                    // Try to substitute the remaining part
+                    if (_context.CurrentTypeSubstitutions.TryGetValue(remaining, out var substitutedType2))
+                    {
+                        return prefix + GetTypeCacheKey(substitutedType2);
+                    }
+
+                    // Fallback to regex for nested cases like "HashMap<K,V>"
                     foreach (var kvp in _context.CurrentTypeSubstitutions)
                     {
-                        // Replace generic param with its concrete type's cache key
                         // Be careful to replace whole words only (K but not KV)
                         var pattern = $@"\b{kvp.Key}\b";
                         substitutedText = System.Text.RegularExpressions.Regex.Replace(
@@ -568,12 +628,14 @@ public class TypeParser : ITypeSubstitutionEngine
             ));
         }
 
-        // Update the placeholder with the actual variants
+        // Update the placeholder with the actual variants and type arguments
         placeholderEnum.Variants.Clear();
         foreach (var variant in monomorphizedVariants)
         {
             placeholderEnum.Variants.Add(variant);
         }
+        // IMPORTANT: Set TypeArguments so Name property includes them (e.g., Option<i32> not just Option)
+        placeholderEnum.TypeArguments = typeArgs;
 
         // If we used a different final cache key, update the enum and register under that too
         if (finalCacheKey != preliminaryCacheKey)

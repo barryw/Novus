@@ -1,0 +1,641 @@
+// Comprehensive tests for PriorityList<T>
+// Run with: novus test test_priority_list.novus
+
+from std::collections::intrusive_list import PriorityList, init_node
+from std::ffi::amiga_structs import Node
+from std::test::test import expect_true, expect_false, expect_eq_u32, expect_eq_i32, fail
+
+// Test struct - Node MUST be the first field for intrusive list compatibility
+struct PriorityItem {
+    node: Node,
+    value: u32,
+}
+
+// Helper to create a new priority item with initialized node
+fn new_priority_item(val: u32, priority: i8) -> PriorityItem {
+    var item = PriorityItem {
+        node: Node {
+            ln_Succ: null,
+            ln_Pred: null,
+            ln_Type: 0,
+            ln_Pri: priority,
+            ln_Name: null,
+        },
+        value: val,
+    }
+    return item
+}
+
+// ============================================================================
+// Basic Creation Tests
+// ============================================================================
+
+@test("New priority list should be empty")
+pub fn test_new_list_is_empty() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    expect_true(list.is_empty(), "new list should be empty")
+}
+
+@test("New priority list should have length 0")
+pub fn test_new_list_len_zero() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    expect_eq_u32(list.len(), 0, "new list length should be 0")
+}
+
+@test("New priority list first() should return None")
+pub fn test_new_list_first_none() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    match list.first() {
+        Option::Some(_) => fail("first() on empty list should return None"),
+        Option::None => { },
+    }
+}
+
+@test("New priority list last() should return None")
+pub fn test_new_list_last_none() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    match list.last() {
+        Option::Some(_) => fail("last() on empty list should return None"),
+        Option::None => { },
+    }
+}
+
+// ============================================================================
+// Enqueue (Priority Insertion) Tests
+// ============================================================================
+
+@test("enqueue single item makes list non-empty")
+pub fn test_enqueue_single_not_empty() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    var item = new_priority_item(42, 0)
+
+    list.enqueue(&item)
+
+    expect_false(list.is_empty(), "list should not be empty after enqueue")
+    expect_eq_u32(list.len(), 1, "list length should be 1")
+}
+
+@test("enqueue orders by priority - higher first")
+pub fn test_enqueue_priority_order() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    // Create items with different priorities
+    var low = new_priority_item(10, -10)      // Low priority
+    var medium = new_priority_item(20, 0)     // Medium priority
+    var high = new_priority_item(30, 10)      // High priority
+
+    // Add in random order
+    list.enqueue(&medium)
+    list.enqueue(&low)
+    list.enqueue(&high)
+
+    expect_eq_u32(list.len(), 3, "list should have 3 items")
+
+    // First should be highest priority (30)
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 30, "first should be high priority item (30)"),
+    }
+
+    // Last should be lowest priority (10)
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 10, "last should be low priority item (10)"),
+    }
+}
+
+@test("enqueue maintains FIFO for equal priorities")
+pub fn test_enqueue_fifo_equal_priority() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    // All items have same priority
+    var item1 = new_priority_item(1, 0)
+    var item2 = new_priority_item(2, 0)
+    var item3 = new_priority_item(3, 0)
+
+    list.enqueue(&item1)
+    list.enqueue(&item2)
+    list.enqueue(&item3)
+
+    // Should maintain insertion order (FIFO)
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 1, "first should be 1 (first inserted)"),
+    }
+
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 3, "last should be 3 (last inserted)"),
+    }
+}
+
+@test("enqueue with extreme priorities")
+pub fn test_enqueue_extreme_priorities() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var min_pri = new_priority_item(1, -128)   // Minimum i8
+    var max_pri = new_priority_item(2, 127)    // Maximum i8
+    var zero_pri = new_priority_item(3, 0)
+
+    list.enqueue(&zero_pri)
+    list.enqueue(&min_pri)
+    list.enqueue(&max_pri)
+
+    // Max priority should be first
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 2, "first should be max priority item"),
+    }
+
+    // Min priority should be last
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 1, "last should be min priority item"),
+    }
+}
+
+@test("enqueue inserts in correct position")
+pub fn test_enqueue_correct_position() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var pri_5 = new_priority_item(5, 5)
+    var pri_3 = new_priority_item(3, 3)
+    var pri_7 = new_priority_item(7, 7)
+    var pri_4 = new_priority_item(4, 4)
+
+    list.enqueue(&pri_5)
+    list.enqueue(&pri_3)
+    list.enqueue(&pri_7)
+    list.enqueue(&pri_4)  // Should go between 5 and 3
+
+    // Verify order: 7 -> 5 -> 4 -> 3
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => {
+            expect_eq_u32(ptr.value, 7, "first should be 7")
+            match list.next(ptr) {
+                Option::None => fail("should have second item"),
+                Option::Some(second) => {
+                    expect_eq_u32(second.value, 5, "second should be 5")
+                    match list.next(second) {
+                        Option::None => fail("should have third item"),
+                        Option::Some(third) => {
+                            expect_eq_u32(third.value, 4, "third should be 4")
+                            match list.next(third) {
+                                Option::None => fail("should have fourth item"),
+                                Option::Some(fourth) => {
+                                    expect_eq_u32(fourth.value, 3, "fourth should be 3")
+                                },
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+// ============================================================================
+// Add Head/Tail Tests (ignoring priority)
+// ============================================================================
+
+@test("add_head ignores priority")
+pub fn test_add_head_ignores_priority() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var high = new_priority_item(1, 100)
+    var low = new_priority_item(2, -100)
+
+    list.add_head(&high)
+    list.add_head(&low)  // Low priority but added to head
+
+    // Low priority item should be first because we used add_head
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 2, "add_head should put low at front"),
+    }
+}
+
+@test("add_tail ignores priority")
+pub fn test_add_tail_ignores_priority() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var low = new_priority_item(1, -100)
+    var high = new_priority_item(2, 100)
+
+    list.add_tail(&low)
+    list.add_tail(&high)  // High priority but added to tail
+
+    // High priority item should be last because we used add_tail
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 2, "add_tail should put high at back"),
+    }
+}
+
+// ============================================================================
+// Remove Head/Tail Tests
+// ============================================================================
+
+@test("remove_head from empty list returns None")
+pub fn test_remove_head_empty() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    match list.remove_head() {
+        Option::Some(_) => fail("remove_head from empty list should return None"),
+        Option::None => { },
+    }
+}
+
+@test("remove_head returns highest priority")
+pub fn test_remove_head_returns_highest() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var low = new_priority_item(10, -5)
+    var high = new_priority_item(20, 5)
+    var medium = new_priority_item(15, 0)
+
+    list.enqueue(&low)
+    list.enqueue(&high)
+    list.enqueue(&medium)
+
+    match list.remove_head() {
+        Option::None => fail("remove_head should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 20, "should remove highest priority first"),
+    }
+
+    expect_eq_u32(list.len(), 2, "list should have 2 items left")
+}
+
+@test("remove_tail from empty list returns None")
+pub fn test_remove_tail_empty() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    match list.remove_tail() {
+        Option::Some(_) => fail("remove_tail from empty list should return None"),
+        Option::None => { },
+    }
+}
+
+@test("remove_tail returns lowest priority")
+pub fn test_remove_tail_returns_lowest() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var low = new_priority_item(10, -5)
+    var high = new_priority_item(20, 5)
+    var medium = new_priority_item(15, 0)
+
+    list.enqueue(&low)
+    list.enqueue(&high)
+    list.enqueue(&medium)
+
+    match list.remove_tail() {
+        Option::None => fail("remove_tail should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 10, "should remove lowest priority first"),
+    }
+
+    expect_eq_u32(list.len(), 2, "list should have 2 items left")
+}
+
+@test("remove all items by priority order")
+pub fn test_remove_all_by_priority() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var items: [PriorityItem; 5] = [
+        new_priority_item(1, 1),
+        new_priority_item(2, 2),
+        new_priority_item(3, 3),
+        new_priority_item(4, 4),
+        new_priority_item(5, 5),
+    ]
+
+    // Add in order 1,2,3,4,5
+    var i: u32 = 0
+    while i < 5 {
+        list.enqueue(&items[i])
+        i = i + 1
+    }
+
+    // Should come out in priority order: 5,4,3,2,1
+    var expected: u32 = 5
+    while !list.is_empty() {
+        match list.remove_head() {
+            Option::None => fail("remove_head should succeed"),
+            Option::Some(ptr) => {
+                expect_eq_u32(ptr.value, expected, "should remove in priority order")
+                expected = expected - 1
+            },
+        }
+    }
+
+    expect_true(list.is_empty(), "list should be empty")
+}
+
+// ============================================================================
+// Remove Specific Node Tests
+// ============================================================================
+
+@test("remove middle node maintains list integrity")
+pub fn test_remove_middle_node() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var item1 = new_priority_item(10, 10)
+    var item2 = new_priority_item(20, 5)
+    var item3 = new_priority_item(30, 0)
+
+    list.enqueue(&item1)
+    list.enqueue(&item2)
+    list.enqueue(&item3)
+
+    // Remove middle item
+    list.remove(&item2)
+
+    expect_eq_u32(list.len(), 2, "list should have 2 items")
+
+    // Check remaining: 10 -> 30
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 10, "first should be 10"),
+    }
+
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 30, "last should be 30"),
+    }
+}
+
+@test("remove only node leaves empty list")
+pub fn test_remove_only_node() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    var item = new_priority_item(42, 0)
+
+    list.enqueue(&item)
+    list.remove(&item)
+
+    expect_true(list.is_empty(), "list should be empty")
+    expect_eq_u32(list.len(), 0, "list length should be 0")
+}
+
+// ============================================================================
+// Navigation Tests (next/prev)
+// ============================================================================
+
+@test("next traverses in priority order")
+pub fn test_next_traversal() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var item1 = new_priority_item(1, 10)
+    var item2 = new_priority_item(2, 5)
+    var item3 = new_priority_item(3, 0)
+
+    list.enqueue(&item1)
+    list.enqueue(&item2)
+    list.enqueue(&item3)
+
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(current) => {
+            expect_eq_u32(current.value, 1, "first should be 1 (highest priority)")
+
+            match list.next(current) {
+                Option::None => fail("next should return second item"),
+                Option::Some(second) => {
+                    expect_eq_u32(second.value, 2, "second should be 2")
+
+                    match list.next(second) {
+                        Option::None => fail("next should return third item"),
+                        Option::Some(third) => {
+                            expect_eq_u32(third.value, 3, "third should be 3")
+
+                            match list.next(third) {
+                                Option::Some(_) => fail("next on last should return None"),
+                                Option::None => { },
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+@test("prev traverses in reverse priority order")
+pub fn test_prev_traversal() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var item1 = new_priority_item(1, 10)
+    var item2 = new_priority_item(2, 5)
+    var item3 = new_priority_item(3, 0)
+
+    list.enqueue(&item1)
+    list.enqueue(&item2)
+    list.enqueue(&item3)
+
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(current) => {
+            expect_eq_u32(current.value, 3, "last should be 3 (lowest priority)")
+
+            match list.prev(current) {
+                Option::None => fail("prev should return second item"),
+                Option::Some(prev_item) => {
+                    expect_eq_u32(prev_item.value, 2, "prev should be 2")
+
+                    match list.prev(prev_item) {
+                        Option::None => fail("prev should return first item"),
+                        Option::Some(first_item) => {
+                            expect_eq_u32(first_item.value, 1, "first should be 1")
+
+                            match list.prev(first_item) {
+                                Option::Some(_) => fail("prev on first should return None"),
+                                Option::None => { },
+                            }
+                        },
+                    }
+                },
+            }
+        },
+    }
+}
+
+// ============================================================================
+// Mixed Operations Tests
+// ============================================================================
+
+@test("mixed enqueue and remove operations")
+pub fn test_mixed_operations() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var item1 = new_priority_item(1, 5)
+    var item2 = new_priority_item(2, 10)
+    var item3 = new_priority_item(3, 3)
+    var item4 = new_priority_item(4, 7)
+
+    list.enqueue(&item1)  // [1]
+    list.enqueue(&item2)  // [2, 1]
+    expect_eq_u32(list.len(), 2, "len after 2 enqueues")
+
+    list.remove_head()    // [1]
+    expect_eq_u32(list.len(), 1, "len after remove_head")
+
+    list.enqueue(&item3)  // [1, 3]
+    list.enqueue(&item4)  // [4, 1, 3]
+    expect_eq_u32(list.len(), 3, "len after 2 more enqueues")
+
+    // Order should be: 4 (pri 7), 1 (pri 5), 3 (pri 3)
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 4, "first should be 4"),
+    }
+
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 3, "last should be 3"),
+    }
+}
+
+@test("re-enqueue removed item")
+pub fn test_reenqueue_removed_item() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var item = new_priority_item(42, 5)
+
+    list.enqueue(&item)
+    expect_eq_u32(list.len(), 1, "len after first enqueue")
+
+    list.remove(&item)
+    expect_true(list.is_empty(), "list should be empty after remove")
+
+    // Re-enqueue same item
+    list.enqueue(&item)
+    expect_eq_u32(list.len(), 1, "len after re-enqueue")
+
+    match list.first() {
+        Option::None => fail("first() should return re-enqueued item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 42, "re-enqueued item value"),
+    }
+}
+
+// ============================================================================
+// Negative Priority Tests
+// ============================================================================
+
+@test("negative priorities work correctly")
+pub fn test_negative_priorities() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    var neg_10 = new_priority_item(1, -10)
+    var neg_5 = new_priority_item(2, -5)
+    var neg_20 = new_priority_item(3, -20)
+
+    list.enqueue(&neg_10)
+    list.enqueue(&neg_5)
+    list.enqueue(&neg_20)
+
+    // Order should be: -5, -10, -20 (higher values first)
+    match list.first() {
+        Option::None => fail("first() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 2, "first should be -5 priority item"),
+    }
+
+    match list.last() {
+        Option::None => fail("last() should return item"),
+        Option::Some(ptr) => expect_eq_u32(ptr.value, 3, "last should be -20 priority item"),
+    }
+}
+
+// ============================================================================
+// as_list Interop Test
+// ============================================================================
+
+@test("as_list returns valid pointer")
+pub fn test_as_list() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+    var item = new_priority_item(42, 0)
+
+    list.enqueue(&item)
+
+    let list_ptr = list.as_list()
+    expect_true(list_ptr != null, "as_list should return non-null pointer")
+}
+
+// ============================================================================
+// Large List Test
+// ============================================================================
+
+@test("many items with various priorities")
+pub fn test_many_items() {
+    var list = PriorityList::<PriorityItem>::new()
+    list.init()
+
+    // Create items with priorities 9,8,7,6,5,4,3,2,1,0
+    var items: [PriorityItem; 10] = [
+        new_priority_item(0, 0),
+        new_priority_item(1, 1),
+        new_priority_item(2, 2),
+        new_priority_item(3, 3),
+        new_priority_item(4, 4),
+        new_priority_item(5, 5),
+        new_priority_item(6, 6),
+        new_priority_item(7, 7),
+        new_priority_item(8, 8),
+        new_priority_item(9, 9),
+    ]
+
+    // Add in arbitrary order
+    list.enqueue(&items[5])
+    list.enqueue(&items[2])
+    list.enqueue(&items[8])
+    list.enqueue(&items[0])
+    list.enqueue(&items[3])
+    list.enqueue(&items[9])
+    list.enqueue(&items[1])
+    list.enqueue(&items[7])
+    list.enqueue(&items[4])
+    list.enqueue(&items[6])
+
+    expect_eq_u32(list.len(), 10, "list should have 10 items")
+
+    // Remove all - should come out 9,8,7,6,5,4,3,2,1,0
+    var expected: u32 = 9
+    var count: u32 = 0
+    while !list.is_empty() {
+        match list.remove_head() {
+            Option::None => fail("remove_head should succeed"),
+            Option::Some(ptr) => {
+                expect_eq_u32(ptr.value, expected, "should remove in priority order")
+                if expected > 0 {
+                    expected = expected - 1
+                }
+                count = count + 1
+            },
+        }
+    }
+
+    expect_eq_u32(count, 10, "should have removed 10 items")
+    expect_true(list.is_empty(), "list should be empty")
+}

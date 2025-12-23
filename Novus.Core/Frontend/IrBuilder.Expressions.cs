@@ -785,14 +785,11 @@ public partial class IrBuilder
                             var monomorphizedData = new List<IrType>();
                             foreach (var dataType in origVariant.AssociatedData)
                             {
-                                if (dataType is IrGenericType genType && typeSubstitutions.ContainsKey(genType.ParameterName))
-                                {
-                                    monomorphizedData.Add(typeSubstitutions[genType.ParameterName]);
-                                }
-                                else
-                                {
-                                    monomorphizedData.Add(dataType);
-                                }
+                                // Use SubstituteGenericTypes to handle all cases including:
+                                // - Direct generics: T
+                                // - Wrapped generics: &var T, *T, &T, etc.
+                                var substitutedType = _typeParser.SubstituteGenericTypes(dataType, typeSubstitutions);
+                                monomorphizedData.Add(substitutedType);
                             }
                             monomorphizedVariants.Add(new IrEnumVariant(origVariant.Name, origVariant.Tag, monomorphizedData));
                         }
@@ -801,8 +798,9 @@ public partial class IrBuilder
                         finalEnumType = new IrEnumType(enumType.EnumName, monomorphizedVariants, null, cacheKey);
 
                         // Only cache if fully monomorphized (no generic types in variants)
+                        // Use ContainsGenericTypes to check nested generics like &var T, *T, etc.
                         bool isFullyMonomorphized = !monomorphizedVariants.Any(v =>
-                            v.AssociatedData.Any(d => d is IrGenericType));
+                            v.AssociatedData.Any(d => _typeParser.ContainsGenericTypes(d)));
 
                         if (isFullyMonomorphized)
                         {
@@ -4504,7 +4502,10 @@ public partial class IrBuilder
         if (_localVariables.ContainsKey(name))
         {
             var localVar = _localVariables[name];
-            return new IrVariable(name, localVar.Type);
+            // Use localVar.Name (the actual IR variable name) rather than the source name.
+            // This handles cases where variables have been renamed to avoid type conflicts
+            // (e.g., 'val' in different match arms with different types becomes 'val_123').
+            return new IrVariable(localVar.Name, localVar.Type);
         }
 
         // Check if it's a parameter

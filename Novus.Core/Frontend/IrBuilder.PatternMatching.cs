@@ -128,12 +128,6 @@ public partial class IrBuilder
         }
 
         IrEnumType? enumType = enumTypeForValidation;
-        if (enumType != null)
-        {
-            foreach (var v in enumType.Variants)
-            {
-            }
-        }
 
         // Expand match arms - flatten pipe patterns into separate arms
         var expandedArms = ExpandMatchArms(context.matchArm());
@@ -449,21 +443,40 @@ public partial class IrBuilder
                             var extractName = $"%t{_tempCounter++}";
                             _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, enumValueForExtract!, variantName, dataIdx, dataType));
 
+                            // CRITICAL FIX: Generate unique names for pattern-bound variables
+                            // Different match arms can bind the same name (e.g., 'val') with different types.
+                            // In C, we can't have multiple variables with the same name but different types
+                            // at function scope. So we generate unique names like "val_1", "val_2", etc.
+                            // We check if a variable with the same name but DIFFERENT type already exists.
+                            var uniqueBindingName = bindingName;
+                            if (_localVariables.TryGetValue(bindingName, out var existingVar))
+                            {
+                                // Check if types differ - if so, we need a unique name
+                                if (!_typeParser.TypesAreEqual(existingVar.Type, dataType))
+                                {
+                                    uniqueBindingName = $"{bindingName}_{_tempCounter++}";
+                                }
+                            }
+
                             // Store in a local variable
-                            var localVar = new IrLocalVariable(bindingName, dataType, isMutable);
+                            var localVar = new IrLocalVariable(uniqueBindingName, dataType, isMutable);
                             _currentFunction!.LocalVariables.Add(localVar);
-                            _localVariables[bindingName] = localVar;
+                            // Map BOTH the unique name and original name to this variable.
+                            // The unique name is needed for C code generation (avoids type conflicts).
+                            // The original name is needed so subsequent references (e.g., *val) find this variable.
+                            _localVariables[uniqueBindingName] = localVar;
+                            _localVariables[bindingName] = localVar;  // Overwrite so *val finds val_901's variable
 
                             var extractedValue = new IrVariable(extractName, dataType);
-                            _currentBlock!.AddInstruction(new IrLocalDecl(bindingName, dataType, isMutable, extractedValue));
+                            _currentBlock!.AddInstruction(new IrLocalDecl(uniqueBindingName, dataType, isMutable, extractedValue));
 
                             // Automatic defer for types with drop() method (RAII-style cleanup)
                             // This ensures pattern-bound variables in match arms are properly cleaned up
                             if (EnsureDropMethodInstantiated(dataType))
                             {
-                                InjectAutomaticDrop(bindingName, dataType);
+                                InjectAutomaticDrop(uniqueBindingName, dataType);
                                 // Track this variable so we can detect moves later
-                                patternBoundDropVars.Add(bindingName);
+                                patternBoundDropVars.Add(uniqueBindingName);
                             }
                         }
                     }
