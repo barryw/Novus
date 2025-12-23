@@ -1436,8 +1436,26 @@ public partial class IrBuilder
 
         var call = new IrCall(functionName, returnType, resultName);
         call.Location = GetLocation(context);
-        foreach (var arg in arguments)
+
+        // Add arguments and handle move semantics
+        for (int i = 0; i < arguments.Count; i++)
         {
+            var arg = arguments[i];
+
+            // Deactivate defer if:
+            // 1. Argument is a variable (not a temporary expression)
+            // 2. Type implements Drop
+            // 3. Parameter takes by value (not by reference)
+            if (i < function.Parameters.Count)
+            {
+                var param = function.Parameters[i];
+                // Only deactivate if parameter is NOT a reference (value parameters move ownership)
+                if (param.Type is not IrReferenceType && param.Type is not IrMutReferenceType)
+                {
+                    DeactivateVariableDeferIfMove(arg);
+                }
+            }
+
             call.Arguments.Add(arg);
         }
 
@@ -2165,6 +2183,13 @@ public partial class IrBuilder
 
         _currentBlock!.AddInstruction(call);
 
+        // CRITICAL: If this is an explicit .drop() call, deactivate the variable's automatic defer
+        // to prevent double-free. The pattern is: var x = ...; x.drop(); // should not auto-drop x again
+        if (methodName == "drop" && receiver is IrVariable dropTargetVar)
+        {
+            DeactivateVariableDefer(dropTargetVar.Name);
+        }
+
         // Return the result variable if non-void
         if (resultName != null)
         {
@@ -2614,6 +2639,9 @@ public partial class IrBuilder
         // Build arguments: borrow base (&var self), index value, value to set
         // IndexMut::index_set takes &var self, idx, and value
         var baseBorrowed = new IrBorrowValue(baseExpr, _typeInterner.GetMutReferenceType(baseExpr.Type), true);
+
+        // If value is a variable with Drop, deactivate its defer to prevent double-free
+        DeactivateVariableDeferIfMove(valueExpr);
 
         // Create the call (index_set returns void)
         var call = new IrCall(mangledMethodName, IrVoidType.Instance, null);

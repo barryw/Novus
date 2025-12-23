@@ -407,7 +407,31 @@ public class IrModule
             return TupleNeedsDrop(tupleType);
         }
 
-        // Only struct types can implement Drop (primitives, pointers, etc. don't need cleanup)
+        // Enums need Drop if ANY of their variant payloads implement Drop
+        if (type is IrEnumType enumType)
+        {
+            return EnumNeedsDrop(enumType);
+        }
+
+        // Primitives, pointers, etc. don't need cleanup
+        return false;
+    }
+
+    /// <summary>
+    /// Check if an enum type needs Drop (i.e., has any variant with a payload that implements Drop)
+    /// </summary>
+    public bool EnumNeedsDrop(IrEnumType enumType)
+    {
+        foreach (var variant in enumType.Variants)
+        {
+            foreach (var payloadType in variant.AssociatedData)
+            {
+                if (TypeImplementsDrop(payloadType))
+                {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 

@@ -136,6 +136,12 @@ public partial class IrBuilder
 
                 // Restore previous expected type
                 _expectedType = savedExpectedType;
+
+                // If returning a variable with Drop, deactivate its defer to prevent double-free
+                if (value != null)
+                {
+                    DeactivateVariableDeferIfMove(value);
+                }
             }
 
             Emit(new IrReturn(value));
@@ -207,6 +213,9 @@ public partial class IrBuilder
         var localVar = new IrLocalVariable(name, type, isMutable);
         _currentFunction!.LocalVariables.Add(localVar);
         _localVariables[name] = localVar;
+
+        // If initializing from a variable with Drop, deactivate its defer to prevent double-free
+        DeactivateVariableDeferIfMove(value);
 
         // Generate IR for the declaration with initial value
         Emit(new IrLocalDecl(name, type, isMutable, value));
@@ -988,6 +997,10 @@ public partial class IrBuilder
                 }
 
                 // Generate store to struct member (using actualBase which may be dereferenced)
+
+                // If value is a variable with Drop, deactivate its defer to prevent double-free
+                DeactivateVariableDeferIfMove(value);
+
                 var storeMember = new IrMemberStore(actualBase, memberName, fieldOffset, value);
                 Emit(storeMember);
 
@@ -1013,6 +1026,9 @@ public partial class IrBuilder
                 // Check if this is a pointer or array (built-in indexing)
                 if (baseVar.Type is IrPointerType || baseVar.Type is IrArrayType)
                 {
+                    // If value is a variable with Drop, deactivate its defer to prevent double-free
+                    DeactivateVariableDeferIfMove(value);
+
                     // Generate index store instruction
                     var indexStore = new IrIndexStore(baseVar, indexExpr, value);
                     _currentBlock!.AddInstruction(indexStore);
@@ -1168,6 +1184,9 @@ public partial class IrBuilder
                     return null;
                 }
 
+                // If value is a variable with Drop, deactivate its defer to prevent double-free
+                DeactivateVariableDeferIfMove(value);
+
                 // Emit specialized indexed field store instruction
                 var indexedFieldStore = new IrIndexedFieldStore(arrayBase, indexExpr, memberName, field.Offset, value);
                 _currentBlock!.AddInstruction(indexedFieldStore);
@@ -1234,6 +1253,10 @@ public partial class IrBuilder
                     if (isLastSuffix)
                     {
                         // This is the final field - emit a store
+
+                        // If value is a variable with Drop, deactivate its defer to prevent double-free
+                        DeactivateVariableDeferIfMove(value);
+
                         var storeMember = new IrMemberStore(actualBase, memberName, field.Offset, value);
                         Emit(storeMember);
                         return null;
@@ -1265,6 +1288,10 @@ public partial class IrBuilder
                     if (isLastSuffix)
                     {
                         // This is the final index - emit an index store
+
+                        // If value is a variable with Drop, deactivate its defer to prevent double-free
+                        DeactivateVariableDeferIfMove(value);
+
                         var indexStore = new IrIndexStore(currentLValue, indexExpr, value);
                         _currentBlock!.AddInstruction(indexStore);
                         return null;
@@ -1519,6 +1546,10 @@ public partial class IrBuilder
                 // Simple assignment: x = value
                 // The semantic analyzer will check if the variable is mutable
                 // Here we just generate the IR
+
+                // If value is a variable with Drop, deactivate its defer to prevent double-free
+                DeactivateVariableDeferIfMove(value);
+
                 Emit(new IrStore(name, value));
             }
         }
@@ -1540,6 +1571,14 @@ public partial class IrBuilder
             // Visit the expression and return its value (for implicit returns)
             result = Visit(context.expression());
         });
+
+        // CRITICAL: If the expression result is a value with a Drop type and it's not being
+        // assigned to anything (i.e., the result is discarded), we must inject cleanup code.
+        // This prevents memory leaks when ignoring return values like Option<T> where T has Drop.
+        if (result is IrValue irValue && _module.TypeImplementsDrop(irValue.Type))
+        {
+            InjectDropForTemporary(irValue);
+        }
 
         return result;
     }

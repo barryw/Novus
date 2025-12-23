@@ -33,38 +33,42 @@ public partial class IrBuilder
             return true;
         }
 
-        // Get the type name for method lookup
-        string typeName;
-        string baseTypeName;  // Base name for template lookup
-        IrStructType? structType = null;
-        IrEnumType? enumType = null;
-
-        if (type is IrStructType st)
+        // Enums with droppable payloads generate inline Drop code.
+        // We recursively ensure payload types have their Drop methods ready.
+        if (type is IrEnumType enumType && _module.EnumNeedsDrop(enumType))
         {
-            // Skip if this is a generic template (has unsubstituted generic parameters)
-            // We can only instantiate Drop for concrete types
-            if (st.GenericParameters.Count > 0)
+            foreach (var variant in enumType.Variants)
             {
-                return false;
+                foreach (var payloadType in variant.AssociatedData)
+                {
+                    if (_module.TypeImplementsDrop(payloadType))
+                    {
+                        EnsureDropMethodInstantiated(payloadType);
+                    }
+                }
             }
+            return true;
+        }
 
-            structType = st;
-            baseTypeName = st.StructName;  // Base name for template lookup (e.g., "Vec")
-            // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
-            // For non-generic types, use StructName
-            typeName = st.CacheKey ?? st.StructName;
-        }
-        else if (type is IrEnumType et)
-        {
-            enumType = et;
-            baseTypeName = et.EnumName;
-            typeName = et.EnumName;
-        }
-        else
+        // For struct types, check if they have an explicit Drop method or generic template
+        if (type is not IrStructType st)
         {
             // Only structs, enums, and tuples can have Drop
+            // (enums and tuples are handled above)
             return false;
         }
+
+        // Skip if this is a generic template (has unsubstituted generic parameters)
+        // We can only instantiate Drop for concrete types
+        if (st.GenericParameters.Count > 0)
+        {
+            return false;
+        }
+
+        var baseTypeName = st.StructName;  // Base name for template lookup (e.g., "Vec")
+        // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
+        // For non-generic types, use StructName
+        var typeName = st.CacheKey ?? st.StructName;
 
         // Look for Type_drop method in the module
         // The Drop trait implementation generates: Type_Drop_drop
@@ -87,26 +91,14 @@ public partial class IrBuilder
             // Instantiate the generic drop() method as a trait impl
             try
             {
-                IrFunction? instantiatedFunc = null;
-
-                if (structType != null)
-                {
-                    // Pass isTraitImpl=true and traitName="Drop" for proper mangling
-                    instantiatedFunc = _genericInstantiator.InstantiateStructMethod(
-                        structType,
-                        "drop",
-                        isTraitImpl: true,
-                        traitName: "Drop",
-                        traitTypeArgs: new List<IrType>()
-                    );
-                }
-                else if (enumType != null)
-                {
-                    // Enum Drop methods are not currently supported.
-                    // Enums are Copy types by default, and complex enum payloads
-                    // would need explicit Drop implementation on contained types.
-                    return false;
-                }
+                // Pass isTraitImpl=true and traitName="Drop" for proper mangling
+                var instantiatedFunc = _genericInstantiator.InstantiateStructMethod(
+                    st,
+                    "drop",
+                    isTraitImpl: true,
+                    traitName: "Drop",
+                    traitTypeArgs: new List<IrType>()
+                );
 
                 if (instantiatedFunc != null)
                 {
@@ -117,8 +109,7 @@ public partial class IrBuilder
             {
                 // Log the exception for debugging - Drop instantiation failures can indicate
                 // issues with generic type substitution or method lookup
-                var failedTypeName = structType?.StructName ?? enumType?.EnumName ?? "unknown";
-                System.Diagnostics.Debug.WriteLine($"Failed to ensure Drop method for {failedTypeName}: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Failed to ensure Drop method for {st.StructName}: {ex.Message}");
                 return false;
             }
         }
@@ -224,43 +215,22 @@ public partial class IrBuilder
         {
             InjectTupleElementDrops(deferBlock, varName, tupleType);
         }
-        else
+        // Handle enum types - they need runtime dispatch based on the tag to drop payloads
+        else if (type is IrEnumType enumType)
         {
-            // Generate call to var.drop()
-            // This desugars to: Type_drop(&var var)
-            string typeName;
-            if (type is IrStructType structType)
-            {
-                // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
-                // For non-generic types, use StructName
-                typeName = structType.CacheKey ?? structType.StructName;
-            }
-            else if (type is IrEnumType enumType)
-            {
-                typeName = enumType.EnumName;
-            }
-            else
-            {
-                // Use current statement location for error reporting (set by caller)
-                var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    $"Cannot generate drop call for type '{type.Name}'",
-                    errorLocation
-                );
-                _currentBlock = savedBlock;
-                return;
-            }
+            InjectEnumDrop(deferBlock, varName, enumType);
+        }
+        else if (type is IrStructType structType)
+        {
+            // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
+            // For non-generic types, use StructName
+            var typeName = structType.CacheKey ?? structType.StructName;
 
             // The Drop trait implementation generates: Type_Drop_drop
-            // (trait impl convention: {Type}_{Trait}_{method})
-            // For monomorphized types like Vec<bool>, this would be Vec<bool>_Drop_drop
             var dropMethodName = $"{typeName}_Drop_drop";
             var dropMethod = _module.GetFunction(dropMethodName);
             if (dropMethod == null)
             {
-                // This should never happen if EnsureDropMethodInstantiated was called first.
-                // If it does happen, it means there's a bug in the Drop detection logic.
                 var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
                 _diagnostics.ReportError(
                     ErrorCodes.MethodNotFound,
@@ -280,6 +250,18 @@ public partial class IrBuilder
             dropCall.Arguments.Add(mutBorrow);
             deferBlock.AddInstruction(dropCall);
         }
+        else
+        {
+            // Use current statement location for error reporting (set by caller)
+            var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Cannot generate drop call for type '{type.Name}'",
+                errorLocation
+            );
+            _currentBlock = savedBlock;
+            return;
+        }
 
         // Restore current block
         _currentBlock = savedBlock;
@@ -295,6 +277,147 @@ public partial class IrBuilder
 
         // Add defer instruction to current block (marker)
         _currentBlock!.AddInstruction(new IrDefer(deferBlock));
+    }
+
+    /// <summary>
+    /// Inject drop code for an enum type. This generates a switch on the enum's tag
+    /// and drops the payload for each variant that has a droppable payload.
+    /// </summary>
+    private void InjectEnumDrop(IrBasicBlock deferBlock, string varName, IrEnumType enumType)
+    {
+        // Check if any variant actually needs dropping
+        bool anyVariantNeedsDrop = false;
+        foreach (var variant in enumType.Variants)
+        {
+            foreach (var payloadType in variant.AssociatedData)
+            {
+                if (_module.TypeImplementsDrop(payloadType))
+                {
+                    anyVariantNeedsDrop = true;
+                    break;
+                }
+            }
+            if (anyVariantNeedsDrop) break;
+        }
+
+        if (!anyVariantNeedsDrop)
+        {
+            // No variant has a droppable payload, nothing to do
+            return;
+        }
+
+        // We need to generate IR that:
+        // 1. Loads the enum's tag
+        // 2. For each variant with droppable payloads, check tag and drop those payloads
+
+        var varRef = new IrVariable(varName, enumType);
+
+        // Generate unique labels for this enum drop
+        var uniqueId = _labelCounter++;
+        var endLabel = $"enum_drop_end_{uniqueId}";
+
+        // For each variant that has a droppable payload, generate drop code
+        foreach (var variant in enumType.Variants)
+        {
+            bool variantNeedsDrop = false;
+            foreach (var payloadType in variant.AssociatedData)
+            {
+                if (_module.TypeImplementsDrop(payloadType))
+                {
+                    variantNeedsDrop = true;
+                    break;
+                }
+            }
+
+            if (!variantNeedsDrop)
+            {
+                continue;
+            }
+
+            // Generate: if (var.tag == VariantTag) { drop payloads; }
+            var variantLabel = $"enum_drop_{variant.Name}_{uniqueId}";
+            var skipLabel = $"enum_drop_skip_{variant.Name}_{uniqueId}";
+
+            // Extract the tag using IrExtractTag instruction
+            var tagValue = $"_enum_tag_{variant.Name}_{uniqueId}";
+            var extractTag = new IrExtractTag(tagValue, varRef);
+            deferBlock.AddInstruction(extractTag);
+
+            // Compare with variant's tag value
+            var variantTagValue = new IrConstant(variant.Tag, IrIntType.I32);
+            var compareResult = $"_enum_cmp_{variant.Name}_{uniqueId}";
+            var compare = new IrBinaryOp(
+                compareResult,
+                IrBinaryOp.OpKind.Eq,
+                new IrVariable(tagValue, IrIntType.I32),
+                variantTagValue,
+                IrBoolType.Instance
+            );
+            deferBlock.AddInstruction(compare);
+
+            // Conditional branch: if tag matches, go to drop code; else skip
+            var condBranch = new IrConditionalBranch(
+                new IrVariable(compareResult, IrBoolType.Instance),
+                variantLabel,
+                skipLabel
+            );
+            deferBlock.AddInstruction(condBranch);
+
+            // Label for this variant's drop code
+            deferBlock.AddInstruction(new IrLabel(variantLabel));
+
+            // Drop each payload that implements Drop
+            for (int payloadIdx = 0; payloadIdx < variant.AssociatedData.Count; payloadIdx++)
+            {
+                var payloadType = variant.AssociatedData[payloadIdx];
+                if (!_module.TypeImplementsDrop(payloadType))
+                {
+                    continue;
+                }
+
+                // Access the payload: var.data.VariantName._N
+                var payloadAccess = new IrEnumPayloadAccess(varRef, enumType, variant.Name, payloadIdx, payloadType);
+
+                // Generate drop call for this payload
+                if (payloadType is IrStructType payloadStructType)
+                {
+                    var payloadTypeName = payloadStructType.CacheKey ?? payloadStructType.StructName;
+                    var dropMethodName = $"{payloadTypeName}_Drop_drop";
+
+                    // Borrow the payload mutably
+                    var payloadBorrow = new IrBorrowValue(payloadAccess, new IrMutReferenceType(payloadType), isMutable: true);
+
+                    var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+                    dropCall.Arguments.Add(payloadBorrow);
+                    deferBlock.AddInstruction(dropCall);
+                }
+                else if (payloadType is IrTupleType payloadTupleType)
+                {
+                    // Handle tuple payloads - extract to temp and drop elements
+                    var tempName = $"_enum_payload_tmp_{variant.Name}_{payloadIdx}_{uniqueId}";
+                    var extractPayload = new IrExtractVariantData(tempName, varRef, variant.Name, payloadIdx, payloadType);
+                    deferBlock.AddInstruction(extractPayload);
+                    InjectTupleElementDrops(deferBlock, tempName, payloadTupleType);
+                }
+                else if (payloadType is IrEnumType payloadEnumType)
+                {
+                    // Handle nested enum payloads - extract to temp and recursively drop
+                    var tempName = $"_enum_payload_tmp_{variant.Name}_{payloadIdx}_{uniqueId}";
+                    var extractPayload = new IrExtractVariantData(tempName, varRef, variant.Name, payloadIdx, payloadType);
+                    deferBlock.AddInstruction(extractPayload);
+                    InjectEnumDrop(deferBlock, tempName, payloadEnumType);
+                }
+            }
+
+            // Jump to end after dropping
+            deferBlock.AddInstruction(new IrBranch(endLabel));
+
+            // Skip label for when this variant doesn't match
+            deferBlock.AddInstruction(new IrLabel(skipLabel));
+        }
+
+        // End label
+        deferBlock.AddInstruction(new IrLabel(endLabel));
     }
 
     /// <summary>
@@ -442,5 +565,348 @@ public partial class IrBuilder
             dropCall.Arguments.Add(elementBorrow);
             deferBlock.AddInstruction(dropCall);
         }
+    }
+
+    /// <summary>
+    /// Deactivate the defer for a variable if it implements Drop and is being moved.
+    /// This prevents double-free when a variable's value is moved to another location.
+    /// </summary>
+    /// <param name="value">The value being assigned (may be a variable or expression)</param>
+    private void DeactivateVariableDeferIfMove(IrValue value)
+    {
+        // Only deactivate if the value is a variable (not a temporary expression)
+        // and its type implements Drop
+        if (value is IrVariable sourceVar && _module.TypeImplementsDrop(sourceVar.Type))
+        {
+            DeactivateVariableDefer(sourceVar.Name);
+        }
+    }
+
+    /// <summary>
+    /// Deactivate the automatic defer block for a variable.
+    /// Call this when a variable has been explicitly dropped via .drop() or when
+    /// ownership has been moved elsewhere (e.g., assigned to another location).
+    /// This prevents double-free by removing the automatic cleanup for this variable.
+    /// </summary>
+    /// <param name="varName">The name of the variable whose defer should be deactivated</param>
+    private void DeactivateVariableDefer(string varName)
+    {
+        // Find and remove the defer block for the variable
+        // The defer block label starts with "autoclean_{varName}_"
+        var labelPrefix = $"autoclean_{varName}_";
+
+        // Check current scope defers
+        if (_scopeDeferStack.Count > 0)
+        {
+            var currentScopeDefers = _scopeDeferStack.Peek();
+            var deferToRemove = currentScopeDefers.FirstOrDefault(
+                d => d.Label.StartsWith(labelPrefix));
+            if (deferToRemove != null)
+            {
+                currentScopeDefers.Remove(deferToRemove);
+                // Also remove from function-level defers
+                _currentFunction?.DeferredBlocks.Remove(deferToRemove);
+                // Mark as emitted to prevent any other code path from emitting it
+                _emittedDeferBlocks.Add(deferToRemove);
+            }
+        }
+
+        // Also check function-level defers
+        if (_currentFunction != null)
+        {
+            var functionLevelDefer = _currentFunction.DeferredBlocks.FirstOrDefault(
+                d => d.Label.StartsWith(labelPrefix));
+            if (functionLevelDefer != null)
+            {
+                _currentFunction.DeferredBlocks.Remove(functionLevelDefer);
+                _emittedDeferBlocks.Add(functionLevelDefer);
+
+                // Remove the IrDefer instruction from ALL blocks
+                // This instruction tells the C code generator to activate the defer flag
+                foreach (var block in _currentFunction.BasicBlocks)
+                {
+                    var deferInstructionsToRemove = block.Instructions
+                        .OfType<IrDefer>()
+                        .Where(defer => defer.DeferredBlock == functionLevelDefer)
+                        .ToList();
+
+                    foreach (var deferInst in deferInstructionsToRemove)
+                    {
+                        block.Instructions.Remove(deferInst);
+                    }
+                }
+
+                // Also check the current block being built
+                if (_currentBlock != null && !_currentFunction.BasicBlocks.Contains(_currentBlock))
+                {
+                    var currentBlockDefers = _currentBlock.Instructions
+                        .OfType<IrDefer>()
+                        .Where(defer => defer.DeferredBlock == functionLevelDefer)
+                        .ToList();
+
+                    foreach (var deferInst in currentBlockDefers)
+                    {
+                        _currentBlock.Instructions.Remove(deferInst);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Inject immediate Drop for a temporary value that is being discarded.
+    /// This handles cases like `vec.pop()` where the return value is ignored.
+    /// The value must be stored to a temporary variable, then immediately dropped.
+    /// </summary>
+    private void InjectDropForTemporary(IrValue value)
+    {
+        var type = value.Type;
+
+        // Generate a unique temporary variable name
+        var tempName = $"_discarded_temp_{_labelCounter++}";
+
+        // Store the value to a temporary variable
+        var localVar = new IrLocalVariable(tempName, type, isMutable: true);
+        _currentFunction!.LocalVariables.Add(localVar);
+        _localVariables[tempName] = localVar;
+        _currentBlock!.AddInstruction(new IrLocalDecl(tempName, type, isMutable: true, value));
+
+        // Now emit the drop call immediately (not deferred - we want it now)
+        if (type is IrTupleType tupleType)
+        {
+            // For tuples, drop each element that implements Drop
+            EmitImmediateTupleDrop(tempName, tupleType);
+        }
+        else if (type is IrEnumType enumType)
+        {
+            // For enums, emit tag-based drop dispatch
+            EmitImmediateEnumDrop(tempName, enumType);
+        }
+        else if (type is IrStructType structType)
+        {
+            // For structs, call the Drop method directly
+            var typeName = structType.CacheKey ?? structType.StructName;
+            var dropMethodName = $"{typeName}_Drop_drop";
+
+            // Ensure the drop method is instantiated
+            EnsureDropMethodInstantiated(type);
+
+            var dropMethod = _module.GetFunction(dropMethodName);
+            if (dropMethod != null)
+            {
+                var tempVar = new IrVariable(tempName, type);
+                var mutBorrow = new IrBorrowValue(tempVar, new IrMutReferenceType(type), isMutable: true);
+
+                var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+                dropCall.Arguments.Add(mutBorrow);
+                _currentBlock!.AddInstruction(dropCall);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emit immediate drop calls for tuple elements (not deferred).
+    /// </summary>
+    private void EmitImmediateTupleDrop(string tupleVarName, IrTupleType tupleType)
+    {
+        // Drop elements in reverse order (LIFO)
+        for (int i = tupleType.ElementTypes.Count - 1; i >= 0; i--)
+        {
+            var elementType = tupleType.ElementTypes[i];
+
+            if (!_module.TypeImplementsDrop(elementType))
+            {
+                continue;
+            }
+
+            // Handle nested types recursively
+            if (elementType is IrTupleType nestedTuple)
+            {
+                // For nested tuples, extract to temp and recurse
+                var nestedTempName = $"_discarded_tuple_elem_{_labelCounter++}";
+                var tupleVar = new IrVariable(tupleVarName, tupleType);
+                var elementAccess = new IrTupleElementAccess(tupleVar, i, elementType);
+
+                var nestedLocal = new IrLocalVariable(nestedTempName, elementType, isMutable: true);
+                _currentFunction!.LocalVariables.Add(nestedLocal);
+                _localVariables[nestedTempName] = nestedLocal;
+                _currentBlock!.AddInstruction(new IrLocalDecl(nestedTempName, elementType, isMutable: true, elementAccess));
+
+                EmitImmediateTupleDrop(nestedTempName, nestedTuple);
+                continue;
+            }
+
+            if (elementType is IrEnumType nestedEnum)
+            {
+                var nestedTempName = $"_discarded_tuple_elem_{_labelCounter++}";
+                var tupleVar = new IrVariable(tupleVarName, tupleType);
+                var elementAccess = new IrTupleElementAccess(tupleVar, i, elementType);
+
+                var nestedLocal = new IrLocalVariable(nestedTempName, elementType, isMutable: true);
+                _currentFunction!.LocalVariables.Add(nestedLocal);
+                _localVariables[nestedTempName] = nestedLocal;
+                _currentBlock!.AddInstruction(new IrLocalDecl(nestedTempName, elementType, isMutable: true, elementAccess));
+
+                EmitImmediateEnumDrop(nestedTempName, nestedEnum);
+                continue;
+            }
+
+            // For struct elements, call Drop directly
+            if (elementType is IrStructType st)
+            {
+                var typeName = st.CacheKey ?? st.StructName;
+                var dropMethodName = $"{typeName}_Drop_drop";
+
+                EnsureDropMethodInstantiated(elementType);
+                var dropMethod = _module.GetFunction(dropMethodName);
+                if (dropMethod != null)
+                {
+                    var tupleVar = new IrVariable(tupleVarName, tupleType);
+                    var elementAccess = new IrTupleElementAccess(tupleVar, i, elementType);
+                    var elementBorrow = new IrBorrowValue(elementAccess, new IrMutReferenceType(elementType), isMutable: true);
+
+                    var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+                    dropCall.Arguments.Add(elementBorrow);
+                    _currentBlock!.AddInstruction(dropCall);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emit immediate drop for enum (tag-based dispatch, not deferred).
+    /// </summary>
+    private void EmitImmediateEnumDrop(string varName, IrEnumType enumType)
+    {
+        // Check if any variant actually needs dropping
+        bool anyVariantNeedsDrop = false;
+        foreach (var variant in enumType.Variants)
+        {
+            foreach (var payloadType in variant.AssociatedData)
+            {
+                if (_module.TypeImplementsDrop(payloadType))
+                {
+                    anyVariantNeedsDrop = true;
+                    break;
+                }
+            }
+            if (anyVariantNeedsDrop) break;
+        }
+
+        if (!anyVariantNeedsDrop)
+        {
+            return;
+        }
+
+        var varRef = new IrVariable(varName, enumType);
+        var uniqueId = _labelCounter++;
+        var endLabel = $"imm_enum_drop_end_{uniqueId}";
+
+        foreach (var variant in enumType.Variants)
+        {
+            bool variantNeedsDrop = false;
+            foreach (var payloadType in variant.AssociatedData)
+            {
+                if (_module.TypeImplementsDrop(payloadType))
+                {
+                    variantNeedsDrop = true;
+                    break;
+                }
+            }
+
+            if (!variantNeedsDrop)
+            {
+                continue;
+            }
+
+            var variantLabel = $"imm_enum_drop_{variant.Name}_{uniqueId}";
+            var skipLabel = $"imm_enum_drop_skip_{variant.Name}_{uniqueId}";
+
+            // Extract the tag
+            var tagValue = $"_imm_enum_tag_{variant.Name}_{uniqueId}";
+            var extractTag = new IrExtractTag(tagValue, varRef);
+            _currentBlock!.AddInstruction(extractTag);
+
+            // Compare with variant's tag
+            var variantTagValue = new IrConstant(variant.Tag, IrIntType.I32);
+            var compareResult = $"_imm_enum_cmp_{variant.Name}_{uniqueId}";
+            var compare = new IrBinaryOp(
+                compareResult,
+                IrBinaryOp.OpKind.Eq,
+                new IrVariable(tagValue, IrIntType.I32),
+                variantTagValue,
+                IrBoolType.Instance
+            );
+            _currentBlock!.AddInstruction(compare);
+
+            // Conditional branch
+            var condBranch = new IrConditionalBranch(
+                new IrVariable(compareResult, IrBoolType.Instance),
+                variantLabel,
+                skipLabel
+            );
+            _currentBlock!.AddInstruction(condBranch);
+
+            // Variant drop code
+            _currentBlock!.AddInstruction(new IrLabel(variantLabel));
+
+            // Drop each payload
+            for (int payloadIdx = 0; payloadIdx < variant.AssociatedData.Count; payloadIdx++)
+            {
+                var payloadType = variant.AssociatedData[payloadIdx];
+                if (!_module.TypeImplementsDrop(payloadType))
+                {
+                    continue;
+                }
+
+                var payloadAccess = new IrEnumPayloadAccess(varRef, enumType, variant.Name, payloadIdx, payloadType);
+
+                if (payloadType is IrStructType payloadStructType)
+                {
+                    var payloadTypeName = payloadStructType.CacheKey ?? payloadStructType.StructName;
+                    var dropMethodName = $"{payloadTypeName}_Drop_drop";
+
+                    EnsureDropMethodInstantiated(payloadType);
+
+                    var payloadBorrow = new IrBorrowValue(payloadAccess, new IrMutReferenceType(payloadType), isMutable: true);
+                    var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+                    dropCall.Arguments.Add(payloadBorrow);
+                    _currentBlock!.AddInstruction(dropCall);
+                }
+                else if (payloadType is IrTupleType payloadTupleType)
+                {
+                    var tempName = $"_imm_enum_payload_tmp_{variant.Name}_{payloadIdx}_{uniqueId}";
+                    var extractPayload = new IrExtractVariantData(tempName, varRef, variant.Name, payloadIdx, payloadType);
+                    _currentBlock!.AddInstruction(extractPayload);
+
+                    var tempLocal = new IrLocalVariable(tempName, payloadType, isMutable: true);
+                    _currentFunction!.LocalVariables.Add(tempLocal);
+                    _localVariables[tempName] = tempLocal;
+
+                    EmitImmediateTupleDrop(tempName, payloadTupleType);
+                }
+                else if (payloadType is IrEnumType payloadEnumType)
+                {
+                    var tempName = $"_imm_enum_payload_tmp_{variant.Name}_{payloadIdx}_{uniqueId}";
+                    var extractPayload = new IrExtractVariantData(tempName, varRef, variant.Name, payloadIdx, payloadType);
+                    _currentBlock!.AddInstruction(extractPayload);
+
+                    var tempLocal = new IrLocalVariable(tempName, payloadType, isMutable: true);
+                    _currentFunction!.LocalVariables.Add(tempLocal);
+                    _localVariables[tempName] = tempLocal;
+
+                    EmitImmediateEnumDrop(tempName, payloadEnumType);
+                }
+            }
+
+            // Jump to end
+            _currentBlock!.AddInstruction(new IrBranch(endLabel));
+
+            // Skip label
+            _currentBlock!.AddInstruction(new IrLabel(skipLabel));
+        }
+
+        // End label
+        _currentBlock!.AddInstruction(new IrLabel(endLabel));
     }
 }

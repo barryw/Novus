@@ -1,0 +1,53 @@
+// Minimal test to reproduce prefs double-free
+from std::prefs::prefs import Prefs
+from std::io::file import println
+
+pub fn main() -> i32 {
+    println("=== Test 1: Create empty prefs ===")
+    {
+        let result = Prefs::new("test_app", 1)
+        match result {
+            Result::Ok(prefs) => {
+                println("Created prefs successfully")
+                // prefs drops here at end of match arm
+            },
+            Result::Err(_) => {
+                println("Failed to create prefs")
+                return 1
+            }
+        }
+    }
+    println("Test 1 done")
+
+    println("")
+    println("=== Test 2: Create prefs with entry ===")
+    {
+        let result2 = Prefs::new("test_app", 1)
+        match result2 {
+            Result::Ok(var prefs2) => {
+                println("Created prefs successfully")
+
+                let set_result = prefs2.set_str("name", "value")
+                match set_result {
+                    Result::Ok(_) => println("set_str succeeded"),
+                    Result::Err(_) => {
+                        println("set_str failed")
+                        return 2
+                    }
+                }
+
+                println("About to drop prefs2...")
+                // prefs2 drops here at end of match arm
+            },
+            Result::Err(_) => {
+                println("Failed to create prefs")
+                return 3
+            }
+        }
+    }
+    println("Test 2 done")
+
+    println("")
+    println("=== All tests passed ===")
+    return 0
+}

@@ -469,17 +469,14 @@ impl Prefs {
                 }
 
                 // Write entries
+                let entries_ptr = self.entries.as_ptr()
                 while var i < self.entries.len() {
-                    let entry_opt = self.entries.get(i)
-                    match entry_opt {
-                        Option::Some(entry) => {
-                            let entry_result = self.write_entry(&file, &entry)
-                            match entry_result {
-                                Result::Err(e) => return Result::Err(e),
-                                Result::Ok(_) => {}
-                            }
-                        },
-                        Option::None => {}
+                    // Use pointer access to avoid copying PrefsEntry (which would cause double-free)
+                    let entry_ptr = &entries_ptr[i]
+                    let entry_result = self.write_entry(&file, entry_ptr)
+                    match entry_result {
+                        Result::Err(e) => return Result::Err(e),
+                        Result::Ok(_) => {}
                     }
                     i = i + 1
                 }
@@ -565,10 +562,14 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return def,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return def,
-                    Option::Some(entry) => return entry.value.as_str(),
+                // Use pointer access to avoid copying the entry (which would cause double-free)
+                // since PrefsEntry contains String fields that have Drop
+                if idx >= self.entries.len() {
+                    return def
                 }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                return entry_ptr.value.as_str()
             }
         }
     }
@@ -578,15 +579,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return def,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return def,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_i32() {
-                            Result::Ok(v) => return v,
-                            Result::Err(_) => return def,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_i32() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
                 }
             }
         }
@@ -597,15 +599,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return def,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return def,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_u32() {
-                            Result::Ok(v) => return v,
-                            Result::Err(_) => return def,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_u32() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
                 }
             }
         }
@@ -618,15 +621,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return def,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return def,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_bool() {
-                            Result::Ok(v) => return v,
-                            Result::Err(_) => return def,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_bool() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
                 }
             }
         }
@@ -641,10 +645,13 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return Option::None,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return Option::None,
-                    Option::Some(entry) => return Option::Some(entry.value.as_str()),
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
                 }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                return Option::Some(entry_ptr.value.as_str())
             }
         }
     }
@@ -654,15 +661,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return Option::None,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return Option::None,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_i32() {
-                            Result::Ok(v) => return Option::Some(v),
-                            Result::Err(_) => return Option::None,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_i32() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
                 }
             }
         }
@@ -673,15 +681,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return Option::None,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return Option::None,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_u32() {
-                            Result::Ok(v) => return Option::Some(v),
-                            Result::Err(_) => return Option::None,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_u32() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
                 }
             }
         }
@@ -692,15 +701,16 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return Option::None,
             Option::Some(idx) => {
-                match self.entries.get(idx) {
-                    Option::None => return Option::None,
-                    Option::Some(entry) => {
-                        let val_str = entry.value.as_str()
-                        match val_str.parse_bool() {
-                            Result::Ok(v) => return Option::Some(v),
-                            Result::Err(_) => return Option::None,
-                        }
-                    }
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = &ptr[idx]
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_bool() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
                 }
             }
         }
@@ -727,9 +737,6 @@ impl Prefs {
                     Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                     Result::Ok(new_value) => {
                         // Get entry and replace value
-                        // Since we can't modify through get(), we need to remove and re-add
-                        // For now, just mark dirty and hope the next push works
-                        // Actually, we need to directly access the pointer
                         let entry_ptr = self.entries.as_mut_ptr()
                         // Free old value and replace
                         var old_value = entry_ptr[idx].value
@@ -800,6 +807,7 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return false,
             Option::Some(idx) => {
+                // The discarded Option<PrefsEntry> is automatically dropped by the compiler
                 self.entries.remove(idx)
                 self.dirty = true
                 return true
@@ -814,7 +822,7 @@ impl Prefs {
 
     /// Remove all entries
     pub fn clear(&var self) {
-        // Drop all entries by popping them
+        // Pop all entries - the discarded Option<PrefsEntry> is automatically dropped
         while self.entries.len() > 0 {
             self.entries.pop()
         }
@@ -851,14 +859,13 @@ impl Prefs {
 
     /// Find entry index by key
     fn find_entry(&self, key: Str) -> Option<u32> {
-        while var i < self.entries.len() {
-            match self.entries.get(i) {
-                Option::Some(entry) => {
-                    if entry.key.as_str().equals(key) {
-                        return Option::Some(i)
-                    }
-                },
-                Option::None => {}
+        // Use pointer access to avoid copying PrefsEntry (which would cause double-free)
+        let entries_ptr = self.entries.as_ptr()
+        let len = self.entries.len()
+        while var i < len {
+            let entry_ptr = &entries_ptr[i]
+            if entry_ptr.key.as_str().equals(key) {
+                return Option::Some(i)
             }
             i = i + 1
         }
@@ -895,9 +902,16 @@ impl Prefs {
 // Automatic cleanup for Prefs (RAII)
 impl Drop for Prefs {
     fn drop(&var self) {
-        // Drop all entries
+        // Drop all entries by popping and explicitly dropping each one
         while self.entries.len() > 0 {
-            self.entries.pop()
+            // Pop returns Option<PrefsEntry>, we need to drop the contained entry
+            match self.entries.pop() {
+                Option::Some(entry) => {
+                    // Entry's String fields will be dropped automatically
+                    // when 'entry' goes out of scope at end of match arm
+                },
+                Option::None => {}
+            }
         }
         self.entries.drop()
     }

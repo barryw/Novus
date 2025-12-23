@@ -96,6 +96,12 @@ public partial class CCodeGenerator
     // directly. This prevents illegal struct-by-value copies that cause Guru $80000004 on 68040.
     private HashSet<string> _addressOnlyStructMemberAccess = new();
 
+    // MEMORY LEAK FIX: Track index accesses that are ONLY used for address-of operations.
+    // When an array/pointer element is only used to take its address (e.g., &ptr[idx]), we don't
+    // need to copy the element - we can just record the array/index info and emit &ptr[idx]
+    // directly. This prevents unnecessary copies of structs with Drop that leak memory.
+    private HashSet<string> _addressOnlyIndexAccess = new();
+
     // Counter for defer block emissions to ensure unique labels across multiple defer cleanup sites
     private int _deferEmissionCounter = 0;
 
@@ -1669,6 +1675,7 @@ public partial class CCodeGenerator
         _indexAccessInfo.Clear();
         _fieldAccessChainInfo.Clear();
         _addressOnlyStructMemberAccess.Clear();
+        _addressOnlyIndexAccess.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
         _safeToInlineComparisons.Clear();  // OPTIMIZATION: reset safe inline tracking
 
@@ -1699,6 +1706,10 @@ public partial class CCodeGenerator
         // IMPORTANT: This must be called AFTER liveness analysis sets up _variableToSlot,
         // so that SanitizeVariableName correctly maps IR names to slot names.
         ScanForAddressOnlyStructMemberAccesses(function);
+
+        // Pre-scan function for address-only index accesses (memory leak fix)
+        // When &ptr[idx] is used, we don't need to copy the element to a temp.
+        ScanForAddressOnlyIndexAccesses(function);
 
         // Dead label elimination: collect all branch targets
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
@@ -4663,6 +4674,10 @@ public partial class CCodeGenerator
         // so that SanitizeVariableName correctly maps IR names to slot names.
         ScanForAddressOnlyStructMemberAccesses(function);
 
+        // Pre-scan function for address-only index accesses (memory leak fix)
+        // When &ptr[idx] is used, we don't need to copy the element to a temp.
+        ScanForAddressOnlyIndexAccesses(function);
+
         // Dead label elimination: collect all branch targets
         // Labels not targeted by any branch will be skipped during emission (VBCC warning 148)
         CollectReachableLabels(function);
@@ -6293,6 +6308,10 @@ public partial class CCodeGenerator
         var function = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName);
         var args = new List<string>();
 
+        // Track local variables passed by value (moved) so we can zero them after the call
+        // to implement move semantics and prevent double-free
+        var movedVariables = new List<(string varName, IrType varType)>();
+
         for (int i = 0; i < call.Arguments.Count; i++)
         {
             var arg = call.Arguments[i];
@@ -6317,7 +6336,7 @@ public partial class CCodeGenerator
                 // but the argument is not already a pointer, pass by address
                 else if (paramType is IrStructType structType &&
                     TypeContainsHeapData(structType) &&
-                    arg.Type is IrStructType)  // arg is struct value, not pointer
+                    arg.Type is IrStructType argStructType)  // arg is struct value, not pointer
                 {
                     // Check if the argument is a variable that was itself a pointer-converted parameter
                     // If so, it's already a pointer in C and doesn't need &
@@ -6350,6 +6369,15 @@ public partial class CCodeGenerator
                         else
                         {
                             argValue = $"&{argValue}";
+
+                            // MOVE SEMANTICS FIX: Track local variables that are being moved into the call.
+                            // After the call completes, we must zero these to prevent their deferred Drop
+                            // from double-freeing the data that was moved into the callee.
+                            // This implements move semantics for pass-by-value struct parameters.
+                            if (arg is IrVariable movedVar && !_pointerConvertedParameters.Contains(movedVar.Name))
+                            {
+                                movedVariables.Add((SanitizeVariableName(movedVar.Name), argStructType));
+                            }
                         }
                     }
                 }
@@ -6502,6 +6530,17 @@ public partial class CCodeGenerator
                 _output.AppendLine($"    {callExpr};");
             }
         }
+
+        // MOVE SEMANTICS FIX: Zero moved variables after the call to prevent double-free.
+        // When a struct with heap data is passed by value, the callee takes ownership.
+        // We must zero the caller's copy so its deferred Drop becomes a no-op.
+        // This applies to both output-parameter and normal return value paths.
+        foreach (var (varName, varType) in movedVariables)
+        {
+            var cType = GetCType(varType);
+            _output.AppendLine($"    /* Move semantics: zero source after move to callee */");
+            _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
+        }
     }
 
     private void EmitIndirectCall(IrIndirectCall call)
@@ -6543,14 +6582,15 @@ public partial class CCodeGenerator
             return;
         }
 
+        // Append suffix to label name to make it unique across defer block emissions
+        var labelName = label.Name + _labelSuffix;
+
         // Skip if this label was already emitted (prevents duplicate from EmitBasicBlock)
-        if (_emittedLabels.Contains(label.Name))
+        // Use the full suffixed name to allow the same base label to be emitted with different suffixes
+        if (_emittedLabels.Contains(labelName))
         {
             return;
         }
-
-        // Append suffix to label name to make it unique across defer block emissions
-        var labelName = label.Name + _labelSuffix;
 
         // DISABLED: Match arm scopes cause variable scoping issues with nested matches
         // Since we're using gotos, we don't need explicit scopes - the labels provide structure
@@ -6564,7 +6604,7 @@ public partial class CCodeGenerator
         // Emit label (unindented for C style)
         // Add empty statement to ensure valid C (labels must be followed by a statement)
         _output.AppendLine($"{labelName}:;");
-        _emittedLabels.Add(label.Name);
+        _emittedLabels.Add(labelName);  // Track full suffixed name to allow re-emission with different suffixes
 
         // DISABLED: Match arm scopes cause variable scoping issues with nested matches
         // Open new scope for match arms
@@ -8108,6 +8148,210 @@ public partial class CCodeGenerator
     }
 
     /// <summary>
+    /// MEMORY LEAK FIX: Pre-scan a function to identify index accesses that are ONLY used
+    /// for address-of operations. When an array/pointer element is only used to take its
+    /// address (e.g., &amp;ptr[idx]), we don't need to copy the element value - we can just
+    /// record the array/index info and emit &amp;ptr[idx] directly.
+    ///
+    /// This prevents unnecessary copies of structs containing Drop types (like String),
+    /// which would leak memory because the copied struct is never cleaned up.
+    ///
+    /// The algorithm:
+    /// 1. Find all IrIndexAccess instructions
+    /// 2. Track all uses of those result variables
+    /// 3. If all uses are IrBorrowValue (address-of) or IrCastValue wrapping IrBorrowValue,
+    ///    mark that index access as "address-only" - no copy needed
+    /// </summary>
+    private void ScanForAddressOnlyIndexAccesses(IrFunction function)
+    {
+        // Map from result variable name to the IrIndexAccess that produced it
+        var indexAccesses = new Dictionary<string, IrIndexAccess>();
+
+        // Map from variable name to count of non-address-of uses
+        var nonAddressUses = new Dictionary<string, int>();
+
+        // First pass: collect all index accesses
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrIndexAccess indexAccess &&
+                    !string.IsNullOrEmpty(indexAccess.ResultName))
+                {
+                    var resultName = SanitizeVariableName(indexAccess.ResultName);
+                    indexAccesses[resultName] = indexAccess;
+                    nonAddressUses[resultName] = 0;  // Start with zero non-address uses
+                }
+            }
+        }
+
+        if (indexAccesses.Count == 0)
+            return;  // No index accesses to analyze
+
+        // Second pass: scan for uses of those results
+        foreach (var block in function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                ScanInstructionForIndexAccessUses(instruction, indexAccesses, nonAddressUses);
+            }
+        }
+
+        // Mark all index accesses with zero non-address uses as "address-only"
+        foreach (var (varName, count) in nonAddressUses)
+        {
+            if (count == 0)
+            {
+                _addressOnlyIndexAccess.Add(varName);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Helper for ScanForAddressOnlyIndexAccesses - checks if an instruction uses
+    /// an index access result in a non-address-of context.
+    /// </summary>
+    private void ScanInstructionForIndexAccessUses(
+        IrInstruction instruction,
+        Dictionary<string, IrIndexAccess> indexAccesses,
+        Dictionary<string, int> nonAddressUses)
+    {
+        // Check all values used by this instruction
+        void CheckValue(IrValue value, bool isAddressContext)
+        {
+            switch (value)
+            {
+                case IrVariable variable:
+                    var sanitizedName = SanitizeVariableName(variable.Name);
+                    if (indexAccesses.ContainsKey(sanitizedName) && !isAddressContext)
+                    {
+                        // Non-address use of an index access result
+                        nonAddressUses[sanitizedName]++;
+                    }
+                    break;
+
+                case IrBorrowValue borrowValue:
+                    // Address-of context - check the borrowed value with isAddressContext=true
+                    CheckValue(borrowValue.BorrowedValue, isAddressContext: true);
+                    break;
+
+                case IrCastValue castValue:
+                    // Casts that wrap borrows preserve the address context
+                    if (castValue.Value is IrBorrowValue)
+                    {
+                        CheckValue(castValue.Value, isAddressContext: true);
+                    }
+                    else
+                    {
+                        CheckValue(castValue.Value, isAddressContext: false);
+                    }
+                    break;
+
+                case IrDereferenceValue derefValue:
+                    CheckValue(derefValue.PointerValue, isAddressContext: false);
+                    break;
+
+                case IrStructLiteral structLit:
+                    foreach (var fieldValue in structLit.FieldValues.Values)
+                    {
+                        CheckValue(fieldValue, isAddressContext: false);
+                    }
+                    break;
+
+                case IrArrayLiteral arrayLit:
+                    foreach (var element in arrayLit.Elements)
+                    {
+                        CheckValue(element, isAddressContext: false);
+                    }
+                    break;
+
+                case IrEnumValue enumValue:
+                    foreach (var assocValue in enumValue.AssociatedValues)
+                    {
+                        CheckValue(assocValue, isAddressContext: false);
+                    }
+                    break;
+            }
+        }
+
+        // Recursively check all values in the instruction
+        switch (instruction)
+        {
+            case IrStore store:
+                CheckValue(store.Value, isAddressContext: false);
+                break;
+
+            case IrLocalDecl localDecl when localDecl.InitialValue != null:
+                CheckValue(localDecl.InitialValue, isAddressContext: false);
+                break;
+
+            case IrCall call:
+                foreach (var arg in call.Arguments)
+                {
+                    CheckValue(arg, isAddressContext: false);
+                }
+                break;
+
+            case IrIndirectCall indirectCall:
+                CheckValue(indirectCall.FunctionPointer, isAddressContext: false);
+                foreach (var arg in indirectCall.Arguments)
+                {
+                    CheckValue(arg, isAddressContext: false);
+                }
+                break;
+
+            case IrReturn ret when ret.Value != null:
+                CheckValue(ret.Value, isAddressContext: false);
+                break;
+
+            case IrConditionalBranch condBranch:
+                CheckValue(condBranch.Condition, isAddressContext: false);
+                break;
+
+            case IrBinaryOp binaryOp:
+                CheckValue(binaryOp.Left, isAddressContext: false);
+                CheckValue(binaryOp.Right, isAddressContext: false);
+                break;
+
+            case IrMemberAccess memberAccess:
+                CheckValue(memberAccess.Struct, isAddressContext: false);
+                break;
+
+            case IrMemberStore memberStore:
+                CheckValue(memberStore.Struct, isAddressContext: false);
+                CheckValue(memberStore.Value, isAddressContext: false);
+                break;
+
+            case IrIndexStore indexStore:
+                CheckValue(indexStore.Array, isAddressContext: false);
+                CheckValue(indexStore.Index, isAddressContext: false);
+                CheckValue(indexStore.Value, isAddressContext: false);
+                break;
+
+            case IrDereferenceStore derefStore:
+                CheckValue(derefStore.Pointer, isAddressContext: false);
+                CheckValue(derefStore.Value, isAddressContext: false);
+                break;
+
+            case IrAssert assert:
+                CheckValue(assert.Condition, isAddressContext: false);
+                break;
+
+            case IrMatch match:
+                CheckValue(match.MatchValue, isAddressContext: false);
+                break;
+
+            case IrExtractTag extractTag:
+                CheckValue(extractTag.EnumValue, isAddressContext: false);
+                break;
+
+            case IrExtractVariantData extractData:
+                CheckValue(extractData.EnumValue, isAddressContext: false);
+                break;
+        }
+    }
+
+    /// <summary>
     /// Pre-scans a function to collect all labels that are actually targeted by branches.
     /// Labels not in _reachableLabels will be skipped during emission to avoid VBCC warning 148
     /// (unused label).
@@ -8118,7 +8362,10 @@ public partial class CCodeGenerator
         _emittedLabels.Clear();  // Also clear emitted labels for the new function
         _knownNonNullPointers.Clear();  // Clear known non-null pointers for the new function
 
-        foreach (var block in function.BasicBlocks)
+        // Collect branch targets from all blocks: regular blocks + deferred blocks
+        var allBlocks = function.BasicBlocks.Concat(function.DeferredBlocks);
+
+        foreach (var block in allBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -8349,6 +8596,16 @@ public partial class CCodeGenerator
 
         // Store the array and index expressions for later use when taking address
         _indexAccessInfo[resultName] = (arrayValue, indexValue);
+
+        // MEMORY LEAK FIX: If this index access result is ONLY used for address-of operations,
+        // don't emit the copy at all. The EmitBorrowValue method will use _indexAccessInfo
+        // to directly emit &array[index] without needing the temp variable.
+        if (_addressOnlyIndexAccess.Contains(resultName))
+        {
+            // Skip emitting the copy - the variable is only used for &var, and EmitBorrowValue
+            // will reconstruct &array[index] from _indexAccessInfo
+            return;
+        }
 
         // Get source location if available
         var filePath = indexAccess.Location?.FilePath ?? "<unknown>";
@@ -8735,6 +8992,8 @@ public partial class CCodeGenerator
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             IrTupleLiteral tupleLit => EmitTupleLiteral(tupleLit),
             IrTupleElementAccess tupleAccess => EmitTupleElementAccess(tupleAccess),
+            IrEnumTagAccess enumTagAccess => EmitEnumTagAccess(enumTagAccess),
+            IrEnumPayloadAccess enumPayloadAccess => EmitEnumPayloadAccess(enumPayloadAccess),
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
             IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
             IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
@@ -9215,6 +9474,29 @@ public partial class CCodeGenerator
     {
         var tupleValue = EmitValue(tupleAccess.Tuple);
         return $"({tupleValue}).__{tupleAccess.ElementIndex}";
+    }
+
+    /// <summary>
+    /// Emit access to an enum's tag field (for Drop dispatch).
+    /// Enums in C are represented as: struct { enum Tag tag; union Data data; }
+    /// </summary>
+    internal string EmitEnumTagAccess(IrEnumTagAccess enumTagAccess)
+    {
+        var enumValue = EmitValue(enumTagAccess.EnumValue);
+        return $"({enumValue}).tag";
+    }
+
+    /// <summary>
+    /// Emit access to an enum variant's payload field (for Drop dispatch).
+    /// Enums in C are represented with a data union containing structs for each variant.
+    /// Example: Option::Some(value) -> enumVar.data.Some._0
+    /// </summary>
+    internal string EmitEnumPayloadAccess(IrEnumPayloadAccess enumPayloadAccess)
+    {
+        var enumValue = EmitValue(enumPayloadAccess.EnumValue);
+        var variantName = enumPayloadAccess.VariantName;
+        var payloadIndex = enumPayloadAccess.PayloadIndex;
+        return $"({enumValue}).data.{variantName}._{payloadIndex}";
     }
 
     internal string EmitArrayLiteral(IrArrayLiteral arrayLit)

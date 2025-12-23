@@ -358,6 +358,44 @@ public class IrExtractVariantData : IrInstruction
 }
 
 /// <summary>
+/// Enum tag access - represents accessing the tag field of an enum value (for Drop dispatch)
+/// Used in generated enum Drop code to check which variant is active.
+/// </summary>
+public class IrEnumTagAccess : IrValue
+{
+    public IrValue EnumValue { get; set; }
+    public IrEnumType EnumType { get; set; }
+
+    public IrEnumTagAccess(IrValue enumValue, IrEnumType enumType) : base(IrIntType.I32)
+    {
+        EnumValue = enumValue;
+        EnumType = enumType;
+    }
+}
+
+/// <summary>
+/// Enum payload access - represents accessing a specific payload field within an enum variant.
+/// Used in generated enum Drop code to access the payload for dropping.
+/// Example: for Option::Some(value), this accesses 'value' within the Some variant.
+/// </summary>
+public class IrEnumPayloadAccess : IrValue
+{
+    public IrValue EnumValue { get; set; }
+    public IrEnumType EnumType { get; set; }
+    public string VariantName { get; set; }
+    public int PayloadIndex { get; set; }
+
+    public IrEnumPayloadAccess(IrValue enumValue, IrEnumType enumType, string variantName, int payloadIndex, IrType payloadType)
+        : base(payloadType)
+    {
+        EnumValue = enumValue;
+        EnumType = enumType;
+        VariantName = variantName;
+        PayloadIndex = payloadIndex;
+    }
+}
+
+/// <summary>
 /// Generic type parameter (used during semantic analysis before monomorphization)
 /// </summary>
 public class IrGenericType : IrType

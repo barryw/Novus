@@ -81,10 +81,14 @@ public class LivenessAnalysis
     /// </summary>
     private void BuildIntervals()
     {
+        // First pass: compute instruction indices for each block
+        var blockStartIndex = new Dictionary<string, int>();
+        var blockEndIndex = new Dictionary<string, int>();
         _instructionIndex = 0;
 
         foreach (var block in _function.BasicBlocks)
         {
+            blockStartIndex[block.Label] = _instructionIndex;
             foreach (var instruction in block.Instructions)
             {
                 // Record uses (must be done before definitions to handle self-referential ops)
@@ -94,6 +98,124 @@ public class LivenessAnalysis
                 RecordDefinition(instruction);
 
                 _instructionIndex++;
+            }
+            blockEndIndex[block.Label] = _instructionIndex - 1;
+        }
+
+        // Second pass: extend variable lifetimes for loops
+        // A loop exists when there's a backward edge - either:
+        // 1. A branch to an earlier basic block (inter-block loop)
+        // 2. A branch to an earlier label within the same block (intra-block loop)
+
+        // Build label-to-instruction mapping for intra-block loop detection
+        var labelToInstructionIndex = new Dictionary<string, int>();
+        _instructionIndex = 0;
+        foreach (var block in _function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                if (instruction is IrLabel label)
+                {
+                    labelToInstructionIndex[label.Name] = _instructionIndex;
+                }
+                _instructionIndex++;
+            }
+        }
+
+        // Check for inter-block loops (branches between blocks)
+        foreach (var block in _function.BasicBlocks)
+        {
+            // Check if this block ends with a branch to an earlier block (loop)
+            var lastInstr = block.Instructions.LastOrDefault();
+            if (lastInstr is IrBranch branch)
+            {
+                if (blockStartIndex.TryGetValue(branch.Target, out var targetStart))
+                {
+                    var branchIndex = blockEndIndex[block.Label];
+                    // If target is before this branch, it's a loop back edge
+                    if (targetStart <= branchIndex)
+                    {
+                        ExtendLifetimesForLoop(targetStart, branchIndex);
+                    }
+                }
+            }
+            else if (lastInstr is IrConditionalBranch condBranch)
+            {
+                // Check both targets
+                foreach (var targetLabel in new[] { condBranch.TrueTarget, condBranch.FalseTarget })
+                {
+                    if (blockStartIndex.TryGetValue(targetLabel, out var targetStart))
+                    {
+                        var branchIndex = blockEndIndex[block.Label];
+                        if (targetStart <= branchIndex)
+                        {
+                            ExtendLifetimesForLoop(targetStart, branchIndex);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for intra-block loops (branches to earlier labels within same block)
+        _instructionIndex = 0;
+        foreach (var block in _function.BasicBlocks)
+        {
+            foreach (var instruction in block.Instructions)
+            {
+                // Check for unconditional branches
+                if (instruction is IrBranch branch)
+                {
+                    if (labelToInstructionIndex.TryGetValue(branch.Target, out var targetIndex))
+                    {
+                        // If target is before this branch, it's a loop back edge
+                        if (targetIndex < _instructionIndex)
+                        {
+                            ExtendLifetimesForLoop(targetIndex, _instructionIndex);
+                        }
+                    }
+                }
+                // Check for conditional branches
+                else if (instruction is IrConditionalBranch condBranch)
+                {
+                    foreach (var targetLabel in new[] { condBranch.TrueTarget, condBranch.FalseTarget })
+                    {
+                        if (labelToInstructionIndex.TryGetValue(targetLabel, out var targetIndex))
+                        {
+                            if (targetIndex < _instructionIndex)
+                            {
+                                ExtendLifetimesForLoop(targetIndex, _instructionIndex);
+                            }
+                        }
+                    }
+                }
+                _instructionIndex++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Extend lifetimes of variables that are live within a loop.
+    /// Any variable defined before the loop and used anywhere within the loop
+    /// must have its lifetime extended to the loop end (the back-edge branch).
+    /// This is critical because loop iterations reuse the same variables.
+    /// </summary>
+    private void ExtendLifetimesForLoop(int loopStart, int loopEnd)
+    {
+        foreach (var interval in _intervals.Values)
+        {
+            // If variable is defined before loop start and has any use within the loop range,
+            // it must stay live until the loop ends. This handles:
+            // 1. Loop induction variables (i, j, etc.)
+            // 2. Loop limit values (array.len(), upper bound temps, etc.)
+            // 3. Loop-invariant values used across iterations
+            //
+            // Key insight: If a variable is used in iteration N, it might be used in iteration N+1,
+            // so it must live until the loop's back-edge (loopEnd).
+            if (interval.DefInstruction < loopStart &&
+                interval.LastUseInstruction >= loopStart &&
+                interval.LastUseInstruction <= loopEnd)
+            {
+                interval.LastUseInstruction = loopEnd;
             }
         }
     }
