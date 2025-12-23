@@ -8,21 +8,237 @@
 // ============================================================================
 // Library Functions
 // ============================================================================
-
+/// Return the state of the selected joy/mouse port. (V40)
+///
+/// This function is used to determine what device is attached to the joy port
+/// and the current position/button state. The user may attach a mouse, game
+/// controller, or joystick to the port and this function will dynamically
+/// detect which device is attached and return the appropriatly formatted
+/// portState.
+///
+/// # Arguments
+/// * `portNumber` - port to read, in the range 0 to 3.
+///
+/// # Returns
+/// portState - bit map that identifies the device and the current state of
+/// that device. The format of the bit map is dependant on the type of
+/// device attached.
+///
+/// See also: SetJoyPortAttrs()
 extern pub fn ReadJoyPort(port: u32) -> u32
+/// Returns the current language selection. (V40)
+///
+/// Determine what the user has specified as a language.
+///
+/// # Returns
+/// language - user specified language, or zero if none has yet been
+/// specified. See <libraries/lowlevel.h> for a definition of the currently
+/// supported language.
+///
+/// See also: <libraries/lowlevel.h>, locale.doc
 extern pub fn GetLanguageSelection() -> u8
+/// Returns the currently pressed rawkey code and qualifiers.
+///
+/// This function returns the currently pressed non-qualifier key and all
+/// pressed qualifiers. This function is safe within an interrupt.
+///
+/// # Returns
+/// key - key code for the last non-qualifier key pressed in the low order
+/// word. If no key is pressed this word will be FF. The upper order word
+/// contains the qualifiers which can be found within the long word as
+/// follows: Qualifier Key LLKB_LSHIFT Left Shift LLKB_RSHIFT Rigt Shift
+/// LLKB_CAPSLOCK Caps Lock LLKB_CONTROL Control LLKB_LALT Left Alt
+/// LLKB_RALT Right Alt LLKB_LAMIGA Left Amiga LLKB_RAMIGA Right Amiga
+///
+/// See also: <libraries/lowlevel.h>
 extern pub fn GetKey() -> u32
+/// Return the states for a set of keys. (V40)
+///
+/// Scans the keyboard to determine which of the rawkey codes listed in the
+/// QueryArray are currently pressed. The state for each key is returned in the
+/// array.
+///
+/// # Arguments
+/// * `queryArray` - an array of KeyQuery structures. The kq_KeyCode fields
+///   of these structures should be filled with the rawkey codes you wish
+///   to query about. Upon return from this function, the kq_Pressed field
+///   of these structures will be set to TRUE if the associated key is
+///   down, and FALSE if not. arraySize - number of key code entries in
+///   queryArray
+///
+/// See also: <libraries/lowlevel.h>
 extern pub fn QueryKeys(queryArray: *KeyQuery, arraySize: u8)
+/// Adds a routine to the keyboard interrupt. (V40)
+///
+/// This routine extends the functionality of the keyboard interrupt to include
+/// intRoutine. Since this is an extention of the normal keyboard interrupt all
+/// of the keyboard handshaking is handled.
+///
+/// # Arguments
+/// * `intRoutine` - the routine to invoke every vblank. This routine
+///   should be as short as possible to minimize its effect on overall
+///   system performance. intData - data passed to the routine in register
+///   A1. If more than one long word of data is required this should be a
+///   pointer to a structure that contains the required data.
+///
+/// # Returns
+/// intHandle - a handle used to manipulate the interrupt, or NULL if it
+/// was not possible to attach the routine.
+///
+/// See also: RemKBInt()
 extern pub fn AddKBInt(intRoutine: *u8, intData: *u8) -> *u8
+/// Remove a previously installed keyboard interrupt. (V40)
+///
+/// Remove a keyboard interrupt routine previously added with AddKBInt().
+///
+/// # Arguments
+/// * `intHandle` - handle obtained from AddKBInt(). This may be NULL, in
+///   which case this function does nothing.
+///
+/// See also: AddKBInt()
 extern pub fn RemKBInt(intHandle: *u8)
+/// Method for selectively disabling OS features. (V40)
+///
+/// This function is used to alter the operation of the system. Some of the
+/// alterations involve controlling what are normally regarded as system
+/// resources.
+///
+/// # Arguments
+/// * `tagList` - pointer to an array of tags listing the features of the
+///   system to be enabled/disabled.
+///
+/// # Returns
+/// failTag - zero if all tags succeeded. A non-zero return indicates a tag
+/// that has failed. It is possible that other tags may fail as well.
+///
+/// See also: <libraries/lowlevel.h>
 extern pub fn SystemControlA(tagList: *TagItem) -> u32
 // Varargs function SystemControl skipped - needs manual implementation
+/// Adds an interrupt that is executed at regular
+///
+/// Calling this routine causes the system to allocate a CIA timer and set up
+/// 'intRoutine' to service any interrupts caused by the timer. Although the
+/// timer is allocated it is neither running, nor enabled.
+///
+/// # Arguments
+/// * `intRoutine` - the routine to invoke upon timer interrupts. This
+///   routine should be as short as possible to minimize its effect on
+///   overall system performance. intData - data passed to the routine in
+///   register A1. If more than one long word of data is required this
+///   should be a pointer to a structure that contains the required data.
+///
+/// # Returns
+/// intHandle - a handle used to manipulate the interrupt, or NULL if it
+/// was not possible to attach the routine.
+///
+/// See also: RemTimerInt(), StopTimerInt(), StartTimerInt()
 extern pub fn AddTimerInt(intRoutine: *u8, intData: *u8) -> *u8
+/// Remove a previously installed timer interrupt. (V40)
+///
+/// Removes a timer interrupt routine previously installed with AddTimerInt.
+///
+/// # Arguments
+/// * `intHandle` - handle obtained from AddTimerInt(). This may be NULL,
+///   in which case this function does nothing.
+///
+/// See also: AddTimerInt(), StopTimerInt(), StartTimerInt()
 extern pub fn RemTimerInt(intHandle: *u8)
+/// Stop the timer associated with the timer interrupt.
+///
+/// Stops the timer associated with the timer interrupt handle passed. This is
+/// used to stop a continuous timer started by StartTimerInt().
+///
+/// # Arguments
+/// * `intHandle` - handle obtained from AddTimerInt().
+///
+/// See also: AddTimerInt(), RemTimerInt(), StartTimerInt()
 extern pub fn StopTimerInt(intHandle: *u8)
+/// Start the timer associated with the timer interrupt.
+///
+/// This routine starts a stopped timer that is assocatied with a timer
+/// interrupt created by AddTimerInt().
+///
+/// # Arguments
+/// * `intHandle` - handle obtained from AddTimerInt(). timeInterval -
+///   number of micoseconds between interrupts. The maximum value allowed
+///   is 90,000. If higher values are passed there will be unexpected
+///   results. continuous - FALSE for a one shot interrupt. TRUE for
+///   multiple interrupts.
+///
+/// See also: AddTimerInt(), RemTimerInt(), StopTimerInt()
 extern pub fn StartTimerInt(intHandle: *u8, timeInterval: u32, continuous: i16)
+/// Returns the time elapsed since it was last called. (V40)
+///
+/// This function utilizes the timer.device/ReadEClock() function to get an
+/// accurate elapsed time value. Since the context needs to be established the
+/// first call to this routine will return a nonsense value.
+///
+/// # Arguments
+/// * `context` - pointer to an EClockVal structure. The first time you
+///   call this function, you should initialize the structure to 0s. You
+///   should then reuse the same structure for subsequent calls to this
+///   function, as this is how the elapsed time is calculated.
+///
+/// # Returns
+/// fractionalSeconds - The elapsed time as a fixed point 32-bit number
+/// with the point fixed in the middle. That is, the upper order sixteen
+/// bits represent the number of seconds elapsed. The low order sixteen bit
+/// represent the fractional number of seconds elapsed. This value is
+/// limited to about sixteen hours. Although this value is precise to
+/// nearly 20 microseconds it is only accurate to within 200 microseconds.
+///
+/// # Warning
+/// The first call to this function will return a non-sense value. Only
+///
+/// See also: timer.device/ReadEClock()
 extern pub fn ElapsedTime(context: *EClockVal) -> u32
+/// Adds a routine executed every vertical blank. (V40)
+///
+/// Lets you attach a routine to the system which will get called everytime a
+/// vertical blanking interrupt occurs. The routine is called from within an
+/// interrupt, so normal restrictions apply.
+///
+/// # Arguments
+/// * `intRoutine` - the routine to invoke every vblank. This routine
+///   should be as short as possible to minimize its effect on overall
+///   system performance. intData - data passed to the routine in register
+///   A1. If more than one long word of data is required this should be a
+///   pointer to a structure that contains the required data.
+///
+/// # Returns
+/// intHandle - a handle used to manipulate the interrupt, or NULL if it
+/// was not possible to attach the routine.
+///
+/// See also: RemVBlankInt()
 extern pub fn AddVBlankInt(intRoutine: *u8, intData: *u8) -> *u8
+/// Remove a previously installed vertical blank routine.
+///
+/// Removes a vertical blank interrupt routine previously added with
+/// AddVBlankInt().
+///
+/// # Arguments
+/// * `intHandle` - handle obtained from AddVBlankInt(). This may be NULL,
+///   in which case this function does nothing.
+///
+/// See also: AddVBlankInt()
 extern pub fn RemVBlankInt(intHandle: *u8)
+/// Change the attributes of a port.  (V40.27)
+///
+/// This function allows modification of several attributes held by
+/// ReadJoyPort() about both it's operation and the type of controller currently
+/// plugged into the port. ReadJoyPort()'s default behavior is to attempt to
+/// automatically sense the type of controller plugged into any given port, when
+/// asked to read that port.
+///
+/// # Arguments
+/// * `portNumber` - the joyport in question (0-3). tagList - a pointer to
+///   an array of tags providing parameters to SetJoyPortAttrs(); if NULL,
+///   the function will return TRUE, but do nothing.
+///
+/// # Returns
+/// success - TRUE if everything went according to plan, or FALSE upon
+/// failure
+///
+/// See also: ReadJoyPort(), <libraries/lowlevel.h>
 extern pub fn SetJoyPortAttrsA(portNumber: u32, tagList: *TagItem) -> i16
 // Varargs function SetJoyPortAttrs skipped - needs manual implementation

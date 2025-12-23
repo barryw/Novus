@@ -235,9 +235,18 @@ pub fn period_for_note(base_rate: u32, target_hz: u32, pal: bool) -> Option<u16>
 // ============================================================================
 
 /// Stereo speaker assignment (hardware-fixed)
+///
+/// Paula's 4 audio channels are hardwired to specific speakers:
+/// - Left speaker: Channels 0 and 3
+/// - Right speaker: Channels 1 and 2
+///
+/// This cannot be changed in hardware, but software panning can
+/// be simulated by mixing samples across channels.
 pub enum StereoChannel {
-    Left,   // Channels 0 and 3
-    Right,  // Channels 1 and 2
+    /// Left speaker (channels 0 and 3)
+    Left,
+    /// Right speaker (channels 1 and 2)
+    Right,
 }
 
 /// Get the stereo speaker assignment for a channel

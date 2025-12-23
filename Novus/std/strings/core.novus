@@ -527,6 +527,8 @@ impl String {
     }
 
     /// Create a string with pre-allocated capacity
+    ///
+    /// Returns None if allocation fails. For error details, use `try_with_capacity`.
     pub fn with_capacity(capacity: u32) -> Option<String> {
         // Use Vec::new for zero capacity to avoid allocation
         if capacity == 0 {
@@ -537,6 +539,21 @@ impl String {
         var result = String::new()
         let success = result.vec.reserve(capacity)
         return if success { Option::Some(result) } else { Option::None }
+    }
+
+    /// Create a string with pre-allocated capacity, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// let s = String::try_with_capacity(100)?
+    /// ```
+    pub fn try_with_capacity(capacity: u32) -> Result<String, StringError> {
+        match String::with_capacity(capacity) {
+            Some(s) => return Result::Ok(s),
+            None => return Result::Err(StringError::AllocationFailed),
+        }
     }
 
     /// Create a String from a Str slice (allocates and copies)
@@ -585,7 +602,9 @@ impl String {
     }
 
     /// Push a string slice onto the end
-    /// Returns true on success, false if allocation failed
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_push_str`.
     pub fn push_str(&var self, s: Str) -> bool {
         if s.is_empty() {
             return true
@@ -603,10 +622,46 @@ impl String {
         return true
     }
 
+    /// Push a string slice onto the end, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var s = String::new()
+    /// s.try_push_str(Str::from_cstr("Hello")?)?
+    /// ```
+    pub fn try_push_str(&var self, s: Str) -> Result<(), StringError> {
+        if self.push_str(s) {
+            return Result::Ok(())
+        } else {
+            return Result::Err(StringError::AllocationFailed)
+        }
+    }
+
     /// Push a single byte onto the end
-    /// Returns true on success, false if allocation failed
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_push_byte`.
     pub fn push_byte(&var self, byte: u8) -> bool {
         return self.vec.push(byte)
+    }
+
+    /// Push a single byte onto the end, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var s = String::new()
+    /// s.try_push_byte(65)?  // Push 'A'
+    /// ```
+    pub fn try_push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        if self.push_byte(byte) {
+            return Result::Ok(())
+        } else {
+            return Result::Err(StringError::AllocationFailed)
+        }
     }
 
     /// Clear the string (keeps capacity)
@@ -615,8 +670,28 @@ impl String {
     }
 
     /// Reserve additional capacity
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_reserve`.
     pub fn reserve(&var self, additional: u32) -> bool {
         return self.vec.reserve(additional)
+    }
+
+    /// Reserve additional capacity, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var s = String::new()
+    /// s.try_reserve(100)?
+    /// ```
+    pub fn try_reserve(&var self, additional: u32) -> Result<(), StringError> {
+        if self.reserve(additional) {
+            return Result::Ok(())
+        } else {
+            return Result::Err(StringError::AllocationFailed)
+        }
     }
 
     /// Get mutable pointer to underlying buffer
@@ -1524,6 +1599,8 @@ pub struct StringBuilder {
 
 impl StringBuilder {
     /// Create new builder with default capacity (256 bytes)
+    ///
+    /// Returns None if allocation fails. For error details, use `try_new`.
     pub fn new() -> Option<StringBuilder> {
         let string_opt = String::with_capacity(256)
         match string_opt {
@@ -1532,7 +1609,25 @@ impl StringBuilder {
         }
     }
 
+    /// Create new builder with default capacity, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var builder = StringBuilder::try_new()?
+    /// builder.push_str(Str::from_cstr("Hello")?)?
+    /// ```
+    pub fn try_new() -> Result<StringBuilder, StringError> {
+        match StringBuilder::new() {
+            Some(b) => return Result::Ok(b),
+            None => return Result::Err(StringError::AllocationFailed),
+        }
+    }
+
     /// Create builder with specific capacity
+    ///
+    /// Returns None if allocation fails. For error details, use `try_with_capacity`.
     pub fn with_capacity(capacity: u32) -> Option<StringBuilder> {
         let string_opt = String::with_capacity(capacity)
         match string_opt {
@@ -1541,19 +1636,64 @@ impl StringBuilder {
         }
     }
 
+    /// Create builder with specific capacity, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var builder = StringBuilder::try_with_capacity(1024)?
+    /// ```
+    pub fn try_with_capacity(capacity: u32) -> Result<StringBuilder, StringError> {
+        match StringBuilder::with_capacity(capacity) {
+            Some(b) => return Result::Ok(b),
+            None => return Result::Err(StringError::AllocationFailed),
+        }
+    }
+
     /// Append a string slice
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_push_str`.
     pub fn push_str(&var self, s: Str) -> bool {
         return self.string.push_str(s)
     }
 
+    /// Append a string slice, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn try_push_str(&var self, s: Str) -> Result<(), StringError> {
+        return self.string.try_push_str(s)
+    }
+
     /// Append a single byte
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_push_byte`.
     pub fn push_byte(&var self, byte: u8) -> bool {
         return self.string.push_byte(byte)
     }
 
+    /// Append a single byte, returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn try_push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        return self.string.try_push_byte(byte)
+    }
+
     /// Append a character (Latin-1)
+    ///
+    /// Returns true on success, false if allocation failed.
+    /// For error details, use `try_push_char`.
     pub fn push_char(&var self, ch: u8) -> bool {
         return self.string.push_byte(ch)
+    }
+
+    /// Append a character (Latin-1), returning Result for error handling
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn try_push_char(&var self, ch: u8) -> Result<(), StringError> {
+        return self.string.try_push_byte(ch)
     }
 
     /// Append formatted integer (signed)

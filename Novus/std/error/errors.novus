@@ -15,51 +15,90 @@ from std::ffi::dos import IoErr
 // DOS Library Errors
 // ============================================================================
 
-// DOS error - maps common IoErr() codes from dos.library
-// Call dos.IoErr() to get the raw error code after a failed operation
+/// DOS library error type
+///
+/// Maps common IoErr() codes from dos.library to semantic error variants.
+/// Call `dos_last_error()` or `IoErr()` to get the raw error code after a failed operation.
+///
+/// # Example
+///
+/// ```novus
+/// match Open("file.txt", MODE_OLDFILE) {
+///     Result::Ok(fh) => { ... },
+///     Result::Err(e) => {
+///         match e {
+///             DosError::NotFound => println("File not found"),
+///             DosError::PermissionDenied => println("Access denied"),
+///             _ => println("Unknown error"),
+///         }
+///     }
+/// }
+/// ```
 pub enum DosError {
-    // File/Directory errors
-    NotFound,               // ERROR_OBJECT_NOT_FOUND (205)
-    AlreadyExists,          // ERROR_OBJECT_EXISTS (203)
-    DirNotFound,            // ERROR_DIR_NOT_FOUND (204)
-    DirectoryNotEmpty,      // ERROR_DIRECTORY_NOT_EMPTY (216)
+    /// File or directory not found (ERROR_OBJECT_NOT_FOUND, code 205)
+    NotFound,
+    /// Object already exists (ERROR_OBJECT_EXISTS, code 203)
+    AlreadyExists,
+    /// Directory not found (ERROR_DIR_NOT_FOUND, code 204)
+    DirNotFound,
+    /// Directory is not empty (ERROR_DIRECTORY_NOT_EMPTY, code 216)
+    DirectoryNotEmpty,
 
-    // Permission/Access errors
-    PermissionDenied,       // Generic permission error
-    WriteProtected,         // ERROR_WRITE_PROTECTED (223)
-    ReadProtected,          // ERROR_READ_PROTECTED (224)
-    DeleteProtected,        // ERROR_DELETE_PROTECTED (222)
+    /// Generic permission denied error
+    PermissionDenied,
+    /// File is write protected (ERROR_WRITE_PROTECTED, code 223)
+    WriteProtected,
+    /// File is read protected (ERROR_READ_PROTECTED, code 224)
+    ReadProtected,
+    /// File is delete protected (ERROR_DELETE_PROTECTED, code 222)
+    DeleteProtected,
 
-    // Disk errors
-    DiskFull,              // ERROR_DISK_FULL (221)
-    DiskNotValidated,      // ERROR_DISK_NOT_VALIDATED (213)
-    DiskWriteProtected,    // ERROR_DISK_WRITE_PROTECTED (214)
-    NoDisk,                // ERROR_NO_DISK (226)
-    NotADosDisk,           // ERROR_NOT_A_DOS_DISK (225)
-    DeviceNotMounted,      // ERROR_DEVICE_NOT_MOUNTED (218)
+    /// Disk is full (ERROR_DISK_FULL, code 221)
+    DiskFull,
+    /// Disk not validated (ERROR_DISK_NOT_VALIDATED, code 213)
+    DiskNotValidated,
+    /// Disk is write protected (ERROR_DISK_WRITE_PROTECTED, code 214)
+    DiskWriteProtected,
+    /// No disk in drive (ERROR_NO_DISK, code 226)
+    NoDisk,
+    /// Disk is not a DOS disk (ERROR_NOT_A_DOS_DISK, code 225)
+    NotADosDisk,
+    /// Device not mounted (ERROR_DEVICE_NOT_MOUNTED, code 218)
+    DeviceNotMounted,
 
-    // I/O errors
-    SeekError,             // ERROR_SEEK_ERROR (219)
-    BufferOverflow,        // ERROR_BUFFER_OVERFLOW (303)
-    BadStreamName,         // ERROR_BAD_STREAM_NAME (206)
+    /// Seek error during I/O (ERROR_SEEK_ERROR, code 219)
+    SeekError,
+    /// Buffer overflow (ERROR_BUFFER_OVERFLOW, code 303)
+    BufferOverflow,
+    /// Invalid stream name (ERROR_BAD_STREAM_NAME, code 206)
+    BadStreamName,
 
-    // Resource errors
-    NoFreeStore,           // ERROR_NO_FREE_STORE (103) - Out of memory
-    ObjectInUse,           // ERROR_OBJECT_IN_USE (202)
-    ObjectTooLarge,        // ERROR_OBJECT_TOO_LARGE (207)
-    TooManyLevels,         // ERROR_TOO_MANY_LEVELS (217)
+    /// Out of memory (ERROR_NO_FREE_STORE, code 103)
+    NoFreeStore,
+    /// Object is in use (ERROR_OBJECT_IN_USE, code 202)
+    ObjectInUse,
+    /// Object is too large (ERROR_OBJECT_TOO_LARGE, code 207)
+    ObjectTooLarge,
+    /// Too many directory levels (ERROR_TOO_MANY_LEVELS, code 217)
+    TooManyLevels,
 
-    // Lock/Record errors
-    InvalidLock,           // ERROR_INVALID_LOCK (211)
-    RecordNotLocked,       // ERROR_RECORD_NOT_LOCKED (240)
-    LockCollision,         // ERROR_LOCK_COLLISION (241)
-    LockTimeout,           // ERROR_LOCK_TIMEOUT (242)
+    /// Invalid lock (ERROR_INVALID_LOCK, code 211)
+    InvalidLock,
+    /// Record was not locked (ERROR_RECORD_NOT_LOCKED, code 240)
+    RecordNotLocked,
+    /// Lock collision occurred (ERROR_LOCK_COLLISION, code 241)
+    LockCollision,
+    /// Lock timed out (ERROR_LOCK_TIMEOUT, code 242)
+    LockTimeout,
 
-    // Other
-    NotImplemented,        // ERROR_NOT_IMPLEMENTED (236)
-    BadNumber,             // ERROR_BAD_NUMBER (115)
-    InvalidInput,          // Generic invalid input
-    Unknown,               // Unmapped error code (check IoErr() for raw value)
+    /// Feature not implemented (ERROR_NOT_IMPLEMENTED, code 236)
+    NotImplemented,
+    /// Bad number format (ERROR_BAD_NUMBER, code 115)
+    BadNumber,
+    /// Generic invalid input error
+    InvalidInput,
+    /// Unknown error code - check IoErr() for raw value
+    Unknown,
 }
 
 // Get the current DOS error from IoErr()
@@ -141,22 +180,38 @@ pub fn dos_error_to_code(err: DosError) -> i32 {
 // Exec Library Errors
 // ============================================================================
 
-// Exec library errors - memory, tasks, signals, etc.
+/// Exec library error type
+///
+/// Errors related to memory allocation, tasks, signals, and other Exec services.
 pub enum ExecError {
-    NoMem,              // Memory allocation failed (NULL return from AllocMem)
-    BadSignal,          // Invalid signal number
-    NullReturn,         // Function returned NULL unexpectedly
-    BadTask,            // Invalid task pointer
-    BadNode,            // Invalid list node
-    BadPort,            // Invalid message port
-    SignalInUse,        // Signal already allocated
-    TaskNotFound,       // Task lookup failed
-    LibraryNotFound,    // OpenLibrary failed
-    InvalidAddress,     // Invalid memory address
-    AlignmentError,     // Memory alignment violation
+    /// Memory allocation failed (AllocMem returned NULL)
+    NoMem,
+    /// Invalid signal number
+    BadSignal,
+    /// Function returned NULL unexpectedly
+    NullReturn,
+    /// Invalid task pointer
+    BadTask,
+    /// Invalid list node
+    BadNode,
+    /// Invalid message port
+    BadPort,
+    /// Signal bit already allocated
+    SignalInUse,
+    /// FindTask lookup failed
+    TaskNotFound,
+    /// OpenLibrary failed
+    LibraryNotFound,
+    /// Invalid memory address
+    InvalidAddress,
+    /// Memory alignment violation
+    AlignmentError,
 }
 
-// Convert ExecError to error code
+/// Convert ExecError to a numeric error code
+///
+/// Returns a negative error code in the range -100 to -199 for Exec errors.
+/// Useful for returning error codes to AmigaOS or for logging.
 pub fn exec_error_to_code(err: ExecError) -> i32 {
     match err {
         ExecError::NoMem => return -100,
@@ -177,21 +232,36 @@ pub fn exec_error_to_code(err: ExecError) -> i32 {
 // Intuition Library Errors
 // ============================================================================
 
-// Intuition (GUI) errors
+/// Intuition library error type
+///
+/// Errors related to windows, screens, gadgets, menus, and other Intuition services.
 pub enum IntuitionError {
-    WindowOpenFailed,       // OpenWindow failed
-    ScreenOpenFailed,       // OpenScreen failed
-    GadgetCreateFailed,     // Gadget creation failed
-    MenuCreateFailed,       // Menu creation failed
-    InvalidWindow,          // Invalid window pointer
-    InvalidScreen,          // Invalid screen pointer
-    NoIDCMP,               // IDCMP setup failed
-    BadDisplayMode,        // Invalid display mode
-    ModifyIDCMPFailed,     // ModifyIDCMP failed (out of memory)
-    LibraryOpenFailed,     // Failed to open required library (e.g., GadTools)
+    /// OpenWindow failed
+    WindowOpenFailed,
+    /// OpenScreen failed
+    ScreenOpenFailed,
+    /// Gadget creation failed
+    GadgetCreateFailed,
+    /// Menu creation failed
+    MenuCreateFailed,
+    /// Invalid window pointer
+    InvalidWindow,
+    /// Invalid screen pointer
+    InvalidScreen,
+    /// IDCMP setup failed
+    NoIDCMP,
+    /// Invalid display mode ID
+    BadDisplayMode,
+    /// ModifyIDCMP failed (usually out of memory)
+    ModifyIDCMPFailed,
+    /// Failed to open required library (e.g., GadTools)
+    LibraryOpenFailed,
 }
 
-// Convert IntuitionError to error code
+/// Convert IntuitionError to a numeric error code
+///
+/// Returns a negative error code in the range -200 to -299 for Intuition errors.
+/// Useful for returning error codes to AmigaOS or for logging.
 pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
     match err {
         IntuitionError::WindowOpenFailed => return -200,
@@ -211,26 +281,46 @@ pub fn intuition_error_to_code(err: IntuitionError) -> i32 {
 // Graphics Library Errors
 // ============================================================================
 
-// Graphics library errors
+/// Graphics library error type
+///
+/// Errors related to bitmaps, rastports, fonts, sprites, and other graphics operations.
 pub enum GraphicsError {
-    BitMapAllocFailed,              // BitMap allocation failed
-    RastPortInitFailed,             // RastPort init failed
-    FontOpenFailed,                 // OpenFont failed
-    InvalidBitMap,                  // Invalid BitMap pointer
-    InvalidRastPort,                // Invalid RastPort pointer
-    BadDisplayMode,                 // Invalid display mode
-    CopperListFailed,               // Copper list setup failed
-    InvalidSpriteData,              // Invalid sprite data format
-    InvalidSpriteChannel,           // Invalid sprite channel (must be 0-7)
-    InvalidAttachedSpriteChannel,   // Invalid attached sprite channel (must be even 0-6)
-    SpriteNotAllocated,             // Sprite handle not allocated
-    SpriteChannelInUse,             // Sprite channel already allocated
-    InvalidColorCount,              // Wrong number of colors for sprite type
-    NoSpritesAvailable,             // OS couldn't allocate sprite (all in use)
-    InvalidViewPort,                // NULL or invalid ViewPort pointer
+    /// BitMap allocation failed
+    BitMapAllocFailed,
+    /// RastPort initialization failed
+    RastPortInitFailed,
+    /// OpenFont failed
+    FontOpenFailed,
+    /// Invalid BitMap pointer
+    InvalidBitMap,
+    /// Invalid RastPort pointer
+    InvalidRastPort,
+    /// Invalid display mode
+    BadDisplayMode,
+    /// Copper list setup failed
+    CopperListFailed,
+    /// Invalid sprite data format
+    InvalidSpriteData,
+    /// Invalid sprite channel (must be 0-7)
+    InvalidSpriteChannel,
+    /// Invalid attached sprite channel (must be even 0-6)
+    InvalidAttachedSpriteChannel,
+    /// Sprite handle not allocated
+    SpriteNotAllocated,
+    /// Sprite channel already in use
+    SpriteChannelInUse,
+    /// Wrong number of colors for sprite type
+    InvalidColorCount,
+    /// All sprites in use by OS
+    NoSpritesAvailable,
+    /// NULL or invalid ViewPort pointer
+    InvalidViewPort,
 }
 
-// Convert GraphicsError to error code
+/// Convert GraphicsError to a numeric error code
+///
+/// Returns a negative error code in the range -300 to -399 for Graphics errors.
+/// Useful for returning error codes to AmigaOS or for logging.
 pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
     match err {
         GraphicsError::BitMapAllocFailed => return -300,
@@ -255,14 +345,31 @@ pub fn graphics_error_to_code(err: GraphicsError) -> i32 {
 // Top-Level Novus Error (Wraps All Subsystems)
 // ============================================================================
 
-// Top-level error type that can represent errors from any Amiga subsystem
-// Use this as the error type when functions may fail with errors from
-// multiple subsystems (e.g., a GUI app that does file I/O)
+/// Top-level Novus error type
+///
+/// Wraps errors from all Amiga subsystems into a single type.
+/// Use this when functions may fail with errors from multiple
+/// subsystems (e.g., a GUI app that does file I/O).
+///
+/// # Example
+///
+/// ```novus
+/// fn load_and_display(path: *u8) -> Result<(), NovusError> {
+///     let data = read_file(path)?  // DosError -> NovusError
+///     let window = open_window()?  // IntuitionError -> NovusError
+///     draw_data(window, data)?     // GraphicsError -> NovusError
+///     Result::Ok(())
+/// }
+/// ```
 pub enum NovusError {
-    Dos(DosError),              // DOS library error
-    Exec(ExecError),            // Exec library error
-    Intuition(IntuitionError),  // Intuition library error
-    Graphics(GraphicsError),    // Graphics library error
+    /// DOS library error (file I/O, filesystem)
+    Dos(DosError),
+    /// Exec library error (memory, tasks, signals)
+    Exec(ExecError),
+    /// Intuition library error (windows, screens, gadgets)
+    Intuition(IntuitionError),
+    /// Graphics library error (bitmaps, fonts, sprites)
+    Graphics(GraphicsError),
 }
 
 // ============================================================================

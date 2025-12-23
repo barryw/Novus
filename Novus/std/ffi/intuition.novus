@@ -16,133 +16,1720 @@ from std::ffi::amiga_structs import IntuiText, NewScreen, NewWindow, RastPort
 
 extern pub fn OpenIntuition()
 extern pub fn Intuition(iEvent: *InputEvent)
+/// Add a gadget to the gadget list of a window.
+///
+/// Adds the specified gadget to the gadget list of the given window, linked in
+/// at the position in the list specified by the position argument (that is, if
+/// Position == 0, the gadget will be inserted at the head of the list, and if
+/// Position == 1 then the gadget will be inserted after the first gadget and
+/// before the second). If the position you specify is greater than the number
+/// of gadgets in the list, your gadget will be added to the end of the list.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the position of where the gadget was actually added.
+///
+/// See also: AddGList(), RemoveGadget(), RemoveGList()
 extern pub fn AddGadget(window: *Window, gadget: *Gadget, position: u16) -> u16
+/// Clear (detaches) the DMRequest of the window.
+///
+/// Attempts to clear the DMRequest from the specified window, that is detaches
+/// the special requester that you attach to the double-click of the menu button
+/// which the user can then bring up on demand. This routine WILL NOT clear the
+/// DMRequest if it's active (in use by the user).
+///
+/// # Arguments
+///
+/// # Returns
+/// If the DMRequest was not currently in use, detaches the DMRequest from
+/// the window and returns TRUE.
+///
+/// See also: SetDMRequest(), Request()
 extern pub fn ClearDMRequest(window: *Window) -> i16
+/// Clear (detach) the menu strip from the window.
+///
+/// Detaches the current menu strip from the window; menu strips are attached to
+/// windows using the SetMenuStrip() function (or, for V36, ResetMenuStrip() ).
+/// If the menu is in use (for that matter if any menu is in use) this function
+/// will block (Wait()) until the user has finished.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: SetMenuStrip(), ResetMenuStrip()
 extern pub fn ClearMenuStrip(window: *Window)
+/// Clear the mouse pointer definition from a window.
+///
+/// Clears the window of its own definition of the Intuition mouse pointer.
+/// After calling ClearPointer(), every time this window is the active one the
+/// default Intuition pointer will be the pointer displayed to the user.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: SetWindowPointerA(), SetPointer()
 extern pub fn ClearPointer(window: *Window)
+/// Close an Intuition screen.
+///
+/// Unlinks the screen, unlinks the viewport, deallocates everything that
+/// Intuition allocated when the screen was opened (using OpenScreen()). Doesn't
+/// care whether or not there are still any windows attached to the screen.
+///
+/// # Arguments
+///
+/// # Returns
+/// New for V36: returns TRUE (1) if screen is closed, returns FALSE (0) if
+/// screen had open windows when called.
+///
+/// See also: OpenScreen()
 extern pub fn CloseScreen(consuming screen: *Screen) -> i16
+/// Close an Intuition window.
+///
+/// Closes an Intuition window. Unlinks it from the system, deallocates its
+/// memory, and makes it disappear.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OpenWindow(), OpenScreen(), CloseScreen()
 extern pub fn CloseWindow(consuming window: *Window)
+/// Closes the Workbench screen.
+///
+/// This routine attempts to close the Workbench screen: - Test whether or not
+/// any applications have opened windows on the Workbench, and return FALSE if
+/// so. Otherwise ...
+///
+/// # Arguments
+///
+/// # Returns
+/// TRUE if the Workbench screen closed successfully FALSE if the Workbench
+/// was not open, or if it has windows open which are not Workbench
+/// drawers.
+///
+/// See also: OpenWorkBench()
 extern pub fn CloseWorkBench() -> i32
+/// Get the current time values.
+///
+/// Puts copies of the current time into the supplied argument pointers. This
+/// time value is not extremely accurate, nor is it of a very fine resolution.
+///
+/// # Arguments
+///
+/// # Returns
+/// Puts the time values into the memory locations specified by the
+/// arguments Return value is not defined.
+///
+/// See also: timer.device/TR_GETSYSTIME
 extern pub fn CurrentTime(seconds: *u8, micros: *u8)
+/// Create the display of an alert message.
+///
+/// Creates an alert display with the specified message. If the system can
+/// recover from this alert, it's a RECOVERY_ALERT and this routine waits until
+/// the user presses one of the mouse buttons, after which the display is
+/// restored to its original state and a BOOL value is returned by this routine
+/// to specify whether or not the user pressed the LEFT mouse button.
+///
+/// # Arguments
+///
+/// # Returns
+/// A BOOL value of TRUE or FALSE. If this is a DEADEND_ALERT, FALSE is
+/// always the return value. If this is a RECOVERY_ALERT. The return value
+/// will be TRUE if the user presses the left mouse button in response to
+/// your message, and FALSE if the user presses the right hand button is
+/// response to your text, or if the alert could not be posted.
+///
+/// See also: TimedDisplayAlert()
 extern pub fn DisplayAlert(alertNumber: u32, string: *u8, height: u16) -> i16
+/// Flash the video display.
+///
+/// "Beeps" the video display by flashing the background color of the specified
+/// screen. If the screen argument is NULL, every screen in the display will be
+/// beeped.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn DisplayBeep(screen: *Screen)
+/// Test two time values for double-click timing.
+///
+/// Compares the difference in the time values with the double-click timeout
+/// range that the user has set (using the "Preferences" tool) or some other
+/// program has configured into the system. If the difference between the
+/// specified time values is within the current double-click time range, this
+/// function returns TRUE, else it returns FALSE.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the difference between the supplied timestamp values is within the
+/// double-click time range in the current set of Preferences, this
+/// function returns TRUE, else it returns FALSE
+///
+/// See also: CurrentTime()
 extern pub fn DoubleClick(sSeconds: u32, sMicros: u32, cSeconds: u32, cMicros: u32) -> i16
+/// Draw the specified Border structure into a RastPort.
+///
+/// First, sets up the draw mode and pens in the RastPort according to the
+/// arguments of the Border structure. Then, draws the vectors of the border
+/// argument into the RastPort, offset by the left and top offsets.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn DrawBorder(rp: *RastPort, border: *Border, leftOffset: i16, topOffset: i16)
+/// Draw the specified Image structure into a RastPort.
+///
+/// First, sets up the draw mode and pens in the RastPort according to the
+/// arguments of the Image structure. Then, moves the image data of the image
+/// argument into the RastPort, offset by the left and top offsets.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: DrawImageState(), EraseImage()
 extern pub fn DrawImage(rp: *RastPort, image: *Image, leftOffset: i16, topOffset: i16)
+/// Remove a currently active requester.
+///
+/// Ends the request by erasing the requester and decoupling it from the window.
+/// Note that this doesn't necessarily clear all requesters from the window,
+/// only the specified one.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: Request()
 extern pub fn EndRequest(requester: *Requester, window: *Window)
+/// Get a copy of the the Intuition default Preferences.
+///
+/// Gets a copy of the Intuition default preferences data. Writes the data into
+/// the buffer you specify.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns your parameter PrefBuffer.
+///
+/// See also: GetPrefs()
 extern pub fn GetDefPrefs(preferences: *Preferences, size: i16) -> *Preferences
+/// Get the current Intuition Preferences structure.
+///
+/// Gets a copy of the current Intuition Preferences structure. Writes the data
+/// into the buffer you specify.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns your parameter PrefBuffer.
+///
+/// See also: GetDefPrefs(), SetPrefs()
 extern pub fn GetPrefs(preferences: *Preferences, size: i16) -> *Preferences
+/// Initialize a Requester structure.
+///
+/// Initializes a requester for general use. After calling InitRequester, you
+/// need fill in only those Requester values that fit your needs.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn InitRequester(requester: *Requester)
+/// Returns the address of the specified MenuItem.
+///
+/// This routine feels through the specified menu strip and returns the address
+/// of the item specified by the menu number. Typically, you will use this
+/// routine to get the address of a menu item from a menu number sent to you by
+/// Intuition after user has chosen from a window's menus.
+///
+/// # Arguments
+///
+/// # Returns
+/// If MenuNumber == MENUNULL, this routine returns NULL, else this routine
+/// returns the address of the menu item specified by MenuNumber.
+///
+/// See also: The "Menus" chapter of the Intuition Reference Manual, or the Amiga ROM Kernel Manual
 extern pub fn ItemAddress(menuStrip: *Menu, menuNumber: u16) -> *MenuItem
+/// Modify the state of a window's IDCMPFlags.
+///
+/// This routine modifies the state of your window's IDCMP (Intuition Direct
+/// Communication Message Port). The state is modified to reflect your desires
+/// as described by the flag bits in the value IDCMPFlags.
+///
+/// # Arguments
+///
+/// # Returns
+/// Starting in V37, this function returns NULL if it was unable to create
+/// the necessary message ports. (The possibility of failure exists in
+/// earlier releases, but no return code was offered). Do not check the
+/// return code under V36 or earlier.
+///
+/// See also: OpenWindowTagList(), OpenWindow(), CloseWindow()
 extern pub fn ModifyIDCMP(window: *Window, flags: u32) -> i16
+/// Modify the current parameters of a proportional gadget.
+///
+/// Modifies the parameters of the specified proportional gadget. The gadget's
+/// internal state is then recalculated and the imagery is redisplayed in the
+/// window or requester that contains the gadget.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: NewModifyProp() The Intuition Reference Manual and Amiga ROM Kernel Manual contain more information on Proportional Gadgets.
 extern pub fn ModifyProp(gadget: *Gadget, window: *Window, requester: *Requester, flags: u16, horizPot: u16, vertPot: u16, horizBody: u16, vertBody: u16)
+/// Attempt to move the screen by the increments provided.
+///
+/// Moves the screen the specified increment, specified in screen pixel
+/// resolution coordinates. New for V36: Screen movement limits have been
+/// greatly relaxed, to support screen scrolling.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ScreenPosition(), RethinkDisplay()
 extern pub fn MoveScreen(screen: *Screen, dx: i16, dy: i16)
+/// Ask Intuition to move a window.
+///
+/// This routine sends a request to Intuition asking to move the window the
+/// specified distance. The delta arguments describe how far to move the window
+/// along the respective axes.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ChangeWindowBox(), SizeWindow(), WindowToFront(), WindowToBack()
 extern pub fn MoveWindow(window: *Window, dx: i16, dy: i16)
+/// Disable the specified gadget.
+///
+/// This command disables the specified gadget. When a gadget is disabled, these
+/// things happen: - its imagery is displayed ghosted - the GFLG_DISABLED flag
+/// is set - the gadget cannot be selected by User The window parameter must
+/// point to the window which contains the gadget, or which contains the
+/// requester that contains the gadget.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OnGadget(), AddGadget(), RefreshGadgets()
 extern pub fn OffGadget(gadget: *Gadget, window: *Window, requester: *Requester)
+/// Disable the given menu or menu item.
+///
+/// This command disables a sub-item, an item, or a whole menu. This depends on
+/// the contents of the data packed into MenuNumber, which is described in the
+/// Intuition Reference Manual.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OnMenu(), ResetMenuStrip()
 extern pub fn OffMenu(window: *Window, menuNumber: u16)
+/// Enable the specified gadget.
+///
+/// This command enables the specified gadget. When a gadget is enabled, these
+/// things happen: - its imagery is displayed normally (not ghosted) - the
+/// GFLG_DISABLED flag is cleared - the gadget can thereafter be selected by the
+/// user The window parameter must point to the window which contains the
+/// gadget, or which contains the requester that contains the gadget The
+/// requester parameter must only be valid if the gadget has the GTYP_REQGADGET
+/// flag set, a requirement for all requester gadgets.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OffGadget()
 extern pub fn OnGadget(gadget: *Gadget, window: *Window, requester: *Requester)
+/// Enable the given menu or menu item.
+///
+/// This command enables a sub-item, an item, or a whole menu. This depends on
+/// the contents of the data packed into MenuNumber, which is described in the
+/// Intuition Reference Manual.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OffMenu(), ResetMenuStrip()
 extern pub fn OnMenu(window: *Window, menuNumber: u16)
+/// Open an Intuition screen.
+///
+/// Opens an Intuition screen according to the specified parameters found in the
+/// NewScreen structure. Does all the allocations, sets up the screen structure
+/// and all substructures completely, and links this screen's viewport into
+/// Intuition's View structure.
+///
+/// # Arguments
+///
+/// # Returns
+/// If all is well, returns the pointer to your new screen If anything goes
+/// wrong, returns NULL, with further error specification in the variable
+/// pointed to by the SA_ErrorCode data field (V36 and later).
+///
+/// See also: OpenScreenTagList(), OpenWindow(), PrintIText(), CloseScreen(), QueryOverscan() PubScreenStatus()
 extern pub fn OpenScreen(newScreen: *NewScreen) -> *Screen
+/// Open an Intuition window.
+///
+/// Opens an Intuition window of the given dimensions and position, with the
+/// properties specified in the NewWindow structure. Allocates everything you
+/// need to get going.
+///
+/// # Arguments
+/// * `- WFLG_DRAGBAR allows this window to be dragged` - WFLG_DEPTHGADGET
+///   lets the user depth-arrange this window - WFLG_CLOSEGADGET attaches
+///   the standard close gadget - WFLG_SIZEGADGET allows this window to be
+///   sized.
+/// * `- WFLG_SIZEBRIGHT is a special system gadget flag that you set to specify whether or not you want the RIGHT border adjusted to account for the physical size of the sizing gadget.  The sizing gadget must, after all, take up room in either the right or bottom border (or both, if you like) of the window.  Setting either this or the WFLG_SIZEBBOTTOM flag selects which edge will take up the slack.  This will be particularly useful to applications that want to use the extra space for other gadgets (like a proportional gadget and two Booleans done up to look like scroll bars) or, for for instance, applications that want every possible horizontal bit and are willing to lose lines vertically. NOTE:  if you select WFLG_SIZEGADGET, you must select either WFLG_SIZEBRIGHT or WFLG_SIZEBBOTTOM or both.  If you select neither, the default is WFLG_SIZEBRIGHT.` -
+///   WFLG_SIZEBBOTTOM is a special system gadget flag that you set to
+///   specify whether or not you want the BOTTOM border adjusted to account
+///   for the physical size of the sizing gadget. For details, refer to
+///   WFLG_SIZEBRIGHT above.
+///
+/// # Returns
+/// If all is well, returns the pointer to your new Window If anything goes
+/// wrong, returns NULL
+///
+/// See also: OpenWindowTagList(), OpenScreen(), ModifyIDCMP(), SetWindowTitles(), LockPubScreen()
 extern pub fn OpenWindow(newWindow: *NewWindow) -> *Window
+/// Open the Workbench screen.
+///
+/// This routine attempts to reopen the Workbench. The actions taken are: -
+/// general good stuff and nice things, and then return a non-null pointer to
+/// the Workbench screen.
+///
+/// # Arguments
+///
+/// # Returns
+/// non-zero if Workbench screen opened successfully, or was already opened
+/// zero if anything went wrong and the Workbench screen isn't out there
 extern pub fn OpenWorkBench() -> u32
+/// Print text described by the IntuiText argument.
+///
+/// Prints the IntuiText into the specified RastPort. Sets up the RastPort as
+/// specified by the IntuiText values, then prints the text into the RastPort at
+/// the IntuiText x/y coordinates offset by the left/top arguments.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn PrintIText(rp: *RastPort, iText: *IntuiText, left: i16, top: i16)
+/// Refresh (redraw) the gadget display.
+///
+/// Refreshes (redraws) all of the gadgets in the gadget list starting from the
+/// specified gadget. The window parameter must point to the window which
+/// contains the gadget, or which contains the requester that contains the
+/// gadget The requester parameter must only be valid if the gadget has the
+/// GTYP_REQGADGET flag set, a requirement for all requester gadgets.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: RefreshGList(), RemoveGadget(), RemoveGList(), AddGadget(), AddGList()
 extern pub fn RefreshGadgets(gadgets: *Gadget, window: *Window, requester: *Requester)
+/// Remove a gadget from a window.
+///
+/// Removes the given gadget from the gadget list of the specified window.
+/// Returns the ordinal position of the removed gadget.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the ordinal position of the removed gadget. If the gadget
+/// wasn't found in the appropriate list, or if there are no gadgets in the
+/// list, returns -1.
+///
+/// See also: AddGadget(), AddGList(), RemoveGList()
 extern pub fn RemoveGadget(window: *Window, gadget: *Gadget) -> u16
+/// Tell Intuition whether to report mouse movement.
+///
+/// Tells Intuition whether or not to broadcast mouse-movement events to your
+/// window when it's the active one. The Boolean value specifies whether to
+/// start or stop broadcasting position information of mouse-movement.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: The Input and Output section of the Intuition Reference Manual
 extern pub fn ReportMouse(flag: i16, window: *Window)
+/// Activate a requester.
+///
+/// Links in and displays a requester into the specified window. This routine
+/// ignores the window's IDCMP_REQVERIFY flag.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the requester is successfully opened, TRUE is returned. Otherwise,
+/// if the requester could not be opened, FALSE is returned.
+///
+/// See also: The Requesters section of the Intuition Reference Manual
 extern pub fn Request(requester: *Requester, window: *Window) -> i16
+/// Send the specified screen to the back of the display.
+///
+/// Sends the specified screen to the back of the display.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ScreenDepth(), ScreenToFront()
 extern pub fn ScreenToBack(screen: *Screen)
+/// Make the specified screen the frontmost.
+///
+/// Brings the specified Screen to the front of the display.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ScreenDepth(), ScreenToBack()
 extern pub fn ScreenToFront(screen: *Screen)
+/// Set the DMRequest of a window.
+///
+/// Attempts to set the DMRequest into the specified window. The DMRequest is
+/// the special requester that you attach to the double-click of the menu button
+/// which the user can then bring up on demand.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the current DMRequest was not in use, sets the DMRequest pointer
+/// into the window and returns TRUE. If the DMRequest was currently in
+/// use, doesn't change the pointer and returns FALSE
+///
+/// See also: ClearDMRequest(), Request()
 extern pub fn SetDMRequest(window: *Window, requester: *Requester) -> i16
+/// Attach a menu strip to a window.
+///
+/// Attaches the menu strip to the window. After calling this routine, if the
+/// user presses the menu button, this specified menu strip will be displayed
+/// and accessible by the user.
+///
+/// # Arguments
+///
+/// # Returns
+/// TRUE if there were no problems. TRUE always, since this routine will
+/// wait until it is OK to proceed.
+///
+/// See also: ClearMenuStrip(), ResetMenuStrip()
 extern pub fn SetMenuStrip(window: *Window, menu: *Menu) -> i16
+/// Specify a pointer sprite image for a window.
+///
+/// Sets up the window with the sprite definition for the pointer. Then,
+/// whenever the window is the active one, the pointer image will change to the
+/// window's version.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: SetWindowPointerA(), ClearPointer(), ROM Kernel Manual: Libraries
 extern pub fn SetPointer(window: *Window, pointer: *u8, height: i16, width: i16, xOffset: i16, yOffset: i16)
+/// Set the window's titles for both window and screen.
+///
+/// Allows you to set the text which appears in the Window and/or Screen title
+/// bars. The window title appears at all times along the window title bar.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OpenWindow(), RefreshWindowFrame(), OpenScreen()
 extern pub fn SetWindowTitles(window: *Window, windowTitle: *u8, screenTitle: *u8)
+/// Set the screen title bar display mode.
+///
+/// This routine sets the SHOWTITLE flag of the specified screen, and then
+/// coordinates the redisplay of the screen and its windows. The screen title
+/// bar can appear either in front of or behind WFLG_BACKDROP windows.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn ShowTitle(screen: *Screen, showIt: i16)
+/// Ask Intuition to size a window.
+///
+/// This routine sends a request to Intuition asking to size the window the
+/// specified amounts. The delta arguments describe how much to size the window
+/// along the respective axes.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ChangeWindowBox(), MoveWindow(), WindowToFront(), WindowToBack()
 extern pub fn SizeWindow(window: *Window, dx: i16, dy: i16)
+/// Return the address of the Intuition View structure.
+///
+/// Returns the address of the Intuition View structure. If you want to use any
+/// of the graphics, text, or animation primitives in your window and that
+/// primitive requires a pointer to a view, this routine will return the address
+/// of the view for you.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the address of the Intuition View structure
+///
+/// See also: graphics.library
 extern pub fn ViewAddress() -> *View
+/// Return the address of a window's viewport.
+///
+/// Returns the address of the viewport associated with the specified window.
+/// The viewport is actually the viewport of the screen within which the window
+/// is displayed.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the address of the Intuition ViewPort structure for your
+/// window's screen .
+///
+/// See also: graphics.library
 extern pub fn ViewPortAddress(window: *Window) -> *ViewPort
+/// Ask Intuition to send a window behind others.
+///
+/// This routine sends a request to Intuition asking to send the window in back
+/// of all other windows in the screen. Note that the window will not be
+/// depth-arranged immediately, but rather will be arranged the next time
+/// Intuition receives an input event, which happens currently at a minimum rate
+/// of ten times per second, and a maximum of sixty times a second.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: MoveWindow(), SizeWindow(), WindowToFront(), MoveWindowInFrontOf()
 extern pub fn WindowToBack(window: *Window)
+/// Ask Intuition to bring a window to the front.
+///
+/// This routine sends a request to Intuition asking to bring the window in
+/// front of all other windows in the screen. Note that the window will not be
+/// depth-arranged immediately, but rather will be arranged the next time
+/// Intuition receives an input event, which happens currently at a minimum rate
+/// of ten times per second, and a maximum of sixty times a second.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: MoveWindow(), SizeWindow(), WindowToBack(), MoveWindowInFrontOf()
 extern pub fn WindowToFront(window: *Window)
+/// Set the minimum and maximum limits of a window.
+///
+/// Sets the minimum and maximum limits of the window's size. Until this routine
+/// is called, the window's size limits are equal to the initial values
+/// established in the OpenWindow() function.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns TRUE if everything was in order. If any of the parameters was
+/// out of range (minimums greater than current size, maximums less than
+/// current size), FALSE is returned and the errant limit request is not
+/// fulfilled (though the valid ones will be).
+///
+/// See also: LockPubScreen()
 extern pub fn WindowLimits(window: *Window, widthMin: i32, heightMin: i32, widthMax: u32, heightMax: u32) -> i16
+/// Set Intuition preferences data.
+///
+/// Sets new preferences values. Copies the first 'Size' bytes from your
+/// preferences buffer to the system preferences table, and puts them into
+/// effect.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns your parameter PrefBuffer.
+///
+/// See also: GetDefPrefs(), GetPrefs()
 extern pub fn SetPrefs(preferences: *Preferences, size: i32, inform: i16) -> *Preferences
+/// Return the length (pixel-width) of an IntuiText.
+///
+/// This routine accepts a pointer to an instance of an IntuiText structure, and
+/// returns the length (the pixel-width) of the string which that instance of
+/// the structure represents. NOTE: if the Font pointer of your IntuiText
+/// structure is set to NULL, you'll get the pixel-width of your text in terms
+/// of the current system default font.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the pixel-width of the text specified by the IntuiText data
+///
+/// See also: OpenScreen()
 extern pub fn IntuiTextLength(iText: *IntuiText) -> i32
+/// Send the Workbench screen in back of all screens.
+///
+/// Causes the Workbench screen, if it's currently opened, to go behind all
+/// other screens. This does not 'move' the screen up or down, instead only
+/// affects the depth-arrangement of the screens.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the Workbench screen was opened, this function returns TRUE,
+/// otherwise it returns FALSE.
+///
+/// See also: WBenchToFront(), ScreenToFront()
 extern pub fn WBenchToBack() -> i16
+/// Bring the Workbench screen in front of all screens.
+///
+/// Causes the Workbench Screen, if it's currently opened, to come to the
+/// foreground. This does not 'move' the screen up or down, instead only affects
+/// the depth-arrangement of the screen.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the Workbench screen was opened, this function returns TRUE,
+/// otherwise it returns FALSE.
+///
+/// See also: WBenchToBack(), ScreenToBack()
 extern pub fn WBenchToFront() -> i16
+/// Automatically build and get response from a requester.
+///
+/// This procedure automatically builds a requester for you and then waits for a
+/// response from the user, or for the system to satisfy your request. If the
+/// response is positive, this procedure returns TRUE.
+///
+/// # Arguments
+///
+/// # Returns
+/// The return value is either TRUE or FALSE. See the text above for a
+/// complete description of the chain of events that might lead to either
+/// of these values being returned.
+///
+/// See also: EasyRequestArgs(), BuildSysRequest(), SysReqHandler()
 extern pub fn AutoRequest(window: *Window, body: *IntuiText, posText: *IntuiText, negText: *IntuiText, pFlag: u32, nFlag: u32, width: u16, height: u16) -> i16
+/// Sets up a window for optimized refreshing.
+///
+/// This routine sets up your window for optimized refreshing. Its role is to
+/// provide Intuition integrated access to the Layers library function
+/// BeginUpdate().
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: EndRefresh(), layers.library/BeginUpdate(), OpenWindow() layer.library/InstallClipRegion(), layers.library/LockLayerInfo() The "Windows" chapter of the Intuition Reference Manual
 extern pub fn BeginRefresh(window: *Window)
+/// Build and display a system requester.
+///
+/// This procedure builds a system requester based on the supplied information.
+/// If all goes well and the requester is constructed, this procedure returns a
+/// pointer to the window in which the requester appears.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the requester was successfully created, the value returned by this
+/// procedure is a pointer to the window in which the requester is
+/// rendered. If the requester could not be created, this routine might
+/// have called DisplayAlert() before returning (it depends on the version)
+/// and will pass back TRUE if the user pressed the left mouse button and
+/// FALSE if the user pressed the right mouse button. If the version of
+/// Intuition doesn't call DisplayAlert(), or if it does, and there's not
+/// enough memory for the alert, the value of FALSE is returned.
+///
+/// See also: FreeSysRequest(), DisplayAlert(), ModifyIDCMP(), exec.library/Wait(), Request()
 extern pub fn BuildSysRequest(window: *Window, body: *IntuiText, posText: *IntuiText, negText: *IntuiText, flags: u32, width: u16, height: u16) -> *Window
+/// End the optimized refresh state of the window.
+///
+/// This function gets you out of the special refresh state of your window. It
+/// is called following a call to BeginRefresh(), which routine puts you into
+/// the special refresh state.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: BeginRefresh(), layers.library/EndUpdate(), graphics.library/UnlockLayerRom()
 extern pub fn EndRefresh(window: *Window, complete: i32)
+/// Free resources gotten by a call to BuildSysRequest().
+///
+/// This routine frees up all memory allocated by a successful call to the
+/// BuildSysRequest() procedure. If BuildSysRequest() returned a pointer to a
+/// window, then you are able to wait on the message port of that window to
+/// detect an event which satisfies the requester.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: BuildSysRequest(), AutoRequest(), CloseWindow()
 extern pub fn FreeSysRequest(consuming window: *Window)
+/// Do an Intuition-integrated MakeVPort() of a screen.
+///
+/// This procedure allows you to do a MakeVPort() for the viewport of your
+/// custom screen in an Intuition-integrated way. This way you can do your own
+/// screen manipulations without worrying about interference with Intuition's
+/// usage of the same viewport.
+///
+/// # Arguments
+///
+/// # Returns
+/// Starting with V39, returns zero for success, non-zero for failure.
+/// Probable cause of failure is failure of graphics.library/MakeVPort().
+/// Prior to V39, the return code is invalid. Do not interpret it when
+/// running on pre-V39 systems!
+///
+/// See also: RethinkDisplay(), RemakeDisplay(), graphics.library/MakeVPort()
 extern pub fn MakeScreen(screen: *Screen) -> i32
+/// Remake the entire Intuition display.
+///
+/// This is the big one. This procedure remakes the entire View structure for
+/// the Intuition display.
+///
+/// # Arguments
+///
+/// # Returns
+/// Starting with V39, returns zero for success, non-zero for failure.
+/// Probable cause of failure is failure of graphics.library/MakeVPort() or
+/// of graphics.library/MrgCop(). Prior to V39, the return code is invalid.
+/// Do not interpret it when running on pre-V39 systems!
+///
+/// See also: MakeScreen(), RethinkDisplay(), graphics.library/MakeVPort() graphics.library/MrgCop(), graphics.library/LoadView()
 extern pub fn RemakeDisplay() -> i32
+/// Grand manipulation of the entire Intuition display.
+///
+/// This function performs the Intuition global display reconstruction. This
+/// includes rethinking about all of the ViewPorts and their relationship to one
+/// another and reconstructing the entire display based on the results of this
+/// rethinking.
+///
+/// # Arguments
+///
+/// # Returns
+/// Starting with V39, returns zero for success, non-zero for failure.
+/// Probable cause of failure is failure of graphics.library/MakeVPort() or
+/// of graphics.library/MrgCop(). Prior to V39, the return code is invalid.
+/// Do not interpret it when running on pre-V39 systems!
+///
+/// See also: RemakeDisplay(), graphics.library/MakeVPort(), graphics.library/MrgCop(), graphics.library/LoadView(), MakeScreen()
 extern pub fn RethinkDisplay() -> i32
+/// AllocMem() with tracking to make freeing easy.
+///
+/// This routine calls the Exec AllocMem() function for you, but also links the
+/// parameters of the allocation into a master list, so that you can simply call
+/// the Intuition routine FreeRemember() at a later time to deallocate all
+/// allocated memory without being required to remember the details of the
+/// memory you've allocated. This routine will have two primary uses: - Let's
+/// say that you're doing a long series of allocations in a procedure.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the memory allocation is successful, this routine returns the byte
+/// address of your requested memory block. Also, the node to your block
+/// will be linked into the list pointed to by your RememberKey variable.
+/// If the allocation fails, this routine returns NULL and the list pointed
+/// to by RememberKey, if any, will be unchanged.
+///
+/// See also: FreeRemember(), exec.library/AllocMem()
 extern pub fn AllocRemember(rememberKey: *Remember, size: u32, flags: u32) -> *u8
+/// Free memory allocated by calls to AllocRemember().
+///
+/// This function frees up memory allocated by the AllocRemember() function. It
+/// will either free up just the Remember structures, which supply the link
+/// nodes that tie your allocations together, or it will deallocate both the
+/// link nodes AND your memory buffers too.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: AllocRemember(), exec.library/FreeMem()
 extern pub fn FreeRemember(consuming rememberKey: *Remember, reallyForget: i16)
+/// Invoke semaphore arbitration of IntuitionBase.
+///
+/// Grabs Intuition internal semaphore so that caller may examine IntuitionBase
+/// safely. This function is not a magic "fix all my race conditions" panacea.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns another ULONG which should be passed to UnlockIBase() to
+/// surrender the lock gotten by this call.
+///
+/// See also: UnlockIBase(), layers.library/LockLayerInfo(), exec.library/ObtainSemaphore()
 extern pub fn LockIBase(dontknow: u32) -> u32
+/// Surrender an Intuition lock gotten by LockIBase().
+///
+/// Surrenders lock gotten by LockIBase(). Calling this function when you do not
+/// own the specified lock will immediately crash the system.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: LockIBase()
 extern pub fn UnlockIBase(ibLock: u32)
+/// Get copy of a screen data structure.
+///
+/// This function copies into the caller's buffer data from a Screen structure.
+/// Typically, this call will be used to find the size, title bar height, and
+/// other values for a standard screen, such as the Workbench screen.
+///
+/// # Arguments
+///
+/// # Returns
+/// TRUE if successful FALSE if standard screen of Type 'type' could not be
+/// opened.
+///
+/// See also: OpenWindow(), LockPubScreen(), graphics.library/GetVPModeID(), SetPubScreenModes(), OpenScreen()
 extern pub fn GetScreenData(buffer: *u8, size: u16, _type: u16, screen: *Screen) -> i32
+/// Refresh (redraw) a chosen number of gadgets.
+///
+/// Refreshes (redraws) gadgets in the gadget list starting from the specified
+/// gadget. At most NumGad gadgets are redrawn.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: RefreshGadgets()
 extern pub fn RefreshGList(gadgets: *Gadget, window: *Window, requester: *Requester, numGad: i16)
+/// Add a linked list of gadgets to a window or requester.
+///
+/// Adds the list of gadgets to the gadget list of the given window or requester
+/// linked in at the position in the list specified by the position argument.
+/// See AddGadget() for more information about gadget list position, and more
+/// information about gadgets in general.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the position of where the first gadget in the list was actually
+/// added.
+///
+/// See also: AddGadget(), RemoveGadget(), RemoveGList()
 extern pub fn AddGList(window: *Window, gadget: *Gadget, position: u16, numGad: i16, requester: *Requester) -> u16
+/// Remove a sublist of gadgets from a window.
+///
+/// Removes 'Numgad' gadgets from the gadget list of the specified window. Will
+/// remove gadgets from a requester if the first gadget's GadgetType flag
+/// GTYP_REQGADGET is set.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns the ordinal position of the removed gadget. If the gadget
+/// wasn't found in the appropriate list, or if there are no gadgets in the
+/// list, returns -1.
+///
+/// See also: RemoveGadget(), AddGadget(), AddGList()
 extern pub fn RemoveGList(remPtr: *Window, gadget: *Gadget, numGad: i16) -> u16
+/// Activate an Intuition window.
+///
+/// Activates an Intuition window. Note that this call may have its action
+/// deferred: you cannot assume that when this call is made the selected window
+/// has become active.
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: OpenWindow(), and the WFLG_ACTIVATE window flag
 extern pub fn ActivateWindow(window: *Window)
+/// Ask Intuition to redraw your window border.
+///
+/// Refreshes the border of a window, including title region and all of the
+/// window's gadgets. You may use this call if you wish to update the display of
+/// your borders.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
 extern pub fn RefreshWindowFrame(window: *Window)
+/// Activate a (string or custom) gadget.
+///
+/// Activates a string or custom gadget. If successful, this means that the user
+/// does not need to click in the gadget before typing.
+///
+/// # Arguments
+///
+/// # Returns
+/// If the conditions above are met, and the gadget is in fact a string
+/// gadget, then this function will return TRUE, else FALSE.
 extern pub fn ActivateGadget(gadgets: *Gadget, window: *Window, requester: *Requester) -> i16
+/// ModifyProp(), but with selective refresh.
+///
+/// Performs the function of ModifyProp(), but refreshes gadgets in the list as
+/// specified by the NumGad parameter. With NumGad = -1, this function is
+/// identical to ModifyProp().
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ModifyProp() The Intuition Reference Manual contains more information on Proportional Gadgets.
 extern pub fn NewModifyProp(gadget: *Gadget, window: *Window, requester: *Requester, flags: u16, horizPot: u16, vertPot: u16, horizBody: u16, vertBody: u16, numGad: i16)
+/// Inquire about a standard overscan region. (V36)
+///
+/// This function fills in a rectangle with one of the system overscan
+/// dimensions, scaled appropriately for the mode of the DisplayID it is passed.
+/// There are three types of system overscan values: OSCAN_TEXT: completely
+/// visible, by user preference.
+///
+/// # Arguments
+/// * `If you wish to supply a NewScreen structure, then you are supplying left/top/width/height information.  This information can be taken from the rectangle resulting from this function: NewScreen.LeftEdge = Rect.MinX; NewScreen.TopEdge = Rect.MinY; NewScreen.Width = STDSCREENWIDTH; /* or ( Rect.MaxX` -
+///   Rect.MinX + 1 ) */ NewScreen.Height = STDSCREENHEIGHT; /* or (
+///   Rect.MaxY - Rect.Miny + 1 ) */
+/// * `Rect -- pointer to a Rectangle structure which this function will fill out with its return values.  Note that to convert a rectangle to a screen "Height" you do (MaxY` -
+///   MinY + 1), and similarly for "Width." The rectangle may be passed
+///   directly to OpenScreen() as a DisplayClip region (SA_DClip).
+///
+/// # Returns
+/// 0 (FALSE) if the MonitorSpec your NewScreen requests does not exist.
+/// Non-zero (TRUE) if it does.
+///
+/// See also: OpenScreen(), Intuition V36 update documentation
 extern pub fn QueryOverscan(displayID: u32, rect: *Rectangle, oScanType: i16) -> i32
+/// Arrange the relative depth of a window. (V36)
+///
+/// Depth-arranges a window in front of an another window. Brings out the
+/// layers.library MoveLayerInFrontOf() to the Intuition user.
+///
+/// # Arguments
+///
+/// # Returns
+/// Repositions window.
+///
+/// See also: WindowToFront(), WindowToBack(), layers.library/MoveLayerInFrontOf()
 extern pub fn MoveWindowInFrontOf(window: *Window, behindWindow: *Window)
+/// Change window position and dimensions. (V36)
+///
+/// Makes simultaneous changes in window position and dimensions, in absolute
+/// (not relative) coordinates. Like MoveWindow() and SizeWindow(), the effect
+/// of this function is deferred until the next input comes along.
+///
+/// # Arguments
+///
+/// # Returns
+/// Position and dimension are changed to your specification, or as close
+/// as possible. Returns nothing.
+///
+/// See also: MoveWindow(), SizeWindow(), ZipWindow(), layers.library/MoveSizeLayer()
 extern pub fn ChangeWindowBox(window: *Window, left: i16, top: i16, width: i16, height: i16)
+/// Set global processing for string gadgets. (V36)
+///
+/// Sets new global editing hook for string gadgets. WARNING: The use and
+/// integration of this function has not been explored, and thus should be
+/// considered a risky function.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns previous global edit hook structure. You may need this hook if
+/// you wish to invoke the previous edit hook's behavior in addition to
+/// your own.
 extern pub fn SetEditHook(hook: *Hook) -> *Hook
+/// Change limit on pending mouse messages. (V36)
+///
+/// Changes the number of mouse messages that Intuition will allow to be
+/// outstanding for your window.
+///
+/// # Arguments
+///
+/// # Returns
+/// -1 if 'Window' is not known Otherwise the previous value of the queue
+/// limit. The corresponding function for changing the repeat key queue
+/// limit is not yet implemented.
+///
+/// See also: OpenWindow()
 extern pub fn SetMouseQueue(window: *Window, queueLength: u16) -> i32
+/// Change window to "alternate" position and
+///
+/// Changes the position and dimension of a window to the values at the last
+/// occasion of ZipWindow being called (or invoked via the "zoom" gadget).
+/// Typically this is used to snap between a normal, large, working dimension of
+/// the window to a smaller, more innocuous position and dimension.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ChangeWindowBox(), MoveWindow(), SizeWindow()
 extern pub fn ZipWindow(window: *Window)
+/// Prevent a public screen from closing. (V36)
+///
+/// Prevents a public screen (or the Workbench) from closing while you examine
+/// it in preparation of opening a visitor window. The sequence you use to open
+/// a visitor window that needs to examine fields in the screen it is about to
+/// open on is: LockPubScreen() ...
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns pointer to a screen, if successful, else NULL. The call can
+/// fail for reasons including that the named public screen doesn't exist
+/// or is in private state.
+///
+/// See also: OpenWindow(), UnlockPubScreen(), GetScreenData()
 extern pub fn LockPubScreen(name: *u8) -> *Screen
+/// Release lock on a public screen. (V36)
+///
+/// Releases lock gotten by LockPubScreen(). It is best to identify the locked
+/// public screen by the pointer returned from LockPubScreen().
+///
+/// # Arguments
+///
+/// See also: LockPubScreen()
 extern pub fn UnlockPubScreen(name: *u8, screen: *Screen)
+/// Prevent changes to the system list. (V36)
+///
+/// Arbitrates access to public screen list while you quickly make a copy of it
+/// for display to the user. Note that this is intended only for the Public
+/// Screen Manager program.
+///
+/// # Arguments
+///
+/// # Returns
+/// A pointer to the public screen list.
+///
+/// See also: UnlockPubScreenList(), OpenScreen(), Intuition V36 update documentation
 extern pub fn LockPubScreenList() -> *List
+/// Release public screen list semaphore. (V36)
+///
+/// Releases lock gotten by LockPubScreenList().
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: LockPubScreenList()
 extern pub fn UnlockPubScreenList()
+/// Identify next public screen in the cycle. (V36)
+///
+/// Returns name of next public screen in system rotation, to allow visitor
+/// windows to provide function to "jump" among public-screens in a cycle.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns NULL if there are no public screens, otherwise a pointer to
+/// your NameBuff.
+///
+/// See also: OpenScreen(), Intuition V36 update documentation
 extern pub fn NextPubScreen(screen: *Screen, namebuf: *u8) -> *u8
+/// Choose a new default public screen. (V36)
+///
+/// Establishes a new default public screen for visitor windows. This screen is
+/// used by windows asking for a named public screen that doesn't exist and the
+/// FALLBACK option is selected, and for windows asking for the default public
+/// screen directly.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: OpenWindow(), OpenScreen(), Intuition V36 update documentation
 extern pub fn SetDefaultPubScreen(name: *u8)
+/// Establish global public screen behavior. (V36)
+///
+/// Sets GLOBAL Intuition public screen modes.
+///
+/// # Arguments
+///
+/// # Returns
+/// OldModes = previous global mode settings
+///
+/// See also: OpenScreen(), Intuition V36 update documentation
 extern pub fn SetPubScreenModes(modes: u16) -> u16
+/// Change status flags for a public screen. (V36)
+///
+/// Changes status flags for a given public screen. The only flag bit currently
+/// defined is PSNF_PRIVATE.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns 0 in the lowest order bit of the return value if the screen
+/// wasn't public, or because it can not be taken private because visitors
+/// are open in it.
+///
+/// See also: OpenScreen(), Intuition V36 update documentation
 extern pub fn PubScreenStatus(screen: *Screen, statusFlags: u16) -> u16
+/// Set up a RastPort for a custom gadget. (V36)
+///
+/// Sets up a RastPort for use (only) by custom gadget hook routines. This
+/// function must be called EACH time a hook routine needing to perform gadget
+/// rendering is called, and must be accompanied by a corresponding call to
+/// ReleaseGIRPort().
+///
+/// # Arguments
+///
+/// # Returns
+/// A pointer to a RastPort that may be used for gadget rendering. This
+/// pointer may be NULL, in which case you should do no rendering. You may
+/// (optionally) pass a null return value to ReleaseGIRPort().
+///
+/// See also: ReleaseGIRPort(), Custom Gadget documentation
 extern pub fn ObtainGIRPort(gInfo: *GadgetInfo) -> *RastPort
+/// Release a custom gadget RastPort. (V36)
+///
+/// The corresponding function to ObtainGIRPort(), it releases arbitration used
+/// by Intuition for gadget RastPorts.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ObtainGIRPort(), Custom Gadget documentation
 extern pub fn ReleaseGIRPort(rp: *RastPort)
+/// Calculate gadget-relative mouse position. (V36)
+///
+/// Determines the current location of the mouse pointer relative to the
+/// upper-left corner of a custom gadget. Typically used only in the
+/// GM_HANDLEINPUT and GM_GOACTIVE custom gadget hook routines.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns nothing. Fills in the two words pointed to by MousePoint with
+/// the gadget-relative mouse position.
 extern pub fn GadgetMouse(gadget: *Gadget, gInfo: *GadgetInfo, mousePoint: *u8)
+/// Get name of default public screen. (V36)
+///
+/// Provides the name of the current default public screen. Only anticipated use
+/// is for Public Screen Manager utilities, since it is easy to open a visitor
+/// window on the default public screen without specifying the name.
+///
+/// # Arguments
+///
+/// # Returns
+/// None. Will provide the string "Workbench" in Namebuff if there is no
+/// current default public screen.
+///
+/// See also: SetDefaultPubScreen(), OpenWindow()
 extern pub fn GetDefaultPubScreen(nameBuffer: *u8)
+/// Easy alternative to AutoRequest(). (V36)
+///
+/// This function provides a simpler method of using a 'System Requester' than
+/// provided by AutoRequest(). It performs layout and size calculations
+/// sensitive to the current font and screen resolution.
+///
+/// # Arguments
+///
+/// # Returns
+/// 0, 1, ..., N = Successive GadgetID values, for the gadgets you specify
+/// for the requester. NOTE: The numbering from left to right is actually:
+/// 1, 2, ..., N, 0. This is for compatibility with AutoRequest(), which
+/// has FALSE for the rightmost gadget.
+///
+/// See also: exec.library/RawDoFmt(), BuildEasyRequestArgs(), SysReqHandler(), AutoRequest(), BuildSysRequest()
 extern pub fn EasyRequestArgs(window: *Window, easyStruct: *EasyStruct, idcmpPtr: *u8, args: *u8) -> i32
 // Varargs function EasyRequest skipped - needs manual implementation
+/// Simple creation of system request. (V36)
+///
+/// This function is to EasyRequest() as BuildSysRequest() is to AutoRequest():
+/// it returns a pointer to the system requester window. The input from that
+/// window can then be processed under application control.
+///
+/// # Arguments
+///
+/// # Returns
+/// A pointer to the system request window opened. In the event of
+/// problems, you may also be returned the value '0' which is to be
+/// interpreted as the "FALSE, Cancel" choice, or (if you have a second
+/// gadget defined) the value '1', which is to be taken to mean the
+/// equivalent of your corresponding left-most gadget.
+///
+/// See also: EasyRequestArgs(), FreeSysRequest(), SysReqHandler(), BuildSysRequest(), AutoRequest()
 extern pub fn BuildEasyRequestArgs(window: *Window, easyStruct: *EasyStruct, idcmp: u32, args: *u8) -> *Window
 // Varargs function BuildEasyRequest skipped - needs manual implementation
+/// Handle system requester input. (V36)
+///
+/// Handles input for a window returned by either BuildSysRequest() or
+/// BuildEasyRequest(). These functions with SysReqHandler() you can perform an
+/// "asynchronous" EasyRequest() or AutoRequest().
+///
+/// # Arguments
+///
+/// # Returns
+/// 0, 1, ..., N = Successive GadgetID values, for the gadgets you specify
+/// for the requester. NOTE: The numbering from left to right is actually:
+/// 1, 2, ..., N, 0. This is for compatibility with AutoRequests which has
+/// FALSE for the rightmost gadget.
+///
+/// See also: exec.library/WaitPort()
 extern pub fn SysReqHandler(window: *Window, idcmpPtr: *u8, waitInput: i16) -> i32
+/// OpenWindow() with TagItem extension. (V36)
+///
+/// A variation of OpenWindow() that allow direct specification of a TagItem
+/// array of extension data. Recommended over using the ExtNewWindow.Extension
+/// field.
+///
+/// # Arguments
+/// * `NewWindow` - (optional) pointer to a NewWindow structure. TagItems -
+///   (optional) pointer to TagItem array, with tag values as described
+///   under the description for OpenWindow().
+///
+/// # Returns
+/// Window - newly created window, per your specifications.
+///
+/// See also: OpenWindow()
 extern pub fn OpenWindowTagList(newWindow: *NewWindow, tagList: *TagItem) -> *Window
 // Varargs function OpenWindowTags skipped - needs manual implementation
+/// OpenScreen() with TagItem extension array. (V36)
+///
+/// Provides an extension to the parameters passed to OpenScreen(). This
+/// extensions is in the form of (a pointer to) an array of TagItem structures,
+/// which have to fields: ti_Tag, an ID identifying the meaning of the other
+/// field, ti_Data.
+///
+/// # Arguments
+/// * `NewScreen` - (optional) pointer to a NewScreen structure.
+/// * `TagItems` - (optional) pointer to (an array of) TagItem structures,
+///   terminated by the value TAG_END.
+///
+/// # Returns
+/// Screen - an open Intuition screen. See OpenScreen() for extended error
+/// codes when Screen is returned NULL.
+///
+/// See also: OpenScreen()
 extern pub fn OpenScreenTagList(newScreen: *NewScreen, tagList: *TagItem) -> *Screen
 // Varargs function OpenScreenTags skipped - needs manual implementation
+/// Draw an (extended) Intuition Image with
+///
+/// This function draws an Intuition Image structure in a variety of "visual
+/// states," which are defined by constants in intuition/imageclass.h. These
+/// include: IDS_NORMAL - like DrawImage() IDS_SELECTED - represents the
+/// "selected state" of a Gadget IDS_DISABLED - the "ghosted state" of a gadget
+/// IDS_BUSY - for future functionality IDS_INDETERMINATE - for future
+/// functionality IDS_INACTIVENORMAL - for gadgets in window border
+/// IDS_INACTIVESELECTED - for gadgets in window border IDS_INACTIVEDISABLED -
+/// for gadgets in window border Only IDS_NORMAL will make sense for traditional
+/// Image structures, this function is more useful when applied to new custom
+/// images or "object-oriented image classes." Each class of custom images is
+/// responsible for documenting which visual states it supports, and you
+/// typically want to use images which support the appropriate states with your
+/// custom gadgets.
+///
+/// # Arguments
+/// * `RPort	- RastPort for rendering Image	- pointer to a (preferably custom) image LeftOffset,RightOffset` -
+///   positional offsets in pixels State - visual state selected from above
+///   DrawInfo - pointer to packed of pen selections and resolution.
+///
+/// # Returns
+/// None.
+///
+/// See also: DrawImage(), GetScreenDrawInfo(), intuition/imageclass.h
 extern pub fn DrawImageState(rp: *RastPort, image: *Image, leftOffset: i16, topOffset: i16, state: u32, drawInfo: *DrawInfo)
+/// Tests whether an image "contains" a point. (V36)
+///
+/// Tests whether a point is properly contained in an image. The intention of
+/// this is to provide custom gadgets a means to delegate "image mask"
+/// processing to the Image, where it belongs (superseding things like
+/// BOOLMASK).
+///
+/// # Arguments
+/// * `Point	- Two words, X/Y packed into a LONG, with high word containing 'X'.  This is what you get if you pass a Point structure (not a pointer!) using common C language parameter conventions. Image` -
+///   a pointer to a standard or custom Image data object. NOTE: If 'Image'
+///   is NULL, this function returns TRUE.
+///
+/// # Returns
+/// DoesContain - Boolean result of the test.
 extern pub fn PointInImage(point: u32, image: *Image) -> i16
+/// Erases an Image. (V36)
+///
+/// Erases an Image. For a normal Image structure, this will call the graphics
+/// function EraseRect() (clear using layer backfill, if any) for the Image box
+/// (LeftEdge/TopEdge/Width/Height).
+///
+/// # Arguments
+/// * `RPort	- RastPort to erase a part of Image	- custom or standard image LeftOffset,RightOffset` -
+///   pixel offsets of Image position
+///
+/// # Returns
+/// None.
+///
+/// See also: graphics.library/EraseRect().
 extern pub fn EraseImage(rp: *RastPort, image: *Image, leftOffset: i16, topOffset: i16)
 extern pub fn NewObjectA(classPtr: *IClass, classID: *u8, tagList: *TagItem) -> *u8
 // Varargs function NewObject skipped - needs manual implementation
+/// Deletes a 'boopsi' object. (V36)
+///
+/// Deletes a boopsi object and all of it auxiliary data. These objects are all
+/// created by NewObject().
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: NewObject(), SetAttrs(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn DisposeObject(consuming object: *u8)
+/// Specify attribute values for an object. (V36)
+///
+/// Specifies a set of attribute/value pairs with meaning as defined by a
+/// 'boopsi' object's class. This function does not provide enough context
+/// information or arbitration for boopsi gadgets which are attached to windows
+/// or requesters.
+///
+/// # Arguments
+///
+/// # Returns
+/// The object does whatever it wants with the attributes you provide. The
+/// return value tends to be non-zero if the changes would require
+/// refreshing gadget imagery, if the object is a gadget.
+///
+/// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn SetAttrsA(object: *u8, tagList: *TagItem) -> u32
 // Varargs function SetAttrs skipped - needs manual implementation
+/// Inquire the value of some attribute of an object. (V36)
+///
+/// Inquires from the specified object the value of the specified attribute. You
+/// always pass the address of a long variable, which will receive the same
+/// value that would be passed to SetAttrs() in the ti_Data portion of a TagItem
+/// element.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns FALSE (0) if the inquiries of attribute are not provided by the
+/// object's class.
+///
+/// See also: NewObject(), DisposeObject(), SetAttrs(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn GetAttr(attrID: u32, object: *u8, storagePtr: *u8) -> u32
+/// Specify attribute values for a boopsi gadget. (V36)
+///
+/// Same as SetAttrs(), but provides context information and arbitration for
+/// classes which implement custom Intuition gadgets. You should use this
+/// function for boopsi gadget objects which have already been added to a
+/// requester or a window, or for "models" which propagate information to gadget
+/// already added.
+///
+/// # Arguments
+///
+/// # Returns
+/// The object does whatever it wants with the attributes you provide,
+/// which might include updating its gadget visuals.
+///
+/// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn SetGadgetAttrsA(gadget: *Gadget, window: *Window, requester: *Requester, tagList: *TagItem) -> u32
 // Varargs function SetGadgetAttrs skipped - needs manual implementation
+/// Iterate through the object on an Exec list. (V36)
+///
+/// This function is for boopsi class implementors only. When you collect a set
+/// of boopsi objects on an Exec List structure by invoking their OM_ADDMEMBER
+/// method, you can (only) retrieve them by iterations of this function.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns pointers to each object in the list in turn, and NULL when
+/// there are no more.
+///
+/// See also: DisposeObject(), SetAttrs(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn NextObject(objectPtrPtr: *u8) -> *u8
+/// Create and initialize a boopsi class. (V36)
+///
+/// For class implementors only. This function creates a new public or private
+/// boopsi class.
+///
+/// # Arguments
+///
+/// # Returns
+/// Pointer to the resulting class, or NULL if not possible: - no memory
+/// for class data structure - public superclass not found - public class
+/// of same name/ID as this one already exists
+///
+/// See also: FreeClass(), AddClass(), RemoveClass(), NewObject(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn MakeClass(classID: *u8, superClassID: *u8, superClassPtr: *IClass, instanceSize: u16, flags: u32) -> *IClass
+/// Make a public class available (V36)
+///
+/// Adds a public boopsi class to the internal list of classes available for
+/// public consumption. You must call this function after you call MakeClass().
+///
+/// # Arguments
+///
+/// # Returns
+/// Nothing returned.
+///
+/// See also: MakeClass(), FreeClass(), RemoveClass() Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn AddClass(classPtr: *IClass)
+/// Get pointer to rendering information. (V36)
+///
+/// Returns a pointer to a DrawInfo structure derived from the screen passed.
+/// This data structure is READ ONLY.
+///
+/// # Arguments
+/// * `Screen` - pointer to a valid, open screen.
+///
+/// # Returns
+/// DrInfo - pointer to a system-allocated DrawInfo structure, as defined
+/// in intuition/screens.h.
+///
+/// See also: FreeScreenDrawInfo(), LockPubScreen(), intuition/screens.h
 extern pub fn GetScreenDrawInfo(screen: *Screen) -> *DrawInfo
+/// Finish using a DrawInfo structure. (V36)
+///
+/// Declares that you are finished with the DrawInfo structure returned by
+/// GetScreenDrawInfo().
+///
+/// # Arguments
+/// * `Screen` - pointer to screen passed to GetScreenDrawInfo(). DrInfo -
+///   pointer to DrawInfo returned by GetScreenDrawInfo(). A NULL DrawInfo
+///   pointer is a valid parameter, signifying "do nothing".
+///
+/// # Returns
+/// None
+///
+/// See also: GetScreenDrawInfo()
 extern pub fn FreeScreenDrawInfo(screen: *Screen, consuming drawInfo: *DrawInfo)
+/// Re-attach a menu strip to a window. (V36)
+///
+/// This function is simply a "fast" version of SetMenuStrip() that doesn't
+/// perform the precalculations of menu page sizes that SetMenuStrip() does. You
+/// may call this function ONLY IF the menu strip and all items and sub-items
+/// have not changed since the menu strip was passed to SetMenuStrip(), with the
+/// following exceptions: - You may change the CHECKED flag to turn a checkmark
+/// on or off.
+///
+/// # Arguments
+///
+/// # Returns
+/// TRUE always.
+///
+/// See also: SetMenuStrip(), ClearMenuStrip()
 extern pub fn ResetMenuStrip(window: *Window, menu: *Menu) -> i16
+/// Make a public boopsi class unavailable. (V36)
+///
+/// Makes a public class unavailable for public consumption. It's OK to call
+/// this function for a class which is not yet in the internal public class
+/// list, or has been already removed.
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: MakeClass(), FreeClass(), AddClass() Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn RemoveClass(classPtr: *IClass)
+/// Frees a boopsi class created by MakeClass(). (V36)
+///
+/// For class implementors only. Tries to free a boopsi class created by
+/// MakeClass().
+///
+/// # Arguments
+/// * `ClassPtr` - pointer to a class created by MakeClass().
+///
+/// # Returns
+/// Returns FALSE if the class could not be freed. Reasons include, but
+/// will not be limited to, having non-zero cl_ObjectCount or
+/// cl_SubclassCount.
+///
+/// See also: MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn FreeClass(consuming classPtr: *IClass) -> i16
+/// Get a ScreenBuffer for double-buffering. (V39)
+///
+/// Allocates a ScreenBuffer structure and usually a BitMap. This structure can
+/// be used for double (or multiple) buffering in Intuition screens.
+///
+/// # Arguments
+///
+/// # Returns
+/// Pointer to a valid ScreenBuffer structure, or NULL if failure. You may
+/// render into the resulting BitMap as appropriate. You may use the
+/// sb_DBufInfo field to access graphics.library ViewPort-buffering
+/// features such as learning when it is safe to reuse the previous BitMap.
+/// If not, you risk writing into the on-screen BitMap, which can damage
+/// menu or gadget rendering!
+///
+/// See also: FreeScreenBuffer(), ChangeScreenBuffer(), graphics.library/AllocDBufInfo(), graphics.library/ChangeVPBitMap()
 extern pub fn AllocScreenBuffer(sc: *Screen, bm: *BitMap, flags: u32) -> *ScreenBuffer
+/// Free a ScreenBuffer structure. (V39)
+///
+/// Frees a ScreenBuffer structure you got from AllocScreenBuffer(), and
+/// releases associated resources. You must call FreeScreenBuffer() before you
+/// close your screen.
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: AllocScreenBuffer(), ChangeScreenBuffer(), graphics.library/ChangeVPBitMap()
 extern pub fn FreeScreenBuffer(sc: *Screen, consuming sb: *ScreenBuffer)
+/// Swap the screen's BitMap. (V39)
+///
+/// Performs double (or multiple) buffering on an Intuition screen in an
+/// Intuition-cooperative manner. The BitMap associated with the supplied
+/// ScreenBuffer will be installed in the specified screen, if possible.
+///
+/// # Arguments
+///
+/// # Returns
+/// Returns non-zero if the operation succeeded. Returns zero if the
+/// operation cannot be performed. This function will fail if Intuition's
+/// state cannot permit it, for example the user is playing with menus or
+/// gadgets.
+///
+/// See also: AllocScreenBuffer(), FreeScreenBuffer(), graphics.library/ChangeVPBitMap()
 extern pub fn ChangeScreenBuffer(sc: *Screen, sb: *ScreenBuffer) -> u32
+/// Depth arrange a screen with extra control. (V39)
+///
+/// Brings the specified screen to the front or back, based on the supplied
+/// flags. Also allows control of screen depth-arranging within screen families.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: ScreenToFront(), ScreenToBack(), SA_Parent, SA_FrontChild, SA_BackChild
 extern pub fn ScreenDepth(screen: *Screen, flags: u32, reserved: *u8)
+/// Move screens with greater control. (V39)
+///
+/// Moves the screen to the specified position or by the specified increment, in
+/// screen pixel resolution coordinates. If the x1 and y1 variables you specify
+/// would move the screen in a way that violates any restrictions, the screen
+/// will be moved as far as possible.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: MoveScreen(), RethinkDisplay()
 extern pub fn ScreenPosition(screen: *Screen, flags: u32, x1: i32, y1: i32, x2: i32, y2: i32)
+/// Intuition-friendly ScrollRasterBF() (V39)
+///
+/// Calls graphics.library/ScrollRasterBF(), which moves the bits in the raster
+/// by (dx,dy) towards (0,0) The space vacated is filled by calling EraseRect().
+/// NOTE: that vacated space is _not_ considered damage!
+///
+/// # Arguments
+/// * `win` - pointer to a Window structure dx,dy are integers that may be
+///   postive, zero, or negative xmin,ymin - upper left of bounding
+///   rectangle xmax,ymax - lower right of bounding rectangle
+///
+/// See also: graphics.library/ScrollRaster(), graphics.library/ScrollRasterBF() graphics.library/EraseRect(), WA_BackFill
 extern pub fn ScrollWindowRaster(win: *Window, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+/// Lend window's menu action to another window. (V39)
+///
+/// This function is used to "lend" the menus of one window to another. This
+/// means that menu events (for example, the user presses the mouse menu button)
+/// will take place in another window's menu (using that other window's menu
+/// strip and screen).
+///
+/// # Arguments
+///
+/// # Returns
+/// None.
+///
+/// See also: SetMenuStrip(), ClearMenuStrip()
 extern pub fn LendMenus(fromwindow: *Window, towindow: *Window)
+/// Invoke method on a boopsi gadget. (V39)
+///
+/// Same as the DoMethod() function of amiga.lib, but provides context
+/// information and arbitration for classes which implement custom Intuition
+/// gadgets. You should use this function for boopsi gadget objects, or for
+/// "models" which propagate information to gadgets.
+///
+/// # Arguments
+///
+/// # Returns
+/// The object does whatever it wants with the message you sent, which
+/// might include updating its gadget visuals.
+///
+/// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 extern pub fn DoGadgetMethodA(gad: *Gadget, win: *Window, req: *Requester, message: *u8 /* Msg */) -> u32
 // Varargs function DoGadgetMethod skipped - needs manual implementation
+/// Select a pointer for your window. (V39)
+///
+/// Allows you to set the pointer image associated with the specified window.
+/// Whenever the window is the active one, the pointer image will change to the
+/// window's version.
+///
+/// # Arguments
+///
+/// # Returns
+/// None
+///
+/// See also: SetPointer(), ClearPointer(), ROM Kernel Manual: Libraries
 extern pub fn SetWindowPointerA(win: *Window, taglist: *TagItem)
 // Varargs function SetWindowPointer skipped - needs manual implementation
+/// Display an alert with automatic time-out. (V39)
+///
+/// This function is equivalent to DisplayAlert(), except that if the user fails
+/// to respond in a given time, the alert comes down automatically. See the
+/// autodoc for DisplayAlert() for full details.
+///
+/// # Arguments
+///
+/// # Returns
+/// A BOOL value of TRUE or FALSE. If this is a DEADEND_ALERT, FALSE is
+/// always the return value. If this is a RECOVERY_ALERT. The return value
+/// will be TRUE if the user presses the left mouse button in response to
+/// your message, and FALSE if the user presses the right hand button is
+/// response to your text, or if the alert could not be posted. If the
+/// alert times out, the return value will be FALSE.
+///
+/// See also: DisplayAlert()
 extern pub fn TimedDisplayAlert(alertNumber: u32, string: *u8, height: u16, time: u32) -> i16
+/// Enable/disable Gadget-Help feature. (V39)
+///
+/// This function can be used to turn Gadget-Help on or off for your window.
+/// Gadget-Help will also be enabled/disabled accordingly for all other windows
+/// which share the same help-group.
+///
+/// # Arguments
+/// * `window` - Pointer to the window you wish to affect. (Other windows
+///   will also be affected, as explained above. flags - Currently,
+///   HC_GADGETHELP or zero are the allowed values.
+///
+/// # Returns
+/// One or more windows will have Gadget-Help turned on or off.
+///
+/// See also: WA_HelpGroup
 extern pub fn HelpControl(win: *Window, flags: u32)

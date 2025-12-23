@@ -212,9 +212,60 @@ VBCC cannot compile struct-by-value assignment for complex structs. `Vec<T>::pus
 - Each handle holds a `*GadToolsMenuBuilder` pointer back to the builder
 
 **Memory Management**:
-- String labels are heap-allocated and currently leaked (FIXME: need lifetime tracking)
-- Builder owns the Vec<u8> entries
+- String labels are heap-allocated and tracked via `labels` array for proper cleanup
+- Builder tracks all label allocations; ownership transfers to `GadToolsMenuStrip` on `build()`
+- Both `GadToolsMenuBuilder::Drop` and `GadToolsMenuStrip::Drop` properly free all labels
 - RAII wrapper (`GadToolsMenuStrip`) owns allocated AmigaOS structures and frees them in Drop
+
+## Result vs Option Conventions
+
+Use **Option** when:
+- The only possible failure is "not found" or "not available"
+- There's no meaningful error information beyond "it failed"
+- The absence is expected and normal (e.g., HashMap::get, Vec::pop)
+
+Use **Result** when:
+- Different failure modes exist that the caller may want to distinguish
+- The failure represents an error condition that might be recoverable
+- OS or hardware calls that can fail in multiple ways
+
+**API patterns:**
+- Fallible constructors use `Option<T>` (e.g., `Vec::with_capacity`)
+- Add `try_*` variants returning `Result<T, Error>` for callers who need error info
+- OS/system calls return `Result<T, SpecificError>` (e.g., `DosError`, `ExecError`)
+- Indexing/lookup methods return `Option<T>` (e.g., `Vec::get`, `Str::get`)
+
+**Naming conventions:**
+- `with_capacity(n) -> Option<T>` - simple "it worked or didn't"
+- `try_with_capacity(n) -> Result<T, ExecError>` - provides error details
+- `get(index) -> Option<T>` - "not found" is the only failure mode
+- `open(path) -> Result<File, DosError>` - OS call with multiple failure modes
+
+## Stdlib Import Ordering Convention
+
+When writing stdlib files, organize imports in this order:
+
+1. `std::core` - fundamental types (Option, Result, Drop, Clone, etc.)
+2. `std::collections` - data structures (Vec, HashMap)
+3. `std::memory` - memory management (MemoryBlock, Slice)
+4. `std::strings` - string types (Str, String, StringBuilder)
+5. `std::error` - error types (DosError, ExecError, etc.)
+6. `std::ffi::amiga_structs` - AmigaOS structure definitions
+7. `std::ffi::amiga_consts` - AmigaOS constants
+8. Other `std::ffi` modules (exec, dos, graphics, intuition, etc.)
+9. Other stdlib modules (io, thread, sync, etc.)
+
+Example:
+```novus
+from std::core import Option, Result, Drop
+from std::collections::vec import Vec
+from std::memory::block import MemoryBlock
+from std::strings::core import Str
+from std::error::errors import ExecError
+from std::ffi::amiga_structs import Task, MsgPort
+from std::ffi::amiga_consts import MEMF_PUBLIC
+from std::ffi::exec import AllocMem, FreeMem
+```
 
 ## Notes for Claude
 

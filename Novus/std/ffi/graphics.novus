@@ -17,175 +17,2150 @@ from std::ffi::amiga_structs import ExtSprite, DBufInfo, TagItem
 // ============================================================================
 // Library Functions
 // ============================================================================
-
+/// Move a rectangular region of bits in a BitMap.
+///
+/// Perform non-destructive blits to move a rectangle from one area in a BitMap
+/// to another area, which can be on a different BitMap. This blit is assumed to
+/// be friendly: no error conditions (e.g.
+///
+/// # Arguments
+/// * `SrcBitMap, DstBitMap` - the BitMap(s) containing the rectangles -
+///   the planes copied from the source to the destination are only those
+///   whose plane numbers are identical and less than the minimum Depth of
+///   either BitMap and whose Mask bit for that plane is non-zero. - as a
+///   special case, if a plane pointer in the SrcBitMap is zero, it acts as
+///   a pointer to a plane of all zeros, and if the plane pointer is
+///   0xffffffff, it acts as a pointer to a plane of all ones. (Note: new
+///   for V36) - SrcBitMap and DstBitMap can be identical if they point to
+///   actual planes. SrcX, SrcY - the x and y coordinates of the upper left
+///   corner of the source rectangle. Valid range is positive signed
+///   integer such that the raster word's offset 0..(32767-Size) DstX, DstY
+///   - the x and y coordinates of the upper left corner of the destination
+///   for the rectangle. Valid range is as for Src. SizeX, SizeY - the size
+///   of the rectangle to be moved. Valid range is (X: 1..976; Y: 1..1023
+///   such that final raster word's offset is 0..32767) Minterm - the logic
+///   function to apply to the rectangle when A is non-zero (i.e. within
+///   the rectangle). B is the source rectangle and C, D is the destination
+///   for the rectangle. - $0C0 is a vanilla copy - $030 inverts the source
+///   before the copy - $050 ignores the source and inverts the destination
+///   - see the hardware reference manual for other combinations Mask - the
+///   write mask to apply to this operation. Bits set indicate the
+///   corresponding planes (if not greater than the minimum plane count)
+///   are to participate in the operation. Typically this is set to 0xff.
+///   TempA - If the copy overlaps exactly to the left or right (i.e. the
+///   scan line addresses overlap), and TempA is non-zero, it points to
+///   enough chip accessible memory to hold a line of A source for the blit
+///   (ie CHIP RAM). BltBitMap will allocate (and free) the needed TempA if
+///   none is provided and one is needed. Blit overlap is determined from
+///   the relation of the first non-masked planes in the source and
+///   destination bit maps.
+///
+/// # Returns
+/// planecnt - the number of planes actually involved in the blit.
+///
+/// See also: ClipBlit()  graphics/gfx.h  hardware/blit.h
 extern pub fn BltBitMap(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destBitMap: *BitMap, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8, mask: u8, tempA: *u8) -> i32
+/// Cookie cut a shape in a rectangle to the RastPort.
+///
+/// This function draws the image in the template into the RastPort in the
+/// current color and drawing mode at the specified position. The template is
+/// assumed not to overlap the destination.
+///
+/// # Arguments
+/// * `SrcTemplate` - pointer to the first (nearest) word of the template
+///   mask. SrcX - x bit offset into the template mask (range 0..15).
+///   SrcMod - number of bytes per row in template mask. rp - pointer to
+///   destination RastPort. DstX, DstY - x and y coordinates of the upper
+///   left corner of the destination for the blit. SizeX, SizeY - size of
+///   the rectangle to be used as the template.
+///
+/// See also: BltBitMap()  graphics/rastport.h
 extern pub fn BltTemplate(source: *u8, xSrc: i16, srcMod: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16)
+/// Clear from current position to end of line.
+///
+/// Clear a rectangular swath from the current position to the right edge of the
+/// rastPort. The height of the swath is taken from that of the current text
+/// font, and the vertical positioning of the swath is adjusted by the text
+/// baseline, such that text output at this position would lie wholly on this
+/// newly cleared area.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure
+///
+/// See also: Text()  ClearScreen()  SetRast() graphics/text.h  graphics/rastport.h
 extern pub fn ClearEOL(rp: *RastPort)
+/// Clear from current position to end of RastPort.
+///
+/// Clear a rectangular swath from the current position to the right edge of the
+/// rastPort with ClearEOL, then clear the rest of the screen from just beneath
+/// the swath to the bottom of the rastPort. Clearing consists of setting the
+/// color of the swath to zero, or, if the DrawMode is 2, to the BgPen.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure
+///
+/// See also: ClearEOL()  Text()  SetRast() graphics/text.h  graphics/rastport.h
 extern pub fn ClearScreen(rp: *RastPort)
+/// Determine raster length of text data.
+///
+/// This graphics function determines the length that text data would occupy if
+/// output to the specified RastPort with the current attributes. The length is
+/// specified as the number of raster dots: to determine what the current
+/// position would be after a Text() using this string, add the length to cp_x
+/// (cp_y is unchanged by Text()).
+///
+/// # Arguments
+/// * `rp` - a pointer to the RastPort which describes where the text
+///   attributes reside. string - the address of string to determine the
+///   length of count - the string length. If zero, there are no characters
+///   in the string.
+///
+/// # Returns
+/// length - the number of pixels in x this text would occupy, not
+/// including any negative kerning that may take place at the beginning of
+/// the text string, nor taking into account the effects of any clipping
+/// that may take place.
+///
+/// See also: TextExtent()  Text()  TextFit() graphics/text.h  graphics/rastport.h
 extern pub fn TextLength(rp: *RastPort, string: *u8, count: u32) -> i16
+/// Write text characters (no formatting).
+///
+/// This graphics function writes printable text characters to the specified
+/// RastPort at the current position. No control meaning is applied to any of
+/// the characters, thus only text on the current line is output.
+///
+/// # Arguments
+/// * `rp` - a pointer to the RastPort which describes where the text is to
+///   be output string - the address of string to output length - the
+///   number of characters in the string. If zero, there are no characters
+///   to be output.
+///
+/// See also: Move()  TextLength()  graphics/text.h  graphics/rastport.h
 extern pub fn Text(rp: *RastPort, string: *u8, count: u32) -> i32
+/// Set the text font and attributes in a RastPort.
+///
+/// This function sets the font in the RastPort to that described by font, and
+/// updates the text attributes to reflect that change. This function clears the
+/// effect of any previous soft styles.
+///
+/// # Arguments
+/// * `rp` - the RastPort in which the text attributes are to be changed
+///   font - pointer to a TextFont structure returned from OpenFont() or
+///   OpenDiskFont()
+///
+/// See also: OpenFont()  StripFont() diskfont.library/OpenDiskFont()  graphics/text.h
 extern pub fn SetFont(rp: *RastPort, textFont: *TextFont) -> i32
+/// Get a pointer to a system font.
+///
+/// This function searches the system font space for the graphics text font that
+/// best matches the attributes specified. The pointer to the font returned can
+/// be used in subsequent SetFont and CloseFont calls.
+///
+/// # Arguments
+/// * `textAttr` - a TextAttr or TTextAttr structure that describes the
+///   text font attributes desired.
+///
+/// # Returns
+/// font is zero if the desired font cannot be found. If the named font is
+/// found, but the size and style specified are not available, a font with
+/// the nearest attributes is returned.
+///
+/// See also: CloseFont()  SetFont() diskfont.library/OpenDiskFont  graphics/text.h intuition/intuition.h
 extern pub fn OpenFont(textAttr: *TextAttr) -> *TextFont
+/// Release a pointer to a system font.
+///
+/// This function indicates that the font specified is no longer in use. It is
+/// used to close a font opened by OpenFont, so that fonts that are no longer in
+/// use do not consume system resources.
+///
+/// # Arguments
+///
+/// See also: OpenFont()  diskfont.library/OpenDiskFont  graphics/text.h
 extern pub fn CloseFont(consuming textFont: *TextFont)
+/// Get the soft style bits of the current font.
+///
+/// This function returns those style bits of the current font that are not
+/// intrinsic in the font itself, but algorithmically generated. These are the
+/// bits that are valid to set in the enable mask for SetSoftStyle().
+///
+/// # Arguments
+/// * `rp` - the RastPort from which the font and style	are extracted.
+///
+/// # Returns
+/// enable - those bits in the style algorithmically generated. Style bits
+/// that are not defined are also set.
+///
+/// See also: SetSoftStyle()  graphics/text.h
 extern pub fn AskSoftStyle(rp: *RastPort) -> u32
+/// Set the soft style of the current font.
+///
+/// This function alters the soft style of the current font. Only those bits
+/// that are also set in enable are affected.
+///
+/// # Arguments
+/// * `rp` - the RastPort from which the font and style are extracted.
+///   style - the new font style to set, subject to enable. enable - those
+///   bits in style to be changed. Any set bits here that would not be set
+///   as a result of AskSoftStyle will be ignored, and the newStyle result
+///   will not be as expected.
+///
+/// # Returns
+/// newStyle - the resulting style, both as a result of previous soft style
+/// selection, the effect of this function, and the style inherent in the
+/// set font.
+///
+/// See also: AskSoftStyle()  graphics/text.h
 extern pub fn SetSoftStyle(rp: *RastPort, style: u32, enable: u32) -> u32
+/// Adds a Bob to current gel list.
+///
+/// Sets up the system Bob flags, then links this gel into the list via
+/// AddVSprite.
+///
+/// # Arguments
+///
+/// See also: InitGels()  AddVSprite()  graphics/gels.h  graphics/rastport.h
 extern pub fn AddBob(bob: *Bob, rp: *RastPort)
+/// Add a VSprite to the current gel list.
+///
+/// Sets up the system VSprite flags Links this VSprite into the current gel
+/// list using its Y,X
+///
+/// # Arguments
+///
+/// See also: InitGels()  graphics/rastport.h  graphics/gels.h
 extern pub fn AddVSprite(vSprite: *VSprite, rp: *RastPort)
+/// Test every gel in gel list for collisions.
+///
+/// Tests each gel in gel list for boundary and gel-to-gel collisions. On
+/// detecting one of these collisions, the appropriate collision- handling
+/// routine is called.
+///
+/// # Arguments
+///
+/// See also: InitGels()  SortGList()  graphics/gels.h  graphics/gels.h
 extern pub fn DoCollision(rp: *RastPort)
+/// Process the gel list, queueing VSprites, drawing Bobs.
+///
+/// Performs one pass of the current gel list. - If nextLine and lastColor are
+/// defined, these are initialized for each gel.
+///
+/// # Arguments
+///
+/// See also: InitGels()  graphics/gels.h graphics/rastport.h  graphics/view.h
 extern pub fn DrawGList(rp: *RastPort, vp: *ViewPort)
+/// Initialize a gel list; must be called before using gels.
+///
+/// Assigns the VSprites as the head and tail of the gel list in GfxBase. Links
+/// these two gels together as the keystones of the list.
+///
+/// # Arguments
+///
+/// See also: graphics/gels.h  graphics/rastport.h
 extern pub fn InitGels(head: *VSprite, tail: *VSprite, gelsInfo: *GelsInfo)
+/// Initialize the BorderLine and CollMask masks of a VSprite.
+///
+/// Creates the appropriate BorderLine and CollMask masks of the VSprite.
+/// Correctly detects if the VSprite is actually a Bob definition, handles the
+/// image data accordingly.
+///
+/// # Arguments
+///
+/// See also: InitGels()  graphics/gels.h
 extern pub fn InitMasks(vSprite: *VSprite)
+/// Immediately remove a Bob from the gel list and the RastPort.
+///
+/// Removes a Bob immediately by uncoupling it from the gel list and erases it
+/// from the RastPort.
+///
+/// # Arguments
+///
+/// See also: InitGels()  RemVSprite()  graphics/gels.h
 extern pub fn RemIBob(bob: *Bob, rp: *RastPort, vp: *ViewPort)
+/// Remove a VSprite from the current gel list.
+///
+/// Unlinks the VSprite from the current gel list.
+///
+/// # Arguments
+///
+/// See also: InitGels()  RemIBob()  graphics/gels.h
 extern pub fn RemVSprite(vSprite: *VSprite)
+/// Set a pointer to a user collision routine.
+///
+/// Sets a specified entry (num) in the user's collision vectors table equal to
+/// the address of the specified collision routine.
+///
+/// # Arguments
+///
+/// See also: InitGels()  graphics/gels.h  graphics/rastport.h
 extern pub fn SetCollision(num: u32, routine: *u8, gelsInfo: *GelsInfo)
+/// Sort the current gel list, ordering its y,x coordinates.
+///
+/// Sorts the current gel list according to the gels' y,x coordinates. This
+/// sorting is essential before calls to DrawGList or DoCollision.
+///
+/// # Arguments
+///
+/// See also: InitGels()  DoCollision()  DrawGList()  graphics/rastport.h
 extern pub fn SortGList(rp: *RastPort)
+/// Add an AnimOb to the linked list of AnimObs.
+///
+/// Links this AnimOb into the current list pointed to by animKey. Initializes
+/// all the Timers of the AnimOb's components.
+///
+/// # Arguments
+///
+/// See also: Animate() graphics/rastport.h graphics/gels.h
 extern pub fn AddAnimOb(anOb: *AnimOb, anKey: *AnimOb, rp: *RastPort)
+/// Processes every AnimOb in the current animation list.
+///
+/// For every AnimOb in the list - update its location and velocities - call the
+/// AnimOb's special routine if one is supplied - for each component of the
+/// AnimOb - if this sequence times out, switch to the new one - call this
+/// component's special routine if one is supplied - set the sequence's
+/// VSprite's y,x coordinates based on whatever these routines cause
+///
+/// # Arguments
+///
+/// See also: AddAnimOb() graphics/gels.h graphics/rastport.h
 extern pub fn Animate(anKey: *AnimOb, rp: *RastPort)
+/// Attempt to allocate ALL buffers of an entire AnimOb.
+///
+/// For each sequence of each component of the AnimOb, allocate memory for:
+/// SaveBuffer BorderLine CollMask and ImageShadow (point to same buffer) if db
+/// is set TRUE (user wants double-buffering) allocate: DBufPacket BufBuffer
+///
+/// # Arguments
+///
+/// # Returns
+/// status = TRUE if the memory allocations were all successful, else FALSE
+///
+/// See also: FreeGBuffers() graphics/gels.h
 extern pub fn GetGBuffers(anOb: *AnimOb, rp: *RastPort, flag: i16) -> i16
+/// Initialize all of the masks of an AnimOb.
+///
+/// For every sequence of every component call InitMasks.
+///
+/// # Arguments
+///
+/// See also: InitMasks() graphics/gels.h
 extern pub fn InitGMasks(anOb: *AnimOb)
+/// Draw an ellipse centered at cx,cy with vertical
+///
+/// Creates an elliptical outline within the rectangular region specified by the
+/// parameters, using the current foreground pen color.
+///
+/// # Arguments
+/// * `rp` - pointer to the RastPort into which the ellipse will be drawn.
+///   cx - x coordinate of the centerpoint relative to the rastport. cy - y
+///   coordinate of the centerpoint relative to the rastport. a - the
+///   horizontal radius of the ellipse (note: a must be > 0) b - the
+///   vertical radius of the ellipse (note: b must be > 0)
+///
+/// See also: DrawCircle macro graphics/gfxmacros.h graphics/rastport.h
 extern pub fn DrawEllipse(rp: *RastPort, xCenter: i16, yCenter: i16, a: i16, b: i16)
+/// Add a ellipse to areainfo list for areafill.
+///
+/// Add an ellipse to the vector buffer. It will be draw when AreaEnd() is
+/// called.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure cx - x coordinate of the
+///   centerpoint relative to the rastport. cy - y coordinate of the
+///   centerpoint relative to the rastport. a - the horizontal radius of
+///   the ellipse (note: a must be > 0) b - the vertical radius of the
+///   ellipse (note: b must be > 0)
+///
+/// # Returns
+/// error - zero for success, or -1 if there is no space left in the vector
+/// list
+///
+/// See also: AreaMove() AreaDraw() AreaCircle() InitArea() AreaEnd() graphics/rastport.h
 extern pub fn AreaEllipse(rp: *RastPort, xCenter: i16, yCenter: i16, a: i16, b: i16) -> i32
+/// Load RGB color values from table.
+///
+/// load the count words of the colormap from table starting at entry 0.
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort, whose colors you wish to change colors -
+///   pointer to table of RGB values set up as an array of USHORTS
+///   background-- 0x0RGB color1 -- 0x0RGB color2 -- 0x0RGB etc. UWORD per
+///   value. The colors are interpreted as 15 = maximum intensity. 0 =
+///   minimum intensity. count = number of UWORDs in the table to load into
+///   the colormap starting at color 0(background) and proceeding to the
+///   next higher color number
+///
+/// # Returns
+/// The ViewPort should have a pointer to a valid ColorMap to store the
+/// colors in. Updates the hardware copperlist to reflect the new colors.
+/// Updates the intermediate copperlist with the new colors.
+///
+/// See also: SetRGB4() GetRGB4() GetColorMap() graphics/view.h
 extern pub fn LoadRGB4(vp: *ViewPort, colors: *u8, count: i16)
+/// Initialize raster port structure
+///
+/// Initialize a RastPort structure to standard values.
+///
+/// # Arguments
+///
+/// # Returns
+/// all entries in RastPort get zeroed out, with the following exceptions:
+///
+/// See also: graphics/rastport.h
 extern pub fn InitRastPort(rp: *RastPort)
+/// Initialize ViewPort structure.
+///
+/// Initialize ViewPort structure to default values.
+///
+/// # Arguments
+/// * `vp` - pointer to a ViewPort structure
+///
+/// # Returns
+/// ViewPort structure set to all 0's. (1.0,1.1) New field added
+/// SpritePriorities, initialized to 0x24 (1.2)
+///
+/// See also: MakeVPort() graphics/view.h
 extern pub fn InitVPort(vp: *ViewPort)
+/// Merge together coprocessor instructions.
+///
+/// Merge together the display, color, sprite and user coprocessor instructions
+/// into a single coprocessor instruction stream. This essentially creates a
+/// per-display-frame program for the coprocessor.
+///
+/// # Arguments
+/// * `View` - a pointer to the view structure whose coprocessor
+///   instructions are to be merged.
+///
+/// # Returns
+/// The view structure will now contain a complete, sorted/merged list of
+/// instructions for the coprocessor, ready to be used by the display
+/// processor. The display processor is told to use this new instruction
+/// stream through the instruction LoadView().
+///
+/// See also: InitVPort() MakeVPort() LoadView() graphics/view.h intuition.library/RethinkDisplay()
 extern pub fn MrgCop(view: *View) -> u32
+/// Generate display copper list for a viewport.
+///
+/// Uses information in the View, ViewPort, ViewPort->RasInfo to construct and
+/// intermediate copper list for this ViewPort.
+///
+/// # Arguments
+/// * `view` - pointer to a View structure viewport - pointer to a ViewPort
+///   structure The viewport must have valid pointer to a RasInfo.
+///
+/// # Returns
+/// constructs intermediate copper list and puts pointers in
+/// viewport.DspIns If the ColorMap ptr in ViewPort is NULL then it uses
+/// colors from the default color table. If DUALPF in Modes then there must
+/// be a second RasInfo pointed to by the first RasInfo
+///
+/// See also: InitVPort() MrgCop() graphics/view.h intuition.library/MakeScreen() intuition.library/RemakeDisplay() intuition.library/RethinkDisplay()
 extern pub fn MakeVPort(view: *View, vp: *ViewPort) -> u32
+/// Use a (possibly freshly created) coprocessor instruction
+///
+/// Install a new view to be displayed during the next display refresh pass.
+/// Coprocessor instruction list has been created by InitVPort(), MakeVPort(),
+/// and MrgCop().
+///
+/// # Arguments
+/// * `View` - a pointer to the View structure which contains the
+///
+/// # Returns
+/// If the View pointer is non-NULL, the new View is displayed, according
+/// to your instructions. The vertical blank routine will pick this pointer
+/// up and direct the copper to start displaying this View.
+///
+/// See also: InitVPort() MakeVPort() MrgCop() intuition/RethinkDisplay() graphics/view.h
 extern pub fn LoadView(view: *View)
+/// Wait for the blitter to be finished before proceeding
+///
+/// WaitBlit returns when the blitter is idle. This function should normally
+/// only be used when dealing with the blitter in a synchronous manner, such as
+/// when using OwnBlitter and DisownBlitter.
+///
+/// # Arguments
+///
+/// # Returns
+/// Your program waits until the blitter is finished. This routine does not
+/// use any the CPU registers. do/d1/a0/a1 are preserved by this routine.
+/// It may change the condition codes though.
+///
+/// See also: OwnBlitter() DisownBlitter() hardware/blit.h
 extern pub fn WaitBlit()
+/// Set an entire drawing area to a specified color.
+///
+/// Set the entire contents of the specified RastPort to the specified pen.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure
+/// * `pen` - the pen number (0-255) to jam into bitmap
+///
+/// # Returns
+/// All pixels within the drawing area are set to the selected pen number.
+///
+/// See also: RectFill() graphics/rastport.h
 extern pub fn SetRast(rp: *RastPort, pen: u32)
+/// Move graphics pen position.
+///
+/// Move graphics pen position to (x,y) relative to upper left (0,0) of
+/// RastPort. This sets the starting point for subsequent Draw() and Text()
+/// calls.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure x,y - point in the RastPort
+///
+/// See also: Draw() graphics/rastport.h
 extern pub fn Move(rp: *RastPort, x: i16, y: i16)
+/// Draw a line between the current pen position
+///
+/// Draw a line from the current pen position to (x,y).
+///
+/// # Arguments
+/// * `rp` - pointer to the destination RastPort x,y - coordinates of where
+///   in the RastPort to end the line.
+///
+/// See also: Move() graphics/rastport.h
 extern pub fn Draw(rp: *RastPort, x: i16, y: i16)
+/// Define a new starting point for a new
+///
+/// Close the last polygon and start another polygon at (x,y). Add the necessary
+/// points to vector buffer.
+///
+/// # Arguments
+/// * `rp` - points to a RastPort structure x,y - positions in the raster
+/// * `RETURNS error` - zero for success, or -1 if there is no space left
+///   in the vector list
+///
+/// See also: InitArea() AreaDraw() AreaEllipse() AreaEnd() graphics/rastport.h
 extern pub fn AreaMove(rp: *RastPort, x: i16, y: i16) -> i32
+/// Add a point to a list of end points for areafill.
+///
+/// Add point to the vector buffer.
+///
+/// # Arguments
+///
+/// # Returns
+/// error - zero for success, else -1 if no there was no space left in the
+/// vector list.
+///
+/// See also: AreaMove() InitArea() AreaEnd() graphics/rastport.h
 extern pub fn AreaDraw(rp: *RastPort, x: i16, y: i16) -> i32
+/// Process table of vectors and ellipses and produce areafill.
+///
+/// Trigger the filling operation. Process the vector buffer and generate
+/// required fill into the raster planes.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure which specifies where the
+///   filled regions will be rendered to.
+///
+/// # Returns
+/// error - zero for success, or -1 if an error occurred anywhere.
+///
+/// See also: InitArea() AreaMove() AreaDraw() AreaEllipse()  InitTmpRas() graphics/rastport.h
 extern pub fn AreaEnd(rp: *RastPort) -> i32
+/// Wait for the top of the next video frame.
+///
+/// Wait for vertical blank to occur and all vertical blank interrupt routines
+/// to complete before returning to caller.
+///
+/// # Arguments
+///
+/// # Returns
+/// Places this task on the TOF wait queue. When the vertical blank
+/// interrupt comes around, the interrupt service routine will fire off
+/// signals to all the tasks doing WaitTOF. The highest priority task ready
+/// will get to run then.
+///
+/// See also: exec.library/Wait() exec.library/Signal()
 extern pub fn WaitTOF()
+/// Queue up a request for blitter usage
+///
+/// Link a request for the use of the blitter to the end of the current blitter
+/// queue. The pointer bp points to a blit structure containing, among other
+/// things, the link information, and the address of your routine which is to be
+/// called when the blitter queue finally gets around to this specific request.
+///
+/// # Arguments
+/// * `bp` - pointer to a blit structure
+///
+/// # Returns
+/// Your routine is called when the blitter is ready for you. In general
+/// requests for blitter usage through this channel are put in front of
+/// those who use the blitter via OwnBlitter and DisownBlitter. However for
+/// small blits there is more overhead using the queuer than Own/Disown
+/// Blitter.
+///
+/// See also: QBSBlit() hardware/blit.h
 extern pub fn QBlit(blit: *bltnode)
+/// Initialize vector collection matrix
+///
+/// This function provides initialization for the vector collection matrix such
+/// that it has a size of (max vectors ). The size of the region pointed to by
+/// buffer (short pointer) should be five (5) times as large as maxvectors.
+///
+/// # Arguments
+/// * `areainfo` - pointer to AreaInfo structure buffer - pointer to chunk
+///   of memory to collect vertices maxvectors - max number of vectors this
+///   buffer can hold
+///
+/// # Returns
+/// Pointers are set up to begin storage of vectors done by AreaMove,
+/// AreaDraw, and AreaEllipse.
+///
+/// See also: AreaEnd() AreaMove() AreaDraw() AreaEllipse() graphics/rastport.h
 extern pub fn InitArea(areaInfo: *AreaInfo, vectorBuffer: *u8, maxVectors: i16)
+/// Set one color register for this viewport.
+///
+/// Change the color look up table so that this viewport displays the color
+/// (r,g,b) for pen number n.
+///
+/// # Arguments
+/// * `vp` - pointer to  viewport structure
+/// * `n` - the color number (range from 0 to 31)
+/// * `r` - red level (0-15)
+/// * `g` - green level (0-15)
+/// * `b` - blue level (0-15)
+///
+/// # Returns
+/// If there is a ColorMap for this viewport, then the value will be stored
+/// in the ColorMap. The selected color register is changed to match your
+/// specs. If the color value is unused then nothing will happen.
+///
+/// See also: LoadRGB4() GetRGB4() graphics/view.h
 extern pub fn SetRGB4(vp: *ViewPort, index: i16, red: u8, green: u8, blue: u8)
+/// Synchronize the blitter request with the video beam.
+///
+/// Call a user routine for use of the blitter, enqueued separately from the
+/// QBlit queue. Calls the user routine contained in the blit structure when the
+/// video beam is located at a specified position onscreen.
+///
+/// # Arguments
+/// * `bsp` - pointer to a blit structure. See description in the Graphics
+///   Support section of the manual for more info.
+///
+/// # Returns
+/// User routine is called when the QBSBlit queue reaches this request AND
+/// the video beam is in the specified position. If there are lots of blits
+/// going on and the video beam has wrapped around back to the top it will
+/// call all the remaining bltnodes as fast as it can to try and catch up.
+///
+/// See also: QBlit() hardware/blit.h
 extern pub fn QBSBlit(blit: *bltnode)
+/// Clear a block of memory words to zero.
+///
+/// For memory that is local and blitter accessible, the most efficient way to
+/// clear a range of memory locations is to use the system's most efficient data
+/// mover, the blitter. This command accepts the starting location and count and
+/// clears that block to zeros.
+///
+/// # Arguments
+/// * `bytecount` - if (flags & 2) == 0 then even number of bytes to clear.
+///   else low 16 bits is taken as number of bytes per row and upper 16
+///   bits taken as number of rows.
+///
+/// # Returns
+/// The block of memory is initialized.
 extern pub fn BltClear(memBlock: *u8, byteCount: u32, flags: u32)
+/// Fill a rectangular region in a RastPort.
+///
+/// Fills the rectangular region specified by the parameters with the chosen pen
+/// colors, areafill pattern, and drawing mode. If no areafill pattern is
+/// specified, fill the rectangular region with the FgPen color, taking into
+/// account the drawing mode.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (xmin,ymin) (xmax,ymax) are
+///   the coordinates of the upper left corner and the lower right corner,
+///   respectively, of the rectangle.
+///
+/// See also: AreaEnd() graphics/rastport.h
 extern pub fn RectFill(rp: *RastPort, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+/// Using standard drawing rules for areafill,
+///
+/// Blit using drawmode,areafill pattern, and mask at position rectangle (xl,yl)
+/// (maxx,maxy).
+///
+/// # Arguments
+/// * `rp` - points to the destination RastPort for the blit.
+/// * `mask` - points to 2 dimensional mask if needed if mask == NULL then
+///   use a rectangle.
+/// * `xl,yl` - coordinates of upper left of rectangular region in RastPort
+/// * `maxx,maxy` - points to lower right of rectangular region in RastPort
+/// * `bytecnt` - BytesPerRow for mask
+///
+/// See also: AreaEnd()
 extern pub fn BltPattern(rp: *RastPort, mask: *u8, xMin: i16, yMin: i16, xMax: i16, yMax: i16, maskBPR: u16)
+/// Read the pen number value of the pixel at a
+///
+/// Combine the bits from each of the bit-planes used to describe a particular
+/// RastPort into the pen number selector which that bit combination normally
+/// forms for the system hardware selection of pixel color.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure
+///
+/// # Returns
+/// penno - the pen number of the pixel at (x,y) is returned. -1 is
+/// returned if the pixel cannot be read for some reason.
+///
+/// See also: WritePixel()	graphics/rastport.h
 extern pub fn ReadPixel(rp: *RastPort, x: i16, y: i16) -> u32
+/// Change the pen num of one specific pixel in a
+///
+/// Changes the pen number of the selected pixel in the specified RastPort to
+/// that currently specified by PenA, the primary drawing pen. Obeys minterms in
+/// RastPort.
+///
+/// # Arguments
+/// * `rp` - a pointer to the RastPort structure
+/// * `(x,y)` - point within the RastPort at which the selected pixel is
+///   located.
+///
+/// # Returns
+/// error = 0 if pixel succesfully changed = -1 if (x,y) is outside the
+/// RastPort
+///
+/// See also: ReadPixel() graphics/rastport.h
 extern pub fn WritePixel(rp: *RastPort, x: i16, y: i16) -> i32
+/// Flood rastport like areafill.
+///
+/// Search the BitMap starting at (x,y). Fill all adjacent pixels if they are:
+/// Mode 0: not the same color as AOLPen Mode 1: the same color as the pixel at
+/// (x,y) When actually doing the fill use the modes that apply to standard
+/// areafill routine such as drawmodes and patterns.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort (x,y) - coordinate in BitMap to start the
+///   flood fill at. mode - 0 fill all adjacent pixels searching for
+///   border. 1 fill all adjacent pixels that have same pen number as the
+///   one at (x,y).
+///
+/// See also: AreaEnd() InitTmpRas() graphics/rastport.h
 extern pub fn Flood(rp: *RastPort, mode: u32, x: i16, y: i16) -> i16
+/// Draw lines from table of (x,y) values.
+///
+/// starting with the first pair in the array, draw connected lines to it and
+/// every successive pair.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure count - number of (x,y) pairs in
+///   the array array - pointer to first (x,y) pair
+///
+/// See also: Draw() Move() graphics/rastport.h
 extern pub fn PolyDraw(rp: *RastPort, count: i16, polyTable: *u8)
+/// Set the primary pen for a RastPort.
+///
+/// Set the primary drawing pen for lines, fills, and text.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure. pen - (0-255)
+///
+/// # Returns
+/// Changes the minterms in the RastPort to reflect new primary pen. Sets
+/// line drawer to restart pattern.
+///
+/// See also: SetBPen() graphics/rastport.h
 extern pub fn SetAPen(rp: *RastPort, pen: u32)
+/// Set secondary pen for a RastPort
+///
+/// Set the secondary drawing pen for lines, fills, and text.
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure. pen - (0-255)
+///
+/// # Returns
+/// Changes the minterms in the RastPort to reflect new secondary pen. Sets
+/// line drawer to restart pattern.
+///
+/// See also: SetAPen() graphics/rastport.h
 extern pub fn SetBPen(rp: *RastPort, pen: u32)
+/// Set drawing mode for a RastPort
+///
+/// Set the drawing mode for lines, fills and text. Get the bit definitions from
+/// rastport.h
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure. mode - 0-255, some combinations
+///   may not make much sense.
+///
+/// # Returns
+/// The mode set is dependent on the bits selected. Changes minterms to
+/// reflect new drawing mode. Sets line drawer to restart pattern.
+///
+/// See also: SetAPen() SetBPen() graphics/rastport.h
 extern pub fn SetDrMd(rp: *RastPort, drawMode: u32)
+/// Initialize View structure.
+///
+/// Initialize View structure to default values.
+///
+/// # Arguments
+/// * `view` - pointer to a View structure
+///
+/// # Returns
+/// View structure set to all 0's. (1.0,1.1.1.2) Then values are put in
+/// DxOffset,DyOffset to properly position default display about .5 inches
+/// from top and left on monitor. InitView pays no attention to previous
+/// contents of view.
+///
+/// See also: MakeVPort graphics/view.h
 extern pub fn InitView(view: *View)
+/// Increment user copper list pointer (bump to next position in list).
+///
+/// Increment pointer to space for next instruction in user copper list.
+///
+/// # Arguments
+/// * `c` - pointer to UCopList structure
+///
+/// # Returns
+/// User copper list pointer is incremented to next position. Pointer is
+/// repositioned to next user copperlist instruction block if the current
+/// block is full.
+///
+/// See also: CINIT() CWAIT() CMOVE() CEND() graphics/copper.h
 extern pub fn CBump(copList: *UCopList)
 extern pub fn CMove(copList: *UCopList, destination: *u8, data: i16)
 extern pub fn CWait(copList: *UCopList, v: i16, h: i16)
+/// Get vertical beam position at this instant.
+///
+/// Get the vertical beam position from the hardware.
+///
+/// # Arguments
+///
+/// # Returns
+/// interrogates hardware for beam position and returns value. valid
+/// results in are the range of 0-511. Because of multitasking, the actual
+/// value returned may have no use. If you are the highest priority task
+/// then the value returned should be close, within 1 line.
 extern pub fn VBeamPos() -> i32
+/// Initialize bit map structure with input values.
+///
+/// Initialize various elements in the BitMap structure to correctly reflect
+/// depth, width, and height. Must be used before use of BitMap in other
+/// graphics calls.
+///
+/// # Arguments
+/// * `bm` - pointer to a BitMap structure (gfx.h) depth - number of
+///   bitplanes that this bitmap will have width - number of bits (columns)
+///   wide for this BitMap height- number of bits (rows) tall for this
+///   BitMap
+///
+/// See also: graphics/gfx.h
 extern pub fn InitBitMap(bitMap: *BitMap, depth: i8, width: i16, height: i16)
+/// Push bits in rectangle in raster around by
+///
+/// Move the bits in the raster by (dx,dy) towards (0,0) The space vacated is
+/// RectFilled with BGPen. Limit the scroll operation to the rectangle defined
+/// by (xmin,ymin)(xmax,ymax).
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure
+/// * `xmin,ymin` - upper left of bounding rectangle
+/// * `xmax,ymax` - lower right of bounding rectangle
+///
+/// See also: ScrollRasterBF() graphics/rastport.h
 extern pub fn ScrollRaster(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+/// Wait till vertical beam reached bottom of
+///
+/// Returns when the vertical beam has reached the bottom of this viewport
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort structure
+///
+/// # Returns
+/// This function will return sometime after the beam gets beyond the
+/// bottom of the viewport. Depending on the multitasking load of the
+/// system, the actual beam position may be different than what would be
+/// expected in a lightly loaded system.
+///
+/// See also: WaitTOF() VBeamPos()
 extern pub fn WaitBOVP(vp: *ViewPort)
+/// Attempt to get a sprite for the simple sprite manager.
+///
+/// Attempt to allocate one of the eight sprites for private use with the simple
+/// sprite manager. This must be done before using further calls to the simple
+/// sprite machine.
+///
+/// # Arguments
+/// * `sprite` - ptr to programmers SimpleSprite structure. pick - number
+///   in the range of 0-7 or -1 if programmer just wants the next one.
+///
+/// # Returns
+/// If pick is 0-7 attempt to allocate the sprite. If the sprite is already
+/// allocated then return -1. If pick -1 allocate the next sprite starting
+/// search at 0. If no sprites are available return -1 and fill -1 in num
+/// entry of SimpleSprite structure. If the sprite is available for
+/// allocation, mark it allocated and fill in the 'num' entry of the
+/// SimpleSprite structure. If successful return the sprite number.
+///
+/// See also: FreeSprite() ChangeSprite() MoveSprite() GetSprite() graphics/sprite.h
 extern pub fn GetSprite(sprite: *SimpleSprite, num: i16) -> i16
+/// Return sprite for use by others and virtual
+///
+/// Mark sprite as available for others to use. These sprite routines are
+/// provided to ease sharing of sprite hardware and to handle simple cases of
+/// sprite usage and movement.
+///
+/// # Arguments
+/// * `pick` - number in range of 0-7
+///
+/// # Returns
+/// sprite made available for subsequent callers of GetSprite as well as
+/// use by Virtual Sprite Machine.
+///
+/// See also: GetSprite() ChangeSprite() MoveSprite() graphics/sprite.h
 extern pub fn FreeSprite(num: i16)
+/// Change the sprite image pointer.
+///
+/// The sprite image is changed to use the data starting at newdata
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort structure that this sprite is relative to,
+///   or 0 if relative only top of View s - pointer to SimpleSprite
+///   structure newdata - pointer to data structure of the following form.
+///   struct spriteimage { UWORD posctl[2]; /* used by simple sprite
+///   machine*/ UWORD data[height][2]; /* actual sprite image */ UWORD
+///   reserved[2]; /* initialized to */ /* 0x0,0x0 */ }; The programmer
+///   must initialize reserved[2]. Spriteimage must be in CHIP memory. The
+///   height subfield of the SimpleSprite structure must be set to reflect
+///   the height of the new spriteimage BEFORE calling ChangeSprite(). The
+///   programmer may allocate two sprites to handle a single attached
+///   sprite. After GetSprite(), ChangeSprite(), the programmer can set the
+///   SPRITE_ATTACHED bit in posctl[1] of the odd numbered sprite. If you
+///   need more than 8 sprites, look up VSprites in the graphics
+///   documentation.
+///
+/// See also: FreeSprite() ChangeSprite() MoveSprite() AddVSprite() graphics/sprite.h
 extern pub fn ChangeSprite(vp: *ViewPort, sprite: *SimpleSprite, newData: *u8)
+/// Move sprite to a point relative to top of viewport.
+///
+/// Move sprite image to new place on display.
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort structure if vp = 0, sprite is positioned
+///   relative to View. sprite - pointer to SimpleSprite structure (x,y) -
+///   new position relative to top of viewport or view.
+///
+/// # Returns
+/// Calculate the hardware information for the sprite and place it in the
+/// posctldata array. During next video display the sprite will appear in
+/// new position.
+///
+/// See also: FreeSprite()  ChangeSprite()  GetSprite()  graphics/sprite.h
 extern pub fn MoveSprite(vp: *ViewPort, sprite: *SimpleSprite, x: i16, y: i16)
+/// Lock Layer structure by ROM(gfx lib) code.
+///
+/// Return when the layer is locked and no other task may alter the ClipRect
+/// structure in the Layer structure. This call does not destroy any registers.
+///
+/// # Arguments
+/// * `layer` - pointer to Layer structure
+///
+/// # Returns
+/// The layer is locked and the task can render assuming the ClipRects will
+/// not change out from underneath it until an UnlockLayerRom is called.
+///
+/// See also: UnlockLayerRom() layers.library/LockLayer() graphics/clip.h
 extern pub fn LockLayerRom(layer: *Layer)
+/// Unlock Layer structure by ROM(gfx lib) code.
+///
+/// Release the lock on this layer. If the same task has called LockLayerRom
+/// more than once than the same number of calls to UnlockLayerRom must happen
+/// before the layer is actually freed so that other tasks may use it.
+///
+/// # Arguments
+/// * `layer` - pointer to Layer structure
+///
+/// See also: LockLayerRom() layers.library/UnlockLayer() graphics/clip.h
 extern pub fn UnlockLayerRom(layer: *Layer)
 extern pub fn SyncSBitMap(layer: *Layer)
 extern pub fn CopySBitMap(layer: *Layer)
+/// Get the blitter for private usage
+///
+/// If blitter is available return immediately with the blitter locked for your
+/// exclusive use. If the blitter is not available put task to sleep.
+///
+/// # Arguments
+///
+/// See also: DisownBlitter() WaitBlit()
 extern pub fn OwnBlitter()
+/// Return blitter to free state.
+///
+/// Free blitter up for use by other blitter users.
+///
+/// # Arguments
+///
+/// See also: OwnBlitter()
 extern pub fn DisownBlitter()
+/// Initialize area of local memory for usage by
+///
+/// The area of memory pointed to by buffer is set up to be used by RastPort
+/// routines that may need to get some memory for intermediate operations in
+/// preparation to putting the graphics into the final BitMap. Tmpras is used to
+/// control the usage of buffer.
+///
+/// # Arguments
+/// * `tmpras` - pointer to a TmpRas structure to be linked into a RastPort
+///   buffer - pointer to a contiguous piece of chip memory. size - size in
+///   bytes of buffer
+///
+/// # Returns
+/// makes buffer available for users of RastPort
+///
+/// See also: AreaEnd() Flood() Text() graphics/rastport.h
 extern pub fn InitTmpRas(tmpRas: *TmpRas, buffer: *u8, size: i32) -> *TmpRas
+/// Get the text attributes of the current font
+///
+/// This function fills the text attributes structure with the attributes of the
+/// current font in the RastPort.
+///
+/// # Arguments
+/// * `rp` - the RastPort from which the text attributes are extracted
+///   textAttr - the TextAttr structure to be filled. Note that there is no
+///   support for a TTextAttr.
+///
+/// # Returns
+/// The textAttr structure is filled with the RastPort's text attributes.
+///
+/// See also: graphics/text.h
 extern pub fn AskFont(rp: *RastPort, textAttr: *TextAttr)
+/// Add a font to the system list
+///
+/// This function adds the text font to the system, making it available for use
+/// by any application. The font added must be in public memory, and remain
+/// until successfully removed.
+///
+/// # Arguments
+/// * `textFont` - a TextFont structure in public ram.
+///
+/// See also: SetFont()  RemFont()  graphics/text.h
 extern pub fn AddFont(textFont: *TextFont)
+/// Remove a font from the system list.
+///
+/// This function removes a font from the system, ensuring that access to it is
+/// restricted to those applications that currently have an active pointer to
+/// it: i.e. no new SetFont requests to this font are satisfied.
+///
+/// # Arguments
+/// * `textFont` - the TextFont structure to remove.
+///
+/// See also: SetFont()  AddFont()  graphics/text.h
 extern pub fn RemFont(textFont: *TextFont)
+/// Allocate space for a bitplane.
+///
+/// This function calls the memory allocation routines to allocate memory space
+/// for a bitplane "width" bits wide and "height" bits high.
+///
+/// # Arguments
+///
+/// # Returns
+/// planeptr - pointer to first word in bitplane, or NULL if it was not
+/// possible to allocate the desired amount of memory.
+///
+/// See also: FreeRaster() graphics/gfx.h
 extern pub fn AllocRaster(width: u16, height: u16) -> *u8
+/// Release an allocated area to the system free memory pool
+///
+/// Return the memory associated with this PLANEPTR of size width and height to
+/// the MEMF_CHIP memory pool.
+///
+/// # Arguments
+/// * `width` - the width in bits of the bitplane. height - number of rows
+///   in bitplane.
+///
+/// See also: AllocRaster() graphics/gfx.h
 extern pub fn FreeRaster(consuming p: *u8, width: u16, height: u16)
+/// Perform 2d AND operation of rectangle
+///
+/// Clip away any portion of the region that exists outside of the rectangle.
+/// Leave the result in region.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure rectangle - pointer to
+///   Rectangle structure
+///
+/// See also: AndRegionRegion() OrRectRegion() graphics/regions.h
 extern pub fn AndRectRegion(region: *Region, rectangle: *Rectangle)
+/// Perform 2d OR operation of rectangle
+///
+/// If any portion of rectangle is not in the region then add that portion to
+/// the region.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure
+/// * `rectangle` - pointer to Rectangle structure
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
+///
+/// See also: AndRectRegion() OrRegionRegion() graphics/regions.h
 extern pub fn OrRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+/// Get an empty region.
+///
+/// Create a Region structure, initialize it to empty, and return a pointer it.
+///
+/// # Arguments
+///
+/// # Returns
+/// region - pointer to initialized region. If it could not allocate
+/// required memory region = NULL.
+///
+/// See also: graphics/regions.h
 extern pub fn NewRegion() -> *Region
+/// Perform 2d CLEAR operation of rectangle
+///
+/// Clip away any portion of the region that exists inside of the rectangle.
+/// Leave the result in region.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure rectangle - pointer to
+///   Rectangle structure
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
+///
+/// See also: AndRectRegion() graphics/regions.h
 extern pub fn ClearRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+/// Remove all rectangles from region.
+///
+/// Clip away all rectangles in the region leaving nothing.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure
+///
+/// See also: NewRegion() graphics/regions.h
 extern pub fn ClearRegion(region: *Region)
+/// Return all space for this region to free
+///
+/// Free all RegionRectangles for this Region then free the Region itself.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure
+///
+/// See also: NewRegion() graphics/regions.h
 extern pub fn DisposeRegion(consuming region: *Region)
+/// Deallocate all intermediate copper lists and
+///
+/// Search display, color, sprite, and user copper lists and call FreeMem() to
+/// deallocate them from memory
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort structure
+///
+/// # Returns
+/// The memory allocated to the various copper lists will be returned to
+/// the system's free memory pool, and the following fields in the viewport
+/// structure will be set to NULL:
+///
+/// See also: graphics/view.h
 extern pub fn FreeVPortCopLists(consuming vp: *ViewPort)
+/// Deallocate intermediate copper list
+///
+/// Deallocate all memory associated with this copper list.
+///
+/// # Arguments
+///
+/// # Returns
+/// memory returned to memory manager
+///
+/// See also: graphics/copper.h
 extern pub fn FreeCopList(consuming copList: *CopList)
+/// Calls BltBitMap() after accounting for windows
+///
+/// Performs the same function as BltBitMap(), except that it takes into account
+/// the Layers and ClipRects of the layer library, all of which are (and should
+/// be) transparent to you. So, whereas BltBitMap() requires pointers to
+/// BitMaps, ClipBlit requires pointers to the RastPorts that contain the
+/// Bitmaps, Layers, etcetera.
+///
+/// # Arguments
+///
+/// See also: BltBitMap()
 extern pub fn ClipBlit(srcRP: *RastPort, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
+/// Perform 2d XOR operation of rectangle
+///
+/// Add portions of rectangle to region if they are not in the region. Remove
+/// portions of rectangle from region if they are in the region.
+///
+/// # Arguments
+/// * `region` - pointer to Region structure
+/// * `rectangle` - pointer to Rectangle structure
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
+///
+/// See also: OrRegionRegion() AndRegionRegion() graphics/regions.h
 extern pub fn XorRectRegion(region: *Region, rectangle: *Rectangle) -> i16
+/// Deallocate hardware copper list
+///
+/// return cprlist to free memory pool
+///
+/// # Arguments
+/// * `cprlist` - pointer to cprlist structure
+///
+/// # Returns
+/// memory returned and made available to other tasks
+///
+/// See also: graphics/copper.h
 extern pub fn FreeCprList(consuming cprList: *cprlist)
+/// Allocate and initialize Colormap
+///
+/// Allocates, initializes and returns a pointer to a ColorMap data structure,
+/// later enabling calls to SetRGB4/SetRGB32 and LoadRGB4/LoadRGB32 to load
+/// colors for a view port. The ColorTable pointer in the ColorMap structure
+/// points to a hardware specific colormap data structure.
+///
+/// # Arguments
+/// * `entries` - number of entries for this colormap
+///
+/// # Returns
+/// The pointer value returned by this routine, if nonzero, may be stored
+/// into the ViewPort.ColorMap pointer. If a value of 0 is returned, the
+/// system was unable to allocate enough memory space for the required data
+/// structures.
+///
+/// See also: SetRGB4() FreeColorMap()
 extern pub fn GetColorMap(entries: i32) -> *ColorMap
+/// Free the ColorMap structure and return memory
+///
+/// Return the memory to the free memory pool that was allocated with
+/// GetColorMap.
+///
+/// # Arguments
+/// * `colormap` - pointer to ColorMap allocated with GetColorMap.
+///
+/// # Returns
+/// The space is made available for others to use.
+///
+/// See also: SetRGB4() GetColorMap() graphics/view.h
 extern pub fn FreeColorMap(consuming colorMap: *ColorMap)
+/// Inquire value of entry in ColorMap.
+///
+/// Read and format a value from the ColorMap.
+///
+/// # Arguments
+/// * `colormap` - pointer to ColorMap structure entry - index into colormap
+///
+/// # Returns
+/// returns -1 if no valid entry return UWORD RGB value 4 bits per gun
+/// right justified
+///
+/// See also: SetRGB4() LoadRGB4() GetColorMap() FreeColorMap() graphics/view.h
 extern pub fn GetRGB4(colorMap: *ColorMap, entry: i32) -> u32
+/// Reinterpret RasInfo information in ViewPort to reflect
+///
+/// After the programmer has adjusted the Offset values in the RasInfo
+/// structures of ViewPort, change the the copper lists to reflect the the
+/// Scroll positions. Changing the BitMap ptr in RasInfo and not changing the
+/// the Offsets will effect a double buffering affect.
+///
+/// # Arguments
+/// * `vp` - pointer to a ViewPort structure that is currently be displayed.
+///
+/// # Returns
+/// modifies hardware and intermediate copperlists to reflect new RasInfo
+///
+/// See also: MakeVPort() MrgCop() LoadView()  graphics/view.h
 extern pub fn ScrollVPort(vp: *ViewPort)
 extern pub fn UCopperListInit(uCopList: *UCopList, n: i16) -> *CopList
+/// Deallocate memory obtained by GetGBufers.
+///
+/// For each sequence of each component of the AnimOb, deallocate memory for:
+/// SaveBuffer BorderLine CollMask and ImageShadow (point to same buffer) if db
+/// is set (user had used double-buffering) deallocate: DBufPacket BufBuffer
+///
+/// # Arguments
+///
+/// See also: GetGBuffers()  graphics/gels.h  graphics/rastport.h
 extern pub fn FreeGBuffers(consuming anOb: *AnimOb, rp: *RastPort, flag: i16)
+/// Blit from source bitmap to destination rastport.
+///
+/// Blits from source bitmap to position specified in destination rastport using
+/// minterm.
+///
+/// # Arguments
+/// * `srcbm` - a pointer to the source bitmap srcx - x offset into source
+///   bitmap srcy - y offset into source bitmap destrp - a pointer to the
+///   destination rastport destX - x offset into dest rastport destY - y
+///   offset into dest rastport sizeX - width of blit in pixels sizeY -
+///   height of blit in rows minterm - minterm to use for this blit
+///
+/// # Returns
+/// TRUE
+///
+/// See also: BltMaskBitMapRastPort() graphics/gfx.h graphics/rastport.h
 extern pub fn BltBitMapRastPort(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8)
+/// Perform 2d OR operation of one region
+///
+/// If any portion of region1 is not in the region then add that portion to the
+/// region2
+///
+/// # Arguments
+/// * `region1` - pointer to Region structure
+/// * `region2` - pointer to Region structure
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
+///
+/// See also: OrRectRegion() graphics/regions.h
 extern pub fn OrRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+/// Perform 2d XOR operation of one region
+///
+/// Join the regions together. If any part of region1 overlaps region2 then
+/// remove that from the new region.
+///
+/// # Arguments
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
 extern pub fn XorRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+/// Perform 2d AND operation of one region
+///
+/// Remove any portion of region2 that is not in region1.
+///
+/// # Arguments
+/// * `region1` - pointer to Region structure
+/// * `region2` - pointer to Region structure to use and for result
+///
+/// # Returns
+/// status - return TRUE if successful operation return FALSE if ran out of
+/// memory
+///
+/// See also: OrRegionRegion() AndRectRegion() graphics/regions.h
 extern pub fn AndRegionRegion(srcRegion: *Region, destRegion: *Region) -> i16
+/// Set one color register for this ColorMap.
+///
+/// # Arguments
+///
+/// # Returns
+/// Store the (r,g,b) triplet at index n of the ColorMap structure. This
+/// function can be used to set up a ColorMap before before linking it into
+/// a viewport.
+///
+/// See also: GetColorMap() GetRGB4() SetRGB4() graphics/view.h
 extern pub fn SetRGB4CM(colorMap: *ColorMap, index: i16, red: u8, green: u8, blue: u8)
+/// Blit from source bitmap to destination rastport
+///
+/// Blits from source bitmap to position specified in destination rastport using
+/// bltmask to determine where source overlays destination, and minterm to
+/// determine whether to copy the source image "as is" or to "invert" the sense
+/// of the source image when copying. In either case, blit only occurs where the
+/// mask is non-zero.
+///
+/// # Arguments
+/// * `srcbm` - a pointer to the source bitmap srcx - x offset into source
+///   bitmap srcy - y offset into source bitmap destrp - a pointer to the
+///   destination rastport destX - x offset into dest rastport destY - y
+///   offset into dest rastport sizeX - width of blit in pixels sizeY -
+///   height of blit in rows minterm - either (ABC|ABNC|ANBC) if copy
+///   source and blit thru mask or (ANBC) if invert source and blit thru
+///   mask bltmask - pointer to the single bit-plane mask, which must be
+///   the same size and dimensions as the planes of the source bitmap.
+///
+/// See also: BltBitMapRastPort() graphics/gfx.h graphics/rastport.h
 extern pub fn BltMaskBitMapRastPort(srcBitMap: *BitMap, xSrc: i16, ySrc: i16, destRP: *RastPort, xDest: i16, yDest: i16, xSize: i16, ySize: i16, minterm: u8, bltMask: *u8)
+/// Attempt to Lock Layer structure
+///
+/// Query the current state of the lock on this Layer. If it is already locked
+/// then return FALSE, could not lock.
+///
+/// # Arguments
+/// * `layer` - pointer to Layer structure
+///
+/// # Returns
+/// gotit - TRUE or FALSE depending on whether the Layer was successfully
+/// locked by the caller.
+///
+/// See also: LockLayerRom() UnlockLayerRom()
 extern pub fn AttemptLockLayerRom(layer: *Layer) -> i16
+/// Allocate a graphics extended data structure (V36)
+///
+/// Allocate a special graphics extended data structure (each of which begins
+/// with an ExtendedNode structure). The type of structure to be allocated is
+/// specified by the node_type identifier.
+///
+/// # Arguments
+///
+/// # Returns
+/// result = a pointer to the allocated graphics node or NULL if the
+/// allocation failed.
+///
+/// See also: graphics/gfxnodes.h GfxFree() GfxAssociate() GfxLookUp()
 extern pub fn GfxNew(gfxNodeType: u32) -> *u8
+/// Free a graphics extended data structure (V36)
+///
+/// Free a special graphics extended data structure (each of which begins with
+/// an ExtendedNode structure).
+///
+/// # Arguments
+///
+/// # Returns
+/// the node is deallocated from memory. graphics will disassociate this
+/// special graphics extended node from any associated data structures, if
+/// necessary, before freeing it (see GfxAssociate()).
+///
+/// See also: graphics/gfxnodes.h GfxNew() GfxAssociate() GfxLookUp()
 extern pub fn GfxFree(gfxNodePtr: *u8)
+/// Associate a graphics extended node with a given pointer
+///
+/// Associate a special graphics extended data structure (each of which begins
+/// with an ExtendedNode structure) with another structure via the other
+/// structure's pointer. Later, when you call GfxLookUp() with the other
+/// structure's pointer you may retrieve a pointer to this special graphics
+/// extended data structure, if it is available.
+///
+/// # Arguments
+///
+/// # Returns
+/// an association is created between the pointer and the node such that
+/// given the pointer the node can be retrieved via GfxLookUp().
+///
+/// See also: graphics/gfxnodes.h GfxNew() GfxFree() GfxLookUp()
 extern pub fn GfxAssociate(associateNode: *u8, gfxNodePtr: *u8)
+/// Perform raster scaling on a bit map. (V36)
+///
+/// Scale a source bit map to a non-overlapping destination bit map.
+///
+/// # Arguments
+/// * `bitScaleArgs` - structure of parameters describing scale: bsa_SrcX,
+///   bsa_SrcY - origin of the source bits. bsa_SrcWidth, bsa_SrcHeight -
+///   number of bits to scale from in x and y. bsa_DestX, bsa_DestY -
+///   origin of the destination. bsa_DestWidth, bsa_DestHeight - resulting
+///   number of bits in x and y. NOTE: these values are set by this
+///   function. bsa_XSrcFactor:bsa_XDestFactor - equivalent to the ratio
+///   srcWidth:destWidth, but not necessarily the same numbers. Each must
+///   be in the range 1..16383. bsa_YSrcFactor:bsa_YDestFactor - equivalent
+///   to the ratio srcHeight:destHeight, but not necessarily the same
+///   numbers. Each must be in the range 1..16383. bsa_SrcBitMap - source
+///   of the bits to scale. bsa_DestBitMap - destination for the bits to
+///   scale. This had better be big enough! bsa_Flags - future scaling
+///   options. Set it to zero! bsa_XDDA, bsa_YDDA - for future use. Need
+///   not be set by user. bsa_Reserved1, bsa_Reserved2 - for future use.
+///   Need not be set.
+///
+/// # Returns
+/// The destWidth, destHeight fields are set by this function as described
+/// above.
+///
+/// See also: ScalerDiv()  graphics/scale.h
 extern pub fn BitMapScale(bitScaleArgs: *BitScaleArgs)
+/// Get the scaling result that BitMapScale would. (V36)
+///
+/// Calculate the expression (factor*numerator/denominator) such that the result
+/// is the same as the width of the destination result of BitMapScale when the
+/// factor here is the width of the source, and the numerator and denominator
+/// are the XDestFactor and XSrcFactor for BitMapScale.
+///
+/// # Arguments
+/// * `factor` - a number in the range 0..16383 numerator, denominator -
+///   numbers in the range 1..16383
+///
+/// # Returns
+/// this returns factor*numerator/denominator
 extern pub fn ScalerDiv(factor: u16, numerator: u16, denominator: u16) -> u16
+/// Determine raster extent of text data. (V36)
+///
+/// This function determines a more complete metric of the space that a text
+/// string would render into than the TextLength() function.
+///
+/// # Arguments
+/// * `rp` - a pointer to the RastPort which describes where the text
+///   attributes reside. string - the address of the string to determine
+///   the length of. count - the number of characters in the string. If
+///   zero, there are no characters in the string. textExtent - a structure
+///   to hold the result.
+///
+/// # Returns
+/// textExtent is filled in as follows: te_Width - same as TextLength()
+/// result: the rp_cp_x advance that rendering this text would cause.
+/// te_Height - same as tf_YSize. The height of the font. te_Extent.MinX -
+/// the offset to the left side of the rectangle this would render into.
+/// Often zero. te_Extent.MinY - same as -tf_Baseline. The offset from the
+/// baseline to the top of the rectangle this would render into.
+/// te_Extent.MaxX - the offset of the left side of the rectangle this
+/// would render into. Often the same as te_Width-1. te_Extent.MaxY - same
+/// as tf_YSize-tf_Baseline-1. The offset from the baseline to the bottom
+/// of the rectangle this would render into.
+///
+/// See also: TextLength()  Text()  TextFit() graphics/text.h  graphics/rastport.h
 extern pub fn TextExtent(rp: *RastPort, string: *u8, count: i32, textExtent: *TextExtent) -> i16
+/// Count characters that will fit in a given extent (V36)
+///
+/// This function determines how many of the characters of the provided string
+/// will fit into the space described by the constraining parameters. It also
+/// returns the extent of that number of characters.
+///
+/// # Arguments
+/// * `rp` - a pointer to the RastPort which describes where the text
+///   attributes reside. string - the address of string to determine the
+///   constraint of strLen - The number of characters in the string. If
+///   zero, there are no characters in the string. textExtent - a structure
+///   to hold the extent result. constrainingExtent - the extent that the
+///   text must fit in. This can be NULL, indicating only the
+///   constrainingBit dimensions will describe the constraint. strDirection
+///   - the offset to add to the string pointer to get to the next
+///   character in the string. Usually 1. Set to -1 and the string to the
+///   end of the string to perform a TextFit() anchored at the end. No
+///   other value is valid. constrainingBitWidth - an alternative way to
+///   specify the rendering box constraint width that is independent of the
+///   rendering origin. Range 0..32767. constrainingBitHeight - an
+///   alternative way to specify the rendering box constraint height that
+///   is independent of the rendering origin. Range 0..32767.
+///
+/// # Returns
+/// chars - the number of characters from the origin of the given string
+/// that will fit in both the constraining extent (which specifies a CP
+/// bound and a rendering box relative to the origin) and in the rendering
+/// width and height specified.
+///
+/// See also: TextExtent()  TextLength()  Text() graphics/text.h  graphics/rastport.h
 extern pub fn TextFit(rp: *RastPort, string: *u8, strLen: u16, textExtent: *TextExtent, constrainingExtent: *TextExtent, strDirection: i16, constrainingBitWidth: u16, constrainingBitHeight: u16) -> u32
 extern pub fn GfxLookUp(associateNode: *u8) -> *u8
+/// Modify the operation of a ViewPort's ColorMap (V36)
+///
+/// Process the commands in the VideoControl command TagItem buffer using cm as
+/// the target, with respect to its "attached" ViewPort. viewport commands:
+/// VTAG_ATTACH_CM [_SET | _GET] -- set/get attached viewport VTAG_VIEWPORTEXTRA
+/// [_SET | _GET] -- set/get attached vp_extra VTAG_NORMAL_DISP [_SET | _GET] --
+/// set/get DisplayInfoHandle (natural mode) VTAG_COERCE_DISP [_SET | _GET] --
+/// set/get DisplayInfoHandle (coerced mode) VTAG_PF1_BASE [_SET | _GET] --
+/// set/get color base for first playfield.
+///
+/// # Arguments
+///
+/// # Returns
+/// error = NULL if no error occurred in the control operation. (non-NULL
+/// if bad colormap pointer, no tagitems or bad tag)
+///
+/// See also: graphics/videocontrol.h, GetColorMap(), FreeColorMap()
 extern pub fn VideoControl(colorMap: *ColorMap, tagarray: *TagItem) -> i16
 // Varargs function VideoControlTags skipped - needs manual implementation
+/// Open a named MonitorSpec (V36)
+///
+/// Locate and open a named MonitorSpec.
+///
+/// # Arguments
+/// * `monitor_name` - a pointer to a null terminated string.
+/// * `display_id` - an optional 32 bit monitor/mode identifier
+///
+/// # Returns
+/// mspc - a pointer to an open MonitorSpec structure. NULL if MonitorSpec
+/// could not be opened.
+///
+/// See also: CloseMonitor() graphics/monitor.h
 extern pub fn OpenMonitor(monitorName: *u8, displayID: u32) -> *MonitorSpec
+/// Close a MonitorSpec (V36)
+///
+/// Relinquish access to a MonitorSpec.
+///
+/// # Arguments
+/// * `monitor_spec` - a pointer to a MonitorSpec opened via OpenMonitor(),
+///   or NULL.
+///
+/// # Returns
+/// error - FALSE if MonitorSpec closed uneventfully. TRUE if MonitorSpec
+/// could not be closed.
+///
+/// See also: OpenMonitor()
 extern pub fn CloseMonitor(consuming monitorSpec: *MonitorSpec) -> i16
+/// Search for a record identified by a specific key (V36)
+///
+/// Given a 32-bit Mode Key, return a handle to a valid DisplayInfoRecord found
+/// in the graphics database. Using this handle, you can obtain information
+/// about this Mode, including its default dimensions, properties, and whether
+/// it is currently available for use.
+///
+/// # Arguments
+/// * `ID` - unsigned long identifier
+///
+/// # Returns
+/// handle - handle to a displayinfo Record with that key or NULL if no
+/// match.
+///
+/// See also: graphics/displayinfo.h
 extern pub fn FindDisplayInfo(displayID: u32) -> *u8 /* DisplayInfoHandle */
+/// Iterate current displayinfo identifiers (V36)
+///
+/// The basic iteration function with which to find all records in the graphics
+/// database. Using each ID in succession, you can then call FindDisplayInfo()
+/// to obtain the handle associated with each ID.
+///
+/// # Arguments
+/// * `last_ID` - previous displayinfo identifier or INVALID_ID if
+///   beginning iteration.
+///
+/// # Returns
+/// next_ID - subsequent displayinfo identifier or INVALID_ID if no more
+/// records.
+///
+/// See also: FindDisplayInfo(), GetDisplayInfoData() graphics/displayinfo.h
 extern pub fn NextDisplayInfo(displayID: u32) -> u32
+/// Query DisplayInfo Record parameters (V36)
+///
+/// GetDisplayInfoData() fills a buffer with data meaningful to the
+/// DisplayInfoRecord pointed at by your valid handle. The data type that you
+/// are interested in is indicated by a tagID for that chunk.
+///
+/// # Arguments
+/// * `handle` - displayinfo handle buf - pointer to destination buffer
+///   size - buffer size in bytes tagID - data chunk type ID - displayinfo
+///   identifier, optionally used if handle is NULL
+///
+/// # Returns
+/// result - if positive, number of bytes actually transferred if zero, no
+/// information for ID was available
+///
+/// See also: FindDisplayInfo(), NextDisplayInfo() graphics/displayinfo.h
 extern pub fn GetDisplayInfoData(handle: *u8 /* const DisplayInfoHandle */, buf: *u8, size: u32, tagID: u32, displayID: u32) -> u32
+/// Get the font attributes of the current font (V36)
+///
+/// This function fills the text extent structure with a bounding (i.e. maximum)
+/// extent for the characters in the specified font.
+///
+/// # Arguments
+/// * `font` - the TextFont from which the font metrics are extracted.
+///   fontExtent - the TextExtent structure to be filled.
+///
+/// # Returns
+/// fontExtent is filled.
+///
+/// See also: TextExtent()  graphics/text.h
 extern pub fn FontExtent(font: *TextFont, fontExtent: *TextExtent)
+/// Read the pen number value of a horizontal line
+///
+/// For each pixel in a rectangular region, combine the bits from each of the
+/// bit-planes used to describe a particular RastPort into the pen number
+/// selector which that bit combination normally forms for the system hardware
+/// selection of pixel color.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (x,y) - a point in the
+///   RastPort width - count of horizontal pixels to read array - pointer
+///   to an array of UBYTEs from which to fetch the pixel data allocate at
+///   least (((width+15)>>4)<<4) bytes. temprp - temporary rastport (copy
+///   of rp with Layer set == NULL, temporary memory allocated for
+///   temprp->BitMap with Rows set == 1, temprp->BytesPerRow ==
+///   (((width+15)>>4)<<1), and temporary memory allocated for
+///   temprp->BitMap->Planes[])
+///
+/// # Returns
+/// For each pixel in the array: Pen - (0..255) number at that position is
+/// returned count - the number of pixels read.
+///
+/// See also: ReadPixel()  graphics/rastport.h
 extern pub fn ReadPixelLine8(rp: *RastPort, xstart: u16, ystart: u16, width: u16, array: *u8, tempRP: *RastPort) -> i32
+/// Write the pen number value of a horizontal line
+///
+/// For each pixel in a horizontal region, decode the pen number selector from a
+/// linear array of pen numbers into the bit-planes used to describe a
+/// particular rastport.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (x,y) - a point in the
+///   RastPort width - count of horizontal pixels to write array - pointer
+///   to an array of UBYTEs from which to fetch the pixel data allocate at
+///   least (((width+15)>>4)<<4) bytes. temprp - temporary rastport (copy
+///   of rp with Layer set == NULL, temporary memory allocated for
+///   temprp->BitMap with Rows set == 1, temprp->BitMap BytesPerRow ==
+///   (((width+15)>>4)<<1), and temporary memory allocated for
+///   temprp->BitMap->Planes[])
+///
+/// # Returns
+/// Count will be set to the number of pixels plotted
+///
+/// See also: WritePixel()  graphics/rastport.h
 extern pub fn WritePixelLine8(rp: *RastPort, xstart: u16, ystart: u16, width: u16, array: *u8, tempRP: *RastPort) -> i32
+/// Read the pen number value of a rectangular array
+///
+/// For each pixel in a rectangular region, combine the bits from each of the
+/// bit-planes used to describe a particular RastPort into the pen number
+/// selector which that bit combination normally forms for the system hardware
+/// selection of pixel color.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (xstart,ystart) - starting
+///   point in the RastPort (xstop,ystop) - stopping point in the RastPort
+///   array - pointer to an array of UBYTEs from which to fetch the pixel
+///   data allocate at least ((((width+15)>>4)<<4)*(ystop-ystart+1)) bytes.
+///   temprp - temporary rastport (copy of rp with Layer set == NULL,
+///   temporary memory allocated for temprp->BitMap with Rows set == 1,
+///   temprp->BytesPerRow == (((width+15)>>4)<<1), and temporary memory
+///   allocated for temprp->BitMap->Planes[])
+///
+/// # Returns
+/// For each pixel in the array: Pen - (0..255) number at that position is
+/// returned count - the number of pixels read.
+///
+/// See also: ReadPixel()  ReadPixelLine8()  graphics/rastport.h
 extern pub fn ReadPixelArray8(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, temprp: *RastPort) -> i32
+/// Write the pen number value of a rectangular array
+///
+/// For each pixel in a rectangular region, decode the pen number selector from
+/// a linear array of pen numbers into the bit-planes used to describe a
+/// particular rastport.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (xstart,ystart) - starting
+///   point in the RastPort (xstop,ystop) - stopping point in the RastPort
+///   array - pointer to an array of UBYTEs from which to fetch the pixel
+///   data. Allocate at least ((((width+15)>>4)<<4)*(ystop-ystart+1))
+///   bytes. temprp - temporary rastport (copy of rp with Layer set ==
+///   NULL, temporary memory allocated for temprp->BitMap with Rows set ==
+///   1, temprp->BitMap with BytesPerRow == (((width+15)>>4)<<1), and
+///   temporary memory allocated for temprp->BitMap->Planes[])
+///
+/// # Returns
+/// count will be set to the number of pixels plotted.
+///
+/// See also: WritePixel()  graphics/rastport.h
 extern pub fn WritePixelArray8(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, temprp: *RastPort) -> i32
+/// Get the 32 bit DisplayID from a ViewPort. (V36)
+///
+/// returns the normal display modeID, if one is currently associated with this
+/// ViewPort.
+///
+/// # Arguments
+///
+/// # Returns
+/// modeID -- a 32 bit DisplayInfoRecord identifier associated with this
+/// ViewPort, or INVALID_ID.
+///
+/// See also: graphics/displayinfo.h, ModeNotAvailable()
 extern pub fn GetVPModeID(vp: *ViewPort) -> i32
+/// Check to see if a DisplayID isn't available. (V36)
+///
+/// returns an error code, indicating why this modeID is not available, or NULL
+/// if there is no reason known why this mode should not be there.
+///
+/// # Arguments
+///
+/// # Returns
+/// error -- a general indication of why this modeID is not available, or
+/// NULL if there is no reason why it shouldn't be available.
+///
+/// See also: graphics/displayinfo.h, GetVPModeID()
 extern pub fn ModeNotAvailable(modeID: u32) -> i32
+/// Fill a defined rectangular area using the current
+///
+/// Fill the rectangular region specified by the parameters with the BackFill
+/// hook. If non-layered, the rectangular region specified by the parameters is
+/// cleared.
+///
+/// # Arguments
+///
+/// See also: graphics/rastport.h graphics/clip.h
 extern pub fn EraseRect(rp: *RastPort, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+/// Ensure tf_Extension has been built for a font (V36)
+///
+/// To extend a TextFont structure.
+///
+/// # Arguments
+/// * `font` - The font to extend. fontTags - An optional taglist. If NULL,
+///   then a default is used. Currently, the only tag defined is
+///   TA_DeviceDPI.
+///
+/// # Returns
+/// success - 1 if the TextFont was properly extended, else 0.
+///
+/// See also: graphics/text.h
 extern pub fn ExtendFont(font: *TextFont, fontTags: *TagItem) -> u32
 // Varargs function ExtendFontTags skipped - needs manual implementation
+/// Remove the tf_Extension from a font (V36)
 extern pub fn StripFont(font: *TextFont)
+/// Calculate the number of blank lines above a ViewPort (V39)
+///
+/// To calculate the maximum number of blank lines above a viewport needed to
+/// load all the copper instructions, after accounting for the viewport
+/// bandwidth and size.
+///
+/// # Arguments
+/// * `View` - pointer to the View ViewPort - pointer to the ViewPort you
+///   are interested in.
+///
+/// # Returns
+/// count - the number of ViewPort resolution scan lines needed to execute
+/// all the copper instructions for ViewPort, or 0 if any error.
+///
+/// See also: GfxNew()  VideoControl()  graphics/view.h
 extern pub fn CalcIVG(v: *View, vp: *ViewPort) -> u16
+/// Allocate and attach a palette sharing structure to a
+///
+/// Allocates and attaches a PalExtra structure to a ColorMap. This is necessary
+/// for color palette sharing to work.
+///
+/// # Arguments
+///
+/// # Returns
+/// status - 0 if sucessful, else an error number. The only currently
+/// defined error number is out of memory (1).
+///
+/// See also: GetColorMap() FreeColorMap() ObtainPen() ObtainBestPenA()
 extern pub fn AttachPalExtra(cm: *ColorMap, vp: *ViewPort) -> i32
 extern pub fn ObtainBestPenA(cm: *ColorMap, r: u32, g: u32, b: u32, tags: *TagItem) -> i32
 // Varargs function ObtainBestPen skipped - needs manual implementation
+/// Set one color register for this Viewport. (V39)
+///
+/// # Arguments
+///
+/// # Returns
+/// If there is a ColorMap for this viewport, then the value will be stored
+/// in the ColorMap. The selected color register is changed to match your
+/// specs. If the color value is unused then nothing will happen.
+///
+/// See also: GetColorMap() GetRGB32() SetRGB32CM() LoadRGB32() graphics/view.h
 extern pub fn SetRGB32(vp: *ViewPort, n: u32, r: u32, g: u32, b: u32)
+/// Get the A Pen value for a RastPort (V39).
+///
+/// Return the current value of the A pen for the rastport. This function should
+/// be used instead of peeking the structure directly, because future graphics
+/// devices may store it differently, for instance, using more bits.
+///
+/// # Arguments
+///
+/// See also: SetAPen() graphics/gfx.h
 extern pub fn GetAPen(rp: *RastPort) -> u32
+/// Get the B Pen value for a RastPort (V39).
+///
+/// Return the current value of the B pen for the rastport. This function should
+/// be used instead of peeking the structure directly, because future graphics
+/// devices may store it differently, using more bits.
+///
+/// # Arguments
+///
+/// See also: SetBPen() graphics/gfx.h
 extern pub fn GetBPen(rp: *RastPort) -> u32
+/// Get the draw mode value for a RastPort (V39).
+///
+/// Return the current value of the draw mode for the rastport. This function
+/// should be used instead of peeking the structure directly, because future
+/// graphics devices may store it differently.
+///
+/// # Arguments
+///
+/// See also: SetDrMd() graphics/gfx.h
 extern pub fn GetDrMd(rp: *RastPort) -> u32
 extern pub fn GetOutlinePen(rp: *RastPort) -> u32
+/// Set a series of color registers for this Viewport. (V39)
+///
+/// # Arguments
+///
+/// # Returns
+/// The selected color registers are changed to match your specs.
+///
+/// See also: LoadRGB4() GetColorMap() GetRGB32() SetRGB32CM() graphics/view.h
 extern pub fn LoadRGB32(vp: *ViewPort, table: *u8)
+/// Turns on the features of a Chip Set  (V39)
+///
+/// Enables the features of the requested Chip Set if available, and updates the
+/// graphics database accordingly.
+///
+/// # Arguments
+/// * `ChipRev` - Chip Rev that you would like to be enabled.
+///
+/// # Returns
+/// chiprevbits - Actual bits set in GfxBase->ChipRevBits0.
+///
+/// See also: <graphics/gfxbase.h>
 extern pub fn SetChipRev(want: u32) -> u32
+/// Set pen colors and draw mode for a RastPort. (V39)
+///
+/// Set the pen values and drawing mode for lines, fills and text. Get the bit
+/// definitions from rastport.h
+///
+/// # Arguments
+/// * `rp` - pointer to RastPort structure. apen - primary pen value bpen -
+///   secondary pen value mode - 0-255, some combinations may not make much
+///   sense.
+///
+/// # Returns
+/// The mode set is dependent on the bits selected. Changes minterms to
+/// reflect new drawing mode and colors. Sets line drawer to restart
+/// pattern.
+///
+/// See also: SetAPen() SetBPen() SetDrMd() graphics/rastport.h
 extern pub fn SetABPenDrMd(rp: *RastPort, apen: u32, bpen: u32, drawmode: u32)
+/// Set a series of color registers for this Viewport. (V39)
+///
+/// # Arguments
+///
+/// # Returns
+/// The ULONG data pointed to by 'table' will be filled with the 32 bit
+/// fractional RGB values from the colormap.
+///
+/// See also: LoadRGB4() GetColorMap() LoadRGB32() SetRGB32CM() graphics/view.h
 extern pub fn GetRGB32(cm: *ColorMap, firstcolor: u32, ncolors: u32, table: *u8)
+/// Allocate a bitmap and attach bitplanes to it. (V39)
+///
+/// Allocates and initializes a bitmap structure. Allocates and initializes
+/// bitplane data, and sets the bitmap's planes to point to it.
+///
+/// # Arguments
+///
+/// See also: FreeBitMap()
 extern pub fn AllocBitMap(sizex: u32, sizey: u32, depth: u32, flags: u32, friend_bitmap: *BitMap) -> *BitMap
+/// Free a bitmap created by AllocBitMap (V39)
+///
+/// Frees bitmap and all associated bitplanes
+///
+/// # Arguments
+///
+/// See also: AllocBitMap()
 extern pub fn FreeBitMap(consuming bm: *BitMap)
+/// Attempt to get a sprite for the extended sprite
+///
+/// Attempt to allocate one of the eight sprites for private use with the
+/// extended sprite manager.
+///
+/// # Arguments
+/// * `sprite` - ptr to programmer's ExtSprite (from AllocSpriteData()).
+///   tags - a standard tag list:
+///
+/// # Returns
+/// Sprite_number = a sprite number or -1 for an error. This call will fail
+/// if no sprites could be allocated, or if you try to allocate a sprite
+/// which would require a mode change when there are other sprites of
+/// incompatible modes in use.
+///
+/// See also: FreeSprite() ChangeSprite() MoveSprite() GetSprite() graphics/sprite.h
 extern pub fn GetExtSpriteA(ss: *ExtSprite, tags: *TagItem) -> i32
 // Varargs function GetExtSprite skipped - needs manual implementation
+/// Calculate ViewPort mode coercion (V39)
+///
+/// To determine the best mode in the MonitorID to coerce RealViewPort to, given
+/// the restrictions set in Flags.
+///
+/// # Arguments
+/// * `RealViewPort` - ViewPort to coerce MonitorID - Montor number to
+///   coerce to (ie a mode masked with MONITOR_ID_MASK). Flags -
+///   PRESERVE_COLORS - keep the number of bitplanes in the ViewPort.
+///   AVOID_FLICKER - do not coerce to an interlace mode
+///
+/// # Returns
+/// ID - ID of the best mode to coerce to, or INVALID_ID if could not
+/// coerce (see NOTES).
+///
+/// See also: <graphics/coerce.h> <graphics/displayinfo.h>
 extern pub fn CoerceMode(vp: *ViewPort, monitorid: u32, flags: u32) -> u32
+/// Change display memory address for multi-buffered
+///
+/// Changes the area of display memory which will be displayed in a viewport.
+/// This can be used to implement double (or triple) buffering, a method of
+/// achieving smooth animation.
+///
+/// # Arguments
+///
+/// See also: AllocDBufInfo() AllocBitMap()
 extern pub fn ChangeVPBitMap(vp: *ViewPort, bm: *BitMap, db: *DBufInfo)
+/// Release an allocated palette entry to the free pool. (V39)
+///
+/// Return the palette entry for use by other applications. If the reference
+/// count for this palette entry goes to zero, then it may be reset to another
+/// RGB value.
+///
+/// # Arguments
+///
+/// See also: GetColorMap() ObtainPen() ObtainBestPenA()
 extern pub fn ReleasePen(cm: *ColorMap, n: u32)
+/// Obtain a free palette entry for use by your program. (V39)
+///
+/// Attempt to allocate an entry in the colormap for use by the application. If
+/// successful, you should ReleasePen() this entry after you have finished with
+/// it.
+///
+/// # Arguments
+/// * `cm  =  A pointer to a color map created by GetColorMap(). n   =  The index of the desired entry, or -1 if any one is acceptable rgb =  The RGB values (32 bit left justified fractions) to set the new palette entry to. flags= PEN_EXCLUSIVE` -
+///   tells the system that you want exclusive (non-shared) use of this pen
+///   value. Default is shared access.
+/// * `PEN_NO_SETCOLOR` - tells the system to not change the rgb values for
+///   the selected pen. Really only makes sense for exclusive pens.
+///
+/// # Returns
+/// n = The allocated pen. -1 will be returned if there is no pen available
+/// for you.
+///
+/// See also: GetColorMap() ReleasePen() AttachPalExtra() ObtainBestPenA()
 extern pub fn ObtainPen(cm: *ColorMap, n: u32, r: u32, g: u32, b: u32, f: i32) -> u32
+/// Returns information about a bitmap (V39)
+///
+/// Determines information about a bitmap. This function should be used instead
+/// of reading the bitmap structure fields directly.
+///
+/// # Arguments
+///
+/// See also: AllocBitMap()
 extern pub fn GetBitMapAttr(bm: *BitMap, attrnum: u32) -> u32
+/// Allocate structure for multi-buffered animation (V39)
+///
+/// Allocates a structure which is used by the ChangeVPBitMap() routine.
+///
+/// # Arguments
+///
+/// See also: FreeDBufInfo() ChangeVPBitMap()
 extern pub fn AllocDBufInfo(vp: *ViewPort) -> *DBufInfo
+/// Free information for multi-buffered animation (V39)
+///
+/// Frees a structure obtained from AllocDBufInfo
+///
+/// # Arguments
+///
+/// See also: AllocDBufInfo() ChangeVPBitMap()
 extern pub fn FreeDBufInfo(consuming dbi: *DBufInfo)
+/// Set the Outline Pen value for a RastPort (V39).
+///
+/// Set the current value of the O pen for the rastport and turn on area outline
+/// mode. This function should be used instead of poking the structure directly,
+/// because future graphics devices may store it differently, for instance,
+/// using more bits.
+///
+/// # Arguments
+///
+/// See also: GetOPen() graphics/gfxmacros.h
 extern pub fn SetOutlinePen(rp: *RastPort, pen: u32) -> u32
+/// Set the pixel write mask value for a RastPort (V39).
+///
+/// Set the current value of the bit write mask for the rastport. bits of the
+/// pixel with zeros in their mask will not be modified by subsequent drawing
+/// operations.
+///
+/// # Arguments
+///
+/// See also: graphics/gfxmacros.h
 extern pub fn SetWriteMask(rp: *RastPort, msk: u32) -> u32
+/// Set maximum pen value for a rastport (V39).
+///
+/// This will instruct the graphics library that the owner of the rastport will
+/// not be rendering in any colors whose index is >maxpen. If there are any
+/// speed optimizations which the graphics device can make based on this fact
+/// (for instance, setting the pixel write mask), they will be done.
+///
+/// # Arguments
+///
+/// See also: SetWriteMask()
 extern pub fn SetMaxPen(rp: *RastPort, maxpen: u32)
+/// Set one color register for this ColorMap. (V39)
+///
+/// # Arguments
+///
+/// # Returns
+/// Store the (r,g,b) triplet at index n of the ColorMap structure. This
+/// function can be used to set up a ColorMap before before linking it into
+/// a viewport.
+///
+/// See also: GetColorMap() GetRGB32() SetRGB32() SetRGB4CM() graphics/view.h
 extern pub fn SetRGB32CM(cm: *ColorMap, n: u32, r: u32, g: u32, b: u32)
+/// Push bits in rectangle in raster around by
+///
+/// Move the bits in the raster by (dx,dy) towards (0,0) The space vacated is
+/// filled by calling EraseRect(). Limit the scroll operation to the rectangle
+/// defined by (xmin,ymin)(xmax,ymax).
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure
+/// * `xmin,ymin` - upper left of bounding rectangle
+/// * `xmax,ymax` - lower right of bounding rectangle
+///
+/// See also: ScrollRaster() EraseRect() intuition.library/ScrollWindowRaster() graphics/rastport.h
 extern pub fn ScrollRasterBF(rp: *RastPort, dx: i16, dy: i16, xMin: i16, yMin: i16, xMax: i16, yMax: i16)
+/// Find the closest matching color in a colormap. (V39)
+///
+/// # Arguments
+///
+/// # Returns
+/// The system will attempt to find the color in the passed colormap which
+/// most closely matches the RGB values passed. No new pens will be
+/// allocated, and you should not ReleasePen() the returned pen. This
+/// function is not sensitive to palette sharing issues. Its intended use
+/// is for:
+///
+/// See also: ObtainBestPenA() GetColorMap() ObtainPen() ReleasePen()
 extern pub fn FindColor(cm: *ColorMap, r: u32, g: u32, b: u32, maxcolor: i32) -> i32
+/// Allocate sprite data and convert from a bitmap. (V39)
+///
+/// Allocate memory to hold a sprite image, and convert the passed-in bitmap
+/// data to the appropriate format. The tags allow specification of width,
+/// scaling, and other options.
+///
+/// # Arguments
+/// * `bitmap` - ptr to a bitmap. This bitmap provides the source data for
+///   the sprite image.
+/// * `tags` - SPRITEA_Width specifies how many pixels wide you desire the
+///   sprite to be. Specifying a width wider than the hardware can handle
+///   will cause the function to return failure. If the bitmap passed in is
+///   narrower than the width asked for, then it will be padded on the
+///   right with transparent pixels. Defaults to 16.
+/// * `SPRITEA_XReplication controls the horizontal pixel replication factor used when converting the bitmap data. Valid values are: 0` -
+///   perform a 1 to 1 conversion 1 - each pixel from the source is
+///   replicated twice in the output. 2 - each pixel is replicated 4 times.
+///   -1 - skip every other pixel in the source bitmap -2 - only include
+///   every fourth pixel from the source.
+///
+/// # Returns
+/// SpritePtr = a pointer to a ExtSprite structure, or 0 if there is a
+/// failure. You should pass this pointer to FreeSpriteData() when finished
+/// with the sprite.
+///
+/// See also: FreeSpriteData() FreeSprite() ChangeSprite() MoveSprite() GetExtSpriteA() AllocBitMap() graphics/sprite.h
 extern pub fn AllocSpriteDataA(bm: *BitMap, tags: *TagItem) -> *ExtSprite
 // Varargs function AllocSpriteData skipped - needs manual implementation
+/// Change the sprite image pointer. (V39)
+///
+/// Attempt to change which sprite is displayed for a given sprite engine.
+///
+/// # Arguments
+/// * `vp` - pointer to ViewPort structure that this sprite is relative to,
+///   or 0 if relative only top of View oldsprite - pointer the old
+///   ExtSprite structure newsprite - pointer to the new ExtSprite
+///   structure.
+///
+/// # Returns
+/// success - 0 if there was an error.
+///
+/// See also: FreeSprite() ChangeSprite() MoveSprite() AllocSpriteDataA() graphics/sprite.h
 extern pub fn ChangeExtSpriteA(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: *ExtSprite, tags: *TagItem) -> i32
 // Varargs function ChangeExtSprite skipped - needs manual implementation
+/// Free sprite data allocated by AllocSpriteData() (V39)
+///
+/// # Arguments
+/// * `extsp` - The extended sprite structure to be freed. Passing NULL is
+///   a NO-OP.
+///
+/// See also: FreeSpriteData() FreeSprite() ChangeSprite() MoveSprite() GetExtSprite() AllocBitMap() graphics/sprite.h
 extern pub fn FreeSpriteData(consuming sp: *ExtSprite)
 extern pub fn SetRPAttrsA(rp: *RastPort, tags: *TagItem)
 // Varargs function SetRPAttrs skipped - needs manual implementation
 extern pub fn GetRPAttrsA(rp: *RastPort, tags: *TagItem)
 // Varargs function GetRPAttrs skipped - needs manual implementation
+/// Calculate the best ModeID with given parameters (V39)
+///
+/// To determine the best ModeID to fit the parameters set in the TagList.
+///
+/// # Arguments
+/// * `TagItems` - A pointer to an array of TagItems.
+///
+/// # Returns
+/// ID - ID of the best mode to use, or INVALID_ID if a match could not be
+/// found.
+///
+/// See also: <graphics/modeid.h> <graphics/displayinfo.h>
 extern pub fn BestModeIDA(tags: *TagItem) -> u32
 // Varargs function BestModeID skipped - needs manual implementation
+/// Write the pen number value of a rectangular array
+///
+/// For each pixel in a rectangular region, decode the pen number selector from
+/// a linear array of pen numbers into the bit-planes used to describe a
+/// particular rastport.
+///
+/// # Arguments
+/// * `rp` - pointer to a RastPort structure (xstart,ystart) - starting
+///   point in the RastPort (xstop,ystop) - stopping point in the RastPort
+///   array - pointer to an array of UBYTEs from which to fetch the pixel
+///   data. bytesperrow - The number of bytes per row in the source array.
+///   This should be at least as large as the number of pixels being
+///   written per line.
+///
+/// See also: WritePixel()  graphics/rastport.h
 extern pub fn WriteChunkyPixels(rp: *RastPort, xstart: u16, ystart: u16, xstop: u16, ystop: u16, array: *u8, bytesperrow: i32)

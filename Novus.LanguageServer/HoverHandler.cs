@@ -220,7 +220,29 @@ public class HoverHandler : IHoverHandler
         }
 
         // Add documentation comment if available
-        var docComment = DocCommentExtractor.ExtractDocComment(analyzer.SourceText, symbolInfo.Location.Line);
+        // First try to get doc comment from the definition file (for symbols defined elsewhere)
+        string? docComment = null;
+        var definitionFilePath = symbolInfo.Location.FilePath;
+
+        if (!string.IsNullOrEmpty(definitionFilePath) && System.IO.File.Exists(definitionFilePath))
+        {
+            try
+            {
+                var definitionSource = System.IO.File.ReadAllText(definitionFilePath);
+                docComment = DocCommentExtractor.ExtractDocComment(definitionSource, symbolInfo.Location.Line);
+            }
+            catch
+            {
+                // Fall back to current file if we can't read the definition file
+            }
+        }
+
+        // Fall back to current file's source text if no doc comment found
+        if (string.IsNullOrWhiteSpace(docComment))
+        {
+            docComment = DocCommentExtractor.ExtractDocComment(analyzer.SourceText, symbolInfo.Location.Line);
+        }
+
         if (!string.IsNullOrWhiteSpace(docComment))
         {
             content.AppendLine();

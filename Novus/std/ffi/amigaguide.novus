@@ -9,29 +9,124 @@
 // Library Functions
 // ============================================================================
 
+/// Lock an AmigaGuide client.         (V34)
+///
+/// This function is used to lock the AmigaGuide context handle while working
+/// with data obtained with the the GetAmigaGuideAttr() function.
+///
+/// # Arguments
+/// * `handle` - AMIGAGUIDECONTEXT handle obtained with OpenAmigaGuideAsyn...
+///
+/// See also: UnlockAmigaGuideBase()
 extern pub fn LockAmigaGuideBase(handle: *u8) -> i32
 extern pub fn UnlockAmigaGuideBase(key: i32)
+/// Remove a dynamic node host.     (V34)
+///
+/// This function removes a dynamic node host, that was added by
+/// AddAmigaGuideHost(), from the system.
+///
+/// # Arguments
+/// * `key` - Key that was returned by AddAmigaGuideHost().
+/// * `attrs` - Additional attributes.  None are defined at this time.
+/// * `RETURNS use` - Number of outstanding clients of this database.  You can ...
+///
+/// See also: AddAmigaGuideHostA()
 extern pub fn OpenAmigaGuideA(nag: *NewAmigaGuide, tags: *TagItem) -> *u8
 // Varargs function OpenAmigaGuide skipped - needs manual implementation
 extern pub fn OpenAmigaGuideAsyncA(nag: *NewAmigaGuide, attrs: *TagItem) -> *u8
 // Varargs function OpenAmigaGuideAsync skipped - needs manual implementation
+/// Close a AmigaGuide client.            (V34)
+///
+/// Closes a synchronous, or asynchronous, AmigaGuide client. This function will
+/// also close all windows that were opened for the client.
+///
+/// # Arguments
+/// * `handle` - Handle to an AmigaGuide client.
+///
+/// See also: OpenAmigaGuideA(), OpenAmigaGuideAsyncA()
 extern pub fn CloseAmigaGuide(cl: *u8)
+/// Obtain aysnc AmigaGuide signal.      (V34)
+///
+/// This function returns the signal bit to Wait on for AmigaGuideMsg's for a
+/// particular AmigaGuide database.
+///
+/// # Arguments
+///
+/// See also: OpenAmigaGuideAsyncA(), GetAmigaGuideMsg(), ReplyAmigaGuideMsg()
 extern pub fn AmigaGuideSignal(cl: *u8) -> u32
+/// Receive async AmigaGuide message.    (V34)
+///
+/// This function returns a SIPC message from the AmigaGuide system, if there is
+/// a message available.
+///
+/// # Arguments
+/// * `handle` - Handle to a AmigaGuide system.
+///
+/// See also: OpenAmigaGuideAsyncA(), AmigaGuideSignal(), ReplyAmigaGuideMsg()
 extern pub fn GetAmigaGuideMsg(cl: *u8) -> *AmigaGuideMsg
+/// Reply to an AmigaGuide message.    (V34)
+///
+/// This function is used to reply to an AmigaGuide SIPC message.
+///
+/// # Arguments
+/// * `msg` - Pointer to a SIPC message returned by a previous call to ...
+///
+/// See also: OpenAmigaGuideAsyncA(), AmigaGuideSignal(), GetAmigaGuideMsg()
 extern pub fn ReplyAmigaGuideMsg(amsg: *AmigaGuideMsg)
 extern pub fn SetAmigaGuideContextA(cl: *u8, id: u32, attrs: *TagItem) -> i32
 // Varargs function SetAmigaGuideContext skipped - needs manual implementation
 extern pub fn SendAmigaGuideContextA(cl: *u8, attrs: *TagItem) -> i32
 // Varargs function SendAmigaGuideContext skipped - needs manual implementation
+/// Align an AmigaGuide system on the context ID
+///
+/// This function is used to send a message to an AmigaGuide system to align it
+/// on the current context ID. This function effectively does a:
+/// SendAmigaGuideCmd(handle 'LINK ContextArray[contextID]', NULL);
+///
+/// # Arguments
+/// * `handle` - Handle to an AmigaGuide system. future - Future expansion...
+///
+/// See also: SetAmigaGuideContextA(), SendAmigaGuideCmdA()
 extern pub fn SendAmigaGuideCmdA(cl: *u8, cmd: *u8, attrs: *TagItem) -> i32
 // Varargs function SendAmigaGuideCmd skipped - needs manual implementation
+/// Unlock an AmigaGuide client.     (V34)
+///
+/// This function is used to release a lock obtained with LockAmigaGuideBase().
+///
+/// # Arguments
+/// * `key` - Value returned by LockAmigaGuideBase().
+///
+/// See also: LockAmigaGuideBase().
 extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
 // Varargs function SetAmigaGuideAttrs skipped - needs manual implementation
+/// Get an AmigaGuide attribute.        (V34)
+///
+/// This function is used to obtain attributes from AmigaGuide.
+///
+/// # Arguments
+/// * `tag` - Attribute to obtain. handle - Handle to an AmigaGuide sys...
+///
+/// See also: SetAmigaGuideAttrsA()
 extern pub fn GetAmigaGuideAttr(tag: *u8 /* Tag */, cl: *u8, storage: *u8) -> i32
 extern pub fn LoadXRef(lock: i32, name: *u8) -> i32
 extern pub fn ExpungeXRef()
+/// Add a dynamic node host.           (V34)
+///
+/// This function adds a callback hook to the dynamic node list. A dynamic node
+/// allows an application to incorporate context- sensitive or live project data
+/// within their help system.
+///
+/// # Arguments
+/// * `hook` - The callback hook. name - Name of the AmigaGuideHost data...
+///
+/// See also: RemoveAmigaGuideHostA()
 extern pub fn AddAmigaGuideHostA(h: *Hook, name: *u8, attrs: *TagItem) -> *u8
 // Varargs function AddAmigaGuideHost skipped - needs manual implementation
 extern pub fn RemoveAmigaGuideHostA(hh: *u8, attrs: *TagItem) -> i32
 // Varargs function RemoveAmigaGuideHost skipped - needs manual implementation
+/// Get an AmigaGuide string.
+///
+/// This function is used to obtain a localized string given the ID.
+///
+/// # Arguments
 extern pub fn GetAmigaGuideString(id: i32) -> *u8

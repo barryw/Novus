@@ -9,10 +9,91 @@
 // Library Functions
 // ============================================================================
 
+/// Return a copy of an item stored in nonvolatile storage.
+///
+/// Searches the nonvolatile storage for the indicated appName and itemName. A
+/// pointer to a copy of this data will be returned.
+///
+/// # Arguments
+/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// # Returns
+/// data - pointer to a copy of the data found in the nonvolatile storage
+///
+/// See also: FreeNVData(), <libraries/nonvolatile.h>
 extern pub fn GetCopyNV(appName: *u8, itemName: *u8, killRequesters: i16) -> *u8
+/// Release the memory allocated by a function of this
+///
+/// Frees a block of memory that was allocated by any of the following:
+/// GetCopyNV(), GetNVInfo(), GetNVList().
+///
+/// # Arguments
+/// * `data` - pointer to the memory block to be freed. If passed NULL, ...
+///
+/// See also: GetCopyNV(), GetNVInfo(), GetNVList()
 extern pub fn FreeNVData(data: *u8)
+/// Store data in nonvolatile storage. (V40)
+///
+/// Saves some data in nonvolatile storage. The data is tagged with AppName and
+/// ItemName so it can be retrieved later.
+///
+/// # Arguments
+/// * `appName` - NULL terminated string identifying the application creati...
+///
+/// # Returns
+/// error - 0                means no error,
+///
+/// See also: GetCopyNV(), GetNVInfo()
 extern pub fn StoreNV(appName: *u8, itemName: *u8, data: *u8, length: u32, killRequesters: i16) -> u16
+/// Remove an entry from nonvoltatile storage. (V40)
+///
+/// Searches the nonvolatile storage for the indicated entry and removes it. The
+/// strings appName and itemName may not contain the '/' or ':' characters.
+///
+/// # Arguments
+/// * `appName` - NULL terminated string identifing the application that cr...
+///
+/// # Returns
+/// success - TRUE will be returned if the entry is found and deleted.
 extern pub fn DeleteNV(appName: *u8, itemName: *u8, killRequesters: i16) -> i16
+/// Report information on the current nonvolatile storage.
+///
+/// Finds the user's preferred nonvolatile device and reports information about
+/// it.
+///
+/// # Arguments
+/// * `killRequesters` - suppress system requesters flag. TRUE if all system reque...
+///
+/// # Returns
+/// information - pointer to an NVInfo structure. This structure contains
+///
+/// See also: FreeNVData(), StoreNV(), <libraries/nonvolatile.h>
 extern pub fn GetNVInfo(killRequesters: i16) -> *NVInfo
+/// Return a list of the items stored in nonvolatile
+///
+/// Returns a pointer to an Exec list of nonvolatile Items associated with the
+/// appName requested. The string appName may not contain the '/' or ':'
+/// characters.
+///
+/// # Arguments
+/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// # Returns
+/// list - a pointer to an Exec MinList of NVEntries. A NULL will be
+///
+/// See also: FreeNVData(), SetNVProtection()
 extern pub fn GetNVList(appName: *u8, killRequesters: i16) -> *MinList
+/// Set the protection flags. (V40)
+///
+/// Sets the protection attributes for an item currently in the nonvolatile
+/// storage. Although 'mask' is LONG only the delete bit,
+/// NVEF_DELETE/NVEB_DELETE, may be set.
+///
+/// # Arguments
+/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// # Returns
+/// success - FALSE if the protection could not be change (ie the data
+///
+/// See also: GetNVList(), <libraries/nonvolatile.h>
 extern pub fn SetNVProtection(appName: *u8, itemName: *u8, mask: i32, killRequesters: i16) -> i16

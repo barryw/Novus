@@ -8,44 +8,597 @@
 // ============================================================================
 // Library Functions
 // ============================================================================
-
+/// Create a new IFFHandle structure. (V36)
+///
+/// Allocates and initializes a new IFFHandle structure. This function is the
+/// only supported way to create an IFFHandle structure since there are private
+/// fields that need to be initialized.
+///
+/// # Returns
+/// iff - pointer to IFFHandle structure or NULL if the allocation failed.
+///
+/// See also: FreeIFF(), <libraries/iffparse.h>
 extern pub fn AllocIFF() -> *IFFHandle
+/// Prepare an IFFHandle to read or write a new IFF stream.
+///
+/// Initializes an IFFHandle structure for a new read or write. The direction of
+/// the I/O is given by the value of rwMode, which can be either IFFF_READ or
+/// IFFF_WRITE.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. Starting with V39, this may
+///   be NULL, in which case IFFERR_NOMEM is returned. rwMode - IFFF_READ
+///   or IFFF_WRITE
+///
+/// # Returns
+/// error - contains an error code or 0 if successful
+///
+/// See also: CloseIFF(), InitIFF(), <libraries/iffparse.h>
 extern pub fn OpenIFF(iff: *IFFHandle, rwMode: i32) -> i32
+/// Parse an IFF file from an IFFHandle structure stream. (V36)
+///
+/// This is the biggie. Traverses a file opened for read by pushing chunks onto
+/// the context stack and popping them off directed by the generic syntax of IFF
+/// files.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. control - control code
+///   (IFFPARSE_SCAN, _STEP or _RAWSTEP).
+///
+/// # Returns
+/// error - 0 or IFFERR_#? value or return value from user handler.
+///
+/// See also: PushChunk(), PopChunk(), EntryHandler(), ExitHandler(), PropChunk()
 extern pub fn ParseIFF(iff: *IFFHandle, control: i32) -> i32
+/// Close an IFF context. (V36)
+///
+/// Completes an IFF read or write operation by closing the IFF context
+/// established for this IFFHandle structure. The IFFHandle structure itself is
+/// left ready for re-use and a new context can be opened with OpenIFF().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure previously opened with
+///   OpenIFF(). Starting with V39, this may be NULL.
+///
+/// See also: OpenIFF(), InitIFF(), <libraries/iffparse.h>
 extern pub fn CloseIFF(iff: *IFFHandle)
+/// Deallocate an IFFHandle structure. (V36)
+///
+/// Deallocates all resources associated with this IFFHandle structure. The
+/// structure MUST have already been closed with CloseIFF().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure to free. Starting with V39,
+///   this may be NULL.
+///
+/// See also: AllocIFF(), CloseIFF(), <libraries/iffparse.h>
 extern pub fn FreeIFF(iff: *IFFHandle)
+/// Read bytes from the current chunk into a buffer.
+///
+/// Reads the IFFHandle stream into the buffer for the specified number of
+/// bytes. Reads are limited to the size of the current chunk and attempts to
+/// read past the end of the chunk will truncate.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. buf - pointer to buffer area
+///   to receive data. numBytes - number of bytes to read.
+///
+/// # Returns
+/// actual - (positive) number of bytes read if successful or a (negative)
+/// IFFERR_#? error code if unsuccessful.
+///
+/// See also: ReadChunkRecords(), ParseIFF(), WriteChunkBytes(), <libraries/iffparse.h>
 extern pub fn ReadChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
+/// Write data from a buffer into the current chunk.
+///
+/// Writes "numBytes" bytes from the specified buffer into the current chunk. If
+/// the current chunk was pushed with IFFSIZE_UNKNOWN, the size of the chunk
+/// gets increased by the size of the buffer written.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. buf - pointer to buffer area
+///   with bytes to be written. numBytes - number of bytes to write.
+///
+/// # Returns
+/// error - (positive) number of bytes written if successful or a
+/// (negative) IFFERR_#? error code if unsuccessful.
+///
+/// See also: PushChunk(), PopChunk(), WriteChunkRecords(), <libraries/iffparse.h>
 extern pub fn WriteChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
+/// Read record elements from the current chunk into
+///
+/// Reads records from the current chunk into buffer. Truncates attempts to read
+/// past end of chunk (only whole records are read; remaining bytes that are not
+/// of a whole record size are left unread and available for ReadChunkBytes()).
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. buf - pointer to buffer area
+///   to receive data. bytesPerRecord - size of data records to read.
+///   numRecords - number of data records to read.
+///
+/// # Returns
+/// actual - (positive) number of whole records read if successful or a
+/// (negative) IFFERR_#? error code if unsuccessful.
+///
+/// See also: ReadChunkBytes(), ParseIFF(), WriteChunkRecords(), <libraries/iffparse.h>
 extern pub fn ReadChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, numRecords: i32) -> i32
+/// Write records from a buffer to the current
+///
+/// Writes record elements from the buffer into the top chunk. This function
+/// operates much like ReadChunkBytes().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. buf - pointer to buffer area
+///   containing data. recsize - size of data records to write. numrec -
+///   number of data records to write.
+///
+/// # Returns
+/// error - (positive) number of whole records written if successful or a
+/// (negative) IFFERR_#? error code if unsuccessful.
+///
+/// See also: WriteChunkBytes(), <libraries/iffparse.h>
 extern pub fn WriteChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, numRecords: i32) -> i32
+/// Push a new context node on the context stack. (V36)
+///
+/// Pushes a new context node on the context stack by reading it from the stream
+/// if this is a read file, or by creating it from the passed parameters if this
+/// is a write file. Normally this function is only called in write mode, where
+/// the type and id codes specify the new chunk to create.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - chunk type specifier
+///   (ex. ILBM) (ignored for read mode or leaf chunks). id - chunk id
+///   specifier (ex. CMAP) (ignored for read mode). size - size of the
+///   chunk to create or IFFSIZE_UNKNOWN (ignored for read mode).
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if not unsuccessful.
+///
+/// See also: PopChunk(), WriteChunkRecords(), WriteChunkBytes(), <libraries/iffparse.h>
 extern pub fn PushChunk(iff: *IFFHandle, _type: i32, id: i32, size: i32) -> i32
+/// Pop top context node off context stack. (V36)
+///
+/// Pops top context chunk and frees all associated local context items. The
+/// function is normally called only for writing files and signals the end of a
+/// chunk.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: PushChunk(), <libraries/iffparse.h>
 extern pub fn PopChunk(iff: *IFFHandle) -> i32
+/// Add an entry handler to the IFFHandle context. (V36)
+///
+/// Installs an entry handler vector for a specific type of chunk into the
+/// context for the given IFFHandle structure. Type and id are the longword
+/// identifiers for the chunk to handle.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - type code for chunk to
+///   handle (ex. "ILBM"). id - ID code for chunk to handle (ex. "CMAP").
+///   position- local context item position. One of the IFFSLI_#? codes.
+///   handler - pointer to Hook structure. object - a client-defined
+///   pointer which is passed in A2 during call- back.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: ExitHandler(), StoreLocalItem(), StoreItemInContext(), <utility/hooks.h>, <libraries/iffparse.h>
 extern pub fn EntryHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, handler: *Hook, object: *u8) -> i32
+/// Add an exit handler to the IFFHandle context. (V36)
+///
+/// Installs an exit handler vector for a specific type of chunk into the
+/// context for the given IFFHandle structure. Type and id are the longword
+/// identifiers for the chunk to handle.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - type code for chunk to
+///   handle (ex. "ILBM"). id - identifier code for chunk to handle (ex.
+///   "CMAP"). position - local context item position. One of the IFFSLI_#?
+///   codes. handler - pointer to Hook structure. object - a client-defined
+///   pointer which is passed in A2 during call- back.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: EntryHandler(), StoreLocalItem(), StoreItemInContext(), <utility/hooks.h>, <libraries/iffparse.h>
 extern pub fn ExitHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, handler: *Hook, object: *u8) -> i32
+/// Specify a property chunk to store. (V36)
+///
+/// Installs an entry handler for chunks with the given type and ID so that the
+/// contents of those chunks will be stored as they are encountered. The storage
+/// of these chunks follows the property chunk scoping rules for IFF files so
+/// that at any given point, a stored property chunk returned by FindProp() will
+/// be the valid property for the current context.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure (does not need to be open).
+///   type - type code for the chunk to declare (ex. "ILBM"). id -
+///   identifier for the chunk to declare (ex. "CMAP").
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: PropChunks(), FindProp(), CollectionChunk(), <libraries/iffparse.h>
 extern pub fn PropChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
+/// Declare many property chunks at once. (V36)
+///
+/// Declares multiple property chunks from a list. The propArray argument if a
+/// pointer to an array of longwords arranged in pairs, and has the following
+/// format: TYPE1, ID1, TYPE2, ID2, ..., TYPEn, IDn The argument numPairs is the
+/// number of pairs.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. propArray - pointer to array
+///   of longword chunk types and identifiers. numPairs - number of pairs
+///   in the array.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: PropChunk(), <libraries/iffparse.h>
 extern pub fn PropChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
+/// Declare a chunk which should cause ParseIFF to return.
+///
+/// Installs an entry handler for the specified chunk which will cause the
+/// ParseIFF() function to return control to the caller when this chunk is
+/// encountered. This is only of value when ParseIFF() is called with the
+/// IFFPARSE_SCAN control code.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure (need not be open). type -
+///   type code for chunk to declare (ex. "ILBM"). id - identifier for
+///   chunk to declare (ex. "BODY").
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: StopChunks(), ParseIFF(), <libraries/iffparse.h>
 extern pub fn StopChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
+/// Declare many stop chunks at once. (V36)
+///
+/// (is to StopChunk() as PropChunks() is to PropChunk().)
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. propArray - pointer to array
+///   of longword chunk types and identifiers. numPairs - number of pairs
+///   in the array.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: StopChunk(), <libraries/iffparse.h>
 extern pub fn StopChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
+/// Declare a chunk type for collection. (V36)
+///
+/// Installs an entry handler for chunks with the given type and id so that the
+/// contents of those chunks will be stored as they are encountered. This is
+/// like PropChunk() except that more than one chunk of this type can be stored
+/// in lists which can be returned by FindCollection().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure (does not need to be open)
+///   type - type code for the chunk to declare (ex. "ILBM") id -
+///   identifier for the chunk to declare (ex. "CRNG")
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: CollectionChunks(), FindCollection(), PropChunk(), <libraries/iffparse.h>
 extern pub fn CollectionChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
+/// Declare many collection chunks at once. (V36)
+///
+/// Declares multiple collection chunks from a list. The propArray argument is a
+/// pointer to an array of longwords arranged in pairs.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure (does not need to be open)
+///   propArray - pointer to array of longword chunk types and identifiers
+///   numPairs - number of pairs in array.
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful
+///
+/// See also: CollectionChunk(), <libraries/iffparse.h>
 extern pub fn CollectionChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
+/// Declare a stop condition for exiting a chunk. (V36)
+///
+/// Installs an exit handler for the specified chunk which will cause the
+/// ParseIFF() function to return control to the caller when this chunk is
+/// exhausted. ParseIFF() will return IFFERR_EOC when the declared chunk is
+/// about to be popped.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure (need not be open). type -
+///   type code for chunk to declare (ex. "ILBM"). id - identifier for
+///   chunk to declare (ex. "BODY").
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: ParseIFF(), <libraries/iffparse.h>
 extern pub fn StopOnExit(iff: *IFFHandle, _type: i32, id: i32) -> i32
+/// Search for a stored property chunk. (V36)
+///
+/// Searches for the stored property which is valid in the given context.
+/// Property chunks are automatically stored by ParseIFF() when pre-declared by
+/// PropChunk() or PropChunks().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - type code for chunk to
+///   search for (ex. "ILBM"). id - identifier code for chunk to search for
+///   (ex. "CMAP").
+///
+/// # Returns
+/// sp - pointer to stored property, or NULL if none found.
+///
+/// See also: PropChunk(), PropChunks(), <libraries/iffparse.h>
 extern pub fn FindProp(iff: *IFFHandle, _type: i32, id: i32) -> *StoredProperty
+/// Get a pointer to the current list of collection
+///
+/// Returns a pointer to a list of CollectionItem structures for each of the
+/// collection chunks of the given type encountered so far in the course of
+/// parsing this IFF file. The items appearing first in the list will be the
+/// ones encountered most recently.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - type code to search
+///   for. id - identifier code to search for.
+///
+/// # Returns
+/// ci - pointer to last collection chunk encountered with links to
+/// previous ones.
+///
+/// See also: CollectionChunk(), CollectionChunks(), <libraries/iffparse.h>
 extern pub fn FindCollection(iff: *IFFHandle, _type: i32, id: i32) -> *CollectionItem
+/// Get the property context for the current state.
+///
+/// Locates the context node which would be the scoping chunk for properties in
+/// the current parsing state. (Huh?) This is used for locating the proper
+/// scoping context for property chunks i.e.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure.
+///
+/// # Returns
+/// cn - ContextNode of property scoping chunk.
+///
+/// See also: CurrentChunk(), ParentChunk(), StoreItemInContext(), <libraries/iffparse.h>
 extern pub fn FindPropContext(iff: *IFFHandle) -> *ContextNode
+/// Get context node for current chunk. (V36)
+///
+/// Returns the top context node for the given IFFHandle structure. The top
+/// context node corresponds to the chunk most recently pushed on the stack,
+/// which is the chunk where the stream is currently positioned.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure
+///
+/// # Returns
+/// top - pointer to top context node or NULL if none
+///
+/// See also: PushChunk(), PopChunk(), ParseIFF(), ParentChunk(), <libraries/iffparse.h>
 extern pub fn CurrentChunk(iff: *IFFHandle) -> *ContextNode
+/// Get the nesting context node for the given chunk. (V36)
+///
+/// Returns a context node for the chunk containing the chunk for the given
+/// context node. This function effectively moves down the context stack into
+/// previously pushed contexts.
+///
+/// # Arguments
+/// * `contextNode` - pointer to a context node.
+///
+/// # Returns
+/// parent - pointer to the enclosing context node or NULL if none.
+///
+/// See also: CurrentChunk(), <libraries/iffparse.h>
 extern pub fn ParentChunk(contextNode: *ContextNode) -> *ContextNode
+/// Create a local context item structure. (V36)
+///
+/// Allocates and initializes a LocalContextItem structure with "dataSize" bytes
+/// of associated user data. This is the only supported way to create such an
+/// item.
+///
+/// # Arguments
+/// * `type,id` - additional longword identification values ident -
+///   longword identifier for class of context item dataSize - number of
+///   bytes of user data to allocate for this item
+///
+/// # Returns
+/// item - pointer to initialized LocalContextItem or NULL if the
+/// allocation failed.
+///
+/// See also: FreeLocalItem(), LocalItemData(), StoreLocalItem(), StoreItemInContext(), SetLocalItemPurge()
 extern pub fn AllocLocalItem(_type: i32, id: i32, ident: i32, dataSize: i32) -> *LocalContextItem
+/// Get pointer to user data for local context item. (V36)
+///
+/// Returns pointer to the user data associated with the given local context
+/// item. The size of the data area depends on the "dataSize" argument used when
+/// allocating this item.
+///
+/// # Arguments
+/// * `localItem` - pointer to local context item or NULL.
+///
+/// # Returns
+/// data - pointer to user data area or NULL if localItem is NULL.
+///
+/// See also: AllocLocalItem(), FreeLocalItem(), <libraries/iffparse.h>
 extern pub fn LocalItemData(localItem: *LocalContextItem) -> *u8
+/// Set purge vector for a local context item. (V36)
+///
+/// Sets a local context item to use a client-supplied cleanup (purge) vector
+/// for disposal when its context is popped. The purge vector will be called
+/// when the ContextNode containing this local item is popped off the context
+/// stack and is about to be deleted itself.
+///
+/// # Arguments
+/// * `localItem` - pointer to a local context item. purgeHook - pointer to
+///   a Hook structure.
+///
+/// See also: AllocLocalItem(), FreeLocalItem(), <utility/hooks.h> <libraries/iffparse.h>
 extern pub fn SetLocalItemPurge(localItem: *LocalContextItem, purgeHook: *Hook)
+/// Deallocate a local context item structure. (V36)
+///
+/// Frees the memory for the local context item and any associated user memory
+/// as allocated with AllocLocalItem(). User purge vectors should call this
+/// function after they have freed any other resources associated with this
+/// item.
+///
+/// # Arguments
+/// * `localItem` - pointer to LocalContextItem created with
+///   AllocLocalItem. Starting with V39, this may be NULL.
+///
+/// See also: AllocLocalItem(), <libraries/iffparse.h>
 extern pub fn FreeLocalItem(localItem: *LocalContextItem)
+/// Return a local context item from the context stack.
+///
+/// Searches the context stack of the given IFFHandle structure for a local
+/// context item which matches the given ident, type and id. This function
+/// searches the context stack from the most current context backwards, so that
+/// the item found (if any) will be the one with greatest precedence in the
+/// context stack.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. type - type code to search
+///   for. id - ID code to search for. ident - ident code for the class of
+///   context item to search for (ex. "exhd" -- exit handler).
+///
+/// # Returns
+/// lci - pointer to local context item, or NULL if nothing matched.
+///
+/// See also: StoreLocalItem(), <libraries/iffparse.h>
 extern pub fn FindLocalItem(iff: *IFFHandle, _type: i32, id: i32, ident: i32) -> *LocalContextItem
+/// Insert a local context item into the context stack.
+///
+/// Adds the local context item to the list of items for one of the context
+/// nodes on the context stack and purges any other item in the same context
+/// with the same ident, type and id. The position argument determines where in
+/// the stack to add the item: IFFSLI_ROOT: Add item to list at root (default)
+/// stack position.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure. localItem - pointer to
+///   LocalContextItem struct to insert. position - where to store the item
+///   (IFFSLI_ROOT, _TOP or _PROP).
+///
+/// # Returns
+/// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
+///
+/// See also: FindLocalItem(), StoreItemInContext(), EntryHandler(), ExitHandler(), <libraries/iffparse.h>
 extern pub fn StoreLocalItem(iff: *IFFHandle, localItem: *LocalContextItem, position: i32) -> i32
+/// Store local context item in given context node.
+///
+/// Adds the LocalContextItem to the list of items for the given context node.
+/// If an LCI with the same Type, ID, and Ident is already present in the
+/// ContextNode, it will be purged and replaced with the new one.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure for this context. localItem -
+///   pointer to a LocalContextItem to be stored. contextNode - pointer to
+///   context node in which to store item.
+///
+/// See also: StoreLocalItem(), <libraries/iffparse.h>
 extern pub fn StoreItemInContext(iff: *IFFHandle, localItem: *LocalContextItem, contextNode: *ContextNode)
+/// Initialize an IFFHandle structure as a user stream. (V36)
+///
+/// Initializes an IFFHandle as a general user-defined stream by allowing the
+/// user to declare a hook that the library will call to accomplish the
+/// low-level reading, writing, and seeking of the stream. Flags are the stream
+/// I/O flags for the specified stream; typically a combination of the
+/// IFFF_?SEEK flags.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure to initialize. flags - stream
+///   I/O flags for the IFFHandle. streamHook - pointer to Hook structure.
+///
+/// See also: <utility/hooks.h>, <libraries/iffparse.h>
 extern pub fn InitIFF(iff: *IFFHandle, flags: i32, streamHook: *Hook)
+/// Initialize an IFFHandle as a DOS stream. (V36)
+///
+/// The function initializes the given IFFHandle to operate on DOS streams. The
+/// iff_Stream field will need to be initialized as a BPTR returned from the DOS
+/// function Open().
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure.
+///
+/// See also: InitIFF()
 extern pub fn InitIFFasDOS(iff: *IFFHandle)
+/// Initialize an IFFHandle as a clipboard stream. (V36)
+///
+/// Initializes the given IFFHandle to be a clipboard stream. The function
+/// initializes the stream processing vectors to operate on streams of the
+/// ClipboardHandle type.
+///
+/// # Arguments
+/// * `iff` - pointer to IFFHandle structure.
+///
+/// See also: InitIFF(), OpenClipboard(), <libraries/iffparse.h>
 extern pub fn InitIFFasClip(iff: *IFFHandle)
+/// Create a handle on a clipboard unit. (V36)
+///
+/// Opens the clipboard.device and opens a stream for the specified unit
+/// (usually PRIMARY_CLIP). This handle structure will be used as the clipboard
+/// stream for IFFHandles initialized as clipboard streams by InitIFFasClip().
+///
+/// # Arguments
+/// * `unitNumber` - clipboard unit number (usually PRIMARY_CLIP).
+///
+/// # Returns
+/// ch - pointer to ClipboardHandle structure or NULL if unsuccessful.
+///
+/// See also: InitIFFasClip(), CloseClipboard(), <libraries/iffparse.h>
 extern pub fn OpenClipboard(unitNumber: i32) -> *ClipboardHandle
+/// Close and free an open ClipboardHandle. (V36)
+///
+/// Closes the clipboard.device and frees the ClipboardHandle structure.
+///
+/// # Arguments
+/// * `clipHandle` - pointer to ClipboardHandle struct created with
+///   OpenClipboard(). Starting with V39, this may be NULL.
+///
+/// See also: OpenClipboard(), InitIFFasClip(), <libraries/iffparse.h>
 extern pub fn CloseClipboard(clipHandle: *ClipboardHandle)
+/// Test if an identifier follows the IFF 85 specification. (V36)
+///
+/// Tests the given longword identifier to see if it meets all the EA IFF 85
+/// specifications for a chunk ID. If so, it returns non-zero, otherwise 0.
+///
+/// # Arguments
+/// * `id` - potential 32 bit identifier.
+///
+/// # Returns
+/// isok - non-zero if this is a valid ID, 0 otherwise.
+///
+/// See also: GoodType()
 extern pub fn GoodID(id: i32) -> i32
+/// Test if a type follows the IFF 85 specification. (V36)
+///
+/// Tests the given longword type identifier to see if it meets all the EA IFF
+/// 85 specifications for a FORM type (requirements for a FORM type are more
+/// stringent than those for a simple chunk ID). If it complies, GoodType()
+/// returns non-zero, otherwise 0.
+///
+/// # Arguments
+/// * `type` - potential 32 bit format type identifier.
+///
+/// # Returns
+/// isok - non-zero if this is a valid type id, 0 otherwise.
+///
+/// See also: GoodID()
 extern pub fn GoodType(_type: i32) -> i32
+/// Convert a longword identifier to a null-terminated string.
+///
+/// Writes the ASCII equivalent of the given longword ID into buf as a
+/// null-terminated string.
+///
+/// # Arguments
+/// * `id` - longword ID. buf - character buffer to accept string (at least
+///   5 chars).
+///
+/// # Returns
+/// str - the value of 'buf'.
 extern pub fn IDtoStr(id: i32, buf: *u8) -> *u8

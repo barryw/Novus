@@ -8,43 +8,534 @@
 // ============================================================================
 // Library Functions
 // ============================================================================
-
+/// Scan a tag list for a specific tag. (V36)
+///
+/// Scans a tag list and returns a pointer to the first item with ti_Tag
+/// matching the 'tagValue' parameter.
+///
+/// # Arguments
+/// * `tagValue` - tag value to search for tagList - tag item list to
+///   search (may be NULL)
+///
+/// # Returns
+/// tag - a pointer to the item with ti_Tag matching 'tagValue' or NULL if
+/// no match was found.
+///
+/// See also: <utility/tagitem.h>, GetTagData(), PackBoolTags(), NextTagItem()
 extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
+/// Obtain the data corresponding to a tag. (V36)
+///
+/// Searches a tag list for a matching tag, and returns the corresponding
+/// ti_Data value for the TagItem found. If no match is found, this function
+/// returns the value passed in as 'default'.
+///
+/// # Arguments
+/// * `tagValue` - tag value to search for. defaultVal - value to be
+///   returned if tagValue is not found. tagList - the tag list to search.
+///
+/// # Returns
+/// value - the ti_Data value for the first matching TagItem, or 'default'
+/// if a ti_Tag matching 'Tag' is not found.
+///
+/// See also: <utility/tagitem.h>, FindTagItem(), PackBoolTags(), NextTagItem()
 extern pub fn GetTagData(tagValue: *u8 /* Tag */, defaultVal: u32, tagList: *TagItem) -> u32
+/// Builds a "flag" word from a tag list. (V36)
+///
+/// Picks out the boolean tag items in a tag list and converts them into
+/// bit-flag representations according to a correspondence defined by the tag
+/// list 'boolMap'. A boolean tag item is one where only the logical value of
+/// the ti_Data is relevant.
+///
+/// # Arguments
+/// * `initialFlags` - a starting set of bit-flags which will be changed by
+///   the processing of TRUE and FALSE boolean tags in tagList. tagList - a
+///   TagItem list which may contain several tag items defined to be
+///   boolean by their presence in boolMap. The logical value of ti_Data
+///   determines whether a tag item causes the bit-flag value related by
+///   boolMap to be set or cleared in the returned flag longword. boolMap -
+///   a tag list defining the boolean tags to be recognized, and the bit
+///   (or bits) in the returned longword that are to be set or cleared when
+///   a boolean Tag is found to be TRUE or FALSE in tagList.
+///
+/// # Returns
+/// flags - the accumulated longword of bit-flags, starting with
+/// initialFlags and modified by each boolean tag item encountered.
+///
+/// # Warning
+/// In a case where there is duplication of a tag in tagList, the
+///
+/// See also: <utility/tagitem.h>, GetTagData(), FindTagItem(), NextTagItem()
 extern pub fn PackBoolTags(initialFlags: u32, tagList: *TagItem, boolMap: *TagItem) -> u32
+/// Iterate through a tag list. (V36)
+///
+/// Iterates through a tag list, skipping and chaining as dictated by system
+/// tags. TAG_SKIP will cause it to skip the entry and a number of following
+/// tags as specified in ti_Data.
+///
+/// # Arguments
+/// * `tagItemPtr` - doubly-indirect reference to a TagItem structure. The
+///   pointer will be changed to keep track of the iteration.
+///
+/// # Returns
+/// nextTag - each TagItem in the array or chain of arrays that should be
+/// processed according to system tag values defined in
+/// <utility/tagitem.h>) is returned in turn with successive calls.
+///
+/// # Warning
+/// Do NOT use the value of *tagItemPtr, but rather use the pointer
+///
+/// See also: <utility/tagitem.h>, GetTagData(), PackBoolTags(), FindTagItem()
 extern pub fn NextTagItem(tagListPtr: *TagItem) -> *TagItem
+/// Eliminate tags which specify no change. (V36)
+///
+/// This function goes through changeList. For each item found in changeList, if
+/// the item is also present in originalList, and their data values are
+/// identical, then the tag is removed from changeList.
+///
+/// # Arguments
+/// * `changeList` - list of new tags (may be NULL) originalList - a list
+///   of existing tags (may be NULL) apply - boolean specification as to
+///   whether the data values in originalList are to be updated to the data
+///   values in changeList.
+///
+/// See also: <utility/tagitem.h>, ApplyTagChanges()
 extern pub fn FilterTagChanges(changeList: *TagItem, originalList: *TagItem, apply: u32)
 extern pub fn MapTags(tagList: *TagItem, mapList: *TagItem, mapType: u32)
+/// Allocate a tag list. (V36)
+///
+/// Allocates the specified number of usable TagItems slots. Note that to access
+/// the TagItems in 'tagList', you should use the function NextTagItem().
+///
+/// # Arguments
+/// * `numTags` - the number of TagItem slots you want to allocate.
+///
+/// # Returns
+/// tagList - the allocated chain of TagItem structures, or NULL if there
+/// was not enough memory. An allocated tag list must eventually be freed
+/// using FreeTagItems().
+///
+/// See also: <utility/tagitem.h>, FreeTagItems(), CloneTagItems()
 extern pub fn AllocateTagItems(numTags: u32) -> *TagItem
+/// Copy a tag list. (V36)
+///
+/// Copies the essential contents of a tag list into a new tag list. The cloning
+/// is such that calling FindTagItem() with a given tag on the original or
+/// cloned tag lists will always return the same tag value.
+///
+/// # Arguments
+/// * `original` - tag list to clone. May be NULL, in which case an empty
+///   tag list is returned.
+///
+/// # Returns
+/// clone - copy of the original tag list, or NULL if there was not enough
+/// memory. This tag list must eventually by freed by calling
+/// FreeTagItems().
+///
+/// See also: <utility/tagitem.h>, AllocateTagItems(), FreeTagItems(), RefreshTagItemClones()
 extern pub fn CloneTagItems(tagList: *TagItem) -> *TagItem
+/// Free an allocated tag list. (V36)
+///
+/// Frees the memory of a TagItem list allocated either by AllocateTagItems() or
+/// CloneTagItems().
+///
+/// # Arguments
+/// * `tagList` - list to free, must have been obtained from
+///   AllocateTagItems() or CloneTagItems() (may be NULL)
+///
+/// See also: <utility/tagitem.h>, AllocateTagItems(), CloneTagItems()
 extern pub fn FreeTagItems(tagList: *TagItem)
+/// Rejuvenate a clone from the original. (V36)
+///
+/// If (and only if) the tag list 'clone' was created from 'original' by
+/// CloneTagItems(), and if 'original' has not been changed in any way, you can
+/// reset the clone list to its original state by using this function.
+///
+/// # Arguments
+/// * `clone` - return value from CloneTagItems(original) original - a tag
+///   list that hasn't changed since CloneTagItems()
+///
+/// See also: <utility/tagitem.h>, CloneTagItems(), AllocateTagItems(), FreeTagItems(), ApplyTagChanges()
 extern pub fn RefreshTagItemClones(clone: *TagItem, original: *TagItem)
+/// Check if a tag value appears in an array of tag values.
+///
+/// Performs a quick scan to see if a tag value appears in an array terminated
+/// with TAG_DONE. Returns TRUE if the value is found.
+///
+/// # Arguments
+/// * `tagValue` - tag value to search array for in array. tagArray - a
+///   simple array of tag values terminated by TAG_DONE.
+///
+/// # Returns
+/// result - TRUE if tagValue was found in tagArray.
+///
+/// See also: <utility/tagitem.h>, FilterTagItems()
 extern pub fn TagInArray(tagValue: *u8 /* Tag */, tagArray: *u8) -> i16
+/// Remove selected items from a tag list. (V36)
+///
+/// Removes tag items from a tag list (by changing ti_Tag to TAG_IGNORE)
+/// depending on whether its ti_Tag value is found in an array of tag values. If
+/// the 'logic' parameter is TAGFILTER_AND, then all items not appearing in
+/// 'tagArray' are excluded from 'tagList'.
+///
+/// # Arguments
+/// * `tagList	- input list of tag items which is to be filtered by having selected items changed to TAG_IGNORE. filterArray` -
+///   an array of tag values, terminated by TAG_DONE, as specified in the
+///   documentation for TagInArray(). logic - specification whether items
+///   in 'tagArray' are to be included or excluded in the filtered result.
+///
+/// # Returns
+/// numValid - number of valid items left in resulting filtered list.
+///
+/// See also: <utility/tagitem.h>, TagInArray()
 extern pub fn FilterTagItems(tagList: *TagItem, filterArray: *u8, logic: u32) -> u32
+/// Invoke a Hook function callback. (V36)
+///
+/// Performs the callback standard defined by a Hook structure. This function is
+/// really very simple; it effectively performs a JMP to Hook->h_Entry.
+///
+/// # Arguments
+/// * `hook` - pointer to an initialized Hook structure as defined in
+///   <utility/hooks.h> object - useful data structure in the particular
+///   context the hook is being used for. message - pointer to a message to
+///   be passed to the hook. This is not an Exec Message structure, but is
+///   a message in the OOP sense.
+///
+/// # Returns
+/// return - the value returned by the hook function.
+///
+/// # Warning
+/// The functions called through this function should follow normal
+///
+/// See also: <utility/hooks.h>
 extern pub fn CallHookPkt(hook: *Hook, object: *u8, paramPacket: *u8) -> u32
+/// Fill in a ClockData structure based on a system
+///
+/// Fills in a ClockData structure with the date and time calculated from a
+/// ULONG containing the number of seconds from 01-Jan-1978 to the date.
+///
+/// # Arguments
+/// * `seconds` - the number of seconds from 01-Jan-1978. result - a
+///   pointer to a ClockData structure that will be altered by this
+///   function
+///
+/// See also: CheckDate(), Date2Amiga()
 extern pub fn Amiga2Date(seconds: u32, result: *ClockData)
+/// Calculate seconds from 01-Jan-1978. (V36)
+///
+/// Calculates the number of seconds from 01-Jan-1978 to the date specified in
+/// the ClockData structure.
+///
+/// # Arguments
+/// * `date` - pointer to a ClockData structure containing the date of
+///   interest.
+///
+/// # Returns
+/// seconds - the number of seconds from 01-Jan-1978 to the date specified.
+///
+/// # Warning
+/// This function does no sanity checking of the data in the ClockData
+///
+/// See also: Amiga2Date(), CheckDate()
 extern pub fn Date2Amiga(date: *ClockData) -> u32
+/// Checks a ClockData structure for legal date. (V36)
+///
+/// Determines if the ClockData structure contains legal date information and
+/// returns the number of seconds from 01-Jan-1978 to that date, or 0 if the
+/// ClockData structure contains illegal data.
+///
+/// # Arguments
+/// * `date` - a filled-in ClockData structure
+///
+/// # Returns
+/// seconds - 0 if date is invalid, otherwise the number of seconds from
+/// 01-Jan-1978 to the date
+///
+/// See also: Amiga2Date(), Date2Amiga()
 extern pub fn CheckDate(date: *ClockData) -> u32
+/// Signed 32 by 32 bit multiply with 32 bit result. (V36)
+///
+/// Returns the signed 32 bit result of multiplying arg1 by arg2.
+///
+/// # Arguments
+/// * `arg1, arg2` - numbers to multiply
+///
+/// # Returns
+/// result - the signed 32 bit result of multiplying arg1 by arg2.
+///
+/// See also: SDivMod32(), UDivMod32(), UMult32(), SMult64(), UMult64()
 extern pub fn SMult32(arg1: i32, arg2: i32) -> i32
+/// Unsigned 32 by 32 bit multiply with 32 bit result. (V36)
+///
+/// Returns the unsigned 32 bit result of multiplying arg1 by arg2.
+///
+/// # Arguments
+/// * `arg1, arg2` - numbers to multiply
+///
+/// # Returns
+/// result - the unsigned 32 bit result of multiplying arg1 by arg2.
+///
+/// See also: SDivMod32(), SMult32(), UDivMod32(), SMult64(), UMult64()
 extern pub fn UMult32(arg1: u32, arg2: u32) -> u32
+/// Signed 32 by 32 bit division and modulus. (V36)
+///
+/// Divides the signed 32 bit dividend by the signed 32 bit divisor and returns
+/// a signed 32 bit quotient and remainder.
+///
+/// # Arguments
+/// * `dividend` - signed 32 bit dividend. divisor - signed 32 bit divisor.
+///
+/// # Returns
+/// quotient - signed 32 quotient of the division. remainder - signed 32
+/// remainder of the division.
+///
+/// See also: SMult32(), UDivMod32(), UMult32(), SMult64(), UMult64()
 extern pub fn SDivMod32(dividend: i32, divisor: i32) -> i32
+/// Unsigned 32 by 32 bit division and modulus. (V36)
+///
+/// Divides the unsigned 32 bit dividend by the unsigned 32 bit divisor and
+/// returns an unsigned 32 bit quotient and remainder.
+///
+/// # Arguments
+/// * `dividend` - unsigned 32 bit dividend. divisor - unsigned 32 bit
+///   divisor.
+///
+/// # Returns
+/// quotient - unsigned 32 quotient of the division. remainder - unsigned
+/// 32 remainder of the division.
+///
+/// See also: SDivMod32(), SMult32(), UMult32()
 extern pub fn UDivMod32(dividend: u32, divisor: u32) -> u32
 extern pub fn Stricmp(string1: *u8, string2: *u8) -> i32
+/// Length-limited case-insensitive string compare. (V37)
+///
+/// This function compares two strings, ignoring case using a generic case
+/// conversion routine. If the strings have different lengths, the shorter is
+/// treated as if it were extended with zeros.
+///
+/// # Arguments
+/// * `string1, string2` - strings to be compared length - maximum number
+///   of characters to examine
+///
+/// # Returns
+/// result - relationship between string1 and string2 <0 means string1 <
+/// string2 =0 means string1 = string2 >0 means string1 > string2
+///
+/// See also: Stricmp(), locale.library/StrnCmp()
 extern pub fn Strnicmp(string1: *u8, string2: *u8, length: i32) -> i32
+/// Convert a character to upper case. (V37)
+///
+/// Converts a character to upper case, handling international character sets.
+///
+/// # Arguments
+/// * `char` - character to be converted.
+///
+/// # Returns
+/// char - upper case version of input character.
+///
+/// See also: ToUpper(), locale.library/ConvToLower()
 extern pub fn ToUpper(character: u8) -> u8
+/// Convert a character to lower case. (V37)
+///
+/// Converts a character to lower case, handling international character sets.
+///
+/// # Arguments
+/// * `char` - character to be converted.
+///
+/// # Returns
+/// char - lower case version of the input character.
+///
+/// See also: ToUpper(), locale.library/ConvToLower()
 extern pub fn ToLower(character: u8) -> u8
+/// Change a tag list based on a second tag list. (V39)
+///
+/// For any tag that appears in both 'list' and 'changeList', this function will
+/// change the ti_Data field of the tag in 'list' to match the ti_Data field of
+/// the tag in 'changeList'. In effect, 'changeList' contains a series of new
+/// values for tags already in 'list'.
+///
+/// # Arguments
+/// * `list` - a list of existing tags (may be NULL) changeList - a list of
+///   tags to modify 'list' with (may be NULL)
+///
+/// See also: <utility/tagitem.h>, FilterTagChanges()
 extern pub fn ApplyTagChanges(list: *TagItem, changeList: *TagItem)
+/// Signed 32 by 32 bit multiply with 64 bit result. (V39)
+///
+/// Returns the signed 64 bit result of multiplying arg1 by arg2.
+///
+/// # Arguments
+/// * `arg1, arg2` - numbers to multiply
+///
+/// # Returns
+/// result - the signed 64 bit result of multiplying arg1 by arg2.
+///
+/// See also: SDivMod32(), UDivMod32(), UMult32(), UMult64()
 extern pub fn SMult64(arg1: i32, arg2: i32) -> i32
+/// Unsigned 32 by 32 bit multiply with 64 bit result. (V39)
+///
+/// Returns the unsigned 64 bit result of multiplying arg1 by arg2.
+///
+/// # Arguments
+/// * `arg1, arg2` - numbers to multiply
+///
+/// # Returns
+/// result - the unsigned 64 bit result of multiplying arg1 by arg2.
+///
+/// See also: SDivMod32(), SMult32(), UDivMod32(), SMult64()
 extern pub fn UMult64(arg1: u32, arg2: u32) -> u32
+/// Pack a structure with values from taglist. (V39)
+///
+/// For each table entry, a FindTagItem() will be done and if the matching tag
+/// is found in the taglist, the data field will be packed into the given
+/// structure based on the packtable definition.
+///
+/// # Arguments
+/// * `pack` - a pointer to the data area to fill in. packTable - a pointer
+///   to the packing information table. See <utility/pack.h> for definition
+///   and macros. tagList - a pointer to the taglist to pack into the
+///   structure
+///
+/// # Returns
+/// num - the number of tag items packed
+///
+/// See also: <utility/pack.h>, FindTagItem(), UnpackStructureTags()
 extern pub fn PackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
+/// Unpack a structure to values in taglist. (V39)
+///
+/// For each table entry, a FindTagItem() will be done and if the matching tag
+/// is found in the taglist, the data in the structure will be placed into the
+/// memory pointed to by the tag's ti_Data. ti_Data *must* point to a LONGWORD.
+///
+/// # Arguments
+/// * `pack` - a pointer to the data area to be unpacked packTable - a
+///   pointer to the packing information table. See <utility/pack.h> for
+///   definition and macros tagList - a pointer to the taglist to unpack
+///   into
+///
+/// # Returns
+/// num - the number of tag items unpacked
+///
+/// See also: <utility/pack.h>, FindTagItem(), PackStructureTags()
 extern pub fn UnpackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
+/// Add a named object to the given namespace. (V39)
+///
+/// Adds a new item to a NameSpace. If the NameSpace doesn't support duplicate
+/// names, a search for a duplicate will be made, and 0 (failure) will be
+/// returned.
+///
+/// # Arguments
+/// * `nameSpace` - the name space to add to (NULL for root namespace)
+///   object - the object to add (If NULL, will return failure)
+///
+/// # Returns
+/// success - whether the operation succeeded. Check this always!
+///
+/// See also: AttemptRemNamedObject(), RemNamedObject()
 extern pub fn AddNamedObject(nameSpace: *NamedObject, object: *NamedObject) -> i16
+/// Allocate a named object. (V39)
+///
+/// Allocates a NamedObject and initializes it as needed to the name given. This
+/// object can then be used as an object in the namespaces.
+///
+/// # Arguments
+/// * `name` - name for the object (must not be NULL) tagList - tags with
+///   additional information for the allocation or NULL
+///
+/// # Returns
+/// object - the object allocated, or NULL for failure. The object is
+/// defined as a pointer to a pointer. You can do what you wish with the
+/// pointer. (It may be NULL or contain a pointer to memory that you had
+/// asked for in the tags.)
+///
+/// See also: FreeNamedObject(), <utility/name.h>
 extern pub fn AllocNamedObjectA(name: *u8, tagList: *TagItem) -> *NamedObject
 // Varargs function AllocNamedObject skipped - needs manual implementation
+/// Attempt to remove a named object. (V39)
+///
+/// Attempts to remove an object from whatever NameSpace it's in. You must have
+/// found the object first (in order to get a use count) before trying to remove
+/// it.
+///
+/// # Arguments
+/// * `object` - the object to attempt to remove  The object must be valid
+///
+/// # Returns
+/// success - FALSE if object is still in use (somewhere) TRUE if object
+/// was removed
+///
+/// See also: RemNamedObject(), AddNamedObject(), ReleaseNamedObject()
 extern pub fn AttemptRemNamedObject(object: *NamedObject) -> i32
+/// Find the next object of a given name. (V39)
+///
+/// Finds an object and adds to the open count of the object. The object is
+/// guaranteed not to be freed until ReleaseNamedObject() is called.
+///
+/// # Arguments
+/// * `nameSpace` - the name space to search name - the name of the object
+///   to search for lastObject - the starting point for the search or NULL
+///
+/// # Returns
+/// object - the first match found, or NULL for no match
+///
+/// See also: ReleaseNamedObject(), <utility/name.h>
 extern pub fn FindNamedObject(nameSpace: *NamedObject, name: *u8, lastObject: *NamedObject) -> *NamedObject
+/// Frees a name object. (V39)
+///
+/// Free one of a number of structures used by utility.library. The item must
+/// not be a member of any NameSpace, and no one may have it open other than
+/// yourself.
+///
+/// # Arguments
+/// * `object` - the object to be freed
+///
+/// See also: AllocNamedObjectA()
 extern pub fn FreeNamedObject(object: *NamedObject)
+/// Return the name of the object. (V39)
+///
+/// Returns the name of the object passed in... Note that the name string is
+/// passed back as just a pointer to a read-only name.
+///
+/// # Arguments
+/// * `object` - the object, may be NULL in which case this function
+///   returns NULL.
+///
+/// # Returns
+/// name - pointer to the name string, or NULL if 'object' is NULL.
+///
+/// See also: FindNamedObject(), RemNamedObject()
 extern pub fn NamedObjectName(object: *NamedObject) -> *u8
+/// Free a named object. (V39)
+///
+/// Decrements the open count of the object. If the object has been removed, and
+/// the count goes to 0, the remover will be notified that the object is now
+/// free.
+///
+/// # Arguments
+/// * `object` - the object to release.  (No action if NULL)
+///
+/// See also: FindNamedObject(), RemNamedObject()
 extern pub fn ReleaseNamedObject(object: *NamedObject)
+/// Remove a named object. (V39)
+///
+/// This function will post a request to release the object from whatever
+/// NameSpace it is in. It will reply the message when the object is fully
+/// removed.
+///
+/// # Arguments
+/// * `object` - the object to remove: Must be a valid NamedObject. message
+///   - message to ReplyMsg() (must be supplied)
+///
+/// # Returns
+/// The message is replied with the ln_Name field either being the object
+/// or NULL. If it contains the object, the object is completely removed.
+///
+/// See also: AttemptRemNamedObject(), AddNamedObject(), ReleaseNamedObject()
 extern pub fn RemNamedObject(object: *NamedObject, message: *Message)
+/// Return a relatively unique number. (V39)
+///
+/// Returns a unique value each time it is called. This is useful for things
+/// that need unique ID such as the GadgetHelp ID, etc.
+///
+/// # Returns
+/// id - a 32-bit value that is unique.
 extern pub fn GetUniqueID() -> u32

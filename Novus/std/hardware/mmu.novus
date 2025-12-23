@@ -4,20 +4,32 @@
 
 from std::strings::format import Display, Formatter
 
-// MMU types detected at runtime
-// Note: 68020 does NOT have an integrated MMU - requires external 68851 PMMU
+/// Memory Management Unit type detected at runtime
+///
+/// Identifies the type of MMU available on the system.
+/// Note: 68020 does NOT have an integrated MMU - requires external 68851 PMMU.
 pub enum SystemMMU {
-    None,      // No MMU present (68000/010/020 or 040/060 without MMU)
-    M68851,    // 68851 PMMU (external coprocessor for 68020)
-    M68030,    // 68030 integrated MMU
-    M68040,    // 68040 integrated MMU
-    M68060,    // 68060 integrated MMU
+    /// No MMU present (68000/010/020 without PMMU, or 040/060 with MMU disabled)
+    None,
+    /// External 68851 PMMU (coprocessor for 68020)
+    M68851,
+    /// 68030 integrated MMU
+    M68030,
+    /// 68040 integrated MMU
+    M68040,
+    /// 68060 integrated MMU
+    M68060,
 }
 
-// MMU capabilities structure
+/// MMU capabilities detected on the current system
+///
+/// Contains information about the MMU's configuration and available
+/// software support for advanced operations.
 pub struct MMUCapabilities {
-    page_size: u32,        // Page size in bytes (typically 4096 or 8192)
-    has_mmu_library: bool, // Whether mmu.library is available
+    /// Page size in bytes (typically 4096 or 8192, 0 if no MMU)
+    page_size: u32,
+    /// Whether mmu.library is available for advanced MMU operations
+    has_mmu_library: bool,
 }
 
 // Runtime MMU detection functions

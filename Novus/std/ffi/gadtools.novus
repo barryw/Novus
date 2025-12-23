@@ -8,32 +8,309 @@
 // ============================================================================
 // Library Functions
 // ============================================================================
-
+/// Allocate and initialize a gadtools gadget. (V36)
+///
+/// CreateGadgetA() allocates and initializes a new gadget of the specified
+/// kind, and attaches it to the previous gadget. The gadget is created based on
+/// the supplied kind, NewGadget structure, and tags.
+///
+/// # Arguments
+/// * `kind` - kind of gadget is to be created, one of the XXX_KIND values
+///   defined in <libraries/gadtools.h> previous - pointer to the previous
+///   gadget that this new gadget is to be attached to. This function will
+///   fail if this value is NULL newgad - a filled in NewGadget structure
+///   describing the desired gadget's size, position, label, etc. tagList -
+///   pointer to an array of tags providing optional extra parameters, or
+///   NULL
+///
+/// # Returns
+/// gad - pointer to the new gadget, or NULL if the allocation failed or if
+/// previous was NULL.
+///
+/// See also: FreeGadgets(), GT_SetGadgetAttrs(), GetVisualInfo(), <libraries/gadtools.h>
 extern pub fn CreateGadgetA(kind: u32, gad: *Gadget, ng: *NewGadget, taglist: *TagItem) -> *Gadget
 // Varargs function CreateGadget skipped - needs manual implementation
+/// Free a linked list of gadgets. (V36)
+///
+/// Frees any GadTools gadgets found on the linked list of gadgets beginning
+/// with the specified one. Frees all the memory that was allocated by
+/// CreateGadgetA().
+///
+/// # Arguments
+/// * `glist` - pointer to first gadget in list to be freed.
+///
+/// See also: CreateGadgetA()
 extern pub fn FreeGadgets(gad: *Gadget)
+/// Change the attributes of a GadTools gadget. (V36)
+///
+/// Change the attributes of the specified gadget, according to the attributes
+/// chosen in the tag list. If an attribute is not provided in the tag list, its
+/// value remains unchanged.
+///
+/// # Arguments
+/// * `gad` - pointer to the gadget in question. Starting with V39, this
+///   value may be NULL in which case this function does nothing win -
+///   pointer to the window containing the gadget. Starting with V39, this
+///   value may be NULL in which case the internal attributes of the
+///   gadgets are altered but no rendering occurs. req - reserved for
+///   future use, should always be NULL tagList - pointer to an array of
+///   tags providing optional extra parameters, or NULL.
+///
+/// See also: GT_GetGadgetAttrs()
 extern pub fn GT_SetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem)
 // Varargs function GT_SetGadgetAttrs skipped - needs manual implementation
+/// Allocate and fill out a menu structure. (V36)
+///
+/// CreateMenusA() allocates and initializes a complete menu structure based on
+/// the supplied array of NewMenu structures. Optionally, CreateMenusA() can
+/// allocate and initialize a complete set of menu items and sub-items for a
+/// single menu title.
+///
+/// # Arguments
+/// * `newmenu` - pointer to an array of initialized struct NewMenus.
+///   tagList - pointer to an array of tags providing optional extra
+///   parameters, or NULL.
+///
+/// # Returns
+/// menu - pointer to the resulting initialized menu structure (or the
+/// resulting FirstItem), with all the links for menu items and subitems in
+/// place. The result will be NULL if CreateMenusA() could not allocate
+/// memory for the menus, or if the NewMenu array had an illegal
+/// arrangement (eg. NM_SUB following NM_TITLE). (see also the
+/// GTMN_SecondaryError tag above).
+///
+/// See also: LayoutMenusA(), FreeMenus(), gadtools.h/GTMENU_USERDATA(), gadtools.h/GTMENUITEM_USERDATA()
 extern pub fn CreateMenusA(newmenu: *NewMenu, taglist: *TagItem) -> *Menu
 // Varargs function CreateMenus skipped - needs manual implementation
+/// Frees memory allocated by CreateMenusA(). (V36)
+///
+/// Frees the menus allocated by CreateMenusA(). It is safe to call this
+/// function with a NULL parameter.
+///
+/// # Arguments
+/// * `menu` - pointer to menu structure (or first MenuItem) obtained from
+///   CreateMenusA().
+///
+/// See also: CreateMenusA()
 extern pub fn FreeMenus(menu: *Menu)
+/// Position all the menu items. (V36)
+///
+/// Lays out all the menu items and sub-items according to the supplied visual
+/// information and tag parameters. You would use this if you used
+/// CreateMenusA() to make a single menu-pane (with sub-items, if any), instead
+/// of a whole menu strip.
+///
+/// # Arguments
+/// * `menuitem` - pointer to first MenuItem in a linked list of items. vi
+///   - pointer returned by GetVisualInfoA(). tagList - pointer to an array
+///   of tags providing optional extra parameters, or NULL.
+///
+/// # Returns
+/// success - TRUE if successful, FALSE otherwise (signifies that the
+/// TextAttr wasn't openable).
+///
+/// See also: CreateMenusA(), GetVisualInfoA()
 extern pub fn LayoutMenuItemsA(firstitem: *MenuItem, vi: *VisualInfo, taglist: *TagItem) -> i16
 // Varargs function LayoutMenuItems skipped - needs manual implementation
+/// Position all the menus and menu items. (V36)
+///
+/// Lays out all the menus, menu items and sub-items in the supplied menu
+/// according to the supplied visual information and tag parameters. This
+/// routine attempts to columnize and/or shift the MenuItems in the event that a
+/// menu would be too tall or too wide.
+///
+/// # Arguments
+/// * `menu` - pointer to menu obtained from CreateMenusA(). vi - pointer
+///   returned by GetVisualInfoA(). tagList - pointer to an array of tags
+///   providing optional extra parameters, or NULL.
+///
+/// # Returns
+/// success - TRUE if successful, FALSE otherwise (signifies that the
+/// TextAttr wasn't openable).
+///
+/// See also: CreateMenusA(), GetVisualInfoA()
 extern pub fn LayoutMenusA(firstmenu: *Menu, vi: *VisualInfo, taglist: *TagItem) -> i16
 // Varargs function LayoutMenus skipped - needs manual implementation
+/// Get an IntuiMessage, with GadTools processing. (V36)
+///
+/// Use GT_GetIMsg() in place of the usual exec.library/GetMsg() when reading
+/// IntuiMessages from your window's UserPort. If needed, the GadTools
+/// dispatcher will be invoked, and suitable processing will be done for gadget
+/// actions.
+///
+/// # Arguments
+/// * `intuiport` - the Window->UserPort of a window that is using the
+///   Gadget Toolkit.
+///
+/// # Returns
+/// imsg - pointer to modified IntuiMessage, or NULL if there are no
+/// applicable messages.
+///
+/// See also: GT_ReplyIMsg(), GT_FilterIMsg()
 extern pub fn GT_GetIMsg(iport: *MsgPort) -> *IntuiMessage
+/// Reply a message obtained with GT_GetIMsg(). (V36)
+///
+/// Reply a modified IntuiMessage obtained with GT_GetIMsg(). If you use
+/// GT_GetIMsg(), use this function where you would normally have used
+/// exec.library/ReplyMsg().
+///
+/// # Arguments
+/// * `imsg` - a modified IntuiMessage obtained with GT_GetIMsg(), or NULL
+///   in which case this function does nothing
+///
+/// See also: GT_GetIMsg()
 extern pub fn GT_ReplyIMsg(imsg: *IntuiMessage)
+/// Refresh all GadTools gadgets in a window. (V36)
+///
+/// Perform the initial refresh of all the GadTools gadgets you have created.
+/// After you have opened your window, you must call this function.
+///
+/// # Arguments
+/// * `win` - pointer to the Window containing GadTools gadgets. req -
+///   reserved for future use, should always be NULL
+///
+/// See also: GT_BeginRefresh()
 extern pub fn GT_RefreshWindow(win: *Window, req: *Requester)
+/// Begin refreshing friendly to GadTools. (V36)
+///
+/// Invokes the intuition.library/BeginRefresh() function in a manner friendly
+/// to the Gadget Toolkit. This function call permits the GadTools gadgets to
+/// refresh themselves at the correct time.
+///
+/// # Arguments
+/// * `win` - pointer to Window structure for which a IDCMP_REFRESHWINDOW
+///   IDCMP event was received.
+///
+/// See also: intuition.library/BeginRefresh()
 extern pub fn GT_BeginRefresh(win: *Window)
+/// End refreshing friendly to GadTools. (V36)
+///
+/// Invokes the intuition.library/EndRefresh() function in a manner friendly to
+/// the Gadget Toolkit. This function call permits GadTools gadgets to refresh
+/// themselves at the correct time.
+///
+/// # Arguments
+/// * `win` - pointer to Window structure for which a IDCMP_REFRESHWINDOW
+///   IDCMP event was received. complete - TRUE when done with refreshing.
+///
+/// See also: intuition.library/EndRefresh()
 extern pub fn GT_EndRefresh(win: *Window, complete: i16)
+/// Filter an IntuiMessage through GadTools. (V36)
+///
+/// NOTE WELL: Extremely few programs will actually need this function. You
+/// almost certainly should be using GT_GetIMsg() and GT_ReplyIMsg() only, and
+/// not GT_FilterIMsg() and GT_PostFilterIMsg().
+///
+/// # Arguments
+/// * `imsg` - an IntuiMessage you obtained from a Window's UserPort.
+///
+/// # Returns
+/// modimsg - a modified IntuiMessage, possibly with extra information from
+/// GadTools, or NULL. When NULL, the message passed in to the function
+/// should be sent back to Intuition via ReplyMsg()
+///
+/// # Warning
+/// If this function returns NULL, you must call ReplyMsg() on the
+///
+/// See also: GT_GetIMsg(), GT_PostFilterIMsg()
 extern pub fn GT_FilterIMsg(imsg: *IntuiMessage) -> *IntuiMessage
+/// Return the unfiltered message after
+///
+/// NOTE WELL: Extremely few programs will actually need this function. You
+/// almost certainly should be using GT_GetIMsg() and GT_ReplyIMsg() only, and
+/// not GT_FilterIMsg() and GT_PostFilterIMsg().
+///
+/// # Arguments
+/// * `modimsg` - a modified IntuiMessage obtained with GT_FilterIMsg(), or
+///   NULL in which case this function does nothing and returns NULL
+///
+/// # Returns
+/// imsg - a pointer to the original IntuiMessage, if GT_FilterIMsg()
+/// returned non-NULL.
+///
+/// See also: GT_FilterIMsg()
 extern pub fn GT_PostFilterIMsg(imsg: *IntuiMessage) -> *IntuiMessage
+/// Create a place for GadTools context data. (V36)
+///
+/// Creates a place for GadTools to store any context data it might need for
+/// your window. In reality, an unselectable invisible gadget is created, with
+/// room for the context data.
+///
+/// # Arguments
+/// * `glistptr` - address of a pointer to a Gadget, which was previously
+///   set to NULL. When all the gadget creation is done, you may use that
+///   pointer as your NewWindow.FirstGadget, or in
+///   intuition.library/AddGList(), intuition.library/RefreshGList(),
+///   FreeGadgets(), etc.
+///
+/// # Returns
+/// gad - pointer to context gadget, or NULL if failure.
 extern pub fn CreateContext(glistptr: *Gadget) -> *Gadget
+/// Draw a bevelled box. (V36)
+///
+/// This function renders a bevelled box of specified dimensions and type into
+/// the supplied RastPort.
+///
+/// # Arguments
+/// * `rport` - RastPort into which the box is to be drawn. left - left
+///   edge of the box. top - top edge of the box. width - width of the box.
+///   height - height of the box. tagList - pointer to an array of tags
+///   providing extra parameters
+///
+/// See also: GetVisualInfoA(), <libraries/gadtools.h>
 extern pub fn DrawBevelBoxA(rport: *RastPort, left: i16, top: i16, width: i16, height: i16, taglist: *TagItem)
 // Varargs function DrawBevelBox skipped - needs manual implementation
+/// Get information GadTools needs for visuals. (V36)
+///
+/// Get a pointer to a (private) block of data containing various bits of
+/// information that GadTools needs to ensure the best quality visuals. Use the
+/// result in the NewGadget structure of any gadget you create, or as a
+/// parameter to the various menu calls.
+///
+/// # Arguments
+/// * `screen` - pointer to the screen you will be opening on. This
+///   parameter may be NULL, in which case this function fails. tagList -
+///   pointer to an array of tags providing optional extra parameters, or
+///   NULL.
+///
+/// # Returns
+/// vi - pointer to private data, or NULL for failure
+///
+/// See also: FreeVisualInfo(), intuition/LockPubScreen(), intuition/UnlockPubScreen()
 extern pub fn GetVisualInfoA(screen: *Screen, taglist: *TagItem) -> *VisualInfo
 // Varargs function GetVisualInfo skipped - needs manual implementation
+/// Return any resources taken by GetVisualInfo. (V36)
+///
+/// FreeVisualInfo() returns any memory or other resources that were allocated
+/// by GetVisualInfoA(). You should only call this function once you are done
+/// with using the gadgets (i.e.
+///
+/// # Arguments
+/// * `vi` - pointer that was obtained by calling GetVisualInfoA(). This
+///   value may be NULL.
+///
+/// See also: GetVisualInfoA()
 extern pub fn FreeVisualInfo(vi: *VisualInfo)
+/// Request the attributes of a GadTools gadget. (V39)
+///
+/// Retrieve the attributes of the specified gadget, according to the attributes
+/// chosen in the tag list. For each entry in the tag list, ti_Tag identifies
+/// the attribute, and ti_Data is a pointer to the long variable where you wish
+/// the result to be stored.
+///
+/// # Arguments
+/// * `gad` - pointer to the gadget in question. May be NULL, in which case
+///   this function returns 0 win - pointer to the window containing the
+///   gadget. req - reserved for future use, should always be NULL taglist
+///   - pointer to TagItem list.
+///
+/// # Returns
+/// numProcessed - the number of attributes successfully filled in.
+///
+/// # Warning
+/// The pointers you provide within the tag list to store the return
+///
+/// See also: GT_SetGadgetAttrs()
 extern pub fn GT_GetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem) -> i32
 // Varargs function GT_GetGadgetAttrs skipped - needs manual implementation
 
