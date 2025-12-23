@@ -7,7 +7,7 @@
 from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
 from std::core import Option, Result
 from std::strings::format import Formatter, Display
-from std::strings::core import Str
+from std::strings::core import Str, strcmp
 from std::net::socket import ensure_initialized
 
 /// Error returned when parsing an IP address fails
@@ -85,10 +85,6 @@ impl Ipv4Addr {
     ///
     /// The string must be null-terminated.
     ///
-    /// Note: Due to a historic BSD limitation, 255.255.255.255 cannot be
-    /// parsed (it returns the same value as an error). Use Ipv4Addr::broadcast()
-    /// to get the broadcast address directly.
-    ///
     /// Example:
     /// ```novus
     /// let addr = Ipv4Addr::parse("192.168.1.100")?
@@ -103,6 +99,11 @@ impl Ipv4Addr {
         // It returns INADDR_NONE (0xFFFFFFFF) on failure
         let result = unsafe { inet_addr(s) }
         if result == INADDR_NONE {
+            // inet_addr returns INADDR_NONE for both errors AND 255.255.255.255
+            // Check if this is actually the broadcast address
+            if is_broadcast_string(s) {
+                return Result::Ok(Ipv4Addr::broadcast())
+            }
             return Result::Err(AddrParseError::InvalidAddress)
         }
         return Result::Ok(Ipv4Addr::from_network_order(result))
@@ -295,6 +296,14 @@ impl Display for Ipv4Addr {
         let len = (*self).format((*u8)&buf[0])
         return f.write_str(Str::from_raw((*u8)&buf[0], len as u32))
     }
+}
+
+/// Helper: check if string is "255.255.255.255" (broadcast address)
+/// This is needed because inet_addr returns INADDR_NONE for both errors
+/// and the broadcast address (a historic BSD limitation).
+fn is_broadcast_string(s: *u8) -> bool {
+    // Use strcmp for clean comparison
+    return strcmp(s, "255.255.255.255") == 0
 }
 
 /// Helper: write a single byte to buffer at offset

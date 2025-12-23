@@ -130,19 +130,23 @@ pub fn test_parse_zero() {
     }
 }
 
-@test("Ipv4Addr::parse rejects 255.255.255.255 (inet_addr limitation)")
+@test("Ipv4Addr::parse handles 255.255.255.255 (broadcast)")
 pub fn test_parse_broadcast() {
     // inet_addr() returns INADDR_NONE (0xFFFFFFFF) for 255.255.255.255
-    // This is a historic BSD limitation - use Ipv4Addr::broadcast() instead
+    // We work around this by detecting the broadcast string and returning
+    // Ipv4Addr::broadcast() directly.
     let result = Ipv4Addr::parse("255.255.255.255")
     match result {
         Result::Ok(addr) => {
-            // Shouldn't happen with inet_addr
-            expect_true(false, "inet_addr cannot parse broadcast")
+            expect_true(addr.is_broadcast(), "should be broadcast address")
+            let octets = addr.octets()
+            expect_eq_u8(octets[0], 255, "first octet")
+            expect_eq_u8(octets[1], 255, "second octet")
+            expect_eq_u8(octets[2], 255, "third octet")
+            expect_eq_u8(octets[3], 255, "fourth octet")
         },
         Result::Err(e) => {
-            // This is expected - use Ipv4Addr::broadcast() for broadcast address
-            expect_true(true, "correctly rejected (use Ipv4Addr::broadcast() instead)")
+            expect_true(false, "parse should succeed for broadcast")
         },
     }
 }
