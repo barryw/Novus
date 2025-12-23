@@ -1638,7 +1638,21 @@ public partial class IrBuilder
             return null;
         }
 
-        var (thenLabel, falseTarget) = _ifLabels!.Value;
+        // Check that _ifLabels has been set by VisitIfStatement
+        // This can be null if an if-expression is used in an unexpected context
+        if (!_ifLabels.HasValue)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InternalCompilerError,
+                "Internal compiler error: if condition visited without labels set. " +
+                "This may happen if an if-expression is used in an unsupported context.",
+                errorLocation
+            );
+            return null;
+        }
+
+        var (thenLabel, falseTarget) = _ifLabels.Value;
 
         // Automatic pointer-to-bool coercion: if ptr { ... }
         // Convert pointer to bool by comparing with null (ptr != 0)
@@ -3726,5 +3740,40 @@ public partial class IrBuilder
             // Wildcard - don't bind anything
         }
         // Other sub-pattern types could be handled here
+    }
+
+    /// <summary>
+    /// Saves statement-level state that must be preserved across generic instantiation.
+    /// When monomorphizing a generic method that contains if-statements, the inner method's
+    /// if-statement processing can corrupt the outer method's state (like _ifLabels).
+    /// </summary>
+    public object? SaveStatementState()
+    {
+        return new StatementState
+        {
+            IfLabels = _ifLabels,
+            PendingIfLetVariable = _pendingIfLetVariable
+        };
+    }
+
+    /// <summary>
+    /// Restores statement-level state saved by SaveStatementState.
+    /// </summary>
+    public void RestoreStatementState(object? state)
+    {
+        if (state is StatementState s)
+        {
+            _ifLabels = s.IfLabels;
+            _pendingIfLetVariable = s.PendingIfLetVariable;
+        }
+    }
+
+    /// <summary>
+    /// Internal record to hold statement-level state during generic instantiation.
+    /// </summary>
+    private record StatementState
+    {
+        public (string thenLabel, string falseTarget)? IfLabels { get; init; }
+        public (string varName, string tempName, IrType type, bool isMutable)? PendingIfLetVariable { get; init; }
     }
 }

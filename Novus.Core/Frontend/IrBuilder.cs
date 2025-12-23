@@ -371,6 +371,17 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             _builder.RestoreConstantsFromTuples(constants);
         }
+
+        // Statement state save/restore for generic instantiation
+        public object? SaveStatementState()
+        {
+            return _builder.SaveStatementState();
+        }
+
+        public void RestoreStatementState(object? state)
+        {
+            _builder.RestoreStatementState(state);
+        }
     }
 
     /// <summary>

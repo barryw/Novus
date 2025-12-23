@@ -188,6 +188,17 @@ public interface IInstantiationContext
     Dictionary<string, IrType>? CurrentTypeSubstitutions { get; set; }
     IrType? CurrentSelfType { get; set; }
 
+    /// <summary>
+    /// Saves statement-level state that must be preserved across generic instantiation.
+    /// Returns an opaque object that should be passed to RestoreStatementState.
+    /// </summary>
+    object? SaveStatementState();
+
+    /// <summary>
+    /// Restores statement-level state saved by SaveStatementState.
+    /// </summary>
+    void RestoreStatementState(object? state);
+
     // Diagnostic reporting
     string? InputFilePath { get; }
     void ReportError(string errorCode, string message, SourceLocation location);

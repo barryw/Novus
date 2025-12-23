@@ -176,6 +176,9 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             // When monomorphizing a generic method called from another method, we must not overwrite
             // the outer method's local variables (especially 'self')
             var savedLocalVariables = new Dictionary<string, IrLocalVariable>(_context.LocalVariables);
+            // CRITICAL: Save statement-level state (like _ifLabels) to avoid corrupting the outer
+            // function's if-statement processing when the inner method also contains if-statements
+            var savedStatementState = _context.SaveStatementState();
             _context.LocalVariables.Clear();
             _context.CurrentFunction = function;
 
@@ -208,6 +211,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                 {
                     _context.LocalVariables[kvp.Key] = kvp.Value;
                 }
+                // Restore statement state from outer function
+                _context.RestoreStatementState(savedStatementState);
             }
 
             // Mark as instantiated
@@ -444,6 +449,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             // When monomorphizing an enum method (e.g. Option::is_some) called from another method (e.g. HashMap::insert),
             // we must not overwrite the outer method's local variables (especially 'self')
             var savedLocalVariables = new Dictionary<string, IrLocalVariable>(_context.LocalVariables);
+            // CRITICAL: Save statement-level state to avoid corrupting the outer function's if-statement processing
+            var savedStatementState = _context.SaveStatementState();
             _context.LocalVariables.Clear();
             _context.CurrentFunction = function;
 
@@ -475,6 +482,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                 {
                     _context.LocalVariables[kvp.Key] = kvp.Value;
                 }
+                // Restore statement state from outer function
+                _context.RestoreStatementState(savedStatementState);
             }
 
             _cache.MarkMethodInstantiated(instantiationKey);
@@ -567,6 +576,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             // When monomorphizing a generic method called from another method, we must not overwrite
             // the outer method's local variables (especially 'self')
             var savedLocalVariables = new Dictionary<string, IrLocalVariable>(_context.LocalVariables);
+            // CRITICAL: Save statement-level state to avoid corrupting the outer function's if-statement processing
+            var savedStatementState = _context.SaveStatementState();
             _context.LocalVariables.Clear();
             _context.CurrentFunction = function;
 
@@ -599,6 +610,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                 {
                     _context.LocalVariables[kvp.Key] = kvp.Value;
                 }
+                // Restore statement state from outer function
+                _context.RestoreStatementState(savedStatementState);
             }
 
             _cache.MarkFunctionInstantiated(instantiationKey);
