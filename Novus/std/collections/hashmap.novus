@@ -3,8 +3,9 @@
 // A hash map implementation using open addressing with linear probing
 //
 // This implementation supports any key type that implements Hash + Eq traits.
+// Optimized for 68k performance with cached sizes and shift-based calculations.
 
-from std::core import Option, Result, Drop, Hash, Eq, Iterator
+from std::core import Option, Result, Drop, Hash, Eq
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -45,6 +46,7 @@ pub struct HashMapEntry<K, V> {
 /// - Automatic resizing at 70% load factor
 /// - Key hashing via the Hash trait
 /// - Key equality via the Eq trait
+/// - Optimized for 68k: cached sizes, shift-based calculations
 ///
 /// Example:
 /// ```novus
@@ -61,7 +63,11 @@ pub struct HashMap<K, V> where K: Hash + Eq {
     entries: *HashMapEntry<K, V>,
     capacity: u32,
     len: u32,
-    tombstones: u32,  // Track tombstones for load factor calculation
+    tombstones: u32,
+    // Cached for 68k performance (avoids expensive multiplication)
+    entry_size: u32,
+    // Pre-computed resize threshold: capacity * 7 / 10
+    resize_threshold: u32,
 }
 
 impl<K, V> HashMap<K, V> where K: Hash + Eq {
@@ -76,8 +82,18 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     ///
     /// The capacity will be rounded up to a power of 2 for efficient modulo.
     pub fn with_capacity(requested: u32) -> Option<HashMap<K, V>> {
+        // Check for overflow - max capacity is 1GB worth of entries
+        if requested > 0x4000_0000u32 {
+            return Option::None
+        }
+
         // Round up to power of 2 for fast modulo (using bitwise AND)
         let capacity: u32 = HashMap::<K, V>::next_power_of_two(requested)
+
+        // Check if next_power_of_two overflowed
+        if capacity == 0u32 {
+            return Option::None
+        }
 
         let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
         let bytes_needed: u32 = capacity * entry_size
@@ -85,27 +101,35 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Some(var block) => {
+            Option::Some(var block) => {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
-                while var i < capacity {
+                var i: u32 = 0
+                while i < capacity {
                     entries[i].state = EntryState::Empty
-                    i++
+                    i = i + 1
                 }
 
                 // Take ownership of memory - HashMap will manage it directly
                 // This prevents MemoryBlock's Drop from freeing the memory
                 block.into_raw()
 
+                // Pre-compute resize threshold: capacity * 7 / 10
+                // Using shifts: (capacity * 7) / 10 ≈ (capacity >> 1) + (capacity >> 3) + (capacity >> 4)
+                // Simpler: just use capacity - (capacity >> 2) - (capacity >> 4) ≈ 70%
+                let threshold: u32 = capacity - (capacity >> 2) - (capacity >> 4)
+
                 return Option::Some(HashMap {
                     entries: entries,
                     capacity: capacity,
                     len: 0u32,
                     tombstones: 0u32,
+                    entry_size: entry_size,
+                    resize_threshold: threshold,
                 })
             },
-            None => {
+            Option::None => {
                 return Option::None
             }
         }
@@ -126,17 +150,23 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         return self.capacity
     }
 
+    /// Get the current load factor as a percentage (0-100)
+    pub fn load_factor(&self) -> u32 {
+        if self.capacity == 0u32 {
+            return 0u32
+        }
+        return (self.len * 100u32) / self.capacity
+    }
+
     /// Insert a key-value pair into the map
     ///
     /// If the key already exists, the value is updated and the old value is returned.
     /// Returns None if this is a new key, or Some(old_value) if updating.
     /// Returns None on allocation failure during resize (map unchanged).
     pub fn insert(&var self, key: K, value: V) -> Option<V> {
-        // Check if we need to resize (load factor > 70%)
-        let load: u32 = (self.len + self.tombstones + 1u32) * 10u32
-        let threshold: u32 = self.capacity * 7u32
-        if load > threshold {
-            let success: bool = self.resize(self.capacity * 2u32)
+        // Check if we need to resize using pre-computed threshold
+        if self.len + self.tombstones + 1u32 > self.resize_threshold {
+            let success: bool = self.resize(self.capacity << 1)  // Shift instead of multiply
             if !success {
                 // Resize failed, but we might still have room
                 if self.len + self.tombstones >= self.capacity {
@@ -156,32 +186,32 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             let state: EntryState = self.entries[index].state
 
             match state {
-                Empty => {
+                EntryState::Empty => {
                     // Found empty slot - use tombstone slot if we passed one
                     match tombstone_index {
-                        Some(ti) => {
+                        Option::Some(ti) => {
                             self.entries[ti].state = EntryState::Occupied
                             self.entries[ti].key = key
                             self.entries[ti].value = value
-                            self.len++
-                            self.tombstones--
+                            self.len = self.len + 1
+                            self.tombstones = self.tombstones - 1
                         },
-                        None => {
+                        Option::None => {
                             self.entries[index].state = EntryState::Occupied
                             self.entries[index].key = key
                             self.entries[index].value = value
-                            self.len++
+                            self.len = self.len + 1
                         }
                     }
                     return Option::None
                 },
-                Tombstone => {
+                EntryState::Tombstone => {
                     // Remember first tombstone for potential reuse
                     if tombstone_index.is_none() {
                         tombstone_index = Option::Some(index)
                     }
                 },
-                Occupied => {
+                EntryState::Occupied => {
                     // Check if this is the same key using Eq trait
                     if self.entries[index].key.eq(&key) {
                         // Update existing entry
@@ -193,7 +223,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             }
 
             index = (index + 1u32) & mask
-            probes++
+            probes = probes + 1
         }
 
         // Table is full (shouldn't happen with proper resizing)
@@ -217,14 +247,14 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             let state: EntryState = self.entries[index].state
 
             match state {
-                Empty => {
+                EntryState::Empty => {
                     // Key not found
                     return Option::None
                 },
-                Tombstone => {
+                EntryState::Tombstone => {
                     // Continue searching
                 },
-                Occupied => {
+                EntryState::Occupied => {
                     if self.entries[index].key.eq(key) {
                         // Found it - return reference to value
                         let ref_val: &V = &self.entries[index].value
@@ -234,7 +264,47 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             }
 
             index = (index + 1u32) & mask
-            probes++
+            probes = probes + 1
+        }
+
+        return Option::None
+    }
+
+    /// Get a mutable reference to the value associated with the key
+    ///
+    /// Returns Some(ref_to_value) if found, None otherwise.
+    /// Allows in-place modification of values.
+    pub fn get_mut(&var self, key: &K) -> Option<&var V> {
+        if self.len == 0u32 {
+            return Option::None
+        }
+
+        let hash: u32 = key.hash()
+        let mask: u32 = self.capacity - 1u32
+        var index: u32 = hash & mask
+
+        var probes: u32 = 0u32
+        while probes < self.capacity {
+            let state: EntryState = self.entries[index].state
+
+            match state {
+                EntryState::Empty => {
+                    return Option::None
+                },
+                EntryState::Tombstone => {
+                    // Continue searching
+                },
+                EntryState::Occupied => {
+                    if self.entries[index].key.eq(key) {
+                        // Found it - return mutable reference to value
+                        let ref_val: &var V = &var self.entries[index].value
+                        return Option::Some(ref_val)
+                    }
+                }
+            }
+
+            index = (index + 1u32) & mask
+            probes = probes + 1
         }
 
         return Option::None
@@ -262,26 +332,32 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             let state: EntryState = self.entries[index].state
 
             match state {
-                Empty => {
+                EntryState::Empty => {
                     return Option::None
                 },
-                Tombstone => {
+                EntryState::Tombstone => {
                     // Continue searching
                 },
-                Occupied => {
+                EntryState::Occupied => {
                     if self.entries[index].key.eq(key) {
                         // Found it - mark as tombstone
                         let value: V = self.entries[index].value
                         self.entries[index].state = EntryState::Tombstone
-                        self.len--
-                        self.tombstones++
+                        self.len = self.len - 1
+                        self.tombstones = self.tombstones + 1
+
+                        // Auto-compact if tombstones are excessive (> 25% of capacity)
+                        if self.tombstones > (self.capacity >> 2) {
+                            self.compact()
+                        }
+
                         return Option::Some(value)
                     }
                 }
             }
 
             index = (index + 1u32) & mask
-            probes++
+            probes = probes + 1
         }
 
         return Option::None
@@ -291,32 +367,100 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     ///
     /// This keeps the current capacity but marks all entries as empty.
     pub fn clear(&var self) {
-        while var i < self.capacity {
+        var i: u32 = 0
+        while i < self.capacity {
             self.entries[i].state = EntryState::Empty
-            i++
+            i = i + 1
         }
         self.len = 0u32
         self.tombstones = 0u32
     }
 
+    /// Ensure capacity for at least `additional` more elements
+    ///
+    /// Returns true if successful, false if allocation failed.
+    pub fn reserve(&var self, additional: u32) -> bool {
+        let needed: u32 = self.len + additional
+        // Account for 70% load factor
+        let required_capacity: u32 = needed + (needed >> 1)  // needed * 1.5 ≈ needed / 0.7
+
+        if required_capacity > self.capacity {
+            let new_cap: u32 = HashMap::<K, V>::next_power_of_two(required_capacity)
+            if new_cap == 0u32 {
+                return false  // Overflow
+            }
+            return self.resize(new_cap)
+        }
+        return true
+    }
+
+    /// Compact tombstones by rehashing without growing capacity
+    ///
+    /// Call this to reclaim wasted slots after many removals.
+    /// Automatically called when tombstones exceed 25% of capacity.
+    pub fn compact(&var self) -> bool {
+        if self.tombstones == 0u32 {
+            return true  // Nothing to compact
+        }
+        // Resize to same capacity - this clears all tombstones
+        return self.resize(self.capacity)
+    }
+
+    /// Shrink capacity to fit current length (reclaim memory)
+    ///
+    /// Returns true if successful, false if allocation failed.
+    pub fn shrink_to_fit(&var self) -> bool {
+        if self.len == 0u32 {
+            // Free everything and reset to minimal state
+            if self.entries != null {
+                let bytes: u32 = self.capacity * self.entry_size
+                let mem: *u8 = (*u8)self.entries
+                unsafe {
+                    FreeMem(mem, bytes)
+                }
+            }
+            self.entries = null
+            self.capacity = 0u32
+            self.tombstones = 0u32
+            self.resize_threshold = 0u32
+            return true
+        }
+
+        // Calculate minimum capacity (account for 70% load factor)
+        let min_cap: u32 = self.len + (self.len >> 1)  // len * 1.5
+        var ideal_cap: u32 = HashMap::<K, V>::next_power_of_two(min_cap)
+
+        // Enforce minimum capacity of 16
+        if ideal_cap < 16u32 {
+            ideal_cap = 16u32
+        }
+
+        // Only resize if it would actually reduce capacity
+        if ideal_cap < self.capacity {
+            return self.resize(ideal_cap)
+        }
+        return true
+    }
+
     /// Internal: Resize the hash table to a new capacity
     fn resize(&var self, new_capacity: u32) -> bool {
-        let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
-        let bytes_needed: u32 = new_capacity * entry_size
+        // Don't use MEMF_CLEAR - we initialize entries manually
+        let bytes_needed: u32 = new_capacity * self.entry_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC)
 
         match block_opt {
-            Some(var block) => {
+            Option::Some(var block) => {
                 let new_entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Take ownership of memory before block goes out of scope
                 block.into_raw()
 
                 // Initialize all new entries as Empty
-                while var i < new_capacity {
+                var i: u32 = 0
+                while i < new_capacity {
                     new_entries[i].state = EntryState::Empty
-                    i++
+                    i = i + 1
                 }
 
                 // Re-insert all occupied entries
@@ -324,9 +468,10 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let old_capacity: u32 = self.capacity
                 let mask: u32 = new_capacity - 1u32
 
-                while var i < old_capacity {
+                i = 0
+                while i < old_capacity {
                     match old_entries[i].state {
-                        Occupied => {
+                        EntryState::Occupied => {
                             // Compute new index using Hash trait
                             let hash: u32 = old_entries[i].key.hash()
                             var index: u32 = hash & mask
@@ -345,24 +490,28 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                             // Skip empty and tombstone entries
                         }
                     }
-                    i++
+                    i = i + 1
                 }
 
-                // Free old entries
-                let old_bytes: u32 = old_capacity * entry_size
-                let old_mem: *u8 = (*u8)old_entries
-                unsafe {
-                    FreeMem(old_mem, old_bytes)
+                // Free old entries (use cached entry_size)
+                if old_entries != null {
+                    let old_bytes: u32 = old_capacity * self.entry_size
+                    let old_mem: *u8 = (*u8)old_entries
+                    unsafe {
+                        FreeMem(old_mem, old_bytes)
+                    }
                 }
 
                 // Update map fields
                 self.entries = new_entries
                 self.capacity = new_capacity
                 self.tombstones = 0u32
+                // Recalculate threshold: ~70% of new capacity
+                self.resize_threshold = new_capacity - (new_capacity >> 2) - (new_capacity >> 4)
 
                 return true
             },
-            None => {
+            Option::None => {
                 return false
             }
         }
@@ -372,6 +521,9 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     fn next_power_of_two(n: u32) -> u32 {
         if n == 0u32 {
             return 1u32
+        }
+        if n > 0x8000_0000u32 {
+            return 0u32  // Would overflow
         }
 
         var v: u32 = n - 1u32
@@ -383,23 +535,9 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         return v + 1u32
     }
 
-    /// Free the map's memory
-    pub fn drop(&var self) {
-        if self.capacity > 0u32 {
-            let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
-            let bytes: u32 = self.capacity * entry_size
-            let mem: *u8 = (*u8)self.entries
-            unsafe {
-                FreeMem(mem, bytes)
-            }
-            self.entries = null
-            self.capacity = 0u32
-            self.len = 0u32
-            self.tombstones = 0u32
-        }
-    }
-
-    /// Create an iterator over the map's entries
+    /// Create an iterator over the map's key-value pairs
+    ///
+    /// Returns references to keys and values, not copies.
     pub fn iter(&self) -> HashMapIter<K, V> {
         return HashMapIter {
             entries: self.entries,
@@ -407,14 +545,18 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             current: 0u32,
         }
     }
+
+    /// Get the number of tombstones (for debugging/statistics)
+    pub fn tombstone_count(&self) -> u32 {
+        return self.tombstones
+    }
 }
 
 // Automatic cleanup for HashMap (RAII)
 impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
     fn drop(&var self) {
-        if self.capacity > 0u32 {
-            let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
-            let bytes: u32 = self.capacity * entry_size
+        if self.entries != null && self.capacity > 0u32 {
+            let bytes: u32 = self.capacity * self.entry_size
             let mem: *u8 = (*u8)self.entries
             unsafe {
                 FreeMem(mem, bytes)
@@ -428,36 +570,38 @@ impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
 }
 
 // ============================================================================
-// HashMapIter - Iterator for HashMap
+// HashMapIter - Iterator for HashMap (returns references)
 // ============================================================================
 
 /// Iterator over HashMap entries
+/// Returns references to avoid copying keys/values
 pub struct HashMapIter<K, V> {
     entries: *HashMapEntry<K, V>,
     capacity: u32,
     current: u32,
 }
 
-/// Key-value pair returned by iterator
-pub struct KeyValue<K, V> {
-    key: K,
-    value: V,
+/// Key-value reference pair returned by iterator
+pub struct KeyValueRef<K, V> {
+    key: &K,
+    value: &V,
 }
 
 impl<K, V> HashMapIter<K, V> {
-    /// Get the next key-value pair
+    /// Get the next key-value pair as references
     ///
-    /// Returns Some(KeyValue) if there are more entries, None when done.
-    pub fn next(&var self) -> Option<KeyValue<K, V>> {
+    /// Returns Some(KeyValueRef) if there are more entries, None when done.
+    /// References are valid as long as the HashMap is not modified.
+    pub fn next(&var self) -> Option<KeyValueRef<K, V>> {
         while self.current < self.capacity {
             let idx: u32 = self.current
-            self.current++
+            self.current = self.current + 1
 
             match self.entries[idx].state {
-                Occupied => {
-                    return Option::Some(KeyValue {
-                        key: self.entries[idx].key,
-                        value: self.entries[idx].value,
+                EntryState::Occupied => {
+                    return Option::Some(KeyValueRef {
+                        key: &self.entries[idx].key,
+                        value: &self.entries[idx].value,
                     })
                 },
                 _ => {
@@ -468,7 +612,68 @@ impl<K, V> HashMapIter<K, V> {
 
         return Option::None
     }
+
+    /// Reset the iterator to the beginning
+    pub fn reset(&var self) {
+        self.current = 0u32
+    }
 }
 
-// NOTE: Iterator trait impl for HashMapIter is pending parser support for nested generics
-// The next() method is available directly on HashMapIter<K, V> above
+// ============================================================================
+// Mutable Iterator for HashMap
+// ============================================================================
+
+/// Mutable iterator over HashMap entries
+pub struct HashMapIterMut<K, V> {
+    entries: *HashMapEntry<K, V>,
+    capacity: u32,
+    current: u32,
+}
+
+/// Key-value reference pair with mutable value
+pub struct KeyValueMut<K, V> {
+    key: &K,
+    value: &var V,
+}
+
+impl<K, V> HashMap<K, V> where K: Hash + Eq {
+    /// Create a mutable iterator over the map's key-value pairs
+    ///
+    /// Allows modifying values in-place during iteration.
+    pub fn iter_mut(&var self) -> HashMapIterMut<K, V> {
+        return HashMapIterMut {
+            entries: self.entries,
+            capacity: self.capacity,
+            current: 0u32,
+        }
+    }
+}
+
+impl<K, V> HashMapIterMut<K, V> {
+    /// Get the next key-value pair with mutable value reference
+    pub fn next(&var self) -> Option<KeyValueMut<K, V>> {
+        while self.current < self.capacity {
+            let idx: u32 = self.current
+            self.current = self.current + 1
+
+            match self.entries[idx].state {
+                EntryState::Occupied => {
+                    return Option::Some(KeyValueMut {
+                        key: &self.entries[idx].key,
+                        value: &var self.entries[idx].value,
+                    })
+                },
+                _ => {
+                    // Skip empty and tombstone entries
+                }
+            }
+        }
+
+        return Option::None
+    }
+
+    /// Reset the iterator to the beginning
+    pub fn reset(&var self) {
+        self.current = 0u32
+    }
+}

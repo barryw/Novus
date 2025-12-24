@@ -604,9 +604,10 @@ public partial class IrBuilder
         // Step 1b: Register ALL struct placeholders from the module (not just imported ones)
         RegisterAllStructPlaceholdersForImport(moduleContext);
 
-        // CRITICAL PHASE 2: Fill in type details for explicitly imported types only
+        // CRITICAL PHASE 2: Fill in type details
 
-        // Step 2a: Fill in enum variants for imported enums only
+        // Step 2a: Fill in enum variants for ALL enums (not just imported ones)
+        // This is needed because imported structs may reference non-imported enums
         FillEnumVariantsForImport(moduleContext, namesToImport);
 
         // Step 2b: Register imported constants
@@ -1486,16 +1487,17 @@ public partial class IrBuilder
 
     private void FillEnumVariantsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport)
     {
+        // IMPORTANT: Fill variants for ALL enums in the module (not just imported ones) because:
+        // - Imported structs may have fields of non-imported enum types (e.g., HashMapEntry.state: EntryState)
+        // - Match expressions on those fields need access to the enum's variants
+        // - If we only fill imported enums, non-imported enum stubs remain with 0 variants
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
-            if (namesToImport.Contains(enumName))
+            var existingEnum = _symbols.LookupEnum(enumName);
+            if (existingEnum != null && existingEnum.Variants.Count == 0)
             {
-                var existingEnum = _symbols.LookupEnum(enumName);
-                if (existingEnum != null && existingEnum.Variants.Count == 0)
-                {
-                    RegisterEnum(enumDecl);
-                }
+                RegisterEnum(enumDecl);
             }
         }
     }

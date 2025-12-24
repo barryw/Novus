@@ -778,22 +778,44 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
-        // Pass 3: Fill in enum variants for imported enums only
+        // Pass 3: Fill in enum variants for ALL enums in the module
         // This must happen AFTER struct registration so that struct types used in enum variants are available
+        // IMPORTANT: We must fill variants for ALL enums (not just imported ones) because:
+        // - Imported structs may have fields of non-imported enum types (e.g., HashMapEntry.state: EntryState)
+        // - Match expressions on those fields need access to the enum's variants
+        // - If we only fill imported enums, non-imported enum stubs remain with 0 variants
         foreach (var enumDecl in moduleContext.enumDeclaration())
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
+            var isPub = ModuleImportHelper.IsPub(enumDecl);
 
-            // Skip if not in the import list
-            if (!namesToImport.Contains(enumName))
+            // Check if this enum exists and needs variant filling
+            var existingEnum = _symbols.LookupEnum(enumName);
+            if (existingEnum == null)
             {
+                continue;
+            }
+
+            // Skip if already fully registered (has variants) - from transitive imports
+            if (existingEnum.Variants.Count > 0)
+            {
+                // Mark as imported if it was explicitly requested (only for public enums)
+                if (isPub && namesToImport.Contains(enumName))
+                {
+                    _importedNames[enumName] = moduleNamespace;
+                }
                 continue;
             }
 
             // Now register the full enum with variants (replacing the stub)
             // At this point, all enum names AND struct names are resolvable for variant type parsing
             RegisterEnum(enumDecl);
-            _importedNames[enumName] = moduleNamespace;
+
+            // Mark as imported if it was explicitly requested (only for public enums)
+            if (isPub && namesToImport.Contains(enumName))
+            {
+                _importedNames[enumName] = moduleNamespace;
+            }
         }
 
         // Register imported constants in symbol table

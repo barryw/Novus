@@ -307,7 +307,8 @@ pub fn test_hashset_iter() {
                 match iter.next() {
                     Option::Some(val) => {
                         count = count + 1u32
-                        sum = sum + val
+                        // val is now &u32, dereference to get u32
+                        sum = sum + *val
                     },
                     Option::None => {
                         expect_eq_u32(count, 3u32, "iterated 3 elements")

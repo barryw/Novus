@@ -3,7 +3,7 @@
 // A hash set implementation backed by HashMap<T, ()>
 
 from std::core import Option, Result, Drop, Hash, Eq
-from std::collections::hashmap import HashMap, HashMapIter, KeyValue
+from std::collections::hashmap import HashMap, HashMapIter, KeyValueRef
 
 // ============================================================================
 // HashSet<T> - A set of unique values with O(1) operations
@@ -115,7 +115,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
         while true {
             match iter.next() {
                 Option::Some(kv) => {
-                    if !other.contains(&kv.key) {
+                    // kv.key is already &T, so pass directly
+                    if !other.contains(kv.key) {
                         return false
                     }
                 },
@@ -143,7 +144,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
             while true {
                 match iter.next() {
                     Option::Some(kv) => {
-                        if other.contains(&kv.key) {
+                        // kv.key is already &T, so pass directly
+                        if other.contains(kv.key) {
                             return true
                         }
                     },
@@ -157,7 +159,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
             while true {
                 match iter.next() {
                     Option::Some(kv) => {
-                        if self.contains(&kv.key) {
+                        // kv.key is already &T, so pass directly
+                        if self.contains(kv.key) {
                             return true
                         }
                     },
@@ -196,11 +199,13 @@ pub struct HashSetIter<T> {
 }
 
 impl<T> HashSetIter<T> {
-    /// Get the next element
+    /// Get the next element as a reference
     ///
-    /// Returns Some(value) if there are more elements, None when done.
-    pub fn next(&var self) -> Option<T> {
+    /// Returns Some(&value) if there are more elements, None when done.
+    /// The reference is valid as long as the HashSet is not modified.
+    pub fn next(&var self) -> Option<&T> {
         match self.map_iter.next() {
+            // kv.key is already &T, return it directly
             Option::Some(kv) => return Option::Some(kv.key),
             Option::None => return Option::None,
         }

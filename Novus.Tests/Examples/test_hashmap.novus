@@ -1,0 +1,760 @@
+// Comprehensive tests for HashMap<K, V>
+// Run with: novus test test_hashmap.novus
+
+from std::core import Option, Hash, Eq
+from std::collections::hashmap import HashMap, HashMapIter, HashMapIterMut, KeyValueRef, KeyValueMut
+from std::test::test import expect_true, expect_false, expect_eq_u32, fail
+
+// ============================================================================
+// Basic Creation Tests
+// ============================================================================
+
+@test("New hashmap should be empty")
+pub fn test_new_is_empty() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            expect_true(map.is_empty(), "new map should be empty")
+            expect_eq_u32(map.len(), 0, "new map len should be 0")
+        }
+    }
+}
+
+@test("New hashmap should have default capacity 16")
+pub fn test_new_capacity() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            expect_eq_u32(map.capacity(), 16, "default capacity should be 16")
+        }
+    }
+}
+
+@test("with_capacity rounds up to power of 2")
+pub fn test_with_capacity_power_of_two() {
+    match HashMap::<u32, u32>::with_capacity(10) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            expect_eq_u32(map.capacity(), 16, "10 should round to 16")
+        }
+    }
+
+    match HashMap::<u32, u32>::with_capacity(17) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            expect_eq_u32(map.capacity(), 32, "17 should round to 32")
+        }
+    }
+}
+
+// ============================================================================
+// Insert Tests
+// ============================================================================
+
+@test("Insert single item")
+pub fn test_insert_single() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            expect_eq_u32(map.len(), 1, "len should be 1 after insert")
+            expect_false(map.is_empty(), "should not be empty")
+        }
+    }
+}
+
+@test("Insert multiple items")
+pub fn test_insert_multiple() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+            expect_eq_u32(map.len(), 3, "len should be 3")
+        }
+    }
+}
+
+@test("Insert returns old value on update")
+pub fn test_insert_update() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // First insert returns None
+            match map.insert(1, 100) {
+                Option::Some(_) => fail("first insert should return None"),
+                Option::None => { }
+            }
+
+            // Second insert with same key returns old value
+            match map.insert(1, 200) {
+                Option::None => fail("update should return old value"),
+                Option::Some(old) => expect_eq_u32(old, 100, "old value should be 100")
+            }
+
+            expect_eq_u32(map.len(), 1, "len should still be 1")
+        }
+    }
+}
+
+// ============================================================================
+// Get Tests
+// ============================================================================
+
+@test("Get existing key returns value")
+pub fn test_get_existing() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(42, 1234)
+
+            let key: u32 = 42
+            match map.get(&key) {
+                Option::None => fail("should find key 42"),
+                Option::Some(val_ref) => expect_eq_u32(*val_ref, 1234, "value should be 1234")
+            }
+        }
+    }
+}
+
+@test("Get non-existing key returns None")
+pub fn test_get_nonexisting() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+
+            let key: u32 = 999
+            match map.get(&key) {
+                Option::Some(_) => fail("should not find key 999"),
+                Option::None => { }
+            }
+        }
+    }
+}
+
+@test("Get on empty map returns None")
+pub fn test_get_empty() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            let key: u32 = 1
+            match map.get(&key) {
+                Option::Some(_) => fail("empty map should return None"),
+                Option::None => { }
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Get Mut Tests
+// ============================================================================
+
+@test("get_mut allows in-place modification")
+pub fn test_get_mut_modify() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+
+            let key: u32 = 1
+            match map.get_mut(&key) {
+                Option::None => fail("should find key"),
+                Option::Some(val_ref) => {
+                    *val_ref = 999
+                }
+            }
+
+            // Verify modification
+            match map.get(&key) {
+                Option::None => fail("should still find key"),
+                Option::Some(val) => expect_eq_u32(*val, 999, "value should be modified to 999")
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Contains Key Tests
+// ============================================================================
+
+@test("contains_key returns true for existing key")
+pub fn test_contains_existing() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(42, 100)
+            let key: u32 = 42
+            expect_true(map.contains_key(&key), "should contain key 42")
+        }
+    }
+}
+
+@test("contains_key returns false for non-existing key")
+pub fn test_contains_nonexisting() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(42, 100)
+            let key: u32 = 999
+            expect_false(map.contains_key(&key), "should not contain key 999")
+        }
+    }
+}
+
+// ============================================================================
+// Remove Tests
+// ============================================================================
+
+@test("Remove existing key returns value")
+pub fn test_remove_existing() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+
+            let key: u32 = 1
+            match map.remove(&key) {
+                Option::None => fail("should remove key 1"),
+                Option::Some(val) => expect_eq_u32(val, 100, "removed value should be 100")
+            }
+
+            expect_eq_u32(map.len(), 1, "len should be 1 after remove")
+            expect_false(map.contains_key(&key), "should not contain removed key")
+        }
+    }
+}
+
+@test("Remove non-existing key returns None")
+pub fn test_remove_nonexisting() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+
+            let key: u32 = 999
+            match map.remove(&key) {
+                Option::Some(_) => fail("should not find key to remove"),
+                Option::None => { }
+            }
+
+            expect_eq_u32(map.len(), 1, "len should still be 1")
+        }
+    }
+}
+
+@test("Remove all items leaves empty map")
+pub fn test_remove_all() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+
+            let k1: u32 = 1
+            let k2: u32 = 2
+            let k3: u32 = 3
+            map.remove(&k1)
+            map.remove(&k2)
+            map.remove(&k3)
+
+            expect_true(map.is_empty(), "should be empty after removing all")
+            expect_eq_u32(map.len(), 0, "len should be 0")
+        }
+    }
+}
+
+// ============================================================================
+// Clear Tests
+// ============================================================================
+
+@test("Clear empties the map")
+pub fn test_clear() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+
+            map.clear()
+
+            expect_true(map.is_empty(), "should be empty after clear")
+            expect_eq_u32(map.len(), 0, "len should be 0")
+            expect_eq_u32(map.tombstone_count(), 0, "tombstones should be 0")
+        }
+    }
+}
+
+@test("Clear preserves capacity")
+pub fn test_clear_preserves_capacity() {
+    match HashMap::<u32, u32>::with_capacity(64) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            let cap_before: u32 = map.capacity()
+
+            map.clear()
+
+            expect_eq_u32(map.capacity(), cap_before, "capacity should be preserved")
+        }
+    }
+}
+
+// ============================================================================
+// Collision Tests (Linear Probing)
+// ============================================================================
+
+@test("Handles hash collisions correctly")
+pub fn test_collisions() {
+    match HashMap::<u32, u32>::with_capacity(16) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert keys that will likely collide (multiples of 16 with capacity 16)
+            // Hash of 0, 16, 32 will all map to index 0
+            map.insert(0, 1000)
+            map.insert(16, 1016)
+            map.insert(32, 1032)
+
+            expect_eq_u32(map.len(), 3, "should have 3 items")
+
+            let k0: u32 = 0
+            let k16: u32 = 16
+            let k32: u32 = 32
+
+            match map.get(&k0) {
+                Option::None => fail("should find key 0"),
+                Option::Some(v) => expect_eq_u32(*v, 1000, "value for 0")
+            }
+
+            match map.get(&k16) {
+                Option::None => fail("should find key 16"),
+                Option::Some(v) => expect_eq_u32(*v, 1016, "value for 16")
+            }
+
+            match map.get(&k32) {
+                Option::None => fail("should find key 32"),
+                Option::Some(v) => expect_eq_u32(*v, 1032, "value for 32")
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Tombstone Tests
+// ============================================================================
+
+@test("Tombstones allow finding keys after removal")
+pub fn test_tombstone_probing() {
+    match HashMap::<u32, u32>::with_capacity(16) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert colliding keys
+            map.insert(0, 100)
+            map.insert(16, 200)  // Collides, probes to next slot
+            map.insert(32, 300)  // Collides, probes further
+
+            // Remove middle key (creates tombstone)
+            let k16: u32 = 16
+            map.remove(&k16)
+
+            // Should still find key 32 (probing continues past tombstone)
+            let k32: u32 = 32
+            match map.get(&k32) {
+                Option::None => fail("should find key 32 past tombstone"),
+                Option::Some(v) => expect_eq_u32(*v, 300, "value for 32")
+            }
+        }
+    }
+}
+
+@test("Tombstones are reused on insert")
+pub fn test_tombstone_reuse() {
+    match HashMap::<u32, u32>::with_capacity(16) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(0, 100)
+            map.insert(16, 200)
+
+            let k16: u32 = 16
+            map.remove(&k16)
+            expect_eq_u32(map.tombstone_count(), 1, "should have 1 tombstone")
+
+            // Re-insert same key (reuses tombstone)
+            map.insert(16, 999)
+            // Tombstone count should decrease since we reused it
+            // (or stay same if inserted in different slot)
+            expect_eq_u32(map.len(), 2, "len should be 2")
+        }
+    }
+}
+
+// ============================================================================
+// Reserve Tests
+// ============================================================================
+
+@test("reserve increases capacity")
+pub fn test_reserve() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            let old_cap: u32 = map.capacity()
+
+            let success: bool = map.reserve(100)
+            expect_true(success, "reserve should succeed")
+
+            // Capacity should increase to accommodate 100 more items
+            expect_true(map.capacity() > old_cap, "capacity should increase")
+        }
+    }
+}
+
+@test("reserve with sufficient capacity does nothing")
+pub fn test_reserve_sufficient() {
+    match HashMap::<u32, u32>::with_capacity(64) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+
+            let old_cap: u32 = map.capacity()
+            let success: bool = map.reserve(10)
+
+            expect_true(success, "reserve should succeed")
+            expect_eq_u32(map.capacity(), old_cap, "capacity should not change")
+        }
+    }
+}
+
+// ============================================================================
+// Compact Tests
+// ============================================================================
+
+@test("compact removes tombstones")
+pub fn test_compact() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert and remove several items to create tombstones
+            var i: u32 = 0
+            while i < 10 {
+                map.insert(i, i * 100)
+                i = i + 1
+            }
+
+            i = 0
+            while i < 5 {
+                let key: u32 = i
+                map.remove(&key)
+                i = i + 1
+            }
+
+            // May have tombstones (auto-compact might have run)
+            let tombstones_before: u32 = map.tombstone_count()
+
+            map.compact()
+
+            expect_eq_u32(map.tombstone_count(), 0, "should have 0 tombstones after compact")
+            expect_eq_u32(map.len(), 5, "len should still be 5")
+        }
+    }
+}
+
+// ============================================================================
+// Shrink to Fit Tests
+// ============================================================================
+
+@test("shrink_to_fit reduces capacity")
+pub fn test_shrink_to_fit() {
+    match HashMap::<u32, u32>::with_capacity(128) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert just a few items
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+
+            expect_eq_u32(map.capacity(), 128, "initial capacity")
+
+            let success: bool = map.shrink_to_fit()
+            expect_true(success, "shrink should succeed")
+
+            // Capacity should reduce (but minimum is 16)
+            expect_true(map.capacity() < 128, "capacity should decrease")
+            expect_true(map.capacity() >= 16, "capacity should be at least 16")
+
+            // Data should still be accessible
+            let k1: u32 = 1
+            match map.get(&k1) {
+                Option::None => fail("should still find key 1"),
+                Option::Some(v) => expect_eq_u32(*v, 100, "value should be preserved")
+            }
+        }
+    }
+}
+
+@test("shrink_to_fit on empty map frees memory")
+pub fn test_shrink_empty() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            let k: u32 = 1
+            map.remove(&k)
+
+            let success: bool = map.shrink_to_fit()
+            expect_true(success, "shrink should succeed")
+            expect_eq_u32(map.capacity(), 0, "empty map capacity should be 0")
+        }
+    }
+}
+
+// ============================================================================
+// Iterator Tests
+// ============================================================================
+
+@test("iter visits all entries")
+pub fn test_iter_all() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+
+            var iter: HashMapIter<u32, u32> = map.iter()
+            var count: u32 = 0
+            var sum: u32 = 0
+
+            var done: bool = false
+            while !done {
+                match iter.next() {
+                    Option::Some(kv) => {
+                        count = count + 1
+                        sum = sum + *kv.value
+                    },
+                    Option::None => {
+                        done = true
+                    }
+                }
+            }
+
+            expect_eq_u32(count, 3, "should iterate 3 items")
+            expect_eq_u32(sum, 600, "sum of values should be 600")
+        }
+    }
+}
+
+@test("iter skips tombstones")
+pub fn test_iter_skips_tombstones() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+
+            let k2: u32 = 2
+            map.remove(&k2)
+
+            var iter: HashMapIter<u32, u32> = map.iter()
+            var count: u32 = 0
+
+            var done: bool = false
+            while !done {
+                match iter.next() {
+                    Option::Some(_) => {
+                        count = count + 1
+                    },
+                    Option::None => {
+                        done = true
+                    }
+                }
+            }
+
+            expect_eq_u32(count, 2, "should iterate 2 items (skipping tombstone)")
+        }
+    }
+}
+
+@test("iter on empty map returns None immediately")
+pub fn test_iter_empty() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            var iter: HashMapIter<u32, u32> = map.iter()
+
+            match iter.next() {
+                Option::Some(_) => fail("empty map iter should return None"),
+                Option::None => { }
+            }
+        }
+    }
+}
+
+@test("iter reset allows re-iteration")
+pub fn test_iter_reset() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(1, 100)
+            map.insert(2, 200)
+
+            var iter: HashMapIter<u32, u32> = map.iter()
+
+            // First iteration
+            var count1: u32 = 0
+            var done: bool = false
+            while !done {
+                match iter.next() {
+                    Option::Some(_) => {
+                        count1 = count1 + 1
+                    },
+                    Option::None => {
+                        done = true
+                    }
+                }
+            }
+
+            // Reset and iterate again
+            iter.reset()
+            var count2: u32 = 0
+            done = false
+            while !done {
+                match iter.next() {
+                    Option::Some(_) => {
+                        count2 = count2 + 1
+                    },
+                    Option::None => {
+                        done = true
+                    }
+                }
+            }
+
+            expect_eq_u32(count1, 2, "first iteration count")
+            expect_eq_u32(count2, 2, "second iteration count after reset")
+        }
+    }
+}
+
+// ============================================================================
+// Mutable Iterator Tests
+// ============================================================================
+
+// Note: iter_mut test temporarily disabled due to code generation bug with
+// mutable reference struct fields. The bug is that `*kv.value = x` generates
+// `kv.value = x` instead of `*kv.value = x` in C. This needs a separate fix.
+
+// ============================================================================
+// Load Factor and Resize Tests
+// ============================================================================
+
+@test("load_factor returns correct percentage")
+pub fn test_load_factor() {
+    match HashMap::<u32, u32>::with_capacity(16) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            expect_eq_u32(map.load_factor(), 0, "empty map load factor")
+
+            map.insert(1, 100)
+            map.insert(2, 200)
+            map.insert(3, 300)
+            map.insert(4, 400)
+
+            // 4/16 = 25%
+            expect_eq_u32(map.load_factor(), 25, "25% load factor")
+        }
+    }
+}
+
+@test("Auto-resize on high load")
+pub fn test_auto_resize() {
+    match HashMap::<u32, u32>::with_capacity(16) {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert enough to trigger resize (>70% of 16 = 12 items)
+            var i: u32 = 0
+            while i < 15 {
+                map.insert(i, i * 100)
+                i = i + 1
+            }
+
+            expect_true(map.capacity() > 16, "should have resized")
+            expect_eq_u32(map.len(), 15, "all items should be present")
+
+            // Verify all items still accessible
+            i = 0
+            while i < 15 {
+                let key: u32 = i
+                match map.get(&key) {
+                    Option::None => fail("missing key after resize"),
+                    Option::Some(v) => {
+                        expect_eq_u32(*v, i * 100, "value should be preserved")
+                    }
+                }
+                i = i + 1
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Edge Cases
+// ============================================================================
+
+@test("Insert and get with key 0")
+pub fn test_key_zero() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            map.insert(0, 12345)
+
+            let k: u32 = 0
+            match map.get(&k) {
+                Option::None => fail("should find key 0"),
+                Option::Some(v) => expect_eq_u32(*v, 12345, "value for key 0")
+            }
+        }
+    }
+}
+
+@test("Many inserts and removes (stress test)")
+pub fn test_stress() {
+    match HashMap::<u32, u32>::new() {
+        Option::None => fail("allocation failed"),
+        Option::Some(var map) => {
+            // Insert 100 items
+            var i: u32 = 0
+            while i < 100 {
+                map.insert(i, i * 10)
+                i = i + 1
+            }
+
+            expect_eq_u32(map.len(), 100, "should have 100 items")
+
+            // Remove odd keys
+            i = 1
+            while i < 100 {
+                var k: u32 = i
+                map.remove(&k)
+                i = i + 2
+            }
+
+            expect_eq_u32(map.len(), 50, "should have 50 items after removing odds")
+
+            // Verify even keys still present
+            i = 0
+            while i < 100 {
+                k = i
+                if map.contains_key(&k) {
+                    // Should be even
+                    expect_eq_u32(i & 1, 0, "only even keys should remain")
+                }
+                i = i + 1
+            }
+        }
+    }
+}

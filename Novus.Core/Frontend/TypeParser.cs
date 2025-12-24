@@ -1328,6 +1328,23 @@ public class TypeParser : ITypeSubstitutionEngine
         // Enum type substitution (recursive variant substitution)
         if (type is IrEnumType enumType)
         {
+            // BUG FIX: For non-generic enums, ALWAYS use the base definition from the module.
+            // This prevents issues where an enum reference might have been captured before
+            // variants were fully populated during the parsing/semantic analysis phase.
+            if (enumType.GenericParameters.Count == 0 &&
+                (enumType.TypeArguments == null || enumType.TypeArguments.Count == 0))
+            {
+                // Look up the canonical enum definition from the symbol table
+                var baseEnum = _context.LookupEnum(enumType.EnumName);
+                if (baseEnum != null &&  baseEnum.Variants.Count > enumType.Variants.Count)
+                {
+                    // Use the base enum if it has more variants (more complete)
+                    return baseEnum;
+                }
+                // For non-generic enums, return unchanged (don't create copies)
+                return enumType;
+            }
+
             // Check if this enum needs substitution. This can happen in two cases:
             // 1. The enum has generic parameters (e.g., Option<T> where T is unbound)
             // 2. The enum has type arguments that contain generic types (e.g., Option<K> where K comes from an outer generic context)
