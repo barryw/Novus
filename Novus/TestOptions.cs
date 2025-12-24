@@ -38,6 +38,9 @@ public class TestOptions
     [Option("list", Required = false, HelpText = "List discovered tests without building")]
     public bool ListOnly { get; set; }
 
+    [Option('b', "benchmark", Required = false, HelpText = "Enable timing for each test, showing duration in microseconds")]
+    public bool Benchmark { get; set; }
+
     [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation")]
     public string VbccPath { get; set; } = PathUtility.GetVbccPath();
 

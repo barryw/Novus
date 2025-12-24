@@ -827,6 +827,10 @@ public partial class CCodeGenerator
             foreach (var structType in userStructs)
             {
                 var structName = codegen.MangleName(structType);
+                // Special case: timeval is defined by <devices/timer.h> in NDK headers.
+                // The NDK defines `struct timeval` but not `typedef struct timeval timeval`.
+                // We always need the typedef, but we need to guard against redefining the struct.
+                // The typedef is always safe since C allows redeclaration of typedefs to the same type.
                 sb.AppendLine($"typedef struct {structName} {structName};");
             }
             sb.AppendLine();
@@ -2290,7 +2294,17 @@ public partial class CCodeGenerator
 
         // Add header guard to prevent redefinition (matches pattern used for enums)
         var guardName = $"NOVUS_TYPE_{structName.ToUpper()}_DEFINED";
-        sb.AppendLine($"#ifndef {guardName}");
+
+        // Special case: timeval is defined by <devices/timer.h> in NDK headers.
+        // We need to skip our definition if the NDK has already defined it.
+        if (structName == "timeval")
+        {
+            sb.AppendLine($"#if !defined({guardName}) && !defined(DEVICES_TIMER_H)");
+        }
+        else
+        {
+            sb.AppendLine($"#ifndef {guardName}");
+        }
         sb.AppendLine($"#define {guardName}");
         sb.AppendLine($"// Struct: {structType.Name}");
 
