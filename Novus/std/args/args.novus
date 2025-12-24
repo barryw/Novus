@@ -316,7 +316,10 @@ impl Args {
             let str_opt = Str::from_cstr(str_ptr)
             match str_opt {
                 Some(s) => {
-                    result.push(s)
+                    match result.push(s) {
+                        Result::Ok(_) => {},
+                        Result::Err(_) => return Option::None,
+                    }
                 },
                 None => {}
             }
@@ -704,8 +707,9 @@ impl WBArgument {
         // Convert to String
         var result = String::new()
         while var i < path_len {
-            if !result.push_byte(path_buf[i]) {
-                return Result::Err(DosError::NoFreeStore)
+            match result.push_byte(path_buf[i]) {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(DosError::NoFreeStore),
             }
             i++
         }

@@ -1,7 +1,7 @@
 // Test suite for RingBuffer<T> and RingBufferPow2<T>
 
 from std::collections::ringbuffer import RingBuffer, RingBufferPow2
-from std::core import Option
+from std::core import Option, Result
 from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
 
 // ============================================================================

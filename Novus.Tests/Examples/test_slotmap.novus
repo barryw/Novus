@@ -1,7 +1,7 @@
 // Test suite for SlotMap<T> and SlotMapFixed<T>
 
 from std::collections::slotmap import SlotMap, SlotMapFixed, SlotKey
-from std::core import Option
+from std::core import Option, Result
 from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
 
 // Test entity for the slot map

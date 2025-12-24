@@ -1,7 +1,7 @@
 // Test suite for ObjectPool<T> and ObjectPoolFixed<T>
 
 from std::collections::freelist import ObjectPool, ObjectPoolFixed
-from std::core import Option
+from std::core import Option, Result
 from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
 
 // Test struct for the pool

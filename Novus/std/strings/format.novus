@@ -1,7 +1,7 @@
 // std::fmt - Formatting and Display/Debug traits
 // Provides zero-allocation formatting infrastructure for string interpolation
 
-from std::core import Option, Drop
+from std::core import Option, Result, Drop
 from std::strings::core import String, Str
 from std::error::errors import StringError
 
@@ -71,32 +71,38 @@ pub struct Formatter {
 }
 
 impl Formatter {
-    // Create a new formatter with default capacity
-    pub fn new() -> Option<Formatter> {
+    /// Create a new formatter with default capacity (256 bytes)
+    pub fn new() -> Result<Formatter, StringError> {
         match String::with_capacity(256) {
-            Some(s) => Option::Some(Formatter { buffer: s }),
-            None => Option::None
+            Result::Ok(s) => Result::Ok(Formatter { buffer: s }),
+            Result::Err(e) => Result::Err(e),
         }
     }
 
-    // Create a formatter with specific capacity
-    pub fn with_capacity(capacity: u32) -> Option<Formatter> {
+    /// Create a formatter with specific capacity
+    pub fn with_capacity(capacity: u32) -> Result<Formatter, StringError> {
         match String::with_capacity(capacity) {
-            Some(s) => Option::Some(Formatter { buffer: s }),
-            None => Option::None
+            Result::Ok(s) => Result::Ok(Formatter { buffer: s }),
+            Result::Err(e) => Result::Err(e),
         }
     }
 
     // Write a string slice to the formatter
     // Returns true on success, false on allocation failure
     pub fn write_str(&var self, s: Str) -> bool {
-        self.buffer.push_str(s)
+        match self.buffer.push_str(s) {
+            Result::Ok(_) => true,
+            Result::Err(_) => false,
+        }
     }
 
     // Write a single character to the formatter
     // Returns true on success, false on allocation failure
     pub fn write_char(&var self, c: u8) -> bool {
-        self.buffer.push_byte(c)
+        match self.buffer.push_byte(c) {
+            Result::Ok(_) => true,
+            Result::Err(_) => false,
+        }
     }
 
     // Get the formatted result as a String

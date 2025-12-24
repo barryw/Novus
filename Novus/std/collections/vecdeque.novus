@@ -6,6 +6,7 @@ from std::core import Option, Result, Drop
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem, CopyMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::error::errors import ExecError
 
 // ============================================================================
 // VecDeque<T> - Double-ended queue using ring buffer
@@ -53,10 +54,10 @@ impl<T> VecDeque<T> {
     }
 
     /// Create a VecDeque with specified initial capacity
-    /// Returns None if memory allocation fails
-    pub fn with_capacity(capacity: u32) -> Option<VecDeque<T>> {
+    /// Returns ExecError::NoMem if memory allocation fails
+    pub fn with_capacity(capacity: u32) -> Result<VecDeque<T>, ExecError> {
         if capacity == 0u32 {
-            return Option::Some(@zeroed(VecDeque<T>))
+            return Result::Ok(@zeroed(VecDeque<T>))
         }
 
         let element_size: u32 = @sizeof(T)
@@ -68,14 +69,14 @@ impl<T> VecDeque<T> {
             Option::Some(var block) => {
                 let (raw_ptr, _size) = block.into_raw()
                 let ptr: *T = (*T)raw_ptr
-                return Option::Some(VecDeque {
+                return Result::Ok(VecDeque {
                     ptr: ptr,
                     head: 0u32,
                     len: 0u32,
                     capacity: capacity,
                 })
             },
-            Option::None => return Option::None,
+            Option::None => return Result::Err(ExecError::NoMem),
         }
     }
 
@@ -96,13 +97,14 @@ impl<T> VecDeque<T> {
 
     /// Add element to the back (enqueue)
     ///
-    /// Returns true on success, false if allocation fails during resize.
-    pub fn push_back(&var self, value: T) -> bool {
+    /// Returns ExecError::NoMem if allocation fails during resize.
+    pub fn push_back(&var self, value: T) -> Result<(), ExecError> {
         // Ensure we have capacity
         if self.len >= self.capacity {
-            let success: bool = self.grow()
-            if !success {
-                return false
+            let result: Result<(), ExecError> = self.grow()
+            match result {
+                Result::Ok(_) => {},
+                Result::Err(err) => return Result::Err(err),
             }
         }
 
@@ -110,18 +112,19 @@ impl<T> VecDeque<T> {
         let index: u32 = self.wrap_index(self.head + self.len)
         self.ptr[index] = value
         self.len = self.len + 1u32
-        return true
+        return Result::Ok(())
     }
 
     /// Add element to the front
     ///
-    /// Returns true on success, false if allocation fails during resize.
-    pub fn push_front(&var self, value: T) -> bool {
+    /// Returns ExecError::NoMem if allocation fails during resize.
+    pub fn push_front(&var self, value: T) -> Result<(), ExecError> {
         // Ensure we have capacity
         if self.len >= self.capacity {
-            let success: bool = self.grow()
-            if !success {
-                return false
+            let result: Result<(), ExecError> = self.grow()
+            match result {
+                Result::Ok(_) => {},
+                Result::Err(err) => return Result::Err(err),
             }
         }
 
@@ -134,7 +137,7 @@ impl<T> VecDeque<T> {
 
         self.ptr[self.head] = value
         self.len = self.len + 1u32
-        return true
+        return Result::Ok(())
     }
 
     /// Remove and return element from the back
@@ -195,15 +198,15 @@ impl<T> VecDeque<T> {
 
     /// Set element at index
     ///
-    /// Returns true if successful, false if index is out of bounds.
-    pub fn set(&var self, index: u32, value: T) -> bool {
+    /// Returns ExecError::IndexOutOfBounds if index is out of bounds.
+    pub fn set(&var self, index: u32, value: T) -> Result<(), ExecError> {
         if index >= self.len {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         let actual_index: u32 = self.wrap_index(self.head + index)
         self.ptr[actual_index] = value
-        return true
+        return Result::Ok(())
     }
 
     /// Remove all elements (keeps capacity)
@@ -214,11 +217,11 @@ impl<T> VecDeque<T> {
 
     /// Reserve additional capacity
     ///
-    /// Returns true on success, false if allocation fails.
-    pub fn reserve(&var self, additional: u32) -> bool {
+    /// Returns ExecError::NoMem if allocation fails.
+    pub fn reserve(&var self, additional: u32) -> Result<(), ExecError> {
         let needed_capacity: u32 = self.len + additional
         if needed_capacity <= self.capacity {
-            return true
+            return Result::Ok(())
         }
 
         return self.resize_to(needed_capacity)
@@ -268,10 +271,10 @@ impl<T> VecDeque<T> {
 
     /// Shrink capacity to fit the current length
     ///
-    /// Returns true on success, false if reallocation fails.
-    pub fn shrink_to_fit(&var self) -> bool {
+    /// Returns ExecError::NoMem if reallocation fails.
+    pub fn shrink_to_fit(&var self) -> Result<(), ExecError> {
         if self.len == self.capacity {
-            return true
+            return Result::Ok(())
         }
 
         if self.len == 0u32 {
@@ -285,7 +288,7 @@ impl<T> VecDeque<T> {
                 self.ptr = null
                 self.capacity = 0u32
             }
-            return true
+            return Result::Ok(())
         }
 
         return self.resize_to(self.len)
@@ -300,7 +303,7 @@ impl<T> VecDeque<T> {
     }
 
     // Internal: grow the buffer (double capacity, min 4)
-    fn grow(&var self) -> bool {
+    fn grow(&var self) -> Result<(), ExecError> {
         var new_capacity: u32 = self.capacity * 2u32
         if new_capacity < 4u32 {
             new_capacity = 4u32
@@ -309,7 +312,7 @@ impl<T> VecDeque<T> {
     }
 
     // Internal: resize to a specific capacity
-    fn resize_to(&var self, new_capacity: u32) -> bool {
+    fn resize_to(&var self, new_capacity: u32) -> Result<(), ExecError> {
         let element_size: u32 = @sizeof(T)
         let new_bytes: u32 = new_capacity * element_size
 
@@ -341,9 +344,9 @@ impl<T> VecDeque<T> {
                 self.ptr = new_ptr
                 self.head = 0u32
                 self.capacity = new_capacity
-                return true
+                return Result::Ok(())
             },
-            Option::None => return false,
+            Option::None => return Result::Err(ExecError::NoMem),
         }
     }
 }

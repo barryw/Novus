@@ -28,15 +28,24 @@ pub fn test_vec_push() {
     var v = Vec::<i32>::new()
 
     let r1 = v.push(10)
-    expect_true(r1, "first push succeeds")
+    match r1 {
+        Ok(_) => expect(true, "first push succeeds"),
+        Err(_) => expect(false, "first push should succeed")
+    }
     expect_eq_u32(v.len(), 1u32, "len is 1 after first push")
 
     let r2 = v.push(20)
-    expect_true(r2, "second push succeeds")
+    match r2 {
+        Ok(_) => expect(true, "second push succeeds"),
+        Err(_) => expect(false, "second push should succeed")
+    }
     expect_eq_u32(v.len(), 2u32, "len is 2 after second push")
 
     let r3 = v.push(30)
-    expect_true(r3, "third push succeeds")
+    match r3 {
+        Ok(_) => expect(true, "third push succeeds"),
+        Err(_) => expect(false, "third push should succeed")
+    }
     expect_eq_u32(v.len(), 3u32, "len is 3 after third push")
 
     v.drop()
@@ -50,7 +59,10 @@ pub fn test_vec_push_grows() {
     var i: i32 = 0
     while i < 10 {
         let success = v.push(i)
-        expect_true(success, "push should succeed")
+        match success {
+            Ok(_) => expect(true, "push succeeds"),
+            Err(_) => expect(false, "push should succeed")
+        }
         i++
     }
 
@@ -67,9 +79,9 @@ pub fn test_vec_push_grows() {
 @test("Vec::pop removes and returns last element")
 pub fn test_vec_pop() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let p1 = v.pop()
     match p1 {
@@ -103,10 +115,10 @@ pub fn test_vec_pop_empty() {
 pub fn test_vec_pop_push_cycle() {
     var v = Vec::<i32>::new()
 
-    v.push(1)
-    v.push(2)
+    let _ = v.push(1)
+    let _ = v.push(2)
     v.pop()
-    v.push(3)
+    let _ = v.push(3)
 
     expect_eq_u32(v.len(), 2u32, "len is 2 after push/pop/push")
 
@@ -126,9 +138,9 @@ pub fn test_vec_pop_push_cycle() {
 @test("Vec::get returns correct element")
 pub fn test_vec_get() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let g0 = v.get(0u32)
     match g0 {
@@ -154,8 +166,8 @@ pub fn test_vec_get() {
 @test("Vec::get returns None for out of bounds")
 pub fn test_vec_get_oob() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
+    let _ = v.push(10)
+    let _ = v.push(20)
 
     let g2 = v.get(2u32)
     match g2 {
@@ -190,12 +202,15 @@ pub fn test_vec_get_empty() {
 @test("Vec::set updates element")
 pub fn test_vec_set() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let success = v.set(1u32, 200)
-    expect_true(success, "set should succeed")
+    match success {
+        Ok(_) => expect(true, "set succeeds"),
+        Err(_) => expect(false, "set should succeed")
+    }
 
     let g = v.get(1u32)
     match g {
@@ -209,10 +224,13 @@ pub fn test_vec_set() {
 @test("Vec::set returns false for out of bounds")
 pub fn test_vec_set_oob() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
 
     let success = v.set(5u32, 100)
-    expect_false(success, "set should fail for out of bounds")
+    match success {
+        Ok(_) => expect(false, "set should fail for out of bounds"),
+        Err(_) => expect(true, "set correctly fails")
+    }
 
     v.drop()
 }
@@ -224,11 +242,14 @@ pub fn test_vec_set_oob() {
 @test("Vec::insert at beginning")
 pub fn test_vec_insert_beginning() {
     var v = Vec::<i32>::new()
-    v.push(20)
-    v.push(30)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let success = v.insert(0u32, 10)
-    expect_true(success, "insert at 0 should succeed")
+    match success {
+        Ok(_) => expect(true, "insert at 0 succeeds"),
+        Err(_) => expect(false, "insert at 0 should succeed")
+    }
     expect_eq_u32(v.len(), 3u32, "len is 3 after insert")
 
     let g0 = v.get(0u32)
@@ -255,11 +276,14 @@ pub fn test_vec_insert_beginning() {
 @test("Vec::insert in middle")
 pub fn test_vec_insert_middle() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(30)
 
     let success = v.insert(1u32, 20)
-    expect_true(success, "insert at 1 should succeed")
+    match success {
+        Ok(_) => expect(true, "insert at 1 succeeds"),
+        Err(_) => expect(false, "insert at 1 should succeed")
+    }
     expect_eq_u32(v.len(), 3u32, "len is 3 after insert")
 
     let g0 = v.get(0u32)
@@ -286,11 +310,14 @@ pub fn test_vec_insert_middle() {
 @test("Vec::insert at end (append)")
 pub fn test_vec_insert_end() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
+    let _ = v.push(10)
+    let _ = v.push(20)
 
     let success = v.insert(2u32, 30)
-    expect_true(success, "insert at end should succeed")
+    match success {
+        Ok(_) => expect(true, "insert at end succeeds"),
+        Err(_) => expect(false, "insert at end should succeed")
+    }
     expect_eq_u32(v.len(), 3u32, "len is 3 after insert")
 
     let g = v.get(2u32)
@@ -305,10 +332,13 @@ pub fn test_vec_insert_end() {
 @test("Vec::insert returns false for out of bounds")
 pub fn test_vec_insert_oob() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
 
     let success = v.insert(5u32, 100)
-    expect_false(success, "insert beyond len should fail")
+    match success {
+        Ok(_) => expect(false, "insert beyond len should fail"),
+        Err(_) => expect(true, "insert correctly fails")
+    }
     expect_eq_u32(v.len(), 1u32, "len unchanged after failed insert")
 
     v.drop()
@@ -321,14 +351,14 @@ pub fn test_vec_insert_oob() {
 @test("Vec::remove from beginning")
 pub fn test_vec_remove_beginning() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let r = v.remove(0u32)
     match r {
-        Some(val) => expect_eq_i32(val, 10, "removed value is 10"),
-        None => expect(false, "should have removed value")
+        Ok(val) => expect_eq_i32(val, 10, "removed value is 10"),
+        Err(_) => expect(false, "should have removed value")
     }
 
     expect_eq_u32(v.len(), 2u32, "len is 2 after remove")
@@ -351,14 +381,14 @@ pub fn test_vec_remove_beginning() {
 @test("Vec::remove from middle")
 pub fn test_vec_remove_middle() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let r = v.remove(1u32)
     match r {
-        Some(val) => expect_eq_i32(val, 20, "removed value is 20"),
-        None => expect(false, "should have removed value")
+        Ok(val) => expect_eq_i32(val, 20, "removed value is 20"),
+        Err(_) => expect(false, "should have removed value")
     }
 
     expect_eq_u32(v.len(), 2u32, "len is 2 after remove")
@@ -381,14 +411,14 @@ pub fn test_vec_remove_middle() {
 @test("Vec::remove from end")
 pub fn test_vec_remove_end() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let r = v.remove(2u32)
     match r {
-        Some(val) => expect_eq_i32(val, 30, "removed value is 30"),
-        None => expect(false, "should have removed value")
+        Ok(val) => expect_eq_i32(val, 30, "removed value is 30"),
+        Err(_) => expect(false, "should have removed value")
     }
 
     expect_eq_u32(v.len(), 2u32, "len is 2 after remove")
@@ -399,12 +429,12 @@ pub fn test_vec_remove_end() {
 @test("Vec::remove returns None for out of bounds")
 pub fn test_vec_remove_oob() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
 
     let r = v.remove(5u32)
     match r {
-        Some(_) => expect(false, "should not remove out of bounds"),
-        None => expect(true, "correctly returned None")
+        Ok(_) => expect(false, "should not remove out of bounds"),
+        Err(_) => expect(true, "correctly returned error")
     }
 
     expect_eq_u32(v.len(), 1u32, "len unchanged after failed remove")
@@ -419,9 +449,9 @@ pub fn test_vec_remove_oob() {
 @test("Vec::clear removes all elements")
 pub fn test_vec_clear() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
 
     let cap_before = v.capacity()
     v.clear()
@@ -436,11 +466,11 @@ pub fn test_vec_clear() {
 @test("Vec::truncate shortens vector")
 pub fn test_vec_truncate() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
-    v.push(30)
-    v.push(40)
-    v.push(50)
+    let _ = v.push(10)
+    let _ = v.push(20)
+    let _ = v.push(30)
+    let _ = v.push(40)
+    let _ = v.push(50)
 
     v.truncate(3u32)
 
@@ -464,8 +494,8 @@ pub fn test_vec_truncate() {
 @test("Vec::truncate to 0 clears")
 pub fn test_vec_truncate_zero() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
+    let _ = v.push(10)
+    let _ = v.push(20)
 
     v.truncate(0u32)
 
@@ -478,8 +508,8 @@ pub fn test_vec_truncate_zero() {
 @test("Vec::truncate with len >= current does nothing")
 pub fn test_vec_truncate_noop() {
     var v = Vec::<i32>::new()
-    v.push(10)
-    v.push(20)
+    let _ = v.push(10)
+    let _ = v.push(20)
 
     v.truncate(10u32)
 
@@ -495,10 +525,13 @@ pub fn test_vec_truncate_noop() {
 @test("Vec::reserve increases capacity")
 pub fn test_vec_reserve() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
 
     let success = v.reserve(100u32)
-    expect_true(success, "reserve should succeed")
+    match success {
+        Ok(_) => expect(true, "reserve succeeds"),
+        Err(_) => expect(false, "reserve should succeed")
+    }
     expect_true(v.capacity() >= 101u32, "capacity is at least 101")
     expect_eq_u32(v.len(), 1u32, "len unchanged after reserve")
 
@@ -518,7 +551,7 @@ pub fn test_vec_is_empty_new() {
 @test("Vec::is_empty false after push")
 pub fn test_vec_is_empty_after_push() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
     expect_false(v.is_empty(), "vec with element is not empty")
     v.drop()
 }
@@ -526,7 +559,7 @@ pub fn test_vec_is_empty_after_push() {
 @test("Vec::is_empty true after clearing")
 pub fn test_vec_is_empty_after_clear() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
     v.clear()
     expect_true(v.is_empty(), "vec after clear is empty")
     v.drop()
@@ -535,7 +568,7 @@ pub fn test_vec_is_empty_after_clear() {
 @test("Vec::is_empty true after popping all")
 pub fn test_vec_is_empty_after_pop_all() {
     var v = Vec::<i32>::new()
-    v.push(10)
+    let _ = v.push(10)
     v.pop()
     expect_true(v.is_empty(), "vec after popping all is empty")
 }
@@ -550,10 +583,10 @@ pub fn test_vec_len_tracking() {
 
     expect_eq_u32(v.len(), 0u32, "len 0 initially")
 
-    v.push(10)
+    let _ = v.push(10)
     expect_eq_u32(v.len(), 1u32, "len 1 after push")
 
-    v.push(20)
+    let _ = v.push(20)
     expect_eq_u32(v.len(), 2u32, "len 2 after push")
 
     v.pop()
@@ -572,7 +605,7 @@ pub fn test_vec_capacity_grows() {
     // Push many elements to trigger growth
     var i: i32 = 0
     while i < 20 {
-        v.push(i)
+        let _ = v.push(i)
         i++
     }
 
@@ -589,34 +622,34 @@ pub fn test_vec_capacity_grows() {
 @test("Vec::with_capacity allocates capacity")
 pub fn test_vec_with_capacity() {
     match Vec::<i32>::with_capacity(10u32) {
-        Some(var v) => {
+        Ok(var v) => {
             expect_eq_u32(v.capacity(), 10u32, "capacity is 10")
             expect_eq_u32(v.len(), 0u32, "len is 0")
             expect_true(v.is_empty(), "vec is empty")
             v.drop()
         },
-        None => expect(false, "with_capacity should succeed")
+        Err(_) => expect(false, "with_capacity should succeed")
     }
 }
 
 @test("Vec::with_capacity zero returns empty vec")
 pub fn test_vec_with_capacity_zero() {
     match Vec::<i32>::with_capacity(0u32) {
-        Some(v) => {
+        Ok(v) => {
             expect_eq_u32(v.capacity(), 0u32, "capacity is 0")
             expect_eq_u32(v.len(), 0u32, "len is 0")
         },
-        None => expect(false, "with_capacity(0) should succeed")
+        Err(_) => expect(false, "with_capacity(0) should succeed")
     }
 }
 
 @test("Vec::with_capacity can push elements")
 pub fn test_vec_with_capacity_push() {
     match Vec::<i32>::with_capacity(5u32) {
-        Some(var v) => {
-            v.push(10)
-            v.push(20)
-            v.push(30)
+        Ok(var v) => {
+            let _ = v.push(10)
+            let _ = v.push(20)
+            let _ = v.push(30)
 
             expect_eq_u32(v.len(), 3u32, "len is 3")
             expect_true(v.capacity() >= 5u32, "capacity is at least 5")
@@ -629,7 +662,7 @@ pub fn test_vec_with_capacity_push() {
 
             v.drop()
         },
-        None => expect(false, "with_capacity should succeed")
+        Err(_) => expect(false, "with_capacity should succeed")
     }
 }
 
@@ -641,9 +674,9 @@ pub fn test_vec_with_capacity_push() {
 pub fn test_vec_u32() {
     var v = Vec::<u32>::new()
 
-    v.push(100u32)
-    v.push(200u32)
-    v.push(300u32)
+    let _ = v.push(100u32)
+    let _ = v.push(200u32)
+    let _ = v.push(300u32)
 
     expect_eq_u32(v.len(), 3u32, "len is 3")
 
@@ -660,9 +693,9 @@ pub fn test_vec_u32() {
 pub fn test_vec_u8() {
     var v = Vec::<u8>::new()
 
-    v.push(10u8)
-    v.push(20u8)
-    v.push(30u8)
+    let _ = v.push(10u8)
+    let _ = v.push(20u8)
+    let _ = v.push(30u8)
 
     expect_eq_u32(v.len(), 3u32, "len is 3")
 
@@ -679,9 +712,9 @@ pub fn test_vec_u8() {
 pub fn test_vec_bool() {
     var v = Vec::<bool>::new()
 
-    v.push(true)
-    v.push(false)
-    v.push(true)
+    let _ = v.push(true)
+    let _ = v.push(false)
+    let _ = v.push(true)
 
     expect_eq_u32(v.len(), 3u32, "len is 3")
 
@@ -704,12 +737,12 @@ pub fn test_vec_with_capacity_in_match() {
     match x {
         5 => {
             match Vec::<i32>::with_capacity(10u32) {
-                Some(var v) => {
-                    v.push(100)
+                Ok(var v) => {
+                    let _ = v.push(100)
                     expect_eq_u32(v.len(), 1u32, "len is 1")
                     v.drop()
                 },
-                None => expect(false, "with_capacity should succeed")
+                Err(_) => expect(false, "with_capacity should succeed")
             }
         },
         _ => expect(false, "should match 5")

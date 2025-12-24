@@ -39,15 +39,17 @@ extern fn __novus_free_raw(ptr: *u8, size: u32)
 /// ])?
 /// ```
 pub fn execute_command(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
-    var tag_list = make_tags(tags_ptr, count)
-    defer {
-        tag_list.drop()  // Automatic cleanup at scope exit
+    match make_tags(tags_ptr, count) {
+        Option::Some(tag_list) => {
+            let result = SystemTagList(command.as_cstr(), (*TagItem)tag_list.as_ptr())
+
+            // SystemTagList returns -1 on error
+            return if result == -1 { Result::Err(DosError::Unknown) } else { Result::Ok(result) }
+        },
+        Option::None => {
+            return Result::Err(DosError::Unknown)
+        }
     }
-
-    let result = SystemTagList(command.as_cstr(), (*TagItem)tag_list.as_ptr())
-
-    // SystemTagList returns -1 on error
-    return if result == -1 { Result::Err(DosError::Unknown) } else { Result::Ok(result) }
 }
 
 // ============================================================================
@@ -70,19 +72,21 @@ pub fn execute_command(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i
 /// ])?
 /// ```
 pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosError> {
-    var tag_list = make_tags(tags_ptr, count)
-    defer {
-        tag_list.drop()  // Automatic cleanup at scope exit
+    match make_tags(tags_ptr, count) {
+        Option::Some(tag_list) => {
+            let process = CreateNewProc((*TagItem)tag_list.as_ptr())
+
+            // Check if process creation succeeded - CreateNewProc returns NULL on failure
+            if (u32)process != 0 {
+                return Result::Ok((*Process)process)
+            }
+
+            return Result::Err(DosError::Unknown)
+        },
+        Option::None => {
+            return Result::Err(DosError::Unknown)
+        }
     }
-
-    let process = CreateNewProc((*TagItem)tag_list.as_ptr())
-
-    // Check if process creation succeeded - CreateNewProc returns NULL on failure
-    if (u32)process != 0 {
-        return Result::Ok((*Process)process)
-    }
-
-    return Result::Err(DosError::Unknown)
 }
 
 // ============================================================================
@@ -107,19 +111,21 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosErro
 /// }
 /// ```
 pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, DosError> {
-    var tag_list = make_tags(tags_ptr, count)
-    defer {
-        tag_list.drop()  // Automatic cleanup at scope exit
+    match make_tags(tags_ptr, count) {
+        Option::Some(tag_list) => {
+            let obj = AllocDosObject(obj_type, (*TagItem)tag_list.as_ptr())
+
+            // Check if allocation succeeded (null check)
+            if let o = obj {
+                return Result::Ok(o)
+            }
+
+            return Result::Err(DosError::Unknown)
+        },
+        Option::None => {
+            return Result::Err(DosError::Unknown)
+        }
     }
-
-    let obj = AllocDosObject(obj_type, (*TagItem)tag_list.as_ptr())
-
-    // Check if allocation succeeded (null check)
-    if let o = obj {
-        return Result::Ok(o)
-    }
-
-    return Result::Err(DosError::Unknown)
 }
 
 /// Load a program segment with tag-based parameters
@@ -136,15 +142,17 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, Do
 /// }
 /// ```
 pub fn load_segment(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
-    var tag_list = make_tags(tags_ptr, count)
-    defer {
-        tag_list.drop()  // Automatic cleanup at scope exit
+    match make_tags(tags_ptr, count) {
+        Option::Some(tag_list) => {
+            let seglist = NewLoadSeg(file.as_cstr(), (*TagItem)tag_list.as_ptr())
+
+            // NewLoadSeg returns 0 on failure
+            return if seglist == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(seglist) }
+        },
+        Option::None => {
+            return Result::Err(DosError::Unknown)
+        }
     }
-
-    let seglist = NewLoadSeg(file.as_cstr(), (*TagItem)tag_list.as_ptr())
-
-    // NewLoadSeg returns 0 on failure
-    return if seglist == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(seglist) }
 }
 
 // ============================================================================

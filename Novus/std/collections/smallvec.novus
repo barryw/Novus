@@ -136,13 +136,13 @@ impl<T, const N: u32> SmallVec<T, N> {
     }
 
     /// Set an element at the given index
-    /// Returns false if index is out of bounds
-    pub fn set(&var self, index: u32, value: T) -> bool {
+    /// Returns Err(ExecError::IndexOutOfBounds) if index is out of bounds
+    pub fn set(&var self, index: u32, value: T) -> Result<(), ExecError> {
         if index >= self.len {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
         self.ptr[index] = value
-        return true
+        return Result::Ok(())
     }
 
     /// Clear all elements without deallocating

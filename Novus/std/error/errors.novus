@@ -206,6 +206,10 @@ pub enum ExecError {
     InvalidAddress,
     /// Memory alignment violation
     AlignmentError,
+    /// Index out of bounds (collection access)
+    IndexOutOfBounds,
+    /// Capacity exceeded (fixed-size buffer full)
+    CapacityExceeded,
 }
 
 /// Convert ExecError to a numeric error code
@@ -225,6 +229,8 @@ pub fn exec_error_to_code(err: ExecError) -> i32 {
         ExecError::LibraryNotFound => return -108,
         ExecError::InvalidAddress => return -109,
         ExecError::AlignmentError => return -110,
+        ExecError::IndexOutOfBounds => return -111,
+        ExecError::CapacityExceeded => return -112,
     }
 }
 
@@ -503,6 +509,8 @@ impl ExecError {
             ExecError::LibraryNotFound => return "Library not found",
             ExecError::InvalidAddress => return "Invalid memory address",
             ExecError::AlignmentError => return "Memory alignment error",
+            ExecError::IndexOutOfBounds => return "Index out of bounds",
+            ExecError::CapacityExceeded => return "Capacity exceeded",
         }
     }
 }

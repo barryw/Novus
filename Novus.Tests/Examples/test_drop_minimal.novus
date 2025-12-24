@@ -1,7 +1,7 @@
 // Minimal test to isolate double-free issue
 from std::strings::core import String, Str
 from std::collections::vec import Vec
-from std::core import Drop
+from std::core import Drop, Result
 from std::io::file import println
 
 struct Entry {
@@ -21,8 +21,8 @@ pub fn main() -> i32 {
     println("=== Test 1: Create and drop empty Vec ===")
     {
         var entries: Vec<Entry> = match Vec::<Entry>::with_capacity(4) {
-            Option::Some(v) => v,
-            Option::None => return 1,
+            Result::Ok(v) => v,
+            Result::Err(_) => return 1,
         }
         println("Created Vec")
         // Vec goes out of scope here
@@ -33,8 +33,8 @@ pub fn main() -> i32 {
     println("=== Test 2: Create Vec, add entry, pop ===")
     {
         var entries2: Vec<Entry> = match Vec::<Entry>::with_capacity(4) {
-            Option::Some(v) => v,
-            Option::None => return 1,
+            Result::Ok(v) => v,
+            Result::Err(_) => return 1,
         }
         println("Created Vec")
 
@@ -50,7 +50,7 @@ pub fn main() -> i32 {
         let entry2 = Entry { key: key2, value: value2 }
         println("Created Entry")
 
-        entries2.push(entry2)
+        let _ = entries2.push(entry2)
         println("Pushed Entry")
 
         // Pop the entry - returned Option<Entry> should be dropped

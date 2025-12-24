@@ -130,12 +130,13 @@ impl Prefs {
     /// Does not create any files until save() is called.
     pub fn new(app_name: Str, version: u32) -> Result<Prefs, PrefsError> {
         var name = PathString::new()
-        if !name.push_str(app_name) {
-            return Result::Err(PrefsError::AllocationFailed)
+        match name.push_str(app_name) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
 
         match Vec::<PrefsEntry>::with_capacity(16) {
-            Some(entries) => {
+            Result::Ok(entries) => {
                 return Result::Ok(Prefs {
                     app_name: name,
                     version: version,
@@ -143,7 +144,7 @@ impl Prefs {
                     dirty: false,
                 })
             },
-            None => return Result::Err(PrefsError::AllocationFailed),
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
     }
 
@@ -185,14 +186,17 @@ impl Prefs {
     pub fn load_any(app_name: Str) -> Result<(Prefs, u32), PrefsError> {
         // Build path: ENV:<app_name>.prefs
         var env_path = PathString::new()
-        if !env_path.push_str("ENV:") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str("ENV:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !env_path.push_str(app_name) {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str(app_name) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !env_path.push_str(".prefs") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
 
         // Try ENV: first (faster, in RAM)
@@ -204,14 +208,17 @@ impl Prefs {
             Result::Err(_) => {
                 // Try ENVARC: as fallback
                 var envarc_path = PathString::new()
-                if !envarc_path.push_str("ENVARC:") {
-                    return Result::Err(PrefsError::AllocationFailed)
+                match envarc_path.push_str("ENVARC:") {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                 }
-                if !envarc_path.push_str(app_name) {
-                    return Result::Err(PrefsError::AllocationFailed)
+                match envarc_path.push_str(app_name) {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                 }
-                if !envarc_path.push_str(".prefs") {
-                    return Result::Err(PrefsError::AllocationFailed)
+                match envarc_path.push_str(".prefs") {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                 }
 
                 var envarc_file_result = OwnedFileHandle::open(envarc_path.as_str(), MODE_OLDFILE as i32)
@@ -377,10 +384,10 @@ impl Prefs {
                                             Result::Ok(value) => {
                                                 // Add entry
                                                 let entry = PrefsEntry { key: key, value: value }
-                                                if !self.entries.push(entry) {
-                                                    return false
+                                                match self.entries.push(entry) {
+                                                    Result::Ok(_) => return true,
+                                                    Result::Err(_) => return false,
                                                 }
-                                                return true
                                             }
                                         }
                                     }
@@ -404,26 +411,32 @@ impl Prefs {
     pub fn save(&var self) -> Result<(), PrefsError> {
         // Build ENVARC path
         var envarc_path = PathString::new()
-        if !envarc_path.push_str("ENVARC:") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match envarc_path.push_str("ENVARC:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !envarc_path.push_str(self.app_name.as_str()) {
-            return Result::Err(PrefsError::AllocationFailed)
+        match envarc_path.push_str(self.app_name.as_str()) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !envarc_path.push_str(".prefs") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match envarc_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
 
         // Build ENV path
         var env_path = PathString::new()
-        if !env_path.push_str("ENV:") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str("ENV:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !env_path.push_str(self.app_name.as_str()) {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str(self.app_name.as_str()) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
-        if !env_path.push_str(".prefs") {
-            return Result::Err(PrefsError::AllocationFailed)
+        match env_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
         }
 
         // Write to ENVARC: first (persistent)
@@ -758,11 +771,13 @@ impl Prefs {
                             Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                             Result::Ok(value_str) => {
                                 let entry = PrefsEntry { key: key_str, value: value_str }
-                                if !self.entries.push(entry) {
-                                    return Result::Err(PrefsError::AllocationFailed)
+                                match self.entries.push(entry) {
+                                    Result::Ok(_) => {
+                                        self.dirty = true
+                                        return Result::Ok(())
+                                    },
+                                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
                                 }
-                                self.dirty = true
-                                return Result::Ok(())
                             }
                         }
                     }

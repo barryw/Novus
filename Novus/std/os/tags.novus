@@ -30,26 +30,34 @@ from std::ffi::amiga_consts import TAG_DONE
 ///     TagItem { ti_Tag: WA_Height, ti_Data: 480 },
 ///     TagItem { ti_Tag: WA_Title, ti_Data: "My Window".ptr as u32 }
 /// ]
-/// let tags = make_tags(&input_tags, 3)
+/// let tags = make_tags(&input_tags, 3)?
 /// // Returns a Vec with your 3 tags + TAG_DONE at the end
 /// ```
-pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Vec<TagItem> {
+///
+/// Returns `Option::None` if memory allocation fails.
+pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Option<Vec<TagItem>> {
     var result: Vec<TagItem> = Vec::<TagItem>::new()
 
     // Add all user-provided tags
     while var i < count {
         let tag = tags_ptr[i]
-        result.push(tag)
+        match result.push(tag) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Option::None,
+        }
         i++
     }
 
     // Always append TAG_DONE
-    result.push(TagItem {
+    match result.push(TagItem {
         ti_Tag: TAG_DONE,
         ti_Data: 0
-    })
+    }) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return Option::None,
+    }
 
-    return result
+    return Option::Some(result)
 }
 
 // ============================================================================

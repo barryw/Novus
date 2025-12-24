@@ -9,6 +9,7 @@ from std::core import Option, Result, Drop, Hash, Eq
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::error::errors import ExecError
 
 // ============================================================================
 // Entry State - Tracks bucket occupancy
@@ -51,8 +52,8 @@ pub struct HashMapEntry<K, V> {
 /// Example:
 /// ```novus
 /// var map: HashMap<u32, u32> = HashMap::new()?
-/// map.insert(1u32, 100u32)
-/// map.insert(2u32, 200u32)
+/// let _ = map.insert(1u32, 100u32)?
+/// let _ = map.insert(2u32, 200u32)?
 ///
 /// match map.get(&1u32) {
 ///     Some(val_ptr) => print_num(*val_ptr),
@@ -72,19 +73,19 @@ pub struct HashMap<K, V> where K: Hash + Eq {
 
 impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Create a new empty HashMap with default capacity (16)
-    /// Returns None if memory allocation fails
-    pub fn new() -> Option<HashMap<K, V>> {
+    /// Returns ExecError if memory allocation fails
+    pub fn new() -> Result<HashMap<K, V>, ExecError> {
         return HashMap::<K, V>::with_capacity(16u32)
     }
 
     /// Create a new HashMap with the specified initial capacity
-    /// Returns None if memory allocation fails
+    /// Returns ExecError if memory allocation fails
     ///
     /// The capacity will be rounded up to a power of 2 for efficient modulo.
-    pub fn with_capacity(requested: u32) -> Option<HashMap<K, V>> {
+    pub fn with_capacity(requested: u32) -> Result<HashMap<K, V>, ExecError> {
         // Check for overflow - max capacity is 1GB worth of entries
         if requested > 0x4000_0000u32 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
         // Round up to power of 2 for fast modulo (using bitwise AND)
@@ -92,15 +93,13 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
         // Check if next_power_of_two overflowed
         if capacity == 0u32 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
         let entry_size: u32 = @sizeof(HashMapEntry<K, V>)
         let bytes_needed: u32 = capacity * entry_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
-
-        match block_opt {
+        match MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR) {
             Option::Some(var block) => {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
@@ -120,7 +119,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 // Simpler: just use capacity - (capacity >> 2) - (capacity >> 4) ≈ 70%
                 let threshold: u32 = capacity - (capacity >> 2) - (capacity >> 4)
 
-                return Option::Some(HashMap {
+                return Result::Ok(HashMap {
                     entries: entries,
                     capacity: capacity,
                     len: 0u32,
@@ -130,7 +129,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 })
             },
             Option::None => {
-                return Option::None
+                return Result::Err(ExecError::NoMem)
             }
         }
     }
@@ -160,18 +159,21 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
     /// Insert a key-value pair into the map
     ///
-    /// If the key already exists, the value is updated and the old value is returned.
-    /// Returns None if this is a new key, or Some(old_value) if updating.
-    /// Returns None on allocation failure during resize (map unchanged).
-    pub fn insert(&var self, key: K, value: V) -> Option<V> {
+    /// If the key already exists, the value is updated and the old value is returned as Some(old_value).
+    /// Returns Ok(None) if this is a new key.
+    /// Returns Err(ExecError) on allocation failure during resize (map unchanged).
+    pub fn insert(&var self, key: K, value: V) -> Result<Option<V>, ExecError> {
         // Check if we need to resize using pre-computed threshold
         if self.len + self.tombstones + 1u32 > self.resize_threshold {
-            let success: bool = self.resize(self.capacity << 1)  // Shift instead of multiply
-            if !success {
-                // Resize failed, but we might still have room
-                if self.len + self.tombstones >= self.capacity {
-                    return Option::None
-                }
+            let resize_result: Result<(), ExecError> = self.resize(self.capacity << 1)  // Shift instead of multiply
+            match resize_result {
+                Result::Err(err) => {
+                    // Resize failed, but we might still have room
+                    if self.len + self.tombstones >= self.capacity {
+                        return Result::Err(err)
+                    }
+                },
+                Result::Ok(_) => {}
             }
         }
 
@@ -203,7 +205,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                             self.len = self.len + 1
                         }
                     }
-                    return Option::None
+                    return Result::Ok(Option::None)
                 },
                 EntryState::Tombstone => {
                     // Remember first tombstone for potential reuse
@@ -217,7 +219,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                         // Update existing entry
                         let old_value: V = self.entries[index].value
                         self.entries[index].value = value
-                        return Option::Some(old_value)
+                        return Result::Ok(Option::Some(old_value))
                     }
                 }
             }
@@ -227,7 +229,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         // Table is full (shouldn't happen with proper resizing)
-        return Option::None
+        return Result::Err(ExecError::NoMem)
     }
 
     /// Get a reference to the value associated with the key
@@ -348,7 +350,8 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
                         // Auto-compact if tombstones are excessive (> 25% of capacity)
                         if self.tombstones > (self.capacity >> 2) {
-                            self.compact()
+                            // Ignore compact errors - removal succeeded regardless
+                            let _ = self.compact()
                         }
 
                         return Option::Some(value)
@@ -378,8 +381,8 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
     /// Ensure capacity for at least `additional` more elements
     ///
-    /// Returns true if successful, false if allocation failed.
-    pub fn reserve(&var self, additional: u32) -> bool {
+    /// Returns Ok(()) if successful, Err(ExecError) if allocation failed.
+    pub fn reserve(&var self, additional: u32) -> Result<(), ExecError> {
         let needed: u32 = self.len + additional
         // Account for 70% load factor
         let required_capacity: u32 = needed + (needed >> 1)  // needed * 1.5 ≈ needed / 0.7
@@ -387,20 +390,20 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         if required_capacity > self.capacity {
             let new_cap: u32 = HashMap::<K, V>::next_power_of_two(required_capacity)
             if new_cap == 0u32 {
-                return false  // Overflow
+                return Result::Err(ExecError::NoMem)  // Overflow
             }
             return self.resize(new_cap)
         }
-        return true
+        return Result::Ok(())
     }
 
     /// Compact tombstones by rehashing without growing capacity
     ///
     /// Call this to reclaim wasted slots after many removals.
     /// Automatically called when tombstones exceed 25% of capacity.
-    pub fn compact(&var self) -> bool {
+    pub fn compact(&var self) -> Result<(), ExecError> {
         if self.tombstones == 0u32 {
-            return true  // Nothing to compact
+            return Result::Ok(())  // Nothing to compact
         }
         // Resize to same capacity - this clears all tombstones
         return self.resize(self.capacity)
@@ -408,8 +411,8 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
     /// Shrink capacity to fit current length (reclaim memory)
     ///
-    /// Returns true if successful, false if allocation failed.
-    pub fn shrink_to_fit(&var self) -> bool {
+    /// Returns Ok(()) if successful, Err(ExecError) if allocation failed.
+    pub fn shrink_to_fit(&var self) -> Result<(), ExecError> {
         if self.len == 0u32 {
             // Free everything and reset to minimal state
             if self.entries != null {
@@ -423,7 +426,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             self.capacity = 0u32
             self.tombstones = 0u32
             self.resize_threshold = 0u32
-            return true
+            return Result::Ok(())
         }
 
         // Calculate minimum capacity (account for 70% load factor)
@@ -439,17 +442,15 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         if ideal_cap < self.capacity {
             return self.resize(ideal_cap)
         }
-        return true
+        return Result::Ok(())
     }
 
     /// Internal: Resize the hash table to a new capacity
-    fn resize(&var self, new_capacity: u32) -> bool {
+    fn resize(&var self, new_capacity: u32) -> Result<(), ExecError> {
         // Don't use MEMF_CLEAR - we initialize entries manually
         let bytes_needed: u32 = new_capacity * self.entry_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC)
-
-        match block_opt {
+        match MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC) {
             Option::Some(var block) => {
                 let new_entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
@@ -509,10 +510,10 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 // Recalculate threshold: ~70% of new capacity
                 self.resize_threshold = new_capacity - (new_capacity >> 2) - (new_capacity >> 4)
 
-                return true
+                return Result::Ok(())
             },
             Option::None => {
-                return false
+                return Result::Err(ExecError::NoMem)
             }
         }
     }

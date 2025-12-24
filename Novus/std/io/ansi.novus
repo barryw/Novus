@@ -155,27 +155,27 @@ pub fn move_to(row: u32, col: u32) -> String {
 
     // Build escape sequence: CSI row ; col H
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     // Convert row to string
     var row_buf = [0u8; 16]
     let row_len = u32_to_string(r, (*u8)&row_buf[0], 16u32)
     while var i < row_len {
-        result.push_byte(row_buf[i])
+        let _ = result.push_byte(row_buf[i])
         i++
     }
 
-    result.push_byte($3b)  // ';'
+    let _ = result.push_byte($3b)  // ';'
 
     // Convert col to string
     var col_buf = [0u8; 16]
     let col_len = u32_to_string(c, (*u8)&col_buf[0], 16u32)
     while var i < col_len {
-        result.push_byte(col_buf[i])
+        let _ = result.push_byte(col_buf[i])
         i++
     }
 
-    result.push_byte($48)  // 'H'
+    let _ = result.push_byte($48)  // 'H'
 
     return result
 }
@@ -185,16 +185,16 @@ pub fn cursor_up(n: u32) -> String {
     let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($41)  // 'A'
+    let _ = result.push_byte($41)  // 'A'
 
     return result
 }
@@ -204,16 +204,16 @@ pub fn cursor_down(n: u32) -> String {
     let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($42)  // 'B'
+    let _ = result.push_byte($42)  // 'B'
 
     return result
 }
@@ -223,16 +223,16 @@ pub fn cursor_right(n: u32) -> String {
     let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($43)  // 'C'
+    let _ = result.push_byte($43)  // 'C'
 
     return result
 }
@@ -242,16 +242,16 @@ pub fn cursor_left(n: u32) -> String {
     let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
 
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     var buf = [0u8; 16]
     let len = u32_to_string(count, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($44)  // 'D'
+    let _ = result.push_byte($44)  // 'D'
 
     return result
 }
@@ -262,7 +262,7 @@ pub fn cursor_left(n: u32) -> String {
 /// The actual color depends on the Workbench palette.
 pub fn fg(pen: Pen) -> String {
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     // ANSI SGR codes: 30-37 for foreground, 39 for default
     // These map to Amiga pens 0-7
@@ -281,11 +281,11 @@ pub fn fg(pen: Pen) -> String {
     var buf = [0u8; 16]
     let len = u32_to_string(code, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($6d)  // 'm'
+    let _ = result.push_byte($6d)  // 'm'
 
     return result
 }
@@ -296,7 +296,7 @@ pub fn fg(pen: Pen) -> String {
 /// The actual color depends on the Workbench palette.
 pub fn bg(pen: Pen) -> String {
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     // ANSI SGR codes: 40-47 for background, 49 for default
     // These map to Amiga pens 0-7
@@ -315,11 +315,11 @@ pub fn bg(pen: Pen) -> String {
     var buf = [0u8; 16]
     let len = u32_to_string(code, (*u8)&buf[0], 16u32)
     while var i < len {
-        result.push_byte(buf[i])
+        let _ = result.push_byte(buf[i])
         i++
     }
 
-    result.push_byte($6d)  // 'm'
+    let _ = result.push_byte($6d)  // 'm'
 
     return result
 }
@@ -327,7 +327,7 @@ pub fn bg(pen: Pen) -> String {
 /// Clear screen with specified mode
 pub fn clear(mode: ClearMode) -> String {
     var result = String::new()
-    result.push_byte($9b)  // CSI
+    let _ = result.push_byte($9b)  // CSI
 
     // Match mode to digit character
     let digit: u8 = match mode {
@@ -335,9 +335,9 @@ pub fn clear(mode: ClearMode) -> String {
         ClearMode::ToStart => $31,  // '1'
         ClearMode::All => $32,      // '2'
     }
-    result.push_byte(digit)
+    let _ = result.push_byte(digit)
 
-    result.push_byte($4a)  // 'J'
+    let _ = result.push_byte($4a)  // 'J'
 
     return result
 }
@@ -377,19 +377,19 @@ impl Ansi {
     /// Add bold attribute
     @chain
     pub fn bold(&var self) {
-        self.codes.push(1u32)
+        let _ = self.codes.push(1u32)
     }
 
     /// Add underline attribute
     @chain
     pub fn underline(&var self) {
-        self.codes.push(4u32)
+        let _ = self.codes.push(4u32)
     }
 
     /// Add reverse video attribute
     @chain
     pub fn reverse(&var self) {
-        self.codes.push(7u32)
+        let _ = self.codes.push(7u32)
     }
 
     /// Set foreground pen
@@ -406,7 +406,7 @@ impl Ansi {
             Pen::Pen7 => 37u32,
             Pen::Default => 39u32,
         }
-        self.codes.push(code)
+        let _ = self.codes.push(code)
     }
 
     /// Set background pen
@@ -423,7 +423,7 @@ impl Ansi {
             Pen::Pen7 => 47u32,
             Pen::Default => 49u32,
         }
-        self.codes.push(code)
+        let _ = self.codes.push(code)
     }
 
     /// Build the escape sequence string
@@ -432,11 +432,11 @@ impl Ansi {
 
         // Only add content if we have codes
         if self.codes.len > 0 {
-            result.push_byte($9b)  // CSI
+            let _ = result.push_byte($9b)  // CSI
 
             while var i < self.codes.len {
                 if i > 0 {
-                    result.push_byte($3b)  // ';'
+                    let _ = result.push_byte($3b)  // ';'
                 }
 
                 // Access directly via pointer arithmetic
@@ -444,14 +444,14 @@ impl Ansi {
                 var buf = [0u8; 16]
                 let len = u32_to_string(c, (*u8)&buf[0], 16u32)
                 while var j < len {
-                    result.push_byte(buf[j])
+                    let _ = result.push_byte(buf[j])
                     j++
                 }
 
                 i++
             }
 
-            result.push_byte($6d)  // 'm'
+            let _ = result.push_byte($6d)  // 'm'
         }
 
         return result

@@ -1,19 +1,17 @@
 // HashMap test example
 // Tests basic HashMap operations with generic keys (u32 keys, u32 values)
 
-from std::core import Option
+from std::core import Option, Result
 from std::collections::hashmap import HashMap, HashMapEntry, EntryState, KeyValue, HashMapIter
 
 fn main() -> i32 {
     // Create a new HashMap<u32, u32> (u32 keys, u32 values)
-    let map_opt: Option<HashMap<u32, u32>> = HashMap::<u32, u32>::new()
-
-    match map_opt {
-        Some(var map) => {
+    match HashMap::<u32, u32>::new() {
+        Result::Ok(var map) => {
             // Insert some values
-            map.insert(1u32, 100u32)
-            map.insert(2u32, 200u32)
-            map.insert(3u32, 300u32)
+            let _ = map.insert(1u32, 100u32)
+            let _ = map.insert(2u32, 200u32)
+            let _ = map.insert(3u32, 300u32)
 
             // Check length
             if map.len() != 3u32 {
@@ -23,12 +21,12 @@ fn main() -> i32 {
             // Test get
             let key2: u32 = 2u32
             match map.get(&key2) {
-                Some(val_ptr) => {
+                Option::Some(val_ptr) => {
                     if *val_ptr != 200u32 {
                         return 2  // Error: wrong value
                     }
                 },
-                None => {
+                Option::None => {
                     return 3  // Error: key not found
                 }
             }
@@ -45,26 +43,26 @@ fn main() -> i32 {
             }
 
             // Test update (insert existing key)
-            map.insert(2u32, 250u32)
+            let _ = map.insert(2u32, 250u32)
             match map.get(&key2) {
-                Some(val_ptr) => {
+                Option::Some(val_ptr) => {
                     if *val_ptr != 250u32 {
                         return 6  // Error: value not updated
                     }
                 },
-                None => {
+                Option::None => {
                     return 7  // Error: key not found after update
                 }
             }
 
             // Test remove
             match map.remove(&key1) {
-                Some(val) => {
+                Option::Some(val) => {
                     if val != 100u32 {
                         return 8  // Error: wrong removed value
                     }
                 },
-                None => {
+                Option::None => {
                     return 9  // Error: key not found for removal
                 }
             }
@@ -84,10 +82,10 @@ fn main() -> i32 {
             var done: bool = false
             while !done {
                 match iter.next() {
-                    Some(kv) => {
+                    Option::Some(kv) => {
                         count = count + 1u32
                     },
-                    None => {
+                    Option::None => {
                         done = true
                     }
                 }
@@ -108,7 +106,7 @@ fn main() -> i32 {
 
             return 0  // Success
         },
-        None => {
+        Result::Err(_) => {
             return -1  // Error: allocation failed
         }
     }

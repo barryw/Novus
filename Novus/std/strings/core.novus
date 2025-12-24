@@ -528,31 +528,23 @@ impl String {
 
     /// Create a string with pre-allocated capacity
     ///
-    /// Returns None if allocation fails. For error details, use `try_with_capacity`.
-    pub fn with_capacity(capacity: u32) -> Option<String> {
-        // Use Vec::new for zero capacity to avoid allocation
-        if capacity == 0 {
-            return Option::Some(String::new())
-        }
-
-        // Create a new String and reserve capacity on its internal Vec
-        var result = String::new()
-        let success = result.vec.reserve(capacity)
-        return if success { Option::Some(result) } else { Option::None }
-    }
-
-    /// Create a string with pre-allocated capacity, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     ///
     /// # Example
     /// ```novus
-    /// let s = String::try_with_capacity(100)?
+    /// let s = String::with_capacity(100)?
     /// ```
-    pub fn try_with_capacity(capacity: u32) -> Result<String, StringError> {
-        match String::with_capacity(capacity) {
-            Some(s) => return Result::Ok(s),
-            None => return Result::Err(StringError::AllocationFailed),
+    pub fn with_capacity(capacity: u32) -> Result<String, StringError> {
+        // Use Vec::new for zero capacity to avoid allocation
+        if capacity == 0 {
+            return Result::Ok(String::new())
+        }
+
+        // Create a new String and reserve capacity on its internal Vec
+        var result = String::new()
+        match result.vec.reserve(capacity) {
+            Result::Ok(_) => return Result::Ok(result),
+            Result::Err(_) => return Result::Err(StringError::AllocationFailed),
         }
     }
 
@@ -560,16 +552,16 @@ impl String {
     pub fn new_from_str(s: Str) -> Result<String, StringError> {
         // Create empty string and reserve capacity
         var string = String::new()
-        let reserve_success = string.vec.reserve(s.len())
-        if !reserve_success {
-            return Result::Err(StringError::AllocationFailed)
+        match string.vec.reserve(s.len()) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(StringError::AllocationFailed),
         }
 
         // Copy bytes from Str into Vec
         while var i < s.len() {
-            let success: bool = string.vec.push(s.as_ptr()[i])
-            if !success {
-                return Result::Err(StringError::AllocationFailed)
+            match string.vec.push(s.as_ptr()[i]) {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(StringError::AllocationFailed),
             }
             i++
         }
@@ -603,64 +595,43 @@ impl String {
 
     /// Push a string slice onto the end
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push_str`.
-    pub fn push_str(&var self, s: Str) -> bool {
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var s = String::new()
+    /// s.push_str(Str::from_cstr("Hello")?)?
+    /// ```
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if s.is_empty() {
-            return true
+            return Result::Ok(())
         }
 
         // Copy bytes from Str
         while var i < s.len() {
-            let success: bool = self.vec.push(s.as_ptr()[i])
-            if !success {
-                return false
+            match self.vec.push(s.as_ptr()[i]) {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(StringError::AllocationFailed),
             }
             i++
         }
 
-        return true
-    }
-
-    /// Push a string slice onto the end, returning Result for error handling
-    ///
-    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
-    ///
-    /// # Example
-    /// ```novus
-    /// var s = String::new()
-    /// s.try_push_str(Str::from_cstr("Hello")?)?
-    /// ```
-    pub fn try_push_str(&var self, s: Str) -> Result<(), StringError> {
-        if self.push_str(s) {
-            return Result::Ok(())
-        } else {
-            return Result::Err(StringError::AllocationFailed)
-        }
+        return Result::Ok(())
     }
 
     /// Push a single byte onto the end
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push_byte`.
-    pub fn push_byte(&var self, byte: u8) -> bool {
-        return self.vec.push(byte)
-    }
-
-    /// Push a single byte onto the end, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// var s = String::new()
-    /// s.try_push_byte(65)?  // Push 'A'
+    /// s.push_byte(65)?  // Push 'A'
     /// ```
-    pub fn try_push_byte(&var self, byte: u8) -> Result<(), StringError> {
-        if self.push_byte(byte) {
-            return Result::Ok(())
-        } else {
-            return Result::Err(StringError::AllocationFailed)
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        match self.vec.push(byte) {
+            Result::Ok(_) => return Result::Ok(()),
+            Result::Err(_) => return Result::Err(StringError::AllocationFailed),
         }
     }
 
@@ -671,26 +642,17 @@ impl String {
 
     /// Reserve additional capacity
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_reserve`.
-    pub fn reserve(&var self, additional: u32) -> bool {
-        return self.vec.reserve(additional)
-    }
-
-    /// Reserve additional capacity, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// var s = String::new()
-    /// s.try_reserve(100)?
+    /// s.reserve(100)?
     /// ```
-    pub fn try_reserve(&var self, additional: u32) -> Result<(), StringError> {
-        if self.reserve(additional) {
-            return Result::Ok(())
-        } else {
-            return Result::Err(StringError::AllocationFailed)
+    pub fn reserve(&var self, additional: u32) -> Result<(), StringError> {
+        match self.vec.reserve(additional) {
+            Result::Ok(_) => return Result::Ok(()),
+            Result::Err(_) => return Result::Err(StringError::AllocationFailed),
         }
     }
 
@@ -753,9 +715,9 @@ impl NameString {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&var self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 32 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + s.len()))
         }
 
         while var i < s.len() {
@@ -764,17 +726,17 @@ impl NameString {
         }
 
         self.len += s.len()
-        return true
+        return Result::Ok(())
     }
 
-    pub fn push_byte(&var self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 32 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + 1))
         }
 
         self.buf[self.len] = byte
         self.len++
-        return true
+        return Result::Ok(())
     }
 
     pub fn clear(&var self) {
@@ -813,9 +775,9 @@ impl GadgetString {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&var self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 128 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + s.len()))
         }
 
         while var i < s.len() {
@@ -824,17 +786,17 @@ impl GadgetString {
         }
 
         self.len += s.len()
-        return true
+        return Result::Ok(())
     }
 
-    pub fn push_byte(&var self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 128 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + 1))
         }
 
         self.buf[self.len] = byte
         self.len++
-        return true
+        return Result::Ok(())
     }
 
     pub fn clear(&var self) {
@@ -873,9 +835,9 @@ impl PathString {
         return (*u8)(&self.buf)
     }
 
-    pub fn push_str(&var self, s: Str) -> bool {
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 256 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + s.len()))
         }
 
         while var i < s.len() {
@@ -884,17 +846,17 @@ impl PathString {
         }
 
         self.len += s.len()
-        return true
+        return Result::Ok(())
     }
 
-    pub fn push_byte(&var self, byte: u8) -> bool {
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 256 {
-            return false
+            return Result::Err(StringError::TooLong(self.len + 1))
         }
 
         self.buf[self.len] = byte
         self.len++
-        return true
+        return Result::Ok(())
     }
 
     pub fn clear(&var self) {
@@ -1440,9 +1402,7 @@ impl Str {
     /// Allocates heap memory
     pub fn to_uppercase(&self) -> Result<String, StringError> {
         var result = String::new()
-        if !result.reserve(self.len) {
-            return Result::Err(StringError::AllocationFailed)
-        }
+        result.reserve(self.len)?
 
         var idx: u32 = 0
         while idx < self.len {
@@ -1458,9 +1418,7 @@ impl Str {
                 ch = ch - $20
             }
 
-            if !result.push_byte(ch) {
-                return Result::Err(StringError::AllocationFailed)
-            }
+            result.push_byte(ch)?
             idx++
         }
 
@@ -1473,9 +1431,7 @@ impl Str {
     /// Allocates heap memory
     pub fn to_lowercase(&self) -> Result<String, StringError> {
         var result = String::new()
-        if !result.reserve(self.len) {
-            return Result::Err(StringError::AllocationFailed)
-        }
+        result.reserve(self.len)?
 
         var idx: u32 = 0
         while idx < self.len {
@@ -1491,9 +1447,7 @@ impl Str {
                 ch = ch + $20
             }
 
-            if !result.push_byte(ch) {
-                return Result::Err(StringError::AllocationFailed)
-            }
+            result.push_byte(ch)?
             idx++
         }
 
@@ -1534,15 +1488,11 @@ impl Str {
 
             if matches {
                 // Append replacement
-                if !result.push_str(replacement) {
-                    return Result::Err(StringError::AllocationFailed)
-                }
+                result.push_str(replacement)?
                 pos = pos + pattern.len
             } else {
                 // Append current character
-                if !result.push_byte(self.ptr[pos]) {
-                    return Result::Err(StringError::AllocationFailed)
-                }
+                result.push_byte(self.ptr[pos])?
                 pos++
             }
         }
@@ -1563,14 +1513,10 @@ pub fn str_join(parts: *Str, count: u32, separator: Str) -> Result<String, Strin
 
     while var i < count {
         if i > 0 && separator.len > 0 {
-            if !result.push_str(separator) {
-                return Result::Err(StringError::AllocationFailed)
-            }
+            result.push_str(separator)?
         }
 
-        if !result.push_str(parts[i]) {
-            return Result::Err(StringError::AllocationFailed)
-        }
+        result.push_str(parts[i])?
         i++
     }
 
@@ -1600,105 +1546,61 @@ pub struct StringBuilder {
 impl StringBuilder {
     /// Create new builder with default capacity (256 bytes)
     ///
-    /// Returns None if allocation fails. For error details, use `try_new`.
-    pub fn new() -> Option<StringBuilder> {
-        let string_opt = String::with_capacity(256)
-        match string_opt {
-            Some(s) => return Option::Some(StringBuilder { string: s }),
-            None => return Option::None,
-        }
-    }
-
-    /// Create new builder with default capacity, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     ///
     /// # Example
     /// ```novus
-    /// var builder = StringBuilder::try_new()?
+    /// var builder = StringBuilder::new()?
     /// builder.push_str(Str::from_cstr("Hello")?)?
     /// ```
-    pub fn try_new() -> Result<StringBuilder, StringError> {
-        match StringBuilder::new() {
-            Some(b) => return Result::Ok(b),
-            None => return Result::Err(StringError::AllocationFailed),
+    pub fn new() -> Result<StringBuilder, StringError> {
+        match String::with_capacity(256) {
+            Result::Ok(s) => return Result::Ok(StringBuilder { string: s }),
+            Result::Err(e) => return Result::Err(e),
         }
     }
 
     /// Create builder with specific capacity
     ///
-    /// Returns None if allocation fails. For error details, use `try_with_capacity`.
-    pub fn with_capacity(capacity: u32) -> Option<StringBuilder> {
-        let string_opt = String::with_capacity(capacity)
-        match string_opt {
-            Some(s) => return Option::Some(StringBuilder { string: s }),
-            None => return Option::None,
-        }
-    }
-
-    /// Create builder with specific capacity, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     ///
     /// # Example
     /// ```novus
-    /// var builder = StringBuilder::try_with_capacity(1024)?
+    /// var builder = StringBuilder::with_capacity(1024)?
     /// ```
-    pub fn try_with_capacity(capacity: u32) -> Result<StringBuilder, StringError> {
-        match StringBuilder::with_capacity(capacity) {
-            Some(b) => return Result::Ok(b),
-            None => return Result::Err(StringError::AllocationFailed),
+    pub fn with_capacity(capacity: u32) -> Result<StringBuilder, StringError> {
+        match String::with_capacity(capacity) {
+            Result::Ok(s) => return Result::Ok(StringBuilder { string: s }),
+            Result::Err(e) => return Result::Err(e),
         }
     }
 
     /// Append a string slice
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push_str`.
-    pub fn push_str(&var self, s: Str) -> bool {
-        return self.string.push_str(s)
-    }
-
-    /// Append a string slice, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
-    pub fn try_push_str(&var self, s: Str) -> Result<(), StringError> {
-        return self.string.try_push_str(s)
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
+        return self.string.push_str(s)
     }
 
     /// Append a single byte
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push_byte`.
-    pub fn push_byte(&var self, byte: u8) -> bool {
-        return self.string.push_byte(byte)
-    }
-
-    /// Append a single byte, returning Result for error handling
-    ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
-    pub fn try_push_byte(&var self, byte: u8) -> Result<(), StringError> {
-        return self.string.try_push_byte(byte)
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        return self.string.push_byte(byte)
     }
 
     /// Append a character (Latin-1)
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push_char`.
-    pub fn push_char(&var self, ch: u8) -> bool {
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn push_char(&var self, ch: u8) -> Result<(), StringError> {
         return self.string.push_byte(ch)
     }
 
-    /// Append a character (Latin-1), returning Result for error handling
+    /// Append formatted integer (signed)
     ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
-    pub fn try_push_char(&var self, ch: u8) -> Result<(), StringError> {
-        return self.string.try_push_byte(ch)
-    }
-
-    /// Append formatted integer (signed)
     @suppress("W0002", "Safe: i32 division and modulo produce i32 results within range")
-    pub fn push_i32(&var self, value: i32) -> bool {
+    pub fn push_i32(&var self, value: i32) -> Result<(), StringError> {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1754,7 +1656,9 @@ impl StringBuilder {
     }
 
     /// Append formatted integer (unsigned)
-    pub fn push_u32(&var self, value: u32) -> bool {
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn push_u32(&var self, value: u32) -> Result<(), StringError> {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1779,7 +1683,9 @@ impl StringBuilder {
     }
 
     /// Append formatted hex (lowercase)
-    pub fn push_hex(&var self, value: u32) -> bool {
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn push_hex(&var self, value: u32) -> Result<(), StringError> {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1808,7 +1714,9 @@ impl StringBuilder {
     }
 
     /// Append formatted hex (uppercase)
-    pub fn push_hex_upper(&var self, value: u32) -> bool {
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn push_hex_upper(&var self, value: u32) -> Result<(), StringError> {
         // Handle zero specially
         if value == 0 {
             return self.string.push_byte($30)  // '0'
@@ -1837,7 +1745,9 @@ impl StringBuilder {
     }
 
     /// Append formatted boolean ("true" or "false")
-    pub fn push_bool(&var self, value: bool) -> bool {
+    ///
+    /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
+    pub fn push_bool(&var self, value: bool) -> Result<(), StringError> {
         let s = Str::from_raw(if value { "true" } else { "false" }, if value { 4u32 } else { 5u32 })
         return self.string.push_str(s)
     }
@@ -2019,21 +1929,15 @@ pub fn path_join(base: Str, component: Str) -> Result<String, StringError> {
     }
 
     var result = String::new()
-    if !result.push_str(base) {
-        return Result::Err(StringError::AllocationFailed)
-    }
+    result.push_str(base)?
 
     // Check if we need a separator
     let last_char: u8 = base.ptr[base.len - 1]
     if last_char != $3A && last_char != $2F {  // Not ':' or '/'
-        if !result.push_byte($2F) {  // Add '/'
-            return Result::Err(StringError::AllocationFailed)
-        }
+        result.push_byte($2F)?  // Add '/'
     }
 
-    if !result.push_str(component) {
-        return Result::Err(StringError::AllocationFailed)
-    }
+    result.push_str(component)?
 
     return Result::Ok(result)
 }
@@ -2057,13 +1961,13 @@ impl Clone for StringBuilder {
     fn clone(&self) -> Option<StringBuilder> {
         let cap = self.string.capacity()
         match StringBuilder::with_capacity(cap) {
-            Some(var sb) => {
-                if sb.push_str(self.string.as_str()) {
-                    return Option::Some(sb)
+            Result::Ok(var sb) => {
+                match sb.push_str(self.string.as_str()) {
+                    Result::Ok(_) => return Option::Some(sb),
+                    Result::Err(_) => return Option::None,
                 }
-                return Option::None
             },
-            None => return Option::None,
+            Result::Err(_) => return Option::None,
         }
     }
 }
@@ -2192,11 +2096,17 @@ impl Iterator<Str> for LinesIter {
 impl Write for String {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
         let s = Str::from_raw(ptr, len)
-        return self.push_str(s)
+        match self.push_str(s) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 
     fn write_byte(&var self, b: u8) -> bool {
-        return self.push_byte(b)
+        match self.push_byte(b) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 }
 
@@ -2204,11 +2114,17 @@ impl Write for String {
 impl Write for StringBuilder {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
         let s = Str::from_raw(ptr, len)
-        return self.push_str(s)
+        match self.push_str(s) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 
     fn write_byte(&var self, b: u8) -> bool {
-        return self.push_byte(b)
+        match self.push_byte(b) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 }
 
@@ -2216,11 +2132,17 @@ impl Write for StringBuilder {
 impl Write for PathString {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
         let s = Str::from_raw(ptr, len)
-        return self.push_str(s)
+        match self.push_str(s) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 
     fn write_byte(&var self, b: u8) -> bool {
-        return self.push_byte(b)
+        match self.push_byte(b) {
+            Result::Ok(_) => return true,
+            Result::Err(_) => return false,
+        }
     }
 }
 

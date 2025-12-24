@@ -97,7 +97,10 @@ pub fn resolve_hostname(hostname: *u8) -> Result<Vec<Ipv4Addr>, NetError> {
         let byte3 = unsafe { *((addr_ptr as u32 + 3) as *u8) }
 
         let addr = Ipv4Addr::new(byte0, byte1, byte2, byte3)
-        addrs.push(addr)
+        match addrs.push(addr) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(NetError::OutOfMemory),
+        }
 
         i = i + 1
     }

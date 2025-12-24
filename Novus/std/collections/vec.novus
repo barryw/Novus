@@ -50,10 +50,15 @@ impl<T> Vec<T> {
 
     /// Create a vector with pre-allocated capacity
     ///
-    /// Returns None if allocation fails. For error details, use `try_with_capacity`.
-    pub fn with_capacity(capacity: u32) -> Option<Vec<T>> {
+    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// let vec = Vec::<u32>::with_capacity(100)?
+    /// ```
+    pub fn with_capacity(capacity: u32) -> Result<Vec<T>, ExecError> {
         if capacity == 0 {
-            return Option::Some(@zeroed(Vec<T>))
+            return Result::Ok(@zeroed(Vec<T>))
         }
 
         let element_size: u32 = @sizeof(T)
@@ -68,7 +73,7 @@ impl<T> Vec<T> {
                 let (raw_ptr, _size) = block.into_raw()
                 // Explicit pointer cast from *u8 to *T
                 let ptr: *T = (*T)raw_ptr
-                return Option::Some(Vec {
+                return Result::Ok(Vec {
                     ptr: ptr,
                     len: 0,
                     capacity: capacity,
@@ -76,23 +81,8 @@ impl<T> Vec<T> {
             },
             None => {
                 // Allocation failed
-                return Option::None
+                return Result::Err(ExecError::NoMem)
             }
-        }
-    }
-
-    /// Create a vector with pre-allocated capacity, returning Result for error handling
-    ///
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
-    ///
-    /// # Example
-    /// ```novus
-    /// let vec = Vec::<u32>::try_with_capacity(100)?
-    /// ```
-    pub fn try_with_capacity(capacity: u32) -> Result<Vec<T>, ExecError> {
-        match Vec::<T>::with_capacity(capacity) {
-            Some(vec) => return Result::Ok(vec),
-            None => return Result::Err(ExecError::NoMem),
         }
     }
 
@@ -113,9 +103,14 @@ impl<T> Vec<T> {
 
     /// Reserve additional capacity (grow if needed)
     ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_reserve`.
-    pub fn reserve(&var self, additional: u32) -> bool {
+    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    ///
+    /// # Example
+    /// ```novus
+    /// var vec = Vec::<u32>::new()
+    /// vec.reserve(100)?
+    /// ```
+    pub fn reserve(&var self, additional: u32) -> Result<(), ExecError> {
         let needed_capacity: u32 = self.len + additional
 
         // Only grow if we need more capacity
@@ -162,69 +157,37 @@ impl<T> Vec<T> {
                     // Update vec fields
                     self.ptr = new_ptr
                     self.capacity = new_capacity
-                    return true
+                    return Result::Ok(())
                 },
                 None => {
                     // Allocation failed
-                    return false
+                    return Result::Err(ExecError::NoMem)
                 }
             }
         }
 
-        return true
+        return Result::Ok(())
     }
 
-    /// Reserve additional capacity, returning Result for error handling
+    /// Add an element to the end of the vector
     ///
     /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// var vec = Vec::<u32>::new()
-    /// vec.try_reserve(100)?
+    /// vec.push(42)?
     /// ```
-    pub fn try_reserve(&var self, additional: u32) -> Result<(), ExecError> {
-        if self.reserve(additional) {
-            return Result::Ok(())
-        } else {
-            return Result::Err(ExecError::NoMem)
-        }
-    }
-
-    /// Add an element to the end of the vector
-    ///
-    /// Returns true on success, false if allocation failed.
-    /// For error details, use `try_push`.
-    pub fn push(&var self, value: T) -> bool {
+    pub fn push(&var self, value: T) -> Result<(), ExecError> {
         // Ensure we have capacity
         if self.len >= self.capacity {
-            let success: bool = self.reserve(1)
-            if !success {
-                return false  // Allocation failed
-            }
+            self.reserve(1)?
         }
 
         // Add the element
         self.ptr[self.len] = value
         self.len++
-        return true
-    }
-
-    /// Add an element to the end of the vector, returning Result for error handling
-    ///
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
-    ///
-    /// # Example
-    /// ```novus
-    /// var vec = Vec::<u32>::new()
-    /// vec.try_push(42)?
-    /// ```
-    pub fn try_push(&var self, value: T) -> Result<(), ExecError> {
-        if self.push(value) {
-            return Result::Ok(())
-        } else {
-            return Result::Err(ExecError::NoMem)
-        }
+        return Result::Ok(())
     }
 
     // Remove and return the last element (returns Option<T>)
@@ -238,14 +201,23 @@ impl<T> Vec<T> {
         return Option::Some(value)
     }
 
-    // Set element at index (returns true if successful)
-    pub fn set(&var self, index: u32, value: T) -> bool {
+    /// Set element at index
+    ///
+    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index >= len.
+    ///
+    /// # Example
+    /// ```novus
+    /// var vec = Vec::<u32>::new()
+    /// vec.push(1)?
+    /// vec.set(0, 42)?
+    /// ```
+    pub fn set(&var self, index: u32, value: T) -> Result<(), ExecError> {
         if index >= self.len {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         self.ptr[index] = value
-        return true
+        return Result::Ok(())
     }
 
     // Get element at index (returns Option)
@@ -274,27 +246,25 @@ impl<T> Vec<T> {
 
     /// Insert an element at the given index, shifting all elements after it to the right
     ///
-    /// Returns true on success, false if index is out of bounds or allocation failed.
+    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index > len.
+    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
     ///
-    /// Example:
+    /// # Example
     /// ```novus
-    /// var vec = Vec::new()
-    /// vec.push(1)
-    /// vec.push(3)
-    /// vec.insert(1, 2)  // vec is now [1, 2, 3]
+    /// var vec = Vec::<u32>::new()
+    /// vec.push(1)?
+    /// vec.push(3)?
+    /// vec.insert(1, 2)?  // vec is now [1, 2, 3]
     /// ```
-    pub fn insert(&var self, index: u32, value: T) -> bool {
+    pub fn insert(&var self, index: u32, value: T) -> Result<(), ExecError> {
         // Check bounds - can insert at len (append position)
         if index > self.len {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         // Ensure we have capacity
         if self.len >= self.capacity {
-            let success: bool = self.reserve(1)
-            if !success {
-                return false  // Allocation failed
-            }
+            self.reserve(1)?
         }
 
         // Shift elements right to make room
@@ -307,24 +277,24 @@ impl<T> Vec<T> {
         // Insert the element
         self.ptr[index] = value
         self.len++
-        return true
+        return Result::Ok(())
     }
 
     /// Remove element at the given index, shifting all elements after it to the left
     ///
-    /// Returns Some(value) if successful, None if index is out of bounds.
+    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index >= len.
     ///
-    /// Example:
+    /// # Example
     /// ```novus
-    /// var vec = Vec::new()
-    /// vec.push(1)
-    /// vec.push(2)
-    /// vec.push(3)
-    /// let removed = vec.remove(1)  // Returns Some(2), vec is now [1, 3]
+    /// var vec = Vec::<u32>::new()
+    /// vec.push(1)?
+    /// vec.push(2)?
+    /// vec.push(3)?
+    /// let removed = vec.remove(1)?  // Returns 2, vec is now [1, 3]
     /// ```
-    pub fn remove(&var self, index: u32) -> Option<T> {
+    pub fn remove(&var self, index: u32) -> Result<T, ExecError> {
         if index >= self.len {
-            return Option::None
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         // Save the value to return
@@ -338,7 +308,7 @@ impl<T> Vec<T> {
         }
 
         self.len--
-        return Option::Some(value)
+        return Result::Ok(value)
     }
 
     /// Shorten the vector to the given length
@@ -362,20 +332,20 @@ impl<T> Vec<T> {
 
     /// Shrink the capacity to match the length
     ///
-    /// Returns true on success, false if reallocation failed.
+    /// Returns `Result::Err(ExecError::NoMem)` if reallocation fails.
     /// On failure, the vector is unchanged.
     ///
-    /// Example:
+    /// # Example
     /// ```novus
-    /// var vec = Vec::with_capacity(100)?
-    /// vec.push(1)
-    /// vec.push(2)
-    /// vec.shrink_to_fit()  // Reduces capacity from 100 to 2
+    /// var vec = Vec::<u32>::with_capacity(100)?
+    /// vec.push(1)?
+    /// vec.push(2)?
+    /// vec.shrink_to_fit()?  // Reduces capacity from 100 to 2
     /// ```
-    pub fn shrink_to_fit(&var self) -> bool {
+    pub fn shrink_to_fit(&var self) -> Result<(), ExecError> {
         // Nothing to do if already optimal
         if self.len == self.capacity {
-            return true
+            return Result::Ok(())
         }
 
         // Special case: empty vector
@@ -390,7 +360,7 @@ impl<T> Vec<T> {
                 self.ptr = null
                 self.capacity = 0
             }
-            return true
+            return Result::Ok(())
         }
 
         // Allocate new smaller buffer
@@ -421,11 +391,11 @@ impl<T> Vec<T> {
                 // Update vec fields
                 self.ptr = new_ptr
                 self.capacity = self.len
-                return true
+                return Result::Ok(())
             },
             None => {
                 // Allocation failed - keep the old allocation
-                return false
+                return Result::Err(ExecError::NoMem)
             }
         }
     }
@@ -491,18 +461,18 @@ impl<T> Clone for Vec<T> {
 
         // Allocate new vector with same capacity
         match Vec::<T>::with_capacity(self.capacity) {
-            Some(var new_vec) => {
+            Result::Ok(var new_vec) => {
                 // Copy elements
                 while var i < self.len {
-                    let success = new_vec.push(self.ptr[i])
-                    if !success {
-                        return Option::None
+                    match new_vec.push(self.ptr[i]) {
+                        Result::Ok(_) => {},
+                        Result::Err(_) => return Option::None,
                     }
                     i++
                 }
                 return Option::Some(new_vec)
             },
-            None => return Option::None,
+            Result::Err(_) => return Option::None,
         }
     }
 }
