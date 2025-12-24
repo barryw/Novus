@@ -997,6 +997,45 @@ public class IrSizeOf : IrValue
 }
 
 /// <summary>
+/// Zeroed value expression - creates a zero-initialized value of the given type.
+/// For structs this uses CopyMem from a zero-initialized local.
+/// For primitives this returns the zero value (0, false, null, etc.)
+/// </summary>
+public class IrZeroed : IrValue
+{
+    public IrType TargetType { get; set; }
+
+    public IrZeroed(IrType targetType) : base(targetType)
+    {
+        TargetType = targetType;
+    }
+}
+
+/// <summary>
+/// Drop in place instruction - calls the Drop trait implementation on a value via pointer.
+/// This is used for manual resource cleanup of values stored in untyped memory (e.g., in Vec<T>).
+/// Generates: if type has Drop, call drop() on *ptr
+/// </summary>
+public class IrDropInPlace : IrInstruction
+{
+    /// <summary>
+    /// The pointer to the value to drop. Must be a pointer type.
+    /// </summary>
+    public IrValue Pointer { get; set; }
+
+    /// <summary>
+    /// The type being dropped (derived from the pointer's element type).
+    /// </summary>
+    public IrType ElementType { get; set; }
+
+    public IrDropInPlace(IrValue pointer, IrType elementType)
+    {
+        Pointer = pointer;
+        ElementType = elementType;
+    }
+}
+
+/// <summary>
 /// Boolean constant value
 /// </summary>
 public class IrBoolConstant : IrValue

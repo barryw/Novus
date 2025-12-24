@@ -1,0 +1,846 @@
+// Novus Standard Library - SlotMap
+// A generational index arena for safe object handles
+//
+// ## Amiga Use Cases
+// - ECS game entities (players, enemies, projectiles, pickups)
+// - Resource handles (textures, sounds, fonts, levels)
+// - Screen/Window handles (multiple screens with stable IDs)
+// - Audio sample handles (music, SFX with generation tracking)
+// - Network object synchronization
+// - Undo/redo systems with stable references
+
+from std::core import Option, Drop
+from std::memory::block import MemoryBlock
+from std::ffi::exec import FreeMem, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::error::errors import ExecError
+
+/// SlotKey - A handle to an object in a SlotMap
+///
+/// Contains both an index and a generation counter.
+/// The generation detects use-after-free: if you try to access
+/// an object with an old key after it was removed and the slot
+/// was reused, the generations won't match.
+///
+/// ## Layout (32-bit packed)
+/// - Bits 0-15: Index (supports up to 65,536 objects)
+/// - Bits 16-31: Generation (wraps at 65,536 reuses)
+///
+/// The 16-bit generation provides much better ABA protection than
+/// an 8-bit generation (65536 reuses vs 256 before potential collision).
+pub struct SlotKey {
+    index: u32,
+    generation: u32,
+}
+
+impl SlotKey {
+    /// Create a sentinel/null key
+    pub fn sentinel() -> SlotKey {
+        return SlotKey { index: 0xFFFFFFFFu32, generation: 0u32 }
+    }
+
+    /// Check if this is a sentinel/null key
+    pub fn is_sentinel(&self) -> bool {
+        return self.index == 0xFFFFFFFFu32
+    }
+
+    /// Pack key into a single u32 (for storage/comparison)
+    ///
+    /// Uses 16 bits for index (65K objects max), 16 bits for generation
+    /// (65K reuses before wrap). This provides much better ABA protection
+    /// than an 8-bit generation.
+    pub fn pack(&self) -> u32 {
+        return (self.generation << 16) | (self.index & 0x0000FFFFu32)
+    }
+
+    /// Unpack a u32 into a SlotKey
+    pub fn unpack(packed: u32) -> SlotKey {
+        return SlotKey {
+            index: packed & 0x0000FFFFu32,
+            generation: packed >> 16,
+        }
+    }
+
+    /// Get the index portion of this key
+    pub fn get_index(&self) -> u32 {
+        return self.index
+    }
+
+    /// Get the generation portion of this key
+    pub fn get_generation(&self) -> u32 {
+        return self.generation
+    }
+}
+
+/// Internal slot state
+struct Slot<T> {
+    generation: u32,    // Current generation of this slot
+    next_free: u32,     // When free: index of next free slot (or 0xFFFFFFFF)
+    occupied: bool,
+    _padding: [u8; 3],  // Align to 4 bytes
+    // Value stored separately for CopyMem compatibility
+}
+
+/// SlotMap<T> - Generational index arena
+///
+/// A data structure that provides stable handles to objects.
+/// Objects can be inserted, accessed, and removed in O(1) time.
+/// Handles remain valid until the object is removed, and invalid
+/// handles are safely detected (no dangling pointer bugs).
+///
+/// ## Features
+/// - O(1) insert, get, remove
+/// - Stable handles that survive other removals
+/// - 16-bit generation counter for strong ABA protection
+/// - O(1) free slot finding via free list
+/// - Dynamic growth when needed
+/// - Proper Drop support for contained elements
+///
+/// ## Example
+/// ```novus
+/// match SlotMap::<Entity>::new() {
+///     Option::Some(var entities) => {
+///         // Insert an entity and get a handle
+///         match entities.insert(player_entity) {
+///             Option::Some(player_key) => {
+///                 // Access via handle - returns None if key is stale
+///                 match entities.get(player_key) {
+///                     Option::Some(entity) => { /* use entity */ },
+///                     Option::None => { /* entity was removed */ }
+///                 }
+///
+///                 // Remove the entity
+///                 entities.remove(player_key)
+///
+///                 // Old key is now invalid
+///                 // entities.get(player_key) returns None
+///             },
+///             Option::None => { /* allocation failed */ }
+///         }
+///     },
+///     Option::None => { /* allocation failed */ }
+/// }
+/// ```
+pub struct SlotMap<T> {
+    values: *u8,        // Raw byte storage for values (for CopyMem)
+    slots: *Slot<T>,    // Slot metadata (generation, free list, occupied)
+    capacity: u32,
+    len: u32,
+    free_head: u32,     // Index of first free slot, or 0xFFFFFFFF if none
+    value_size: u32,    // Size of T (aligned)
+    slot_size: u32,     // Size of Slot<T>
+}
+
+impl<T> SlotMap<T> {
+    /// Create a new empty SlotMap with default capacity (16)
+    pub fn new() -> Option<SlotMap<T>> {
+        return SlotMap::<T>::with_capacity(16u32)
+    }
+
+    /// Create a new SlotMap with specified initial capacity
+    pub fn with_capacity(capacity: u32) -> Option<SlotMap<T>> {
+        if capacity == 0u32 {
+            return Option::None
+        }
+
+        let value_size: u32 = @sizeof(T)
+        // Align value size to 4 bytes
+        let aligned_value_size: u32 = (value_size + 3u32) & 0xFFFFFFFCu32
+        let slot_size: u32 = @sizeof(Slot<T>)
+
+        let value_bytes: u32 = capacity * aligned_value_size
+        let slot_bytes: u32 = capacity * slot_size
+
+        // Allocate values array
+        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        match value_opt {
+            Option::Some(var value_block) => {
+                let values: *u8 = value_block.ptr()
+                value_block.into_raw()
+
+                // Allocate slots array
+                let slot_opt: Option<MemoryBlock> = MemoryBlock::alloc(slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                match slot_opt {
+                    Option::Some(var slot_block) => {
+                        let slots: *Slot<T> = (*Slot<T>)slot_block.ptr()
+                        slot_block.into_raw()
+
+                        // Initialize free list: each slot points to the next
+                        var i: u32 = 0u32
+                        while i < capacity - 1u32 {
+                            slots[i].occupied = false
+                            slots[i].generation = 0u32
+                            slots[i].next_free = i + 1u32
+                            i = i + 1u32
+                        }
+                        // Last slot terminates the free list
+                        slots[capacity - 1u32].occupied = false
+                        slots[capacity - 1u32].generation = 0u32
+                        slots[capacity - 1u32].next_free = 0xFFFFFFFFu32
+
+                        return Option::Some(SlotMap {
+                            values: values,
+                            slots: slots,
+                            capacity: capacity,
+                            len: 0u32,
+                            free_head: 0u32,
+                            value_size: aligned_value_size,
+                            slot_size: slot_size,
+                        })
+                    },
+                    Option::None => {
+                        unsafe {
+                            FreeMem(values, value_bytes)
+                        }
+                        return Option::None
+                    }
+                }
+            },
+            Option::None => {
+                return Option::None
+            }
+        }
+    }
+
+    /// Create a new SlotMap, returning a Result for detailed error handling
+    pub fn try_with_capacity(capacity: u32) -> Result<SlotMap<T>, ExecError> {
+        if capacity == 0u32 {
+            return Result::Err(ExecError::InvalidAddress)
+        }
+
+        match SlotMap::<T>::with_capacity(capacity) {
+            Option::Some(map) => Result::Ok(map),
+            Option::None => Result::Err(ExecError::NoMem)
+        }
+    }
+
+    /// Insert a value and return its key
+    ///
+    /// Returns None if allocation fails during growth.
+    pub fn insert(&var self, value: T) -> Option<SlotKey> {
+        // Check if we need to grow
+        if self.free_head == 0xFFFFFFFFu32 {
+            if !self.grow() {
+                return Option::None
+            }
+        }
+
+        // Pop from free list
+        let index: u32 = self.free_head
+        self.free_head = self.slots[index].next_free
+
+        // Copy value using CopyMem
+        let dst: *u8 = self.values + index * self.value_size
+        unsafe {
+            CopyMem((*u8)(&value), dst, self.value_size)
+        }
+
+        // Mark slot as occupied
+        self.slots[index].occupied = true
+        self.len = self.len + 1u32
+
+        return Option::Some(SlotKey {
+            index: index,
+            generation: self.slots[index].generation,
+        })
+    }
+
+    /// Grow the SlotMap by doubling capacity
+    fn grow(&var self) -> bool {
+        let new_capacity: u32 = self.capacity << 1  // Double
+        let new_value_bytes: u32 = new_capacity * self.value_size
+        let new_slot_bytes: u32 = new_capacity * self.slot_size
+
+        // Allocate new values array
+        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        match value_opt {
+            Option::Some(var value_block) => {
+                let new_values: *u8 = value_block.ptr()
+                value_block.into_raw()
+
+                // Allocate new slots array
+                let slot_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                match slot_opt {
+                    Option::Some(var slot_block) => {
+                        let new_slots: *Slot<T> = (*Slot<T>)slot_block.ptr()
+                        slot_block.into_raw()
+
+                        // Copy existing values using CopyMem (one big copy)
+                        let old_value_bytes: u32 = self.capacity * self.value_size
+                        unsafe {
+                            CopyMem(self.values, new_values, old_value_bytes)
+                        }
+
+                        // Copy existing slots
+                        var i: u32 = 0u32
+                        while i < self.capacity {
+                            new_slots[i].generation = self.slots[i].generation
+                            new_slots[i].next_free = self.slots[i].next_free
+                            new_slots[i].occupied = self.slots[i].occupied
+                            i = i + 1u32
+                        }
+
+                        // Initialize new slots as free list
+                        while i < new_capacity - 1u32 {
+                            new_slots[i].occupied = false
+                            new_slots[i].generation = 0u32
+                            new_slots[i].next_free = i + 1u32
+                            i = i + 1u32
+                        }
+                        // Last new slot terminates the new free list
+                        new_slots[new_capacity - 1u32].occupied = false
+                        new_slots[new_capacity - 1u32].generation = 0u32
+                        new_slots[new_capacity - 1u32].next_free = self.free_head  // Chain to old free list
+
+                        // Free old arrays
+                        let old_slot_bytes: u32 = self.capacity * self.slot_size
+                        unsafe {
+                            FreeMem(self.values, old_value_bytes)
+                            FreeMem((*u8)self.slots, old_slot_bytes)
+                        }
+
+                        // Update to new arrays
+                        self.values = new_values
+                        self.slots = new_slots
+                        self.free_head = self.capacity  // First new slot
+                        self.capacity = new_capacity
+                        return true
+                    },
+                    Option::None => {
+                        unsafe {
+                            FreeMem(new_values, new_value_bytes)
+                        }
+                        return false
+                    }
+                }
+            },
+            Option::None => {
+                return false
+            }
+        }
+    }
+
+    /// Get a pointer to the value for a key
+    ///
+    /// Returns None if the key is invalid or stale (object was removed).
+    pub fn get(&self, key: SlotKey) -> Option<*T> {
+        if key.index >= self.capacity {
+            return Option::None
+        }
+
+        let slot: *Slot<T> = &self.slots[key.index]
+
+        // Check if slot is occupied and generation matches
+        if !slot.occupied || slot.generation != key.generation {
+            return Option::None
+        }
+
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        return Option::Some(ptr)
+    }
+
+    /// Get a mutable pointer to the value for a key
+    ///
+    /// Returns None if the key is invalid or stale.
+    pub fn get_mut(&var self, key: SlotKey) -> Option<*T> {
+        if key.index >= self.capacity {
+            return Option::None
+        }
+
+        if !self.slots[key.index].occupied || self.slots[key.index].generation != key.generation {
+            return Option::None
+        }
+
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        return Option::Some(ptr)
+    }
+
+    /// Check if a key is valid (refers to a live object)
+    pub fn contains(&self, key: SlotKey) -> bool {
+        if key.index >= self.capacity {
+            return false
+        }
+
+        let slot: *Slot<T> = &self.slots[key.index]
+        return slot.occupied && slot.generation == key.generation
+    }
+
+    /// Remove an object by key
+    ///
+    /// Calls Drop on the removed object.
+    /// Returns true if the object was removed, false if key was invalid.
+    pub fn remove(&var self, key: SlotKey) -> bool {
+        if key.index >= self.capacity {
+            return false
+        }
+
+        if !self.slots[key.index].occupied || self.slots[key.index].generation != key.generation {
+            return false
+        }
+
+        // Call Drop on the value before releasing the slot
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        @drop_in_place(ptr)
+
+        // Mark slot as unoccupied, increment generation, add to free list
+        self.slots[key.index].occupied = false
+        self.slots[key.index].generation = self.slots[key.index].generation + 1u32
+        self.slots[key.index].next_free = self.free_head
+        self.free_head = key.index
+        self.len = self.len - 1u32
+
+        return true
+    }
+
+    /// Remove and return an object by key
+    ///
+    /// Does NOT call Drop - ownership transfers to caller.
+    /// Returns the value if successful, None if key was invalid.
+    pub fn take(&var self, key: SlotKey) -> Option<T> {
+        if key.index >= self.capacity {
+            return Option::None
+        }
+
+        if !self.slots[key.index].occupied || self.slots[key.index].generation != key.generation {
+            return Option::None
+        }
+
+        // Copy value out from the stored location (ownership transfer)
+        let src: *T = (*T)(self.values + key.index * self.value_size)
+        let value: T = *src
+
+        // Mark slot as unoccupied, increment generation, add to free list
+        self.slots[key.index].occupied = false
+        self.slots[key.index].generation = self.slots[key.index].generation + 1u32
+        self.slots[key.index].next_free = self.free_head
+        self.free_head = key.index
+        self.len = self.len - 1u32
+
+        return Option::Some(value)
+    }
+
+    /// Get the number of objects in the map
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if the map is empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    /// Get the current capacity
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    /// Clear all objects from the map
+    ///
+    /// Calls Drop on all contained values.
+    /// Increments generations so old keys become invalid.
+    pub fn clear(&var self) {
+        var i: u32 = 0u32
+        while i < self.capacity {
+            if self.slots[i].occupied {
+                // Call Drop on the value before releasing the slot
+                let ptr: *T = (*T)(self.values + i * self.value_size)
+                @drop_in_place(ptr)
+                self.slots[i].occupied = false
+                self.slots[i].generation = self.slots[i].generation + 1u32
+            }
+            i = i + 1u32
+        }
+
+        // Rebuild free list
+        var j: u32 = 0u32
+        while j < self.capacity - 1u32 {
+            self.slots[j].next_free = j + 1u32
+            j = j + 1u32
+        }
+        self.slots[self.capacity - 1u32].next_free = 0xFFFFFFFFu32
+        self.free_head = 0u32
+        self.len = 0u32
+    }
+
+    /// Create an iterator over all valid (key, value) pairs
+    pub fn iter(&self) -> SlotMapIter<T> {
+        return SlotMapIter {
+            values: self.values,
+            slots: self.slots,
+            capacity: self.capacity,
+            value_size: self.value_size,
+            current: 0u32,
+        }
+    }
+
+    /// Get a key for an object at a raw index (for iteration)
+    ///
+    /// Returns None if the index is out of bounds or unoccupied.
+    pub fn key_at(&self, index: u32) -> Option<SlotKey> {
+        if index >= self.capacity {
+            return Option::None
+        }
+
+        if !self.slots[index].occupied {
+            return Option::None
+        }
+
+        return Option::Some(SlotKey {
+            index: index,
+            generation: self.slots[index].generation,
+        })
+    }
+}
+
+impl<T> Drop for SlotMap<T> {
+    fn drop(&var self) {
+        if self.values != null {
+            // Call Drop on all occupied values before freeing memory
+            var i: u32 = 0u32
+            while i < self.capacity {
+                if self.slots[i].occupied {
+                    let ptr: *T = (*T)(self.values + i * self.value_size)
+                    @drop_in_place(ptr)
+                }
+                i = i + 1u32
+            }
+
+            let value_bytes: u32 = self.capacity * self.value_size
+            let slot_bytes: u32 = self.capacity * self.slot_size
+            unsafe {
+                FreeMem(self.values, value_bytes)
+                FreeMem((*u8)self.slots, slot_bytes)
+            }
+            self.values = null
+            self.slots = null
+            self.capacity = 0u32
+            self.len = 0u32
+        }
+    }
+}
+
+/// Iterator over SlotMap entries
+pub struct SlotMapIter<T> {
+    values: *u8,
+    slots: *Slot<T>,
+    capacity: u32,
+    value_size: u32,
+    current: u32,
+}
+
+/// Key-value pair returned by SlotMap iterator
+pub struct SlotMapEntry<T> {
+    key: SlotKey,
+    value: *T,
+}
+
+impl<T> SlotMapIter<T> {
+    /// Get the next occupied entry
+    pub fn next(&var self) -> Option<SlotMapEntry<T>> {
+        while self.current < self.capacity {
+            let idx: u32 = self.current
+            self.current = self.current + 1u32
+
+            if self.slots[idx].occupied {
+                let ptr: *T = (*T)(self.values + idx * self.value_size)
+                return Option::Some(SlotMapEntry {
+                    key: SlotKey {
+                        index: idx,
+                        generation: self.slots[idx].generation,
+                    },
+                    value: ptr,
+                })
+            }
+        }
+        return Option::None
+    }
+
+    /// Reset iterator to the beginning
+    pub fn reset(&var self) {
+        self.current = 0u32
+    }
+}
+
+// ============================================================================
+// Fixed-capacity variant (heap-allocated, but doesn't grow)
+// ============================================================================
+
+/// SlotMapFixed<T> - Heap-allocated SlotMap with fixed capacity
+///
+/// Like SlotMap but with fixed capacity that never grows.
+/// Uses separate arrays for better cache behavior during iteration.
+pub struct SlotMapFixed<T> {
+    values: *u8,            // Raw byte storage for values
+    generations: *u32,
+    next_free: *u32,        // Free list linkage
+    occupied: *bool,
+    capacity: u32,
+    len: u32,
+    free_head: u32,
+    value_size: u32,
+}
+
+impl<T> SlotMapFixed<T> {
+    /// Create a new fixed-capacity SlotMap
+    pub fn with_capacity(capacity: u32) -> Option<SlotMapFixed<T>> {
+        if capacity == 0u32 {
+            return Option::None
+        }
+
+        let value_size: u32 = @sizeof(T)
+        let aligned_value_size: u32 = (value_size + 3u32) & 0xFFFFFFFCu32
+        let value_bytes: u32 = capacity * aligned_value_size
+        let gen_bytes: u32 = capacity * 4u32      // u32 generations
+        let free_bytes: u32 = capacity * 4u32     // u32 next_free
+        let occ_bytes: u32 = capacity             // bool occupied
+
+        // Allocate values array
+        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        match value_opt {
+            Option::Some(var value_block) => {
+                let values: *u8 = value_block.ptr()
+                value_block.into_raw()
+
+                // Allocate generations array
+                let gen_opt: Option<MemoryBlock> = MemoryBlock::alloc(gen_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                match gen_opt {
+                    Option::Some(var gen_block) => {
+                        let generations: *u32 = (*u32)gen_block.ptr()
+                        gen_block.into_raw()
+
+                        // Allocate next_free array
+                        let free_opt: Option<MemoryBlock> = MemoryBlock::alloc(free_bytes, MEMF_PUBLIC)
+                        match free_opt {
+                            Option::Some(var free_block) => {
+                                let next_free: *u32 = (*u32)free_block.ptr()
+                                free_block.into_raw()
+
+                                // Allocate occupied array
+                                let occ_opt: Option<MemoryBlock> = MemoryBlock::alloc(occ_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                                match occ_opt {
+                                    Option::Some(var occ_block) => {
+                                        let occupied: *bool = (*bool)occ_block.ptr()
+                                        occ_block.into_raw()
+
+                                        // Initialize free list
+                                        var i: u32 = 0u32
+                                        while i < capacity - 1u32 {
+                                            next_free[i] = i + 1u32
+                                            i = i + 1u32
+                                        }
+                                        next_free[capacity - 1u32] = 0xFFFFFFFFu32
+
+                                        return Option::Some(SlotMapFixed {
+                                            values: values,
+                                            generations: generations,
+                                            next_free: next_free,
+                                            occupied: occupied,
+                                            capacity: capacity,
+                                            len: 0u32,
+                                            free_head: 0u32,
+                                            value_size: aligned_value_size,
+                                        })
+                                    },
+                                    Option::None => {
+                                        unsafe {
+                                            FreeMem(values, value_bytes)
+                                            FreeMem((*u8)generations, gen_bytes)
+                                            FreeMem((*u8)next_free, free_bytes)
+                                        }
+                                        return Option::None
+                                    }
+                                }
+                            },
+                            Option::None => {
+                                unsafe {
+                                    FreeMem(values, value_bytes)
+                                    FreeMem((*u8)generations, gen_bytes)
+                                }
+                                return Option::None
+                            }
+                        }
+                    },
+                    Option::None => {
+                        unsafe {
+                            FreeMem(values, value_bytes)
+                        }
+                        return Option::None
+                    }
+                }
+            },
+            Option::None => {
+                return Option::None
+            }
+        }
+    }
+
+    /// Create a new SlotMapFixed, returning a Result for detailed error handling
+    pub fn try_with_capacity(capacity: u32) -> Result<SlotMapFixed<T>, ExecError> {
+        if capacity == 0u32 {
+            return Result::Err(ExecError::InvalidAddress)
+        }
+
+        match SlotMapFixed::<T>::with_capacity(capacity) {
+            Option::Some(map) => Result::Ok(map),
+            Option::None => Result::Err(ExecError::NoMem)
+        }
+    }
+
+    /// Insert a value and return its key
+    ///
+    /// Returns None if the map is full.
+    pub fn insert(&var self, value: T) -> Option<SlotKey> {
+        if self.free_head == 0xFFFFFFFFu32 {
+            return Option::None  // Full
+        }
+
+        // Pop from free list
+        let index: u32 = self.free_head
+        self.free_head = self.next_free[index]
+
+        // Copy value using CopyMem
+        let dst: *u8 = self.values + index * self.value_size
+        unsafe {
+            CopyMem((*u8)(&value), dst, self.value_size)
+        }
+
+        self.occupied[index] = true
+        self.len = self.len + 1u32
+
+        return Option::Some(SlotKey {
+            index: index,
+            generation: self.generations[index],
+        })
+    }
+
+    /// Get a pointer to the value for a key
+    pub fn get(&self, key: SlotKey) -> Option<*T> {
+        if key.index >= self.capacity {
+            return Option::None
+        }
+        if !self.occupied[key.index] || self.generations[key.index] != key.generation {
+            return Option::None
+        }
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        return Option::Some(ptr)
+    }
+
+    /// Get a mutable pointer to the value
+    pub fn get_mut(&var self, key: SlotKey) -> Option<*T> {
+        if key.index >= self.capacity {
+            return Option::None
+        }
+        if !self.occupied[key.index] || self.generations[key.index] != key.generation {
+            return Option::None
+        }
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        return Option::Some(ptr)
+    }
+
+    /// Check if a key is valid
+    pub fn contains(&self, key: SlotKey) -> bool {
+        if key.index >= self.capacity {
+            return false
+        }
+        return self.occupied[key.index] && self.generations[key.index] == key.generation
+    }
+
+    /// Remove an object by key
+    ///
+    /// Calls Drop on the removed object.
+    /// Returns true if the object was removed, false if key was invalid.
+    pub fn remove(&var self, key: SlotKey) -> bool {
+        if key.index >= self.capacity {
+            return false
+        }
+        if !self.occupied[key.index] || self.generations[key.index] != key.generation {
+            return false
+        }
+
+        // Call Drop on the value before releasing the slot
+        let ptr: *T = (*T)(self.values + key.index * self.value_size)
+        @drop_in_place(ptr)
+
+        self.occupied[key.index] = false
+        self.generations[key.index] = self.generations[key.index] + 1u32
+        self.next_free[key.index] = self.free_head
+        self.free_head = key.index
+        self.len = self.len - 1u32
+        return true
+    }
+
+    /// Get number of objects
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    /// Check if empty
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    /// Get capacity
+    pub fn capacity(&self) -> u32 {
+        return self.capacity
+    }
+
+    /// Clear all objects
+    ///
+    /// Calls Drop on all contained values.
+    /// Increments generations so old keys become invalid.
+    pub fn clear(&var self) {
+        var i: u32 = 0u32
+        while i < self.capacity {
+            if self.occupied[i] {
+                // Call Drop on the value before releasing the slot
+                let ptr: *T = (*T)(self.values + i * self.value_size)
+                @drop_in_place(ptr)
+                self.occupied[i] = false
+                self.generations[i] = self.generations[i] + 1u32
+            }
+            i = i + 1u32
+        }
+
+        // Rebuild free list
+        var j: u32 = 0u32
+        while j < self.capacity - 1u32 {
+            self.next_free[j] = j + 1u32
+            j = j + 1u32
+        }
+        self.next_free[self.capacity - 1u32] = 0xFFFFFFFFu32
+        self.free_head = 0u32
+        self.len = 0u32
+    }
+}
+
+impl<T> Drop for SlotMapFixed<T> {
+    fn drop(&var self) {
+        if self.values != null {
+            // Call Drop on all occupied values before freeing memory
+            var i: u32 = 0u32
+            while i < self.capacity {
+                if self.occupied[i] {
+                    let ptr: *T = (*T)(self.values + i * self.value_size)
+                    @drop_in_place(ptr)
+                }
+                i = i + 1u32
+            }
+
+            let value_bytes: u32 = self.capacity * self.value_size
+            let gen_bytes: u32 = self.capacity * 4u32
+            let free_bytes: u32 = self.capacity * 4u32
+            let occ_bytes: u32 = self.capacity
+            unsafe {
+                FreeMem(self.values, value_bytes)
+                FreeMem((*u8)self.generations, gen_bytes)
+                FreeMem((*u8)self.next_free, free_bytes)
+                FreeMem((*u8)self.occupied, occ_bytes)
+            }
+            self.values = null
+            self.generations = null
+            self.next_free = null
+            self.occupied = null
+            self.capacity = 0u32
+            self.len = 0u32
+        }
+    }
+}

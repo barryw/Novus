@@ -1,0 +1,296 @@
+// Test suite for ObjectPool<T> and ObjectPoolFixed<T>
+
+from std::collections::freelist import ObjectPool, ObjectPoolFixed
+from std::core import Option
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+
+// Test struct for the pool
+struct TestItem {
+    x: u32,
+    y: u32,
+    z: u32,
+}
+
+// ============================================================================
+// ObjectPool (heap-allocated) Tests
+// ============================================================================
+
+@test("with_capacity creates pool")
+pub fn test_with_capacity() {
+    match ObjectPool::<TestItem>::with_capacity(64) {
+        Option::Some(pool) => {
+            expect_eq_u32(pool.capacity(), 64, "capacity should be 64")
+            expect_eq_u32(pool.allocated(), 0, "none allocated yet")
+            expect_eq_u32(pool.available(), 64, "all available")
+            expect_false(pool.is_empty(), "pool is not empty (has free slots)")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("alloc returns slot")
+pub fn test_alloc() {
+    match ObjectPool::<TestItem>::with_capacity(16) {
+        Option::Some(var pool) => {
+            match pool.alloc() {
+                Option::Some(item) => {
+                    // Initialize the item
+                    item.x = 10
+                    item.y = 20
+                    item.z = 30
+
+                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
+                    expect_eq_u32(pool.available(), 15, "15 available")
+
+                    // Verify values
+                    expect_eq_u32(item.x, 10, "x should be 10")
+                    expect_eq_u32(item.y, 20, "y should be 20")
+                },
+                Option::None => fail("alloc should succeed")
+            }
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+@test("free returns slot to pool")
+pub fn test_free() {
+    match ObjectPool::<TestItem>::with_capacity(16) {
+        Option::Some(var pool) => {
+            match pool.alloc() {
+                Option::Some(item) => {
+                    item.x = 42
+                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
+
+                    pool.free(item)
+                    expect_eq_u32(pool.allocated(), 0, "0 allocated after free")
+                    expect_eq_u32(pool.available(), 16, "all available after free")
+                },
+                Option::None => fail("alloc should succeed")
+            }
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+@test("alloc reuses freed slots")
+pub fn test_reuse() {
+    match ObjectPool::<TestItem>::with_capacity(4) {
+        Option::Some(var pool) => {
+            // Allocate all slots
+            var items: [*TestItem; 4] = [(*TestItem)null, (*TestItem)null, (*TestItem)null, (*TestItem)null]
+
+            var i: u32 = 0
+            while i < 4 {
+                match pool.alloc() {
+                    Option::Some(item) => {
+                        items[i] = item
+                        item.x = i
+                    },
+                    Option::None => fail("alloc should succeed")
+                }
+                i = i + 1
+            }
+
+            expect_eq_u32(pool.allocated(), 4, "all allocated")
+
+            // Free slot 1
+            pool.free(items[1])
+            expect_eq_u32(pool.allocated(), 3, "3 allocated")
+
+            // Allocate again - should get the freed slot
+            match pool.alloc() {
+                Option::Some(item) => {
+                    expect_eq_u32(pool.allocated(), 4, "back to 4 allocated")
+                    // The slot should be the same as items[1]
+                    // (Free list is LIFO)
+                },
+                Option::None => fail("realloc should succeed")
+            }
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+@test("alloc on exhausted pool returns None")
+pub fn test_exhausted() {
+    match ObjectPool::<TestItem>::with_capacity(2) {
+        Option::Some(var pool) => {
+            pool.alloc()
+            pool.alloc()
+
+            expect_true(pool.is_empty(), "pool should be exhausted")
+
+            match pool.alloc() {
+                Option::Some(_) => fail("should return None when exhausted"),
+                Option::None => { }  // Expected
+            }
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+@test("reset marks all slots as free")
+pub fn test_reset() {
+    match ObjectPool::<TestItem>::with_capacity(8) {
+        Option::Some(var pool) => {
+            // Allocate some slots
+            pool.alloc()
+            pool.alloc()
+            pool.alloc()
+
+            expect_eq_u32(pool.allocated(), 3, "3 allocated")
+
+            pool.reset()
+            expect_eq_u32(pool.allocated(), 0, "0 allocated after reset")
+            expect_eq_u32(pool.available(), 8, "all available after reset")
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+@test("contains checks pool membership")
+pub fn test_contains() {
+    match ObjectPool::<TestItem>::with_capacity(4) {
+        Option::Some(var pool) => {
+            match pool.alloc() {
+                Option::Some(item) => {
+                    expect_true(pool.contains(item), "allocated item should be in pool")
+                },
+                Option::None => fail("alloc should succeed")
+            }
+
+            // Create a pointer not from the pool
+            var fake: TestItem = TestItem { x: 0, y: 0, z: 0 }
+            expect_false(pool.contains(&fake), "stack item should not be in pool")
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}
+
+// ============================================================================
+// ObjectPoolFixed (heap-allocated, fixed capacity) Tests
+// ============================================================================
+
+@test("fixed with_capacity creates pool")
+pub fn test_fixed_with_capacity() {
+    match ObjectPoolFixed::<TestItem>::with_capacity(32) {
+        Option::Some(pool) => {
+            expect_eq_u32(pool.capacity(), 32, "capacity should be 32")
+            expect_eq_u32(pool.allocated(), 0, "none allocated")
+            expect_eq_u32(pool.available(), 32, "all available")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed alloc and free work")
+pub fn test_fixed_alloc_free() {
+    match ObjectPoolFixed::<TestItem>::with_capacity(8) {
+        Option::Some(var pool) => {
+            match pool.alloc() {
+                Option::Some(item) => {
+                    item.x = 100
+                    item.y = 200
+                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
+
+                    pool.free(item)
+                    expect_eq_u32(pool.allocated(), 0, "0 after free")
+                },
+                Option::None => fail("alloc should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed exhaustion returns None")
+pub fn test_fixed_exhaustion() {
+    match ObjectPoolFixed::<TestItem>::with_capacity(2) {
+        Option::Some(var pool) => {
+            pool.alloc()
+            pool.alloc()
+
+            expect_true(pool.is_empty(), "pool should be exhausted")
+
+            match pool.alloc() {
+                Option::Some(_) => fail("should return None when exhausted"),
+                Option::None => { }
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed reset clears allocations")
+pub fn test_fixed_reset() {
+    match ObjectPoolFixed::<TestItem>::with_capacity(4) {
+        Option::Some(var pool) => {
+            pool.alloc()
+            pool.alloc()
+            expect_eq_u32(pool.allocated(), 2, "2 allocated")
+
+            pool.reset()
+            expect_eq_u32(pool.allocated(), 0, "0 after reset")
+            expect_eq_u32(pool.available(), 4, "all available")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed get accesses by index")
+pub fn test_fixed_get() {
+    match ObjectPoolFixed::<TestItem>::with_capacity(4) {
+        Option::Some(var pool) => {
+            // Allocate all 4 slots to get predictable indices
+            // First alloc returns index 3 (LIFO stack), then 2, 1, 0
+            pool.alloc()  // index 3
+            pool.alloc()  // index 2
+            pool.alloc()  // index 1
+
+            match pool.alloc() {
+                Option::Some(item) => {
+                    item.x = 42  // This is index 0
+                },
+                Option::None => fail("alloc should succeed")
+            }
+
+            // Now get(0) should return the item we just set
+            match pool.get(0) {
+                Option::Some(ref_item) => {
+                    expect_eq_u32(ref_item.x, 42, "should access item at index 0")
+                },
+                Option::None => fail("get(0) should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+// ============================================================================
+// Stress Tests
+// ============================================================================
+
+@test("allocate and free many times")
+pub fn test_stress() {
+    match ObjectPool::<TestItem>::with_capacity(32) {
+        Option::Some(var pool) => {
+            // Allocate, free, repeat many times
+            var i: u32 = 0
+            while i < 100 {
+                match pool.alloc() {
+                    Option::Some(item) => {
+                        item.x = i
+                        pool.free(item)
+                    },
+                    Option::None => fail("alloc should succeed")
+                }
+                i = i + 1
+            }
+
+            expect_eq_u32(pool.allocated(), 0, "all freed")
+            expect_eq_u32(pool.available(), 32, "all available")
+        },
+        Option::None => fail("with_capacity should succeed")
+    }
+}

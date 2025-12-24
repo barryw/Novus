@@ -5269,6 +5269,10 @@ public partial class CCodeGenerator
                 EmitInlineAsm(inlineAsm);
                 break;
 
+            case IrDropInPlace dropInPlace:
+                EmitDropInPlaceInstruction(dropInPlace);
+                break;
+
             default:
                 // Unhandled instruction type - emit a comment for debugging.
                 // All standard IR instructions should be handled in the cases above.
@@ -8986,6 +8990,7 @@ public partial class CCodeGenerator
         {
             IrConstant constant => EmitIntegerConstant(constant),
             IrSizeOf sizeOf => EmitSizeOf(sizeOf),
+            IrZeroed zeroed => EmitZeroed(zeroed),
             IrBoolConstant boolConst => boolConst.Value ? "true" : "false",
             IrFloatConstant floatConst => EmitFloatConstant(floatConst),
             IrFixedConstant fixedConst => EmitFixedConstant(fixedConst),
@@ -9666,6 +9671,111 @@ public partial class CCodeGenerator
         // Fallback to C's sizeof() for types we can't compute
         var typeName = GetCType(sizeOf.TargetType);
         return $"sizeof({typeName})";
+    }
+
+    /// <summary>
+    /// Emit a zeroed value of the given type.
+    /// For primitives, returns the zero value (0, false, null).
+    /// For structs/arrays, generates a compound literal with memset to zero.
+    /// </summary>
+    internal string EmitZeroed(IrZeroed zeroed)
+    {
+        var targetType = zeroed.TargetType;
+
+        // For primitives, just return the zero value
+        if (targetType is IrIntType)
+        {
+            return "0";
+        }
+        if (targetType is IrBoolType)
+        {
+            return "false";
+        }
+        if (targetType is IrPointerType)
+        {
+            return "NULL";
+        }
+        if (targetType is IrFloatType)
+        {
+            return "0.0";
+        }
+        if (targetType is IrFixedType)
+        {
+            return "0";
+        }
+
+        // For structs and arrays, use a compound literal with zero initialization
+        // C99 allows: (Type){0} to zero-initialize a struct
+        var cTypeName = GetCType(targetType);
+
+        // For struct types, emit a zero-initialized compound literal
+        // VBCC and C99 support (Type){0} for zero initialization
+        return $"(({cTypeName}){{0}})";
+    }
+
+    /// <summary>
+    /// Emit a drop_in_place call. This invokes the Drop trait on the value at the pointer.
+    /// If the type doesn't implement Drop, this is a no-op (returns empty comment).
+    /// </summary>
+    internal string EmitDropInPlace(IrDropInPlace dropInPlace)
+    {
+        var elementType = dropInPlace.ElementType;
+
+        // Check if the type implements Drop
+        if (!_module.TypeImplementsDrop(elementType))
+        {
+            // No Drop implementation - this is a no-op
+            return "((void)0)";
+        }
+
+        // Get the Drop method name based on type
+        string dropMethodName;
+        if (elementType is IrStructType st)
+        {
+            var typeName = st.CacheKey ?? st.StructName;
+            dropMethodName = $"{typeName}_Drop_drop";
+        }
+        else if (elementType is IrEnumType et)
+        {
+            // Enums with droppable payloads need special handling
+            // For now, we don't support @drop_in_place on enums directly
+            // The user should use match to extract and drop payloads
+            return "((void)0)";
+        }
+        else if (elementType is IrTupleType)
+        {
+            // Tuples need inline element dropping - not supported via @drop_in_place
+            // The user should destructure and drop elements manually
+            return "((void)0)";
+        }
+        else
+        {
+            // Other types don't have Drop
+            return "((void)0)";
+        }
+
+        // Emit the drop call: TypeName_Drop_drop(ptr)
+        var ptrExpr = EmitValue(dropInPlace.Pointer);
+        return $"{dropMethodName}({ptrExpr})";
+    }
+
+    /// <summary>
+    /// Emit a drop_in_place instruction as a statement with source location info.
+    /// </summary>
+    private void EmitDropInPlaceInstruction(IrDropInPlace dropInPlace)
+    {
+        // Emit source location if available
+        if (dropInPlace.Location != null)
+        {
+            var loc = dropInPlace.Location;
+            _output.AppendLine($"#line {loc.Line} \"{EscapeCString(loc.FilePath)}\"");
+        }
+
+        // Get the drop call expression
+        var dropExpr = EmitDropInPlace(dropInPlace);
+
+        // Emit as a statement
+        _output.AppendLine($"    {dropExpr};");
     }
 
     /// <summary>

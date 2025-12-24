@@ -9245,6 +9245,52 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return IrIntType.U32;
     }
 
+    public override IrType? VisitZeroedExpr([NotNull] NovusParser.ZeroedExprContext context)
+    {
+        // @zeroed(Type) returns a zero-initialized value of that type
+        var typeCtx = context.type();
+        var targetType = ParseType(typeCtx);
+
+        if (targetType == null)
+        {
+            var location = new SourceLocation(_filePath,
+                typeCtx.Start.Line, typeCtx.Start.Column, 0, "");
+            _diagnostics.ReportError("E0054",
+                $"could not determine type for @zeroed",
+                location);
+            return null;
+        }
+
+        // The result type is the type being zeroed
+        return targetType;
+    }
+
+    public override IrType? VisitDropInPlaceExpr([NotNull] NovusParser.DropInPlaceExprContext context)
+    {
+        // @drop_in_place(ptr) calls Drop on the value at the pointer
+        var exprCtx = context.expression();
+        var exprType = Visit(exprCtx);
+
+        if (exprType == null)
+        {
+            return IrVoidType.Instance;
+        }
+
+        // The expression must be a pointer type or mutable reference
+        if (exprType is not IrPointerType && exprType is not IrMutReferenceType)
+        {
+            var location = new SourceLocation(_filePath,
+                exprCtx.Start.Line, exprCtx.Start.Column, 0, "");
+            _diagnostics.ReportError("E0058",
+                $"@drop_in_place requires a pointer or mutable reference type, got {exprType}",
+                location);
+            return IrVoidType.Instance;
+        }
+
+        // Return void type - drop_in_place is a statement expression
+        return IrVoidType.Instance;
+    }
+
     public override IrType? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
     {
         var text = context.FLOAT_LITERAL().GetText();

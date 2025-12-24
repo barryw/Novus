@@ -49,24 +49,14 @@ pub struct VecDeque<T> {
 impl<T> VecDeque<T> {
     /// Create an empty VecDeque with zero capacity
     pub fn new() -> VecDeque<T> {
-        return VecDeque {
-            ptr: null,
-            head: 0u32,
-            len: 0u32,
-            capacity: 0u32,
-        }
+        return @zeroed(VecDeque<T>)
     }
 
     /// Create a VecDeque with specified initial capacity
     /// Returns None if memory allocation fails
     pub fn with_capacity(capacity: u32) -> Option<VecDeque<T>> {
         if capacity == 0u32 {
-            return Option::Some(VecDeque {
-                ptr: null,
-                head: 0u32,
-                len: 0u32,
-                capacity: 0u32,
-            })
+            return Option::Some(@zeroed(VecDeque<T>))
         }
 
         let element_size: u32 = @sizeof(T)

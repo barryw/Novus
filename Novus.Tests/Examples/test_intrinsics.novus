@@ -1,0 +1,90 @@
+// Test suite for @zeroed and @drop_in_place intrinsics
+
+from std::ffi::dos import Dos
+from std::core import Option
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+
+// A simple struct to test zeroing
+struct Point {
+    x: i32,
+    y: i32,
+    z: i32,
+}
+
+// A simple resource struct that implements Drop for testing
+// Uses a value field instead of pointer to avoid codegen issues
+struct Resource {
+    id: u32,
+    active: bool,
+}
+
+// Static variable to track if drop was called (workaround for pointer issue)
+static var drop_called: bool = false
+
+impl Drop for Resource {
+    fn drop(&var self) {
+        // Mark drop as called
+        drop_called = true
+        // Mark resource as inactive
+        self.active = false
+    }
+}
+
+// ============================================================================
+// @zeroed Tests
+// ============================================================================
+
+@test("zeroed primitive u32")
+pub fn test_zeroed_u32() {
+    let val: u32 = @zeroed(u32)
+    expect_eq_u32(val, 0, "zeroed u32 should be 0")
+}
+
+@test("zeroed primitive i32")
+pub fn test_zeroed_i32() {
+    let val: i32 = @zeroed(i32)
+    expect_eq_u32((u32)val, 0, "zeroed i32 should be 0")
+}
+
+@test("zeroed bool")
+pub fn test_zeroed_bool() {
+    let val: bool = @zeroed(bool)
+    expect_false(val, "zeroed bool should be false")
+}
+
+@test("zeroed pointer")
+pub fn test_zeroed_pointer() {
+    let ptr: *u32 = @zeroed(*u32)
+    expect_true(ptr == null, "zeroed pointer should be null")
+}
+
+@test("zeroed struct")
+pub fn test_zeroed_struct() {
+    let p: Point = @zeroed(Point)
+    expect_eq_u32((u32)p.x, 0, "zeroed Point.x should be 0")
+    expect_eq_u32((u32)p.y, 0, "zeroed Point.y should be 0")
+    expect_eq_u32((u32)p.z, 0, "zeroed Point.z should be 0")
+}
+
+// ============================================================================
+// @drop_in_place Tests
+// ============================================================================
+
+@test("drop_in_place calls Drop")
+pub fn test_drop_in_place() {
+    // Reset static flag
+    drop_called = false
+
+    // Create a resource
+    var resource: Resource = Resource { id: 42, active: true }
+
+    expect_false(drop_called, "drop_called should be false initially")
+    expect_true(resource.active, "resource should be active initially")
+
+    // Call drop_in_place - should call Resource's drop()
+    @drop_in_place(&var resource)
+
+    expect_true(drop_called, "drop_called should be true after drop_in_place")
+    expect_false(resource.active, "resource.active should be false after drop")
+}
+

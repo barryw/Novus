@@ -1,0 +1,332 @@
+// Test suite for RingBuffer<T> and RingBufferPow2<T>
+
+from std::collections::ringbuffer import RingBuffer, RingBufferPow2
+from std::core import Option
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+
+// ============================================================================
+// RingBuffer Basic Tests
+// ============================================================================
+
+@test("with_capacity creates buffer")
+pub fn test_with_capacity() {
+    match RingBuffer::<u32>::with_capacity(16) {
+        Option::Some(buffer) => {
+            expect_true(buffer.is_empty(), "should be empty")
+            expect_false(buffer.is_full(), "should not be full")
+            expect_eq_u32(buffer.len(), 0, "len should be 0")
+            expect_eq_u32(buffer.capacity(), 16, "capacity should be 16")
+            expect_eq_u32(buffer.available(), 16, "available should be 16")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("push_back adds elements")
+pub fn test_push_back() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            expect_true(buffer.push_back(10), "first push should succeed")
+            expect_eq_u32(buffer.len(), 1, "len should be 1")
+
+            expect_true(buffer.push_back(20), "second push should succeed")
+            expect_eq_u32(buffer.len(), 2, "len should be 2")
+
+            expect_true(buffer.push_back(30), "third push should succeed")
+            expect_eq_u32(buffer.len(), 3, "len should be 3")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("pop_front removes elements in FIFO order")
+pub fn test_pop_front() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            buffer.push_back(10)
+            buffer.push_back(20)
+            buffer.push_back(30)
+
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 10, "first pop should be 10"),
+                Option::None => fail("should not be empty")
+            }
+
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 20, "second pop should be 20"),
+                Option::None => fail("should not be empty")
+            }
+
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 30, "third pop should be 30"),
+                Option::None => fail("should not be empty")
+            }
+
+            expect_true(buffer.is_empty(), "should be empty after all pops")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("pop_front on empty returns None")
+pub fn test_pop_empty() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            match buffer.pop_front() {
+                Option::Some(_) => fail("should return None"),
+                Option::None => { }  // Expected
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("push_back on full returns false")
+pub fn test_push_full() {
+    match RingBuffer::<u32>::with_capacity(4) {
+        Option::Some(var buffer) => {
+            buffer.push_back(1)
+            buffer.push_back(2)
+            buffer.push_back(3)
+            buffer.push_back(4)
+
+            expect_true(buffer.is_full(), "should be full")
+            expect_false(buffer.push_back(5), "push to full buffer should fail")
+            expect_eq_u32(buffer.len(), 4, "len should still be 4")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("front peeks at first element")
+pub fn test_front() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            match buffer.front() {
+                Option::Some(_) => fail("empty buffer front should be None"),
+                Option::None => { }
+            }
+
+            buffer.push_back(42)
+            buffer.push_back(99)
+
+            match buffer.front() {
+                Option::Some(val) => expect_eq_u32(*val, 42, "front should be 42"),
+                Option::None => fail("front should not be None")
+            }
+
+            // Front should not remove the element
+            expect_eq_u32(buffer.len(), 2, "len should still be 2")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("back peeks at last element")
+pub fn test_back() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            match buffer.back() {
+                Option::Some(_) => fail("empty buffer back should be None"),
+                Option::None => { }
+            }
+
+            buffer.push_back(42)
+            buffer.push_back(99)
+
+            match buffer.back() {
+                Option::Some(val) => expect_eq_u32(*val, 99, "back should be 99"),
+                Option::None => fail("back should not be None")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("clear empties the buffer")
+pub fn test_clear() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            buffer.push_back(1)
+            buffer.push_back(2)
+            buffer.push_back(3)
+
+            buffer.clear()
+            expect_true(buffer.is_empty(), "should be empty after clear")
+            expect_eq_u32(buffer.len(), 0, "len should be 0")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("wrap around works correctly")
+pub fn test_wrap_around() {
+    match RingBuffer::<u32>::with_capacity(4) {
+        Option::Some(var buffer) => {
+            // Fill the buffer
+            buffer.push_back(1)
+            buffer.push_back(2)
+            buffer.push_back(3)
+            buffer.push_back(4)
+
+            // Pop two elements (head moves forward)
+            buffer.pop_front()
+            buffer.pop_front()
+
+            // Push two more (tail wraps around)
+            buffer.push_back(5)
+            buffer.push_back(6)
+
+            // Should get: 3, 4, 5, 6
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 3, "should be 3"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 4, "should be 4"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 5, "should be 5"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 6, "should be 6"),
+                Option::None => fail("should not be empty")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("get accesses elements by logical index")
+pub fn test_get() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            buffer.push_back(10)
+            buffer.push_back(20)
+            buffer.push_back(30)
+
+            match buffer.get(0) {
+                Option::Some(val) => expect_eq_u32(*val, 10, "index 0 should be 10"),
+                Option::None => fail("index 0 should exist")
+            }
+
+            match buffer.get(1) {
+                Option::Some(val) => expect_eq_u32(*val, 20, "index 1 should be 20"),
+                Option::None => fail("index 1 should exist")
+            }
+
+            match buffer.get(2) {
+                Option::Some(val) => expect_eq_u32(*val, 30, "index 2 should be 30"),
+                Option::None => fail("index 2 should exist")
+            }
+
+            match buffer.get(3) {
+                Option::Some(_) => fail("index 3 should not exist"),
+                Option::None => { }
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("skip discards elements from front")
+pub fn test_skip() {
+    match RingBuffer::<u32>::with_capacity(8) {
+        Option::Some(var buffer) => {
+            buffer.push_back(1)
+            buffer.push_back(2)
+            buffer.push_back(3)
+            buffer.push_back(4)
+            buffer.push_back(5)
+
+            let skipped: u32 = buffer.skip(2)
+            expect_eq_u32(skipped, 2, "should skip 2")
+            expect_eq_u32(buffer.len(), 3, "len should be 3")
+
+            match buffer.front() {
+                Option::Some(val) => expect_eq_u32(*val, 3, "front should be 3"),
+                Option::None => fail("should have elements")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+// ============================================================================
+// RingBufferPow2 Tests (optimized for power-of-2)
+// ============================================================================
+
+@test("pow2 buffer works correctly")
+pub fn test_pow2_basic() {
+    match RingBufferPow2::<u32>::with_capacity(16) {
+        Option::Some(var buffer) => {
+            expect_true(buffer.is_empty(), "should be empty")
+            expect_eq_u32(buffer.capacity(), 16, "capacity should be 16")
+
+            buffer.push_back(100)
+            buffer.push_back(200)
+
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 100, "should be 100"),
+                Option::None => fail("should not be empty")
+            }
+
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 200, "should be 200"),
+                Option::None => fail("should not be empty")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("pow2 rounds up to power of 2")
+pub fn test_pow2_roundup() {
+    // Request 10, should get 16 (next power of 2)
+    match RingBufferPow2::<u32>::with_capacity(10) {
+        Option::Some(buffer) => {
+            expect_eq_u32(buffer.capacity(), 16, "capacity should be rounded to 16")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("pow2 wrap around with bitmask")
+pub fn test_pow2_wrap() {
+    match RingBufferPow2::<u32>::with_capacity(4) {
+        Option::Some(var buffer) => {
+            // Fill, pop some, push more - exercises bitmask wrap
+            buffer.push_back(1)
+            buffer.push_back(2)
+            buffer.push_back(3)
+            buffer.push_back(4)
+
+            buffer.pop_front()
+            buffer.pop_front()
+
+            buffer.push_back(5)
+            buffer.push_back(6)
+
+            // Verify order
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 3, "should be 3"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 4, "should be 4"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 5, "should be 5"),
+                Option::None => fail("should not be empty")
+            }
+            match buffer.pop_front() {
+                Option::Some(val) => expect_eq_u32(val, 6, "should be 6"),
+                Option::None => fail("should not be empty")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}

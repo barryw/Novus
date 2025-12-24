@@ -37,18 +37,14 @@ impl<T, const N: u32> SmallVec<T, N> {
     /// Create a new empty SmallVec
     /// First push will allocate N elements of capacity
     pub fn new() -> SmallVec<T, N> {
-        return SmallVec {
-            ptr: null,
-            len: 0,
-            capacity: 0,
-        }
+        return @zeroed(SmallVec<T, N>)
     }
 
     /// Create a SmallVec with pre-allocated capacity
     /// Uses the const generic N as the initial capacity
     pub fn with_capacity() -> Result<SmallVec<T, N>, ExecError> {
         if N == 0 {
-            return Result::Ok(SmallVec { ptr: null, len: 0, capacity: 0 })
+            return Result::Ok(@zeroed(SmallVec<T, N>))
         }
 
         let element_size: u32 = @sizeof(T)

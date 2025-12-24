@@ -432,6 +432,8 @@ primaryExpression
     | KW_NULL                                      # NullLiteral
     | KW_SELF                                      # SelfExpr
     | AT_SIGN? KW_SIZEOF LPAREN type RPAREN       # SizeofExpr
+    | AT_SIGN? KW_ZEROED LPAREN type RPAREN       # ZeroedExpr
+    | AT_SIGN? KW_DROP_IN_PLACE LPAREN expression RPAREN  # DropInPlaceExpr
     | F_STRING_LITERAL                             # InterpolatedStringLiteral
     | CHAR_LITERAL                                 # CharLiteral
     | STRING_LITERAL                               # StringLiteral

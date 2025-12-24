@@ -44,11 +44,7 @@ pub struct BitSet {
 impl BitSet {
     /// Create an empty BitSet with zero capacity
     pub fn new() -> BitSet {
-        return BitSet {
-            data: null,
-            num_bits: 0u32,
-            num_words: 0u32,
-        }
+        return @zeroed(BitSet)
     }
 
     /// Create a BitSet with capacity for num_bits
@@ -57,11 +53,7 @@ impl BitSet {
     /// Returns None if memory allocation fails.
     pub fn with_capacity(num_bits: u32) -> Option<BitSet> {
         if num_bits == 0u32 {
-            return Option::Some(BitSet {
-                data: null,
-                num_bits: 0u32,
-                num_words: 0u32,
-            })
+            return Option::Some(@zeroed(BitSet))
         }
 
         // Calculate number of u32 words needed (round up)

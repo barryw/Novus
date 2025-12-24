@@ -331,6 +331,15 @@ public class IrValidator
                 // (correctness is checked at assembly time)
                 break;
 
+            case IrDropInPlace dropInPlace:
+                // Validate that the value is a pointer or mutable reference type
+                if (dropInPlace.Pointer.Type is not IrPointerType && dropInPlace.Pointer.Type is not IrMutReferenceType)
+                {
+                    AddError($"@drop_in_place requires a pointer or mutable reference type, got {dropInPlace.Pointer.Type}");
+                }
+                ValidateValue(dropInPlace.Pointer);
+                break;
+
             case IrStructuredForLoopHint:
                 // Loop hints are metadata - always valid
                 break;
@@ -814,6 +823,7 @@ public class IrValidator
                 break;
 
             case IrSizeOf:
+            case IrZeroed:
                 // These are compile-time constant expressions - always valid
                 break;
 

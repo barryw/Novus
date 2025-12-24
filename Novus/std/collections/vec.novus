@@ -45,11 +45,7 @@ pub struct Vec<T> {
 impl<T> Vec<T> {
     // Create an empty vector with zero capacity
     pub fn new() -> Vec<T> {
-        return Vec {
-            ptr: null,
-            len: 0,
-            capacity: 0,
-        }
+        return @zeroed(Vec<T>)
     }
 
     /// Create a vector with pre-allocated capacity
@@ -57,7 +53,7 @@ impl<T> Vec<T> {
     /// Returns None if allocation fails. For error details, use `try_with_capacity`.
     pub fn with_capacity(capacity: u32) -> Option<Vec<T>> {
         if capacity == 0 {
-            return Option::Some(Vec { ptr: null, len: 0, capacity: 0 })
+            return Option::Some(@zeroed(Vec<T>))
         }
 
         let element_size: u32 = @sizeof(T)

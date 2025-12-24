@@ -1,0 +1,429 @@
+// Test suite for SlotMap<T> and SlotMapFixed<T>
+
+from std::collections::slotmap import SlotMap, SlotMapFixed, SlotKey
+from std::core import Option
+from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+
+// Test entity for the slot map
+struct Entity {
+    x: i32,
+    y: i32,
+    health: u32,
+}
+
+// ============================================================================
+// SlotKey Tests
+// ============================================================================
+
+@test("sentinel key is detected")
+pub fn test_sentinel_key() {
+    let key: SlotKey = SlotKey::sentinel()
+    expect_true(key.is_sentinel(), "sentinel key should be detected")
+}
+
+@test("pack and unpack round-trip")
+pub fn test_pack_unpack() {
+    let key: SlotKey = SlotKey { index: 12345, generation: 42 }
+    let packed: u32 = key.pack()
+    let unpacked: SlotKey = SlotKey::unpack(packed)
+
+    expect_eq_u32(unpacked.index, 12345, "index should survive round-trip")
+    expect_eq_u32(unpacked.generation, 42, "generation should survive round-trip")
+}
+
+// ============================================================================
+// SlotMap Basic Tests
+// ============================================================================
+
+@test("new creates empty map")
+pub fn test_new() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(map) => {
+            expect_true(map.is_empty(), "should be empty")
+            expect_eq_u32(map.len(), 0, "len should be 0")
+            expect_true(map.capacity() >= 16, "should have default capacity")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("insert returns valid key")
+pub fn test_insert() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 10, y: 20, health: 100 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    expect_false(key.is_sentinel(), "key should not be sentinel")
+                    expect_eq_u32(map.len(), 1, "len should be 1")
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("get retrieves inserted value")
+pub fn test_get() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 42, y: 99, health: 50 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    match map.get(key) {
+                        Option::Some(e) => {
+                            expect_eq_u32((u32)e.x, 42, "x should be 42")
+                            expect_eq_u32((u32)e.y, 99, "y should be 99")
+                            expect_eq_u32(e.health, 50, "health should be 50")
+                        },
+                        Option::None => fail("get should find the entity")
+                    }
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("get with bad key returns None")
+pub fn test_get_bad_key() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let fake_key: SlotKey = SlotKey { index: 999, generation: 0 }
+
+            match map.get(fake_key) {
+                Option::Some(_) => fail("should return None for invalid key"),
+                Option::None => { }  // Expected
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("contains checks key validity")
+pub fn test_contains() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 0, y: 0, health: 0 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    expect_true(map.contains(key), "should contain inserted key")
+
+                    let fake_key: SlotKey = SlotKey { index: 999, generation: 0 }
+                    expect_false(map.contains(fake_key), "should not contain fake key")
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("remove invalidates key")
+pub fn test_remove() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 1, y: 2, health: 3 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    expect_true(map.contains(key), "should contain before remove")
+
+                    let removed: bool = map.remove(key)
+                    expect_true(removed, "remove should succeed")
+                    expect_eq_u32(map.len(), 0, "len should be 0")
+
+                    expect_false(map.contains(key), "should not contain after remove")
+
+                    match map.get(key) {
+                        Option::Some(_) => fail("get after remove should return None"),
+                        Option::None => { }  // Expected
+                    }
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("generation prevents stale access")
+pub fn test_generation() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity1: Entity = Entity { x: 1, y: 1, health: 1 }
+
+            match map.insert(entity1) {
+                Option::Some(key1) => {
+                    // Remove entity1
+                    map.remove(key1)
+
+                    // Insert a new entity (reuses the slot)
+                    let entity2: Entity = Entity { x: 2, y: 2, health: 2 }
+                    match map.insert(entity2) {
+                        Option::Some(key2) => {
+                            // Old key should be invalid (generation mismatch)
+                            expect_false(map.contains(key1), "old key should be invalid")
+
+                            // New key should work
+                            expect_true(map.contains(key2), "new key should be valid")
+
+                            match map.get(key2) {
+                                Option::Some(e) => {
+                                    expect_eq_u32((u32)e.x, 2, "should get new entity")
+                                },
+                                Option::None => fail("should find new entity")
+                            }
+                        },
+                        Option::None => fail("second insert should succeed")
+                    }
+                },
+                Option::None => fail("first insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("get_mut allows modification")
+pub fn test_get_mut() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 0, y: 0, health: 100 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    match map.get_mut(key) {
+                        Option::Some(ptr) => {
+                            ptr.health = 50
+                            ptr.x = 99
+                        },
+                        Option::None => fail("get_mut should succeed")
+                    }
+
+                    // Verify modification
+                    match map.get(key) {
+                        Option::Some(e) => {
+                            expect_eq_u32(e.health, 50, "health should be modified")
+                            expect_eq_u32((u32)e.x, 99, "x should be modified")
+                        },
+                        Option::None => fail("get should succeed")
+                    }
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("take removes and returns value")
+pub fn test_take() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 42, y: 0, health: 0 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    match map.take(key) {
+                        Option::Some(e) => {
+                            expect_eq_u32((u32)e.x, 42, "should get entity value")
+                        },
+                        Option::None => fail("take should succeed")
+                    }
+
+                    expect_eq_u32(map.len(), 0, "len should be 0 after take")
+                    expect_false(map.contains(key), "key should be invalid after take")
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("clear invalidates all keys")
+pub fn test_clear() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let e1: Entity = Entity { x: 1, y: 0, health: 0 }
+            let e2: Entity = Entity { x: 2, y: 0, health: 0 }
+
+            var key1: SlotKey = SlotKey::sentinel()
+            var key2: SlotKey = SlotKey::sentinel()
+
+            match map.insert(e1) {
+                Option::Some(k) => { key1 = k },
+                Option::None => fail("insert should succeed")
+            }
+            match map.insert(e2) {
+                Option::Some(k) => { key2 = k },
+                Option::None => fail("insert should succeed")
+            }
+
+            expect_eq_u32(map.len(), 2, "len should be 2")
+
+            map.clear()
+
+            expect_eq_u32(map.len(), 0, "len should be 0 after clear")
+            expect_false(map.contains(key1), "key1 should be invalid")
+            expect_false(map.contains(key2), "key2 should be invalid")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("auto-grows when needed")
+pub fn test_grow() {
+    match SlotMap::<Entity>::with_capacity(2) {
+        Option::Some(var map) => {
+            // Insert more than initial capacity
+            var i: u32 = 0
+            while i < 10 {
+                let e: Entity = Entity { x: (i32)i, y: 0, health: 0 }
+                match map.insert(e) {
+                    Option::Some(_) => { },
+                    Option::None => fail("insert should succeed after grow")
+                }
+                i = i + 1
+            }
+
+            expect_eq_u32(map.len(), 10, "should have 10 entities")
+            expect_true(map.capacity() >= 10, "capacity should have grown")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+// ============================================================================
+// SlotMapFixed Tests
+// ============================================================================
+
+@test("fixed with_capacity creates empty map")
+pub fn test_fixed_with_capacity() {
+    match SlotMapFixed::<Entity>::with_capacity(16) {
+        Option::Some(map) => {
+            expect_true(map.is_empty(), "should be empty")
+            expect_eq_u32(map.len(), 0, "len should be 0")
+            expect_eq_u32(map.capacity(), 16, "capacity should be 16")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed insert and get work")
+pub fn test_fixed_insert_get() {
+    match SlotMapFixed::<Entity>::with_capacity(8) {
+        Option::Some(var map) => {
+            let entity: Entity = Entity { x: 77, y: 88, health: 99 }
+
+            match map.insert(entity) {
+                Option::Some(key) => {
+                    match map.get(key) {
+                        Option::Some(e) => {
+                            expect_eq_u32((u32)e.x, 77, "x should be 77")
+                            expect_eq_u32(e.health, 99, "health should be 99")
+                        },
+                        Option::None => fail("get should find entity")
+                    }
+                },
+                Option::None => fail("insert should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed returns None when full")
+pub fn test_fixed_full() {
+    match SlotMapFixed::<Entity>::with_capacity(2) {
+        Option::Some(var map) => {
+            let e1: Entity = Entity { x: 1, y: 0, health: 0 }
+            let e2: Entity = Entity { x: 2, y: 0, health: 0 }
+            let e3: Entity = Entity { x: 3, y: 0, health: 0 }
+
+            map.insert(e1)
+            map.insert(e2)
+
+            match map.insert(e3) {
+                Option::Some(_) => fail("should return None when full"),
+                Option::None => { }  // Expected
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+@test("fixed remove and reuse")
+pub fn test_fixed_reuse() {
+    match SlotMapFixed::<Entity>::with_capacity(2) {
+        Option::Some(var map) => {
+            let e1: Entity = Entity { x: 1, y: 0, health: 0 }
+            var key1: SlotKey = SlotKey::sentinel()
+
+            match map.insert(e1) {
+                Option::Some(k) => { key1 = k },
+                Option::None => fail("insert should succeed")
+            }
+
+            map.remove(key1)
+
+            // Should be able to insert again
+            let e2: Entity = Entity { x: 2, y: 0, health: 0 }
+            match map.insert(e2) {
+                Option::Some(key2) => {
+                    // Old key should be invalid
+                    expect_false(map.contains(key1), "old key should be invalid")
+                    expect_true(map.contains(key2), "new key should be valid")
+                },
+                Option::None => fail("insert after remove should succeed")
+            }
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}
+
+// ============================================================================
+// Iterator Tests
+// ============================================================================
+
+@test("iter visits all entries")
+pub fn test_iter() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var map) => {
+            let e1: Entity = Entity { x: 1, y: 0, health: 0 }
+            let e2: Entity = Entity { x: 2, y: 0, health: 0 }
+            let e3: Entity = Entity { x: 3, y: 0, health: 0 }
+
+            map.insert(e1)
+            map.insert(e2)
+            map.insert(e3)
+
+            var iter = map.iter()
+            var count: u32 = 0
+            var sum: i32 = 0
+
+            var done: bool = false
+            while !done {
+                match iter.next() {
+                    Option::Some(entry) => {
+                        count = count + 1
+                        sum = sum + entry.value.x
+                    },
+                    Option::None => {
+                        done = true
+                    }
+                }
+            }
+
+            expect_eq_u32(count, 3, "should iterate 3 entities")
+            expect_eq_u32((u32)sum, 6, "sum of x should be 6 (1+2+3)")
+        },
+        Option::None => fail("allocation should succeed")
+    }
+}

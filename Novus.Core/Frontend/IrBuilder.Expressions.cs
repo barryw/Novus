@@ -4341,6 +4341,76 @@ public partial class IrBuilder
         return new IrSizeOf(targetType, IrIntType.U32);
     }
 
+    public override object? VisitZeroedExpr([NotNull] NovusParser.ZeroedExprContext context)
+    {
+        // @zeroed(Type) - returns a zero-initialized value of the given type
+        var typeCtx = context.type();
+        var targetType = ParseType(typeCtx);
+
+        if (targetType == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"could not determine type for @zeroed",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Return an IrZeroed node that the code generator will handle appropriately
+        return new IrZeroed(targetType);
+    }
+
+    public override object? VisitDropInPlaceExpr([NotNull] NovusParser.DropInPlaceExprContext context)
+    {
+        // @drop_in_place(ptr) - calls Drop on the value at the pointer location
+        var exprCtx = context.expression();
+        var ptrValue = Visit(exprCtx) as IrValue;
+
+        if (ptrValue == null)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"could not evaluate expression for @drop_in_place",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Get the element type from pointer or mutable reference
+        IrType elementType;
+        if (ptrValue.Type is IrPointerType pointerType)
+        {
+            elementType = pointerType.PointeeType;
+        }
+        else if (ptrValue.Type is IrMutReferenceType mutRefType)
+        {
+            elementType = mutRefType.PointeeType;
+        }
+        else
+        {
+            var errorLocation = GetLocation(exprCtx);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"@drop_in_place requires a pointer or mutable reference type, got {ptrValue.Type}",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Create and add the IrDropInPlace instruction to the current block
+        // This is similar to how IrCall is handled - it must be added as an instruction
+        // to actually execute when used as a statement
+        var dropInPlace = new IrDropInPlace(ptrValue, elementType);
+        dropInPlace.Location = GetLocation(context);
+        _currentBlock!.AddInstruction(dropInPlace);
+
+        // Return null since @drop_in_place is a void operation (like a void function call)
+        return null;
+    }
+
     private string ProcessEscapeSequences(string input)
     {
         // First handle hex escapes (\xNN) before other replacements
