@@ -92,6 +92,15 @@ public partial class IrBuilder
 
     public override object? VisitBlock([NotNull] NovusParser.BlockContext context)
     {
+        // Check if this block is being used as a statement (nested block)
+        // vs being the function body. Nested blocks need their own scope for drops.
+        bool isNestedBlock = context.Parent is NovusParser.StatementContext;
+
+        if (isNestedBlock)
+        {
+            PushDeferScope();
+        }
+
         IrValue? lastValue = null;
 
         foreach (var stmt in context.statement())
@@ -107,6 +116,12 @@ public partial class IrBuilder
                 // Non-expression statements clear the last value
                 lastValue = null;
             }
+        }
+
+        if (isNestedBlock)
+        {
+            // Pop scope and emit cleanup (drops) for variables declared in this block
+            PopDeferScope();
         }
 
         return lastValue;

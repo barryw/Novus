@@ -1410,6 +1410,9 @@ extern pub fn __novus_release_semaphore(sigSem: *u8)
 extern pub fn __novus_attempt_semaphore(sigSem: *u8) -> i32
 extern pub fn __novus_obtain_semaphore_shared(sigSem: *u8)
 extern pub fn __novus_attempt_semaphore_shared(sigSem: *u8) -> i32
+extern pub fn __novus_add_semaphore(sigSem: *u8)
+extern pub fn __novus_rem_semaphore(sigSem: *u8)
+extern pub fn __novus_find_semaphore(name: *u8) -> *u8
 /// Reboot the Amiga (V36)
 ///
 /// Reboot the machine. All external memory and periperals will be RESET, and

@@ -17,6 +17,7 @@ from std::ffi::exec import OpenLibrary, CloseLibrary
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, GetMsg, PutMsg, ReplyMsg
 from std::ffi::exec import InitSemaphore, ObtainSemaphore, ReleaseSemaphore, AttemptSemaphore, ObtainSemaphoreShared, AttemptSemaphoreShared
 from std::ffi::exec import __novus_init_semaphore, __novus_obtain_semaphore, __novus_release_semaphore, __novus_attempt_semaphore, __novus_obtain_semaphore_shared, __novus_attempt_semaphore_shared
+from std::ffi::exec import __novus_add_semaphore, __novus_rem_semaphore, __novus_find_semaphore
 from std::ffi::amiga_consts import MEMF_ANY, MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_LOCAL, MEMF_24BITDMA, MEMF_KICK, MEMF_CLEAR, MEMF_LARGEST, MEMF_REVERSE
 
 // ============================================================================
@@ -492,17 +493,22 @@ impl Drop for MsgPortHandle {
 /// SemaphoreHandle - RAII wrapper for Exec signal semaphores
 ///
 /// Provides mutual exclusion for shared resources between tasks.
-/// Use `obtain()` or `try_obtain()` to get a SemaphoreGuard that
-/// automatically releases the semaphore when dropped.
+/// Use `lock()` or `try_lock()` to get an exclusive SemaphoreGuard.
+/// Use `lock_shared()` or `try_lock_shared()` to get a SharedSemaphoreGuard.
 ///
-/// Example:
+/// ## Exclusive vs Shared Locks
+/// - Exclusive locks (lock/try_lock): Only one task can hold at a time
+/// - Shared locks (lock_shared/try_lock_shared): Multiple tasks can hold simultaneously,
+///   but blocks if any task holds an exclusive lock
+///
+/// ## Example
 /// ```novus
-/// from std::exec import SemaphoreHandle
+/// from std::os::exec import SemaphoreHandle
 ///
 /// fn use_shared_resource() {
 ///     match SemaphoreHandle::new() {
 ///         Some(sem) => {
-///             let guard = sem.obtain();  // Blocks until semaphore is available
+///             let guard = sem.lock()  // Blocks until semaphore is available
 ///             // Critical section - exclusive access to shared resource
 ///             // ...
 ///         }  // Semaphore automatically released here
@@ -513,11 +519,13 @@ impl Drop for MsgPortHandle {
 /// }
 /// ```
 pub struct SemaphoreHandle {
-    sem: *u8,  // Pointer to allocated semaphore (void* to avoid FFI type in header)
+    sem: *u8,       // Pointer to allocated semaphore (void* to avoid FFI type in header)
+    is_public: bool, // Whether this is a public (named) semaphore
+    owns_memory: bool, // Whether we should free the memory on drop
 }
 
 impl SemaphoreHandle {
-    /// Create a new semaphore
+    /// Create a new private semaphore
     ///
     /// Returns Some(handle) on success, None if allocation fails.
     /// The semaphore starts in the "available" state.
@@ -531,12 +539,81 @@ impl SemaphoreHandle {
             return Option::None
         }
 
-        // Initialize the semaphore - pass raw pointer, FFI declaration handles the type
+        // Initialize the semaphore
         unsafe {
             __novus_init_semaphore(sem_mem)
         }
 
-        return Option::Some(SemaphoreHandle { sem: sem_mem })
+        return Option::Some(SemaphoreHandle { sem: sem_mem, is_public: false, owns_memory: true })
+    }
+
+    /// Create a new public (named) semaphore
+    ///
+    /// Public semaphores are added to the system's semaphore list and can be
+    /// found by other tasks using `find()`. The name must remain valid for
+    /// the lifetime of the semaphore.
+    ///
+    /// Returns Some(handle) on success, None if allocation fails.
+    ///
+    /// ## Example
+    /// ```novus
+    /// // In task 1: Create a public semaphore
+    /// let sem = SemaphoreHandle::new_public("MySemaphore", 0)?
+    ///
+    /// // In task 2: Find and use the semaphore
+    /// let sem = SemaphoreHandle::find("MySemaphore")?
+    /// let guard = sem.lock()
+    /// // Critical section...
+    /// ```
+    pub fn new_public(name: *u8, priority: i8) -> Option<SemaphoreHandle> {
+        // Allocate zeroed memory for the semaphore
+        let sem_size: u32 = @sizeof(SignalSemaphore)
+        let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
+
+        // Check allocation
+        if (u32)sem_mem == 0 {
+            return Option::None
+        }
+
+        // Initialize the semaphore
+        unsafe {
+            __novus_init_semaphore(sem_mem)
+        }
+
+        // Set up the node for the public semaphore list
+        // Node layout: ln_Succ(4) + ln_Pred(4) + ln_Type(1) + ln_Pri(1) + ln_Name(4)
+        // ln_Pri is at offset 9, ln_Name is at offset 10
+        let pri_ptr: *i8 = (*i8)(sem_mem + 9u32)
+        let name_ptr: **u8 = (**u8)(sem_mem + 10u32)
+        *pri_ptr = priority
+        *name_ptr = name
+
+        // Add to public semaphore list
+        unsafe {
+            __novus_add_semaphore(sem_mem)
+        }
+
+        return Option::Some(SemaphoreHandle { sem: sem_mem, is_public: true, owns_memory: true })
+    }
+
+    /// Find an existing public semaphore by name
+    ///
+    /// Returns Some(handle) if found, None if not found.
+    /// The returned handle does NOT own the semaphore - it will not be freed
+    /// when this handle is dropped.
+    ///
+    /// ## Warning
+    /// The returned handle is a non-owning reference. The actual semaphore
+    /// owner must outlive all find() handles.
+    pub fn find(name: *u8) -> Option<SemaphoreHandle> {
+        let sem_ptr: *u8 = unsafe { __novus_find_semaphore(name) }
+
+        if (u32)sem_ptr == 0 {
+            return Option::None
+        }
+
+        // Return non-owning handle - we don't own the semaphore memory
+        return Option::Some(SemaphoreHandle { sem: sem_ptr, is_public: false, owns_memory: false })
     }
 
     /// Obtain exclusive access to the semaphore (blocking)
@@ -546,7 +623,7 @@ impl SemaphoreHandle {
     ///
     /// Semaphores can be nested - the same task can obtain the same
     /// semaphore multiple times (must release the same number of times).
-    pub fn obtain(&self) -> SemaphoreGuard {
+    pub fn lock(&self) -> SemaphoreGuard {
         unsafe {
             __novus_obtain_semaphore(self.sem)
         }
@@ -556,7 +633,7 @@ impl SemaphoreHandle {
     /// Try to obtain exclusive access without blocking
     ///
     /// Returns Some(guard) if successful, None if semaphore is held by another task.
-    pub fn try_obtain(&self) -> Option<SemaphoreGuard> {
+    pub fn try_lock(&self) -> Option<SemaphoreGuard> {
         let result = unsafe { __novus_attempt_semaphore(self.sem) }
         if result != 0 {
             return Option::Some(SemaphoreGuard { sem: self.sem })
@@ -568,30 +645,66 @@ impl SemaphoreHandle {
     ///
     /// Multiple tasks can hold shared access simultaneously.
     /// Blocks if another task holds exclusive access.
-    pub fn obtain_shared(&self) -> SemaphoreGuard {
+    ///
+    /// WARNING: Unlike exclusive locks, shared locks are NOT nestable from the
+    /// same task. Calling lock_shared() twice from the same task without
+    /// releasing the first lock will deadlock. Use lock() for nestable locking.
+    pub fn lock_shared(&self) -> SharedSemaphoreGuard {
         unsafe {
             __novus_obtain_semaphore_shared(self.sem)
         }
-        return SemaphoreGuard { sem: self.sem }
+        return SharedSemaphoreGuard { sem: self.sem }
     }
 
     /// Try to obtain shared (read) access without blocking
     ///
     /// Returns Some(guard) if successful, None if semaphore is exclusively held.
-    pub fn try_obtain_shared(&self) -> Option<SemaphoreGuard> {
+    ///
+    /// WARNING: Unlike exclusive locks, shared locks are NOT nestable from the
+    /// same task. Calling try_lock_shared() twice from the same task without
+    /// releasing the first lock may succeed but will deadlock on release.
+    pub fn try_lock_shared(&self) -> Option<SharedSemaphoreGuard> {
         let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
         if result != 0 {
-            return Option::Some(SemaphoreGuard { sem: self.sem })
+            return Option::Some(SharedSemaphoreGuard { sem: self.sem })
         }
         return Option::None
+    }
+
+    // Legacy API for backwards compatibility
+    /// Obtain exclusive access (alias for lock)
+    pub fn obtain(&self) -> SemaphoreGuard {
+        return self.lock()
+    }
+
+    /// Try to obtain exclusive access (alias for try_lock)
+    pub fn try_obtain(&self) -> Option<SemaphoreGuard> {
+        return self.try_lock()
+    }
+
+    /// Obtain shared access (alias for lock_shared)
+    pub fn obtain_shared(&self) -> SharedSemaphoreGuard {
+        return self.lock_shared()
+    }
+
+    /// Try to obtain shared access (alias for try_lock_shared)
+    pub fn try_obtain_shared(&self) -> Option<SharedSemaphoreGuard> {
+        return self.try_lock_shared()
     }
 }
 
 // Automatic cleanup for SemaphoreHandle (RAII)
 impl Drop for SemaphoreHandle {
     fn drop(&var self) {
-        if (u32)self.sem != 0 {
-            // Free the allocated semaphore memory
+        if (u32)self.sem != 0 && self.owns_memory {
+            // Remove from public list if this is a public semaphore we own
+            if self.is_public {
+                unsafe {
+                    __novus_rem_semaphore(self.sem)
+                }
+            }
+
+            // Free the semaphore memory
             let sem_size: u32 = @sizeof(SignalSemaphore)
             unsafe {
                 FreeMem(self.sem, sem_size)
@@ -601,7 +714,7 @@ impl Drop for SemaphoreHandle {
     }
 }
 
-/// SemaphoreGuard - RAII guard for automatic semaphore release
+/// SemaphoreGuard - RAII guard for exclusive semaphore access
 ///
 /// When dropped, automatically releases the semaphore.
 /// This ensures you can't forget to release the semaphore.
@@ -611,6 +724,198 @@ pub struct SemaphoreGuard {
 
 // Automatic release for SemaphoreGuard (RAII)
 impl Drop for SemaphoreGuard {
+    fn drop(&var self) {
+        if (u32)self.sem != 0 {
+            unsafe {
+                __novus_release_semaphore(self.sem)
+            }
+            self.sem = null
+        }
+    }
+}
+
+/// SharedSemaphoreGuard - RAII guard for shared (read) semaphore access
+///
+/// When dropped, automatically releases the shared lock.
+/// Multiple tasks can hold SharedSemaphoreGuard simultaneously.
+///
+/// This is a separate type from SemaphoreGuard for type safety - you can't
+/// accidentally treat shared access as exclusive access.
+pub struct SharedSemaphoreGuard {
+    sem: *u8,  // Pointer to semaphore (non-owning)
+}
+
+// Automatic release for SharedSemaphoreGuard (RAII)
+impl Drop for SharedSemaphoreGuard {
+    fn drop(&var self) {
+        if (u32)self.sem != 0 {
+            unsafe {
+                __novus_release_semaphore(self.sem)
+            }
+            self.sem = null
+        }
+    }
+}
+
+// ============================================================================
+// ScopedData<T> - Semaphore-protected data
+// ============================================================================
+
+/// ScopedData<T> - Data protected by a semaphore
+///
+/// Combines a semaphore with the data it protects. You can only access
+/// the data by first obtaining a lock, which ensures thread-safe access.
+///
+/// ## Example
+/// ```novus
+/// // Create protected counter
+/// var counter = ScopedData::<u32>::new(0)?
+///
+/// // In task 1:
+/// {
+///     var guard = counter.lock()
+///     let value = guard.get()
+///     guard.set(value + 1)
+/// }  // Lock automatically released
+///
+/// // In task 2 (read-only access):
+/// {
+///     let guard = counter.lock_shared()
+///     let value = guard.get()
+///     // Can read but not modify
+/// }
+/// ```
+pub struct ScopedData<T> {
+    sem: *u8,    // Semaphore protecting the data
+    data: T,     // The protected data
+}
+
+impl<T> ScopedData<T> {
+    /// Create new semaphore-protected data
+    ///
+    /// Returns Some(scoped_data) on success, None if semaphore allocation fails.
+    pub fn new(initial_value: T) -> Option<ScopedData<T>> {
+        // Allocate zeroed memory for the semaphore
+        let sem_size: u32 = @sizeof(SignalSemaphore)
+        let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
+
+        // Check allocation
+        if (u32)sem_mem == 0 {
+            return Option::None
+        }
+
+        // Initialize the semaphore
+        unsafe {
+            __novus_init_semaphore(sem_mem)
+        }
+
+        return Option::Some(ScopedData { sem: sem_mem, data: initial_value })
+    }
+
+    /// Lock for exclusive access
+    ///
+    /// Returns a guard that provides mutable access to the data.
+    /// The lock is released when the guard is dropped.
+    pub fn lock(&var self) -> ScopedDataGuard<T> {
+        unsafe {
+            __novus_obtain_semaphore(self.sem)
+        }
+        let data_ptr: *T = &var self.data
+        return ScopedDataGuard { sem: self.sem, data: data_ptr }
+    }
+
+    /// Try to lock for exclusive access
+    ///
+    /// Returns Some(guard) if successful, None if already locked.
+    pub fn try_lock(&var self) -> Option<ScopedDataGuard<T>> {
+        let result = unsafe { __novus_attempt_semaphore(self.sem) }
+        if result != 0 {
+            let data_ptr: *T = &var self.data
+            return Option::Some(ScopedDataGuard { sem: self.sem, data: data_ptr })
+        }
+        return Option::None
+    }
+
+    /// Lock for shared (read-only) access
+    ///
+    /// Returns a guard that provides read-only access to the data.
+    /// Multiple tasks can hold shared locks simultaneously.
+    pub fn lock_shared(&self) -> SharedScopedDataGuard<T> {
+        unsafe {
+            __novus_obtain_semaphore_shared(self.sem)
+        }
+        let data_ptr: *T = &self.data
+        return SharedScopedDataGuard { sem: self.sem, data: data_ptr }
+    }
+
+    /// Try to lock for shared (read-only) access
+    ///
+    /// Returns Some(guard) if successful, None if exclusively locked.
+    pub fn try_lock_shared(&self) -> Option<SharedScopedDataGuard<T>> {
+        let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
+        if result != 0 {
+            let data_ptr: *T = &self.data
+            return Option::Some(SharedScopedDataGuard { sem: self.sem, data: data_ptr })
+        }
+        return Option::None
+    }
+}
+
+impl<T> Drop for ScopedData<T> {
+    fn drop(&var self) {
+        if (u32)self.sem != 0 {
+            let sem_size: u32 = @sizeof(SignalSemaphore)
+            unsafe {
+                FreeMem(self.sem, sem_size)
+            }
+            self.sem = null
+        }
+    }
+}
+
+/// Guard for exclusive access to ScopedData
+pub struct ScopedDataGuard<T> {
+    sem: *u8,
+    data: *T,  // Use raw pointer to avoid codegen issues with &var T assignment
+}
+
+impl<T> ScopedDataGuard<T> {
+    /// Get the current value (copies the value)
+    pub fn get(&self) -> T {
+        return self.data[0]
+    }
+
+    /// Set a new value
+    pub fn set(&var self, value: T) {
+        self.data[0] = value
+    }
+}
+
+impl<T> Drop for ScopedDataGuard<T> {
+    fn drop(&var self) {
+        if (u32)self.sem != 0 {
+            unsafe {
+                __novus_release_semaphore(self.sem)
+            }
+            self.sem = null
+        }
+    }
+}
+
+/// Guard for shared (read-only) access to ScopedData
+pub struct SharedScopedDataGuard<T> {
+    sem: *u8,
+    data: *T,  // Use raw pointer for consistency
+}
+
+impl<T> SharedScopedDataGuard<T> {
+    /// Get the current value
+    pub fn get(&self) -> T {
+        return self.data[0]
+    }
+}
+
+impl<T> Drop for SharedScopedDataGuard<T> {
     fn drop(&var self) {
         if (u32)self.sem != 0 {
             unsafe {

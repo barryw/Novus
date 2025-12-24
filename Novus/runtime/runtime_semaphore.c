@@ -28,3 +28,15 @@ void __novus_obtain_semaphore_shared(void* sigSem) {
 int32_t __novus_attempt_semaphore_shared(void* sigSem) {
     return AttemptSemaphoreShared((struct SignalSemaphore*)sigSem);
 }
+
+void __novus_add_semaphore(void* sigSem) {
+    AddSemaphore((struct SignalSemaphore*)sigSem);
+}
+
+void __novus_rem_semaphore(void* sigSem) {
+    RemSemaphore((struct SignalSemaphore*)sigSem);
+}
+
+void* __novus_find_semaphore(uint8_t* name) {
+    return FindSemaphore((char*)name);
+}

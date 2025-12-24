@@ -329,11 +329,19 @@ pub struct StackSwapStruct {
     stk_Pointer: *u8,
 }
 
+/// Private structure used by ObtainSemaphore()
+/// Named NovusSemaphoreRequest to avoid conflict with NDK's SemaphoreRequest
+pub struct NovusSemaphoreRequest {
+    sr_Link: MinNode,
+    sr_Waiter: *Task,
+}
+
+/// Signal Semaphore data structure
 pub struct SignalSemaphore {
     ss_Link: Node,
     ss_NestCount: i16,
     ss_WaitQueue: MinList,
-    ss_MultipleLink: MinNode,
+    ss_MultipleLink: NovusSemaphoreRequest,
     ss_Owner: *Task,
     ss_QueueCount: i16,
 }
