@@ -1,0 +1,526 @@
+// std::math::vec2 - 2D vector operations with fixed-point arithmetic
+// Namespace: std::math::vec2
+//
+// Essential for games, demos, and graphics programming on 68k Amigas.
+// Uses Fixed32 (16.16) for precise sub-pixel positioning and smooth movement.
+//
+// Features:
+// - 2D vector struct with fixed-point components
+// - Common operations: add, sub, scale, dot product, length, normalize
+// - Rotation using sine/cosine lookup tables
+// - Integer variants for pixel-perfect operations
+
+from std::math::fixed import Fixed32
+from std::math::trig import sin_fixed32, cos_fixed32, ANGLE_QUARTER, atan2_angle
+
+// ============================================================================
+// Vec2 - Fixed-point 2D Vector
+// ============================================================================
+
+/// 2D vector with Fixed32 components
+/// Ideal for sub-pixel positioning, velocity, and smooth movement
+pub struct Vec2 {
+    x: Fixed32,
+    y: Fixed32,
+}
+
+impl Vec2 {
+    /// Create a new Vec2 from Fixed32 components
+    @inline
+    pub fn new(x: Fixed32, y: Fixed32) -> Vec2 {
+        return Vec2 { x: x, y: y }
+    }
+
+    /// Create a zero vector
+    @inline
+    pub fn zero() -> Vec2 {
+        return Vec2 { x: Fixed32::zero(), y: Fixed32::zero() }
+    }
+
+    /// Create a unit vector along X axis
+    @inline
+    pub fn unit_x() -> Vec2 {
+        return Vec2 { x: Fixed32::one(), y: Fixed32::zero() }
+    }
+
+    /// Create a unit vector along Y axis
+    @inline
+    pub fn unit_y() -> Vec2 {
+        return Vec2 { x: Fixed32::zero(), y: Fixed32::one() }
+    }
+
+    /// Create from integer coordinates
+    @inline
+    pub fn from_i32(x: i32, y: i32) -> Vec2 {
+        return Vec2 {
+            x: Fixed32::from_i32(x),
+            y: Fixed32::from_i32(y),
+        }
+    }
+
+    /// Create from i16 coordinates (common for screen positions)
+    @inline
+    pub fn from_i16(x: i16, y: i16) -> Vec2 {
+        return Vec2 {
+            x: Fixed32::from_i16(x),
+            y: Fixed32::from_i16(y),
+        }
+    }
+
+    /// Get X component
+    @inline
+    pub fn get_x(&self) -> Fixed32 {
+        return self.x
+    }
+
+    /// Get Y component
+    @inline
+    pub fn get_y(&self) -> Fixed32 {
+        return self.y
+    }
+
+    /// Set X component
+    @inline
+    pub fn set_x(&var self, x: Fixed32) {
+        self.x = x
+    }
+
+    /// Set Y component
+    @inline
+    pub fn set_y(&var self, y: Fixed32) {
+        self.y = y
+    }
+
+    /// Convert to integer coordinates (truncates)
+    @inline
+    pub fn to_i32(&self) -> (i32, i32) {
+        return (self.x.to_i32(), self.y.to_i32())
+    }
+
+    /// Convert to integer coordinates with rounding
+    @inline
+    pub fn to_i32_rounded(&self) -> (i32, i32) {
+        return (self.x.to_i32_rounded(), self.y.to_i32_rounded())
+    }
+
+    /// Convert to i16 coordinates (common for blitter/screen ops)
+    @inline
+    @suppress("W0002", "Cast is intentional")
+    pub fn to_i16(&self) -> (i16, i16) {
+        return ((i16)self.x.to_i32(), (i16)self.y.to_i32())
+    }
+
+    // === Arithmetic Operations ===
+
+    /// Add two vectors
+    @inline
+    pub fn add(&self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.add(other.x),
+            y: self.y.add(other.y),
+        }
+    }
+
+    /// Subtract two vectors
+    @inline
+    pub fn sub(&self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.sub(other.x),
+            y: self.y.sub(other.y),
+        }
+    }
+
+    /// Negate vector (flip direction)
+    @inline
+    pub fn neg(&self) -> Vec2 {
+        return Vec2 {
+            x: self.x.neg(),
+            y: self.y.neg(),
+        }
+    }
+
+    /// Scale vector by Fixed32 factor
+    @inline
+    pub fn scale(&self, factor: Fixed32) -> Vec2 {
+        return Vec2 {
+            x: self.x.mul(factor),
+            y: self.y.mul(factor),
+        }
+    }
+
+    /// Scale vector by integer factor
+    @inline
+    pub fn scale_i32(&self, factor: i32) -> Vec2 {
+        return Vec2 {
+            x: self.x.mul_i32(factor),
+            y: self.y.mul_i32(factor),
+        }
+    }
+
+    /// Divide vector by Fixed32 (use with caution - division is slow)
+    @inline
+    pub fn div(&self, divisor: Fixed32) -> Vec2 {
+        return Vec2 {
+            x: self.x.div(divisor),
+            y: self.y.div(divisor),
+        }
+    }
+
+    /// Divide vector by integer (faster than Fixed32 division)
+    @inline
+    pub fn div_i32(&self, divisor: i32) -> Vec2 {
+        return Vec2 {
+            x: self.x.div_i32(divisor),
+            y: self.y.div_i32(divisor),
+        }
+    }
+
+    /// Component-wise multiplication (Hadamard product)
+    @inline
+    pub fn hadamard(&self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.mul(other.x),
+            y: self.y.mul(other.y),
+        }
+    }
+
+    // === Vector Operations ===
+
+    /// Dot product of two vectors
+    @inline
+    pub fn dot(&self, other: Vec2) -> Fixed32 {
+        return self.x.mul(other.x).add(self.y.mul(other.y))
+    }
+
+    /// Cross product (returns Z component of 3D cross, useful for winding)
+    /// Positive = counter-clockwise, Negative = clockwise
+    @inline
+    pub fn cross(&self, other: Vec2) -> Fixed32 {
+        return self.x.mul(other.y).sub(self.y.mul(other.x))
+    }
+
+    /// Squared length (avoids expensive sqrt)
+    /// Use for distance comparisons: a.length_sq() < b.length_sq()
+    @inline
+    pub fn length_sq(&self) -> Fixed32 {
+        return self.x.mul(self.x).add(self.y.mul(self.y))
+    }
+
+    /// Approximate length using alpha-max-beta-min algorithm
+    /// Fast approximation good to about 4% error
+    /// See: https://en.wikipedia.org/wiki/Alpha_max_plus_beta_min_algorithm
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn length_approx(&self) -> Fixed32 {
+        let ax = self.x.abs()
+        let ay = self.y.abs()
+
+        // Alpha-max-beta-min: length ≈ max + 0.4 * min
+        // Using 0.4 ≈ 26214/65536 in Fixed32
+        if ax.gt(ay) {
+            let min_scaled = Fixed32::from_raw((ay.to_raw() * 26214) >> 16)
+            return ax.add(min_scaled)
+        } else {
+            let min_scaled = Fixed32::from_raw((ax.to_raw() * 26214) >> 16)
+            return ay.add(min_scaled)
+        }
+    }
+
+    /// Perpendicular vector (rotated 90° counter-clockwise)
+    @inline
+    pub fn perp(&self) -> Vec2 {
+        return Vec2 {
+            x: self.y.neg(),
+            y: self.x,
+        }
+    }
+
+    /// Perpendicular vector (rotated 90° clockwise)
+    @inline
+    pub fn perp_cw(&self) -> Vec2 {
+        return Vec2 {
+            x: self.y,
+            y: self.x.neg(),
+        }
+    }
+
+    /// Reflect vector across a normal
+    /// Useful for bouncing physics
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn reflect(&self, normal: Vec2) -> Vec2 {
+        let d = self.dot(normal)
+        let two = Fixed32::from_raw(131072)  // 2.0 in Fixed32
+        return self.sub(normal.scale(d.mul(two)))
+    }
+
+    // === Rotation Operations ===
+
+    /// Rotate vector by angle (in BAMS: 0-65535 = 0-360°)
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn rotate(&self, angle: u16) -> Vec2 {
+        let cos_a = cos_fixed32(angle)
+        let sin_a = sin_fixed32(angle)
+
+        return Vec2 {
+            x: self.x.mul(cos_a).sub(self.y.mul(sin_a)),
+            y: self.x.mul(sin_a).add(self.y.mul(cos_a)),
+        }
+    }
+
+    /// Rotate vector by 90° counter-clockwise (faster than rotate)
+    @inline
+    pub fn rotate_90(&self) -> Vec2 {
+        return self.perp()
+    }
+
+    /// Rotate vector by 180° (faster than rotate)
+    @inline
+    pub fn rotate_180(&self) -> Vec2 {
+        return self.neg()
+    }
+
+    /// Rotate vector by 270° counter-clockwise (faster than rotate)
+    @inline
+    pub fn rotate_270(&self) -> Vec2 {
+        return self.perp_cw()
+    }
+
+    // === Comparison Operations ===
+
+    /// Check if vector is zero
+    @inline
+    pub fn is_zero(&self) -> bool {
+        return self.x.is_zero() && self.y.is_zero()
+    }
+
+    /// Check equality with another vector
+    @inline
+    pub fn eq(&self, other: Vec2) -> bool {
+        return self.x.eq(other.x) && self.y.eq(other.y)
+    }
+
+    /// Component-wise minimum
+    @inline
+    pub fn min(&self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.min(other.x),
+            y: self.y.min(other.y),
+        }
+    }
+
+    /// Component-wise maximum
+    @inline
+    pub fn max(&self, other: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.max(other.x),
+            y: self.y.max(other.y),
+        }
+    }
+
+    /// Clamp vector components to range
+    @inline
+    pub fn clamp(&self, min_val: Vec2, max_val: Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x.clamp(min_val.x, max_val.x),
+            y: self.y.clamp(min_val.y, max_val.y),
+        }
+    }
+
+    /// Clamp to rectangle bounds (common for screen clamping)
+    @inline
+    pub fn clamp_rect(&self, min_x: Fixed32, min_y: Fixed32, max_x: Fixed32, max_y: Fixed32) -> Vec2 {
+        return Vec2 {
+            x: self.x.clamp(min_x, max_x),
+            y: self.y.clamp(min_y, max_y),
+        }
+    }
+}
+
+// ============================================================================
+// Vec2i - Integer 2D Vector
+// ============================================================================
+
+/// 2D vector with i32 components
+/// Use for pixel-perfect operations, tile coordinates, etc.
+pub struct Vec2i {
+    x: i32,
+    y: i32,
+}
+
+impl Vec2i {
+    /// Create a new Vec2i
+    @inline
+    pub fn new(x: i32, y: i32) -> Vec2i {
+        return Vec2i { x: x, y: y }
+    }
+
+    /// Create a zero vector
+    @inline
+    pub fn zero() -> Vec2i {
+        return Vec2i { x: 0, y: 0 }
+    }
+
+    /// Create unit X vector
+    @inline
+    pub fn unit_x() -> Vec2i {
+        return Vec2i { x: 1, y: 0 }
+    }
+
+    /// Create unit Y vector
+    @inline
+    pub fn unit_y() -> Vec2i {
+        return Vec2i { x: 0, y: 1 }
+    }
+
+    /// Get X component
+    @inline
+    pub fn get_x(&self) -> i32 {
+        return self.x
+    }
+
+    /// Get Y component
+    @inline
+    pub fn get_y(&self) -> i32 {
+        return self.y
+    }
+
+    /// Convert to Vec2 (fixed-point)
+    @inline
+    pub fn to_vec2(&self) -> Vec2 {
+        return Vec2::from_i32(self.x, self.y)
+    }
+
+    /// Add two vectors
+    @inline
+    pub fn add(&self, other: Vec2i) -> Vec2i {
+        return Vec2i {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+
+    /// Subtract two vectors
+    @inline
+    pub fn sub(&self, other: Vec2i) -> Vec2i {
+        return Vec2i {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+
+    /// Negate vector
+    @inline
+    pub fn neg(&self) -> Vec2i {
+        return Vec2i { x: -self.x, y: -self.y }
+    }
+
+    /// Scale by integer
+    @inline
+    pub fn scale(&self, factor: i32) -> Vec2i {
+        return Vec2i {
+            x: self.x * factor,
+            y: self.y * factor,
+        }
+    }
+
+    /// Dot product
+    @inline
+    pub fn dot(&self, other: Vec2i) -> i32 {
+        return self.x * other.x + self.y * other.y
+    }
+
+    /// Cross product (Z component)
+    @inline
+    pub fn cross(&self, other: Vec2i) -> i32 {
+        return self.x * other.y - self.y * other.x
+    }
+
+    /// Squared length
+    @inline
+    pub fn length_sq(&self) -> i32 {
+        return self.x * self.x + self.y * self.y
+    }
+
+    /// Perpendicular (90° CCW)
+    @inline
+    pub fn perp(&self) -> Vec2i {
+        return Vec2i { x: -self.y, y: self.x }
+    }
+
+    /// Check equality
+    @inline
+    pub fn eq(&self, other: Vec2i) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+
+    /// Check if zero
+    @inline
+    pub fn is_zero(&self) -> bool {
+        return self.x == 0 && self.y == 0
+    }
+
+    /// Component-wise minimum
+    @inline
+    pub fn min(&self, other: Vec2i) -> Vec2i {
+        var min_x = self.x
+        var min_y = self.y
+        if other.x < min_x { min_x = other.x }
+        if other.y < min_y { min_y = other.y }
+        return Vec2i { x: min_x, y: min_y }
+    }
+
+    /// Component-wise maximum
+    @inline
+    pub fn max(&self, other: Vec2i) -> Vec2i {
+        var max_x = self.x
+        var max_y = self.y
+        if other.x > max_x { max_x = other.x }
+        if other.y > max_y { max_y = other.y }
+        return Vec2i { x: max_x, y: max_y }
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Linear interpolation between two vectors
+/// t should be in range [0, 1] as Fixed32
+@suppress("W0001", "Arithmetic is intentional")
+pub fn lerp_vec2(a: Vec2, b: Vec2, t: Fixed32) -> Vec2 {
+    let one_minus_t = Fixed32::one().sub(t)
+    return Vec2 {
+        x: a.x.mul(one_minus_t).add(b.x.mul(t)),
+        y: a.y.mul(one_minus_t).add(b.y.mul(t)),
+    }
+}
+
+/// Distance squared between two vectors
+/// Use for distance comparisons to avoid sqrt
+@inline
+pub fn distance_sq(a: Vec2, b: Vec2) -> Fixed32 {
+    return a.sub(b).length_sq()
+}
+
+/// Approximate distance between two vectors
+@inline
+pub fn distance_approx(a: Vec2, b: Vec2) -> Fixed32 {
+    return a.sub(b).length_approx()
+}
+
+/// Create a direction vector from an angle (in BAMS)
+/// Returns a unit-length vector pointing in that direction
+pub fn direction_from_angle(angle: u16) -> Vec2 {
+    return Vec2 {
+        x: cos_fixed32(angle),
+        y: sin_fixed32(angle),
+    }
+}
+
+/// Get angle from a direction vector (inverse of direction_from_angle)
+/// Returns angle in BAMS (0-65535)
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn angle_from_direction(dir: Vec2) -> u16 {
+    // Use atan2 approximation
+    return atan2_angle(dir.y.to_raw(), dir.x.to_raw())
+}

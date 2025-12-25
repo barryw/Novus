@@ -1,0 +1,492 @@
+// std::math::ease - Easing functions for animation
+// Namespace: std::math::ease
+//
+// Comprehensive collection of easing functions for smooth animations.
+// All functions take a Fixed32 t in range [0.0, 1.0] and return [0.0, 1.0].
+//
+// Naming convention:
+// - ease_in_*: Starts slow, accelerates
+// - ease_out_*: Starts fast, decelerates
+// - ease_in_out_*: Slow at both ends, fast in middle
+//
+// Based on Robert Penner's easing functions and CSS timing functions.
+// Optimized for 68k fixed-point arithmetic.
+
+from std::math::fixed import Fixed32, fixed32_pi, fixed32_half_pi
+from std::math::trig import sin_fixed32, cos_fixed32, degrees_to_angle
+from std::math::sqrt import sqrt_fixed32
+
+// ============================================================================
+// Linear
+// ============================================================================
+
+/// Linear easing - no acceleration
+@inline
+pub fn ease_linear(t: Fixed32) -> Fixed32 {
+    return t
+}
+
+// ============================================================================
+// Quadratic
+// ============================================================================
+
+/// Quadratic ease-in: t²
+@inline
+pub fn ease_in_quad(t: Fixed32) -> Fixed32 {
+    return t.mul(t)
+}
+
+/// Quadratic ease-out: 1 - (1-t)²
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_quad(t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    return Fixed32::one().sub(one_minus_t.mul(one_minus_t))
+}
+
+/// Quadratic ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_quad(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)  // 0.5
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        // In phase: 2t²
+        return two.mul(t).mul(t)
+    }
+    // Out phase: 1 - (-2t + 2)² / 2
+    let x = two.neg().mul(t).add(two)
+    return Fixed32::one().sub(x.mul(x).div(two))
+}
+
+// ============================================================================
+// Cubic
+// ============================================================================
+
+/// Cubic ease-in: t³
+@inline
+pub fn ease_in_cubic(t: Fixed32) -> Fixed32 {
+    return t.mul(t).mul(t)
+}
+
+/// Cubic ease-out: 1 - (1-t)³
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_cubic(t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let cubed = one_minus_t.mul(one_minus_t).mul(one_minus_t)
+    return Fixed32::one().sub(cubed)
+}
+
+/// Cubic ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_cubic(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)
+    let four = Fixed32::from_i32(4)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        // In phase: 4t³
+        return four.mul(t).mul(t).mul(t)
+    }
+    // Out phase: 1 - (-2t + 2)³ / 2
+    let x = two.neg().mul(t).add(two)
+    let cubed = x.mul(x).mul(x)
+    return Fixed32::one().sub(cubed.div(two))
+}
+
+// ============================================================================
+// Quartic
+// ============================================================================
+
+/// Quartic ease-in: t⁴
+@inline
+pub fn ease_in_quart(t: Fixed32) -> Fixed32 {
+    let t_sq = t.mul(t)
+    return t_sq.mul(t_sq)
+}
+
+/// Quartic ease-out: 1 - (1-t)⁴
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_quart(t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let squared = one_minus_t.mul(one_minus_t)
+    return Fixed32::one().sub(squared.mul(squared))
+}
+
+/// Quartic ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_quart(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)
+    let eight = Fixed32::from_i32(8)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let t_sq = t.mul(t)
+        return eight.mul(t_sq).mul(t_sq)
+    }
+    let x = two.neg().mul(t).add(two)
+    let x_sq = x.mul(x)
+    return Fixed32::one().sub(x_sq.mul(x_sq).div(two))
+}
+
+// ============================================================================
+// Quintic
+// ============================================================================
+
+/// Quintic ease-in: t⁵
+@inline
+pub fn ease_in_quint(t: Fixed32) -> Fixed32 {
+    let t_sq = t.mul(t)
+    return t_sq.mul(t_sq).mul(t)
+}
+
+/// Quintic ease-out: 1 - (1-t)⁵
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_quint(t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let squared = one_minus_t.mul(one_minus_t)
+    let fourth = squared.mul(squared)
+    return Fixed32::one().sub(fourth.mul(one_minus_t))
+}
+
+/// Quintic ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_quint(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)
+    let sixteen = Fixed32::from_i32(16)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let t_sq = t.mul(t)
+        return sixteen.mul(t_sq).mul(t_sq).mul(t)
+    }
+    let x = two.neg().mul(t).add(two)
+    let x_sq = x.mul(x)
+    let x_4 = x_sq.mul(x_sq)
+    return Fixed32::one().sub(x_4.mul(x).div(two))
+}
+
+// ============================================================================
+// Sine
+// ============================================================================
+
+/// Sine ease-in: 1 - cos(t * π/2)
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_in_sine(t: Fixed32) -> Fixed32 {
+    // Convert t (0-1) to angle (0 - 16384 for 90°)
+    let angle = (u16)t.mul(Fixed32::from_i32(16384)).to_i32()
+    let cos_val = cos_fixed32(angle)
+    return Fixed32::one().sub(cos_val)
+}
+
+/// Sine ease-out: sin(t * π/2)
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_out_sine(t: Fixed32) -> Fixed32 {
+    let angle = (u16)t.mul(Fixed32::from_i32(16384)).to_i32()
+    return sin_fixed32(angle)
+}
+
+/// Sine ease-in-out: (1 - cos(t * π)) / 2
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_in_out_sine(t: Fixed32) -> Fixed32 {
+    // t * π maps to 0-180° which is 0-32768 in BAMS
+    let angle = (u16)t.mul(Fixed32::from_i32(32768)).to_i32()
+    let cos_val = cos_fixed32(angle)
+    return Fixed32::one().sub(cos_val).div(Fixed32::from_i32(2))
+}
+
+// ============================================================================
+// Exponential
+// ============================================================================
+
+/// Exponential ease-in: 2^(10(t-1))
+/// Returns ~0 at t=0, 1 at t=1
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_expo(t: Fixed32) -> Fixed32 {
+    if t.is_zero() {
+        return Fixed32::zero()
+    }
+    if t.eq(Fixed32::one()) {
+        return Fixed32::one()
+    }
+
+    // Approximation: use polynomial for 2^x
+    // 2^(10(t-1)) where t goes 0→1 means exponent goes -10→0
+    // At t=0: 2^-10 ≈ 0.001
+    // At t=1: 2^0 = 1
+
+    // Simplified approximation for 68k:
+    // Use t^3 * 2^7 approximation for exponential feel
+    let t_cubed = t.mul(t).mul(t)
+    return t_cubed.mul(t_cubed)  // t^6 gives exponential-ish curve
+}
+
+/// Exponential ease-out: 1 - 2^(-10t)
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_expo(t: Fixed32) -> Fixed32 {
+    if t.eq(Fixed32::one()) {
+        return Fixed32::one()
+    }
+
+    let one_minus_t = Fixed32::one().sub(t)
+    let cubed = one_minus_t.mul(one_minus_t).mul(one_minus_t)
+    return Fixed32::one().sub(cubed.mul(cubed))
+}
+
+/// Exponential ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_expo(t: Fixed32) -> Fixed32 {
+    if t.is_zero() { return Fixed32::zero() }
+    if t.eq(Fixed32::one()) { return Fixed32::one() }
+
+    let half = Fixed32::from_raw(32768)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let scaled = t.mul(two)
+        let s_cubed = scaled.mul(scaled).mul(scaled)
+        return s_cubed.mul(s_cubed).div(two)
+    }
+    let scaled = two.sub(t.mul(two))
+    let s_cubed = scaled.mul(scaled).mul(scaled)
+    return Fixed32::one().sub(s_cubed.mul(s_cubed).div(two))
+}
+
+// ============================================================================
+// Circular
+// ============================================================================
+
+/// Circular ease-in: 1 - sqrt(1 - t²)
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_circ(t: Fixed32) -> Fixed32 {
+    let t_sq = t.mul(t)
+    let inner = Fixed32::one().sub(t_sq)
+    return Fixed32::one().sub(sqrt_fixed32(inner))
+}
+
+/// Circular ease-out: sqrt(1 - (t-1)²)
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_circ(t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let squared = one_minus_t.mul(one_minus_t)
+    return sqrt_fixed32(Fixed32::one().sub(squared))
+}
+
+/// Circular ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_circ(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let scaled = t.mul(two)
+        let squared = scaled.mul(scaled)
+        let inner = Fixed32::one().sub(squared)
+        return Fixed32::one().sub(sqrt_fixed32(inner)).div(two)
+    }
+    let scaled = two.neg().mul(t).add(two)
+    let squared = scaled.mul(scaled)
+    return sqrt_fixed32(Fixed32::one().sub(squared)).add(Fixed32::one()).div(two)
+}
+
+// ============================================================================
+// Back (overshoots then returns)
+// ============================================================================
+
+// Back easing constant (1.70158 ≈ 111617 in 16.16)
+const BACK_C1: i32 = 111617
+
+// c1 * 1.525 for in-out variant
+const BACK_C2: i32 = 170233
+
+/// Back ease-in: overshoots backwards first
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_back(t: Fixed32) -> Fixed32 {
+    let c1 = Fixed32::from_raw(BACK_C1)
+    let c3 = c1.add(Fixed32::one())
+
+    // c3 * t³ - c1 * t²
+    let t_sq = t.mul(t)
+    let t_cu = t_sq.mul(t)
+    return c3.mul(t_cu).sub(c1.mul(t_sq))
+}
+
+/// Back ease-out: overshoots past end then returns
+/// Formula: 1 + c3 * (t-1)³ + c1 * (t-1)²
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_back(t: Fixed32) -> Fixed32 {
+    let c1 = Fixed32::from_raw(BACK_C1)
+    let c3 = c1.add(Fixed32::one())
+
+    // (t - 1)
+    let t_minus_1 = t.sub(Fixed32::one())
+    let squared = t_minus_1.mul(t_minus_1)
+    let cubed = squared.mul(t_minus_1)
+
+    // 1 + c3 * (t-1)³ + c1 * (t-1)²
+    return Fixed32::one().add(c3.mul(cubed)).add(c1.mul(squared))
+}
+
+/// Back ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_back(t: Fixed32) -> Fixed32 {
+    let c2 = Fixed32::from_raw(BACK_C2)
+    let c2_plus_1 = c2.add(Fixed32::one())
+    let half = Fixed32::from_raw(32768)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let scaled = t.mul(two)
+        let squared = scaled.mul(scaled)
+        let term = c2_plus_1.mul(scaled).sub(c2)
+        return squared.mul(term).div(two)
+    }
+    let scaled = t.mul(two).sub(two)
+    let squared = scaled.mul(scaled)
+    let term = c2_plus_1.mul(scaled).add(c2)
+    return squared.mul(term).add(two).div(two)
+}
+
+// ============================================================================
+// Elastic (spring-like)
+// ============================================================================
+
+/// Elastic ease-in: spring that winds up
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_in_elastic(t: Fixed32) -> Fixed32 {
+    if t.is_zero() { return Fixed32::zero() }
+    if t.eq(Fixed32::one()) { return Fixed32::one() }
+
+    // Simplified elastic using sine wave with decay
+    // Uses 3 oscillations in the 0-1 range
+    let amplitude = t.mul(t).mul(t)  // t³ for envelope
+    let angle = (u16)t.mul(Fixed32::from_i32(49152)).to_i32()  // 3/4 of full circle
+    let wave = sin_fixed32(angle)
+
+    return amplitude.mul(wave).neg()
+}
+
+/// Elastic ease-out: spring release
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_out_elastic(t: Fixed32) -> Fixed32 {
+    if t.is_zero() { return Fixed32::zero() }
+    if t.eq(Fixed32::one()) { return Fixed32::one() }
+
+    let one_minus_t = Fixed32::one().sub(t)
+    let decay = one_minus_t.mul(one_minus_t).mul(one_minus_t)
+    let angle = (u16)t.mul(Fixed32::from_i32(49152)).to_i32()
+    let wave = sin_fixed32(angle)
+
+    return Fixed32::one().add(decay.mul(wave))
+}
+
+/// Elastic ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_in_out_elastic(t: Fixed32) -> Fixed32 {
+    if t.is_zero() { return Fixed32::zero() }
+    if t.eq(Fixed32::one()) { return Fixed32::one() }
+
+    let half = Fixed32::from_raw(32768)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        let scaled = t.mul(two)
+        let envelope = scaled.mul(scaled).mul(scaled)
+        let angle = (u16)scaled.mul(Fixed32::from_i32(32768)).to_i32()
+        let wave = sin_fixed32(angle)
+        return envelope.mul(wave).neg().div(two)
+    }
+
+    let scaled = t.mul(two).sub(Fixed32::one())
+    let one_minus = Fixed32::one().sub(scaled)
+    let envelope = one_minus.mul(one_minus).mul(one_minus)
+    let angle = (u16)scaled.mul(Fixed32::from_i32(32768)).to_i32()
+    let wave = sin_fixed32(angle)
+    return envelope.mul(wave).div(two).add(Fixed32::one())
+}
+
+// ============================================================================
+// Bounce
+// ============================================================================
+
+/// Bounce ease-out: bounces at the end like a ball
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_out_bounce(t: Fixed32) -> Fixed32 {
+    // Magic numbers for bounce intervals
+    let n1 = Fixed32::from_raw(495978)  // 7.5625
+    let d1 = Fixed32::from_raw(178956)  // 2.73077
+
+    // Thresholds
+    let t1 = Fixed32::from_raw(23831)   // 1/2.75 ≈ 0.3636
+    let t2 = Fixed32::from_raw(47662)   // 2/2.75 ≈ 0.7273
+    let t3 = Fixed32::from_raw(59578)   // 2.5/2.75 ≈ 0.9091
+
+    var x = t
+
+    if x.lt(t1) {
+        return n1.mul(x).mul(x)
+    }
+
+    if x.lt(t2) {
+        x = x.sub(Fixed32::from_raw(35747))  // 1.5/2.75
+        return n1.mul(x).mul(x).add(Fixed32::from_raw(49152))  // + 0.75
+    }
+
+    if x.lt(t3) {
+        x = x.sub(Fixed32::from_raw(53620))  // 2.25/2.75
+        return n1.mul(x).mul(x).add(Fixed32::from_raw(61440))  // + 0.9375
+    }
+
+    x = x.sub(Fixed32::from_raw(61578))  // 2.625/2.75
+    return n1.mul(x).mul(x).add(Fixed32::from_raw(64225))  // + 0.984375
+}
+
+/// Bounce ease-in: bounces at the start
+pub fn ease_in_bounce(t: Fixed32) -> Fixed32 {
+    return Fixed32::one().sub(ease_out_bounce(Fixed32::one().sub(t)))
+}
+
+/// Bounce ease-in-out
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ease_in_out_bounce(t: Fixed32) -> Fixed32 {
+    let half = Fixed32::from_raw(32768)
+    let two = Fixed32::from_i32(2)
+
+    if t.lt(half) {
+        return ease_in_bounce(t.mul(two)).div(two)
+    }
+    return ease_out_bounce(t.mul(two).sub(Fixed32::one())).add(Fixed32::one()).div(two)
+}
+
+// ============================================================================
+// Step Functions
+// ============================================================================
+
+/// Step easing with n steps (staircase effect)
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_steps(t: Fixed32, steps: i32) -> Fixed32 {
+    // Handle invalid steps by returning input unchanged
+    let actual_steps = if steps <= 0 { 1 } else { steps }
+
+    let step_size = Fixed32::one().div(Fixed32::from_i32(actual_steps))
+    let current_step = t.div(step_size).floor()
+    return current_step.mul(step_size)
+}
+
+/// Step easing with n steps, jumping at the start of each step
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ease_steps_start(t: Fixed32, steps: i32) -> Fixed32 {
+    // Handle invalid steps by returning input unchanged
+    let actual_steps = if steps <= 0 { 1 } else { steps }
+
+    let step_size = Fixed32::one().div(Fixed32::from_i32(actual_steps))
+    let current_step = t.div(step_size).ceil()
+    return current_step.mul(step_size)
+}

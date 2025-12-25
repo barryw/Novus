@@ -1,0 +1,380 @@
+// Test suite for std::math::vec2
+
+from std::math::vec2 import *
+from std::math::fixed import Fixed32
+from std::math::trig import ANGLE_QUARTER, ANGLE_HALF
+from std::test::test import expect_eq_i32, expect_true, expect_false
+
+// ============================================================================
+// Vec2 Creation Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_new() {
+    let x = Fixed32::from_i32(10)
+    let y = Fixed32::from_i32(20)
+    let v = Vec2::new(x, y)
+    expect_eq_i32(v.get_x().to_i32(), 10, "x component")
+    expect_eq_i32(v.get_y().to_i32(), 20, "y component")
+}
+
+@test
+pub fn test_vec2_zero() {
+    let v = Vec2::zero()
+    expect_true(v.is_zero(), "zero vector should test as zero")
+    expect_eq_i32(v.get_x().to_i32(), 0, "x is 0")
+    expect_eq_i32(v.get_y().to_i32(), 0, "y is 0")
+}
+
+@test
+pub fn test_vec2_unit_x() {
+    let v = Vec2::unit_x()
+    expect_eq_i32(v.get_x().to_i32(), 1, "unit_x x = 1")
+    expect_eq_i32(v.get_y().to_i32(), 0, "unit_x y = 0")
+}
+
+@test
+pub fn test_vec2_unit_y() {
+    let v = Vec2::unit_y()
+    expect_eq_i32(v.get_x().to_i32(), 0, "unit_y x = 0")
+    expect_eq_i32(v.get_y().to_i32(), 1, "unit_y y = 1")
+}
+
+@test
+pub fn test_vec2_from_i32() {
+    let v = Vec2::from_i32(42, 99)
+    expect_eq_i32(v.get_x().to_i32(), 42, "from_i32 x")
+    expect_eq_i32(v.get_y().to_i32(), 99, "from_i32 y")
+}
+
+@test
+pub fn test_vec2_from_i16() {
+    let v = Vec2::from_i16(100i16, 200i16)
+    expect_eq_i32(v.get_x().to_i32(), 100, "from_i16 x")
+    expect_eq_i32(v.get_y().to_i32(), 200, "from_i16 y")
+}
+
+// ============================================================================
+// Vec2 Arithmetic Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_add() {
+    let a = Vec2::from_i32(10, 20)
+    let b = Vec2::from_i32(5, 3)
+    let result = a.add(b)
+    expect_eq_i32(result.get_x().to_i32(), 15, "add x")
+    expect_eq_i32(result.get_y().to_i32(), 23, "add y")
+}
+
+@test
+pub fn test_vec2_sub() {
+    let a = Vec2::from_i32(10, 20)
+    let b = Vec2::from_i32(3, 5)
+    let result = a.sub(b)
+    expect_eq_i32(result.get_x().to_i32(), 7, "sub x")
+    expect_eq_i32(result.get_y().to_i32(), 15, "sub y")
+}
+
+@test
+pub fn test_vec2_neg() {
+    let v = Vec2::from_i32(10, -20)
+    let result = v.neg()
+    expect_eq_i32(result.get_x().to_i32(), -10, "neg x")
+    expect_eq_i32(result.get_y().to_i32(), 20, "neg y")
+}
+
+@test
+pub fn test_vec2_scale() {
+    let v = Vec2::from_i32(10, 20)
+    let factor = Fixed32::from_i32(3)
+    let result = v.scale(factor)
+    expect_eq_i32(result.get_x().to_i32(), 30, "scale x")
+    expect_eq_i32(result.get_y().to_i32(), 60, "scale y")
+}
+
+@test
+pub fn test_vec2_scale_i32() {
+    let v = Vec2::from_i32(5, 10)
+    let result = v.scale_i32(4)
+    expect_eq_i32(result.get_x().to_i32(), 20, "scale_i32 x")
+    expect_eq_i32(result.get_y().to_i32(), 40, "scale_i32 y")
+}
+
+@test
+pub fn test_vec2_div_i32() {
+    let v = Vec2::from_i32(100, 200)
+    let result = v.div_i32(10)
+    expect_eq_i32(result.get_x().to_i32(), 10, "div_i32 x")
+    expect_eq_i32(result.get_y().to_i32(), 20, "div_i32 y")
+}
+
+@test
+pub fn test_vec2_hadamard() {
+    let a = Vec2::from_i32(3, 4)
+    let b = Vec2::from_i32(2, 5)
+    let result = a.hadamard(b)
+    expect_eq_i32(result.get_x().to_i32(), 6, "hadamard x")
+    expect_eq_i32(result.get_y().to_i32(), 20, "hadamard y")
+}
+
+// ============================================================================
+// Vec2 Vector Operations Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_dot() {
+    let a = Vec2::from_i32(3, 4)
+    let b = Vec2::from_i32(2, 5)
+    // dot = 3*2 + 4*5 = 6 + 20 = 26
+    let result = a.dot(b)
+    expect_eq_i32(result.to_i32(), 26, "dot product")
+}
+
+@test
+pub fn test_vec2_cross() {
+    let a = Vec2::from_i32(3, 4)
+    let b = Vec2::from_i32(2, 5)
+    // cross = 3*5 - 4*2 = 15 - 8 = 7
+    let result = a.cross(b)
+    expect_eq_i32(result.to_i32(), 7, "cross product")
+}
+
+@test
+pub fn test_vec2_length_sq() {
+    let v = Vec2::from_i32(3, 4)
+    // length² = 3² + 4² = 9 + 16 = 25
+    let result = v.length_sq()
+    expect_eq_i32(result.to_i32(), 25, "length squared")
+}
+
+@test
+pub fn test_vec2_length_approx() {
+    let v = Vec2::from_i32(3, 4)
+    // Exact length = 5
+    // Approx should be close
+    let result = v.length_approx()
+    let len = result.to_i32()
+    expect_true(len >= 4 && len <= 6, "length approx ≈ 5")
+}
+
+@test
+pub fn test_vec2_perp() {
+    let v = Vec2::from_i32(3, 4)
+    let p = v.perp()
+    // perp CCW: (-y, x) = (-4, 3)
+    expect_eq_i32(p.get_x().to_i32(), -4, "perp x")
+    expect_eq_i32(p.get_y().to_i32(), 3, "perp y")
+}
+
+@test
+pub fn test_vec2_perp_cw() {
+    let v = Vec2::from_i32(3, 4)
+    let p = v.perp_cw()
+    // perp CW: (y, -x) = (4, -3)
+    expect_eq_i32(p.get_x().to_i32(), 4, "perp_cw x")
+    expect_eq_i32(p.get_y().to_i32(), -3, "perp_cw y")
+}
+
+// ============================================================================
+// Vec2 Rotation Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_rotate_90() {
+    let v = Vec2::from_i32(10, 0)
+    let result = v.rotate_90()
+    // 90° CCW: (10, 0) -> (0, 10)
+    expect_eq_i32(result.get_x().to_i32(), 0, "rotate_90 x")
+    expect_eq_i32(result.get_y().to_i32(), 10, "rotate_90 y")
+}
+
+@test
+pub fn test_vec2_rotate_180() {
+    let v = Vec2::from_i32(10, 5)
+    let result = v.rotate_180()
+    expect_eq_i32(result.get_x().to_i32(), -10, "rotate_180 x")
+    expect_eq_i32(result.get_y().to_i32(), -5, "rotate_180 y")
+}
+
+@test
+pub fn test_vec2_rotate_270() {
+    let v = Vec2::from_i32(10, 0)
+    let result = v.rotate_270()
+    // 270° CCW = 90° CW: (10, 0) -> (0, -10)
+    expect_eq_i32(result.get_x().to_i32(), 0, "rotate_270 x")
+    expect_eq_i32(result.get_y().to_i32(), -10, "rotate_270 y")
+}
+
+@test
+pub fn test_vec2_rotate_90_degrees_general() {
+    let v = Vec2::from_i32(10, 0)
+    let result = v.rotate(ANGLE_QUARTER)  // 90 degrees
+    // Should be approximately (0, 10)
+    // Allow wider tolerance due to fixed-point precision in sin/cos tables
+    let rx = result.get_x().to_i32()
+    let ry = result.get_y().to_i32()
+    expect_true(rx >= -2 && rx <= 2, "rotate 90 x ≈ 0")
+    expect_true(ry >= 8 && ry <= 12, "rotate 90 y ≈ 10")
+}
+
+// ============================================================================
+// Vec2 Comparison Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_eq() {
+    let a = Vec2::from_i32(10, 20)
+    let b = Vec2::from_i32(10, 20)
+    let c = Vec2::from_i32(10, 21)
+    expect_true(a.eq(b), "equal vectors")
+    expect_false(a.eq(c), "unequal vectors")
+}
+
+@test
+pub fn test_vec2_is_zero() {
+    let zero = Vec2::zero()
+    let nonzero = Vec2::from_i32(1, 0)
+    expect_true(zero.is_zero(), "zero is zero")
+    expect_false(nonzero.is_zero(), "nonzero is not zero")
+}
+
+@test
+pub fn test_vec2_min() {
+    let a = Vec2::from_i32(10, 5)
+    let b = Vec2::from_i32(3, 20)
+    let result = a.min(b)
+    expect_eq_i32(result.get_x().to_i32(), 3, "min x")
+    expect_eq_i32(result.get_y().to_i32(), 5, "min y")
+}
+
+@test
+pub fn test_vec2_max() {
+    let a = Vec2::from_i32(10, 5)
+    let b = Vec2::from_i32(3, 20)
+    let result = a.max(b)
+    expect_eq_i32(result.get_x().to_i32(), 10, "max x")
+    expect_eq_i32(result.get_y().to_i32(), 20, "max y")
+}
+
+// ============================================================================
+// Vec2 Conversion Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_to_i32() {
+    let v = Vec2::from_i32(42, 99)
+    let (cx, cy) = v.to_i32()
+    expect_eq_i32(cx, 42, "to_i32 x")
+    expect_eq_i32(cy, 99, "to_i32 y")
+}
+
+@test
+pub fn test_vec2_to_i16() {
+    let v = Vec2::from_i32(100, 200)
+    let (cx, cy) = v.to_i16()
+    expect_eq_i32((i32)cx, 100, "to_i16 x")
+    expect_eq_i32((i32)cy, 200, "to_i16 y")
+}
+
+// ============================================================================
+// Vec2i Tests
+// ============================================================================
+
+@test
+pub fn test_vec2i_new() {
+    let v = Vec2i::new(10, 20)
+    expect_eq_i32(v.get_x(), 10, "Vec2i x")
+    expect_eq_i32(v.get_y(), 20, "Vec2i y")
+}
+
+@test
+pub fn test_vec2i_zero() {
+    let v = Vec2i::zero()
+    expect_true(v.is_zero(), "Vec2i zero")
+}
+
+@test
+pub fn test_vec2i_add() {
+    let a = Vec2i::new(10, 20)
+    let b = Vec2i::new(5, 3)
+    let result = a.add(b)
+    expect_eq_i32(result.get_x(), 15, "Vec2i add x")
+    expect_eq_i32(result.get_y(), 23, "Vec2i add y")
+}
+
+@test
+pub fn test_vec2i_sub() {
+    let a = Vec2i::new(10, 20)
+    let b = Vec2i::new(3, 5)
+    let result = a.sub(b)
+    expect_eq_i32(result.get_x(), 7, "Vec2i sub x")
+    expect_eq_i32(result.get_y(), 15, "Vec2i sub y")
+}
+
+@test
+pub fn test_vec2i_scale() {
+    let v = Vec2i::new(5, 10)
+    let result = v.scale(3)
+    expect_eq_i32(result.get_x(), 15, "Vec2i scale x")
+    expect_eq_i32(result.get_y(), 30, "Vec2i scale y")
+}
+
+@test
+pub fn test_vec2i_dot() {
+    let a = Vec2i::new(3, 4)
+    let b = Vec2i::new(2, 5)
+    expect_eq_i32(a.dot(b), 26, "Vec2i dot")
+}
+
+@test
+pub fn test_vec2i_cross() {
+    let a = Vec2i::new(3, 4)
+    let b = Vec2i::new(2, 5)
+    expect_eq_i32(a.cross(b), 7, "Vec2i cross")
+}
+
+@test
+pub fn test_vec2i_length_sq() {
+    let v = Vec2i::new(3, 4)
+    expect_eq_i32(v.length_sq(), 25, "Vec2i length_sq")
+}
+
+@test
+pub fn test_vec2i_to_vec2() {
+    let vi = Vec2i::new(10, 20)
+    let v = vi.to_vec2()
+    expect_eq_i32(v.get_x().to_i32(), 10, "Vec2i to Vec2 x")
+    expect_eq_i32(v.get_y().to_i32(), 20, "Vec2i to Vec2 y")
+}
+
+// ============================================================================
+// Helper Function Tests
+// ============================================================================
+
+@test
+pub fn test_lerp_vec2() {
+    let a = Vec2::from_i32(0, 0)
+    let b = Vec2::from_i32(100, 200)
+    let half = Fixed32::from_raw(32768)  // 0.5
+    let result = lerp_vec2(a, b, half)
+    expect_eq_i32(result.get_x().to_i32(), 50, "lerp x at 0.5")
+    expect_eq_i32(result.get_y().to_i32(), 100, "lerp y at 0.5")
+}
+
+@test
+pub fn test_distance_sq() {
+    let a = Vec2::from_i32(0, 0)
+    let b = Vec2::from_i32(3, 4)
+    let result = distance_sq(a, b)
+    expect_eq_i32(result.to_i32(), 25, "distance_sq")
+}
+
+@test
+pub fn test_direction_from_angle() {
+    // 0 degrees should point right (1, 0)
+    let v = direction_from_angle(0u16)
+    expect_true(v.get_x().to_i32() == 1 || v.get_x().to_raw() > 60000, "direction 0 x ≈ 1")
+    expect_true(v.get_y().to_i32() == 0 || v.get_y().abs().to_raw() < 5000, "direction 0 y ≈ 0")
+}
+

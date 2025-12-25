@@ -1,0 +1,505 @@
+// std::math::ffp - AmigaOS Motorola Fast Floating Point library wrappers
+// Namespace: std::math::ffp
+//
+// Wraps mathffp.library and mathtrans.library for floating-point operations.
+// These libraries use Motorola Fast Floating Point (FFP) format, NOT IEEE 754.
+//
+// FFP Format:
+// - 32-bit value: 24-bit mantissa + 8-bit exponent
+// - Different from IEEE 754 floats!
+// - Supported by all Amigas without FPU
+//
+// Note: Most Amiga development uses fixed-point math instead of FFP
+// because it's faster on 68000. FFP is useful when you need:
+// - Very large or very small numbers (beyond fixed-point range)
+// - Scientific calculations with dynamic range
+// - Compatibility with existing FFP-based code
+//
+// For most games and demos, use std::math::fixed instead.
+
+from std::ffi::exec import OpenLibrary, CloseLibrary
+from std::ffi::amiga_structs import Library
+from std::core import Result
+from std::math::fixed import Fixed32
+
+// ============================================================================
+// FFP Type
+// ============================================================================
+
+/// Motorola Fast Floating Point value
+/// This is NOT the same as IEEE 754 float!
+pub struct FFP {
+    raw: u32,
+}
+
+// ============================================================================
+// Library Bases
+// ============================================================================
+
+static var mathffp_base: *Library = null
+static var mathtrans_base: *Library = null
+
+// ============================================================================
+// Library Functions (from mathffp.library)
+// ============================================================================
+
+// Declare the library functions as extern
+// These use the Amiga library calling convention
+
+@amiga_lib("mathffp.library", -36)
+extern fn SPFix(parm: u32) -> i32
+
+@amiga_lib("mathffp.library", -42)
+extern fn SPFlt(integer: i32) -> u32
+
+@amiga_lib("mathffp.library", -48)
+extern fn SPCmp(leftParm: u32, rightParm: u32) -> i32
+
+@amiga_lib("mathffp.library", -54)
+extern fn SPTst(parm: u32) -> i32
+
+@amiga_lib("mathffp.library", -60)
+extern fn SPAbs(parm: u32) -> u32
+
+@amiga_lib("mathffp.library", -66)
+extern fn SPNeg(parm: u32) -> u32
+
+@amiga_lib("mathffp.library", -72)
+extern fn SPAdd(leftParm: u32, rightParm: u32) -> u32
+
+@amiga_lib("mathffp.library", -78)
+extern fn SPSub(leftParm: u32, rightParm: u32) -> u32
+
+@amiga_lib("mathffp.library", -84)
+extern fn SPMul(leftParm: u32, rightParm: u32) -> u32
+
+@amiga_lib("mathffp.library", -90)
+extern fn SPDiv(dividend: u32, divisor: u32) -> u32
+
+@amiga_lib("mathffp.library", -96)
+extern fn SPFloor(parm: u32) -> u32
+
+@amiga_lib("mathffp.library", -102)
+extern fn SPCeil(parm: u32) -> u32
+
+// ============================================================================
+// Transcendental Functions (from mathtrans.library)
+// ============================================================================
+
+@amiga_lib("mathtrans.library", -30)
+extern fn SPAtan(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -36)
+extern fn SPSin(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -42)
+extern fn SPCos(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -48)
+extern fn SPTan(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -54)
+extern fn SPSincos(parm: u32, cosResult: **u32) -> u32
+
+@amiga_lib("mathtrans.library", -60)
+extern fn SPSinh(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -66)
+extern fn SPCosh(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -72)
+extern fn SPTanh(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -78)
+extern fn SPExp(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -84)
+extern fn SPLog(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -90)
+extern fn SPPow(power: u32, parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -96)
+extern fn SPSqrt(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -102)
+extern fn SPTieee(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -108)
+extern fn SPFieee(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -114)
+extern fn SPAsin(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -120)
+extern fn SPAcos(parm: u32) -> u32
+
+@amiga_lib("mathtrans.library", -126)
+extern fn SPLog10(parm: u32) -> u32
+
+// ============================================================================
+// Library Initialization
+// ============================================================================
+
+/// Open the FFP math libraries
+/// Must be called before using any FFP functions
+/// Returns Err if libraries cannot be opened
+pub fn open_ffp_libraries() -> Result<(), i32> {
+    unsafe {
+        if mathffp_base == null {
+            mathffp_base = OpenLibrary("mathffp.library", 33u32)
+            if mathffp_base == null {
+                return Result::Err(-1)
+            }
+        }
+
+        if mathtrans_base == null {
+            mathtrans_base = OpenLibrary("mathtrans.library", 33u32)
+            if mathtrans_base == null {
+                CloseLibrary(mathffp_base)
+                mathffp_base = (*Library)null
+                return Result::Err(-2)
+            }
+        }
+    }
+
+    return Result::Ok(())
+}
+
+/// Close the FFP math libraries
+/// Should be called when done with FFP operations
+pub fn close_ffp_libraries() {
+    unsafe {
+        if mathtrans_base != null {
+            CloseLibrary(mathtrans_base)
+            mathtrans_base = (*Library)null
+        }
+        if mathffp_base != null {
+            CloseLibrary(mathffp_base)
+            mathffp_base = (*Library)null
+        }
+    }
+}
+
+/// Check if FFP libraries are open
+@inline
+pub fn ffp_libraries_open() -> bool {
+    return mathffp_base != null && mathtrans_base != null
+}
+
+// ============================================================================
+// FFP Implementation
+// ============================================================================
+
+impl FFP {
+    /// Create FFP from raw 32-bit value
+    @inline
+    pub fn from_raw(raw: u32) -> FFP {
+        return FFP { raw: raw }
+    }
+
+    /// Get raw 32-bit value
+    @inline
+    pub fn to_raw(&self) -> u32 {
+        return self.raw
+    }
+
+    /// Create FFP zero
+    @inline
+    pub fn zero() -> FFP {
+        return FFP { raw: 0u32 }
+    }
+
+    /// Create FFP from integer
+    @inline
+    pub fn from_i32(x: i32) -> FFP {
+        return FFP { raw: SPFlt(x) }
+    }
+
+    /// Convert FFP to integer (truncates)
+    @inline
+    pub fn to_i32(&self) -> i32 {
+        return SPFix(self.raw)
+    }
+
+    // === Arithmetic ===
+
+    /// Add two FFP values
+    @inline
+    pub fn add(&self, other: FFP) -> FFP {
+        return FFP { raw: SPAdd(self.raw, other.raw) }
+    }
+
+    /// Subtract two FFP values
+    @inline
+    pub fn sub(&self, other: FFP) -> FFP {
+        return FFP { raw: SPSub(self.raw, other.raw) }
+    }
+
+    /// Multiply two FFP values
+    @inline
+    pub fn mul(&self, other: FFP) -> FFP {
+        return FFP { raw: SPMul(self.raw, other.raw) }
+    }
+
+    /// Divide two FFP values
+    @inline
+    pub fn div(&self, other: FFP) -> FFP {
+        return FFP { raw: SPDiv(self.raw, other.raw) }
+    }
+
+    /// Negate FFP value
+    @inline
+    pub fn neg(&self) -> FFP {
+        return FFP { raw: SPNeg(self.raw) }
+    }
+
+    /// Absolute value
+    @inline
+    pub fn abs(&self) -> FFP {
+        return FFP { raw: SPAbs(self.raw) }
+    }
+
+    /// Floor - round toward negative infinity
+    @inline
+    pub fn floor(&self) -> FFP {
+        return FFP { raw: SPFloor(self.raw) }
+    }
+
+    /// Ceiling - round toward positive infinity
+    @inline
+    pub fn ceil(&self) -> FFP {
+        return FFP { raw: SPCeil(self.raw) }
+    }
+
+    // === Comparison ===
+
+    /// Compare two FFP values
+    /// Returns -1 if self < other, 0 if equal, 1 if self > other
+    @inline
+    pub fn cmp(&self, other: FFP) -> i32 {
+        return SPCmp(self.raw, other.raw)
+    }
+
+    /// Test sign and zero
+    /// Returns -1 if negative, 0 if zero, 1 if positive
+    @inline
+    pub fn sign(&self) -> i32 {
+        return SPTst(self.raw)
+    }
+
+    /// Check if zero
+    @inline
+    pub fn is_zero(&self) -> bool {
+        return SPTst(self.raw) == 0
+    }
+
+    /// Check if negative
+    @inline
+    pub fn is_negative(&self) -> bool {
+        return SPTst(self.raw) < 0
+    }
+
+    /// Check if positive
+    @inline
+    pub fn is_positive(&self) -> bool {
+        return SPTst(self.raw) > 0
+    }
+
+    /// Check equality
+    @inline
+    pub fn eq(&self, other: FFP) -> bool {
+        return SPCmp(self.raw, other.raw) == 0
+    }
+
+    /// Check less than
+    @inline
+    pub fn lt(&self, other: FFP) -> bool {
+        return SPCmp(self.raw, other.raw) < 0
+    }
+
+    /// Check greater than
+    @inline
+    pub fn gt(&self, other: FFP) -> bool {
+        return SPCmp(self.raw, other.raw) > 0
+    }
+
+    // === Transcendental Functions ===
+
+    /// Square root
+    @inline
+    pub fn sqrt(&self) -> FFP {
+        return FFP { raw: SPSqrt(self.raw) }
+    }
+
+    /// Sine (argument in radians)
+    @inline
+    pub fn sin(&self) -> FFP {
+        return FFP { raw: SPSin(self.raw) }
+    }
+
+    /// Cosine (argument in radians)
+    @inline
+    pub fn cos(&self) -> FFP {
+        return FFP { raw: SPCos(self.raw) }
+    }
+
+    /// Tangent (argument in radians)
+    @inline
+    pub fn tan(&self) -> FFP {
+        return FFP { raw: SPTan(self.raw) }
+    }
+
+    /// Arc tangent (result in radians)
+    @inline
+    pub fn atan(&self) -> FFP {
+        return FFP { raw: SPAtan(self.raw) }
+    }
+
+    /// Arc sine (result in radians)
+    @inline
+    pub fn asin(&self) -> FFP {
+        return FFP { raw: SPAsin(self.raw) }
+    }
+
+    /// Arc cosine (result in radians)
+    @inline
+    pub fn acos(&self) -> FFP {
+        return FFP { raw: SPAcos(self.raw) }
+    }
+
+    /// Natural exponential (e^x)
+    @inline
+    pub fn exp(&self) -> FFP {
+        return FFP { raw: SPExp(self.raw) }
+    }
+
+    /// Natural logarithm
+    @inline
+    pub fn ln(&self) -> FFP {
+        return FFP { raw: SPLog(self.raw) }
+    }
+
+    /// Base-10 logarithm
+    @inline
+    pub fn log10(&self) -> FFP {
+        return FFP { raw: SPLog10(self.raw) }
+    }
+
+    /// Power function (self^power)
+    @inline
+    pub fn pow(&self, power: FFP) -> FFP {
+        return FFP { raw: SPPow(power.raw, self.raw) }
+    }
+
+    /// Hyperbolic sine
+    @inline
+    pub fn sinh(&self) -> FFP {
+        return FFP { raw: SPSinh(self.raw) }
+    }
+
+    /// Hyperbolic cosine
+    @inline
+    pub fn cosh(&self) -> FFP {
+        return FFP { raw: SPCosh(self.raw) }
+    }
+
+    /// Hyperbolic tangent
+    @inline
+    pub fn tanh(&self) -> FFP {
+        return FFP { raw: SPTanh(self.raw) }
+    }
+
+    // === Conversion ===
+
+    /// Convert FFP to IEEE 754 single-precision float (as raw bits)
+    @inline
+    pub fn to_ieee(&self) -> u32 {
+        return SPTieee(self.raw)
+    }
+
+    /// Create FFP from IEEE 754 single-precision float (as raw bits)
+    @inline
+    pub fn from_ieee(ieee: u32) -> FFP {
+        return FFP { raw: SPFieee(ieee) }
+    }
+}
+
+// ============================================================================
+// FFP Constants
+// ============================================================================
+
+/// Pi in FFP format
+pub fn ffp_pi() -> FFP {
+    // Pi ≈ 3.14159265
+    // FFP representation
+    return FFP::from_raw(0x40490FDB)
+}
+
+/// Pi/2 in FFP format
+pub fn ffp_half_pi() -> FFP {
+    return FFP::from_raw(0x3FC90FDB)
+}
+
+/// 2*Pi in FFP format
+pub fn ffp_two_pi() -> FFP {
+    return FFP::from_raw(0x40C90FDB)
+}
+
+/// e (Euler's number) in FFP format
+pub fn ffp_e() -> FFP {
+    // e ≈ 2.71828182
+    return FFP::from_raw(0x402DF854)
+}
+
+/// 1.0 in FFP format
+pub fn ffp_one() -> FFP {
+    return FFP::from_raw(0x80000041u32)
+}
+
+/// 0.5 in FFP format
+pub fn ffp_half() -> FFP {
+    return FFP::from_raw(0x80000040u32)
+}
+
+// ============================================================================
+// Conversion Helpers
+// ============================================================================
+
+/// Convert Fixed32 to FFP
+@suppress("W0001", "Arithmetic is intentional")
+pub fn fixed32_to_ffp(x: i32) -> FFP {
+    // Fixed32 is 16.16 format
+    // Get integer and fractional parts
+    let int_part = x >> 16
+    let frac_part = x & 0xFFFF
+
+    // Convert integer part to FFP
+    var result = FFP::from_i32(int_part)
+
+    // Add fractional part (frac / 65536)
+    if frac_part != 0 {
+        let frac_ffp = FFP::from_i32(frac_part)
+        let divisor = FFP::from_i32(65536)
+        result = result.add(frac_ffp.div(divisor))
+    }
+
+    return result
+}
+
+/// Convert FFP to Fixed32 raw value
+@suppress("W0001", "Arithmetic is intentional")
+pub fn ffp_to_fixed32(x: FFP) -> i32 {
+    // Get integer part
+    let int_part = x.to_i32()
+
+    // Get fractional part
+    let int_ffp = FFP::from_i32(int_part)
+    let frac_ffp = x.sub(int_ffp)
+
+    // Scale fractional part by 65536
+    let scale = FFP::from_i32(65536)
+    let frac_scaled = frac_ffp.mul(scale).to_i32()
+
+    return (int_part << 16) | (frac_scaled & 0xFFFF)
+}

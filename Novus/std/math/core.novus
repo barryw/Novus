@@ -1,0 +1,388 @@
+// std::math::core - Basic integer math utilities
+// Namespace: std::math::core
+//
+// Provides fundamental math operations that are missing from the language:
+// abs, min, max, clamp, sign, etc.
+//
+// All functions are designed to be fast on 68k processors.
+
+// ============================================================================
+// Absolute Value
+// ============================================================================
+
+/// Absolute value of an i32
+/// Returns the magnitude without sign
+@inline
+pub fn abs_i32(x: i32) -> i32 {
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+/// Absolute value of an i16
+@inline
+pub fn abs_i16(x: i16) -> i16 {
+    if x < 0i16 {
+        return -x
+    }
+    return x
+}
+
+/// Absolute value of an i8
+@inline
+pub fn abs_i8(x: i8) -> i8 {
+    if x < 0i8 {
+        return -x
+    }
+    return x
+}
+
+// ============================================================================
+// Minimum
+// ============================================================================
+
+/// Minimum of two i32 values
+@inline
+pub fn min_i32(a: i32, b: i32) -> i32 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+/// Minimum of two i16 values
+@inline
+pub fn min_i16(a: i16, b: i16) -> i16 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+/// Minimum of two i8 values
+@inline
+pub fn min_i8(a: i8, b: i8) -> i8 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+/// Minimum of two u32 values
+@inline
+pub fn min_u32(a: u32, b: u32) -> u32 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+/// Minimum of two u16 values
+@inline
+pub fn min_u16(a: u16, b: u16) -> u16 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+/// Minimum of two u8 values
+@inline
+pub fn min_u8(a: u8, b: u8) -> u8 {
+    if a < b {
+        return a
+    }
+    return b
+}
+
+// ============================================================================
+// Maximum
+// ============================================================================
+
+/// Maximum of two i32 values
+@inline
+pub fn max_i32(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+/// Maximum of two i16 values
+@inline
+pub fn max_i16(a: i16, b: i16) -> i16 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+/// Maximum of two i8 values
+@inline
+pub fn max_i8(a: i8, b: i8) -> i8 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+/// Maximum of two u32 values
+@inline
+pub fn max_u32(a: u32, b: u32) -> u32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+/// Maximum of two u16 values
+@inline
+pub fn max_u16(a: u16, b: u16) -> u16 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+/// Maximum of two u8 values
+@inline
+pub fn max_u8(a: u8, b: u8) -> u8 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+// ============================================================================
+// Clamp
+// ============================================================================
+
+/// Clamp an i32 value to a range [min_val, max_val]
+@inline
+pub fn clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+/// Clamp an i16 value to a range [min_val, max_val]
+@inline
+pub fn clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+/// Clamp an i8 value to a range [min_val, max_val]
+@inline
+pub fn clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+/// Clamp a u32 value to a range [min_val, max_val]
+@inline
+pub fn clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+/// Clamp a u16 value to a range [min_val, max_val]
+@inline
+pub fn clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+/// Clamp a u8 value to a range [min_val, max_val]
+@inline
+pub fn clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8 {
+    if val < min_val {
+        return min_val
+    }
+    if val > max_val {
+        return max_val
+    }
+    return val
+}
+
+// ============================================================================
+// Sign
+// ============================================================================
+
+/// Returns the sign of an i32 value
+/// Returns -1 if negative, 0 if zero, 1 if positive
+@inline
+pub fn sign_i32(x: i32) -> i32 {
+    if x < 0 {
+        return -1
+    }
+    if x > 0 {
+        return 1
+    }
+    return 0
+}
+
+/// Returns the sign of an i16 value
+/// Returns -1 if negative, 0 if zero, 1 if positive
+@inline
+pub fn sign_i16(x: i16) -> i16 {
+    if x < 0i16 {
+        return -1i16
+    }
+    if x > 0i16 {
+        return 1i16
+    }
+    return 0i16
+}
+
+/// Returns the sign of an i8 value
+/// Returns -1 if negative, 0 if zero, 1 if positive
+@inline
+pub fn sign_i8(x: i8) -> i8 {
+    if x < 0i8 {
+        return -1i8
+    }
+    if x > 0i8 {
+        return 1i8
+    }
+    return 0i8
+}
+
+// ============================================================================
+// Power of Two
+// ============================================================================
+
+/// Check if a u32 is a power of two
+@inline
+pub fn is_power_of_two_u32(x: u32) -> bool {
+    return x != 0u32 && (x & (x - 1u32)) == 0u32
+}
+
+/// Check if a u16 is a power of two
+@inline
+pub fn is_power_of_two_u16(x: u16) -> bool {
+    return x != 0u16 && (x & (x - 1u16)) == 0u16
+}
+
+/// Round up to the next power of two for u32
+/// If already a power of two, returns the same value
+/// Returns 0 if x is 0
+@suppress("W0001", "Bit manipulation is intentional")
+pub fn next_power_of_two_u32(x: u32) -> u32 {
+    if x == 0u32 {
+        return 0u32
+    }
+    var n = x - 1u32
+    n = n | (n >> 1u32)
+    n = n | (n >> 2u32)
+    n = n | (n >> 4u32)
+    n = n | (n >> 8u32)
+    n = n | (n >> 16u32)
+    return n + 1u32
+}
+
+/// Round up to the next power of two for u16
+@suppress("W0001", "Bit manipulation is intentional")
+pub fn next_power_of_two_u16(x: u16) -> u16 {
+    if x == 0u16 {
+        return 0u16
+    }
+    var n = x - 1u16
+    n = n | (n >> 1u16)
+    n = n | (n >> 2u16)
+    n = n | (n >> 4u16)
+    n = n | (n >> 8u16)
+    return n + 1u16
+}
+
+// ============================================================================
+// Division with Rounding
+// ============================================================================
+
+/// Integer division rounding up (ceiling division) for u32
+/// divides a by b and rounds up to the nearest integer
+@inline
+@suppress("W0001", "Division is intentional")
+pub fn div_ceil_u32(a: u32, b: u32) -> u32 {
+    return (a + b - 1u32) / b
+}
+
+/// Integer division rounding up (ceiling division) for u16
+@inline
+@suppress("W0001", "Division is intentional")
+pub fn div_ceil_u16(a: u16, b: u16) -> u16 {
+    return (a + b - 1u16) / b
+}
+
+/// Integer division rounding to nearest for u32
+@inline
+@suppress("W0001", "Division is intentional")
+pub fn div_round_u32(a: u32, b: u32) -> u32 {
+    return (a + b / 2u32) / b
+}
+
+/// Integer division rounding to nearest for u16
+@inline
+@suppress("W0001", "Division is intentional")
+pub fn div_round_u16(a: u16, b: u16) -> u16 {
+    return (a + b / 2u16) / b
+}
+
+// ============================================================================
+// Difference (always positive)
+// ============================================================================
+
+/// Returns the absolute difference between two u32 values
+@inline
+pub fn diff_u32(a: u32, b: u32) -> u32 {
+    if a > b {
+        return a - b
+    }
+    return b - a
+}
+
+/// Returns the absolute difference between two u16 values
+@inline
+pub fn diff_u16(a: u16, b: u16) -> u16 {
+    if a > b {
+        return a - b
+    }
+    return b - a
+}
+
+/// Returns the absolute difference between two i32 values
+@inline
+pub fn diff_i32(a: i32, b: i32) -> i32 {
+    return abs_i32(a - b)
+}
+
+/// Returns the absolute difference between two i16 values
+@inline
+pub fn diff_i16(a: i16, b: i16) -> i16 {
+    return abs_i16(a - b)
+}

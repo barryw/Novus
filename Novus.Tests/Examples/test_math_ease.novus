@@ -1,0 +1,416 @@
+// Test suite for std::math::ease
+
+from std::math::ease import *
+from std::math::fixed import Fixed32
+from std::test::test import expect_eq_i32, expect_true, expect_false
+
+// ============================================================================
+// Helper: Check if value is approximately between min and max (as raw Fixed32)
+// ============================================================================
+
+fn approx_between(val: Fixed32, min_raw: i32, max_raw: i32) -> bool {
+    let raw = val.to_raw()
+    return raw >= min_raw && raw <= max_raw
+}
+
+fn is_near_zero(val: Fixed32) -> bool {
+    let raw = val.to_raw()
+    // Widen tolerance for fixed-point precision
+    return raw >= -3000 && raw <= 3000
+}
+
+fn is_near_one(val: Fixed32) -> bool {
+    let raw = val.to_raw()
+    // Widen tolerance for fixed-point precision
+    return raw >= 62000 && raw <= 69000
+}
+
+fn is_near_half(val: Fixed32) -> bool {
+    let raw = val.to_raw()
+    return raw >= 30000 && raw <= 36000
+}
+
+// ============================================================================
+// Linear Tests
+// ============================================================================
+
+@test
+pub fn test_ease_linear() {
+    let t0 = ease_linear(Fixed32::zero())
+    let t1 = ease_linear(Fixed32::one())
+    let th = ease_linear(Fixed32::from_raw(32768))
+
+    expect_true(is_near_zero(t0), "linear(0) = 0")
+    expect_true(is_near_one(t1), "linear(1) = 1")
+    expect_true(is_near_half(th), "linear(0.5) = 0.5")
+}
+
+// ============================================================================
+// Quadratic Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_quad_endpoints() {
+    let t0 = ease_in_quad(Fixed32::zero())
+    let t1 = ease_in_quad(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_quad(0) = 0")
+    expect_true(is_near_one(t1), "in_quad(1) = 1")
+}
+
+@test
+pub fn test_ease_in_quad_middle() {
+    let th = ease_in_quad(Fixed32::from_raw(32768))  // 0.5
+    // 0.5² = 0.25
+    expect_true(approx_between(th, 14000, 18000), "in_quad(0.5) ≈ 0.25")
+}
+
+@test
+pub fn test_ease_out_quad_endpoints() {
+    let t0 = ease_out_quad(Fixed32::zero())
+    let t1 = ease_out_quad(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_quad(0) = 0")
+    expect_true(is_near_one(t1), "out_quad(1) = 1")
+}
+
+@test
+pub fn test_ease_out_quad_middle() {
+    let th = ease_out_quad(Fixed32::from_raw(32768))  // 0.5
+    // 1 - (1-0.5)² = 1 - 0.25 = 0.75
+    expect_true(approx_between(th, 46000, 52000), "out_quad(0.5) ≈ 0.75")
+}
+
+@test
+pub fn test_ease_in_out_quad_endpoints() {
+    let t0 = ease_in_out_quad(Fixed32::zero())
+    let t1 = ease_in_out_quad(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_quad(0) = 0")
+    expect_true(is_near_one(t1), "in_out_quad(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_quad_middle() {
+    let th = ease_in_out_quad(Fixed32::from_raw(32768))
+    // Should be 0.5 at midpoint
+    expect_true(is_near_half(th), "in_out_quad(0.5) ≈ 0.5")
+}
+
+// ============================================================================
+// Cubic Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_cubic_endpoints() {
+    let t0 = ease_in_cubic(Fixed32::zero())
+    let t1 = ease_in_cubic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_cubic(0) = 0")
+    expect_true(is_near_one(t1), "in_cubic(1) = 1")
+}
+
+@test
+pub fn test_ease_in_cubic_middle() {
+    let th = ease_in_cubic(Fixed32::from_raw(32768))
+    // 0.5³ = 0.125
+    expect_true(approx_between(th, 6000, 10000), "in_cubic(0.5) ≈ 0.125")
+}
+
+@test
+pub fn test_ease_out_cubic_endpoints() {
+    let t0 = ease_out_cubic(Fixed32::zero())
+    let t1 = ease_out_cubic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_cubic(0) = 0")
+    expect_true(is_near_one(t1), "out_cubic(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_cubic_endpoints() {
+    let t0 = ease_in_out_cubic(Fixed32::zero())
+    let t1 = ease_in_out_cubic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_cubic(0) = 0")
+    expect_true(is_near_one(t1), "in_out_cubic(1) = 1")
+}
+
+// ============================================================================
+// Quartic Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_quart_endpoints() {
+    let t0 = ease_in_quart(Fixed32::zero())
+    let t1 = ease_in_quart(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_quart(0) = 0")
+    expect_true(is_near_one(t1), "in_quart(1) = 1")
+}
+
+@test
+pub fn test_ease_out_quart_endpoints() {
+    let t0 = ease_out_quart(Fixed32::zero())
+    let t1 = ease_out_quart(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_quart(0) = 0")
+    expect_true(is_near_one(t1), "out_quart(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_quart_endpoints() {
+    let t0 = ease_in_out_quart(Fixed32::zero())
+    let t1 = ease_in_out_quart(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_quart(0) = 0")
+    expect_true(is_near_one(t1), "in_out_quart(1) = 1")
+}
+
+// ============================================================================
+// Quintic Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_quint_endpoints() {
+    let t0 = ease_in_quint(Fixed32::zero())
+    let t1 = ease_in_quint(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_quint(0) = 0")
+    expect_true(is_near_one(t1), "in_quint(1) = 1")
+}
+
+@test
+pub fn test_ease_out_quint_endpoints() {
+    let t0 = ease_out_quint(Fixed32::zero())
+    let t1 = ease_out_quint(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_quint(0) = 0")
+    expect_true(is_near_one(t1), "out_quint(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_quint_endpoints() {
+    let t0 = ease_in_out_quint(Fixed32::zero())
+    let t1 = ease_in_out_quint(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_quint(0) = 0")
+    expect_true(is_near_one(t1), "in_out_quint(1) = 1")
+}
+
+// ============================================================================
+// Sine Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_sine_endpoints() {
+    let t0 = ease_in_sine(Fixed32::zero())
+    let t1 = ease_in_sine(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_sine(0) = 0")
+    expect_true(is_near_one(t1), "in_sine(1) = 1")
+}
+
+@test
+pub fn test_ease_out_sine_endpoints() {
+    let t0 = ease_out_sine(Fixed32::zero())
+    let t1 = ease_out_sine(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_sine(0) = 0")
+    expect_true(is_near_one(t1), "out_sine(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_sine_endpoints() {
+    let t0 = ease_in_out_sine(Fixed32::zero())
+    let t1 = ease_in_out_sine(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_sine(0) = 0")
+    expect_true(is_near_one(t1), "in_out_sine(1) = 1")
+}
+
+// ============================================================================
+// Exponential Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_expo_endpoints() {
+    let t0 = ease_in_expo(Fixed32::zero())
+    let t1 = ease_in_expo(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_expo(0) = 0")
+    expect_true(is_near_one(t1), "in_expo(1) = 1")
+}
+
+@test
+pub fn test_ease_out_expo_endpoints() {
+    let t0 = ease_out_expo(Fixed32::zero())
+    let t1 = ease_out_expo(Fixed32::one())
+
+    // Note: expo has special handling at endpoints
+    expect_true(is_near_zero(t0), "out_expo(0) = 0")
+    expect_true(is_near_one(t1), "out_expo(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_expo_endpoints() {
+    let t0 = ease_in_out_expo(Fixed32::zero())
+    let t1 = ease_in_out_expo(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_expo(0) = 0")
+    expect_true(is_near_one(t1), "in_out_expo(1) = 1")
+}
+
+// ============================================================================
+// Circular Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_circ_endpoints() {
+    let t0 = ease_in_circ(Fixed32::zero())
+    let t1 = ease_in_circ(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_circ(0) = 0")
+    expect_true(is_near_one(t1), "in_circ(1) = 1")
+}
+
+@test
+pub fn test_ease_out_circ_endpoints() {
+    let t0 = ease_out_circ(Fixed32::zero())
+    let t1 = ease_out_circ(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_circ(0) = 0")
+    expect_true(is_near_one(t1), "out_circ(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_circ_endpoints() {
+    let t0 = ease_in_out_circ(Fixed32::zero())
+    let t1 = ease_in_out_circ(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_circ(0) = 0")
+    expect_true(is_near_one(t1), "in_out_circ(1) = 1")
+}
+
+// ============================================================================
+// Back Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_back_endpoints() {
+    let t0 = ease_in_back(Fixed32::zero())
+    let t1 = ease_in_back(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_back(0) = 0")
+    expect_true(is_near_one(t1), "in_back(1) = 1")
+}
+
+@test
+pub fn test_ease_in_back_overshoots() {
+    // Back easing should go negative at the start
+    let t_early = ease_in_back(Fixed32::from_raw(16384))  // 0.25
+    expect_true(t_early.to_raw() < 0, "in_back overshoots negative")
+}
+
+@test
+pub fn test_ease_out_back_endpoints() {
+    let t0 = ease_out_back(Fixed32::zero())
+    let t1 = ease_out_back(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_back(0) = 0")
+    expect_true(is_near_one(t1), "out_back(1) = 1")
+}
+
+@test
+pub fn test_ease_out_back_overshoots() {
+    // Back easing should overshoot past 1.0
+    let t_late = ease_out_back(Fixed32::from_raw(49152))  // 0.75
+    expect_true(t_late.to_raw() > 65536, "out_back overshoots past 1.0")
+}
+
+// ============================================================================
+// Elastic Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_elastic_endpoints() {
+    let t0 = ease_in_elastic(Fixed32::zero())
+    let t1 = ease_in_elastic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_elastic(0) = 0")
+    expect_true(is_near_one(t1), "in_elastic(1) = 1")
+}
+
+@test
+pub fn test_ease_out_elastic_endpoints() {
+    let t0 = ease_out_elastic(Fixed32::zero())
+    let t1 = ease_out_elastic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_elastic(0) = 0")
+    expect_true(is_near_one(t1), "out_elastic(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_elastic_endpoints() {
+    let t0 = ease_in_out_elastic(Fixed32::zero())
+    let t1 = ease_in_out_elastic(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_elastic(0) = 0")
+    expect_true(is_near_one(t1), "in_out_elastic(1) = 1")
+}
+
+// ============================================================================
+// Bounce Tests
+// ============================================================================
+
+@test
+pub fn test_ease_in_bounce_endpoints() {
+    let t0 = ease_in_bounce(Fixed32::zero())
+    let t1 = ease_in_bounce(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_bounce(0) = 0")
+    expect_true(is_near_one(t1), "in_bounce(1) = 1")
+}
+
+@test
+pub fn test_ease_out_bounce_endpoints() {
+    let t0 = ease_out_bounce(Fixed32::zero())
+    let t1 = ease_out_bounce(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "out_bounce(0) = 0")
+    expect_true(is_near_one(t1), "out_bounce(1) = 1")
+}
+
+@test
+pub fn test_ease_in_out_bounce_endpoints() {
+    let t0 = ease_in_out_bounce(Fixed32::zero())
+    let t1 = ease_in_out_bounce(Fixed32::one())
+
+    expect_true(is_near_zero(t0), "in_out_bounce(0) = 0")
+    expect_true(is_near_one(t1), "in_out_bounce(1) = 1")
+}
+
+// ============================================================================
+// Step Easing Tests
+// ============================================================================
+
+@test
+pub fn test_ease_steps() {
+    // 4 steps: 0, 0.25, 0.5, 0.75
+    let t_early = ease_steps(Fixed32::from_raw(16000), 4)  // Just under 0.25
+    expect_eq_i32(t_early.to_raw(), 0, "steps before first threshold = 0")
+
+    let t_late = ease_steps(Fixed32::from_raw(50000), 4)  // About 0.76
+    // floor(0.76 / 0.25) = floor(3.04) = 3, so 3 * 0.25 = 0.75
+    let raw = t_late.to_raw()
+    expect_true(raw >= 47000 && raw <= 51000, "steps at 0.76 ≈ 0.75")
+}
+
+@test
+pub fn test_ease_steps_start() {
+    // With steps_start, we jump at the start of each step
+    let t = ease_steps_start(Fixed32::from_raw(1000), 4)  // Very small value
+    // Should jump to 0.25 immediately
+    let raw = t.to_raw()
+    expect_true(raw >= 14000 && raw <= 18000, "steps_start jumps to 0.25")
+}
+

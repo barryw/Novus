@@ -1,0 +1,316 @@
+// Test suite for std::math::trig
+
+from std::math::trig import *
+from std::math::fixed import Fixed32
+from std::test::test import expect_eq_i32, expect_true, expect_false
+
+// ============================================================================
+// Angle Constants Tests
+// ============================================================================
+
+@test
+pub fn test_angle_quarter() {
+    // 90 degrees = 16384 in BAMS
+    expect_eq_i32((i32)ANGLE_QUARTER, 16384, "90 degrees = 16384")
+}
+
+@test
+pub fn test_angle_half() {
+    // 180 degrees = 32768 in BAMS
+    expect_eq_i32((i32)ANGLE_HALF, 32768, "180 degrees = 32768")
+}
+
+@test
+pub fn test_angle_three_quarter() {
+    // 270 degrees = 49152 in BAMS
+    expect_eq_i32((i32)ANGLE_THREE_QUARTER, 49152, "270 degrees = 49152")
+}
+
+// ============================================================================
+// Sine Tests
+// ============================================================================
+
+@test
+pub fn test_sin_0_degrees() {
+    // sin(0) = 0
+    let result = sin_fixed32(0u16)
+    // Should be very close to 0
+    expect_true(result.abs().to_raw() < 1000, "sin(0) ≈ 0")
+}
+
+@test
+pub fn test_sin_90_degrees() {
+    // sin(90) = 1.0
+    let result = sin_fixed32(ANGLE_QUARTER)
+    // In Fixed32, 1.0 = 65536
+    // Allow some tolerance due to table precision
+    let raw = result.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "sin(90) ≈ 1.0")
+}
+
+@test
+pub fn test_sin_180_degrees() {
+    // sin(180) = 0
+    let result = sin_fixed32(ANGLE_HALF)
+    expect_true(result.abs().to_raw() < 1000, "sin(180) ≈ 0")
+}
+
+@test
+pub fn test_sin_270_degrees() {
+    // sin(270) = -1.0
+    let result = sin_fixed32(ANGLE_THREE_QUARTER)
+    let raw = result.to_raw()
+    expect_true(raw < -60000 && raw > -70000, "sin(270) ≈ -1.0")
+}
+
+// ============================================================================
+// Cosine Tests
+// ============================================================================
+
+@test
+pub fn test_cos_0_degrees() {
+    // cos(0) = 1.0
+    let result = cos_fixed32(0u16)
+    let raw = result.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "cos(0) ≈ 1.0")
+}
+
+@test
+pub fn test_cos_90_degrees() {
+    // cos(90) = 0
+    let result = cos_fixed32(ANGLE_QUARTER)
+    expect_true(result.abs().to_raw() < 1000, "cos(90) ≈ 0")
+}
+
+@test
+pub fn test_cos_180_degrees() {
+    // cos(180) = -1.0
+    let result = cos_fixed32(ANGLE_HALF)
+    let raw = result.to_raw()
+    expect_true(raw < -60000 && raw > -70000, "cos(180) ≈ -1.0")
+}
+
+@test
+pub fn test_cos_270_degrees() {
+    // cos(270) = 0
+    let result = cos_fixed32(ANGLE_THREE_QUARTER)
+    expect_true(result.abs().to_raw() < 1000, "cos(270) ≈ 0")
+}
+
+// ============================================================================
+// Sin/Cos Relationship Tests
+// ============================================================================
+
+@test
+pub fn test_sin_cos_identity_45_degrees() {
+    // At 45 degrees, sin and cos should be equal
+    let angle_45 = 8192u16  // 45 degrees in BAMS
+    let s = sin_fixed32(angle_45)
+    let c = cos_fixed32(angle_45)
+
+    // They should be approximately equal (within tolerance)
+    let diff = s.sub(c).abs().to_raw()
+    expect_true(diff < 2000, "sin(45) ≈ cos(45)")
+}
+
+@test
+pub fn test_sin_squared_plus_cos_squared() {
+    // sin²(x) + cos²(x) = 1 for any angle
+    let angle = 12345u16  // Arbitrary angle
+    let s = sin_fixed32(angle)
+    let c = cos_fixed32(angle)
+
+    let s_sq = s.mul(s)
+    let c_sq = c.mul(c)
+    let sum = s_sq.add(c_sq)
+
+    // Should be approximately 1.0 (65536 in raw)
+    let raw = sum.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "sin² + cos² ≈ 1")
+}
+
+// ============================================================================
+// i16 Sine/Cosine Tests
+// ============================================================================
+
+@test
+pub fn test_sin_i16_0_degrees() {
+    let result = sin_i16(0u16)
+    expect_true((i32)result < 100 && (i32)result > -100, "sin_i16(0) ≈ 0")
+}
+
+@test
+pub fn test_sin_i16_90_degrees() {
+    // sin(90) = 16384 in 14-bit scale (since 16384 = 1.0)
+    let result = sin_i16(ANGLE_QUARTER)
+    // Should be approximately 16384 (allow some tolerance)
+    expect_true((i32)result > 16000 && (i32)result <= 16384, "sin_i16(90) ≈ 16384")
+}
+
+@test
+pub fn test_cos_i16_0_degrees() {
+    // cos(0) = 16384 in 14-bit scale (since 16384 = 1.0)
+    let result = cos_i16(0u16)
+    expect_true((i32)result > 16000 && (i32)result <= 16384, "cos_i16(0) ≈ 16384")
+}
+
+// ============================================================================
+// Angle Conversion Tests
+// ============================================================================
+
+@test
+pub fn test_degrees_to_angle_0() {
+    let result = degrees_to_angle(0i16)
+    expect_eq_i32((i32)result, 0, "0 degrees = 0 BAMS")
+}
+
+@test
+pub fn test_degrees_to_angle_90() {
+    let result = degrees_to_angle(90i16)
+    // Should be approximately 16384 (90 * 65536 / 360)
+    let diff = (i32)result - 16384
+    if diff < 0 {
+        expect_true(-diff < 200, "90 degrees ≈ 16384 BAMS")
+    } else {
+        expect_true(diff < 200, "90 degrees ≈ 16384 BAMS")
+    }
+}
+
+@test
+pub fn test_degrees_to_angle_180() {
+    let result = degrees_to_angle(180i16)
+    let diff = (i32)result - 32768
+    if diff < 0 {
+        expect_true(-diff < 400, "180 degrees ≈ 32768 BAMS")
+    } else {
+        expect_true(diff < 400, "180 degrees ≈ 32768 BAMS")
+    }
+}
+
+@test
+pub fn test_angle_to_degrees_0() {
+    let result = angle_to_degrees(0u16)
+    expect_eq_i32((i32)result, 0, "0 BAMS = 0 degrees")
+}
+
+@test
+pub fn test_angle_to_degrees_quarter() {
+    let result = angle_to_degrees(ANGLE_QUARTER)
+    // Should be 90
+    expect_eq_i32((i32)result, 90, "16384 BAMS = 90 degrees")
+}
+
+@test
+pub fn test_angle_to_degrees_half() {
+    let result = angle_to_degrees(ANGLE_HALF)
+    expect_eq_i32((i32)result, 180, "32768 BAMS = 180 degrees")
+}
+
+// ============================================================================
+// Radians Conversion Tests
+// ============================================================================
+
+@test
+pub fn test_radians_to_angle() {
+    // pi radians should be 180 degrees = 32768 BAMS
+    let pi = Fixed32::from_raw(205887)  // Pi in Fixed32
+    let result = radians_to_angle(pi)
+    let diff = (i32)result - 32768
+    if diff < 0 {
+        expect_true(-diff < 1000, "pi radians ≈ 32768 BAMS")
+    } else {
+        expect_true(diff < 1000, "pi radians ≈ 32768 BAMS")
+    }
+}
+
+@test
+pub fn test_angle_to_radians() {
+    // 32768 BAMS (180 degrees) should be pi radians
+    let result = angle_to_radians(ANGLE_HALF)
+    // Pi in Fixed32 ≈ 205887
+    let raw = result.to_raw()
+    expect_true(raw > 200000 && raw < 210000, "180 degrees ≈ pi radians")
+}
+
+// ============================================================================
+// Tangent Tests
+// ============================================================================
+
+@test
+pub fn test_tan_0_degrees() {
+    // tan(0) = 0
+    let result = tan_fixed32(0u16)
+    expect_true(result.abs().to_raw() < 1000, "tan(0) ≈ 0")
+}
+
+@test
+pub fn test_tan_45_degrees() {
+    // tan(45) = 1.0
+    let angle_45 = 8192u16
+    let result = tan_fixed32(angle_45)
+    // Should be approximately 1.0 (65536 in raw)
+    let raw = result.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "tan(45) ≈ 1.0")
+}
+
+// ============================================================================
+// atan2 Tests
+// ============================================================================
+
+@test
+pub fn test_atan2_angle_right() {
+    // Point to the right (1, 0) should be 0 degrees
+    let result = atan2_angle(0, 1000)
+    expect_true((i32)result < 2000, "atan2(0, +x) ≈ 0 degrees")
+}
+
+@test
+pub fn test_atan2_angle_up() {
+    // Point up (0, -1) should be 270 degrees or thereabouts
+    // Note: Amiga coords have Y increasing downward typically
+    let result = atan2_angle(1000, 0)
+    // Should be around 90 degrees (16384 BAMS)
+    let diff = (i32)result - 16384
+    if diff < 0 {
+        expect_true(-diff < 2000, "atan2(+y, 0) ≈ 90 degrees")
+    } else {
+        expect_true(diff < 2000, "atan2(+y, 0) ≈ 90 degrees")
+    }
+}
+
+@test
+pub fn test_atan2_angle_left() {
+    // Point left (-1, 0) should be 180 degrees
+    let result = atan2_angle(0, -1000)
+    let diff = (i32)result - 32768
+    if diff < 0 {
+        expect_true(-diff < 2000, "atan2(0, -x) ≈ 180 degrees")
+    } else {
+        expect_true(diff < 2000, "atan2(0, -x) ≈ 180 degrees")
+    }
+}
+
+// ============================================================================
+// Interpolated Sine/Cosine Tests
+// ============================================================================
+
+@test
+pub fn test_sin_fixed32_interp_0() {
+    let result = sin_fixed32_interp(0u16)
+    expect_true(result.abs().to_raw() < 500, "sin_interp(0) ≈ 0")
+}
+
+@test
+pub fn test_sin_fixed32_interp_90() {
+    let result = sin_fixed32_interp(ANGLE_QUARTER)
+    let raw = result.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "sin_interp(90) ≈ 1.0")
+}
+
+@test
+pub fn test_cos_fixed32_interp_0() {
+    let result = cos_fixed32_interp(0u16)
+    let raw = result.to_raw()
+    expect_true(raw > 60000 && raw < 70000, "cos_interp(0) ≈ 1.0")
+}
+

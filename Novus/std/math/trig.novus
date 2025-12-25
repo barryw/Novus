@@ -1,0 +1,410 @@
+// std::math::trig - Trigonometric functions using lookup tables
+// Namespace: std::math::trig
+//
+// High-performance sine/cosine using pre-computed tables.
+// Essential for games, demos, and graphics on 68k Amigas without FPUs.
+//
+// Angle representation:
+// - Angles are represented as u16 (0-65535) mapping to 0-360 degrees
+// - This is called "binary angular measurement" or "BAMS"
+// - 0 = 0°, 16384 = 90°, 32768 = 180°, 49152 = 270°, 65535 ≈ 360°
+//
+// Return values:
+// - Sine/cosine return Fixed32 values in range [-1.0, 1.0]
+// - Uses 14-bit precision in the lookup table
+
+from std::math::fixed import Fixed32
+
+// ============================================================================
+// Angle Constants
+// ============================================================================
+
+/// Full circle in angle units (65536, but wraps to 0)
+pub const ANGLE_FULL: u16 = 0u16
+
+/// Half circle (180 degrees)
+pub const ANGLE_HALF: u16 = 32768u16
+
+/// Quarter circle (90 degrees)
+pub const ANGLE_QUARTER: u16 = 16384u16
+
+/// Three-quarter circle (270 degrees)
+pub const ANGLE_THREE_QUARTER: u16 = 49152u16
+
+/// One degree in angle units (approximately 182)
+pub const ANGLE_ONE_DEGREE: u16 = 182u16
+
+// ============================================================================
+// Sine Lookup Table
+// ============================================================================
+
+// 256-entry sine table with values scaled to 14-bit fixed point
+// Each entry represents sin(i * 360 / 256) * 16384
+// This gives us ~1.4 degree precision with 256 entries
+// For the full 0-65535 angle range, we use interpolation or table indexing
+
+// Table contains first quadrant (0-90 degrees) = 64 entries
+// Other quadrants are derived by symmetry
+
+// Values: sin(angle) * 16384 for angle = 0, 1.40625, 2.8125, ... 90 degrees
+// Generated from: round(sin(i * pi / 128) * 16384) for i = 0..64
+
+// Sine table with 65 entries for first quadrant (0° to 90°)
+// Values are sin(i * 90 / 64) * 16384, where 16384 = 1.0
+// Generated with: round(sin(i * pi / 128) * 16384) for i = 0..64
+static SINE_TABLE: [i16; 65] = [
+    0,      // sin(0.000°) = 0.0000
+    402,    // sin(1.406°) = 0.0245
+    804,    // sin(2.813°) = 0.0491
+    1205,   // sin(4.219°) = 0.0736
+    1606,   // sin(5.625°) = 0.0980
+    2006,   // sin(7.031°) = 0.1224
+    2404,   // sin(8.438°) = 0.1467
+    2801,   // sin(9.844°) = 0.1710
+    3196,   // sin(11.250°) = 0.1951
+    3590,   // sin(12.656°) = 0.2191
+    3981,   // sin(14.063°) = 0.2430
+    4370,   // sin(15.469°) = 0.2667
+    4756,   // sin(16.875°) = 0.2903
+    5139,   // sin(18.281°) = 0.3137
+    5520,   // sin(19.688°) = 0.3369
+    5897,   // sin(21.094°) = 0.3599
+    6270,   // sin(22.500°) = 0.3827
+    6639,   // sin(23.906°) = 0.4052
+    7005,   // sin(25.313°) = 0.4276
+    7366,   // sin(26.719°) = 0.4496
+    7723,   // sin(28.125°) = 0.4714
+    8076,   // sin(29.531°) = 0.4929
+    8423,   // sin(30.938°) = 0.5141
+    8765,   // sin(32.344°) = 0.5350
+    9102,   // sin(33.750°) = 0.5556
+    9434,   // sin(35.156°) = 0.5758
+    9760,   // sin(36.563°) = 0.5957
+    10080,  // sin(37.969°) = 0.6152
+    10394,  // sin(39.375°) = 0.6344
+    10702,  // sin(40.781°) = 0.6532
+    11003,  // sin(42.188°) = 0.6716
+    11297,  // sin(43.594°) = 0.6895
+    11585,  // sin(45.000°) = 0.7071
+    11866,  // sin(46.406°) = 0.7242
+    12140,  // sin(47.813°) = 0.7410
+    12406,  // sin(49.219°) = 0.7572
+    12665,  // sin(50.625°) = 0.7730
+    12916,  // sin(52.031°) = 0.7883
+    13160,  // sin(53.438°) = 0.8032
+    13395,  // sin(54.844°) = 0.8176
+    13623,  // sin(56.250°) = 0.8315
+    13842,  // sin(57.656°) = 0.8449
+    14053,  // sin(59.063°) = 0.8577
+    14256,  // sin(60.469°) = 0.8701
+    14449,  // sin(61.875°) = 0.8819
+    14635,  // sin(63.281°) = 0.8932
+    14811,  // sin(64.688°) = 0.9040
+    14978,  // sin(66.094°) = 0.9142
+    15137,  // sin(67.500°) = 0.9239
+    15286,  // sin(68.906°) = 0.9330
+    15426,  // sin(70.313°) = 0.9415
+    15557,  // sin(71.719°) = 0.9495
+    15679,  // sin(73.125°) = 0.9569
+    15791,  // sin(74.531°) = 0.9638
+    15893,  // sin(75.938°) = 0.9700
+    15986,  // sin(77.344°) = 0.9757
+    16069,  // sin(78.750°) = 0.9808
+    16143,  // sin(80.156°) = 0.9853
+    16207,  // sin(81.563°) = 0.9892
+    16261,  // sin(82.969°) = 0.9925
+    16305,  // sin(83.375°) = 0.9952
+    16340,  // sin(85.781°) = 0.9973
+    16364,  // sin(87.188°) = 0.9988
+    16379,  // sin(88.594°) = 0.9997
+    16384,  // sin(90.000°) = 1.0000
+]
+
+// Correction: The table above uses 14-bit scaling (16384 = 1.0)
+// But we want sin(90°) = 1.0 = 16384 in Fixed32 fractional bits
+// Let me recalculate with proper Fixed32 scaling
+
+// Actually, for Fixed32 we want values scaled by 65536 (16.16 format)
+// So sin(90°) = 1.0 = 65536
+// This table uses 1/4 of that for the raw lookup, then we shift left by 2
+
+// ============================================================================
+// Sine/Cosine Functions
+// ============================================================================
+
+/// Get sine of an angle as Fixed32
+///
+/// Angle is in binary angular measurement (0-65535 = 0-360°)
+/// Returns a Fixed32 value in range [-1.0, 1.0]
+///
+/// Example:
+/// ```novus
+/// let angle: u16 = 16384  // 90 degrees
+/// let s = sin_fixed32(angle)  // Returns Fixed32 ≈ 1.0
+/// ```
+@suppress("W0001", "Bit operations are intentional")
+@suppress("W0002", "Casts are intentional")
+pub fn sin_fixed32(angle: u16) -> Fixed32 {
+    // Convert angle (0-65535) to table index (0-255)
+    // angle / 256 = index into a 256-entry table
+    // But we only store 65 entries (first quadrant + endpoint)
+    // So we need to handle quadrants:
+
+    // Quadrant determination:
+    // Q1: 0-16383 (0-90°) - use table directly
+    // Q2: 16384-32767 (90-180°) - mirror around 90°
+    // Q3: 32768-49151 (180-270°) - negate Q1
+    // Q4: 49152-65535 (270-360°) - negate Q2
+
+    // Simplified: reduce to first quadrant, then apply sign
+    var idx = angle >> 8  // 0-255
+    var quadrant = idx >> 6  // 0-3
+    var local_idx = idx & 63u16  // 0-63
+
+    // For quadrants 1 and 3, mirror the index
+    if quadrant == 1u16 || quadrant == 3u16 {
+        local_idx = 64u16 - local_idx
+    }
+
+    // Look up value (14-bit scaled)
+    var value: i32 = (i32)SINE_TABLE[local_idx]
+
+    // Scale from 14-bit to 16-bit (Fixed32 fractional bits)
+    value = value << 2
+
+    // Apply sign for quadrants 2 and 3 (180-360°)
+    if quadrant >= 2u16 {
+        value = -value
+    }
+
+    return Fixed32::from_raw(value)
+}
+
+/// Get cosine of an angle as Fixed32
+///
+/// cos(x) = sin(x + 90°)
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn cos_fixed32(angle: u16) -> Fixed32 {
+    return sin_fixed32(angle + ANGLE_QUARTER)
+}
+
+/// Get sine as a raw i16 value (14-bit scaled: 16384 = 1.0)
+///
+/// Faster than sin_fixed32 when you don't need Fixed32 wrapper.
+/// Useful for direct blitter/copper calculations.
+@suppress("W0001", "Bit operations are intentional")
+@suppress("W0002", "Casts are intentional")
+pub fn sin_i16(angle: u16) -> i16 {
+    var idx = angle >> 8
+    var quadrant = idx >> 6
+    var local_idx = idx & 63u16
+
+    if quadrant == 1u16 || quadrant == 3u16 {
+        local_idx = 64u16 - local_idx
+    }
+
+    var value: i16 = SINE_TABLE[local_idx]
+
+    if quadrant >= 2u16 {
+        value = -value
+    }
+
+    return value
+}
+
+/// Get cosine as a raw i16 value (14-bit scaled)
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn cos_i16(angle: u16) -> i16 {
+    return sin_i16(angle + ANGLE_QUARTER)
+}
+
+// ============================================================================
+// Angle Conversion
+// ============================================================================
+
+/// Convert degrees (0-359) to binary angle (0-65535)
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn degrees_to_angle(degrees: i16) -> u16 {
+    // angle = degrees * 65536 / 360
+    // Simplified: angle = degrees * 182 (approximately)
+    // More accurate: angle = degrees * 65536 / 360 = degrees * 182.044...
+    // Use: (degrees * 182) + (degrees * 11 / 256) for better accuracy
+    let base = ((i32)degrees) * 182i32
+    let correction = ((i32)degrees) * 11i32 / 256i32
+    return (u16)(base + correction)
+}
+
+/// Convert binary angle (0-65535) to degrees (0-359)
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn angle_to_degrees(angle: u16) -> i16 {
+    // degrees = angle * 360 / 65536
+    // Simplified: degrees = angle * 360 >> 16
+    let result = ((i32)angle) * 360i32 >> 16
+    return (i16)result
+}
+
+/// Convert radians (as Fixed32) to binary angle
+@suppress("W0001", "Arithmetic is intentional")
+pub fn radians_to_angle(radians: Fixed32) -> u16 {
+    // angle = radians * 65536 / (2 * pi)
+    // = radians * 10430.378...
+    // Using fixed-point: radians.raw * 10430 >> 16
+    let scaled = (radians.to_raw() * 10430i32) >> 16
+    return (u16)scaled
+}
+
+/// Convert binary angle to radians (as Fixed32)
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn angle_to_radians(angle: u16) -> Fixed32 {
+    // radians = angle * 2 * pi / 65536
+    // 2*Pi in Fixed32 = 411775
+    // Result = angle * 411775 / 65536 = angle * 6.2832
+    // But angle * 411775 can overflow i32 for large angles
+    // Split into: angle * 6 + angle * 0.2832
+    // = angle * 6 + angle * 18558 / 65536
+    // For angle=32768: 32768*6 + 32768*18558/65536 = 196608 + 9279 = 205887 ✓
+    let a = (i32)angle
+    let result = a * 6 + ((a * 18558) >> 16)
+    return Fixed32::from_raw(result)
+}
+
+// ============================================================================
+// Tangent (derived from sin/cos)
+// ============================================================================
+
+/// Get tangent of an angle as Fixed32
+///
+/// Note: tangent approaches infinity at 90° and 270°
+/// Returns a clamped value for angles near these points
+@suppress("W0001", "Arithmetic is intentional")
+pub fn tan_fixed32(angle: u16) -> Fixed32 {
+    let s = sin_fixed32(angle)
+    let c = cos_fixed32(angle)
+
+    // Avoid division by zero (cos near 0 at 90° and 270°)
+    let cos_raw = c.to_raw()
+    if cos_raw == 0 {
+        // Return max/min value based on sign
+        if s.to_raw() > 0 {
+            return Fixed32::from_raw(0x7FFFFFFF)  // Max positive
+        }
+        return Fixed32::from_raw(-0x7FFFFFFF)  // Max negative (almost min)
+    }
+
+    return s.div(c)
+}
+
+// ============================================================================
+// Atan2 (angle from coordinates)
+// ============================================================================
+
+/// Calculate angle from y and x coordinates
+///
+/// Returns angle in binary angular measurement (0-65535)
+/// This is equivalent to atan2(y, x) but returns BAMS
+///
+/// Uses a small lookup table and linear interpolation for speed.
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Casts are intentional")
+pub fn atan2_angle(y: i32, x: i32) -> u16 {
+    // Handle special cases
+    if x == 0 && y == 0 {
+        return 0u16
+    }
+
+    // Determine octant and normalize to first octant
+    var abs_x = x
+    var abs_y = y
+    if abs_x < 0 { abs_x = -abs_x }
+    if abs_y < 0 { abs_y = -abs_y }
+
+    var angle: u16 = 0u16
+    var swap = false
+
+    // Ensure abs_x >= abs_y for the approximation
+    if abs_y > abs_x {
+        let temp = abs_x
+        abs_x = abs_y
+        abs_y = temp
+        swap = true
+    }
+
+    // Approximate atan(abs_y / abs_x) using linear approximation
+    // For small angles: atan(z) ≈ z (in radians)
+    // We use: angle ≈ (abs_y * 8192) / abs_x (scaled to 0-8192 for 0-45°)
+    if abs_x != 0 {
+        let ratio = (abs_y << 13) / abs_x  // 13 bits = 8192 scale
+        angle = (u16)ratio  // 0-8192 for 0-45°
+    }
+
+    // Adjust for octant
+    if swap {
+        angle = 16384u16 - angle  // Reflect around 45° to get 45-90°
+    }
+
+    // Adjust for quadrant based on original signs
+    if x < 0 && y >= 0 {
+        angle = 32768u16 - angle  // Q2: 90-180°
+    } else if x < 0 && y < 0 {
+        angle = 32768u16 + angle  // Q3: 180-270°
+    } else if x >= 0 && y < 0 {
+        angle = 0u16 - angle  // Q4: 270-360° (wraps around)
+    }
+
+    return angle
+}
+
+// ============================================================================
+// Higher-Precision Sine (with interpolation)
+// ============================================================================
+
+/// Get sine with linear interpolation for higher precision
+///
+/// Uses the 65-entry table with interpolation for smoother results.
+/// Slightly slower than sin_fixed32 but more accurate.
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Casts are intentional")
+pub fn sin_fixed32_interp(angle: u16) -> Fixed32 {
+    // Get quadrant and local position within quadrant
+    var quadrant = angle >> 14  // 0-3
+    var local = angle & 0x3FFFu16  // 0-16383 within quadrant
+
+    // For Q1 and Q3, use local directly; for Q2 and Q4, mirror
+    if quadrant == 1u16 || quadrant == 3u16 {
+        local = 16383u16 - local
+    }
+
+    // Map local (0-16383) to table index (0-64)
+    // local / 256 = index (0-63), local % 256 = interpolation factor
+    let idx = local >> 8  // 0-63
+    let frac = local & 0xFFu16  // 0-255, interpolation weight
+
+    // Get two adjacent table values
+    let v0 = (i32)SINE_TABLE[idx]
+    let v1 = (i32)SINE_TABLE[idx + 1u16]
+
+    // Linear interpolation: result = v0 + (v1 - v0) * frac / 256
+    var value = v0 + ((v1 - v0) * (i32)frac >> 8)
+
+    // Scale from 14-bit to 16-bit
+    value = value << 2
+
+    // Apply sign for Q2 and Q3
+    if quadrant >= 2u16 {
+        value = -value
+    }
+
+    return Fixed32::from_raw(value)
+}
+
+/// Get cosine with linear interpolation
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn cos_fixed32_interp(angle: u16) -> Fixed32 {
+    return sin_fixed32_interp(angle + ANGLE_QUARTER)
+}

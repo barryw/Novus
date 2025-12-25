@@ -1,0 +1,564 @@
+// std::math::fixed - Fixed-point arithmetic types
+// Namespace: std::math::fixed
+//
+// Fixed-point math is essential for 68k Amigas without FPUs.
+// These types provide efficient fractional arithmetic using integer operations.
+//
+// Fixed32 (16.16): 16 bits integer, 16 bits fractional
+//   Range: -32768.0 to 32767.99998 (approx)
+//   Precision: ~0.000015 (1/65536)
+//
+// Fixed16 (8.8): 8 bits integer, 8 bits fractional
+//   Range: -128.0 to 127.996 (approx)
+//   Precision: ~0.004 (1/256)
+
+// ============================================================================
+// Fixed32 - 16.16 Fixed Point
+// ============================================================================
+
+/// 16.16 fixed-point number
+/// The most common fixed-point format for Amiga development.
+/// Uses a 32-bit integer where the lower 16 bits are the fractional part.
+pub struct Fixed32 {
+    raw: i32,
+}
+
+/// Shift amount for Fixed32 (16 bits fractional)
+const FIXED32_SHIFT: u32 = 16u32
+
+/// Scale factor for Fixed32 (65536)
+const FIXED32_SCALE: i32 = 65536
+
+/// One in Fixed32 representation
+const FIXED32_ONE: i32 = 65536
+
+/// Half in Fixed32 representation (for rounding)
+const FIXED32_HALF: i32 = 32768
+
+impl Fixed32 {
+    /// Create a Fixed32 from raw bits (internal use)
+    @inline
+    pub fn from_raw(raw: i32) -> Fixed32 {
+        return Fixed32 { raw: raw }
+    }
+
+    /// Get the raw i32 representation
+    @inline
+    pub fn to_raw(&self) -> i32 {
+        return self.raw
+    }
+
+    /// Create a Fixed32 from an integer
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn from_i32(x: i32) -> Fixed32 {
+        return Fixed32 { raw: x << 16 }
+    }
+
+    /// Create a Fixed32 from an i16
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn from_i16(x: i16) -> Fixed32 {
+        return Fixed32 { raw: (i32)x << 16 }
+    }
+
+    /// Convert to i32 (truncates fractional part)
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn to_i32(&self) -> i32 {
+        return self.raw >> 16
+    }
+
+    /// Convert to i32 with rounding
+    @inline
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn to_i32_rounded(&self) -> i32 {
+        return (self.raw + FIXED32_HALF) >> 16
+    }
+
+    /// Create zero
+    @inline
+    pub fn zero() -> Fixed32 {
+        return Fixed32 { raw: 0 }
+    }
+
+    /// Create one
+    @inline
+    pub fn one() -> Fixed32 {
+        return Fixed32 { raw: FIXED32_ONE }
+    }
+
+    /// Create from integer and fractional parts
+    /// frac should be in range 0-65535 representing 0.0 to 0.99998
+    @inline
+    @suppress("W0001", "Bit manipulation is intentional")
+    pub fn from_parts(integer: i16, frac: u16) -> Fixed32 {
+        let int_part = ((i32)integer) << 16
+        let frac_part = (i32)frac
+        return Fixed32 { raw: int_part | frac_part }
+    }
+
+    /// Get the integer part
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn integer_part(&self) -> i16 {
+        return (i16)(self.raw >> 16)
+    }
+
+    /// Get the fractional part (0-65535)
+    @inline
+    @suppress("W0001", "Bit manipulation is intentional")
+    pub fn fractional_part(&self) -> u16 {
+        return (u16)(self.raw & 0xFFFF)
+    }
+
+    /// Check if zero
+    @inline
+    pub fn is_zero(&self) -> bool {
+        return self.raw == 0
+    }
+
+    /// Check if negative
+    @inline
+    pub fn is_negative(&self) -> bool {
+        return self.raw < 0
+    }
+
+    /// Check if positive
+    @inline
+    pub fn is_positive(&self) -> bool {
+        return self.raw > 0
+    }
+
+    // === Arithmetic Operations ===
+
+    /// Add two Fixed32 values
+    @inline
+    pub fn add(&self, other: Fixed32) -> Fixed32 {
+        return Fixed32 { raw: self.raw + other.raw }
+    }
+
+    /// Subtract two Fixed32 values
+    @inline
+    pub fn sub(&self, other: Fixed32) -> Fixed32 {
+        return Fixed32 { raw: self.raw - other.raw }
+    }
+
+    /// Negate a Fixed32 value
+    @inline
+    pub fn neg(&self) -> Fixed32 {
+        return Fixed32 { raw: -self.raw }
+    }
+
+    /// Absolute value
+    @inline
+    pub fn abs(&self) -> Fixed32 {
+        if self.raw < 0 {
+            return Fixed32 { raw: -self.raw }
+        }
+        return *self
+    }
+
+    /// Multiply two Fixed32 values
+    /// Uses 64-bit intermediate for accuracy on 68020+
+    @suppress("W0001", "Shift is intentional")
+    @suppress("W0002", "Cast is intentional")
+    pub fn mul(&self, other: Fixed32) -> Fixed32 {
+        // 68020+ has 32x32->64 MULS.L instruction
+        // For 68000, this will use a software 64-bit multiply
+        let a = (i64)self.raw
+        let b = (i64)other.raw
+        let result = (a * b) >> 16
+        return Fixed32 { raw: (i32)result }
+    }
+
+    /// Multiply by an integer (faster than mul for scaling)
+    @inline
+    pub fn mul_i32(&self, scalar: i32) -> Fixed32 {
+        return Fixed32 { raw: self.raw * scalar }
+    }
+
+    /// Divide two Fixed32 values
+    @suppress("W0001", "Shift is intentional")
+    @suppress("W0002", "Cast is intentional")
+    pub fn div(&self, other: Fixed32) -> Fixed32 {
+        // Use 64-bit to preserve precision
+        let a = (i64)self.raw << 16
+        let b = (i64)other.raw
+        let result = a / b
+        return Fixed32 { raw: (i32)result }
+    }
+
+    /// Divide by an integer (faster than div)
+    @inline
+    pub fn div_i32(&self, divisor: i32) -> Fixed32 {
+        return Fixed32 { raw: self.raw / divisor }
+    }
+
+    // === Comparison Operations ===
+
+    /// Compare two Fixed32 values
+    /// Returns -1 if self < other, 0 if equal, 1 if self > other
+    @inline
+    pub fn cmp(&self, other: Fixed32) -> i32 {
+        if self.raw < other.raw {
+            return -1
+        }
+        if self.raw > other.raw {
+            return 1
+        }
+        return 0
+    }
+
+    /// Check equality
+    @inline
+    pub fn eq(&self, other: Fixed32) -> bool {
+        return self.raw == other.raw
+    }
+
+    /// Check if less than
+    @inline
+    pub fn lt(&self, other: Fixed32) -> bool {
+        return self.raw < other.raw
+    }
+
+    /// Check if less than or equal
+    @inline
+    pub fn le(&self, other: Fixed32) -> bool {
+        return self.raw <= other.raw
+    }
+
+    /// Check if greater than
+    @inline
+    pub fn gt(&self, other: Fixed32) -> bool {
+        return self.raw > other.raw
+    }
+
+    /// Check if greater than or equal
+    @inline
+    pub fn ge(&self, other: Fixed32) -> bool {
+        return self.raw >= other.raw
+    }
+
+    /// Return the minimum of two values
+    @inline
+    pub fn min(&self, other: Fixed32) -> Fixed32 {
+        if self.raw < other.raw {
+            return *self
+        }
+        return other
+    }
+
+    /// Return the maximum of two values
+    @inline
+    pub fn max(&self, other: Fixed32) -> Fixed32 {
+        if self.raw > other.raw {
+            return *self
+        }
+        return other
+    }
+
+    /// Clamp to a range
+    @inline
+    pub fn clamp(&self, min_val: Fixed32, max_val: Fixed32) -> Fixed32 {
+        if self.raw < min_val.raw {
+            return min_val
+        }
+        if self.raw > max_val.raw {
+            return max_val
+        }
+        return *self
+    }
+
+    /// Floor - round toward negative infinity
+    @inline
+    @suppress("W0001", "Bit manipulation is intentional")
+    pub fn floor(&self) -> Fixed32 {
+        return Fixed32 { raw: self.raw & 0xFFFF0000u32 }
+    }
+
+    /// Ceiling - round toward positive infinity
+    @inline
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn ceil(&self) -> Fixed32 {
+        return Fixed32 { raw: (self.raw + FIXED32_ONE - 1) & 0xFFFF0000u32 }
+    }
+
+    /// Round to nearest integer (as Fixed32)
+    @inline
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn round(&self) -> Fixed32 {
+        return Fixed32 { raw: (self.raw + FIXED32_HALF) & 0xFFFF0000u32 }
+    }
+}
+
+// ============================================================================
+// Fixed16 - 8.8 Fixed Point
+// ============================================================================
+
+/// 8.8 fixed-point number
+/// Smaller range but uses 16-bit operations which can be faster.
+/// Good for normalized values, color components, etc.
+pub struct Fixed16 {
+    raw: i16,
+}
+
+/// Shift amount for Fixed16 (8 bits fractional)
+const FIXED16_SHIFT: u32 = 8u32
+
+/// Scale factor for Fixed16 (256)
+const FIXED16_SCALE: i16 = 256i16
+
+/// One in Fixed16 representation
+const FIXED16_ONE: i16 = 256i16
+
+/// Half in Fixed16 representation
+const FIXED16_HALF: i16 = 128i16
+
+impl Fixed16 {
+    /// Create a Fixed16 from raw bits
+    @inline
+    pub fn from_raw(raw: i16) -> Fixed16 {
+        return Fixed16 { raw: raw }
+    }
+
+    /// Get the raw i16 representation
+    @inline
+    pub fn to_raw(&self) -> i16 {
+        return self.raw
+    }
+
+    /// Create a Fixed16 from an i8 integer
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn from_i8(x: i8) -> Fixed16 {
+        return Fixed16 { raw: (i16)x << 8 }
+    }
+
+    /// Convert to i8 (truncates fractional part)
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn to_i8(&self) -> i8 {
+        return (i8)(self.raw >> 8)
+    }
+
+    /// Convert to i8 with rounding
+    @inline
+    @suppress("W0001", "Arithmetic is intentional")
+    pub fn to_i8_rounded(&self) -> i8 {
+        return (i8)((self.raw + FIXED16_HALF) >> 8)
+    }
+
+    /// Create zero
+    @inline
+    pub fn zero() -> Fixed16 {
+        return Fixed16 { raw: 0i16 }
+    }
+
+    /// Create one
+    @inline
+    pub fn one() -> Fixed16 {
+        return Fixed16 { raw: FIXED16_ONE }
+    }
+
+    /// Get the integer part
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn integer_part(&self) -> i8 {
+        return (i8)(self.raw >> 8)
+    }
+
+    /// Get the fractional part (0-255)
+    @inline
+    @suppress("W0001", "Bit manipulation is intentional")
+    pub fn fractional_part(&self) -> u8 {
+        return (u8)(self.raw & 0xFF)
+    }
+
+    /// Check if zero
+    @inline
+    pub fn is_zero(&self) -> bool {
+        return self.raw == 0i16
+    }
+
+    /// Check if negative
+    @inline
+    pub fn is_negative(&self) -> bool {
+        return self.raw < 0i16
+    }
+
+    // === Arithmetic Operations ===
+
+    /// Add two Fixed16 values
+    @inline
+    pub fn add(&self, other: Fixed16) -> Fixed16 {
+        return Fixed16 { raw: self.raw + other.raw }
+    }
+
+    /// Subtract two Fixed16 values
+    @inline
+    pub fn sub(&self, other: Fixed16) -> Fixed16 {
+        return Fixed16 { raw: self.raw - other.raw }
+    }
+
+    /// Negate a Fixed16 value
+    @inline
+    pub fn neg(&self) -> Fixed16 {
+        return Fixed16 { raw: -self.raw }
+    }
+
+    /// Absolute value
+    @inline
+    pub fn abs(&self) -> Fixed16 {
+        if self.raw < 0i16 {
+            return Fixed16 { raw: -self.raw }
+        }
+        return *self
+    }
+
+    /// Multiply two Fixed16 values
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn mul(&self, other: Fixed16) -> Fixed16 {
+        let a = (i32)self.raw
+        let b = (i32)other.raw
+        let result = (a * b) >> 8
+        return Fixed16 { raw: (i16)result }
+    }
+
+    /// Multiply by an i8 integer
+    @inline
+    pub fn mul_i8(&self, scalar: i8) -> Fixed16 {
+        return Fixed16 { raw: self.raw * (i16)scalar }
+    }
+
+    /// Divide two Fixed16 values
+    @inline
+    @suppress("W0001", "Shift is intentional")
+    pub fn div(&self, other: Fixed16) -> Fixed16 {
+        let a = ((i32)self.raw) << 8
+        let b = (i32)other.raw
+        let result = a / b
+        return Fixed16 { raw: (i16)result }
+    }
+
+    // === Comparison Operations ===
+
+    /// Compare two Fixed16 values
+    @inline
+    pub fn cmp(&self, other: Fixed16) -> i32 {
+        if self.raw < other.raw {
+            return -1
+        }
+        if self.raw > other.raw {
+            return 1
+        }
+        return 0
+    }
+
+    /// Check equality
+    @inline
+    pub fn eq(&self, other: Fixed16) -> bool {
+        return self.raw == other.raw
+    }
+
+    /// Check if less than
+    @inline
+    pub fn lt(&self, other: Fixed16) -> bool {
+        return self.raw < other.raw
+    }
+
+    /// Check if greater than
+    @inline
+    pub fn gt(&self, other: Fixed16) -> bool {
+        return self.raw > other.raw
+    }
+
+    /// Return the minimum of two values
+    @inline
+    pub fn min(&self, other: Fixed16) -> Fixed16 {
+        if self.raw < other.raw {
+            return *self
+        }
+        return other
+    }
+
+    /// Return the maximum of two values
+    @inline
+    pub fn max(&self, other: Fixed16) -> Fixed16 {
+        if self.raw > other.raw {
+            return *self
+        }
+        return other
+    }
+
+    /// Clamp to a range
+    @inline
+    pub fn clamp(&self, min_val: Fixed16, max_val: Fixed16) -> Fixed16 {
+        if self.raw < min_val.raw {
+            return min_val
+        }
+        if self.raw > max_val.raw {
+            return max_val
+        }
+        return *self
+    }
+}
+
+// ============================================================================
+// Conversion between Fixed32 and Fixed16
+// ============================================================================
+
+/// Convert Fixed32 to Fixed16 (loses precision)
+@inline
+@suppress("W0001", "Shift is intentional")
+pub fn fixed32_to_fixed16(x: Fixed32) -> Fixed16 {
+    return Fixed16 { raw: (i16)(x.raw >> 8) }
+}
+
+/// Convert Fixed16 to Fixed32 (exact)
+@inline
+@suppress("W0001", "Shift is intentional")
+pub fn fixed16_to_fixed32(x: Fixed16) -> Fixed32 {
+    return Fixed32 { raw: ((i32)x.raw) << 8 }
+}
+
+// ============================================================================
+// Common Constants as Fixed32
+// ============================================================================
+
+/// Pi as Fixed32 (3.14159...)
+/// Value: 205887 (= 3.14159 * 65536)
+pub fn fixed32_pi() -> Fixed32 {
+    return Fixed32 { raw: 205887 }
+}
+
+/// Pi/2 as Fixed32
+pub fn fixed32_half_pi() -> Fixed32 {
+    return Fixed32 { raw: 102944 }
+}
+
+/// 2*Pi as Fixed32
+pub fn fixed32_two_pi() -> Fixed32 {
+    return Fixed32 { raw: 411775 }
+}
+
+/// Pi/4 as Fixed32
+pub fn fixed32_quarter_pi() -> Fixed32 {
+    return Fixed32 { raw: 51472 }
+}
+
+/// 1/Pi as Fixed32
+pub fn fixed32_inv_pi() -> Fixed32 {
+    return Fixed32 { raw: 20861 }
+}
+
+/// sqrt(2) as Fixed32 (1.41421...)
+pub fn fixed32_sqrt2() -> Fixed32 {
+    return Fixed32 { raw: 92682 }
+}
+
+/// 1/sqrt(2) as Fixed32 (0.70710...)
+pub fn fixed32_inv_sqrt2() -> Fixed32 {
+    return Fixed32 { raw: 46341 }
+}

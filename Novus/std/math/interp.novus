@@ -1,0 +1,310 @@
+// std::math::interp - Interpolation functions
+// Namespace: std::math::interp
+//
+// Provides smooth interpolation functions essential for animations,
+// transitions, and procedural effects on 68k Amigas.
+//
+// All functions work with Fixed32 values in the range [0.0, 1.0].
+
+from std::math::fixed import Fixed32
+
+// ============================================================================
+// Linear Interpolation
+// ============================================================================
+
+/// Linear interpolation between two Fixed32 values
+/// t should be in range [0.0, 1.0]
+/// Returns: a + (b - a) * t
+@inline
+@suppress("W0001", "Arithmetic is intentional")
+pub fn lerp(a: Fixed32, b: Fixed32, t: Fixed32) -> Fixed32 {
+    return a.add(b.sub(a).mul(t))
+}
+
+/// Linear interpolation between two i32 values
+/// t should be in range [0.0, 1.0] as Fixed32
+/// Returns result as i32
+@suppress("W0001", "Arithmetic is intentional")
+pub fn lerp_i32(a: i32, b: i32, t: Fixed32) -> i32 {
+    let diff = b - a
+    let scaled = Fixed32::from_i32(diff).mul(t)
+    return a + scaled.to_i32()
+}
+
+/// Inverse lerp - find t given a value between a and b
+/// Returns: (value - a) / (b - a)
+/// Result is clamped to [0.0, 1.0]
+@suppress("W0001", "Arithmetic is intentional")
+pub fn inv_lerp(a: Fixed32, b: Fixed32, value: Fixed32) -> Fixed32 {
+    let range = b.sub(a)
+    if range.is_zero() {
+        return Fixed32::zero()
+    }
+    let t = value.sub(a).div(range)
+    return t.clamp(Fixed32::zero(), Fixed32::one())
+}
+
+/// Remap a value from one range to another
+/// Equivalent to: lerp(out_min, out_max, inv_lerp(in_min, in_max, value))
+@suppress("W0001", "Arithmetic is intentional")
+pub fn remap(value: Fixed32, in_min: Fixed32, in_max: Fixed32, out_min: Fixed32, out_max: Fixed32) -> Fixed32 {
+    let t = inv_lerp(in_min, in_max, value)
+    return lerp(out_min, out_max, t)
+}
+
+// ============================================================================
+// Smoothstep Functions
+// ============================================================================
+
+/// Smooth Hermite interpolation (cubic)
+/// Maps [0,1] to [0,1] with smooth start and end
+/// Formula: t² * (3 - 2t)
+@suppress("W0001", "Arithmetic is intentional")
+pub fn smoothstep(t: Fixed32) -> Fixed32 {
+    // Clamp t to [0, 1]
+    var x = t
+    if x.lt(Fixed32::zero()) {
+        x = Fixed32::zero()
+    } else if x.gt(Fixed32::one()) {
+        x = Fixed32::one()
+    }
+
+    // t² * (3 - 2t)
+    let t_sq = x.mul(x)
+    let three = Fixed32::from_i32(3)
+    let two = Fixed32::from_i32(2)
+    return t_sq.mul(three.sub(two.mul(x)))
+}
+
+/// Smoothstep between edge0 and edge1
+/// Returns 0 if x <= edge0, 1 if x >= edge1
+/// Smooth interpolation between
+@suppress("W0001", "Arithmetic is intentional")
+pub fn smoothstep_range(edge0: Fixed32, edge1: Fixed32, x: Fixed32) -> Fixed32 {
+    let t = inv_lerp(edge0, edge1, x)
+    return smoothstep(t)
+}
+
+/// Smoother step (Ken Perlin's improved version)
+/// Uses 5th-degree polynomial: 6t⁵ - 15t⁴ + 10t³
+/// Has zero first AND second derivatives at endpoints
+@suppress("W0001", "Arithmetic is intentional")
+pub fn smootherstep(t: Fixed32) -> Fixed32 {
+    // Clamp t to [0, 1]
+    var x = t
+    if x.lt(Fixed32::zero()) {
+        x = Fixed32::zero()
+    } else if x.gt(Fixed32::one()) {
+        x = Fixed32::one()
+    }
+
+    // 6t⁵ - 15t⁴ + 10t³
+    // = t³ * (10 + t * (-15 + 6t))
+    // = t³ * (10 - 15t + 6t²)
+    let t_sq = x.mul(x)
+    let t_cu = t_sq.mul(x)
+
+    let six = Fixed32::from_i32(6)
+    let fifteen = Fixed32::from_i32(15)
+    let ten = Fixed32::from_i32(10)
+
+    // inner = 6t² - 15t + 10
+    let inner = six.mul(t_sq).sub(fifteen.mul(x)).add(ten)
+    return t_cu.mul(inner)
+}
+
+// ============================================================================
+// Step Functions
+// ============================================================================
+
+/// Step function - returns 0 if x < edge, 1 if x >= edge
+@inline
+pub fn step(edge: Fixed32, x: Fixed32) -> Fixed32 {
+    if x.lt(edge) {
+        return Fixed32::zero()
+    }
+    return Fixed32::one()
+}
+
+/// Step function for i32 values
+@inline
+pub fn step_i32(edge: i32, x: i32) -> i32 {
+    if x < edge {
+        return 0
+    }
+    return 1
+}
+
+// ============================================================================
+// Clamped Interpolation
+// ============================================================================
+
+/// Lerp with t clamped to [0, 1]
+@suppress("W0001", "Arithmetic is intentional")
+pub fn lerp_clamped(a: Fixed32, b: Fixed32, t: Fixed32) -> Fixed32 {
+    var t_clamped = t
+    if t_clamped.lt(Fixed32::zero()) {
+        t_clamped = Fixed32::zero()
+    } else if t_clamped.gt(Fixed32::one()) {
+        t_clamped = Fixed32::one()
+    }
+    return lerp(a, b, t_clamped)
+}
+
+// ============================================================================
+// Move Towards
+// ============================================================================
+
+/// Move current towards target by at most max_delta
+/// Useful for smooth following behavior
+@suppress("W0001", "Arithmetic is intentional")
+pub fn move_towards(current: Fixed32, target: Fixed32, max_delta: Fixed32) -> Fixed32 {
+    let diff = target.sub(current)
+
+    if diff.abs().le(max_delta) {
+        return target
+    }
+
+    if diff.is_positive() {
+        return current.add(max_delta)
+    }
+    return current.sub(max_delta)
+}
+
+/// Move towards for i32 values
+pub fn move_towards_i32(current: i32, target: i32, max_delta: i32) -> i32 {
+    let diff = target - current
+
+    var abs_diff = diff
+    if abs_diff < 0 {
+        abs_diff = -abs_diff
+    }
+
+    if abs_diff <= max_delta {
+        return target
+    }
+
+    if diff > 0 {
+        return current + max_delta
+    }
+    return current - max_delta
+}
+
+// ============================================================================
+// Damping Functions
+// ============================================================================
+
+/// Exponential decay / smooth damp approximation
+/// Moves current towards target with exponential falloff
+/// decay should be in range (0, 1) - lower = slower
+@suppress("W0001", "Arithmetic is intentional")
+pub fn damp(current: Fixed32, target: Fixed32, decay: Fixed32) -> Fixed32 {
+    return lerp(current, target, decay)
+}
+
+/// Spring-like damping (simple approximation)
+/// velocity is modified in place (pass as &var)
+/// stiffness: spring strength (try 0.1-0.5)
+/// damping: velocity decay (try 0.8-0.95)
+@suppress("W0001", "Arithmetic is intentional")
+pub fn spring_damp(current: Fixed32, target: Fixed32, velocity: &var Fixed32, stiffness: Fixed32, damping: Fixed32) -> Fixed32 {
+    let diff = target.sub(current)
+    let force = diff.mul(stiffness)
+
+    *velocity = velocity.mul(damping).add(force)
+
+    return current.add(*velocity)
+}
+
+// ============================================================================
+// Bezier Curves
+// ============================================================================
+
+/// Quadratic Bezier interpolation
+/// p0 = start, p1 = control, p2 = end
+/// t in [0, 1]
+@suppress("W0001", "Arithmetic is intentional")
+pub fn bezier_quadratic(p0: Fixed32, p1: Fixed32, p2: Fixed32, t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let one_minus_t_sq = one_minus_t.mul(one_minus_t)
+    let t_sq = t.mul(t)
+    let two = Fixed32::from_i32(2)
+
+    // (1-t)² * p0 + 2(1-t)t * p1 + t² * p2
+    return one_minus_t_sq.mul(p0)
+        .add(two.mul(one_minus_t).mul(t).mul(p1))
+        .add(t_sq.mul(p2))
+}
+
+/// Cubic Bezier interpolation
+/// p0 = start, p1 = control1, p2 = control2, p3 = end
+/// t in [0, 1]
+@suppress("W0001", "Arithmetic is intentional")
+pub fn bezier_cubic(p0: Fixed32, p1: Fixed32, p2: Fixed32, p3: Fixed32, t: Fixed32) -> Fixed32 {
+    let one_minus_t = Fixed32::one().sub(t)
+    let one_minus_t_sq = one_minus_t.mul(one_minus_t)
+    let one_minus_t_cu = one_minus_t_sq.mul(one_minus_t)
+    let t_sq = t.mul(t)
+    let t_cu = t_sq.mul(t)
+    let three = Fixed32::from_i32(3)
+
+    // (1-t)³ * p0 + 3(1-t)²t * p1 + 3(1-t)t² * p2 + t³ * p3
+    return one_minus_t_cu.mul(p0)
+        .add(three.mul(one_minus_t_sq).mul(t).mul(p1))
+        .add(three.mul(one_minus_t).mul(t_sq).mul(p2))
+        .add(t_cu.mul(p3))
+}
+
+// ============================================================================
+// Ping Pong
+// ============================================================================
+
+/// Ping-pong a value between 0 and length
+/// The value bounces back and forth like a ping-pong ball
+@suppress("W0001", "Arithmetic is intentional")
+@suppress("W0002", "Cast is intentional")
+pub fn ping_pong(t: Fixed32, length: Fixed32) -> Fixed32 {
+    if length.is_zero() {
+        return Fixed32::zero()
+    }
+
+    // Normalize t to [0, 2*length]
+    let two_length = length.mul(Fixed32::from_i32(2))
+    var normalized = t
+
+    // Simple modulo approximation for positive values
+    // t mod (2*length)
+    if normalized.is_negative() {
+        normalized = normalized.neg()
+    }
+
+    // Reduce to range [0, 2*length]
+    while normalized.ge(two_length) {
+        normalized = normalized.sub(two_length)
+    }
+
+    // If in second half, reflect back
+    if normalized.gt(length) {
+        normalized = two_length.sub(normalized)
+    }
+
+    return normalized
+}
+
+/// Repeat/wrap a value to [0, length]
+@suppress("W0001", "Arithmetic is intentional")
+pub fn repeat(t: Fixed32, length: Fixed32) -> Fixed32 {
+    if length.is_zero() {
+        return Fixed32::zero()
+    }
+
+    var result = t
+    while result.ge(length) {
+        result = result.sub(length)
+    }
+    while result.lt(Fixed32::zero()) {
+        result = result.add(length)
+    }
+
+    return result
+}

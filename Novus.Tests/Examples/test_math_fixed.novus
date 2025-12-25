@@ -1,0 +1,356 @@
+// Test suite for std::math::fixed
+
+from std::math::fixed import *
+from std::test::test import expect_eq_i32, expect_true, expect_false
+
+// ============================================================================
+// Fixed32 Creation Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_from_i32() {
+    let f = Fixed32::from_i32(42)
+    expect_eq_i32(f.to_i32(), 42, "from_i32 should preserve integer value")
+}
+
+@test
+pub fn test_fixed32_from_i32_negative() {
+    let f = Fixed32::from_i32(-42)
+    expect_eq_i32(f.to_i32(), -42, "from_i32 should preserve negative value")
+}
+
+@test
+pub fn test_fixed32_zero() {
+    let f = Fixed32::zero()
+    expect_eq_i32(f.to_i32(), 0, "zero should be 0")
+    expect_true(f.is_zero(), "zero should test as zero")
+}
+
+@test
+pub fn test_fixed32_one() {
+    let f = Fixed32::one()
+    expect_eq_i32(f.to_i32(), 1, "one should convert to 1")
+    expect_eq_i32(f.to_raw(), 65536, "one raw value should be 65536")
+}
+
+@test
+pub fn test_fixed32_from_parts() {
+    let f = Fixed32::from_parts(5i16, 32768u16)  // 5.5
+    expect_eq_i32(f.to_i32(), 5, "integer part should be 5")
+    // fractional part 32768 = 0.5, so raw should be (5 << 16) | 32768
+}
+
+// ============================================================================
+// Fixed32 Arithmetic Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_add() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(5)
+    let result = a.add(b)
+    expect_eq_i32(result.to_i32(), 15, "10 + 5 = 15")
+}
+
+@test
+pub fn test_fixed32_add_negative() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(-15)
+    let result = a.add(b)
+    expect_eq_i32(result.to_i32(), -5, "10 + (-15) = -5")
+}
+
+@test
+pub fn test_fixed32_sub() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(3)
+    let result = a.sub(b)
+    expect_eq_i32(result.to_i32(), 7, "10 - 3 = 7")
+}
+
+@test
+pub fn test_fixed32_neg() {
+    let a = Fixed32::from_i32(42)
+    let result = a.neg()
+    expect_eq_i32(result.to_i32(), -42, "neg(42) = -42")
+}
+
+@test
+pub fn test_fixed32_abs_positive() {
+    let a = Fixed32::from_i32(42)
+    expect_eq_i32(a.abs().to_i32(), 42, "abs of positive unchanged")
+}
+
+@test
+pub fn test_fixed32_abs_negative() {
+    let a = Fixed32::from_i32(-42)
+    expect_eq_i32(a.abs().to_i32(), 42, "abs of negative is positive")
+}
+
+@test
+pub fn test_fixed32_mul_integers() {
+    let a = Fixed32::from_i32(6)
+    let b = Fixed32::from_i32(7)
+    let result = a.mul(b)
+    expect_eq_i32(result.to_i32(), 42, "6 * 7 = 42")
+}
+
+@test
+pub fn test_fixed32_mul_i32() {
+    let a = Fixed32::from_i32(10)
+    let result = a.mul_i32(5)
+    expect_eq_i32(result.to_i32(), 50, "10 * 5 = 50")
+}
+
+@test
+pub fn test_fixed32_div_integers() {
+    let a = Fixed32::from_i32(42)
+    let b = Fixed32::from_i32(6)
+    let result = a.div(b)
+    expect_eq_i32(result.to_i32(), 7, "42 / 6 = 7")
+}
+
+@test
+pub fn test_fixed32_div_i32() {
+    let a = Fixed32::from_i32(100)
+    let result = a.div_i32(4)
+    expect_eq_i32(result.to_i32(), 25, "100 / 4 = 25")
+}
+
+// ============================================================================
+// Fixed32 Fractional Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_half() {
+    // 0.5 in Fixed32 = 32768 raw
+    let half = Fixed32::from_raw(32768)
+    let doubled = half.add(half)
+    expect_eq_i32(doubled.to_i32(), 1, "0.5 + 0.5 = 1.0")
+}
+
+@test
+pub fn test_fixed32_mul_fractional() {
+    // 2.0 * 0.5 = 1.0
+    let two = Fixed32::from_i32(2)
+    let half = Fixed32::from_raw(32768)  // 0.5
+    let result = two.mul(half)
+    expect_eq_i32(result.to_i32(), 1, "2.0 * 0.5 = 1.0")
+}
+
+@test
+pub fn test_fixed32_integer_part() {
+    let f = Fixed32::from_parts(7i16, 32768u16)  // 7.5
+    expect_eq_i32((i32)f.integer_part(), 7, "integer part of 7.5 is 7")
+}
+
+@test
+pub fn test_fixed32_fractional_part() {
+    let f = Fixed32::from_parts(7i16, 32768u16)  // 7.5
+    expect_eq_i32((i32)f.fractional_part(), 32768, "fractional part is 32768")
+}
+
+// ============================================================================
+// Fixed32 Comparison Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_cmp_less() {
+    let a = Fixed32::from_i32(5)
+    let b = Fixed32::from_i32(10)
+    expect_eq_i32(a.cmp(b), -1, "5 < 10")
+}
+
+@test
+pub fn test_fixed32_cmp_greater() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(5)
+    expect_eq_i32(a.cmp(b), 1, "10 > 5")
+}
+
+@test
+pub fn test_fixed32_cmp_equal() {
+    let a = Fixed32::from_i32(7)
+    let b = Fixed32::from_i32(7)
+    expect_eq_i32(a.cmp(b), 0, "7 == 7")
+}
+
+@test
+pub fn test_fixed32_lt() {
+    let a = Fixed32::from_i32(5)
+    let b = Fixed32::from_i32(10)
+    expect_true(a.lt(b), "5 < 10")
+    expect_false(b.lt(a), "10 not < 5")
+}
+
+@test
+pub fn test_fixed32_gt() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(5)
+    expect_true(a.gt(b), "10 > 5")
+}
+
+@test
+pub fn test_fixed32_eq() {
+    let a = Fixed32::from_i32(42)
+    let b = Fixed32::from_i32(42)
+    expect_true(a.eq(b), "42 == 42")
+}
+
+// ============================================================================
+// Fixed32 Min/Max/Clamp Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_min() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(5)
+    expect_eq_i32(a.min(b).to_i32(), 5, "min(10, 5) = 5")
+}
+
+@test
+pub fn test_fixed32_max() {
+    let a = Fixed32::from_i32(10)
+    let b = Fixed32::from_i32(5)
+    expect_eq_i32(a.max(b).to_i32(), 10, "max(10, 5) = 10")
+}
+
+@test
+pub fn test_fixed32_clamp_within() {
+    let val = Fixed32::from_i32(50)
+    let min_val = Fixed32::from_i32(0)
+    let max_val = Fixed32::from_i32(100)
+    expect_eq_i32(val.clamp(min_val, max_val).to_i32(), 50, "clamp within range")
+}
+
+@test
+pub fn test_fixed32_clamp_below() {
+    let val = Fixed32::from_i32(-10)
+    let min_val = Fixed32::from_i32(0)
+    let max_val = Fixed32::from_i32(100)
+    expect_eq_i32(val.clamp(min_val, max_val).to_i32(), 0, "clamp below min")
+}
+
+@test
+pub fn test_fixed32_clamp_above() {
+    let val = Fixed32::from_i32(150)
+    let min_val = Fixed32::from_i32(0)
+    let max_val = Fixed32::from_i32(100)
+    expect_eq_i32(val.clamp(min_val, max_val).to_i32(), 100, "clamp above max")
+}
+
+// ============================================================================
+// Fixed32 Rounding Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_floor() {
+    let f = Fixed32::from_parts(5i16, 49152u16)  // 5.75
+    expect_eq_i32(f.floor().to_i32(), 5, "floor(5.75) = 5")
+}
+
+@test
+pub fn test_fixed32_ceil() {
+    let f = Fixed32::from_parts(5i16, 16384u16)  // 5.25
+    expect_eq_i32(f.ceil().to_i32(), 6, "ceil(5.25) = 6")
+}
+
+@test
+pub fn test_fixed32_round_down() {
+    let f = Fixed32::from_parts(5i16, 16384u16)  // 5.25
+    expect_eq_i32(f.round().to_i32(), 5, "round(5.25) = 5")
+}
+
+@test
+pub fn test_fixed32_round_up() {
+    let f = Fixed32::from_parts(5i16, 49152u16)  // 5.75
+    expect_eq_i32(f.round().to_i32(), 6, "round(5.75) = 6")
+}
+
+@test
+pub fn test_fixed32_to_i32_rounded() {
+    let f = Fixed32::from_parts(5i16, 49152u16)  // 5.75
+    expect_eq_i32(f.to_i32_rounded(), 6, "to_i32_rounded(5.75) = 6")
+}
+
+// ============================================================================
+// Fixed32 Sign Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_is_negative() {
+    let pos = Fixed32::from_i32(5)
+    let neg = Fixed32::from_i32(-5)
+    expect_false(pos.is_negative(), "positive is not negative")
+    expect_true(neg.is_negative(), "negative is negative")
+}
+
+@test
+pub fn test_fixed32_is_positive() {
+    let pos = Fixed32::from_i32(5)
+    let neg = Fixed32::from_i32(-5)
+    expect_true(pos.is_positive(), "positive is positive")
+    expect_false(neg.is_positive(), "negative is not positive")
+}
+
+// ============================================================================
+// Fixed16 Tests
+// ============================================================================
+
+@test
+pub fn test_fixed16_basic() {
+    let f = Fixed16::from_i8(42i8)
+    expect_eq_i32((i32)f.to_i8(), 42, "Fixed16 from_i8/to_i8")
+}
+
+@test
+pub fn test_fixed16_add() {
+    let a = Fixed16::from_i8(10i8)
+    let b = Fixed16::from_i8(5i8)
+    expect_eq_i32((i32)a.add(b).to_i8(), 15, "Fixed16 add")
+}
+
+@test
+pub fn test_fixed16_mul() {
+    let a = Fixed16::from_i8(6i8)
+    let b = Fixed16::from_i8(7i8)
+    expect_eq_i32((i32)a.mul(b).to_i8(), 42, "Fixed16 mul")
+}
+
+// ============================================================================
+// Conversion Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_to_fixed16() {
+    let fx32 = Fixed32::from_i32(42)
+    let fx16 = fixed32_to_fixed16(fx32)
+    expect_eq_i32((i32)fx16.to_i8(), 42, "Fixed32 to Fixed16 conversion")
+}
+
+@test
+pub fn test_fixed16_to_fixed32() {
+    let fx16 = Fixed16::from_i8(42i8)
+    let fx32 = fixed16_to_fixed32(fx16)
+    expect_eq_i32(fx32.to_i32(), 42, "Fixed16 to Fixed32 conversion")
+}
+
+// ============================================================================
+// Constants Tests
+// ============================================================================
+
+@test
+pub fn test_fixed32_pi() {
+    let pi = fixed32_pi()
+    expect_eq_i32(pi.to_i32(), 3, "pi integer part is 3")
+    // Check it's approximately 3.14159
+    let raw = pi.to_raw()
+    expect_true(raw > 205000 && raw < 206000, "pi raw value in range")
+}
+
+@test
+pub fn test_fixed32_sqrt2() {
+    let sqrt2 = fixed32_sqrt2()
+    expect_eq_i32(sqrt2.to_i32(), 1, "sqrt2 integer part is 1")
+}
+
