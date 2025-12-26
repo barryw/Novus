@@ -178,8 +178,11 @@ public class InProcessCompiler
                 };
             }
 
-            // PHASE 4: IR Building
-            var irBuilder = new IrBuilder();
+            // Get analysis result with overload information for function name mangling
+            var analysisResult = analyzer.GetResult();
+
+            // PHASE 4: IR Building - pass analysis result so IrBuilder knows about function overloads
+            var irBuilder = new IrBuilder(analysisResult);
             irBuilder.SetStdLibPath(_stdLibPath);
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);

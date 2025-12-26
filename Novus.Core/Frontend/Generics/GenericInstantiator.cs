@@ -12,7 +12,8 @@ public record GenericTemplate(
     NovusParser.FunctionDeclarationContext Context,
     Dictionary<string, (IrType Type, object Value)> Constants,
     IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
-    List<string>? MethodGenericParams = null  // Method-level generics (e.g., E in fn ok_or<E>)
+    List<string>? MethodGenericParams = null,  // Method-level generics (e.g., E in fn ok_or<E>)
+    string? SourceModulePath = null  // Path to module where this template was defined (for dependency resolution)
 );
 
 /// <summary>
@@ -205,6 +206,12 @@ public interface IInstantiationContext
 
     // Constants management for generic templates
     void RestoreConstantsFromTuples(Dictionary<string, (IrType Type, object Value)> constants);
+
+    /// <summary>
+    /// Import all public functions and global variables from the specified module.
+    /// Used during generic instantiation to ensure dependencies from the source module are available.
+    /// </summary>
+    void ImportModuleDependencies(string modulePath);
 }
 
 /// <summary>

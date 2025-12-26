@@ -1,7 +1,7 @@
 // Test for bsdsocket.library availability and IP address parsing
 // Run with: novus test test_bsdsocket.novus
 
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_u8
+from std::test::test import expect, expect_true, expect_false, expect_eq, expect_eq, expect_eq
 from std::net::socket import SocketLibrary, ensure_initialized, is_tcp_available
 from std::net::addr import Ipv4Addr, AddrParseError
 from std::core import Result, Option
@@ -57,10 +57,10 @@ pub fn test_parse_with_library() {
     match result {
         Result::Ok(addr) => {
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 192, "first octet")
-            expect_eq_u8(octets[1], 168, "second octet")
-            expect_eq_u8(octets[2], 1, "third octet")
-            expect_eq_u8(octets[3], 100, "fourth octet")
+            expect_eq(octets[0], 192, "first octet")
+            expect_eq(octets[1], 168, "second octet")
+            expect_eq(octets[2], 1, "third octet")
+            expect_eq(octets[3], 100, "fourth octet")
         },
         Result::Err(e) => {
             expect_true(false, "parse should succeed")
@@ -75,10 +75,10 @@ pub fn test_parse_localhost() {
         Result::Ok(addr) => {
             expect_true(addr.is_loopback(), "should be loopback")
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 127, "first octet")
-            expect_eq_u8(octets[1], 0, "second octet")
-            expect_eq_u8(octets[2], 0, "third octet")
-            expect_eq_u8(octets[3], 1, "fourth octet")
+            expect_eq(octets[0], 127, "first octet")
+            expect_eq(octets[1], 0, "second octet")
+            expect_eq(octets[2], 0, "third octet")
+            expect_eq(octets[3], 1, "fourth octet")
         },
         Result::Err(e) => {
             expect_true(false, "parse should succeed")
@@ -93,10 +93,10 @@ pub fn test_parse_google_dns() {
         Result::Ok(addr) => {
             expect_true(addr.is_global(), "should be global")
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 8, "first octet")
-            expect_eq_u8(octets[1], 8, "second octet")
-            expect_eq_u8(octets[2], 8, "third octet")
-            expect_eq_u8(octets[3], 8, "fourth octet")
+            expect_eq(octets[0], 8, "first octet")
+            expect_eq(octets[1], 8, "second octet")
+            expect_eq(octets[2], 8, "third octet")
+            expect_eq(octets[3], 8, "fourth octet")
         },
         Result::Err(e) => {
             expect_true(false, "parse should succeed")
@@ -140,10 +140,10 @@ pub fn test_parse_broadcast() {
         Result::Ok(addr) => {
             expect_true(addr.is_broadcast(), "should be broadcast address")
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 255, "first octet")
-            expect_eq_u8(octets[1], 255, "second octet")
-            expect_eq_u8(octets[2], 255, "third octet")
-            expect_eq_u8(octets[3], 255, "fourth octet")
+            expect_eq(octets[0], 255, "first octet")
+            expect_eq(octets[1], 255, "second octet")
+            expect_eq(octets[2], 255, "third octet")
+            expect_eq(octets[3], 255, "fourth octet")
         },
         Result::Err(e) => {
             expect_true(false, "parse should succeed for broadcast")

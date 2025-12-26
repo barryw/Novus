@@ -2,7 +2,7 @@
 // Tests the owned String type methods
 
 from std::strings::core import String, Str, StringError
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_bool
+from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // =============================================================================
 // String::new tests
@@ -11,7 +11,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq_u32, ex
 @test("String::new creates empty string")
 pub fn test_string_new() {
     var s = String::new()
-    expect_eq_u32(s.len(), 0u32, "new string has len 0")
+    expect_eq(s.len(), 0u32, "new string has len 0")
     expect_true(s.is_empty(), "new string is empty")
     s.drop()
 }
@@ -26,7 +26,7 @@ pub fn test_string_with_capacity() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq_u32(owned.len(), 0u32, "with_capacity string has len 0")
+            expect_eq(owned.len(), 0u32, "with_capacity string has len 0")
             expect_true(owned.is_empty(), "with_capacity string is empty")
             // Capacity should be at least what we requested
             expect_true(owned.capacity() >= 100u32, "capacity >= 100")
@@ -42,7 +42,7 @@ pub fn test_string_with_capacity_zero() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq_u32(owned.len(), 0u32, "zero capacity string has len 0")
+            expect_eq(owned.len(), 0u32, "zero capacity string has len 0")
             owned.drop()
         },
         Err(_) => expect(false, "with_capacity(0) should succeed")
@@ -60,7 +60,7 @@ pub fn test_string_new_from_str() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq_u32(owned.len(), 13u32, "copied string has correct len")
+            expect_eq(owned.len(), 13u32, "copied string has correct len")
             let converted = owned.as_str()
             expect_true(converted.equals(original), "content matches original")
             owned.drop()
@@ -76,7 +76,7 @@ pub fn test_string_new_from_str_empty() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq_u32(owned.len(), 0u32, "empty string copy has len 0")
+            expect_eq(owned.len(), 0u32, "empty string copy has len 0")
             expect_true(owned.is_empty(), "empty string copy is empty")
             owned.drop()
         },
@@ -96,14 +96,14 @@ pub fn test_string_push_str() {
         Ok(_) => expect(true, "first push_str succeeds"),
         Err(_) => expect(false, "first push_str should succeed")
     }
-    expect_eq_u32(s.len(), 5u32, "len after first push")
+    expect_eq(s.len(), 5u32, "len after first push")
 
     let result2 = s.push_str(", World!")
     match result2 {
         Ok(_) => expect(true, "second push_str succeeds"),
         Err(_) => expect(false, "second push_str should succeed")
     }
-    expect_eq_u32(s.len(), 13u32, "len after second push")
+    expect_eq(s.len(), 13u32, "len after second push")
 
     let content = s.as_str()
     let expected: Str = "Hello, World!"
@@ -122,7 +122,7 @@ pub fn test_string_push_str_empty() {
         Ok(_) => expect(true, "push empty string succeeds"),
         Err(_) => expect(false, "push empty string should succeed")
     }
-    expect_eq_u32(s.len(), len_before, "len unchanged after empty push")
+    expect_eq(s.len(), len_before, "len unchanged after empty push")
     s.drop()
 }
 
@@ -136,7 +136,7 @@ pub fn test_string_push_byte() {
     let _ = s.push_byte(72u8)  // 'H'
     let _ = s.push_byte(105u8) // 'i'
 
-    expect_eq_u32(s.len(), 2u32, "len is 2 after two pushes")
+    expect_eq(s.len(), 2u32, "len is 2 after two pushes")
     let content = s.as_str()
     let expected: Str = "Hi"
     expect_true(content.equals(expected), "content is 'Hi'")
@@ -151,10 +151,10 @@ pub fn test_string_push_byte() {
 pub fn test_string_clear() {
     var s = String::new()
     let _ = s.push_str("Hello, World!")
-    expect_eq_u32(s.len(), 13u32, "len before clear")
+    expect_eq(s.len(), 13u32, "len before clear")
 
     s.clear()
-    expect_eq_u32(s.len(), 0u32, "len is 0 after clear")
+    expect_eq(s.len(), 0u32, "len is 0 after clear")
     expect_true(s.is_empty(), "is_empty after clear")
     s.drop()
 }
@@ -163,7 +163,7 @@ pub fn test_string_clear() {
 pub fn test_string_clear_empty() {
     var s = String::new()
     s.clear()
-    expect_eq_u32(s.len(), 0u32, "clear on empty has len 0")
+    expect_eq(s.len(), 0u32, "clear on empty has len 0")
     expect_true(s.is_empty(), "clear on empty is still empty")
     s.drop()
 }
@@ -196,7 +196,7 @@ pub fn test_string_as_str() {
     let _ = s.push_str("Test content")
 
     let slice = s.as_str()
-    expect_eq_u32(slice.len(), 12u32, "slice has correct len")
+    expect_eq(slice.len(), 12u32, "slice has correct len")
 
     let expected: Str = "Test content"
     expect_true(slice.equals(expected), "slice content matches")
@@ -207,7 +207,7 @@ pub fn test_string_as_str() {
 pub fn test_string_as_str_empty() {
     var s = String::new()
     let slice = s.as_str()
-    expect_eq_u32(slice.len(), 0u32, "empty string slice has len 0")
+    expect_eq(slice.len(), 0u32, "empty string slice has len 0")
     expect_true(slice.is_empty(), "empty string slice is empty")
     s.drop()
 }
@@ -226,7 +226,7 @@ pub fn test_string_auto_growth() {
         i = i + 1u32
     }
 
-    expect_eq_u32(s.len(), 100u32, "len is 100 after 100 pushes")
+    expect_eq(s.len(), 100u32, "len is 100 after 100 pushes")
     expect_true(s.capacity() >= 100u32, "capacity >= 100")
     s.drop()
 }
@@ -238,16 +238,16 @@ pub fn test_string_auto_growth() {
 @test("String::len tracks content length")
 pub fn test_string_len_tracking() {
     var s = String::new()
-    expect_eq_u32(s.len(), 0u32, "initial len is 0")
+    expect_eq(s.len(), 0u32, "initial len is 0")
 
     let _ = s.push_str("abc")
-    expect_eq_u32(s.len(), 3u32, "len is 3 after 'abc'")
+    expect_eq(s.len(), 3u32, "len is 3 after 'abc'")
 
     let _ = s.push_str("de")
-    expect_eq_u32(s.len(), 5u32, "len is 5 after 'de'")
+    expect_eq(s.len(), 5u32, "len is 5 after 'de'")
 
     s.clear()
-    expect_eq_u32(s.len(), 0u32, "len is 0 after clear")
+    expect_eq(s.len(), 0u32, "len is 0 after clear")
     s.drop()
 }
 

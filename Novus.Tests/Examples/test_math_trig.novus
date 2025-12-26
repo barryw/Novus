@@ -2,7 +2,7 @@
 
 from std::math::trig import *
 from std::math::fixed import Fixed32
-from std::test::test import expect_eq_i32, expect_true, expect_false
+from std::test::test import expect_eq, expect_true, expect_false
 
 // ============================================================================
 // Angle Constants Tests
@@ -11,19 +11,19 @@ from std::test::test import expect_eq_i32, expect_true, expect_false
 @test
 pub fn test_angle_quarter() {
     // 90 degrees = 16384 in BAMS
-    expect_eq_i32((i32)ANGLE_QUARTER, 16384, "90 degrees = 16384")
+    expect_eq((i32)ANGLE_QUARTER, 16384, "90 degrees = 16384")
 }
 
 @test
 pub fn test_angle_half() {
     // 180 degrees = 32768 in BAMS
-    expect_eq_i32((i32)ANGLE_HALF, 32768, "180 degrees = 32768")
+    expect_eq((i32)ANGLE_HALF, 32768, "180 degrees = 32768")
 }
 
 @test
 pub fn test_angle_three_quarter() {
     // 270 degrees = 49152 in BAMS
-    expect_eq_i32((i32)ANGLE_THREE_QUARTER, 49152, "270 degrees = 49152")
+    expect_eq((i32)ANGLE_THREE_QUARTER, 49152, "270 degrees = 49152")
 }
 
 // ============================================================================
@@ -161,7 +161,7 @@ pub fn test_cos_i16_0_degrees() {
 @test
 pub fn test_degrees_to_angle_0() {
     let result = degrees_to_angle(0i16)
-    expect_eq_i32((i32)result, 0, "0 degrees = 0 BAMS")
+    expect_eq((i32)result, 0, "0 degrees = 0 BAMS")
 }
 
 @test
@@ -190,20 +190,20 @@ pub fn test_degrees_to_angle_180() {
 @test
 pub fn test_angle_to_degrees_0() {
     let result = angle_to_degrees(0u16)
-    expect_eq_i32((i32)result, 0, "0 BAMS = 0 degrees")
+    expect_eq((i32)result, 0, "0 BAMS = 0 degrees")
 }
 
 @test
 pub fn test_angle_to_degrees_quarter() {
     let result = angle_to_degrees(ANGLE_QUARTER)
     // Should be 90
-    expect_eq_i32((i32)result, 90, "16384 BAMS = 90 degrees")
+    expect_eq((i32)result, 90, "16384 BAMS = 90 degrees")
 }
 
 @test
 pub fn test_angle_to_degrees_half() {
     let result = angle_to_degrees(ANGLE_HALF)
-    expect_eq_i32((i32)result, 180, "32768 BAMS = 180 degrees")
+    expect_eq((i32)result, 180, "32768 BAMS = 180 degrees")
 }
 
 // ============================================================================

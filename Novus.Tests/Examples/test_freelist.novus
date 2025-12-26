@@ -2,7 +2,7 @@
 
 from std::collections::freelist import ObjectPool, ObjectPoolFixed
 from std::core import Option, Result
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 
 // Test struct for the pool
 struct TestItem {
@@ -19,9 +19,9 @@ struct TestItem {
 pub fn test_with_capacity() {
     match ObjectPool::<TestItem>::with_capacity(64) {
         Option::Some(pool) => {
-            expect_eq_u32(pool.capacity(), 64, "capacity should be 64")
-            expect_eq_u32(pool.allocated(), 0, "none allocated yet")
-            expect_eq_u32(pool.available(), 64, "all available")
+            expect_eq(pool.capacity(), 64, "capacity should be 64")
+            expect_eq(pool.allocated(), 0, "none allocated yet")
+            expect_eq(pool.available(), 64, "all available")
             expect_false(pool.is_empty(), "pool is not empty (has free slots)")
         },
         Option::None => fail("allocation should succeed")
@@ -39,12 +39,12 @@ pub fn test_alloc() {
                     item.y = 20
                     item.z = 30
 
-                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
-                    expect_eq_u32(pool.available(), 15, "15 available")
+                    expect_eq(pool.allocated(), 1, "1 allocated")
+                    expect_eq(pool.available(), 15, "15 available")
 
                     // Verify values
-                    expect_eq_u32(item.x, 10, "x should be 10")
-                    expect_eq_u32(item.y, 20, "y should be 20")
+                    expect_eq(item.x, 10, "x should be 10")
+                    expect_eq(item.y, 20, "y should be 20")
                 },
                 Option::None => fail("alloc should succeed")
             }
@@ -60,11 +60,11 @@ pub fn test_free() {
             match pool.alloc() {
                 Option::Some(item) => {
                     item.x = 42
-                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
+                    expect_eq(pool.allocated(), 1, "1 allocated")
 
                     pool.free(item)
-                    expect_eq_u32(pool.allocated(), 0, "0 allocated after free")
-                    expect_eq_u32(pool.available(), 16, "all available after free")
+                    expect_eq(pool.allocated(), 0, "0 allocated after free")
+                    expect_eq(pool.available(), 16, "all available after free")
                 },
                 Option::None => fail("alloc should succeed")
             }
@@ -92,16 +92,16 @@ pub fn test_reuse() {
                 i = i + 1
             }
 
-            expect_eq_u32(pool.allocated(), 4, "all allocated")
+            expect_eq(pool.allocated(), 4, "all allocated")
 
             // Free slot 1
             pool.free(items[1])
-            expect_eq_u32(pool.allocated(), 3, "3 allocated")
+            expect_eq(pool.allocated(), 3, "3 allocated")
 
             // Allocate again - should get the freed slot
             match pool.alloc() {
                 Option::Some(item) => {
-                    expect_eq_u32(pool.allocated(), 4, "back to 4 allocated")
+                    expect_eq(pool.allocated(), 4, "back to 4 allocated")
                     // The slot should be the same as items[1]
                     // (Free list is LIFO)
                 },
@@ -139,11 +139,11 @@ pub fn test_reset() {
             pool.alloc()
             pool.alloc()
 
-            expect_eq_u32(pool.allocated(), 3, "3 allocated")
+            expect_eq(pool.allocated(), 3, "3 allocated")
 
             pool.reset()
-            expect_eq_u32(pool.allocated(), 0, "0 allocated after reset")
-            expect_eq_u32(pool.available(), 8, "all available after reset")
+            expect_eq(pool.allocated(), 0, "0 allocated after reset")
+            expect_eq(pool.available(), 8, "all available after reset")
         },
         Option::None => fail("with_capacity should succeed")
     }
@@ -176,9 +176,9 @@ pub fn test_contains() {
 pub fn test_fixed_with_capacity() {
     match ObjectPoolFixed::<TestItem>::with_capacity(32) {
         Option::Some(pool) => {
-            expect_eq_u32(pool.capacity(), 32, "capacity should be 32")
-            expect_eq_u32(pool.allocated(), 0, "none allocated")
-            expect_eq_u32(pool.available(), 32, "all available")
+            expect_eq(pool.capacity(), 32, "capacity should be 32")
+            expect_eq(pool.allocated(), 0, "none allocated")
+            expect_eq(pool.available(), 32, "all available")
         },
         Option::None => fail("allocation should succeed")
     }
@@ -192,10 +192,10 @@ pub fn test_fixed_alloc_free() {
                 Option::Some(item) => {
                     item.x = 100
                     item.y = 200
-                    expect_eq_u32(pool.allocated(), 1, "1 allocated")
+                    expect_eq(pool.allocated(), 1, "1 allocated")
 
                     pool.free(item)
-                    expect_eq_u32(pool.allocated(), 0, "0 after free")
+                    expect_eq(pool.allocated(), 0, "0 after free")
                 },
                 Option::None => fail("alloc should succeed")
             }
@@ -228,11 +228,11 @@ pub fn test_fixed_reset() {
         Option::Some(var pool) => {
             pool.alloc()
             pool.alloc()
-            expect_eq_u32(pool.allocated(), 2, "2 allocated")
+            expect_eq(pool.allocated(), 2, "2 allocated")
 
             pool.reset()
-            expect_eq_u32(pool.allocated(), 0, "0 after reset")
-            expect_eq_u32(pool.available(), 4, "all available")
+            expect_eq(pool.allocated(), 0, "0 after reset")
+            expect_eq(pool.available(), 4, "all available")
         },
         Option::None => fail("allocation should succeed")
     }
@@ -258,7 +258,7 @@ pub fn test_fixed_get() {
             // Now get(0) should return the item we just set
             match pool.get(0) {
                 Option::Some(ref_item) => {
-                    expect_eq_u32(ref_item.x, 42, "should access item at index 0")
+                    expect_eq(ref_item.x, 42, "should access item at index 0")
                 },
                 Option::None => fail("get(0) should succeed")
             }
@@ -288,8 +288,8 @@ pub fn test_stress() {
                 i = i + 1
             }
 
-            expect_eq_u32(pool.allocated(), 0, "all freed")
-            expect_eq_u32(pool.available(), 32, "all available")
+            expect_eq(pool.allocated(), 0, "all freed")
+            expect_eq(pool.available(), 32, "all available")
         },
         Option::None => fail("with_capacity should succeed")
     }

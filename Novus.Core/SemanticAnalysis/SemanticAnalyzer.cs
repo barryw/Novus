@@ -22,7 +22,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     // Symbol tables
     private readonly SymbolTable _symbols = new();
-    private readonly Dictionary<string, FunctionSymbol> _functions = new();
+    // Functions are stored as overload sets (list of functions with same name but different signatures)
+    private readonly Dictionary<string, List<FunctionSymbol>> _functionOverloads = new();
+    // Track which function names have multiple overloads
+    private readonly HashSet<string> _overloadedFunctionNames = new();
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
@@ -109,7 +112,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public DiagnosticBag Diagnostics => _diagnostics;
 
     // Public read-only access to symbol tables for language server features (go to definition, hover, etc.)
-    public IReadOnlyDictionary<string, FunctionSymbol> Functions => _functions;
+    // Returns the first overload for each function name (for compatibility)
+    public IReadOnlyDictionary<string, FunctionSymbol> Functions =>
+        _functionOverloads.Where(kvp => kvp.Value.Count > 0)
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value[0]);
+    public IReadOnlyDictionary<string, List<FunctionSymbol>> FunctionOverloads => _functionOverloads;
     public IReadOnlyDictionary<string, VariableSymbol> Variables => _variables;
     public IReadOnlyDictionary<string, VariableSymbol> GlobalVariables => _globalVariables;
     public IReadOnlyDictionary<string, IrStructType> Structs => _symbols.GetLocalStructs();
@@ -132,12 +139,26 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     public AnalysisResult GetResult()
     {
+        // Compute overloaded function names from _functionOverloads dictionary.
+        // This is critical for imported modules: when we import overloaded functions
+        // like sqrt(u32), sqrt(Fixed32), etc., the _overloadedFunctionNames field
+        // only tracks functions that became overloaded during local analysis.
+        // By computing from _functionOverloads, we correctly identify ALL functions
+        // with multiple overloads, including those imported from other modules.
+        var allOverloadedNames = new HashSet<string>(
+            _functionOverloads
+                .Where(kvp => kvp.Value.Count > 1)
+                .Select(kvp => kvp.Key)
+        );
+
         return new AnalysisResult(
             success: !_diagnostics.HasErrors,
             diagnostics: _diagnostics,
             filePath: _filePath,
             sourceCode: SourceText,
-            functions: _functions,
+            functions: Functions, // Uses the property that flattens overloads
+            functionOverloads: _functionOverloads,
+            overloadedFunctionNames: allOverloadedNames,
             variables: _variables,
             globalVariables: _globalVariables,
             structs: _symbols.GetLocalStructs(),
@@ -217,6 +238,237 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     internal void IncrementUnsafeDepth() => _unsafeDepth++;
 
     internal void DecrementUnsafeDepth() => _unsafeDepth--;
+
+    #region Function Overload Management
+
+    /// <summary>
+    /// Registers a function, allowing overloads with different signatures.
+    /// Returns false if an overload with the same signature already exists.
+    /// </summary>
+    private bool RegisterFunctionWithOverloads(string name, FunctionSymbol function, SourceLocation location)
+    {
+        if (!_functionOverloads.TryGetValue(name, out var overloads))
+        {
+            overloads = new List<FunctionSymbol>();
+            _functionOverloads[name] = overloads;
+        }
+
+        // Check for duplicate signature
+        var newSigKey = Frontend.OverloadResolution.GetSignatureKey(name, function.Parameters);
+        foreach (var existing in overloads)
+        {
+            var existingSigKey = Frontend.OverloadResolution.GetSignatureKey(name, existing.Parameters);
+            if (newSigKey == existingSigKey)
+            {
+                // Report duplicate signature error
+                _diagnostics.ReportError(
+                    "E0030",
+                    $"function overload '{name}' with identical parameter types already exists",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "overloads must have different parameter types",
+                        "consider changing parameter types or renaming the function"
+                    },
+                    relatedLocations: new List<(SourceLocation, string)>
+                    {
+                        (existing.Location, $"previous overload of '{name}' with same signature here")
+                    }
+                );
+                return false;
+            }
+        }
+
+        overloads.Add(function);
+
+        // Mark as overloaded if we now have multiple signatures
+        if (overloads.Count > 1)
+        {
+            _overloadedFunctionNames.Add(name);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Registers a function, replacing any existing overloads.
+    /// Used for generated functions like trait methods that should replace existing entries.
+    /// </summary>
+    private void RegisterFunctionReplace(string name, FunctionSymbol function)
+    {
+        _functionOverloads[name] = new List<FunctionSymbol> { function };
+        _overloadedFunctionNames.Remove(name);
+    }
+
+    /// <summary>
+    /// Registers a function for import, silently skipping if an identical signature already exists.
+    /// This is different from RegisterFunctionWithOverloads which reports an error for duplicates.
+    /// Used during module imports where the same function may be imported through multiple paths.
+    /// </summary>
+    private bool RegisterFunctionForImport(string name, FunctionSymbol function)
+    {
+        if (!_functionOverloads.TryGetValue(name, out var overloads))
+        {
+            overloads = new List<FunctionSymbol>();
+            _functionOverloads[name] = overloads;
+        }
+
+        // Check for duplicate signature - silently skip if already exists
+        var newSigKey = Frontend.OverloadResolution.GetSignatureKey(name, function.Parameters);
+        foreach (var existing in overloads)
+        {
+            var existingSigKey = Frontend.OverloadResolution.GetSignatureKey(name, existing.Parameters);
+            if (newSigKey == existingSigKey)
+            {
+                // Same function already imported - silently skip
+                return false;
+            }
+        }
+
+        overloads.Add(function);
+
+        // Mark as overloaded if we now have multiple signatures
+        if (overloads.Count > 1)
+        {
+            _overloadedFunctionNames.Add(name);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Checks if a function with the given name exists.
+    /// </summary>
+    private bool HasFunction(string name)
+    {
+        return _functionOverloads.ContainsKey(name) && _functionOverloads[name].Count > 0;
+    }
+
+    /// <summary>
+    /// Gets the first overload of a function (for cases where we need a single function).
+    /// </summary>
+    private FunctionSymbol? GetFunction(string name)
+    {
+        if (_functionOverloads.TryGetValue(name, out var overloads) && overloads.Count > 0)
+            return overloads[0];
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all overloads of a function.
+    /// </summary>
+    private IReadOnlyList<FunctionSymbol> GetFunctionOverloads(string name)
+    {
+        if (_functionOverloads.TryGetValue(name, out var overloads))
+            return overloads;
+        return Array.Empty<FunctionSymbol>();
+    }
+
+    /// <summary>
+    /// Checks if a function has multiple overloads.
+    /// </summary>
+    private bool IsFunctionOverloaded(string name)
+    {
+        return _overloadedFunctionNames.Contains(name);
+    }
+
+    /// <summary>
+    /// Finds a function by name and source location.
+    /// Used during VisitFunctionDeclaration to find the right overload when there are
+    /// multiple functions with the same name but different parameter types.
+    /// </summary>
+    private FunctionSymbol? GetFunctionByLocation(string name, int line, int column)
+    {
+        if (!_functionOverloads.TryGetValue(name, out var overloads))
+            return null;
+
+        foreach (var func in overloads)
+        {
+            // Match by source location - each function declaration has a unique position
+            if (func.Location.Line == line && func.Location.Column == column)
+                return func;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves which overload to call based on argument types.
+    /// Uses exact match first, then falls back to coerced match.
+    /// </summary>
+    private FunctionSymbol? ResolveOverload(string name, IReadOnlyList<IrType> argumentTypes)
+    {
+        if (!_functionOverloads.TryGetValue(name, out var overloads))
+            return null;
+
+        FunctionSymbol? bestCoercedMatch = null;
+        int bestCoercedCount = int.MaxValue;
+
+        foreach (var func in overloads)
+        {
+            // Skip generic functions for now - they need monomorphization first
+            if (func.GenericParameters != null && func.GenericParameters.Count > 0)
+                continue;
+
+            // Check parameter count matches
+            var nonVariadicCount = func.Parameters.Count(p => !p.IsVariadic);
+            if (func.IsVariadic)
+            {
+                if (argumentTypes.Count < nonVariadicCount)
+                    continue;
+            }
+            else
+            {
+                if (argumentTypes.Count != func.Parameters.Count)
+                    continue;
+            }
+
+            // Check if all argument types match
+            bool exactMatch = true;
+            int coercedCount = 0;
+
+            for (int i = 0; i < argumentTypes.Count; i++)
+            {
+                // Skip variadic params
+                if (i >= func.Parameters.Count || func.Parameters[i].IsVariadic)
+                    continue;
+
+                var paramType = func.Parameters[i].Type;
+                var argType = argumentTypes[i];
+
+                // Exact match - use semantic type equality, not reference equality
+                if (TypesEqual(paramType, argType))
+                    continue;
+
+                // Compatible (coerced) match
+                if (TypesCompatible(paramType, argType))
+                {
+                    exactMatch = false;
+                    coercedCount++;
+                    continue;
+                }
+
+                // No match - try next overload
+                exactMatch = false;
+                coercedCount = int.MaxValue;
+                break;
+            }
+
+            // Prefer exact matches
+            if (exactMatch)
+                return func;
+
+            // Track best coerced match (fewer coercions is better)
+            if (coercedCount < bestCoercedCount)
+            {
+                bestCoercedMatch = func;
+                bestCoercedCount = coercedCount;
+            }
+        }
+
+        return bestCoercedMatch;
+    }
+
+    #endregion
 
     internal void PushDropScope() => _dropScopes.Push(new ScopeDropInfo());
 
@@ -542,16 +794,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
                 // Register functions from the already-parsed module
+                // NOTE: For already-processed modules, we need to be careful:
+                // - If function name doesn't exist at all, register it
+                // - If function name exists but this is a different signature (overload), register it
+                // - If function name exists with same signature, skip (already imported)
+                // RegisterFunctionWithOverloads handles duplicate signature detection
                 foreach (var funcDecl in moduleContext.functionDeclaration())
                 {
                     var funcName = funcDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(funcName))
                     {
-                        // Check if not already imported
-                        if (!_functions.ContainsKey(funcName))
-                        {
-                            RegisterFunction(funcDecl);
-                        }
+                        // For already-processed modules, register the function using the import-friendly
+                        // method that silently skips duplicate signatures
+                        RegisterFunction(funcDecl, forImport: true);
                         _importedNames[funcName] = moduleNamespace;
                     }
                 }
@@ -868,12 +1123,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 continue;
             }
 
-            // Skip if this function has already been imported (transitive dependencies)
-            // This allows the same function to be imported through multiple paths without conflict
-            if (_functions.ContainsKey(funcName))
-            {
-                continue;
-            }
+            // NOTE: We don't skip based on HasFunction() here because we support function overloading.
+            // Multiple functions with the same name but different signatures can be imported.
+            // RegisterFunctionWithOverloads() handles checking for duplicate signatures.
 
             // Handle generic parameters if present (e.g., fn channel<T>() -> Result<..., T>)
             // Must register generic params BEFORE parsing return type since it may reference them
@@ -911,12 +1163,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
 
             // Register the function (may be extern or generic)
+            // Use RegisterFunctionForImport to silently skip if same signature already imported
+            // (this can happen when importing from multiple modules that re-export the same function)
             var funcLocation = SourceLocationHelper.FromToken(funcDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
-            _functions[funcName] = new FunctionSymbol(
+            var funcSymbol = new FunctionSymbol(
                 funcName, returnType, parameters, funcLocation,
                 IsExtern: isExtern,
                 GenericParameters: genericParams.Count > 0 ? genericParams : null,
                 IsVariadic: hasVariadic);
+            RegisterFunctionForImport(funcName, funcSymbol);
             _importedNames[funcName] = moduleNamespace;
 
             // Clear generic params from scope after function registration
@@ -1463,7 +1718,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         _globalVariables[name] = new VariableSymbol(name, type, IsMutable: true, location, Id: _nextVariableId++);
     }
 
-    private void RegisterFunction(NovusParser.FunctionDeclarationContext context)
+    /// <summary>
+    /// Registers a function from a declaration context.
+    /// When forImport is true, silently skips duplicate signatures (for module imports).
+    /// When forImport is false, reports errors for duplicate signatures.
+    /// </summary>
+    private void RegisterFunction(NovusParser.FunctionDeclarationContext context, bool forImport = false)
     {
         var name = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
@@ -1481,25 +1741,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Check if function is a const fn
         var isConstFn = Frontend.AstModifierHelper.IsConstFn(context);
 
-        // Check for duplicate function names
-        if (_functions.ContainsKey(name))
-        {
-            var originalLocation = _functions[name].Location;
-            _diagnostics.ReportError(
-                "E0001",
-                $"function '{name}' is defined multiple times",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"consider renaming one of the functions"
-                },
-                relatedLocations: new List<(SourceLocation, string)>
-                {
-                    (originalLocation, $"previous definition of '{name}' here")
-                }
-            );
-            return;
-        }
+        // Note: Duplicate signature check is done in RegisterFunctionWithOverloads
+        // Same function name with different parameters is allowed (function overloading)
 
         // Validate extern functions don't have a body
         if (isExtern && context.block() != null)
@@ -1586,7 +1829,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _parsingExternFunction = false;
         }
 
-        _functions[name] = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, null, whereClause, isConstFn);
+        var funcSymbol = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, null, whereClause, isConstFn);
+
+        // Use appropriate registration method based on whether this is an import
+        if (forImport)
+        {
+            RegisterFunctionForImport(name, funcSymbol);
+        }
+        else
+        {
+            RegisterFunctionWithOverloads(name, funcSymbol, location);
+        }
 
         // Clear generic params from scope after function registration
         foreach (var paramName in genericParams)
@@ -1757,30 +2010,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             mangledName = $"{implTypeName}::{methodName}";
         }
 
-        // Check for duplicate function names
-        if (_functions.ContainsKey(mangledName))
-        {
-            var originalLocation = _functions[mangledName].Location;
-            _diagnostics.ReportError(
-                "E0001",
-                $"method '{methodName}' for type '{implTypeName}' is defined multiple times",
-                location,
-                helpTexts: new List<string>
-                {
-                    $"consider renaming one of the methods or removing the duplicate"
-                },
-                relatedLocations: new List<(SourceLocation, string)>
-                {
-                    (originalLocation, $"previous definition of '{methodName}' here")
-                }
-            );
-            // Clear method-level generic params before returning
-            foreach (var param in methodGenericParams)
-            {
-                _genericParams.Remove(param);
-            }
-            return;
-        }
+        // Note: Duplicate signature check is done in RegisterFunctionWithOverloads
+        // Same method name with different parameters is allowed (method overloading)
 
         var returnType = ParseReturnType(context.type());
         var parameters = new List<ParameterSymbol>();
@@ -1933,7 +2164,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Store both impl-level and method-level generic params in the symbol
         var allGenericParams = genericParams.Count > 0 ? genericParams : null;
-        _functions[mangledName] = new FunctionSymbol(mangledName, returnType, parameters, location, false, allGenericParams, attributes, hasVariadic, methodGenericParams.Count > 0 ? methodGenericParams : null, whereClause);
+        var funcSymbol = new FunctionSymbol(mangledName, returnType, parameters, location, false, allGenericParams, attributes, hasVariadic, methodGenericParams.Count > 0 ? methodGenericParams : null, whereClause);
+        RegisterFunctionWithOverloads(mangledName, funcSymbol, location);
 
         // Clear method-level generic params from scope
         foreach (var param in methodGenericParams)
@@ -2104,7 +2336,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var mangledName = $"{typeName}::eq";
 
         // Don't register if already exists (user-defined impl takes precedence)
-        if (_functions.ContainsKey(mangledName)) return;
+        if (HasFunction(mangledName)) return;
 
         var boolType = IrBoolType.Instance;
         var parameters = new List<ParameterSymbol>
@@ -2113,7 +2345,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             new ParameterSymbol("other", selfPtrType, location)
         };
 
-        _functions[mangledName] = new FunctionSymbol(mangledName, boolType, parameters, location);
+        var funcSymbol = new FunctionSymbol(mangledName, boolType, parameters, location);
+        RegisterFunctionWithOverloads(mangledName, funcSymbol, location);
     }
 
     /// <summary>
@@ -2124,7 +2357,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var mangledName = $"{typeName}::hash";
 
         // Don't register if already exists (user-defined impl takes precedence)
-        if (_functions.ContainsKey(mangledName)) return;
+        if (HasFunction(mangledName)) return;
 
         var u32Type = IrIntType.U32;
         var parameters = new List<ParameterSymbol>
@@ -2132,7 +2365,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             new ParameterSymbol("self", selfPtrType, location)
         };
 
-        _functions[mangledName] = new FunctionSymbol(mangledName, u32Type, parameters, location);
+        var funcSymbol = new FunctionSymbol(mangledName, u32Type, parameters, location);
+        RegisterFunctionWithOverloads(mangledName, funcSymbol, location);
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -2500,7 +2734,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Look up the method using the mangled name
-        if (!_functions.ContainsKey(mangledName))
+        var foundFunction = GetFunction(mangledName);
+        if (foundFunction == null)
         {
             // This shouldn't happen if RegisterImpl worked correctly
             var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
@@ -2512,7 +2747,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return;
         }
 
-        _currentFunction = _functions[mangledName];
+        _currentFunction = foundFunction;
         _currentFunctionWhereClause = _currentFunction.WhereClause; // Track method-level where clause
         _variables.Clear();
         _borrowChecker.Reset(); // Reset move tracking for new method
@@ -2571,7 +2806,27 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
-        _currentFunction = _functions[name];
+        var token = context.IDENTIFIER().Symbol;
+
+        // For overloaded functions, we need to match by source location since
+        // multiple functions can have the same name
+        if (IsFunctionOverloaded(name))
+        {
+            // ANTLR uses 0-based columns, but SourceLocation uses 1-based (see SourceLocationHelper.FromToken)
+            _currentFunction = GetFunctionByLocation(name, token.Line, token.Column + 1);
+        }
+        else
+        {
+            _currentFunction = GetFunction(name);
+        }
+
+        if (_currentFunction == null)
+        {
+            // This should never happen - the function was just registered
+            var location = SourceLocationHelper.FromToken(token, _filePath, _sourceLines);
+            _diagnostics.ReportError("E0051", $"internal error: function '{name}' not found in function table", location);
+            return null;
+        }
         _currentFunctionWhereClause = _currentFunction.WhereClause; // Track method-level where clause
         _variables.Clear();
         _borrowChecker.Reset(); // Reset move tracking for new function
@@ -2795,7 +3050,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 {
                     var identifier = identExpr.identifier();
                     var funcName = identifier?.IDENTIFIER(0)?.GetText();
-                    if (funcName != null && _analyzer._functions.TryGetValue(funcName, out var func))
+                    var func = funcName != null ? _analyzer.GetFunction(funcName) : null;
+                    if (func != null)
                     {
                         if (!func.IsConstFn && !func.IsExtern)
                         {
@@ -7361,9 +7617,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 if (pathParts.Length == 2)
                 {
                     var associatedFuncName = $"{pathParts[0]}::{pathParts[1]}";
-                    if (_functions.ContainsKey(associatedFuncName))
+                    var funcSymbol = GetFunction(associatedFuncName);
+                    if (funcSymbol != null)
                     {
-                        var funcSymbol = _functions[associatedFuncName];
 
                         // If the function has generic parameters and we have an expected type, try to infer
                         if (funcSymbol.GenericParameters != null && funcSymbol.GenericParameters.Count > 0 && _expectedType != null)
@@ -7461,7 +7717,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
 
                 // Look up the generic function
-                if (_functions.TryGetValue(turboFishFuncName, out var funcSymbol) &&
+                var funcSymbol = GetFunction(turboFishFuncName);
+                if (funcSymbol != null &&
                     funcSymbol.GenericParameters != null && funcSymbol.GenericParameters.Count > 0)
                 {
                     // Validate type argument count
@@ -7581,8 +7838,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     {
                         // Before reporting an error, check if this might be an impl method
                         // (e.g., Option::FromPointer instead of a variant constructor)
-                        // The method would be stored as "TypeName::methodName" in _functions
-                        if (!_functions.ContainsKey(functionName))
+                        // The method would be stored as "TypeName::methodName" in function overloads
+                        if (!HasFunction(functionName))
                         {
                             var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
                             _diagnostics.ReportError(
@@ -7929,22 +8186,66 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Check if function exists
-        if (!_functions.ContainsKey(functionName))
+        // For overloaded functions, we need to resolve the correct overload based on argument types
+        FunctionSymbol? function;
+        if (IsFunctionOverloaded(functionName))
         {
-            var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0013",
-                $"undefined function '{functionName}'",
-                location,
-                helpTexts: new List<string>
+            // Collect argument types first to resolve the overload
+            var argTypesForResolution = new List<IrType>();
+            if (context.argumentList() != null)
+            {
+                foreach (var arg in context.argumentList().expression())
                 {
-                    "this function has not been declared"
+                    var argType = Visit(arg);
+                    if (argType == null)
+                    {
+                        // Type error in argument - use first overload for error reporting
+                        function = GetFunction(functionName);
+                        if (function != null)
+                            return function.ReturnType;
+                        return null;
+                    }
+                    argTypesForResolution.Add(argType);
                 }
-            );
-            return null;
-        }
+            }
 
-        var function = _functions[functionName];
+            function = ResolveOverload(functionName, argTypesForResolution);
+            if (function == null)
+            {
+                var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
+                var argTypeStr = string.Join(", ", argTypesForResolution.Select(TypeToString));
+                _diagnostics.ReportError(
+                    "E0013",
+                    $"no matching overload for function '{functionName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        $"no overload matches argument types: ({argTypeStr})",
+                        "available overloads:" + string.Join("", GetFunctionOverloads(functionName)
+                            .Select(f => $"\n  - {functionName}({string.Join(", ", f.Parameters.Select(p => $"{p.Name}: {TypeToString(p.Type)}"))})"))
+                    }
+                );
+                return null;
+            }
+        }
+        else
+        {
+            function = GetFunction(functionName);
+            if (function == null)
+            {
+                var location = SourceLocationHelper.FromToken(identifierExpr.identifier().Start, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    "E0013",
+                    $"undefined function '{functionName}'",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "this function has not been declared"
+                    }
+                );
+                return null;
+            }
+        }
 
         // Check if this function requires unsafe context
         CheckUnsafeFunctionCall(context, functionName);
@@ -8397,16 +8698,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Look up the method using the mangled name: Type::method
         var mangledMethodName = InstantiationKeyBuilder.BuildInherentMethodName(typeName, methodName);
 
-        if (!_functions.ContainsKey(mangledMethodName))
+        var method = GetFunction(mangledMethodName);
+        if (method == null)
         {
             // Inherent method not found - try trait implementations
             // Example: Point implements Clone trait, so p.clone() should find Point_Clone_clone
             var traitMethodName = _traitResolver.FindTraitMethod(typeName, methodName);
-            if (traitMethodName != null && _functions.ContainsKey(traitMethodName))
+            if (traitMethodName != null)
             {
-                mangledMethodName = traitMethodName;
+                method = GetFunction(traitMethodName);
             }
-            else
+            if (method == null)
             {
                 var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
                 _diagnostics.ReportError(
@@ -8420,9 +8722,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 );
                 return null;
             }
+            mangledMethodName = traitMethodName!;
         }
-
-        var method = _functions[mangledMethodName];
 
         // Build type substitution map for generic methods
         var typeSubstitutions = new Dictionary<string, IrType>();
@@ -9439,8 +9740,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                     // variant == null, so check if this might be an impl method
                     // (e.g., Option::FromPointer instead of a variant)
-                    // The method would be stored as "TypeName::methodName" in _functions
-                    if (!_functions.ContainsKey(name))
+                    // The method would be stored as "TypeName::methodName" in function overloads
+                    if (!HasFunction(name))
                     {
                         var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
                         _diagnostics.ReportError(
@@ -9450,7 +9751,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         );
                         return null;
                     }
-                    // Fall through to check _functions below at line 3610
+                    // Fall through to check functions below
                 }
             }
         }
@@ -9463,7 +9764,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return constGenericParam.ConstType;
         }
 
-        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !_functions.ContainsKey(name) && !_symbols.HasConstant(name))
+        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !HasFunction(name) && !_symbols.HasConstant(name))
         {
             var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -9489,9 +9790,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // If it's a function name being used as a value (not being called), return function pointer type
-        if (_functions.ContainsKey(name))
+        var func = GetFunction(name);
+        if (func != null)
         {
-            var func = _functions[name];
             // Create a function pointer type
             var funcPtrType = _typeInterner.GetFunctionPointerType(
                 func.Parameters.Select(p => p.Type).ToList(),
@@ -9720,9 +10021,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var name = exprContext.GetText();
 
             // Check if it's a function (for function pointers)
-            if (_functions.ContainsKey(name))
+            var function = GetFunction(name);
+            if (function != null)
             {
-                var function = _functions[name];
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
                 return _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
             }
@@ -10569,9 +10870,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Try associated function (struct method without self parameter)
         var mangledName = $"{typeName}::{memberName}";
 
-        if (_functions.ContainsKey(mangledName))
+        var funcSymbol = GetFunction(mangledName);
+        if (funcSymbol != null)
         {
-            var funcSymbol = _functions[mangledName];
 
             // Check if this is an associated function (no self parameter)
             var hasSelf = funcSymbol.Parameters.Count > 0 && funcSymbol.Parameters[0].Name == "self";
@@ -11329,6 +11630,107 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             );
         }
         return IrIntType.I32;
+    }
+
+    /// <summary>
+    /// Checks if two types are semantically equal (same type, not just reference equal).
+    /// This is used for exact match checking in overload resolution where we want
+    /// Fixed32 to match Fixed32 even if they are different IrStructType instances.
+    /// </summary>
+    private bool TypesEqual(IrType a, IrType b)
+    {
+        // Reference equality - fast path
+        if (ReferenceEquals(a, b))
+            return true;
+
+        // Same type class check
+        if (a.GetType() != b.GetType())
+            return false;
+
+        // Struct types - compare by name and cache key for monomorphized types
+        if (a is IrStructType structA && b is IrStructType structB)
+        {
+            if (structA.StructName != structB.StructName)
+                return false;
+
+            // Both have cache keys - compare them (for monomorphized types like Vec<i32>)
+            if (structA.CacheKey != null && structB.CacheKey != null)
+                return structA.CacheKey == structB.CacheKey;
+
+            // Non-generic structs with same name are equal
+            if (structA.GenericParameters.Count == 0 && structB.GenericParameters.Count == 0)
+                return true;
+
+            // Both generic templates - compare parameter counts
+            return structA.GenericParameters.Count == structB.GenericParameters.Count;
+        }
+
+        // Enum types - compare by name and cache key
+        if (a is IrEnumType enumA && b is IrEnumType enumB)
+        {
+            if (enumA.EnumName != enumB.EnumName)
+                return false;
+
+            if (enumA.CacheKey != null && enumB.CacheKey != null)
+                return enumA.CacheKey == enumB.CacheKey;
+
+            var genCountA = enumA.GenericParameters?.Count ?? 0;
+            var genCountB = enumB.GenericParameters?.Count ?? 0;
+            if (genCountA == 0 && genCountB == 0)
+                return true;
+
+            return genCountA == genCountB;
+        }
+
+        // Integer types - compare bit width and signedness
+        if (a is IrIntType intA && b is IrIntType intB)
+            return intA.BitWidth == intB.BitWidth && intA.IsSigned == intB.IsSigned;
+
+        // Float types - compare bit width
+        if (a is IrFloatType floatA && b is IrFloatType floatB)
+            return floatA.BitWidth == floatB.BitWidth;
+
+        // Fixed-point types - compare bit width
+        if (a is IrFixedType fixedA && b is IrFixedType fixedB)
+            return fixedA.BitWidth == fixedB.BitWidth;
+
+        // Pointer types - compare pointee types
+        if (a is IrPointerType ptrA && b is IrPointerType ptrB)
+            return TypesEqual(ptrA.PointeeType, ptrB.PointeeType);
+
+        // Reference types - compare pointee types
+        if (a is IrReferenceType refA && b is IrReferenceType refB)
+            return TypesEqual(refA.PointeeType, refB.PointeeType);
+
+        // Mutable reference types - compare pointee types
+        if (a is IrMutReferenceType mutRefA && b is IrMutReferenceType mutRefB)
+            return TypesEqual(mutRefA.PointeeType, mutRefB.PointeeType);
+
+        // Array types - compare element types and lengths
+        if (a is IrArrayType arrA && b is IrArrayType arrB)
+            return arrA.Length == arrB.Length && TypesEqual(arrA.ElementType, arrB.ElementType);
+
+        // Function pointer types - compare signatures
+        if (a is IrFunctionPointerType fpA && b is IrFunctionPointerType fpB)
+        {
+            if (fpA.ParameterTypes.Count != fpB.ParameterTypes.Count)
+                return false;
+            for (int i = 0; i < fpA.ParameterTypes.Count; i++)
+            {
+                if (!TypesEqual(fpA.ParameterTypes[i], fpB.ParameterTypes[i]))
+                    return false;
+            }
+            return TypesEqual(fpA.ReturnType, fpB.ReturnType);
+        }
+
+        // Singleton types (bool, void) - use reference equality
+        if (a is IrBoolType && b is IrBoolType)
+            return true;
+        if (a is IrVoidType && b is IrVoidType)
+            return true;
+
+        // Fallback to reference equality
+        return a.Equals(b);
     }
 
 

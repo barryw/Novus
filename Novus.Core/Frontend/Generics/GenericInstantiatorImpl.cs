@@ -44,7 +44,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, _, _) = template;
+        var (genericParams, funcDecl, templateConstants, _, _, sourceModulePath) = template;
 
         // Restore constants from template
         _context.RestoreConstantsFromTuples(templateConstants);
@@ -184,6 +184,13 @@ public class GenericInstantiatorImpl : IGenericInstantiator
 
             try
             {
+                // Import dependencies from the source module before visiting the body
+                // This ensures that functions/statics referenced in the template are available
+                if (sourceModulePath != null)
+                {
+                    _context.ImportModuleDependencies(sourceModulePath);
+                }
+
                 // Add parameters to local variables
                 foreach (var param in function.Parameters)
                 {
@@ -241,7 +248,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, _, methodGenericParams) = template;
+        var (genericParams, funcDecl, templateConstants, _, methodGenericParams, sourceModulePath) = template;
 
         // Build type substitution map
         var baseEnum = _context.LookupEnum(baseTypeName);
@@ -456,6 +463,13 @@ public class GenericInstantiatorImpl : IGenericInstantiator
 
             try
             {
+                // Import dependencies from the source module before visiting the body
+                // This ensures that functions/statics referenced in the template are available
+                if (sourceModulePath != null)
+                {
+                    _context.ImportModuleDependencies(sourceModulePath);
+                }
+
                 var entryBlock = new IrBasicBlock("entry");
                 function.BasicBlocks.Add(entryBlock);
                 _context.CurrentBlock = entryBlock;
@@ -507,7 +521,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, whereClause, _) = template;
+        var (genericParams, funcDecl, templateConstants, whereClause, _, sourceModulePath) = template;
 
         // Validate generic constraints before instantiation
         if (!ValidateGenericConstraints(functionName, whereClause, genericParams, typeSubstitutions, funcDecl))
@@ -583,6 +597,13 @@ public class GenericInstantiatorImpl : IGenericInstantiator
 
             try
             {
+                // Import dependencies from the source module before visiting the body
+                // This ensures that functions/statics referenced in the template are available
+                if (sourceModulePath != null)
+                {
+                    _context.ImportModuleDependencies(sourceModulePath);
+                }
+
                 // Add parameters to local variables
                 foreach (var param in function.Parameters)
                 {
@@ -769,7 +790,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, _, _, _) = template;
+        var (genericParams, funcDecl, _, _, _, _) = template;
 
         // Save existing generic parameters before registering new ones
         var savedGenericParams = new Dictionary<string, IrGenericType>();

@@ -297,3 +297,27 @@ pub fn hypot_i32(a: i32, b: i32) -> i32 {
     let dist_sq = x * x + y * y
     return (i32)sqrt_u32((u32)dist_sq)
 }
+
+// ============================================================================
+// Function Overloading - Unified sqrt Interface
+// ============================================================================
+
+/// Overloaded sqrt for u32
+pub fn sqrt(x: u32) -> u32 {
+    return sqrt_u32(x)
+}
+
+/// Overloaded sqrt for u16
+pub fn sqrt(x: u16) -> u16 {
+    return sqrt_u16(x)
+}
+
+/// Overloaded sqrt for Fixed32
+pub fn sqrt(x: Fixed32) -> Fixed32 {
+    return sqrt_fixed32(x)
+}
+
+/// Overloaded sqrt_fast for u32
+pub fn sqrt_fast(x: u32) -> u32 {
+    return sqrt_u32_fast(x)
+}

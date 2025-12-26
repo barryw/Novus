@@ -2,7 +2,7 @@
 
 from std::ffi::dos import Dos
 from std::core import Option
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 
 // A simple struct to test zeroing
 struct Point {
@@ -37,13 +37,13 @@ impl Drop for Resource {
 @test("zeroed primitive u32")
 pub fn test_zeroed_u32() {
     let val: u32 = @zeroed(u32)
-    expect_eq_u32(val, 0, "zeroed u32 should be 0")
+    expect_eq(val, 0, "zeroed u32 should be 0")
 }
 
 @test("zeroed primitive i32")
 pub fn test_zeroed_i32() {
     let val: i32 = @zeroed(i32)
-    expect_eq_u32((u32)val, 0, "zeroed i32 should be 0")
+    expect_eq((u32)val, 0, "zeroed i32 should be 0")
 }
 
 @test("zeroed bool")
@@ -61,9 +61,9 @@ pub fn test_zeroed_pointer() {
 @test("zeroed struct")
 pub fn test_zeroed_struct() {
     let p: Point = @zeroed(Point)
-    expect_eq_u32((u32)p.x, 0, "zeroed Point.x should be 0")
-    expect_eq_u32((u32)p.y, 0, "zeroed Point.y should be 0")
-    expect_eq_u32((u32)p.z, 0, "zeroed Point.z should be 0")
+    expect_eq((u32)p.x, 0, "zeroed Point.x should be 0")
+    expect_eq((u32)p.y, 0, "zeroed Point.y should be 0")
+    expect_eq((u32)p.z, 0, "zeroed Point.z should be 0")
 }
 
 // ============================================================================

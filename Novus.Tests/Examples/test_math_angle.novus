@@ -3,7 +3,7 @@
 from std::math::angle import *
 from std::math::trig import ANGLE_QUARTER, ANGLE_HALF, ANGLE_THREE_QUARTER
 from std::math::fixed import Fixed32
-from std::test::test import expect_eq_i32, expect_true, expect_false
+from std::test::test import expect_eq, expect_true, expect_false
 
 // ============================================================================
 // Angle Constants Tests
@@ -11,13 +11,13 @@ from std::test::test import expect_eq_i32, expect_true, expect_false
 
 @test
 pub fn test_angle_constants() {
-    expect_eq_i32((i32)ANGLE_45, 8192, "45 degrees = 8192")
-    expect_eq_i32((i32)ANGLE_30, 5461, "30 degrees = 5461")
-    expect_eq_i32((i32)ANGLE_60, 10923, "60 degrees = 10923")
-    expect_eq_i32((i32)ANGLE_15, 2731, "15 degrees = 2731")
-    expect_eq_i32((i32)ANGLE_10, 1820, "10 degrees = 1820")
-    expect_eq_i32((i32)ANGLE_5, 910, "5 degrees = 910")
-    expect_eq_i32((i32)ANGLE_1, 182, "1 degree = 182")
+    expect_eq((i32)ANGLE_45, 8192, "45 degrees = 8192")
+    expect_eq((i32)ANGLE_30, 5461, "30 degrees = 5461")
+    expect_eq((i32)ANGLE_60, 10923, "60 degrees = 10923")
+    expect_eq((i32)ANGLE_15, 2731, "15 degrees = 2731")
+    expect_eq((i32)ANGLE_10, 1820, "10 degrees = 1820")
+    expect_eq((i32)ANGLE_5, 910, "5 degrees = 910")
+    expect_eq((i32)ANGLE_1, 182, "1 degree = 182")
 }
 
 // ============================================================================
@@ -27,29 +27,29 @@ pub fn test_angle_constants() {
 @test
 pub fn test_normalize() {
     // u16 naturally wraps, so this is essentially a no-op
-    expect_eq_i32((i32)normalize(0u16), 0, "normalize 0")
-    expect_eq_i32((i32)normalize(32768u16), 32768, "normalize 180")
-    expect_eq_i32((i32)normalize(65535u16), 65535, "normalize max")
+    expect_eq((i32)normalize(0u16), 0, "normalize 0")
+    expect_eq((i32)normalize(32768u16), 32768, "normalize 180")
+    expect_eq((i32)normalize(65535u16), 65535, "normalize max")
 }
 
 @test
 pub fn test_normalize_i32_positive() {
-    expect_eq_i32((i32)normalize_i32(0), 0, "normalize_i32 0")
-    expect_eq_i32((i32)normalize_i32(32768), 32768, "normalize_i32 32768")
+    expect_eq((i32)normalize_i32(0), 0, "normalize_i32 0")
+    expect_eq((i32)normalize_i32(32768), 32768, "normalize_i32 32768")
 }
 
 @test
 pub fn test_normalize_i32_negative() {
     // -90 degrees should become 270 degrees
     let result = normalize_i32(-16384)
-    expect_eq_i32((i32)result, 49152, "normalize_i32 -90 degrees = 270 degrees")
+    expect_eq((i32)result, 49152, "normalize_i32 -90 degrees = 270 degrees")
 }
 
 @test
 pub fn test_normalize_i32_large() {
     // 65536 should wrap to 0
     let result = normalize_i32(65536)
-    expect_eq_i32((i32)result, 0, "normalize_i32 65536 = 0")
+    expect_eq((i32)result, 0, "normalize_i32 65536 = 0")
 }
 
 // ============================================================================
@@ -59,21 +59,21 @@ pub fn test_normalize_i32_large() {
 @test
 pub fn test_angle_diff_same() {
     let diff = angle_diff(0u16, 0u16)
-    expect_eq_i32((i32)diff, 0, "diff of same angle = 0")
+    expect_eq((i32)diff, 0, "diff of same angle = 0")
 }
 
 @test
 pub fn test_angle_diff_positive() {
     // 0 to 90 degrees
     let diff = angle_diff(0u16, ANGLE_QUARTER)
-    expect_eq_i32((i32)diff, 16384, "diff 0 to 90 = +90")
+    expect_eq((i32)diff, 16384, "diff 0 to 90 = +90")
 }
 
 @test
 pub fn test_angle_diff_negative() {
     // 90 to 0 degrees
     let diff = angle_diff(ANGLE_QUARTER, 0u16)
-    expect_eq_i32((i32)diff, -16384, "diff 90 to 0 = -90")
+    expect_eq((i32)diff, -16384, "diff 90 to 0 = -90")
 }
 
 @test
@@ -90,8 +90,8 @@ pub fn test_angle_diff_shortest_path() {
 pub fn test_angle_diff_abs() {
     let diff1 = angle_diff_abs(0u16, ANGLE_QUARTER)
     let diff2 = angle_diff_abs(ANGLE_QUARTER, 0u16)
-    expect_eq_i32((i32)diff1, 16384, "abs diff 0 to 90")
-    expect_eq_i32((i32)diff2, 16384, "abs diff 90 to 0")
+    expect_eq((i32)diff1, 16384, "abs diff 0 to 90")
+    expect_eq((i32)diff2, 16384, "abs diff 90 to 0")
 }
 
 // ============================================================================
@@ -122,7 +122,7 @@ pub fn test_angle_approx_eq() {
 @test
 pub fn test_angle_lerp_at_zero() {
     let result = angle_lerp(0u16, ANGLE_QUARTER, Fixed32::zero())
-    expect_eq_i32((i32)result, 0, "angle_lerp at t=0 returns from")
+    expect_eq((i32)result, 0, "angle_lerp at t=0 returns from")
 }
 
 @test
@@ -156,13 +156,13 @@ pub fn test_angle_lerp_at_half() {
 @test
 pub fn test_angle_move_towards_reach() {
     let result = angle_move_towards(0u16, 1000u16, 2000u16)
-    expect_eq_i32((i32)result, 1000, "move_towards reaches target")
+    expect_eq((i32)result, 1000, "move_towards reaches target")
 }
 
 @test
 pub fn test_angle_move_towards_partial() {
     let result = angle_move_towards(0u16, 10000u16, 1000u16)
-    expect_eq_i32((i32)result, 1000, "move_towards moves by max_delta")
+    expect_eq((i32)result, 1000, "move_towards moves by max_delta")
 }
 
 @test
@@ -175,7 +175,7 @@ pub fn test_angle_move_towards_negative() {
 @test
 pub fn test_angle_move_towards_at_target() {
     let result = angle_move_towards(ANGLE_HALF, ANGLE_HALF, 1000u16)
-    expect_eq_i32((i32)result, 32768, "move_towards at target stays")
+    expect_eq((i32)result, 32768, "move_towards at target stays")
 }
 
 // ============================================================================
@@ -187,7 +187,7 @@ pub fn test_angle_snap_45() {
     // Snap 50 degrees to nearest 45-degree increment
     let angle: u16 = 9102u16  // ~50 degrees
     let result = angle_snap_45(angle)
-    expect_eq_i32((i32)result, 8192, "50 degrees snaps to 45")
+    expect_eq((i32)result, 8192, "50 degrees snaps to 45")
 }
 
 @test
@@ -195,7 +195,7 @@ pub fn test_angle_snap_90() {
     // Snap 100 degrees to nearest 90-degree increment
     let angle: u16 = 18204u16  // ~100 degrees
     let result = angle_snap_90(angle)
-    expect_eq_i32((i32)result, 16384, "100 degrees snaps to 90")
+    expect_eq((i32)result, 16384, "100 degrees snaps to 90")
 }
 
 @test
@@ -211,7 +211,7 @@ pub fn test_angle_snap_4way() {
     let angle: u16 = 10000u16  // ~55 degrees
     let result = angle_snap_4way(angle)
     // Should snap to 90
-    expect_eq_i32((i32)result, 16384, "snaps to 4-way (90)")
+    expect_eq((i32)result, 16384, "snaps to 4-way (90)")
 }
 
 // ============================================================================
@@ -220,34 +220,34 @@ pub fn test_angle_snap_4way() {
 
 @test
 pub fn test_angle_to_8way() {
-    expect_eq_i32((i32)angle_to_8way(0u16), 0, "0 degrees = direction 0")
-    expect_eq_i32((i32)angle_to_8way(ANGLE_45), 1, "45 degrees = direction 1")
-    expect_eq_i32((i32)angle_to_8way(ANGLE_QUARTER), 2, "90 degrees = direction 2")
-    expect_eq_i32((i32)angle_to_8way(ANGLE_HALF), 4, "180 degrees = direction 4")
+    expect_eq((i32)angle_to_8way(0u16), 0, "0 degrees = direction 0")
+    expect_eq((i32)angle_to_8way(ANGLE_45), 1, "45 degrees = direction 1")
+    expect_eq((i32)angle_to_8way(ANGLE_QUARTER), 2, "90 degrees = direction 2")
+    expect_eq((i32)angle_to_8way(ANGLE_HALF), 4, "180 degrees = direction 4")
 }
 
 @test
 pub fn test_angle_to_4way() {
-    expect_eq_i32((i32)angle_to_4way(0u16), 0, "0 degrees = direction 0")
-    expect_eq_i32((i32)angle_to_4way(ANGLE_QUARTER), 1, "90 degrees = direction 1")
-    expect_eq_i32((i32)angle_to_4way(ANGLE_HALF), 2, "180 degrees = direction 2")
-    expect_eq_i32((i32)angle_to_4way(ANGLE_THREE_QUARTER), 3, "270 degrees = direction 3")
+    expect_eq((i32)angle_to_4way(0u16), 0, "0 degrees = direction 0")
+    expect_eq((i32)angle_to_4way(ANGLE_QUARTER), 1, "90 degrees = direction 1")
+    expect_eq((i32)angle_to_4way(ANGLE_HALF), 2, "180 degrees = direction 2")
+    expect_eq((i32)angle_to_4way(ANGLE_THREE_QUARTER), 3, "270 degrees = direction 3")
 }
 
 @test
 pub fn test_angle_from_8way() {
-    expect_eq_i32((i32)angle_from_8way(0u8), 0, "direction 0 = 0 degrees")
-    expect_eq_i32((i32)angle_from_8way(1u8), 8192, "direction 1 = 45 degrees")
-    expect_eq_i32((i32)angle_from_8way(2u8), 16384, "direction 2 = 90 degrees")
-    expect_eq_i32((i32)angle_from_8way(4u8), 32768, "direction 4 = 180 degrees")
+    expect_eq((i32)angle_from_8way(0u8), 0, "direction 0 = 0 degrees")
+    expect_eq((i32)angle_from_8way(1u8), 8192, "direction 1 = 45 degrees")
+    expect_eq((i32)angle_from_8way(2u8), 16384, "direction 2 = 90 degrees")
+    expect_eq((i32)angle_from_8way(4u8), 32768, "direction 4 = 180 degrees")
 }
 
 @test
 pub fn test_angle_from_4way() {
-    expect_eq_i32((i32)angle_from_4way(0u8), 0, "direction 0 = 0 degrees")
-    expect_eq_i32((i32)angle_from_4way(1u8), 16384, "direction 1 = 90 degrees")
-    expect_eq_i32((i32)angle_from_4way(2u8), 32768, "direction 2 = 180 degrees")
-    expect_eq_i32((i32)angle_from_4way(3u8), 49152, "direction 3 = 270 degrees")
+    expect_eq((i32)angle_from_4way(0u8), 0, "direction 0 = 0 degrees")
+    expect_eq((i32)angle_from_4way(1u8), 16384, "direction 1 = 90 degrees")
+    expect_eq((i32)angle_from_4way(2u8), 32768, "direction 2 = 180 degrees")
+    expect_eq((i32)angle_from_4way(3u8), 49152, "direction 3 = 270 degrees")
 }
 
 // ============================================================================
@@ -256,11 +256,11 @@ pub fn test_angle_from_4way() {
 
 @test
 pub fn test_quadrant() {
-    expect_eq_i32((i32)quadrant(0u16), 0, "0 degrees = Q0")
-    expect_eq_i32((i32)quadrant(8192u16), 0, "45 degrees = Q0")
-    expect_eq_i32((i32)quadrant(ANGLE_QUARTER), 1, "90 degrees = Q1")
-    expect_eq_i32((i32)quadrant(ANGLE_HALF), 2, "180 degrees = Q2")
-    expect_eq_i32((i32)quadrant(ANGLE_THREE_QUARTER), 3, "270 degrees = Q3")
+    expect_eq((i32)quadrant(0u16), 0, "0 degrees = Q0")
+    expect_eq((i32)quadrant(8192u16), 0, "45 degrees = Q0")
+    expect_eq((i32)quadrant(ANGLE_QUARTER), 1, "90 degrees = Q1")
+    expect_eq((i32)quadrant(ANGLE_HALF), 2, "180 degrees = Q2")
+    expect_eq((i32)quadrant(ANGLE_THREE_QUARTER), 3, "270 degrees = Q3")
 }
 
 // ============================================================================

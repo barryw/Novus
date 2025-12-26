@@ -11,9 +11,20 @@ namespace Novus.SemanticAnalysis;
 public class AnalysisResult
 {
     /// <summary>
-    /// Function symbols discovered during analysis.
+    /// Function symbols discovered during analysis (first overload per name for compatibility).
+    /// For full overload information, use FunctionOverloads.
     /// </summary>
     public IReadOnlyDictionary<string, FunctionSymbol> Functions { get; }
+
+    /// <summary>
+    /// All function overloads by name. Each name maps to a list of overloads with different signatures.
+    /// </summary>
+    public IReadOnlyDictionary<string, List<FunctionSymbol>> FunctionOverloads { get; }
+
+    /// <summary>
+    /// Names of functions that have multiple overloads (different signatures).
+    /// </summary>
+    public IReadOnlySet<string> OverloadedFunctionNames { get; }
 
     /// <summary>
     /// Local variable symbols in the current scope.
@@ -101,6 +112,8 @@ public class AnalysisResult
         string filePath,
         string sourceCode,
         IReadOnlyDictionary<string, FunctionSymbol> functions,
+        IReadOnlyDictionary<string, List<FunctionSymbol>> functionOverloads,
+        IReadOnlySet<string> overloadedFunctionNames,
         IReadOnlyDictionary<string, VariableSymbol> variables,
         IReadOnlyDictionary<string, VariableSymbol> globalVariables,
         IReadOnlyDictionary<string, IrStructType> structs,
@@ -119,6 +132,8 @@ public class AnalysisResult
         FilePath = filePath;
         SourceCode = sourceCode;
         Functions = functions;
+        FunctionOverloads = functionOverloads;
+        OverloadedFunctionNames = overloadedFunctionNames;
         Variables = variables;
         GlobalVariables = globalVariables;
         Structs = structs;

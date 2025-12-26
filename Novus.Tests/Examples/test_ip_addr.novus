@@ -1,7 +1,7 @@
 // Comprehensive tests for std::net::addr - IP address and CIDR functionality
 // Run with: novus test test_ip_addr.novus
 
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32, expect_eq_u8, expect_eq_u16, expect_eq_bool
+from std::test::test import expect, expect_true, expect_false, expect_eq, expect_eq, expect_eq, expect_eq, expect_eq
 from std::net::addr import Ipv4Addr, SocketAddrV4, Cidr, AddrParseError
 from std::core import Result
 
@@ -13,30 +13,30 @@ from std::core import Result
 pub fn test_ipv4_new() {
     let addr = Ipv4Addr::new(192, 168, 1, 100)
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 192, "first octet")
-    expect_eq_u8(octets[1], 168, "second octet")
-    expect_eq_u8(octets[2], 1, "third octet")
-    expect_eq_u8(octets[3], 100, "fourth octet")
+    expect_eq(octets[0], 192, "first octet")
+    expect_eq(octets[1], 168, "second octet")
+    expect_eq(octets[2], 1, "third octet")
+    expect_eq(octets[3], 100, "fourth octet")
 }
 
 @test("Ipv4Addr::new with zeros")
 pub fn test_ipv4_new_zeros() {
     let addr = Ipv4Addr::new(0, 0, 0, 0)
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 0, "first octet zero")
-    expect_eq_u8(octets[1], 0, "second octet zero")
-    expect_eq_u8(octets[2], 0, "third octet zero")
-    expect_eq_u8(octets[3], 0, "fourth octet zero")
+    expect_eq(octets[0], 0, "first octet zero")
+    expect_eq(octets[1], 0, "second octet zero")
+    expect_eq(octets[2], 0, "third octet zero")
+    expect_eq(octets[3], 0, "fourth octet zero")
 }
 
 @test("Ipv4Addr::new with max values")
 pub fn test_ipv4_new_max() {
     let addr = Ipv4Addr::new(255, 255, 255, 255)
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 255, "first octet max")
-    expect_eq_u8(octets[1], 255, "second octet max")
-    expect_eq_u8(octets[2], 255, "third octet max")
-    expect_eq_u8(octets[3], 255, "fourth octet max")
+    expect_eq(octets[0], 255, "first octet max")
+    expect_eq(octets[1], 255, "second octet max")
+    expect_eq(octets[2], 255, "third octet max")
+    expect_eq(octets[3], 255, "fourth octet max")
 }
 
 @test("Ipv4Addr::from_u32 creates correct address")
@@ -44,10 +44,10 @@ pub fn test_ipv4_from_u32() {
     // 192.168.1.100 = 0xC0A80164
     let addr = Ipv4Addr::from_u32(0xC0A80164u32)
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 192, "from_u32 first octet")
-    expect_eq_u8(octets[1], 168, "from_u32 second octet")
-    expect_eq_u8(octets[2], 1, "from_u32 third octet")
-    expect_eq_u8(octets[3], 100, "from_u32 fourth octet")
+    expect_eq(octets[0], 192, "from_u32 first octet")
+    expect_eq(octets[1], 168, "from_u32 second octet")
+    expect_eq(octets[2], 1, "from_u32 third octet")
+    expect_eq(octets[3], 100, "from_u32 fourth octet")
 }
 
 @test("Ipv4Addr::from_u32 with zero")
@@ -67,7 +67,7 @@ pub fn test_ipv4_to_u32_roundtrip() {
     let original: u32 = 0xC0A80164u32
     let addr = Ipv4Addr::from_u32(original)
     let result = addr.to_u32()
-    expect_eq_u32(result, original, "to_u32 should roundtrip")
+    expect_eq(result, original, "to_u32 should roundtrip")
 }
 
 @test("Ipv4Addr::from_network_order on big-endian")
@@ -75,10 +75,10 @@ pub fn test_ipv4_from_network_order() {
     // On Amiga (big-endian), network order = host order
     let addr = Ipv4Addr::from_network_order(0x0A000001)  // 10.0.0.1
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 10, "network order first octet")
-    expect_eq_u8(octets[1], 0, "network order second octet")
-    expect_eq_u8(octets[2], 0, "network order third octet")
-    expect_eq_u8(octets[3], 1, "network order fourth octet")
+    expect_eq(octets[0], 10, "network order first octet")
+    expect_eq(octets[1], 0, "network order second octet")
+    expect_eq(octets[2], 0, "network order third octet")
+    expect_eq(octets[3], 1, "network order fourth octet")
 }
 
 // ============================================================================
@@ -89,30 +89,30 @@ pub fn test_ipv4_from_network_order() {
 pub fn test_ipv4_localhost() {
     let addr = Ipv4Addr::localhost()
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 127, "localhost first octet")
-    expect_eq_u8(octets[1], 0, "localhost second octet")
-    expect_eq_u8(octets[2], 0, "localhost third octet")
-    expect_eq_u8(octets[3], 1, "localhost fourth octet")
+    expect_eq(octets[0], 127, "localhost first octet")
+    expect_eq(octets[1], 0, "localhost second octet")
+    expect_eq(octets[2], 0, "localhost third octet")
+    expect_eq(octets[3], 1, "localhost fourth octet")
 }
 
 @test("Ipv4Addr::any returns 0.0.0.0")
 pub fn test_ipv4_any() {
     let addr = Ipv4Addr::any()
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 0, "any first octet")
-    expect_eq_u8(octets[1], 0, "any second octet")
-    expect_eq_u8(octets[2], 0, "any third octet")
-    expect_eq_u8(octets[3], 0, "any fourth octet")
+    expect_eq(octets[0], 0, "any first octet")
+    expect_eq(octets[1], 0, "any second octet")
+    expect_eq(octets[2], 0, "any third octet")
+    expect_eq(octets[3], 0, "any fourth octet")
 }
 
 @test("Ipv4Addr::broadcast returns 255.255.255.255")
 pub fn test_ipv4_broadcast() {
     let addr = Ipv4Addr::broadcast()
     let octets = addr.octets()
-    expect_eq_u8(octets[0], 255, "broadcast first octet")
-    expect_eq_u8(octets[1], 255, "broadcast second octet")
-    expect_eq_u8(octets[2], 255, "broadcast third octet")
-    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+    expect_eq(octets[0], 255, "broadcast first octet")
+    expect_eq(octets[1], 255, "broadcast second octet")
+    expect_eq(octets[2], 255, "broadcast third octet")
+    expect_eq(octets[3], 255, "broadcast fourth octet")
 }
 
 // ============================================================================
@@ -540,13 +540,13 @@ pub fn test_ipv4_format() {
     let len = addr.format((*u8)&buf[0])
 
     // Check length (192.168.1.100 = 13 chars)
-    expect_eq_i32(len, 13, "format length for 192.168.1.100")
+    expect_eq(len, 13, "format length for 192.168.1.100")
 
     // Check individual characters
-    expect_eq_u8(buf[0], 49, "char '1'")   // '1'
-    expect_eq_u8(buf[1], 57, "char '9'")   // '9'
-    expect_eq_u8(buf[2], 50, "char '2'")   // '2'
-    expect_eq_u8(buf[3], 46, "char '.'")   // '.'
+    expect_eq(buf[0], 49, "char '1'")   // '1'
+    expect_eq(buf[1], 57, "char '9'")   // '9'
+    expect_eq(buf[2], 50, "char '2'")   // '2'
+    expect_eq(buf[3], 46, "char '.'")   // '.'
 }
 
 @test("Ipv4Addr::format single digit octets")
@@ -556,7 +556,7 @@ pub fn test_ipv4_format_single_digits() {
     let len = addr.format((*u8)&buf[0])
 
     // 1.2.3.4 = 7 chars
-    expect_eq_i32(len, 7, "format length for 1.2.3.4")
+    expect_eq(len, 7, "format length for 1.2.3.4")
 }
 
 @test("Ipv4Addr::format max value octets")
@@ -566,7 +566,7 @@ pub fn test_ipv4_format_max() {
     let len = addr.format((*u8)&buf[0])
 
     // 255.255.255.255 = 15 chars
-    expect_eq_i32(len, 15, "format length for 255.255.255.255")
+    expect_eq(len, 15, "format length for 255.255.255.255")
 }
 
 @test("Ipv4Addr::format zero address")
@@ -576,7 +576,7 @@ pub fn test_ipv4_format_zero() {
     let len = addr.format((*u8)&buf[0])
 
     // 0.0.0.0 = 7 chars
-    expect_eq_i32(len, 7, "format length for 0.0.0.0")
+    expect_eq(len, 7, "format length for 0.0.0.0")
 }
 
 // ============================================================================
@@ -588,24 +588,24 @@ pub fn test_socket_addr_new() {
     let ip = Ipv4Addr::new(192, 168, 1, 100)
     let addr = SocketAddrV4::new(ip, 8080)
 
-    expect_eq_u16(addr.port(), 8080, "port should be 8080")
+    expect_eq(addr.port(), 8080, "port should be 8080")
     let got_ip = addr.ip()
     let octets = got_ip.octets()
-    expect_eq_u8(octets[0], 192, "ip first octet")
+    expect_eq(octets[0], 192, "ip first octet")
 }
 
 @test("SocketAddrV4 with port 0")
 pub fn test_socket_addr_port_zero() {
     let ip = Ipv4Addr::new(0, 0, 0, 0)
     let addr = SocketAddrV4::new(ip, 0)
-    expect_eq_u16(addr.port(), 0, "port should be 0")
+    expect_eq(addr.port(), 0, "port should be 0")
 }
 
 @test("SocketAddrV4 with max port")
 pub fn test_socket_addr_port_max() {
     let ip = Ipv4Addr::localhost()
     let addr = SocketAddrV4::new(ip, 65535)
-    expect_eq_u16(addr.port(), 65535, "port should be 65535")
+    expect_eq(addr.port(), 65535, "port should be 65535")
 }
 
 @test("SocketAddrV4 common ports")
@@ -613,13 +613,13 @@ pub fn test_socket_addr_common_ports() {
     let ip = Ipv4Addr::new(8, 8, 8, 8)
 
     let http = SocketAddrV4::new(ip, 80)
-    expect_eq_u16(http.port(), 80, "HTTP port")
+    expect_eq(http.port(), 80, "HTTP port")
 
     let https = SocketAddrV4::new(ip, 443)
-    expect_eq_u16(https.port(), 443, "HTTPS port")
+    expect_eq(https.port(), 443, "HTTPS port")
 
     let ssh = SocketAddrV4::new(ip, 22)
-    expect_eq_u16(ssh.port(), 22, "SSH port")
+    expect_eq(ssh.port(), 22, "SSH port")
 }
 
 // ============================================================================
@@ -631,7 +631,7 @@ pub fn test_cidr_new() {
     let ip = Ipv4Addr::new(192, 168, 1, 0)
     let cidr = Cidr::new(ip, 24)
 
-    expect_eq_u8(cidr.prefix_len(), 24, "prefix length")
+    expect_eq(cidr.prefix_len(), 24, "prefix length")
 }
 
 @test("Cidr::new clamps prefix > 32")
@@ -639,7 +639,7 @@ pub fn test_cidr_new_clamp_high() {
     let ip = Ipv4Addr::new(10, 0, 0, 0)
     let cidr = Cidr::new(ip, 64)  // Invalid, should clamp to 32
 
-    expect_eq_u8(cidr.prefix_len(), 32, "prefix should be clamped to 32")
+    expect_eq(cidr.prefix_len(), 32, "prefix should be clamped to 32")
 }
 
 @test("Cidr::new allows prefix 0")
@@ -647,7 +647,7 @@ pub fn test_cidr_new_prefix_zero() {
     let ip = Ipv4Addr::new(0, 0, 0, 0)
     let cidr = Cidr::new(ip, 0)
 
-    expect_eq_u8(cidr.prefix_len(), 0, "prefix 0 allowed")
+    expect_eq(cidr.prefix_len(), 0, "prefix 0 allowed")
 }
 
 // ============================================================================
@@ -661,10 +661,10 @@ pub fn test_cidr_network_24() {
     let network = cidr.network()
     let octets = network.octets()
 
-    expect_eq_u8(octets[0], 192, "network first octet")
-    expect_eq_u8(octets[1], 168, "network second octet")
-    expect_eq_u8(octets[2], 1, "network third octet")
-    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+    expect_eq(octets[0], 192, "network first octet")
+    expect_eq(octets[1], 168, "network second octet")
+    expect_eq(octets[2], 1, "network third octet")
+    expect_eq(octets[3], 0, "network fourth octet (masked)")
 }
 
 @test("Cidr::network for /16")
@@ -674,10 +674,10 @@ pub fn test_cidr_network_16() {
     let network = cidr.network()
     let octets = network.octets()
 
-    expect_eq_u8(octets[0], 172, "network first octet")
-    expect_eq_u8(octets[1], 16, "network second octet")
-    expect_eq_u8(octets[2], 0, "network third octet (masked)")
-    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+    expect_eq(octets[0], 172, "network first octet")
+    expect_eq(octets[1], 16, "network second octet")
+    expect_eq(octets[2], 0, "network third octet (masked)")
+    expect_eq(octets[3], 0, "network fourth octet (masked)")
 }
 
 @test("Cidr::network for /8")
@@ -687,10 +687,10 @@ pub fn test_cidr_network_8() {
     let network = cidr.network()
     let octets = network.octets()
 
-    expect_eq_u8(octets[0], 10, "network first octet")
-    expect_eq_u8(octets[1], 0, "network second octet (masked)")
-    expect_eq_u8(octets[2], 0, "network third octet (masked)")
-    expect_eq_u8(octets[3], 0, "network fourth octet (masked)")
+    expect_eq(octets[0], 10, "network first octet")
+    expect_eq(octets[1], 0, "network second octet (masked)")
+    expect_eq(octets[2], 0, "network third octet (masked)")
+    expect_eq(octets[3], 0, "network fourth octet (masked)")
 }
 
 @test("Cidr::network for /32")
@@ -700,10 +700,10 @@ pub fn test_cidr_network_32() {
     let network = cidr.network()
     let octets = network.octets()
 
-    expect_eq_u8(octets[0], 192, "network first octet unchanged")
-    expect_eq_u8(octets[1], 168, "network second octet unchanged")
-    expect_eq_u8(octets[2], 1, "network third octet unchanged")
-    expect_eq_u8(octets[3], 100, "network fourth octet unchanged")
+    expect_eq(octets[0], 192, "network first octet unchanged")
+    expect_eq(octets[1], 168, "network second octet unchanged")
+    expect_eq(octets[2], 1, "network third octet unchanged")
+    expect_eq(octets[3], 100, "network fourth octet unchanged")
 }
 
 // ============================================================================
@@ -717,10 +717,10 @@ pub fn test_cidr_broadcast_24() {
     let broadcast = cidr.broadcast()
     let octets = broadcast.octets()
 
-    expect_eq_u8(octets[0], 192, "broadcast first octet")
-    expect_eq_u8(octets[1], 168, "broadcast second octet")
-    expect_eq_u8(octets[2], 1, "broadcast third octet")
-    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+    expect_eq(octets[0], 192, "broadcast first octet")
+    expect_eq(octets[1], 168, "broadcast second octet")
+    expect_eq(octets[2], 1, "broadcast third octet")
+    expect_eq(octets[3], 255, "broadcast fourth octet")
 }
 
 @test("Cidr::broadcast for /16")
@@ -730,10 +730,10 @@ pub fn test_cidr_broadcast_16() {
     let broadcast = cidr.broadcast()
     let octets = broadcast.octets()
 
-    expect_eq_u8(octets[0], 172, "broadcast first octet")
-    expect_eq_u8(octets[1], 16, "broadcast second octet")
-    expect_eq_u8(octets[2], 255, "broadcast third octet")
-    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+    expect_eq(octets[0], 172, "broadcast first octet")
+    expect_eq(octets[1], 16, "broadcast second octet")
+    expect_eq(octets[2], 255, "broadcast third octet")
+    expect_eq(octets[3], 255, "broadcast fourth octet")
 }
 
 @test("Cidr::broadcast for /8")
@@ -743,10 +743,10 @@ pub fn test_cidr_broadcast_8() {
     let broadcast = cidr.broadcast()
     let octets = broadcast.octets()
 
-    expect_eq_u8(octets[0], 10, "broadcast first octet")
-    expect_eq_u8(octets[1], 255, "broadcast second octet")
-    expect_eq_u8(octets[2], 255, "broadcast third octet")
-    expect_eq_u8(octets[3], 255, "broadcast fourth octet")
+    expect_eq(octets[0], 10, "broadcast first octet")
+    expect_eq(octets[1], 255, "broadcast second octet")
+    expect_eq(octets[2], 255, "broadcast third octet")
+    expect_eq(octets[3], 255, "broadcast fourth octet")
 }
 
 // ============================================================================
@@ -759,10 +759,10 @@ pub fn test_cidr_netmask_24() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "netmask first octet")
-    expect_eq_u8(octets[1], 255, "netmask second octet")
-    expect_eq_u8(octets[2], 255, "netmask third octet")
-    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+    expect_eq(octets[0], 255, "netmask first octet")
+    expect_eq(octets[1], 255, "netmask second octet")
+    expect_eq(octets[2], 255, "netmask third octet")
+    expect_eq(octets[3], 0, "netmask fourth octet")
 }
 
 @test("Cidr::netmask for /16")
@@ -771,10 +771,10 @@ pub fn test_cidr_netmask_16() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "netmask first octet")
-    expect_eq_u8(octets[1], 255, "netmask second octet")
-    expect_eq_u8(octets[2], 0, "netmask third octet")
-    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+    expect_eq(octets[0], 255, "netmask first octet")
+    expect_eq(octets[1], 255, "netmask second octet")
+    expect_eq(octets[2], 0, "netmask third octet")
+    expect_eq(octets[3], 0, "netmask fourth octet")
 }
 
 @test("Cidr::netmask for /8")
@@ -783,10 +783,10 @@ pub fn test_cidr_netmask_8() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "netmask first octet")
-    expect_eq_u8(octets[1], 0, "netmask second octet")
-    expect_eq_u8(octets[2], 0, "netmask third octet")
-    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+    expect_eq(octets[0], 255, "netmask first octet")
+    expect_eq(octets[1], 0, "netmask second octet")
+    expect_eq(octets[2], 0, "netmask third octet")
+    expect_eq(octets[3], 0, "netmask fourth octet")
 }
 
 @test("Cidr::netmask for /32")
@@ -795,10 +795,10 @@ pub fn test_cidr_netmask_32() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "netmask first octet")
-    expect_eq_u8(octets[1], 255, "netmask second octet")
-    expect_eq_u8(octets[2], 255, "netmask third octet")
-    expect_eq_u8(octets[3], 255, "netmask fourth octet")
+    expect_eq(octets[0], 255, "netmask first octet")
+    expect_eq(octets[1], 255, "netmask second octet")
+    expect_eq(octets[2], 255, "netmask third octet")
+    expect_eq(octets[3], 255, "netmask fourth octet")
 }
 
 @test("Cidr::netmask for /0")
@@ -807,10 +807,10 @@ pub fn test_cidr_netmask_0() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 0, "netmask first octet")
-    expect_eq_u8(octets[1], 0, "netmask second octet")
-    expect_eq_u8(octets[2], 0, "netmask third octet")
-    expect_eq_u8(octets[3], 0, "netmask fourth octet")
+    expect_eq(octets[0], 0, "netmask first octet")
+    expect_eq(octets[1], 0, "netmask second octet")
+    expect_eq(octets[2], 0, "netmask third octet")
+    expect_eq(octets[3], 0, "netmask fourth octet")
 }
 
 // ============================================================================
@@ -886,37 +886,37 @@ pub fn test_cidr_contains_32() {
 @test("Cidr::host_count for /24")
 pub fn test_cidr_host_count_24() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
-    expect_eq_u32(cidr.host_count(), 254, "/24 has 254 hosts")
+    expect_eq(cidr.host_count(), 254, "/24 has 254 hosts")
 }
 
 @test("Cidr::host_count for /16")
 pub fn test_cidr_host_count_16() {
     let cidr = Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 16)
-    expect_eq_u32(cidr.host_count(), 65534, "/16 has 65534 hosts")
+    expect_eq(cidr.host_count(), 65534, "/16 has 65534 hosts")
 }
 
 @test("Cidr::host_count for /8")
 pub fn test_cidr_host_count_8() {
     let cidr = Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
-    expect_eq_u32(cidr.host_count(), 16777214, "/8 has 16777214 hosts")
+    expect_eq(cidr.host_count(), 16777214, "/8 has 16777214 hosts")
 }
 
 @test("Cidr::host_count for /32")
 pub fn test_cidr_host_count_32() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 100), 32)
-    expect_eq_u32(cidr.host_count(), 1, "/32 has 1 host")
+    expect_eq(cidr.host_count(), 1, "/32 has 1 host")
 }
 
 @test("Cidr::host_count for /31 point-to-point")
 pub fn test_cidr_host_count_31() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 31)
-    expect_eq_u32(cidr.host_count(), 2, "/31 has 2 hosts (point-to-point)")
+    expect_eq(cidr.host_count(), 2, "/31 has 2 hosts (point-to-point)")
 }
 
 @test("Cidr::host_count for /30")
 pub fn test_cidr_host_count_30() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 30)
-    expect_eq_u32(cidr.host_count(), 2, "/30 has 2 hosts")
+    expect_eq(cidr.host_count(), 2, "/30 has 2 hosts")
 }
 
 // ============================================================================
@@ -926,19 +926,19 @@ pub fn test_cidr_host_count_30() {
 @test("Cidr::address_count for /24")
 pub fn test_cidr_address_count_24() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
-    expect_eq_u32(cidr.address_count(), 256, "/24 has 256 addresses")
+    expect_eq(cidr.address_count(), 256, "/24 has 256 addresses")
 }
 
 @test("Cidr::address_count for /16")
 pub fn test_cidr_address_count_16() {
     let cidr = Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 16)
-    expect_eq_u32(cidr.address_count(), 65536, "/16 has 65536 addresses")
+    expect_eq(cidr.address_count(), 65536, "/16 has 65536 addresses")
 }
 
 @test("Cidr::address_count for /32")
 pub fn test_cidr_address_count_32() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 100), 32)
-    expect_eq_u32(cidr.address_count(), 1, "/32 has 1 address")
+    expect_eq(cidr.address_count(), 1, "/32 has 1 address")
 }
 
 // ============================================================================
@@ -951,11 +951,11 @@ pub fn test_cidr_private_class_a() {
     let ip = cidr.ip()
     let octets = ip.octets()
 
-    expect_eq_u8(octets[0], 10, "private class A first octet")
-    expect_eq_u8(octets[1], 0, "private class A second octet")
-    expect_eq_u8(octets[2], 0, "private class A third octet")
-    expect_eq_u8(octets[3], 0, "private class A fourth octet")
-    expect_eq_u8(cidr.prefix_len(), 8, "private class A prefix")
+    expect_eq(octets[0], 10, "private class A first octet")
+    expect_eq(octets[1], 0, "private class A second octet")
+    expect_eq(octets[2], 0, "private class A third octet")
+    expect_eq(octets[3], 0, "private class A fourth octet")
+    expect_eq(cidr.prefix_len(), 8, "private class A prefix")
 }
 
 @test("Cidr::private_class_b is 172.16.0.0/12")
@@ -964,9 +964,9 @@ pub fn test_cidr_private_class_b() {
     let ip = cidr.ip()
     let octets = ip.octets()
 
-    expect_eq_u8(octets[0], 172, "private class B first octet")
-    expect_eq_u8(octets[1], 16, "private class B second octet")
-    expect_eq_u8(cidr.prefix_len(), 12, "private class B prefix")
+    expect_eq(octets[0], 172, "private class B first octet")
+    expect_eq(octets[1], 16, "private class B second octet")
+    expect_eq(cidr.prefix_len(), 12, "private class B prefix")
 }
 
 @test("Cidr::private_class_c is 192.168.0.0/16")
@@ -975,9 +975,9 @@ pub fn test_cidr_private_class_c() {
     let ip = cidr.ip()
     let octets = ip.octets()
 
-    expect_eq_u8(octets[0], 192, "private class C first octet")
-    expect_eq_u8(octets[1], 168, "private class C second octet")
-    expect_eq_u8(cidr.prefix_len(), 16, "private class C prefix")
+    expect_eq(octets[0], 192, "private class C first octet")
+    expect_eq(octets[1], 168, "private class C second octet")
+    expect_eq(cidr.prefix_len(), 16, "private class C prefix")
 }
 
 @test("Cidr::loopback is 127.0.0.0/8")
@@ -986,8 +986,8 @@ pub fn test_cidr_loopback() {
     let ip = cidr.ip()
     let octets = ip.octets()
 
-    expect_eq_u8(octets[0], 127, "loopback first octet")
-    expect_eq_u8(cidr.prefix_len(), 8, "loopback prefix")
+    expect_eq(octets[0], 127, "loopback first octet")
+    expect_eq(cidr.prefix_len(), 8, "loopback prefix")
 }
 
 @test("Cidr::link_local is 169.254.0.0/16")
@@ -996,9 +996,9 @@ pub fn test_cidr_link_local() {
     let ip = cidr.ip()
     let octets = ip.octets()
 
-    expect_eq_u8(octets[0], 169, "link-local first octet")
-    expect_eq_u8(octets[1], 254, "link-local second octet")
-    expect_eq_u8(cidr.prefix_len(), 16, "link-local prefix")
+    expect_eq(octets[0], 169, "link-local first octet")
+    expect_eq(octets[1], 254, "link-local second octet")
+    expect_eq(cidr.prefix_len(), 16, "link-local prefix")
 }
 
 // ============================================================================
@@ -1034,7 +1034,7 @@ pub fn test_cidr_format_24() {
     let len = cidr.format((*u8)&buf[0])
 
     // 192.168.1.0/24 = 14 chars
-    expect_eq_i32(len, 14, "format length for 192.168.1.0/24")
+    expect_eq(len, 14, "format length for 192.168.1.0/24")
 }
 
 @test("Cidr::format for 10.0.0.0/8")
@@ -1044,7 +1044,7 @@ pub fn test_cidr_format_8() {
     let len = cidr.format((*u8)&buf[0])
 
     // 10.0.0.0/8 = 10 chars
-    expect_eq_i32(len, 10, "format length for 10.0.0.0/8")
+    expect_eq(len, 10, "format length for 10.0.0.0/8")
 }
 
 // ============================================================================
@@ -1107,10 +1107,10 @@ pub fn test_netmask_17() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "/17 first octet")
-    expect_eq_u8(octets[1], 255, "/17 second octet")
-    expect_eq_u8(octets[2], 128, "/17 third octet")  // 0x80
-    expect_eq_u8(octets[3], 0, "/17 fourth octet")
+    expect_eq(octets[0], 255, "/17 first octet")
+    expect_eq(octets[1], 255, "/17 second octet")
+    expect_eq(octets[2], 128, "/17 third octet")  // 0x80
+    expect_eq(octets[3], 0, "/17 fourth octet")
 }
 
 @test("Netmask boundary: /23")
@@ -1119,10 +1119,10 @@ pub fn test_netmask_23() {
     let mask = cidr.netmask()
     let octets = mask.octets()
 
-    expect_eq_u8(octets[0], 255, "/23 first octet")
-    expect_eq_u8(octets[1], 255, "/23 second octet")
-    expect_eq_u8(octets[2], 254, "/23 third octet")  // 0xFE
-    expect_eq_u8(octets[3], 0, "/23 fourth octet")
+    expect_eq(octets[0], 255, "/23 first octet")
+    expect_eq(octets[1], 255, "/23 second octet")
+    expect_eq(octets[2], 254, "/23 third octet")  // 0xFE
+    expect_eq(octets[3], 0, "/23 fourth octet")
 }
 
 // ============================================================================
@@ -1139,10 +1139,10 @@ pub fn test_parse_simple() {
     match result {
         Result::Ok(addr) => {
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 192, "parse: first octet")
-            expect_eq_u8(octets[1], 168, "parse: second octet")
-            expect_eq_u8(octets[2], 1, "parse: third octet")
-            expect_eq_u8(octets[3], 100, "parse: fourth octet")
+            expect_eq(octets[0], 192, "parse: first octet")
+            expect_eq(octets[1], 168, "parse: second octet")
+            expect_eq(octets[2], 1, "parse: third octet")
+            expect_eq(octets[3], 100, "parse: fourth octet")
         },
         Result::Err(e) => {
             // Any error is acceptable - could be NoTcpStack or InvalidAddress
@@ -1198,10 +1198,10 @@ pub fn test_parse_leading_zeros() {
         Result::Ok(addr) => {
             let octets = addr.octets()
             // Octal interpretation: 010=8, 020=16, 030=24, 040=32
-            expect_eq_u8(octets[0], 8, "parse octal first")
-            expect_eq_u8(octets[1], 16, "parse octal second")
-            expect_eq_u8(octets[2], 24, "parse octal third")
-            expect_eq_u8(octets[3], 32, "parse octal fourth")
+            expect_eq(octets[0], 8, "parse octal first")
+            expect_eq(octets[1], 16, "parse octal second")
+            expect_eq(octets[2], 24, "parse octal third")
+            expect_eq(octets[3], 32, "parse octal fourth")
         },
         Result::Err(e) => {
             // May fail if no TCP stack - that's acceptable in test env
@@ -1273,8 +1273,8 @@ pub fn test_try_parse_valid() {
     match result {
         Option::Some(addr) => {
             let octets = addr.octets()
-            expect_eq_u8(octets[0], 10, "try_parse first octet")
-            expect_eq_u8(octets[3], 1, "try_parse fourth octet")
+            expect_eq(octets[0], 10, "try_parse first octet")
+            expect_eq(octets[3], 1, "try_parse fourth octet")
         },
         Option::None => {
             // Could be no TCP stack or invalid input - both acceptable

@@ -16,7 +16,7 @@ from std::sync::channel import channel, bounded_channel, oneshot
 from std::sync::channel import Sender, Receiver, BoundedSender, BoundedReceiver
 from std::sync::channel import OneshotSender, OneshotReceiver
 from std::sync::channel import PortHandoff, PortOwnership, complete_handoff
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, fail
+from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 from std::os::task import spawn_task_fn_with_ptr, ProcessHandle, receive_startup_data
 from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, WaitPort, FreeMem
 from std::ffi::amiga_structs import MsgPort, Message, Process
@@ -80,7 +80,7 @@ pub fn test_unbounded_send_recv() {
 
     match rx.try_recv() {
         Option::None => fail("try_recv returned None after send"),
-        Option::Some(value) => expect_eq_i32(value, 42, "received value")
+        Option::Some(value) => expect_eq(value, 42, "received value")
     }
 }
 
@@ -96,22 +96,22 @@ pub fn test_unbounded_fifo_ordering() {
 
     // Receive and verify FIFO order
     match rx.try_recv() {
-        Option::Some(v) => expect_eq_i32(v, 10, "first value"),
+        Option::Some(v) => expect_eq(v, 10, "first value"),
         Option::None => fail("first recv returned None")
     }
 
     match rx.try_recv() {
-        Option::Some(v) => expect_eq_i32(v, 20, "second value"),
+        Option::Some(v) => expect_eq(v, 20, "second value"),
         Option::None => fail("second recv returned None")
     }
 
     match rx.try_recv() {
-        Option::Some(v) => expect_eq_i32(v, 30, "third value"),
+        Option::Some(v) => expect_eq(v, 30, "third value"),
         Option::None => fail("third recv returned None")
     }
 
     match rx.try_recv() {
-        Option::Some(v) => expect_eq_i32(v, 40, "fourth value"),
+        Option::Some(v) => expect_eq(v, 40, "fourth value"),
         Option::None => fail("fourth recv returned None")
     }
 }
@@ -162,7 +162,7 @@ pub fn test_unbounded_drain() {
         }
     }
 
-    expect_eq_i32(sum, 600, "sum of drained values")
+    expect_eq(sum, 600, "sum of drained values")
 }
 
 @test("Unbounded: sender clone works")
@@ -254,7 +254,7 @@ pub fn test_bounded_send_recv() {
 
     match rx.try_recv() {
         Option::None => fail("try_recv returned None"),
-        Option::Some(value) => expect_eq_i32(value, 55, "received value")
+        Option::Some(value) => expect_eq(value, 55, "received value")
     }
 }
 
@@ -273,17 +273,17 @@ pub fn test_bounded_fifo_ordering() {
     let v3 = rx.try_recv()
 
     match v1 {
-        Option::Some(v) => expect_eq_i32(v, 1, "first value"),
+        Option::Some(v) => expect_eq(v, 1, "first value"),
         Option::None => fail("first recv failed")
     }
 
     match v2 {
-        Option::Some(v) => expect_eq_i32(v, 2, "second value"),
+        Option::Some(v) => expect_eq(v, 2, "second value"),
         Option::None => fail("second recv failed")
     }
 
     match v3 {
-        Option::Some(v) => expect_eq_i32(v, 3, "third value"),
+        Option::Some(v) => expect_eq(v, 3, "third value"),
         Option::None => fail("third recv failed")
     }
 }
@@ -367,7 +367,7 @@ pub fn test_oneshot_send_recv() {
 
     match rx.try_recv() {
         Option::None => fail("try_recv returned None"),
-        Option::Some(value) => expect_eq_i32(value, 777, "received value")
+        Option::Some(value) => expect_eq(value, 777, "received value")
     }
 }
 
@@ -392,7 +392,7 @@ pub fn test_oneshot_single_recv_only() {
     let second = rx.try_recv()
 
     match first {
-        Option::Some(v) => expect_eq_i32(v, 123, "first recv got value"),
+        Option::Some(v) => expect_eq(v, 123, "first recv got value"),
         Option::None => fail("first recv failed")
     }
 

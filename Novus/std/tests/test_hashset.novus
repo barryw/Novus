@@ -5,7 +5,7 @@
 
 from std::collections::hashset import HashSet
 from std::core import Option, Result
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32
+from std::test::test import expect, expect_true, expect_false, expect_eq
 from std::error::errors import ExecError
 
 // ============================================================================
@@ -16,7 +16,7 @@ from std::error::errors import ExecError
 pub fn test_hashset_new() {
     match HashSet::<u32>::new() {
         Result::Ok(set) => {
-            expect_eq_u32(set.len(), 0u32, "new set has len 0")
+            expect_eq(set.len(), 0u32, "new set has len 0")
             expect_true(set.is_empty(), "new set is empty")
         },
         Result::Err(_) => expect(false, "new should succeed")
@@ -27,7 +27,7 @@ pub fn test_hashset_new() {
 pub fn test_hashset_with_capacity() {
     match HashSet::<u32>::with_capacity(32u32) {
         Result::Ok(set) => {
-            expect_eq_u32(set.len(), 0u32, "set has len 0")
+            expect_eq(set.len(), 0u32, "set has len 0")
             expect_true(set.capacity() >= 32u32, "capacity is at least 32")
         },
         Result::Err(_) => expect(false, "with_capacity should succeed")
@@ -45,7 +45,7 @@ pub fn test_hashset_insert() {
             match set.insert(10u32) {
                 Result::Ok(is_new) => {
                     expect_true(is_new, "first insert returns true (new)")
-                    expect_eq_u32(set.len(), 1u32, "len is 1")
+                    expect_eq(set.len(), 1u32, "len is 1")
                 },
                 Result::Err(_) => expect(false, "insert should succeed")
             }
@@ -53,7 +53,7 @@ pub fn test_hashset_insert() {
             match set.insert(20u32) {
                 Result::Ok(is_new) => {
                     expect_true(is_new, "second insert returns true (new)")
-                    expect_eq_u32(set.len(), 2u32, "len is 2")
+                    expect_eq(set.len(), 2u32, "len is 2")
                 },
                 Result::Err(_) => expect(false, "insert should succeed")
             }
@@ -61,7 +61,7 @@ pub fn test_hashset_insert() {
             match set.insert(30u32) {
                 Result::Ok(is_new) => {
                     expect_true(is_new, "third insert returns true (new)")
-                    expect_eq_u32(set.len(), 3u32, "len is 3")
+                    expect_eq(set.len(), 3u32, "len is 3")
                 },
                 Result::Err(_) => expect(false, "insert should succeed")
             }
@@ -86,7 +86,7 @@ pub fn test_hashset_insert_duplicate() {
             match set.insert(10u32) {
                 Result::Ok(is_new) => {
                     expect_false(is_new, "duplicate insert returns false")
-                    expect_eq_u32(set.len(), 2u32, "len unchanged")
+                    expect_eq(set.len(), 2u32, "len unchanged")
                 },
                 Result::Err(_) => expect(false, "insert should succeed")
             }
@@ -108,7 +108,7 @@ pub fn test_hashset_insert_many() {
                 i = i + 1u32
             }
 
-            expect_eq_u32(set.len(), 100u32, "len is 100")
+            expect_eq(set.len(), 100u32, "len is 100")
 
             // Insert duplicates - should not change len
             i = 0u32
@@ -120,7 +120,7 @@ pub fn test_hashset_insert_many() {
                 i = i + 1u32
             }
 
-            expect_eq_u32(set.len(), 100u32, "len still 100 after duplicates")
+            expect_eq(set.len(), 100u32, "len still 100 after duplicates")
         },
         Result::Err(_) => expect(false, "new should succeed")
     }
@@ -209,7 +209,7 @@ pub fn test_hashset_remove() {
 
             let r = set.remove(&20u32)
             expect_true(r, "remove returns true")
-            expect_eq_u32(set.len(), 2u32, "len is 2")
+            expect_eq(set.len(), 2u32, "len is 2")
             expect_false(set.contains(&20u32), "no longer contains 20")
             expect_true(set.contains(&10u32), "still contains 10")
             expect_true(set.contains(&30u32), "still contains 30")
@@ -229,7 +229,7 @@ pub fn test_hashset_remove_missing() {
 
             let r = set.remove(&20u32)
             expect_false(r, "remove missing returns false")
-            expect_eq_u32(set.len(), 1u32, "len unchanged")
+            expect_eq(set.len(), 1u32, "len unchanged")
         },
         Result::Err(_) => expect(false, "new should succeed")
     }
@@ -258,7 +258,7 @@ pub fn test_hashset_clear() {
 
             set.clear()
 
-            expect_eq_u32(set.len(), 0u32, "len is 0")
+            expect_eq(set.len(), 0u32, "len is 0")
             expect_true(set.is_empty(), "set is empty")
             expect_false(set.contains(&10u32), "no longer contains 10")
         },
@@ -439,8 +439,8 @@ pub fn test_hashset_iter() {
                         sum = sum + *val
                     },
                     Option::None => {
-                        expect_eq_u32(count, 3u32, "iterated 3 elements")
-                        expect_eq_u32(sum, 60u32, "sum is 60")
+                        expect_eq(count, 3u32, "iterated 3 elements")
+                        expect_eq(sum, 60u32, "sum is 60")
                         return
                     }
                 }

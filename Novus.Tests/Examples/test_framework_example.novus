@@ -1,20 +1,20 @@
 // Example test file demonstrating the @test attribute
 // Run with: novus test test_framework_example.novus
 
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, fail
+from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 
 // Basic math test
 @test
 pub fn test_addition() {
-    expect_eq_i32(1 + 1, 2, "basic addition")
-    expect_eq_i32(5 + 3, 8, "larger addition")
+    expect_eq(1 + 1, 2, "basic addition")
+    expect_eq(5 + 3, 8, "larger addition")
 }
 
 // Test with description
 @test("Verify multiplication works correctly")
 pub fn test_multiplication() {
-    expect_eq_i32(3 * 4, 12, "3 x 4")
-    expect_eq_i32(0 * 100, 0, "zero multiplication")
+    expect_eq(3 * 4, 12, "3 x 4")
+    expect_eq(0 * 100, 0, "zero multiplication")
 }
 
 // Boolean tests
@@ -51,5 +51,5 @@ pub fn test_assert_failure() {
 // Uncomment to see failure output:
 // @test
 // pub fn test_intentional_failure() {
-//     expect_eq_i32(1, 2, "intentional failure")
+//     expect_eq(1, 2, "intentional failure")
 // }

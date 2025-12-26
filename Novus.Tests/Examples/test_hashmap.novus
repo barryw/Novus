@@ -3,7 +3,7 @@
 
 from std::core import Option, Hash, Eq, Result
 from std::collections::hashmap import HashMap, HashMapIter, HashMapIterMut, KeyValueRef, KeyValueMut
-from std::test::test import expect_true, expect_false, expect_eq_u32, fail
+from std::test::test import expect_true, expect_false, expect_eq, fail
 
 // ============================================================================
 // Basic Creation Tests
@@ -15,7 +15,7 @@ pub fn test_new_is_empty() {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
             expect_true(map.is_empty(), "new map should be empty")
-            expect_eq_u32(map.len(), 0, "new map len should be 0")
+            expect_eq(map.len(), 0, "new map len should be 0")
         }
     }
 }
@@ -25,7 +25,7 @@ pub fn test_new_capacity() {
     match HashMap::<u32, u32>::new() {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
-            expect_eq_u32(map.capacity(), 16, "default capacity should be 16")
+            expect_eq(map.capacity(), 16, "default capacity should be 16")
         }
     }
 }
@@ -35,14 +35,14 @@ pub fn test_with_capacity_power_of_two() {
     match HashMap::<u32, u32>::with_capacity(10) {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
-            expect_eq_u32(map.capacity(), 16, "10 should round to 16")
+            expect_eq(map.capacity(), 16, "10 should round to 16")
         }
     }
 
     match HashMap::<u32, u32>::with_capacity(17) {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
-            expect_eq_u32(map.capacity(), 32, "17 should round to 32")
+            expect_eq(map.capacity(), 32, "17 should round to 32")
         }
     }
 }
@@ -57,7 +57,7 @@ pub fn test_insert_single() {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
             let _ = map.insert(1, 100)
-            expect_eq_u32(map.len(), 1, "len should be 1 after insert")
+            expect_eq(map.len(), 1, "len should be 1 after insert")
             expect_false(map.is_empty(), "should not be empty")
         }
     }
@@ -71,7 +71,7 @@ pub fn test_insert_multiple() {
             let _ = map.insert(1, 100)
             let _ = map.insert(2, 200)
             let _ = map.insert(3, 300)
-            expect_eq_u32(map.len(), 3, "len should be 3")
+            expect_eq(map.len(), 3, "len should be 3")
         }
     }
 }
@@ -94,12 +94,12 @@ pub fn test_insert_update() {
                 Result::Ok(opt) => {
                     match opt {
                         Option::None => fail("update should return old value"),
-                        Option::Some(old) => expect_eq_u32(old, 100, "old value should be 100")
+                        Option::Some(old) => expect_eq(old, 100, "old value should be 100")
                     }
                 }
             }
 
-            expect_eq_u32(map.len(), 1, "len should still be 1")
+            expect_eq(map.len(), 1, "len should still be 1")
         }
     }
 }
@@ -118,7 +118,7 @@ pub fn test_get_existing() {
             let key: u32 = 42
             match map.get(&key) {
                 Option::None => fail("should find key 42"),
-                Option::Some(val_ref) => expect_eq_u32(*val_ref, 1234, "value should be 1234")
+                Option::Some(val_ref) => expect_eq(*val_ref, 1234, "value should be 1234")
             }
         }
     }
@@ -176,7 +176,7 @@ pub fn test_get_mut_modify() {
             // Verify modification
             match map.get(&key) {
                 Option::None => fail("should still find key"),
-                Option::Some(val) => expect_eq_u32(*val, 999, "value should be modified to 999")
+                Option::Some(val) => expect_eq(*val, 999, "value should be modified to 999")
             }
         }
     }
@@ -225,10 +225,10 @@ pub fn test_remove_existing() {
             let key: u32 = 1
             match map.remove(&key) {
                 Option::None => fail("should remove key 1"),
-                Option::Some(val) => expect_eq_u32(val, 100, "removed value should be 100")
+                Option::Some(val) => expect_eq(val, 100, "removed value should be 100")
             }
 
-            expect_eq_u32(map.len(), 1, "len should be 1 after remove")
+            expect_eq(map.len(), 1, "len should be 1 after remove")
             expect_false(map.contains_key(&key), "should not contain removed key")
         }
     }
@@ -247,7 +247,7 @@ pub fn test_remove_nonexisting() {
                 Option::None => { }
             }
 
-            expect_eq_u32(map.len(), 1, "len should still be 1")
+            expect_eq(map.len(), 1, "len should still be 1")
         }
     }
 }
@@ -269,7 +269,7 @@ pub fn test_remove_all() {
             map.remove(&k3)
 
             expect_true(map.is_empty(), "should be empty after removing all")
-            expect_eq_u32(map.len(), 0, "len should be 0")
+            expect_eq(map.len(), 0, "len should be 0")
         }
     }
 }
@@ -290,8 +290,8 @@ pub fn test_clear() {
             map.clear()
 
             expect_true(map.is_empty(), "should be empty after clear")
-            expect_eq_u32(map.len(), 0, "len should be 0")
-            expect_eq_u32(map.tombstone_count(), 0, "tombstones should be 0")
+            expect_eq(map.len(), 0, "len should be 0")
+            expect_eq(map.tombstone_count(), 0, "tombstones should be 0")
         }
     }
 }
@@ -306,7 +306,7 @@ pub fn test_clear_preserves_capacity() {
 
             map.clear()
 
-            expect_eq_u32(map.capacity(), cap_before, "capacity should be preserved")
+            expect_eq(map.capacity(), cap_before, "capacity should be preserved")
         }
     }
 }
@@ -326,7 +326,7 @@ pub fn test_collisions() {
             let _ = map.insert(16, 1016)
             let _ = map.insert(32, 1032)
 
-            expect_eq_u32(map.len(), 3, "should have 3 items")
+            expect_eq(map.len(), 3, "should have 3 items")
 
             let k0: u32 = 0
             let k16: u32 = 16
@@ -334,17 +334,17 @@ pub fn test_collisions() {
 
             match map.get(&k0) {
                 Option::None => fail("should find key 0"),
-                Option::Some(v) => expect_eq_u32(*v, 1000, "value for 0")
+                Option::Some(v) => expect_eq(*v, 1000, "value for 0")
             }
 
             match map.get(&k16) {
                 Option::None => fail("should find key 16"),
-                Option::Some(v) => expect_eq_u32(*v, 1016, "value for 16")
+                Option::Some(v) => expect_eq(*v, 1016, "value for 16")
             }
 
             match map.get(&k32) {
                 Option::None => fail("should find key 32"),
-                Option::Some(v) => expect_eq_u32(*v, 1032, "value for 32")
+                Option::Some(v) => expect_eq(*v, 1032, "value for 32")
             }
         }
     }
@@ -372,7 +372,7 @@ pub fn test_tombstone_probing() {
             let k32: u32 = 32
             match map.get(&k32) {
                 Option::None => fail("should find key 32 past tombstone"),
-                Option::Some(v) => expect_eq_u32(*v, 300, "value for 32")
+                Option::Some(v) => expect_eq(*v, 300, "value for 32")
             }
         }
     }
@@ -388,13 +388,13 @@ pub fn test_tombstone_reuse() {
 
             let k16: u32 = 16
             map.remove(&k16)
-            expect_eq_u32(map.tombstone_count(), 1, "should have 1 tombstone")
+            expect_eq(map.tombstone_count(), 1, "should have 1 tombstone")
 
             // Re-insert same key (reuses tombstone)
             let _ = map.insert(16, 999)
             // Tombstone count should decrease since we reused it
             // (or stay same if inserted in different slot)
-            expect_eq_u32(map.len(), 2, "len should be 2")
+            expect_eq(map.len(), 2, "len should be 2")
         }
     }
 }
@@ -434,7 +434,7 @@ pub fn test_reserve_sufficient() {
                 Result::Ok(_) => {}
             }
 
-            expect_eq_u32(map.capacity(), old_cap, "capacity should not change")
+            expect_eq(map.capacity(), old_cap, "capacity should not change")
         }
     }
 }
@@ -470,8 +470,8 @@ pub fn test_compact() {
                 Result::Err(_) => fail("compact should succeed"),
             }
 
-            expect_eq_u32(map.tombstone_count(), 0, "should have 0 tombstones after compact")
-            expect_eq_u32(map.len(), 5, "len should still be 5")
+            expect_eq(map.tombstone_count(), 0, "should have 0 tombstones after compact")
+            expect_eq(map.len(), 5, "len should still be 5")
         }
     }
 }
@@ -490,7 +490,7 @@ pub fn test_shrink_to_fit() {
             let _ = map.insert(2, 200)
             let _ = map.insert(3, 300)
 
-            expect_eq_u32(map.capacity(), 128, "initial capacity")
+            expect_eq(map.capacity(), 128, "initial capacity")
 
             match map.shrink_to_fit() {
                 Result::Ok(_) => {},
@@ -505,7 +505,7 @@ pub fn test_shrink_to_fit() {
             let k1: u32 = 1
             match map.get(&k1) {
                 Option::None => fail("should still find key 1"),
-                Option::Some(v) => expect_eq_u32(*v, 100, "value should be preserved")
+                Option::Some(v) => expect_eq(*v, 100, "value should be preserved")
             }
         }
     }
@@ -524,7 +524,7 @@ pub fn test_shrink_empty() {
                 Result::Ok(_) => {},
                 Result::Err(_) => fail("shrink_to_fit should succeed"),
             }
-            expect_eq_u32(map.capacity(), 0, "empty map capacity should be 0")
+            expect_eq(map.capacity(), 0, "empty map capacity should be 0")
         }
     }
 }
@@ -559,8 +559,8 @@ pub fn test_iter_all() {
                 }
             }
 
-            expect_eq_u32(count, 3, "should iterate 3 items")
-            expect_eq_u32(sum, 600, "sum of values should be 600")
+            expect_eq(count, 3, "should iterate 3 items")
+            expect_eq(sum, 600, "sum of values should be 600")
         }
     }
 }
@@ -592,7 +592,7 @@ pub fn test_iter_skips_tombstones() {
                 }
             }
 
-            expect_eq_u32(count, 2, "should iterate 2 items (skipping tombstone)")
+            expect_eq(count, 2, "should iterate 2 items (skipping tombstone)")
         }
     }
 }
@@ -651,8 +651,8 @@ pub fn test_iter_reset() {
                 }
             }
 
-            expect_eq_u32(count1, 2, "first iteration count")
-            expect_eq_u32(count2, 2, "second iteration count after reset")
+            expect_eq(count1, 2, "first iteration count")
+            expect_eq(count2, 2, "second iteration count after reset")
         }
     }
 }
@@ -674,7 +674,7 @@ pub fn test_load_factor() {
     match HashMap::<u32, u32>::with_capacity(16) {
         Result::Err(_) => fail("allocation failed"),
         Result::Ok(var map) => {
-            expect_eq_u32(map.load_factor(), 0, "empty map load factor")
+            expect_eq(map.load_factor(), 0, "empty map load factor")
 
             let _ = map.insert(1, 100)
             let _ = map.insert(2, 200)
@@ -682,7 +682,7 @@ pub fn test_load_factor() {
             let _ = map.insert(4, 400)
 
             // 4/16 = 25%
-            expect_eq_u32(map.load_factor(), 25, "25% load factor")
+            expect_eq(map.load_factor(), 25, "25% load factor")
         }
     }
 }
@@ -700,7 +700,7 @@ pub fn test_auto_resize() {
             }
 
             expect_true(map.capacity() > 16, "should have resized")
-            expect_eq_u32(map.len(), 15, "all items should be present")
+            expect_eq(map.len(), 15, "all items should be present")
 
             // Verify all items still accessible
             i = 0
@@ -709,7 +709,7 @@ pub fn test_auto_resize() {
                 match map.get(&key) {
                     Option::None => fail("missing key after resize"),
                     Option::Some(v) => {
-                        expect_eq_u32(*v, i * 100, "value should be preserved")
+                        expect_eq(*v, i * 100, "value should be preserved")
                     }
                 }
                 i = i + 1
@@ -732,7 +732,7 @@ pub fn test_key_zero() {
             let k: u32 = 0
             match map.get(&k) {
                 Option::None => fail("should find key 0"),
-                Option::Some(v) => expect_eq_u32(*v, 12345, "value for key 0")
+                Option::Some(v) => expect_eq(*v, 12345, "value for key 0")
             }
         }
     }
@@ -750,7 +750,7 @@ pub fn test_stress() {
                 i = i + 1
             }
 
-            expect_eq_u32(map.len(), 100, "should have 100 items")
+            expect_eq(map.len(), 100, "should have 100 items")
 
             // Remove odd keys
             i = 1
@@ -760,7 +760,7 @@ pub fn test_stress() {
                 i = i + 2
             }
 
-            expect_eq_u32(map.len(), 50, "should have 50 items after removing odds")
+            expect_eq(map.len(), 50, "should have 50 items after removing odds")
 
             // Verify even keys still present
             i = 0
@@ -768,7 +768,7 @@ pub fn test_stress() {
                 k = i
                 if map.contains_key(&k) {
                     // Should be even
-                    expect_eq_u32(i & 1, 0, "only even keys should remain")
+                    expect_eq(i & 1, 0, "only even keys should remain")
                 }
                 i = i + 1
             }

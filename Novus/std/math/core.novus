@@ -386,3 +386,137 @@ pub fn diff_i32(a: i32, b: i32) -> i32 {
 pub fn diff_i16(a: i16, b: i16) -> i16 {
     return abs_i16(a - b)
 }
+
+// ============================================================================
+// Function Overloading - Unified abs/min/max Interface
+// ============================================================================
+
+/// Overloaded abs for i32
+pub fn abs(x: i32) -> i32 {
+    return abs_i32(x)
+}
+
+/// Overloaded abs for i16
+pub fn abs(x: i16) -> i16 {
+    return abs_i16(x)
+}
+
+/// Overloaded abs for i8
+pub fn abs(x: i8) -> i8 {
+    return abs_i8(x)
+}
+
+/// Overloaded min for i32
+pub fn min(a: i32, b: i32) -> i32 {
+    return min_i32(a, b)
+}
+
+/// Overloaded min for u32
+pub fn min(a: u32, b: u32) -> u32 {
+    return min_u32(a, b)
+}
+
+/// Overloaded min for i16
+pub fn min(a: i16, b: i16) -> i16 {
+    return min_i16(a, b)
+}
+
+/// Overloaded min for u16
+pub fn min(a: u16, b: u16) -> u16 {
+    return min_u16(a, b)
+}
+
+/// Overloaded max for i32
+pub fn max(a: i32, b: i32) -> i32 {
+    return max_i32(a, b)
+}
+
+/// Overloaded max for u32
+pub fn max(a: u32, b: u32) -> u32 {
+    return max_u32(a, b)
+}
+
+/// Overloaded max for i16
+pub fn max(a: i16, b: i16) -> i16 {
+    return max_i16(a, b)
+}
+
+/// Overloaded max for u16
+pub fn max(a: u16, b: u16) -> u16 {
+    return max_u16(a, b)
+}
+
+/// Overloaded clamp for i32
+pub fn clamp(x: i32, lo: i32, hi: i32) -> i32 {
+    return clamp_i32(x, lo, hi)
+}
+
+/// Overloaded clamp for u32
+pub fn clamp(x: u32, lo: u32, hi: u32) -> u32 {
+    return clamp_u32(x, lo, hi)
+}
+
+/// Overloaded sign for i32
+pub fn sign(x: i32) -> i32 {
+    return sign_i32(x)
+}
+
+/// Overloaded is_power_of_two for u32
+pub fn is_power_of_two(x: u32) -> bool {
+    return is_power_of_two_u32(x)
+}
+
+/// Overloaded is_power_of_two for u16
+pub fn is_power_of_two(x: u16) -> bool {
+    return is_power_of_two_u16(x)
+}
+
+/// Overloaded next_power_of_two for u32
+pub fn next_power_of_two(x: u32) -> u32 {
+    return next_power_of_two_u32(x)
+}
+
+/// Overloaded next_power_of_two for u16
+pub fn next_power_of_two(x: u16) -> u16 {
+    return next_power_of_two_u16(x)
+}
+
+/// Overloaded div_ceil for u32
+pub fn div_ceil(a: u32, b: u32) -> u32 {
+    return div_ceil_u32(a, b)
+}
+
+/// Overloaded div_ceil for u16
+pub fn div_ceil(a: u16, b: u16) -> u16 {
+    return div_ceil_u16(a, b)
+}
+
+/// Overloaded div_round for u32
+pub fn div_round(a: u32, b: u32) -> u32 {
+    return div_round_u32(a, b)
+}
+
+/// Overloaded div_round for u16
+pub fn div_round(a: u16, b: u16) -> u16 {
+    return div_round_u16(a, b)
+}
+
+/// Overloaded diff for i32
+pub fn diff(a: i32, b: i32) -> i32 {
+    return diff_i32(a, b)
+}
+
+/// Overloaded diff for u32
+pub fn diff(a: u32, b: u32) -> u32 {
+    return diff_u32(a, b)
+}
+
+/// Overloaded diff for i16
+pub fn diff(a: i16, b: i16) -> i16 {
+    return diff_i16(a, b)
+}
+
+/// Overloaded diff for u16
+pub fn diff(a: u16, b: u16) -> u16 {
+    return diff_u16(a, b)
+}

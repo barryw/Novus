@@ -16,13 +16,37 @@ public partial class IrBuilder
 {
     public override object? VisitFunctionDeclaration([NotNull] NovusParser.FunctionDeclarationContext context)
     {
-        var name = context.IDENTIFIER().GetText();
+        var baseName = context.IDENTIFIER().GetText();
         var returnType = ParseReturnType(context.type());
 
         // Parse visibility, extern flag, and other modifiers
         var (visibility, isExtern, _, _) = AstModifierHelper.ParseModifiers(context, 5);
 
-        var function = new IrFunction(name, returnType, visibility, isExtern);
+        // Parse parameters first so we can compute the mangled name if needed
+        var parameters = new List<IrParameter>();
+        bool hasVariadic = false;
+        if (context.parameterList() != null)
+        {
+            var paramList = context.parameterList();
+            ParseRegularParameters(paramList, parameters);
+
+            // Check for variadic parameter (handled separately below)
+            if (paramList.variadicParameter() != null)
+            {
+                hasVariadic = true;
+            }
+        }
+
+        // Compute function name - use mangled name if this function is overloaded
+        var paramTypes = parameters.Select(p => p.Type).ToList();
+        var functionName = GetMangledFunctionName(baseName, paramTypes);
+
+        var function = new IrFunction(functionName, returnType, visibility, isExtern);
+        // Store the original unmangled name for display/debugging purposes
+        if (functionName != baseName)
+        {
+            function.OriginalName = baseName;
+        }
         _module.AddFunction(function);
         _currentFunction = function;
 
@@ -45,14 +69,13 @@ public partial class IrBuilder
         // Parse where clause
         function.WhereClause = ParseWhereClause(context.whereClause());
 
-        // Parse parameters
-        if (context.parameterList() != null)
-        {
-            var paramList = context.parameterList();
-            ParseRegularParameters(paramList, function.Parameters);
+        // Add pre-parsed parameters to function
+        function.Parameters.AddRange(parameters);
 
-            // Add variadic parameter if present
-            ParseVariadicParameter(paramList, function);
+        // Add variadic parameter if present
+        if (hasVariadic && context.parameterList() != null)
+        {
+            ParseVariadicParameter(context.parameterList(), function);
         }
 
         // Skip body processing for extern functions

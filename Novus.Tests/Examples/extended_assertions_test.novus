@@ -12,7 +12,7 @@
 
 from std::core import Result, Option
 from std::strings::core import Str
-from std::test::test import expect, expect_eq_i32, expect_eq_u32, expect_true, expect_false
+from std::test::test import expect, expect_eq, expect_eq, expect_true, expect_false
 from std::test::assertions import expect_str_eq, expect_str_ne, expect_cstr_eq, expect_str_contains, expect_str_not_contains, expect_str_starts_with, expect_str_ends_with, expect_str_empty, expect_str_not_empty, expect_str_len, expect_ok_i32, expect_err_i32, expect_ok_eq_i32, expect_ok_u32, expect_err_u32, expect_ok_eq_u32, expect_ok_bool, expect_ok_unit, expect_some_i32, expect_none_i32, expect_some_eq_i32, expect_some_u32, expect_none_u32, expect_some_eq_u32, expect_some_bool, expect_none_bool, expect_gt_i32, expect_lt_i32, expect_gte_i32, expect_lte_i32, expect_gt_u32, expect_lt_u32, expect_gte_u32, expect_lte_u32, expect_ne_i32, expect_ne_u32, expect_array_eq_i32, expect_array_eq_u32, expect_array_eq_u8, expect_array_contains_i32, expect_array_not_contains_i32, expect_array_len, expect_array_empty, expect_array_not_empty, expect_in_range_i32, expect_in_range_u32, expect_not_in_range_i32, expect_approx_eq_fixed, expect_approx_eq_u32, expect_chip_mem, expect_fast_mem, expect_valid_mem, expect_chip_available, expect_fast_available
 from std::ffi::exec import AllocVec, FreeVec
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC

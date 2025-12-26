@@ -383,6 +383,12 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             _builder.RestoreStatementState(state);
         }
+
+        // Import dependencies from source module for generic instantiation
+        public void ImportModuleDependencies(string modulePath)
+        {
+            _builder.ImportModuleDependencies(modulePath);
+        }
     }
 
     /// <summary>
@@ -591,6 +597,91 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     {
         return _diagnostics;
     }
+
+    #region Function Overloading Support
+
+    /// <summary>
+    /// Checks if a function is overloaded (has multiple implementations with different signatures).
+    /// </summary>
+    private bool IsFunctionOverloaded(string name)
+    {
+        return _analysisResult?.OverloadedFunctionNames.Contains(name) ?? false;
+    }
+
+    /// <summary>
+    /// Gets all overloads for a function name.
+    /// </summary>
+    private IReadOnlyList<FunctionSymbol> GetFunctionOverloads(string name)
+    {
+        if (_analysisResult != null &&
+            _analysisResult.FunctionOverloads.TryGetValue(name, out var overloads))
+        {
+            return overloads;
+        }
+        return Array.Empty<FunctionSymbol>();
+    }
+
+    /// <summary>
+    /// Gets the mangled function name for an overloaded function.
+    /// For non-overloaded functions, returns the original name.
+    /// For overloaded functions, appends a suffix based on parameter types.
+    /// Example: abs(i32) -> abs__i32, abs(i16) -> abs__i16
+    /// </summary>
+    private string GetMangledFunctionName(string baseName, IReadOnlyList<IrType> parameterTypes)
+    {
+        // If not overloaded, use the base name
+        if (!IsFunctionOverloaded(baseName))
+        {
+            return baseName;
+        }
+
+        // Generate mangled name with parameter type suffix
+        return baseName + OverloadResolution.GetOverloadSuffix(parameterTypes);
+    }
+
+    /// <summary>
+    /// Gets the mangled name for a function from its IrFunction.
+    /// </summary>
+    private string GetMangledFunctionName(string baseName, IrFunction function)
+    {
+        var paramTypes = function.Parameters
+            .Where(p => !p.IsVariadic)
+            .Select(p => p.Type)
+            .ToList();
+        return GetMangledFunctionName(baseName, paramTypes);
+    }
+
+    /// <summary>
+    /// Resolves which overload to call based on argument types.
+    /// Returns the selected function or null if no matching overload found.
+    /// </summary>
+    private IrFunction? ResolveOverload(string functionName, IReadOnlyList<IrValue> arguments)
+    {
+        // Get all overloads for this function
+        var candidates = new List<IrFunction>();
+
+        // First check if we have overload info from semantic analysis
+        var overloads = GetFunctionOverloads(functionName);
+        if (overloads.Count > 0)
+        {
+            // Get the argument types
+            var argTypes = arguments.Select(a => a.Type).ToList();
+
+            // Use overload resolution
+            var result = OverloadResolution.Resolve(overloads, argTypes, out var selectedSymbol);
+            if (result == OverloadResolution.ResolutionResult.Success && selectedSymbol != null)
+            {
+                // Get the mangled name for the selected overload
+                var mangledName = GetMangledFunctionName(functionName, selectedSymbol.Parameters.Select(p => p.Type).ToList());
+                return _module.GetFunction(mangledName);
+            }
+        }
+
+        // Fall back to direct lookup (non-overloaded function)
+        return _module.GetFunction(functionName);
+    }
+
+    #endregion
 
     /// <summary>
     /// Get source location for error reporting from a parser context.
@@ -940,7 +1031,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 var templateConstants = GetConstantsAsTuples();
                 // Parse where clause for constraint checking during monomorphization
                 var whereClause = AstParsingHelpers.ParseWhereClause(funcContext.whereClause());
-                var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants, whereClause);
+                // Store source module path so dependencies can be resolved during instantiation
+                var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants, whereClause, MethodGenericParams: null, SourceModulePath: _inputFilePath);
                 _genericInstantiator.RegisterFunctionTemplate(name, template);
                 continue; // Don't add to _module.Functions yet
             }
@@ -951,9 +1043,31 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Check for extern, pub, internal, and const keywords
             var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcContext, 5);
 
-            var function = new IrFunction(name, returnType, visibility, isExtern);
+            // CRITICAL: Parse parameters first so we can compute mangled name for overloaded functions
+            var tempParams = new List<IrParameter>();
+            if (funcContext.parameterList() != null)
+            {
+                foreach (var paramCtx in funcContext.parameterList().parameter())
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var paramType = ParseType(paramCtx.type());
+                    tempParams.Add(new IrParameter(paramName, paramType));
+                }
+            }
+
+            // Compute mangled name if this function is overloaded
+            var paramTypes = tempParams.Select(p => p.Type).ToList();
+            var mangledName = GetMangledFunctionName(name, paramTypes);
+
+            var function = new IrFunction(mangledName, returnType, visibility, isExtern);
             function.IsConstFn = isConstFn;  // Mark as const fn if 'const' keyword is present
             function.Location = GetLocation(funcContext);  // Store source location for debug info
+
+            // Store original name if mangled
+            if (mangledName != name)
+            {
+                function.OriginalName = name;
+            }
 
             // Parse and store function attributes (for @test, @export, etc.)
             // Also filters out module-level attributes (stack_size, cpu) and applies them to the module
@@ -974,8 +1088,14 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 _pendingFunctionAttributes.Remove("export");
             }
 
-            // Parse parameters
-            ParseFunctionParameters(funcContext, function);
+            // Add already-parsed parameters
+            function.Parameters.AddRange(tempParams);
+
+            // Parse variadic parameter if present
+            if (funcContext.parameterList()?.variadicParameter() != null)
+            {
+                ParseVariadicParameter(funcContext.parameterList(), function);
+            }
 
             _module.AddFunction(function);
         }
@@ -1137,7 +1257,22 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 continue;
             }
 
-            _currentFunction = _module.GetFunction(funcName);
+            // CRITICAL: For overloaded functions, we need to look up by mangled name
+            // Parse parameters to compute the mangled name (same logic as Pass 4)
+            var lookupParams = new List<IrParameter>();
+            if (funcContext.parameterList() != null)
+            {
+                foreach (var paramCtx in funcContext.parameterList().parameter())
+                {
+                    var paramName = paramCtx.IDENTIFIER().GetText();
+                    var paramType = ParseType(paramCtx.type());
+                    lookupParams.Add(new IrParameter(paramName, paramType));
+                }
+            }
+            var lookupParamTypes = lookupParams.Select(p => p.Type).ToList();
+            var lookupName = GetMangledFunctionName(funcName, lookupParamTypes);
+
+            _currentFunction = _module.GetFunction(lookupName);
             if (_currentFunction == null)
             {
                 var errorLocation = GetLocation(funcContext);

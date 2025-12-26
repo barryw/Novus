@@ -4,7 +4,7 @@
 from std::memory::block import MemoryBlock, Allocation, Box
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_ANY
 from std::ffi::exec import FreeMem
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_u8
+from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // =============================================================================
 // MemoryBlock::alloc tests
@@ -15,7 +15,7 @@ pub fn test_memblock_alloc() {
     let opt = MemoryBlock::alloc(1024u32, MEMF_PUBLIC)
     match opt {
         Some(var block) => {
-            expect_eq_u32(block.size(), 1024u32, "size is 1024")
+            expect_eq(block.size(), 1024u32, "size is 1024")
             expect_false(block.is_empty(), "block is not empty")
             // Drop will free automatically
         },
@@ -28,7 +28,7 @@ pub fn test_memblock_alloc_zero() {
     let opt = MemoryBlock::alloc(0u32, MEMF_PUBLIC)
     match opt {
         Some(var block) => {
-            expect_eq_u32(block.size(), 0u32, "zero size allocation")
+            expect_eq(block.size(), 0u32, "zero size allocation")
             expect_true(block.is_empty(), "zero block is empty")
             // Drop will free automatically
         },
@@ -66,7 +66,7 @@ pub fn test_memblock_try_alloc() {
     let result = MemoryBlock::try_alloc(512u32, MEMF_PUBLIC)
     match result {
         Ok(var block) => {
-            expect_eq_u32(block.size(), 512u32, "size is 512")
+            expect_eq(block.size(), 512u32, "size is 512")
             // Drop will free automatically
         },
         Err(_) => expect(false, "try_alloc should succeed")
@@ -86,8 +86,8 @@ pub fn test_memblock_ptr() {
             // Write and read back
             ptr[0] = 42u8
             ptr[1] = 123u8
-            expect_eq_u8(ptr[0], 42u8, "can write/read byte 0")
-            expect_eq_u8(ptr[1], 123u8, "can write/read byte 1")
+            expect_eq(ptr[0], 42u8, "can write/read byte 0")
+            expect_eq(ptr[1], 123u8, "can write/read byte 1")
             // Drop will free automatically
         },
         None => expect(false, "allocation should succeed")
@@ -99,7 +99,7 @@ pub fn test_memblock_size() {
     let opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
     match opt {
         Some(var block) => {
-            expect_eq_u32(block.size(), 256u32, "size matches request")
+            expect_eq(block.size(), 256u32, "size matches request")
             // Drop will free automatically
         },
         None => expect(false, "allocation should succeed")
@@ -151,7 +151,7 @@ pub fn test_memblock_into_raw() {
             let _ = block.into_raw()
 
             // Block should now be empty (size = 0)
-            expect_eq_u32(block.size(), 0u32, "block size is 0 after into_raw")
+            expect_eq(block.size(), 0u32, "block size is 0 after into_raw")
             expect_true(block.is_empty(), "block is empty after into_raw")
 
             // Manually free the original pointer since we took ownership
@@ -177,7 +177,7 @@ pub fn test_memblock_free() {
 
             block.free()
 
-            expect_eq_u32(block.size(), 0u32, "after free: size is 0")
+            expect_eq(block.size(), 0u32, "after free: size is 0")
             expect_true(block.is_empty(), "after free: is empty")
             // Drop is now a no-op since size = 0
         },
@@ -217,13 +217,13 @@ pub fn test_memblock_resize_grow() {
             // Resize to larger
             let success = block.resize(256u32, MEMF_PUBLIC)
             expect_true(success, "resize succeeds")
-            expect_eq_u32(block.size(), 256u32, "new size is 256")
+            expect_eq(block.size(), 256u32, "new size is 256")
 
             // Data should be preserved
             let new_ptr = block.ptr()
-            expect_eq_u8(new_ptr[0], 11u8, "data[0] preserved")
-            expect_eq_u8(new_ptr[1], 22u8, "data[1] preserved")
-            expect_eq_u8(new_ptr[2], 33u8, "data[2] preserved")
+            expect_eq(new_ptr[0], 11u8, "data[0] preserved")
+            expect_eq(new_ptr[1], 22u8, "data[1] preserved")
+            expect_eq(new_ptr[2], 33u8, "data[2] preserved")
 
             // Drop will free automatically
         },
@@ -243,11 +243,11 @@ pub fn test_memblock_resize_shrink() {
             // Resize to smaller
             let success = block.resize(32u32, MEMF_PUBLIC)
             expect_true(success, "shrink succeeds")
-            expect_eq_u32(block.size(), 32u32, "new size is 32")
+            expect_eq(block.size(), 32u32, "new size is 32")
 
             // Data within new bounds preserved
             let new_ptr = block.ptr()
-            expect_eq_u8(new_ptr[0], 100u8, "data[0] preserved after shrink")
+            expect_eq(new_ptr[0], 100u8, "data[0] preserved after shrink")
 
             // Drop will free automatically
         },
@@ -262,7 +262,7 @@ pub fn test_memblock_resize_same() {
         Some(var block) => {
             let success = block.resize(100u32, MEMF_PUBLIC)
             expect_true(success, "same-size resize succeeds")
-            expect_eq_u32(block.size(), 100u32, "size unchanged")
+            expect_eq(block.size(), 100u32, "size unchanged")
             // Drop will free automatically
         },
         None => expect(false, "allocation should succeed")

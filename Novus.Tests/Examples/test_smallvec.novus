@@ -4,7 +4,7 @@
 from std::collections::smallvec import SmallVec
 from std::core import Result, Option
 from std::error::errors import ExecError
-from std::test::test import expect_true, expect_false, expect_eq_u32, fail
+from std::test::test import expect_true, expect_false, expect_eq, fail
 
 // ============================================================================
 // Basic Creation Tests
@@ -14,20 +14,20 @@ from std::test::test import expect_true, expect_false, expect_eq_u32, fail
 pub fn test_new_is_empty() {
     var sv = SmallVec::<u32, 8>::new()
     expect_true(sv.is_empty(), "new SmallVec should be empty")
-    expect_eq_u32(sv.len(), 0, "new SmallVec length should be 0")
+    expect_eq(sv.len(), 0, "new SmallVec length should be 0")
 }
 
 @test("new has zero capacity")
 pub fn test_new_zero_capacity() {
     var sv = SmallVec::<u32, 8>::new()
-    expect_eq_u32(sv.capacity(), 0, "new SmallVec capacity should be 0")
+    expect_eq(sv.capacity(), 0, "new SmallVec capacity should be 0")
 }
 
 @test("default_capacity returns N")
 pub fn test_default_capacity() {
-    expect_eq_u32(SmallVec::<u32, 8>::default_capacity(), 8, "default_capacity should be 8")
-    expect_eq_u32(SmallVec::<u32, 16>::default_capacity(), 16, "default_capacity should be 16")
-    expect_eq_u32(SmallVec::<u32, 4>::default_capacity(), 4, "default_capacity should be 4")
+    expect_eq(SmallVec::<u32, 8>::default_capacity(), 8, "default_capacity should be 8")
+    expect_eq(SmallVec::<u32, 16>::default_capacity(), 16, "default_capacity should be 16")
+    expect_eq(SmallVec::<u32, 4>::default_capacity(), 4, "default_capacity should be 4")
 }
 
 @test("with_capacity pre-allocates N elements")
@@ -36,8 +36,8 @@ pub fn test_with_capacity_preallocates() {
         Result::Err(_) => fail("with_capacity should succeed"),
         Result::Ok(sv) => {
             expect_true(sv.is_empty(), "with_capacity SmallVec should be empty")
-            expect_eq_u32(sv.len(), 0, "with_capacity length should be 0")
-            expect_eq_u32(sv.capacity(), 8, "with_capacity capacity should be 8")
+            expect_eq(sv.len(), 0, "with_capacity length should be 0")
+            expect_eq(sv.capacity(), 8, "with_capacity capacity should be 8")
         },
     }
 }
@@ -48,7 +48,7 @@ pub fn test_with_capacity_zero() {
         Result::Err(_) => fail("with_capacity with N=0 should succeed"),
         Result::Ok(sv) => {
             expect_true(sv.is_empty(), "SmallVec<_, 0> should be empty")
-            expect_eq_u32(sv.capacity(), 0, "SmallVec<_, 0> capacity should be 0")
+            expect_eq(sv.capacity(), 0, "SmallVec<_, 0> capacity should be 0")
         },
     }
 }
@@ -64,7 +64,7 @@ pub fn test_push_single() {
     let _ = sv.push(42)
 
     expect_false(sv.is_empty(), "should not be empty after push")
-    expect_eq_u32(sv.len(), 1, "length should be 1 after push")
+    expect_eq(sv.len(), 1, "length should be 1 after push")
 }
 
 @test("push allocates initial capacity N")
@@ -74,7 +74,7 @@ pub fn test_push_allocates_n() {
     let _ = sv.push(1)
 
     // First push should allocate N capacity
-    expect_eq_u32(sv.capacity(), 8, "first push should allocate N capacity")
+    expect_eq(sv.capacity(), 8, "first push should allocate N capacity")
 }
 
 @test("push multiple elements within capacity")
@@ -87,8 +87,8 @@ pub fn test_push_multiple_within_capacity() {
         i = i + 1
     }
 
-    expect_eq_u32(sv.len(), 8, "length should be 8")
-    expect_eq_u32(sv.capacity(), 8, "capacity should still be 8")
+    expect_eq(sv.len(), 8, "length should be 8")
+    expect_eq(sv.capacity(), 8, "capacity should still be 8")
 }
 
 @test("push beyond initial capacity doubles")
@@ -102,13 +102,13 @@ pub fn test_push_doubles_capacity() {
         i = i + 1
     }
 
-    expect_eq_u32(sv.capacity(), 4, "capacity should be 4")
+    expect_eq(sv.capacity(), 4, "capacity should be 4")
 
     // Push one more - should double capacity
     let _ = sv.push(4)
 
-    expect_eq_u32(sv.len(), 5, "length should be 5")
-    expect_eq_u32(sv.capacity(), 8, "capacity should have doubled to 8")
+    expect_eq(sv.len(), 5, "length should be 5")
+    expect_eq(sv.capacity(), 8, "capacity should have doubled to 8")
 }
 
 @test("push preserves existing elements after growth")
@@ -123,17 +123,17 @@ pub fn test_push_preserves_elements() {
     // Verify all elements are preserved
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 10, "first element should be 10"),
+        Option::Some(val) => expect_eq(*val, 10, "first element should be 10"),
     }
 
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 20, "second element should be 20"),
+        Option::Some(val) => expect_eq(*val, 20, "second element should be 20"),
     }
 
     match sv.get(2) {
         Option::None => fail("get(2) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 30, "third element should be 30"),
+        Option::Some(val) => expect_eq(*val, 30, "third element should be 30"),
     }
 }
 
@@ -161,10 +161,10 @@ pub fn test_pop_returns_last() {
 
     match sv.pop() {
         Option::None => fail("pop should return value"),
-        Option::Some(val) => expect_eq_u32(val, 30, "pop should return 30"),
+        Option::Some(val) => expect_eq(val, 30, "pop should return 30"),
     }
 
-    expect_eq_u32(sv.len(), 2, "length should be 2 after pop")
+    expect_eq(sv.len(), 2, "length should be 2 after pop")
 }
 
 @test("pop all elements returns in reverse order")
@@ -177,17 +177,17 @@ pub fn test_pop_all_reverse_order() {
 
     match sv.pop() {
         Option::None => fail("pop should succeed"),
-        Option::Some(val) => expect_eq_u32(val, 3, "first pop should be 3"),
+        Option::Some(val) => expect_eq(val, 3, "first pop should be 3"),
     }
 
     match sv.pop() {
         Option::None => fail("pop should succeed"),
-        Option::Some(val) => expect_eq_u32(val, 2, "second pop should be 2"),
+        Option::Some(val) => expect_eq(val, 2, "second pop should be 2"),
     }
 
     match sv.pop() {
         Option::None => fail("pop should succeed"),
-        Option::Some(val) => expect_eq_u32(val, 1, "third pop should be 1"),
+        Option::Some(val) => expect_eq(val, 1, "third pop should be 1"),
     }
 
     expect_true(sv.is_empty(), "should be empty after popping all")
@@ -212,7 +212,7 @@ pub fn test_pop_keeps_capacity() {
     sv.pop()
     sv.pop()
 
-    expect_eq_u32(sv.capacity(), capacity_before, "capacity should not change after pop")
+    expect_eq(sv.capacity(), capacity_before, "capacity should not change after pop")
 }
 
 // ============================================================================
@@ -229,17 +229,17 @@ pub fn test_get_returns_correct() {
 
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 100, "get(0) should be 100"),
+        Option::Some(val) => expect_eq(*val, 100, "get(0) should be 100"),
     }
 
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 200, "get(1) should be 200"),
+        Option::Some(val) => expect_eq(*val, 200, "get(1) should be 200"),
     }
 
     match sv.get(2) {
         Option::None => fail("get(2) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 300, "get(2) should be 300"),
+        Option::Some(val) => expect_eq(*val, 300, "get(2) should be 300"),
     }
 }
 
@@ -294,18 +294,18 @@ pub fn test_get_mut_modifies() {
     // Verify modification
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 999, "modified value should be 999"),
+        Option::Some(val) => expect_eq(*val, 999, "modified value should be 999"),
     }
 
     // Other elements unchanged
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 10, "first element should still be 10"),
+        Option::Some(val) => expect_eq(*val, 10, "first element should still be 10"),
     }
 
     match sv.get(2) {
         Option::None => fail("get(2) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 30, "third element should still be 30"),
+        Option::Some(val) => expect_eq(*val, 30, "third element should still be 30"),
     }
 }
 
@@ -341,7 +341,7 @@ pub fn test_set_modifies() {
 
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 555, "set value should be 555"),
+        Option::Some(val) => expect_eq(*val, 555, "set value should be 555"),
     }
 }
 
@@ -360,7 +360,7 @@ pub fn test_set_out_of_bounds() {
     // Original element unchanged
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 1, "original value should be unchanged"),
+        Option::Some(val) => expect_eq(*val, 1, "original value should be unchanged"),
     }
 }
 
@@ -390,7 +390,7 @@ pub fn test_clear_empties() {
     sv.clear()
 
     expect_true(sv.is_empty(), "should be empty after clear")
-    expect_eq_u32(sv.len(), 0, "length should be 0 after clear")
+    expect_eq(sv.len(), 0, "length should be 0 after clear")
 }
 
 @test("clear preserves capacity")
@@ -405,7 +405,7 @@ pub fn test_clear_preserves_capacity() {
 
     sv.clear()
 
-    expect_eq_u32(sv.capacity(), capacity_before, "capacity should be preserved after clear")
+    expect_eq(sv.capacity(), capacity_before, "capacity should be preserved after clear")
 }
 
 @test("clear allows re-use")
@@ -420,16 +420,16 @@ pub fn test_clear_allows_reuse() {
     let _ = sv.push(100)
     let _ = sv.push(200)
 
-    expect_eq_u32(sv.len(), 2, "length should be 2 after re-use")
+    expect_eq(sv.len(), 2, "length should be 2 after re-use")
 
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 100, "new first element should be 100"),
+        Option::Some(val) => expect_eq(*val, 100, "new first element should be 100"),
     }
 
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 200, "new second element should be 200"),
+        Option::Some(val) => expect_eq(*val, 200, "new second element should be 200"),
     }
 }
 
@@ -440,7 +440,7 @@ pub fn test_clear_empty() {
     sv.clear()  // Should not crash
 
     expect_true(sv.is_empty(), "should still be empty")
-    expect_eq_u32(sv.len(), 0, "length should still be 0")
+    expect_eq(sv.len(), 0, "length should still be 0")
 }
 
 // ============================================================================
@@ -459,15 +459,15 @@ pub fn test_many_growth_cycles() {
         i = i + 1
     }
 
-    expect_eq_u32(sv.len(), 32, "length should be 32")
-    expect_eq_u32(sv.capacity(), 32, "capacity should be 32 after growth")
+    expect_eq(sv.len(), 32, "length should be 32")
+    expect_eq(sv.capacity(), 32, "capacity should be 32 after growth")
 
     // Verify all elements are correct
     var j: u32 = 0
     while j < 32 {
         match sv.get(j) {
             Option::None => fail("get should return value"),
-            Option::Some(val) => expect_eq_u32(*val, j, "element should match index"),
+            Option::Some(val) => expect_eq(*val, j, "element should match index"),
         }
         j = j + 1
     }
@@ -490,27 +490,27 @@ pub fn test_push_pop_push_cycle() {
     let _ = sv.push(20)
     let _ = sv.push(30)
 
-    expect_eq_u32(sv.len(), 4, "length should be 4")
+    expect_eq(sv.len(), 4, "length should be 4")
 
     // Check contents: [1, 10, 20, 30]
     match sv.get(0) {
         Option::None => fail("get(0) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 1, "first should be 1"),
+        Option::Some(val) => expect_eq(*val, 1, "first should be 1"),
     }
 
     match sv.get(1) {
         Option::None => fail("get(1) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 10, "second should be 10"),
+        Option::Some(val) => expect_eq(*val, 10, "second should be 10"),
     }
 
     match sv.get(2) {
         Option::None => fail("get(2) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 20, "third should be 20"),
+        Option::Some(val) => expect_eq(*val, 20, "third should be 20"),
     }
 
     match sv.get(3) {
         Option::None => fail("get(3) should return value"),
-        Option::Some(val) => expect_eq_u32(*val, 30, "fourth should be 30"),
+        Option::Some(val) => expect_eq(*val, 30, "fourth should be 30"),
     }
 }
 
@@ -519,17 +519,17 @@ pub fn test_with_capacity_then_push() {
     match SmallVec::<u32, 4>::with_capacity() {
         Result::Err(_) => fail("with_capacity should succeed"),
         Result::Ok(sv) => {
-            expect_eq_u32(sv.capacity(), 4, "initial capacity should be 4")
+            expect_eq(sv.capacity(), 4, "initial capacity should be 4")
 
             let _ = sv.push(100)
             let _ = sv.push(200)
 
-            expect_eq_u32(sv.len(), 2, "length should be 2")
-            expect_eq_u32(sv.capacity(), 4, "capacity should still be 4")
+            expect_eq(sv.len(), 2, "length should be 2")
+            expect_eq(sv.capacity(), 4, "capacity should still be 4")
 
             match sv.get(0) {
                 Option::None => fail("get(0) should return value"),
-                Option::Some(val) => expect_eq_u32(*val, 100, "first should be 100"),
+                Option::Some(val) => expect_eq(*val, 100, "first should be 100"),
             }
         },
     }
@@ -540,18 +540,18 @@ pub fn test_different_n_values() {
     // Test with N=1
     var sv1 = SmallVec::<u32, 1>::new()
     let _ = sv1.push(42)
-    expect_eq_u32(sv1.capacity(), 1, "N=1 capacity should be 1")
-    expect_eq_u32(sv1.len(), 1, "N=1 length should be 1")
+    expect_eq(sv1.capacity(), 1, "N=1 capacity should be 1")
+    expect_eq(sv1.len(), 1, "N=1 length should be 1")
 
     // Test with N=16
     var sv16 = SmallVec::<u32, 16>::new()
     let _ = sv16.push(42)
-    expect_eq_u32(sv16.capacity(), 16, "N=16 capacity should be 16")
+    expect_eq(sv16.capacity(), 16, "N=16 capacity should be 16")
 
     // Test with N=100
     var sv100 = SmallVec::<u32, 100>::new()
     let _ = sv100.push(42)
-    expect_eq_u32(sv100.capacity(), 100, "N=100 capacity should be 100")
+    expect_eq(sv100.capacity(), 100, "N=100 capacity should be 100")
 }
 
 @test("SmallVec with different element types")
@@ -599,15 +599,15 @@ pub fn test_len_is_empty_consistent() {
     var sv = SmallVec::<u32, 8>::new()
 
     expect_true(sv.is_empty(), "new vec is_empty")
-    expect_eq_u32(sv.len(), 0, "new vec len is 0")
+    expect_eq(sv.len(), 0, "new vec len is 0")
 
     let _ = sv.push(1)
     expect_false(sv.is_empty(), "after push is not empty")
-    expect_eq_u32(sv.len(), 1, "after push len is 1")
+    expect_eq(sv.len(), 1, "after push len is 1")
 
     let _ = sv.pop()
     expect_true(sv.is_empty(), "after pop is empty")
-    expect_eq_u32(sv.len(), 0, "after pop len is 0")
+    expect_eq(sv.len(), 0, "after pop len is 0")
 }
 
 @test("capacity always >= len")
@@ -700,7 +700,7 @@ pub fn test_many_push_pop() {
         popped = popped + 1
     }
 
-    expect_eq_u32(popped, 100, "should have popped 100 elements")
+    expect_eq(popped, 100, "should have popped 100 elements")
     expect_true(sv.is_empty(), "should be empty after popping all")
 }
 
@@ -717,5 +717,5 @@ pub fn test_alternating_push_pop() {
     }
 
     // Should have 25 elements (pushed 50 pairs, popped 25)
-    expect_eq_u32(sv.len(), 25, "should have 25 elements")
+    expect_eq(sv.len(), 25, "should have 25 elements")
 }

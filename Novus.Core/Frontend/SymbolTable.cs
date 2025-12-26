@@ -45,9 +45,14 @@ public class SymbolTable
     private readonly Dictionary<string, IrTrait> _traits = new();
 
     // Functions and variables
-    private readonly Dictionary<string, FunctionSymbol> _functions = new();
+    // Functions are stored as overload sets (list of functions with same name but different signatures)
+    private readonly Dictionary<string, List<FunctionSymbol>> _functionOverloads = new();
     private readonly Dictionary<string, VariableSymbol> _localVariables = new();
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new();
+
+    // Track which functions are overloaded (have multiple signatures)
+    // This is used by code generator to decide if name mangling is needed
+    private readonly HashSet<string> _overloadedFunctionNames = new();
 
     // Constants
     private readonly Dictionary<string, ConstantSymbol> _constants = new();
@@ -314,21 +319,78 @@ public class SymbolTable
     // ============================================================================
 
     /// <summary>
-    /// Registers a function in the current scope
+    /// Registers a function in the current scope.
+    /// If a function with the same name exists, it's added as an overload
+    /// (as long as the signature is different).
     /// </summary>
-    public void RegisterFunction(string name, FunctionSymbol function)
+    /// <param name="name">Function name</param>
+    /// <param name="function">Function symbol to register</param>
+    /// <returns>True if registration succeeded, false if duplicate signature exists</returns>
+    public bool RegisterFunction(string name, FunctionSymbol function)
     {
-        _functions[name] = function;
+        if (!_functionOverloads.TryGetValue(name, out var overloads))
+        {
+            overloads = new List<FunctionSymbol>();
+            _functionOverloads[name] = overloads;
+        }
+
+        // Check for duplicate signature
+        var newSigKey = OverloadResolution.GetSignatureKey(name, function.Parameters);
+        foreach (var existing in overloads)
+        {
+            var existingSigKey = OverloadResolution.GetSignatureKey(name, existing.Parameters);
+            if (newSigKey == existingSigKey)
+            {
+                return false; // Duplicate signature
+            }
+        }
+
+        overloads.Add(function);
+
+        // Mark as overloaded if we now have multiple signatures
+        if (overloads.Count > 1)
+        {
+            _overloadedFunctionNames.Add(name);
+        }
+
+        return true;
     }
 
     /// <summary>
-    /// Looks up a function, checking parent scopes if not found locally
+    /// Registers a function, replacing any existing function with the same name.
+    /// Used for monomorphization where we're updating an existing function.
+    /// </summary>
+    public void RegisterFunctionReplace(string name, FunctionSymbol function)
+    {
+        _functionOverloads[name] = new List<FunctionSymbol> { function };
+        _overloadedFunctionNames.Remove(name);
+    }
+
+    /// <summary>
+    /// Looks up a function by name. If there are multiple overloads,
+    /// returns the first one. Use LookupFunctionOverloads for overload resolution.
     /// </summary>
     public FunctionSymbol? LookupFunction(string name)
     {
-        if (_functions.TryGetValue(name, out var function))
-            return function;
+        if (_functionOverloads.TryGetValue(name, out var overloads) && overloads.Count > 0)
+            return overloads[0];
         return _parent?.LookupFunction(name);
+    }
+
+    /// <summary>
+    /// Looks up all overloads of a function by name.
+    /// Returns empty list if no function with the name exists.
+    /// </summary>
+    public IReadOnlyList<FunctionSymbol> LookupFunctionOverloads(string name)
+    {
+        if (_functionOverloads.TryGetValue(name, out var overloads))
+            return overloads;
+
+        var parentOverloads = _parent?.LookupFunctionOverloads(name);
+        if (parentOverloads != null && parentOverloads.Count > 0)
+            return parentOverloads;
+
+        return Array.Empty<FunctionSymbol>();
     }
 
     /// <summary>
@@ -340,9 +402,36 @@ public class SymbolTable
     }
 
     /// <summary>
-    /// Gets all functions defined in this scope (not including parent scopes)
+    /// Checks if a function name has multiple overloads
     /// </summary>
-    public IReadOnlyDictionary<string, FunctionSymbol> GetLocalFunctions() => _functions;
+    public bool IsOverloaded(string name)
+    {
+        if (_overloadedFunctionNames.Contains(name))
+            return true;
+        return _parent?.IsOverloaded(name) ?? false;
+    }
+
+    /// <summary>
+    /// Gets all function names defined in this scope (not including parent scopes)
+    /// </summary>
+    public IEnumerable<string> GetLocalFunctionNames() => _functionOverloads.Keys;
+
+    /// <summary>
+    /// Gets all functions defined in this scope as a flat dictionary (first overload only).
+    /// For full overload information, use GetLocalFunctionOverloads().
+    /// </summary>
+    public IReadOnlyDictionary<string, FunctionSymbol> GetLocalFunctions()
+    {
+        return _functionOverloads.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.FirstOrDefault()!
+        ).Where(kvp => kvp.Value != null).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    /// <summary>
+    /// Gets all function overloads defined in this scope
+    /// </summary>
+    public IReadOnlyDictionary<string, List<FunctionSymbol>> GetLocalFunctionOverloads() => _functionOverloads;
 
     // ============================================================================
     // VARIABLE REGISTRATION AND LOOKUP
@@ -683,7 +772,8 @@ public class SymbolTable
         _structs.Clear();
         _enums.Clear();
         _traits.Clear();
-        _functions.Clear();
+        _functionOverloads.Clear();
+        _overloadedFunctionNames.Clear();
         _localVariables.Clear();
         _constants.Clear();
         _genericParams.Clear();

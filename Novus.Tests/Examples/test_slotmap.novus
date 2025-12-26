@@ -2,7 +2,7 @@
 
 from std::collections::slotmap import SlotMap, SlotMapFixed, SlotKey
 from std::core import Option, Result
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, fail
+from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 
 // Test entity for the slot map
 struct Entity {
@@ -27,8 +27,8 @@ pub fn test_pack_unpack() {
     let packed: u32 = key.pack()
     let unpacked: SlotKey = SlotKey::unpack(packed)
 
-    expect_eq_u32(unpacked.index, 12345, "index should survive round-trip")
-    expect_eq_u32(unpacked.generation, 42, "generation should survive round-trip")
+    expect_eq(unpacked.index, 12345, "index should survive round-trip")
+    expect_eq(unpacked.generation, 42, "generation should survive round-trip")
 }
 
 // ============================================================================
@@ -40,7 +40,7 @@ pub fn test_new() {
     match SlotMap::<Entity>::new() {
         Option::Some(map) => {
             expect_true(map.is_empty(), "should be empty")
-            expect_eq_u32(map.len(), 0, "len should be 0")
+            expect_eq(map.len(), 0, "len should be 0")
             expect_true(map.capacity() >= 16, "should have default capacity")
         },
         Option::None => fail("allocation should succeed")
@@ -56,7 +56,7 @@ pub fn test_insert() {
             match map.insert(entity) {
                 Option::Some(key) => {
                     expect_false(key.is_sentinel(), "key should not be sentinel")
-                    expect_eq_u32(map.len(), 1, "len should be 1")
+                    expect_eq(map.len(), 1, "len should be 1")
                 },
                 Option::None => fail("insert should succeed")
             }
@@ -75,9 +75,9 @@ pub fn test_get() {
                 Option::Some(key) => {
                     match map.get(key) {
                         Option::Some(e) => {
-                            expect_eq_u32((u32)e.x, 42, "x should be 42")
-                            expect_eq_u32((u32)e.y, 99, "y should be 99")
-                            expect_eq_u32(e.health, 50, "health should be 50")
+                            expect_eq((u32)e.x, 42, "x should be 42")
+                            expect_eq((u32)e.y, 99, "y should be 99")
+                            expect_eq(e.health, 50, "health should be 50")
                         },
                         Option::None => fail("get should find the entity")
                     }
@@ -136,7 +136,7 @@ pub fn test_remove() {
 
                     let removed: bool = map.remove(key)
                     expect_true(removed, "remove should succeed")
-                    expect_eq_u32(map.len(), 0, "len should be 0")
+                    expect_eq(map.len(), 0, "len should be 0")
 
                     expect_false(map.contains(key), "should not contain after remove")
 
@@ -175,7 +175,7 @@ pub fn test_generation() {
 
                             match map.get(key2) {
                                 Option::Some(e) => {
-                                    expect_eq_u32((u32)e.x, 2, "should get new entity")
+                                    expect_eq((u32)e.x, 2, "should get new entity")
                                 },
                                 Option::None => fail("should find new entity")
                             }
@@ -209,8 +209,8 @@ pub fn test_get_mut() {
                     // Verify modification
                     match map.get(key) {
                         Option::Some(e) => {
-                            expect_eq_u32(e.health, 50, "health should be modified")
-                            expect_eq_u32((u32)e.x, 99, "x should be modified")
+                            expect_eq(e.health, 50, "health should be modified")
+                            expect_eq((u32)e.x, 99, "x should be modified")
                         },
                         Option::None => fail("get should succeed")
                     }
@@ -232,12 +232,12 @@ pub fn test_take() {
                 Option::Some(key) => {
                     match map.take(key) {
                         Option::Some(e) => {
-                            expect_eq_u32((u32)e.x, 42, "should get entity value")
+                            expect_eq((u32)e.x, 42, "should get entity value")
                         },
                         Option::None => fail("take should succeed")
                     }
 
-                    expect_eq_u32(map.len(), 0, "len should be 0 after take")
+                    expect_eq(map.len(), 0, "len should be 0 after take")
                     expect_false(map.contains(key), "key should be invalid after take")
                 },
                 Option::None => fail("insert should succeed")
@@ -266,11 +266,11 @@ pub fn test_clear() {
                 Option::None => fail("insert should succeed")
             }
 
-            expect_eq_u32(map.len(), 2, "len should be 2")
+            expect_eq(map.len(), 2, "len should be 2")
 
             map.clear()
 
-            expect_eq_u32(map.len(), 0, "len should be 0 after clear")
+            expect_eq(map.len(), 0, "len should be 0 after clear")
             expect_false(map.contains(key1), "key1 should be invalid")
             expect_false(map.contains(key2), "key2 should be invalid")
         },
@@ -293,7 +293,7 @@ pub fn test_grow() {
                 i = i + 1
             }
 
-            expect_eq_u32(map.len(), 10, "should have 10 entities")
+            expect_eq(map.len(), 10, "should have 10 entities")
             expect_true(map.capacity() >= 10, "capacity should have grown")
         },
         Option::None => fail("allocation should succeed")
@@ -309,8 +309,8 @@ pub fn test_fixed_with_capacity() {
     match SlotMapFixed::<Entity>::with_capacity(16) {
         Option::Some(map) => {
             expect_true(map.is_empty(), "should be empty")
-            expect_eq_u32(map.len(), 0, "len should be 0")
-            expect_eq_u32(map.capacity(), 16, "capacity should be 16")
+            expect_eq(map.len(), 0, "len should be 0")
+            expect_eq(map.capacity(), 16, "capacity should be 16")
         },
         Option::None => fail("allocation should succeed")
     }
@@ -326,8 +326,8 @@ pub fn test_fixed_insert_get() {
                 Option::Some(key) => {
                     match map.get(key) {
                         Option::Some(e) => {
-                            expect_eq_u32((u32)e.x, 77, "x should be 77")
-                            expect_eq_u32(e.health, 99, "health should be 99")
+                            expect_eq((u32)e.x, 77, "x should be 77")
+                            expect_eq(e.health, 99, "health should be 99")
                         },
                         Option::None => fail("get should find entity")
                     }
@@ -421,8 +421,8 @@ pub fn test_iter() {
                 }
             }
 
-            expect_eq_u32(count, 3, "should iterate 3 entities")
-            expect_eq_u32((u32)sum, 6, "sum of x should be 6 (1+2+3)")
+            expect_eq(count, 3, "should iterate 3 entities")
+            expect_eq((u32)sum, 6, "sum of x should be 6 (1+2+3)")
         },
         Option::None => fail("allocation should succeed")
     }

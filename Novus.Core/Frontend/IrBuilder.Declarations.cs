@@ -22,7 +22,8 @@ public partial class IrBuilder
         var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
         // Extract method-level generic parameters (e.g., <E> in fn ok_or<E>)
         var methodGenericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams());
-        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause, methodGenericParams);
+        // Store source module path so dependencies can be resolved during instantiation
+        var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause, methodGenericParams, _inputFilePath);
         _genericInstantiator.RegisterMethodTemplate(templateKey, template);
     }
 
@@ -985,11 +986,19 @@ public partial class IrBuilder
         // This is critical because pointer types (*StructName) that were already created
         // hold references to this placeholder instance. If we create a new struct,
         // those pointer types would still reference the empty placeholder and not see the fields.
-        foreach (var fieldCtx in context.structField())
+        //
+        // IMPORTANT: Skip field registration if the struct already has fields.
+        // This happens when PopulateFromAnalysisResult has already registered the struct
+        // with fields from the semantic analyzer, and then import processing tries to
+        // re-register the same struct. Without this check, fields would be duplicated.
+        if (existingStruct.Fields.Count == 0)
         {
-            var fieldName = fieldCtx.IDENTIFIER().GetText();
-            var fieldType = ParseType(fieldCtx.type());
-            existingStruct.Fields.Add(new IrStructField(fieldName, fieldType));
+            foreach (var fieldCtx in context.structField())
+            {
+                var fieldName = fieldCtx.IDENTIFIER().GetText();
+                var fieldType = ParseType(fieldCtx.type());
+                existingStruct.Fields.Add(new IrStructField(fieldName, fieldType));
+            }
         }
 
         // Parse where clause and update the existing struct

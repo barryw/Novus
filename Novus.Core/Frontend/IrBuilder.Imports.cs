@@ -374,27 +374,60 @@ public partial class IrBuilder
                 // so function signatures can reference any type
                 foreach (var funcDecl in moduleContext.functionDeclaration())
                 {
-                    var funcName = funcDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(funcName))
+                    var baseFuncName = funcDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(baseFuncName))
                     {
-                        // Check if not already imported
-                        if (!_module.Functions.Any(f => f.Name == funcName))
+                        // Check if this is a generic function - skip for now, they're handled as templates
+                        // Generic functions have type parameters like T that can't be parsed without context
+                        var genericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams(), _symbols, registerInSymbolTable: false);
+                        if (genericParams.Count > 0)
                         {
-                            // Parse and add the function
-                            var returnType = ParseReturnType(funcDecl.type());
+                            // For generic functions, just register the template (they'll be instantiated on use)
+                            // Note: We can't compute mangled names for generics since param types contain T
+                            continue;
+                        }
 
-                            var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+                        // Parse and add the function
+                        var returnType = ParseReturnType(funcDecl.type());
 
-                            var function = new IrFunction(funcName, returnType, visibility, isExtern);
+                        var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+
+                        // Parse parameters first to compute mangled name for overloaded functions
+                        var parameters = new List<IrParameter>();
+                        if (funcDecl.parameterList() != null)
+                        {
+                            ParseRegularParameters(funcDecl.parameterList(), parameters);
+                        }
+
+                        // Compute mangled name if this function is overloaded
+                        var paramTypes = parameters.Select(p => p.Type).ToList();
+                        var mangledName = GetMangledFunctionName(baseFuncName, paramTypes);
+
+                        // Check if not already imported (use mangled name for uniqueness)
+                        if (!_module.Functions.Any(f => f.Name == mangledName))
+                        {
+                            var function = new IrFunction(mangledName, returnType, visibility, isExtern);
                             function.IsConstFn = isConstFn;
+
+                            // Store original name if mangled
+                            if (mangledName != baseFuncName)
+                            {
+                                function.OriginalName = baseFuncName;
+                            }
 
                             // Parse and store function attributes (for @library, etc.)
                             // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
                             var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
                             function.Attributes = attributes;
 
-                            // Parse parameters
-                            ParseFunctionParameters(funcDecl, function);
+                            // Add already-parsed parameters
+                            function.Parameters.AddRange(parameters);
+
+                            // Add variadic parameter if present
+                            if (funcDecl.parameterList()?.variadicParameter() != null)
+                            {
+                                ParseVariadicParameter(funcDecl.parameterList(), function);
+                            }
 
                             _module.AddFunction(function);
                         }
@@ -643,7 +676,7 @@ public partial class IrBuilder
         RegisterTraitsForImport(moduleContext, namesToImport);
 
         // Register imported functions in the module
-        RegisterFunctionsForImport(moduleContext, namesToImport, moduleNamespace);
+        RegisterFunctionsForImport(moduleContext, namesToImport, moduleNamespace, modulePath);
 
         // Register imported impl block methods in the module
         foreach (var implDecl in moduleContext.implDeclaration())
@@ -1717,7 +1750,24 @@ public partial class IrBuilder
             {
                 if (!_symbols.HasTrait(traitName))
                 {
+                    // Trait not in symbol table, register it (adds to both _symbols and _module)
                     RegisterTrait(traitDecl);
+                }
+                else
+                {
+                    // Trait is already in symbol table but might not be in the module.
+                    // This happens when the same trait is imported by multiple modules in the
+                    // import chain. We need to ensure the trait is also in the module so that
+                    // FindTraitMethod can find it via _module.GetTrait().
+                    //
+                    // Example: User imports SystemCPU from std::hardware::chipset which imports
+                    // Display from std::strings::format and has impl Display for SystemCPU.
+                    // When processing the impl, FindTraitMethod needs to find Display trait.
+                    var existingTrait = _symbols.LookupTrait(traitName);
+                    if (existingTrait != null && _module.GetTrait(traitName) == null)
+                    {
+                        _module.AddTrait(existingTrait);
+                    }
                 }
             }
         }
@@ -1763,7 +1813,7 @@ public partial class IrBuilder
     /// <summary>
     /// Register functions from a module for import.
     /// </summary>
-    private void RegisterFunctionsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport, string moduleNamespace)
+    private void RegisterFunctionsForImport(NovusParser.CompilationUnitContext moduleContext, HashSet<string> namesToImport, string moduleNamespace, string modulePath)
     {
         foreach (var funcDecl in moduleContext.functionDeclaration())
         {
@@ -1789,12 +1839,6 @@ public partial class IrBuilder
                 return;
             }
 
-            // Skip if this function has already been imported (transitive dependencies)
-            if (_module.Functions.Any(f => f.Name == funcName))
-            {
-                continue;
-            }
-
             // Check if this is a generic function - must parse generic params BEFORE return type
             // because the return type may reference generic parameters (e.g., fn channel<T>() -> Result<(Sender<T>, Receiver<T>), E>)
             var genericParams = ParseGenericParameters(funcDecl.genericParams(), registerInSymbolTable: true);
@@ -1805,7 +1849,8 @@ public partial class IrBuilder
                 var templateConstants = GetConstantsAsTuples();
                 // Parse where clause for constraint checking during monomorphization
                 var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
-                var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause);
+                // Store the source module path so dependencies can be resolved during instantiation
+                var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause, MethodGenericParams: null, SourceModulePath: modulePath);
                 _genericInstantiator.RegisterFunctionTemplate(funcName, template);
 
                 // Clear generic params from symbol table
@@ -1819,7 +1864,31 @@ public partial class IrBuilder
             // Pub functions from Novus modules are real implementations that need linking
             // CRITICAL: Preserve visibility when importing - pub functions must stay pub!
             var visibility = isPub ? Visibility.Public : Visibility.Private;
-            var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+            // Parse parameters first to compute mangled name for overloaded functions
+            var parameters = new List<IrParameter>();
+            if (funcDecl.parameterList() != null)
+            {
+                ParseRegularParameters(funcDecl.parameterList(), parameters);
+            }
+
+            // Compute mangled name if this function is overloaded
+            var paramTypes = parameters.Select(p => p.Type).ToList();
+            var mangledName = GetMangledFunctionName(funcName, paramTypes);
+
+            // Skip if this function has already been imported (use mangled name for uniqueness)
+            if (_module.Functions.Any(f => f.Name == mangledName))
+            {
+                continue;
+            }
+
+            var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+
+            // Store original name if mangled
+            if (mangledName != funcName)
+            {
+                function.OriginalName = funcName;
+            }
 
             // Parse and store function attributes (for @library, @test, @export, etc.)
             // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
@@ -1827,10 +1896,107 @@ public partial class IrBuilder
             var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
             function.Attributes = attributes;
 
-            // Parse parameters
-            ParseFunctionParameters(funcDecl, function);
+            // Add already-parsed parameters
+            function.Parameters.AddRange(parameters);
+
+            // Add variadic parameter if present
+            if (funcDecl.parameterList()?.variadicParameter() != null)
+            {
+                ParseVariadicParameter(funcDecl.parameterList(), function);
+            }
 
             _module.AddFunction(function);
+        }
+    }
+
+    /// <summary>
+    /// Import all public functions and global variables from the specified module.
+    /// Used during generic instantiation to ensure dependencies from the source module are available.
+    /// This is called when a generic function template references functions/statics from its source module.
+    /// </summary>
+    internal void ImportModuleDependencies(string modulePath)
+    {
+        // Skip if already imported or is the current file
+        if (modulePath == _inputFilePath)
+        {
+            return;
+        }
+
+        // Parse the source module
+        var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
+        if (moduleContext == null || syntaxErrors > 0)
+        {
+            // Module not found or has errors - can't import dependencies
+            return;
+        }
+
+        // Import all pub functions from the module (including private ones for internal dependencies)
+        foreach (var funcDecl in moduleContext.functionDeclaration())
+        {
+            var funcName = funcDecl.IDENTIFIER().GetText();
+
+            // Skip generic functions - they have their own templates
+            var genericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams(), _symbols, registerInSymbolTable: false);
+            if (genericParams.Count > 0)
+            {
+                continue;
+            }
+
+            // Skip if already in module
+            if (_module.GetFunction(funcName) != null)
+            {
+                continue;
+            }
+
+            // Try to parse function signature - skip if it fails (e.g., references unresolved generic types)
+            try
+            {
+                var returnType = ParseReturnType(funcDecl.type());
+                var (isPub, isExtern) = ModuleImportHelper.GetFunctionVisibility(funcDecl);
+
+                // Import both pub and private functions - private ones are needed for internal dependencies
+                var visibility = isPub ? Visibility.Public : Visibility.Private;
+                var function = new IrFunction(funcName, returnType, visibility, isExtern);
+
+                // Parse parameters
+                if (funcDecl.parameterList() != null)
+                {
+                    var parameters = new List<IrParameter>();
+                    ParseRegularParameters(funcDecl.parameterList(), parameters);
+                    function.Parameters.AddRange(parameters);
+
+                    if (funcDecl.parameterList().variadicParameter() != null)
+                    {
+                        ParseVariadicParameter(funcDecl.parameterList(), function);
+                    }
+                }
+
+                // Parse attributes
+                var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                function.Attributes = attributes;
+
+                _module.AddFunction(function);
+            }
+            catch
+            {
+                // Skip functions with unresolvable types (e.g., generic parameters from impl blocks)
+                continue;
+            }
+        }
+
+        // Import global variables (static vars)
+        foreach (var globalVarDecl in moduleContext.globalVariableDeclaration())
+        {
+            var varName = globalVarDecl.IDENTIFIER().GetText();
+
+            // Skip if already registered
+            if (_module.ExternalVariables.Any(ev => ev.Name == varName))
+            {
+                continue;
+            }
+
+            // Register the external variable
+            RegisterExternalVariable(globalVarDecl);
         }
     }
 }

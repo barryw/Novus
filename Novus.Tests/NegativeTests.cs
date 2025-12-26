@@ -137,12 +137,14 @@ fn test() -> i32 {
     [Fact]
     public void DuplicateFunction_RejectsWithError()
     {
+        // With function overloading support, duplicate functions with identical signatures
+        // are detected as duplicate overloads (E0030) rather than duplicate names (E0001)
         var source = @"
 fn test() {}
 fn test() {}  // Duplicate
 ";
         var diagnostics = Analyze(source);
-        AssertError(diagnostics, "E0001", "multiple times");
+        AssertError(diagnostics, "E0030", "already exists");
     }
 
     #endregion

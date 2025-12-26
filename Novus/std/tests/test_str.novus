@@ -4,7 +4,7 @@
 // Run with: novus test Novus/std/tests/test_str.novus
 
 from std::strings::core import Str, StringError
-from std::test::test import expect, expect_true, expect_false, expect_eq_u32, expect_eq_i32
+from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // ============================================================================
 // Basic Properties Tests
@@ -16,9 +16,9 @@ pub fn test_str_len() {
     let hello: Str = "Hello"
     let longer: Str = "Hello, World!"
 
-    expect_eq_u32(empty.len(), 0u32, "empty string length")
-    expect_eq_u32(hello.len(), 5u32, "hello length")
-    expect_eq_u32(longer.len(), 13u32, "longer string length")
+    expect_eq(empty.len(), 0u32, "empty string length")
+    expect_eq(hello.len(), 5u32, "hello length")
+    expect_eq(longer.len(), 13u32, "longer string length")
 }
 
 @test("Str::is_empty returns true for empty strings")
@@ -83,7 +83,7 @@ pub fn test_str_equals_single_diff() {
 pub fn test_str_compare_equal() {
     let s1: Str = "Hello"
     let s2: Str = "Hello"
-    expect_eq_i32(s1.compare(s2), 0, "equal strings compare to 0")
+    expect_eq(s1.compare(s2), 0, "equal strings compare to 0")
 }
 
 @test("Str::compare - less than returns negative")
@@ -199,7 +199,7 @@ pub fn test_str_find_found() {
     let needle: Str = "World"
 
     match s.find(needle) {
-        Some(idx) => expect_eq_u32(idx, 7u32, "World at index 7"),
+        Some(idx) => expect_eq(idx, 7u32, "World at index 7"),
         None => expect(false, "should have found World")
     }
 }
@@ -221,7 +221,7 @@ pub fn test_str_find_beginning() {
     let needle: Str = "Hello"
 
     match s.find(needle) {
-        Some(idx) => expect_eq_u32(idx, 0u32, "Hello at index 0"),
+        Some(idx) => expect_eq(idx, 0u32, "Hello at index 0"),
         None => expect(false, "should have found Hello")
     }
 }
@@ -232,7 +232,7 @@ pub fn test_str_find_end() {
     let needle: Str = "!"
 
     match s.find(needle) {
-        Some(idx) => expect_eq_u32(idx, 12u32, "! at index 12"),
+        Some(idx) => expect_eq(idx, 12u32, "! at index 12"),
         None => expect(false, "should have found !")
     }
 }
@@ -242,7 +242,7 @@ pub fn test_str_find_byte() {
     let s: Str = "Hello, World!"
 
     match s.find_byte($2C) {  // ','
-        Some(idx) => expect_eq_u32(idx, 5u32, "comma at index 5"),
+        Some(idx) => expect_eq(idx, 5u32, "comma at index 5"),
         None => expect(false, "should have found comma")
     }
 }
@@ -262,7 +262,7 @@ pub fn test_str_rfind_byte() {
     let s: Str = "a/b/c/d"
 
     match s.rfind_byte($2F) {  // '/'
-        Some(idx) => expect_eq_u32(idx, 5u32, "last slash at index 5"),
+        Some(idx) => expect_eq(idx, 5u32, "last slash at index 5"),
         None => expect(false, "should have found slash")
     }
 }
@@ -577,12 +577,12 @@ pub fn test_str_get_valid() {
     let s: Str = "Hello"
 
     match s.get(0u32) {
-        Some(b) => expect_eq_u32((u32)b, $48u32, "first byte is H"),
+        Some(b) => expect_eq((u32)b, $48u32, "first byte is H"),
         None => expect(false, "should have returned byte")
     }
 
     match s.get(4u32) {
-        Some(b) => expect_eq_u32((u32)b, $6Fu32, "last byte is o"),
+        Some(b) => expect_eq((u32)b, $6Fu32, "last byte is o"),
         None => expect(false, "should have returned byte")
     }
 }

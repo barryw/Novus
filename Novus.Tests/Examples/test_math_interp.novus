@@ -2,7 +2,7 @@
 
 from std::math::interp import *
 from std::math::fixed import Fixed32
-from std::test::test import expect_eq_i32, expect_true, expect_false
+from std::test::test import expect_eq, expect_true, expect_false
 
 // ============================================================================
 // Linear Interpolation Tests
@@ -14,7 +14,7 @@ pub fn test_lerp_at_zero() {
     let b = Fixed32::from_i32(100)
     let t = Fixed32::zero()
     let result = lerp(a, b, t)
-    expect_eq_i32(result.to_i32(), 0, "lerp at t=0 returns a")
+    expect_eq(result.to_i32(), 0, "lerp at t=0 returns a")
 }
 
 @test
@@ -23,7 +23,7 @@ pub fn test_lerp_at_one() {
     let b = Fixed32::from_i32(100)
     let t = Fixed32::one()
     let result = lerp(a, b, t)
-    expect_eq_i32(result.to_i32(), 100, "lerp at t=1 returns b")
+    expect_eq(result.to_i32(), 100, "lerp at t=1 returns b")
 }
 
 @test
@@ -32,19 +32,19 @@ pub fn test_lerp_at_half() {
     let b = Fixed32::from_i32(100)
     let t = Fixed32::from_raw(32768)  // 0.5
     let result = lerp(a, b, t)
-    expect_eq_i32(result.to_i32(), 50, "lerp at t=0.5 returns midpoint")
+    expect_eq(result.to_i32(), 50, "lerp at t=0.5 returns midpoint")
 }
 
 @test
 pub fn test_lerp_i32() {
     let result = lerp_i32(0, 100, Fixed32::from_raw(32768))
-    expect_eq_i32(result, 50, "lerp_i32 at 0.5")
+    expect_eq(result, 50, "lerp_i32 at 0.5")
 }
 
 @test
 pub fn test_lerp_i32_negative() {
     let result = lerp_i32(-100, 100, Fixed32::from_raw(32768))
-    expect_eq_i32(result, 0, "lerp_i32 from -100 to 100 at 0.5")
+    expect_eq(result, 0, "lerp_i32 from -100 to 100 at 0.5")
 }
 
 // ============================================================================
@@ -57,7 +57,7 @@ pub fn test_inv_lerp_at_start() {
     let b = Fixed32::from_i32(100)
     let value = Fixed32::from_i32(0)
     let result = inv_lerp(a, b, value)
-    expect_eq_i32(result.to_raw(), 0, "inv_lerp at start = 0")
+    expect_eq(result.to_raw(), 0, "inv_lerp at start = 0")
 }
 
 @test
@@ -93,7 +93,7 @@ pub fn test_remap() {
     let out_min = Fixed32::from_i32(0)
     let out_max = Fixed32::from_i32(200)
     let result = remap(value, in_min, in_max, out_min, out_max)
-    expect_eq_i32(result.to_i32(), 100, "remap 50 from [0,100] to [0,200] = 100")
+    expect_eq(result.to_i32(), 100, "remap 50 from [0,100] to [0,200] = 100")
 }
 
 // ============================================================================
@@ -104,7 +104,7 @@ pub fn test_remap() {
 pub fn test_smoothstep_at_zero() {
     let t = Fixed32::zero()
     let result = smoothstep(t)
-    expect_eq_i32(result.to_raw(), 0, "smoothstep(0) = 0")
+    expect_eq(result.to_raw(), 0, "smoothstep(0) = 0")
 }
 
 @test
@@ -139,7 +139,7 @@ pub fn test_smoothstep_range() {
 pub fn test_smootherstep_at_zero() {
     let t = Fixed32::zero()
     let result = smootherstep(t)
-    expect_eq_i32(result.to_raw(), 0, "smootherstep(0) = 0")
+    expect_eq(result.to_raw(), 0, "smootherstep(0) = 0")
 }
 
 @test
@@ -158,7 +158,7 @@ pub fn test_step_below() {
     let edge = Fixed32::from_i32(50)
     let x = Fixed32::from_i32(40)
     let result = step(edge, x)
-    expect_eq_i32(result.to_raw(), 0, "step returns 0 when x < edge")
+    expect_eq(result.to_raw(), 0, "step returns 0 when x < edge")
 }
 
 @test
@@ -187,7 +187,7 @@ pub fn test_lerp_clamped_below() {
     let b = Fixed32::from_i32(100)
     let t = Fixed32::from_i32(-1)  // Below 0
     let result = lerp_clamped(a, b, t)
-    expect_eq_i32(result.to_i32(), 0, "lerp_clamped clamps t < 0")
+    expect_eq(result.to_i32(), 0, "lerp_clamped clamps t < 0")
 }
 
 @test
@@ -196,7 +196,7 @@ pub fn test_lerp_clamped_above() {
     let b = Fixed32::from_i32(100)
     let t = Fixed32::from_i32(2)  // Above 1
     let result = lerp_clamped(a, b, t)
-    expect_eq_i32(result.to_i32(), 100, "lerp_clamped clamps t > 1")
+    expect_eq(result.to_i32(), 100, "lerp_clamped clamps t > 1")
 }
 
 // ============================================================================
@@ -209,7 +209,7 @@ pub fn test_move_towards_reach_target() {
     let target = Fixed32::from_i32(5)
     let max_delta = Fixed32::from_i32(10)
     let result = move_towards(current, target, max_delta)
-    expect_eq_i32(result.to_i32(), 5, "move_towards reaches target when close enough")
+    expect_eq(result.to_i32(), 5, "move_towards reaches target when close enough")
 }
 
 @test
@@ -218,7 +218,7 @@ pub fn test_move_towards_partial() {
     let target = Fixed32::from_i32(100)
     let max_delta = Fixed32::from_i32(10)
     let result = move_towards(current, target, max_delta)
-    expect_eq_i32(result.to_i32(), 10, "move_towards moves by max_delta")
+    expect_eq(result.to_i32(), 10, "move_towards moves by max_delta")
 }
 
 @test
@@ -227,13 +227,13 @@ pub fn test_move_towards_negative() {
     let target = Fixed32::from_i32(0)
     let max_delta = Fixed32::from_i32(10)
     let result = move_towards(current, target, max_delta)
-    expect_eq_i32(result.to_i32(), 90, "move_towards moves towards negative direction")
+    expect_eq(result.to_i32(), 90, "move_towards moves towards negative direction")
 }
 
 @test
 pub fn test_move_towards_i32() {
     let result = move_towards_i32(0, 100, 25)
-    expect_eq_i32(result, 25, "move_towards_i32")
+    expect_eq(result, 25, "move_towards_i32")
 }
 
 // ============================================================================
@@ -247,7 +247,7 @@ pub fn test_bezier_quadratic_at_zero() {
     let p2 = Fixed32::from_i32(100)
     let t = Fixed32::zero()
     let result = bezier_quadratic(p0, p1, p2, t)
-    expect_eq_i32(result.to_i32(), 0, "bezier quadratic at t=0")
+    expect_eq(result.to_i32(), 0, "bezier quadratic at t=0")
 }
 
 @test
@@ -257,7 +257,7 @@ pub fn test_bezier_quadratic_at_one() {
     let p2 = Fixed32::from_i32(100)
     let t = Fixed32::one()
     let result = bezier_quadratic(p0, p1, p2, t)
-    expect_eq_i32(result.to_i32(), 100, "bezier quadratic at t=1")
+    expect_eq(result.to_i32(), 100, "bezier quadratic at t=1")
 }
 
 @test
@@ -268,7 +268,7 @@ pub fn test_bezier_quadratic_at_half() {
     let t = Fixed32::from_raw(32768)
     let result = bezier_quadratic(p0, p1, p2, t)
     // At t=0.5: (1-0.5)²*0 + 2*(1-0.5)*0.5*100 + 0.5²*0 = 50
-    expect_eq_i32(result.to_i32(), 50, "bezier quadratic at t=0.5 with symmetric control")
+    expect_eq(result.to_i32(), 50, "bezier quadratic at t=0.5 with symmetric control")
 }
 
 @test
@@ -279,7 +279,7 @@ pub fn test_bezier_cubic_at_zero() {
     let p3 = Fixed32::from_i32(100)
     let t = Fixed32::zero()
     let result = bezier_cubic(p0, p1, p2, p3, t)
-    expect_eq_i32(result.to_i32(), 0, "bezier cubic at t=0")
+    expect_eq(result.to_i32(), 0, "bezier cubic at t=0")
 }
 
 @test
@@ -290,7 +290,7 @@ pub fn test_bezier_cubic_at_one() {
     let p3 = Fixed32::from_i32(100)
     let t = Fixed32::one()
     let result = bezier_cubic(p0, p1, p2, p3, t)
-    expect_eq_i32(result.to_i32(), 100, "bezier cubic at t=1")
+    expect_eq(result.to_i32(), 100, "bezier cubic at t=1")
 }
 
 // ============================================================================
@@ -345,7 +345,7 @@ pub fn test_repeat_at_length() {
     let length = Fixed32::one()
     let result = repeat(t, length)
     // At t=length, should wrap to 0
-    expect_eq_i32(result.to_raw(), 0, "repeat at length wraps to 0")
+    expect_eq(result.to_raw(), 0, "repeat at length wraps to 0")
 }
 
 // ============================================================================
@@ -359,6 +359,6 @@ pub fn test_damp() {
     let factor = Fixed32::from_raw(32768)  // 0.5
     let result = damp(current, target, factor)
     // Should move halfway: 0 + (100-0)*0.5 = 50
-    expect_eq_i32(result.to_i32(), 50, "damp moves halfway")
+    expect_eq(result.to_i32(), 50, "damp moves halfway")
 }
 

@@ -1,7 +1,7 @@
 // Window Tests for Novus Standard Library
 // Tests window creation, manipulation, and cleanup
 
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::test::test import expect, expect_true, expect_false, expect_eq
 from std::ui::screen import WindowHandle, open_window
 from std::ffi::amiga_structs import TagItem, Window, MsgPort, Screen
 from std::ffi::amiga_consts import TAG_DONE, WA_Left, WA_Top, WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP
@@ -52,8 +52,8 @@ pub fn test_window_borderless_opens() {
             var w = window
             expect_true(w.handle() != (*Window)0, "borderless window should open")
             // Borderless windows have exact dimensions
-            expect_eq_i32((i32)w.width(), 100, "borderless width exact")
-            expect_eq_i32((i32)w.height(), 80, "borderless height exact")
+            expect_eq((i32)w.width(), 100, "borderless width exact")
+            expect_eq((i32)w.height(), 80, "borderless height exact")
         },
         Result::Err(_) => {
             expect(false, "borderless window should open")

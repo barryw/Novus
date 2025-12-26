@@ -1132,16 +1132,38 @@ public partial class IrBuilder
         }
 
         // Look up the function in the module to get its return type
-        var function = _module.GetFunction(functionName);
-        if (function == null)
+        // For overloaded functions, we need to resolve based on argument types
+        IrFunction? function;
+        if (IsFunctionOverloaded(functionName))
         {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Unknown function: {functionName}",
-                errorLocation
-            );
-            return null;
+            function = ResolveOverload(functionName, arguments);
+            if (function == null)
+            {
+                var errorLocation = GetLocation(context);
+                var argTypeStr = string.Join(", ", arguments.Select(a => a.Type.ToString()));
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"No matching overload found for function '{functionName}' with argument types ({argTypeStr})",
+                    errorLocation
+                );
+                return null;
+            }
+            // Update functionName to the mangled name for the call instruction
+            functionName = function.Name;
+        }
+        else
+        {
+            function = _module.GetFunction(functionName);
+            if (function == null)
+            {
+                var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidExpressionType,
+                    $"Unknown function: {functionName}",
+                    errorLocation
+                );
+                return null;
+            }
         }
 
         // Check argument count matches parameter count
@@ -1483,7 +1505,7 @@ public partial class IrBuilder
             return null;
         }
 
-        var (genericParams, funcDecl, _, _, _) = template;
+        var (genericParams, funcDecl, _, _, _, _) = template;
 
         // Parse the method's parameter types from the template
         // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList
@@ -4609,6 +4631,15 @@ public partial class IrBuilder
         {
             // Return a function reference that can be called or used as a function pointer
             return new IrFunctionRef(funcRef);
+        }
+
+        // Check if this is an overloaded function (the base name doesn't exist in module,
+        // but there are mangled versions like "abs__i32", "abs__i16")
+        if (IsFunctionOverloaded(name))
+        {
+            // Return the function name as a variable - it will be resolved in VisitCallExpr
+            // when we know the argument types. Using IrUnresolvedType as placeholder.
+            return new IrVariable(name, IrUnresolvedType.Instance);
         }
 
         // Otherwise, assume it's a temporary variable or function name

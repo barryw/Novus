@@ -39,6 +39,8 @@ fn main() -> u32 {
     [Fact]
     public void Analyze_DuplicateFunction_ReportsError()
     {
+        // With function overloading support, duplicate functions with identical signatures
+        // are detected as duplicate overloads (E0030) rather than duplicate names (E0001)
         var source = @"
 fn test() -> u32 {
     return 42
@@ -52,8 +54,8 @@ fn test() -> u32 {
         Assert.True(diagnostics.HasErrors);
         Assert.Equal(1, diagnostics.ErrorCount);
         var error = diagnostics.Diagnostics[0];
-        Assert.Equal("E0001", error.Code);
-        Assert.Contains("multiple times", error.Message);
+        Assert.Equal("E0030", error.Code);
+        Assert.Contains("already exists", error.Message);
     }
 
     [Fact]

@@ -508,6 +508,13 @@ public class IrFunction
     public string? GenericSourceName { get; set; }
 
     /// <summary>
+    /// For overloaded functions: the original unmangled function name.
+    /// E.g., for "abs__i32", this would be "abs".
+    /// Null for non-overloaded functions.
+    /// </summary>
+    public string? OriginalName { get; set; }
+
+    /// <summary>
     /// For monomorphized functions: the type arguments used to instantiate this function.
     /// E.g., for "Vec_push_i32", this would contain [IrIntType(i32)].
     /// Empty for non-monomorphized functions.

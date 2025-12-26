@@ -4,7 +4,7 @@
 // Tests all major file I/O functions in std::os::dos
 
 from std::core import Result
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::test::test import expect, expect_true, expect_false, expect_eq, expect_eq
 from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
 from std::error::errors import DosError
 from std::os::dos import OwnedFileHandle, file_exists, delete_file, file_info
@@ -59,7 +59,7 @@ pub fn test_file_info() {
             expect(info.is_file, "Should be a file")
             expect(!info.is_directory, "Should not be a directory")
             // File size should be 22 + 25 + 26 = 73 bytes
-            expect_eq_i32(info.size, 73, "File size check")
+            expect_eq(info.size, 73, "File size check")
         },
         Result::Err(_) => {
             // Already checked is_ok above
@@ -80,7 +80,7 @@ pub fn test_read_file() {
 
             match read_result {
                 Result::Ok(bytes_read) => {
-                    expect_eq_u32(bytes_read, 73u32, "Bytes read check")
+                    expect_eq(bytes_read, 73u32, "Bytes read check")
                 },
                 Result::Err(_) => {}
             }

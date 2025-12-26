@@ -2,7 +2,7 @@
 
 from std::math::ease import *
 from std::math::fixed import Fixed32
-from std::test::test import expect_eq_i32, expect_true, expect_false
+from std::test::test import expect_eq, expect_true, expect_false
 
 // ============================================================================
 // Helper: Check if value is approximately between min and max (as raw Fixed32)
@@ -397,7 +397,7 @@ pub fn test_ease_in_out_bounce_endpoints() {
 pub fn test_ease_steps() {
     // 4 steps: 0, 0.25, 0.5, 0.75
     let t_early = ease_steps(Fixed32::from_raw(16000), 4)  // Just under 0.25
-    expect_eq_i32(t_early.to_raw(), 0, "steps before first threshold = 0")
+    expect_eq(t_early.to_raw(), 0, "steps before first threshold = 0")
 
     let t_late = ease_steps(Fixed32::from_raw(50000), 4)  // About 0.76
     // floor(0.76 / 0.25) = floor(3.04) = 3, so 3 * 0.25 = 0.75

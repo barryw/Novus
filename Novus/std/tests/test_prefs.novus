@@ -2,7 +2,7 @@
 // Tests creation, getters, setters, file I/O, and version handling
 
 from std::prefs::prefs import Prefs, PrefsError
-from std::test::test import expect, expect_true, expect_false, expect_eq_i32, expect_eq_u32
+from std::test::test import expect, expect_true, expect_false, expect_eq
 from std::strings::core import Str
 from std::ffi::dos import DeleteFile
 
@@ -15,9 +15,9 @@ pub fn test_new_creates_empty_prefs() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            expect_eq_u32(prefs.len(), 0, "new prefs has 0 entries")
+            expect_eq(prefs.len(), 0, "new prefs has 0 entries")
             expect_true(prefs.is_empty(), "new prefs is empty")
-            expect_eq_u32(prefs.version(), 1, "version is 1")
+            expect_eq(prefs.version(), 1, "version is 1")
             expect_false(prefs.is_dirty(), "new prefs is not dirty")
         },
         Result::Err(_) => {
@@ -98,7 +98,7 @@ pub fn test_set_and_get_u32() {
         Result::Ok(var prefs) => {
             prefs.set_u32("count", 42)
             let value = prefs.get_u32("count", 0)
-            expect_eq_u32(value, 42, "get_u32 returns set value")
+            expect_eq(value, 42, "get_u32 returns set value")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -111,7 +111,7 @@ pub fn test_set_and_get_i32_negative() {
         Result::Ok(var prefs) => {
             prefs.set_i32("temp", -25)
             let value = prefs.get_i32("temp", 0)
-            expect_eq_i32(value, -25, "get_i32 returns negative value")
+            expect_eq(value, -25, "get_i32 returns negative value")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -124,7 +124,7 @@ pub fn test_get_u32_invalid() {
         Result::Ok(var prefs) => {
             prefs.set_str("key", "not_a_number")
             let value = prefs.get_u32("key", 999)
-            expect_eq_u32(value, 999, "get_u32 returns default for invalid value")
+            expect_eq(value, 999, "get_u32 returns default for invalid value")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -136,7 +136,7 @@ pub fn test_get_u32_missing() {
     match result {
         Result::Ok(prefs) => {
             let value = prefs.get_u32("missing", 123)
-            expect_eq_u32(value, 123, "get_u32 returns default")
+            expect_eq(value, 123, "get_u32 returns default")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -272,11 +272,11 @@ pub fn test_clear() {
             prefs.set_str("a", "1")
             prefs.set_str("b", "2")
             prefs.set_str("c", "3")
-            expect_eq_u32(prefs.len(), 3, "has 3 entries before clear")
+            expect_eq(prefs.len(), 3, "has 3 entries before clear")
 
             prefs.clear()
             expect_true(prefs.is_empty(), "is empty after clear")
-            expect_eq_u32(prefs.len(), 0, "has 0 entries after clear")
+            expect_eq(prefs.len(), 0, "has 0 entries after clear")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -333,8 +333,8 @@ pub fn test_dotted_key_names() {
             let height = prefs.get_u32("window.height", 0)
             let theme = prefs.get_str("ui.theme.name", "")
 
-            expect_eq_u32(width, 640, "dotted key window.width works")
-            expect_eq_u32(height, 480, "dotted key window.height works")
+            expect_eq(width, 640, "dotted key window.width works")
+            expect_eq(height, 480, "dotted key window.height works")
             expect_true(theme.equals("dark"), "dotted key ui.theme.name works")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
@@ -355,7 +355,7 @@ pub fn test_update_existing_key() {
 
             let value = prefs.get_str("key", "")
             expect_true(value.equals("second"), "value is updated")
-            expect_eq_u32(prefs.len(), 1, "still only 1 entry")
+            expect_eq(prefs.len(), 1, "still only 1 entry")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -430,7 +430,7 @@ pub fn test_empty_value() {
             expect_true(set_result.is_ok(), "set_str with empty value succeeds")
 
             let value = prefs.get_str("key", "default")
-            expect_eq_u32(value.len(), 0, "empty value is preserved")
+            expect_eq(value.len(), 0, "empty value is preserved")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
     }
@@ -495,7 +495,7 @@ pub fn test_multiple_entries() {
             prefs.set_str("d", "4")
             prefs.set_str("e", "5")
 
-            expect_eq_u32(prefs.len(), 5, "has 5 entries")
+            expect_eq(prefs.len(), 5, "has 5 entries")
 
             expect_true(prefs.get_str("a", "").equals("1"), "a is 1")
             expect_true(prefs.get_str("b", "").equals("2"), "b is 2")

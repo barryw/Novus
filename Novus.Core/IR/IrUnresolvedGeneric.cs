@@ -1,6 +1,24 @@
 namespace Novus.IR;
 
 /// <summary>
+/// Represents an unresolved type placeholder used for overloaded function references.
+/// When an identifier refers to an overloaded function (e.g., "abs" which could be abs(i32) or abs(i16)),
+/// we use this type as a placeholder until the call site resolves which overload is needed.
+/// </summary>
+public class IrUnresolvedType : IrType
+{
+    /// <summary>
+    /// Singleton instance since all unresolved types are equivalent
+    /// </summary>
+    public static readonly IrUnresolvedType Instance = new();
+
+    private IrUnresolvedType() { }
+
+    public override string Name => "<unresolved>";
+    public override int SizeInBytes => 4; // Placeholder
+}
+
+/// <summary>
 /// Represents an unresolved generic type that will be inferred from usage
 /// Example: let vec = Vec::new() creates Vec<UnresolvedGeneric>
 /// When vec.push(42i32) is called, we resolve it to Vec<i32>

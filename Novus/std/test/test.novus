@@ -4,8 +4,15 @@
 // Tests are marked with @test attribute and use expect! / expect_eq! style assertions.
 //
 // Unlike assert!(), expect!() records failures and continues execution so all tests run.
+//
+// The generic `expect_eq<T>` function works with any type that implements Eq + Display traits,
+// allowing a single function to handle i32, u32, i16, u16, i8, u8, and bool comparisons.
 
 from std::io::file import write
+from std::core import Eq
+from std::strings::format import Display
+from std::strings::core import Str
+from std::strings::display import *  // Import Display implementations for primitives
 
 // ============================================================================
 // External Runtime Functions (for should_panic tests)
@@ -71,61 +78,28 @@ pub fn expect_false(condition: bool, message: *u8) {
     }
 }
 
-/// Expect two i32 values to be equal.
-pub fn expect_eq_i32(actual: i32, expected: i32, message: *u8) {
+/// Expect two values to be equal. Works with any type implementing Eq + Display.
+///
+/// This is the preferred generic assertion function. It automatically handles
+/// formatting for any type that implements the Display trait and records failures
+/// in the test framework.
+///
+/// Example:
+/// ```novus
+/// expect_eq(42i32, 42i32, "values should match")
+/// expect_eq(true, true, "booleans should match")
+/// ```
+pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display {
     if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %ld, got %ld\n", message, expected, actual)
-    }
-}
-
-/// Expect two u32 values to be equal.
-pub fn expect_eq_u32(actual: u32, expected: u32, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %lu, got %lu\n", message, expected, actual)
-    }
-}
-
-/// Expect two i16 values to be equal.
-pub fn expect_eq_i16(actual: i16, expected: i16, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %ld, got %ld\n", message, (expected as i32), (actual as i32))
-    }
-}
-
-/// Expect two u16 values to be equal.
-pub fn expect_eq_u16(actual: u16, expected: u16, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %lu, got %lu\n", message, (expected as u32), (actual as u32))
-    }
-}
-
-/// Expect two i8 values to be equal.
-pub fn expect_eq_i8(actual: i8, expected: i8, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %ld, got %ld\n", message, (expected as i32), (actual as i32))
-    }
-}
-
-/// Expect two u8 values to be equal.
-pub fn expect_eq_u8(actual: u8, expected: u8, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        write("  FAIL: %s - expected %lu, got %lu\n", message, (expected as u32), (actual as u32))
-    }
-}
-
-/// Expect two bool values to be equal.
-pub fn expect_eq_bool(actual: bool, expected: bool, message: *u8) {
-    if actual != expected {
-        __test_failures++
-        let exp_str = if expected { "true" } else { "false" }
-        let act_str = if actual { "true" } else { "false" }
-        write("  FAIL: %s - expected %s, got %s\n", message, exp_str, act_str)
+        __test_record_failure()
+        write("  FAIL: ")
+        // Write message character by character since it's a Str
+        while var i < message.len {
+            let c = message.ptr[i]
+            write("%c", (c as i32))
+            i = i + 1u32
+        }
+        write(" - expected {expected}, got {actual}\n")
     }
 }
 
