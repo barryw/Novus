@@ -374,16 +374,10 @@ pub fn inv_sqrt(x: u32) -> i32 {
     }
 
     // 1/sqrt_x in 16.16 fixed point = 65536 / sqrt_x
-    // But we need more precision, so use 65536 * 65536 / sqrt_x then shift
-    // = 2^32 / sqrt_x
-    // To avoid overflow, compute (2^16 / sqrt_x) << 16 / sqrt_x... tricky
-
-    // Simpler: (65536 / sqrt_x) gives us the integer part in 16.16
     // For x=1, sqrt=1, 1/sqrt = 65536 (1.0 in 16.16)
     // For x=4, sqrt=2, 1/sqrt = 32768 (0.5 in 16.16)
-
     let result: u32 = 65536u32 / sqrt_x
-    return (i32)result << 16 >> 16  // Adjust scaling
+    return (i32)result
 }
 
 // ============================================================================
@@ -413,9 +407,10 @@ pub fn hypot(a: i32, b: i32) -> i32 {
         y = temp
     }
 
-    // Scale down if values are large to avoid overflow
-    // If x > 46340 (sqrt(2^31-1)), we risk overflow in x*x
-    if x > 46340 {
+    // Scale down if values are large to avoid overflow in x*x + y*y
+    // sqrt(2^31-1) ≈ 46340, so if x > 32767 we might overflow when adding squares
+    // Be conservative: if x > 32767, scale down
+    if x > 32767 {
         // Scale both down by 256, compute, scale result up
         x = x >> 8
         y = y >> 8
