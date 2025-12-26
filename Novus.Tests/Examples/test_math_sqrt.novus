@@ -1,5 +1,5 @@
 // Test suite for std::math::sqrt
-// Updated to use function overloading - all suffixed functions renamed to base names
+// Tests overloaded sqrt functions - compiler selects implementation by argument type
 
 from std::math::sqrt import *
 from std::math::fixed import Fixed32
@@ -11,38 +11,38 @@ from std::test::test import expect_eq, expect_true, expect_false
 
 @test
 pub fn test_sqrt_u32_zero() {
-    expect_eq((i32)sqrt_u32(0u32), 0, "sqrt(0) = 0")
+    expect_eq((i32)sqrt(0u32), 0, "sqrt(0u32) = 0")
 }
 
 @test
 pub fn test_sqrt_u32_one() {
-    expect_eq((i32)sqrt_u32(1u32), 1, "sqrt(1) = 1")
+    expect_eq((i32)sqrt(1u32), 1, "sqrt(1u32) = 1")
 }
 
 @test
 pub fn test_sqrt_u32_perfect_squares() {
-    expect_eq((i32)sqrt_u32(4u32), 2, "sqrt(4) = 2")
-    expect_eq((i32)sqrt_u32(9u32), 3, "sqrt(9) = 3")
-    expect_eq((i32)sqrt_u32(16u32), 4, "sqrt(16) = 4")
-    expect_eq((i32)sqrt_u32(25u32), 5, "sqrt(25) = 5")
-    expect_eq((i32)sqrt_u32(100u32), 10, "sqrt(100) = 10")
-    expect_eq((i32)sqrt_u32(10000u32), 100, "sqrt(10000) = 100")
+    expect_eq((i32)sqrt(4u32), 2, "sqrt(4u32) = 2")
+    expect_eq((i32)sqrt(9u32), 3, "sqrt(9u32) = 3")
+    expect_eq((i32)sqrt(16u32), 4, "sqrt(16u32) = 4")
+    expect_eq((i32)sqrt(25u32), 5, "sqrt(25u32) = 5")
+    expect_eq((i32)sqrt(100u32), 10, "sqrt(100u32) = 10")
+    expect_eq((i32)sqrt(10000u32), 100, "sqrt(10000u32) = 100")
 }
 
 @test
 pub fn test_sqrt_u32_non_perfect() {
     // Should return floor of square root
-    expect_eq((i32)sqrt_u32(2u32), 1, "sqrt(2) = 1")
-    expect_eq((i32)sqrt_u32(3u32), 1, "sqrt(3) = 1")
-    expect_eq((i32)sqrt_u32(5u32), 2, "sqrt(5) = 2")
-    expect_eq((i32)sqrt_u32(8u32), 2, "sqrt(8) = 2")
-    expect_eq((i32)sqrt_u32(10u32), 3, "sqrt(10) = 3")
+    expect_eq((i32)sqrt(2u32), 1, "sqrt(2u32) = 1")
+    expect_eq((i32)sqrt(3u32), 1, "sqrt(3u32) = 1")
+    expect_eq((i32)sqrt(5u32), 2, "sqrt(5u32) = 2")
+    expect_eq((i32)sqrt(8u32), 2, "sqrt(8u32) = 2")
+    expect_eq((i32)sqrt(10u32), 3, "sqrt(10u32) = 3")
 }
 
 @test
 pub fn test_sqrt_u32_large() {
-    expect_eq((i32)sqrt_u32(65536u32), 256, "sqrt(65536) = 256")
-    expect_eq((i32)sqrt_u32(1000000u32), 1000, "sqrt(1000000) = 1000")
+    expect_eq((i32)sqrt(65536u32), 256, "sqrt(65536u32) = 256")
+    expect_eq((i32)sqrt(1000000u32), 1000, "sqrt(1000000u32) = 1000")
 }
 
 // ============================================================================
@@ -50,16 +50,21 @@ pub fn test_sqrt_u32_large() {
 // ============================================================================
 
 @test
-pub fn test_sqrt_u32_additional() {
-    // Additional tests using overloaded sqrt with explicit u32 types
-    expect_eq((i32)sqrt(25u32), 5, "sqrt(25u32) = 5")
-    expect_eq((i32)sqrt(100u32), 10, "sqrt(100u32) = 10")
+pub fn test_sqrt_i32_positive() {
+    expect_eq(sqrt(25), 5, "sqrt(25) = 5")
+    expect_eq(sqrt(100), 10, "sqrt(100) = 10")
 }
 
 @test
-pub fn test_sqrt_u32_zero_overload() {
-    // Test zero with overloaded version
-    expect_eq((i32)sqrt(0u32), 0, "sqrt(0u32) = 0")
+pub fn test_sqrt_i32_zero() {
+    expect_eq(sqrt(0), 0, "sqrt(0) = 0")
+}
+
+@test
+pub fn test_sqrt_i32_negative() {
+    // Negative values should return 0
+    expect_eq(sqrt(-1), 0, "sqrt(-1) = 0")
+    expect_eq(sqrt(-100), 0, "sqrt(-100) = 0")
 }
 
 // ============================================================================
@@ -87,31 +92,31 @@ pub fn test_sqrt_u16_non_perfect() {
 
 @test
 pub fn test_sqrt_fast_zero() {
-    expect_eq((i32)sqrt_u32_fast(0u32), 0, "sqrt_fast(0) = 0")
+    expect_eq((i32)sqrt_fast(0u32), 0, "sqrt_fast(0) = 0")
 }
 
 @test
 pub fn test_sqrt_fast_one() {
-    expect_eq((i32)sqrt_u32_fast(1u32), 1, "sqrt_fast(1) = 1")
+    expect_eq((i32)sqrt_fast(1u32), 1, "sqrt_fast(1) = 1")
 }
 
 @test
 pub fn test_sqrt_fast_perfect() {
     // Fast sqrt should be close to exact for perfect squares
-    let r4 = sqrt_u32_fast(4u32)
-    let r16 = sqrt_u32_fast(16u32)
-    let r100 = sqrt_u32_fast(100u32)
+    let r4 = sqrt_fast(4u32)
+    let r16 = sqrt_fast(16u32)
+    let r100 = sqrt_fast(100u32)
 
-    expect_true((i32)r4 >= 1 && (i32)r4 <= 3, "sqrt_fast(4) ≈ 2")
-    expect_true((i32)r16 >= 3 && (i32)r16 <= 5, "sqrt_fast(16) ≈ 4")
-    expect_true((i32)r100 >= 9 && (i32)r100 <= 11, "sqrt_fast(100) ≈ 10")
+    expect_true((i32)r4 >= 1 && (i32)r4 <= 3, "sqrt_fast(4) ~ 2")
+    expect_true((i32)r16 >= 3 && (i32)r16 <= 5, "sqrt_fast(16) ~ 4")
+    expect_true((i32)r100 >= 9 && (i32)r100 <= 11, "sqrt_fast(100) ~ 10")
 }
 
 @test
 pub fn test_sqrt_fast_large() {
-    let r = sqrt_u32_fast(1000000u32)
+    let r = sqrt_fast(1000000u32)
     // Should be approximately 1000
-    expect_true((i32)r >= 950 && (i32)r <= 1050, "sqrt_fast(1000000) ≈ 1000")
+    expect_true((i32)r >= 950 && (i32)r <= 1050, "sqrt_fast(1000000) ~ 1000")
 }
 
 // ============================================================================
@@ -129,7 +134,7 @@ pub fn test_sqrt_fixed32_one() {
     let result = sqrt(Fixed32::one())
     // sqrt(1) = 1, so should be around 65536
     let raw = result.to_raw()
-    expect_true(raw > 60000 && raw < 70000, "sqrt(Fixed32::one()) ≈ 1.0")
+    expect_true(raw > 60000 && raw < 70000, "sqrt(Fixed32::one()) ~ 1.0")
 }
 
 @test
@@ -160,34 +165,34 @@ pub fn test_sqrt_fixed32_negative() {
 // ============================================================================
 
 @test
-pub fn test_distance_i32_pythagorean() {
+pub fn test_distance_pythagorean() {
     // 3-4-5 triangle
-    let d = distance_i32(0, 0, 3, 4)
+    let d = distance(0, 0, 3, 4)
     expect_eq(d, 5, "distance in 3-4-5 triangle")
 }
 
 @test
-pub fn test_distance_i32_same_point() {
-    let d = distance_i32(10, 20, 10, 20)
+pub fn test_distance_same_point() {
+    let d = distance(10, 20, 10, 20)
     expect_eq(d, 0, "distance to same point is 0")
 }
 
 @test
-pub fn test_distance_i32_horizontal() {
-    let d = distance_i32(0, 0, 10, 0)
+pub fn test_distance_horizontal() {
+    let d = distance(0, 0, 10, 0)
     expect_eq(d, 10, "horizontal distance")
 }
 
 @test
-pub fn test_distance_i32_vertical() {
-    let d = distance_i32(0, 0, 0, 10)
+pub fn test_distance_vertical() {
+    let d = distance(0, 0, 0, 10)
     expect_eq(d, 10, "vertical distance")
 }
 
 @test
-pub fn test_distance_i32_negative_coords() {
+pub fn test_distance_negative_coords() {
     // Distance from (-3, -4) to (0, 0)
-    let d = distance_i32(-3, -4, 0, 0)
+    let d = distance(-3, -4, 0, 0)
     expect_eq(d, 5, "distance with negative coords")
 }
 
@@ -237,31 +242,55 @@ pub fn test_distance_within_below() {
 // ============================================================================
 
 @test
-pub fn test_hypot_i32_345() {
-    let h = hypot_i32(3, 4)
+pub fn test_hypot_345() {
+    let h = hypot(3, 4)
     expect_eq(h, 5, "hypot(3, 4) = 5")
 }
 
 @test
-pub fn test_hypot_i32_zero() {
-    expect_eq(hypot_i32(0, 0), 0, "hypot(0, 0) = 0")
-    expect_eq(hypot_i32(5, 0), 5, "hypot(5, 0) = 5")
-    expect_eq(hypot_i32(0, 5), 5, "hypot(0, 5) = 5")
+pub fn test_hypot_zero() {
+    expect_eq(hypot(0, 0), 0, "hypot(0, 0) = 0")
+    expect_eq(hypot(5, 0), 5, "hypot(5, 0) = 5")
+    expect_eq(hypot(0, 5), 5, "hypot(0, 5) = 5")
 }
 
 @test
-pub fn test_hypot_i32_negative() {
-    let h = hypot_i32(-3, -4)
+pub fn test_hypot_negative() {
+    let h = hypot(-3, -4)
     expect_eq(h, 5, "hypot(-3, -4) = 5")
 }
 
 @test
-pub fn test_hypot_i32_large() {
+pub fn test_hypot_large() {
     // Test with values that would overflow if squared directly
-    // 30000² + 40000² = 2.5 billion, which overflows i32
-    // hypot_i32 should handle this by scaling
-    let h = hypot_i32(30000, 40000)
+    // 30000^2 + 40000^2 = 2.5 billion, which overflows i32
+    // hypot should handle this by scaling
+    let h = hypot(30000, 40000)
     // Should be approximately 50000
-    expect_true(h > 45000 && h < 55000, "hypot(30000, 40000) ≈ 50000")
+    expect_true(h > 45000 && h < 55000, "hypot(30000, 40000) ~ 50000")
 }
 
+// ============================================================================
+// Inverse Square Root Tests
+// ============================================================================
+
+@test
+pub fn test_inv_sqrt_one() {
+    let result = inv_sqrt(1u32)
+    // 1/sqrt(1) = 1.0 in 16.16 fixed point = 65536
+    expect_true(result > 60000 && result < 70000, "inv_sqrt(1) ~ 1.0")
+}
+
+@test
+pub fn test_inv_sqrt_four() {
+    let result = inv_sqrt(4u32)
+    // 1/sqrt(4) = 0.5 in 16.16 fixed point = 32768
+    expect_true(result > 30000 && result < 35000, "inv_sqrt(4) ~ 0.5")
+}
+
+@test
+pub fn test_inv_sqrt_zero() {
+    let result = inv_sqrt(0u32)
+    // Should return max value for divide by zero
+    expect_eq(result, 0x7FFFFFFF, "inv_sqrt(0) = max i32")
+}

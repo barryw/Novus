@@ -46,11 +46,32 @@ public static class PathUtility
     }
 
     /// <summary>
-    /// Gets the VBCC installation path from environment variable or returns a default.
+    /// Gets the VBCC installation path. Vendored VBCC takes priority over system VBCC
+    /// because it contains Novus-specific configuration (e.g., aos68k_fpu for FPU support).
     /// </summary>
     public static string GetVbccPath()
     {
-        // Check environment variable first
+        // PRIORITY 1: Try vendor directory relative to compiler location
+        // Vendored VBCC takes priority because it contains Novus-specific config files
+        var compilerDir = AppContext.BaseDirectory;
+        var vendorVbcc = Path.Combine(compilerDir, "vendor", "vbcc");
+        if (Directory.Exists(vendorVbcc))
+            return vendorVbcc;
+
+        // Try to walk up to find vendor directory (for dev builds)
+        var current = compilerDir;
+        for (int i = 0; i < 6; i++)
+        {
+            var parent = Path.GetDirectoryName(current);
+            if (parent == null) break;
+            current = parent;
+
+            vendorVbcc = Path.Combine(current, "vendor", "vbcc");
+            if (Directory.Exists(vendorVbcc))
+                return vendorVbcc;
+        }
+
+        // PRIORITY 2: Check VBCC environment variable (system installation)
         var envPath = Environment.GetEnvironmentVariable("VBCC");
         if (!string.IsNullOrEmpty(envPath) && Directory.Exists(envPath))
             return envPath;
@@ -67,25 +88,6 @@ public static class PathUtility
                 if (parentDir != null && Directory.Exists(parentDir))
                     return parentDir;
             }
-        }
-
-        // Try vendor directory relative to compiler location
-        var compilerDir = AppContext.BaseDirectory;
-        var vendorVbcc = Path.Combine(compilerDir, "vendor", "vbcc");
-        if (Directory.Exists(vendorVbcc))
-            return vendorVbcc;
-
-        // Try to walk up to find vendor directory
-        var current = compilerDir;
-        for (int i = 0; i < 6; i++)
-        {
-            var parent = Path.GetDirectoryName(current);
-            if (parent == null) break;
-            current = parent;
-
-            vendorVbcc = Path.Combine(current, "vendor", "vbcc");
-            if (Directory.Exists(vendorVbcc))
-                return vendorVbcc;
         }
 
         // Platform-specific common locations

@@ -363,8 +363,9 @@ class Program
                 return null;
             }
 
-            // Build IR
-            var irBuilder = new IrBuilder();
+            // Build IR - pass analysis result for overload resolution
+            var analysisResult = analyzer.GetResult();
+            var irBuilder = new IrBuilder(analysisResult);
             irBuilder.SetStdLibPath(stdLibPath);
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
@@ -530,8 +531,9 @@ class Program
                 return null;
             }
 
-            // Build IR
-            var irBuilder = new IrBuilder();
+            // Build IR - pass analysis result for overload resolution
+            var analysisResult = analyzer.GetResult();
+            var irBuilder = new IrBuilder(analysisResult);
             irBuilder.SetStdLibPath(stdLibPath);
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
@@ -1386,6 +1388,11 @@ class Program
             // Map "auto" CPU to a concrete target for assembly (vasm doesn't understand "auto")
             var assemblyCpu = options.Cpu == "auto" ? "68020" : options.Cpu;
 
+            // Determine if FPU instructions should be accepted by the assembler
+            // Enable FPU for "auto" mode (runtime dispatch) or explicit FPU modes
+            var enableFpu = options.Fpu == "auto" || options.Fpu == "68881" || options.Fpu == "68882" ||
+                           options.Fpu == "68040" || options.Fpu == "68060";
+
             // Assemble core Novus runtime files (only for executables, not libraries)
             var isLibrary = options.ProjectType.ToLowerInvariant() == "library";
             var isDevice = options.ProjectType.ToLowerInvariant() == "device";
@@ -1751,7 +1758,7 @@ ___stack:
                                 var objFile = Path.Combine(outputDir, cFileName + ".o");
                                 Console.WriteLine($"    → {Path.GetFileName(cFile)}");
 
-                                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
+                                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
                                 {
                                     Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
                                     return 1;
@@ -1774,7 +1781,7 @@ ___stack:
                     var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
 
                     Console.WriteLine($"  → {cFileName}");
-                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode))
+                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
                     {
                         Console.WriteLine($"\n✗ Failed to compile {cFileName}");
                         return 1;
@@ -2105,7 +2112,7 @@ ___stack:
                         var cFileName = Path.GetFileName(cFile);
 
                         // Compile
-                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode);
+                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu);
                         if (!success)
                         {
                             return (success: false, cFileName, objFile, cFile, cacheInfo: (string.Empty, string.Empty));

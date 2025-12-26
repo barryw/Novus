@@ -295,9 +295,14 @@ public class VbccToolchain
         string cpu = "68020",
         int optimization = 0,
         BuildMode buildMode = BuildMode.Debug,
-        IEnumerable<string>? extraIncludePaths = null)
+        IEnumerable<string>? extraIncludePaths = null,
+        bool enableFpu = false)
     {
         var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+
+        // Select config based on FPU mode
+        // aos68k_fpu config has -m68881 in the assembler command to accept FPU instructions
+        var configName = enableFpu ? "+aos68k_fpu" : "+aos68k";
 
         // Determine optimization level based on build mode
         // Note: Using O=0 for release to test if optimization is the issue
@@ -330,7 +335,7 @@ public class VbccToolchain
             // Step 1: Compile C to assembly
             var asmArgs = new List<string>
             {
-                "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+                configName,         // Target config (aos68k or aos68k_fpu)
                 "-c99",             // Enable C99 standard
                 $"-cpu={cpu}",      // CPU target
                 "-g",               // Debug symbols
@@ -356,14 +361,14 @@ public class VbccToolchain
             // We need to change it to 'data_c' directive which properly sets DATA type + MEMF_CHIP.
             await FixChipRamSectionDirectives(asmFile);
 
-            // Step 3: Assemble to object file
-            return await Assemble(asmFile, objFile, cpu, false);
+            // Step 3: Assemble to object file (enableFpu passed through for consistent behavior)
+            return await Assemble(asmFile, objFile, cpu, enableFpu);
         }
 
         // Release mode: direct C -> object compilation
         var args = new List<string>
         {
-            "+aos68k",          // Target AmigaOS 2.0+ (68020+)
+            configName,         // Target config (aos68k or aos68k_fpu)
             "-c99",             // Enable C99 standard
             $"-cpu={cpu}",      // CPU target
             $"-O={optLevel}",   // Optimization level
@@ -1066,6 +1071,9 @@ public class VbccToolchain
             CreateNoWindow = true
         };
 
+        // Set VBCC environment variable so it can find config files
+        startInfo.EnvironmentVariables["VBCC"] = _vbccPath;
+
         try
         {
             using var process = Process.Start(startInfo);
@@ -1133,6 +1141,9 @@ public class VbccToolchain
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        // Set VBCC environment variable so it can find config files
+        startInfo.EnvironmentVariables["VBCC"] = _vbccPath;
 
         try
         {

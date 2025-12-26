@@ -14,7 +14,7 @@
 
 from std::math::fixed import Fixed32, fixed32_pi, fixed32_half_pi
 from std::math::trig import sin_fixed32, cos_fixed32, degrees_to_angle
-from std::math::sqrt import sqrt_fixed32
+from std::math::sqrt import sqrt
 
 // ============================================================================
 // Linear
@@ -263,7 +263,7 @@ pub fn ease_in_out_expo(t: Fixed32) -> Fixed32 {
 pub fn ease_in_circ(t: Fixed32) -> Fixed32 {
     let t_sq = t.mul(t)
     let inner = Fixed32::one().sub(t_sq)
-    return Fixed32::one().sub(sqrt_fixed32(inner))
+    return Fixed32::one().sub(sqrt(inner))
 }
 
 /// Circular ease-out: sqrt(1 - (t-1)²)
@@ -271,7 +271,7 @@ pub fn ease_in_circ(t: Fixed32) -> Fixed32 {
 pub fn ease_out_circ(t: Fixed32) -> Fixed32 {
     let one_minus_t = Fixed32::one().sub(t)
     let squared = one_minus_t.mul(one_minus_t)
-    return sqrt_fixed32(Fixed32::one().sub(squared))
+    return sqrt(Fixed32::one().sub(squared))
 }
 
 /// Circular ease-in-out
@@ -284,11 +284,11 @@ pub fn ease_in_out_circ(t: Fixed32) -> Fixed32 {
         let scaled = t.mul(two)
         let squared = scaled.mul(scaled)
         let inner = Fixed32::one().sub(squared)
-        return Fixed32::one().sub(sqrt_fixed32(inner)).div(two)
+        return Fixed32::one().sub(sqrt(inner)).div(two)
     }
     let scaled = two.neg().mul(t).add(two)
     let squared = scaled.mul(scaled)
-    return sqrt_fixed32(Fixed32::one().sub(squared)).add(Fixed32::one()).div(two)
+    return sqrt(Fixed32::one().sub(squared)).add(Fixed32::one()).div(two)
 }
 
 // ============================================================================

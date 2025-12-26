@@ -302,6 +302,7 @@ public static class StdlibBuildCommand
             await File.WriteAllTextAsync(tempCFile, cCode);
 
             // Compile C to .o using VBCC
+            // Enable FPU for stdlib since it may contain FPU-optimized code paths
             var toolchain = new VbccToolchain(vbccPath, ndkPath);
             var optimizationLevel = buildMode == BuildMode.Release ? 2 : 0;
             var success = await toolchain.CompileToObject(
@@ -309,7 +310,8 @@ public static class StdlibBuildCommand
                 outputFile,
                 cpu,
                 optimizationLevel,
-                buildMode);
+                buildMode,
+                enableFpu: true);
             var result = success ? 0 : 1;
 
             // Clean up temporary C file (keep it for debugging if verbose)
