@@ -1,0 +1,182 @@
+\documentclass[11pt,a4paper]{book}
+
+% === Encoding and Fonts ===
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}           % Modern Latin fonts
+\usepackage{microtype}         % Improved typography
+
+% === Page Geometry ===
+\usepackage[
+    a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,
+    right=2.5cm,
+    headheight=24pt
+]{geometry}
+
+% === Colors ===
+\usepackage{xcolor}
+\definecolor{novusprimary}{RGB}{45, 55, 72}      % Dark slate blue
+\definecolor{novusaccent}{RGB}{236, 72, 153}     % Vibrant pink/magenta
+\definecolor{novussecondary}{RGB}{99, 102, 241}  % Indigo
+\definecolor{novuscode}{RGB}{30, 30, 30}         % Near black for code
+\definecolor{novusgray}{RGB}{107, 114, 128}      % Muted gray
+
+% === Graphics ===
+\usepackage{tikz}
+\usetikzlibrary{calc,shapes,positioning}
+
+% === Headers and Footers ===
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE]{\textcolor{novusgray}{\leftmark}}
+\fancyhead[RO]{\textcolor{novusgray}{\rightmark}}
+\fancyfoot[C]{\textcolor{novusgray}{\thepage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{novusgray}\leaders\hrule height \headrulewidth\hfill}}
+
+% === Code Listings ===
+\usepackage{listings}
+\lstdefinelanguage{Novus}{
+    keywords={fn, pub, let, var, if, else, while, for, in, return, struct, enum, impl, trait, from, import, extern, const, match, break, continue, loop, async, await, spawn, defer, unsafe, as, type, where, mod, use, true, false},
+    keywordstyle=\color{novusaccent}\bfseries,
+    keywords=[2]{i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, str, Self, Option, Result, Vec, String, Fixed32},
+    keywordstyle=[2]\color{novussecondary},
+    comment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{novusgray}\itshape,
+    string=[b]",
+    stringstyle=\color{teal},
+    sensitive=true,
+}
+\lstset{
+    language=Novus,
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!5},
+    frame=single,
+    framerule=0pt,
+    framexleftmargin=5pt,
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    tabsize=4,
+    showstringspaces=false,
+    breaklines=true,
+    breakatwhitespace=true,
+    captionpos=b,
+    aboveskip=1em,
+    belowskip=1em,
+}
+
+% Style for shell/bash commands
+\lstdefinestyle{bash}{
+    language=bash,
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{novusprimary!5},
+    frame=single,
+    framerule=0pt,
+    framexleftmargin=5pt,
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    showstringspaces=false,
+    breaklines=true,
+    keywordstyle=\color{novusprimary},
+}
+
+% Plain style for config files and output
+\lstdefinestyle{plain}{
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{gray!5},
+    frame=single,
+    framerule=0pt,
+    framexleftmargin=5pt,
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    showstringspaces=false,
+    breaklines=true,
+}
+
+% === Hyperlinks ===
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=novusprimary,
+    urlcolor=novusaccent,
+    pdftitle={Novus Programmer's Reference Guide},
+    pdfauthor={Novus Language Project},
+}
+
+% === Table of Contents Styling ===
+\usepackage{titletoc}
+\usepackage{titlesec}
+
+% Chapter styling
+\titleformat{\chapter}[display]
+    {\normalfont\huge\bfseries\color{novusprimary}}
+    {\chaptertitlename\ \thechapter}
+    {20pt}
+    {\Huge}
+\titlespacing*{\chapter}{0pt}{0pt}{40pt}
+
+% Section styling
+\titleformat{\section}
+    {\normalfont\Large\bfseries\color{novusprimary}}
+    {\thesection}
+    {1em}
+    {}
+
+\titleformat{\subsection}
+    {\normalfont\large\bfseries\color{novusprimary!80}}
+    {\thesubsection}
+    {1em}
+    {}
+
+% === Include Cover ===
+\input{cover}
+
+% === Document ===
+\begin{document}
+
+% Cover page (no page number)
+\makecover
+\thispagestyle{empty}
+\cleardoublepage
+
+% Front matter
+\frontmatter
+\tableofcontents
+\cleardoublepage
+
+% Foreword (in front matter, unnumbered)
+\include{chapters/00-foreword}
+
+% Main content
+\mainmatter
+
+% Part I: Language Fundamentals
+\include{chapters/01-introduction}
+\include{chapters/02-getting-started}
+% \include{chapters/03-language-basics}
+% \include{chapters/04-types}
+% \include{chapters/05-control-flow}
+% \include{chapters/06-functions}
+% \include{chapters/07-structs-enums}
+% \include{chapters/08-modules}
+% \include{chapters/09-error-handling}
+
+% Part II: Standard Library
+% \include{chapters/10-stdlib-overview}
+% \include{chapters/11-collections}
+% \include{chapters/12-strings}
+% \include{chapters/13-memory}
+% \include{chapters/14-amigaos-bindings}
+
+% Part III: Advanced Topics
+% \include{chapters/15-async}
+% \include{chapters/16-inline-assembly}
+% \include{chapters/17-ffi}
+% \include{chapters/18-optimization}
+
+\end{document}

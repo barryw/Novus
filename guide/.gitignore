@@ -1,0 +1,14 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Keep the PDF (it's the deliverable)
+# !novus-guide.pdf
+
+# Review notes (not for repo)
+tech-review-*.md

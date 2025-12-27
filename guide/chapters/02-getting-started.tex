@@ -1,0 +1,308 @@
+\chapter{Getting Started}
+
+\begin{quote}
+\textit{``The journey of a thousand miles begins with a single step.''}\\
+---Lao Tzu
+\end{quote}
+
+\vspace{1em}
+
+This chapter walks you through installing the Novus compiler, writing your first program, and understanding the compilation pipeline. By the end, you'll have a working executable running on your Amiga (or emulator).
+
+\section{Prerequisites}
+
+Before installing Novus, ensure you have:
+
+\begin{itemize}
+    \item \textbf{.NET 9.0 or later} --- The Novus compiler is written in C\# and requires the .NET runtime. Download from \texttt{https://dotnet.microsoft.com}
+
+    \item \textbf{VBCC toolchain} --- Novus uses VBCC's assembler (\texttt{vasmm68k\_mot}) and linker (\texttt{vlink}) to produce Amiga executables. The toolchain is vendored in the repository under \texttt{vendor/vbcc}, or you can specify a custom installation via the \texttt{--vbcc-path} option.
+
+    \item \textbf{An Amiga or emulator} --- To run your compiled programs. FS-UAE, WinUAE, or real hardware all work. A 68020+ configuration with AmigaOS 2.0 or later is required.
+\end{itemize}
+
+\section{Installation}
+
+\subsection{Building from Source}
+
+Clone the repository and build:
+
+\begin{lstlisting}[language=bash]
+git clone https://github.com/your-repo/novus.git
+cd novus
+dotnet build
+\end{lstlisting}
+
+The compiler will be available at \texttt{Novus/bin/Debug/net9.0/novus}.
+
+For a release build with optimizations:
+
+\begin{lstlisting}[language=bash]
+dotnet build -c Release
+\end{lstlisting}
+
+\subsection{Verifying Installation}
+
+Check that the compiler runs:
+
+\begin{lstlisting}[language=bash]
+./Novus/bin/Debug/net9.0/novus --help
+\end{lstlisting}
+
+You should see the available commands and options.
+
+\section{Your First Program}
+
+Create a file named \texttt{hello.novus}:
+
+\begin{lstlisting}
+from std::io::file import println
+
+fn main() -> i32 {
+    println("Hello, Amiga!")
+    return 0
+}
+\end{lstlisting}
+
+Let's break this down:
+
+\begin{itemize}
+    \item \texttt{from std::io::file import println} --- Imports the \texttt{println} function from the standard library. Unlike some languages, Novus requires explicit imports.
+    \item \texttt{fn main() -> i32} --- Declares the entry point. All Novus programs must have a \texttt{main} function that returns an \texttt{i32} (the exit code).
+    \item \texttt{println("Hello, Amiga!")} --- Prints the message to standard output.
+    \item \texttt{return 0} --- Returns success (zero) to the operating system.
+\end{itemize}
+
+\subsection{Compiling}
+
+Compile to an Amiga executable:
+
+\begin{lstlisting}[language=bash]
+novus compile hello.novus -o hello
+\end{lstlisting}
+
+This produces an executable named \texttt{hello} in Amiga HUNK format. Without the \texttt{-o} flag, the output would default to \texttt{a.out}.
+
+\subsection{Running on the Amiga}
+
+Transfer the executable to your Amiga (via shared folder, network, or disk image) and run it from the Shell:
+
+\begin{lstlisting}[language=bash]
+1.Workbench:> hello
+Hello, Amiga!
+\end{lstlisting}
+
+Congratulations---you've run your first Novus program!
+
+\section{Understanding the Toolchain}
+
+The Novus compilation pipeline has several stages:
+
+\begin{enumerate}
+    \item \textbf{Parsing} --- Source code is parsed into an Abstract Syntax Tree (AST)
+    \item \textbf{Semantic Analysis} --- Types are checked, names are resolved, and the Intermediate Representation (IR) is built
+    \item \textbf{C Code Generation} --- The IR is lowered to C99 code targeting VBCC
+    \item \textbf{Compilation} --- VBCC's C compiler (\texttt{vc}) compiles the C code directly to 68k object files
+    \item \textbf{Assembly} --- Additional assembly files (runtime, library stubs) are assembled with \texttt{vasm}
+    \item \textbf{Linking} --- \texttt{vlink} combines all object files with the runtime and produces the final executable
+\end{enumerate}
+
+This pipeline means you get the benefits of VBCC's mature 68k code generation while writing modern, safe Novus code.
+
+\subsection{Compiler Commands}
+
+Novus provides several commands:
+
+\begin{description}
+    \item[\texttt{novus compile}] Compile a single source file to an executable
+    \item[\texttt{novus build}] Build a project defined by \texttt{project.toml}
+    \item[\texttt{novus test}] Discover and compile tests
+    \item[\texttt{novus new}] Create a new project from a template
+    \item[\texttt{novus fmt}] Format source code
+    \item[\texttt{novus clean}] Remove cached build artifacts
+\end{description}
+
+\subsection{Compile Options}
+
+Common options for \texttt{novus compile}:
+
+\begin{description}
+    \item[\texttt{-o, --output}] Output file name (default: \texttt{a.out})
+    \item[\texttt{--cpu}] Target CPU: \texttt{68020}, \texttt{68030}, \texttt{68040}, \texttt{68060}, or \texttt{auto} (default: \texttt{auto})
+    \item[\texttt{--fpu}] FPU mode: \texttt{none}, \texttt{68881}, \texttt{68882}, \texttt{68040}, \texttt{68060}, or \texttt{auto} (default: \texttt{auto})
+    \item[\texttt{--release}] Enable optimizations and disable debug checks
+    \item[\texttt{-O}] Optimization level (0--2)
+    \item[\texttt{--emit-asm}] Emit assembly output only; do not assemble or link
+    \item[\texttt{--emit-ir}] Emit IR to stdout for debugging
+    \item[\texttt{-v, --verbose}] Show detailed compilation progress
+\end{description}
+
+The \texttt{auto} CPU setting produces a ``fat binary'' that detects the CPU at runtime and uses optimized code paths accordingly.
+
+\subsection{Debug vs Release Builds}
+
+By default, Novus compiles in debug mode:
+
+\begin{itemize}
+    \item Array bounds checking is enabled
+    \item Debug symbols are included
+    \item Optimizations are minimal
+\end{itemize}
+
+For production builds, use \texttt{--release}:
+
+\begin{lstlisting}[language=bash]
+novus compile hello.novus -o hello --release
+\end{lstlisting}
+
+Release builds are smaller and faster, but runtime errors provide less diagnostic information.
+
+\subsubsection{Safety Levels}
+
+For finer control, use \texttt{--safety-level}:
+
+\begin{description}
+    \item[Level 0] Unsafe --- no runtime checks (use with \texttt{--unsafe} flag)
+    \item[Level 1] Basic --- minimal checks
+    \item[Level 2] Full --- standard safety checks (default for debug)
+    \item[Level 3] Paranoid --- maximum checking
+\end{description}
+
+\section{Project Structure}
+
+For anything beyond a single file, create a project with \texttt{novus new}:
+
+\begin{lstlisting}[language=bash]
+novus new myproject --template cli
+cd myproject
+\end{lstlisting}
+
+This creates a standard project structure:
+
+\begin{lstlisting}
+myproject/
+    project.toml        # Project configuration
+    src/
+        main.novus      # Entry point
+\end{lstlisting}
+
+\subsection{The project.toml File}
+
+The \texttt{project.toml} file defines project metadata and build settings:
+
+\begin{lstlisting}
+[package]
+name = "myproject"
+version = "0.1.0"
+
+[build]
+target_cpu = "68020"
+fpu = "none"
+\end{lstlisting}
+
+Available build settings include:
+
+\begin{description}
+    \item[\texttt{target\_cpu}] Target CPU (68020, 68030, 68040, 68060, or auto)
+    \item[\texttt{fpu}] FPU mode
+    \item[\texttt{chipset}] Target chipset (ocs, ecs, aga, or auto)
+    \item[\texttt{optimization\_level}] Optimization level (0--2)
+    \item[\texttt{output}] Output file name
+\end{description}
+
+Build the project with:
+
+\begin{lstlisting}[language=bash]
+novus build
+\end{lstlisting}
+
+\section{The Standard Library}
+
+Novus includes a standard library providing common functionality:
+
+\begin{description}
+    \item[\texttt{std::core}] Fundamental types: \texttt{Option}, \texttt{Result}, and core traits
+    \item[\texttt{std::collections}] Data structures: \texttt{Vec}, \texttt{HashMap}, \texttt{HashSet}, \texttt{VecDeque}, \texttt{RingBuffer}, \texttt{SlotMap}, and more
+    \item[\texttt{std::strings}] String handling: \texttt{String}, \texttt{Str}, \texttt{StringBuilder}
+    \item[\texttt{std::memory}] Memory management: \texttt{MemoryBlock}, chip memory pools, slices
+    \item[\texttt{std::math}] Fixed-point arithmetic, trigonometry, vectors, easing functions
+    \item[\texttt{std::io}] Input/output: \texttt{println}, file operations
+    \item[\texttt{std::ffi}] AmigaOS bindings: Exec, DOS, Graphics, Intuition, and more
+\end{description}
+
+Import modules with \texttt{from}:
+
+\begin{lstlisting}
+from std::collections::vec import Vec
+from std::io::file import println
+
+fn main() -> i32 {
+    var names: Vec<&str> = Vec::new()
+    names.push("Amiga")
+    names.push("Novus")
+
+    println("Count: {}", names.len())
+    return 0
+}
+\end{lstlisting}
+
+\section{Running Tests}
+
+Novus has built-in test support. Mark test functions with the \texttt{@test} attribute:
+
+\begin{lstlisting}
+from std::test::test import expect_eq
+
+@test
+fn test_addition() {
+    expect_eq(2 + 2, 4, "basic addition")
+}
+
+@test
+fn test_multiplication() {
+    expect_eq(3 * 7, 21, "basic multiplication")
+}
+\end{lstlisting}
+
+The \texttt{expect\_eq} function uses overloading to work with any comparable type---no need for type-specific variants like \texttt{expect\_eq\_i32}.
+
+Compile the test runner with:
+
+\begin{lstlisting}[language=bash]
+novus test mytest.novus
+\end{lstlisting}
+
+This discovers all \texttt{@test} functions and compiles a test executable. The output tells you where the executable was created:
+
+\begin{lstlisting}
+Test runner built successfully!
+Output: /path/to/tests
+Tests: 2 active, 0 skipped
+
+Copy to Amiga and run to execute tests.
+\end{lstlisting}
+
+\textbf{Important:} The test command builds the test runner but does not execute it. You must transfer the executable to your Amiga and run it there to see test results.
+
+\subsection{Test Options}
+
+The \texttt{novus test} command supports several options:
+
+\begin{description}
+    \item[\texttt{--filter}] Run only tests matching a pattern
+    \item[\texttt{--list}] List discovered tests without building
+    \item[\texttt{-b, --benchmark}] Include timing information in output
+    \item[\texttt{--output-dir}] Specify where to write the test executable
+\end{description}
+
+\section{Next Steps}
+
+You now have a working Novus installation and understand the basic workflow. The following chapters cover:
+
+\begin{itemize}
+    \item \textbf{Chapter 3: Language Basics} --- Variables, types, and expressions
+    \item \textbf{Chapter 4: Types} --- The type system in depth
+    \item \textbf{Chapter 5: Control Flow} --- Conditionals, loops, and pattern matching
+\end{itemize}
+
+When you're ready, turn the page and start learning the language itself.

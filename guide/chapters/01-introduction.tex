@@ -1,0 +1,121 @@
+\chapter{Introduction}
+
+\section{What is Novus?}
+
+Novus is a systems programming language designed specifically for the Amiga 68k platform. It compiles to native 68020+ machine code and integrates deeply with AmigaOS, producing executables that run on real hardware and accurate emulators alike.
+
+The name comes from the Latin word for ``new''—reflecting the project's mission to bring modern language design to classic machines. Novus is not a port of an existing language, nor is it a lowest-common-denominator cross-platform tool. Every design decision is made with the Amiga in mind.
+
+\subsection{Key Characteristics}
+
+\begin{description}
+    \item[Native Performance] Novus compiles directly to 68k assembly, then to Amiga executables via the VBCC toolchain. There is no interpreter, no virtual machine, no runtime overhead beyond what you explicitly request.
+
+    \item[Modern Safety] The type system catches errors at compile time. \texttt{Result} and \texttt{Option} types make error handling explicit. Resource cleanup is deterministic via \texttt{defer} blocks. You get safety without garbage collection.
+
+    \item[Direct Hardware Access] Novus doesn't hide the Amiga's hardware behind abstractions you can't escape. Custom chip registers, Exec library calls, copper lists, blitter operations—all are first-class citizens with typed, safe interfaces.
+
+    \item[Readable Output] The generated assembly is clean and well-commented. When you need to understand what the compiler is doing—and on the Amiga, you often do—the output won't fight you.
+
+    \item[Amiga-Native Async] The \texttt{async}/\texttt{await} model maps directly to AmigaOS primitives: Exec signals and message ports. No hidden threads, no runtime scheduler—just the OS facilities the Amiga provides.
+\end{description}
+
+\section{Why Novus Exists}
+
+The Amiga platform has capable C compilers. VBCC, in particular, generates excellent code and remains actively maintained. So why create a new language?
+
+\subsection{The Limits of C}
+
+C was revolutionary in 1972. It remains useful today precisely because it's minimal—a portable assembler that gets out of your way. But that minimalism has costs:
+
+\begin{itemize}
+    \item \textbf{No sum types.} Representing ``this value is either an error or a result'' requires conventions that the compiler can't enforce.
+
+    \item \textbf{No built-in error handling.} Return codes are easily ignored. Exceptions don't exist. Every function call is an opportunity for silent failure.
+
+    \item \textbf{Manual resource management.} Matching every \texttt{AllocMem} with a \texttt{FreeMem}, every \texttt{OpenLibrary} with a \texttt{CloseLibrary}, every \texttt{Lock} with an \texttt{UnLock}—across all control flow paths, including error cases.
+
+    \item \textbf{Primitive module system.} Header files and \texttt{\#include} are textual substitution. Name collisions, include order dependencies, and compile time explosion are facts of life.
+
+    \item \textbf{No metaprogramming.} The preprocessor is powerful but crude. Anything beyond simple macros quickly becomes write-only code.
+\end{itemize}
+
+These aren't theoretical concerns. They're the source of real bugs in real Amiga software—memory leaks, use-after-free, null pointer crashes, resource exhaustion from unclosed libraries.
+
+\subsection{Modern Solutions, Amiga Constraints}
+
+Languages like Rust address these problems elegantly. But Rust targets modern systems with megabytes of RAM, gigahertz CPUs, and operating systems that provide virtual memory and threads. Its runtime assumptions don't map to the Amiga.
+
+Novus takes a different approach: provide modern ergonomics within Amiga constraints.
+
+\begin{itemize}
+    \item \texttt{Result[T, E]} and \texttt{Option[T]} are zero-cost at runtime—they're just tagged unions that the compiler understands.
+
+    \item \texttt{defer} blocks compile to straightforward cleanup code inserted at scope exit. No hidden allocations, no unwinding tables.
+
+    \item Pattern matching compiles to efficient jump tables or comparison chains as appropriate.
+
+    \item The module system is compile-time only. No runtime symbol resolution, no dynamic linking overhead.
+
+    \item Fixed-point math uses inline 68020+ instructions, not floating-point emulation.
+\end{itemize}
+
+The result is a language that \emph{feels} modern but \emph{runs} like hand-tuned assembly.
+
+\section{Design Philosophy}
+
+Novus follows several core principles that inform every language decision:
+
+\subsection{Explicit Over Implicit}
+
+If something allocates memory, the code should say so. If something can fail, the type should reflect it. If a function has side effects, they should be visible at the call site.
+
+This doesn't mean verbose—Novus has type inference, sensible defaults, and concise syntax. But it means no hidden costs, no action at a distance, no ``magic'' that obscures what the machine is actually doing.
+
+\subsection{Predictable Performance}
+
+On a 7~MHz 68000, every cycle matters. On a 50~MHz 68060, you have more headroom—but you still can't afford hidden allocations in a tight loop or cache-hostile memory access patterns.
+
+Novus gives you control. The compiler won't secretly box values, won't insert invisible runtime checks in release builds, won't generate code that's impossible to reason about.
+
+\subsection{Respect the Machine}
+
+The Amiga isn't a Unix workstation. It has custom chips that do things no other hardware can do. Its operating system uses message passing and signals, not files and processes. Its memory model is flat and physical.
+
+Novus doesn't pretend otherwise. The standard library wraps AmigaOS idiomatically—\texttt{Result} types for operations that can fail, handles for resources that need cleanup—but it doesn't try to be POSIX. Amiga code should look like Amiga code.
+
+\subsection{Fail Fast, Fail Clearly}
+
+When something goes wrong, you should know immediately and know exactly what happened. Compile-time errors are better than runtime errors. Runtime errors with clear messages are better than silent corruption.
+
+In debug builds, Novus checks array bounds, validates pointers, and panics with meaningful diagnostics. In release builds, those checks can be removed—but the type system still prevents the errors that checks would catch.
+
+\section{Target Audience}
+
+This guide assumes you're a working programmer. You should be comfortable with:
+
+\begin{itemize}
+    \item Systems programming concepts: pointers, memory allocation, stack vs. heap
+    \item Basic 68k architecture: registers, addressing modes, the supervisor/user split
+    \item AmigaOS fundamentals: libraries, Exec, DOS, the message-passing model
+\end{itemize}
+
+Prior experience with Rust, Swift, or other modern systems languages will make Novus feel familiar, but it's not required. If you've written C for the Amiga, you have all the background you need.
+
+\section{How to Read This Guide}
+
+The guide is organized in layers:
+
+\begin{description}
+    \item[Part I: Language Fundamentals] covers the core language—syntax, types, control flow, functions, and modules. Read this first.
+
+    \item[Part II: Standard Library] documents the \texttt{std} packages: collections, strings, memory management, and Amiga OS bindings.
+
+    \item[Part III: Advanced Topics] covers async programming, inline assembly, FFI with existing C code, and performance optimization.
+
+    \item[Appendices] provide quick references, grammar summaries, and migration guides from C.
+\end{description}
+
+Code examples are designed to be complete and runnable. When a snippet requires context, we provide it. When we omit boilerplate, we say so.
+
+Let's begin.

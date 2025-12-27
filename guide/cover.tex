@@ -1,0 +1,82 @@
+% cover.tex - Modern cover design for Novus Programmer's Reference Guide
+
+\newcommand{\makecover}{%
+\begin{titlepage}
+\begin{tikzpicture}[remember picture, overlay]
+
+% === Background ===
+\fill[novusprimary] (current page.south west) rectangle (current page.north east);
+
+% === Geometric accent elements ===
+% Large diagonal stripe
+\fill[novusaccent, opacity=0.9]
+    ([xshift=-2cm, yshift=8cm]current page.south west) --
+    ([xshift=8cm, yshift=8cm]current page.south west) --
+    ([xshift=14cm]current page.south west) --
+    ([xshift=4cm]current page.south west) -- cycle;
+
+% Secondary diagonal stripe
+\fill[novussecondary, opacity=0.7]
+    ([xshift=6cm, yshift=6cm]current page.south west) --
+    ([xshift=14cm, yshift=6cm]current page.south west) --
+    ([xshift=18cm]current page.south west) --
+    ([xshift=10cm]current page.south west) -- cycle;
+
+% Subtle grid pattern in top right
+\foreach \i in {0,1,...,8} {
+    \draw[white, opacity=0.03, line width=0.5pt]
+        ([xshift=\i*1cm, yshift=-2cm]current page.north east) --
+        ([xshift=\i*1cm, yshift=-10cm]current page.north east);
+    \draw[white, opacity=0.03, line width=0.5pt]
+        ([xshift=-2cm, yshift=-\i*1cm-2cm]current page.north east) --
+        ([xshift=-10cm, yshift=-\i*1cm-2cm]current page.north east);
+}
+
+% === Small accent squares ===
+\fill[novusaccent] ([xshift=2cm, yshift=-3cm]current page.north west) rectangle ++(0.5cm, 0.5cm);
+\fill[novussecondary] ([xshift=2.7cm, yshift=-3cm]current page.north west) rectangle ++(0.5cm, 0.5cm);
+\fill[white, opacity=0.3] ([xshift=3.4cm, yshift=-3cm]current page.north west) rectangle ++(0.5cm, 0.5cm);
+
+% === Main Title ===
+\node[anchor=west, text=white] at ([xshift=2cm, yshift=2cm]current page.west) {
+    \fontsize{72}{72}\selectfont\bfseries NOVUS
+};
+
+% === Subtitle ===
+\node[anchor=west, text=white, opacity=0.9] at ([xshift=2cm, yshift=-0.5cm]current page.west) {
+    \fontsize{24}{28}\selectfont Programmer's Reference Guide
+};
+
+% === Tagline ===
+\node[anchor=west, text=novusaccent] at ([xshift=2cm, yshift=-2cm]current page.west) {
+    \fontsize{14}{16}\selectfont\itshape New code for classic machines
+};
+
+% === Version / Edition info ===
+\node[anchor=west, text=white, opacity=0.6] at ([xshift=2cm, yshift=-4cm]current page.west) {
+    \fontsize{11}{13}\selectfont Version 0.1 \quad|\quad December 2025
+};
+
+% === Bottom section ===
+% Horizontal rule
+\draw[white, opacity=0.3, line width=1pt]
+    ([xshift=2cm, yshift=3cm]current page.south west) --
+    ([xshift=-2cm, yshift=3cm]current page.south east);
+
+% Target platform
+\node[anchor=west, text=white, opacity=0.7] at ([xshift=2cm, yshift=2cm]current page.south west) {
+    \fontsize{10}{12}\selectfont For Amiga 68020+ \quad|\quad AmigaOS 2.0+
+};
+
+% === Code snippet decoration ===
+\node[anchor=north east, text=white, opacity=0.15, font=\ttfamily\fontsize{9}{11}\selectfont, align=left]
+    at ([xshift=-2cm, yshift=-4cm]current page.north east) {
+fn main() -> i32 \{\\
+\quad\quad println("Hello, Amiga!")\\
+\quad\quad return 0\\
+\}
+};
+
+\end{tikzpicture}
+\end{titlepage}
+}
