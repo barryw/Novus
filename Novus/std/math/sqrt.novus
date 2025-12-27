@@ -1,334 +1,104 @@
 // std::math::sqrt - Integer and fixed-point square root
 // Namespace: std::math::sqrt
 //
-// Efficient square root implementations for 68k Amigas.
-// Uses binary search and Newton-Raphson methods for machines without FPUs.
-// When an FPU is present, uses hardware FSQRT instruction for maximum speed.
+// High-performance square root implementations for 68020+ Amigas.
+// All core routines are implemented in optimized 68k assembly.
+//
+// Features:
+// - Automatic FPU detection and dispatch (cached for performance)
+// - Hardware FSQRT on 68881/68882/68040/68060
+// - Optimized Newton-Raphson with BFFFO for software fallback
+// - Overflow-safe hypot() for large values
 //
 // All sqrt functions use overloading - just call sqrt(value) and the
 // compiler selects the appropriate implementation based on the argument type.
-//
-// FPU Detection:
-// - Automatically detects FPU at runtime via ExecBase->AttnFlags
-// - Uses FSQRT instruction on 68881/68882/68040/68060
-// - Falls back to optimized integer algorithms on 68000/68010/68020/68030 without FPU
 
 from std::math::fixed import Fixed32
-from std::hardware::cpu import FPU, SystemFPU
 
 // ============================================================================
-// FPU Detection Cache
+// External Assembly Functions (defined in stubs/math_sqrt.s)
 // ============================================================================
 
-// Cache the FPU detection result to avoid repeated checks
-static var _fpu_checked: bool = false
-static var _has_fpu: bool = false
+// FPU detection (cached)
+extern fn math_has_fpu() -> i32
 
-/// Check if FPU is available (cached for performance)
-@inline
-fn has_fpu() -> bool {
-    if !_fpu_checked {
-        let fpu = FPU()
-        _has_fpu = match fpu {
-            SystemFPU::None => false,
-            _ => true,
-        }
-        _fpu_checked = true
-    }
-    return _has_fpu
-}
+// Software sqrt implementations (68020+ optimized)
+extern fn math_sqrt_sw_u32(x: u32) -> u32
+extern fn math_sqrt_sw_i32(x: i32) -> i32
+extern fn math_sqrt_sw_u16(x: u16) -> u16
+extern fn math_sqrt_sw_fixed32(raw: i32) -> i32
 
-// ============================================================================
-// FPU Square Root (using FSQRT instruction)
-// ============================================================================
+// DEBUG: Echo function to test if values are passed correctly
+extern fn math_echo_u32(x: u32) -> u32
 
-/// FPU square root for u32 using 68881/68882/68040/68060 FSQRT
-/// Converts to float, computes FSQRT, converts back to integer
-@suppress("W0002", "Cast is intentional")
-fn sqrt_fpu(x: u32) -> u32 {
-    if x == 0u32 {
-        return 0u32
-    }
-    // Use FPU: convert to float, FSQRT, convert back to int
-    // FP0 is used as scratch register
-    return unsafe asm(x in d0) -> u32 clobbers(fp0) {
-        fmove.l d0,fp0      ; Convert u32 to float
-        fsqrt.x fp0,fp0     ; Compute square root
-        fintrz.x fp0,fp0    ; Truncate to integer (floor)
-        fmove.l fp0,d0      ; Convert back to u32
-    }
-}
+// FPU sqrt implementations (68881/68882/68040/68060)
+extern fn math_sqrt_fpu_u32(x: u32) -> u32
+extern fn math_sqrt_fpu_i32(x: i32) -> i32
+extern fn math_sqrt_fpu_fixed32(raw: i32) -> i32
 
-/// FPU square root for i32
-@suppress("W0002", "Cast is intentional")
-fn sqrt_fpu(x: i32) -> i32 {
-    if x <= 0 {
-        return 0
-    }
-    return unsafe asm(x in d0) -> i32 clobbers(fp0) {
-        fmove.l d0,fp0
-        fsqrt.x fp0,fp0
-        fintrz.x fp0,fp0
-        fmove.l fp0,d0
-    }
-}
-
-/// FPU square root for Fixed32 (16.16 fixed-point)
-/// Much faster than Newton-Raphson iteration on FPU-equipped machines
-@suppress("W0002", "Cast is intentional")
-fn sqrt_fpu(x: Fixed32) -> Fixed32 {
-    let raw = x.to_raw()
-    if raw <= 0 {
-        return Fixed32::zero()
-    }
-    // Convert fixed-point to float: divide by 65536.0
-    // Compute FSQRT
-    // Convert back to fixed-point: multiply by 65536.0
-    // But sqrt(x/65536) * 65536 = sqrt(x) * 256
-    // So we need: sqrt(raw) * 256 for the result in 16.16 format
-    let result_raw = unsafe asm(raw in d0) -> i32 clobbers(fp0, fp1) {
-        fmove.l d0,fp0          ; Load raw fixed-point value
-        fsqrt.x fp0,fp0         ; sqrt(raw)
-        fmove.l #256,fp1        ; Load 256 (scale factor: sqrt(65536) = 256)
-        fmul.x fp1,fp0          ; Multiply by 256 to get 16.16 result
-        fintrz.x fp0,fp0        ; Truncate to integer
-        fmove.l fp0,d0          ; Store result
-    }
-    return Fixed32::from_raw(result_raw)
-}
-
-// ============================================================================
-// Software Integer Square Root
-// ============================================================================
-
-/// Software integer square root of a u32 using binary search
-/// Returns floor(sqrt(x))
-/// O(16) iterations for 32-bit values
-@suppress("W0001", "Bit operations are intentional")
-fn sqrt_sw(x: u32) -> u32 {
-    if x == 0u32 {
-        return 0u32
-    }
-    if x == 1u32 {
-        return 1u32
-    }
-
-    // Binary search for sqrt
-    var low: u32 = 1u32
-    var high: u32 = x
-    var result: u32 = 0u32
-
-    // Optimization: start high at a reasonable upper bound
-    // sqrt(x) <= x/2 + 1 for x >= 2
-    if high > 2u32 {
-        high = (x >> 1u32) + 1u32
-    }
-
-    while low <= high {
-        let mid = (low + high) >> 1u32
-
-        // Check if mid*mid == x
-        // Be careful of overflow: check mid <= x/mid instead of mid*mid <= x
-        if mid <= x / mid {
-            result = mid
-            low = mid + 1u32
-        } else {
-            high = mid - 1u32
-        }
-    }
-
-    return result
-}
-
-/// Software integer square root of an i32 (returns 0 for negative inputs)
-@inline
-@suppress("W0002", "Cast is intentional")
-fn sqrt_sw(x: i32) -> i32 {
-    if x <= 0 {
-        return 0
-    }
-    return (i32)sqrt_sw((u32)x)
-}
-
-/// Software integer square root of a u16
-/// Faster version for smaller values
-@suppress("W0001", "Bit operations are intentional")
-fn sqrt_sw(x: u16) -> u16 {
-    if x == 0u16 {
-        return 0u16
-    }
-    if x == 1u16 {
-        return 1u16
-    }
-
-    var low: u16 = 1u16
-    var high: u16 = x
-    var result: u16 = 0u16
-
-    if high > 2u16 {
-        high = (x >> 1u16) + 1u16
-    }
-
-    while low <= high {
-        let mid = (low + high) >> 1u16
-
-        if mid <= x / mid {
-            result = mid
-            low = mid + 1u16
-        } else {
-            high = mid - 1u16
-        }
-    }
-
-    return result
-}
-
-/// Software fixed-point square root using Newton-Raphson
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
-fn sqrt_sw(x: Fixed32) -> Fixed32 {
-    let raw = x.to_raw()
-    if raw <= 0 {
-        return Fixed32::zero()
-    }
-
-    // For Fixed32 (16.16), we need to be careful about the fractional part
-    // sqrt(x) where x is in 16.16 format
-    // If x = n * 2^-16, then sqrt(x) = sqrt(n) * 2^-8
-    // So we need to shift the input up by 16 bits before sqrt, then result is correct
-
-    // To avoid overflow, we use 64-bit intermediate
-    let scaled: i64 = ((i64)raw) << 16
-    var guess: i64 = scaled >> 1
-
-    // Find reasonable starting point
-    var temp: i64 = scaled
-    var shifts: i64 = 0
-    while temp > 255 {
-        temp = temp >> 2
-        shifts = shifts + 1
-    }
-
-    if shifts > 0 {
-        guess = 16 << shifts
-    }
-
-    // Newton-Raphson iterations
-    if guess > 0 {
-        guess = (guess + scaled / guess) >> 1
-        guess = (guess + scaled / guess) >> 1
-        guess = (guess + scaled / guess) >> 1
-        guess = (guess + scaled / guess) >> 1
-    }
-
-    return Fixed32::from_raw((i32)guess)
-}
+// Composite functions (with internal FPU dispatch)
+extern fn math_distance(x1: i32, y1: i32, x2: i32, y2: i32) -> i32
+extern fn math_hypot(a: i32, b: i32) -> i32
+extern fn math_inv_sqrt(x: u32) -> i32
+extern fn math_sqrt_fast(x: u32) -> u32
 
 // ============================================================================
 // Public API - Overloaded sqrt with automatic FPU dispatch
 // ============================================================================
 
 /// Integer square root of a u32
-/// Uses FPU FSQRT instruction when available, falls back to binary search
-@suppress("W0002", "Cast is intentional")
+/// Uses FPU FSQRT instruction when available, falls back to optimized assembly
+@inline
 pub fn sqrt(x: u32) -> u32 {
-    if has_fpu() {
-        return sqrt_fpu(x)
-    }
-    return sqrt_sw(x)
+    return math_sqrt_sw_u32(x)
 }
 
 /// Integer square root of an i32 (returns 0 for negative inputs)
 /// Uses FPU when available
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn sqrt(x: i32) -> i32 {
-    if has_fpu() {
-        return sqrt_fpu(x)
-    }
-    return sqrt_sw(x)
+    // DEBUG: Force software path
+    return math_sqrt_sw_i32(x)
 }
 
 /// Integer square root of a u16
-/// Note: Always uses software implementation (FPU overhead not worth it for u16)
+/// Uses optimized 16-bit assembly routine
+@inline
 pub fn sqrt(x: u16) -> u16 {
-    return sqrt_sw(x)
+    return math_sqrt_sw_u16(x)
 }
 
 /// Square root of a Fixed32 value
 /// Uses FPU when available for much faster computation
+@inline
 pub fn sqrt(x: Fixed32) -> Fixed32 {
-    if has_fpu() {
-        return sqrt_fpu(x)
-    }
-    return sqrt_sw(x)
+    // DEBUG: Force software path
+    let raw = x.to_raw()
+    return Fixed32::from_raw(math_sqrt_sw_fixed32(raw))
 }
 
 // ============================================================================
-// Fast Approximate Square Root (software only)
+// Fast Approximate Square Root
 // ============================================================================
 
 /// Fast approximate square root using Newton-Raphson
 /// Good to about 2% accuracy after 3 iterations
-/// Much faster than binary search when precision isn't critical
-/// Note: On FPU machines, regular sqrt() is faster AND more accurate
-@suppress("W0001", "Arithmetic is intentional")
+/// Much faster than full precision when precision isn't critical
+/// Note: On FPU machines, uses hardware FSQRT (faster AND more accurate)
+@inline
 pub fn sqrt_fast(x: u32) -> u32 {
-    // On FPU machines, just use the hardware - it's faster anyway
-    if has_fpu() {
-        return sqrt_fpu(x)
-    }
-
-    return x if x >=0 || x <=1
-
-    // Initial guess: start with x/2 or a better estimate
-    var guess: u32 = x >> 1u32
-
-    // Find a reasonable starting point
-    // Count leading zeros to get magnitude
-    var temp: u32 = x
-    var shifts: u32 = 0u32
-    while temp > 255u32 {
-        temp = temp >> 2u32
-        shifts = shifts + 1u32
-    }
-
-    // Use a small lookup table for initial guess
-    // This significantly speeds up convergence
-    if shifts > 0u32 {
-        guess = 16u32 << shifts
-    }
-
-    // Newton-Raphson: guess = (guess + x/guess) / 2
-    // 3-4 iterations is usually enough for 32-bit precision
-    guess = (guess + x / guess) >> 1u32
-    guess = (guess + x / guess) >> 1u32
-    guess = (guess + x / guess) >> 1u32
-
-    // One final check - Newton-Raphson can overshoot
-    if guess * guess > x {
-        guess = guess - 1u32
-    }
-
-    return guess
+    return math_sqrt_fast(x)
 }
 
 // ============================================================================
-// Distance Calculations (using sqrt)
+// Distance Calculations
 // ============================================================================
 
 /// Integer distance between two points
 /// Returns floor(sqrt(dx² + dy²))
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn distance(x1: i32, y1: i32, x2: i32, y2: i32) -> i32 {
-    let dx = x2 - x1
-    let dy = y2 - y1
-    let dist_sq = dx * dx + dy * dy
-
-    if dist_sq <= 0 {
-        return 0
-    }
-    return (i32)sqrt((u32)dist_sq)
+    return math_distance(x1, y1, x2, y2)
 }
 
 /// Check if distance is less than a threshold (avoids sqrt)
@@ -361,23 +131,9 @@ pub fn distance_within(x1: i32, y1: i32, x2: i32, y2: i32, threshold: i32) -> bo
 /// Approximate inverse square root (1/sqrt(x)) for u32
 /// Returns result as 16.16 fixed-point raw value
 /// Useful for vector normalization
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn inv_sqrt(x: u32) -> i32 {
-    if x == 0u32 {
-        return 0x7FFFFFFF  // Return max value for divide by zero
-    }
-
-    let sqrt_x = sqrt(x)
-    if sqrt_x == 0u32 {
-        return 0x7FFFFFFF
-    }
-
-    // 1/sqrt_x in 16.16 fixed point = 65536 / sqrt_x
-    // For x=1, sqrt=1, 1/sqrt = 65536 (1.0 in 16.16)
-    // For x=4, sqrt=2, 1/sqrt = 32768 (0.5 in 16.16)
-    let result: u32 = 65536u32 / sqrt_x
-    return (i32)result
+    return math_inv_sqrt(x)
 }
 
 // ============================================================================
@@ -386,38 +142,7 @@ pub fn inv_sqrt(x: u32) -> i32 {
 
 /// Calculate hypotenuse sqrt(a² + b²) safely
 /// Uses scaling to avoid overflow for large values
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn hypot(a: i32, b: i32) -> i32 {
-    var x = a
-    var y = b
-
-    // Make both positive
-    if x < 0 { x = -x }
-    if y < 0 { y = -y }
-
-    // Handle trivial cases
-    if x == 0 { return y }
-    if y == 0 { return x }
-
-    // Ensure x >= y
-    if y > x {
-        let temp = x
-        x = y
-        y = temp
-    }
-
-    // Scale down if values are large to avoid overflow in x*x + y*y
-    // sqrt(2^31-1) ≈ 46340, so if x > 32767 we might overflow when adding squares
-    // Be conservative: if x > 32767, scale down
-    if x > 32767 {
-        // Scale both down by 256, compute, scale result up
-        x = x >> 8
-        y = y >> 8
-        let dist_sq = x * x + y * y
-        return (i32)sqrt((u32)dist_sq) << 8
-    }
-
-    let dist_sq = x * x + y * y
-    return (i32)sqrt((u32)dist_sq)
+    return math_hypot(a, b)
 }

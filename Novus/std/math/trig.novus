@@ -16,6 +16,18 @@
 from std::math::fixed import Fixed32
 
 // ============================================================================
+// External Assembly Functions (defined in stubs/math_trig.s)
+// ============================================================================
+
+// Core trig functions - optimized 68020+ assembly with lookup tables
+extern fn trig_sin_i16(angle: u16) -> i16
+extern fn trig_cos_i16(angle: u16) -> i16
+extern fn trig_sin_fixed32(angle: u16) -> i32
+extern fn trig_cos_fixed32(angle: u16) -> i32
+extern fn trig_degrees_to_angle(degrees: i16) -> u16
+extern fn trig_angle_to_degrees(angle: u16) -> i16
+
+// ============================================================================
 // Angle Constants
 // ============================================================================
 
@@ -142,82 +154,32 @@ static SINE_TABLE: [i16; 65] = [
 /// let angle: u16 = 16384  // 90 degrees
 /// let s = sin_fixed32(angle)  // Returns Fixed32 ≈ 1.0
 /// ```
-@suppress("W0001", "Bit operations are intentional")
-@suppress("W0002", "Casts are intentional")
+@inline
 pub fn sin_fixed32(angle: u16) -> Fixed32 {
-    // Convert angle (0-65535) to table index (0-255)
-    // angle / 256 = index into a 256-entry table
-    // But we only store 65 entries (first quadrant + endpoint)
-    // So we need to handle quadrants:
-
-    // Quadrant determination:
-    // Q1: 0-16383 (0-90°) - use table directly
-    // Q2: 16384-32767 (90-180°) - mirror around 90°
-    // Q3: 32768-49151 (180-270°) - negate Q1
-    // Q4: 49152-65535 (270-360°) - negate Q2
-
-    // Simplified: reduce to first quadrant, then apply sign
-    var idx = angle >> 8  // 0-255
-    var quadrant = idx >> 6  // 0-3
-    var local_idx = idx & 63u16  // 0-63
-
-    // For quadrants 1 and 3, mirror the index
-    if quadrant == 1u16 || quadrant == 3u16 {
-        local_idx = 64u16 - local_idx
-    }
-
-    // Look up value (14-bit scaled)
-    var value: i32 = (i32)SINE_TABLE[local_idx]
-
-    // Scale from 14-bit to 16-bit (Fixed32 fractional bits)
-    value = value << 2
-
-    // Apply sign for quadrants 2 and 3 (180-360°)
-    if quadrant >= 2u16 {
-        value = -value
-    }
-
-    return Fixed32::from_raw(value)
+    return Fixed32::from_raw(trig_sin_fixed32(angle))
 }
 
 /// Get cosine of an angle as Fixed32
 ///
 /// cos(x) = sin(x + 90°)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn cos_fixed32(angle: u16) -> Fixed32 {
-    return sin_fixed32(angle + ANGLE_QUARTER)
+    return Fixed32::from_raw(trig_cos_fixed32(angle))
 }
 
 /// Get sine as a raw i16 value (14-bit scaled: 16384 = 1.0)
 ///
 /// Faster than sin_fixed32 when you don't need Fixed32 wrapper.
 /// Useful for direct blitter/copper calculations.
-@suppress("W0001", "Bit operations are intentional")
-@suppress("W0002", "Casts are intentional")
+@inline
 pub fn sin_i16(angle: u16) -> i16 {
-    var idx = angle >> 8
-    var quadrant = idx >> 6
-    var local_idx = idx & 63u16
-
-    if quadrant == 1u16 || quadrant == 3u16 {
-        local_idx = 64u16 - local_idx
-    }
-
-    var value: i16 = SINE_TABLE[local_idx]
-
-    if quadrant >= 2u16 {
-        value = -value
-    }
-
-    return value
+    return trig_sin_i16(angle)
 }
 
 /// Get cosine as a raw i16 value (14-bit scaled)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn cos_i16(angle: u16) -> i16 {
-    return sin_i16(angle + ANGLE_QUARTER)
+    return trig_cos_i16(angle)
 }
 
 // ============================================================================
@@ -226,25 +188,14 @@ pub fn cos_i16(angle: u16) -> i16 {
 
 /// Convert degrees (0-359) to binary angle (0-65535)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn degrees_to_angle(degrees: i16) -> u16 {
-    // angle = degrees * 65536 / 360
-    // Simplified: angle = degrees * 182 (approximately)
-    // More accurate: angle = degrees * 65536 / 360 = degrees * 182.044...
-    // Use: (degrees * 182) + (degrees * 11 / 256) for better accuracy
-    let base = ((i32)degrees) * 182i32
-    let correction = ((i32)degrees) * 11i32 / 256i32
-    return (u16)(base + correction)
+    return trig_degrees_to_angle(degrees)
 }
 
 /// Convert binary angle (0-65535) to degrees (0-359)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn angle_to_degrees(angle: u16) -> i16 {
-    // degrees = angle * 360 / 65536
-    // Simplified: degrees = angle * 360 >> 16
-    let result = ((i32)angle) * 360i32 >> 16
-    return (i16)result
+    return trig_angle_to_degrees(angle)
 }
 
 /// Convert radians (as Fixed32) to binary angle

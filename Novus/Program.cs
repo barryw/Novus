@@ -1402,14 +1402,17 @@ class Program
                 // Only executables need startup code and library initialization
                 // NOTE: bsdsocket_bases and amissl_bases are included to support optional networking/TLS
                 // They just provide BSS storage for library bases (one longword each)
-                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
+                // Files that require FPU instructions (68881+)
+                var fpuRequiredFiles = new HashSet<string> { "math_sqrt" };
                 foreach (var coreFile in coreFiles)
                 {
                     var coreSource = Path.Combine(compilerDir, "stubs", $"{coreFile}.s");
                     if (File.Exists(coreSource))
                     {
                         var coreObj = Path.Combine(outputDir, $"{coreFile}.o");
-                        if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, false))
+                        var needsFpu = fpuRequiredFiles.Contains(coreFile);
+                        if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, needsFpu))
                         {
                             Console.WriteLine($"Failed to assemble {coreFile}");
                             return 1;

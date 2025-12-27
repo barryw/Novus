@@ -1572,10 +1572,20 @@ public partial class CCodeGenerator
                             continue;
                         }
 
-                        // Emit declaration for runtime extern functions (write, strlen, etc.)
+                        // Emit declaration for runtime extern functions
+                        // CRITICAL: Assembly functions must use __regargs calling convention.
+                        // VBCC's default extern calling convention is stack-based, but our assembly
+                        // functions expect arguments in registers (d0, d1, a0, a1) per VBCC's register ABI.
+                        // Functions starting with "math_", "fixed32_", "fixed16_" or ending with "_asm" use __regargs.
+                        // Standard C library functions (write, strlen, etc.) use stack convention.
                         var returnTypeStr = GetCType(funcObj.ReturnType);
                         var parameters = GetParameterList(funcObj, false);
-                        sb.AppendLine($"extern {returnTypeStr} {funcName}({parameters});");
+                        var isAsmFunction = funcName.StartsWith("math_") || funcName.StartsWith("fixed32_") ||
+                                           funcName.StartsWith("fixed16_") || funcName.StartsWith("trig_") ||
+                                           funcName.StartsWith("vec2_") || funcName.StartsWith("vec2i_") ||
+                                           funcName.EndsWith("_asm");
+                        var callingConv = isAsmFunction ? " __regargs " : " ";
+                        sb.AppendLine($"extern {returnTypeStr}{callingConv}{funcName}({parameters});");
                         continue;
                     }
 
@@ -4225,7 +4235,21 @@ public partial class CCodeGenerator
                 // The runtime implements these functions with direct return values
                 var returnType = GetCType(function.ReturnType);
                 var parameters = GetParameterList(function);
-                _output.AppendLine($"extern {returnType} {MangleName(function)}({parameters});");
+
+                // CRITICAL: Assembly functions must use __regargs calling convention
+                // VBCC's default extern calling convention is stack-based, but our assembly
+                // functions expect arguments in registers (d0, d1, a0, a1) per VBCC's register ABI.
+                // The __regargs attribute tells VBCC to pass args in registers instead of stack.
+                // Without this, VBCC will push args onto the stack and the assembly will read garbage from d0.
+                // Functions starting with "math_", "fixed32_", "fixed16_" or ending with "_asm" use __regargs.
+                // Standard C library functions (write, strlen, etc.) use stack convention.
+                var funcName = MangleName(function);
+                var isAsmFunction = funcName.StartsWith("math_") || funcName.StartsWith("fixed32_") ||
+                                   funcName.StartsWith("fixed16_") || funcName.StartsWith("trig_") ||
+                                   funcName.StartsWith("vec2_") || funcName.StartsWith("vec2i_") ||
+                                   funcName.EndsWith("_asm");
+                var callingConv = isAsmFunction ? " __regargs " : " ";
+                _output.AppendLine($"extern {returnType}{callingConv}{funcName}({parameters});");
             }
             _output.AppendLine();
         }
@@ -6408,10 +6432,10 @@ public partial class CCodeGenerator
                     }
                 }
                 // If this is an extern FFI function and the parameter expects i32 but we have a pointer, cast it
-                else if (function.IsExtern && paramType is IrIntType intType && intType.BitWidth == 32 && arg is IrVariable variable)
+                else if (function.IsExtern && paramType is IrIntType intType && intType.BitWidth == 32 &&
+                         arg.Type is IrPointerType)
                 {
-                    // Check if the variable is a pointer type
-                    // For now, we'll add the cast unconditionally for pointers
+                    // Cast pointer to int32_t for FFI calls (e.g., passing address to AmigaOS APIs)
                     argValue = $"(int32_t){argValue}";
                 }
                 // BUG FIX: Array-to-slice conversion

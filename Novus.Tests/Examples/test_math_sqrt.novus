@@ -5,6 +5,23 @@ from std::math::sqrt import *
 from std::math::fixed import Fixed32
 from std::test::test import expect_eq, expect_true, expect_false
 
+// Import debug echo function
+from std::math::sqrt import math_echo_u32
+
+// ============================================================================
+// DEBUG: Test if u32 values are passed correctly to assembly
+// ============================================================================
+
+@test
+pub fn test_echo_u32() {
+    // Test if the echo function returns its input correctly
+    expect_eq((i32)math_echo_u32(0u32), 0, "echo(0) = 0")
+    expect_eq((i32)math_echo_u32(1u32), 1, "echo(1) = 1")
+    expect_eq((i32)math_echo_u32(42u32), 42, "echo(42) = 42")
+    expect_eq((i32)math_echo_u32(1000u32), 1000, "echo(1000) = 1000")
+    expect_eq((i32)math_echo_u32(65536u32), 65536, "echo(65536) = 65536")
+}
+
 // ============================================================================
 // Integer Square Root Tests (u32)
 // ============================================================================

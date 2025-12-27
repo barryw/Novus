@@ -5,8 +5,18 @@
 // transitions, and procedural effects on 68k Amigas.
 //
 // All functions work with Fixed32 values in the range [0.0, 1.0].
+// Fixed32-based functions use the optimized assembly in math_fixed.s.
+// i32-based helper functions use optimized assembly in math_interp.s.
 
 from std::math::fixed import Fixed32
+
+// ============================================================================
+// External Assembly Functions (defined in stubs/math_interp.s)
+// ============================================================================
+
+extern fn asm_step_i32(edge: i32, x: i32) -> i32
+extern fn asm_move_towards_i32(current: i32, target: i32, max_delta: i32) -> i32
+extern fn asm_lerp_i32_fast(a: i32, b: i32, t_raw: i32) -> i32
 
 // ============================================================================
 // Linear Interpolation
@@ -129,10 +139,7 @@ pub fn step(edge: Fixed32, x: Fixed32) -> Fixed32 {
 /// Step function for i32 values
 @inline
 pub fn step_i32(edge: i32, x: i32) -> i32 {
-    if x < edge {
-        return 0
-    }
-    return 1
+    return asm_step_i32(edge, x)
 }
 
 // ============================================================================
@@ -172,22 +179,9 @@ pub fn move_towards(current: Fixed32, target: Fixed32, max_delta: Fixed32) -> Fi
 }
 
 /// Move towards for i32 values
+@inline
 pub fn move_towards_i32(current: i32, target: i32, max_delta: i32) -> i32 {
-    let diff = target - current
-
-    var abs_diff = diff
-    if abs_diff < 0 {
-        abs_diff = -abs_diff
-    }
-
-    if abs_diff <= max_delta {
-        return target
-    }
-
-    if diff > 0 {
-        return current + max_delta
-    }
-    return current - max_delta
+    return asm_move_towards_i32(current, target, max_delta)
 }
 
 // ============================================================================

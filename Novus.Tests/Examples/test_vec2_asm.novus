@@ -1,0 +1,145 @@
+// Test Vec2 assembly optimizations
+from std::math::vec2 import Vec2, Vec2i
+from std::math::fixed import Fixed32
+from std::math::trig import ANGLE_QUARTER
+from std::test::test import expect_eq, expect_true
+
+// ============================================================================
+// Vec2 Dot Product Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_dot_orthogonal() {
+    // (1,0) · (0,1) = 0
+    let v1 = Vec2::unit_x()
+    let v2 = Vec2::unit_y()
+    expect_eq(v1.dot(v2).to_raw(), 0, "(1,0)·(0,1) = 0")
+}
+
+@test
+pub fn test_vec2_dot_parallel() {
+    // (1,0) · (1,0) = 1
+    let v1 = Vec2::unit_x()
+    let v2 = Vec2::unit_x()
+    expect_eq(v1.dot(v2).to_raw(), 65536, "(1,0)·(1,0) = 1.0 (65536)")
+}
+
+@test
+pub fn test_vec2_dot_general() {
+    // (3,4) · (2,1) = 6 + 4 = 10
+    let v1 = Vec2::from_i32(3, 4)
+    let v2 = Vec2::from_i32(2, 1)
+    expect_eq(v1.dot(v2).to_i32(), 10, "(3,4)·(2,1) = 10")
+}
+
+// ============================================================================
+// Vec2 Cross Product Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_cross_unit() {
+    // (1,0) × (0,1) = 1 (CCW)
+    let v1 = Vec2::unit_x()
+    let v2 = Vec2::unit_y()
+    expect_eq(v1.cross(v2).to_raw(), 65536, "(1,0)×(0,1) = 1.0")
+}
+
+@test
+pub fn test_vec2_cross_reverse() {
+    // (0,1) × (1,0) = -1 (CW)
+    let v1 = Vec2::unit_y()
+    let v2 = Vec2::unit_x()
+    expect_eq(v1.cross(v2).to_raw(), -65536, "(0,1)×(1,0) = -1.0")
+}
+
+@test
+pub fn test_vec2_cross_parallel() {
+    // (1,0) × (1,0) = 0
+    let v1 = Vec2::unit_x()
+    let v2 = Vec2::unit_x()
+    expect_eq(v1.cross(v2).to_raw(), 0, "(1,0)×(1,0) = 0")
+}
+
+// ============================================================================
+// Vec2 Length Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_length_sq_unit() {
+    // |(1,0)|² = 1
+    let v = Vec2::unit_x()
+    expect_eq(v.length_sq().to_raw(), 65536, "|(1,0)|² = 1.0")
+}
+
+@test
+pub fn test_vec2_length_sq_3_4_5() {
+    // |(3,4)|² = 25
+    let v = Vec2::from_i32(3, 4)
+    expect_eq(v.length_sq().to_i32(), 25, "|(3,4)|² = 25")
+}
+
+@test
+pub fn test_vec2_length_approx_3_4() {
+    // |(3,4)| ≈ 5 (alpha-max-beta-min gives approx)
+    let v = Vec2::from_i32(3, 4)
+    let len = v.length_approx().to_i32()
+    // Allow 10% error
+    expect_true(len >= 4 && len <= 6, "|(3,4)| ≈ 5 (got within range)")
+}
+
+@test
+pub fn test_vec2_length_approx_unit() {
+    // |(1,0)| = 1
+    let v = Vec2::unit_x()
+    expect_eq(v.length_approx().to_i32(), 1, "|(1,0)| = 1")
+}
+
+// ============================================================================
+// Vec2 Rotation Tests
+// ============================================================================
+
+@test
+pub fn test_vec2_rotate_90() {
+    // Rotate (1,0) by 90° = (0,1)
+    let v = Vec2::unit_x()
+    let rotated = v.rotate(ANGLE_QUARTER)
+    // Allow small error due to table precision
+    expect_true(rotated.get_x().to_raw() >= -1000 && rotated.get_x().to_raw() <= 1000,
+                "rotate(1,0, 90).x ≈ 0")
+    expect_true(rotated.get_y().to_raw() >= 64000 && rotated.get_y().to_raw() <= 67000,
+                "rotate(1,0, 90).y ≈ 1")
+}
+
+@test
+pub fn test_vec2_rotate_180() {
+    // Rotate (1,0) by 180° = (-1,0)
+    let v = Vec2::unit_x()
+    let rotated = v.rotate(32768u16)  // 180 degrees
+    expect_true(rotated.get_x().to_raw() <= -64000, "rotate(1,0, 180).x ≈ -1")
+    expect_true(rotated.get_y().to_raw() >= -1000 && rotated.get_y().to_raw() <= 1000,
+                "rotate(1,0, 180).y ≈ 0")
+}
+
+// ============================================================================
+// Vec2i Tests
+// ============================================================================
+
+@test
+pub fn test_vec2i_dot() {
+    let v1 = Vec2i::new(3, 4)
+    let v2 = Vec2i::new(2, 1)
+    expect_eq(v1.dot(v2), 10, "(3,4)·(2,1) = 10")
+}
+
+@test
+pub fn test_vec2i_cross() {
+    let v1 = Vec2i::new(1, 0)
+    let v2 = Vec2i::new(0, 1)
+    expect_eq(v1.cross(v2), 1, "(1,0)×(0,1) = 1")
+}
+
+@test
+pub fn test_vec2i_length_sq() {
+    let v = Vec2i::new(3, 4)
+    expect_eq(v.length_sq(), 25, "|(3,4)|² = 25")
+}

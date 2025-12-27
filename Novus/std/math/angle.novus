@@ -7,10 +7,34 @@
 // Angle representation: Binary Angular Measurement (BAMS)
 // - u16: 0-65535 maps to 0-360 degrees
 // - Wraps naturally due to u16 overflow
-// - 16384 = 90°, 32768 = 180°, 49152 = 270°
+// - 16384 = 90 deg, 32768 = 180 deg, 49152 = 270 deg
+//
+// All simple operations use optimized 68020+ assembly for maximum performance.
+// Fixed32-based interpolation functions remain in Novus.
 
 from std::math::fixed import Fixed32
 from std::math::trig import ANGLE_QUARTER, ANGLE_HALF, ANGLE_THREE_QUARTER, ANGLE_FULL, atan2_angle
+
+// ============================================================================
+// External Assembly Functions (defined in stubs/math_angle.s)
+// ============================================================================
+
+extern fn asm_normalize_i32(angle: i32) -> u16
+extern fn asm_angle_diff(angle_from: u16, angle_to: u16) -> i16
+extern fn asm_angle_diff_abs(a: u16, b: u16) -> u16
+extern fn asm_angle_between(angle: u16, start: u16, end: u16) -> bool
+extern fn asm_angle_approx_eq(a: u16, b: u16, tolerance: u16) -> bool
+extern fn asm_angle_snap(angle: u16, snap_angle: u16) -> u16
+extern fn asm_angle_to_8way(angle: u16) -> u8
+extern fn asm_angle_to_4way(angle: u16) -> u8
+extern fn asm_angle_from_8way(direction: u8) -> u16
+extern fn asm_angle_from_4way(direction: u8) -> u16
+extern fn asm_quadrant(angle: u16) -> u8
+extern fn asm_facing_right(angle: u16) -> bool
+extern fn asm_facing_left(angle: u16) -> bool
+extern fn asm_facing_up(angle: u16) -> bool
+extern fn asm_facing_down(angle: u16) -> bool
+extern fn asm_angle_move_towards(current: u16, target: u16, max_delta: u16) -> u16
 
 // ============================================================================
 // Angle Constants (additional)
@@ -38,7 +62,7 @@ pub const ANGLE_5: u16 = 910u16
 pub const ANGLE_1: u16 = 182u16
 
 // ============================================================================
-// Angle Normalization
+// Angle Normalization - Public API
 // ============================================================================
 
 /// Normalize angle to [0, 65535] range
@@ -51,74 +75,49 @@ pub fn normalize(angle: u16) -> u16 {
 
 /// Normalize a signed angle (i32) to u16 range
 /// Handles negative angles correctly
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn normalize_i32(angle: i32) -> u16 {
-    // Reduce to reasonable range first
-    var a = angle
-
-    // Handle very large values
-    while a >= 65536 {
-        a = a - 65536
-    }
-    while a < 0 {
-        a = a + 65536
-    }
-
-    return (u16)a
+    return asm_normalize_i32(angle)
 }
 
 // ============================================================================
-// Angle Difference
+// Angle Difference - Public API
 // ============================================================================
 
 /// Get the signed difference between two angles
 /// Returns the shortest path from 'from' to 'to'
-/// Result is in range [-32768, 32767] (i.e., -180° to +180°)
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+/// Result is in range [-32768, 32767] (i.e., -180 deg to +180 deg)
+@inline
 pub fn angle_diff(angle_from: u16, angle_to: u16) -> i16 {
-    // The trick: subtracting u16 values gives the wrapped difference
-    // Then interpret as signed for shortest path
-    let diff: u16 = angle_to - angle_from
-    return (i16)diff
+    return asm_angle_diff(angle_from, angle_to)
 }
 
 /// Get the absolute (unsigned) difference between two angles
 /// Always returns the smaller of the two possible arcs
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn angle_diff_abs(a: u16, b: u16) -> u16 {
-    let signed_diff = angle_diff(a, b)
-    if signed_diff < 0i16 {
-        return (u16)(-signed_diff)
-    }
-    return (u16)signed_diff
+    return asm_angle_diff_abs(a, b)
 }
 
 // ============================================================================
-// Angle Comparison
+// Angle Comparison - Public API
 // ============================================================================
 
 /// Check if angle is between start and end (going clockwise)
 /// Handles wrap-around correctly
-@suppress("W0001", "Arithmetic is intentional")
+@inline
 pub fn angle_between(angle: u16, start: u16, end: u16) -> bool {
-    // Normalize so start is at 0
-    let norm_angle = angle - start
-    let norm_end = end - start
-    return norm_angle <= norm_end
+    return asm_angle_between(angle, start, end)
 }
 
 /// Check if two angles are approximately equal within tolerance
-@suppress("W0001", "Arithmetic is intentional")
+@inline
 pub fn angle_approx_eq(a: u16, b: u16, tolerance: u16) -> bool {
-    let diff = angle_diff_abs(a, b)
-    return diff <= tolerance
+    return asm_angle_approx_eq(a, b, tolerance)
 }
 
 // ============================================================================
-// Angle Interpolation
+// Angle Interpolation (Fixed32-based - remain in Novus)
 // ============================================================================
 
 /// Linear interpolation between two angles (shortest path)
@@ -147,36 +146,14 @@ pub fn angle_smoothstep(angle_from: u16, angle_to: u16, t: Fixed32) -> u16 {
 }
 
 // ============================================================================
-// Angle Movement
+// Angle Movement - Public API
 // ============================================================================
 
 /// Move angle towards target by at most max_delta
 /// Takes the shortest path
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn angle_move_towards(current: u16, target: u16, max_delta: u16) -> u16 {
-    let diff = angle_diff(current, target)
-
-    // Already at target?
-    if diff == 0i16 {
-        return target
-    }
-
-    var abs_diff = diff
-    if abs_diff < 0i16 {
-        abs_diff = -abs_diff
-    }
-
-    // Can reach target in one step?
-    if (u16)abs_diff <= max_delta {
-        return target
-    }
-
-    // Move towards target
-    if diff > 0i16 {
-        return current + max_delta
-    }
-    return current - max_delta
+    return asm_angle_move_towards(current, target, max_delta)
 }
 
 /// Rotate angle towards target with damping
@@ -190,22 +167,13 @@ pub fn angle_damp(current: u16, target: u16, factor: Fixed32) -> u16 {
 }
 
 // ============================================================================
-// Angle Snapping
+// Angle Snapping - Public API
 // ============================================================================
 
 /// Snap angle to nearest multiple of snap_angle
-@suppress("W0001", "Arithmetic is intentional")
-@suppress("W0002", "Cast is intentional")
+@inline
 pub fn angle_snap(angle: u16, snap_angle: u16) -> u16 {
-    if snap_angle == 0u16 {
-        return angle
-    }
-
-    // Round to nearest snap point
-    let half_snap = snap_angle >> 1u16
-    let adjusted = angle + half_snap
-    let quotient = adjusted / snap_angle
-    return quotient * snap_angle
+    return asm_angle_snap(angle, snap_angle)
 }
 
 /// Snap angle to nearest 45-degree increment
@@ -233,84 +201,72 @@ pub fn angle_snap_4way(angle: u16) -> u16 {
 }
 
 // ============================================================================
-// Direction Helpers
+// Direction Helpers - Public API
 // ============================================================================
 
 /// Get direction index (0-7) for 8-way movement
 /// 0 = right, 1 = down-right, 2 = down, etc. (clockwise)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn angle_to_8way(angle: u16) -> u8 {
-    // Add half a sector (22.5°) then divide by sector size (45°)
-    let adjusted = angle + 4096u16  // Half of 8192
-    return (u8)(adjusted / 8192u16)
+    return asm_angle_to_8way(angle)
 }
 
 /// Get direction index (0-3) for 4-way movement
 /// 0 = right, 1 = down, 2 = left, 3 = up
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn angle_to_4way(angle: u16) -> u8 {
-    let adjusted = angle + 8192u16  // Half of 16384
-    return (u8)(adjusted / 16384u16)
+    return asm_angle_to_4way(angle)
 }
 
 /// Convert 8-way direction index to angle
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn angle_from_8way(direction: u8) -> u16 {
-    return (u16)direction * 8192u16
+    return asm_angle_from_8way(direction)
 }
 
 /// Convert 4-way direction index to angle
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn angle_from_4way(direction: u8) -> u16 {
-    return (u16)direction * 16384u16
+    return asm_angle_from_4way(direction)
 }
 
 // ============================================================================
-// Quadrant Helpers
+// Quadrant Helpers - Public API
 // ============================================================================
 
 /// Get which quadrant an angle is in (0-3)
-/// 0 = Q1 (0-90°), 1 = Q2 (90-180°), 2 = Q3 (180-270°), 3 = Q4 (270-360°)
+/// 0 = Q1 (0-90 deg), 1 = Q2 (90-180 deg), 2 = Q3 (180-270 deg), 3 = Q4 (270-360 deg)
 @inline
-@suppress("W0001", "Bit operations are intentional")
 pub fn quadrant(angle: u16) -> u8 {
-    return (u8)(angle >> 14u16)
+    return asm_quadrant(angle)
 }
 
-/// Check if angle is in the right half (facing right, -90° to +90°)
+/// Check if angle is in the right half (facing right, -90 deg to +90 deg)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn facing_right(angle: u16) -> bool {
-    // Right half is -90° to +90°, i.e., 270° to 90° (with wraparound)
-    // That's 49152 to 16384 (wrapping through 0)
-    return angle >= 49152u16 || angle <= 16384u16
+    return asm_facing_right(angle)
 }
 
 /// Check if angle is in the left half (facing left)
 @inline
 pub fn facing_left(angle: u16) -> bool {
-    return !facing_right(angle)
+    return asm_facing_left(angle)
 }
 
-/// Check if angle is in the upper half (facing up, 0° to 180°)
+/// Check if angle is in the upper half (facing up, 0 deg to 180 deg)
 @inline
-@suppress("W0001", "Arithmetic is intentional")
 pub fn facing_up(angle: u16) -> bool {
-    return angle < ANGLE_HALF
+    return asm_facing_up(angle)
 }
 
-/// Check if angle is in the lower half (facing down, 180° to 360°)
+/// Check if angle is in the lower half (facing down, 180 deg to 360 deg)
 @inline
 pub fn facing_down(angle: u16) -> bool {
-    return angle >= ANGLE_HALF
+    return asm_facing_down(angle)
 }
 
 // ============================================================================
-// Angle from delta
+// Angle from delta - Public API
 // ============================================================================
 
 /// Calculate angle from dx, dy deltas

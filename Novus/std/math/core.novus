@@ -4,519 +4,266 @@
 // Provides fundamental math operations that are missing from the language:
 // abs, min, max, clamp, sign, etc.
 //
-// All functions are designed to be fast on 68k processors.
+// All functions use optimized 68020+ assembly for maximum performance.
 
 // ============================================================================
-// Absolute Value
+// External Assembly Functions (defined in stubs/math_core.s)
 // ============================================================================
 
-/// Absolute value of an i32
-/// Returns the magnitude without sign
-@inline
-pub fn abs_i32(x: i32) -> i32 {
-    if x < 0 {
-        return -x
-    }
-    return x
-}
+// Absolute value
+extern fn asm_abs_i32(x: i32) -> i32
+extern fn asm_abs_i16(x: i16) -> i16
+extern fn asm_abs_i8(x: i8) -> i8
 
-/// Absolute value of an i16
-@inline
-pub fn abs_i16(x: i16) -> i16 {
-    if x < 0i16 {
-        return -x
-    }
-    return x
-}
+// Minimum (signed)
+extern fn asm_min_i32(a: i32, b: i32) -> i32
+extern fn asm_min_i16(a: i16, b: i16) -> i16
+extern fn asm_min_i8(a: i8, b: i8) -> i8
 
-/// Absolute value of an i8
-@inline
-pub fn abs_i8(x: i8) -> i8 {
-    if x < 0i8 {
-        return -x
-    }
-    return x
-}
+// Minimum (unsigned)
+extern fn asm_min_u32(a: u32, b: u32) -> u32
+extern fn asm_min_u16(a: u16, b: u16) -> u16
+extern fn asm_min_u8(a: u8, b: u8) -> u8
 
-// ============================================================================
-// Minimum
-// ============================================================================
+// Maximum (signed)
+extern fn asm_max_i32(a: i32, b: i32) -> i32
+extern fn asm_max_i16(a: i16, b: i16) -> i16
+extern fn asm_max_i8(a: i8, b: i8) -> i8
 
-/// Minimum of two i32 values
-@inline
-pub fn min_i32(a: i32, b: i32) -> i32 {
-    if a < b {
-        return a
-    }
-    return b
-}
+// Maximum (unsigned)
+extern fn asm_max_u32(a: u32, b: u32) -> u32
+extern fn asm_max_u16(a: u16, b: u16) -> u16
+extern fn asm_max_u8(a: u8, b: u8) -> u8
 
-/// Minimum of two i16 values
-@inline
-pub fn min_i16(a: i16, b: i16) -> i16 {
-    if a < b {
-        return a
-    }
-    return b
-}
+// Clamp (signed)
+extern fn asm_clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32
+extern fn asm_clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16
+extern fn asm_clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8
 
-/// Minimum of two i8 values
-@inline
-pub fn min_i8(a: i8, b: i8) -> i8 {
-    if a < b {
-        return a
-    }
-    return b
-}
+// Clamp (unsigned)
+extern fn asm_clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32
+extern fn asm_clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16
+extern fn asm_clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8
 
-/// Minimum of two u32 values
-@inline
-pub fn min_u32(a: u32, b: u32) -> u32 {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-/// Minimum of two u16 values
-@inline
-pub fn min_u16(a: u16, b: u16) -> u16 {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-/// Minimum of two u8 values
-@inline
-pub fn min_u8(a: u8, b: u8) -> u8 {
-    if a < b {
-        return a
-    }
-    return b
-}
-
-// ============================================================================
-// Maximum
-// ============================================================================
-
-/// Maximum of two i32 values
-@inline
-pub fn max_i32(a: i32, b: i32) -> i32 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-/// Maximum of two i16 values
-@inline
-pub fn max_i16(a: i16, b: i16) -> i16 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-/// Maximum of two i8 values
-@inline
-pub fn max_i8(a: i8, b: i8) -> i8 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-/// Maximum of two u32 values
-@inline
-pub fn max_u32(a: u32, b: u32) -> u32 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-/// Maximum of two u16 values
-@inline
-pub fn max_u16(a: u16, b: u16) -> u16 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-/// Maximum of two u8 values
-@inline
-pub fn max_u8(a: u8, b: u8) -> u8 {
-    if a > b {
-        return a
-    }
-    return b
-}
-
-// ============================================================================
-// Clamp
-// ============================================================================
-
-/// Clamp an i32 value to a range [min_val, max_val]
-@inline
-pub fn clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-/// Clamp an i16 value to a range [min_val, max_val]
-@inline
-pub fn clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-/// Clamp an i8 value to a range [min_val, max_val]
-@inline
-pub fn clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-/// Clamp a u32 value to a range [min_val, max_val]
-@inline
-pub fn clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-/// Clamp a u16 value to a range [min_val, max_val]
-@inline
-pub fn clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-/// Clamp a u8 value to a range [min_val, max_val]
-@inline
-pub fn clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8 {
-    if val < min_val {
-        return min_val
-    }
-    if val > max_val {
-        return max_val
-    }
-    return val
-}
-
-// ============================================================================
 // Sign
-// ============================================================================
+extern fn asm_sign_i32(x: i32) -> i32
+extern fn asm_sign_i16(x: i16) -> i16
+extern fn asm_sign_i8(x: i8) -> i8
 
-/// Returns the sign of an i32 value
-/// Returns -1 if negative, 0 if zero, 1 if positive
-@inline
-pub fn sign_i32(x: i32) -> i32 {
-    if x < 0 {
-        return -1
-    }
-    if x > 0 {
-        return 1
-    }
-    return 0
-}
+// Power of two
+extern fn asm_is_power_of_two_u32(x: u32) -> bool
+extern fn asm_is_power_of_two_u16(x: u16) -> bool
+extern fn asm_next_power_of_two_u32(x: u32) -> u32
+extern fn asm_next_power_of_two_u16(x: u16) -> u16
 
-/// Returns the sign of an i16 value
-/// Returns -1 if negative, 0 if zero, 1 if positive
-@inline
-pub fn sign_i16(x: i16) -> i16 {
-    if x < 0i16 {
-        return -1i16
-    }
-    if x > 0i16 {
-        return 1i16
-    }
-    return 0i16
-}
+// Division with rounding
+extern fn asm_div_ceil_u32(a: u32, b: u32) -> u32
+extern fn asm_div_ceil_u16(a: u16, b: u16) -> u16
+extern fn asm_div_round_u32(a: u32, b: u32) -> u32
+extern fn asm_div_round_u16(a: u16, b: u16) -> u16
 
-/// Returns the sign of an i8 value
-/// Returns -1 if negative, 0 if zero, 1 if positive
-@inline
-pub fn sign_i8(x: i8) -> i8 {
-    if x < 0i8 {
-        return -1i8
-    }
-    if x > 0i8 {
-        return 1i8
-    }
-    return 0i8
-}
+// Difference (absolute)
+extern fn asm_diff_u32(a: u32, b: u32) -> u32
+extern fn asm_diff_u16(a: u16, b: u16) -> u16
+extern fn asm_diff_i32(a: i32, b: i32) -> i32
+extern fn asm_diff_i16(a: i16, b: i16) -> i16
 
 // ============================================================================
-// Power of Two
+// Public API - Thin wrappers around assembly functions
 // ============================================================================
 
-/// Check if a u32 is a power of two
+// Absolute value
+/// Absolute value of an i32. Returns the magnitude without sign.
 @inline
-pub fn is_power_of_two_u32(x: u32) -> bool {
-    return x != 0u32 && (x & (x - 1u32)) == 0u32
-}
-
-/// Check if a u16 is a power of two
+pub fn abs_i32(x: i32) -> i32 { return asm_abs_i32(x) }
+/// Absolute value of an i16.
 @inline
-pub fn is_power_of_two_u16(x: u16) -> bool {
-    return x != 0u16 && (x & (x - 1u16)) == 0u16
-}
-
-/// Round up to the next power of two for u32
-/// If already a power of two, returns the same value
-/// Returns 0 if x is 0
-@suppress("W0001", "Bit manipulation is intentional")
-pub fn next_power_of_two_u32(x: u32) -> u32 {
-    if x == 0u32 {
-        return 0u32
-    }
-    var n = x - 1u32
-    n = n | (n >> 1u32)
-    n = n | (n >> 2u32)
-    n = n | (n >> 4u32)
-    n = n | (n >> 8u32)
-    n = n | (n >> 16u32)
-    return n + 1u32
-}
-
-/// Round up to the next power of two for u16
-@suppress("W0001", "Bit manipulation is intentional")
-pub fn next_power_of_two_u16(x: u16) -> u16 {
-    if x == 0u16 {
-        return 0u16
-    }
-    var n = x - 1u16
-    n = n | (n >> 1u16)
-    n = n | (n >> 2u16)
-    n = n | (n >> 4u16)
-    n = n | (n >> 8u16)
-    return n + 1u16
-}
-
-// ============================================================================
-// Division with Rounding
-// ============================================================================
-
-/// Integer division rounding up (ceiling division) for u32
-/// divides a by b and rounds up to the nearest integer
+pub fn abs_i16(x: i16) -> i16 { return asm_abs_i16(x) }
+/// Absolute value of an i8.
 @inline
-@suppress("W0001", "Division is intentional")
-pub fn div_ceil_u32(a: u32, b: u32) -> u32 {
-    return (a + b - 1u32) / b
-}
+pub fn abs_i8(x: i8) -> i8 { return asm_abs_i8(x) }
 
-/// Integer division rounding up (ceiling division) for u16
+// Minimum (signed)
+/// Minimum of two i32 values.
 @inline
-@suppress("W0001", "Division is intentional")
-pub fn div_ceil_u16(a: u16, b: u16) -> u16 {
-    return (a + b - 1u16) / b
-}
-
-/// Integer division rounding to nearest for u32
+pub fn min_i32(a: i32, b: i32) -> i32 { return asm_min_i32(a, b) }
+/// Minimum of two i16 values.
 @inline
-@suppress("W0001", "Division is intentional")
-pub fn div_round_u32(a: u32, b: u32) -> u32 {
-    return (a + b / 2u32) / b
-}
-
-/// Integer division rounding to nearest for u16
+pub fn min_i16(a: i16, b: i16) -> i16 { return asm_min_i16(a, b) }
+/// Minimum of two i8 values.
 @inline
-@suppress("W0001", "Division is intentional")
-pub fn div_round_u16(a: u16, b: u16) -> u16 {
-    return (a + b / 2u16) / b
-}
+pub fn min_i8(a: i8, b: i8) -> i8 { return asm_min_i8(a, b) }
 
-// ============================================================================
-// Difference (always positive)
-// ============================================================================
-
-/// Returns the absolute difference between two u32 values
+// Minimum (unsigned)
+/// Minimum of two u32 values.
 @inline
-pub fn diff_u32(a: u32, b: u32) -> u32 {
-    if a > b {
-        return a - b
-    }
-    return b - a
-}
-
-/// Returns the absolute difference between two u16 values
+pub fn min_u32(a: u32, b: u32) -> u32 { return asm_min_u32(a, b) }
+/// Minimum of two u16 values.
 @inline
-pub fn diff_u16(a: u16, b: u16) -> u16 {
-    if a > b {
-        return a - b
-    }
-    return b - a
-}
-
-/// Returns the absolute difference between two i32 values
+pub fn min_u16(a: u16, b: u16) -> u16 { return asm_min_u16(a, b) }
+/// Minimum of two u8 values.
 @inline
-pub fn diff_i32(a: i32, b: i32) -> i32 {
-    return abs_i32(a - b)
-}
+pub fn min_u8(a: u8, b: u8) -> u8 { return asm_min_u8(a, b) }
 
-/// Returns the absolute difference between two i16 values
+// Maximum (signed)
+/// Maximum of two i32 values.
 @inline
-pub fn diff_i16(a: i16, b: i16) -> i16 {
-    return abs_i16(a - b)
-}
+pub fn max_i32(a: i32, b: i32) -> i32 { return asm_max_i32(a, b) }
+/// Maximum of two i16 values.
+@inline
+pub fn max_i16(a: i16, b: i16) -> i16 { return asm_max_i16(a, b) }
+/// Maximum of two i8 values.
+@inline
+pub fn max_i8(a: i8, b: i8) -> i8 { return asm_max_i8(a, b) }
+
+// Maximum (unsigned)
+/// Maximum of two u32 values.
+@inline
+pub fn max_u32(a: u32, b: u32) -> u32 { return asm_max_u32(a, b) }
+/// Maximum of two u16 values.
+@inline
+pub fn max_u16(a: u16, b: u16) -> u16 { return asm_max_u16(a, b) }
+/// Maximum of two u8 values.
+@inline
+pub fn max_u8(a: u8, b: u8) -> u8 { return asm_max_u8(a, b) }
+
+// Clamp (signed)
+/// Clamp an i32 value to a range [min_val, max_val].
+@inline
+pub fn clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32 { return asm_clamp_i32(val, min_val, max_val) }
+/// Clamp an i16 value to a range [min_val, max_val].
+@inline
+pub fn clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16 { return asm_clamp_i16(val, min_val, max_val) }
+/// Clamp an i8 value to a range [min_val, max_val].
+@inline
+pub fn clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8 { return asm_clamp_i8(val, min_val, max_val) }
+
+// Clamp (unsigned)
+/// Clamp a u32 value to a range [min_val, max_val].
+@inline
+pub fn clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32 { return asm_clamp_u32(val, min_val, max_val) }
+/// Clamp a u16 value to a range [min_val, max_val].
+@inline
+pub fn clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16 { return asm_clamp_u16(val, min_val, max_val) }
+/// Clamp a u8 value to a range [min_val, max_val].
+@inline
+pub fn clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8 { return asm_clamp_u8(val, min_val, max_val) }
+
+// Sign
+/// Returns the sign of an i32: -1 if negative, 0 if zero, 1 if positive.
+@inline
+pub fn sign_i32(x: i32) -> i32 { return asm_sign_i32(x) }
+/// Returns the sign of an i16: -1 if negative, 0 if zero, 1 if positive.
+@inline
+pub fn sign_i16(x: i16) -> i16 { return asm_sign_i16(x) }
+/// Returns the sign of an i8: -1 if negative, 0 if zero, 1 if positive.
+@inline
+pub fn sign_i8(x: i8) -> i8 { return asm_sign_i8(x) }
+
+// Power of two
+/// Check if a u32 is a power of two.
+@inline
+pub fn is_power_of_two_u32(x: u32) -> bool { return asm_is_power_of_two_u32(x) }
+/// Check if a u16 is a power of two.
+@inline
+pub fn is_power_of_two_u16(x: u16) -> bool { return asm_is_power_of_two_u16(x) }
+/// Round up to the next power of two for u32. Returns 0 if x is 0.
+@inline
+pub fn next_power_of_two_u32(x: u32) -> u32 { return asm_next_power_of_two_u32(x) }
+/// Round up to the next power of two for u16. Returns 0 if x is 0.
+@inline
+pub fn next_power_of_two_u16(x: u16) -> u16 { return asm_next_power_of_two_u16(x) }
+
+// Division with rounding
+/// Ceiling division for u32: (a + b - 1) / b
+@inline
+pub fn div_ceil_u32(a: u32, b: u32) -> u32 { return asm_div_ceil_u32(a, b) }
+/// Ceiling division for u16: (a + b - 1) / b
+@inline
+pub fn div_ceil_u16(a: u16, b: u16) -> u16 { return asm_div_ceil_u16(a, b) }
+/// Rounded division for u32: (a + b/2) / b
+@inline
+pub fn div_round_u32(a: u32, b: u32) -> u32 { return asm_div_round_u32(a, b) }
+/// Rounded division for u16: (a + b/2) / b
+@inline
+pub fn div_round_u16(a: u16, b: u16) -> u16 { return asm_div_round_u16(a, b) }
+
+// Difference (absolute)
+/// Absolute difference between two u32 values.
+@inline
+pub fn diff_u32(a: u32, b: u32) -> u32 { return asm_diff_u32(a, b) }
+/// Absolute difference between two u16 values.
+@inline
+pub fn diff_u16(a: u16, b: u16) -> u16 { return asm_diff_u16(a, b) }
+/// Absolute difference between two i32 values.
+@inline
+pub fn diff_i32(a: i32, b: i32) -> i32 { return asm_diff_i32(a, b) }
+/// Absolute difference between two i16 values.
+@inline
+pub fn diff_i16(a: i16, b: i16) -> i16 { return asm_diff_i16(a, b) }
 
 // ============================================================================
 // Function Overloading - Unified abs/min/max Interface
 // ============================================================================
 
 /// Overloaded abs for i32
-pub fn abs(x: i32) -> i32 {
-    return abs_i32(x)
-}
-
+pub fn abs(x: i32) -> i32 { return abs_i32(x) }
 /// Overloaded abs for i16
-pub fn abs(x: i16) -> i16 {
-    return abs_i16(x)
-}
-
+pub fn abs(x: i16) -> i16 { return abs_i16(x) }
 /// Overloaded abs for i8
-pub fn abs(x: i8) -> i8 {
-    return abs_i8(x)
-}
+pub fn abs(x: i8) -> i8 { return abs_i8(x) }
 
 /// Overloaded min for i32
-pub fn min(a: i32, b: i32) -> i32 {
-    return min_i32(a, b)
-}
-
+pub fn min(a: i32, b: i32) -> i32 { return min_i32(a, b) }
 /// Overloaded min for u32
-pub fn min(a: u32, b: u32) -> u32 {
-    return min_u32(a, b)
-}
-
+pub fn min(a: u32, b: u32) -> u32 { return min_u32(a, b) }
 /// Overloaded min for i16
-pub fn min(a: i16, b: i16) -> i16 {
-    return min_i16(a, b)
-}
-
+pub fn min(a: i16, b: i16) -> i16 { return min_i16(a, b) }
 /// Overloaded min for u16
-pub fn min(a: u16, b: u16) -> u16 {
-    return min_u16(a, b)
-}
+pub fn min(a: u16, b: u16) -> u16 { return min_u16(a, b) }
 
 /// Overloaded max for i32
-pub fn max(a: i32, b: i32) -> i32 {
-    return max_i32(a, b)
-}
-
+pub fn max(a: i32, b: i32) -> i32 { return max_i32(a, b) }
 /// Overloaded max for u32
-pub fn max(a: u32, b: u32) -> u32 {
-    return max_u32(a, b)
-}
-
+pub fn max(a: u32, b: u32) -> u32 { return max_u32(a, b) }
 /// Overloaded max for i16
-pub fn max(a: i16, b: i16) -> i16 {
-    return max_i16(a, b)
-}
-
+pub fn max(a: i16, b: i16) -> i16 { return max_i16(a, b) }
 /// Overloaded max for u16
-pub fn max(a: u16, b: u16) -> u16 {
-    return max_u16(a, b)
-}
+pub fn max(a: u16, b: u16) -> u16 { return max_u16(a, b) }
 
 /// Overloaded clamp for i32
-pub fn clamp(x: i32, lo: i32, hi: i32) -> i32 {
-    return clamp_i32(x, lo, hi)
-}
-
+pub fn clamp(x: i32, lo: i32, hi: i32) -> i32 { return clamp_i32(x, lo, hi) }
 /// Overloaded clamp for u32
-pub fn clamp(x: u32, lo: u32, hi: u32) -> u32 {
-    return clamp_u32(x, lo, hi)
-}
+pub fn clamp(x: u32, lo: u32, hi: u32) -> u32 { return clamp_u32(x, lo, hi) }
 
 /// Overloaded sign for i32
-pub fn sign(x: i32) -> i32 {
-    return sign_i32(x)
-}
+pub fn sign(x: i32) -> i32 { return sign_i32(x) }
 
 /// Overloaded is_power_of_two for u32
-pub fn is_power_of_two(x: u32) -> bool {
-    return is_power_of_two_u32(x)
-}
-
+pub fn is_power_of_two(x: u32) -> bool { return is_power_of_two_u32(x) }
 /// Overloaded is_power_of_two for u16
-pub fn is_power_of_two(x: u16) -> bool {
-    return is_power_of_two_u16(x)
-}
+pub fn is_power_of_two(x: u16) -> bool { return is_power_of_two_u16(x) }
 
 /// Overloaded next_power_of_two for u32
-pub fn next_power_of_two(x: u32) -> u32 {
-    return next_power_of_two_u32(x)
-}
-
+pub fn next_power_of_two(x: u32) -> u32 { return next_power_of_two_u32(x) }
 /// Overloaded next_power_of_two for u16
-pub fn next_power_of_two(x: u16) -> u16 {
-    return next_power_of_two_u16(x)
-}
+pub fn next_power_of_two(x: u16) -> u16 { return next_power_of_two_u16(x) }
 
 /// Overloaded div_ceil for u32
-pub fn div_ceil(a: u32, b: u32) -> u32 {
-    return div_ceil_u32(a, b)
-}
-
+pub fn div_ceil(a: u32, b: u32) -> u32 { return div_ceil_u32(a, b) }
 /// Overloaded div_ceil for u16
-pub fn div_ceil(a: u16, b: u16) -> u16 {
-    return div_ceil_u16(a, b)
-}
+pub fn div_ceil(a: u16, b: u16) -> u16 { return div_ceil_u16(a, b) }
 
 /// Overloaded div_round for u32
-pub fn div_round(a: u32, b: u32) -> u32 {
-    return div_round_u32(a, b)
-}
-
+pub fn div_round(a: u32, b: u32) -> u32 { return div_round_u32(a, b) }
 /// Overloaded div_round for u16
-pub fn div_round(a: u16, b: u16) -> u16 {
-    return div_round_u16(a, b)
-}
+pub fn div_round(a: u16, b: u16) -> u16 { return div_round_u16(a, b) }
 
 /// Overloaded diff for i32
-pub fn diff(a: i32, b: i32) -> i32 {
-    return diff_i32(a, b)
-}
-
+pub fn diff(a: i32, b: i32) -> i32 { return diff_i32(a, b) }
 /// Overloaded diff for u32
-pub fn diff(a: u32, b: u32) -> u32 {
-    return diff_u32(a, b)
-}
-
+pub fn diff(a: u32, b: u32) -> u32 { return diff_u32(a, b) }
 /// Overloaded diff for i16
-pub fn diff(a: i16, b: i16) -> i16 {
-    return diff_i16(a, b)
-}
-
+pub fn diff(a: i16, b: i16) -> i16 { return diff_i16(a, b) }
 /// Overloaded diff for u16
-pub fn diff(a: u16, b: u16) -> u16 {
-    return diff_u16(a, b)
-}
+pub fn diff(a: u16, b: u16) -> u16 { return diff_u16(a, b) }

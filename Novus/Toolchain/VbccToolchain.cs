@@ -691,6 +691,63 @@ public class VbccToolchain
             objFiles.Add(execBaseObj);
         }
 
+        // Assemble math_sqrt.o if sqrt/distance/hypot functions are used
+        if (asmSource.Contains("@math_sqrt") || asmSource.Contains("@math_distance") ||
+            asmSource.Contains("@math_hypot") || asmSource.Contains("@math_inv_sqrt") ||
+            asmSource.Contains("@math_has_fpu") || asmSource.Contains("@math_echo"))
+        {
+            var mathSqrtSource = Path.Combine(compilerDir, "stubs", "math_sqrt.s");
+            if (File.Exists(mathSqrtSource))
+            {
+                var mathSqrtObj = Path.Combine(outputPath, "math_sqrt.o");
+                if (!await AssembleInfrastructureFile(mathSqrtSource, mathSqrtObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_sqrt assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathSqrtObj);
+                Console.WriteLine("  → Added math_sqrt.o (sqrt functions detected)");
+            }
+        }
+
+        // Assemble math_fixed.o if fixed-point functions are used
+        if (asmSource.Contains("@fixed32_") || asmSource.Contains("@fixed16_"))
+        {
+            var mathFixedSource = Path.Combine(compilerDir, "stubs", "math_fixed.s");
+            if (File.Exists(mathFixedSource))
+            {
+                var mathFixedObj = Path.Combine(outputPath, "math_fixed.o");
+                if (!await AssembleInfrastructureFile(mathFixedSource, mathFixedObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_fixed assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathFixedObj);
+                Console.WriteLine("  → Added math_fixed.o (fixed-point functions detected)");
+            }
+        }
+
+        // Assemble math_core.o if core math functions are used
+        if (asmSource.Contains("_asm_abs_") || asmSource.Contains("_asm_min_") ||
+            asmSource.Contains("_asm_max_") || asmSource.Contains("_asm_clamp_") ||
+            asmSource.Contains("_asm_sign_") || asmSource.Contains("_asm_diff_") ||
+            asmSource.Contains("_asm_is_power_of_two") || asmSource.Contains("_asm_next_power_of_two") ||
+            asmSource.Contains("_asm_div_ceil") || asmSource.Contains("_asm_div_round"))
+        {
+            var mathCoreSource = Path.Combine(compilerDir, "stubs", "math_core.s");
+            if (File.Exists(mathCoreSource))
+            {
+                var mathCoreObj = Path.Combine(outputPath, "math_core.o");
+                if (!await AssembleInfrastructureFile(mathCoreSource, mathCoreObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_core assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathCoreObj);
+                Console.WriteLine("  → Added math_core.o (core math functions detected)");
+            }
+        }
+
         // Detect which library stubs are needed and assemble them
         Console.WriteLine("\n=== DEBUG: CompileToExecutable - Detecting libraries ===");
         Console.WriteLine($"Scanning main assembly source for library references...");
@@ -812,6 +869,67 @@ public class VbccToolchain
                 return false;
             }
             objFiles.Add(execBaseObj);
+        }
+
+        // Assemble math_sqrt.o if sqrt functions are used (check main and all dependencies)
+        var allSources = new List<string> { mainAsmSource };
+        allSources.AddRange(dependencyAssemblies.Values);
+        var combinedSource = string.Join("\n", allSources);
+
+        if (combinedSource.Contains("@math_sqrt") || combinedSource.Contains("@math_distance") ||
+            combinedSource.Contains("@math_hypot") || combinedSource.Contains("@math_inv_sqrt") ||
+            combinedSource.Contains("@math_has_fpu") || combinedSource.Contains("@math_echo"))
+        {
+            var mathSqrtSource = Path.Combine(compilerDir, "stubs", "math_sqrt.s");
+            if (File.Exists(mathSqrtSource))
+            {
+                var mathSqrtObj = Path.Combine(outputPath, "math_sqrt.o");
+                if (!await AssembleInfrastructureFile(mathSqrtSource, mathSqrtObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_sqrt assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathSqrtObj);
+                Console.WriteLine("  → Added math_sqrt.o (sqrt functions detected)");
+            }
+        }
+
+        // Assemble math_fixed.o if fixed-point functions are used
+        if (combinedSource.Contains("@fixed32_") || combinedSource.Contains("@fixed16_"))
+        {
+            var mathFixedSource = Path.Combine(compilerDir, "stubs", "math_fixed.s");
+            if (File.Exists(mathFixedSource))
+            {
+                var mathFixedObj = Path.Combine(outputPath, "math_fixed.o");
+                if (!await AssembleInfrastructureFile(mathFixedSource, mathFixedObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_fixed assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathFixedObj);
+                Console.WriteLine("  → Added math_fixed.o (fixed-point functions detected)");
+            }
+        }
+
+        // Assemble math_core.o if core math functions are used
+        if (combinedSource.Contains("_asm_abs_") || combinedSource.Contains("_asm_min_") ||
+            combinedSource.Contains("_asm_max_") || combinedSource.Contains("_asm_clamp_") ||
+            combinedSource.Contains("_asm_sign_") || combinedSource.Contains("_asm_diff_") ||
+            combinedSource.Contains("_asm_is_power_of_two") || combinedSource.Contains("_asm_next_power_of_two") ||
+            combinedSource.Contains("_asm_div_ceil") || combinedSource.Contains("_asm_div_round"))
+        {
+            var mathCoreSource = Path.Combine(compilerDir, "stubs", "math_core.s");
+            if (File.Exists(mathCoreSource))
+            {
+                var mathCoreObj = Path.Combine(outputPath, "math_core.o");
+                if (!await AssembleInfrastructureFile(mathCoreSource, mathCoreObj, assemblyCpu, forceInfrastructureRebuild))
+                {
+                    Console.WriteLine("math_core assembly failed");
+                    return false;
+                }
+                objFiles.Add(mathCoreObj);
+                Console.WriteLine("  → Added math_core.o (core math functions detected)");
+            }
         }
 
         // Extract symbols referenced by the main assembly

@@ -11,6 +11,29 @@
 // Fixed16 (8.8): 8 bits integer, 8 bits fractional
 //   Range: -128.0 to 127.996 (approx)
 //   Precision: ~0.004 (1/256)
+//
+// Performance: Core arithmetic (mul, div) uses optimized 68020+ assembly
+// with MULS.L/DIVS.L instructions for 64-bit precision.
+
+// ============================================================================
+// External Assembly Functions (defined in stubs/math_fixed.s)
+// ============================================================================
+
+// Fixed32 arithmetic
+extern fn fixed32_mul(a: i32, b: i32) -> i32
+extern fn fixed32_div(a: i32, b: i32) -> i32
+extern fn fixed32_mul_i32(a: i32, b: i32) -> i32
+extern fn fixed32_div_i32(a: i32, b: i32) -> i32
+extern fn fixed32_from_i32(x: i32) -> i32
+extern fn fixed32_to_i32(x: i32) -> i32
+extern fn fixed32_to_i32_rounded(x: i32) -> i32
+extern fn fixed32_abs(x: i32) -> i32
+extern fn fixed32_neg(x: i32) -> i32
+extern fn fixed32_lerp(a: i32, b: i32, t: i32) -> i32
+
+// Fixed16 arithmetic
+extern fn fixed16_mul(a: i16, b: i16) -> i16
+extern fn fixed16_div(a: i16, b: i16) -> i16
 
 // ============================================================================
 // Fixed32 - 16.16 Fixed Point
@@ -50,9 +73,8 @@ impl Fixed32 {
 
     /// Create a Fixed32 from an integer
     @inline
-    @suppress("W0001", "Shift is intentional")
     pub fn from_i32(x: i32) -> Fixed32 {
-        return Fixed32 { raw: x << 16 }
+        return Fixed32 { raw: fixed32_from_i32(x) }
     }
 
     /// Create a Fixed32 from an i16
@@ -64,16 +86,14 @@ impl Fixed32 {
 
     /// Convert to i32 (truncates fractional part)
     @inline
-    @suppress("W0001", "Shift is intentional")
     pub fn to_i32(&self) -> i32 {
-        return self.raw >> 16
+        return fixed32_to_i32(self.raw)
     }
 
     /// Convert to i32 with rounding
     @inline
-    @suppress("W0001", "Arithmetic is intentional")
     pub fn to_i32_rounded(&self) -> i32 {
-        return (self.raw + FIXED32_HALF) >> 16
+        return fixed32_to_i32_rounded(self.raw)
     }
 
     /// Create zero
@@ -160,39 +180,29 @@ impl Fixed32 {
     }
 
     /// Multiply two Fixed32 values
-    /// Uses 64-bit intermediate for accuracy on 68020+
-    @suppress("W0001", "Shift is intentional")
-    @suppress("W0002", "Cast is intentional")
+    /// Uses optimized 68020+ MULS.L for 32x32->64 bit multiply
+    @inline
     pub fn mul(&self, other: Fixed32) -> Fixed32 {
-        // 68020+ has 32x32->64 MULS.L instruction
-        // For 68000, this will use a software 64-bit multiply
-        let a = (i64)self.raw
-        let b = (i64)other.raw
-        let result = (a * b) >> 16
-        return Fixed32 { raw: (i32)result }
+        return Fixed32 { raw: fixed32_mul(self.raw, other.raw) }
     }
 
     /// Multiply by an integer (faster than mul for scaling)
     @inline
     pub fn mul_i32(&self, scalar: i32) -> Fixed32 {
-        return Fixed32 { raw: self.raw * scalar }
+        return Fixed32 { raw: fixed32_mul_i32(self.raw, scalar) }
     }
 
     /// Divide two Fixed32 values
-    @suppress("W0001", "Shift is intentional")
-    @suppress("W0002", "Cast is intentional")
+    /// Uses optimized 68020+ DIVS.L for 64/32 bit divide
+    @inline
     pub fn div(&self, other: Fixed32) -> Fixed32 {
-        // Use 64-bit to preserve precision
-        let a = (i64)self.raw << 16
-        let b = (i64)other.raw
-        let result = a / b
-        return Fixed32 { raw: (i32)result }
+        return Fixed32 { raw: fixed32_div(self.raw, other.raw) }
     }
 
     /// Divide by an integer (faster than div)
     @inline
     pub fn div_i32(&self, divisor: i32) -> Fixed32 {
-        return Fixed32 { raw: self.raw / divisor }
+        return Fixed32 { raw: fixed32_div_i32(self.raw, divisor) }
     }
 
     // === Comparison Operations ===

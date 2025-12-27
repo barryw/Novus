@@ -14,6 +14,61 @@ from std::math::fixed import Fixed32
 from std::math::trig import sin_fixed32, cos_fixed32, ANGLE_QUARTER, atan2_angle
 
 // ============================================================================
+// External Assembly Functions (defined in stubs/math_vec2.s)
+// ============================================================================
+
+// Vec2 (Fixed32) operations - return x in d0, y in d1
+extern fn vec2_add(v1: *Vec2, v2: *Vec2) -> i64      // x in low 32, y in high 32
+extern fn vec2_sub(v1: *Vec2, v2: *Vec2) -> i64
+extern fn vec2_neg(v: *Vec2) -> i64
+extern fn vec2_scale(v: *Vec2, factor: i32) -> i64
+extern fn vec2_scale_i32(v: *Vec2, factor: i32) -> i64
+extern fn vec2_div_i32(v: *Vec2, divisor: i32) -> i64
+extern fn vec2_hadamard(v1: *Vec2, v2: *Vec2) -> i64
+extern fn vec2_dot(v1: *Vec2, v2: *Vec2) -> i32
+extern fn vec2_cross(v1: *Vec2, v2: *Vec2) -> i32
+extern fn vec2_length_sq(v: *Vec2) -> i32
+extern fn vec2_length_approx(v: *Vec2) -> i32
+extern fn vec2_perp(v: *Vec2) -> i64
+extern fn vec2_perp_cw(v: *Vec2) -> i64
+extern fn vec2_rotate(v: *Vec2, cos_val: i32, sin_val: i32) -> i64
+extern fn vec2_lerp(v1: *Vec2, v2: *Vec2, t: i32) -> i64
+extern fn vec2_min(v1: *Vec2, v2: *Vec2) -> i64
+extern fn vec2_max(v1: *Vec2, v2: *Vec2) -> i64
+
+// Vec2i (integer) operations
+extern fn vec2i_add(v1: *Vec2i, v2: *Vec2i) -> i64
+extern fn vec2i_sub(v1: *Vec2i, v2: *Vec2i) -> i64
+extern fn vec2i_neg(v: *Vec2i) -> i64
+extern fn vec2i_scale(v: *Vec2i, factor: i32) -> i64
+extern fn vec2i_dot(v1: *Vec2i, v2: *Vec2i) -> i32
+extern fn vec2i_cross(v1: *Vec2i, v2: *Vec2i) -> i32
+extern fn vec2i_length_sq(v: *Vec2i) -> i32
+extern fn vec2i_perp(v: *Vec2i) -> i64
+extern fn vec2i_min(v1: *Vec2i, v2: *Vec2i) -> i64
+extern fn vec2i_max(v1: *Vec2i, v2: *Vec2i) -> i64
+
+// Helper to extract x,y from i64 return
+// VBCC 64-bit return: d0=high 32 bits, d1=low 32 bits
+// Assembly puts x in d0, y in d1
+// So packed = (d0 << 32) | d1 = (x << 32) | y
+@inline
+fn unpack_vec2(packed: i64) -> Vec2 {
+    return Vec2 {
+        x: Fixed32::from_raw((i32)(packed >> 32)),
+        y: Fixed32::from_raw((i32)packed),
+    }
+}
+
+@inline
+fn unpack_vec2i(packed: i64) -> Vec2i {
+    return Vec2i {
+        x: (i32)(packed >> 32),
+        y: (i32)packed,
+    }
+}
+
+// ============================================================================
 // Vec2 - Fixed-point 2D Vector
 // ============================================================================
 
@@ -115,51 +170,37 @@ impl Vec2 {
     /// Add two vectors
     @inline
     pub fn add(&self, other: Vec2) -> Vec2 {
-        return Vec2 {
-            x: self.x.add(other.x),
-            y: self.y.add(other.y),
-        }
+        return unpack_vec2(vec2_add(self, &other))
     }
 
     /// Subtract two vectors
     @inline
     pub fn sub(&self, other: Vec2) -> Vec2 {
-        return Vec2 {
-            x: self.x.sub(other.x),
-            y: self.y.sub(other.y),
-        }
+        return unpack_vec2(vec2_sub(self, &other))
     }
 
     /// Negate vector (flip direction)
     @inline
     pub fn neg(&self) -> Vec2 {
-        return Vec2 {
-            x: self.x.neg(),
-            y: self.y.neg(),
-        }
+        return unpack_vec2(vec2_neg(self))
     }
 
     /// Scale vector by Fixed32 factor
     @inline
     pub fn scale(&self, factor: Fixed32) -> Vec2 {
-        return Vec2 {
-            x: self.x.mul(factor),
-            y: self.y.mul(factor),
-        }
+        return unpack_vec2(vec2_scale(self, factor.to_raw()))
     }
 
     /// Scale vector by integer factor
     @inline
     pub fn scale_i32(&self, factor: i32) -> Vec2 {
-        return Vec2 {
-            x: self.x.mul_i32(factor),
-            y: self.y.mul_i32(factor),
-        }
+        return unpack_vec2(vec2_scale_i32(self, factor))
     }
 
     /// Divide vector by Fixed32 (use with caution - division is slow)
     @inline
     pub fn div(&self, divisor: Fixed32) -> Vec2 {
+        // Fixed32 division requires full 64-bit precision, keep in Novus for now
         return Vec2 {
             x: self.x.div(divisor),
             y: self.y.div(divisor),
@@ -169,19 +210,13 @@ impl Vec2 {
     /// Divide vector by integer (faster than Fixed32 division)
     @inline
     pub fn div_i32(&self, divisor: i32) -> Vec2 {
-        return Vec2 {
-            x: self.x.div_i32(divisor),
-            y: self.y.div_i32(divisor),
-        }
+        return unpack_vec2(vec2_div_i32(self, divisor))
     }
 
     /// Component-wise multiplication (Hadamard product)
     @inline
     pub fn hadamard(&self, other: Vec2) -> Vec2 {
-        return Vec2 {
-            x: self.x.mul(other.x),
-            y: self.y.mul(other.y),
-        }
+        return unpack_vec2(vec2_hadamard(self, &other))
     }
 
     // === Vector Operations ===
@@ -189,63 +224,45 @@ impl Vec2 {
     /// Dot product of two vectors
     @inline
     pub fn dot(&self, other: Vec2) -> Fixed32 {
-        return self.x.mul(other.x).add(self.y.mul(other.y))
+        return Fixed32::from_raw(vec2_dot(self, &other))
     }
 
     /// Cross product (returns Z component of 3D cross, useful for winding)
     /// Positive = counter-clockwise, Negative = clockwise
     @inline
     pub fn cross(&self, other: Vec2) -> Fixed32 {
-        return self.x.mul(other.y).sub(self.y.mul(other.x))
+        return Fixed32::from_raw(vec2_cross(self, &other))
     }
 
     /// Squared length (avoids expensive sqrt)
     /// Use for distance comparisons: a.length_sq() < b.length_sq()
     @inline
     pub fn length_sq(&self) -> Fixed32 {
-        return self.x.mul(self.x).add(self.y.mul(self.y))
+        return Fixed32::from_raw(vec2_length_sq(self))
     }
 
     /// Approximate length using alpha-max-beta-min algorithm
     /// Fast approximation good to about 4% error
     /// See: https://en.wikipedia.org/wiki/Alpha_max_plus_beta_min_algorithm
-    @suppress("W0001", "Arithmetic is intentional")
+    @inline
     pub fn length_approx(&self) -> Fixed32 {
-        let ax = self.x.abs()
-        let ay = self.y.abs()
-
-        // Alpha-max-beta-min: length ≈ max + 0.4 * min
-        // Using 0.4 ≈ 26214/65536 in Fixed32
-        if ax.gt(ay) {
-            let min_scaled = Fixed32::from_raw((ay.to_raw() * 26214) >> 16)
-            return ax.add(min_scaled)
-        } else {
-            let min_scaled = Fixed32::from_raw((ax.to_raw() * 26214) >> 16)
-            return ay.add(min_scaled)
-        }
+        return Fixed32::from_raw(vec2_length_approx(self))
     }
 
     /// Perpendicular vector (rotated 90° counter-clockwise)
     @inline
     pub fn perp(&self) -> Vec2 {
-        return Vec2 {
-            x: self.y.neg(),
-            y: self.x,
-        }
+        return unpack_vec2(vec2_perp(self))
     }
 
     /// Perpendicular vector (rotated 90° clockwise)
     @inline
     pub fn perp_cw(&self) -> Vec2 {
-        return Vec2 {
-            x: self.y,
-            y: self.x.neg(),
-        }
+        return unpack_vec2(vec2_perp_cw(self))
     }
 
     /// Reflect vector across a normal
     /// Useful for bouncing physics
-    @suppress("W0001", "Arithmetic is intentional")
     pub fn reflect(&self, normal: Vec2) -> Vec2 {
         let d = self.dot(normal)
         let two = Fixed32::from_raw(131072)  // 2.0 in Fixed32
@@ -255,15 +272,10 @@ impl Vec2 {
     // === Rotation Operations ===
 
     /// Rotate vector by angle (in BAMS: 0-65535 = 0-360°)
-    @suppress("W0001", "Arithmetic is intentional")
     pub fn rotate(&self, angle: u16) -> Vec2 {
         let cos_a = cos_fixed32(angle)
         let sin_a = sin_fixed32(angle)
-
-        return Vec2 {
-            x: self.x.mul(cos_a).sub(self.y.mul(sin_a)),
-            y: self.x.mul(sin_a).add(self.y.mul(cos_a)),
-        }
+        return unpack_vec2(vec2_rotate(self, cos_a.to_raw(), sin_a.to_raw()))
     }
 
     /// Rotate vector by 90° counter-clockwise (faster than rotate)
@@ -301,19 +313,13 @@ impl Vec2 {
     /// Component-wise minimum
     @inline
     pub fn min(&self, other: Vec2) -> Vec2 {
-        return Vec2 {
-            x: self.x.min(other.x),
-            y: self.y.min(other.y),
-        }
+        return unpack_vec2(vec2_min(self, &other))
     }
 
     /// Component-wise maximum
     @inline
     pub fn max(&self, other: Vec2) -> Vec2 {
-        return Vec2 {
-            x: self.x.max(other.x),
-            y: self.y.max(other.y),
-        }
+        return unpack_vec2(vec2_max(self, &other))
     }
 
     /// Clamp vector components to range
@@ -392,58 +398,49 @@ impl Vec2i {
     /// Add two vectors
     @inline
     pub fn add(&self, other: Vec2i) -> Vec2i {
-        return Vec2i {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
+        return unpack_vec2i(vec2i_add(self, &other))
     }
 
     /// Subtract two vectors
     @inline
     pub fn sub(&self, other: Vec2i) -> Vec2i {
-        return Vec2i {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
+        return unpack_vec2i(vec2i_sub(self, &other))
     }
 
     /// Negate vector
     @inline
     pub fn neg(&self) -> Vec2i {
-        return Vec2i { x: -self.x, y: -self.y }
+        return unpack_vec2i(vec2i_neg(self))
     }
 
     /// Scale by integer
     @inline
     pub fn scale(&self, factor: i32) -> Vec2i {
-        return Vec2i {
-            x: self.x * factor,
-            y: self.y * factor,
-        }
+        return unpack_vec2i(vec2i_scale(self, factor))
     }
 
     /// Dot product
     @inline
     pub fn dot(&self, other: Vec2i) -> i32 {
-        return self.x * other.x + self.y * other.y
+        return vec2i_dot(self, &other)
     }
 
     /// Cross product (Z component)
     @inline
     pub fn cross(&self, other: Vec2i) -> i32 {
-        return self.x * other.y - self.y * other.x
+        return vec2i_cross(self, &other)
     }
 
     /// Squared length
     @inline
     pub fn length_sq(&self) -> i32 {
-        return self.x * self.x + self.y * self.y
+        return vec2i_length_sq(self)
     }
 
     /// Perpendicular (90° CCW)
     @inline
     pub fn perp(&self) -> Vec2i {
-        return Vec2i { x: -self.y, y: self.x }
+        return unpack_vec2i(vec2i_perp(self))
     }
 
     /// Check equality
@@ -461,21 +458,13 @@ impl Vec2i {
     /// Component-wise minimum
     @inline
     pub fn min(&self, other: Vec2i) -> Vec2i {
-        var min_x = self.x
-        var min_y = self.y
-        if other.x < min_x { min_x = other.x }
-        if other.y < min_y { min_y = other.y }
-        return Vec2i { x: min_x, y: min_y }
+        return unpack_vec2i(vec2i_min(self, &other))
     }
 
     /// Component-wise maximum
     @inline
     pub fn max(&self, other: Vec2i) -> Vec2i {
-        var max_x = self.x
-        var max_y = self.y
-        if other.x > max_x { max_x = other.x }
-        if other.y > max_y { max_y = other.y }
-        return Vec2i { x: max_x, y: max_y }
+        return unpack_vec2i(vec2i_max(self, &other))
     }
 }
 
@@ -485,13 +474,9 @@ impl Vec2i {
 
 /// Linear interpolation between two vectors
 /// t should be in range [0, 1] as Fixed32
-@suppress("W0001", "Arithmetic is intentional")
+@inline
 pub fn lerp_vec2(a: Vec2, b: Vec2, t: Fixed32) -> Vec2 {
-    let one_minus_t = Fixed32::one().sub(t)
-    return Vec2 {
-        x: a.x.mul(one_minus_t).add(b.x.mul(t)),
-        y: a.y.mul(one_minus_t).add(b.y.mul(t)),
-    }
+    return unpack_vec2(vec2_lerp(&a, &b, t.to_raw()))
 }
 
 /// Distance squared between two vectors

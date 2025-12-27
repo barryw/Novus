@@ -294,6 +294,22 @@ impl TimerHandle {
         return Result::Ok(Duration::from_timeval(self.timereq.tr_time))
     }
 
+    /// Get the current system time as raw microseconds
+    /// Returns 0 on error - useful for benchmarking where error handling would add overhead
+    pub fn get_micros(&self) -> u32 {
+        self.timereq.tr_node.io_Command = TR_GETSYSTIME
+
+        let ioreq_ptr = &self.timereq.tr_node
+        let ioreq = (*IORequest)ioreq_ptr
+        let error = DoIO(ioreq)
+        if error != 0 {
+            return 0
+        }
+
+        let tv = self.timereq.tr_time
+        return (u32)tv.tv_secs * 1000000u32 + (u32)tv.tv_micro
+    }
+
     /// Delay for a specified duration
     ///
     /// Blocks until the time has elapsed.

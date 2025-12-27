@@ -372,8 +372,7 @@ public static class TestCommand
         // Import timer for benchmark mode
         if (options.Benchmark)
         {
-            sb.AppendLine("from std::os::timer import TimerHandle, Duration, TimerError");
-            sb.AppendLine("from std::core import Result");
+            sb.AppendLine("from std::os::timer import TimerHandle");
         }
         sb.AppendLine();
 
@@ -418,8 +417,7 @@ public static class TestCommand
         if (options.Benchmark)
         {
             sb.AppendLine("    var total_time_us: u32 = 0");
-            sb.AppendLine("    var start_time: Result<Duration, TimerError> = Result::Err(TimerError::OpenFailed)");
-            sb.AppendLine("    var end_time: Result<Duration, TimerError> = Result::Err(TimerError::OpenFailed)");
+            sb.AppendLine("    var start_us: u32 = 0");
             sb.AppendLine("    var elapsed_us: u32 = 0");
             sb.AppendLine();
             sb.AppendLine("    // Initialize timer for benchmarking");
@@ -459,7 +457,7 @@ public static class TestCommand
                 // Add timing for benchmark mode
                 if (options.Benchmark)
                 {
-                    sb.AppendLine($"    start_time = timer.get_time()");
+                    sb.AppendLine($"    start_us = timer.get_micros()");
                 }
 
                 sb.AppendLine($"    __novus_test_set_mode(1)");
@@ -470,15 +468,7 @@ public static class TestCommand
                 // Calculate elapsed time for benchmark mode
                 if (options.Benchmark)
                 {
-                    sb.AppendLine($"    end_time = timer.get_time()");
-                    sb.AppendLine($"    elapsed_us = 0");
-                    sb.AppendLine($"    match start_time {{");
-                    sb.AppendLine($"        Result::Ok(s) => match end_time {{");
-                    sb.AppendLine($"            Result::Ok(e) => {{ elapsed_us = e.sub(s).as_micros() }},");
-                    sb.AppendLine($"            Result::Err(_) => {{ }},");
-                    sb.AppendLine($"        }},");
-                    sb.AppendLine($"        Result::Err(_) => {{ }},");
-                    sb.AppendLine($"    }}");
+                    sb.AppendLine($"    elapsed_us = timer.get_micros() - start_us");
                     sb.AppendLine($"    total_time_us = total_time_us + elapsed_us");
                 }
 
@@ -515,7 +505,7 @@ public static class TestCommand
                 // Add timing for benchmark mode
                 if (options.Benchmark)
                 {
-                    sb.AppendLine($"    start_time = timer.get_time()");
+                    sb.AppendLine($"    start_us = timer.get_micros()");
                 }
 
                 sb.AppendLine($"    {testName}()");
@@ -523,15 +513,7 @@ public static class TestCommand
                 // Calculate elapsed time for benchmark mode
                 if (options.Benchmark)
                 {
-                    sb.AppendLine($"    end_time = timer.get_time()");
-                    sb.AppendLine($"    elapsed_us = 0");
-                    sb.AppendLine($"    match start_time {{");
-                    sb.AppendLine($"        Result::Ok(s) => match end_time {{");
-                    sb.AppendLine($"            Result::Ok(e) => {{ elapsed_us = e.sub(s).as_micros() }},");
-                    sb.AppendLine($"            Result::Err(_) => {{ }},");
-                    sb.AppendLine($"        }},");
-                    sb.AppendLine($"        Result::Err(_) => {{ }},");
-                    sb.AppendLine($"    }}");
+                    sb.AppendLine($"    elapsed_us = timer.get_micros() - start_us");
                     sb.AppendLine($"    total_time_us = total_time_us + elapsed_us");
                 }
 

@@ -1,0 +1,74 @@
+// Debug test for vec2 rotation
+from std::math::vec2 import Vec2
+from std::math::fixed import Fixed32
+from std::math::trig import sin_fixed32, cos_fixed32, ANGLE_QUARTER
+from std::io::file import write
+
+fn main() {
+    write("=== Rotate Debug Test ===\n")
+
+    // Test basic i32 printing - FIRST TEST, clean stack
+    write("\n--- Basic i32 test (first call) ---\n")
+    let test_val: i32 = 65536
+    write("literal 65536 = %ld\n", 65536)
+    write("test_val = %ld\n", test_val)
+
+    // Test with hex to see actual bits
+    write("test_val hex = %lx\n", test_val)
+    write("literal 65536 hex = %lx\n", 65536)
+
+    // Test smaller value that fits in 16 bits
+    let small: i32 = 255
+    write("small (255) = %ld\n", small)
+
+    // Test negative
+    let neg: i32 = -65536
+    write("neg (-65536) = %ld\n", neg)
+
+    // Test Fixed32::one directly
+    write("\n--- Fixed32::one test ---\n")
+    let f_one = Fixed32::one()
+    write("Fixed32::one().to_raw() = %ld (expect 65536)\n", f_one.to_raw())
+    write("Fixed32::one().to_i32() = %ld (expect 1)\n", f_one.to_i32())
+
+    // First test trig functions
+    let cos_90 = cos_fixed32(ANGLE_QUARTER)
+    let sin_90 = sin_fixed32(ANGLE_QUARTER)
+
+    write("cos(90) raw = %ld (expect 0)\n", cos_90.to_raw())
+    write("sin(90) raw = %ld (expect 65536)\n", sin_90.to_raw())
+
+    // Create unit vector (1, 0)
+    let v = Vec2::unit_x()
+    write("v.x raw = %ld (expect 65536)\n", v.get_x().to_raw())
+    write("v.y raw = %ld (expect 0)\n", v.get_y().to_raw())
+
+    // Test via the rotate method
+    write("\n--- Calling v.rotate(90deg) ---\n")
+    let rotated = v.rotate(ANGLE_QUARTER)
+    write("rotated.x raw = %ld (expect ~0)\n", rotated.get_x().to_raw())
+    write("rotated.y raw = %ld (expect ~65536)\n", rotated.get_y().to_raw())
+
+    // Also test 180 degree rotation
+    write("\n--- Calling v.rotate(180deg) ---\n")
+    let rot180 = v.rotate(32768u16)
+    write("rot180.x raw = %ld (expect ~-65536)\n", rot180.get_x().to_raw())
+    write("rot180.y raw = %ld (expect ~0)\n", rot180.get_y().to_raw())
+
+    // Test add to see if basic ops work
+    write("\n--- Testing add ---\n")
+    let v2 = Vec2::from_i32(2, 3)
+    let sum = v.add(v2)
+    write("(1,0) + (2,3) = (%ld, %ld) expect (3, 3)\n",
+          sum.get_x().to_i32(), sum.get_y().to_i32())
+
+    // Test perp (should also use i64 return)
+    write("\n--- Testing perp (90 CCW) ---\n")
+    let p = v.perp()
+    write("perp(1,0) = (%ld, %ld) expect (0, 1)\n",
+          p.get_x().to_i32(), p.get_y().to_i32())
+    write("perp(1,0) raw = (%ld, %ld) expect (0, 65536)\n",
+          p.get_x().to_raw(), p.get_y().to_raw())
+
+    write("\n=== Done ===\n")
+}

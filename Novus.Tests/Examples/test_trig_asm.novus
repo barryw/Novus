@@ -1,0 +1,166 @@
+// Test trig assembly optimizations
+from std::math::trig import sin_fixed32, cos_fixed32, sin_i16, cos_i16
+from std::math::trig import degrees_to_angle, angle_to_degrees
+from std::math::trig import ANGLE_QUARTER, ANGLE_HALF
+from std::math::fixed import Fixed32
+from std::test::test import expect_eq, expect_true
+
+// ============================================================================
+// sin_i16 Tests (14-bit scaled: 16384 = 1.0)
+// ============================================================================
+
+@test
+pub fn test_sin_i16_zero() {
+    // sin(0°) = 0
+    let result = sin_i16(0u16)
+    expect_eq((i32)result, 0, "sin(0) = 0")
+}
+
+@test
+pub fn test_sin_i16_90_degrees() {
+    // sin(90°) = 1.0 = 16384
+    let result = sin_i16(ANGLE_QUARTER)
+    expect_eq((i32)result, 16384, "sin(90) = 16384 (1.0)")
+}
+
+@test
+pub fn test_sin_i16_180_degrees() {
+    // sin(180°) = 0
+    let result = sin_i16(ANGLE_HALF)
+    expect_eq((i32)result, 0, "sin(180) = 0")
+}
+
+@test
+pub fn test_sin_i16_270_degrees() {
+    // sin(270°) = -1.0 = -16384
+    let result = sin_i16(49152u16)
+    expect_eq((i32)result, -16384, "sin(270) = -16384 (-1.0)")
+}
+
+@test
+pub fn test_sin_i16_45_degrees() {
+    // sin(45°) ≈ 0.7071 * 16384 ≈ 11585
+    // 45° = 8192 in BAMS (45 * 65536 / 360)
+    let result = sin_i16(8192u16)
+    // Allow some tolerance due to table precision
+    let val = (i32)result
+    expect_true(val >= 11500 && val <= 11700, "sin(45) ≈ 11585")
+}
+
+// ============================================================================
+// cos_i16 Tests
+// ============================================================================
+
+@test
+pub fn test_cos_i16_zero() {
+    // cos(0°) = 1.0 = 16384
+    let result = cos_i16(0u16)
+    expect_eq((i32)result, 16384, "cos(0) = 16384 (1.0)")
+}
+
+@test
+pub fn test_cos_i16_90_degrees() {
+    // cos(90°) = 0
+    let result = cos_i16(ANGLE_QUARTER)
+    expect_eq((i32)result, 0, "cos(90) = 0")
+}
+
+@test
+pub fn test_cos_i16_180_degrees() {
+    // cos(180°) = -1.0 = -16384
+    let result = cos_i16(ANGLE_HALF)
+    expect_eq((i32)result, -16384, "cos(180) = -16384 (-1.0)")
+}
+
+// ============================================================================
+// sin_fixed32 Tests
+// ============================================================================
+
+@test
+pub fn test_sin_fixed32_zero() {
+    // sin(0°) = 0.0
+    let result = sin_fixed32(0u16)
+    expect_eq(result.to_i32(), 0, "sin_fixed32(0) = 0")
+}
+
+@test
+pub fn test_sin_fixed32_90_degrees() {
+    // sin(90°) = 1.0, raw should be 65536
+    let result = sin_fixed32(ANGLE_QUARTER)
+    expect_eq(result.to_raw(), 65536, "sin_fixed32(90) = 1.0 (raw 65536)")
+}
+
+@test
+pub fn test_sin_fixed32_270_degrees() {
+    // sin(270°) = -1.0, raw should be -65536
+    let result = sin_fixed32(49152u16)
+    expect_eq(result.to_raw(), -65536, "sin_fixed32(270) = -1.0 (raw -65536)")
+}
+
+// ============================================================================
+// cos_fixed32 Tests
+// ============================================================================
+
+@test
+pub fn test_cos_fixed32_zero() {
+    // cos(0°) = 1.0, raw should be 65536
+    let result = cos_fixed32(0u16)
+    expect_eq(result.to_raw(), 65536, "cos_fixed32(0) = 1.0 (raw 65536)")
+}
+
+@test
+pub fn test_cos_fixed32_90_degrees() {
+    // cos(90°) = 0
+    let result = cos_fixed32(ANGLE_QUARTER)
+    expect_eq(result.to_raw(), 0, "cos_fixed32(90) = 0")
+}
+
+// ============================================================================
+// Angle Conversion Tests
+// ============================================================================
+
+@test
+pub fn test_degrees_to_angle() {
+    // 0° -> 0
+    expect_eq((i32)degrees_to_angle(0i16), 0, "0 deg = 0 bams")
+
+    // 90° -> 16384
+    let a90 = degrees_to_angle(90i16)
+    let diff = (i32)a90 - 16384
+    expect_true(diff >= -5 && diff <= 5, "90 deg ≈ 16384 bams")
+
+    // 180° -> 32768
+    let a180 = degrees_to_angle(180i16)
+    let diff2 = (i32)a180 - 32768
+    expect_true(diff2 >= -10 && diff2 <= 10, "180 deg ≈ 32768 bams")
+}
+
+@test
+pub fn test_angle_to_degrees() {
+    // 0 -> 0°
+    expect_eq((i32)angle_to_degrees(0u16), 0, "0 bams = 0 deg")
+
+    // 16384 -> 90°
+    expect_eq((i32)angle_to_degrees(16384u16), 90, "16384 bams = 90 deg")
+
+    // 32768 -> 180°
+    expect_eq((i32)angle_to_degrees(32768u16), 180, "32768 bams = 180 deg")
+}
+
+// ============================================================================
+// Trigonometric Identity Tests
+// ============================================================================
+
+@test
+pub fn test_sin_cos_identity() {
+    // sin²(x) + cos²(x) = 1 for any angle
+    // Test at 45°
+    let angle: u16 = 8192u16  // ~45 degrees
+    let s = sin_i16(angle)
+    let c = cos_i16(angle)
+
+    // Both should be approximately equal at 45°
+    var diff = (i32)s - (i32)c
+    if diff < 0 { diff = -diff }
+    expect_true(diff < 200, "sin(45) ≈ cos(45)")
+}
