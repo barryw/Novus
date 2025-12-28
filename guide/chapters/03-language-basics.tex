@@ -1,0 +1,675 @@
+\chapter{Language Basics}
+
+\begin{quote}
+\textit{``Simplicity is prerequisite for reliability.''}\\
+---Edsger W. Dijkstra
+\end{quote}
+
+\vspace{1em}
+
+This chapter covers the fundamental building blocks of Novus: how to declare variables, what types are available, how literals work, and how expressions combine values. By the end, you'll understand the core syntax and be ready to write meaningful programs.
+
+\section{Comments}
+
+Novus supports two comment styles:
+
+\subsection{Single-Line Comments}
+
+Use \texttt{//} for comments that extend to the end of the line:
+
+\begin{lstlisting}
+// This is a single-line comment
+let x = 42  // Comments can appear after code
+\end{lstlisting}
+
+\subsection{Multi-Line Comments}
+
+Use \texttt{/* */} for comments spanning multiple lines:
+
+\begin{lstlisting}
+/*
+ * This is a multi-line comment.
+ * Useful for longer explanations.
+ */
+let result = compute()
+\end{lstlisting}
+
+Multi-line comments do not nest. The first \texttt{*/} closes the comment, regardless of how many \texttt{/*} appeared inside.
+
+\section{Variables and Mutability}
+
+Novus provides three keywords for declaring bindings:
+
+\subsection{Mutable Variables with \texttt{var}}
+
+Variables declared with \texttt{var} can be reassigned:
+
+\begin{lstlisting}
+var x = 10
+x = 20  // OK - can reassign
+x = x + 5  // OK
+\end{lstlisting}
+
+Use \texttt{var} for counters, accumulators, temporary values, and any data that changes during execution.
+
+\subsection{Immutable Bindings with \texttt{let}}
+
+Bindings declared with \texttt{let} cannot be reassigned:
+
+\begin{lstlisting}
+let x = 10
+x = 20  // ERROR - cannot reassign
+\end{lstlisting}
+
+Immutable bindings make code intent clearer and allow the compiler to optimize more aggressively. Use \texttt{let} by default; switch to \texttt{var} when you need mutability.
+
+Note that immutability applies to the binding, not necessarily to the data it refers to. For example, a \texttt{let} binding to a mutable reference (\texttt{\&var T}) still allows modifying the referenced data.
+
+\subsection{Compile-Time Constants with \texttt{const}}
+
+Constants declared with \texttt{const} are evaluated at compile time:
+
+\begin{lstlisting}
+pub const SCREEN_WIDTH: u32 = 320
+pub const SCREEN_HEIGHT: u32 = 200
+pub const SCREEN_SIZE: u32 = SCREEN_WIDTH * SCREEN_HEIGHT
+\end{lstlisting}
+
+Constants must be literals or constant expressions---values that the compiler can evaluate without executing code. They cannot call functions or use runtime values.
+
+Constants are typically declared at module scope with \texttt{pub} visibility.
+
+\subsection{Comparison}
+
+\begin{center}
+\begin{tabular}{lccl}
+\textbf{Keyword} & \textbf{Reassignable} & \textbf{Evaluation} & \textbf{Typical Scope} \\
+\hline
+\texttt{var} & Yes & Runtime & Function/Block \\
+\texttt{let} & No & Runtime & Function/Block \\
+\texttt{const} & No & Compile-time & Module \\
+\end{tabular}
+\end{center}
+
+\subsection{Type Annotations}
+
+You can explicitly annotate types:
+
+\begin{lstlisting}
+let x: i32 = 42
+var count: u32 = 0
+\end{lstlisting}
+
+When the type is obvious from context, annotations are optional:
+
+\begin{lstlisting}
+let x = 42       // Inferred as i32
+let y = 42u32    // Type suffix makes it u32
+\end{lstlisting}
+
+The compiler performs type inference within function bodies. Module-level constants typically require explicit types.
+
+\section{Primitive Types}
+
+Novus provides several categories of primitive types.
+
+\subsection{Integer Types}
+
+Novus supports signed and unsigned integers in multiple sizes:
+
+\begin{description}
+    \item[\texttt{i8}] Signed 8-bit integer ($-128$ to $127$)
+    \item[\texttt{i16}] Signed 16-bit integer ($-32{,}768$ to $32{,}767$)
+    \item[\texttt{i32}] Signed 32-bit integer ($-2{,}147{,}483{,}648$ to $2{,}147{,}483{,}647$)
+    \item[\texttt{i64}] Signed 64-bit integer (wide range, requires two 32-bit registers on 68k)
+    \item[\texttt{u8}] Unsigned 8-bit integer ($0$ to $255$)
+    \item[\texttt{u16}] Unsigned 16-bit integer ($0$ to $65{,}535$)
+    \item[\texttt{u32}] Unsigned 32-bit integer ($0$ to $4{,}294{,}967{,}295$)
+    \item[\texttt{u64}] Unsigned 64-bit integer ($0$ to $18{,}446{,}744{,}073{,}709{,}551{,}615$)
+\end{description}
+
+The default integer type is \texttt{i32}. When you write a bare integer literal like \texttt{42}, it defaults to \texttt{i32} unless context requires otherwise.
+
+\subsection{Floating-Point Types}
+
+\begin{description}
+    \item[\texttt{f32}] 32-bit IEEE 754 single-precision float
+    \item[\texttt{f64}] 64-bit IEEE 754 double-precision float
+\end{description}
+
+On 68k systems without an FPU, floating-point operations use software emulation---slow but accurate. For performance-critical math on non-FPU systems, prefer fixed-point types.
+
+\subsection{Fixed-Point Types}
+
+Novus provides fixed-point arithmetic for efficient fractional math on integer hardware:
+
+\begin{description}
+    \item[\texttt{fixed16}] 16-bit fixed-point (8.8 format: 8 integer bits, 8 fractional bits)
+    \item[\texttt{fixed32}] 32-bit fixed-point (16.16 format: 16 integer bits, 16 fractional bits)
+\end{description}
+
+Fixed-point types use native 68k integer instructions, making them dramatically faster than soft-float on systems without an FPU.
+
+\subsection{Boolean Type}
+
+The \texttt{bool} type represents truth values:
+
+\begin{lstlisting}
+let flag: bool = true
+let done: bool = false
+\end{lstlisting}
+
+Booleans result from comparison and logical operations. Unlike C, integers and pointers do not implicitly convert to booleans---you must use explicit comparisons.
+
+\section{Literals}
+
+\subsection{Integer Literals}
+
+Integer literals support multiple bases and optional type suffixes.
+
+\subsubsection{Decimal}
+
+\begin{lstlisting}
+let x = 42
+let y = 1_000_000  // Underscores improve readability
+\end{lstlisting}
+
+Underscores are ignored; they exist solely to make large numbers easier to read.
+
+\subsubsection{Hexadecimal}
+
+Novus supports both C-style and Amiga-style hexadecimal:
+
+\begin{lstlisting}
+let color1 = 0xFF00AA  // C-style
+let color2 = $FF00AA   // Amiga-style (same value)
+\end{lstlisting}
+
+Both forms are equivalent. Use whichever feels natural---Amiga developers often prefer \texttt{\$}, while those from C backgrounds prefer \texttt{0x}.
+
+\subsubsection{Binary}
+
+Binary literals use the \texttt{\%} prefix:
+
+\begin{lstlisting}
+let mask = %1010    // Binary literal (value: 10)
+let flags = %11110000
+\end{lstlisting}
+
+Binary literals are useful for bit patterns and masks when working with hardware registers.
+
+\subsubsection{Type Suffixes}
+
+Append a type suffix to specify the literal's type explicitly:
+
+\begin{lstlisting}
+let a = 42u32   // u32
+let b = 42i8    // i8
+let c = 100u16  // u16
+\end{lstlisting}
+
+Type suffixes work with all bases:
+
+\begin{lstlisting}
+let hex_byte = $FFu8
+let binary_word = %1010u16
+let decimal_long = 1000u32
+\end{lstlisting}
+
+Without a suffix, integer literals default to \texttt{i32}.
+
+\subsection{Floating-Point Literals}
+
+Floating-point literals require a decimal point:
+
+\begin{lstlisting}
+let pi = 3.14
+let e = 2.71828f32  // f32 with explicit suffix
+\end{lstlisting}
+
+Without a suffix, floating-point literals default to \texttt{f64}.
+
+\subsection{String Literals}
+
+String literals use double quotes and support escape sequences:
+
+\begin{lstlisting}
+let greeting = "Hello, Amiga!"
+let multiline = "Line 1\nLine 2\nLine 3"
+let path = "SYS:Utilities\\"  // Escaped backslash
+\end{lstlisting}
+
+Supported escape sequences include:
+
+\begin{description}
+    \item[\texttt{\textbackslash n}] Newline (line feed)
+    \item[\texttt{\textbackslash r}] Carriage return
+    \item[\texttt{\textbackslash t}] Horizontal tab
+    \item[\texttt{\textbackslash 0}] Null byte
+    \item[\texttt{\textbackslash\textbackslash}] Backslash
+    \item[\texttt{\textbackslash"}] Double quote
+    \item[\texttt{\textbackslash'}] Single quote
+    \item[\texttt{\textbackslash xNN}] Hexadecimal byte (e.g., \texttt{\textbackslash x1B} for ESC)
+\end{description}
+
+\subsection{F-Strings (Formatted Strings)}
+
+F-strings embed expressions directly in string literals:
+
+\begin{lstlisting}
+let x = 42
+let message = f"The answer is {x}"
+// Results in: "The answer is 42"
+\end{lstlisting}
+
+Expressions inside \texttt{\{...\}} are evaluated and converted to strings. F-strings compile to efficient string concatenation or formatting calls.
+
+\subsection{Character Literals}
+
+Character literals use single quotes:
+
+\begin{lstlisting}
+let ch: u8 = 'A'
+let newline: u8 = '\n'
+let escape: u8 = '\x1B'  // ESC character
+\end{lstlisting}
+
+Character literals produce values of type \texttt{u8}. Novus does not have a separate \texttt{char} type---characters are simply 8-bit unsigned integers.
+
+\section{Operators}
+
+\subsection{Arithmetic Operators}
+
+Standard arithmetic works on integer and floating-point types:
+
+\begin{center}
+\begin{tabular}{cl}
+\textbf{Operator} & \textbf{Meaning} \\
+\hline
+\texttt{+} & Addition \\
+\texttt{-} & Subtraction \\
+\texttt{*} & Multiplication \\
+\texttt{/} & Division \\
+\texttt{\%} & Modulus (remainder) \\
+\end{tabular}
+\end{center}
+
+Division by zero is a runtime error in debug builds and undefined behavior in release builds. Always validate denominators when accepting untrusted input.
+
+\begin{lstlisting}
+let sum = 10 + 20      // 30
+let product = 5 * 6    // 30
+let quotient = 20 / 5  // 4
+let remainder = 17 % 5 // 2
+\end{lstlisting}
+
+\subsection{Comparison Operators}
+
+Comparisons produce \texttt{bool} values:
+
+\begin{center}
+\begin{tabular}{cl}
+\textbf{Operator} & \textbf{Meaning} \\
+\hline
+\texttt{==} & Equal to \\
+\texttt{!=} & Not equal to \\
+\texttt{<} & Less than \\
+\texttt{>} & Greater than \\
+\texttt{<=} & Less than or equal to \\
+\texttt{>=} & Greater than or equal to \\
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}
+let a = 10
+let b = 20
+let equal = a == b     // false
+let less = a < b       // true
+let greater_eq = a >= b // false
+\end{lstlisting}
+
+\subsection{Logical Operators}
+
+Logical operators combine boolean values:
+
+\begin{center}
+\begin{tabular}{cl}
+\textbf{Operator} & \textbf{Meaning} \\
+\hline
+\texttt{\&\&} & Logical AND (short-circuiting) \\
+\texttt{||} & Logical OR (short-circuiting) \\
+\texttt{!} & Logical NOT \\
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}
+let x = true
+let y = false
+let and_result = x && y  // false
+let or_result = x || y   // true
+let not_result = !x      // false
+\end{lstlisting}
+
+Both \texttt{\&\&} and \texttt{||} short-circuit: the right-hand side is not evaluated if the result is determined by the left-hand side alone.
+
+\subsection{Bitwise Operators}
+
+Bitwise operators manipulate individual bits:
+
+\begin{center}
+\begin{tabular}{cl}
+\textbf{Operator} & \textbf{Meaning} \\
+\hline
+\texttt{\&} & Bitwise AND \\
+\texttt{|} & Bitwise OR \\
+\texttt{\textasciicircum} & Bitwise XOR \\
+\texttt{\textasciitilde} & Bitwise NOT (one's complement) \\
+\texttt{<<} & Left shift \\
+\texttt{>>} & Right shift (arithmetic for signed, logical for unsigned) \\
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}
+let a = %1111  // 15
+let b = %1010  // 10
+
+let and_bits = a & b   // %1010 (10)
+let or_bits = a | b    // %1111 (15)
+let xor_bits = a ^ b   // %0101 (5)
+let not_bits = ~a      // %0000 (-16 in two's complement)
+
+let shifted_left = 1 << 3   // 8
+let shifted_right = 16 >> 2 // 4
+\end{lstlisting}
+
+Bitwise operations compile to single 68k instructions and execute in one or two cycles---essential for custom chip programming.
+
+\subsection{Compound Assignment Operators}
+
+Compound assignment combines an operation with assignment:
+
+\begin{lstlisting}
+var x = 10
+x += 5   // x = x + 5
+x -= 3   // x = x - 3
+x *= 2   // x = x * 2
+x /= 4   // x = x / 4
+x %= 3   // x = x % 3
+
+x &= $FF   // x = x & $FF
+x |= $80   // x = x | $80
+x ^= $AA   // x = x ^ $AA
+x <<= 2    // x = x << 2
+x >>= 1    // x = x >> 1
+\end{lstlisting}
+
+All arithmetic and bitwise operators have corresponding compound forms.
+
+\subsection{Increment and Decrement Operators}
+
+Novus supports both prefix and postfix increment/decrement:
+
+\begin{lstlisting}
+var x = 5
+
+++x  // Pre-increment: x becomes 6, evaluates to 6
+--x  // Pre-decrement: x becomes 5, evaluates to 5
+
+let a = x++  // Post-increment: a = 5, then x becomes 6
+let b = x--  // Post-decrement: b = 6, then x becomes 5
+\end{lstlisting}
+
+Prefix operators modify the variable and return the new value. Postfix operators return the original value and then modify the variable.
+
+\subsection{Range Operators}
+
+Range operators create range values for iteration:
+
+\begin{description}
+    \item[\texttt{start..end}] Exclusive range (\texttt{start} to \texttt{end - 1})
+    \item[\texttt{start..=end}] Inclusive range (\texttt{start} to \texttt{end})
+\end{description}
+
+\begin{lstlisting}
+for i in 0..10 {
+    // i goes from 0 to 9
+}
+
+for j in 0..=10 {
+    // j goes from 0 to 10 (inclusive)
+}
+\end{lstlisting}
+
+Ranges are covered in detail in Chapter 5: Control Flow.
+
+\section{Type Conversions}
+
+\subsection{C-Style Casts}
+
+Use C-style cast syntax to convert between numeric types:
+
+\begin{lstlisting}
+let x: u32 = 42
+let y: i32 = (i32)x
+let z: *u8 = (*u8)y
+\end{lstlisting}
+
+Casts can chain:
+
+\begin{lstlisting}
+let w: i64 = (i64)(i32)(u32)x
+\end{lstlisting}
+
+Casts are explicit and potentially unsafe---truncation, sign changes, and pointer conversions are your responsibility. The compiler trusts that you know what you're doing.
+
+\subsection{The \texttt{as} Keyword}
+
+The \texttt{as} keyword provides an alternative syntax for type assertions:
+
+\begin{lstlisting}
+let x = 42 as u32
+\end{lstlisting}
+
+Both cast styles are valid; choose whichever feels more natural.
+
+\section{References and Pointers}
+
+Novus distinguishes between references (non-null pointers checked at compile time) and raw pointers (nullable, unchecked).
+
+\subsection{Immutable References}
+
+Create a reference with the \texttt{\&} operator:
+
+\begin{lstlisting}
+var x = 10
+let ref_x: &i32 = &x
+\end{lstlisting}
+
+The type is \texttt{\&i32}---a reference to an \texttt{i32}. References are guaranteed non-null and automatically dereference in most contexts.
+
+\subsection{Mutable References}
+
+For references that allow modification, use \texttt{\&var}:
+
+\begin{lstlisting}
+var x = 10
+let ref_x: &var i32 = &var x
+*ref_x = 20  // OK - modifies x
+\end{lstlisting}
+
+The type is \texttt{\&var i32}. The \texttt{\&var} syntax appears both in the type annotation and when creating the reference.
+
+Note that Novus uses \texttt{var} for mutable, not \texttt{mut} as in some other languages.
+
+\subsection{Raw Pointers}
+
+Raw pointers use the \texttt{*T} syntax:
+
+\begin{lstlisting}
+let ptr: *u8 = (*u8)0xDFF000  // Custom chip register
+\end{lstlisting}
+
+Pointers can be null and require explicit null checks:
+
+\begin{lstlisting}
+if ptr == null {
+    return  // Handle null case
+}
+\end{lstlisting}
+
+Raw pointers are essential for FFI and hardware access, but prefer references when possible.
+
+\subsection{Dereferencing}
+
+Use \texttt{*} to dereference a pointer or reference:
+
+\begin{lstlisting}
+let x = 10
+let ref_x = &x
+let value = *ref_x  // 10
+\end{lstlisting}
+
+For pointers, dereferencing an invalid or null pointer is undefined behavior.
+
+\section{Arrays}
+
+\subsection{Fixed-Size Arrays}
+
+Arrays have a fixed size known at compile time:
+
+\begin{lstlisting}
+let numbers: [i32; 3] = [10, 20, 30]
+\end{lstlisting}
+
+The type \texttt{[i32; 3]} means ``array of 3 \texttt{i32} values.'' The size is part of the type.
+
+\subsection{Array Literals}
+
+Create arrays with bracket syntax:
+
+\begin{lstlisting}
+let primes = [2, 3, 5, 7, 11]
+\end{lstlisting}
+
+The compiler infers the size from the number of elements.
+
+\subsection{Repeat Syntax}
+
+Initialize arrays with a repeated value:
+
+\begin{lstlisting}
+let zeros = [0; 100]  // 100 zeros
+let buffer: [u8; 1024] = [0; 1024]
+\end{lstlisting}
+
+The syntax \texttt{[value; count]} creates an array of \texttt{count} elements, each initialized to \texttt{value}.
+
+\subsection{Indexing}
+
+Access array elements with bracket indexing:
+
+\begin{lstlisting}
+let numbers = [10, 20, 30]
+let first = numbers[0u32]   // 10
+let second = numbers[1u32]  // 20
+\end{lstlisting}
+
+Indices must be unsigned integers. In debug builds, out-of-bounds access triggers a panic. In release builds, bounds checking may be elided for performance.
+
+\section{Tuples}
+
+\subsection{Tuple Types}
+
+Tuples group multiple values of potentially different types:
+
+\begin{lstlisting}
+let point: (i32, i32) = (100, 200)
+let rgb: (u8, u8, u8) = (255, 128, 64)
+\end{lstlisting}
+
+The type \texttt{(i32, i32)} means ``a tuple of two \texttt{i32} values.''
+
+\subsection{Tuple Literals}
+
+Create tuples with parenthesized, comma-separated values:
+
+\begin{lstlisting}
+let color = (192, 96, 32)
+\end{lstlisting}
+
+\subsection{Destructuring}
+
+Extract tuple elements with destructuring:
+
+\begin{lstlisting}
+let (r, g, b) = get_rgb()
+\end{lstlisting}
+
+This binds \texttt{r}, \texttt{g}, and \texttt{b} to the tuple's three elements. Destructuring works in \texttt{let} and \texttt{var} bindings.
+
+\subsection{Returning Multiple Values}
+
+Tuples enable returning multiple values from functions:
+
+\begin{lstlisting}
+fn get_rgb() -> (i32, i32, i32) {
+    return (255, 128, 64)
+}
+\end{lstlisting}
+
+\section{Expressions and Statements}
+
+In Novus, most constructs are expressions---they produce values.
+
+\subsection{Expression vs Statement}
+
+An expression evaluates to a value:
+
+\begin{lstlisting}
+let x = 2 + 2  // Expression: 4
+\end{lstlisting}
+
+A statement performs an action without producing a value:
+
+\begin{lstlisting}
+x = 10  // Assignment statement
+\end{lstlisting}
+
+However, even assignments are expressions in Novus, allowing chained assignment:
+
+\begin{lstlisting}
+var a = 0
+var b = 0
+a = b = 5  // Both a and b become 5
+\end{lstlisting}
+
+\subsection{Block Expressions}
+
+Blocks (sequences of statements enclosed in braces) can be expressions if they end with an expression:
+
+\begin{lstlisting}
+let x = {
+    let a = 10
+    let b = 20
+    a + b  // No semicolon - this is the block's value
+}
+// x = 30
+\end{lstlisting}
+
+If a block ends with a semicolon, it produces no value (unit type).
+
+\section{Summary}
+
+This chapter covered Novus's fundamental syntax:
+
+\begin{itemize}
+    \item \textbf{Variables:} \texttt{var} for mutable, \texttt{let} for immutable, \texttt{const} for compile-time constants
+    \item \textbf{Types:} Integers (\texttt{i8}--\texttt{i64}, \texttt{u8}--\texttt{u64}), floats (\texttt{f32}, \texttt{f64}), fixed-point (\texttt{fixed16}, \texttt{fixed32}), and \texttt{bool}
+    \item \textbf{Literals:} Decimal, hex (\texttt{0x}/\texttt{\$}), binary (\texttt{\%}), strings, f-strings, and characters
+    \item \textbf{Operators:} Arithmetic, comparison, logical, bitwise, and compound assignment
+    \item \textbf{References:} \texttt{\&T} (immutable), \texttt{\&var T} (mutable), \texttt{*T} (raw pointers)
+    \item \textbf{Arrays:} Fixed-size with type \texttt{[T; N]}, indexed with unsigned integers
+    \item \textbf{Tuples:} Group values with \texttt{(T1, T2, ...)}, destructure with \texttt{let (a, b) = ...}
+\end{itemize}
+
+With these building blocks, you can write meaningful programs. The next chapter explores the type system in depth, covering structs, enums, and pattern matching.
