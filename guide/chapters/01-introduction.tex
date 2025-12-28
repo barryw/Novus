@@ -2,20 +2,20 @@
 
 \section{What is Novus?}
 
-Novus is a systems programming language designed specifically for the Amiga 68k platform. It compiles to native 68020+ machine code and integrates deeply with AmigaOS, producing executables that run on real hardware and accurate emulators alike.
+Novus is a systems programming language designed specifically for the Amiga 68k platform. It transpiles to C99, which VBCC then compiles to native 68020+ machine code. The result is executables that integrate deeply with AmigaOS and run on real hardware and accurate emulators alike.
 
 The name comes from the Latin word for ``new''—reflecting the project's mission to bring modern language design to classic machines. Novus is not a port of an existing language, nor is it a lowest-common-denominator cross-platform tool. Every design decision is made with the Amiga in mind.
 
 \subsection{Key Characteristics}
 
 \begin{description}
-    \item[Native Performance] Novus compiles directly to 68k assembly, then to Amiga executables via the VBCC toolchain. There is no interpreter, no virtual machine, no runtime overhead beyond what you explicitly request.
+    \item[Native Performance] Novus transpiles to C99, leveraging VBCC's mature 68k code generator to produce Amiga executables. There is no interpreter, no virtual machine, no runtime overhead beyond what you explicitly request.
 
     \item[Modern Safety] The type system catches errors at compile time. \texttt{Result} and \texttt{Option} types make error handling explicit. Resource cleanup is deterministic via \texttt{defer} blocks. You get safety without garbage collection.
 
     \item[Direct Hardware Access] Novus doesn't hide the Amiga's hardware behind abstractions you can't escape. Custom chip registers, Exec library calls, copper lists, blitter operations—all are first-class citizens with typed, safe interfaces.
 
-    \item[Readable Output] The generated assembly is clean and well-commented. When you need to understand what the compiler is doing—and on the Amiga, you often do—the output won't fight you.
+    \item[Readable Output] The generated C code is clean and readable. When you need to understand what the compiler is doing—and on the Amiga, you often do—the output won't fight you. You can also emit assembly via \texttt{--emit-asm} to see exactly what VBCC produces.
 
     \item[Amiga-Native Async] The \texttt{async}/\texttt{await} model maps directly to AmigaOS primitives: Exec signals and message ports. No hidden threads, no runtime scheduler—just the OS facilities the Amiga provides.
 \end{description}
