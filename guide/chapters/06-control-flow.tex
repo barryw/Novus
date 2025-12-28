@@ -1,0 +1,919 @@
+\chapter{Control Flow}
+\label{ch:control-flow}
+
+Control flow constructs determine the order in which statements are executed. Novus provides a comprehensive set of control flow mechanisms, from basic conditionals to sophisticated pattern matching. This chapter covers all the ways you can direct program execution in Novus.
+
+\section{Conditional Statements}
+\label{sec:conditionals}
+
+\subsection{if and else}
+\label{subsec:if-else}
+
+The \texttt{if} statement executes code based on a boolean condition:
+
+\begin{lstlisting}
+fn classify_temperature(temp: i32) -> i32 {
+    if temp < 0 {
+        return -1  // Freezing
+    } else if temp < 20 {
+        return 0   // Cold
+    } else if temp < 30 {
+        return 1   // Comfortable
+    } else {
+        return 2   // Hot
+    }
+}
+\end{lstlisting}
+
+The condition must be of type \texttt{bool}. Unlike C, Novus does not implicitly convert integers to booleans---you must use explicit comparisons.
+
+\textbf{Blocks are required.} Unlike C, the braces around the body are mandatory, even for single statements:
+
+\begin{lstlisting}
+// Correct
+if x > 0 {
+    return x
+}
+
+// Syntax error: missing braces
+// if x > 0 return x
+\end{lstlisting}
+
+\subsection{if as an Expression}
+\label{subsec:if-expression}
+
+In Novus, \texttt{if} can be used as an expression when both branches return a value:
+
+\begin{lstlisting}
+let max = if a > b { a } else { b }
+
+// Also valid with blocks
+let result = if condition {
+    compute_something()
+} else {
+    compute_fallback()
+}
+\end{lstlisting}
+
+When used as an expression, both the \texttt{if} and \texttt{else} branches must be present and must return the same type:
+
+\begin{lstlisting}
+// Error: branches return different types
+let bad = if condition { 42 } else { "hello" }
+\end{lstlisting}
+
+\subsection{Short-Circuit Evaluation}
+\label{subsec:short-circuit}
+
+The logical operators \texttt{\&\&} (and) and \texttt{||} (or) use short-circuit evaluation:
+
+\begin{itemize}
+    \item \texttt{a \&\& b}: If \texttt{a} is false, \texttt{b} is not evaluated
+    \item \texttt{a || b}: If \texttt{a} is true, \texttt{b} is not evaluated
+\end{itemize}
+
+This allows safe idioms like:
+
+\begin{lstlisting}
+// ptr is only dereferenced if non-null
+if ptr != 0 && (*ptr).value > 0 {
+    // Safe to use ptr here
+}
+
+// check_signal is only called if running is true
+if running && check_signal() {
+    handle_signal()
+}
+\end{lstlisting}
+
+\subsection{if let}
+\label{subsec:if-let}
+
+The \texttt{if let} construct checks whether a value is non-null (for pointers) or non-zero (for integers) and binds it to a variable. This is primarily used when working with raw pointers from AmigaOS FFI calls:
+
+\begin{lstlisting}
+fn process_pointer(ptr: *u8) -> i32 {
+    if let p = ptr {
+        // p is bound to ptr and is guaranteed non-null here
+        return (i32)p
+    } else {
+        // ptr was null
+        return -1
+    }
+}
+\end{lstlisting}
+
+\textbf{Note:} For pattern matching on \texttt{Option<T>} and \texttt{Result<T, E>} types, use \texttt{let-else} (Section~\ref{subsec:let-else}) or \texttt{match} (Section~\ref{sec:match}) instead.
+
+The \texttt{if let} construct is particularly useful with pointers returned from AmigaOS functions that may return null on failure:
+
+\begin{lstlisting}
+fn open_library(name: *u8) -> i32 {
+    let lib = OpenLibrary(name, 0)
+
+    if let base = lib {
+        // Library opened successfully, base is non-null
+        CloseLibrary(base)
+        return 0
+    } else {
+        // Library not found
+        return 1
+    }
+}
+\end{lstlisting}
+
+\subsection{let-else}
+\label{subsec:let-else}
+
+The \texttt{let-else} statement handles pattern matching where the \texttt{else} block must diverge (i.e., return, break, continue, or panic). This is ideal for early-exit patterns:
+
+\begin{lstlisting}
+enum MaybeValue {
+    Some(i32),
+    None
+}
+
+fn process(input: MaybeValue) -> i32 {
+    let MaybeValue::Some(value) = input else {
+        // This block runs if pattern doesn't match
+        // Must diverge - cannot fall through
+        return -1
+    }
+
+    // value is now bound and available here
+    return value * 2
+}
+\end{lstlisting}
+
+The \texttt{else} block \emph{must} diverge. The compiler will reject code where the else block could fall through to the subsequent statements.
+
+This pattern works well with \texttt{Result} and \texttt{Option} types:
+
+\begin{lstlisting}
+from std::core import Result
+from std::error::errors import DosError
+
+fn read_file(path: *u8) -> Result<i32, DosError> {
+    let Result::Ok(handle) = open_file(path) else {
+        return Result::Err(DosError::NotFound)
+    }
+
+    // handle is now available for use
+    let bytes = read_data(handle)
+    close_file(handle)
+    return Result::Ok(bytes)
+}
+\end{lstlisting}
+
+\section{Loops}
+\label{sec:loops}
+
+Novus provides several loop constructs, each suited to different use cases.
+
+\subsection{while Loops}
+\label{subsec:while}
+
+The \texttt{while} loop executes its body as long as the condition is true:
+
+\begin{lstlisting}
+var count = 0
+while count < 10 {
+    count++
+}
+// count is now 10
+\end{lstlisting}
+
+The condition is evaluated before each iteration. If the condition is initially false, the body never executes.
+
+\begin{lstlisting}
+fn find_first_even(start: i32, max: i32) -> i32 {
+    var n = start
+    while n < max {
+        if n % 2 == 0 {
+            return n  // Found an even number
+        }
+        n++
+    }
+    return -1  // None found
+}
+\end{lstlisting}
+
+\subsection{forever Loops}
+\label{subsec:forever}
+
+The \texttt{forever} loop creates an infinite loop that must be exited with \texttt{break} or \texttt{return}:
+
+\begin{lstlisting}
+fn wait_for_signal() -> i32 {
+    var iterations = 0
+    forever {
+        iterations++
+        if check_signal() {
+            break  // Exit the loop
+        }
+        if iterations > 1000 {
+            return -1  // Timeout
+        }
+    }
+    return iterations
+}
+\end{lstlisting}
+
+The \texttt{forever} keyword is clearer than \texttt{while true} and signals the programmer's intent that the loop is designed to be exited via control flow rather than a condition becoming false.
+
+This is particularly useful for event loops in Amiga applications:
+
+\begin{lstlisting}
+fn main_event_loop(window: *Window) {
+    forever {
+        let msg = GetMsg(window.UserPort)
+        if let m = msg {
+            let class = m.Class
+            ReplyMsg(m)
+
+            if class == IDCMP_CLOSEWINDOW {
+                break  // User closed the window
+            }
+
+            handle_message(class)
+        }
+
+        WaitPort(window.UserPort)
+    }
+}
+\end{lstlisting}
+
+\subsection{C-Style for Loops}
+\label{subsec:for-cstyle}
+
+Novus supports traditional C-style \texttt{for} loops with initialization, condition, and update expressions:
+
+\begin{lstlisting}
+// Sum numbers 0 through 9
+var sum = 0
+for var i = 0; i < 10; i++ {
+    sum = sum + i
+}
+// sum is now 45
+\end{lstlisting}
+
+The initialization can declare a new variable (with \texttt{var} or \texttt{let}) or assign to an existing one. The loop variable declared in the initialization is scoped to the loop.
+
+\begin{lstlisting}
+// Skip even numbers with continue
+var odd_sum = 0
+for var j = 0; j < 10; j++ {
+    if j % 2 == 0 {
+        continue  // Skip even numbers
+    }
+    odd_sum = odd_sum + j
+}
+// odd_sum is 1 + 3 + 5 + 7 + 9 = 25
+\end{lstlisting}
+
+\subsection{Range-Based for Loops}
+\label{subsec:for-range}
+
+Novus provides syntactic sugar for iterating over numeric ranges:
+
+\begin{lstlisting}
+// Exclusive range: 0, 1, 2, 3, 4 (excludes 5)
+var sum = 0
+for i in 0..5 {
+    sum = sum + i
+}
+// sum is 10
+\end{lstlisting}
+
+\begin{lstlisting}
+// Inclusive range: 1, 2, 3, 4, 5 (includes 5)
+var sum = 0
+for i in 1..=5 {
+    sum = sum + i
+}
+// sum is 15
+\end{lstlisting}
+
+Ranges can use variables:
+
+\begin{lstlisting}
+let start = 2
+let end = 7
+var sum = 0
+for i in start..end {
+    sum = sum + i
+}
+// sum is 2 + 3 + 4 + 5 + 6 = 20
+\end{lstlisting}
+
+An empty range (where start equals end) executes zero iterations:
+
+\begin{lstlisting}
+var count = 0
+for i in 5..5 {
+    count++  // Never executes
+}
+// count is 0
+\end{lstlisting}
+
+\subsection{for-in Loops with Collections}
+\label{subsec:for-in}
+
+The \texttt{for-in} loop iterates over collections that provide \texttt{get()} and \texttt{len()} methods:
+
+\begin{lstlisting}
+from std::collections::vec import Vec
+
+let vec: Vec<i32> = Vec { [10, 20, 30, 40, 50] }
+
+var sum: i32 = 0
+for value in vec {
+    sum += value
+}
+// sum is 150
+\end{lstlisting}
+
+The loop variable receives a copy of each element. The collection itself remains usable after the loop completes. For collections containing non-copyable types, the iteration behavior depends on the collection's implementation.
+
+Any type that provides \texttt{get(index: i32)} and \texttt{len()} methods can be used with \texttt{for-in}. The compiler generates code equivalent to a C-style for loop that calls these methods.
+
+You can declare the loop variable as mutable if you need to modify the local copy:
+
+\begin{lstlisting}
+for var item in collection {
+    item = transform(item)  // Modifies local copy
+    process(item)
+}
+\end{lstlisting}
+
+\section{Loop Control Statements}
+\label{sec:loop-control}
+
+\subsection{break and continue}
+\label{subsec:break-continue}
+
+The \texttt{break} statement immediately exits the innermost loop:
+
+\begin{lstlisting}
+var i = 0
+while i < 100 {
+    if i == 42 {
+        break  // Exit immediately
+    }
+    i++
+}
+// i is 42
+\end{lstlisting}
+
+The \texttt{continue} statement skips the rest of the current iteration and proceeds to the next:
+
+\begin{lstlisting}
+var sum = 0
+var i = 0
+while i < 10 {
+    i++
+    if i == 5 {
+        continue  // Skip adding 5
+    }
+    sum = sum + i
+}
+// sum is 1+2+3+4+6+7+8+9+10 = 50 (5 is skipped)
+\end{lstlisting}
+
+\subsection{Labeled Loops}
+\label{subsec:labeled-loops}
+
+When working with nested loops, you can label loops and use those labels with \texttt{break} and \texttt{continue} to control outer loops:
+
+\begin{lstlisting}
+var count = 0
+outer: while true {
+    var inner = 0
+    while inner < 5 {
+        count++
+        if count == 7 {
+            break outer  // Exit the outer loop
+        }
+        inner++
+    }
+}
+// count is 7
+\end{lstlisting}
+
+Labels work with all loop types:
+
+\begin{lstlisting}
+outer: forever {
+    for i in 0..10 {
+        for j in 0..10 {
+            if i * j > 50 {
+                break outer  // Exit all three loops
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+The \texttt{continue} statement also works with labels:
+
+\begin{lstlisting}
+var sum = 0
+var i = 0
+outer: while i < 5 {
+    i++
+    var j = 0
+    while j < 3 {
+        j++
+        if i == 3 && j == 2 {
+            continue outer  // Skip to next i iteration
+        }
+        sum++
+    }
+}
+\end{lstlisting}
+
+\textbf{Note:} Unlike C labels, Novus labels are only valid for loop control. Novus does not support \texttt{goto} statements---labels can only be used with \texttt{break} and \texttt{continue}.
+
+\subsection{Postfix Conditions}
+\label{subsec:postfix-conditions}
+
+Novus supports postfix \texttt{if} and \texttt{unless} for concise conditional statements:
+
+\begin{lstlisting}
+fn classify(x: i32) -> i32 {
+    return -1 if x < 0    // Return -1 if negative
+    return 1 if x > 0     // Return 1 if positive
+    return 0              // Zero
+}
+\end{lstlisting}
+
+The \texttt{unless} keyword is the logical inverse of \texttt{if}:
+
+\begin{lstlisting}
+fn check(valid: bool) -> i32 {
+    return -1 unless valid  // Return -1 if NOT valid
+    return 0
+}
+\end{lstlisting}
+
+Postfix conditions work with \texttt{break} and \texttt{continue}:
+
+\begin{lstlisting}
+var sum = 0
+var m = 0
+while m < 10 {
+    m++
+    continue if m % 3 == 0  // Skip multiples of 3
+    sum = sum + m
+}
+// sum is 1+2+4+5+7+8+10 = 37
+
+outer: while true {
+    var k = 0
+    while k < 100 {
+        k++
+        break outer if k == 5  // Exit outer when k reaches 5
+    }
+}
+\end{lstlisting}
+
+\section{Pattern Matching with match}
+\label{sec:match}
+
+The \texttt{match} expression provides exhaustive pattern matching over values. It's more powerful than a simple switch statement and is the idiomatic way to handle enums in Novus.
+
+\subsection{Basic match Expressions}
+\label{subsec:match-basics}
+
+\begin{lstlisting}
+fn http_status_category(code: i32) -> i32 {
+    match code {
+        200 => return 1,  // Success
+        201 => return 1,
+        204 => return 1,
+        400 => return 2,  // Client Error
+        401 => return 2,
+        404 => return 2,
+        500 => return 3,  // Server Error
+        503 => return 3,
+        _   => return 0   // Unknown (wildcard)
+    }
+}
+\end{lstlisting}
+
+The underscore (\texttt{\_}) is a wildcard pattern that matches any value not handled by previous arms.
+
+\subsection{Matching on Enums}
+\label{subsec:match-enums}
+
+Pattern matching is essential for working with enums, especially those with associated data:
+
+\begin{lstlisting}
+enum Status {
+    Success,
+    Pending,
+    Error(i32)
+}
+
+fn handle_status(status: Status) -> i32 {
+    match status {
+        Status::Success => return 0,
+        Status::Pending => return 1,
+        Status::Error(code) => return code  // Bind the error code
+    }
+}
+\end{lstlisting}
+
+When an enum variant carries data, the pattern can bind that data to a variable for use in the match arm.
+
+\subsection{Match with Generic Enums}
+\label{subsec:match-generic}
+
+Pattern matching works seamlessly with generic enums like \texttt{Option<T>} and \texttt{Result<T, E>}:
+
+\begin{lstlisting}
+from std::core import Option
+
+fn get_value_or_default(opt: Option<i32>) -> i32 {
+    match opt {
+        Option::Some(val) => return val,
+        Option::None => return 0
+    }
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+from std::core import Result
+from std::error::errors import DosError
+
+fn process_result(res: Result<i32, DosError>) -> i32 {
+    match res {
+        Result::Ok(value) => return value,
+        Result::Err(_) => return -1  // Ignore error details
+    }
+}
+\end{lstlisting}
+
+\subsection{Match with Blocks}
+\label{subsec:match-blocks}
+
+When a match arm requires multiple statements, use a block:
+
+\begin{lstlisting}
+fn sign(n: i32) -> i32 {
+    match n {
+        0 => return 0,
+        _ => {
+            if n > 0 {
+                return 1   // Positive
+            }
+            return -1      // Negative
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Match with Guards}
+\label{subsec:match-guards}
+
+Match arms can include guard clauses with \texttt{if} to add additional conditions:
+
+\begin{lstlisting}
+fn classify_number(n: i32) -> i32 {
+    match n {
+        x if x < 0 => return -1,      // Negative
+        0 => return 0,                 // Zero
+        x if x <= 10 => return 1,     // Small positive
+        _ => return 2                  // Large positive
+    }
+}
+\end{lstlisting}
+
+The guard is evaluated after the pattern matches but before the arm is executed. If the guard evaluates to false, matching continues with the next arm.
+
+\subsection{Matching Integer Literals}
+\label{subsec:match-integers}
+
+Novus supports matching on decimal, hexadecimal, and binary integer literals:
+
+\begin{lstlisting}
+fn parse_permission(bits: i32) -> i32 {
+    match bits {
+        %111 => return 7,  // rwx (binary)
+        %110 => return 6,  // rw-
+        %100 => return 4,  // r--
+        _    => return 0
+    }
+}
+
+fn hex_component(hex: i32) -> i32 {
+    match hex {
+        $00 => return 0,    // Hexadecimal
+        $FF => return 255,
+        $80 => return 128,
+        _   => return hex
+    }
+}
+\end{lstlisting}
+
+\subsection{Exhaustiveness Checking}
+\label{subsec:match-exhaustiveness}
+
+The Novus compiler verifies that match expressions are exhaustive---every possible value must be handled. For enums, this means every variant must have a corresponding arm (or a wildcard):
+
+\begin{lstlisting}
+enum Direction {
+    North,
+    South,
+    East,
+    West
+}
+
+fn direction_to_int(dir: Direction) -> i32 {
+    match dir {
+        Direction::North => return 0,
+        Direction::South => return 1,
+        Direction::East => return 2
+        // Error: non-exhaustive pattern, Direction::West not covered
+    }
+}
+\end{lstlisting}
+
+Either add a case for \texttt{Direction::West} or use a wildcard pattern.
+
+\section{Error Propagation with the Try Operator}
+\label{sec:try-operator}
+
+The try operator (\texttt{?}) provides concise error propagation for functions returning \texttt{Result<T, E>}.
+
+\subsection{Basic Usage}
+\label{subsec:try-basic}
+
+Without the try operator, error handling requires verbose match expressions:
+
+\begin{lstlisting}
+fn process_file_manual(path: *u8) -> Result<i32, DosError> {
+    let handle_result = open_file(path)
+    let handle = match handle_result {
+        Result::Ok(h) => h,
+        Result::Err(e) => return Result::Err(e)
+    }
+
+    let bytes_result = read_file(handle)
+    let bytes = match bytes_result {
+        Result::Ok(b) => b,
+        Result::Err(e) => return Result::Err(e)
+    }
+
+    close_file(handle)
+    return Result::Ok(bytes)
+}
+\end{lstlisting}
+
+With the try operator, this becomes:
+
+\begin{lstlisting}
+fn process_file(path: *u8) -> Result<i32, DosError> {
+    let handle = open_file(path)?
+    let bytes = read_file(handle)?
+    close_file(handle)?
+
+    return Result::Ok(bytes)
+}
+\end{lstlisting}
+
+The \texttt{?} operator:
+\begin{enumerate}
+    \item Unwraps \texttt{Result::Ok(value)} and yields \texttt{value}
+    \item On \texttt{Result::Err(e)}, immediately returns \texttt{Result::Err(e)} from the current function
+\end{enumerate}
+
+\subsection{Try Operator in Expressions}
+\label{subsec:try-expressions}
+
+The try operator can be used within expressions:
+
+\begin{lstlisting}
+fn get_file_size(path: *u8) -> Result<i32, DosError> {
+    let handle = open_file(path)?
+    let bytes = read_file(handle)?
+    return Result::Ok(bytes + 100)  // Add header overhead
+}
+\end{lstlisting}
+
+\subsection{Chaining Operations}
+\label{subsec:try-chaining}
+
+The try operator excels at chaining multiple fallible operations:
+
+\begin{lstlisting}
+fn complex_operation() -> Result<i32, DosError> {
+    let file = open_file("data.txt")?
+    let header = read_header(file)?
+    let body = read_body(file, header.length)?
+    let result = process_data(body)?
+    close_file(file)?
+
+    return Result::Ok(result)
+}
+\end{lstlisting}
+
+Each \texttt{?} acts as an early-exit point---if any operation fails, the error propagates immediately to the caller.
+
+\subsection{Combining with defer}
+\label{subsec:try-defer}
+
+The try operator pairs well with \texttt{defer} for resource cleanup:
+
+\begin{lstlisting}
+fn safe_file_operation(path: *u8) -> Result<i32, DosError> {
+    let handle = open_file(path)?
+    defer {
+        close_file(handle)
+    }
+
+    let header = read_header(handle)?   // If this fails...
+    let body = read_body(handle)?       // ...or this...
+
+    // The defer block still runs, closing the file
+    return Result::Ok(process(body))
+}
+\end{lstlisting}
+
+\section{The defer Statement}
+\label{sec:defer}
+
+The \texttt{defer} statement schedules code to run when the current scope exits, regardless of how it exits (normal completion, early return, or error propagation).
+
+\subsection{Basic Usage}
+\label{subsec:defer-basic}
+
+\begin{lstlisting}
+fn example() -> i32 {
+    let buffer = allocate_buffer(1024)
+    defer {
+        free_buffer(buffer)
+    }
+
+    // Use buffer...
+    if some_condition() {
+        return -1  // defer block still runs
+    }
+
+    return 0  // defer block runs before returning
+}
+\end{lstlisting}
+
+\subsection{Multiple Defers}
+\label{subsec:defer-multiple}
+
+Multiple \texttt{defer} statements execute in reverse order (last-in, first-out):
+
+\begin{lstlisting}
+fn multi_resource() {
+    let resource1 = acquire_first()
+    defer { release_first(resource1) }
+
+    let resource2 = acquire_second()
+    defer { release_second(resource2) }
+
+    let resource3 = acquire_third()
+    defer { release_third(resource3) }
+
+    // Use resources...
+
+    // On exit: release_third, then release_second, then release_first
+}
+\end{lstlisting}
+
+This LIFO order ensures resources are released in the reverse order of acquisition, which is typically the correct order for dependent resources.
+
+\subsection{Defer with AmigaOS Resources}
+\label{subsec:defer-amiga}
+
+The \texttt{defer} statement is particularly useful for managing AmigaOS resources:
+
+\begin{lstlisting}
+fn open_window_safe() -> i32 {
+    let screen = LockPubScreen(0)
+    if screen == 0 {
+        return -1
+    }
+    defer { UnlockPubScreen(0, screen) }
+
+    let visual_info = GetVisualInfo(screen, 0)
+    if visual_info == 0 {
+        return -2
+    }
+    defer { FreeVisualInfo(visual_info) }
+
+    let window = OpenWindowTags(screen)
+    if window == 0 {
+        return -3
+    }
+    defer { CloseWindow(window) }
+
+    // Use window...
+    process_events(window)
+
+    return 0
+    // Resources released in order: window, visual_info, screen
+}
+\end{lstlisting}
+
+\section{The using Statement}
+\label{sec:using}
+
+The \texttt{using} statement provides scoped resource management for types that implement the \texttt{Drop} trait. When the block exits, the resource's \texttt{drop} method is called automatically.
+
+\begin{lstlisting}
+pub struct Resource {
+    value: i32
+}
+
+impl Drop for Resource {
+    fn drop(&var self) {
+        // Cleanup happens here automatically
+    }
+}
+
+fn create_resource(v: i32) -> Resource {
+    return Resource { value: v }
+}
+
+fn process_data() -> i32 {
+    using create_resource(42) {
+        // The resource exists for this block
+        let x: i32 = 10
+        // ... use x ...
+    }
+    // Resource's drop() called automatically here
+
+    return 0
+}
+\end{lstlisting}
+
+The \texttt{using} statement takes an expression that returns a type implementing \texttt{Drop}. The resource is created, the block executes, and then \texttt{drop()} is called---regardless of how the block exits.
+
+\subsection{using vs defer}
+\label{subsec:using-vs-defer}
+
+Both \texttt{using} and \texttt{defer} provide deterministic cleanup, but they serve different purposes:
+
+\textbf{Use \texttt{defer}} when:
+\begin{itemize}
+    \item You need to bind the resource to a variable for use in the scope
+    \item The resource must live for the entire function scope
+    \item You need cleanup after early returns from anywhere in the function
+    \item You're working with raw FFI resources that don't implement \texttt{Drop}
+\end{itemize}
+
+\textbf{Use \texttt{using}} when:
+\begin{itemize}
+    \item The resource is only needed to exist during a specific block
+    \item You don't need to access the resource directly (e.g., a lock or guard)
+    \item The resource type implements the \texttt{Drop} trait
+\end{itemize}
+
+Example showing the difference:
+
+\begin{lstlisting}
+fn process_files() -> i32 {
+    // defer: resource is bound to a variable, cleanup at function exit
+    let handle = open_file("log.txt")
+    defer { close_file(handle) }
+
+    // using: resource exists for block scope only
+    // Useful for locks, guards, or temporary resources
+    using acquire_lock() {
+        // Lock is held for this block
+        do_protected_work()
+    }
+    // Lock released here
+
+    // We can still use handle
+    write_to_file(handle, "Done")
+    return 0
+    // handle closed here by defer
+}
+\end{lstlisting}
+
+\section{Summary}
+\label{sec:control-flow-summary}
+
+Novus provides a complete set of control flow constructs:
+
+\begin{itemize}
+    \item \textbf{Conditionals}: \texttt{if}/\texttt{else}, \texttt{if let}, \texttt{let-else} for pattern matching with early exit
+    \item \textbf{Short-circuit evaluation}: \texttt{\&\&} and \texttt{||} operators for efficient boolean logic
+    \item \textbf{Loops}: \texttt{while}, \texttt{forever}, C-style \texttt{for}, range-based \texttt{for}, and \texttt{for-in}
+    \item \textbf{Loop control}: \texttt{break}, \texttt{continue}, labeled loops for nested control
+    \item \textbf{Postfix conditions}: \texttt{if} and \texttt{unless} for concise conditional statements
+    \item \textbf{Pattern matching}: \texttt{match} with exhaustiveness checking, guards, and literal patterns
+    \item \textbf{Error propagation}: The \texttt{?} operator for concise \texttt{Result} handling
+    \item \textbf{Resource management}: \texttt{defer} and \texttt{using} for deterministic cleanup
+\end{itemize}
+
+These constructs work together to enable clear, safe, and expressive code. The emphasis on explicit control flow and exhaustive pattern matching helps prevent bugs while keeping the code readable.
+
+In the next chapter, we'll explore functions and methods, including function definitions, parameter passing, generic functions, and impl blocks.
