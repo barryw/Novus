@@ -1,0 +1,1302 @@
+\chapter{Types}
+
+\begin{quote}
+\textit{``A type system is a syntactic method for enforcing levels of abstraction in programs.'' --- John C. Reynolds}
+\end{quote}
+
+Novus features a static, strong type system designed to provide safety without sacrificing the control needed for systems programming on the Amiga. Every value has a known type at compile time, enabling the compiler to catch errors early and generate efficient 68k machine code.
+
+This chapter explores Novus's type system in depth: primitive types, composite types (structs and enums), traits for polymorphism, pattern matching for working with data, and generics for code reuse.
+
+\section{Type System Overview}
+
+Novus's type system is built on these principles:
+
+\begin{itemize}
+\item \textbf{Static typing} --- all types known at compile time
+\item \textbf{Strong typing} --- no implicit conversions between unrelated types
+\item \textbf{Explicit conversions} --- casts must be written explicitly
+\item \textbf{Zero-cost abstractions} --- high-level types compile to efficient machine code
+\item \textbf{Null safety} --- no null pointers; use \texttt{Option<T>} instead
+\item \textbf{Error handling} --- errors are values via \texttt{Result<T, E>}
+\end{itemize}
+
+Every expression in Novus has a type, and the compiler verifies that types are used correctly throughout your program.
+
+\section{Primitive Types}
+
+Novus provides a set of built-in primitive types (covered in Chapter 2). Here's a quick reference:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Type} & \textbf{Description} \\
+\hline
+\texttt{i8}, \texttt{i16}, \texttt{i32}, \texttt{i64} & Signed integers \\
+\texttt{u8}, \texttt{u16}, \texttt{u32}, \texttt{u64} & Unsigned integers \\
+\texttt{bool} & Boolean (\texttt{true} or \texttt{false}) \\
+\texttt{f32}, \texttt{f64} & Floating-point (soft-float on 68k without FPU) \\
+\texttt{fixed16}, \texttt{fixed32} & Fixed-point (8.8 and 16.16 format) \\
+\texttt{*T} & Raw pointer to type \texttt{T} (can be null) \\
+\texttt{\&T}, \texttt{\&var T} & References (guaranteed non-null) \\
+\hline
+\end{tabular}
+\caption{Novus Primitive Types}
+\end{table}
+
+\section{Structs}
+
+Structs are composite types that group related data together. They are the primary way to create custom types in Novus.
+
+\subsection{Declaring Structs}
+
+A struct declaration defines a new type with named fields:
+
+\begin{lstlisting}
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+struct Color {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+\end{lstlisting}
+
+Each field has a name and a type. Fields are separated by commas, and a trailing comma is allowed.
+
+\subsection{Struct Visibility}
+
+By default, structs are private to the module where they're defined. Use \texttt{pub} to make them public:
+
+\begin{lstlisting}
+pub struct Point {
+    x: i32,
+    y: i32,
+}
+
+internal struct Config {
+    setting: bool,
+}
+
+struct Private {
+    data: i32,
+}
+\end{lstlisting}
+
+\textbf{Important:} Regardless of struct visibility, \textit{all fields are always private}. Novus does not support field-level visibility modifiers. To expose field values, provide accessor methods in an \texttt{impl} block.
+
+\subsection{Creating Struct Instances}
+
+Create instances using struct literal syntax:
+
+\begin{lstlisting}
+let origin = Point { x: 0, y: 0 };
+let pixel = Point { x: 100, y: 200 };
+
+let red = Color { r: 255, g: 0, b: 0, a: 255 };
+\end{lstlisting}
+
+All fields must be initialized. The order of fields in the literal doesn't matter.
+
+\subsection{Accessing Fields}
+
+Access struct fields using dot notation:
+
+\begin{lstlisting}
+let p = Point { x: 10, y: 20 };
+let x_coord = p.x;  // 10
+let y_coord = p.y;  // 20
+\end{lstlisting}
+
+To modify fields, the binding must be mutable:
+
+\begin{lstlisting}
+var p = Point { x: 10, y: 20 };
+p.x = 15;
+p.y = 25;
+\end{lstlisting}
+
+\subsection{Struct Update Syntax}
+
+The spread operator \texttt{..} allows creating a new struct from an existing one, updating specific fields:
+
+\begin{lstlisting}
+let p1 = Point { x: 10, y: 20 };
+let p2 = Point { x: 100, ..p1 };  // { x: 100, y: 20 }
+let p3 = Point { y: 200, ..p1 };  // { x: 10, y: 200 }
+let p4 = Point { ..p1 };          // { x: 10, y: 20 }
+\end{lstlisting}
+
+The \texttt{..expr} must appear last in the literal and copies all unspecified fields from the given expression.
+
+\subsection{Generic Structs}
+
+Structs can be parameterized with type parameters:
+
+\begin{lstlisting}
+struct Pair<T, U> {
+    first: T,
+    second: U,
+}
+
+let int_pair = Pair { first: 42, second: 100 };
+let mixed = Pair { first: 10, second: "hello" };
+\end{lstlisting}
+
+The compiler infers type arguments from usage, or you can specify them explicitly:
+
+\begin{lstlisting}
+let explicit: Pair<i32, i32> = Pair { first: 1, second: 2 };
+\end{lstlisting}
+
+\subsection{Const Generic Parameters}
+
+Structs can also have compile-time constant parameters:
+
+\begin{lstlisting}
+struct Buffer<const N: u32> {
+    data: [u8; N],
+    len: u32,
+}
+
+let small_buf: Buffer<64> = Buffer {
+    data: [0; 64],
+    len: 0
+};
+let large_buf: Buffer<1024> = Buffer {
+    data: [0; 1024],
+    len: 0
+};
+\end{lstlisting}
+
+Const parameters must be integer types and are known at compile time.
+
+\subsection{Where Clauses}
+
+Struct definitions can have \texttt{where} clauses to constrain generic parameters:
+
+\begin{lstlisting}
+struct Container<T> where T: Clone {
+    value: T,
+    backup: T,
+}
+\end{lstlisting}
+
+This requires that any type \texttt{T} used with \texttt{Container} must implement the \texttt{Clone} trait.
+
+\section{Implementation Blocks}
+
+Methods and associated functions are defined in \texttt{impl} blocks:
+
+\begin{lstlisting}
+impl Point {
+    fn new(x: i32, y: i32) -> Point {
+        Point { x: x, y: y }
+    }
+
+    fn distance(&self) -> f32 {
+        let dx = self.x as f32;
+        let dy = self.y as f32;
+        sqrt(dx * dx + dy * dy)
+    }
+
+    fn translate(&var self, dx: i32, dy: i32) {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    }
+}
+\end{lstlisting}
+
+\subsection{Self Parameter Variants}
+
+Methods can take \texttt{self} in different forms:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Form} & \textbf{Meaning} \\
+\hline
+\texttt{\&self} & Immutable borrow; method reads but doesn't modify \\
+\texttt{\&var self} & Mutable borrow; method can modify the instance \\
+\texttt{self} & Takes ownership; instance consumed by call \\
+\texttt{consuming self} & Explicit ownership transfer; semantically identical to \texttt{self} \\
+\hline
+\end{tabular}
+\caption{Self Parameter Forms}
+\end{table}
+
+\begin{lstlisting}
+impl Point {
+    // Immutable borrow - reads only
+    fn magnitude(&self) -> i32 {
+        self.x * self.x + self.y * self.y
+    }
+
+    // Mutable borrow - modifies in place
+    fn scale(&var self, factor: i32) {
+        self.x = self.x * factor;
+        self.y = self.y * factor;
+    }
+
+    // Consumes self - takes ownership
+    fn into_tuple(self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
+    // Explicit consuming - same as self
+    fn consume(consuming self) {
+        // self is consumed
+    }
+}
+\end{lstlisting}
+
+\subsection{Associated Functions}
+
+Functions without a \texttt{self} parameter are associated functions (like static methods):
+
+\begin{lstlisting}
+impl Point {
+    fn origin() -> Point {
+        Point { x: 0, y: 0 }
+    }
+
+    fn from_polar(r: f32, theta: f32) -> Point {
+        Point {
+            x: (r * cos(theta)) as i32,
+            y: (r * sin(theta)) as i32,
+        }
+    }
+}
+
+let origin = Point::origin();
+let p = Point::from_polar(10.0, 3.14159 / 4.0);
+\end{lstlisting}
+
+\subsection{Generic Implementations}
+
+Implementations can be generic:
+
+\begin{lstlisting}
+impl<T, U> Pair<T, U> {
+    fn new(first: T, second: U) -> Pair<T, U> {
+        Pair { first: first, second: second }
+    }
+
+    fn get_first(&self) -> &T {
+        &self.first
+    }
+}
+
+impl<T> Pair<T, T> where T: Clone {
+    fn duplicate_first(self) -> Pair<T, T> {
+        let copy = self.first.clone();
+        Pair { first: self.first, second: copy }
+    }
+}
+\end{lstlisting}
+
+\subsection{Multiple Impl Blocks}
+
+A type can have multiple \texttt{impl} blocks:
+
+\begin{lstlisting}
+impl Point {
+    fn new(x: i32, y: i32) -> Point {
+        Point { x: x, y: y }
+    }
+}
+
+impl Point {
+    fn distance(&self) -> f32 {
+        sqrt((self.x * self.x + self.y * self.y) as f32)
+    }
+}
+\end{lstlisting}
+
+This is useful for organizing code or when implementing different traits.
+
+\section{Enums}
+
+Enumerations define a type by enumerating its possible variants. Each variant can carry associated data.
+
+\subsection{Unit Variants}
+
+Simple enums list named constants:
+
+\begin{lstlisting}
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+
+let heading = Direction::North;
+\end{lstlisting}
+
+\subsection{Tuple Variants}
+
+Variants can carry data as tuples:
+
+\begin{lstlisting}
+enum Command {
+    Quit,
+    Move(i32, i32),
+    Write(i32),
+    ChangeColor(u8, u8, u8),
+}
+
+let cmd1 = Command::Quit;
+let cmd2 = Command::Move(10, 20);
+let cmd3 = Command::ChangeColor(255, 0, 0);
+\end{lstlisting}
+
+Each variant can have a different number and type of fields.
+
+\subsection{Generic Enums}
+
+Enums can be parameterized with type parameters:
+
+\begin{lstlisting}
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+\end{lstlisting}
+
+These are the foundation of Novus's error handling and null safety (covered in detail later).
+
+\subsection{Enum Limitations}
+
+\textbf{Important:} Novus enums support only \textit{unit variants} and \textit{tuple variants}. Struct-style variants are \textbf{not supported}:
+
+\begin{lstlisting}
+// NOT SUPPORTED - struct variants
+enum Message {
+    Move { x: i32, y: i32 },  // ERROR!
+}
+
+// Instead, use tuple variants:
+enum Message {
+    Move(i32, i32),  // OK
+}
+\end{lstlisting}
+
+If you need named fields, define a separate struct:
+
+\begin{lstlisting}
+struct MoveData {
+    x: i32,
+    y: i32,
+}
+
+enum Message {
+    Move(MoveData),
+    Quit,
+}
+\end{lstlisting}
+
+\section{Traits}
+
+Traits define shared behavior across types. They're similar to interfaces in other languages but more powerful.
+
+\subsection{Defining Traits}
+
+A trait declares a set of methods that implementing types must provide:
+
+\begin{lstlisting}
+trait Clone {
+    fn clone(&self) -> Self
+}
+
+trait Eq {
+    fn eq(&self, other: &Self) -> bool
+}
+
+trait Hash {
+    fn hash(&self) -> u32
+}
+\end{lstlisting}
+
+\subsection{Default Implementations}
+
+Traits can provide default implementations:
+
+\begin{lstlisting}
+trait Printable {
+    fn print(&self) {
+        // Default implementation
+        println("Printable object");
+    }
+
+    fn debug_print(&self);  // Must be implemented
+}
+\end{lstlisting}
+
+Types implementing the trait can use the default or override it.
+
+\subsection{Implementing Traits}
+
+Use \texttt{impl TraitName for TypeName} to implement a trait:
+
+\begin{lstlisting}
+impl Clone for Point {
+    fn clone(&self) -> Point {
+        return Point { x: self.x, y: self.y }
+    }
+}
+
+impl Eq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+\end{lstlisting}
+
+Once implemented, you can call trait methods:
+
+\begin{lstlisting}
+let p1 = Point { x: 10, y: 20 };
+let p2 = p1.clone();
+let s = p1.to_string();
+\end{lstlisting}
+
+\subsection{Built-in Traits}
+
+Novus provides several important built-in traits:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Trait} & \textbf{Purpose} \\
+\hline
+\texttt{Drop} & Custom cleanup when value goes out of scope \\
+\texttt{Clone} & Explicit duplication of values \\
+\texttt{Copy} & Marker trait for types that can be copied implicitly \\
+\texttt{Eq} & Equality comparison \\
+\texttt{Hash} & Hashing for collections \\
+\texttt{From<T>} & Type conversion from \texttt{T} \\
+\texttt{Default} & Provides a default value \\
+\hline
+\end{tabular}
+\caption{Core Built-in Traits}
+\end{table}
+
+\subsubsection{The Drop Trait}
+
+\texttt{Drop} provides custom cleanup logic:
+
+\begin{lstlisting}
+struct FileHandle {
+    fd: i32,
+}
+
+impl Drop for FileHandle {
+    fn drop(&var self) {
+        close_file(self.fd);
+    }
+}
+\end{lstlisting}
+
+When a \texttt{FileHandle} goes out of scope, \texttt{drop} is called automatically.
+
+\subsubsection{The From Trait}
+
+\texttt{From<T>} enables type conversions:
+
+\begin{lstlisting}
+impl From<i32> for Point {
+    fn from(value: i32) -> Point {
+        Point { x: value, y: value }
+    }
+}
+
+let p = Point::from(42);  // Point { x: 42, y: 42 }
+\end{lstlisting}
+
+\subsection{Trait Bounds}
+
+Traits can be used as bounds on generic parameters:
+
+\begin{lstlisting}
+fn are_equal<T>(a: &T, b: &T) -> bool where T: Eq {
+    return a.eq(b)
+}
+
+fn clone_if_equal<T>(a: &T, b: &T) -> Option<T> where T: Clone + Eq {
+    if a.eq(b) {
+        return Option::Some(a.clone())
+    }
+    return Option::None
+}
+\end{lstlisting}
+
+The first function requires \texttt{T} to implement \texttt{Eq}. The second requires both \texttt{Clone} and \texttt{Eq}, using \texttt{+} to combine bounds.
+
+\section{Pattern Matching}
+
+Pattern matching is a powerful feature for destructuring and inspecting data. It's the primary way to work with enums and extract data from composite types.
+
+\subsection{Pattern Types}
+
+Novus supports several pattern forms:
+
+\subsubsection{Literal Patterns}
+
+Match exact values:
+
+\begin{lstlisting}
+42          // Matches the number 42
+true        // Matches boolean true
+"hello"     // Matches the string "hello"
+null        // Matches null pointer
+\end{lstlisting}
+
+\subsubsection{Identifier Patterns}
+
+Bind a value to a name:
+
+\begin{lstlisting}
+x           // Binds value to variable x
+count       // Binds value to variable count
+\end{lstlisting}
+
+\subsubsection{Wildcard Pattern}
+
+Ignore a value:
+
+\begin{lstlisting}
+_           // Matches anything, discards value
+\end{lstlisting}
+
+\subsubsection{Variant Patterns}
+
+Destructure enum variants:
+
+\begin{lstlisting}
+Option::Some(x)           // Matches Some, binds inner value to x
+Option::None              // Matches None
+Command::Move(x, y)       // Matches Move, binds coordinates
+Result::Err(_)            // Matches Err, discards error value
+\end{lstlisting}
+
+\subsubsection{Or Patterns}
+
+Match multiple patterns:
+
+\begin{lstlisting}
+1 | 2 | 3                 // Matches 1, 2, or 3
+Direction::North | Direction::South  // Matches either variant
+\end{lstlisting}
+
+\subsubsection{Reference Patterns}
+
+Match through references:
+
+\begin{lstlisting}
+&x          // Matches a reference, binds referent to x
+&42         // Matches reference to 42
+\end{lstlisting}
+
+\subsubsection{Guarded Patterns}
+
+Add conditional guards:
+
+\begin{lstlisting}
+x if x > 0              // Matches any value > 0
+Some(x) if x < 100      // Matches Some with value < 100
+\end{lstlisting}
+
+\subsection{Match Expressions}
+
+The \texttt{match} expression compares a value against patterns:
+
+\begin{lstlisting}
+match value {
+    Pattern1 => expression1,
+    Pattern2 => expression2,
+    Pattern3 if guard => expression3,
+    _ => default_expression,
+}
+\end{lstlisting}
+
+Each arm consists of a pattern, optional guard, and an expression. The first matching pattern's expression is evaluated.
+
+\subsubsection{Basic Matching}
+
+\begin{lstlisting}
+let number = 42;
+let description = match number {
+    0 => "zero",
+    1 => "one",
+    2 | 3 | 5 | 7 => "small prime",
+    42 => "the answer",
+    _ => "something else",
+};
+\end{lstlisting}
+
+\subsubsection{Matching Enums}
+
+\begin{lstlisting}
+let cmd = Command::Move(10, 20);
+
+match cmd {
+    Command::Quit => {
+        println("Exiting");
+        exit();
+    },
+    Command::Move(x, y) => {
+        println("Moving to ({}, {})", x, y);
+        move_cursor(x, y);
+    },
+    Command::Write(ch) => {
+        println("Writing character {}", ch);
+        write_char(ch);
+    },
+    Command::ChangeColor(r, g, b) => {
+        set_color(r, g, b);
+    },
+}
+\end{lstlisting}
+
+\subsubsection{Pattern Guards}
+
+Guards add conditional logic to patterns:
+
+\begin{lstlisting}
+let number = 15;
+
+match number {
+    x if x < 0 => println("negative"),
+    x if x == 0 => println("zero"),
+    x if x < 10 => println("small positive"),
+    x if x < 100 => println("medium positive"),
+    _ => println("large positive"),
+}
+\end{lstlisting}
+
+\subsubsection{Exhaustiveness}
+
+Match expressions must be \textit{exhaustive} --- they must cover all possible values:
+
+\begin{lstlisting}
+// ERROR: non-exhaustive
+match direction {
+    Direction::North => "north",
+    Direction::South => "south",
+    // Missing East and West!
+}
+
+// OK: exhaustive with wildcard
+match direction {
+    Direction::North => "north",
+    Direction::South => "south",
+    _ => "other",
+}
+
+// OK: exhaustive with all variants
+match direction {
+    Direction::North => "north",
+    Direction::South => "south",
+    Direction::East => "east",
+    Direction::West => "west",
+}
+\end{lstlisting}
+
+The compiler verifies exhaustiveness and reports errors if any case is unhandled.
+
+\subsection{If Let Expressions}
+
+For simple matches with one pattern, \texttt{if let} is more concise:
+
+\begin{lstlisting}
+let opt = Option::Some(42);
+
+if let Option::Some(x) = opt {
+    println("Got value: {}", x);
+}
+\end{lstlisting}
+
+This is equivalent to:
+
+\begin{lstlisting}
+match opt {
+    Option::Some(x) => {
+        println("Got value: {}", x);
+    },
+    _ => {},
+}
+\end{lstlisting}
+
+You can add an \texttt{else} clause:
+
+\begin{lstlisting}
+if let Option::Some(x) = opt {
+    println("Got value: {}", x);
+} else {
+    println("No value");
+}
+\end{lstlisting}
+
+\subsection{Let Else Expressions}
+
+\texttt{let else} combines pattern matching with early return for error handling:
+
+\begin{lstlisting}
+fn process(opt: Option<i32>) -> i32 {
+    let Option::Some(x) = opt else {
+        return 0;  // Must diverge (return/break/continue)
+    };
+
+    x * 2
+}
+\end{lstlisting}
+
+The \texttt{else} block must diverge (never return normally) via \texttt{return}, \texttt{break}, \texttt{continue}, or calling a function that never returns.
+
+This is particularly useful for unwrapping \texttt{Option} and \texttt{Result} values:
+
+\begin{lstlisting}
+fn read_config(path: &str) -> Result<Config, Error> {
+    let Result::Ok(file) = open_file(path) else {
+        return Result::Err(Error::FileNotFound);
+    };
+
+    let Result::Ok(contents) = read_file(&file) else {
+        return Result::Err(Error::ReadFailed);
+    };
+
+    parse_config(&contents)
+}
+\end{lstlisting}
+
+\section{Option and Result}
+
+Novus eliminates null pointer errors and exception-based error handling by using two core types: \texttt{Option<T>} and \texttt{Result<T, E>}.
+
+\subsection{Option<T>}
+
+\texttt{Option<T>} represents an optional value --- either \texttt{Some(T)} or \texttt{None}:
+
+\begin{lstlisting}
+enum Option<T> {
+    Some(T),
+    None,
+}
+\end{lstlisting}
+
+Use \texttt{Option} when a value might be absent:
+
+\begin{lstlisting}
+fn find_user(id: u32) -> Option<User> {
+    if user_exists(id) {
+        Option::Some(get_user(id))
+    } else {
+        Option::None
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Working with Option}
+
+Check if a value exists:
+
+\begin{lstlisting}
+let opt = Option::Some(42);
+
+if opt.is_some() {
+    println("Has value");
+}
+
+if opt.is_none() {
+    println("No value");
+}
+\end{lstlisting}
+
+Extract the value:
+
+\begin{lstlisting}
+// Pattern matching (safe)
+match opt {
+    Option::Some(x) => println("Value: {}", x),
+    Option::None => println("No value"),
+}
+
+// if let (safe)
+if let Option::Some(x) = opt {
+    println("Value: {}", x);
+}
+
+// unwrap (unsafe - panics on None)
+let x = opt.unwrap();
+
+// unwrap_or (safe - provides default)
+let x = opt.unwrap_or(0);
+\end{lstlisting}
+
+\subsubsection{Option Methods}
+
+Common \texttt{Option} methods:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_some() -> bool} & Returns \texttt{true} if \texttt{Some} \\
+\texttt{is\_none() -> bool} & Returns \texttt{true} if \texttt{None} \\
+\texttt{unwrap() -> T} & Returns value, panics on \texttt{None} \\
+\texttt{unwrap\_or(T) -> T} & Returns value or default \\
+\texttt{ok\_or(E) -> Result<T,E>} & Converts to \texttt{Result} \\
+\hline
+\end{tabular}
+\caption{Common Option Methods}
+\end{table}
+
+\subsection{Result<T, E>}
+
+\texttt{Result<T, E>} represents either success (\texttt{Ok(T)}) or failure (\texttt{Err(E)}):
+
+\begin{lstlisting}
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+\end{lstlisting}
+
+Use \texttt{Result} for operations that can fail:
+
+\begin{lstlisting}
+fn parse_number(s: &str) -> Result<i32, ParseError> {
+    if is_valid_number(s) {
+        Result::Ok(parse(s))
+    } else {
+        Result::Err(ParseError::InvalidFormat)
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Working with Result}
+
+Check for success or failure:
+
+\begin{lstlisting}
+let result = parse_number("42");
+
+if result.is_ok() {
+    println("Parse succeeded");
+}
+
+if result.is_err() {
+    println("Parse failed");
+}
+\end{lstlisting}
+
+Extract the value or error:
+
+\begin{lstlisting}
+// Pattern matching (safe)
+match result {
+    Result::Ok(n) => println("Number: {}", n),
+    Result::Err(e) => println("Error: {}", e),
+}
+
+// if let for success case
+if let Result::Ok(n) = result {
+    println("Number: {}", n);
+}
+
+// if let for error case
+if let Result::Err(e) = result {
+    println("Error: {}", e);
+}
+
+// unwrap (unsafe - panics on Err)
+let n = result.unwrap();
+
+// unwrap_or (safe - provides default)
+let n = result.unwrap_or(0);
+\end{lstlisting}
+
+\subsubsection{Result Methods}
+
+Common \texttt{Result} methods:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_ok() -> bool} & Returns \texttt{true} if \texttt{Ok} \\
+\texttt{is\_err() -> bool} & Returns \texttt{true} if \texttt{Err} \\
+\texttt{unwrap() -> T} & Returns value, panics on \texttt{Err} \\
+\texttt{unwrap\_or(T) -> T} & Returns value or default \\
+\texttt{ok() -> Option<T>} & Converts to \texttt{Option}, discards error \\
+\texttt{err() -> Option<E>} & Gets error as \texttt{Option} \\
+\hline
+\end{tabular}
+\caption{Common Result Methods}
+\end{table}
+
+\subsection{The ? Operator}
+
+The \texttt{?} operator provides early return on error:
+
+\begin{lstlisting}
+fn read_number_from_file(path: &str) -> Result<i32, Error> {
+    let file = open_file(path)?;        // Returns Err early
+    let contents = read_file(&file)?;   // Returns Err early
+    let number = parse_number(&contents)?;  // Returns Err early
+    Result::Ok(number)
+}
+\end{lstlisting}
+
+The \texttt{?} operator:
+\begin{enumerate}
+\item Checks if the \texttt{Result} is \texttt{Err}
+\item If \texttt{Err}, returns the error immediately
+\item If \texttt{Ok}, unwraps the value and continues
+\end{enumerate}
+
+This is equivalent to:
+
+\begin{lstlisting}
+fn read_number_from_file(path: &str) -> Result<i32, Error> {
+    let file = match open_file(path) {
+        Result::Ok(f) => f,
+        Result::Err(e) => return Result::Err(e),
+    };
+
+    let contents = match read_file(&file) {
+        Result::Ok(c) => c,
+        Result::Err(e) => return Result::Err(e),
+    };
+
+    let number = match parse_number(&contents) {
+        Result::Ok(n) => n,
+        Result::Err(e) => return Result::Err(e),
+    };
+
+    Result::Ok(number)
+}
+\end{lstlisting}
+
+The \texttt{?} operator works with both \texttt{Result} and \texttt{Option}:
+
+\begin{lstlisting}
+fn get_first_element(vec: &Vec<i32>) -> Option<i32> {
+    let first = vec.get(0)?;  // Returns None early if empty
+    Option::Some(*first * 2)
+}
+\end{lstlisting}
+
+\section{Generics}
+
+Generics enable code reuse by parameterizing types and functions with type variables.
+
+\subsection{Generic Functions}
+
+Functions can be generic over types:
+
+\begin{lstlisting}
+fn identity<T>(value: T) -> T {
+    value
+}
+
+let x = identity(42);        // T = i32
+let s = identity("hello");   // T = &str
+\end{lstlisting}
+
+Multiple type parameters:
+
+\begin{lstlisting}
+fn pair<T, U>(first: T, second: U) -> (T, U) {
+    (first, second)
+}
+
+let p = pair(42, "hello");  // T = i32, U = &str
+\end{lstlisting}
+
+\subsection{Generic Structs}
+
+Structs can be generic (as shown earlier):
+
+\begin{lstlisting}
+struct Vec<T> {
+    data: *var T,
+    len: u32,
+    capacity: u32,
+}
+
+impl<T> Vec<T> {
+    fn new() -> Vec<T> {
+        Vec { data: null, len: 0, capacity: 0 }
+    }
+
+    fn push(&var self, value: T) {
+        // Implementation
+    }
+
+    fn get(&self, index: u32) -> Option<&T> {
+        if index < self.len {
+            Option::Some(&self.data[index])
+        } else {
+            Option::None
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Const Generic Parameters}
+
+Functions and types can be parameterized with compile-time constants:
+
+\begin{lstlisting}
+fn create_array<const N: u32>() -> [i32; N] {
+    [0; N]
+}
+
+let arr1 = create_array::<10>();   // [i32; 10]
+let arr2 = create_array::<100>();  // [i32; 100]
+
+struct Matrix<const ROWS: u32, const COLS: u32> {
+    data: [f32; ROWS * COLS],
+}
+\end{lstlisting}
+
+Const parameters must be integer types and known at compile time.
+
+\subsection{Where Clauses}
+
+Generic parameters can be constrained with \texttt{where} clauses:
+
+\begin{lstlisting}
+fn hash_clone<T>(value: &T) -> u32 where T: Clone + Hash {
+    let copy = value.clone()
+    return copy.hash()
+}
+\end{lstlisting}
+
+Where clauses can appear on:
+\begin{itemize}
+\item Function definitions
+\item Struct definitions
+\item Impl blocks
+\item Trait definitions
+\end{itemize}
+
+Multiple constraints with \texttt{+}:
+
+\begin{lstlisting}
+fn process<T>(value: T) where T: Clone + Eq + Hash {
+    // T must implement Clone, Eq, and Hash
+}
+\end{lstlisting}
+
+\subsection{Turbofish Syntax}
+
+Type arguments can be specified explicitly using turbofish syntax \texttt{::<>}:
+
+\begin{lstlisting}
+let vec = Vec::<i32>::new();
+let result = parse::<u32>("42");
+let pair = Pair::<i32, bool>::new(10, true);
+\end{lstlisting}
+
+This is necessary when the compiler cannot infer type arguments:
+
+\begin{lstlisting}
+// Ambiguous - compiler doesn't know T
+let vec = Vec::new();  // ERROR
+
+// Explicit - compiler knows T = i32
+let vec = Vec::<i32>::new();  // OK
+\end{lstlisting}
+
+\subsection{Generic Constraints in Practice}
+
+Here's a complete example showing generic constraints:
+
+\begin{lstlisting}
+trait Comparable {
+    fn compare(&self, other: &Self) -> i32;
+}
+
+fn find_max<T>(items: &[T]) -> Option<&T>
+    where T: Comparable
+{
+    if items.len() == 0 {
+        return Option::None;
+    }
+
+    var max = &items[0];
+    var i = 1;
+
+    while i < items.len() {
+        if items[i].compare(max) > 0 {
+            max = &items[i];
+        }
+        i = i + 1;
+    }
+
+    Option::Some(max)
+}
+
+impl Comparable for i32 {
+    fn compare(&self, other: &i32) -> i32 {
+        if *self < *other {
+            -1
+        } else if *self > *other {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+let numbers = [10, 5, 20, 15];
+let max = find_max(&numbers);  // Some(&20)
+\end{lstlisting}
+
+\section{Type Coercions and Casts}
+
+Novus has strict type checking with limited implicit conversions.
+
+\subsection{Integer Widening}
+
+Smaller integer types can be implicitly widened to larger ones in some contexts:
+
+\begin{lstlisting}
+let x: i8 = 42;
+let y: i32 = x;  // Implicit widening OK (i8 -> i32)
+\end{lstlisting}
+
+\subsection{Integer Narrowing}
+
+Narrowing requires explicit casts:
+
+\begin{lstlisting}
+let x: i32 = 1000;
+let y: i8 = x as i8;  // Explicit cast required (truncates)
+\end{lstlisting}
+
+\subsection{Reference to Pointer}
+
+References can be converted to raw pointers:
+
+\begin{lstlisting}
+let x = 42;
+let r: &i32 = &x;
+let p: *i32 = r as *i32;  // Reference to pointer
+\end{lstlisting}
+
+\subsection{Array to Pointer}
+
+Arrays decay to pointers in some contexts:
+
+\begin{lstlisting}
+let arr = [1, 2, 3, 4, 5];
+let ptr: *i32 = arr as *i32;  // Array to pointer
+\end{lstlisting}
+
+\subsection{Explicit Casts}
+
+Use \texttt{as} for explicit type conversions:
+
+\begin{lstlisting}
+let x: i32 = 42;
+let y: f32 = x as f32;    // Int to float
+let z: u32 = x as u32;    // Signed to unsigned
+let b: u8 = (x & 0xFF) as u8;  // Truncation
+\end{lstlisting}
+
+Always prefer explicit casts to make your intent clear.
+
+\section{Type Inference}
+
+Novus uses type inference to reduce verbosity while maintaining static typing.
+
+\subsection{Local Variable Inference}
+
+The \texttt{let} keyword allows the compiler to infer types:
+
+\begin{lstlisting}
+let x = 42;           // Inferred as i32
+let s = "hello";      // Inferred as &str
+let v = Vec::new();   // ERROR: cannot infer T
+let v = Vec::<i32>::new();  // OK: explicit type argument
+\end{lstlisting}
+
+You can always specify types explicitly:
+
+\begin{lstlisting}
+let x: i32 = 42;
+let s: &str = "hello";
+let v: Vec<i32> = Vec::new();
+\end{lstlisting}
+
+\subsection{Function Return Type Inference}
+
+Function return types must be explicitly declared:
+
+\begin{lstlisting}
+// ERROR: missing return type
+fn add(a: i32, b: i32) {
+    a + b
+}
+
+// OK: explicit return type
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+\end{lstlisting}
+
+\subsection{Generic Type Inference}
+
+Generic type arguments are often inferred from usage:
+
+\begin{lstlisting}
+let mut vec = Vec::<i32>::new();
+vec.push(42);  // T inferred as i32
+
+let opt = Option::Some(42);  // T inferred as i32
+\end{lstlisting}
+
+When inference fails, use turbofish syntax:
+
+\begin{lstlisting}
+let result = parse::<i32>("42");
+\end{lstlisting}
+
+\section{Summary}
+
+Novus's type system provides:
+
+\begin{itemize}
+\item \textbf{Structs} for grouping related data with private fields
+\item \textbf{Enums} for sum types with unit and tuple variants
+\item \textbf{Traits} for shared behavior and polymorphism
+\item \textbf{Pattern matching} for safe data inspection and destructuring
+\item \textbf{Option and Result} for null safety and error handling
+\item \textbf{Generics} for code reuse with type and const parameters
+\item \textbf{Type inference} to reduce verbosity
+\item \textbf{Explicit casts} for type conversions
+\end{itemize}
+
+These features combine to create a type system that catches errors at compile time while remaining expressive and efficient. The emphasis on explicitness (no hidden allocations, no implicit conversions) and safety (no null, errors as values) makes Novus code predictable and robust.
+
+In the next chapter, we'll explore Novus's memory management model, including ownership, borrowing, and the interaction with AmigaOS memory pools.
