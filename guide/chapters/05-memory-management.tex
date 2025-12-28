@@ -1,0 +1,847 @@
+\chapter{Memory Management}
+
+\begin{quote}
+\textit{``Memory management is the heart of every systems program.'' --- Brian Kernighan}
+\end{quote}
+
+The Amiga's cooperative multitasking environment demands careful memory management. Unlike modern systems with virtual memory and garbage collection, the Amiga uses flat physical memory shared between all tasks. A memory leak or dangling pointer affects the entire system, not just one process.
+
+Novus provides a memory management model that combines the safety of modern languages with the control needed for 68k systems programming. This chapter covers ownership and move semantics, references and borrowing, the Drop trait for automatic cleanup, defer blocks for explicit resource management, and the standard library's memory abstractions.
+
+\section{The Amiga Memory Model}
+
+Before diving into Novus specifics, it's essential to understand AmigaOS memory management.
+
+\subsection{Memory Types}
+
+The Amiga has distinct memory types with different characteristics:
+
+\begin{description}
+    \item[Chip RAM] Accessible by both CPU and custom chips (Agnus, Denise, Paula). Required for graphics, audio, and DMA operations. Limited to 2MB on most systems.
+
+    \item[Fast RAM] Accessible only by CPU. Faster access since no DMA contention. Can be much larger (up to 2GB on 68040/060 systems).
+
+    \item[Public Memory] Safe for inter-task communication. Other tasks may access it.
+\end{description}
+
+When allocating memory, you specify flags to request the appropriate type:
+
+\begin{lstlisting}
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_PUBLIC, MEMF_CLEAR
+
+// Chip RAM for graphics buffers
+let bitmap = MemoryBlock::alloc(size, MEMF_CHIP | MEMF_CLEAR)
+
+// Fast RAM for general data (falls back to Chip if unavailable)
+let buffer = MemoryBlock::alloc(size, MEMF_FAST | MEMF_PUBLIC)
+
+// Any memory (system chooses)
+let data = MemoryBlock::alloc(size, MEMF_PUBLIC | MEMF_CLEAR)
+\end{lstlisting}
+
+\subsection{Memory Flag Reference}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{9cm}}
+\hline
+\textbf{Flag} & \textbf{Description} \\
+\hline
+\texttt{MEMF\_ANY} & Any memory type (value: 0) \\
+\texttt{MEMF\_PUBLIC} & Memory safe for inter-task access \\
+\texttt{MEMF\_CHIP} & Chip RAM (required for DMA) \\
+\texttt{MEMF\_FAST} & Fast RAM (CPU-only, faster) \\
+\texttt{MEMF\_CLEAR} & Zero-fill the allocated memory \\
+\texttt{MEMF\_LARGEST} & Allocate largest available block \\
+\texttt{MEMF\_LOCAL} & Memory local to the current task \\
+\texttt{MEMF\_24BITDMA} & Memory in 24-bit address space \\
+\texttt{MEMF\_KICK} & Memory for Kickstart/resident modules \\
+\texttt{MEMF\_REVERSE} & Allocate from high addresses down \\
+\texttt{MEMF\_NO\_EXPUNGE} & Prevent memory from being expunged \\
+\texttt{MEMF\_TOTAL} & Query total memory (not for allocation) \\
+\hline
+\end{tabular}
+\caption{AmigaOS Memory Flags}
+\end{table}
+
+\subsection{No Size Parameter on Free}
+
+A critical feature of Novus memory types: you don't pass the size when freeing memory. Unlike raw \texttt{FreeMem(ptr, size)} calls, Novus types track size automatically:
+
+\begin{lstlisting}
+// AmigaOS C style - error-prone
+void* ptr = AllocMem(1024, MEMF_PUBLIC);
+// ... must remember size is 1024 ...
+FreeMem(ptr, 1024);  // Wrong size = memory corruption!
+
+// Novus style - size tracked automatically
+var block = MemoryBlock::alloc(1024, MEMF_PUBLIC)?
+// ... no need to track size ...
+block.free()  // Size remembered internally!
+\end{lstlisting}
+
+This eliminates an entire class of bugs common in AmigaOS programming.
+
+\section{Ownership and Move Semantics}
+
+Every value in Novus has a single \textit{owner}---the variable that holds it. When the owner goes out of scope, the value is dropped (cleaned up). This ownership model prevents double-free and use-after-free bugs.
+
+\subsection{Move by Default}
+
+When you pass a value to a function that takes ownership, the value is \textit{moved}:
+
+\begin{lstlisting}
+fn consume(consuming s: String) {
+    // s is owned by this function
+    // it will be dropped when consume() returns
+}
+
+fn main() -> i32 {
+    let x = String::new()
+
+    consume(x)  // x is moved into consume()
+
+    // ERROR: x has been moved, cannot use it
+    // let len = x.len()  // Compile error!
+
+    return 0
+}
+\end{lstlisting}
+
+The \texttt{consuming} keyword explicitly marks parameters that take ownership. After a move, the original variable is invalid---the compiler prevents you from using it.
+
+\subsection{Borrowing to Avoid Moves}
+
+To use a value without transferring ownership, \textit{borrow} it with a reference:
+
+\begin{lstlisting}
+fn print_length(s: &String) {
+    // s is borrowed immutably
+    let len = s.len()
+    println("Length: {}", len)
+}
+
+fn main() -> i32 {
+    let x = String::new_from_str("Hello")?
+
+    print_length(&x)  // Borrow x
+
+    // x is still valid here
+    let len = x.len()  // OK!
+
+    return 0
+}
+\end{lstlisting}
+
+The \texttt{\&} operator creates a reference---a pointer that borrows the value without taking ownership.
+
+\subsection{The Borrow Checker}
+
+Novus includes a borrow checker that tracks moves and prevents use-after-move errors:
+
+\begin{lstlisting}
+fn test_move_tracking() {
+    let s = String::new()
+
+    if some_condition {
+        consume(s)  // s moved in this branch
+    }
+
+    // ERROR: s may have been moved
+    // let len = s.len()  // Compile error!
+}
+\end{lstlisting}
+
+The borrow checker is control-flow sensitive---it tracks moves across \texttt{if}, \texttt{match}, and \texttt{while} branches.
+
+\textbf{Important:} Novus's borrow checker tracks \textit{moves} but does not enforce reference exclusivity. You can create multiple mutable references to the same value. This is less safe than Rust but simpler and sufficient for most Amiga programs where careful discipline is expected.
+
+\section{References}
+
+References are non-null pointers that borrow values without taking ownership.
+
+\subsection{Immutable References}
+
+An immutable reference \texttt{\&T} provides read-only access:
+
+\begin{lstlisting}
+fn read_point(p: &Point) -> i32 {
+    return p.x + p.y  // Can read fields
+}
+
+let pt = Point { x: 10, y: 20 }
+let sum = read_point(&pt)  // Borrow pt immutably
+\end{lstlisting}
+
+\subsection{Mutable References}
+
+A mutable reference \texttt{\&var T} allows modification:
+
+\begin{lstlisting}
+fn scale_point(p: &var Point, factor: i32) {
+    p.x = p.x * factor
+    p.y = p.y * factor
+}
+
+var pt = Point { x: 10, y: 20 }
+scale_point(&var pt, 2)  // Borrow pt mutably
+// pt is now { x: 20, y: 40 }
+\end{lstlisting}
+
+Note that the variable being borrowed must be declared with \texttt{var} (mutable).
+
+\subsection{Self Parameter Forms}
+
+Methods use special self parameter syntax:
+
+\begin{lstlisting}
+impl Point {
+    // Immutable borrow - reads only
+    fn magnitude(&self) -> i32 {
+        return self.x * self.x + self.y * self.y
+    }
+
+    // Mutable borrow - can modify
+    fn translate(&var self, dx: i32, dy: i32) {
+        self.x = self.x + dx
+        self.y = self.y + dy
+    }
+
+    // Consuming - takes ownership
+    fn into_tuple(consuming self) -> (i32, i32) {
+        return (self.x, self.y)
+    }
+}
+\end{lstlisting}
+
+\subsection{References vs Raw Pointers}
+
+References (\texttt{\&T}, \texttt{\&var T}) are guaranteed non-null. Raw pointers (\texttt{*T}) can be null and require \texttt{unsafe} for dereferencing:
+
+\begin{lstlisting}
+let x = 42
+let ref: &i32 = &x        // Reference - guaranteed valid
+let ptr: *i32 = &x as *i32  // Raw pointer - could be null
+
+// References can be used directly
+let y = *ref  // OK
+
+// Raw pointers require unsafe
+unsafe {
+    let z = *ptr  // Must be in unsafe block
+}
+\end{lstlisting}
+
+Use references when possible. Reserve raw pointers for FFI and low-level operations.
+
+\section{The Drop Trait}
+
+The \texttt{Drop} trait enables automatic cleanup when values go out of scope---Novus's form of RAII (Resource Acquisition Is Initialization).
+
+\subsection{Implementing Drop}
+
+\begin{lstlisting}
+from std::core import Drop
+
+struct FileHandle {
+    fd: i32,
+}
+
+impl Drop for FileHandle {
+    fn drop(&var self) {
+        // Called automatically when FileHandle goes out of scope
+        close_file(self.fd)
+    }
+}
+
+fn main() -> i32 {
+    {
+        let file = FileHandle { fd: open_file("data.txt") }
+        // ... use file ...
+    }  // file.drop() called automatically here
+
+    return 0
+}
+\end{lstlisting}
+
+\subsection{Drop Execution Order}
+
+Drop is called in reverse declaration order (LIFO):
+
+\begin{lstlisting}
+fn main() -> i32 {
+    let a = Resource::new(1)  // Created first
+    let b = Resource::new(2)  // Created second
+    let c = Resource::new(3)  // Created third
+
+    return 0
+    // Drop order: c, b, a (reverse)
+}
+\end{lstlisting}
+
+\subsection{Move Prevents Double Drop}
+
+When a value is moved, the compiler deactivates its drop:
+
+\begin{lstlisting}
+fn take_ownership(consuming r: Resource) {
+    // r is dropped here when function returns
+}
+
+fn main() -> i32 {
+    let r = Resource::new(42)
+    take_ownership(r)  // r is moved
+
+    return 0
+    // r's drop is NOT called - it was moved
+}
+\end{lstlisting}
+
+This prevents double-free bugs.
+
+\subsection{Drop for Enums}
+
+Enums with data-carrying variants have Drop called on their payloads:
+
+\begin{lstlisting}
+fn main() -> i32 {
+    {
+        let opt: Option<String> = Option::Some(String::new())
+        // opt goes out of scope
+    }  // String inside is automatically dropped
+
+    return 0
+}
+\end{lstlisting}
+
+\section{Defer Blocks}
+
+While Drop provides automatic cleanup, sometimes you need explicit control over cleanup order or want to clean up resources that don't implement Drop. The \texttt{defer} statement handles this.
+
+\subsection{Basic Defer}
+
+A defer block executes when the enclosing function returns:
+
+\begin{lstlisting}
+fn process_file() -> i32 {
+    let fd = open_file("data.txt")
+
+    defer {
+        close_file(fd)  // Guaranteed to run
+    }
+
+    // ... process file ...
+    // Even if we return early, defer runs
+
+    if error_occurred {
+        return -1  // defer still runs
+    }
+
+    return 0  // defer runs here too
+}
+\end{lstlisting}
+
+\subsection{LIFO Execution Order}
+
+Multiple defers execute in Last-In-First-Out order:
+
+\begin{lstlisting}
+fn main() -> i32 {
+    var resource1 = open_resource(1)
+    defer {
+        cleanup_resource(1)  // Runs SECOND
+    }
+
+    var resource2 = open_resource(2)
+    defer {
+        cleanup_resource(2)  // Runs FIRST
+    }
+
+    return 0
+    // Execution: cleanup(2), then cleanup(1)
+}
+\end{lstlisting}
+
+This matches the natural pattern of ``last opened, first closed.''
+
+\subsection{Return Value Computed Before Defer}
+
+The return value is computed \textit{before} defer blocks execute:
+
+\begin{lstlisting}
+fn compute() -> i32 {
+    var result = 42
+
+    defer {
+        result = 0  // This does NOT change the return value!
+    }
+
+    return result  // Returns 42, not 0
+}
+\end{lstlisting}
+
+This is important: defer blocks cannot modify the return value.
+
+\subsection{Defer vs Drop}
+
+Use Drop when:
+\begin{itemize}
+    \item Cleanup is tied to a type's lifetime
+    \item You want automatic cleanup without explicit code
+    \item The resource is always cleaned up the same way
+\end{itemize}
+
+Use defer when:
+\begin{itemize}
+    \item Cleanup depends on runtime conditions
+    \item You need cleanup for values that don't implement Drop
+    \item You want explicit control over cleanup order
+    \item The cleanup logic is function-specific
+\end{itemize}
+
+\section{The Using Statement}
+
+The \texttt{using} statement combines resource acquisition with guaranteed cleanup:
+
+\begin{lstlisting}
+struct Resource {
+    value: i32
+}
+
+impl Drop for Resource {
+    fn drop(&var self) {
+        // Cleanup
+    }
+}
+
+fn create_resource(v: i32) -> Resource {
+    return Resource { value: v }
+}
+
+fn main() -> i32 {
+    using create_resource(42) {
+        // Resource exists in this scope
+        let x = 10
+    }  // Resource is dropped here
+
+    return 0
+}
+\end{lstlisting}
+
+This is syntactic sugar for creating a resource and ensuring it's dropped at block end.
+
+\section{Standard Library Memory Types}
+
+Novus provides several memory types in \texttt{std::memory} that wrap AmigaOS allocation with safety and convenience.
+
+\subsection{MemoryBlock}
+
+\texttt{MemoryBlock} is the fundamental building block---raw bytes with automatic size tracking:
+
+\begin{lstlisting}
+from std::memory::block import MemoryBlock
+from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+
+fn main() -> i32 {
+    // Allocate 1024 bytes
+    match MemoryBlock::alloc(1024, MEMF_FAST | MEMF_CLEAR) {
+        Option::Some(var block) => {
+            defer {
+                block.free()
+            }
+
+            let ptr: *u8 = block.ptr()
+            let size: u32 = block.size()
+
+            // Use the memory...
+            ptr[0] = 42
+        },
+        Option::None => {
+            // Allocation failed
+            return 1
+        }
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+\subsubsection{MemoryBlock Methods}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{alloc(size, flags)} & Allocate raw memory, returns \texttt{Option<MemoryBlock>} \\
+\texttt{try\_alloc(size, flags)} & Allocate with \texttt{Result<MemoryBlock, ExecError>} \\
+\texttt{ptr()} & Get pointer to memory \\
+\texttt{size()} & Get size in bytes \\
+\texttt{is\_empty()} & Check if zero-size block \\
+\texttt{into\_raw()} & Take ownership of pointer, returns \texttt{(*u8, u32)} \\
+\texttt{free()} & Free the memory \\
+\texttt{resize(new\_size, flags)} & Resize block, returns success \texttt{bool} \\
+\hline
+\end{tabular}
+\caption{MemoryBlock Methods}
+\end{table}
+
+\texttt{MemoryBlock} implements \texttt{Drop}, so it's freed automatically when it goes out of scope.
+
+\subsection{MemHandle}
+
+For common allocation patterns, \texttt{MemHandle} provides convenient factory methods with preset flags:
+
+\begin{lstlisting}
+from std::memory::amiga import MemHandle
+
+fn main() -> i32 {
+    // Chip RAM for graphics/audio (MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+    match MemHandle::new_chip(1024) {
+        Option::Some(var chip_mem) => {
+            defer { chip_mem.drop() }
+            // Use chip memory for DMA operations
+        },
+        Option::None => return 1
+    }
+
+    // Fast RAM for general data (MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
+    match MemHandle::new_fast(2048) {
+        Option::Some(var fast_mem) => {
+            defer { fast_mem.drop() }
+            // Use fast memory for CPU operations
+        },
+        Option::None => return 1
+    }
+
+    // Any available memory
+    match MemHandle::new_any(512) {
+        Option::Some(var any_mem) => {
+            // System chooses chip or fast
+        },
+        Option::None => return 1
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+\texttt{MemHandle} uses \texttt{AllocVec}/\texttt{FreeVec} internally, which stores the size in the allocation header. This is slightly less memory-efficient than \texttt{MemoryBlock} (4 bytes overhead) but provides the same convenience.
+
+Use \texttt{MemHandle} for common cases; use \texttt{MemoryBlock} when you need full control over memory flags.
+
+\subsection{Allocation<T>}
+
+\texttt{Allocation<T>} provides type-safe bulk allocation with element count tracking:
+
+\begin{lstlisting}
+from std::memory::block import Allocation
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+
+fn main() -> i32 {
+    // Allocate space for 100 u32 values
+    match Allocation::<u32>::new(100, MEMF_CHIP | MEMF_CLEAR) {
+        Option::Some(var alloc) => {
+            defer {
+                alloc.free()
+            }
+
+            let count: u32 = alloc.count()        // 100
+            let bytes: u32 = alloc.size_bytes()   // 400
+            let ptr: *u32 = alloc.as_mut_ptr()
+
+            // Initialize elements
+            var i: u32 = 0
+            while i < count {
+                ptr[i] = i * 2
+                i = i + 1
+            }
+        },
+        Option::None => {
+            return 1
+        }
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+\texttt{Allocation<T>} checks for overflow when computing \texttt{count * sizeof(T)}, preventing a common security vulnerability.
+
+\subsection{Box<T>}
+
+\texttt{Box<T>} allocates a single value on the heap:
+
+\begin{lstlisting}
+from std::memory::block import Box
+
+struct BigData {
+    buffer: [u8; 4096],
+}
+
+fn main() -> i32 {
+    // Allocate BigData on heap instead of stack
+    match Box::new(BigData { buffer: [0; 4096] }) {
+        Option::Some(var boxed) => {
+            defer {
+                boxed.free()
+            }
+
+            let ptr: *BigData = boxed.get_mut()
+            ptr.buffer[0] = 42
+        },
+        Option::None => {
+            return 1
+        }
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+Use \texttt{Box<T>} for:
+\begin{itemize}
+    \item Large structs that don't fit on the stack
+    \item Recursive data structures
+    \item Values that need heap allocation with automatic cleanup
+\end{itemize}
+
+\subsection{Slice<T>}
+
+\texttt{Slice<T>} is a fat pointer---a pointer plus length---for passing arrays without losing size information:
+
+\begin{lstlisting}
+from std::memory::slice import Slice
+
+fn sum(numbers: &Slice<i32>) -> i32 {
+    var total: i32 = 0
+    var i: u32 = 0
+
+    while i < numbers.len() {
+        match numbers.get(i) {
+            Option::Some(n) => {
+                total = total + n
+            },
+            Option::None => {}
+        }
+        i = i + 1
+    }
+
+    return total
+}
+
+fn main() -> i32 {
+    let arr = [1, 2, 3, 4, 5]
+    let slice = Slice::new(&arr as *i32, 5)
+
+    let result = sum(&slice)  // No need to pass count separately!
+
+    return result
+}
+\end{lstlisting}
+
+\subsubsection{Slice Methods}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{new(ptr, len)} & Create slice from pointer and length \\
+\texttt{len()} & Get length \\
+\texttt{is\_empty()} & Check if empty \\
+\texttt{get(index)} & Get element with bounds check, returns \texttt{Option<T>} \\
+\texttt{get\_unchecked(index)} & Get element without bounds check (unsafe) \\
+\hline
+\end{tabular}
+\caption{Slice Methods}
+\end{table}
+
+\section{Copy and Clone Traits}
+
+Some types can be duplicated safely. Novus provides two traits for this.
+
+\subsection{The Copy Trait}
+
+\texttt{Copy} is a marker trait for types that can be implicitly copied:
+
+\begin{lstlisting}
+from std::core import Copy
+
+// Primitive types are Copy
+let x: i32 = 42
+let y = x   // x is copied, both x and y are valid
+
+// Structs can be Copy if all fields are Copy
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Copy for Point {}
+
+let p1 = Point { x: 1, y: 2 }
+let p2 = p1  // p1 is copied, both valid
+\end{lstlisting}
+
+Types that manage resources (like \texttt{String}, \texttt{Vec}, \texttt{MemoryBlock}) should NOT implement \texttt{Copy}.
+
+\subsection{The Clone Trait}
+
+\texttt{Clone} provides explicit deep copying. It returns \texttt{Option<Self>} because cloning types that allocate memory (like \texttt{Vec} or \texttt{String}) can fail:
+
+\begin{lstlisting}
+from std::core import Clone
+
+// For simple types, clone always succeeds
+impl Clone for Point {
+    fn clone(&self) -> Option<Point> {
+        return Option::Some(Point { x: self.x, y: self.y })
+    }
+}
+
+let p1 = Point { x: 1, y: 2 }
+
+match p1.clone() {
+    Option::Some(p2) => {
+        // p2 is a deep copy of p1
+    },
+    Option::None => {
+        // Clone failed - only happens for types that allocate
+    }
+}
+\end{lstlisting}
+
+For types that manage resources, \texttt{clone()} must allocate new memory, which can fail on a memory-constrained Amiga:
+
+\begin{lstlisting}
+// Vec::clone() allocates new memory for the copy
+let original = Vec::<i32>::new()?
+// ... populate original ...
+
+match original.clone() {
+    Option::Some(copy) => {
+        // copy is independent - modifying it doesn't affect original
+    },
+    Option::None => {
+        // Allocation failed - handle gracefully
+    }
+}
+\end{lstlisting}
+
+\section{Common Patterns}
+
+\subsection{Resource Acquisition with Error Handling}
+
+\begin{lstlisting}
+fn process_with_resources() -> Result<i32, Error> {
+    // Acquire first resource
+    var mem = MemoryBlock::try_alloc(1024, MEMF_PUBLIC)?
+    defer {
+        mem.free()
+    }
+
+    // Acquire second resource
+    var file = open_file("data.txt")?
+    defer {
+        close_file(file)
+    }
+
+    // Use resources...
+
+    return Result::Ok(0)
+}
+\end{lstlisting}
+
+The \texttt{?} operator propagates errors, and defer ensures cleanup regardless of how the function exits.
+
+\subsection{Passing Arrays to Functions}
+
+\begin{lstlisting}
+fn process_buffer(data: &Slice<u8>) {
+    var i: u32 = 0
+    while i < data.len() {
+        let byte = data.get_unchecked(i)
+        // Process byte...
+        i = i + 1
+    }
+}
+
+fn main() -> i32 {
+    let buffer = [1u8, 2, 3, 4, 5]
+    let slice = Slice::new(&buffer as *u8, 5)
+    process_buffer(&slice)
+    return 0
+}
+\end{lstlisting}
+
+\subsection{Moving Out of a Container}
+
+\begin{lstlisting}
+fn take_from_block() -> (*u8, u32) {
+    var block = MemoryBlock::alloc(1024, MEMF_PUBLIC)?
+
+    // Transfer ownership to caller
+    let (ptr, size) = block.into_raw()
+
+    // block is now empty - Drop won't free anything
+    return (ptr, size)
+
+    // Caller must manually: FreeMem(ptr, size)
+}
+\end{lstlisting}
+
+Use \texttt{into\_raw()} when you need to transfer ownership to code that manages memory manually.
+
+\section{Memory Safety Guarantees}
+
+Novus provides several safety guarantees:
+
+\begin{description}
+    \item[No Double-Free] The borrow checker deactivates drop for moved values.
+
+    \item[No Use-After-Move] The compiler prevents using variables after they've been moved.
+
+    \item[Automatic Size Tracking] \texttt{MemoryBlock} and \texttt{Allocation<T>} eliminate size-tracking bugs.
+
+    \item[Overflow Protection] \texttt{Allocation<T>} checks for integer overflow before allocation.
+
+    \item[Bounds Checking] \texttt{Slice::get()} returns \texttt{Option<T>}, forcing explicit handling of out-of-bounds access.
+
+    \item[Non-Null References] References (\texttt{\&T}, \texttt{\&var T}) are guaranteed non-null.
+\end{description}
+
+\subsection{What Is NOT Guaranteed}
+
+For full transparency, Novus does NOT prevent:
+
+\begin{itemize}
+    \item Multiple simultaneous mutable references (no exclusivity enforcement)
+    \item Use-after-free with raw pointers (\texttt{*T})
+    \item Data races (no thread-safety guarantees beyond Exec primitives)
+    \item Memory leaks from forgotten cleanup (though Drop helps)
+\end{itemize}
+
+These trade-offs keep the language simple while providing significant safety improvements over C.
+
+\section{Summary}
+
+Novus memory management provides:
+
+\begin{itemize}
+    \item \textbf{Ownership} --- every value has a single owner
+    \item \textbf{Move semantics} --- \texttt{consuming} parameters take ownership
+    \item \textbf{References} --- \texttt{\&T} (immutable) and \texttt{\&var T} (mutable) borrow without ownership transfer
+    \item \textbf{Borrow checker} --- prevents use-after-move at compile time
+    \item \textbf{Drop trait} --- automatic cleanup when values go out of scope (RAII)
+    \item \textbf{Defer blocks} --- explicit cleanup with LIFO execution order
+    \item \textbf{Using statement} --- scoped resource management
+    \item \textbf{Standard library types} --- \texttt{MemoryBlock}, \texttt{MemHandle}, \texttt{Allocation<T>}, \texttt{Box<T>}, \texttt{Slice<T>}
+    \item \textbf{AmigaOS integration} --- proper memory flags for Chip/Fast/Public RAM
+\end{itemize}
+
+The combination of ownership tracking, automatic cleanup, and size-safe abstractions makes Novus significantly safer than C for AmigaOS programming while maintaining the control needed for systems work.
+
+In the next chapter, we'll explore control flow in depth: conditionals, loops, pattern matching, and error handling with the \texttt{?} operator.
