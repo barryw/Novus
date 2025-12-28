@@ -294,9 +294,11 @@ impl<T, U> Pair<T, U> {
 }
 
 impl<T> Pair<T, T> where T: Clone {
-    fn duplicate_first(self) -> Pair<T, T> {
-        let copy = self.first.clone();
-        Pair { first: self.first, second: copy }
+    fn duplicate_first(self) -> Option<Pair<T, T>> {
+        if let Option::Some(copy) = self.first.clone() {
+            return Option::Some(Pair { first: self.first, second: copy })
+        }
+        return Option::None
     }
 }
 \end{lstlisting}
@@ -417,7 +419,7 @@ A trait declares a set of methods that implementing types must provide:
 
 \begin{lstlisting}
 trait Clone {
-    fn clone(&self) -> Self
+    fn clone(&self) -> Option<Self>  // Returns Option because allocation can fail
 }
 
 trait Eq {
@@ -426,6 +428,10 @@ trait Eq {
 
 trait Hash {
     fn hash(&self) -> u32
+}
+
+trait Display {
+    fn fmt(&self, f: &var Formatter) -> bool
 }
 \end{lstlisting}
 
@@ -452,8 +458,8 @@ Use \texttt{impl TraitName for TypeName} to implement a trait:
 
 \begin{lstlisting}
 impl Clone for Point {
-    fn clone(&self) -> Point {
-        return Point { x: self.x, y: self.y }
+    fn clone(&self) -> Option<Point> {
+        return Option::Some(Point { x: self.x, y: self.y })
     }
 }
 
@@ -467,9 +473,23 @@ impl Eq for Point {
 Once implemented, you can call trait methods:
 
 \begin{lstlisting}
-let p1 = Point { x: 10, y: 20 };
-let p2 = p1.clone();
-let s = p1.to_string();
+let p1 = Point { x: 10, y: 20 }
+let p2 = Point { x: 30, y: 40 }
+
+// Clone returns Option<T> because allocation can fail
+match p1.clone() {
+    Option::Some(copy) => {
+        // use copy
+    },
+    Option::None => {
+        // handle allocation failure
+    }
+}
+
+// Eq provides equality comparison
+if p1.eq(&p2) {
+    // points are equal
+}
 \end{lstlisting}
 
 \subsection{Built-in Traits}
@@ -483,12 +503,14 @@ Novus provides several important built-in traits:
 \textbf{Trait} & \textbf{Purpose} \\
 \hline
 \texttt{Drop} & Custom cleanup when value goes out of scope \\
-\texttt{Clone} & Explicit duplication of values \\
-\texttt{Copy} & Marker trait for types that can be copied implicitly \\
+\texttt{Clone} & Explicit duplication (returns \texttt{Option<Self>}) \\
+\texttt{Copy} & Marker trait for implicitly copyable types \\
 \texttt{Eq} & Equality comparison \\
-\texttt{Hash} & Hashing for collections \\
-\texttt{From<T>} & Type conversion from \texttt{T} \\
+\texttt{Hash} & Hashing for use in collections \\
+\texttt{From<T>} & Type conversion from \texttt{T} (method: \texttt{convert}) \\
 \texttt{Default} & Provides a default value \\
+\texttt{Display} & User-facing formatted output \\
+\texttt{Debug} & Programmer-facing debug output \\
 \hline
 \end{tabular}
 \caption{Core Built-in Traits}
@@ -514,16 +536,16 @@ When a \texttt{FileHandle} goes out of scope, \texttt{drop} is called automatica
 
 \subsubsection{The From Trait}
 
-\texttt{From<T>} enables type conversions:
+\texttt{From<T>} enables type conversions. The method is named \texttt{convert}:
 
 \begin{lstlisting}
 impl From<i32> for Point {
-    fn from(value: i32) -> Point {
-        Point { x: value, y: value }
+    fn convert(value: i32) -> Point {
+        return Point { x: value, y: value }
     }
 }
 
-let p = Point::from(42);  // Point { x: 42, y: 42 }
+let p = Point::convert(42)  // Point { x: 42, y: 42 }
 \end{lstlisting}
 
 \subsection{Trait Bounds}
@@ -537,7 +559,7 @@ fn are_equal<T>(a: &T, b: &T) -> bool where T: Eq {
 
 fn clone_if_equal<T>(a: &T, b: &T) -> Option<T> where T: Clone + Eq {
     if a.eq(b) {
-        return Option::Some(a.clone())
+        return a.clone()  // clone() already returns Option<T>
     }
     return Option::None
 }
@@ -1085,9 +1107,11 @@ Const parameters must be integer types and known at compile time.
 Generic parameters can be constrained with \texttt{where} clauses:
 
 \begin{lstlisting}
-fn hash_clone<T>(value: &T) -> u32 where T: Clone + Hash {
-    let copy = value.clone()
-    return copy.hash()
+fn hash_clone<T>(value: &T) -> Option<u32> where T: Clone + Hash {
+    if let Option::Some(copy) = value.clone() {
+        return Option::Some(copy.hash())
+    }
+    return Option::None
 }
 \end{lstlisting}
 
@@ -1270,7 +1294,7 @@ fn add(a: i32, b: i32) -> i32 {
 Generic type arguments are often inferred from usage:
 
 \begin{lstlisting}
-let mut vec = Vec::<i32>::new();
+var vec = Vec::<i32>::new();
 vec.push(42);  // T inferred as i32
 
 let opt = Option::Some(42);  // T inferred as i32
