@@ -35,3 +35,30 @@
   --sl-color-accent-light: #F87171;
   --sl-color-accent-dark: #B91C1C;
 }
+
+/* Code Block Syntax Highlighting Fixes */
+/* Fix invisible/dark tokens on dark background */
+.expressive-code pre code {
+  /* Default text color for code */
+  color: #e4e4e7;
+}
+
+/* Variables and identifiers - make them visible on dark bg */
+.expressive-code .ec-line span[style*="color:#24292"] {
+  color: #e4e4e7 !important;
+}
+
+/* Fix dark variables/parameters */
+.expressive-code .ec-line span[style*="color:#1f2328"],
+.expressive-code .ec-line span[style*="color:#24292e"],
+.expressive-code .ec-line span[style*="color:#1F2328"],
+.expressive-code .ec-line span[style*="color:#24292E"] {
+  color: #e4e4e7 !important;
+}
+
+/* Plain text/identifiers that might be dark */
+.expressive-code .ec-line span[style*="color:#383a42"],
+.expressive-code .ec-line span[style*="color:#393a34"],
+.expressive-code .ec-line span[style*="color:#3b4351"] {
+  color: #cbd5e1 !important;
+}

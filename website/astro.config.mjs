@@ -11,6 +11,9 @@ export default defineConfig({
       starlight({
           title: 'Novus',
           tagline: 'New code for classic machines',
+          expressiveCode: {
+            themes: ['github-dark'],
+          },
           logo: {
             light: './src/assets/logo-light.svg',
             dark: './src/assets/logo-dark.svg',
