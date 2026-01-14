@@ -1,13 +1,24 @@
 ---
-// Homepage for Novus language website
-import Hero from '../components/Hero.astro';
-import ValueProps from '../components/ValueProps.astro';
-import CodeShowcase from '../components/CodeShowcase.astro';
-import Footer from '../components/Footer.astro';
-import '../styles/global.css';
+// Blog listing page for Novus language website
+import { getCollection } from 'astro:content';
+import Footer from '../../components/Footer.astro';
+import '../../styles/global.css';
 
-const title = "Novus - New code for classic machines";
-const description = "A modern systems programming language for the Amiga 68k";
+const title = "Novus Blog - Updates and News";
+const description = "Latest updates, news, and insights about the Novus programming language";
+
+// Get all blog posts and sort by date (newest first)
+const allPosts = await getCollection('blog');
+const sortedPosts = allPosts.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+// Format date for display
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
 ---
 
 <!doctype html>
@@ -22,7 +33,6 @@ const description = "A modern systems programming language for the Amiga 68k";
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://novuslang.com" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -30,8 +40,6 @@ const description = "A modern systems programming language for the Amiga 68k";
     <meta name="twitter:description" content={description} />
 
     <title>{title}</title>
-
-    <!-- Fonts are preloaded in astro.config.mjs -->
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -62,7 +70,7 @@ const description = "A modern systems programming language for the Amiga 68k";
             <a href="/reference/language" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
               Reference
             </a>
-            <a href="/blog" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+            <a href="/blog" class="text-sm font-medium text-novus-red-600">
               Blog
             </a>
             <a href="https://github.com/barrylapthorn/novus" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
@@ -96,7 +104,7 @@ const description = "A modern systems programming language for the Amiga 68k";
           <a href="/reference/language" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
             Reference
           </a>
-          <a href="/blog" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+          <a href="/blog" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-red-600">
             Blog
           </a>
           <a href="https://github.com/barrylapthorn/novus" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
@@ -108,9 +116,59 @@ const description = "A modern systems programming language for the Amiga 68k";
 
     <!-- Main Content (with padding for fixed nav) -->
     <main class="pt-16">
-      <Hero />
-      <ValueProps />
-      <CodeShowcase />
+      <!-- Hero Section -->
+      <div class="bg-gradient-to-br from-novus-red-50 via-white to-novus-gray-50 border-b border-novus-gray-200">
+        <div class="mx-auto max-w-7xl px-6 py-24 lg:px-8">
+          <div class="mx-auto max-w-2xl text-center">
+            <h1 class="text-4xl font-bold tracking-tight text-novus-gray-900 sm:text-6xl">
+              Novus Blog
+            </h1>
+            <p class="mt-6 text-lg leading-8 text-novus-gray-600">
+              Latest updates, news, and insights about the Novus programming language
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blog Posts -->
+      <div class="mx-auto max-w-7xl px-6 py-24 lg:px-8">
+        <div class="mx-auto max-w-2xl">
+          {sortedPosts.length === 0 ? (
+            <p class="text-center text-novus-gray-600">No blog posts yet. Check back soon!</p>
+          ) : (
+            <div class="space-y-16">
+              {sortedPosts.map((post) => (
+                <article class="flex flex-col gap-4">
+                  <div class="flex items-center gap-x-4 text-xs">
+                    <time datetime={post.data.date.toISOString()} class="text-novus-gray-500">
+                      {formatDate(post.data.date)}
+                    </time>
+                    {post.data.tags && post.data.tags.map((tag) => (
+                      <span class="relative z-10 rounded-full bg-novus-red-50 px-3 py-1.5 font-medium text-novus-red-600">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <div class="group relative">
+                    <h2 class="mt-3 text-3xl font-semibold leading-6 text-novus-gray-900 group-hover:text-novus-red-600">
+                      <a href={`/blog/${post.id}`}>
+                        <span class="absolute inset-0"></span>
+                        {post.data.title}
+                      </a>
+                    </h2>
+                    <p class="mt-5 text-sm leading-6 text-novus-gray-600">
+                      {post.data.description}
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-x-4 text-xs">
+                    <span class="text-novus-gray-500">By {post.data.author}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </main>
 
     <Footer />

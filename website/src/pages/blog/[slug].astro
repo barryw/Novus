@@ -1,0 +1,318 @@
+---
+// Individual blog post page for Novus language website
+import { getCollection, type CollectionEntry, render } from 'astro:content';
+import Footer from '../../components/Footer.astro';
+import '../../styles/global.css';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+interface Props {
+  post: CollectionEntry<'blog'>;
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+
+// Format date for display
+function formatDate(date: Date): string {
+  return date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+const title = `${post.data.title} - Novus Blog`;
+const description = post.data.description;
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={post.data.title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="article" />
+    <meta property="article:published_time" content={post.data.date.toISOString()} />
+    <meta property="article:author" content={post.data.author} />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={post.data.title} />
+    <meta name="twitter:description" content={description} />
+
+    <title>{title}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="bg-white text-novus-gray-900 antialiased" style="font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+    <!-- Fixed Navigation Bar -->
+    <nav class="fixed top-0 z-50 w-full border-b border-novus-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div class="mx-auto max-w-7xl px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+          <!-- Logo -->
+          <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-2 group">
+              <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-novus-red-500 to-novus-red-700 flex items-center justify-center transition-transform group-hover:scale-110">
+                <span class="text-white font-bold text-lg">N</span>
+              </div>
+              <span class="text-xl font-bold text-novus-gray-900">Novus</span>
+            </a>
+          </div>
+
+          <!-- Navigation Links -->
+          <div class="hidden md:flex items-center gap-8">
+            <a href="/getting-started/introduction" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Get Started
+            </a>
+            <a href="/guide/variables-types" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Guide
+            </a>
+            <a href="/reference/language" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Reference
+            </a>
+            <a href="/blog" class="text-sm font-medium text-novus-red-600">
+              Blog
+            </a>
+            <a href="https://github.com/barrylapthorn/novus" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              GitHub
+            </a>
+          </div>
+
+          <!-- Mobile Menu Button -->
+          <button
+            type="button"
+            class="md:hidden rounded-lg p-2 text-novus-gray-700 hover:bg-novus-gray-100"
+            aria-label="Open menu"
+            id="mobile-menu-button"
+          >
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div class="hidden md:hidden border-t border-novus-gray-200 bg-white" id="mobile-menu">
+        <div class="space-y-1 px-6 py-4">
+          <a href="/getting-started/introduction" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Get Started
+          </a>
+          <a href="/guide/variables-types" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Guide
+          </a>
+          <a href="/reference/language" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Reference
+          </a>
+          <a href="/blog" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-red-600">
+            Blog
+          </a>
+          <a href="https://github.com/barrylapthorn/novus" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content (with padding for fixed nav) -->
+    <main class="pt-16">
+      <!-- Back to Blog Link -->
+      <div class="mx-auto max-w-7xl px-6 py-6 lg:px-8">
+        <a href="/blog" class="inline-flex items-center gap-2 text-sm font-medium text-novus-gray-600 hover:text-novus-red-600 transition-colors">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+          Back to Blog
+        </a>
+      </div>
+
+      <!-- Article Header -->
+      <article class="mx-auto max-w-3xl px-6 py-12 lg:px-8">
+        <header class="mb-12">
+          <div class="flex items-center gap-x-4 text-xs mb-6">
+            <time datetime={post.data.date.toISOString()} class="text-novus-gray-500">
+              {formatDate(post.data.date)}
+            </time>
+            {post.data.tags && post.data.tags.map((tag) => (
+              <span class="relative z-10 rounded-full bg-novus-red-50 px-3 py-1.5 font-medium text-novus-red-600">
+                {tag}
+              </span>
+            ))}
+          </div>
+          <h1 class="text-4xl font-bold tracking-tight text-novus-gray-900 sm:text-5xl mb-6">
+            {post.data.title}
+          </h1>
+          <p class="text-xl text-novus-gray-600 mb-6">
+            {post.data.description}
+          </p>
+          <div class="flex items-center gap-x-4 text-sm border-t border-novus-gray-200 pt-6">
+            <span class="text-novus-gray-500">By {post.data.author}</span>
+          </div>
+        </header>
+
+        <!-- Article Content with Prose Styling -->
+        <div class="prose prose-lg prose-novus max-w-none">
+          <Content />
+        </div>
+      </article>
+
+      <!-- Back to Blog Link (bottom) -->
+      <div class="mx-auto max-w-7xl px-6 py-12 lg:px-8">
+        <div class="border-t border-novus-gray-200 pt-6">
+          <a href="/blog" class="inline-flex items-center gap-2 text-sm font-medium text-novus-gray-600 hover:text-novus-red-600 transition-colors">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+            Back to Blog
+          </a>
+        </div>
+      </div>
+    </main>
+
+    <Footer />
+
+    <!-- Mobile Menu Toggle Script -->
+    <script>
+      const mobileMenuButton = document.getElementById('mobile-menu-button');
+      const mobileMenu = document.getElementById('mobile-menu');
+
+      if (mobileMenuButton && mobileMenu) {
+        mobileMenuButton.addEventListener('click', () => {
+          mobileMenu.classList.toggle('hidden');
+        });
+      }
+    </script>
+  </body>
+</html>
+
+<style>
+  /* Prose styling for blog content */
+  .prose {
+    color: var(--color-novus-gray-900);
+  }
+
+  .prose :where(h1):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    font-weight: 700;
+    font-size: 2.25em;
+    margin-top: 0;
+    margin-bottom: 0.8888889em;
+    line-height: 1.1111111;
+  }
+
+  .prose :where(h2):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    font-weight: 700;
+    font-size: 1.5em;
+    margin-top: 2em;
+    margin-bottom: 1em;
+    line-height: 1.3333333;
+  }
+
+  .prose :where(h3):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    font-weight: 600;
+    font-size: 1.25em;
+    margin-top: 1.6em;
+    margin-bottom: 0.6em;
+    line-height: 1.6;
+  }
+
+  .prose :where(p):not(:where([class~="not-prose"] *)) {
+    margin-top: 1.25em;
+    margin-bottom: 1.25em;
+  }
+
+  .prose :where(a):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-red-600);
+    text-decoration: underline;
+    font-weight: 500;
+  }
+
+  .prose :where(a):not(:where([class~="not-prose"] *)):hover {
+    color: var(--color-novus-red-700);
+  }
+
+  .prose :where(strong):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    font-weight: 600;
+  }
+
+  .prose :where(ul):not(:where([class~="not-prose"] *)) {
+    list-style-type: disc;
+    margin-top: 1.25em;
+    margin-bottom: 1.25em;
+    padding-left: 1.625em;
+  }
+
+  .prose :where(ol):not(:where([class~="not-prose"] *)) {
+    list-style-type: decimal;
+    margin-top: 1.25em;
+    margin-bottom: 1.25em;
+    padding-left: 1.625em;
+  }
+
+  .prose :where(li):not(:where([class~="not-prose"] *)) {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+  }
+
+  .prose :where(code):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    font-weight: 600;
+    font-size: 0.875em;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    background-color: var(--color-novus-gray-100);
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+  }
+
+  .prose :where(pre):not(:where([class~="not-prose"] *)) {
+    color: var(--color-novus-gray-900);
+    background-color: var(--color-novus-gray-900);
+    overflow-x: auto;
+    font-size: 0.875em;
+    line-height: 1.7142857;
+    margin-top: 1.7142857em;
+    margin-bottom: 1.7142857em;
+    border-radius: 0.5rem;
+    padding: 1.1428571em 1.1428571em;
+  }
+
+  .prose :where(pre code):not(:where([class~="not-prose"] *)) {
+    background-color: transparent;
+    border-width: 0;
+    border-radius: 0;
+    padding: 0;
+    font-weight: inherit;
+    color: var(--color-novus-gray-100);
+    font-size: inherit;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    line-height: inherit;
+  }
+
+  .prose :where(blockquote):not(:where([class~="not-prose"] *)) {
+    font-weight: 500;
+    font-style: italic;
+    color: var(--color-novus-gray-700);
+    border-left-width: 0.25rem;
+    border-left-color: var(--color-novus-red-500);
+    quotes: "\201C""\201D""\2018""\2019";
+    margin-top: 1.6em;
+    margin-bottom: 1.6em;
+    padding-left: 1em;
+  }
+</style>
