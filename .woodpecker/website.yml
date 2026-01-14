@@ -7,6 +7,10 @@ when:
         - website/**
         - deploy/**
 
+# Use Linux runner for Docker builds
+labels:
+  platform: linux/amd64
+
 steps:
   - name: build-push
     image: gcr.io/kaniko-project/executor:debug

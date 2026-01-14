@@ -6,6 +6,10 @@ when:
       include:
         - guide/**
 
+# Use Linux runner for LaTeX builds
+labels:
+  platform: linux/amd64
+
 steps:
   - name: build-pdf
     image: texlive/texlive:latest
