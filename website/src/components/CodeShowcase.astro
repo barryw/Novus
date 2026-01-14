@@ -34,21 +34,21 @@
 <span class="text-purple-400">from</span> <span class="text-green-400">std::ui::screen</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">ScreenHandle</span>
 <span class="text-purple-400">from</span> <span class="text-green-400">std::ffi::graphics</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">SetAPen</span><span class="text-white">,</span> <span class="text-yellow-400">RectFill</span>
 
-<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-white">()</span> <span class="text-white">-></span> <span class="text-green-400">i32</span> <span class="text-white">{</span>
+<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-white">()</span> <span class="text-white">-></span> <span class="text-green-400">i32</span> <span class="text-white">{'{'}</span>
     <span class="text-purple-400">let</span> <span class="text-novus-gray-200">result</span> <span class="text-white">=</span> <span class="text-yellow-400">ScreenHandle</span><span class="text-white">::</span><span class="text-yellow-400">lores</span><span class="text-white">(</span><span class="text-amber-300">"Demo"</span><span class="text-white">,</span> <span class="text-blue-400">5</span><span class="text-white">)</span>
 
-    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-white">{</span>
-        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Ok</span><span class="text-white">(</span><span class="text-novus-gray-200">screen</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{</span>
+    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-white">{'{'}</span>
+        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Ok</span><span class="text-white">(</span><span class="text-novus-gray-200">screen</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{'{'}</span>
             <span class="text-purple-400">let</span> <span class="text-novus-gray-200">rp</span> <span class="text-white">=</span> <span class="text-novus-gray-200">screen</span><span class="text-white">.</span><span class="text-yellow-400">rastport</span><span class="text-white">()</span>
             <span class="text-yellow-400">SetAPen</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">2</span><span class="text-white">)</span>
             <span class="text-yellow-400">RectFill</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">10</span><span class="text-white">,</span> <span class="text-blue-400">20</span><span class="text-white">,</span> <span class="text-blue-400">100</span><span class="text-white">,</span> <span class="text-blue-400">80</span><span class="text-white">)</span>
             <span class="text-purple-400">return</span> <span class="text-blue-400">0</span>
-        <span class="text-white">},</span>
-        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Err</span><span class="text-white">(</span><span class="text-novus-gray-200">_</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{</span>
+        <span class="text-white">{'}'},</span>
+        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Err</span><span class="text-white">(</span><span class="text-novus-gray-200">_</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{'{'}</span>
             <span class="text-purple-400">return</span> <span class="text-blue-400">1</span>
-        <span class="text-white">}</span>
-    <span class="text-white">}</span>
-<span class="text-white">}</span></code></pre>
+        <span class="text-white">{'}'}</span>
+    <span class="text-white">{'}'}</span>
+<span class="text-white">{'}'}</span></code></pre>
         </div>
       </div>
 
