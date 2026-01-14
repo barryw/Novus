@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: novus
+  labels:
+    app.kubernetes.io/name: novus
+    app.kubernetes.io/part-of: novus-lang

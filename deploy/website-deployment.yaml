@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: novuslang-website
+  namespace: novus
+  labels:
+    app: novuslang-website
+    app.kubernetes.io/name: novuslang-website
+    app.kubernetes.io/component: website
+    app.kubernetes.io/part-of: novus-lang
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: novuslang-website
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: novuslang-website
+    spec:
+      containers:
+        - name: website
+          image: ghcr.io/barryw/novuslang-website:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            readOnlyRootFilesystem: false
+            runAsNonRoot: false
+      # Pull from GHCR (public image, no secret needed for public repos)
+      # If private, uncomment and create the secret:
+      # imagePullSecrets:
+      #   - name: ghcr-secret

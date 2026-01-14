@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: novuslang-website
+  namespace: novus
+  labels:
+    app: novuslang-website
+    app.kubernetes.io/name: novuslang-website
+    app.kubernetes.io/component: website
+    app.kubernetes.io/part-of: novus-lang
+  annotations:
+    # Traefik annotations
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # Enable gzip compression at ingress level
+    traefik.ingress.kubernetes.io/router.middlewares: ""
+    # Cert-manager for TLS (if using)
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - novuslang.com
+        - www.novuslang.com
+      secretName: novuslang-tls
+  rules:
+    - host: novuslang.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: novuslang-website
+                port:
+                  number: 80
+    - host: www.novuslang.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: novuslang-website
+                port:
+                  number: 80

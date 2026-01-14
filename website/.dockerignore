@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output (we build inside container)
+dist/
+
+# Development files
+.astro/
+.vscode/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
