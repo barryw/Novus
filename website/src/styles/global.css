@@ -1,2 +1,37 @@
 @import "tailwindcss";
 @import "../../node_modules/@astrojs/starlight-tailwind/tailwind.css";
+
+/* Boing Ball Color Palette */
+@theme {
+  /* Novus Red (Primary Boing Ball Red) */
+  --color-novus-red-50: #fef2f2;
+  --color-novus-red-100: #fee2e2;
+  --color-novus-red-200: #fecaca;
+  --color-novus-red-300: #fca5a5;
+  --color-novus-red-400: #f87171;
+  --color-novus-red-500: #E63030;
+  --color-novus-red-600: #dc2626;
+  --color-novus-red-700: #b91c1c;
+  --color-novus-red-800: #991b1b;
+  --color-novus-red-900: #7f1d1d;
+  --color-novus-red-950: #450a0a;
+
+  /* Novus Gray (Warm grays for Boing Ball whites/grays) */
+  --color-novus-gray-50: #FAFAF9;
+  --color-novus-gray-100: #F5F5F4;
+  --color-novus-gray-200: #E7E5E4;
+  --color-novus-gray-300: #D6D3D1;
+  --color-novus-gray-400: #A8A29E;
+  --color-novus-gray-500: #78716C;
+  --color-novus-gray-600: #57534E;
+  --color-novus-gray-700: #44403C;
+  --color-novus-gray-800: #292524;
+  --color-novus-gray-900: #1C1917;
+}
+
+/* Starlight Accent Color Overrides */
+:root {
+  --sl-color-accent: #E63030;
+  --sl-color-accent-light: #F87171;
+  --sl-color-accent-dark: #B91C1C;
+}
