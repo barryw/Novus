@@ -1,0 +1,381 @@
+---
+// Why Novus page - Explains the philosophy and value proposition
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+const title = "Why Novus? - A Modern Language for Classic Machines";
+const description = "Learn why Novus was created and how it solves the problems of Amiga development";
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://novuslang.com/why-novus" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <title>{title}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="bg-white text-novus-gray-900 antialiased dark:bg-novus-gray-950 dark:text-novus-gray-100" style="font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+    <!-- Fixed Navigation Bar -->
+    <nav class="fixed top-0 z-50 w-full border-b border-novus-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:border-novus-gray-800 dark:bg-novus-gray-900/95 dark:supports-[backdrop-filter]:bg-novus-gray-900/80">
+      <div class="mx-auto max-w-7xl px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+          <!-- Logo -->
+          <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-2 group">
+              <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-novus-red-500 to-novus-red-700 flex items-center justify-center transition-transform group-hover:scale-110">
+                <span class="text-white font-bold text-lg">N</span>
+              </div>
+              <span class="text-xl font-bold text-novus-gray-900 dark:text-white">Novus</span>
+            </a>
+          </div>
+
+          <!-- Navigation Links -->
+          <div class="hidden md:flex items-center gap-8">
+            <a href="/why-novus" class="text-sm font-medium text-novus-red-600 dark:text-novus-red-500 transition-colors">
+              Why Novus?
+            </a>
+            <a href="/getting-started/introduction" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 dark:text-novus-gray-300 dark:hover:text-novus-red-500 transition-colors">
+              Get Started
+            </a>
+            <a href="/guide/variables-types" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 dark:text-novus-gray-300 dark:hover:text-novus-red-500 transition-colors">
+              Guide
+            </a>
+            <a href="/reference/language" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 dark:text-novus-gray-300 dark:hover:text-novus-red-500 transition-colors">
+              Reference
+            </a>
+            <a href="https://github.com/barrylapthorn/novus" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 dark:text-novus-gray-300 dark:hover:text-novus-red-500 transition-colors">
+              GitHub
+            </a>
+          </div>
+
+          <!-- Mobile Menu Button -->
+          <button
+            type="button"
+            class="md:hidden rounded-lg p-2 text-novus-gray-700 hover:bg-novus-gray-100 dark:text-novus-gray-300 dark:hover:bg-novus-gray-800"
+            aria-label="Open menu"
+            id="mobile-menu-button"
+          >
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div class="hidden md:hidden border-t border-novus-gray-200 bg-white dark:border-novus-gray-800 dark:bg-novus-gray-900" id="mobile-menu">
+        <div class="space-y-1 px-6 py-4">
+          <a href="/why-novus" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-red-600 bg-novus-gray-100 dark:text-novus-red-500 dark:bg-novus-gray-800">
+            Why Novus?
+          </a>
+          <a href="/getting-started/introduction" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100 dark:text-novus-gray-300 dark:hover:bg-novus-gray-800">
+            Get Started
+          </a>
+          <a href="/guide/variables-types" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100 dark:text-novus-gray-300 dark:hover:bg-novus-gray-800">
+            Guide
+          </a>
+          <a href="/reference/language" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100 dark:text-novus-gray-300 dark:hover:bg-novus-gray-800">
+            Reference
+          </a>
+          <a href="https://github.com/barrylapthorn/novus" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100 dark:text-novus-gray-300 dark:hover:bg-novus-gray-800">
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content (with padding for fixed nav) -->
+    <main class="pt-16">
+      <!-- Hero Section -->
+      <section class="bg-gradient-to-b from-white to-novus-gray-50 dark:from-novus-gray-950 dark:to-novus-gray-900 py-20 sm:py-32">
+        <div class="mx-auto max-w-3xl px-6 lg:px-8">
+          <h1 class="text-4xl font-bold tracking-tight text-novus-gray-900 dark:text-white sm:text-6xl text-center">
+            Why Novus?
+          </h1>
+          <p class="mt-6 text-lg leading-8 text-novus-gray-600 dark:text-novus-gray-400 text-center">
+            If you've developed for the Amiga, you know the pain: C is dangerous on a machine without memory protection,
+            and assembly is too verbose for complex projects. Novus brings modern language design to the 68k without sacrificing
+            control or performance.
+          </p>
+        </div>
+      </section>
+
+      <!-- The Problem with C -->
+      <section class="py-16 sm:py-24">
+        <div class="mx-auto max-w-3xl px-6 lg:px-8">
+          <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 dark:text-white">
+            The Problem with C
+          </h2>
+          <div class="mt-8 space-y-4 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+            <p>
+              C has been the primary language for Amiga development since the beginning, but it was designed in the 1970s
+              for systems with memory protection. On the Amiga, C's weaknesses become catastrophic:
+            </p>
+            <ul class="list-disc pl-6 space-y-3">
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Null pointer dereferences crash your Amiga.</strong>
+                No protected memory means every null pointer is a system crash, not a catchable exception.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Buffer overflows corrupt memory silently.</strong>
+                A single array indexing mistake can corrupt system structures, causing mysterious crashes hours later.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">The preprocessor creates unreadable code.</strong>
+                Macros and conditional compilation make code difficult to understand and debug.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Header file management is tedious.</strong>
+                Forward declarations, include guards, and header ordering consume developer time and create frustration.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Error handling is an afterthought.</strong>
+                Return codes are easily ignored, and there's no standard way to propagate errors.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- The Problem with Assembly -->
+      <section class="bg-novus-gray-50 dark:bg-novus-gray-900 py-16 sm:py-24">
+        <div class="mx-auto max-w-3xl px-6 lg:px-8">
+          <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 dark:text-white">
+            The Problem with Assembly
+          </h2>
+          <div class="mt-8 space-y-4 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+            <p>
+              Assembly gives you complete control over the 68k, but at a tremendous cost in productivity:
+            </p>
+            <ul class="list-disc pl-6 space-y-3">
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Verbose—simple operations take many lines.</strong>
+                What's one line in a high-level language becomes 10+ lines of register management and bookkeeping.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Easy to make register allocation mistakes.</strong>
+                Tracking which registers are in use, preserved, or volatile requires constant vigilance.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">No type checking.</strong>
+                The assembler doesn't care if you pass a pointer where an integer is expected—you'll find out at runtime.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Difficult to maintain and refactor.</strong>
+                Changing data structures or function signatures requires updating hundreds of lines of code.
+              </li>
+              <li>
+                <strong class="text-novus-gray-900 dark:text-white">Steep learning curve.</strong>
+                New developers need months to become productive in assembly, limiting community growth.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- The Novus Approach -->
+      <section class="py-16 sm:py-24">
+        <div class="mx-auto max-w-5xl px-6 lg:px-8">
+          <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 dark:text-white text-center">
+            The Novus Approach
+          </h2>
+          <p class="mt-4 text-lg leading-8 text-novus-gray-600 dark:text-novus-gray-400 text-center max-w-3xl mx-auto">
+            Novus learns from decades of language design evolution while respecting the Amiga's unique constraints.
+          </p>
+
+          <div class="mt-12 grid grid-cols-1 gap-8 sm:grid-cols-2">
+            <!-- Feature Card: Safety -->
+            <div class="bg-novus-gray-50 dark:bg-novus-gray-800 rounded-xl p-8 border border-novus-gray-200 dark:border-novus-gray-700">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="h-10 w-10 rounded-lg bg-novus-red-100 dark:bg-novus-red-900/30 flex items-center justify-center">
+                  <svg class="h-6 w-6 text-novus-red-600 dark:text-novus-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                  </svg>
+                </div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Safety Without Overhead</h3>
+              </div>
+              <p class="text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                Bounds checking in debug builds catches bugs during development. Release builds compile to optimal 68k code
+                with zero runtime overhead. No exceptions, no hidden allocations—just fast, predictable machine code.
+              </p>
+            </div>
+
+            <!-- Feature Card: Syntax -->
+            <div class="bg-novus-gray-50 dark:bg-novus-gray-800 rounded-xl p-8 border border-novus-gray-200 dark:border-novus-gray-700">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="h-10 w-10 rounded-lg bg-novus-red-100 dark:bg-novus-red-900/30 flex items-center justify-center">
+                  <svg class="h-6 w-6 text-novus-red-600 dark:text-novus-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                  </svg>
+                </div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Clean, Modern Syntax</h3>
+              </div>
+              <p class="text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                No preprocessor. No header files. No null pointers. Result types force you to handle errors explicitly.
+                Option types eliminate null checks. The compiler guides you toward correct code through helpful error messages.
+              </p>
+            </div>
+
+            <!-- Feature Card: Amiga Native -->
+            <div class="bg-novus-gray-50 dark:bg-novus-gray-800 rounded-xl p-8 border border-novus-gray-200 dark:border-novus-gray-700">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="h-10 w-10 rounded-lg bg-novus-red-100 dark:bg-novus-red-900/30 flex items-center justify-center">
+                  <svg class="h-6 w-6 text-novus-red-600 dark:text-novus-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.375a2.25 2.25 0 00-2.25-2.25H6.375A2.25 2.25 0 004.125 6.375v10.5a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                </div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Amiga Native</h3>
+              </div>
+              <p class="text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                Built specifically for the Amiga, not ported. Direct copper list DSL. Type-safe blitter jobs.
+                Hardware register access with compile-time validation. Build libraries, devices, and handlers with
+                auto-generated ROMTags and vectors.
+              </p>
+            </div>
+
+            <!-- Feature Card: Readable Output -->
+            <div class="bg-novus-gray-50 dark:bg-novus-gray-800 rounded-xl p-8 border border-novus-gray-200 dark:border-novus-gray-700">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="h-10 w-10 rounded-lg bg-novus-red-100 dark:bg-novus-red-900/30 flex items-center justify-center">
+                  <svg class="h-6 w-6 text-novus-red-600 dark:text-novus-red-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Readable Output</h3>
+              </div>
+              <p class="text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                Generated 68k assembly is clean, commented, and understandable. When you need to debug or optimize,
+                you can read and reason about the output. Drop to inline assembly when you need precise control.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Philosophy -->
+      <section class="bg-novus-gray-50 dark:bg-novus-gray-900 py-16 sm:py-24">
+        <div class="mx-auto max-w-3xl px-6 lg:px-8">
+          <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 dark:text-white text-center">
+            Core Philosophy
+          </h2>
+          <p class="mt-4 text-lg leading-8 text-novus-gray-600 dark:text-novus-gray-400 text-center">
+            Every design decision in Novus follows these principles:
+          </p>
+
+          <div class="mt-12 space-y-8">
+            <!-- Principle 1 -->
+            <div class="flex gap-4">
+              <div class="flex-shrink-0 w-10 h-10 rounded-full bg-novus-red-600 dark:bg-novus-red-700 flex items-center justify-center">
+                <span class="text-xl font-bold text-white">1</span>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Explicit over implicit</h3>
+                <p class="mt-2 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                  No hidden allocations. No automatic type conversions that lose precision. No runtime surprises.
+                  If something happens, you wrote code that makes it happen.
+                </p>
+              </div>
+            </div>
+
+            <!-- Principle 2 -->
+            <div class="flex gap-4">
+              <div class="flex-shrink-0 w-10 h-10 rounded-full bg-novus-red-600 dark:bg-novus-red-700 flex items-center justify-center">
+                <span class="text-xl font-bold text-white">2</span>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Predictable performance</h3>
+                <p class="mt-2 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                  Every operation has deterministic execution time. No garbage collection pauses. No hidden virtual calls.
+                  The code you write is the code that runs.
+                </p>
+              </div>
+            </div>
+
+            <!-- Principle 3 -->
+            <div class="flex gap-4">
+              <div class="flex-shrink-0 w-10 h-10 rounded-full bg-novus-red-600 dark:bg-novus-red-700 flex items-center justify-center">
+                <span class="text-xl font-bold text-white">3</span>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Respect the machine</h3>
+                <p class="mt-2 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                  The Amiga's custom chips are features, not implementation details to abstract away. Novus provides
+                  type-safe, compile-time-validated access to the hardware you love.
+                </p>
+              </div>
+            </div>
+
+            <!-- Principle 4 -->
+            <div class="flex gap-4">
+              <div class="flex-shrink-0 w-10 h-10 rounded-full bg-novus-red-600 dark:bg-novus-red-700 flex items-center justify-center">
+                <span class="text-xl font-bold text-white">4</span>
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-novus-gray-900 dark:text-white">Amiga first</h3>
+                <p class="mt-2 text-base leading-7 text-novus-gray-700 dark:text-novus-gray-300">
+                  Novus is not a portable systems language. It's designed specifically for the Amiga 68k ecosystem,
+                  embracing its unique characteristics rather than treating them as portability problems.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Section -->
+      <section class="py-16 sm:py-24">
+        <div class="mx-auto max-w-3xl px-6 lg:px-8 text-center">
+          <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 dark:text-white">
+            Ready to write new code for classic machines?
+          </h2>
+          <p class="mt-4 text-lg leading-8 text-novus-gray-600 dark:text-novus-gray-400">
+            Get started with Novus and experience modern language design on the Amiga.
+          </p>
+          <div class="mt-8">
+            <a
+              href="/getting-started/introduction"
+              class="inline-flex items-center gap-2 rounded-lg bg-novus-red-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-novus-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-novus-red-600 dark:bg-novus-red-700 dark:hover:bg-novus-red-800 transition-colors"
+            >
+              Get Started with Novus
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <Footer />
+
+    <!-- Mobile Menu Toggle Script -->
+    <script>
+      const mobileMenuButton = document.getElementById('mobile-menu-button');
+      const mobileMenu = document.getElementById('mobile-menu');
+
+      if (mobileMenuButton && mobileMenu) {
+        mobileMenuButton.addEventListener('click', () => {
+          mobileMenu.classList.toggle('hidden');
+        });
+      }
+    </script>
+  </body>
+</html>
