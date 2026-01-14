@@ -38,27 +38,23 @@
 
 /* Code Block Syntax Highlighting Fixes */
 /* Fix invisible/dark tokens on dark background */
-.expressive-code pre code {
-  /* Default text color for code */
-  color: #e4e4e7;
-}
 
-/* Variables and identifiers - make them visible on dark bg */
-.expressive-code .ec-line span[style*="color:#24292"] {
+/* Set a visible default for ALL code text */
+.expressive-code pre code,
+.expressive-code .ec-line {
   color: #e4e4e7 !important;
 }
 
-/* Fix dark variables/parameters */
-.expressive-code .ec-line span[style*="color:#1f2328"],
-.expressive-code .ec-line span[style*="color:#24292e"],
-.expressive-code .ec-line span[style*="color:#1F2328"],
-.expressive-code .ec-line span[style*="color:#24292E"] {
+/* Ensure spans without explicit color inherit visible color */
+.expressive-code .ec-line span:not([style*="color"]) {
   color: #e4e4e7 !important;
 }
 
-/* Plain text/identifiers that might be dark */
-.expressive-code .ec-line span[style*="color:#383a42"],
-.expressive-code .ec-line span[style*="color:#393a34"],
-.expressive-code .ec-line span[style*="color:#3b4351"] {
-  color: #cbd5e1 !important;
+/* Override any dark colors (hex colors starting with #0, #1, #2, #3) */
+.expressive-code .ec-line span[style*="color:#0"],
+.expressive-code .ec-line span[style*="color:#1"],
+.expressive-code .ec-line span[style*="color:#2"],
+.expressive-code .ec-line span[style*="color:#3"],
+.expressive-code .ec-line span[style*="color:#4"] {
+  color: #e4e4e7 !important;
 }
