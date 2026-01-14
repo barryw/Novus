@@ -44,6 +44,7 @@ const description = post.data.description;
     <meta property="og:title" content={post.data.title} />
     <meta property="og:description" content={description} />
     <meta property="og:type" content="article" />
+    <meta property="og:url" content={`https://novuslang.com/blog/${post.id}`} />
     <meta property="article:published_time" content={post.data.date.toISOString()} />
     <meta property="article:author" content={post.data.author} />
 
