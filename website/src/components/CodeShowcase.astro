@@ -10,7 +10,7 @@
       <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
         Modern code. Efficient assembly.
       </h2>
-      <p class="mt-4 text-lg text-novus-gray-300">
+      <p class="mt-4 text-lg text-white">
         Write clean, safe code that compiles to optimal 68k assembly
       </p>
     </div>
@@ -25,30 +25,30 @@
             <div class="h-3 w-3 rounded-full bg-yellow-500"></div>
             <div class="h-3 w-3 rounded-full bg-green-500"></div>
           </div>
-          <div class="ml-2 text-sm text-novus-gray-300 font-mono">screen.novus</div>
+          <div class="ml-2 text-sm text-white font-mono">screen.novus</div>
         </div>
 
         <!-- Code Content - matches Novus.Tests/Examples/homepage_example.novus -->
         <div class="overflow-x-auto bg-novus-gray-900 p-6">
           <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">// Open a screen with safe error handling</span>
 <span class="text-purple-400">from</span> <span class="text-green-400">std::ui::screen</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">ScreenHandle</span>
-<span class="text-purple-400">from</span> <span class="text-green-400">std::ffi::graphics</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">SetAPen</span><span class="text-novus-gray-300">,</span> <span class="text-yellow-400">RectFill</span>
+<span class="text-purple-400">from</span> <span class="text-green-400">std::ffi::graphics</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">SetAPen</span><span class="text-white">,</span> <span class="text-yellow-400">RectFill</span>
 
-<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-novus-gray-300">()</span> <span class="text-novus-gray-300">-></span> <span class="text-green-400">i32</span> <span class="text-novus-gray-300">{</span>
-    <span class="text-purple-400">let</span> <span class="text-novus-gray-200">result</span> <span class="text-novus-gray-300">=</span> <span class="text-yellow-400">ScreenHandle</span><span class="text-novus-gray-300">::</span><span class="text-yellow-400">lores</span><span class="text-novus-gray-300">(</span><span class="text-amber-300">"Demo"</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">5</span><span class="text-novus-gray-300">)</span>
+<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-white">()</span> <span class="text-white">-></span> <span class="text-green-400">i32</span> <span class="text-white">{</span>
+    <span class="text-purple-400">let</span> <span class="text-novus-gray-200">result</span> <span class="text-white">=</span> <span class="text-yellow-400">ScreenHandle</span><span class="text-white">::</span><span class="text-yellow-400">lores</span><span class="text-white">(</span><span class="text-amber-300">"Demo"</span><span class="text-white">,</span> <span class="text-blue-400">5</span><span class="text-white">)</span>
 
-    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-novus-gray-300">{</span>
-        <span class="text-green-400">Result</span><span class="text-novus-gray-300">::</span><span class="text-yellow-400">Ok</span><span class="text-novus-gray-300">(</span><span class="text-novus-gray-200">screen</span><span class="text-novus-gray-300">)</span> <span class="text-novus-gray-300">=></span> <span class="text-novus-gray-300">{</span>
-            <span class="text-purple-400">let</span> <span class="text-novus-gray-200">rp</span> <span class="text-novus-gray-300">=</span> <span class="text-novus-gray-200">screen</span><span class="text-novus-gray-300">.</span><span class="text-yellow-400">rastport</span><span class="text-novus-gray-300">()</span>
-            <span class="text-yellow-400">SetAPen</span><span class="text-novus-gray-300">(</span><span class="text-novus-gray-200">rp</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">2</span><span class="text-novus-gray-300">)</span>
-            <span class="text-yellow-400">RectFill</span><span class="text-novus-gray-300">(</span><span class="text-novus-gray-200">rp</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">10</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">20</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">100</span><span class="text-novus-gray-300">,</span> <span class="text-blue-400">80</span><span class="text-novus-gray-300">)</span>
+    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-white">{</span>
+        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Ok</span><span class="text-white">(</span><span class="text-novus-gray-200">screen</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{</span>
+            <span class="text-purple-400">let</span> <span class="text-novus-gray-200">rp</span> <span class="text-white">=</span> <span class="text-novus-gray-200">screen</span><span class="text-white">.</span><span class="text-yellow-400">rastport</span><span class="text-white">()</span>
+            <span class="text-yellow-400">SetAPen</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">2</span><span class="text-white">)</span>
+            <span class="text-yellow-400">RectFill</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">10</span><span class="text-white">,</span> <span class="text-blue-400">20</span><span class="text-white">,</span> <span class="text-blue-400">100</span><span class="text-white">,</span> <span class="text-blue-400">80</span><span class="text-white">)</span>
             <span class="text-purple-400">return</span> <span class="text-blue-400">0</span>
-        <span class="text-novus-gray-300">},</span>
-        <span class="text-green-400">Result</span><span class="text-novus-gray-300">::</span><span class="text-yellow-400">Err</span><span class="text-novus-gray-300">(</span><span class="text-novus-gray-200">_</span><span class="text-novus-gray-300">)</span> <span class="text-novus-gray-300">=></span> <span class="text-novus-gray-300">{</span>
+        <span class="text-white">},</span>
+        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Err</span><span class="text-white">(</span><span class="text-novus-gray-200">_</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{</span>
             <span class="text-purple-400">return</span> <span class="text-blue-400">1</span>
-        <span class="text-novus-gray-300">}</span>
-    <span class="text-novus-gray-300">}</span>
-<span class="text-novus-gray-300">}</span></code></pre>
+        <span class="text-white">}</span>
+    <span class="text-white">}</span>
+<span class="text-white">}</span></code></pre>
         </div>
       </div>
 
@@ -61,7 +61,7 @@
             <div class="h-3 w-3 rounded-full bg-yellow-500"></div>
             <div class="h-3 w-3 rounded-full bg-green-500"></div>
           </div>
-          <div class="ml-2 text-sm text-novus-gray-300 font-mono">screen.s (68020)</div>
+          <div class="ml-2 text-sm text-white font-mono">screen.s (68020)</div>
         </div>
 
         <!-- Assembly Content - illustrative of generated code -->
@@ -69,40 +69,40 @@
           <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">; Function: main</span>
 <span class="text-novus-gray-500">; Result-based error handling</span>
 <span class="text-yellow-400">_main:</span>
-    <span class="text-green-400">movem.l</span>    <span class="text-blue-400">d2-d7/a2-a6</span><span class="text-novus-gray-300">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-300">)</span>
+    <span class="text-green-400">movem.l</span>    <span class="text-blue-400">d2-d7/a2-a6</span><span class="text-white">,-(</span><span class="text-blue-400">sp</span><span class="text-white">)</span>
 
     <span class="text-novus-gray-500">; Open lores screen (320x256, 5 planes)</span>
     <span class="text-green-400">pea</span>        <span class="text-purple-400">_str_demo</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#5</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">d0</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#5</span><span class="text-white">,</span><span class="text-blue-400">d0</span>
     <span class="text-green-400">jsr</span>        <span class="text-yellow-400">_ScreenHandle_lores</span>
-    <span class="text-green-400">addq.l</span>     <span class="text-purple-400">#4</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">sp</span>
+    <span class="text-green-400">addq.l</span>     <span class="text-purple-400">#4</span><span class="text-white">,</span><span class="text-blue-400">sp</span>
 
     <span class="text-novus-gray-500">; Check Result tag (d1=0 for Ok)</span>
     <span class="text-green-400">tst.l</span>      <span class="text-blue-400">d1</span>
     <span class="text-green-400">bne.s</span>      <span class="text-yellow-400">.error</span>
 
     <span class="text-novus-gray-500">; Get rastport and draw</span>
-    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">a2</span>          <span class="text-novus-gray-500">; screen handle</span>
+    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-white">,</span><span class="text-blue-400">a2</span>          <span class="text-novus-gray-500">; screen handle</span>
     <span class="text-green-400">jsr</span>        <span class="text-yellow-400">_screen_rastport</span>
-    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">a1</span>          <span class="text-novus-gray-500">; rastport</span>
+    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-white">,</span><span class="text-blue-400">a1</span>          <span class="text-novus-gray-500">; rastport</span>
 
     <span class="text-novus-gray-500">; SetAPen(rp, 2)</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#2</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">d0</span>
-    <span class="text-green-400">move.l</span>     <span class="text-yellow-400">_GfxBase</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">a6</span>
-    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-342</span><span class="text-novus-gray-300">(</span><span class="text-blue-400">a6</span><span class="text-novus-gray-300">)</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#2</span><span class="text-white">,</span><span class="text-blue-400">d0</span>
+    <span class="text-green-400">move.l</span>     <span class="text-yellow-400">_GfxBase</span><span class="text-white">,</span><span class="text-blue-400">a6</span>
+    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-342</span><span class="text-white">(</span><span class="text-blue-400">a6</span><span class="text-white">)</span>
 
     <span class="text-novus-gray-500">; RectFill(rp, 10, 20, 100, 80)</span>
-    <span class="text-green-400">movem.l</span>    <span class="text-purple-400">#10,20,100,80</span><span class="text-novus-gray-300">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-300">)</span>
-    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-306</span><span class="text-novus-gray-300">(</span><span class="text-blue-400">a6</span><span class="text-novus-gray-300">)</span>
+    <span class="text-green-400">movem.l</span>    <span class="text-purple-400">#10,20,100,80</span><span class="text-white">,-(</span><span class="text-blue-400">sp</span><span class="text-white">)</span>
+    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-306</span><span class="text-white">(</span><span class="text-blue-400">a6</span><span class="text-white">)</span>
 
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#0</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 0</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#0</span><span class="text-white">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 0</span>
     <span class="text-green-400">bra.s</span>      <span class="text-yellow-400">.cleanup</span>
 
 <span class="text-yellow-400">.error:</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#1</span><span class="text-novus-gray-300">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 1</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#1</span><span class="text-white">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 1</span>
 
 <span class="text-yellow-400">.cleanup:</span>
-    <span class="text-green-400">movem.l</span>    <span class="text-novus-gray-300">(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-300">)+,</span><span class="text-blue-400">d2-d7/a2-a6</span>
+    <span class="text-green-400">movem.l</span>    <span class="text-white">(</span><span class="text-blue-400">sp</span><span class="text-white">)+,</span><span class="text-blue-400">d2-d7/a2-a6</span>
     <span class="text-green-400">rts</span></code></pre>
         </div>
       </div>
@@ -112,19 +112,19 @@
     <div class="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-3">
       <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
         <h3 class="text-lg font-semibold text-white">Type Safety</h3>
-        <p class="mt-2 text-sm text-novus-gray-300">
+        <p class="mt-2 text-sm text-white">
           Result types ensure errors are handled. No null pointer crashes.
         </p>
       </div>
       <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
         <h3 class="text-lg font-semibold text-white">Efficient Code</h3>
-        <p class="mt-2 text-sm text-novus-gray-300">
+        <p class="mt-2 text-sm text-white">
           Compiles to clean, readable 68k assembly with proper calling conventions.
         </p>
       </div>
       <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
         <h3 class="text-lg font-semibold text-white">AmigaOS Ready</h3>
-        <p class="mt-2 text-sm text-novus-gray-300">
+        <p class="mt-2 text-sm text-white">
           Direct library calls with safe wrappers. Full HUNK format support.
         </p>
       </div>
