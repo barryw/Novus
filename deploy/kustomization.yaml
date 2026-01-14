@@ -5,10 +5,10 @@ namespace: novus
 
 resources:
   - namespace.yaml
-  - ci-rbac.yaml
   - website-deployment.yaml
   - website-service.yaml
   - website-ingress.yaml
+  # ci-rbac.yaml is applied manually, not via CI (chicken-and-egg problem)
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
