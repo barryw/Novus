@@ -4,7 +4,7 @@ metadata:
   name: novuslang-website
   namespace: novus
   annotations:
-    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/version: "1.0.1"
   labels:
     app: novuslang-website
     app.kubernetes.io/name: novuslang-website
