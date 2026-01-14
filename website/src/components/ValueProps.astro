@@ -1,0 +1,160 @@
+---
+// Value propositions section for Novus language homepage
+---
+
+<section id="features" class="bg-white py-24 sm:py-32">
+  <div class="mx-auto max-w-7xl px-6 lg:px-8">
+    <div class="mx-auto max-w-2xl text-center">
+      <h2 class="text-3xl font-bold tracking-tight text-novus-gray-900 sm:text-4xl">
+        Built for the Amiga, designed for today
+      </h2>
+      <p class="mt-4 text-lg text-novus-gray-600">
+        Modern language features that respect the hardware and the platform
+      </p>
+    </div>
+
+    <div class="mx-auto mt-16 max-w-7xl">
+      <div class="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:gap-12">
+        <!-- Modern Safety -->
+        <div class="relative overflow-hidden rounded-2xl border border-novus-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-center gap-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-novus-red-100">
+              <svg class="h-6 w-6 text-novus-red-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-novus-gray-900">Modern Safety</h3>
+          </div>
+          <p class="mt-4 text-base leading-7 text-novus-gray-600">
+            Result types instead of null pointers. Bounds checking in debug builds. No hidden allocations or runtime surprises.
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-novus-gray-600">
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span><code class="text-novus-red-600">Result[T,E]</code> and <code class="text-novus-red-600">Option[T]</code> types</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Explicit <code class="text-novus-red-600">unsafe</code> blocks for low-level ops</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>RAII handles with deterministic cleanup</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Amiga Native -->
+        <div class="relative overflow-hidden rounded-2xl border border-novus-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-center gap-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-novus-red-100">
+              <svg class="h-6 w-6 text-novus-red-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V6.75a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 6.75v10.5a2.25 2.25 0 002.25 2.25zm.75-12h9v9h-9v-9z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-novus-gray-900">Amiga Native</h3>
+          </div>
+          <p class="mt-4 text-base leading-7 text-novus-gray-600">
+            Direct hardware access with compile-time chipset validation. Full AmigaOS integration with safe wrappers.
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-novus-gray-600">
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Copper & Blitter DSLs with compile-time checks</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>68000/020/040/060 CPU profiles & fat binaries</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Native libraries, devices, and handlers</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Clean Syntax -->
+        <div class="relative overflow-hidden rounded-2xl border border-novus-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-center gap-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-novus-red-100">
+              <svg class="h-6 w-6 text-novus-red-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-novus-gray-900">Clean Syntax</h3>
+          </div>
+          <p class="mt-4 text-base leading-7 text-novus-gray-600">
+            Readable code that looks like what it does. No preprocessor hell, no hidden macros, just clean modern syntax.
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-novus-gray-600">
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Clear, expressive syntax inspired by modern languages</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Module system replaces include hell</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Readable assembly output for debugging</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Powerful Features -->
+        <div class="relative overflow-hidden rounded-2xl border border-novus-gray-200 bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-center gap-4">
+            <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-novus-red-100">
+              <svg class="h-6 w-6 text-novus-red-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-novus-gray-900">Powerful Features</h3>
+          </div>
+          <p class="mt-4 text-base leading-7 text-novus-gray-600">
+            Modern language features that compile to efficient 68k code. Zero-cost abstractions where it matters.
+          </p>
+          <ul class="mt-4 space-y-2 text-sm text-novus-gray-600">
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Async/await using Exec signals & message ports</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Generics and pattern matching</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 flex-shrink-0 text-novus-red-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" />
+              </svg>
+              <span>Inline assembly & fixed-point math intrinsics</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

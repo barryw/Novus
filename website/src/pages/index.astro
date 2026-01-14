@@ -1,0 +1,124 @@
+---
+// Homepage for Novus language website
+import Hero from '../components/Hero.astro';
+import ValueProps from '../components/ValueProps.astro';
+import CodeShowcase from '../components/CodeShowcase.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+const title = "Novus - New code for classic machines";
+const description = "A modern systems programming language for the Amiga 68k";
+---
+
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://novuslang.com" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+
+    <title>{title}</title>
+
+    <!-- Fonts are preloaded in astro.config.mjs -->
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="bg-white text-novus-gray-900 antialiased" style="font-family: 'Inter', system-ui, -apple-system, sans-serif;">
+    <!-- Fixed Navigation Bar -->
+    <nav class="fixed top-0 z-50 w-full border-b border-novus-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+      <div class="mx-auto max-w-7xl px-6 lg:px-8">
+        <div class="flex h-16 items-center justify-between">
+          <!-- Logo -->
+          <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-2 group">
+              <div class="h-8 w-8 rounded-lg bg-gradient-to-br from-novus-red-500 to-novus-red-700 flex items-center justify-center transition-transform group-hover:scale-110">
+                <span class="text-white font-bold text-lg">N</span>
+              </div>
+              <span class="text-xl font-bold text-novus-gray-900">Novus</span>
+            </a>
+          </div>
+
+          <!-- Navigation Links -->
+          <div class="hidden md:flex items-center gap-8">
+            <a href="/getting-started/introduction" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Get Started
+            </a>
+            <a href="/guide/variables-types" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Guide
+            </a>
+            <a href="/reference/language" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              Reference
+            </a>
+            <a href="https://github.com/barrylapthorn/novus" class="text-sm font-medium text-novus-gray-700 hover:text-novus-red-600 transition-colors">
+              GitHub
+            </a>
+          </div>
+
+          <!-- Mobile Menu Button -->
+          <button
+            type="button"
+            class="md:hidden rounded-lg p-2 text-novus-gray-700 hover:bg-novus-gray-100"
+            aria-label="Open menu"
+            id="mobile-menu-button"
+          >
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Menu -->
+      <div class="hidden md:hidden border-t border-novus-gray-200 bg-white" id="mobile-menu">
+        <div class="space-y-1 px-6 py-4">
+          <a href="/getting-started/introduction" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Get Started
+          </a>
+          <a href="/guide/variables-types" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Guide
+          </a>
+          <a href="/reference/language" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            Reference
+          </a>
+          <a href="https://github.com/barrylapthorn/novus" class="block rounded-lg px-3 py-2 text-base font-medium text-novus-gray-700 hover:bg-novus-gray-100">
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content (with padding for fixed nav) -->
+    <main class="pt-16">
+      <Hero />
+      <ValueProps />
+      <CodeShowcase />
+    </main>
+
+    <Footer />
+
+    <!-- Mobile Menu Toggle Script -->
+    <script>
+      const mobileMenuButton = document.getElementById('mobile-menu-button');
+      const mobileMenu = document.getElementById('mobile-menu');
+
+      if (mobileMenuButton && mobileMenu) {
+        mobileMenuButton.addEventListener('click', () => {
+          mobileMenu.classList.toggle('hidden');
+        });
+      }
+    </script>
+  </body>
+</html>
