@@ -42,9 +42,9 @@ But when you need raw power, `unsafe` blocks give you direct hardware access and
 ### Target-Aware Compilation
 
 Novus understands your hardware:
-- **CPU profiles** - 68000/020/040/060 with appropriate instruction selection
+- **CPU profiles** - 68020/030/040/060 with appropriate instruction selection
 - **Chipset awareness** - OCS/ECS/AGA validation at compile time
-- **Fat binaries** - multiple CPU targets with runtime dispatch
+- **Fat binaries** - planned for future releases (runtime CPU dispatch)
 - **Memory control** - explicit Chip/Fast memory allocation
 
 ## Current Status

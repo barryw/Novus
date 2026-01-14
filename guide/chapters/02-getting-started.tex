@@ -1,4 +1,5 @@
 \chapter{Getting Started}
+\label{ch:getting-started}
 
 \begin{quote}
 \textit{``The journey of a thousand miles begins with a single step.''}\\
@@ -8,6 +9,36 @@
 \vspace{1em}
 
 This chapter walks you through installing the Novus compiler, writing your first program, and understanding the compilation pipeline. By the end, you'll have a working executable running on your Amiga (or emulator).
+
+\section{Quick Start}
+\label{sec:quick-start}
+
+If you already have Novus installed, here's the fastest path to ``Hello, Amiga!'':
+
+\begin{enumerate}
+\item Create \texttt{hello.novus}:
+\begin{lstlisting}
+from std::io::file import println
+
+fn main() -> i32 {
+    println("Hello, Amiga!")
+    return 0
+}
+\end{lstlisting}
+
+\item Compile:
+\begin{lstlisting}[language=bash]
+novus compile hello.novus -o hello
+\end{lstlisting}
+
+\item Copy to your Amiga and run:
+\begin{lstlisting}[language=bash]
+1.Workbench:> hello
+Hello, Amiga!
+\end{lstlisting}
+\end{enumerate}
+
+That's it! The rest of this chapter explains the prerequisites, installation, and toolchain in detail.
 
 \section{Prerequisites}
 
@@ -237,11 +268,14 @@ from std::collections::vec import Vec
 from std::io::file import println
 
 fn main() -> i32 {
-    var names: Vec<&str> = Vec::new()
-    names.push("Amiga")
-    names.push("Novus")
+    var numbers: Vec<i32> = Vec::new()
+    numbers.push(100)
+    numbers.push(200)
+    numbers.push(300)
 
-    println("Count: {}", names.len())
+    // Vec::len() returns the count of elements
+    let count = numbers.len()
+    println("Items added successfully")
     return 0
 }
 \end{lstlisting}
@@ -300,9 +334,10 @@ The \texttt{novus test} command supports several options:
 You now have a working Novus installation and understand the basic workflow. The following chapters cover:
 
 \begin{itemize}
-    \item \textbf{Chapter 3: Language Basics} --- Variables, types, and expressions
-    \item \textbf{Chapter 4: Types} --- The type system in depth
-    \item \textbf{Chapter 5: Control Flow} --- Conditionals, loops, and pattern matching
+    \item \textbf{Chapter~\ref{ch:basics}: Language Basics} --- Variables, types, and expressions
+    \item \textbf{Chapter~\ref{ch:types}: Types} --- The type system in depth
+    \item \textbf{Chapter~\ref{ch:memory}: Memory Management} --- Safe and explicit memory handling
+    \item \textbf{Chapter~\ref{ch:control-flow}: Control Flow} --- Conditionals, loops, and pattern matching
 \end{itemize}
 
 When you're ready, turn the page and start learning the language itself.

@@ -1,0 +1,683 @@
+\chapter{Guide for C Programmers}
+\label{ch:c-programmers}
+
+This appendix consolidates the key differences between C and Novus for experienced C programmers transitioning to the language. If you've written AmigaOS code in C, this chapter will help you map familiar concepts to their Novus equivalents.
+
+\section{Philosophy Differences}
+
+Novus and C share a systems programming heritage, but differ in philosophy:
+
+\begin{center}
+\begin{tabular}{lp{5.5cm}p{5.5cm}}
+\textbf{Aspect} & \textbf{C} & \textbf{Novus} \\
+\hline
+Safety & Trust the programmer & Verify at compile time \\
+Defaults & Mutable, public & Immutable, private \\
+Errors & Return codes, \texttt{errno} & \texttt{Result<T, E>} types \\
+Memory & Manual \texttt{malloc}/\texttt{free} & RAII with \texttt{Drop} trait \\
+Null & Implicit in all pointers & Explicit \texttt{*T} vs non-null \texttt{\&T} \\
+\end{tabular}
+\end{center}
+
+\section{Variable Declarations}
+
+C declares type first, Novus declares intent first:
+
+\begin{lstlisting}[language=C]
+// C
+int x = 10;              // Mutable by default
+const int Y = 20;        // Immutable
+static int z = 30;       // File-local
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus
+var x = 10               // Mutable (explicit)
+let y = 20               // Immutable (explicit)
+const Z: i32 = 30        // Compile-time constant
+\end{lstlisting}
+
+Key differences:
+\begin{itemize}
+    \item Type inference: \texttt{var x = 10} infers \texttt{i32}
+    \item No semicolons required (optional)
+    \item \texttt{let} bindings cannot be reassigned
+    \item \texttt{const} must be computable at compile time
+\end{itemize}
+
+\section{Type System}
+
+\subsection{Primitive Types}
+
+\begin{center}
+\begin{tabular}{ll|ll}
+\textbf{C} & \textbf{Novus} & \textbf{C} & \textbf{Novus} \\
+\hline
+\texttt{char} & \texttt{i8} or \texttt{u8} & \texttt{unsigned char} & \texttt{u8} \\
+\texttt{short} & \texttt{i16} & \texttt{unsigned short} & \texttt{u16} \\
+\texttt{int} / \texttt{long} & \texttt{i32} & \texttt{unsigned int} & \texttt{u32} \\
+\texttt{long long} & \texttt{i64} & \texttt{unsigned long long} & \texttt{u64} \\
+\texttt{float} & \texttt{f32} & \texttt{double} & \texttt{f64} \\
+\texttt{void*} & \texttt{*u8} & \texttt{NULL} & \texttt{null} \\
+\end{tabular}
+\end{center}
+
+Novus also provides fixed-point types not available in standard C:
+\begin{itemize}
+    \item \texttt{fixed16} --- 8.8 fixed-point (useful for Amiga graphics)
+    \item \texttt{fixed32} --- 16.16 fixed-point
+\end{itemize}
+
+\subsection{Booleans}
+
+\begin{lstlisting}[language=C]
+// C: integers are implicitly boolean
+if (ptr) { ... }         // Non-zero = true
+if (count) { ... }       // Non-zero = true
+int flag = 1;            // "true"
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: explicit bool type, no implicit conversion
+if ptr != null { ... }   // Must compare explicitly
+if count > 0 { ... }     // Must compare explicitly
+let flag: bool = true    // Dedicated bool type
+\end{lstlisting}
+
+\subsection{Structs}
+
+\begin{lstlisting}[language=C]
+// C: typedef dance required
+typedef struct {
+    int x;
+    int y;
+} Point;
+
+Point p = {10, 20};
+Point *ptr = &p;
+int x = ptr->x;          // Arrow for pointer access
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: no typedef needed, uniform dot access
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+let p = Point { x: 10, y: 20 }
+let ptr = &p
+let x = ptr.x            // Dot works for everything
+\end{lstlisting}
+
+Key differences:
+\begin{itemize}
+    \item No \texttt{typedef} needed---struct name is the type
+    \item Field syntax is \texttt{name: type} (reversed from C)
+    \item No \texttt{->} operator---dot (\texttt{.}) auto-dereferences
+    \item Struct literals use \texttt{Type \{ field: value \}} syntax
+\end{itemize}
+
+\section{Pointers and References}
+
+C has one pointer type; Novus distinguishes three:
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Novus} & \textbf{C Equivalent} & \textbf{Properties} \\
+\hline
+\texttt{\&T} & \texttt{const T*} & Non-null, immutable \\
+\texttt{\&var T} & \texttt{T*} & Non-null, mutable \\
+\texttt{*T} & \texttt{T*} & Nullable, requires \texttt{unsafe} \\
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[language=C]
+// C: All pointers can be null
+void process(Player *p);           // Might modify, might be null
+void print_info(const Player *p);  // Won't modify, might be null
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Intent is explicit
+fn process(p: &var Player)    // Will modify, never null
+fn print_info(p: &Player)     // Won't modify, never null
+fn maybe_process(p: *Player)  // Might be null (use in unsafe)
+\end{lstlisting}
+
+The call site makes mutability visible:
+
+\begin{lstlisting}
+process(&var player)   // Clearly shows modification
+print_info(&player)    // Clearly shows read-only
+\end{lstlisting}
+
+\section{Functions}
+
+\subsection{Declaration Syntax}
+
+\begin{lstlisting}[language=C]
+// C: return type first
+int add(int a, int b) {
+    return a + b;
+}
+
+static int helper(void) { return 42; }  // File-local
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: fn keyword, return type last
+fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+fn helper() -> i32 { return 42 }  // Private by default
+pub fn api() -> i32 { return 0 }  // Explicitly public
+\end{lstlisting}
+
+\subsection{Methods}
+
+C doesn't have methods; Novus does:
+
+\begin{lstlisting}[language=C]
+// C: Pass struct explicitly
+int rect_area(const Rectangle *r) {
+    return r->width * r->height;
+}
+void rect_scale(Rectangle *r, int factor) {
+    r->width *= factor;
+    r->height *= factor;
+}
+
+// Usage
+int a = rect_area(&rect);
+rect_scale(&rect, 2);
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Methods with auto-borrow
+impl Rectangle {
+    fn area(&self) -> i32 {
+        return self.width * self.height
+    }
+    fn scale(&var self, factor: i32) {
+        self.width = self.width * factor
+        self.height = self.height * factor
+    }
+}
+
+// Usage - compiler auto-borrows
+let a = rect.area()
+rect.scale(2)
+\end{lstlisting}
+
+\section{Control Flow}
+
+\subsection{If Statements}
+
+\begin{lstlisting}[language=C]
+// C: Parentheses required, braces optional
+if (x > 0)
+    return 1;
+else if (x < 0)
+    return -1;
+else
+    return 0;
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: No parentheses, braces required
+if x > 0 {
+    return 1
+} else if x < 0 {
+    return -1
+} else {
+    return 0
+}
+\end{lstlisting}
+
+\subsection{Switch vs Match}
+
+\begin{lstlisting}[language=C]
+// C: switch with fall-through, break required
+switch (cmd) {
+    case CMD_READ:
+        handle_read();
+        break;           // Easy to forget!
+    case CMD_WRITE:
+    case CMD_UPDATE:     // Fall-through
+        handle_write();
+        break;
+    default:
+        handle_unknown();
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: match with no fall-through
+match cmd {
+    CMD_READ => handle_read(),
+    CMD_WRITE | CMD_UPDATE => handle_write(),  // Explicit OR
+    _ => handle_unknown(),
+}
+\end{lstlisting}
+
+Key differences:
+\begin{itemize}
+    \item No fall-through---each arm is independent
+    \item No \texttt{break} needed
+    \item Use \texttt{|} for multiple patterns
+    \item \texttt{\_} is the wildcard (like \texttt{default})
+    \item \texttt{match} can be an expression returning a value
+\end{itemize}
+
+\subsection{Loops}
+
+\begin{lstlisting}[language=C]
+// C: Traditional for loop
+for (int i = 0; i < 10; i++) {
+    process(i);
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Range-based for (preferred)
+for i in 0..10 {
+    process(i)
+}
+
+// C-style also supported
+for var i = 0; i < 10; i++ {
+    process(i)
+}
+\end{lstlisting}
+
+\section{Memory Management}
+
+\subsection{The goto cleanup Pattern}
+
+\begin{lstlisting}[language=C]
+// C: Manual cleanup with goto
+int do_work(void) {
+    void *a = NULL, *b = NULL;
+    int result = -1;
+
+    a = AllocMem(100, MEMF_ANY);
+    if (!a) goto cleanup;
+
+    b = AllocMem(200, MEMF_ANY);
+    if (!b) goto cleanup;
+
+    // ... actual work ...
+    result = 0;
+
+cleanup:
+    if (b) FreeMem(b, 200);  // Must remember size!
+    if (a) FreeMem(a, 100);
+    return result;
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: RAII handles cleanup automatically
+fn do_work() -> Result<(), ExecError> {
+    var a = MemoryBlock::try_alloc(100, MEMF_ANY)?
+    var b = MemoryBlock::try_alloc(200, MEMF_ANY)?
+
+    // ... actual work ...
+
+    return Result::Ok(())
+}  // Both freed automatically, correct order, size tracked
+\end{lstlisting}
+
+\subsection{RAII vs Manual Management}
+
+\begin{center}
+\begin{tabular}{lp{5cm}p{5cm}}
+\textbf{Aspect} & \textbf{C} & \textbf{Novus} \\
+\hline
+Allocation & \texttt{AllocMem(size, flags)} & \texttt{MemoryBlock::alloc(size, flags)} \\
+Deallocation & \texttt{FreeMem(ptr, size)} & Automatic via \texttt{Drop} \\
+Size tracking & Manual (error-prone) & Automatic \\
+Cleanup order & Manual (LIFO required) & Automatic (guaranteed LIFO) \\
+Early return & Requires \texttt{goto} & Just \texttt{return} or \texttt{?} \\
+\end{tabular}
+\end{center}
+
+\section{Error Handling}
+
+\begin{lstlisting}[language=C]
+// C: Return codes and errno
+BPTR file = Open("data.txt", MODE_OLDFILE);
+if (!file) {
+    LONG err = IoErr();
+    printf("Error: %ld\n", err);
+    return -1;
+}
+// ... use file ...
+Close(file);
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Result type with ? operator
+fn read_data() -> Result<String, DosError> {
+    let file = open("data.txt", MODE_OLDFILE)?  // Returns on error
+    let data = read_all(&file)?
+    return Result::Ok(data)
+}  // file closed automatically
+\end{lstlisting}
+
+The \texttt{?} operator:
+\begin{enumerate}
+    \item Checks if result is \texttt{Err}
+    \item If error, returns immediately with that error
+    \item If success, unwraps the value and continues
+\end{enumerate}
+
+\section{Headers and Modules}
+
+\begin{lstlisting}[language=C]
+// C: Textual inclusion
+#ifndef MYHEADER_H
+#define MYHEADER_H
+
+#include <exec/types.h>
+#include <proto/exec.h>  // Order can matter!
+
+extern int global_count;
+void my_function(void);
+
+#endif
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Semantic imports
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_FAST
+
+pub fn my_function() {
+    // ...
+}
+\end{lstlisting}
+
+Key differences:
+\begin{itemize}
+    \item No include guards needed
+    \item Import order doesn't matter
+    \item Only imported names are in scope
+    \item No separate header files
+    \item \texttt{pub} explicitly exports (vs C's implicit visibility)
+\end{itemize}
+
+\section{Visibility}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\hline
+\texttt{static} (file-local) & (default, no modifier) \\
+Non-static + header & \texttt{pub} \\
+\texttt{extern} declaration & \texttt{extern} (for FFI) \\
+\end{tabular}
+\end{center}
+
+Note: Novus inverts C's default. In C, symbols are public unless marked \texttt{static}. In Novus, symbols are private unless marked \texttt{pub}.
+
+\section{Common Intrinsics}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\hline
+\texttt{sizeof(T)} & \texttt{@sizeof(T)} \\
+\texttt{\_Alignof(T)} & \texttt{@alignof(T)} \\
+\texttt{memset(\&x, 0, sizeof(x))} & \texttt{@zeroed(T)} \\
+\texttt{typeof(expr)} (GCC) & \texttt{@typeof(expr)} \\
+\end{tabular}
+\end{center}
+
+\section{AmigaOS NDK Access}
+
+\textbf{The entire AmigaOS NDK is available from Novus.} Every function, structure, and constant from the 3.9 NDK has been imported and can be called directly. You don't need wrappers---you can use the raw API just like you would in C.
+
+\subsection{FFI Modules}
+
+The NDK bindings are organized by library in \texttt{std::ffi}:
+
+\begin{lstlisting}
+// Import any AmigaOS function directly
+from std::ffi::exec import AllocMem, FreeMem, FindTask, Wait, Signal
+from std::ffi::dos import Open, Close, Read, Write, IoErr, Lock, UnLock
+from std::ffi::graphics import BltBitMap, SetAPen, RectFill, Text
+from std::ffi::intuition import OpenWindow, CloseWindow, RefreshGList
+from std::ffi::gadtools import CreateMenus, FreeMenus, LayoutMenus
+from std::ffi::layers import CreateUpfrontLayer, DeleteLayer
+from std::ffi::utility import AllocateTagItems, FreeTagItems
+
+// All structures are available
+from std::ffi::amiga_structs import Window, Screen, BitMap, RastPort,
+    Task, MsgPort, Message, TagItem, NewWindow, NewScreen
+
+// All constants are available
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR,
+    IDCMP_CLOSEWINDOW, IDCMP_MOUSEBUTTONS, WFLG_CLOSEGADGET,
+    MODE_OLDFILE, MODE_NEWFILE, ACCESS_READ
+\end{lstlisting}
+
+\subsection{Calling Raw NDK Functions}
+
+Raw AmigaOS calls require \texttt{unsafe} blocks because they bypass Novus's safety guarantees:
+
+\begin{lstlisting}
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+
+fn allocate_chip_buffer(size: u32) -> *u8 {
+    unsafe {
+        return AllocMem(size, MEMF_CHIP | MEMF_CLEAR)
+    }
+}
+
+fn free_chip_buffer(ptr: *u8, size: u32) {
+    if ptr != null {
+        unsafe {
+            FreeMem(ptr, size)
+        }
+    }
+}
+\end{lstlisting}
+
+This is identical to what you'd write in C, just with explicit \texttt{unsafe} markers.
+
+\subsection{When to Use Raw vs Wrappers}
+
+\begin{center}
+\begin{tabular}{lp{5cm}p{5cm}}
+\textbf{Use} & \textbf{Raw NDK} & \textbf{Stdlib Wrappers} \\
+\hline
+When & Porting C code, one-off calls, no wrapper exists & New code, repeated patterns \\
+Safety & Manual (like C) & Automatic (RAII, Result) \\
+Cleanup & Manual \texttt{Free*} calls & Automatic via \texttt{Drop} \\
+Errors & Check return values & \texttt{Result<T, E>} \\
+\end{tabular}
+\end{center}
+
+\textbf{Both approaches are valid.} The wrappers exist for convenience and safety, but they're built on the same raw FFI you have access to. If a wrapper doesn't exist for what you need, use the raw API directly.
+
+\subsection{Example: Raw Intuition Window}
+
+Here's opening a window the ``C way'' in Novus:
+
+\begin{lstlisting}
+from std::ffi::intuition import OpenWindowTags, CloseWindow
+from std::ffi::amiga_consts import WA_Width, WA_Height, WA_Title,
+    WA_IDCMP, WA_Flags, WFLG_CLOSEGADGET, WFLG_DRAGBAR,
+    IDCMP_CLOSEWINDOW, TAG_DONE
+
+fn main() -> i32 {
+    var window: *Window = null
+
+    unsafe {
+        window = OpenWindowTags(null,
+            WA_Width, 640,
+            WA_Height, 480,
+            WA_Title, "Raw NDK Window",
+            WA_Flags, WFLG_CLOSEGADGET | WFLG_DRAGBAR,
+            WA_IDCMP, IDCMP_CLOSEWINDOW,
+            TAG_DONE)
+    }
+
+    if window == null {
+        return 1
+    }
+
+    // ... use window ...
+
+    unsafe {
+        CloseWindow(window)
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+This is nearly identical to C code---the only differences are:
+\begin{itemize}
+    \item \texttt{unsafe \{\}} blocks around library calls
+    \item \texttt{null} instead of \texttt{NULL}
+    \item Novus variable declaration syntax
+\end{itemize}
+
+\subsection{BCPL Pointers (DOS Library)}
+
+DOS library functions use BCPL pointers (\texttt{BPTR}/\texttt{BSTR}), which are \texttt{i32} values, not actual pointers:
+
+\begin{lstlisting}
+from std::ffi::dos import Open, Close, Read, Write
+from std::ffi::amiga_consts import MODE_OLDFILE
+
+fn read_file_raw(path: *u8) -> i32 {
+    // DOS file handle is i32 (BPTR), not *File
+    var file: i32 = 0
+
+    unsafe {
+        file = Open(path, MODE_OLDFILE)
+    }
+
+    if file == 0 {
+        return -1
+    }
+
+    var buffer = [0u8; 1024]
+    var bytes_read: i32 = 0
+
+    unsafe {
+        bytes_read = Read(file, &buffer as *u8, 1024)
+        Close(file)
+    }
+
+    return bytes_read
+}
+\end{lstlisting}
+
+\subsection{Comparison: Raw vs Wrapper}
+
+For comparison, here's the same operation using the stdlib wrapper:
+
+\begin{lstlisting}[language=C]
+// C: Direct library calls
+struct Window *win = OpenWindowTags(NULL,
+    WA_Width, 640,
+    WA_Height, 480,
+    WA_Title, "My Window",
+    TAG_DONE);
+if (win) {
+    // ... use window ...
+    CloseWindow(win);
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: RAII wrappers preferred
+match WindowBuilder::new()
+    .size(640, 480)
+    .title("My Window")
+    .build()
+{
+    Result::Ok(window) => {
+        // ... use window ...
+    },  // Closed automatically
+    Result::Err(e) => {
+        println(e.message())
+    }
+}
+\end{lstlisting}
+
+\subsection{Hardware Access}
+
+Both languages support direct hardware access, but Novus requires \texttt{unsafe}:
+
+\begin{lstlisting}[language=C]
+// C: Direct hardware poke
+volatile UWORD *custom = (UWORD *)0xdff000;
+custom[0x96/2] = 0x8020;  // DMACON
+\end{lstlisting}
+
+\begin{lstlisting}
+// Novus: Requires unsafe block
+unsafe {
+    let custom = 0xdff000 as *u16
+    *(custom + 0x96 / 2) = 0x8020  // DMACON
+}
+\end{lstlisting}
+
+\section{Quick Reference Table}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\hline
+\texttt{int x = 10;} & \texttt{var x = 10} \\
+\texttt{const int X = 10;} & \texttt{const X: i32 = 10} \\
+\texttt{int arr[3] = \{1,2,3\};} & \texttt{let arr = [1, 2, 3]} \\
+\texttt{if (ptr)} & \texttt{if ptr != null} \\
+\texttt{switch/case/break} & \texttt{match \{ pat => \}} \\
+\texttt{for(i=0;i<n;i++)} & \texttt{for i in 0..n} \\
+\texttt{ptr->field} & \texttt{ptr.field} \\
+\texttt{struct S \{...\};} & \texttt{struct S \{...\}} \\
+\texttt{typedef struct} & (not needed) \\
+\texttt{malloc/free} & \texttt{MemoryBlock}, \texttt{Vec} \\
+\texttt{sizeof(T)} & \texttt{@sizeof(T)} \\
+\texttt{NULL} & \texttt{null} \\
+\texttt{errno} & \texttt{Result::Err(...)} \\
+\texttt{static} & (default) \\
+\texttt{\#include} & \texttt{from ... import} \\
+\end{tabular}
+\end{center}
+
+\section{Migration Tips}
+
+\begin{enumerate}
+    \item \textbf{Start with \texttt{var}} --- You can always tighten to \texttt{let} later
+    \item \textbf{Use stdlib wrappers} --- \texttt{MemoryBlock}, \texttt{Vec}, \texttt{WindowHandle} instead of raw FFI
+    \item \textbf{Embrace \texttt{Result}} --- The \texttt{?} operator makes error handling concise
+    \item \textbf{Trust the Drop} --- Let RAII handle cleanup instead of manual \texttt{goto cleanup}
+    \item \textbf{Check explicit null} --- \texttt{if ptr != null} instead of \texttt{if (ptr)}
+    \item \textbf{Use match} --- More powerful and safer than \texttt{switch}
+    \item \textbf{Read the sidebars} --- ``Coming from C'' boxes throughout the guide explain specific differences
+\end{enumerate}
+
+\section{What Stays the Same}
+
+Not everything is different! These concepts transfer directly:
+
+\begin{itemize}
+    \item Structs are laid out the same way (C ABI compatible)
+    \item Pointer arithmetic works the same
+    \item Bitwise operations are identical
+    \item AmigaOS structures and constants are the same
+    \item The calling convention matches (d0/d1/a0/a1 for args)
+    \item You can still write inline assembly when needed
+\end{itemize}
+
+Novus is designed to feel familiar to C programmers while adding safety. Your AmigaOS knowledge transfers directly---you're just expressing it in a slightly different syntax with more compile-time guarantees.

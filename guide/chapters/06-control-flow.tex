@@ -503,6 +503,25 @@ fn http_status_category(code: i32) -> i32 {
 
 The underscore (\texttt{\_}) is a wildcard pattern that matches any value not handled by previous arms.
 
+\begin{comingfromc}
+\texttt{match} is similar to C's \texttt{switch}, but safer and more powerful:
+
+\begin{itemize}
+\item \textbf{No fallthrough}: Each arm is independent; no \texttt{break} needed
+\item \textbf{Exhaustive}: The compiler ensures all cases are handled
+\item \textbf{Expressions}: \texttt{match} returns a value, not just executes code
+\item \textbf{Patterns}: Can destructure enums, tuples, and structs
+\end{itemize}
+
+\begin{tabular}{ll}
+\textbf{C switch} & \textbf{Novus match} \\
+\texttt{case 1: ...; break;} & \texttt{1 => ...,} \\
+\texttt{default: ...} & \texttt{\_ => ...} \\
+\end{tabular}
+
+Forget \texttt{break}---the absence of fallthrough eliminates a whole class of bugs.
+\end{comingfromc}
+
 \subsection{Matching on Enums}
 \label{subsec:match-enums}
 
@@ -575,6 +594,10 @@ fn sign(n: i32) -> i32 {
 
 \subsection{Match with Guards}
 \label{subsec:match-guards}
+
+\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black,title={\textbf{Work in Progress}}]
+Match guards are parsed but code generation has known issues. Use \texttt{if}/\texttt{else} chains as an alternative until this is resolved.
+\end{tcolorbox}
 
 Match arms can include guard clauses with \texttt{if} to add additional conditions:
 

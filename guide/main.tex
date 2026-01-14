@@ -98,6 +98,34 @@
     breaklines=true,
 }
 
+% === "Coming from C" Sidebar ===
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\definecolor{csidebarcolor}{RGB}{255, 248, 220}  % Light cream/yellow
+\definecolor{csidebarborder}{RGB}{180, 140, 60}  % Golden brown
+
+\newtcolorbox{comingfromc}{
+    enhanced,
+    breakable,
+    colback=csidebarcolor,
+    colframe=csidebarborder,
+    boxrule=1pt,
+    arc=3pt,
+    left=8pt,
+    right=8pt,
+    top=6pt,
+    bottom=6pt,
+    fonttitle=\bfseries\small,
+    title={\textsf{Coming from C}},
+    attach boxed title to top left={yshift=-2mm, xshift=5mm},
+    boxed title style={
+        colback=csidebarborder,
+        colframe=csidebarborder,
+        arc=2pt,
+    },
+}
+
 % === Hyperlinks ===
 \usepackage{hyperref}
 \hypersetup{
@@ -166,22 +194,27 @@
 \include{chapters/04-types}
 \include{chapters/05-memory-management}
 \include{chapters/06-control-flow}
-% \include{chapters/07-functions}
-% \include{chapters/07-structs-enums}
-% \include{chapters/08-modules}
-% \include{chapters/09-error-handling}
+\include{chapters/07-functions}
+\include{chapters/08-modules}
+\include{chapters/09-attributes}
+\include{chapters/10-error-handling}
 
-% Part II: Standard Library
-% \include{chapters/10-stdlib-overview}
-% \include{chapters/11-collections}
-% \include{chapters/12-strings}
-% \include{chapters/13-memory}
-% \include{chapters/14-amigaos-bindings}
+% Part II: Standard Library (planned)
+% \include{chapters/11-stdlib-overview}
+% \include{chapters/12-collections}
+% \include{chapters/13-strings}
+% \include{chapters/14-memory}
+% \include{chapters/15-amigaos-bindings}
 
-% Part III: Advanced Topics
-% \include{chapters/15-async}
-% \include{chapters/16-inline-assembly}
-% \include{chapters/17-ffi}
-% \include{chapters/18-optimization}
+% Part III: Advanced Topics (planned)
+% \include{chapters/16-async}
+% \include{chapters/17-inline-assembly}
+% \include{chapters/18-ffi}
+% \include{chapters/19-optimization}
+
+% Appendices
+\appendix
+\include{chapters/appendix-c-programmers}
+\include{chapters/appendix-cheatsheet}
 
 \end{document}

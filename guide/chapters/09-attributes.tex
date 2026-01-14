@@ -1,0 +1,580 @@
+\chapter{Attributes}
+\label{ch:attributes}
+
+\begin{quote}
+\textit{``Metadata is a love note to the future.''} --- Jason Scott
+\end{quote}
+
+Attributes provide a way to attach metadata to code elements---functions, structs, enums, and variables. The compiler uses this metadata to alter behavior, generate code, or produce warnings. This chapter covers all implemented attributes.
+
+\section{Attribute Syntax}
+\label{sec:attribute-syntax}
+
+Novus supports two attribute syntaxes:
+
+\subsection{At-Sign Syntax}
+
+The primary syntax uses \texttt{@} followed by the attribute name:
+
+\begin{lstlisting}
+@test
+fn test_addition() {
+    expect_eq(2 + 2, 4, "basic addition")
+}
+
+@inline
+fn fast_add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+\end{lstlisting}
+
+\subsection{Bracket Syntax}
+
+An alternative bracket syntax is also supported:
+
+\begin{lstlisting}
+#[test]
+fn test_multiplication() {
+    expect_eq(3 * 7, 21, "multiplication")
+}
+\end{lstlisting}
+
+Both syntaxes are equivalent. Use whichever feels more natural.
+
+\subsection{Attribute Arguments}
+
+Attributes can accept arguments---both named and positional:
+
+\begin{lstlisting}
+// Named arguments
+@library(name = "example.library", version = 1, revision = 0)
+pub struct ExampleLibrary {
+    counter: u32,
+}
+
+// Positional arguments
+@test("Verify sorting performance")
+fn test_sort_perf() {
+    // ...
+}
+
+// Flag arguments
+@test(skip = "Not yet implemented")
+fn test_future() {
+    // Skipped during test runs
+}
+\end{lstlisting}
+
+\subsection{Multiple Attributes}
+
+Multiple attributes can be stacked on a single item:
+
+\begin{lstlisting}
+@test
+@inline
+pub fn test_fast_path() {
+    // ...
+}
+\end{lstlisting}
+
+\section{Testing Attributes}
+\label{sec:testing-attributes}
+
+\subsection{@test}
+
+Marks a function as a test case. The \texttt{novus test} command discovers and compiles these into a test runner.
+
+\begin{lstlisting}
+@test
+fn test_basic() {
+    expect_eq(1 + 1, 2, "one plus one")
+}
+
+@test("Descriptive test name")
+fn test_with_description() {
+    expect_eq(true, true, "truth is true")
+}
+\end{lstlisting}
+
+\textbf{Arguments:}
+\begin{description}
+    \item[positional string] Optional test description
+    \item[\texttt{skip = "reason"}] Skip this test with an explanation
+\end{description}
+
+\begin{lstlisting}
+@test(skip = "Not implemented yet")
+fn test_future_feature() {
+    // This test won't run - it's marked as skipped
+}
+
+@test(skip)
+fn test_broken() {
+    // Also skipped (no reason given)
+}
+\end{lstlisting}
+
+\subsection{@bench / @benchmark}
+
+Marks a function for performance testing. Both names are equivalent:
+
+\begin{lstlisting}
+@bench
+fn bench_sort() {
+    var data = generate_random_data(1000)
+    sort(&var data)
+}
+
+@benchmark
+fn bench_hash() {
+    var map = HashMap::new()
+    for i in 0..1000 {
+        map.insert(i, i * 2)
+    }
+}
+\end{lstlisting}
+
+Benchmark functions are included when you run \texttt{novus test -b}.
+
+\section{Optimization Attributes}
+\label{sec:optimization-attributes}
+
+\subsection{@inline}
+
+Hints that the compiler should inline this function at call sites:
+
+\begin{lstlisting}
+@inline
+fn min(a: i32, b: i32) -> i32 {
+    if a < b { return a } else { return b }
+}
+\end{lstlisting}
+
+Small, frequently-called functions benefit most from inlining. The compiler may ignore this hint for recursive functions or very large functions.
+
+\subsection{@noinline}
+
+Prevents inlining even when the compiler might otherwise choose to inline:
+
+\begin{lstlisting}
+@noinline
+fn error_handler() {
+    // Keep error handling out of hot paths
+    // to improve instruction cache locality
+}
+\end{lstlisting}
+
+\section{Layout Attributes}
+\label{sec:layout-attributes}
+
+\subsection{@packed}
+
+Removes padding between struct fields:
+
+\begin{lstlisting}
+@packed
+struct TightStruct {
+    a: u8,
+    b: u32,  // No padding after a
+    c: u16,
+}
+\end{lstlisting}
+
+\textbf{Warning:} Packed structs may have unaligned fields, which can cause slow memory access or crashes on some 68k processors. Use when matching external data formats or hardware registers.
+
+\section{Trait Derivation}
+\label{sec:derive-attributes}
+
+\subsection{@derive}
+
+Automatically generates trait implementations for structs:
+
+\begin{lstlisting}
+#[derive(Eq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Eq, Hash)]
+struct UserId {
+    id: u32,
+}
+\end{lstlisting}
+
+\textbf{Supported traits:}
+\begin{description}
+    \item[\texttt{Eq}] Generates \texttt{eq(\&self, \&Self) -> bool} comparing all fields
+    \item[\texttt{Hash}] Generates \texttt{hash(\&self) -> u32} combining field hashes
+\end{description}
+
+You can derive multiple traits:
+
+\begin{lstlisting}
+#[derive(Eq, Hash)]
+struct CacheKey {
+    module: u32,
+    offset: u32,
+}
+\end{lstlisting}
+
+\section{Method Chaining}
+\label{sec:chain-attribute}
+
+\subsection{@chain}
+
+Enables fluent method chaining by making a method return \texttt{\&var Self}:
+
+\begin{lstlisting}
+struct Builder {
+    width: i32,
+    height: i32,
+    color: u32,
+}
+
+impl Builder {
+    @chain
+    pub fn width(&var self, w: i32) {
+        self.width = w
+    }
+
+    @chain
+    pub fn height(&var self, h: i32) {
+        self.height = h
+    }
+
+    @chain
+    pub fn color(&var self, c: u32) {
+        self.color = c
+    }
+}
+
+// Usage:
+var builder = Builder { width: 0, height: 0, color: 0 }
+builder.width(100).height(200).color(0xFF0000)
+\end{lstlisting}
+
+The \texttt{@chain} attribute automatically adds an implicit \texttt{return self} at the end of the method.
+
+\section{Interoperability Attributes}
+\label{sec:interop-attributes}
+
+\subsection{@export}
+
+Marks a function for export with an unmangled name, preventing dead code elimination:
+
+\begin{lstlisting}
+@export
+pub fn my_callback(data: *u8) -> i32 {
+    // Can be called from external C code or AmigaOS
+    return process(data)
+}
+\end{lstlisting}
+
+Use this when:
+\begin{itemize}
+    \item Creating callback functions for AmigaOS
+    \item Functions that need to be called from assembly or C
+    \item Entry points that might appear unused to the optimizer
+\end{itemize}
+
+\subsection{@extern\_type}
+
+Marks a struct as an external C type, preventing Novus from emitting its definition:
+
+\begin{lstlisting}
+@extern_type
+struct timeval {
+    tv_sec: i32,
+    tv_usec: i32,
+}
+\end{lstlisting}
+
+This tells the compiler ``this type is defined elsewhere (in C headers); just use it, don't define it.''
+
+\section{Synchronization Attributes}
+\label{sec:sync-attributes}
+
+\subsection{@atomic}
+
+Wraps the function body in a Forbid/Permit critical section:
+
+\begin{lstlisting}
+@atomic
+pub fn update_shared_counter(counter: *u32) {
+    // Forbid() called on entry
+    *counter = *counter + 1
+    // Permit() called on exit (even if returning early)
+}
+\end{lstlisting}
+
+This prevents task switching while the function executes. Use for short, fast operations on shared data.
+
+\subsection{@no\_interrupts}
+
+Wraps the function body in Disable/Enable:
+
+\begin{lstlisting}
+@no_interrupts
+pub fn poke_hardware_register(addr: *u16, value: u16) {
+    // Disable() called on entry - ALL interrupts blocked
+    *addr = value
+    // Enable() called on exit
+}
+\end{lstlisting}
+
+\textbf{Warning:} Use sparingly! This blocks all interrupts including audio and disk I/O. Only use for timing-critical hardware access.
+
+\section{Interrupt Handling Attributes}
+\label{sec:interrupt-attributes}
+
+\subsection{@interrupt}
+
+Marks a function as an interrupt handler. The compiler generates appropriate prologue/epilogue code:
+
+\begin{lstlisting}
+@interrupt
+pub fn vblank_handler() {
+    // Called during vertical blank interrupt
+    // All registers properly saved/restored
+    update_frame_counter()
+}
+\end{lstlisting}
+
+\subsection{@interrupt\_safe}
+
+Documents that a function is safe to call from interrupt context:
+
+\begin{lstlisting}
+@interrupt_safe
+pub fn increment_counter(counter: *u32) {
+    // Safe: no allocations, no blocking calls
+    *counter = *counter + 1
+}
+\end{lstlisting}
+
+This is currently documentation-only but helps communicate intent.
+
+\section{Diagnostic Attributes}
+\label{sec:diagnostic-attributes}
+
+\subsection{@suppress}
+
+Suppresses specific compiler warnings:
+
+\begin{lstlisting}
+@suppress("W0002", "Known safe: buffer size validated externally")
+pub fn write_unchecked(buffer: *u8, data: *u8, len: i32) {
+    // Warning W0002 (unchecked buffer access) suppressed
+}
+\end{lstlisting}
+
+\textbf{Arguments:}
+\begin{description}
+    \item[warning code] The warning ID to suppress (e.g., \texttt{"W0001"})
+    \item[justification] Explanation of why the warning is safe to ignore
+\end{description}
+
+\section{Program Configuration}
+\label{sec:program-attributes}
+
+\subsection{\#[stack\_size]}
+
+Sets the stack size for the compiled program:
+
+\begin{lstlisting}
+#[stack_size(131072)]  // 128KB stack
+
+fn main() -> i32 {
+    // Programs with deep recursion need more stack
+    return 0
+}
+\end{lstlisting}
+
+\textbf{Stack Size Guidelines:}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Use Case} & \textbf{Recommended Size} \\
+\hline
+Simple programs & 8KB -- 16KB \\
+Typical applications & 32KB -- 64KB (default) \\
+Deep recursion & 128KB -- 256KB \\
+Large stack arrays & Array size + 32KB buffer \\
+\hline
+\end{tabular}
+\caption{Stack Size Recommendations}
+\end{table}
+
+\textbf{Note:} AmigaOS CLI default stack is only 4KB, far too small for most Novus programs. The default Novus stack size of 64KB works for typical applications.
+
+\section{Library Attributes}
+\label{sec:library-attributes}
+
+These attributes are used when creating AmigaOS shared libraries.
+
+\subsection{@library}
+
+Marks a struct as an Amiga shared library:
+
+\begin{lstlisting}
+@library(name = "example.library", version = 1, revision = 0)
+pub struct ExampleLibrary {
+    base: Library,  // Must include Library base
+    counter: u32,
+}
+\end{lstlisting}
+
+\textbf{Arguments:}
+\begin{description}
+    \item[\texttt{name}] Library name (must end with \texttt{.library})
+    \item[\texttt{version}] Major version number
+    \item[\texttt{revision}] Minor revision number
+\end{description}
+
+\subsection{@libfunc}
+
+Marks a method as a library vector entry point:
+
+\begin{lstlisting}
+impl ExampleLibrary {
+    @libfunc
+    pub fn my_function(&self) -> i32 {
+        return 42
+    }
+}
+\end{lstlisting}
+
+\subsection{Library Lifecycle Hooks}
+
+\begin{lstlisting}
+impl ExampleLibrary {
+    @libinit
+    pub fn init() -> bool {
+        // One-time initialization when library loads
+        return true
+    }
+
+    @libopen
+    pub fn open(version: u32) -> bool {
+        // Called each time library is opened
+        return version >= 1
+    }
+
+    @libclose
+    pub fn close() {
+        // Called each time library is closed
+    }
+
+    @libexpunge
+    pub fn expunge() -> bool {
+        // Return true if library can be unloaded
+        return true
+    }
+}
+\end{lstlisting}
+
+\section{Device Attributes}
+\label{sec:device-attributes}
+
+These attributes are used when creating AmigaOS devices.
+
+\subsection{@device}
+
+Marks a struct as an Amiga device:
+
+\begin{lstlisting}
+@device(name = "example.device", version = 1, revision = 0)
+pub struct ExampleDevice {
+    base: Device,
+    // device-specific fields
+}
+\end{lstlisting}
+
+\subsection{@devicecmd}
+
+Marks a method as a device command handler:
+
+\begin{lstlisting}
+impl ExampleDevice {
+    @devicecmd(CMD_READ)
+    pub fn handle_read(&self, io: *IORequest) {
+        // Handle read command
+    }
+}
+\end{lstlisting}
+
+\subsection{@beginio / @abortio}
+
+Standard device I/O handlers:
+
+\begin{lstlisting}
+impl ExampleDevice {
+    @beginio
+    pub fn begin_io(&self, io: *IORequest) {
+        // Start I/O operation
+    }
+
+    @abortio
+    pub fn abort_io(&self, io: *IORequest) -> i32 {
+        // Abort pending I/O
+        return 0
+    }
+}
+\end{lstlisting}
+
+\subsection{Device Lifecycle Hooks}
+
+Similar to libraries: \texttt{@deviceinit}, \texttt{@deviceopen}, \texttt{@deviceclose}, \texttt{@deviceexpunge}.
+
+\section{Attribute Reference}
+\label{sec:attribute-reference}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llp{6cm}}
+\hline
+\textbf{Attribute} & \textbf{Applies To} & \textbf{Purpose} \\
+\hline
+\texttt{@test} & functions & Mark as test case \\
+\texttt{@bench} & functions & Mark for benchmarking \\
+\texttt{@inline} & functions & Hint to inline \\
+\texttt{@noinline} & functions & Prevent inlining \\
+\texttt{@packed} & structs & Remove field padding \\
+\texttt{@derive} & structs & Auto-implement traits \\
+\texttt{@chain} & methods & Enable method chaining \\
+\texttt{@export} & functions & Keep and don't mangle name \\
+\texttt{@extern\_type} & structs & External C type \\
+\texttt{@atomic} & functions & Wrap in Forbid/Permit \\
+\texttt{@no\_interrupts} & functions & Wrap in Disable/Enable \\
+\texttt{@interrupt} & functions & Mark as interrupt handler \\
+\texttt{@interrupt\_safe} & functions & Safe for interrupt context \\
+\texttt{@suppress} & functions & Suppress warning \\
+\texttt{\#[stack\_size]} & program & Set stack size \\
+\texttt{@library} & structs & Define Amiga library \\
+\texttt{@libfunc} & methods & Library vector entry \\
+\texttt{@device} & structs & Define Amiga device \\
+\texttt{@devicecmd} & methods & Device command handler \\
+\hline
+\end{tabular}
+\caption{Complete Attribute Reference}
+\end{table}
+
+\section{Unknown Attributes}
+
+If you use an unknown attribute, the compiler emits a warning:
+
+\begin{lstlisting}[style=plain]
+warning[W2001]: unknown attribute 'foo'
+  --> test.novus:3:1
+   |
+ 3 | @foo
+   | ^^^
+   |
+  help: This attribute is not recognized and will be ignored
+  help: Known attributes: library, libfunc, inline, test, ...
+\end{lstlisting}
+
+This helps catch typos while allowing forward compatibility with future attributes.

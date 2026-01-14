@@ -1,0 +1,462 @@
+\chapter{Quick Reference}
+\label{ch:cheatsheet}
+
+This appendix provides a compact reference for Novus syntax and common patterns.
+
+\section{Variables and Constants}
+
+\begin{lstlisting}
+// Mutable variable
+var x = 10
+x = 20
+
+// Immutable binding
+let y = 42
+
+// Compile-time constant
+pub const MAX_SIZE: u32 = 1024
+
+// Type annotation (when needed)
+let z: i32 = 100
+var buffer = [0u8; 256]   // Size inferred
+\end{lstlisting}
+
+\section{Primitive Types}
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Type} & \textbf{Size} & \textbf{Range/Description} \\
+\hline
+\texttt{i8} & 8-bit & $-128$ to $127$ \\
+\texttt{i16} & 16-bit & $-32{,}768$ to $32{,}767$ \\
+\texttt{i32} & 32-bit & $\pm 2$ billion (default) \\
+\texttt{i64} & 64-bit & Very large signed \\
+\texttt{u8} & 8-bit & $0$ to $255$ \\
+\texttt{u16} & 16-bit & $0$ to $65{,}535$ \\
+\texttt{u32} & 32-bit & $0$ to $4$ billion \\
+\texttt{u64} & 64-bit & Very large unsigned \\
+\texttt{f32} & 32-bit & Single-precision float \\
+\texttt{f64} & 64-bit & Double-precision float \\
+\texttt{fixed16} & 16-bit & 8.8 fixed-point \\
+\texttt{fixed32} & 32-bit & 16.16 fixed-point \\
+\texttt{bool} & 8-bit & \texttt{true} or \texttt{false} \\
+\texttt{*T} & 32-bit & Raw pointer (nullable) \\
+\texttt{\&T} & 32-bit & Reference (non-null) \\
+\texttt{\&var T} & 32-bit & Mutable reference \\
+\end{tabular}
+\end{center}
+
+\section{Literals}
+
+\begin{lstlisting}
+// Integers
+42          // i32 (default)
+42u32       // u32
+42i8        // i8
+0xFF        // Hexadecimal (C-style)
+$FF         // Hexadecimal (Amiga-style)
+%1010       // Binary
+1_000_000   // Underscores for readability
+
+// Floats
+3.14        // f64 (default)
+3.14f32     // f32
+
+// Strings
+"Hello"              // String literal
+"Line1\nLine2"       // With escape
+f"Value: {x}"        // F-string (interpolation)
+
+// Characters
+'A'         // u8 (65)
+'\n'        // Newline
+'\x1B'      // Hex byte (ESC)
+
+// Other
+true, false // Booleans
+null        // Null pointer
+\end{lstlisting}
+
+\section{Operators}
+
+\begin{center}
+\begin{tabular}{ll|ll}
+\textbf{Op} & \textbf{Meaning} & \textbf{Op} & \textbf{Meaning} \\
+\hline
+\texttt{+} & Add & \texttt{\&\&} & Logical AND \\
+\texttt{-} & Subtract & \texttt{||} & Logical OR \\
+\texttt{*} & Multiply & \texttt{!} & Logical NOT \\
+\texttt{/} & Divide & \texttt{\&} & Bitwise AND \\
+\texttt{\%} & Modulo & \texttt{|} & Bitwise OR \\
+\texttt{==} & Equal & \texttt{\^{}} & Bitwise XOR \\
+\texttt{!=} & Not equal & \texttt{\~{}} & Bitwise NOT \\
+\texttt{<} & Less than & \texttt{<<} & Left shift \\
+\texttt{>} & Greater than & \texttt{>>} & Right shift \\
+\texttt{<=} & Less or equal & \texttt{..} & Range (exclusive) \\
+\texttt{>=} & Greater or equal & \texttt{..=} & Range (inclusive) \\
+\end{tabular}
+\end{center}
+
+Compound: \texttt{+=}, \texttt{-=}, \texttt{*=}, \texttt{/=}, \texttt{\%=}, \texttt{\&=}, \texttt{|=}, \texttt{\^{}=}, \texttt{<<=}, \texttt{>>=}
+
+Increment/Decrement: \texttt{++x}, \texttt{x++}, \texttt{--x}, \texttt{x--}
+
+\section{Control Flow}
+
+\begin{lstlisting}
+// If-else
+if condition {
+    // ...
+} else if other {
+    // ...
+} else {
+    // ...
+}
+
+// If as expression
+let max = if a > b { a } else { b }
+
+// Match
+match value {
+    1 => handle_one(),
+    2 | 3 => handle_two_or_three(),
+    4..=10 => handle_range(),
+    _ => handle_default(),
+}
+
+// While loop
+while condition {
+    // ...
+}
+
+// For loop
+for i in 0..10 {
+    // i goes 0 to 9
+}
+
+for item in collection {
+    // iterate items
+}
+
+// Loop (infinite)
+loop {
+    if done { break }
+}
+
+// Break and continue
+break           // Exit loop
+continue        // Next iteration
+break value     // Return value from loop
+\end{lstlisting}
+
+\section{Functions}
+
+\begin{lstlisting}
+// Basic function
+fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+// No return value
+fn print_hello() {
+    println("Hello")
+}
+
+// Public function
+pub fn api_function() -> i32 {
+    return 42
+}
+
+// Generic function
+fn swap<T>(a: &var T, b: &var T) {
+    let tmp = *a
+    *a = *b
+    *b = tmp
+}
+
+// With trait bounds
+fn print_all<T>(items: &[T]) where T: Display {
+    for item in items {
+        println(item.to_string())
+    }
+}
+\end{lstlisting}
+
+\section{Structs and Enums}
+
+\begin{lstlisting}
+// Struct
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+// Create instance
+let p = Point { x: 10, y: 20 }
+
+// Impl block
+impl Point {
+    pub fn new(x: i32, y: i32) -> Point {
+        return Point { x: x, y: y }
+    }
+
+    pub fn distance(&self, other: &Point) -> f32 {
+        // ...
+    }
+}
+
+// Enum
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+// Enum with data
+enum Message {
+    Quit,
+    Move(i32, i32),
+    Write(String),
+}
+
+// Match enum
+match msg {
+    Message::Quit => exit(),
+    Message::Move(x, y) => move_to(x, y),
+    Message::Write(s) => println(s),
+}
+\end{lstlisting}
+
+\section{Option and Result}
+
+\begin{lstlisting}
+// Option
+let maybe: Option<i32> = Option::Some(42)
+let none: Option<i32> = Option::None
+
+match maybe {
+    Option::Some(x) => use(x),
+    Option::None => handle_missing(),
+}
+
+let value = maybe.unwrap_or(0)
+
+// Result
+let result: Result<i32, Error> = Result::Ok(42)
+let error: Result<i32, Error> = Result::Err(Error::NotFound)
+
+match result {
+    Result::Ok(x) => use(x),
+    Result::Err(e) => handle_error(e),
+}
+
+// ? operator (propagate error)
+fn process() -> Result<i32, Error> {
+    let file = open(path)?   // Returns Err early
+    let data = read(&file)?
+    Result::Ok(parse(data))
+}
+\end{lstlisting}
+
+\section{Memory and References}
+
+\begin{lstlisting}
+// Immutable reference
+let r: &i32 = &x
+
+// Mutable reference
+let r: &var i32 = &var x
+*r = 10  // Modify through reference
+
+// Raw pointer
+let p: *u8 = (*u8)address
+
+// Dereference
+let value = *r
+let byte = *p
+
+// Null check
+if ptr != null {
+    // safe to use
+}
+
+// defer (cleanup)
+fn process() {
+    let resource = acquire()
+    defer { release(resource) }
+    // ... use resource
+}  // release() called here
+
+// Drop trait (RAII)
+impl Drop for MyHandle {
+    fn drop(&var self) {
+        // Automatic cleanup
+    }
+}
+\end{lstlisting}
+
+\section{RAII Patterns}
+
+\begin{center}
+\begin{tabular}{lp{6.5cm}}
+\textbf{Pattern} & \textbf{Use} \\
+\hline
+\texttt{Handle} & Wrap OS resources (\texttt{WindowHandle}, \texttt{FileHandle}) \\
+\texttt{Guard} & Temporary locks (\texttt{SemaphoreGuard}, \texttt{BlitterGuard}) \\
+\texttt{Builder} & Accumulate config (\texttt{MUIAppBuilder}) \\
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}
+// Handle: wrap resource, auto-cleanup
+var window = WindowBuilder::new().build()?
+// window closed automatically on drop
+
+// Guard: temporary exclusive access
+var lock = semaphore.obtain()
+// ReleaseSemaphore() called on drop
+
+// Builder: configure then create
+var app = MUIAppBuilder::new()
+    .title("App")
+    .build()?
+\end{lstlisting}
+
+\section{Arrays and Collections}
+
+\begin{lstlisting}
+// Fixed array (size inferred)
+let arr = [1, 2, 3]
+let zeros = [0; 100]  // 100 zeros
+let first = arr[0u32]
+
+// Vec (dynamic array)
+var v: Vec<i32> = Vec::new()
+v.push(1)
+v.push(2)
+let len = v.len()
+let item = v.get(0u32)  // Option<T>
+
+// Tuple
+let point: (i32, i32) = (10, 20)
+let (x, y) = point  // Destructure
+\end{lstlisting}
+
+\section{Modules and Imports}
+
+\begin{lstlisting}
+// Import specific items
+from std::collections::vec import Vec
+from std::io::file import println, read_file
+
+// Multiple imports
+from std::core import Option, Result, Drop
+
+// Use in code
+let v: Vec<i32> = Vec::new()
+\end{lstlisting}
+
+\section{Traits}
+
+\begin{lstlisting}
+// Define trait
+trait Printable {
+    fn print(&self)
+}
+
+// Implement trait
+impl Printable for Point {
+    fn print(&self) {
+        println(f"({self.x}, {self.y})")
+    }
+}
+
+// Common traits
+Drop    // Destructor
+Clone   // Clone values
+Eq      // Equality comparison
+Display // String conversion
+Hash    // Hashable
+\end{lstlisting}
+
+\section{Common Attributes}
+
+\begin{lstlisting}
+@test                     // Test function
+@test(skip = "reason")    // Skipped test
+@benchmark                // Benchmark function
+@inline                   // Hint: inline this function
+@noinline                 // Prevent inlining
+@packed                   // No struct padding
+@export                   // Keep function, don't mangle name
+@atomic                   // Wrap in Forbid/Permit
+#[derive(Eq, Hash)]       // Auto-implement traits
+#[stack_size(65536)]      // Set program stack size
+\end{lstlisting}
+
+\section{Intrinsics}
+
+\begin{lstlisting}
+@sizeof(T)      // Size of type in bytes
+@alignof(T)     // Alignment of type
+@zeroed(T)      // Zero-initialized value
+@typeof(expr)   // Type of expression
+\end{lstlisting}
+
+\section{Compiler Commands}
+
+\begin{lstlisting}[language=bash]
+# Compile single file
+novus compile file.novus -o output
+
+# Build project
+novus build
+
+# Run tests
+novus test file.novus
+
+# Format code
+novus fmt
+
+# With options
+novus compile file.novus -o out --release --cpu 68040
+\end{lstlisting}
+
+\section{C to Novus Quick Reference}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\hline
+\texttt{int x = 10;} & \texttt{var x = 10} \\
+\texttt{const int X = 10;} & \texttt{const X: i32 = 10} \\
+\texttt{if (ptr)} & \texttt{if ptr != null} \\
+\texttt{switch/case/break} & \texttt{match \{ pat => \}} \\
+\texttt{for(i=0;i<n;i++)} & \texttt{for i in 0..n} \\
+\texttt{NULL} & \texttt{null} \\
+\texttt{struct S \{...\};} & \texttt{struct S \{...\}} \\
+\texttt{typedef struct} & (not needed) \\
+\texttt{ptr->field} & \texttt{ptr.field} (auto-deref) \\
+\texttt{malloc/free} & Use \texttt{Vec}, \texttt{MemoryBlock}, or allocator \\
+\texttt{sizeof(T)} & \texttt{@sizeof(T)} \\
+\texttt{errno} & \texttt{Result::Err(DosError::...)} \\
+\end{tabular}
+\end{center}
+
+\section{Escape Sequences}
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{Sequence} & \textbf{Meaning} \\
+\hline
+\texttt{\textbackslash n} & Newline \\
+\texttt{\textbackslash r} & Carriage return \\
+\texttt{\textbackslash t} & Tab \\
+\texttt{\textbackslash 0} & Null byte \\
+\texttt{\textbackslash\textbackslash} & Backslash \\
+\texttt{\textbackslash "} & Double quote \\
+\texttt{\textbackslash '} & Single quote \\
+\texttt{\textbackslash xNN} & Hex byte \\
+\end{tabular}
+\end{center}

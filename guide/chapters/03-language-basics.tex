@@ -1,4 +1,5 @@
 \chapter{Language Basics}
+\label{ch:basics}
 
 \begin{quote}
 \textit{``Simplicity is prerequisite for reliability.''}\\
@@ -91,6 +92,18 @@ Constants are typically declared at module scope with \texttt{pub} visibility.
 \end{tabular}
 \end{center}
 
+\begin{comingfromc}
+In C, all variables are mutable by default. In Novus, prefer \texttt{let} (immutable) and only use \texttt{var} when you need to reassign.
+
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\texttt{int x = 10;} & \texttt{var x = 10} \\
+\texttt{const int X = 10;} & \texttt{let x = 10} or \texttt{const X = 10} \\
+\end{tabular}
+
+Novus's \texttt{const} is stricter than C's---it must be a compile-time constant expression, not just a runtime immutable value.
+\end{comingfromc}
+
 \subsection{Type Annotations}
 
 You can explicitly annotate types:
@@ -160,6 +173,20 @@ let done: bool = false
 \end{lstlisting}
 
 Booleans result from comparison and logical operations. Unlike C, integers and pointers do not implicitly convert to booleans---you must use explicit comparisons.
+
+\begin{comingfromc}
+C allows \texttt{if (ptr)} and \texttt{if (count)}. Novus requires explicit comparisons:
+
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\texttt{if (ptr)} & \texttt{if ptr != null} \\
+\texttt{if (!ptr)} & \texttt{if ptr == null} \\
+\texttt{if (count)} & \texttt{if count != 0} \\
+\texttt{while (n--)} & \texttt{while n > 0 \{ n-- ... \}} \\
+\end{tabular}
+
+This catches bugs like \texttt{if (x = 10)} which in C silently assigns and evaluates to true.
+\end{comingfromc}
 
 \section{Literals}
 
@@ -440,7 +467,7 @@ for j in 0..=10 {
 }
 \end{lstlisting}
 
-Ranges are covered in detail in Chapter 5: Control Flow.
+Ranges are covered in detail in Chapter~\ref{ch:control-flow}.
 
 \section{Type Conversions}
 
@@ -538,28 +565,19 @@ For pointers, dereferencing an invalid or null pointer is undefined behavior.
 Arrays have a fixed size known at compile time:
 
 \begin{lstlisting}
-let numbers: [i32; 3] = [10, 20, 30]
-\end{lstlisting}
-
-The type \texttt{[i32; 3]} means ``array of 3 \texttt{i32} values.'' The size is part of the type.
-
-\subsection{Array Literals}
-
-Create arrays with bracket syntax:
-
-\begin{lstlisting}
+let numbers = [10, 20, 30]
 let primes = [2, 3, 5, 7, 11]
 \end{lstlisting}
 
-The compiler infers the size from the number of elements.
+The compiler infers both the element type and size from the literal. The type of \texttt{numbers} is \texttt{[i32; 3]}---an array of 3 \texttt{i32} values. The size is part of the type.
 
 \subsection{Repeat Syntax}
 
 Initialize arrays with a repeated value:
 
 \begin{lstlisting}
-let zeros = [0; 100]  // 100 zeros
-let buffer: [u8; 1024] = [0; 1024]
+let zeros = [0; 100]       // 100 zeros
+let buffer = [0u8; 1024]   // 1024 bytes
 \end{lstlisting}
 
 The syntax \texttt{[value; count]} creates an array of \texttt{count} elements, each initialized to \texttt{value}.
@@ -643,20 +661,54 @@ var b = 0
 a = b = 5  // Both a and b become 5
 \end{lstlisting}
 
-\subsection{Block Expressions}
+\subsection{Expression Contexts}
 
-Blocks (sequences of statements enclosed in braces) can be expressions if they end with an expression:
+Many control flow constructs in Novus can be used as expressions. For example, \texttt{if-else} can produce a value:
 
 \begin{lstlisting}
-let x = {
-    let a = 10
-    let b = 20
-    a + b  // No semicolon - this is the block's value
-}
-// x = 30
+let max = if a > b { a } else { b }
 \end{lstlisting}
 
-If a block ends with a semicolon, it produces no value (unit type).
+The \texttt{match} expression (covered in Chapter~\ref{ch:control-flow}) similarly produces values based on pattern matching. Both branches must have the same type when used as expressions.
+
+\section{Intrinsics}
+
+Novus provides compile-time intrinsics that look like function calls but are handled specially by the compiler:
+
+\begin{lstlisting}
+// Get size of a type in bytes
+let size = @sizeof(MyStruct)
+
+// Get alignment requirement of a type
+let align = @alignof(MyStruct)
+
+// Create a zero-initialized value of a type
+let data = @zeroed(MyStruct)
+
+// Get the type of an expression (for generic code)
+type T = @typeof(some_expression)
+\end{lstlisting}
+
+These intrinsics are resolved at compile time and have no runtime overhead.
+
+\subsection{Common Uses}
+
+The \texttt{@sizeof} intrinsic is essential for memory allocation:
+
+\begin{lstlisting}
+let size = @sizeof(Player) * count
+let mem = AllocMem(size, MEMF_PUBLIC)
+\end{lstlisting}
+
+The \texttt{@zeroed} intrinsic creates zero-initialized instances, commonly used in constructors:
+
+\begin{lstlisting}
+impl Vec<T> {
+    pub fn new() -> Vec<T> {
+        return @zeroed(Vec<T>)  // All fields zero/null
+    }
+}
+\end{lstlisting}
 
 \section{Summary}
 

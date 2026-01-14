@@ -1,0 +1,925 @@
+\chapter{Functions and Methods}
+\label{ch:functions}
+
+\begin{quote}
+\textit{``Functions should do one thing. They should do it well. They should do it only.''}\\
+---Robert C. Martin
+\end{quote}
+
+\vspace{1em}
+
+Functions are the fundamental building blocks of Novus programs. This chapter covers everything from basic function definitions to generic methods, closures, and compile-time evaluation. By the end, you'll understand how to write reusable, type-safe code that integrates seamlessly with the Novus type system.
+
+\section{Function Basics}
+\label{sec:function-basics}
+
+\subsection{Defining Functions}
+\label{subsec:defining-functions}
+
+Functions are declared with the \texttt{fn} keyword:
+
+\begin{lstlisting}
+fn add(a: i32, b: i32) -> i32 {
+    return a + b
+}
+
+fn greet(name: *u8) {
+    // Prints the name to console
+    println(name)
+}
+\end{lstlisting}
+
+A function declaration consists of:
+\begin{itemize}
+    \item The \texttt{fn} keyword
+    \item The function name (must be a valid identifier)
+    \item Parameters in parentheses, each with name and type
+    \item An optional return type after \texttt{->}
+    \item The function body in braces
+\end{itemize}
+
+If no return type is specified, the function returns the unit type \texttt{()}.
+
+\subsection{Implicit Returns}
+\label{subsec:implicit-returns}
+
+When a function body ends with an expression (not a statement), that expression becomes the function's return value:
+
+\begin{lstlisting}
+fn square(x: i32) -> i32 {
+    x * x  // Implicit return - no return keyword needed
+}
+
+fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+\end{lstlisting}
+
+You can also use explicit \texttt{return} statements, which is required for early returns:
+
+\begin{lstlisting}
+fn safe_sqrt(x: i32) -> i32 {
+    if x < 0 {
+        return 0  // Early return requires 'return'
+    }
+    // ... compute sqrt ...
+    result  // Implicit return at end
+}
+\end{lstlisting}
+
+Both styles are valid. Use implicit returns for simple functions and explicit returns when you need early exit or want to be more explicit about control flow.
+
+\subsection{Parameters}
+\label{subsec:parameters}
+
+Parameters are passed by value by default. Each parameter requires an explicit type:
+
+\begin{lstlisting}
+fn calculate(x: i32, y: i32, z: i32) -> i32 {
+    return x + y * z
+}
+\end{lstlisting}
+
+\textbf{Important:} Parameters are always immutable within the function body. To work with a mutable copy, assign to a local variable:
+
+\begin{lstlisting}
+fn process(x: i32) -> i32 {
+    // x = x + 1  // Error: cannot mutate parameter
+    var local = x  // Create mutable copy
+    local = local + 1
+    return local * 2
+}
+\end{lstlisting}
+
+\subsection{Reference Parameters}
+\label{subsec:reference-params}
+
+Pass data by reference to avoid copying large structures:
+
+\begin{lstlisting}
+struct Player {
+    x: i32,
+    y: i32,
+    health: i32,
+    score: u32,
+}
+
+// Pass by immutable reference - cannot modify
+fn get_position(player: &Player) -> (i32, i32) {
+    return (player.x, player.y)
+}
+
+// Pass by mutable reference - can modify
+fn damage(player: &var Player, amount: i32) {
+    player.health = player.health - amount
+    if player.health < 0 {
+        player.health = 0
+    }
+}
+
+fn main() -> i32 {
+    var p = Player { x: 100, y: 200, health: 100, score: 0 }
+
+    let (x, y) = get_position(&p)
+    damage(&var p, 25)
+
+    return 0
+}
+\end{lstlisting}
+
+\begin{comingfromc}
+In C, you use pointers for pass-by-reference and must manually track whether a function modifies data:
+
+\begin{lstlisting}[language=C]
+// C: Is player modified? Must check implementation!
+void process(Player *player);
+void print_info(const Player *player);
+\end{lstlisting}
+
+Novus makes mutability explicit at the call site:
+
+\begin{lstlisting}
+// Novus: Call site shows intent clearly
+process(&var player)   // Will modify player
+print_info(&player)    // Won't modify player
+\end{lstlisting}
+
+The key differences:
+\begin{itemize}
+    \item \texttt{\&T} (immutable reference) $\approx$ \texttt{const T*}
+    \item \texttt{\&var T} (mutable reference) $\approx$ \texttt{T*}
+    \item References are never null; use \texttt{*T} for nullable pointers
+    \item The call site \texttt{\&var} makes modifications visible
+\end{itemize}
+\end{comingfromc}
+
+The reference type syntax mirrors the declaration:
+\begin{itemize}
+    \item \texttt{\&T} --- immutable reference, pass with \texttt{\&value}
+    \item \texttt{\&var T} --- mutable reference, pass with \texttt{\&var value}
+\end{itemize}
+
+\subsection{The \texttt{consuming} Keyword}
+\label{subsec:consuming}
+
+The \texttt{consuming} keyword indicates that a function takes ownership of a value, consuming it so it cannot be used afterward:
+
+\begin{lstlisting}
+from std::strings::core import String
+
+fn take_ownership(consuming s: String) {
+    // s is now owned by this function
+    // The original variable is no longer usable
+}
+
+fn use_string() {
+    var s = String::from("Hello")
+    take_ownership(s)
+    // s is no longer valid here - compilation error if used
+}
+\end{lstlisting}
+
+This is particularly useful for builder patterns and type-state transformations:
+
+\begin{lstlisting}
+impl StringBuilder {
+    // Consumes the builder and returns the final String
+    pub fn build(consuming self) -> String {
+        // Convert builder to String, consuming self
+    }
+}
+\end{lstlisting}
+
+\subsubsection{Consuming Parameters in AmigaOS FFI}
+
+Many AmigaOS system calls use \texttt{consuming} to indicate ownership transfer. For example, \texttt{FreeMem} consumes its pointer parameter:
+
+\begin{lstlisting}
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_FAST
+
+fn example() {
+    let ptr = unsafe { AllocMem(1024, MEMF_FAST) }
+    if ptr != null {
+        // ... use ptr ...
+        // ptr is consumed by FreeMem - cannot use it afterward
+        unsafe { FreeMem(ptr, 1024) }
+        // ptr is now invalid
+    }
+}
+\end{lstlisting}
+
+\subsection{Early Returns}
+\label{subsec:early-returns}
+
+Use explicit \texttt{return} for early exit from functions:
+
+\begin{lstlisting}
+fn safe_divide(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        return 0  // Early return for error case
+    }
+    a / b  // Implicit return for normal case
+}
+\end{lstlisting}
+
+\subsection{Returning Multiple Values}
+\label{subsec:multiple-returns}
+
+Use tuples to return multiple values:
+
+\begin{lstlisting}
+fn divmod(a: i32, b: i32) -> (i32, i32) {
+    let quotient = a / b
+    let remainder = a % b
+    (quotient, remainder)  // Return tuple
+}
+
+fn main() -> i32 {
+    let (q, r) = divmod(17, 5)
+    // q = 3, r = 2
+    return 0
+}
+\end{lstlisting}
+
+\section{Visibility}
+\label{sec:function-visibility}
+
+\subsection{Public Functions}
+\label{subsec:public-functions}
+
+By default, functions are private to their module. Use \texttt{pub} to make them accessible from other modules:
+
+\begin{lstlisting}
+// Private - only accessible within this module
+fn helper() -> i32 {
+    return 42
+}
+
+// Public - accessible from other modules
+pub fn api_function() -> i32 {
+    return helper()
+}
+\end{lstlisting}
+
+\subsection{Internal Visibility}
+\label{subsec:internal-visibility}
+
+The \texttt{internal} modifier makes a function visible within the same package but not to external code:
+
+\begin{lstlisting}
+// Visible within the package, not exported
+internal fn package_utility() -> i32 {
+    return 100
+}
+\end{lstlisting}
+
+\section{Traits}
+\label{sec:traits}
+
+Traits define shared behavior that types can implement. Understanding traits is essential before discussing generic functions, as generics often use trait bounds.
+
+\subsection{Defining Traits}
+\label{subsec:defining-traits}
+
+A trait declares method signatures that implementing types must provide:
+
+\begin{lstlisting}
+pub trait Eq {
+    fn eq(&self, other: &Self) -> bool
+}
+\end{lstlisting}
+
+The \texttt{Self} type (capitalized) refers to the implementing type. In the example above, when implementing \texttt{Eq} for \texttt{Point}, \texttt{Self} becomes \texttt{Point}.
+
+\subsection{Implementing Traits}
+\label{subsec:implementing-traits}
+
+Use \texttt{impl TraitName for Type} to implement a trait:
+
+\begin{lstlisting}
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Eq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+\end{lstlisting}
+
+\subsection{Common Standard Library Traits}
+\label{subsec:common-traits}
+
+Novus defines several important traits in \texttt{std::core}:
+
+\begin{description}
+    \item[\texttt{Drop}] Destructor called when value goes out of scope
+    \item[\texttt{Clone}] Deep copy with potential allocation (returns \texttt{Option<Self>})
+    \item[\texttt{Copy}] Marker trait for bitwise-copyable types
+    \item[\texttt{Eq}] Equality comparison
+    \item[\texttt{Ord}] Total ordering for comparison
+    \item[\texttt{Hash}] Hashing for use in \texttt{HashMap}
+    \item[\texttt{Display}] Format value to a \texttt{Formatter}; returns \texttt{bool} for success
+    \item[\texttt{From<T>}] Type conversion from \texttt{T}
+    \item[\texttt{Into<T>}] Type conversion to \texttt{T}
+    \item[\texttt{Default}] Provide a default value for a type
+\end{description}
+
+Example implementing \texttt{Drop}:
+
+\begin{lstlisting}
+from std::ffi::exec import FreeMem
+
+impl Drop for Buffer {
+    fn drop(&var self) {
+        if self.size > 0 {
+            unsafe { FreeMem(self.ptr, self.size) }
+            self.ptr = null
+            self.size = 0
+        }
+    }
+}
+\end{lstlisting}
+
+\section{Methods and Impl Blocks}
+\label{sec:methods}
+
+Methods are functions associated with a type, defined within \texttt{impl} blocks.
+
+\subsection{Defining Methods}
+\label{subsec:defining-methods}
+
+\begin{lstlisting}
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+impl Rectangle {
+    // Associated function (no self) - called as Rectangle::new()
+    pub fn new(width: u32, height: u32) -> Rectangle {
+        return Rectangle { width: width, height: height }
+    }
+
+    // Method with immutable self reference
+    pub fn area(&self) -> u32 {
+        return self.width * self.height
+    }
+
+    // Method with mutable self reference
+    pub fn scale(&var self, factor: u32) {
+        self.width = self.width * factor
+        self.height = self.height * factor
+    }
+
+    // Method that consumes self
+    pub fn into_tuple(self) -> (u32, u32) {
+        return (self.width, self.height)
+    }
+}
+\end{lstlisting}
+
+\subsection{Self Parameter Types}
+\label{subsec:self-types}
+
+Methods can receive \texttt{self} in different ways:
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Receiver} & \textbf{Meaning} \\
+\hline
+\texttt{\&self} & Immutable reference; can read but not modify \\
+\texttt{\&var self} & Mutable reference; can read and modify \\
+\texttt{self} & Takes ownership by value; consumes the instance \\
+\texttt{consuming self} & Explicit ownership transfer (clearer intent) \\
+\end{tabular}
+\end{center}
+
+Both \texttt{self} and \texttt{consuming self} have the same semantics---they consume the value. The \texttt{consuming} keyword makes the intent more explicit and is recommended for clarity.
+
+\begin{lstlisting}
+impl Resource {
+    // Read-only access
+    fn info(&self) -> i32 {
+        return self.value
+    }
+
+    // Modify in place
+    fn update(&var self, new_value: i32) {
+        self.value = new_value
+    }
+
+    // Consume and transform - explicit consuming
+    fn into_raw(consuming self) -> *u8 {
+        let ptr = self.ptr
+        // Don't run destructor - ownership transferred
+        return ptr
+    }
+}
+\end{lstlisting}
+
+\subsection{Associated Functions}
+\label{subsec:associated-functions}
+
+Functions without a \texttt{self} parameter are called \emph{associated functions}. They're called using the type name:
+
+\begin{lstlisting}
+impl<T> Vec<T> {
+    // Associated function - no self
+    // @zeroed creates a zero-initialized instance
+    pub fn new() -> Vec<T> {
+        return @zeroed(Vec<T>)
+    }
+
+    // Associated function with parameters
+    pub fn with_capacity(cap: u32) -> Result<Vec<T>, ExecError> {
+        // Allocate memory and return Vec
+    }
+}
+
+// Calling associated functions
+var v = Vec::<i32>::new()
+var v2 = Vec::<i32>::with_capacity(100)?
+\end{lstlisting}
+
+Associated functions are commonly used for constructors (\texttt{new}, \texttt{with\_capacity}) and factory methods.
+
+\subsection{Calling Methods}
+\label{subsec:calling-methods}
+
+Methods are called using dot notation:
+
+\begin{lstlisting}
+var rect = Rectangle::new(10, 20)
+let a = rect.area()        // Call method with &self
+rect.scale(2)              // Call method with &var self
+let (w, h) = rect.into_tuple()  // Consumes rect
+\end{lstlisting}
+
+The compiler automatically borrows \texttt{self} as needed. You don't need to write \texttt{(\&rect).area()}---the compiler inserts the borrow for you.
+
+\begin{comingfromc}
+In C, you pass structs to functions explicitly and use \texttt{->} for pointer access:
+
+\begin{lstlisting}[language=C]
+// C: Explicit struct passing
+struct Rectangle *r = create_rect(10, 20);
+int area = rect_area(r);     // Pass pointer explicitly
+rect_scale(r, 2);            // No indication it modifies r
+int w = r->width;            // Arrow for pointer access
+\end{lstlisting}
+
+Novus uses method syntax with automatic borrowing:
+
+\begin{lstlisting}
+// Novus: Method syntax, uniform dot access
+var rect = Rectangle::new(10, 20)
+let area = rect.area()     // Auto-borrow as &self
+rect.scale(2)              // Auto-borrow as &var self
+let w = rect.width         // Dot works for values too
+\end{lstlisting}
+
+Key differences:
+\begin{itemize}
+    \item No \texttt{->} operator---dot (\texttt{.}) works for both values and pointers
+    \item Methods are called \texttt{value.method()}, not \texttt{method(\&value)}
+    \item Auto-deref: \texttt{ptr.field} works like C's \texttt{ptr->field}
+    \item Constructors are \texttt{Type::new()}, not separate \texttt{create\_type()} functions
+\end{itemize}
+\end{comingfromc}
+
+\section{Generic Functions}
+\label{sec:generics}
+
+Generic functions work with multiple types using type parameters.
+
+\subsection{Type Parameters}
+\label{subsec:type-params}
+
+\begin{lstlisting}
+fn identity<T>(value: T) -> T {
+    return value
+}
+
+fn swap<T>(a: &var T, b: &var T) {
+    let temp = *a
+    *a = *b
+    *b = temp
+}
+\end{lstlisting}
+
+Type parameters are declared in angle brackets after the function name.
+
+\subsection{Trait Bounds}
+\label{subsec:trait-bounds}
+
+Use \texttt{where} clauses to constrain type parameters to types that implement specific traits:
+
+\begin{lstlisting}
+from std::core import Eq
+from std::strings::format import Display
+
+pub fn expect_eq<T>(actual: T, expected: T, message: Str)
+    where T: Eq + Display
+{
+    if actual != expected {
+        // Report failure - can use Eq and Display methods on T
+    }
+}
+\end{lstlisting}
+
+Multiple bounds are combined with \texttt{+}:
+
+\begin{lstlisting}
+fn sort<T>(items: &var [T], count: u32) where T: Ord + Clone {
+    // Can use Ord for comparison, Clone for copying
+}
+\end{lstlisting}
+
+\subsection{Turbofish Syntax}
+\label{subsec:turbofish}
+
+When the compiler cannot infer generic types, use the turbofish syntax (\texttt{::<T>}) to specify them explicitly:
+
+\begin{lstlisting}
+// Type inferred from variable declaration
+let v: Vec<i32> = Vec::new()
+
+// Explicit type with turbofish
+let v = Vec::<i32>::new()
+
+// Turbofish on function calls
+let chan = bounded_channel::<i32>()?
+\end{lstlisting}
+
+The turbofish is especially useful when calling generic functions where the type cannot be inferred from context.
+
+\subsection{Generic Trait Implementations}
+\label{subsec:generic-impl}
+
+Implement traits for generic types:
+
+\begin{lstlisting}
+impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
+    fn drop(&var self) {
+        // Free all buckets and entries
+    }
+}
+\end{lstlisting}
+
+\section{Function Overloading}
+\label{sec:overloading}
+
+Novus supports function overloading---multiple functions with the same name but different parameter signatures.
+
+\subsection{Overloading Rules}
+\label{subsec:overload-rules}
+
+Functions can be overloaded when they differ by:
+\begin{itemize}
+    \item Parameter types (\texttt{i32} vs \texttt{i64})
+    \item Parameter count
+    \item Reference vs value (\texttt{T} vs \texttt{\&T})
+    \item Mutability (\texttt{\&T} vs \texttt{\&var T})
+    \item Pointer vs value (\texttt{T} vs \texttt{*T})
+\end{itemize}
+
+\begin{lstlisting}
+fn abs(x: i32) -> i32 {
+    if x < 0 { return -x }
+    return x
+}
+
+fn abs(x: i16) -> i16 {
+    if x < 0 { return -x }
+    return x
+}
+
+fn print_value(x: i32) {
+    // Print i32
+}
+
+fn print_value(x: i32, y: i32) {
+    // Print two values
+}
+
+fn print_value(x: i32, y: i32, z: i32) {
+    // Print three values
+}
+\end{lstlisting}
+
+\subsection{Overloading Restrictions}
+\label{subsec:overload-restrictions}
+
+Overloading is \textbf{not} allowed when functions differ only by:
+\begin{itemize}
+    \item Return type (with identical parameters)
+    \item Parameter names (with identical types)
+\end{itemize}
+
+\begin{lstlisting}
+// ERROR: Same parameter types, different return types
+fn get() -> i32 { return 42 }
+fn get() -> i64 { return 42 }  // Error: duplicate signature
+
+// ERROR: Same types, different names
+fn test(x: i32) -> i32 { return x }
+fn test(y: i32) -> i32 { return y }  // Error: duplicate signature
+\end{lstlisting}
+
+\section{Const Functions}
+\label{sec:const-fn}
+
+Const functions can be evaluated at compile time when called with constant arguments.
+
+\subsection{Defining Const Functions}
+\label{subsec:const-fn-def}
+
+\begin{lstlisting}
+const fn times_two(x: i32) -> i32 {
+    return x * 2
+}
+
+const fn max(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a
+    }
+    return b
+}
+
+// Const fn calling another const fn
+const fn clamp(value: i32, low: i32, high: i32) -> i32 {
+    if value < low { return low }
+    if value > high { return high }
+    return value
+}
+\end{lstlisting}
+
+\subsection{Using Const Functions}
+\label{subsec:const-fn-use}
+
+Const functions enable compile-time computation for constants:
+
+\begin{lstlisting}
+const WIDTH: i32 = 320
+const HEIGHT: i32 = 200
+const DOUBLED_WIDTH: i32 = times_two(WIDTH)    // 640 at compile time
+const SCREEN_SIZE: i32 = WIDTH * HEIGHT        // 64000 at compile time
+const CLAMPED: i32 = clamp(999, 0, 100)        // 100 at compile time
+\end{lstlisting}
+
+Const functions can also be called at runtime with non-constant arguments:
+
+\begin{lstlisting}
+fn process(x: i32) -> i32 {
+    return times_two(x)  // Runtime call
+}
+\end{lstlisting}
+
+\subsection{Const Function Restrictions}
+\label{subsec:const-fn-restrictions}
+
+Const functions have limitations:
+\begin{itemize}
+    \item No heap allocation
+    \item No I/O operations
+    \item No external function calls
+    \item Only call other const functions
+    \item Limited recursion depth
+\end{itemize}
+
+\section{Closures}
+\label{sec:closures}
+
+Closures are anonymous functions that can capture variables from their environment.
+
+\subsection{Closure Syntax}
+\label{subsec:closure-syntax}
+
+\begin{lstlisting}
+// Basic closure with type annotations
+let add = |x: i32, y: i32| -> i32 { x + y }
+
+// Closure capturing environment
+let multiplier = 10
+let scale = |x: i32| -> i32 { x * multiplier }
+let result = scale(5)  // 50
+
+// No parameters
+let get_value = || -> i32 { 42 }
+\end{lstlisting}
+
+Closures use pipes (\texttt{|}) to delimit parameters:
+
+\begin{lstlisting}
+|parameters| -> ReturnType { body }
+\end{lstlisting}
+
+\subsection{Capturing Variables}
+\label{subsec:capturing}
+
+Closures capture variables from their enclosing scope. By default, captures are by value (copied):
+
+\begin{lstlisting}
+fn example() -> i32 {
+    let offset = 10
+    let add_offset = |x: i32| -> i32 {
+        x + offset  // Captures 'offset' by value
+    }
+    add_offset(5)  // 15
+}
+\end{lstlisting}
+
+\section{External Functions}
+\label{sec:extern-fn}
+
+External functions declare interfaces to C code or AmigaOS system libraries.
+
+\subsection{Extern Declarations}
+\label{subsec:extern-decl}
+
+External functions declare interfaces to AmigaOS system libraries. Here are common examples from exec.library:
+
+\begin{lstlisting}
+// Memory allocation
+extern pub fn AllocMem(byteSize: u32, requirements: u32) -> *u8
+extern pub fn FreeMem(consuming memoryBlock: *u8, byteSize: u32)
+
+// Task synchronization
+extern pub fn Wait(signalSet: u32) -> u32
+extern pub fn Signal(task: *Task, signals: u32)
+
+// Message passing
+extern pub fn PutMsg(port: *MsgPort, message: *Message)
+extern pub fn GetMsg(port: *MsgPort) -> *Message
+\end{lstlisting}
+
+From dos.library (note BCPL pointer conventions---file handles are \texttt{i32}):
+
+\begin{lstlisting}
+// File operations (using BCPL pointers)
+extern pub fn Open(name: *u8, accessMode: i32) -> i32
+extern pub fn Close(consuming file: i32) -> i32
+extern pub fn Read(file: i32, buffer: *u8, length: i32) -> i32
+extern pub fn Write(file: i32, buffer: *u8, length: i32) -> i32
+\end{lstlisting}
+
+External functions have no body---they're implemented in ROM or disk-based libraries and linked at runtime.
+
+\subsection{Calling External Functions}
+\label{subsec:calling-extern}
+
+AmigaOS system calls require \texttt{unsafe} blocks because they bypass Novus's safety guarantees:
+
+\begin{lstlisting}
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+
+fn allocate_buffer(size: u32) -> *u8 {
+    var ptr: *u8 = null
+    unsafe {
+        ptr = AllocMem(size, MEMF_FAST | MEMF_CLEAR)
+    }
+    return ptr
+}
+
+fn free_buffer(ptr: *u8, size: u32) {
+    unsafe {
+        FreeMem(ptr, size)
+    }
+}
+\end{lstlisting}
+
+\subsection{AmigaOS Library Bindings}
+\label{subsec:ffi-bindings}
+
+Novus provides pre-generated FFI bindings for all AmigaOS libraries. These are auto-generated from SFD (System Function Definition) files:
+
+\begin{lstlisting}
+// Import from pre-generated FFI modules
+from std::ffi::exec import AllocMem, FreeMem, Wait, Signal
+from std::ffi::dos import Open, Close, Read, Write
+from std::ffi::graphics import BltBitMap, BltTemplate
+from std::ffi::intuition import OpenWindow, CloseWindow
+
+// Import structure definitions
+from std::ffi::amiga_structs import Task, MsgPort, BitMap, RastPort
+
+// Import constants
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MODE_OLDFILE
+\end{lstlisting}
+
+Developers should import from these modules rather than writing \texttt{extern fn} declarations manually.
+
+\subsection{Variadic Functions}
+\label{subsec:variadic}
+
+External functions can accept variable arguments using \texttt{...args}:
+
+\begin{lstlisting}
+extern fn VPrintf(format: *u8, ...args) -> i32
+\end{lstlisting}
+
+Note that variadic functions are only supported for external declarations; Novus code cannot define variadic functions.
+
+\section{Best Practices}
+\label{sec:fn-best-practices}
+
+\subsection{Parameter Passing Guidelines}
+\label{subsec:param-guidelines}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Situation} & \textbf{Recommendation} \\
+\hline
+Small values (integers, bools) & Pass by value \\
+Large structs, read-only & Pass by reference (\texttt{\&T}) \\
+Large structs, modify & Pass by mutable reference (\texttt{\&var T}) \\
+Transfer ownership & Pass by value or use \texttt{consuming} \\
+\end{tabular}
+\end{center}
+
+\subsection{Method Receiver Guidelines}
+\label{subsec:receiver-guidelines}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Receiver} & \textbf{Use When} \\
+\hline
+\texttt{\&self} & Reading data, computing derived values \\
+\texttt{\&var self} & Modifying internal state \\
+\texttt{self} / \texttt{consuming self} & Transforming into another type, builder finalization \\
+\end{tabular}
+\end{center}
+
+\subsection{AmigaOS FFI Best Practices}
+\label{subsec:amiga-best-practices}
+
+When calling AmigaOS system libraries:
+
+\begin{itemize}
+    \item Always wrap library calls in \texttt{unsafe} blocks
+    \item Check return values---many functions return \texttt{NULL}/\texttt{0} on failure
+    \item Track allocation sizes---\texttt{FreeMem} requires the original size
+    \item Match memory flags---free with the same size you allocated
+    \item Respect \texttt{consuming} parameters---don't use pointers/handles after consumption
+    \item Use stdlib wrappers (\texttt{MemoryBlock}, \texttt{Vec}, etc.) when possible for safety
+    \item BCPL pointers (DOS.library) are \texttt{i32} values, not \texttt{*u8}
+\end{itemize}
+
+Example of safe memory management:
+
+\begin{lstlisting}
+from std::memory::block import MemoryBlock
+from std::ffi::amiga_consts import MEMF_FAST
+
+// Prefer MemoryBlock over raw AllocMem/FreeMem
+match MemoryBlock::alloc(1024, MEMF_FAST) {
+    Option::Some(var block) => {
+        // Use block.ptr() to access raw pointer
+        let ptr = block.ptr()
+        // ... use ptr ...
+        // Automatic cleanup when block goes out of scope
+    },
+    Option::None => {
+        // Handle allocation failure
+    }
+}
+\end{lstlisting}
+
+\subsection{Naming Conventions}
+\label{subsec:naming-conventions}
+
+\begin{itemize}
+    \item Use \texttt{snake\_case} for function names: \texttt{get\_value}, \texttt{set\_position}
+    \item Use \texttt{new} for constructors: \texttt{Vec::new()}, \texttt{String::new()}
+    \item Use \texttt{with\_*} for constructors with parameters: \texttt{with\_capacity}
+    \item Use \texttt{is\_*} for boolean queries: \texttt{is\_empty}, \texttt{is\_valid}
+    \item Use \texttt{into\_*} for consuming conversions: \texttt{into\_raw}, \texttt{into\_string}
+    \item Use \texttt{as\_*} for borrowing conversions: \texttt{as\_str}, \texttt{as\_slice}
+    \item Use \texttt{try\_*} for fallible operations returning \texttt{Result}: \texttt{try\_alloc}
+\end{itemize}
+
+\section{Summary}
+\label{sec:fn-summary}
+
+This chapter covered the complete function system in Novus:
+
+\begin{itemize}
+    \item \textbf{Function basics}: Declaration, parameters, return values
+    \item \textbf{Reference parameters}: \texttt{\&T} for reading, \texttt{\&var T} for modifying
+    \item \textbf{Traits}: Defining and implementing shared behavior
+    \item \textbf{Methods}: Impl blocks, self receivers, associated functions
+    \item \textbf{Generics}: Type parameters, trait bounds, turbofish syntax
+    \item \textbf{Overloading}: Multiple functions with the same name
+    \item \textbf{Const functions}: Compile-time evaluation
+    \item \textbf{Closures}: Anonymous functions capturing environment
+    \item \textbf{External functions}: AmigaOS FFI and system calls
+\end{itemize}
+
+Functions in Novus are designed for clarity and safety. Explicit parameter passing, trait bounds, and ownership semantics help prevent bugs while keeping the code readable.
+
+The next chapter explores modules and project organization, showing how to structure larger Novus programs.

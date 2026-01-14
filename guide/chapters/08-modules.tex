@@ -1,0 +1,761 @@
+\chapter{Modules and Project Organization}
+\label{ch:modules}
+
+\begin{quote}
+\textit{``The purpose of abstraction is not to be vague, but to create a new semantic level in which one can be absolutely precise.''}\\
+---Edsger W. Dijkstra
+\end{quote}
+
+\vspace{1em}
+
+Novus provides a module system for organizing code into logical units with explicit visibility control. This chapter covers imports, visibility modifiers, project structure, and the standard library organization.
+
+\section{Module Basics}
+\label{sec:module-basics}
+
+In Novus, each source file (\texttt{.novus}) is a module. The module's namespace is determined by its location in the directory structure.
+
+\subsection{Module Naming}
+\label{subsec:module-naming}
+
+Module paths use \texttt{::} as the separator:
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{File Path} & \textbf{Module Path} \\
+\hline
+\texttt{src/main.novus} & \texttt{main} \\
+\texttt{src/renderer.novus} & \texttt{renderer} \\
+\texttt{src/graphics/bitmap.novus} & \texttt{graphics::bitmap} \\
+\texttt{src/sound/player.novus} & \texttt{sound::player} \\
+\end{tabular}
+\end{center}
+
+The standard library uses the \texttt{std} prefix:
+
+\begin{center}
+\begin{tabular}{ll}
+\textbf{File Path} & \textbf{Module Path} \\
+\hline
+\texttt{std/core.novus} & \texttt{std::core} \\
+\texttt{std/collections/vec.novus} & \texttt{std::collections::vec} \\
+\texttt{std/ffi/exec.novus} & \texttt{std::ffi::exec} \\
+\end{tabular}
+\end{center}
+
+\section{Imports}
+\label{sec:imports}
+
+Use the \texttt{from ... import ...} syntax to bring items from other modules into scope.
+
+\subsection{Basic Imports}
+\label{subsec:basic-imports}
+
+Import specific items by name:
+
+\begin{lstlisting}
+// Import specific types
+from std::core import Option, Result
+
+// Import functions and constants
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+\end{lstlisting}
+
+\begin{comingfromc}
+C's \texttt{\#include} literally copies header files into your source, leading to:
+\begin{itemize}
+    \item Include order dependencies
+    \item Include guards (\texttt{\#ifndef}/\texttt{\#define}/\texttt{\#endif})
+    \item Slow compilation from re-parsing headers
+    \item Polluted namespaces with everything in headers
+\end{itemize}
+
+\begin{lstlisting}[language=C]
+// C: Headers are textually included
+#include <exec/memory.h>
+#include <proto/exec.h>     // Order matters!
+\end{lstlisting}
+
+Novus imports are semantic, not textual:
+
+\begin{lstlisting}
+// Novus: Import specific symbols
+from std::ffi::exec import AllocMem, FreeMem
+from std::ffi::amiga_consts import MEMF_FAST
+\end{lstlisting}
+
+Benefits:
+\begin{itemize}
+    \item No include guards needed
+    \item Order doesn't matter
+    \item Only imported names are in scope
+    \item Faster compilation (no re-parsing)
+    \item No ``header file'' vs ``source file'' distinction
+\end{itemize}
+\end{comingfromc}
+
+\subsection{Wildcard Imports}
+\label{subsec:wildcard-imports}
+
+Import all public items from a module:
+
+\begin{lstlisting}
+// Import everything from amiga_structs
+from std::ffi::amiga_structs import *
+
+// Now Task, MsgPort, Library, etc. are all in scope
+\end{lstlisting}
+
+Use wildcards sparingly---they can make it unclear where symbols come from.
+
+\subsection{Pattern Imports}
+\label{subsec:pattern-imports}
+
+Import multiple items matching a prefix or suffix pattern:
+
+\begin{lstlisting}
+// Import all IDCMP_* constants (prefix pattern)
+from std::ffi::amiga_consts import IDCMP_*
+
+// This imports IDCMP_CLOSEWINDOW, IDCMP_MOUSEBUTTONS, etc.
+
+// Import all *Error types (suffix pattern)
+from std::error::errors import *Error
+
+// This imports DosError, ExecError, GraphicsError, etc.
+\end{lstlisting}
+
+\subsection{Import Aliases}
+\label{subsec:import-aliases}
+
+Rename imports to avoid conflicts or for convenience:
+
+\begin{lstlisting}
+from std::collections::vec import Vec as DynamicArray
+from std::collections::hashmap import HashMap as Map
+
+// Now use the aliases
+var items = DynamicArray::<i32>::new()
+var lookup = Map::<Str, i32>::new()
+\end{lstlisting}
+
+\subsection{Multiple Imports}
+\label{subsec:multiple-imports}
+
+Import from multiple modules at the top of your file:
+
+\begin{lstlisting}
+// Recommended import order for stdlib files:
+// 1. std::core - fundamental types
+from std::core import Option, Result, Drop, Clone
+
+// 2. std::collections - data structures
+from std::collections::vec import Vec
+
+// 3. std::memory - memory management
+from std::memory::block import MemoryBlock
+
+// 4. std::strings - string types
+from std::strings::core import Str
+
+// 5. std::error - error types
+from std::error::errors import ExecError
+
+// 6. std::ffi - AmigaOS bindings
+from std::ffi::amiga_structs import Task, MsgPort
+from std::ffi::amiga_consts import MEMF_PUBLIC
+from std::ffi::exec import AllocMem, FreeMem
+\end{lstlisting}
+
+\section{Visibility Modifiers}
+\label{sec:module-visibility}
+
+Novus has four visibility levels that control where items can be accessed.
+
+\subsection{Private (Default)}
+\label{subsec:private}
+
+Items without a visibility modifier are private to their module:
+
+\begin{lstlisting}
+// Only visible in this file
+const BUFFER_SIZE: u32 = 1024
+
+fn helper() -> i32 {
+    42
+}
+
+struct InternalData {
+    value: i32,
+}
+\end{lstlisting}
+
+Private items cannot be imported by other modules.
+
+\subsection{Public (\texttt{pub})}
+\label{subsec:public}
+
+The \texttt{pub} keyword exports items, making them visible to other modules:
+
+\begin{lstlisting}
+// Exported - can be imported by other modules
+pub const VERSION: u32 = 1
+
+pub fn create_bitmap(w: u32, h: u32) -> Result<Bitmap, GraphicsError> {
+    // ...
+}
+
+pub struct Bitmap {
+    width: u32,
+    height: u32,
+    data: *u8,
+}
+\end{lstlisting}
+
+Use \texttt{pub} for your module's public API---functions, types, and constants that other code should use.
+
+\begin{comingfromc}
+C uses \texttt{static} for file-local symbols and relies on headers for ``public'' APIs:
+
+\begin{lstlisting}[language=C]
+// C: static = private to this file
+static int helper(void) { return 42; }
+
+// C: non-static = visible (if declared in header)
+int public_api(void) { return helper(); }
+\end{lstlisting}
+
+Novus inverts this: private by default, explicit \texttt{pub} for public:
+
+\begin{lstlisting}
+// Novus: private by default
+fn helper() -> i32 { return 42 }
+
+// Novus: pub = exported
+pub fn public_api() -> i32 { return helper() }
+\end{lstlisting}
+
+The mapping:
+\begin{itemize}
+    \item C \texttt{static} $\approx$ Novus (default, no modifier)
+    \item C non-static + header $\approx$ Novus \texttt{pub}
+    \item C \texttt{extern} $\approx$ Novus \texttt{extern} (for FFI only)
+\end{itemize}
+\end{comingfromc}
+
+\subsection{Internal (\texttt{internal})}
+\label{subsec:internal}
+
+The \texttt{internal} modifier makes items visible within the same package (workspace) but not exported to external code:
+
+\begin{lstlisting}
+// Visible to all modules in this workspace, not exported
+internal const SHARED_BUFFER_SIZE: u32 = 4096
+
+internal fn shared_helper() -> i32 {
+    100
+}
+\end{lstlisting}
+
+Use \texttt{internal} for implementation details shared between modules in a library.
+
+\subsection{Extern (\texttt{extern})}
+\label{subsec:extern}
+
+The \texttt{extern} keyword declares items defined elsewhere, resolved at link time:
+
+\begin{lstlisting}
+// AmigaOS library base (provided by startup code)
+extern var SysBase: *ExecBase
+
+// Hardware register at specific address
+// The 'at ADDRESS' syntax maps to absolute memory locations
+extern var CUSTOM: *Custom at 0xdff000
+
+// Function from another object file or assembly
+extern fn asm_memcpy(dest: *u8, src: *u8, len: u32)
+\end{lstlisting}
+
+The \texttt{at ADDRESS} syntax is used for memory-mapped hardware registers. Common examples include \texttt{CUSTOM} at 0xdff000 (custom chips), \texttt{CIA\_A} at 0xbfe001, and \texttt{CIA\_B} at 0xbfd000.
+
+\textbf{Note:} AmigaOS library functions are imported from the standard library FFI modules, not declared as \texttt{extern} in user code:
+
+\begin{lstlisting}
+// Import AmigaOS functions from std::ffi
+from std::ffi::exec import AllocMem, FreeMem, Wait, Signal
+from std::ffi::dos import Open, Close, Read, Write
+\end{lstlisting}
+
+External declarations have no implementation in Novus---they're provided by AmigaOS, assembly files, or C libraries.
+
+\section{Re-exports}
+\label{sec:reexports}
+
+Re-exports allow modules to expose items from other modules as part of their own API. This is useful for creating convenient public interfaces.
+
+\subsection{The \texttt{pub use} Syntax}
+\label{subsec:pub-use}
+
+\begin{lstlisting}
+// In std/prelude.novus:
+
+// Re-export core types
+pub use std::core::Option, Result, Drop, From
+
+// Re-export string types
+pub use std::strings::core::Str
+
+// Re-export error types
+pub use std::error::errors::DosError, ExecError, IntuitionError
+\end{lstlisting}
+
+Now users can import from \texttt{std::prelude} instead of multiple modules:
+
+\begin{lstlisting}
+// Instead of:
+from std::core import Option, Result
+from std::strings::core import Str
+from std::error::errors import DosError
+
+// Users can write:
+from std::prelude import Option, Result, Str, DosError
+\end{lstlisting}
+
+\subsection{Multiple Re-exports}
+\label{subsec:multiple-reexports}
+
+Re-export multiple items to create a convenient API:
+
+\begin{lstlisting}
+// In std/async/mod.novus:
+
+// Re-export future types
+pub use std::async::future::Future, Poll, Context, Waker
+pub use std::async::future::Ready, Pending, ready, pending
+
+// Re-export executor functions
+pub use std::async::executor::block_on_sleep, poll_sleep_once
+
+// Re-export sleep utilities
+pub use std::async::sleep::Sleep, sleep, sleep_secs, sleep_millis
+\end{lstlisting}
+
+\section{Constants and Static Variables}
+\label{sec:constants-statics}
+
+\subsection{Constants (\texttt{const})}
+\label{subsec:constants}
+
+Constants are compile-time values that are inlined at every use site:
+
+\begin{lstlisting}
+const MAX_SPRITES: u32 = 8
+const PI: i32 = 3_14159  // Fixed-point representation
+pub const VERSION: u32 = 1
+
+// Constants can use const functions
+const fn double(x: i32) -> i32 { x * 2 }
+const DOUBLED: i32 = double(21)  // 42 at compile time
+\end{lstlisting}
+
+Properties of constants:
+\begin{itemize}
+    \item Must be computable at compile time
+    \item No memory address (inlined at use sites)
+    \item Always immutable
+    \item Preferred for configuration values
+\end{itemize}
+
+\subsection{Static Variables (\texttt{static})}
+\label{subsec:static-vars}
+
+Static variables have a fixed memory location and live for the entire program:
+
+\begin{lstlisting}
+// Immutable static - initialized data
+static SINE_TABLE: [i16; 65] = [
+    0, 804, 1608, 2410, 3212, 4011, 4808, // ...
+]
+
+// Mutable static - use with caution
+static var frame_count: u32 = 0
+static var initialized: bool = false
+\end{lstlisting}
+
+Properties of static variables:
+\begin{itemize}
+    \item Have a memory address (stored in \texttt{.data} or \texttt{.bss})
+    \item Live for the entire program lifetime
+    \item Immutable by default (\texttt{static var} for mutable)
+    \item Must be initialized with a constant expression
+\end{itemize}
+
+\subsection{Mutable Statics}
+\label{subsec:mutable-statics}
+
+Mutable static variables are declared with \texttt{static var}:
+
+\begin{lstlisting}
+static var g_chip_pool: ChipPool = ChipPool {
+    blocks: null,
+    count: 0,
+}
+
+pub fn get_pool() -> *ChipPool {
+    return &var g_chip_pool
+}
+\end{lstlisting}
+
+\textbf{Warning:} Mutable statics are dangerous in multitasking environments. For thread-safe global state, consider using:
+\begin{itemize}
+    \item Atomic types for simple counters
+    \item Semaphores for complex data
+    \item Immutable statics with interior mutability
+\end{itemize}
+
+\section{Project Structure}
+\label{sec:project-structure}
+
+Novus uses TOML configuration files to define projects and workspaces.
+
+\subsection{Single Project}
+\label{subsec:single-project}
+
+A simple project structure:
+
+\begin{lstlisting}[language=bash]
+myapp/
+  project.toml      # Project configuration
+  src/
+    main.novus      # Entry point
+    renderer.novus  # Additional module
+    sound/
+      player.novus  # Submodule
+      mixer.novus
+\end{lstlisting}
+
+The \texttt{project.toml} file:
+
+\begin{lstlisting}
+[package]
+name = "myapp"
+version = "0.1.0"
+type = "cli"             # cli, workbench, dual, library, device
+entry = "src/main.novus" # Entry point (optional, defaults to main.novus)
+description = "My Amiga application"
+authors = ["Your Name"]
+
+[build]
+target_cpu = "68020"     # 68000, 68020, 68040, 68060
+fpu = "auto"             # soft, 68881, 68040, auto
+output = "build"
+optimization_level = 2
+
+[paths]
+src = "src"
+\end{lstlisting}
+
+\subsection{Workspaces}
+\label{subsec:workspaces}
+
+Workspaces contain multiple related projects:
+
+\begin{lstlisting}[language=bash]
+myworkspace/
+  workspace.toml      # Workspace configuration
+  mylib/
+    project.toml
+    src/
+      lib.novus
+  myapp/
+    project.toml
+    src/
+      main.novus
+  examples/
+    project.toml
+    src/
+      demo.novus
+\end{lstlisting}
+
+The \texttt{workspace.toml} file:
+
+\begin{lstlisting}
+[workspace]
+name = "myworkspace"
+version = "0.1.0"
+members = ["mylib", "myapp", "examples"]  # Directory names of member projects
+
+[workspace.build]
+target_cpu = "68020"
+fpu = "auto"
+optimization_level = 2
+\end{lstlisting}
+
+The \texttt{members} array lists directory names of projects within the workspace.
+
+\subsection{Project Types}
+\label{subsec:project-types}
+
+Novus supports several project types, each with different startup behavior:
+
+\begin{description}
+    \item[\texttt{cli}] Command-line application launched from Shell with \texttt{argc}/\texttt{argv} arguments
+    \item[\texttt{workbench}] Application launched by double-clicking icons; receives WBStartup message with file arguments
+    \item[\texttt{dual}] Application that handles both CLI and Workbench launches
+    \item[\texttt{library}] AmigaOS shared library (\texttt{.library}) with ROMTag and vector table
+    \item[\texttt{device}] AmigaOS device driver (\texttt{.device}) with BeginIO/AbortIO interface
+\end{description}
+
+\textbf{Important:} Workbench applications \textit{must} reply to the WBStartup message using \texttt{ReplyMsg()} when exiting, or Workbench will hang. Use \texttt{Input() == 0} to detect Workbench launches.
+
+\subsection{Creating Projects}
+\label{subsec:creating-projects}
+
+Use the \texttt{novusc new} command to create projects:
+
+\begin{lstlisting}[language=bash]
+# Create a new workspace
+novusc new myworkspace
+
+# Create a CLI project in the workspace
+cd myworkspace
+novusc new mytool --type cli
+
+# Create a Workbench application
+novusc new mygui --type workbench
+
+# Create a library
+novusc new mylib --type library
+\end{lstlisting}
+
+\subsection{Building Projects}
+\label{subsec:building-projects}
+
+Build commands:
+
+\begin{lstlisting}[language=bash]
+# Build all projects in workspace
+novusc build
+
+# Build a specific project
+novusc build mytool
+
+# Build with specific CPU target
+novusc build --cpu 68040
+\end{lstlisting}
+
+\section{Standard Library Organization}
+\label{sec:stdlib-org}
+
+The Novus standard library is organized into focused modules:
+
+\subsection{Core Modules}
+\label{subsec:core-modules}
+
+\begin{description}
+    \item[\texttt{std::core}] Fundamental types: \texttt{Option}, \texttt{Result}, \texttt{Drop}, \texttt{Clone}, \texttt{Eq}, etc.
+    \item[\texttt{std::prelude}] Common re-exports for convenience
+\end{description}
+
+\subsection{Data Structures}
+\label{subsec:data-structures}
+
+\begin{description}
+    \item[\texttt{std::collections::vec}] Dynamic array (\texttt{Vec<T>})
+    \item[\texttt{std::collections::hashmap}] Hash map (\texttt{HashMap<K, V>})
+    \item[\texttt{std::collections::hashset}] Hash set (\texttt{HashSet<T>})
+    \item[\texttt{std::collections::vecdeque}] Double-ended queue
+    \item[\texttt{std::collections::ringbuffer}] Fixed-size ring buffer
+    \item[\texttt{std::collections::bitset}] Bit set
+    \item[\texttt{std::collections::slotmap}] Slot map for entity storage
+    \item[\texttt{std::collections::freelist}] Free list allocator
+    \item[\texttt{std::collections::smallvec}] Small-buffer-optimized vector
+    \item[\texttt{std::collections::intrusive\_list}] Intrusive doubly-linked list
+\end{description}
+
+\subsection{Memory Management}
+\label{subsec:memory-modules}
+
+\begin{description}
+    \item[\texttt{std::memory::block}] Raw memory blocks (\texttt{MemoryBlock})
+    \item[\texttt{std::memory::chip\_pool}] Chip memory pool
+    \item[\texttt{std::memory::chip\_cache}] Chip memory cache
+\end{description}
+
+\subsection{Strings}
+\label{subsec:string-modules}
+
+\begin{description}
+    \item[\texttt{std::strings::core}] String slice type (\texttt{Str})
+    \item[\texttt{std::strings::format}] Formatting and \texttt{Display} trait
+\end{description}
+
+\subsection{Error Handling}
+\label{subsec:error-modules}
+
+\begin{description}
+    \item[\texttt{std::error::errors}] Error types: \texttt{DosError}, \texttt{ExecError}, \texttt{GraphicsError}, etc.
+\end{description}
+
+\subsection{I/O and Networking}
+\label{subsec:io-modules}
+
+\begin{description}
+    \item[\texttt{std::io}] Basic I/O functions
+    \item[\texttt{std::net::socket}] BSD socket interface
+    \item[\texttt{std::net::tcp}] TCP client/server
+    \item[\texttt{std::net::udp}] UDP sockets
+    \item[\texttt{std::net::dns}] DNS resolution
+\end{description}
+
+\subsection{Concurrency}
+\label{subsec:concurrency-modules}
+
+\begin{description}
+    \item[\texttt{std::async}] Async/await runtime
+    \item[\texttt{std::sync}] Synchronization primitives
+    \item[\texttt{std::thread}] Task management
+\end{description}
+
+\subsection{Graphics and UI}
+\label{subsec:graphics-modules}
+
+\begin{description}
+    \item[\texttt{std::graphics::bitmap}] Bitmap handling
+    \item[\texttt{std::graphics::sprite}] Hardware sprites
+    \item[\texttt{std::graphics::copper}] Copper list generation
+    \item[\texttt{std::graphics::blitter}] Blitter operations
+    \item[\texttt{std::graphics::intuition}] Intuition window/screen wrappers
+    \item[\texttt{std::ui::window}] Window management
+    \item[\texttt{std::ui::screen}] Screen management
+    \item[\texttt{std::ui::menu}] Menu creation
+    \item[\texttt{std::ui::events}] Event handling
+\end{description}
+
+\subsection{AmigaOS FFI}
+\label{subsec:ffi-modules}
+
+The FFI modules provide direct bindings to AmigaOS libraries:
+
+\begin{description}
+    \item[\texttt{std::ffi::exec}] Exec library (memory, tasks, signals)
+    \item[\texttt{std::ffi::dos}] DOS library (files, paths, CLI)
+    \item[\texttt{std::ffi::graphics}] Graphics library (rendering, text)
+    \item[\texttt{std::ffi::intuition}] Intuition library (windows, screens)
+    \item[\texttt{std::ffi::layers}] Layers library (layer management)
+    \item[\texttt{std::ffi::gadtools}] GadTools library (GUI toolkit)
+    \item[\texttt{std::ffi::utility}] Utility library (tags, hooks)
+    \item[\texttt{std::ffi::workbench}] Workbench library (icons, AppIcons)
+    \item[\texttt{std::ffi::icon}] Icon library (icon handling)
+    \item[\texttt{std::ffi::asl}] ASL library (file/font requesters)
+    \item[\texttt{std::ffi::diskfont}] Diskfont library (font loading)
+    \item[\texttt{std::ffi::commodities}] Commodities library (hotkeys)
+    \item[\texttt{std::ffi::iffparse}] IFFParse library (IFF files)
+    \item[\texttt{std::ffi::timer\_device}] Timer device (delays, timing)
+    \item[\texttt{std::ffi::audio\_device}] Audio device (Paula access)
+    \item[\texttt{std::ffi::bsdsocket}] BSD sockets (networking)
+    \item[\texttt{std::ffi::amiga\_structs}] AmigaOS structure definitions
+    \item[\texttt{std::ffi::amiga\_consts}] AmigaOS constants
+\end{description}
+
+\subsection{Other Modules}
+\label{subsec:other-modules}
+
+\begin{description}
+    \item[\texttt{std::math}] Fixed-point math, trigonometry
+    \item[\texttt{std::audio}] Paula audio, ProTracker player
+    \item[\texttt{std::test}] Test framework
+    \item[\texttt{std::os}] Operating system utilities
+\end{description}
+
+\section{The Prelude}
+\label{sec:prelude}
+
+The prelude (\texttt{std::prelude}) re-exports commonly used types:
+
+\begin{lstlisting}
+// Contents of std/prelude.novus:
+pub use std::core::Option, Result, Drop, From
+pub use std::strings::core::Str
+pub use std::error::errors::DosError, ExecError, IntuitionError, GraphicsError
+\end{lstlisting}
+
+Import the prelude for quick access to common types:
+
+\begin{lstlisting}
+from std::prelude import *
+
+pub fn main() -> i32 {
+    let result: Result<i32, DosError> = do_something()
+    match result {
+        Ok(value) => return value,
+        Err(_) => return 1
+    }
+}
+\end{lstlisting}
+
+\section{Best Practices}
+\label{sec:module-best-practices}
+
+\subsection{Visibility Guidelines}
+\label{subsec:visibility-guidelines}
+
+\begin{enumerate}
+    \item \textbf{Default to private} --- only make items \texttt{pub} when needed for external API
+    \item \textbf{Use \texttt{internal} for shared implementation} --- better than making everything \texttt{pub}
+    \item \textbf{Document public APIs} --- anything \texttt{pub} should have doc comments
+    \item \textbf{Keep modules focused} --- one module, one responsibility
+\end{enumerate}
+
+\subsection{Import Guidelines}
+\label{subsec:import-guidelines}
+
+\begin{enumerate}
+    \item \textbf{Prefer specific imports} over wildcards for clarity
+    \item \textbf{Use wildcards sparingly} --- only for well-known modules like \texttt{amiga\_consts}
+    \item \textbf{Group imports logically} --- core types, then collections, then FFI
+    \item \textbf{Use aliases} to avoid name conflicts
+\end{enumerate}
+
+\subsection{Project Organization}
+\label{subsec:project-org}
+
+\begin{enumerate}
+    \item \textbf{Use workspaces} for multi-project development
+    \item \textbf{Separate library and application code} into different projects
+    \item \textbf{Keep tests in a separate project} that depends on the library
+    \item \textbf{Use meaningful directory structure} that matches module paths
+\end{enumerate}
+
+\subsection{Constants vs Statics}
+\label{subsec:const-vs-static}
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Use} & \textbf{When} \\
+\hline
+\texttt{const} & Configuration values, magic numbers, version strings \\
+\texttt{static} & Lookup tables, large data that shouldn't be inlined \\
+\texttt{static var} & Global state (use sparingly, prefer safer alternatives) \\
+\end{tabular}
+\end{center}
+
+\section{Summary}
+\label{sec:modules-summary}
+
+This chapter covered the Novus module system:
+
+\begin{itemize}
+    \item \textbf{Imports}: \texttt{from module::path import items}
+    \item \textbf{Visibility}: Private (default), \texttt{pub}, \texttt{internal}, \texttt{extern}
+    \item \textbf{Re-exports}: \texttt{pub use} for API convenience
+    \item \textbf{Constants}: \texttt{const} for compile-time values
+    \item \textbf{Statics}: \texttt{static} for fixed-location data
+    \item \textbf{Projects}: \texttt{project.toml} and \texttt{workspace.toml}
+    \item \textbf{Standard library}: Well-organized modules for all needs
+\end{itemize}
+
+Good module organization makes code easier to understand, maintain, and reuse. Start with private visibility and only expose what's needed for your public API.
+
+The next chapter covers error handling with \texttt{Result} and \texttt{Option}.

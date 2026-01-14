@@ -1,0 +1,25 @@
+// Homepage showcase example - this code is displayed on novuslang.com
+// DO NOT modify without updating website/src/components/CodeShowcase.astro
+//
+// Compile: novus compile homepage_example.novus -o homepage_example
+
+from std::ui::screen import ScreenHandle
+from std::ffi::dos import Delay
+from std::ffi::graphics import SetAPen, RectFill
+
+pub fn main() -> i32 {
+    let result = ScreenHandle::lores("Demo Screen", 5)
+
+    match result {
+        Result::Ok(screen) => {
+            let rp = screen.rastport()
+            SetAPen(rp, 2)
+            RectFill(rp, 10, 20, 100, 80)
+            Delay(150)
+            return 0
+        },
+        Result::Err(_) => {
+            return 1
+        }
+    }
+}

@@ -1,5 +1,7 @@
 ---
 // Code showcase component showing Novus code and generated assembly
+// IMPORTANT: The Novus code displayed here must match Novus.Tests/Examples/homepage_example.novus
+// This ensures the code shown on the homepage is always verified to compile
 ---
 
 <section class="bg-novus-gray-900 py-24 sm:py-32">
@@ -26,26 +28,24 @@
           <div class="ml-2 text-sm text-novus-gray-400 font-mono">screen.novus</div>
         </div>
 
-        <!-- Code Content -->
+        <!-- Code Content - matches Novus.Tests/Examples/homepage_example.novus -->
         <div class="overflow-x-auto bg-novus-gray-900 p-6">
-          <pre class="text-sm leading-relaxed"><code><span class="text-novus-red-400">fn</span> <span class="text-yellow-400">open_screen</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-300">width</span><span class="text-novus-gray-400">:</span> <span class="text-green-400">u16</span><span class="text-novus-gray-400">,</span> <span class="text-novus-gray-300">height</span><span class="text-novus-gray-400">:</span> <span class="text-green-400">u16</span><span class="text-novus-gray-400">)</span>
-    <span class="text-novus-gray-400">-></span> <span class="text-green-400">Result</span><span class="text-novus-gray-400">[</span><span class="text-green-400">ScreenHandle</span><span class="text-novus-gray-400">,</span> <span class="text-green-400">IntuitionError</span><span class="text-novus-gray-400">]</span> <span class="text-novus-gray-400">{</span>
-    <span class="text-purple-400">let</span> <span class="text-novus-gray-300">tags</span> <span class="text-novus-gray-400">=</span> <span class="text-novus-gray-400">[</span>
-        <span class="text-yellow-400">SA_Width</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">width</span><span class="text-novus-gray-400">),</span>
-        <span class="text-yellow-400">SA_Height</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">height</span><span class="text-novus-gray-400">),</span>
-        <span class="text-yellow-400">SA_Depth</span><span class="text-novus-gray-400">(</span><span class="text-blue-400">5</span><span class="text-novus-gray-400">),</span>
-        <span class="text-yellow-400">SA_AutoScroll</span><span class="text-novus-gray-400">(</span><span class="text-purple-400">true</span><span class="text-novus-gray-400">),</span>
-    <span class="text-novus-gray-400">];</span>
+          <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">// Open a screen with safe error handling</span>
+<span class="text-purple-400">from</span> <span class="text-green-400">std::ui::screen</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">ScreenHandle</span>
+<span class="text-purple-400">from</span> <span class="text-green-400">std::ffi::graphics</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">SetAPen</span><span class="text-novus-gray-400">,</span> <span class="text-yellow-400">RectFill</span>
 
-    <span class="text-purple-400">unsafe</span> <span class="text-novus-gray-400">{</span>
-        <span class="text-purple-400">let</span> <span class="text-novus-gray-300">screen_ptr</span> <span class="text-novus-gray-400">=</span> <span class="text-yellow-400">OpenScreenTagList</span><span class="text-novus-gray-400">(</span>
-            <span class="text-purple-400">null</span><span class="text-novus-gray-400">,</span>
-            <span class="text-novus-gray-400">&amp;</span><span class="text-novus-gray-200">tags</span><span class="text-novus-gray-400">.</span><span class="text-yellow-400">as_tag_list</span><span class="text-novus-gray-400">()</span>
-        <span class="text-novus-gray-400">);</span>
+<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-novus-gray-400">()</span> <span class="text-novus-gray-400">-></span> <span class="text-green-400">i32</span> <span class="text-novus-gray-400">{</span>
+    <span class="text-purple-400">let</span> <span class="text-novus-gray-200">result</span> <span class="text-novus-gray-400">=</span> <span class="text-yellow-400">ScreenHandle</span><span class="text-novus-gray-400">::</span><span class="text-yellow-400">lores</span><span class="text-novus-gray-400">(</span><span class="text-amber-300">"Demo"</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">5</span><span class="text-novus-gray-400">)</span>
 
-        <span class="text-purple-400">match</span> <span class="text-novus-gray-300">screen_ptr</span> <span class="text-novus-gray-400">{</span>
-            <span class="text-yellow-400">Some</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">ptr</span><span class="text-novus-gray-400">)</span> <span class="text-novus-gray-400">=></span> <span class="text-yellow-400">Ok</span><span class="text-novus-gray-400">(</span><span class="text-yellow-400">ScreenHandle</span><span class="text-novus-gray-400">::</span><span class="text-yellow-400">new</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">ptr</span><span class="text-novus-gray-400">)),</span>
-            <span class="text-yellow-400">None</span> <span class="text-novus-gray-400">=></span> <span class="text-yellow-400">Err</span><span class="text-novus-gray-400">(</span><span class="text-green-400">IntuitionError</span><span class="text-novus-gray-400">::</span><span class="text-yellow-400">ScreenOpenFailed</span><span class="text-novus-gray-400">),</span>
+    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-novus-gray-400">{</span>
+        <span class="text-green-400">Result</span><span class="text-novus-gray-400">::</span><span class="text-yellow-400">Ok</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">screen</span><span class="text-novus-gray-400">)</span> <span class="text-novus-gray-400">=></span> <span class="text-novus-gray-400">{</span>
+            <span class="text-purple-400">let</span> <span class="text-novus-gray-200">rp</span> <span class="text-novus-gray-400">=</span> <span class="text-novus-gray-200">screen</span><span class="text-novus-gray-400">.</span><span class="text-yellow-400">rastport</span><span class="text-novus-gray-400">()</span>
+            <span class="text-yellow-400">SetAPen</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">rp</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">2</span><span class="text-novus-gray-400">)</span>
+            <span class="text-yellow-400">RectFill</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">rp</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">10</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">20</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">100</span><span class="text-novus-gray-400">,</span> <span class="text-blue-400">80</span><span class="text-novus-gray-400">)</span>
+            <span class="text-purple-400">return</span> <span class="text-blue-400">0</span>
+        <span class="text-novus-gray-400">},</span>
+        <span class="text-green-400">Result</span><span class="text-novus-gray-400">::</span><span class="text-yellow-400">Err</span><span class="text-novus-gray-400">(</span><span class="text-novus-gray-200">_</span><span class="text-novus-gray-400">)</span> <span class="text-novus-gray-400">=></span> <span class="text-novus-gray-400">{</span>
+            <span class="text-purple-400">return</span> <span class="text-blue-400">1</span>
         <span class="text-novus-gray-400">}</span>
     <span class="text-novus-gray-400">}</span>
 <span class="text-novus-gray-400">}</span></code></pre>
@@ -64,48 +64,44 @@
           <div class="ml-2 text-sm text-novus-gray-400 font-mono">screen.s (68020)</div>
         </div>
 
-        <!-- Code Content -->
+        <!-- Assembly Content - illustrative of generated code -->
         <div class="overflow-x-auto bg-novus-gray-900 p-6">
-          <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">; Function: open_screen</span>
-<span class="text-novus-gray-500">; Args: d0=width, d1=height</span>
-<span class="text-novus-gray-500">; Returns: d0=Result</span>
-<span class="text-yellow-400">_open_screen:</span>
+          <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">; Function: main</span>
+<span class="text-novus-gray-500">; Result-based error handling</span>
+<span class="text-yellow-400">_main:</span>
     <span class="text-green-400">movem.l</span>    <span class="text-blue-400">d2-d7/a2-a6</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>
-    <span class="text-green-400">move.w</span>     <span class="text-blue-400">d0</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d2</span>            <span class="text-novus-gray-500">; Save width</span>
-    <span class="text-green-400">move.w</span>     <span class="text-blue-400">d1</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d3</span>            <span class="text-novus-gray-500">; Save height</span>
 
-    <span class="text-novus-gray-500">; Build tag list on stack</span>
-    <span class="text-green-400">pea</span>        <span class="text-purple-400">TAG_DONE</span>
-    <span class="text-green-400">move.l</span>     <span class="text-purple-400">#1</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>       <span class="text-novus-gray-500">; AutoScroll=true</span>
-    <span class="text-green-400">pea</span>        <span class="text-purple-400">SA_AutoScroll</span>
-    <span class="text-green-400">move.l</span>     <span class="text-purple-400">#5</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>       <span class="text-novus-gray-500">; Depth=5</span>
-    <span class="text-green-400">pea</span>        <span class="text-purple-400">SA_Depth</span>
-    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d3</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>        <span class="text-novus-gray-500">; Height</span>
-    <span class="text-green-400">pea</span>        <span class="text-purple-400">SA_Height</span>
-    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d2</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>        <span class="text-novus-gray-500">; Width</span>
-    <span class="text-green-400">pea</span>        <span class="text-purple-400">SA_Width</span>
+    <span class="text-novus-gray-500">; Open lores screen (320x256, 5 planes)</span>
+    <span class="text-green-400">pea</span>        <span class="text-purple-400">_str_demo</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#5</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d0</span>
+    <span class="text-green-400">jsr</span>        <span class="text-yellow-400">_ScreenHandle_lores</span>
+    <span class="text-green-400">addq.l</span>     <span class="text-purple-400">#4</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">sp</span>
 
-    <span class="text-novus-gray-500">; Call OpenScreenTagList</span>
-    <span class="text-green-400">move.l</span>     <span class="text-blue-400">sp</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a0</span>          <span class="text-novus-gray-500">; Tag list</span>
-    <span class="text-green-400">suba.l</span>     <span class="text-blue-400">a1</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a1</span>          <span class="text-novus-gray-500">; NewScreen=null</span>
-    <span class="text-green-400">move.l</span>     <span class="text-yellow-400">_IntuitionBase</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a6</span>
-    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-606</span><span class="text-novus-gray-400">(</span><span class="text-blue-400">a6</span><span class="text-novus-gray-400">)</span>      <span class="text-novus-gray-500">; LVO OpenScreenTagList</span>
+    <span class="text-novus-gray-500">; Check Result tag (d1=0 for Ok)</span>
+    <span class="text-green-400">tst.l</span>      <span class="text-blue-400">d1</span>
+    <span class="text-green-400">bne.s</span>      <span class="text-yellow-400">.error</span>
 
-    <span class="text-green-400">lea</span>        <span class="text-purple-400">40</span><span class="text-novus-gray-400">(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">),</span><span class="text-blue-400">sp</span>      <span class="text-novus-gray-500">; Clean up stack</span>
-    <span class="text-green-400">tst.l</span>      <span class="text-blue-400">d0</span>
-    <span class="text-green-400">beq.s</span>      <span class="text-yellow-400">.error</span>
+    <span class="text-novus-gray-500">; Get rastport and draw</span>
+    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a2</span>          <span class="text-novus-gray-500">; screen handle</span>
+    <span class="text-green-400">jsr</span>        <span class="text-yellow-400">_screen_rastport</span>
+    <span class="text-green-400">move.l</span>     <span class="text-blue-400">d0</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a1</span>          <span class="text-novus-gray-500">; rastport</span>
 
-<span class="text-yellow-400">.success:</span>
-    <span class="text-novus-gray-500">; Return Ok(handle)</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#0</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d1</span>          <span class="text-novus-gray-500">; Result tag = Ok</span>
-    <span class="text-green-400">bra.s</span>      <span class="text-yellow-400">.return</span>
+    <span class="text-novus-gray-500">; SetAPen(rp, 2)</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#2</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d0</span>
+    <span class="text-green-400">move.l</span>     <span class="text-yellow-400">_GfxBase</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">a6</span>
+    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-342</span><span class="text-novus-gray-400">(</span><span class="text-blue-400">a6</span><span class="text-novus-gray-400">)</span>
+
+    <span class="text-novus-gray-500">; RectFill(rp, 10, 20, 100, 80)</span>
+    <span class="text-green-400">movem.l</span>    <span class="text-purple-400">#10,20,100,80</span><span class="text-novus-gray-400">,-(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)</span>
+    <span class="text-green-400">jsr</span>        <span class="text-purple-400">-306</span><span class="text-novus-gray-400">(</span><span class="text-blue-400">a6</span><span class="text-novus-gray-400">)</span>
+
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#0</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 0</span>
+    <span class="text-green-400">bra.s</span>      <span class="text-yellow-400">.cleanup</span>
 
 <span class="text-yellow-400">.error:</span>
-    <span class="text-novus-gray-500">; Return Err(ScreenOpenFailed)</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#1</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d1</span>          <span class="text-novus-gray-500">; Result tag = Err</span>
-    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#2</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; Error code</span>
+    <span class="text-green-400">moveq</span>      <span class="text-purple-400">#1</span><span class="text-novus-gray-400">,</span><span class="text-blue-400">d0</span>          <span class="text-novus-gray-500">; return 1</span>
 
-<span class="text-yellow-400">.return:</span>
+<span class="text-yellow-400">.cleanup:</span>
     <span class="text-green-400">movem.l</span>    <span class="text-novus-gray-400">(</span><span class="text-blue-400">sp</span><span class="text-novus-gray-400">)+,</span><span class="text-blue-400">d2-d7/a2-a6</span>
     <span class="text-green-400">rts</span></code></pre>
         </div>

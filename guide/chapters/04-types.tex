@@ -1,4 +1,5 @@
 \chapter{Types}
+\label{ch:types}
 
 \begin{quote}
 \textit{``A type system is a syntactic method for enforcing levels of abstraction in programs.'' --- John C. Reynolds}
@@ -68,6 +69,18 @@ struct Color {
 \end{lstlisting}
 
 Each field has a name and a type. Fields are separated by commas, and a trailing comma is allowed.
+
+\begin{comingfromc}
+No \texttt{typedef} needed! In C you often write:
+
+\texttt{typedef struct \{ int x, y; \} Point;}
+
+In Novus, the struct name is directly usable as a type:
+
+\texttt{struct Point \{ x: i32, y: i32 \}}
+
+Also note: no semicolons after field definitions, and types come \textit{after} names (\texttt{x: i32} not \texttt{int x}).
+\end{comingfromc}
 
 \subsection{Struct Visibility}
 
@@ -833,44 +846,54 @@ fn find_user(id: u32) -> Option<User> {
 
 \subsubsection{Working with Option}
 
-Check if a value exists:
+The preferred way to work with \texttt{Option} is pattern matching:
 
 \begin{lstlisting}
-let opt = Option::Some(42);
+let opt = Option::Some(42)
 
-if opt.is_some() {
-    println("Has value");
-}
-
-if opt.is_none() {
-    println("No value");
-}
-\end{lstlisting}
-
-Extract the value:
-
-\begin{lstlisting}
-// Pattern matching (safe)
+// Pattern matching (preferred - safe and explicit)
 match opt {
-    Option::Some(x) => println("Value: {}", x),
+    Option::Some(x) => println("Value: %ld", x),
     Option::None => println("No value"),
 }
 
-// if let (safe)
+// if let for single-case matching
 if let Option::Some(x) = opt {
-    println("Value: {}", x);
+    println("Got value: %ld", x)
 }
+\end{lstlisting}
 
-// unwrap (unsafe - panics on None)
-let x = opt.unwrap();
+For quick checks, use the \texttt{is\_some()} and \texttt{is\_none()} methods. Note that these methods \textbf{consume} the \texttt{Option}:
+
+\begin{lstlisting}
+let opt1 = Option::Some(42)
+if opt1.is_some() {
+    println("Has value")
+}
+// opt1 is consumed - cannot use it again
+
+let opt2 = Option::None
+if opt2.is_none() {
+    println("No value")
+}
+\end{lstlisting}
+
+To extract the value directly:
+
+\begin{lstlisting}
+let opt = Option::Some(42)
 
 // unwrap_or (safe - provides default)
-let x = opt.unwrap_or(0);
+let x = opt.unwrap_or(0)  // Returns 42, or 0 if None
+
+// unwrap (panics on None - use sparingly)
+let opt2 = Option::Some(100)
+let y = opt2.unwrap()  // Returns 100
 \end{lstlisting}
 
 \subsubsection{Option Methods}
 
-Common \texttt{Option} methods:
+Common \texttt{Option} methods. All methods consume \texttt{self} unless otherwise noted:
 
 \begin{table}[h]
 \centering
@@ -878,15 +901,17 @@ Common \texttt{Option} methods:
 \hline
 \textbf{Method} & \textbf{Description} \\
 \hline
-\texttt{is\_some() -> bool} & Returns \texttt{true} if \texttt{Some} \\
-\texttt{is\_none() -> bool} & Returns \texttt{true} if \texttt{None} \\
-\texttt{unwrap() -> T} & Returns value, panics on \texttt{None} \\
-\texttt{unwrap\_or(T) -> T} & Returns value or default \\
-\texttt{ok\_or(E) -> Result<T,E>} & Converts to \texttt{Result} \\
+\texttt{is\_some(self) -> bool} & Returns \texttt{true} if \texttt{Some} (consumes) \\
+\texttt{is\_none(self) -> bool} & Returns \texttt{true} if \texttt{None} (consumes) \\
+\texttt{unwrap(self) -> T} & Returns value, panics on \texttt{None} \\
+\texttt{unwrap\_or(self, T) -> T} & Returns value or default \\
+\texttt{ok\_or(self, E) -> Result<T,E>} & Converts to \texttt{Result} \\
 \hline
 \end{tabular}
 \caption{Common Option Methods}
 \end{table}
+
+\textbf{Note:} Because these methods consume \texttt{self}, you cannot call multiple methods on the same \texttt{Option} value. Use pattern matching when you need to inspect and then use the value.
 
 \subsection{Result<T, E>}
 
@@ -913,49 +938,54 @@ fn parse_number(s: &str) -> Result<i32, ParseError> {
 
 \subsubsection{Working with Result}
 
-Check for success or failure:
+The preferred way to work with \texttt{Result} is pattern matching:
 
 \begin{lstlisting}
-let result = parse_number("42");
+let result = parse_number("42")
 
-if result.is_ok() {
-    println("Parse succeeded");
+// Pattern matching (preferred - handles both cases)
+match result {
+    Result::Ok(n) => println("Number: %ld", n),
+    Result::Err(e) => println("Parse failed"),
 }
 
-if result.is_err() {
-    println("Parse failed");
+// if let for single-case matching
+if let Result::Ok(n) = result {
+    println("Got number: %ld", n)
 }
 \end{lstlisting}
 
-Extract the value or error:
+For quick checks, \texttt{is\_ok()} and \texttt{is\_err()} consume the result:
 
 \begin{lstlisting}
-// Pattern matching (safe)
-match result {
-    Result::Ok(n) => println("Number: {}", n),
-    Result::Err(e) => println("Error: {}", e),
+let r1 = parse_number("42")
+if r1.is_ok() {
+    println("Parse succeeded")
 }
+// r1 is consumed
 
-// if let for success case
-if let Result::Ok(n) = result {
-    println("Number: {}", n);
+let r2 = parse_number("bad")
+if r2.is_err() {
+    println("Parse failed")
 }
+\end{lstlisting}
 
-// if let for error case
-if let Result::Err(e) = result {
-    println("Error: {}", e);
-}
+To extract values directly:
 
-// unwrap (unsafe - panics on Err)
-let n = result.unwrap();
+\begin{lstlisting}
+let result = parse_number("42")
 
 // unwrap_or (safe - provides default)
-let n = result.unwrap_or(0);
+let n = result.unwrap_or(0)  // Returns parsed value or 0
+
+// unwrap (panics on Err - use sparingly)
+let result2 = parse_number("100")
+let m = result2.unwrap()
 \end{lstlisting}
 
 \subsubsection{Result Methods}
 
-Common \texttt{Result} methods:
+Common \texttt{Result} methods. All methods consume \texttt{self}:
 
 \begin{table}[h]
 \centering
@@ -963,12 +993,12 @@ Common \texttt{Result} methods:
 \hline
 \textbf{Method} & \textbf{Description} \\
 \hline
-\texttt{is\_ok() -> bool} & Returns \texttt{true} if \texttt{Ok} \\
-\texttt{is\_err() -> bool} & Returns \texttt{true} if \texttt{Err} \\
-\texttt{unwrap() -> T} & Returns value, panics on \texttt{Err} \\
-\texttt{unwrap\_or(T) -> T} & Returns value or default \\
-\texttt{ok() -> Option<T>} & Converts to \texttt{Option}, discards error \\
-\texttt{err() -> Option<E>} & Gets error as \texttt{Option} \\
+\texttt{is\_ok(self) -> bool} & Returns \texttt{true} if \texttt{Ok} (consumes) \\
+\texttt{is\_err(self) -> bool} & Returns \texttt{true} if \texttt{Err} (consumes) \\
+\texttt{unwrap(self) -> T} & Returns value, panics on \texttt{Err} \\
+\texttt{unwrap\_or(self, T) -> T} & Returns value or default \\
+\texttt{ok(self) -> Option<T>} & Converts to \texttt{Option}, discards error \\
+\texttt{err(self) -> Option<E>} & Gets error as \texttt{Option} \\
 \hline
 \end{tabular}
 \caption{Common Result Methods}

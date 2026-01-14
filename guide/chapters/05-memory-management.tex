@@ -1,4 +1,5 @@
 \chapter{Memory Management}
+\label{ch:memory}
 
 \begin{quote}
 \textit{``Memory management is the heart of every systems program.'' --- Brian Kernighan}
@@ -430,6 +431,311 @@ fn main() -> i32 {
 
 This is syntactic sugar for creating a resource and ensuring it's dropped at block end.
 
+\section{RAII: Resource Acquisition Is Initialization}
+\label{sec:raii}
+
+RAII is a programming pattern where resource lifetime is tied to object lifetime. When you acquire a resource (memory, file handle, hardware access), you wrap it in an object. When that object is destroyed, the resource is automatically released. Novus implements RAII through the \texttt{Drop} trait.
+
+\subsection{Why RAII Matters on the Amiga}
+
+The Amiga's cooperative multitasking makes RAII especially valuable:
+
+\begin{itemize}
+    \item \textbf{No memory protection} --- a leaked resource affects the entire system
+    \item \textbf{Limited resources} --- only 8 sprites, 4 audio channels, finite Chip RAM
+    \item \textbf{Complex cleanup sequences} --- closing a window requires freeing menus, gadgets, and screen locks in the right order
+    \item \textbf{Early return paths} --- error handling often needs cleanup at multiple exit points
+\end{itemize}
+
+RAII ensures resources are released even when functions return early due to errors. The standard library uses RAII extensively---over 70 types implement \texttt{Drop}.
+
+\subsection{The Three RAII Patterns}
+
+Novus uses three complementary RAII patterns throughout the standard library:
+
+\subsubsection{Handle Types}
+
+Handle types wrap OS resources and manage their complete lifecycle:
+
+\begin{lstlisting}
+from std::ui::window import WindowHandle, WindowBuilder
+from std::ui::screen import ScreenHandle
+
+fn show_window() -> Result<(), IntuitionError> {
+    // WindowHandle manages the Intuition window
+    var window = WindowBuilder::new()
+        .title("My App")
+        .size(640, 480)
+        .build()?
+
+    // Use the window...
+    window.draw_text(10, 20, "Hello, Amiga!")
+
+    return Result::Ok(())
+}  // window.drop() closes the window automatically
+\end{lstlisting}
+
+Common handle types in the standard library:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Module} & \textbf{Handle Types} \\
+\hline
+\texttt{std::ui} & \texttt{WindowHandle}, \texttt{ScreenHandle}, \texttt{BufferedWindow} \\
+\texttt{std::graphics} & \texttt{BitMapHandle}, \texttt{FontHandle}, \texttt{SpriteHandle} \\
+\texttt{std::audio} & \texttt{AudioChannel}, \texttt{SampleHandle}, \texttt{ModPlayer} \\
+\texttt{std::os} & \texttt{TimerHandle}, \texttt{MsgPortHandle}, \texttt{SignalHandle} \\
+\texttt{std::net} & \texttt{TcpStream}, \texttt{TcpListener}, \texttt{UdpSocket} \\
+\texttt{std::thread} & \texttt{ThreadHandle}, \texttt{ProcessHandle} \\
+\hline
+\end{tabular}
+\caption{Common Handle Types}
+\end{table}
+
+\subsubsection{Guard Types}
+
+Guard types provide temporary exclusive access to a shared resource. When the guard goes out of scope, the resource is released for others to use:
+
+\begin{lstlisting}
+from std::graphics::blitter import BlitterGuard, own_blitter
+from std::os::exec import SemaphoreHandle, SemaphoreGuard
+
+fn blit_safely() {
+    // BlitterGuard gives exclusive blitter access
+    match own_blitter() {
+        Option::Some(guard) => {
+            // Blitter is ours exclusively
+            blit_copy(src, dst, width, height)
+
+            // guard.drop() calls DisownBlitter()
+        },
+        Option::None => {
+            // Couldn't get blitter
+        }
+    }
+}
+
+fn critical_update(sem: &SemaphoreHandle, data: &var SharedData) {
+    // SemaphoreGuard holds the lock
+    var lock = sem.obtain()
+
+    // Safe to modify shared data
+    data.counter = data.counter + 1
+
+}  // lock.drop() calls ReleaseSemaphore()
+\end{lstlisting}
+
+Guard types follow a common pattern:
+\begin{itemize}
+    \item Created by calling an ``obtain'' or ``lock'' function
+    \item Hold exclusive (or shared) access while they exist
+    \item Release access in their \texttt{Drop} implementation
+    \item Cannot be copied or cloned
+\end{itemize}
+
+Common guard types:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\hline
+\textbf{Guard Type} & \textbf{Purpose} \\
+\hline
+\texttt{BlitterGuard} & Exclusive blitter access (OwnBlitter/DisownBlitter) \\
+\texttt{SemaphoreGuard} & Exclusive semaphore lock (ObtainSemaphore/ReleaseSemaphore) \\
+\texttt{SharedSemaphoreGuard} & Shared semaphore lock (read access) \\
+\texttt{CriticalSection} & Task switching disabled (Forbid/Permit) \\
+\texttt{InterruptSection} & Interrupts disabled (Disable/Enable) \\
+\texttt{RefreshGuard} & Window refresh lock (BeginRefresh/EndRefresh) \\
+\hline
+\end{tabular}
+\caption{Guard Types in the Standard Library}
+\end{table}
+
+\subsubsection{Builder Types}
+
+Builder types accumulate configuration, then create a resource. They clean up intermediate allocations if building fails:
+
+\begin{lstlisting}
+from std::ui::mui import MUIAppBuilder, MUIApp
+
+fn create_app() -> Option<MUIApp> {
+    // Builder accumulates configuration
+    var builder = MUIAppBuilder::new()
+
+    builder.title("My MUI Application")
+    builder.version("$VER: MyApp 1.0")
+    builder.author("Developer")
+
+    // Build creates the MUI application
+    // Returns None if creation fails
+    let app = builder.build()?
+
+    return Option::Some(app)
+}  // If build() fails, builder.drop() cleans up
+
+// Alternative: method chaining with @chain attribute
+fn create_app_chained() -> Option<MUIApp> {
+    return MUIAppBuilder::new()
+        .title("My App")
+        .version("1.0")
+        .build()
+}
+\end{lstlisting}
+
+Builder types are especially useful for AmigaOS APIs that require many configuration options (MUI, GadTools, Intuition).
+
+Common builder types:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+\textbf{Builder Type} & \textbf{Creates} \\
+\hline
+\texttt{MUIAppBuilder} & MUI application objects \\
+\texttt{MUIGroupBuilder} & MUI group objects \\
+\texttt{GadToolsMenuBuilder} & GadTools menu strips \\
+\texttt{CopperListBuilder} & Hardware copper lists \\
+\texttt{WindowBuilder} & Intuition windows \\
+\texttt{ReActionBuilder} & ReAction GUI elements \\
+\hline
+\end{tabular}
+\caption{Builder Types in the Standard Library}
+\end{table}
+
+\subsection{Implementing Your Own RAII Types}
+
+When wrapping AmigaOS resources, follow these patterns:
+
+\begin{lstlisting}
+from std::core import Drop, Option
+from std::ffi::exec import FreeMem
+from std::ffi::amiga_consts import MEMF_ANY
+
+// Handle pattern: wrap a resource pointer
+struct MyResourceHandle {
+    ptr: *MyResource,
+    owned: bool,
+}
+
+impl MyResourceHandle {
+    // Constructor acquires the resource
+    pub fn new() -> Option<MyResourceHandle> {
+        let ptr = allocate_my_resource()
+        if ptr == null {
+            return Option::None
+        }
+        return Option::Some(MyResourceHandle {
+            ptr: ptr,
+            owned: true,
+        })
+    }
+
+    // into_raw() transfers ownership out
+    pub fn into_raw(consuming self) -> *MyResource {
+        // Caller now owns the pointer
+        self.owned = false
+        return self.ptr
+    }
+}
+
+impl Drop for MyResourceHandle {
+    fn drop(&var self) {
+        // Only free if we still own it
+        if self.owned && self.ptr != null {
+            free_my_resource(self.ptr)
+        }
+    }
+}
+\end{lstlisting}
+
+Key implementation points:
+
+\begin{itemize}
+    \item Track ownership with a boolean flag
+    \item Provide \texttt{into\_raw()} to transfer ownership out
+    \item Check for null before freeing
+    \item Make constructors return \texttt{Option} or \texttt{Result}
+\end{itemize}
+
+\subsection{RAII with Error Handling}
+
+RAII and the \texttt{?} operator work together beautifully:
+
+\begin{lstlisting}
+fn complex_operation() -> Result<(), Error> {
+    // Each resource is cleaned up if later steps fail
+    var window = open_window()?     // Auto-closed on error
+    var screen = open_screen()?     // Auto-closed on error
+    var bitmap = alloc_bitmap()?    // Auto-freed on error
+
+    // If this fails, all three are cleaned up
+    do_work(&window, &screen, &bitmap)?
+
+    return Result::Ok(())
+}
+// Normal exit: all three dropped in reverse order
+// Error exit: all acquired resources dropped
+\end{lstlisting}
+
+Without RAII, this would require deeply nested error handling or goto-based cleanup.
+
+\subsection{When NOT to Use RAII}
+
+RAII isn't always appropriate:
+
+\begin{itemize}
+    \item \textbf{Borrowed resources} --- if you're given a pointer you don't own, don't wrap it in a handle that frees it
+    \item \textbf{Shared ownership} --- if multiple owners need to keep a resource alive, use explicit reference counting
+    \item \textbf{Async cleanup} --- if cleanup must happen in a different context (like a callback), use explicit management
+    \item \textbf{Performance-critical paths} --- very hot loops might benefit from manual pooling
+\end{itemize}
+
+\begin{comingfromc}
+In C, you typically use \texttt{goto cleanup} patterns or deeply nested \texttt{if} statements to handle resource cleanup. Novus's RAII eliminates these patterns:
+
+\begin{lstlisting}[language=C]
+// C: Manual cleanup with goto
+int do_work(void) {
+    void *a = NULL, *b = NULL;
+    int result = -1;
+
+    a = AllocMem(100, MEMF_ANY);
+    if (!a) goto cleanup;
+
+    b = AllocMem(200, MEMF_ANY);
+    if (!b) goto cleanup;
+
+    // ... actual work ...
+    result = 0;
+
+cleanup:
+    if (b) FreeMem(b, 200);
+    if (a) FreeMem(a, 100);
+    return result;
+}
+\end{lstlisting}
+
+In Novus, the same code is much simpler:
+
+\begin{lstlisting}
+// Novus: RAII handles cleanup
+fn do_work() -> Result<(), ExecError> {
+    var a = MemoryBlock::try_alloc(100, MEMF_ANY)?
+    var b = MemoryBlock::try_alloc(200, MEMF_ANY)?
+
+    // ... actual work ...
+
+    return Result::Ok(())
+}  // Both freed automatically, in correct order
+\end{lstlisting}
+
+The \texttt{?} operator propagates errors, and \texttt{Drop} ensures cleanup---no goto, no nested ifs, no size tracking.
+\end{comingfromc}
+
 \section{Standard Library Memory Types}
 
 Novus provides several memory types in \texttt{std::memory} that wrap AmigaOS allocation with safety and convenience.
@@ -835,13 +1141,14 @@ Novus memory management provides:
     \item \textbf{Move semantics} --- \texttt{consuming} parameters take ownership
     \item \textbf{References} --- \texttt{\&T} (immutable) and \texttt{\&var T} (mutable) borrow without ownership transfer
     \item \textbf{Borrow checker} --- prevents use-after-move at compile time
-    \item \textbf{Drop trait} --- automatic cleanup when values go out of scope (RAII)
+    \item \textbf{Drop trait} --- automatic cleanup when values go out of scope
+    \item \textbf{RAII patterns} --- Handle, Guard, and Builder types for safe resource management
     \item \textbf{Defer blocks} --- explicit cleanup with LIFO execution order
     \item \textbf{Using statement} --- scoped resource management
     \item \textbf{Standard library types} --- \texttt{MemoryBlock}, \texttt{MemHandle}, \texttt{Allocation<T>}, \texttt{Box<T>}, \texttt{Slice<T>}
     \item \textbf{AmigaOS integration} --- proper memory flags for Chip/Fast/Public RAM
 \end{itemize}
 
-The combination of ownership tracking, automatic cleanup, and size-safe abstractions makes Novus significantly safer than C for AmigaOS programming while maintaining the control needed for systems work.
+The combination of RAII, ownership tracking, and size-safe abstractions makes Novus significantly safer than C for AmigaOS programming. The standard library's 70+ types with \texttt{Drop} implementations ensure that resources are properly cleaned up even in the presence of errors.
 
 In the next chapter, we'll explore control flow in depth: conditionals, loops, pattern matching, and error handling with the \texttt{?} operator.
