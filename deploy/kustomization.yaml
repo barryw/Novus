@@ -5,6 +5,7 @@ namespace: novus
 
 resources:
   - namespace.yaml
+  - ci-rbac.yaml
   - website-deployment.yaml
   - website-service.yaml
   - website-ingress.yaml

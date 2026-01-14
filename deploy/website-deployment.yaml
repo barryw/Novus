@@ -58,7 +58,5 @@ spec:
           securityContext:
             readOnlyRootFilesystem: false
             runAsNonRoot: false
-      # Pull from GHCR (public image, no secret needed for public repos)
-      # If private, uncomment and create the secret:
-      # imagePullSecrets:
-      #   - name: ghcr-secret
+      imagePullSecrets:
+        - name: ghcr-secret
