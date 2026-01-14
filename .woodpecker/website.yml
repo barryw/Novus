@@ -1,0 +1,32 @@
+# Website - Build and deploy novuslang.com
+when:
+  - event: push
+    branch: main
+    path:
+      include:
+        - website/**
+        - deploy/**
+
+steps:
+  - name: build-push
+    image: gcr.io/kaniko-project/executor:debug
+    environment:
+      GHCR_USERNAME:
+        from_secret: ghcr_username
+      GHCR_TOKEN:
+        from_secret: ghcr_token
+    commands:
+      - mkdir -p /kaniko/.docker
+      - echo "{\"auths\":{\"ghcr.io\":{\"username\":\"$GHCR_USERNAME\",\"password\":\"$GHCR_TOKEN\"}}}" > /kaniko/.docker/config.json
+      - /kaniko/executor --context=$CI_WORKSPACE/website --dockerfile=$CI_WORKSPACE/website/Dockerfile --destination=ghcr.io/barryw/novuslang-website:build-$CI_PIPELINE_NUMBER --destination=ghcr.io/barryw/novuslang-website:latest
+
+  - name: deploy
+    image: bitnami/kubectl:latest
+    commands:
+      - kubectl get namespace novus || kubectl create namespace novus
+      - kubectl apply -k deploy/
+      - kubectl set image deployment/novuslang-website website=ghcr.io/barryw/novuslang-website:build-$CI_PIPELINE_NUMBER -n novus
+      - kubectl rollout status deployment/novuslang-website -n novus --timeout=120s
+      - kubectl get pods -n novus
+    depends_on:
+      - build-push

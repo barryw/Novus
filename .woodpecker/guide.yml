@@ -1,0 +1,42 @@
+# Programmer's Guide - Build PDF from LaTeX
+when:
+  - event: push
+    branch: main
+    path:
+      include:
+        - guide/**
+
+steps:
+  - name: build-pdf
+    image: texlive/texlive:latest
+    commands:
+      - cd guide
+      - make all
+      - ls -la novus-guide.pdf
+      - echo "PDF built successfully"
+
+  - name: upload-artifact
+    image: alpine:3.19
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - apk add --no-cache curl jq
+      - |
+        # Upload as release asset if this is a tag, otherwise just report success
+        if [ -n "$CI_COMMIT_TAG" ]; then
+          echo "Uploading PDF to release $CI_COMMIT_TAG..."
+          UPLOAD_URL=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/barryw/Novus/releases/tags/$CI_COMMIT_TAG" | \
+            jq -r '.upload_url' | sed 's/{.*}//')
+          curl -s -X POST "$UPLOAD_URL?name=novus-guide-$CI_COMMIT_TAG.pdf" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/pdf" \
+            --data-binary @guide/novus-guide.pdf
+          echo "PDF uploaded to release"
+        else
+          echo "Not a tag build - PDF available in build artifacts"
+          cp guide/novus-guide.pdf novus-guide-build-$CI_PIPELINE_NUMBER.pdf
+        fi
+    depends_on:
+      - build-pdf
