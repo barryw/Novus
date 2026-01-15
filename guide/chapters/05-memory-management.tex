@@ -155,7 +155,7 @@ fn test_move_tracking() {
 
 The borrow checker is control-flow sensitive---it tracks moves across \texttt{if}, \texttt{match}, and \texttt{while} branches.
 
-\textbf{Important:} Novus's borrow checker tracks \textit{moves} but does not enforce reference exclusivity. You can create multiple mutable references to the same value. This is less safe than Rust but simpler and sufficient for most Amiga programs where careful discipline is expected.
+\textbf{Important:} Novus's borrow checker tracks \textit{moves} and \textit{reference lifetimes}. References cannot outlive their source, and converting references to raw pointers requires \texttt{unsafe}. Novus does not enforce reference \textit{exclusivity} (you can have multiple mutable references), but it does prevent dangling references. See Section~\ref{sec:lifetimes} for details.
 
 \section{References}
 
