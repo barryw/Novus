@@ -128,7 +128,7 @@ novus stdlib-build [options]
 ```
 
 **Options:**
-- `--cpu <target>` - Build for specific CPU (`68000`, `68020`, `68040`, `68060`) or `all` (default: all)
+- `--cpu <target>` - Build for specific CPU (`68020`, `68040`, `68060`) or `all` (default: all)
 - `--mode <mode>` - Build mode: `debug`, `release`, or `both` (default: both)
 - `-v, --verbose` - Verbose output
 
@@ -154,7 +154,6 @@ Use `--cpu <target>` to specify the target CPU:
 
 | Target | Description | Instruction Set |
 |--------|-------------|-----------------|
-| `68000` | 68000/68010 | Basic 68000 instructions only |
 | `68020` | 68020/68030 | 32-bit operations, bitfields, PC-relative addressing |
 | `68040` | 68040 | Cache-aware, avoids trappy operations |
 | `68060` | 68060 | Optimized, strict operation selection |

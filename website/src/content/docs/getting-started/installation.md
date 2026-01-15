@@ -131,7 +131,7 @@ You can create a `novus.config` file in your home directory to set default compi
 {
   "vbccPath": "/opt/vbcc",
   "ndkPath": "/opt/amiga/ndk39",
-  "defaultCpu": "68000",
+  "defaultCpu": "68020",
   "defaultOptLevel": 2
 }
 ```
@@ -242,8 +242,8 @@ To run your compiled Novus programs, you'll need either:
 - **Floppy disk** - Traditional but slow
 
 **Minimum Hardware Requirements:**
-- Any Amiga with 68000+ CPU
-- 512KB RAM minimum (2MB+ recommended)
+- Any Amiga with 68020+ CPU (A1200, A3000, A4000, or accelerated A500/A2000)
+- 2MB RAM minimum (4MB+ recommended)
 - AmigaOS 2.0+ (3.1 recommended)
 
 ### Option 3: Vampire/Apollo Accelerators
