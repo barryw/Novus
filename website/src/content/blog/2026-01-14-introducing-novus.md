@@ -74,7 +74,7 @@ The ultimate goal? A self-hosting compiler that runs on AmigaOS itself. Imagine 
 
 ## Get Involved
 
-Novus is open source and we'd love your feedback. Whether you're an experienced Amiga developer or curious about retro computing, check out the [GitHub repository](https://github.com/barrylapthorn/novus) and join the conversation.
+Novus is open source and we'd love your feedback. Whether you're an experienced Amiga developer or curious about retro computing, check out the [GitHub repository](https://github.com/barryw/novus) and join the conversation.
 
 The Amiga community has always been creative, passionate, and technically brilliant. We can't wait to see what you build with Novus.
 

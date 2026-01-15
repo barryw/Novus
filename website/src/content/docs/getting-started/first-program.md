@@ -336,9 +336,9 @@ Check out the `templates/` directory in the Novus repository for complete exampl
 
 ## Community Resources
 
-- **[GitHub Repository](https://github.com/barrylapthorn/novus)** - Source code and examples
-- **[Issue Tracker](https://github.com/barrylapthorn/novus/issues)** - Report bugs and request features
-- **[Discussions](https://github.com/barrylapthorn/novus/discussions)** - Ask questions and share projects
+- **[GitHub Repository](https://github.com/barryw/novus)** - Source code and examples
+- **[Issue Tracker](https://github.com/barryw/novus/issues)** - Report bugs and request features
+- **[Discussions](https://github.com/barryw/novus/discussions)** - Ask questions and share projects
 
 ---
 

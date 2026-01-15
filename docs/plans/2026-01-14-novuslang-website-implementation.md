@@ -244,7 +244,7 @@ export default defineConfig({
         replacesTitle: false,
       },
       social: {
-        github: 'https://github.com/barrylapthorn/novus',
+        github: 'https://github.com/barryw/novus',
       },
       sidebar: [
         {
@@ -542,7 +542,7 @@ const currentYear = new Date().getFullYear();
       <div>
         <h4 class="text-white font-semibold mb-4">Community</h4>
         <ul class="space-y-2 text-sm">
-          <li><a href="https://github.com/barrylapthorn/novus" class="hover:text-white transition-colors">GitHub</a></li>
+          <li><a href="https://github.com/barryw/novus" class="hover:text-white transition-colors">GitHub</a></li>
           <li><a href="/blog" class="hover:text-white transition-colors">Blog</a></li>
         </ul>
       </div>
@@ -601,7 +601,7 @@ import Footer from '../components/Footer.astro';
           <a href="/getting-started/introduction" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Docs</a>
           <a href="/why-novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Why Novus?</a>
           <a href="/blog" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Blog</a>
-          <a href="https://github.com/barrylapthorn/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
+          <a href="https://github.com/barryw/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
         </div>
       </div>
     </nav>
@@ -676,7 +676,7 @@ import Footer from '../components/Footer.astro';
           <a href="/getting-started/introduction" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Docs</a>
           <a href="/why-novus" class="text-novus-red-500 font-semibold">Why Novus?</a>
           <a href="/blog" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Blog</a>
-          <a href="https://github.com/barrylapthorn/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
+          <a href="https://github.com/barryw/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
         </div>
       </div>
     </nav>
@@ -875,7 +875,7 @@ Novus is in active development. The compiler produces working Amiga executables 
 - CPU-target aware code generation (68000–68060)
 - AmigaOS library integration
 
-See the [GitHub repository](https://github.com/barrylapthorn/novus) for the latest development status.
+See the [GitHub repository](https://github.com/barryw/novus) for the latest development status.
 
 ## Next Steps
 
@@ -944,7 +944,7 @@ Download from [Hyperion Entertainment](https://www.hyperion-entertainment.com/) 
 Clone the repository and build:
 
 ```bash
-git clone https://github.com/barrylapthorn/novus.git
+git clone https://github.com/barryw/novus.git
 cd novus
 dotnet build
 ```
@@ -1986,7 +1986,7 @@ const posts = (await getCollection('blog')).sort(
           <a href="/getting-started/introduction" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Docs</a>
           <a href="/why-novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Why Novus?</a>
           <a href="/blog" class="text-novus-red-500 font-semibold">Blog</a>
-          <a href="https://github.com/barrylapthorn/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
+          <a href="https://github.com/barryw/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
         </div>
       </div>
     </nav>
@@ -2070,7 +2070,7 @@ const { Content } = await post.render();
           <a href="/getting-started/introduction" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Docs</a>
           <a href="/why-novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Why Novus?</a>
           <a href="/blog" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">Blog</a>
-          <a href="https://github.com/barrylapthorn/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
+          <a href="https://github.com/barryw/novus" class="text-novus-gray-600 dark:text-novus-gray-300 hover:text-novus-red-500 transition-colors">GitHub</a>
         </div>
       </div>
     </nav>
@@ -2193,7 +2193,7 @@ The roadmap includes:
 
 ## Try It Out
 
-Novus is open source and available on [GitHub](https://github.com/barrylapthorn/novus).
+Novus is open source and available on [GitHub](https://github.com/barryw/novus).
 
 The [Getting Started guide](/getting-started/introduction) will help you set up the toolchain and write your first program.
 

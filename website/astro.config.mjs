@@ -20,7 +20,7 @@ export default defineConfig({
             replacesTitle: false,
           },
           social: [
-            { icon: 'github', label: 'GitHub', href: 'https://github.com/barrylapthorn/novus' },
+            { icon: 'github', label: 'GitHub', href: 'https://github.com/barryw/novus' },
           ],
           customCss: [
               './src/styles/global.css',

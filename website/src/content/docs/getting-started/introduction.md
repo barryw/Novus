@@ -149,7 +149,7 @@ Ready to try Novus? Here's where to go next:
 
 Novus is an open-source project actively developed on GitHub:
 
-- **Repository:** [github.com/barrylapthorn/novus](https://github.com/barrylapthorn/novus)
+- **Repository:** [github.com/barryw/novus](https://github.com/barryw/novus)
 - **License:** TBD (will be open source)
 - **Status:** Active development - contributions welcome!
 

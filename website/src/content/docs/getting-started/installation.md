@@ -78,7 +78,7 @@ Clone the Novus repository and build the compiler:
 
 ```bash
 # Clone the repository
-git clone https://github.com/barrylapthorn/novus.git
+git clone https://github.com/barryw/novus.git
 cd novus
 
 # Build the compiler
@@ -307,11 +307,11 @@ Continue to: **[Your First Program](/getting-started/first-program/)**
 
 ## Additional Resources
 
-- **[GitHub Repository](https://github.com/barrylapthorn/novus)** - Source code and issue tracker
+- **[GitHub Repository](https://github.com/barryw/novus)** - Source code and issue tracker
 - **[Language Reference](/reference/syntax/)** - Complete language documentation
 - **[Standard Library](/stdlib/overview/)** - API documentation
 - **[VBCC Documentation](http://www.compilers.de/vbcc.html)** - Assembler and linker reference
 
 ---
 
-**Having issues?** Please report installation problems on [GitHub Issues](https://github.com/barrylapthorn/novus/issues).
+**Having issues?** Please report installation problems on [GitHub Issues](https://github.com/barryw/novus/issues).
