@@ -1,0 +1,95 @@
+// Lifetime Safety Demo
+//
+// This example demonstrates Novus's reference lifetime tracking.
+// References are safe by default - the compiler prevents dangling pointers.
+
+from std::ffi::dos import Delay
+
+// CORRECT: Reference and source in same scope
+fn safe_reference() {
+    let x: i32 = 42
+    let r: &i32 = &x    // r borrows x
+    let value = *r      // OK: x is still alive
+    Delay(1)
+}
+
+// CORRECT: Reference in inner scope, source in outer
+fn inner_scope_ok() {
+    let x: i32 = 100
+    {
+        let r: &i32 = &x  // OK: x outlives r
+        let value = *r
+    }
+    // x still valid here
+}
+
+// CORRECT: Method returns reference tied to &self
+struct Container {
+    value: i32
+}
+
+impl Container {
+    fn get_ref(&self) -> &i32 {
+        return &self.value  // Lifetime tied to self
+    }
+}
+
+fn method_lifetime() {
+    let c = Container { value: 42 }
+    let r = c.get_ref()  // r lives as long as c
+    let value = *r       // OK: c still alive
+}
+
+// ESCAPE HATCH: When you need raw pointers for FFI
+fn unsafe_escape_hatch() {
+    let x: i32 = 42
+    let r: &i32 = &x
+
+    // Convert to raw pointer - requires unsafe
+    let ptr: *i32 = unsafe { (*i32)r }
+
+    // Now you're responsible for ensuring ptr stays valid
+    unsafe {
+        let value = *ptr
+    }
+}
+
+// ============================================================
+// The following patterns would produce compile errors:
+// ============================================================
+//
+// ERROR E0597: Reference outlives source
+// fn dangling() {
+//     let r: &i32
+//     {
+//         let x: i32 = 42
+//         r = &x
+//     }  // x dropped here
+//     let y = *r  // ERROR: x does not live long enough
+// }
+//
+// ERROR E0515: Cannot return reference to local
+// fn return_local() -> &i32 {
+//     let x: i32 = 42
+//     return &x  // ERROR: cannot return reference to local
+// }
+//
+// ERROR E0106: Cannot store reference in struct
+// struct BadCache {
+//     ptr: &i32  // ERROR: struct cannot contain reference field
+// }
+//
+// ERROR E0133: Ref-to-pointer outside unsafe
+// fn no_unsafe() {
+//     let x: i32 = 42
+//     let r: &i32 = &x
+//     let p: *i32 = (*i32)r  // ERROR: requires unsafe
+// }
+
+pub fn main() -> i32 {
+    safe_reference()
+    inner_scope_ok()
+    method_lifetime()
+    unsafe_escape_hatch()
+    return 0
+}
