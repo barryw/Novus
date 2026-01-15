@@ -201,6 +201,12 @@ public class TypeParser : ITypeSubstitutionEngine
         // Check if this is a mutable reference (&var T) or immutable reference (&T)
         bool isMutable = context.KW_VAR() != null;
 
+        // Check if trying to create a reference to a reference (&&T, which is not allowed)
+        if (pointeeType is IrReferenceType or IrMutReferenceType)
+        {
+            throw new TypeParseException("cannot create reference to reference (&&T is not allowed); references are already thin pointers");
+        }
+
         return isMutable
             ? _context.GetMutReferenceType(pointeeType)
             : _context.GetReferenceType(pointeeType);

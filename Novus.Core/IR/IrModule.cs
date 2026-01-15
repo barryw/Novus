@@ -593,11 +593,15 @@ public class IrFunction
 /// <summary>
 /// Represents a function parameter
 /// </summary>
-public class IrParameter
+public class IrParameter : Novus.SemanticAnalysis.IParameterInfo
 {
     public string Name { get; set; }
     public IrType Type { get; set; }
     public bool IsVariadic { get; set; }  // true if this is a variadic parameter (...)
+
+    // IParameterInfo implementation
+    string Novus.SemanticAnalysis.IParameterInfo.ParameterName => Name;
+    IrType Novus.SemanticAnalysis.IParameterInfo.ParameterType => Type;
 
     public IrParameter(string name, IrType type, bool isVariadic = false)
     {

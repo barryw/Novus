@@ -136,8 +136,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
         while true {
             match iter.next() {
                 Option::Some(kv) => {
-                    // kv.key is already &T, so pass directly
-                    if !other.contains(kv.key) {
+                    // kv.key is now *T (pointer), dereference to get value then take reference
+                    if !other.contains(unsafe { &*kv.key }) {
                         return false
                     }
                 },
@@ -165,8 +165,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
             while true {
                 match iter.next() {
                     Option::Some(kv) => {
-                        // kv.key is already &T, so pass directly
-                        if other.contains(kv.key) {
+                        // kv.key is now *T (pointer), dereference to get value then take reference
+                        if other.contains(unsafe { &*kv.key }) {
                             return true
                         }
                     },
@@ -180,8 +180,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
             while true {
                 match iter.next() {
                     Option::Some(kv) => {
-                        // kv.key is already &T, so pass directly
-                        if self.contains(kv.key) {
+                        // kv.key is now *T (pointer), dereference to get value then take reference
+                        if self.contains(unsafe { &*kv.key }) {
                             return true
                         }
                     },
@@ -226,8 +226,8 @@ impl<T> HashSetIter<T> {
     /// The reference is valid as long as the HashSet is not modified.
     pub fn next(&var self) -> Option<&T> {
         match self.map_iter.next() {
-            // kv.key is already &T, return it directly
-            Option::Some(kv) => return Option::Some(kv.key),
+            // kv.key is now *T (pointer), dereference to get value then take reference
+            Option::Some(kv) => return Option::Some(unsafe { &*kv.key }),
             Option::None => return Option::None,
         }
     }

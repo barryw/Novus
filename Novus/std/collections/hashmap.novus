@@ -584,8 +584,8 @@ pub struct HashMapIter<K, V> {
 
 /// Key-value reference pair returned by iterator
 pub struct KeyValueRef<K, V> {
-    key: &K,
-    value: &V,
+    key: *K,
+    value: *V,
 }
 
 impl<K, V> HashMapIter<K, V> {
@@ -600,9 +600,14 @@ impl<K, V> HashMapIter<K, V> {
 
             match self.entries[idx].state {
                 EntryState::Occupied => {
+                    // SAFETY: Creating raw pointers to fields - valid as long as HashMap isn't modified
+                    // We use address arithmetic since we can't store references in structs (v1 limitation)
+                    let entry_addr: u32 = (self.entries as u32) + (idx * 20u32)  // 20 = sizeof(HashMapEntry<K,V>)
+                    let key_ptr: *K = (entry_addr + 4u32) as *K  // key offset = 4 (after state:u32)
+                    let value_ptr: *V = (entry_addr + 8u32) as *V  // value offset = 8 (after state+key)
                     return Option::Some(KeyValueRef {
-                        key: &self.entries[idx].key,
-                        value: &self.entries[idx].value,
+                        key: key_ptr,
+                        value: value_ptr,
                     })
                 },
                 _ => {
@@ -633,8 +638,8 @@ pub struct HashMapIterMut<K, V> {
 
 /// Key-value reference pair with mutable value
 pub struct KeyValueMut<K, V> {
-    key: &K,
-    value: &var V,
+    key: *K,
+    value: *V,
 }
 
 impl<K, V> HashMap<K, V> where K: Hash + Eq {
@@ -659,9 +664,14 @@ impl<K, V> HashMapIterMut<K, V> {
 
             match self.entries[idx].state {
                 EntryState::Occupied => {
+                    // SAFETY: Creating raw pointers to fields - valid as long as HashMap isn't modified
+                    // We use address arithmetic since we can't store references in structs (v1 limitation)
+                    let entry_addr: u32 = (self.entries as u32) + (idx * 20u32)  // 20 = sizeof(HashMapEntry<K,V>)
+                    let key_ptr: *K = (entry_addr + 4u32) as *K  // key offset = 4 (after state:u32)
+                    let value_ptr: *V = (entry_addr + 8u32) as *V  // value offset = 8 (after state+key)
                     return Option::Some(KeyValueMut {
-                        key: &self.entries[idx].key,
-                        value: &var self.entries[idx].value,
+                        key: key_ptr,
+                        value: value_ptr,
                     })
                 },
                 _ => {

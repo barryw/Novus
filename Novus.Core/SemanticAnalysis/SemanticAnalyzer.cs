@@ -79,7 +79,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     // Borrow checker for move tracking and memory safety
     private readonly Dictionary<int, DropInfo> _dropInfo = new();  // VariableId -> DropInfo
     private readonly BorrowChecker _borrowChecker;
+    private readonly LifetimeInference _lifetimeInference = new();
     private int _nextVariableId = 1;  // Counter for generating unique variable IDs
+    private int _scopeDepth = 0;  // Track scope depth for lifetime tracking
+
+    // Pending borrow tracking for method returns
+    // When a method call returns a reference, store which variable it borrows from
+    private int? _pendingBorrowSource = null;
+    private SourceLocation? _pendingBorrowLocation = null;
 
     // Drop tracking for automatic resource cleanup (RAII)
     private readonly Stack<ScopeDropInfo> _dropScopes = new();
@@ -2263,6 +2270,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             var fieldName = fieldCtx.IDENTIFIER().GetText();
             var fieldType = ParseType(fieldCtx.type());
+            var fieldLocation = SourceLocationHelper.FromToken(fieldCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+            // Validate that struct fields don't contain reference types (v1 limitation)
+            ValidateStructFieldType(name, fieldName, fieldType, fieldLocation);
+
             placeholder.Fields.Add(new IrStructField(fieldName, fieldType));
         }
 
@@ -2277,6 +2289,34 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // No need to re-register - we mutated the existing placeholder in place
+    }
+
+    /// <summary>
+    /// Validates that a struct field type does not contain references.
+    /// References have lifetimes that cannot be expressed in struct fields (v1 limitation).
+    /// </summary>
+    private void ValidateStructFieldType(string structName, string fieldName, IrType fieldType, SourceLocation location)
+    {
+        if (fieldType is IrReferenceType or IrMutReferenceType)
+        {
+            var pointeeType = fieldType is IrReferenceType rt ? rt.PointeeType :
+                             ((IrMutReferenceType)fieldType).PointeeType;
+
+            _diagnostics.Add(new Diagnostic(
+                DiagnosticSeverity.Error,
+                "E0106",
+                $"struct `{structName}` cannot contain reference field `{fieldName}`",
+                location,
+                helpTexts: new List<string>
+                {
+                    "references have lifetimes that cannot be expressed in struct fields yet",
+                    "consider these alternatives:",
+                    $"  - use a raw pointer: `{fieldName}: *{pointeeType.Name}`",
+                    $"  - use an owned type instead of a reference",
+                    $"  - pass the reference as a function parameter instead of storing it"
+                }
+            ));
+        }
     }
 
     /// <summary>
@@ -2879,10 +2919,42 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Restore generic parameters to scope for function body analysis
         var genericParams = AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
+        // Reset scope depth for function (function body is at depth 0, blocks inside are deeper)
+        _scopeDepth = 0;
+
         // Add parameters to symbol table (parameters are immutable)
         foreach (var param in _currentFunction.Parameters)
         {
-            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
+            var paramVarSymbol = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
+            _variables[param.Name] = paramVarSymbol;
+
+            // Register parameter in borrow graph (parameters are at function scope depth 0)
+            _borrowChecker.BorrowGraph.RegisterVariable(paramVarSymbol.Id, param.Name, _scopeDepth, param.Location);
+        }
+
+        // Validate lifetime elision rules for functions returning references
+        if (_currentFunction.ReturnType is IrReferenceType or IrMutReferenceType)
+        {
+            var inferenceResult = _lifetimeInference.InferReturnLifetime(
+                _currentFunction.Parameters,
+                _currentFunction.ReturnType
+            );
+
+            if (!inferenceResult.Success)
+            {
+                var location = SourceLocationHelper.FromToken(token, _filePath, _sourceLines);
+                _diagnostics.Add(new Diagnostic(
+                    DiagnosticSeverity.Error,
+                    "E0106",
+                    inferenceResult.ErrorMessage!,
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "add an `&self` parameter to clarify which input lifetime the return ties to",
+                        "or reduce to a single reference parameter"
+                    }
+                ));
+            }
         }
 
         // First, analyze the function body with full semantic analysis (visits all expressions)
@@ -3078,6 +3150,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var scopeLocation = SourceLocationHelper.FromContext(block, _filePath, _sourceLines);
         _dropScopes.Push(new ScopeDropInfo());
 
+        // Enter a new lifetime scope
+        _scopeDepth++;
+
         var statements = block.statement();
         bool foundTerminal = false;
 
@@ -3113,6 +3188,27 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 foundTerminal = true;
             }
         }
+
+        // Check for dangling borrows before exiting scope
+        var danglingBorrows = _borrowChecker.BorrowGraph.GetDanglingBorrowsAtScopeExit(_scopeDepth);
+        foreach (var dangling in danglingBorrows)
+        {
+            _diagnostics.Add(new Diagnostic(
+                DiagnosticSeverity.Error,
+                "E0597",
+                $"`{dangling.SourceLifetime.VariableName}` does not live long enough",
+                dangling.Edge.BorrowLocation,
+                helpTexts: new List<string>
+                {
+                    $"borrowed value declared at {dangling.SourceLifetime.DeclLocation}",
+                    $"reference `{dangling.BorrowerLifetime.VariableName}` requires `{dangling.SourceLifetime.VariableName}` to live longer",
+                    "consider moving the reference into a smaller scope"
+                }
+            ));
+        }
+
+        // Exit the lifetime scope
+        _scopeDepth--;
 
         // Pop drop scope and emit drop calls for variables in this scope
         if (_dropScopes.Count > 0)
@@ -3474,8 +3570,41 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
 
+            // Check if returning a reference to a local variable (E0515)
+            if (exprType is IrReferenceType or IrMutReferenceType && exprContext != null && _currentFunction != null)
+            {
+                // Check if this is a borrow expression
+                if (exprContext is NovusParser.BorrowExprContext borrowExpr)
+                {
+                    var borrowedExpr = borrowExpr.expression();
+                    var borrowedVarName = ExtractVariableName(borrowedExpr);
+
+                    if (borrowedVarName != null && _variables.TryGetValue(borrowedVarName, out var _))
+                    {
+                        // Check if it's a parameter (parameters can be borrowed and returned)
+                        var isParameter = _currentFunction.Parameters.Any(p => p.Name == borrowedVarName);
+
+                        // Check if it's a local variable (not a parameter)
+                        if (!isParameter)
+                        {
+                            _diagnostics.ReportError(
+                                "E0515",
+                                $"cannot return reference to local variable `{borrowedVarName}`",
+                                location,
+                                helpTexts: new List<string>
+                                {
+                                    "local variables are dropped when the function returns",
+                                    "consider returning an owned value instead",
+                                    "or take a reference parameter and return a reference derived from it"
+                                }
+                            );
+                        }
+                    }
+                }
+            }
+
             // Check return type compatibility
-            if (exprType != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
+            if (exprType != null && _currentFunction != null && !TypesCompatible(_currentFunction.ReturnType, exprType))
             {
                 var expectedType = TypeToString(_currentFunction.ReturnType);
                 var actualType = TypeToString(exprType);
@@ -3487,7 +3616,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     helpTexts: new List<string>
                     {
                         $"expected type '{expectedType}', found '{actualType}'",
-                        $"consider using a cast: ({expectedType}){exprContext.GetText()}"
+                        exprContext != null ? $"consider using a cast: ({expectedType}){exprContext.GetText()}" : "consider using a cast"
                     }
                 );
             }
@@ -3676,6 +3805,45 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             var variableSymbol = new VariableSymbol(name, varType, isMutable, location, Id: _nextVariableId++);
             _variables[name] = variableSymbol;
+
+            // Register variable with borrow graph for lifetime tracking
+            _borrowChecker.BorrowGraph.RegisterVariable(variableSymbol.Id, name, _scopeDepth, location);
+
+            // Track borrow relationships if the variable is a reference type
+            if (varType is IrReferenceType or IrMutReferenceType)
+            {
+                // Check if the initializer is a borrow expression (&x or &var x)
+                if (context.expression() is NovusParser.BorrowExprContext borrowExpr)
+                {
+                    var borrowedExpr = borrowExpr.expression();
+                    var borrowedVarName = ExtractVariableName(borrowedExpr);
+
+                    if (borrowedVarName != null && _variables.TryGetValue(borrowedVarName, out var borrowedVar))
+                    {
+                        // Record the borrow: variableSymbol borrows from borrowedVar
+                        bool isMutableBorrow = borrowExpr.KW_VAR() != null;
+                        var borrowLocation = SourceLocationHelper.FromContext(borrowExpr, _filePath, _sourceLines);
+                        _borrowChecker.BorrowGraph.AddBorrow(variableSymbol.Id, borrowedVar.Id, borrowLocation, isMutableBorrow);
+                    }
+                }
+                // Check if there's a pending borrow from a method call
+                else if (_pendingBorrowSource.HasValue && _pendingBorrowLocation != null)
+                {
+                    // Record the borrow: this variable borrows from the method's source
+                    bool isMutableBorrow = varType is IrMutReferenceType;
+                    _borrowChecker.BorrowGraph.AddBorrow(variableSymbol.Id, _pendingBorrowSource.Value, _pendingBorrowLocation, isMutableBorrow);
+
+                    // Clear pending borrow
+                    _pendingBorrowSource = null;
+                    _pendingBorrowLocation = null;
+                }
+            }
+            else
+            {
+                // Clear any pending borrow if the variable is not a reference
+                _pendingBorrowSource = null;
+                _pendingBorrowLocation = null;
+            }
 
             // Track variable for automatic drop if it is not a Copy type
             // Note: We can't check TypeImplementsDrop here since we don't have the IrModule yet.
@@ -8990,6 +9158,47 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
         var returnType = _typeParser.SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
 
+        // Track lifetime for method returns that are references
+        if (returnType is IrReferenceType or IrMutReferenceType)
+        {
+            var inferenceResult = _lifetimeInference.InferReturnLifetime(method.Parameters, method.ReturnType);
+            if (inferenceResult.Success && inferenceResult.SourceParameterIndex.HasValue)
+            {
+                // Find which variable the return borrows from
+                int sourceIndex = inferenceResult.SourceParameterIndex.Value;
+
+                // For methods with self, index 0 is self (the receiver)
+                if (sourceIndex == 0 && hasSelfParam)
+                {
+                    // Return borrows from receiver
+                    var receiverVarName = ExtractVariableName(receiverExpr);
+                    if (receiverVarName != null && _variables.TryGetValue(receiverVarName, out var receiverVar))
+                    {
+                        _pendingBorrowSource = receiverVar.Id;
+                        _pendingBorrowLocation = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                    }
+                }
+                else
+                {
+                    // Return borrows from a parameter
+                    var argIndex = hasSelfParam ? sourceIndex - 1 : sourceIndex;
+                    if (callCtx.argumentList() != null && argIndex >= 0)
+                    {
+                        var arguments = callCtx.argumentList().expression();
+                        if (argIndex < arguments.Length)
+                        {
+                            var argVarName = ExtractVariableName(arguments[argIndex]);
+                            if (argVarName != null && _variables.TryGetValue(argVarName, out var argVar))
+                            {
+                                _pendingBorrowSource = argVar.Id;
+                                _pendingBorrowLocation = SourceLocationHelper.FromContext(arguments[argIndex], _filePath, _sourceLines);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return returnType;
     }
 
@@ -10033,6 +10242,23 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var valueType = Visit(exprContext);
         if (valueType == null)
         {
+            return null;
+        }
+
+        // Check if trying to borrow a reference (creating &&T, which is not allowed)
+        if (valueType is IrReferenceType or IrMutReferenceType)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0106",
+                "cannot borrow a reference (reference to reference is not allowed)",
+                location,
+                helpTexts: new List<string>
+                {
+                    "references are already thin pointers and don't need to be borrowed",
+                    "remove the & operator to use the reference directly"
+                }
+            );
             return null;
         }
 
@@ -11407,13 +11633,27 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     private IrType ParseType(NovusParser.TypeContext context)
     {
-        return context switch
+        try
         {
-            // For named types, use our own implementation that includes validation
-            NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
-            // For all other types, delegate to TypeParser for shared parsing logic
-            _ => _typeParser.ParseType(context)
-        };
+            return context switch
+            {
+                // For named types, use our own implementation that includes validation
+                NovusParser.NamedTypeContext namedCtx => ParseNamedType(namedCtx),
+                // For all other types, delegate to TypeParser for shared parsing logic
+                _ => _typeParser.ParseType(context)
+            };
+        }
+        catch (TypeParseException ex)
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0106",
+                ex.Message,
+                location
+            );
+            // Return a placeholder type to allow analysis to continue
+            return IrIntType.I32;
+        }
     }
 
 
@@ -13162,7 +13402,11 @@ public record FunctionSymbol(
     IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
     bool IsConstFn = false  // true if function is declared with 'const fn'
 );
-public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false);
+public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false) : IParameterInfo
+{
+    string IParameterInfo.ParameterName => Name;
+    IrType IParameterInfo.ParameterType => Type;
+}
 public record VariableSymbol(
     string Name,
     IrType Type,

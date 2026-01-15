@@ -2793,6 +2793,27 @@ public partial class IrBuilder
             return null;
         }
 
+        // Check if this is a ref-to-pointer conversion (requires unsafe)
+        if ((value.Type is IrReferenceType || value.Type is IrMutReferenceType) && targetType is IrPointerType)
+        {
+            if (_unsafeDepth == 0)
+            {
+                var location = GetLocation(context);
+                _diagnostics.Add(new Diagnostic(
+                    DiagnosticSeverity.Error,
+                    "E0133",
+                    "converting reference to raw pointer requires `unsafe` block",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "references have lifetime guarantees that raw pointers do not",
+                        "wrap the conversion in `unsafe { ... }` if you can guarantee the pointer remains valid"
+                    }
+                ));
+                return null;
+            }
+        }
+
         // If it's already a constant, just change its type
         if (value is IrConstant constant)
         {
@@ -2814,6 +2835,27 @@ public partial class IrBuilder
         if (value == null)
         {
             return null;
+        }
+
+        // Check if this is a ref-to-pointer conversion (requires unsafe)
+        if ((value.Type is IrReferenceType || value.Type is IrMutReferenceType) && targetType is IrPointerType)
+        {
+            if (_unsafeDepth == 0)
+            {
+                var location = GetLocation(context);
+                _diagnostics.Add(new Diagnostic(
+                    DiagnosticSeverity.Error,
+                    "E0133",
+                    "converting reference to raw pointer requires `unsafe` block",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "references have lifetime guarantees that raw pointers do not",
+                        "wrap the conversion in `unsafe { ... }` if you can guarantee the pointer remains valid"
+                    }
+                ));
+                return null;
+            }
         }
 
         // If it's already a constant, just change its type
@@ -4120,6 +4162,24 @@ public partial class IrBuilder
             // Not an expression statement - visit it and return a default value
             Visit(lastStmt);
             return new IrConstant(0, IrIntType.I32);
+        }
+    }
+
+    // Handle: unsafe { expression } (expression form)
+    public override object? VisitUnsafeExpr([NotNull] NovusParser.UnsafeExprContext context)
+    {
+        // Enter unsafe context
+        _unsafeDepth++;
+
+        try
+        {
+            // Visit the block and return its value as an expression
+            return VisitBlockAsExpression(context.block());
+        }
+        finally
+        {
+            // Exit unsafe context
+            _unsafeDepth--;
         }
     }
 

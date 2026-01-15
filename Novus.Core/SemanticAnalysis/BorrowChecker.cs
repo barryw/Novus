@@ -26,6 +26,11 @@ public class BorrowChecker
     public Func<IrType, string, List<IrType>, bool>? TypeImplementsTraitFn { get; set; }
 
     /// <summary>
+    /// Graph tracking borrow relationships for lifetime validation.
+    /// </summary>
+    public BorrowGraph BorrowGraph { get; } = new();
+
+    /// <summary>
     /// Creates a new BorrowChecker that shares drop info state with the semantic analyzer.
     /// </summary>
     public BorrowChecker(Dictionary<int, DropInfo> dropInfo)
@@ -40,6 +45,7 @@ public class BorrowChecker
     {
         _movedVariables.Clear();
         _controlFlowStack.Clear();
+        BorrowGraph.Clear();
     }
 
     /// <summary>
@@ -330,4 +336,249 @@ public class DropInfo
 public class ScopeDropInfo
 {
     public List<DropInfo> VariablesToDrop { get; } = new();
+}
+
+/// <summary>
+/// Represents a borrow relationship in the graph.
+/// </summary>
+public class BorrowEdge
+{
+    public int SourceId { get; init; }
+    public int BorrowerId { get; init; }
+    public SourceLocation BorrowLocation { get; init; } = null!;
+    public bool IsMutable { get; init; }
+}
+
+/// <summary>
+/// Tracks the scope where a variable is valid.
+/// </summary>
+public class VariableLifetime
+{
+    public int VariableId { get; init; }
+    public string VariableName { get; init; } = "";
+    public int ScopeDepth { get; init; }
+    public SourceLocation DeclLocation { get; init; } = null!;
+    public SourceLocation? DropLocation { get; set; }
+}
+
+/// <summary>
+/// Represents a dangling borrow detected at scope exit.
+/// </summary>
+public class DanglingBorrow
+{
+    public int BorrowerId { get; init; }
+    public int SourceId { get; init; }
+    public BorrowEdge Edge { get; init; } = null!;
+    public VariableLifetime BorrowerLifetime { get; init; } = null!;
+    public VariableLifetime SourceLifetime { get; init; } = null!;
+}
+
+/// <summary>
+/// Tracks borrow relationships between variables for lifetime analysis.
+/// Nodes are variables, edges are borrow relationships.
+/// </summary>
+public class BorrowGraph
+{
+    private readonly Dictionary<int, List<BorrowEdge>> _borrowsFrom = new();
+    private readonly Dictionary<int, VariableLifetime> _lifetimes = new();
+
+    public void RegisterVariable(int variableId, string name, int scopeDepth, SourceLocation declLocation)
+    {
+        _lifetimes[variableId] = new VariableLifetime
+        {
+            VariableId = variableId,
+            VariableName = name,
+            ScopeDepth = scopeDepth,
+            DeclLocation = declLocation
+        };
+        _borrowsFrom[variableId] = new List<BorrowEdge>();
+    }
+
+    public void AddBorrow(int borrowerId, int sourceId, SourceLocation location, bool mutable)
+    {
+        if (!_borrowsFrom.ContainsKey(borrowerId))
+            _borrowsFrom[borrowerId] = new List<BorrowEdge>();
+
+        _borrowsFrom[borrowerId].Add(new BorrowEdge
+        {
+            SourceId = sourceId,
+            BorrowerId = borrowerId,
+            BorrowLocation = location,
+            IsMutable = mutable
+        });
+    }
+
+    /// <summary>
+    /// Gets the full borrow chain for a variable.
+    /// Returns [variableId, source1, source2, ...] where each borrows from the next.
+    /// </summary>
+    public List<int> GetBorrowChain(int variableId)
+    {
+        var chain = new List<int> { variableId };
+        var visited = new HashSet<int> { variableId };
+        var current = variableId;
+
+        while (_borrowsFrom.TryGetValue(current, out var edges) && edges.Count > 0)
+        {
+            var sourceId = edges[0].SourceId;  // Follow first borrow
+            if (visited.Contains(sourceId))
+                break;  // Prevent cycles
+            chain.Add(sourceId);
+            visited.Add(sourceId);
+            current = sourceId;
+        }
+
+        return chain;
+    }
+
+    /// <summary>
+    /// Finds borrows that will become dangling when the given scope exits.
+    /// A borrow is dangling if the borrower outlives the source.
+    /// </summary>
+    public List<DanglingBorrow> GetDanglingBorrowsAtScopeExit(int scopeDepth)
+    {
+        var dangling = new List<DanglingBorrow>();
+
+        // Find all variables being dropped at this scope
+        var droppedVars = _lifetimes.Values
+            .Where(lt => lt.ScopeDepth == scopeDepth)
+            .ToList();
+
+        foreach (var dropped in droppedVars)
+        {
+            // Find anything that borrows from this dropped variable
+            foreach (var (borrowerId, edges) in _borrowsFrom)
+            {
+                foreach (var edge in edges)
+                {
+                    if (edge.SourceId == dropped.VariableId)
+                    {
+                        // Check if borrower outlives source
+                        if (_lifetimes.TryGetValue(borrowerId, out var borrowerLifetime))
+                        {
+                            if (borrowerLifetime.ScopeDepth < scopeDepth)
+                            {
+                                dangling.Add(new DanglingBorrow
+                                {
+                                    BorrowerId = borrowerId,
+                                    SourceId = dropped.VariableId,
+                                    Edge = edge,
+                                    BorrowerLifetime = borrowerLifetime,
+                                    SourceLifetime = dropped
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return dangling;
+    }
+
+    public VariableLifetime? GetLifetime(int variableId)
+    {
+        return _lifetimes.TryGetValue(variableId, out var lt) ? lt : null;
+    }
+
+    public void SetDropLocation(int variableId, SourceLocation location)
+    {
+        if (_lifetimes.TryGetValue(variableId, out var lt))
+            lt.DropLocation = location;
+    }
+
+    public void Clear()
+    {
+        _borrowsFrom.Clear();
+        _lifetimes.Clear();
+    }
+}
+
+/// <summary>
+/// Result of lifetime inference for a method return.
+/// </summary>
+public class LifetimeInferenceResult
+{
+    public bool Success { get; init; }
+    public int? SourceParameterIndex { get; init; }
+    public string? ErrorMessage { get; init; }
+
+    public static LifetimeInferenceResult Ok(int? sourceIndex = null) => new()
+    {
+        Success = true,
+        SourceParameterIndex = sourceIndex
+    };
+
+    public static LifetimeInferenceResult Error(string message) => new()
+    {
+        Success = false,
+        ErrorMessage = message
+    };
+}
+
+/// <summary>
+/// Infers lifetimes for method returns based on Rust-style elision rules.
+/// </summary>
+public class LifetimeInference
+{
+    /// <summary>
+    /// Infers which parameter's lifetime the return reference should be tied to.
+    /// Rules:
+    /// 1. If &self exists, return ties to self
+    /// 2. If exactly one reference param, return ties to that
+    /// 3. If multiple ref params without self, error
+    /// 4. If no ref params but returning reference, error
+    /// </summary>
+    public LifetimeInferenceResult InferReturnLifetime<T>(
+        IEnumerable<T> parameters,
+        IrType returnType)
+        where T : IParameterInfo
+    {
+        // Not a reference return - no lifetime needed
+        if (returnType is not IrReferenceType and not IrMutReferenceType)
+        {
+            return LifetimeInferenceResult.Ok(null);
+        }
+
+        var paramList = parameters.ToList();
+
+        // Build list of (index, parameter) for reference parameters
+        var refParams = paramList
+            .Select((p, idx) => (Index: idx, Param: p))
+            .Where(x => x.Param.ParameterType is IrReferenceType or IrMutReferenceType)
+            .ToList();
+
+        // Rule 1: &self always wins
+        var selfParam = refParams.FirstOrDefault(x => x.Param.ParameterName == "self");
+        if (selfParam.Param != null)
+        {
+            return LifetimeInferenceResult.Ok(selfParam.Index);
+        }
+
+        // Rule 2: Exactly one reference param
+        if (refParams.Count == 1)
+        {
+            return LifetimeInferenceResult.Ok(refParams[0].Index);
+        }
+
+        // Rule 3: Multiple ref params without self - ambiguous
+        if (refParams.Count > 1)
+        {
+            return LifetimeInferenceResult.Error(
+                "cannot infer lifetime: multiple reference parameters without &self");
+        }
+
+        // Rule 4: No ref params but returning reference
+        return LifetimeInferenceResult.Error(
+            "method returns reference but has no reference parameters to borrow from");
+    }
+}
+
+/// <summary>
+/// Interface for parameter types that can be used with LifetimeInference.
+/// </summary>
+public interface IParameterInfo
+{
+    string ParameterName { get; }
+    IrType ParameterType { get; }
 }

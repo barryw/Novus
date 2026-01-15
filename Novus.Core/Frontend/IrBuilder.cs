@@ -35,6 +35,9 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private readonly Stack<List<string>> _scopeDropStack = new(); // Stack of variable names per scope
     private readonly Dictionary<string, bool> _movedVariables = new(); // Track which variables have been moved
 
+    // Track unsafe block nesting depth for safety checks
+    private int _unsafeDepth = 0;
+
     private int _staticVarCounter = 0;  // Counter for auto-generated static variables
     private int _closureCounter = 0;  // Counter for auto-generated closure functions and environment structs
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break

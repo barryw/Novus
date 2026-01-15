@@ -336,9 +336,10 @@ impl WindowHandle {
     }
 
     /// Get the window's RastPort for drawing operations
-    pub fn rastport(&self) -> *RastPort {
+    pub fn rastport(&self) -> &RastPort {
         unsafe {
-            return (*self.window).RPort
+            let rp_ptr = (*self.window).RPort
+            return &(*rp_ptr)
         }
     }
 

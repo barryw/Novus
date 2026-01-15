@@ -86,10 +86,9 @@ impl ScreenHandle {
     }
 
     /// Get the screen's RastPort for drawing operations
-    pub fn rastport(&self) -> *RastPort {
+    pub fn rastport(&self) -> &RastPort {
         unsafe {
-            let rp_ref = &(*self.screen).RastPort
-            return (*RastPort)rp_ref
+            return &(*self.screen).RastPort
         }
     }
 

@@ -3062,6 +3062,24 @@ public partial class IrBuilder
         return null;
     }
 
+    // Handle: unsafe { statements }
+    public override object? VisitUnsafeBlock([NotNull] NovusParser.UnsafeBlockContext context)
+    {
+        // Enter unsafe context
+        _unsafeDepth++;
+
+        try
+        {
+            // Visit the block with unsafe operations allowed
+            return Visit(context.block());
+        }
+        finally
+        {
+            // Exit unsafe context
+            _unsafeDepth--;
+        }
+    }
+
     // Handle: assert!(condition) or assert!(condition, "message")
     public override object? VisitAssertStatement([NotNull] NovusParser.AssertStatementContext context)
     {
