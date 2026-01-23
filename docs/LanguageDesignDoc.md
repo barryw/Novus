@@ -70,12 +70,17 @@
 
 ### 6.1 Copper Lists
 
+> ⚠️ **Status: 📅 Planned (v1.5)** — Parser grammar exists but codegen not implemented. Use inline assembly or `std/ffi/` for now.
+
 ```novus
-copperlist {
-    move COLOR00, $0F0
-    wait 100, 0
-    move COLOR00, $00F
-}
+// Future DSL syntax (not yet implemented):
+// copperlist {
+//     move COLOR00, $0F0
+//     wait 100, 0
+//     move COLOR00, $00F
+// }
+
+// Current approach: use inline assembly or raw copper word arrays
 ```
 
 ### 6.2 Hardware Register Access
@@ -94,29 +99,45 @@ window := intuition.OpenWindow(title: "Novus Demo", width: 320, height: 200)
 
 ### 6.4 Fixed-Point Math
 
+> ⚠️ **Status: 🚧 Partial** — Lexer tokens (`fixed16`, `fixed32`) exist but semantic analysis and codegen are not yet implemented. Use `i32` with manual scaling for now.
+
 ```novus
-angle: fixed16 = 45.0
-sin_val = sin(angle)
+// Future syntax (not yet implemented):
+// angle: fixed16 = 45.0
+// sin_val = sin(angle)
+
+// Current workaround - manual 16.16 fixed-point:
+let angle: i32 = 45 << 16  // 45.0 in 16.16 format
 ```
 
 ---
 
 ## 7. Example Program
 
+> **Note:** This example demonstrates the *intended* high-level API. For v1.0, see the test examples in `Novus.Tests/Examples/` for working code.
+
 ```novus
-import graphics
+// Simple window demo (v1.0 working example)
+from std::core import Result, Option
+from std::os::intuition import open_window, close_window, WindowBuilder, wait_event
 
-fn main() {
-    screen := open_screen(320, 256, 5)
-    copper := new_copperlist()
+fn main() -> Result[(), i32] {
+    let win = open_window(WindowBuilder {
+        title: "Hello Novus",
+        width: 320,
+        height: 200,
+    })?
 
-    copper.move(COLOR00, $0F0)
-    copper.wait(100, 0)
-    copper.move(COLOR00, $00F)
+    // Wait for close event
+    loop {
+        match wait_event(win) {
+            Event::CloseWindow => break,
+            _ => {}
+        }
+    }
 
-    screen.set_copper(copper)
-    wait_key()
-    close_screen(screen)
+    close_window(win)
+    Ok(())
 }
 ```
 
@@ -133,13 +154,19 @@ fn main() {
 
 ## 9. Implementation Roadmap
 
-* [ ] Lexer and parser
-* [ ] Intermediate representation (IR)
-* [ ] Code generation backend (VBCC or LLVM-MOS)
-* [ ] Standard runtime library (`novuslib.a`)
-* [ ] Toolchain (`novusc`, linker integration)
-* [ ] IDE/editor support with syntax highlighting
-* [ ] Demo applications and documentation
+* [x] Lexer and parser (ANTLR4-based)
+* [x] Intermediate representation (SSA-based IR)
+* [x] Type checker and semantic analysis
+* [x] Code generation backend (VBCC toolchain)
+* [x] Standard runtime library (`std/`)
+* [x] Toolchain (`novusc` with build, compile, check, fmt)
+* [x] IDE/editor support (LSP with full diagnostics)
+* [x] Async runtime (stackless coroutines)
+* [x] Move semantics and RAII/Drop support
+* [ ] Hardware DSLs (copper, blitter) — v1.5
+* [ ] Graphics assets DSL (sprites, BOBs) — v1.5
+* [ ] Fat binary support (multi-CPU dispatch) — v1.5
+* [ ] Self-hosting compiler (ultimate goal)
 
 ---
 
@@ -171,6 +198,12 @@ hello
 ---
 
 ## 13. Building Libraries, Devices, Handlers & Interrupts (Draft)
+
+> **Implementation Status:**
+> - ✅ `@packed`, `@align(N)` — Implemented
+> - 🚧 `@resident`, `@autoinit` — Parser support only
+> - 🚧 `@libvec`, `@devicevec` — Parser support only (ROMTag/vector generation not implemented)
+> - 🚧 `@interrupt(level)` — Parser support only
 
 > Goal: make Novus a first‑class way to build AmigaOS shared libraries, Exec devices, DOS handlers, and interrupt servers with minimal boilerplate and a sane, Result‑based API surface.
 
@@ -314,60 +347,80 @@ fn CopperISR(ctx: *ISave) {
 
 > **Purpose:** Track which modern language concepts will be included in Novus, when, and why — balancing expressive power with performance and Amiga authenticity.
 
-### 🧩 v1.0 (Foundations – “A New System Language”)
+### Implementation Status Legend
+
+- ✅ **Implemented** — Feature is complete and tested
+- 🚧 **Partial** — Feature exists but incomplete
+- 📅 **Planned** — Feature is designed but not yet implemented
+- ❌ **Deferred** — Feature is postponed to a future version
+
+### 🧩 v1.0 (Foundations – "A New System Language")
 
 **Primary goals:** Stability, predictable performance, clean syntax, and full AmigaOS integration.
 
-| Feature                              | Status         | Notes                                |
-| ------------------------------------ | -------------- | ------------------------------------ |
-| `Result[T,E]` & `Option[T]`          | ✅ Core         | Mandatory in all std APIs            |
-| `async/await` (stackless coroutines) | 🚧 MVP         | Based on Exec signals/message ports  |
-| `defer` blocks                       | ✅ Core         | Deterministic resource cleanup       |
-| Fixed-point math                     | ✅ Core         | `fixed16`, `fixed32` with intrinsics |
-| Slices & views                       | ✅ Core         | Bounds-checked in debug builds       |
-| `unsafe` blocks                      | ✅ Core         | For direct hardware or FFI use       |
-| Modules & imports                    | ✅ Core         | No include hell                      |
-| Pattern matching                     | ✅ Core         | Powerful switch for enums & structs  |
-| Handles instead of raw pointers      | ✅ Core         | Safe resource ownership model        |
-| AmigaOS FFI                          | ✅ Core         | Library/device/handler templates     |
-| Copper/Blitter DSL                   | 🚧 Prototype   | Built-in DSL for hardware scripts    |
-| Async `sleep`, `vblank`, `input`     | 🚧 Prototype   | Backed by timer & input devices      |
-| Compile-time constants (`const fn`)  | 🚧 Planned     | Deterministic static computation     |
-| Inline `asm {}`                      | ✅ Core         | For low-level access                 |
-| Testing framework (`test "..." {}`)  | 🚧 Planned     | Built into compiler                  |
-| Compiler toolchain (`novusc`)        | 🚧 In progress | Build, link, inspect, package        |
+| Feature                              | Status           | Notes                                    |
+| ------------------------------------ | ---------------- | ---------------------------------------- |
+| `Result[T,E]` & `Option[T]`          | ✅ Implemented    | Mandatory in all std APIs                |
+| `async/await` (stackless coroutines) | ✅ Implemented    | State machine transformation, signal-based futures |
+| `defer` blocks                       | ✅ Implemented    | Deterministic resource cleanup           |
+| Drop/RAII trait                      | ✅ Implemented    | Full ownership & move semantics          |
+| `if let` / `let else`                | ✅ Implemented    | Pattern matching in conditionals         |
+| `while var` syntax                   | ✅ Implemented    | Pattern-based loop conditions            |
+| Turbofish (`::<T>`)                  | ✅ Implemented    | Explicit generic type specification      |
+| Slices & views                       | ✅ Implemented    | Bounds-checked in debug builds           |
+| `unsafe` blocks                      | ✅ Implemented    | For direct hardware or FFI use           |
+| Modules & imports                    | ✅ Implemented    | No include hell                          |
+| Pattern matching                     | ✅ Implemented    | Powerful match for enums & structs       |
+| Generics (monomorphization)          | ✅ Implemented    | Full generic type support                |
+| Trait bounds & where clauses         | ✅ Implemented    | Type constraints on generics             |
+| Handles instead of raw pointers      | ✅ Implemented    | Safe resource ownership model            |
+| AmigaOS FFI                          | ✅ Implemented    | exec, dos, graphics, intuition bindings  |
+| Inline `asm {}`                      | ✅ Implemented    | Full register binding, clobbers, use clause |
+| Testing framework (`#[test]`)        | ✅ Implemented    | Built into compiler with assertions      |
+| Compiler toolchain (`novusc`)        | ✅ Implemented    | build, compile, check, fmt commands      |
+| LSP / Editor support                 | ✅ Implemented    | Full language server with diagnostics    |
+| Fixed-point math                     | 🚧 Partial       | Tokens exist, semantics not implemented  |
+| Copper/Blitter DSL                   | 📅 Planned v1.5  | Parser rules exist, codegen not implemented |
+| Async `sleep`, `vblank`, `input`     | ✅ Implemented    | Backed by timer & input devices          |
+| Compile-time constants (`const fn`)  | 🚧 Partial       | Basic const evaluation                   |
+| Library/Device attributes            | 🚧 Partial       | `@packed`, `@align` work; `@libvec` incomplete |
 
 ### 🧠 v1.5 (Expressiveness & Ergonomics)
 
 **Goal:** Improve developer productivity, add richer type and meta capabilities.
 
-| Feature                               | Status     | Notes                                    |
-| ------------------------------------- | ---------- | ---------------------------------------- |
-| Traits / Interfaces                   | 🧩 Planned | Compile-time duck typing (monomorphized) |
-| Struct methods & extensions           | 🧩 Planned | `impl Type { fn ... }` blocks            |
-| Generics refinement                   | 🧩 Planned | Type constraints & specialization        |
-| Compile-time reflection               | 🧩 Planned | For auto-docs & serialization            |
-| String interpolation                  | 🧩 Planned | `"Hello {name}"` syntax                  |
-| Async channels & streams              | 🧩 Planned | Built atop Exec ports                    |
-| Compiler plug-ins (attributes/macros) | 🧩 Planned | Custom codegen or metadata               |
-| Built-in doc generator                | 🧩 Planned | Similar to Rustdoc                       |
-| Package manager (`novus.toml`)        | 🧩 Planned | Versioned dependencies                   |
-| REPL / interactive mode               | 🧩 Planned | For experimentation & education          |
+| Feature                               | Status           | Notes                                    |
+| ------------------------------------- | ---------------- | ---------------------------------------- |
+| Traits / Interfaces                   | ✅ Implemented    | Compile-time monomorphization            |
+| Struct methods & extensions           | ✅ Implemented    | `impl Type { fn ... }` blocks            |
+| Generics refinement                   | ✅ Implemented    | Type constraints via where clauses       |
+| Async channels & streams              | ✅ Implemented    | Built atop Exec ports                    |
+| Workspaces & multi-project builds     | ✅ Implemented    | `novus.toml` based builds                |
+| Copper/Blitter DSL                    | 📅 Planned       | Hardware script DSLs                     |
+| Graphics Assets DSL (sprites/BOBs)    | 📅 Planned       | Compile-time asset packing               |
+| Fat binaries (multi-CPU dispatch)     | 📅 Planned       | `--cpu fat:000,020,060`                  |
+| Closures                              | 📅 Planned       | Capture analysis, upvalue management     |
+| Compile-time reflection               | 📅 Planned       | For auto-docs & serialization            |
+| String interpolation                  | 📅 Planned       | `"Hello {name}"` syntax                  |
+| Built-in doc generator                | 📅 Planned       | Similar to Rustdoc                       |
+| REPL / interactive mode               | 📅 Planned       | For experimentation & education          |
 
 ### 🚀 v2.0+ (Experimental / Forward-Looking)
 
 **Goal:** Push Novus beyond 1990 limitations without losing authenticity.
 
-| Feature                                      | Status          | Notes                                      |
-| -------------------------------------------- | --------------- | ------------------------------------------ |
-| Lightweight concurrency (`spawn`, `join`)    | 🧩 Prototype    | Built on Exec `CreateTask`                 |
-| Safe borrow checking (lightweight lifetimes) | 🧩 Experimental | Detects use-after-free statically          |
-| Incremental compilation / hot reload         | 🧩 Planned      | Useful on emulators                        |
-| SIMD/vector types for Blitter ops            | 🧩 Experimental | Exploits Amiga chipset parallelism         |
-| Structural pattern destructuring             | 🧩 Planned      | `let Point{x, y} = pt`                     |
-| Compile-time codegen (`@derive`)             | 🧩 Planned      | Auto-impls, serialization, etc.            |
-| AmigaOS resource reflection                  | 🧩 Planned      | Introspect registered libraries/devices    |
-| Modern Amiga toolchain integration           | 🧩 Planned      | `novusc run` boots directly in UAE/PiStorm |
+| Feature                                      | Status           | Notes                                       |
+| -------------------------------------------- | ---------------- | ------------------------------------------- |
+| Lightweight concurrency (`spawn`, `join`)    | ✅ Implemented    | Built on Exec `CreateTask`                  |
+| Safe borrow checking (lightweight lifetimes) | ✅ Implemented    | Reference lifetime tracking                 |
+| Move semantics & use-after-move detection    | ✅ Implemented    | Compile-time move checker                   |
+| Structural pattern destructuring             | ✅ Implemented    | `let Point{x, y} = pt` syntax               |
+| Incremental compilation / hot reload         | 📅 Planned       | Useful on emulators                         |
+| SIMD/vector types for Blitter ops            | 📅 Planned       | Exploits Amiga chipset parallelism          |
+| Compile-time codegen (`@derive`)             | 📅 Planned       | Auto-impls, serialization, etc.             |
+| AmigaOS resource reflection                  | 📅 Planned       | Introspect registered libraries/devices     |
+| Modern Amiga toolchain integration           | 📅 Planned       | `novusc run` boots directly in UAE/PiStorm  |
+| 68080/Apollo (AMMX) intrinsics               | 📅 Planned       | Advanced vector operations                  |
 
 ### 💬 Design Principles Recap
 
@@ -471,14 +524,20 @@ novusc --cpu 68020 --opt-level release
 
 ### 🚀 19.8 Tooling Summary
 
-| Tool             | Purpose                          |
-| ---------------- | -------------------------------- |
-| `novusc build`   | Compile–assemble–link pipeline   |
-| `novusc fmt`     | Format code                      |
-| `novusc inspect` | Inspect symbols, ROMTags         |
-| `novusc run`     | Run binary in UAE/PiStorm        |
-| `novusc trace`   | View async traces                |
-| `novusc package` | Bundle binaries for distribution |
+| Tool              | Purpose                          | Status           |
+| ----------------- | -------------------------------- | ---------------- |
+| `novus build`     | Compile–assemble–link pipeline   | ✅ Implemented    |
+| `novus compile`   | Compile single file              | ✅ Implemented    |
+| `novus check`     | Type-check without codegen       | ✅ Implemented    |
+| `novus fmt`       | Format code                      | ✅ Implemented    |
+| `novus test`      | Run test suite                   | ✅ Implemented    |
+| `novus bench`     | Run benchmarks                   | ✅ Implemented    |
+| `novus inspect`   | Inspect symbols, ROMTags         | 🚧 Partial        |
+| `novus run`       | Run binary in UAE/PiStorm        | 📅 Planned        |
+| `novus trace`     | View async traces                | 📅 Planned        |
+| `novus package`   | Bundle binaries for distribution | 📅 Planned        |
+| `novus copperviz` | Visualize copper lists           | 📅 Planned        |
+| `novus blitviz`   | Visualize blitter jobs           | 📅 Planned        |
 
 ### 🔮 19.9 Future Integration (v2+)
 
@@ -588,14 +647,25 @@ using win    = try ui.open_window(screen, "HUD")
 
 ### 22.2 Allocators (Fast vs Chip, Custom Arenas & Pools)
 
+> **Implementation Status:**
+> - ✅ Global Fast/Chip allocation — Implemented via `std/memory/`
+> - 🚧 Arena allocator — Partial implementation
+> - 📅 Pool/Slab allocators — Not yet implemented
+> - 📅 Custom allocator parameter on APIs — Not yet implemented
+
 All allocating APIs accept an optional **allocator** parameter; default is a global fast‑mem allocator.
 
 ```novus
-var arena = mem.arena(size: 128*1024, kind: Chip)
-using screen = try gfx.open_screen(320,256,5, allocator: arena)
+// Current working API:
+from std::memory::block import MemoryBlock
+let block = MemoryBlock::alloc(1024, MEMF_PUBLIC)?
+
+// Future syntax (not yet implemented):
+// var arena = mem.arena(size: 128*1024, kind: Chip)
+// using screen = try gfx.open_screen(320,256,5, allocator: arena)
 ```
 
-Provided allocators in `std/mem`:
+Provided allocators in `std/mem` (planned):
 
 * **Global**: `mem.global()` (Fast) and `mem.chip()` (Chip).
 * **Arena** (bump): `mem.arena(size, kind)` — linear alloc, `reset()` to free en masse.
@@ -698,6 +768,10 @@ let owned = win.detach() // caller must ui.close(owned) later
 ---
 
 ## 23. Hardware DSLs & Safe HAL (Copper · Blitter · Paula · Sprites/Bitplanes)
+
+> ⚠️ **Implementation Status: 📅 PLANNED (v1.5)**
+>
+> This section describes the *design specification* for hardware DSLs. The parser grammar includes support for `copper` and `blitter` blocks, but semantic analysis and code generation are **not yet implemented**. For v1.0, use the `std/ffi/` bindings and inline assembly for direct hardware access.
 
 > **Purpose:** Make the *fun stuff* braindead simple and insanely powerful. These DSLs compile to exact register sequences (Copper words, BLTCONx, Paula periods, etc.) with compile‑time checks, PAL/NTSC awareness, and zero inline asm for 99% of use cases.
 
@@ -1145,6 +1219,10 @@ Novus exposes NDK power with clarity and safety:
 
 ## 25. Amiga‑Centric Graphics Assets DSL (Sprites · BOBs · Bitmaps · Fonts)
 
+> ⚠️ **Implementation Status: 📅 PLANNED (v1.5)**
+>
+> This section describes the *design specification* for graphics asset DSLs. These features are **not yet implemented**. For v1.0, use the `std/graphics/` wrappers and load assets from files or embed raw data.
+
 > **Goal:** Make it **stupidly simple** to put pixels on the screen using authentic Amiga concepts. No NES‑style tiles. Focus on: **hardware sprites** (always 1 word wide), **BOBs** (blitter objects with masks), **bitmaps** (interleaved bitplanes), and **bitmap fonts**. All compile to chip‑ready data with zero inline asm.
 
 ### 25.1 Design Overview
@@ -1329,6 +1407,12 @@ All uploads ensure **chipmem** placement and return handles with depth/stride me
 ---
 
 ## 26. Target Profiles & Fat Binaries (CPU · Chipset)
+
+> **Implementation Status:**
+> - ✅ CPU target selection (`--cpu 68000/68020/68040/68060`) — Implemented
+> - 📅 Chipset profiles (`--chipset OCS|ECS|AGA`) — Not yet implemented
+> - 📅 Fat binaries (`--cpu fat:000,020,060`) — Not yet implemented
+> - 📅 `@multiversion` attribute — Not yet implemented
 
 > **Purpose:** Let developers choose how far back to support (A1000 → 68080) without forking code. Profiles guarantee the compiler never emits unsupported instructions for the chosen target, with optional multi-version dispatch.
 

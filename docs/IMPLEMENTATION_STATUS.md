@@ -1,13 +1,15 @@
 # Novus Compiler - Implementation Status Report
-**Date:** December 16, 2025
-**Status:** Production-Ready for Current Scope
-**Test Suite:** 3,436 tests, 100% passing ✅
+**Date:** January 23, 2026
+**Status:** Production-Ready for Core Features
+**Test Suite:** 3,700+ tests, 100% passing ✅
 
 ## Executive Summary
 
-The Novus compiler has evolved significantly beyond its POC stage into a **production-ready systems language** for Amiga 68k development. The core compilation pipeline is robust, the standard library is comprehensive (159 modules, 90+ FFI bindings), and hardware DSLs (Copper, Blitter, Paula) are fully operational.
+The Novus compiler is a **production-ready systems language** for Amiga 68k development. The core compilation pipeline is robust with comprehensive type checking, move semantics, and RAII/Drop support. The standard library provides extensive AmigaOS FFI bindings.
 
-**Current State:** Novus can compile complex programs including windowed applications, hardware demos, audio playback, and inter-process communication via channels. The compiler produces working Amiga binaries that run on real hardware (tested on A4000 with 68040).
+**Current State:** Novus compiles complex programs including windowed applications, audio playback, and async/IPC via channels. The compiler produces working Amiga binaries tested on A4000 with 68040.
+
+> **Note:** This document was updated January 2026 to correct inaccuracies. Hardware DSLs (Copper, Blitter) are *designed* but not yet implemented. See `DOCUMENTATION_GAP_ANALYSIS.md` for details.
 
 ---
 
@@ -17,7 +19,7 @@ The Novus compiler has evolved significantly beyond its POC stage into a **produ
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Numeric Types** | ✅ Complete | i8-i64, u8-u64, f32, f64, fixed16, fixed32 |
+| **Numeric Types** | ✅ Complete | i8-i64, u8-u64, f32, f64 (fixed16/32 tokens only) |
 | **Boolean Type** | ✅ Complete | With short-circuit evaluation |
 | **Structs** | ✅ Complete | Generic structs, nested structs, methods |
 | **Enums** | ✅ Complete | Variants with associated data, pattern matching |
@@ -72,33 +74,34 @@ The Novus compiler has evolved significantly beyond its POC stage into a **produ
 15. **Loop Detection** - Loop structure analysis
 16. **SSA Construction/Destruction** - Modern IR form
 
-### ✅ Standard Library - COMPREHENSIVE (160 modules)
+### ✅ Standard Library - COMPREHENSIVE
 
-| Category | Modules | Status | Highlights |
-|----------|---------|--------|------------|
-| **std/core** | 1 | ✅ Complete | Result, Option, Drop, Error traits |
-| **std/memory** | 12 | ✅ Complete | Allocators, chip RAM, pools, RAII handles |
-| **std/graphics** | 18 | ✅ Complete | Copper, Blitter, Sprites, Bitmaps, Fonts |
-| **std/audio** | 8 | ✅ Complete | Paula, streaming, ProTracker MOD player |
-| **std/ui** | 8 | ✅ Complete | Windows, screens, menus, dialogs |
-| **std/ffi** | 90+ | ✅ Complete | Exec, DOS, Graphics, Intuition, MUI, Reaction |
-| **std/hardware** | 5 | ✅ Complete | Chipset, CPU/FPU detection, PAL/NTSC auto-detection, registers |
-| **std/async** | 4 | ✅ Complete | Executor, futures, sleep |
-| **std/sync** | 2 | ✅ Complete | Channels (bounded/unbounded), critical sections |
-| **std/collections** | 2 | ✅ Complete | Vec, HashMap |
-| **std/strings** | 3 | ✅ Complete | String, StringBuilder, parsing |
-| **std/io** | 3 | ✅ Complete | File I/O, ANSI terminal |
-| **std/ipc** | 1 | ✅ Complete | ARexx message-based IPC |
-| **std/test** | 2 | ✅ Complete | Test framework, assertions |
+| Category | Status | Highlights |
+|----------|--------|------------|
+| **std/core** | ✅ Complete | Result, Option, Drop, Clone, Default traits |
+| **std/memory** | ✅ Complete | MemoryBlock, Slice, chip/fast allocation |
+| **std/collections** | ✅ Complete | Vec, HashMap, HashSet, VecDeque, SmallVec, etc. |
+| **std/strings** | ✅ Complete | String, StringBuilder, Str, formatting |
+| **std/ffi** | ✅ Complete | 90+ AmigaOS bindings (Exec, DOS, Graphics, Intuition, etc.) |
+| **std/async** | ✅ Complete | Executor, futures, signal-based awaiting |
+| **std/sync** | ✅ Complete | Channels (bounded/unbounded), message passing |
+| **std/io** | ✅ Complete | File I/O, ANSI terminal output |
+| **std/os** | ✅ Complete | DOS, Exec, timer wrappers |
+| **std/ui** | 🚧 Partial | Window/screen wrappers, menu builder |
+| **std/audio** | 🚧 Partial | Basic Paula access via FFI |
+| **std/hardware** | 🚧 Partial | Register definitions, chipset detection |
+| **std/test** | ✅ Complete | Test framework with #[test] attribute |
 
-### ✅ Hardware DSLs - FULLY IMPLEMENTED
+### 📅 Hardware DSLs - PLANNED (v1.5)
 
-| DSL | Lines | Status | Features |
-|-----|-------|--------|----------|
-| **Copper** | 789 | ✅ Complete | WAIT, MOVE, SKIP, sprite/bitplane ptrs, validation |
-| **Blitter** | 1,369 | ✅ Complete | copy_rect, fill, line drawing, shifted blits |
-| **Paula Audio** | 500+ | ✅ Complete | Sample playback, 8SVX, streaming, MOD player |
-| **GELs System** | 1,809 | ✅ Complete | VSprites, BOBs, AnimObs, AnimComps, collision detection |
+> **Status Clarification:** Parser grammar for `copper {}` and `blitter {}` blocks exists, but semantic analysis and code generation are **not yet implemented**. Use `std/ffi/` bindings and inline assembly for direct hardware access.
+
+| DSL | Parser | Semantic | Codegen | Status |
+|-----|--------|----------|---------|--------|
+| **Copper** | ✅ | ❌ | ❌ | 📅 Planned v1.5 |
+| **Blitter** | ✅ | ❌ | ❌ | 📅 Planned v1.5 |
+| **Paula Audio** | N/A | N/A | N/A | ✅ Via std/ffi/audio.device |
+| **GELs System** | N/A | N/A | N/A | 🚧 Basic via std/ffi/graphics |
 
 ### ✅ AmigaOS FFI - EXTENSIVE COVERAGE
 
@@ -133,19 +136,16 @@ The channel system (std/sync/channel.novus) is production-ready:
 - Automatic message cleanup in Drop
 - Zero-copy message passing via Exec message ports
 
-### ✅ Library Building Support - COMPLETE
+### 🚧 Library Building Support - PARTIAL
 
-The @library attribute system is fully implemented:
-- ROMTag generation
-- Function vector tables (negative offsets from library base)
-- A6 calling convention wrappers
-- Default lifecycle functions (Open/Close/Expunge/Reserved)
-- Auto-generated introspection functions (GetLibraryVersion, GetCallCount, etc.)
-- C header generation
-- Novus FFI binding generation
-- FD file generation for VBCC
-- Client call stubs
-- Library template with working example
+The library/device attribute system has:
+- ✅ `@packed` and `@align(N)` - Working for struct layout control
+- ✅ Basic extern declarations for AmigaOS library calls
+- 🚧 `@library` attribute - Parser support, partial codegen
+- 📅 `@libvec`, `@devicevec` - Parser only, ROMTag/vector generation not implemented
+- 📅 `@resident`, `@autoinit` - Parser only
+
+**Current approach:** Use C stubs or VBCC for library entry points, call Novus code from there.
 
 ---
 
@@ -153,10 +153,12 @@ The @library attribute system is fully implemented:
 
 | Feature | Status | Gap |
 |---------|--------|-----|
-| **Async/await** | 🟡 80% | IR lowering complete, codegen hookup needed |
+| **Async/await** | ✅ Complete | State machine transformation, signal-based futures |
 | **Device building** | 🟡 60% | Template exists, needs @device attribute like @library |
-| **Inline assembly** | 🟡 50% | External .s files work, inline asm{} syntax deferred |
-| **M68k direct backend** | 🟡 5% | Prototype only (550 LOC), VBCC path is production |
+| **Inline assembly** | ✅ Complete | Full register binding, clobbers, use clause |
+| **Fixed-point math** | 🟡 20% | Tokens exist, semantics not implemented |
+| **Library attributes** | 🟡 50% | @packed/@align work; @libvec/@resident incomplete |
+| **Copper/Blitter DSLs** | 🟡 20% | Parser only, no codegen |
 
 ---
 
@@ -232,46 +234,56 @@ The @library attribute system is fully implemented:
 
 ## Roadmap
 
-### v1.0 (Current - ~90% complete)
-- [x] Core language features
-- [x] Standard library (159 modules)
-- [x] Hardware DSLs (Copper, Blitter, Paula)
-- [x] Library building (@library attribute)
+### v1.0 (Current - ~85% complete)
+- [x] Core language features (structs, enums, generics, traits)
+- [x] Result/Option error handling with ? operator
+- [x] Drop/RAII and move semantics
+- [x] Async/await with state machine transformation
+- [x] Pattern matching (match, if let, let else)
+- [x] Inline assembly with register bindings
+- [x] Standard library collections (Vec, HashMap, etc.)
+- [x] AmigaOS FFI bindings (90+ libraries)
 - [x] Channel/IPC system
-- [ ] PAL/NTSC auto-detection
-- [ ] AnimOb/BOB high-level API
-- [ ] Async codegen completion
-- [ ] const fn
+- [x] Test framework with #[test] attribute
+- [x] LSP language server
+- [ ] Library/device attribute codegen (@libvec, @resident)
+- [ ] Advanced allocators (arena, pool, slab)
+- [ ] Fixed-point math semantics
 
 ### v1.5 (Planned)
-- [ ] Device building (@device attribute)
-- [ ] ARexx integration
-- [ ] Network stack wrappers
-- [ ] Inline assembly (asm {} syntax)
-- [ ] Language server completion
+- [ ] Hardware DSLs (Copper, Blitter codegen)
+- [ ] Graphics assets DSL (sprites, BOBs)
+- [ ] Fat binaries (multi-CPU dispatch)
+- [ ] Closures with capture analysis
+- [ ] const fn evaluation
 
 ### v2.0 (Future)
 - [ ] Self-hosting compiler
-- [ ] Fat binaries (multi-CPU)
-- [ ] Advanced borrow checking
+- [ ] 68080/Apollo AMMX intrinsics
 
 ---
 
 ## Conclusion
 
-**Novus is production-ready for most Amiga development tasks.** The compiler is stable, the standard library is comprehensive, and real programs compile and run on hardware. The documentation has been significantly behind the actual implementation - this update corrects that.
+**Novus is production-ready for core Amiga development tasks.** The compiler is stable with strong type safety, move semantics, and comprehensive AmigaOS FFI bindings. Real programs compile and run on hardware.
 
-**What sets Novus apart:**
-- Modern language safety (Result/Option, RAII, bounds checking)
-- Zero-cost abstractions for Amiga hardware
-- Comprehensive AmigaOS integration (90+ library FFIs)
-- Innovative channel system for safe IPC
-- Working hardware DSLs for demos/games
+**What's Working Well:**
+- Modern language safety (Result/Option, RAII, move semantics, bounds checking)
+- Comprehensive type system with generics and traits
+- Full async/await with stackless coroutines
+- Extensive AmigaOS integration (90+ library FFIs)
+- Channel system for safe inter-process communication
+- LSP support for IDE integration
+
+**What's Planned:**
+- Hardware DSLs (Copper, Blitter) - Parser exists, codegen planned for v1.5
+- Graphics assets DSL - Designed but not implemented
+- Library/device attribute codegen - Partial implementation
 
 ---
 
-**Report Updated:** December 16, 2025
-**Compiler Version:** v0.9+ (Production-Ready)
-**Test Suite Status:** ✅ 3,436/3,436 passing
-**Standard Library:** 159 modules, 90+ FFI bindings
-**Example Programs:** 241 working demos
+**Report Updated:** January 23, 2026
+**Compiler Version:** v1.0-beta
+**Test Suite Status:** ✅ 3,700+/3,700+ passing
+**Standard Library:** 90+ FFI bindings
+**Example Programs:** 240+ working demos
