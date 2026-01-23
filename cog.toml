@@ -34,6 +34,12 @@ style = { changelog_title = "Style" }
 ci = { changelog_title = "CI/CD" }
 build = { changelog_title = "Build" }
 
+[git_hooks.commit-msg]
+script = """#!/bin/sh
+set -e
+cog verify --file $1
+"""
+
 [bump_profiles]
 
 [packages]
