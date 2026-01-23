@@ -1,30 +1,38 @@
-# Release - Bump version and create tag
+# Release - Auto-bump version and create tag
 #
-# Triggered manually when ready to release a new version.
-# Analyzes commits since last tag and bumps version accordingly:
+# Triggered on every push to main. Analyzes commits since last tag
+# and bumps version accordingly (if there are bumpable commits):
 # - feat commits → minor bump
 # - fix commits → patch bump
 # - BREAKING CHANGE → major bump
+#
+# If only docs/chore/ci commits, no version bump occurs.
 
 when:
-  - event: manual
+  - event: push
     branch: main
 
 labels:
   platform: linux/amd64
 
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      tags: true
+
 steps:
   - name: bump-version
     image: ghcr.io/cocogitto/cog:latest
     environment:
-      GIT_AUTHOR_NAME: "Woodpecker CI"
-      GIT_AUTHOR_EMAIL: "ci@novuslang.com"
-      GIT_COMMITTER_NAME: "Woodpecker CI"
-      GIT_COMMITTER_EMAIL: "ci@novuslang.com"
+      GITHUB_TOKEN:
+        from_secret: github_token
     commands:
       - git config user.name "Woodpecker CI"
       - git config user.email "ci@novuslang.com"
-      - cog bump --auto
-      - git push --follow-tags
-      - echo "✓ Version bumped and tagged"
-      - cog get-version
+      # Configure git to use token for push
+      - git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${CI_REPO}.git
+      # Try to bump - exits 0 even if nothing to bump
+      - cog bump --auto || echo "No version bump needed"
+      - git push --follow-tags || echo "Nothing to push"
+      - echo "Current version:" && cog get-version
