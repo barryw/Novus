@@ -3734,8 +3734,23 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             if (exprType == null)
                 return null;
 
+            // Special case: unsized array annotation [T] with array literal initializer
+            // The expression type will have the actual size, which is correct
+            bool typesMatch = TypesCompatible(varType, exprType);
+            if (!typesMatch &&
+                varType is IrArrayType unsizedArrayType &&
+                unsizedArrayType.Length < 0 &&
+                exprType is IrArrayType sizedArrayType &&
+                sizedArrayType.Length >= 0 &&
+                TypesCompatible(unsizedArrayType.ElementType, sizedArrayType.ElementType))
+            {
+                // Unsized annotation with sized literal - this is the preferred syntax
+                // The IrBuilder will use the sized type from the expression
+                typesMatch = true;
+            }
+
             // Check type compatibility with initializer
-            if (!TypesCompatible(varType, exprType))
+            if (!typesMatch)
             {
                 _diagnostics.ReportError(
                     "E0017",

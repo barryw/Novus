@@ -175,7 +175,7 @@ impl AudioDeviceHandle {
         // Set up channel allocation request
         // The allocation array lists acceptable channel combinations
         let channel_mask = preference.to_mask()
-        var alloc_map: [u8; 4] = [channel_mask, 0, 0, 0]
+        var alloc_map: [u8] = [channel_mask, 0, 0, 0]
 
         // Set up the IOAudio for allocation
         io_audio.ioa_Request.io_Message.mn_ReplyPort = port

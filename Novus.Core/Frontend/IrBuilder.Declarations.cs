@@ -288,14 +288,40 @@ public partial class IrBuilder
         {
             // Handle type - either explicit or inferred from initial value
             IrType type;
+            IrType? explicitType = null;
             if (context.type() != null)
             {
                 // Explicit type annotation provided
-                type = ParseType(context.type());
+                explicitType = ParseType(context.type());
+                type = explicitType;
             }
             else
             {
                 // Infer type from the initial value
+                type = initialValue.Type;
+            }
+
+            // FORBIDDEN: Specifying array size when initializing with elements
+            // The compiler MUST infer the size. Use [T] not [T; N] when providing elements.
+            if (explicitType is IrArrayType explicitArrayType &&
+                explicitArrayType.Length >= 0 &&
+                initialValue is IrArrayLiteral)
+            {
+                var errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.RedundantArraySize,
+                    $"Do not specify array size when initializing with elements. Use '[{explicitArrayType.ElementType.Name}]' instead of '[{explicitArrayType.ElementType.Name}; {explicitArrayType.Length}]' - the compiler will infer the size.",
+                    errorLocation
+                );
+                return;
+            }
+
+            // When explicit type is an unsized array ([T] with Length=-1) and value is an array literal,
+            // use the value's type which has the correct inferred size
+            if (explicitType is IrArrayType unsizedArrayType &&
+                unsizedArrayType.Length < 0 &&
+                initialValue is IrArrayLiteral)
+            {
                 type = initialValue.Type;
             }
 

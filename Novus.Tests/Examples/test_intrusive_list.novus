@@ -759,7 +759,7 @@ pub fn test_many_items() {
     list.init()
 
     // Create an array of items on the stack
-    var items: [TestItem; 10] = [
+    var items: [TestItem] = [
         new_test_item(0),
         new_test_item(1),
         new_test_item(2),

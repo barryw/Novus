@@ -25,7 +25,7 @@ from std::ffi::amiga_consts import TAG_DONE
 /// from std::ffi::intuition import WA_Width, WA_Height, WA_Title
 /// from std::ffi::amiga_structs import TagItem
 ///
-/// let input_tags: [TagItem; 3] = [
+/// let input_tags: [TagItem] = [
 ///     TagItem { ti_Tag: WA_Width, ti_Data: 640 },
 ///     TagItem { ti_Tag: WA_Height, ti_Data: 480 },
 ///     TagItem { ti_Tag: WA_Title, ti_Data: "My Window".ptr as u32 }

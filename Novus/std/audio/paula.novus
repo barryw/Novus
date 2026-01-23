@@ -1320,7 +1320,7 @@ impl MultiChannel {
         // The allocation array is a list of acceptable channel combinations (bitmasks).
         // audio.device tries each entry in order until it finds available channels.
         // ioa_Length = number of channels we WANT (not the array size!)
-        var alloc_map: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 0]
+        var alloc_map: [u8] = [0, 0, 0, 0, 0, 0, 0, 0]
         var num_channels: u32 = 0
 
         let channel_count = mask.count()

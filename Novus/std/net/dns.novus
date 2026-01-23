@@ -154,7 +154,7 @@ pub fn resolve_hostname_one(hostname: *u8) -> Result<Ipv4Addr, NetError> {
 /// ```
 pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
     let octets = addr.octets()
-    let addr_bytes: [u8; 4] = [octets[0], octets[1], octets[2], octets[3]]
+    let addr_bytes: [u8] = [octets[0], octets[1], octets[2], octets[3]]
     let addr_ptr: *u8 = (*u8)&addr_bytes
 
     let he = unsafe { gethostbyaddr(addr_ptr, 4, AF_INET) }

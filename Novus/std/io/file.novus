@@ -26,7 +26,7 @@ extern fn write(format: *u8, ...args) -> i32
 // Use this when building args programmatically or calling from pure Novus code
 //
 // Example:
-//   let args: [i32; 3] = [version.major() as i32, version.minor() as i32, version.patch() as i32]
+//   let args: [i32] = [version.major() as i32, version.minor() as i32, version.patch() as i32]
 //   write_array("Version: %ld.%ld.%ld\n", &args)
 //
 pub fn write_array(format: *u8, args: *i32) -> i32 {
@@ -45,7 +45,7 @@ pub fn wait_for_key() {
     let input_handle = Input()
     WaitForChar(input_handle, -1)
     // Read and discard the character
-    var buf: [u8; 1] = [0]
+    var buf: [u8] = [0]
     Read(input_handle, &buf[0], 1)
 }
 
@@ -66,7 +66,7 @@ pub fn key_pressed() -> bool {
 pub fn read_key() -> u8 {
     let input_handle = Input()
     WaitForChar(input_handle, -1)
-    var buf: [u8; 1] = [0]
+    var buf: [u8] = [0]
     Read(input_handle, &buf[0], 1)
     return buf[0]
 }

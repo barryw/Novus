@@ -247,6 +247,30 @@ public partial class IrBuilder
         // Use annotated type if specified, otherwise infer from value
         IrType type = annotatedType ?? value.Type;
 
+        // FORBIDDEN: Specifying array size when initializing with elements
+        // The compiler MUST infer the size. Use [T] not [T; N] when providing elements.
+        if (annotatedType is IrArrayType annotatedArrayType &&
+            annotatedArrayType.Length >= 0 &&
+            value is IrArrayLiteral)
+        {
+            var errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.RedundantArraySize,
+                $"Do not specify array size when initializing with elements. Use '[{annotatedArrayType.ElementType.Name}]' instead of '[{annotatedArrayType.ElementType.Name}; {annotatedArrayType.Length}]' - the compiler will infer the size.",
+                errorLocation
+            );
+            return null;
+        }
+
+        // When annotated type is an unsized array ([T] with Length=-1) and value is an array literal,
+        // use the value's type which has the correct inferred size
+        if (annotatedType is IrArrayType unsizedArrayType &&
+            unsizedArrayType.Length < 0 &&
+            value is IrArrayLiteral)
+        {
+            type = value.Type;
+        }
+
         // CRITICAL FIX: Generate unique names for local variables with type conflicts
         // Different scopes (e.g., match arms) can declare the same variable name with different types.
         // In C, we can't have multiple variables with the same name but different types

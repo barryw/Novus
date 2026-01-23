@@ -421,7 +421,7 @@ pub fn main() -> i32 {
     // Operand 1: 5
     // Operand 2: 5
     // Branch: short form, true polarity, offset 10 = 0x4A (0100_1010)
-    let test1_data: [u8; 5] = [$01, $05, $05, $4A, $00]
+    let test1_data: [u8] = [$01, $05, $05, $4A, $00]
     var mem1 = ZMemory::new(&test1_data[0], 4u32)
     let instr1: Instruction = decode_instruction(&var mem1)
 
@@ -450,7 +450,7 @@ pub fn main() -> i32 {
     // Operand 1: variable 3
     // Operand 2: 10
     // Store: variable 4
-    let test2_data: [u8; 4] = [$54, $03, $0A, $04]
+    let test2_data: [u8] = [$54, $03, $0A, $04]
     var mem2 = ZMemory::new(&test2_data[0], 4u32)
     let instr2: Instruction = decode_instruction(&var mem2)
 
@@ -475,7 +475,7 @@ pub fn main() -> i32 {
 
     // Test 3: Decode 'rtrue' (0OP)
     // rtrue is 0OP:0 = 0xB0 (1011_0000)
-    let test3_data: [u8; 1] = [$B0]
+    let test3_data: [u8] = [$B0]
     var mem3 = ZMemory::new(&test3_data[0], 1u32)
     let instr3: Instruction = decode_instruction(&var mem3)
 
@@ -485,7 +485,7 @@ pub fn main() -> i32 {
 
     // Test 4: Decode 'rfalse' (0OP)
     // rfalse is 0OP:1 = 0xB1 (1011_0001)
-    let test4_data: [u8; 1] = [$B1]
+    let test4_data: [u8] = [$B1]
     var mem4 = ZMemory::new(&test4_data[0], 1u32)
     let instr4: Instruction = decode_instruction(&var mem4)
 
@@ -497,7 +497,7 @@ pub fn main() -> i32 {
     // jz is 1OP:0 with variable operand = 0xA0 (1010_0000)
     // Operand: variable 2
     // Branch: short form, offset 5 = 0x45
-    let test5_data: [u8; 3] = [$A0, $02, $45]
+    let test5_data: [u8] = [$A0, $02, $45]
     var mem5 = ZMemory::new(&test5_data[0], 3u32)
     let instr5: Instruction = decode_instruction(&var mem5)
 
@@ -520,7 +520,7 @@ pub fn main() -> i32 {
     // Test 6: Decode 'inc var5' (1OP)
     // inc is 1OP:5 with variable operand = 0xA5 (1010_0101)
     // Operand: variable 5
-    let test6_data: [u8; 2] = [$A5, $05]
+    let test6_data: [u8] = [$A5, $05]
     var mem6 = ZMemory::new(&test6_data[0], 2u32)
     let instr6: Instruction = decode_instruction(&var mem6)
 
@@ -540,7 +540,7 @@ pub fn main() -> i32 {
     // Test 7: Decode 'dec var7' (1OP)
     // dec is 1OP:6 with variable operand = 0xA6 (1010_0110)
     // Operand: variable 7
-    let test7_data: [u8; 2] = [$A6, $07]
+    let test7_data: [u8] = [$A6, $07]
     var mem7 = ZMemory::new(&test7_data[0], 2u32)
     let instr7: Instruction = decode_instruction(&var mem7)
 
@@ -560,7 +560,7 @@ pub fn main() -> i32 {
     // Test 8: Decode 'ret 42' (1OP, small constant)
     // ret is 1OP:$0B with small constant = 0x9B (1001_1011)
     // Operand: 42
-    let test8_data: [u8; 2] = [$9B, $2A]
+    let test8_data: [u8] = [$9B, $2A]
     var mem8 = ZMemory::new(&test8_data[0], 2u32)
     let instr8: Instruction = decode_instruction(&var mem8)
 

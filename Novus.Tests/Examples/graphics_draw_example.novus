@@ -149,7 +149,7 @@ pub fn main() -> i32 {
                     ctx.pen(1)
 
                     // Point array for polyline
-                    var points: [Point; 5] = [
+                    var points: [Point] = [
                         Point { x: 320, y: 150 },
                         Point { x: 370, y: 150 },
                         Point { x: 370, y: 200 },

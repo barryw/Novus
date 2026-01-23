@@ -20,7 +20,7 @@ fn wait_for_key() {
     // Wait indefinitely for input (-1 = wait forever)
     WaitForChar(input_handle, -1)
     // Read and discard the character
-    var buf: [u8; 1] = [0]
+    var buf: [u8] = [0]
     Read(input_handle, &buf[0], 1)
 }
 
@@ -30,8 +30,8 @@ static music_data: [u8] = []
 
 fn print_hex(value: u32) {
     let out = Output()
-    let hex_chars: [u8; 16] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
-    var buf: [u8; 10] = [48, 120, 48, 48, 48, 48, 48, 48, 48, 48]
+    let hex_chars: [u8] = [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70]
+    var buf: [u8] = [48, 120, 48, 48, 48, 48, 48, 48, 48, 48]
 
     var v = value
     var i = 9
@@ -46,7 +46,7 @@ fn print_hex(value: u32) {
 
 fn print_num(value: i32) {
     let out = Output()
-    var buf: [u8; 12] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    var buf: [u8] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     var v = value
     var i = 10
 

@@ -948,7 +948,7 @@ impl MUIApp {
     /// Get new input using MUIM_Application_NewInput
     fn new_input(&self, signals: *u32) -> u32 {
         unsafe {
-            let msg: [u32; 2] = [MUIM_Application_NewInput, (u32)signals]
+            let msg: [u32] = [MUIM_Application_NewInput, (u32)signals]
             return DoMethodA(self.app, &msg[0])
         }
     }
@@ -956,7 +956,7 @@ impl MUIApp {
     /// Set up a notification
     pub fn notify(&self, source: *u8, attr: u32, trigger: u32, dest: *u8, method: u32) {
         unsafe {
-            let msg: [u32; 7] = [
+            let msg: [u32] = [
                 MUIM_Notify,
                 attr,
                 trigger,
@@ -972,7 +972,7 @@ impl MUIApp {
     /// Set up a notification with one parameter
     pub fn notify_val(&self, source: *u8, attr: u32, trigger: u32, dest: *u8, method: u32, val: u32) {
         unsafe {
-            let msg: [u32; 8] = [
+            let msg: [u32] = [
                 MUIM_Notify,
                 attr,
                 trigger,
@@ -1148,7 +1148,7 @@ pub fn make_text_preparse(text: *u8, preparse: *u8) -> *u8 {
 /// Set an attribute on an object
 pub fn set_attr(obj: *u8, attr: u32, value: u32) {
     unsafe {
-        let msg: [u32; 3] = [MUIM_Set, attr, value]
+        let msg: [u32] = [MUIM_Set, attr, value]
         DoMethodA(obj, &msg[0])
     }
 }
@@ -1156,7 +1156,7 @@ pub fn set_attr(obj: *u8, attr: u32, value: u32) {
 /// Set a string attribute on an object (convenience for text content)
 pub fn set_text(obj: *u8, text: Str) {
     unsafe {
-        let msg: [u32; 3] = [MUIM_Set, MUIA_Text_Contents, (u32)text.ptr]
+        let msg: [u32] = [MUIM_Set, MUIA_Text_Contents, (u32)text.ptr]
         DoMethodA(obj, &msg[0])
     }
 }
@@ -1164,7 +1164,7 @@ pub fn set_text(obj: *u8, text: Str) {
 /// Set a string attribute on an object (any string attribute)
 pub fn set_str_attr(obj: *u8, attr: u32, text: Str) {
     unsafe {
-        let msg: [u32; 3] = [MUIM_Set, attr, (u32)text.ptr]
+        let msg: [u32] = [MUIM_Set, attr, (u32)text.ptr]
         DoMethodA(obj, &msg[0])
     }
 }
@@ -1188,7 +1188,7 @@ pub fn get_attr(obj: *u8, attr: u32, storage: *u32) -> u32 {
 /// Add entries to a list
 pub fn list_insert(list: *u8, entries: **u8, count: i32, pos: i32) {
     unsafe {
-        let msg: [u32; 4] = [MUIM_List_Insert, (u32)entries, (u32)count, (u32)pos]
+        let msg: [u32] = [MUIM_List_Insert, (u32)entries, (u32)count, (u32)pos]
         DoMethodA(list, &msg[0])
     }
 }
@@ -1196,7 +1196,7 @@ pub fn list_insert(list: *u8, entries: **u8, count: i32, pos: i32) {
 /// Clear a list
 pub fn list_clear(list: *u8) {
     unsafe {
-        let msg: [u32; 1] = [MUIM_List_Clear]
+        let msg: [u32] = [MUIM_List_Clear]
         DoMethodA(list, &msg[0])
     }
 }
@@ -1204,7 +1204,7 @@ pub fn list_clear(list: *u8) {
 /// Redraw a list
 pub fn list_redraw(list: *u8, entry: i32) {
     unsafe {
-        let msg: [u32; 2] = [MUIM_List_Redraw, (u32)entry]
+        let msg: [u32] = [MUIM_List_Redraw, (u32)entry]
         DoMethodA(list, &msg[0])
     }
 }
@@ -1271,7 +1271,7 @@ impl MenuItemBuilder {
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
             if item != null {
                 // Add to menu using MUIA_Family_Child
-                let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
+                let add_msg: [u32] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
             }
         }
@@ -1299,7 +1299,7 @@ impl MenuItemBuilder {
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
             if item != null {
-                let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
+                let add_msg: [u32] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
             }
         }
@@ -1316,7 +1316,7 @@ impl MenuItemBuilder {
 
             let item = MUI_NewObjectA("Menuitem.mui".ptr, tags.finish())
             if item != null {
-                let add_msg: [u32; 3] = [MUIM_Family_AddTail, (u32)item, (u32)0]
+                let add_msg: [u32] = [MUIM_Family_AddTail, (u32)item, (u32)0]
                 DoMethodA(self.menu_obj, &add_msg[0])
             }
         }

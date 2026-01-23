@@ -271,7 +271,7 @@ pub fn draw_char(rp: *RastPort, ch: u8) -> i32 {
     if !rp {
         return -1
     }
-    var buf: [u8; 1] = [ch]
+    var buf: [u8] = [ch]
     return Text(rp, &buf[0], 1)
 }
 

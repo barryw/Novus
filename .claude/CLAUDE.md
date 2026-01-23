@@ -22,6 +22,19 @@
 
 - **🚨 NEVER USE VASM/VLINK DIRECTLY**: Always build Amiga executables using the Novus compiler. Always. The compiler handles the complete pipeline: compile → assemble → link. If you manually invoke `vasmm68k_mot` or `vlink`, you're doing it wrong.
 
+- **🚨🚨🚨 ARRAY SIZE INFERENCE IS MANDATORY 🚨🚨🚨**: NEVER specify array sizes when initializing with elements. The compiler MUST infer the size. This syntax is FORBIDDEN and produces a compile error:
+  ```novus
+  // ❌ WRONG - DO NOT DO THIS - BARRY WILL SCREAM
+  let data: [u16; 4] = [1, 2, 3, 4]
+  static sprites: [u16; 64] = [...]
+  ```
+  ```novus
+  // ✅ CORRECT - Let the compiler infer the size
+  let data: [u16] = [1, 2, 3, 4]
+  static sprites: [u16] = [...]
+  ```
+  The ONLY time you specify a size is for an EMPTY/UNINITIALIZED array: `let buffer: [u8; 1024]`. If you see `[T; N] = [elements...]` anywhere in examples, stdlib, or documentation, EXTERMINATE IT.
+
 ---
 
 ## Overview

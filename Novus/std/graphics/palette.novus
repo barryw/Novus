@@ -199,7 +199,7 @@ pub fn set_color(vp: *ViewPort, index: u8, color: Color) -> Result<(), GraphicsE
 ///
 /// Example:
 /// ```novus
-/// let palette: [Color; 4] = [
+/// let palette: [Color] = [
 ///     rgb(0, 0, 0),      // Color 0: Black
 ///     rgb(255, 0, 0),    // Color 1: Red
 ///     rgb(0, 255, 0),    // Color 2: Green

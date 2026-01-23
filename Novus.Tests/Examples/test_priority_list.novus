@@ -317,7 +317,7 @@ pub fn test_remove_all_by_priority() {
     var list = PriorityList::<PriorityItem>::new()
     list.init()
 
-    var items: [PriorityItem; 5] = [
+    var items: [PriorityItem] = [
         new_priority_item(1, 1),
         new_priority_item(2, 2),
         new_priority_item(3, 3),
@@ -593,7 +593,7 @@ pub fn test_many_items() {
     list.init()
 
     // Create items with priorities 9,8,7,6,5,4,3,2,1,0
-    var items: [PriorityItem; 10] = [
+    var items: [PriorityItem] = [
         new_priority_item(0, 0),
         new_priority_item(1, 1),
         new_priority_item(2, 2),

@@ -79,6 +79,7 @@ public static class ErrorCodes
     public const string UnknownEscapeSequence = "E2602";
     public const string UnmatchedBracesInFString = "E2603";
     public const string RedundantTypeAnnotation = "E2604";
+    public const string RedundantArraySize = "E2605";  // Array size must be inferred when initializing with elements
 
     // ========================================================================
     // E27XX: Struct/Enum Errors

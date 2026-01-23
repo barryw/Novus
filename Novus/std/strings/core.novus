@@ -1505,7 +1505,7 @@ impl Str {
 ///
 /// Example:
 /// ```novus
-/// let parts: [Str; 3] = [/* ... */]
+/// let parts: [Str] = [/* ... */]
 /// let path = str_join(&parts, 3, "/")?
 /// ```
 pub fn str_join(parts: *Str, count: u32, separator: Str) -> Result<String, StringError> {

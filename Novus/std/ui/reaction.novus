@@ -344,7 +344,7 @@ impl ReActionBuilder {
             }
 
             // Open the window using WM_OPEN method
-            let open_msg: [u32; 1] = [WM_OPEN]
+            let open_msg: [u32] = [WM_OPEN]
             let window_ptr = DoMethodA(window_obj, &open_msg[0])
 
             if window_ptr == 0 {
@@ -1040,9 +1040,9 @@ impl ReActionWindow {
             Wait(self.sig_mask)
 
             // Handle input - use array so we can get a pointer
-            var code: [u16; 1] = [0]
+            var code: [u16] = [0]
             let code_ptr = (*u16)&code[0]
-            let handle_msg: [u32; 2] = [WM_HANDLEINPUT, (u32)code_ptr]
+            let handle_msg: [u32] = [WM_HANDLEINPUT, (u32)code_ptr]
 
             forever {
                 let result = DoMethodA(self.window_obj, &handle_msg[0])
@@ -1062,9 +1062,9 @@ impl ReActionWindow {
     pub fn poll_event(&self) -> Option<ReActionEvent> {
         unsafe {
             // Use array so we can get a pointer
-            var code: [u16; 1] = [0]
+            var code: [u16] = [0]
             let code_ptr = (*u16)&code[0]
-            let handle_msg: [u32; 2] = [WM_HANDLEINPUT, (u32)code_ptr]
+            let handle_msg: [u32] = [WM_HANDLEINPUT, (u32)code_ptr]
 
             let result = DoMethodA(self.window_obj, &handle_msg[0])
 
@@ -1120,7 +1120,7 @@ impl Drop for ReActionWindow {
         unsafe {
             // Close window via WM_CLOSE
             if self.window {
-                let close_msg: [u32; 1] = [WM_CLOSE]
+                let close_msg: [u32] = [WM_CLOSE]
                 DoMethodA(self.window_obj, &close_msg[0])
                 self.window = null
             }

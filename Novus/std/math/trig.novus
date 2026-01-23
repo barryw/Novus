@@ -64,7 +64,7 @@ pub const ANGLE_ONE_DEGREE: u16 = 182u16
 // Sine table with 65 entries for first quadrant (0° to 90°)
 // Values are sin(i * 90 / 64) * 16384, where 16384 = 1.0
 // Generated with: round(sin(i * pi / 128) * 16384) for i = 0..64
-static SINE_TABLE: [i16; 65] = [
+static SINE_TABLE: [i16] = [
     0,      // sin(0.000°) = 0.0000
     402,    // sin(1.406°) = 0.0245
     804,    // sin(2.813°) = 0.0491
