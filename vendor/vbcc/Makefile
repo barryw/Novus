@@ -7,6 +7,7 @@ INSTALL_DIR ?= /opt/vbcc
 # from machines/m68k/machine.dt (requires interactive input, so we commit generated files).
 
 all:
+	@mkdir -p bin vbcc/bin vasm/obj vlink/objects 2>/dev/null || true
 	@(cd vbcc; make TARGET=m68k)
 	@(cd vasm; make CPU=m68k SYNTAX=mot)
 	@(cd vlink; make)

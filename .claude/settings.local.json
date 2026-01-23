@@ -200,7 +200,10 @@
       "Bash(do echo \"=== Compiling $f ===\")",
       "Bash(perl -i -pe:*)",
       "Bash(/tmp/test_fixed32_sqrt2)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(woodpecker-cli secret add:*)",
+      "Bash(woodpecker-cli repo secret:*)",
+      "Bash(woodpecker-cli lint:*)"
     ],
     "deny": [],
     "ask": []
