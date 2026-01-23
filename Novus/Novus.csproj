@@ -9,6 +9,11 @@
         <InvariantGlobalization>true</InvariantGlobalization>
         <TrimMode>partial</TrimMode>
         <Version>0.1.1</Version>
+        <!-- Suppress trim warnings from third-party assemblies as errors -->
+        <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+        <TrimmerSingleWarn>false</TrimmerSingleWarn>
+        <EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+        <IlcTreatWarningsAsErrors>false</IlcTreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
