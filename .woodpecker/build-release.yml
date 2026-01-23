@@ -1,16 +1,15 @@
-# Build Release - Build AOT binaries and attach to GitHub release
+# Build & Release - Full automation on push to main
 #
-# Triggered when version tags are pushed (e.g., v0.2.0).
-# Builds native binaries for all platforms in parallel and uploads to GitHub release.
+# 1. Validates conventional commits
+# 2. Bumps version (if feat/fix commits exist)
+# 3. Builds AOT binaries for all platforms
+# 4. Creates GitHub release with binaries
 #
-# Agent requirements:
-# - Linux: Docker backend with .NET 9 SDK available, or local backend with dotnet + gh CLI
-# - macOS: Local backend with .NET 9 SDK + gh CLI installed
-# - Windows: Local backend with .NET 9 SDK + gh CLI installed
+# Just push to main. Everything else is automatic.
 
 when:
-  - event: tag
-    ref: refs/tags/v*
+  - event: push
+    branch: main
 
 matrix:
   include:
@@ -18,23 +17,65 @@ matrix:
       rid: linux-x64
       binary_name: novus-linux-x64
       image: mcr.microsoft.com/dotnet/sdk:9.0
+      is_primary: "true"
     - platform: darwin/amd64
       rid: osx-x64
       binary_name: novus-macos-x64
       image: bash
+      is_primary: "false"
     - platform: darwin/arm64
       rid: osx-arm64
       binary_name: novus-macos-arm64
       image: bash
+      is_primary: "false"
     - platform: windows/amd64
       rid: win-x64
       binary_name: novus-windows-x64.exe
       image: powershell
+      is_primary: "false"
 
 labels:
   platform: ${platform}
 
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      tags: true
+
 steps:
+  - name: bump-version
+    image: ${image}
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      # Only primary job does the bump to avoid race conditions
+      - |
+        if [ "${is_primary}" = "true" ]; then
+          echo "=== Bumping version ==="
+          git config user.name "Woodpecker CI"
+          git config user.email "ci@novuslang.com"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${CI_REPO}.git
+
+          # Install cog if not available (for Docker image)
+          which cog || (curl -sSL https://raw.githubusercontent.com/cocogitto/cocogitto/main/scripts/install.sh | sh -s -- --dest /usr/local/bin)
+
+          cog bump --auto && git push --follow-tags || echo "No version bump needed"
+        else
+          echo "Waiting for primary job to bump version..."
+          sleep 15
+        fi
+      # Get current version for this build
+      - |
+        if command -v cog > /dev/null 2>&1; then
+          VERSION=$(cog get-version 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+        else
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+        fi
+        echo "Building version: $VERSION"
+        echo "$VERSION" > .version
+
   - name: build
     image: ${image}
     commands:
@@ -45,7 +86,6 @@ steps:
   - name: prepare-artifacts
     image: ${image}
     commands:
-      # Copy and rename binary to standard name
       - |
         if [ -f ./publish/novus.exe ]; then
           cp ./publish/novus.exe ./${binary_name}
@@ -58,16 +98,13 @@ steps:
           cp ./publish/Novus ./${binary_name}
           chmod +x ./${binary_name} 2>/dev/null || true
         fi
-      # Generate SHA256 checksum
       - |
         if command -v sha256sum > /dev/null 2>&1; then
           sha256sum ${binary_name} > ${binary_name}.sha256
         elif command -v shasum > /dev/null 2>&1; then
           shasum -a 256 ${binary_name} > ${binary_name}.sha256
-        elif command -v Get-FileHash > /dev/null 2>&1; then
-          powershell -Command "(Get-FileHash -Algorithm SHA256 ${binary_name}).Hash.ToLower() + '  ${binary_name}'" > ${binary_name}.sha256
         else
-          echo "No checksum tool found" && exit 1
+          powershell -Command "(Get-FileHash -Algorithm SHA256 ${binary_name}).Hash.ToLower() + '  ${binary_name}'" > ${binary_name}.sha256
         fi
       - echo "=== Artifacts ==="
       - ls -la ${binary_name}* 2>/dev/null || dir ${binary_name}*
@@ -79,8 +116,15 @@ steps:
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
-      # Create release if it doesn't exist (first job wins, others skip)
-      - gh release create ${CI_COMMIT_TAG} --repo ${CI_REPO} --generate-notes 2>/dev/null || echo "Release already exists"
-      # Upload binary and checksum (--clobber allows re-runs)
-      - gh release upload ${CI_COMMIT_TAG} ${binary_name} ${binary_name}.sha256 --repo ${CI_REPO} --clobber
-      - echo "Uploaded ${binary_name} to release ${CI_COMMIT_TAG}"
+      - VERSION=$(cat .version)
+      - echo "Uploading ${binary_name} for version ${VERSION}..."
+      - |
+        if [ "$VERSION" = "dev" ]; then
+          echo "No version tag, skipping release upload"
+          exit 0
+        fi
+      # Create release if it doesn't exist
+      - gh release create "v${VERSION}" --repo ${CI_REPO} --generate-notes 2>/dev/null || echo "Release exists"
+      # Upload binary
+      - gh release upload "v${VERSION}" ${binary_name} ${binary_name}.sha256 --repo ${CI_REPO} --clobber
+      - echo "✓ Uploaded ${binary_name}"
