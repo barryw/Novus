@@ -1,0 +1,30 @@
+# Release - Bump version and create tag
+#
+# Triggered manually when ready to release a new version.
+# Analyzes commits since last tag and bumps version accordingly:
+# - feat commits → minor bump
+# - fix commits → patch bump
+# - BREAKING CHANGE → major bump
+
+when:
+  - event: manual
+    branch: main
+
+labels:
+  platform: linux/amd64
+
+steps:
+  - name: bump-version
+    image: ghcr.io/cocogitto/cog:latest
+    environment:
+      GIT_AUTHOR_NAME: "Woodpecker CI"
+      GIT_AUTHOR_EMAIL: "ci@novuslang.com"
+      GIT_COMMITTER_NAME: "Woodpecker CI"
+      GIT_COMMITTER_EMAIL: "ci@novuslang.com"
+    commands:
+      - git config user.name "Woodpecker CI"
+      - git config user.email "ci@novuslang.com"
+      - cog bump --auto
+      - git push --follow-tags
+      - echo "✓ Version bumped and tagged"
+      - cog get-version

@@ -1,0 +1,17 @@
+# Conventional Commits - Validate commit messages
+#
+# Runs on every push to ensure all commits follow conventional commit format.
+# This is the CI safety net - developers should also install the local hook.
+
+when:
+  - event: push
+
+labels:
+  platform: linux/amd64
+
+steps:
+  - name: validate-commits
+    image: ghcr.io/cocogitto/cog:latest
+    commands:
+      - cog check
+      - echo "✓ All commits follow conventional commit format"

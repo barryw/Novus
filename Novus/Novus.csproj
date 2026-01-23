@@ -8,6 +8,7 @@
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <TrimMode>partial</TrimMode>
+        <Version>0.1.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
