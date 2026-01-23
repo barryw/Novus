@@ -8,6 +8,8 @@ INSTALL_DIR ?= /opt/vbcc
 
 all:
 	@mkdir -p bin vbcc/bin vasm/obj vlink/objects 2>/dev/null || true
+	# Touch pre-generated dt.h/dt.c so make doesn't try to regenerate (requires interactive input)
+	@touch vbcc/machines/m68k/dt.h vbcc/machines/m68k/dt.c 2>/dev/null || true
 	@(cd vbcc; make TARGET=m68k)
 	@(cd vasm; make CPU=m68k SYNTAX=mot)
 	@(cd vlink; make)
