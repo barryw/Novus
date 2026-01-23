@@ -47,6 +47,8 @@ steps:
     image: ${image}
     commands:
       - echo "Building Novus for ${rid}..."
+      # Install build tools if needed (Linux Docker image)
+      - apt-get update && apt-get install -y make gcc 2>/dev/null || true
       - dotnet publish Novus/Novus.csproj -c Release -r ${rid} -o ./publish --self-contained true
       - ls -la ./publish/ || dir ./publish/
 
