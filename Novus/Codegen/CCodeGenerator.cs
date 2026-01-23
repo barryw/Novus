@@ -592,6 +592,8 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <graphics/text.h>");
         sb.AppendLine("#include <utility/tagitem.h>");
         sb.AppendLine("#include <dos/dos.h>");
+        // Workbench headers for Workbench startup support
+        sb.AppendLine("#include <workbench/startup.h>");
         // Rexx headers for ARexx support
         sb.AppendLine("#include <rexx/storage.h>");
         sb.AppendLine("#include <rexx/rxslib.h>");
@@ -694,6 +696,7 @@ public partial class CCodeGenerator
         // DOS types that are commonly used in user code
         sb.AppendLine("typedef struct RDArgs RDArgs;");
         sb.AppendLine("typedef struct WBStartup WBStartup;");
+        sb.AppendLine("typedef struct WBArg WBArg;");
         sb.AppendLine("typedef struct Process Process;");
         sb.AppendLine("typedef struct FileInfoBlock FileInfoBlock;");
         sb.AppendLine("typedef struct InfoData InfoData;");

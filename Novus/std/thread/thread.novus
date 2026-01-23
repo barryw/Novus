@@ -301,13 +301,11 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     let entry_addr = (*u8)fn_addr_value
 
     // FinalPC - we don't use it since run_thread_loop handles cleanup
-    let final_addr = null
+    let final_addr: *u8 = null
 
     // Add the task to the system
-    let result = AddTask(task, entry_addr, final_addr)
-
-    // Check if AddTask succeeded (returns non-null on success for 2.0+)
-    // On 1.x it returns nothing, so we assume success
+    // Note: We ignore the return value (non-null on 2.0+, undefined on 1.x)
+    AddTask(task, entry_addr, final_addr)
 
     return Result::Ok(ThreadHandle {
         task: task,

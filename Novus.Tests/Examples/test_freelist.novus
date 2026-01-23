@@ -78,7 +78,7 @@ pub fn test_reuse() {
     match ObjectPool::<TestItem>::with_capacity(4) {
         Option::Some(var pool) => {
             // Allocate all slots
-            var items: [*TestItem; 4] = [(*TestItem)null, (*TestItem)null, (*TestItem)null, (*TestItem)null]
+            var items: [*TestItem] = [(*TestItem)null, (*TestItem)null, (*TestItem)null, (*TestItem)null]
 
             var i: u32 = 0
             while i < 4 {

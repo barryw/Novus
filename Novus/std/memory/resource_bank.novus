@@ -168,7 +168,14 @@ impl ResourceBank {
         var bank = ResourceBank {
             name: [0; 32],
             name_len: 0,
-            entries: [BankEntry::new(0, null, 0, Priority::Normal); 64],
+            entries: [BankEntry {
+                asset_id: 0,
+                source_ptr: null,
+                size: 0,
+                priority: Priority::Normal,
+                debug_name: [0; 32],
+                debug_name_len: 0,
+            }; 64],
             entry_count: 0,
             state: BankState::Unloaded,
             total_size: 0,

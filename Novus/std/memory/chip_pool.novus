@@ -79,7 +79,7 @@ impl SizePool {
         return SizePool {
             pool_header: null,
             block_size: 0,
-            allocs: [PoolAlloc::new(); 64],
+            allocs: [PoolAlloc { ptr: null, size: 0 }; 64],
             alloc_count: 0,
             total_allocated: 0,
         }

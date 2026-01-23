@@ -91,7 +91,7 @@ fn build_advanced_tab(root: *MUIGroupBuilder) -> (*u8, *u8, *u8, *u8) {
 
     // Radio buttons
     advanced.label("Select an option:")
-    let radio_entries: [*u8; 4] = ["Option A".ptr, "Option B".ptr, "Option C".ptr, (*u8)0]
+    let radio_entries: [*u8] = ["Option A".ptr, "Option B".ptr, "Option C".ptr, (*u8)0]
     let radio = make_radio(GAD_RADIO, &radio_entries[0], 0)
     advanced
         .child(radio)
