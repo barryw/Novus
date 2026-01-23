@@ -199,8 +199,8 @@ let message = f"Hello, {name}! You are {age} years old."
 Arrays have a fixed size known at compile time:
 
 ```novus
-// Array with explicit type and size
-let numbers: [i32; 5] = [1, 2, 3, 4, 5]
+// Array with inferred size (compiler determines length from elements)
+let numbers: [i32] = [1, 2, 3, 4, 5]
 
 // Array with type inference
 let colors = [0xFF0000, 0x00FF00, 0x0000FF]
@@ -300,9 +300,9 @@ fn main() -> i32 {
     let height: u16 = 200
     var sprite_count = 0u32
 
-    // Arrays
-    let sprite_x: [i16; MAX_SPRITES] = [0, 16, 32, 48, 64, 80, 96, 112]
-    let sprite_y: [i16; MAX_SPRITES] = [100, 100, 100, 100, 100, 100, 100, 100]
+    // Arrays (size inferred from elements)
+    let sprite_x: [i16] = [0, 16, 32, 48, 64, 80, 96, 112]
+    let sprite_y: [i16] = [100, 100, 100, 100, 100, 100, 100, 100]
 
     // Fixed-point math
     let scale: fixed16 = 1.5

@@ -373,8 +373,8 @@ Properties of constants:
 Static variables have a fixed memory location and live for the entire program:
 
 \begin{lstlisting}
-// Immutable static - initialized data
-static SINE_TABLE: [i16; 65] = [
+// Immutable static - initialized data (size inferred from elements)
+static SINE_TABLE: [i16] = [
     0, 804, 1608, 2410, 3212, 4011, 4808, // ...
 ]
 

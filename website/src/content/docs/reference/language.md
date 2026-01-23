@@ -225,9 +225,9 @@ let angle: fixed16 = 1.5
 Fixed-size arrays with compile-time known length:
 
 ```novus
-let numbers: [i32; 5] = [1, 2, 3, 4, 5]
-let buffer: [u8; 256]  // uninitialized
-let colors: [u8; 3] = [255, 0, 0]  // RGB red
+let numbers: [i32] = [1, 2, 3, 4, 5]  // size inferred from elements
+let buffer: [u8; 256]  // uninitialized (size required)
+let colors: [u8] = [255, 0, 0]  // RGB red
 ```
 
 **Array access:**
@@ -257,7 +257,7 @@ let y = point.1
 Dynamic views into arrays or sequences:
 
 ```novus
-let numbers: [i32; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let numbers: [i32] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 let slice: [i32] = numbers[2..5]  // [3, 4, 5]
 let full: [i32] = numbers[..]     // entire array
 ```

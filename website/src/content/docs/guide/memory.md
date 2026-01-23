@@ -580,7 +580,7 @@ Structs are laid out sequentially in memory with natural alignment.
 ### Array Memory Layout
 
 ```novus
-let arr: [i32; 4] = [10, 20, 30, 40]
+let arr: [i32] = [10, 20, 30, 40]
 // Memory layout:
 // [10] [20] [30] [40]
 // Elements are contiguous
