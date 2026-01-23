@@ -13,5 +13,7 @@ steps:
   - name: validate-commits
     image: ghcr.io/cocogitto/cog:latest
     commands:
+      # Fetch tags - Woodpecker shallow clones don't include them
+      - git fetch --tags
       - cog check
       - echo "✓ All commits follow conventional commit format"
