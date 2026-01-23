@@ -1,0 +1,68 @@
+# Build Release - Build AOT binaries and attach to GitHub release
+#
+# Triggered when version tags are pushed (e.g., v0.2.0).
+# Builds native binaries for all platforms in parallel and uploads to GitHub release.
+
+when:
+  - event: tag
+    ref: refs/tags/v*
+
+matrix:
+  include:
+    - platform: linux/amd64
+      rid: linux-x64
+      binary_name: novus-linux-x64
+    - platform: darwin/amd64
+      rid: osx-x64
+      binary_name: novus-macos-x64
+    - platform: darwin/arm64
+      rid: osx-arm64
+      binary_name: novus-macos-arm64
+    - platform: windows/amd64
+      rid: win-x64
+      binary_name: novus-windows-x64.exe
+
+labels:
+  platform: ${platform}
+
+steps:
+  - name: build
+    commands:
+      - echo "Building Novus for ${rid}..."
+      - dotnet publish Novus/Novus.csproj -c Release -r ${rid} -o ./publish --self-contained true
+      - ls -la ./publish/
+
+  - name: prepare-artifacts
+    commands:
+      # Copy and rename binary to standard name
+      - |
+        if [ -f ./publish/novus.exe ]; then
+          cp ./publish/novus.exe ./${binary_name}
+        else
+          cp ./publish/novus ./${binary_name}
+          chmod +x ./${binary_name}
+        fi
+      # Generate SHA256 checksum
+      - |
+        if command -v sha256sum > /dev/null; then
+          sha256sum ${binary_name} > ${binary_name}.sha256
+        elif command -v shasum > /dev/null; then
+          shasum -a 256 ${binary_name} > ${binary_name}.sha256
+        else
+          # Windows fallback - PowerShell
+          powershell -Command "(Get-FileHash -Algorithm SHA256 ${binary_name}).Hash.ToLower() + '  ${binary_name}'" > ${binary_name}.sha256
+        fi
+      - echo "=== Artifacts ==="
+      - ls -la ${binary_name}*
+      - cat ${binary_name}.sha256
+
+  - name: upload-to-release
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      # Create release if it doesn't exist (first job wins, others skip)
+      - gh release create ${CI_COMMIT_TAG} --repo ${CI_REPO} --generate-notes 2>/dev/null || echo "Release already exists"
+      # Upload binary and checksum (--clobber allows re-runs)
+      - gh release upload ${CI_COMMIT_TAG} ${binary_name} ${binary_name}.sha256 --repo ${CI_REPO} --clobber
+      - echo "Uploaded ${binary_name} to release ${CI_COMMIT_TAG}"
