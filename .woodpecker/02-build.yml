@@ -51,7 +51,11 @@ steps:
       - apt-get update && apt-get install -y make gcc 2>/dev/null || true
       # macOS: prefer system dotnet over Homebrew (Homebrew ilc 10.0.2 crashes)
       - export PATH="/usr/local/share/dotnet:$PATH"
+      # macOS: use shared NuGet cache (isolated HOME can cause ilc issues)
+      - export NUGET_PACKAGES="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+      - test -d /Users && export NUGET_PACKAGES="/Users/barry/.nuget/packages" || true
       - dotnet --version
+      - echo "NUGET_PACKAGES=$NUGET_PACKAGES"
       - dotnet publish Novus/Novus.csproj -c Release -r ${rid} -o ./publish --self-contained true
       - ls -la ./publish/ || dir ./publish/
 
