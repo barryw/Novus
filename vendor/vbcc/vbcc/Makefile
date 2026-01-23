@@ -163,14 +163,13 @@ bin/mbasic$(TARGET): $(mbasic)
 bin/minicomp$(TARGET): $(minicomp)
 	$(CC) $(LDFLAGS) $(minicomp) -o bin/minicomp$(TARGET)
 
-bin/dtgen: datatypes/dtgen.c datatypes/datatypes.h datatypes/dtconv.h
-	$(NCC) datatypes/dtgen.c -o bin/dtgen -Idatatypes $(NLDFLAGS)
-
-$(TRGDIR)/dt.h: bin/dtgen $(TRGDIR)/machine.dt
-	bin/dtgen $(TRGDIR)/machine.dt $(TRGDIR)/dt.h $(TRGDIR)/dt.c
-
-$(TRGDIR)/dt.c: bin/dtgen $(TRGDIR)/machine.dt
-	bin/dtgen $(TRGDIR)/machine.dt $(TRGDIR)/dt.h $(TRGDIR)/dt.c
+# dtgen removed - dt.h/dt.c are pre-generated and committed (requires interactive input)
+# bin/dtgen: datatypes/dtgen.c datatypes/datatypes.h datatypes/dtconv.h
+# 	$(NCC) datatypes/dtgen.c -o bin/dtgen -Idatatypes $(NLDFLAGS)
+# $(TRGDIR)/dt.h: bin/dtgen $(TRGDIR)/machine.dt
+# 	bin/dtgen $(TRGDIR)/machine.dt $(TRGDIR)/dt.h $(TRGDIR)/dt.c
+# $(TRGDIR)/dt.c: bin/dtgen $(TRGDIR)/machine.dt
+# 	bin/dtgen $(TRGDIR)/machine.dt $(TRGDIR)/dt.h $(TRGDIR)/dt.c
 
 $(TRGDIR)/dt.o: $(TRGDIR)/dt.h $(TRGDIR)/dt.c
 	$(CC) -c $(TRGDIR)/dt.c -o $(TRGDIR)/dt.o -I$(TRGDIR) -Idatatypes
