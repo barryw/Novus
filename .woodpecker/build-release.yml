@@ -2,6 +2,11 @@
 #
 # Triggered when version tags are pushed (e.g., v0.2.0).
 # Builds native binaries for all platforms in parallel and uploads to GitHub release.
+#
+# Agent requirements:
+# - Linux: Docker backend with .NET 9 SDK available, or local backend with dotnet + gh CLI
+# - macOS: Local backend with .NET 9 SDK + gh CLI installed
+# - Windows: Local backend with .NET 9 SDK + gh CLI installed
 
 when:
   - event: tag
@@ -12,51 +17,64 @@ matrix:
     - platform: linux/amd64
       rid: linux-x64
       binary_name: novus-linux-x64
+      image: mcr.microsoft.com/dotnet/sdk:9.0
     - platform: darwin/amd64
       rid: osx-x64
       binary_name: novus-macos-x64
+      image: bash
     - platform: darwin/arm64
       rid: osx-arm64
       binary_name: novus-macos-arm64
+      image: bash
     - platform: windows/amd64
       rid: win-x64
       binary_name: novus-windows-x64.exe
+      image: powershell
 
 labels:
   platform: ${platform}
 
 steps:
   - name: build
+    image: ${image}
     commands:
       - echo "Building Novus for ${rid}..."
       - dotnet publish Novus/Novus.csproj -c Release -r ${rid} -o ./publish --self-contained true
-      - ls -la ./publish/
+      - ls -la ./publish/ || dir ./publish/
 
   - name: prepare-artifacts
+    image: ${image}
     commands:
       # Copy and rename binary to standard name
       - |
         if [ -f ./publish/novus.exe ]; then
           cp ./publish/novus.exe ./${binary_name}
-        else
+        elif [ -f ./publish/novus ]; then
           cp ./publish/novus ./${binary_name}
           chmod +x ./${binary_name}
+        elif [ -f ./publish/Novus.exe ]; then
+          cp ./publish/Novus.exe ./${binary_name}
+        else
+          cp ./publish/Novus ./${binary_name}
+          chmod +x ./${binary_name} 2>/dev/null || true
         fi
       # Generate SHA256 checksum
       - |
-        if command -v sha256sum > /dev/null; then
+        if command -v sha256sum > /dev/null 2>&1; then
           sha256sum ${binary_name} > ${binary_name}.sha256
-        elif command -v shasum > /dev/null; then
+        elif command -v shasum > /dev/null 2>&1; then
           shasum -a 256 ${binary_name} > ${binary_name}.sha256
-        else
-          # Windows fallback - PowerShell
+        elif command -v Get-FileHash > /dev/null 2>&1; then
           powershell -Command "(Get-FileHash -Algorithm SHA256 ${binary_name}).Hash.ToLower() + '  ${binary_name}'" > ${binary_name}.sha256
+        else
+          echo "No checksum tool found" && exit 1
         fi
       - echo "=== Artifacts ==="
-      - ls -la ${binary_name}*
-      - cat ${binary_name}.sha256
+      - ls -la ${binary_name}* 2>/dev/null || dir ${binary_name}*
+      - cat ${binary_name}.sha256 2>/dev/null || type ${binary_name}.sha256
 
   - name: upload-to-release
+    image: ${image}
     environment:
       GITHUB_TOKEN:
         from_secret: github_token
