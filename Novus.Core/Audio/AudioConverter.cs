@@ -264,7 +264,7 @@ public static class AudioConverter
     /// </summary>
     private static float[] TrimSilence(float[] samples, float threshold)
     {
-        if (samples.Length == 0) return samples;
+        if (samples is []) return samples;
 
         // Find first non-silent sample
         int start = 0;
@@ -294,7 +294,7 @@ public static class AudioConverter
     /// </summary>
     private static float[] Normalize(float[] samples)
     {
-        if (samples.Length == 0) return samples;
+        if (samples is []) return samples;
 
         // Find peak amplitude
         float peak = 0;

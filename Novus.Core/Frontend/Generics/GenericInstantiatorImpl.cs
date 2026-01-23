@@ -662,7 +662,7 @@ public class GenericInstantiatorImpl : IGenericInstantiator
         Dictionary<string, IrType> typeSubstitutions,
         NovusParser.FunctionDeclarationContext funcDecl)
     {
-        if (whereClause == null || whereClause.Constraints.Count == 0)
+        if (whereClause == null || whereClause.Constraints is [])
             return true;
 
         var allSatisfied = true;

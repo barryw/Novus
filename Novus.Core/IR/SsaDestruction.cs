@@ -19,15 +19,9 @@ namespace Novus.IR;
 ///
 /// Solution: Use sequential copy algorithm with temporary variables when needed
 /// </summary>
-public class SsaDestruction
+public class SsaDestruction(IrFunction function)
 {
-    private readonly IrFunction _function;
     private int _tempCounter = 0;
-
-    public SsaDestruction(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Eliminate all phi functions from the function, converting back to non-SSA form
@@ -35,18 +29,18 @@ public class SsaDestruction
     public void DestructSsa()
     {
         // Build CFG once for the entire function (uses caching)
-        var cfg = _function.GetCFG();
+        var cfg = function.GetCFG();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
-            if (block.PhiFunctions.Count == 0)
+            if (block.PhiFunctions is [])
                 continue;
 
             EliminatePhisInBlock(block, cfg);
         }
 
         // Invalidate CFG since we modified instructions in predecessor blocks
-        _function.InvalidateCFG();
+        function.InvalidateCFG();
     }
 
     /// <summary>
@@ -92,7 +86,7 @@ public class SsaDestruction
     /// </summary>
     private void InsertCopiesBeforeBranch(IrBasicBlock block, List<(string dest, IrValue src)> copies)
     {
-        if (copies.Count == 0)
+        if (copies is [])
             return;
 
         // Find the position to insert (before the final branch/return)
@@ -213,7 +207,7 @@ public class SsaDestruction
     /// </summary>
     public void RemoveSsaVersioning()
     {
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             for (int i = 0; i < block.Instructions.Count; i++)
             {

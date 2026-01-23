@@ -235,7 +235,7 @@ public class Preprocessor
     {
         var parts = line.TrimStart().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
 
-        if (parts.Length == 0)
+        if (parts is [])
             return null;
 
         var directiveName = parts[0].ToLowerInvariant();

@@ -969,7 +969,7 @@ public class LibraryGenerator
         // Parameters are pushed right-to-left for C calling convention
         var parameters = func.Function.Parameters;
 
-        if (parameters.Count == 0)
+        if (parameters is [])
         {
             // No parameters - just call the function directly
             sb.AppendLine($"        jsr     {cFuncName}");
@@ -1310,7 +1310,7 @@ public class LibraryGenerator
                 var registerList = string.Join("/", registers);
 
                 // FD format: FunctionName(param1,param2)(d0/d1)
-                if (parameters.Count == 0)
+                if (parameters is [])
                 {
                     sb.AppendLine($"{funcName}()()");
                 }

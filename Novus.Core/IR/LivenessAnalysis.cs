@@ -40,10 +40,8 @@ public class LivenessInterval
 /// This is used to identify variables with non-overlapping lifetimes
 /// that can share the same storage slot to reduce stack usage.
 /// </summary>
-public class LivenessAnalysis
+public class LivenessAnalysis(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     // Maps variable name to its liveness interval
     private readonly Dictionary<string, LivenessInterval> _intervals = new();
 
@@ -55,11 +53,6 @@ public class LivenessAnalysis
 
     // Global instruction counter for computing intervals
     private int _instructionIndex = 0;
-
-    public LivenessAnalysis(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Perform liveness analysis and compute slot assignments.
@@ -86,7 +79,7 @@ public class LivenessAnalysis
         var blockEndIndex = new Dictionary<string, int>();
         _instructionIndex = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             blockStartIndex[block.Label] = _instructionIndex;
             foreach (var instruction in block.Instructions)
@@ -110,7 +103,7 @@ public class LivenessAnalysis
         // Build label-to-instruction mapping for intra-block loop detection
         var labelToInstructionIndex = new Dictionary<string, int>();
         _instructionIndex = 0;
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -123,7 +116,7 @@ public class LivenessAnalysis
         }
 
         // Check for inter-block loops (branches between blocks)
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Check if this block ends with a branch to an earlier block (loop)
             var lastInstr = block.Instructions.LastOrDefault();
@@ -158,7 +151,7 @@ public class LivenessAnalysis
 
         // Check for intra-block loops (branches to earlier labels within same block)
         _instructionIndex = 0;
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {

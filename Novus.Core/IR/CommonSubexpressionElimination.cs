@@ -34,20 +34,14 @@ namespace Novus.IR;
 /// - Does not handle commutative operations (x+y vs y+x)
 /// - Does not track across function calls or memory writes
 /// </summary>
-public class CommonSubexpressionElimination
+public class CommonSubexpressionElimination(IrFunction function)
 {
-    private readonly IrFunction _function;
     private bool _madeChanges = false;
 
     /// <summary>
     /// Maps expression signatures to the variable holding the result
     /// </summary>
     private Dictionary<string, string> _availableExpressions = new();
-
-    public CommonSubexpressionElimination(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Run CSE until no more changes can be made.
@@ -71,7 +65,7 @@ public class CommonSubexpressionElimination
     {
         int eliminationCount = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             _availableExpressions.Clear();
 

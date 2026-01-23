@@ -82,7 +82,7 @@ public class CodeActionHandler : ICodeActionHandler
                 }
             }
 
-            if (codeActions.Count == 0)
+            if (codeActions is [])
             {
                 Console.Error.WriteLine("[LSP] No code actions generated");
                 return Task.FromResult<CommandOrCodeActionContainer?>(null);

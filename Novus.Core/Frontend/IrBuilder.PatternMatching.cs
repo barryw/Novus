@@ -153,7 +153,7 @@ public partial class IrBuilder
         bool armsProduceValues = expandedArms.Any(arm =>
         {
             var exprs = arm.OriginalArm.expression();
-            if (exprs == null || exprs.Length == 0) return false;
+            if (exprs == null || exprs is []) return false;
             // If there's a guard (KW_IF present), we need at least 2 expressions (guard + value)
             if (arm.OriginalArm.KW_IF() != null) return exprs.Length >= 2;
             // Otherwise, first expression is the value

@@ -215,7 +215,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             bool hasGenericTypeArgs = type.TypeArguments != null &&
                                       type.TypeArguments.Any(arg => arg is IrGenericType);
 
-            if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Structs.Contains(type))
+            if (type.GenericParameters is [] && !hasGenericTypeArgs && !_builder._module.Structs.Contains(type))
             {
                 _builder._module.AddStruct(type);
             }
@@ -227,7 +227,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // ONLY add fully monomorphized enums (no generic parameters AND no generic type arguments)
             bool hasGenericTypeArgs = type.TypeArguments != null &&
                                       type.TypeArguments.Any(arg => arg is IrGenericType);
-            if (type.GenericParameters.Count == 0 && !hasGenericTypeArgs && !_builder._module.Enums.Contains(type))
+            if (type.GenericParameters is [] && !hasGenericTypeArgs && !_builder._module.Enums.Contains(type))
             {
                 _builder._module.Enums.Add(type);
             }
@@ -744,7 +744,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     /// </summary>
     private bool CurrentBlockHasTerminator()
     {
-        if (_currentBlock == null || _currentBlock.Instructions.Count == 0)
+        if (_currentBlock == null || _currentBlock.Instructions is [])
             return false;
 
         var lastInst = _currentBlock.Instructions[^1];
@@ -1442,7 +1442,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             if (!function.IsConstFn) continue;
             if (function.IsExtern) continue; // Extern const fn are trusted
-            if (function.BasicBlocks.Count == 0) continue; // No body to validate
+            if (function.BasicBlocks is []) continue; // No body to validate
 
             var errors = SemanticAnalysis.ConstFnEvaluator.ValidateConstFn(function, _module);
 

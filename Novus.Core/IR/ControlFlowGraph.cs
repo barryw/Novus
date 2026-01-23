@@ -58,7 +58,7 @@ public class ControlFlowGraph
             if (node.Block == null) continue; // Skip entry/exit nodes
 
             var block = node.Block;
-            if (block.Instructions.Count == 0) continue;
+            if (block.Instructions is []) continue;
 
             var lastInstruction = block.Instructions[^1];
 

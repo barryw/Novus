@@ -715,7 +715,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     // Check if enum already exists with variants (fully registered)
                     // This can happen with pub use chains that cause the same enum to be imported multiple times
                     var existingEnum = _symbols.LookupEnum(symbolName);
-                    if (existingEnum == null || existingEnum.Variants.Count == 0)
+                    if (existingEnum == null || existingEnum.Variants is [])
                     {
                         RegisterEnum(enumDecl);
                     }
@@ -840,7 +840,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     {
                         // Check if enum exists and has variants (fully registered)
                         var existingEnum = _symbols.LookupEnum(enumName);
-                        if (existingEnum == null || existingEnum.Variants.Count == 0)
+                        if (existingEnum == null || existingEnum.Variants is [])
                         {
                             // Enum doesn't exist or is a stub - register the full definition
                             RegisterEnum(enumDecl);
@@ -858,7 +858,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         // This mirrors the enum logic above - a struct may exist as a
                         // placeholder stub with empty Fields list
                         var existingStruct = _symbols.LookupStruct(structName);
-                        if (existingStruct == null || existingStruct.Fields.Count == 0)
+                        if (existingStruct == null || existingStruct.Fields is [])
                         {
                             // Struct doesn't exist or is a stub - register the full definition
                             RegisterStruct(structDecl);
@@ -1641,7 +1641,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private IrType InferArrayLiteralType(NovusParser.ArrayLiteralContext arrayLit)
     {
         var expressions = arrayLit.expression();
-        if (expressions.Length == 0)
+        if (expressions is [])
         {
             // Empty array - return void as placeholder (error will be reported during IR building)
             return IrVoidType.Instance;
@@ -2283,7 +2283,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // The placeholder already has its GenericParameters set from RegisterStructPlaceholder
-        if (placeholder.GenericParameters.Count == 0)
+        if (placeholder.GenericParameters is [])
         {
             _ = placeholder.SizeInBytes;
         }
@@ -2470,7 +2470,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause);
 
         // Force size calculation
-        if (genericParams.Count == 0)
+        if (genericParams is [])
         {
             _ = enumType.SizeInBytes;
         }
@@ -2576,7 +2576,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         stub.WhereClause = whereClause;
 
         // Force size calculation (only for non-generic enums)
-        if (stub.GenericParameters.Count == 0)
+        if (stub.GenericParameters is [])
         {
             _ = stub.SizeInBytes;
         }
@@ -3224,7 +3224,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private bool AnalyzeBlockReturns(NovusParser.BlockContext block)
     {
         var statements = block.statement();
-        if (statements.Length == 0)
+        if (statements is [])
             return false;
 
         // Check if any statement guarantees a return on all paths
@@ -3348,7 +3348,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             {
                 var arms = matchExpr.matchArm();
 
-                if (arms.Length == 0)
+                if (arms is [])
                     return false;
 
                 // Note: We can't easily get the matched expression's type here without re-analyzing
@@ -3482,7 +3482,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private bool BlockIsTerminal(NovusParser.BlockContext block)
     {
         var statements = block.statement();
-        if (statements.Length == 0)
+        if (statements is [])
             return false;
 
         // Check each statement - if any is terminal, the block is terminal
@@ -4107,7 +4107,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // Only check mutability if it's a simple variable (no member/index access)
             // For member/index access (e.g., self.len++), we're modifying the field, not the variable
-            if (lvalueSuffixes.Length == 0)
+            if (lvalueSuffixes is [])
             {
                 // Simple variable increment/decrement: check if variable is mutable
                 if (!incDecVariable.IsMutable)
@@ -4796,7 +4796,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Extract the Ok payload type from Result<T, E>
         var okVariant = enumType.Variants.FirstOrDefault(v => v.Name == "Ok");
-        if (okVariant == null || okVariant.AssociatedData.Count == 0)
+        if (okVariant == null || okVariant.AssociatedData is [])
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -6047,7 +6047,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var collection = new AttributeCollection();
 
-        if (attributeContexts == null || attributeContexts.Length == 0)
+        if (attributeContexts == null || attributeContexts is [])
             return collection;
 
         foreach (var attrCtx in attributeContexts)
@@ -6422,7 +6422,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Determine the result type of the match expression
         // Filter out nulls (return statements) and find the first non-null type
         var nonNullArmTypes = armTypes.Where(t => t != null).ToList();
-        if (nonNullArmTypes.Count > 0)
+        if (nonNullArmTypes is not [])
         {
             // All arms should have the same type - use the first one
             // (Type checking between arms will be done in IrBuilder)
@@ -6951,7 +6951,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 return false;
 
             // If paramEnum is generic and argEnum is monomorphized, extract type arguments
-            if (paramEnum.GenericParameters.Count > 0 && argEnum.GenericParameters.Count == 0)
+            if (paramEnum.GenericParameters.Count > 0 && argEnum.GenericParameters is [])
             {
                 // This is complex - would need to extract from cache key
                 // For now, just check if they're compatible
@@ -7614,7 +7614,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     // This enables nested generic constructors to work correctly
                     if (_expectedType is IrEnumType expectedEnumType &&
                         expectedEnumType.EnumName == irEnumType.EnumName &&
-                        expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                        expectedEnumType.GenericParameters is []) // Expected type is monomorphized
                     {
                         // Build a mapping from generic parameters to concrete types by comparing variants
                         for (int paramIdx = 0; paramIdx < irEnumType.GenericParameters.Count; paramIdx++)
@@ -7644,10 +7644,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                     // Special case: If this is a unit variant (no arguments) and we have an expected type
                     // that's fully monomorphized, use it directly (no need to extract type parameters)
-                    if ((context.argumentList() == null || context.argumentList().expression().Length == 0) &&
+                    if ((context.argumentList() == null || context.argumentList().expression() is []) &&
                         _expectedType is IrEnumType expectedEnumType2 &&
                         expectedEnumType2.EnumName == irEnumType.EnumName &&
-                        expectedEnumType2.GenericParameters.Count == 0)
+                        expectedEnumType2.GenericParameters is [])
                     {
                         // Return the expected type directly - it's already fully monomorphized
                         return expectedEnumType2;
@@ -8058,12 +8058,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                         // FIRST: Extract type substitutions from expected type (if available)
                         // This enables nested generic constructors to work correctly
-                        // Note: We check for both fully monomorphized (GenericParameters.Count == 0)
+                        // Note: We check for both fully monomorphized (GenericParameters is [])
                         // AND partially monomorphized (has CacheKey) types. This handles cases like
                         // Result<T, ExecError> in a generic function where T is still generic but E is concrete.
                         if (_expectedType is IrEnumType expectedEnumType &&
                             expectedEnumType.EnumName == enumType.EnumName &&
-                            (expectedEnumType.GenericParameters.Count == 0 || expectedEnumType.CacheKey != null))
+                            (expectedEnumType.GenericParameters is [] || expectedEnumType.CacheKey != null))
                         {
                             // Build a mapping from generic parameters to concrete types
                             // We need to extract ALL generic parameters from the expected type,
@@ -8531,7 +8531,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 location,
                 helpTexts: new List<string>
                 {
-                    function.Parameters.Count == 0
+                    function.Parameters is []
                         ? $"try calling: {functionName}()"
                         : $"expected: {functionName}({string.Join(", ", function.Parameters.Where(p => !p.IsVariadic).Select(p => $"{p.Name}: {TypeToString(p.Type)}"))})"
                 }
@@ -9233,7 +9233,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // We need to search through enclosing contexts (function, impl, struct) for constraints
         var bounds = GetBoundsForGenericParameter(genericType.ParameterName);
 
-        if (bounds == null || bounds.Count == 0)
+        if (bounds == null || bounds is [])
         {
             _diagnostics.ReportError(
                 "E0100",
@@ -9486,7 +9486,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (_currentFunctionWhereClause != null)
         {
             var bounds = _currentFunctionWhereClause.GetBoundsFor(paramName);
-            if (bounds.Count > 0)
+            if (bounds is not [])
                 return bounds;
         }
 
@@ -9494,7 +9494,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (_currentStructWhereClause != null)
         {
             var bounds = _currentStructWhereClause.GetBoundsFor(paramName);
-            if (bounds.Count > 0)
+            if (bounds is not [])
                 return bounds;
         }
 
@@ -10600,7 +10600,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private IrType? VisitBlockAsExpressionType(NovusParser.BlockContext block)
     {
         var statements = block.statement();
-        if (statements == null || statements.Length == 0)
+        if (statements == null || statements is [])
         {
             // Empty block - return i32 as placeholder (could be unit/void in the future)
             return IrIntType.I32;
@@ -11095,10 +11095,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // If we have an expected type that's a monomorphized version of this enum,
             // and this is a unit variant (no associated data), use the expected type
-            if (variant.AssociatedData.Count == 0 &&
+            if (variant.AssociatedData is [] &&
                 _expectedType is IrEnumType expectedEnumType &&
                 expectedEnumType.EnumName == enumType.EnumName &&
-                expectedEnumType.GenericParameters.Count == 0)
+                expectedEnumType.GenericParameters is [])
             {
                 // Return the expected monomorphized type
                 return expectedEnumType;
@@ -11205,7 +11205,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         // Array literals - validate all elements have same type
         var expressions = context.expression();
-        if (expressions.Length == 0)
+        if (expressions is [])
         {
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
             _diagnostics.ReportError("E0999", "array literals cannot be empty", location);
@@ -11913,7 +11913,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 return structA.CacheKey == structB.CacheKey;
 
             // Non-generic structs with same name are equal
-            if (structA.GenericParameters.Count == 0 && structB.GenericParameters.Count == 0)
+            if (structA.GenericParameters is [] && structB.GenericParameters is [])
                 return true;
 
             // Both generic templates - compare parameter counts
@@ -12204,7 +12204,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // If actual type is generic (has generic parameters), allow matching with concrete expected type
             // This handles the case where Vec::new() returns Vec<T>, but we expect Vec<i32>
-            if (actualStruct.GenericParameters.Count > 0 && expectedStruct.GenericParameters.Count == 0)
+            if (actualStruct.GenericParameters.Count > 0 && expectedStruct.GenericParameters is [])
             {
                 // Actual is generic (Vec<T>), expected is concrete (Vec<i32>) - compatible!
                 return true;
@@ -12212,7 +12212,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // If expected type is generic and actual is concrete, also allow
             // This handles the reverse case (less common but possible)
-            if (expectedStruct.GenericParameters.Count > 0 && actualStruct.GenericParameters.Count == 0)
+            if (expectedStruct.GenericParameters.Count > 0 && actualStruct.GenericParameters is [])
             {
                 // Expected is generic (Vec<T>), actual is concrete (Vec<i32>) - compatible!
                 return true;
@@ -12888,7 +12888,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         List<IrType> typeArgs,
         SourceLocation location)
     {
-        if (whereClause == null || whereClause.Constraints.Count == 0)
+        if (whereClause == null || whereClause.Constraints is [])
             return true;
 
         // Build substitution map from generic parameters to concrete types

@@ -51,7 +51,7 @@ public static class DocCommentExtractor
             }
         }
 
-        if (docLines.Count == 0)
+        if (docLines is [])
         {
             return null;
         }

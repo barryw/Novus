@@ -1389,7 +1389,7 @@ public class IrClosureType : IrType
     /// <summary>
     /// True if closure has no captures (can be optimized to function pointer)
     /// </summary>
-    public bool IsStateless => EnvironmentType == null && CapturedVariables.Count == 0;
+    public bool IsStateless => EnvironmentType == null && CapturedVariables is [];
 
     public override int SizeInBytes => 8;  // Fat pointer: fn_ptr (4) + env_ptr (4)
 
@@ -1498,7 +1498,7 @@ public class IrTupleType : IrType
                 return _cachedSize.Value;
 
             // Unit type () has size 0
-            if (ElementTypes.Count == 0)
+            if (ElementTypes is [])
             {
                 _cachedSize = 0;
                 return 0;
@@ -1537,7 +1537,7 @@ public class IrTupleType : IrType
     {
         get
         {
-            if (ElementTypes.Count == 0)
+            if (ElementTypes is [])
                 return "()";
             return $"({string.Join(", ", ElementTypes.Select(t => t.Name))})";
         }
@@ -1742,7 +1742,7 @@ public class IrStructType : IrType
         // Legacy check: struct with single generic parameter used as a type parameter placeholder
         // This handles cases where IrStructType is used instead of IrGenericType
         if (type is IrStructType structType && structType.GenericParameters.Count == 1 &&
-            structType.Fields.Count == 0 && // Only if it's a placeholder struct
+            structType.Fields is [] && // Only if it's a placeholder struct
             substitutions.ContainsKey(structType.GenericParameters[0]))
         {
             return substitutions[structType.GenericParameters[0]];
@@ -2821,7 +2821,7 @@ public class IrInlineAsm : IrInstruction
     /// </summary>
     public IrType GetReturnType()
     {
-        if (Outputs.Count == 0)
+        if (Outputs is [])
             return IrVoidType.Instance;
         if (Outputs.Count == 1)
             return Outputs[0].Type;

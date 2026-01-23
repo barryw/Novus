@@ -24,7 +24,7 @@ public class TypeRegistry
         foreach (var structType in module.Structs)
         {
             // Only register non-generic (concrete) structs
-            if (structType.GenericParameters.Count == 0)
+            if (structType.GenericParameters is [])
             {
                 AddOrUpdateStructType(structType);
             }
@@ -47,7 +47,7 @@ public class TypeRegistry
             {
                 AddOrUpdateEnumType(enumExtVar);
             }
-            else if (externVar.Type is IrStructType structExtVar && structExtVar.GenericParameters.Count == 0)
+            else if (externVar.Type is IrStructType structExtVar && structExtVar.GenericParameters is [])
             {
                 AddOrUpdateStructType(structExtVar);
             }
@@ -60,7 +60,7 @@ public class TypeRegistry
             {
                 AddOrUpdateEnumType(enumStaticVar);
             }
-            else if (staticVar.Type is IrStructType structStaticVar && structStaticVar.GenericParameters.Count == 0)
+            else if (staticVar.Type is IrStructType structStaticVar && structStaticVar.GenericParameters is [])
             {
                 AddOrUpdateStructType(structStaticVar);
             }
@@ -128,7 +128,7 @@ public class TypeRegistry
                             AddOrUpdateEnumType(enumDeclType);
                         }
                         else if (declType is IrStructType structDeclType &&
-                                 structDeclType.GenericParameters.Count == 0)
+                                 structDeclType.GenericParameters is [])
                         {
                             AddOrUpdateStructType(structDeclType);
                         }
@@ -164,7 +164,7 @@ public class TypeRegistry
             }
 
             // Check return type for struct
-            if (function.ReturnType is IrStructType structRet && structRet.GenericParameters.Count == 0)
+            if (function.ReturnType is IrStructType structRet && structRet.GenericParameters is [])
             {
                 AddOrUpdateStructType(structRet);
             }
@@ -183,7 +183,7 @@ public class TypeRegistry
                 else if (paramType is IrPointerType ptrType)
                     paramType = ptrType.PointeeType;
 
-                if (paramType is IrStructType structParam && structParam.GenericParameters.Count == 0)
+                if (paramType is IrStructType structParam && structParam.GenericParameters is [])
                 {
                     AddOrUpdateStructType(structParam);
                 }
@@ -235,7 +235,7 @@ public class TypeRegistry
                             CollectEnumTypesFromType(dataType);
 
                             // Also collect structs! (BStr in Result<BStr, E>)
-                            if (dataType is IrStructType structType && structType.GenericParameters.Count == 0)
+                            if (dataType is IrStructType structType && structType.GenericParameters is [])
                             {
                                 AddOrUpdateStructType(structType);
                             }
@@ -329,7 +329,7 @@ public class TypeRegistry
     private void AddTupleType(IrTupleType tupleType)
     {
         // Skip unit type () - it doesn't need a struct definition
-        if (tupleType.ElementTypes.Count == 0)
+        if (tupleType.ElementTypes is [])
             return;
 
         // Check if we already have this tuple type (by comparing element types)
@@ -360,7 +360,7 @@ public class TypeRegistry
         {
             AddOrUpdateEnumType(enumType);
         }
-        else if (value.Type is IrStructType structType && structType.GenericParameters.Count == 0)
+        else if (value.Type is IrStructType structType && structType.GenericParameters is [])
         {
             AddOrUpdateStructType(structType);
         }

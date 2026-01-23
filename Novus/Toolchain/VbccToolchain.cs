@@ -425,7 +425,7 @@ public class VbccToolchain
             }
         }
 
-        if (debugMarkers.Count == 0)
+        if (debugMarkers is [])
             return; // No debug markers to process
 
         // Step 2: Parse assembly and inject labels at "debug N" directives

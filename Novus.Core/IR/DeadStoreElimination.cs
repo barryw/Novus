@@ -18,10 +18,8 @@ namespace Novus.IR;
 ///
 /// The pass works on SSA form, where each definition is unique.
 /// </summary>
-public class DeadStoreElimination
+public class DeadStoreElimination(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     /// <summary>
     /// Maps variable names to the store instruction that defines them
     /// </summary>
@@ -41,11 +39,6 @@ public class DeadStoreElimination
     /// Track stores within each basic block for local analysis
     /// </summary>
     private readonly Dictionary<IrBasicBlock, Dictionary<string, IrInstruction>> _blockStores = new();
-
-    public DeadStoreElimination(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Run the dead store elimination pass.
@@ -74,7 +67,7 @@ public class DeadStoreElimination
         _definitions.Clear();
         _usedVariables.Clear();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Phi functions define and use variables
             foreach (var phi in block.PhiFunctions)
@@ -115,7 +108,7 @@ public class DeadStoreElimination
     {
         _blockStores.Clear();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             var blockStoreMap = new Dictionary<string, IrInstruction>();
 
@@ -179,7 +172,7 @@ public class DeadStoreElimination
     {
         int removedCount = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Remove dead phi functions
             var livePhis = block.PhiFunctions.Where(phi => !_deadStores.Contains(phi)).ToList();

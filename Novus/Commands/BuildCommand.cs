@@ -126,7 +126,7 @@ public static class BuildCommand
             return 1;
         }
 
-        if (workspace.Workspace.Members.Length == 0)
+        if (workspace.Workspace.Members is [])
         {
             Console.WriteLine("Warning: Workspace has no member projects");
             Console.WriteLine("Use 'novusc new <name> --type <type>' to add projects to this workspace");

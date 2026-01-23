@@ -21,7 +21,7 @@ public static class ModuleImportHelper
     {
         var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
 
-        if (pathParts.Length == 0)
+        if (pathParts is [])
         {
             throw new ArgumentException($"Invalid module namespace: {moduleNamespace}");
         }

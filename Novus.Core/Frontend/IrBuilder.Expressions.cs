@@ -66,12 +66,12 @@ public partial class IrBuilder
         // For turbofish calls, we don't need to visit the expression - we already have the function name
         // and explicit type args. Visiting would return an IrTurboFishType which we can't use directly.
         IrValue? funcExpr = null;
-        if (explicitTypeArgs == null || explicitTypeArgs.Count == 0)
+        if (explicitTypeArgs == null || explicitTypeArgs is [])
         {
             funcExpr = (IrValue?)Visit(context.expression());
         }
         // Only report null error if we're not in turbofish mode (turbofish doesn't need funcExpr)
-        if (funcExpr == null && (explicitTypeArgs == null || explicitTypeArgs.Count == 0))
+        if (funcExpr == null && (explicitTypeArgs == null || explicitTypeArgs is []))
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -342,7 +342,7 @@ public partial class IrBuilder
                 }
             }
             // 2. Try to infer from expected type
-            else if (_expectedType != null && _expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters.Count == 0)
+            else if (_expectedType != null && _expectedType is IrStructType expectedStruct && expectedStruct.GenericParameters is [])
             {
                 // Expected type is a monomorphized struct like Vec<i32>
                 monomorphizedStruct = expectedStruct;
@@ -707,7 +707,7 @@ public partial class IrBuilder
                 // This allows From<T> trait conversions to work correctly
                 if (_expectedType is IrEnumType expectedEnumType &&
                     expectedEnumType.EnumName == enumType.EnumName &&
-                    expectedEnumType.GenericParameters.Count == 0) // Expected type is monomorphized
+                    expectedEnumType.GenericParameters is []) // Expected type is monomorphized
                 {
                     // Extract concrete types from expected enum by matching variant structure
                     for (int paramIdx = 0; paramIdx < enumType.GenericParameters.Count; paramIdx++)
@@ -1511,7 +1511,7 @@ public partial class IrBuilder
         // Note: 'self' parameter is handled specially in the grammar and may not be in parameterList
         var paramContexts = funcDecl.parameterList()?.parameter()?.ToList() ?? new List<NovusParser.ParameterContext>();
 
-        if (paramContexts.Count == 0)
+        if (paramContexts is [])
         {
             // No non-self parameters to infer from
             return null;
@@ -2345,7 +2345,7 @@ public partial class IrBuilder
             elements.Add(value);
         }
 
-        if (elements.Count == 0)
+        if (elements is [])
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -3153,7 +3153,7 @@ public partial class IrBuilder
             return null;
         }
 
-        if (okVariant.AssociatedData.Count == 0)
+        if (okVariant.AssociatedData is [])
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -3163,7 +3163,7 @@ public partial class IrBuilder
             );
             return null;
         }
-        if (errVariant.AssociatedData.Count == 0)
+        if (errVariant.AssociatedData is [])
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -3222,7 +3222,7 @@ public partial class IrBuilder
                 return null;
             }
 
-            if (funcErrVariant.AssociatedData.Count == 0)
+            if (funcErrVariant.AssociatedData is [])
             {
                 var errorLocation = GetLocation(context);
                 _diagnostics.ReportError(
@@ -4123,7 +4123,7 @@ public partial class IrBuilder
 
         // Visit all statements in the block
         var statements = block.statement();
-        if (statements == null || statements.Length == 0)
+        if (statements == null || statements is [])
         {
             // Empty block - return unit/void (use i32 0 as a placeholder)
             return new IrConstant(0, IrIntType.I32);
@@ -4550,7 +4550,7 @@ public partial class IrBuilder
                         }
 
                         // For unit variants (no associated data), create the enum value directly
-                        if (variant.AssociatedData.Count == 0)
+                        if (variant.AssociatedData is [])
                         {
                             return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
                         }
@@ -4586,7 +4586,7 @@ public partial class IrBuilder
                 if (function != null)
                 {
                     // Check if this is an associated function (no self parameter)
-                    if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+                    if (function.Parameters is [] || function.Parameters[0].Name != "self")
                     {
                         // Return a function reference that can be called
                         return new IrFunctionRef(function);
@@ -5159,7 +5159,7 @@ public partial class IrBuilder
             }
         }
 
-        if (elements.Count == 0 || elementType == null)
+        if (elements is [] || elementType == null)
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -5504,7 +5504,7 @@ public partial class IrBuilder
             }
 
             // For unit variants (no associated data), create the enum value directly
-            if (variant.AssociatedData.Count == 0)
+            if (variant.AssociatedData is [])
             {
                 return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
             }
@@ -5539,7 +5539,7 @@ public partial class IrBuilder
         if (function != null)
         {
             // Check if this is an associated function (no self parameter)
-            if (function.Parameters.Count == 0 || function.Parameters[0].Name != "self")
+            if (function.Parameters is [] || function.Parameters[0].Name != "self")
             {
                 // Return a function reference that can be called
                 return new IrFunctionRef(function);

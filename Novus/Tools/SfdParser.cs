@@ -294,7 +294,7 @@ public class SfdParser
         // Simple heuristic: the name is the last word
         var tokens = paramText.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
 
-        if (tokens.Length == 0)
+        if (tokens is [])
             return null;
 
         // The name is typically the last token

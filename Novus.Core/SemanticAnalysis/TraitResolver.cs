@@ -181,7 +181,7 @@ public class TraitResolver
         DiagnosticBag? diagnostics,
         SourceLocation location)
     {
-        if (whereClause == null || whereClause.Constraints.Count == 0)
+        if (whereClause == null || whereClause.Constraints is [])
             return true;
 
         // Build substitution map from generic parameters to concrete types

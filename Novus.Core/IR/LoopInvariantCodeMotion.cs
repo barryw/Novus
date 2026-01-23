@@ -43,10 +43,8 @@ namespace Novus.IR;
 /// - Reduces memory traffic
 /// - Critical for inner loops in graphics/audio code
 /// </summary>
-public class LoopInvariantCodeMotion
+public class LoopInvariantCodeMotion(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     /// <summary>
     /// Represents a loop in the control flow graph
     /// </summary>
@@ -61,11 +59,6 @@ public class LoopInvariantCodeMotion
             Header = header;
             Body.Add(header);
         }
-    }
-
-    public LoopInvariantCodeMotion(IrFunction function)
-    {
-        _function = function;
     }
 
     /// <summary>
@@ -97,7 +90,7 @@ public class LoopInvariantCodeMotion
 
         // For now, use a simple heuristic: any block with a backward branch
         // In a full implementation, we'd compute dominators and find back edges
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -107,8 +100,8 @@ public class LoopInvariantCodeMotion
                     var targetBlock = FindBlockByLabel(branch.Target);
                     if (targetBlock != null)
                     {
-                        int targetIndex = _function.BasicBlocks.IndexOf(targetBlock);
-                        int currentIndex = _function.BasicBlocks.IndexOf(block);
+                        int targetIndex = function.BasicBlocks.IndexOf(targetBlock);
+                        int currentIndex = function.BasicBlocks.IndexOf(block);
 
                         // Back edge (loop!)
                         if (targetIndex <= currentIndex)
@@ -117,7 +110,7 @@ public class LoopInvariantCodeMotion
                             // Add all blocks from target to current as loop body
                             for (int i = targetIndex; i <= currentIndex; i++)
                             {
-                                loop.Body.Add(_function.BasicBlocks[i]);
+                                loop.Body.Add(function.BasicBlocks[i]);
                             }
                             loops.Add(loop);
                         }
@@ -143,8 +136,8 @@ public class LoopInvariantCodeMotion
         var targetBlock = FindBlockByLabel(targetLabel);
         if (targetBlock != null)
         {
-            int targetIndex = _function.BasicBlocks.IndexOf(targetBlock);
-            int currentIndex = _function.BasicBlocks.IndexOf(currentBlock);
+            int targetIndex = function.BasicBlocks.IndexOf(targetBlock);
+            int currentIndex = function.BasicBlocks.IndexOf(currentBlock);
 
             if (targetIndex <= currentIndex)
             {
@@ -154,7 +147,7 @@ public class LoopInvariantCodeMotion
                     var loop = new Loop(targetBlock);
                     for (int i = targetIndex; i <= currentIndex; i++)
                     {
-                        loop.Body.Add(_function.BasicBlocks[i]);
+                        loop.Body.Add(function.BasicBlocks[i]);
                     }
                     loops.Add(loop);
                 }
@@ -195,10 +188,10 @@ public class LoopInvariantCodeMotion
     {
         // For simplicity, we'll just mark the block before the header as the preheader
         // In a full implementation, we'd insert a new block if needed
-        int headerIndex = _function.BasicBlocks.IndexOf(loop.Header);
+        int headerIndex = function.BasicBlocks.IndexOf(loop.Header);
         if (headerIndex > 0)
         {
-            loop.Preheader = _function.BasicBlocks[headerIndex - 1];
+            loop.Preheader = function.BasicBlocks[headerIndex - 1];
         }
     }
 
@@ -421,7 +414,7 @@ public class LoopInvariantCodeMotion
     /// </summary>
     private IrBasicBlock? FindBlockByLabel(string label)
     {
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {

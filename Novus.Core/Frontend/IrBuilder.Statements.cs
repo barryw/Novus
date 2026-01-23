@@ -2625,7 +2625,7 @@ public partial class IrBuilder
 
         // Find the Some variant to get the inner type
         var someVariant = optionType.Variants.FirstOrDefault(v => v.Name == "Some");
-        if (someVariant == null || someVariant.AssociatedData.Count == 0)
+        if (someVariant == null || someVariant.AssociatedData is [])
         {
             var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
@@ -3453,7 +3453,7 @@ public partial class IrBuilder
         }
 
         // Join label and instruction with space, but mnemonic and operands with space
-        if (parts.Count == 0)
+        if (parts is [])
         {
             return string.Empty;
         }

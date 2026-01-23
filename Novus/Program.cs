@@ -1238,7 +1238,7 @@ class Program
                     .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
                     .ToList();
 
-                if (functions.Count == 0)
+                if (functions is [])
                     continue;
 
                 var moduleCodegen = new CCodeGenerator(

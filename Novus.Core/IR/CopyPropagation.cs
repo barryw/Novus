@@ -28,10 +28,8 @@ namespace Novus.IR;
 /// - Enables other optimizations
 /// - Combined with DCE, eliminates the copy instruction entirely
 /// </summary>
-public class CopyPropagation
+public class CopyPropagation(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     /// <summary>
     /// Map from copy destination to its source value
     /// Only contains simple copies (variable = variable)
@@ -42,11 +40,6 @@ public class CopyPropagation
     /// Track which instructions were modified (for iteration)
     /// </summary>
     private bool _madeChanges = false;
-
-    public CopyPropagation(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Run copy propagation until no more changes can be made
@@ -79,7 +72,7 @@ public class CopyPropagation
     /// </summary>
     private void IdentifyCopies()
     {
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -107,7 +100,7 @@ public class CopyPropagation
     {
         int substitutionCount = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             for (int i = 0; i < block.Instructions.Count; i++)
             {

@@ -9,10 +9,8 @@ namespace Novus.IR;
 /// - It's trivial to find all uses of a definition
 /// - We can easily track which definitions have zero uses
 /// </summary>
-public class DeadCodeElimination
+public class DeadCodeElimination(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     /// <summary>
     /// Set of instructions that have been marked as dead
     /// </summary>
@@ -27,11 +25,6 @@ public class DeadCodeElimination
     /// Map from variable names to the instruction that defines them
     /// </summary>
     private Dictionary<string, IrInstruction> _definitions = new();
-
-    public DeadCodeElimination(IrFunction function)
-    {
-        _function = function;
-    }
 
     /// <summary>
     /// Run the dead code elimination pass
@@ -58,7 +51,7 @@ public class DeadCodeElimination
         _definitions.Clear();
         _liveInstructions.Clear();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Phi functions can define variables
             foreach (var phi in block.PhiFunctions)
@@ -302,7 +295,7 @@ public class DeadCodeElimination
     {
         int removedCount = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Remove dead phi functions
             var livePhis = block.PhiFunctions.Where(phi => _liveInstructions.Contains(phi)).ToList();
@@ -336,7 +329,7 @@ public class DeadCodeElimination
 
         var deadInstructions = new List<IrInstruction>();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var phi in block.PhiFunctions)
             {

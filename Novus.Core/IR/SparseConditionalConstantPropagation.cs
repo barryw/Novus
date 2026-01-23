@@ -46,10 +46,8 @@ namespace Novus.IR;
 /// - Particularly effective after inlining
 /// - Critical for 68k where every instruction counts
 /// </summary>
-public class SparseConditionalConstantPropagation
+public class SparseConditionalConstantPropagation(IrFunction function)
 {
-    private readonly IrFunction _function;
-
     /// <summary>
     /// Lattice values for SSA analysis
     /// </summary>
@@ -99,11 +97,6 @@ public class SparseConditionalConstantPropagation
     /// </summary>
     private Queue<IrBasicBlock> _workList = new();
 
-    public SparseConditionalConstantPropagation(IrFunction function)
-    {
-        _function = function;
-    }
-
     /// <summary>
     /// Run SCCP analysis and optimization.
     /// Returns number of constants propagated.
@@ -138,9 +131,9 @@ public class SparseConditionalConstantPropagation
         _workList.Clear();
 
         // Mark entry block as reachable
-        if (_function.BasicBlocks.Count > 0)
+        if (function.BasicBlocks.Count > 0)
         {
-            var entryBlock = _function.BasicBlocks[0];
+            var entryBlock = function.BasicBlocks[0];
             MarkReachable(entryBlock);
         }
     }
@@ -361,7 +354,7 @@ public class SparseConditionalConstantPropagation
     {
         int replacementCount = 0;
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             // Skip unreachable blocks
             if (!_reachableBlocks.Contains(block))
@@ -447,7 +440,7 @@ public class SparseConditionalConstantPropagation
     /// </summary>
     private IrBasicBlock? FindBlockByLabel(string label)
     {
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -464,7 +457,7 @@ public class SparseConditionalConstantPropagation
     public HashSet<IrBasicBlock> GetUnreachableBlocks()
     {
         var unreachable = new HashSet<IrBasicBlock>();
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             if (!_reachableBlocks.Contains(block))
             {

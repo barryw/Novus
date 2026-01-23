@@ -110,7 +110,7 @@ public class ModuleImportHelperTests
         var tree = parser.compilationUnit();
 
         // Check if parsing succeeded
-        if (tree.functionDeclaration().Length == 0)
+        if (tree.functionDeclaration() is [])
         {
             // Try alternate order
             source = "pub extern fn test() -> i32";

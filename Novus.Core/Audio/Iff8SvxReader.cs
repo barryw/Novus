@@ -241,7 +241,7 @@ public static class Iff8SvxReader
     /// </summary>
     private static byte[] NormalizeSigned8Bit(byte[] data)
     {
-        if (data.Length == 0) return data;
+        if (data is []) return data;
 
         // Find peak amplitude
         int peak = 0;
@@ -272,7 +272,7 @@ public static class Iff8SvxReader
     /// </summary>
     private static byte[] TrimSilenceSigned8Bit(byte[] data, sbyte threshold)
     {
-        if (data.Length == 0) return data;
+        if (data is []) return data;
 
         // Find first non-silent sample
         int start = 0;

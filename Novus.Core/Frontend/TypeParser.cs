@@ -715,7 +715,7 @@ public class TypeParser : ITypeSubstitutionEngine
         var typeContexts = context.type();
 
         // Unit type () has no elements
-        if (typeContexts == null || typeContexts.Length == 0)
+        if (typeContexts == null || typeContexts is [])
         {
             return IrTupleType.Unit;
         }
@@ -1115,8 +1115,8 @@ public class TypeParser : ITypeSubstitutionEngine
             // This can happen when a struct is referenced in a field like `entries: *HashMapEntry<K,V>`
             // The HashMapEntry gets a CacheKey of "HashMapEntry<K,V>" but TypeArguments is null/empty
             // We need to check if the CacheKey contains any of the substitution keys
-            if (!needsParameterSubstitution && structType.GenericParameters.Count == 0 &&
-                (structType.TypeArguments == null || structType.TypeArguments.Count == 0) &&
+            if (!needsParameterSubstitution && structType.GenericParameters is [] &&
+                (structType.TypeArguments == null || structType.TypeArguments is []) &&
                 structType.CacheKey != null && structType.CacheKey.Contains('<'))
             {
                 // Extract type parameter names from the cache key
@@ -1215,8 +1215,8 @@ public class TypeParser : ITypeSubstitutionEngine
             }
 
             // If no generic parameters or type arguments need substitution, return the original struct unchanged
-            if (!needsParameterSubstitution && structType.GenericParameters.Count == 0 &&
-                (structType.TypeArguments == null || structType.TypeArguments.Count == 0))
+            if (!needsParameterSubstitution && structType.GenericParameters is [] &&
+                (structType.TypeArguments == null || structType.TypeArguments is []))
             {
                 return structType;
             }
@@ -1258,7 +1258,7 @@ public class TypeParser : ITypeSubstitutionEngine
                 List<IrType>? typeArguments = null;
 
                 // Case 1: We started with a generic struct (has GenericParameters) and fully substituted it
-                if (remainingGenericParams.Count == 0 && structType.GenericParameters.Count > 0)
+                if (remainingGenericParams is [] && structType.GenericParameters.Count > 0)
                 {
                     // Fully monomorphized from generic - build type arguments from substitutions
                     typeArguments = new List<IrType>();
@@ -1337,8 +1337,8 @@ public class TypeParser : ITypeSubstitutionEngine
             // BUG FIX: For non-generic enums, ALWAYS use the base definition from the module.
             // This prevents issues where an enum reference might have been captured before
             // variants were fully populated during the parsing/semantic analysis phase.
-            if (enumType.GenericParameters.Count == 0 &&
-                (enumType.TypeArguments == null || enumType.TypeArguments.Count == 0))
+            if (enumType.GenericParameters is [] &&
+                (enumType.TypeArguments == null || enumType.TypeArguments is []))
             {
                 // Look up the canonical enum definition from the symbol table
                 var baseEnum = _context.LookupEnum(enumType.EnumName);
@@ -1408,8 +1408,8 @@ public class TypeParser : ITypeSubstitutionEngine
             // If no generic parameters or type arguments need substitution, check variants anyway
             // because even fully concrete enums might have variants with generic data
             // (Actually, we should always check variants if we have any possibility of substitution)
-            if (!needsParameterSubstitution && enumType.GenericParameters.Count == 0 &&
-                (enumType.TypeArguments == null || enumType.TypeArguments.Count == 0))
+            if (!needsParameterSubstitution && enumType.GenericParameters is [] &&
+                (enumType.TypeArguments == null || enumType.TypeArguments is []))
             {
                 // Still check if variants contain generics (they shouldn't, but be safe)
                 // If there are no generics anywhere, we can safely return unchanged
@@ -1464,7 +1464,7 @@ public class TypeParser : ITypeSubstitutionEngine
                 List<IrType>? typeArguments = null;
 
                 // Case 1: We started with a generic enum (has GenericParameters) and fully substituted it
-                if (remainingGenericParams.Count == 0 && enumType.GenericParameters.Count > 0)
+                if (remainingGenericParams is [] && enumType.GenericParameters.Count > 0)
                 {
                     // Fully monomorphized from generic - build type arguments from substitutions
                     typeArguments = new List<IrType>();

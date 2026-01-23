@@ -151,7 +151,7 @@ public class DocumentManager
             sourceText = preprocessor.Process(sourceText);
             inactiveRegions = preprocessor.InactiveRegions;
 
-            if (inactiveRegions.Count > 0)
+            if (inactiveRegions is not [])
             {
                 Console.Error.WriteLine($"[LSP] Found {inactiveRegions.Count} inactive region(s) in {state.Uri}");
             }

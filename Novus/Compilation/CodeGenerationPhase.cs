@@ -93,7 +93,7 @@ public class CodeGenerationPhase : ICompilationPhase
             .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
             .ToList();
 
-        if (functions.Count == 0)
+        if (functions is [])
             return;
 
         var codegen = new CCodeGenerator(

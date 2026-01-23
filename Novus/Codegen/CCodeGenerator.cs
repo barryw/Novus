@@ -290,7 +290,7 @@ public partial class CCodeGenerator
                 // Check if this is a unit type
                 bool nestedIsUnitType = nestedEnumValue.AssociatedValues.Count == 1 &&
                                         nestedEnumValue.AssociatedValues[0].Type is IrTupleType unitTupleType &&
-                                        unitTupleType.ElementTypes.Count == 0;
+                                        unitTupleType.ElementTypes is [];
 
                 if (!nestedIsUnitType)
                 {
@@ -732,7 +732,7 @@ public partial class CCodeGenerator
             // Filter out generic structs (they should have been monomorphized already)
             // and sort by dependencies
             var concreteStructs = typeRegistry.StructTypes
-                .Where(s => s.GenericParameters.Count == 0)
+                .Where(s => s.GenericParameters is [])
                 .ToHashSet();
             var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
 
@@ -1125,7 +1125,7 @@ public partial class CCodeGenerator
             foreach (var func in module.Functions)
             {
                 // Skip extern functions (no implementation) and functions without locations
-                if (func.IsExtern || func.BasicBlocks.Count == 0 || func.Location == null)
+                if (func.IsExtern || func.BasicBlocks is [] || func.Location == null)
                     continue;
 
                 // Compute C function name using the same logic as MangleName
@@ -1136,7 +1136,7 @@ public partial class CCodeGenerator
 
         var hasStatementMarkers = statementMarkers != null && statementMarkers.Count > 0;
 
-        if (functionsWithLocations.Count == 0 && !hasStatementMarkers)
+        if (functionsWithLocations is [] && !hasStatementMarkers)
         {
             // Return empty file comment - no debug symbols to emit
             return "// No debug symbols (no functions with source locations)\n";
@@ -1768,7 +1768,7 @@ public partial class CCodeGenerator
             // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
             if (slotType is IrVoidType)
                 continue;
-            if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+            if (slotType is IrTupleType tupleType && tupleType.ElementTypes is [])
                 continue;
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
@@ -1828,7 +1828,7 @@ public partial class CCodeGenerator
                         continue;
 
                     // Skip unit type () variables - they have no runtime representation
-                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes is [])
                         continue;
 
                     // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
@@ -2003,7 +2003,7 @@ public partial class CCodeGenerator
     /// </summary>
     public string GenerateStaticsFile()
     {
-        if (_module.StaticVariables.Count == 0)
+        if (_module.StaticVariables is [])
         {
             return string.Empty;
         }
@@ -2073,7 +2073,7 @@ public partial class CCodeGenerator
 
         // Skip enums with no variants (stub/placeholder enums)
         // This can happen when a struct field references an enum type before the enum is fully resolved
-        if (enumType.Variants.Count == 0)
+        if (enumType.Variants is [])
         {
             return;
         }
@@ -2136,7 +2136,7 @@ public partial class CCodeGenerator
                     // Unit type () is represented as a single IrTupleType with 0 elements
                     bool isUnitType = variant.AssociatedData.Count == 1 &&
                                      variant.AssociatedData[0] is IrTupleType tupleType &&
-                                     tupleType.ElementTypes.Count == 0;
+                                     tupleType.ElementTypes is [];
 
                     if (!isUnitType)
                     {
@@ -2983,7 +2983,7 @@ public partial class CCodeGenerator
 
         // WORKAROUND: CacheKey is sometimes stale (e.g., "Vec<T>" even for monomorphized Vec<u8>)
         // Only trust CacheKey if GenericParameters.Count > 0
-        // If GenericParameters.Count == 0, the type has been monomorphized regardless of CacheKey
+        // If GenericParameters is [], the type has been monomorphized regardless of CacheKey
         return false;
     }
 
@@ -4043,7 +4043,7 @@ public partial class CCodeGenerator
                 // Unit type () is represented as a single IrTupleType with 0 elements
                 bool isUnitType = variant.AssociatedData.Count == 1 &&
                                  variant.AssociatedData[0] is IrTupleType tupleType &&
-                                 tupleType.ElementTypes.Count == 0;
+                                 tupleType.ElementTypes is [];
 
                 if (!isUnitType)
                 {
@@ -4111,7 +4111,7 @@ public partial class CCodeGenerator
 
     private void EmitStringLiterals()
     {
-        if (_stringLiterals.Count == 0)
+        if (_stringLiterals is [])
             return;
 
         _output.AppendLine("// String literals");
@@ -4161,7 +4161,7 @@ public partial class CCodeGenerator
 
     private void EmitExternalVariables()
     {
-        if (_module.ExternalVariables.Count == 0)
+        if (_module.ExternalVariables is [])
             return;
 
         _output.AppendLine("// External variables");
@@ -4185,7 +4185,7 @@ public partial class CCodeGenerator
 
     private void EmitStaticVariables()
     {
-        if (_module.StaticVariables.Count == 0)
+        if (_module.StaticVariables is [])
             return;
 
         _output.AppendLine("// Static variables");
@@ -4418,7 +4418,7 @@ public partial class CCodeGenerator
                 }
                 paramList.AddRange(paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
 
-                var parameters = paramList.Count == 0 ? "void" : string.Join(", ", paramList);
+                var parameters = paramList is [] ? "void" : string.Join(", ", paramList);
                 _output.AppendLine($"{cReturnType} {MangleName(funcName)}({parameters});");
             }
             _output.AppendLine();
@@ -4433,7 +4433,7 @@ public partial class CCodeGenerator
                         && !IsMonomorphizedFunction(f))
             .ToList();
 
-        if (implementedFunctions.Count == 0)
+        if (implementedFunctions is [])
             return;
 
         _output.AppendLine("// Forward declarations");
@@ -4575,7 +4575,7 @@ public partial class CCodeGenerator
                         && f.Location != null)
             .ToList();
 
-        if (functionsWithLocations.Count == 0)
+        if (functionsWithLocations is [])
             return;
 
         _output.AppendLine();
@@ -4627,7 +4627,7 @@ public partial class CCodeGenerator
             .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0 && reachableFunctions.Contains(f.Name))
             .ToList();
 
-        if (implementedFunctions.Count == 0)
+        if (implementedFunctions is [])
             return;
 
         // Check for functions with unresolved types and skip them with a warning
@@ -4650,7 +4650,7 @@ public partial class CCodeGenerator
             System.Console.WriteLine($"WARNING: Skipping function '{skipped}' due to unresolved types (not used by this build)");
         }
 
-        if (implementedFunctions.Count == 0)
+        if (implementedFunctions is [])
             return;
 
         // Separate monomorphized functions from regular functions
@@ -4809,7 +4809,7 @@ public partial class CCodeGenerator
             // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
             if (slotType is IrVoidType)
                 continue;
-            if (slotType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+            if (slotType is IrTupleType tupleType && tupleType.ElementTypes is [])
                 continue;
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
@@ -4848,7 +4848,7 @@ public partial class CCodeGenerator
                         continue;
 
                     // Skip unit type () variables - they have no runtime representation
-                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+                    if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes is [])
                         continue;
 
                     // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
@@ -5331,7 +5331,7 @@ public partial class CCodeGenerator
     /// </summary>
     private void DeactivateDefersForMovedVariables(IrValue returnValue)
     {
-        if (_currentEmittingFunction == null || _currentEmittingFunction.DeferredBlocks.Count == 0)
+        if (_currentEmittingFunction == null || _currentEmittingFunction.DeferredBlocks is [])
             return;
 
         // Collect all variable names used in the return value
@@ -5429,7 +5429,7 @@ public partial class CCodeGenerator
     /// </summary>
     private void EmitDeferredCleanup(IrFunction function, int indentLevel = 1)
     {
-        if (function.DeferredBlocks.Count == 0)
+        if (function.DeferredBlocks is [])
             return;
 
         // If no defer blocks have been activated yet, don't emit any cleanup
@@ -5507,7 +5507,7 @@ public partial class CCodeGenerator
         // IMPORTANT: Check this BEFORE calling EmitValue to avoid trying to declare void variables
         if (localDecl.Type is IrVoidType)
             return;
-        if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+        if (localDecl.Type is IrTupleType tupleType && tupleType.ElementTypes is [])
             return;
 
         // BUG FIX: Skip if this variable is a module static or extern - don't shadow it with a local
@@ -5583,7 +5583,7 @@ public partial class CCodeGenerator
                         // Check if this is a unit type
                         bool isUnitType = enumValueAssign.AssociatedValues.Count == 1 &&
                                          enumValueAssign.AssociatedValues[0].Type is IrTupleType unitTupleType &&
-                                         unitTupleType.ElementTypes.Count == 0;
+                                         unitTupleType.ElementTypes is [];
 
                         if (!isUnitType)
                         {
@@ -5832,7 +5832,7 @@ public partial class CCodeGenerator
                         // Check if this is a unit type
                         bool isUnitType = enumValueDecl.AssociatedValues.Count == 1 &&
                                          enumValueDecl.AssociatedValues[0].Type is IrTupleType unitTupleType &&
-                                         unitTupleType.ElementTypes.Count == 0;
+                                         unitTupleType.ElementTypes is [];
 
                         if (!isUnitType)
                         {
@@ -5966,7 +5966,7 @@ public partial class CCodeGenerator
         // Skip void/unit type stores - they have no runtime representation
         if (store.Value.Type is IrVoidType)
             return;
-        if (store.Value.Type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+        if (store.Value.Type is IrTupleType tupleType && tupleType.ElementTypes is [])
             return;
 
         var varName = SanitizeVariableName(store.VariableName);
@@ -6011,7 +6011,7 @@ public partial class CCodeGenerator
                     // Check if this is a unit type
                     bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
                                      enumValue.AssociatedValues[0].Type is IrTupleType unitTupleType &&
-                                     unitTupleType.ElementTypes.Count == 0;
+                                     unitTupleType.ElementTypes is [];
 
                     if (!isUnitType)
                     {
@@ -6561,7 +6561,7 @@ public partial class CCodeGenerator
 
             // Skip result storage for void/unit types - they have no runtime representation
             bool isVoidOrUnit = call.ReturnType is IrVoidType ||
-                               (call.ReturnType is IrTupleType tt && tt.ElementTypes.Count == 0);
+                               (call.ReturnType is IrTupleType tt && tt.ElementTypes is []);
 
             if (call.ResultName != null && !isVoidOrUnit)
             {
@@ -6910,7 +6910,7 @@ public partial class CCodeGenerator
                             // Check if this is a unit type
                             bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
                                              enumValue.AssociatedValues[0].Type is IrTupleType tupleType &&
-                                             tupleType.ElementTypes.Count == 0;
+                                             tupleType.ElementTypes is [];
 
                             if (!isUnitType)
                             {
@@ -7556,7 +7556,7 @@ public partial class CCodeGenerator
         _output.AppendLine($"    {resultName}.fn_ptr = {createClosure.GeneratedFunctionName};");
 
         // Handle environment
-        if (createClosure.CapturedValues.Count == 0)
+        if (createClosure.CapturedValues is [])
         {
             // Stateless closure - no environment needed
             _output.AppendLine($"    {resultName}.env_ptr = NULL;");
@@ -7796,7 +7796,7 @@ public partial class CCodeGenerator
     private void EmitExtractVariantData(IrExtractVariantData extractData)
     {
         // Skip unit type () extractions - unit has no runtime representation
-        if (extractData.DataType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+        if (extractData.DataType is IrTupleType tupleType && tupleType.ElementTypes is [])
             return;
 
         var enumValue = EmitValue(extractData.EnumValue);
@@ -9219,7 +9219,7 @@ public partial class CCodeGenerator
             return false;
 
         // If no associated data, it's zero
-        if (!variant.HasAssociatedData || enumValue.AssociatedValues.Count == 0)
+        if (!variant.HasAssociatedData || enumValue.AssociatedValues is [])
             return true;
 
         // Check if all associated values are zero
@@ -9514,7 +9514,7 @@ public partial class CCodeGenerator
             throw new InvalidOperationException("TupleLiteral must have IrTupleType");
 
         // Unit type () - no value needed
-        if (tupleType.ElementTypes.Count == 0)
+        if (tupleType.ElementTypes is [])
             return "/* unit */";
 
         var typeName = GetCType(tupleType);
@@ -9601,7 +9601,7 @@ public partial class CCodeGenerator
             // Check if this is a unit type - single element that's an empty tuple
             bool isUnitType = enumValue.AssociatedValues.Count == 1 &&
                              enumValue.AssociatedValues[0].Type is IrTupleType tupleType &&
-                             tupleType.ElementTypes.Count == 0;
+                             tupleType.ElementTypes is [];
 
             if (!isUnitType)
             {
@@ -10288,7 +10288,7 @@ public partial class CCodeGenerator
     internal string GetTupleTypeName(IrTupleType tupleType)
     {
         // Unit type () has no size and is never stored, so return void
-        if (tupleType.ElementTypes.Count == 0)
+        if (tupleType.ElementTypes is [])
             return "void";
 
         // Generate a mangled name for the tuple based on element types
@@ -10301,7 +10301,7 @@ public partial class CCodeGenerator
     {
         return type switch
         {
-            IrTupleType tupleType when tupleType.ElementTypes.Count == 0 => "unit",
+            IrTupleType tupleType when tupleType.ElementTypes is [] => "unit",
             IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
             IrBoolType => "bool",
             IrPointerType ptrType => $"ptr_{MangleTypeForTupleName(ptrType.PointeeType)}",

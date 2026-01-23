@@ -298,7 +298,7 @@ public class ImportResolver
     {
         var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
 
-        if (pathParts.Length == 0)
+        if (pathParts is [])
         {
             _registry.ReportError("E0026", $"Invalid module namespace: {moduleNamespace}");
             return "";

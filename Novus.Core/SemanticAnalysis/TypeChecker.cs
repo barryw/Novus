@@ -110,7 +110,7 @@ public class TypeChecker
             return a.CacheKey == b.CacheKey;
 
         // For non-generic structs, compare names
-        if (a.GenericParameters.Count == 0 && b.GenericParameters.Count == 0)
+        if (a.GenericParameters is [] && b.GenericParameters is [])
             return a.StructName == b.StructName;
 
         // Generic struct with type arguments - compare name and type args
@@ -125,7 +125,7 @@ public class TypeChecker
             return a.CacheKey == b.CacheKey;
 
         // For non-generic enums, compare names
-        if (a.GenericParameters.Count == 0 && b.GenericParameters.Count == 0)
+        if (a.GenericParameters is [] && b.GenericParameters is [])
             return a.EnumName == b.EnumName;
 
         // Generic enum - compare name and parameters
@@ -247,7 +247,7 @@ public class TypeChecker
         }
 
         // Unit coercion (void context)
-        if (targetType is IrVoidType || targetType is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+        if (targetType is IrVoidType || targetType is IrTupleType tupleType && tupleType.ElementTypes is [])
         {
             return CoercionKind.ToUnit;
         }
@@ -388,7 +388,7 @@ public class TypeChecker
     {
         if (type is IrVoidType)
             return true;
-        if (type is IrTupleType tupleType && tupleType.ElementTypes.Count == 0)
+        if (type is IrTupleType tupleType && tupleType.ElementTypes is [])
             return true;
         return false;
     }

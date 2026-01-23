@@ -604,7 +604,7 @@ public class IrValidator
     {
         ValidateValue(match.MatchValue);
 
-        if (match.Arms.Count == 0)
+        if (match.Arms is [])
         {
             AddError("Match expression has no arms");
         }
@@ -854,7 +854,7 @@ public class IrValidator
 /// </summary>
 public class ValidationResult
 {
-    public bool IsValid => Errors.Count == 0;
+    public bool IsValid => Errors is [];
     public List<string> Errors { get; }
 
     public ValidationResult(List<string> errors)

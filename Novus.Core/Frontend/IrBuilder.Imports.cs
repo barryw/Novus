@@ -1528,7 +1528,7 @@ public partial class IrBuilder
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
             var existingEnum = _symbols.LookupEnum(enumName);
-            if (existingEnum != null && existingEnum.Variants.Count == 0)
+            if (existingEnum != null && existingEnum.Variants is [])
             {
                 RegisterEnum(enumDecl);
             }
@@ -1718,7 +1718,7 @@ public partial class IrBuilder
             if (expandedStructNames.Contains(structName))
             {
                 var existingStruct = _symbols.LookupStruct(structName);
-                if (existingStruct != null && existingStruct.Fields.Count == 0)
+                if (existingStruct != null && existingStruct.Fields is [])
                 {
                     RegisterStruct(structDecl);
                 }

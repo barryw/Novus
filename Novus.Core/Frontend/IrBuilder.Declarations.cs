@@ -138,7 +138,7 @@ public partial class IrBuilder
     /// </summary>
     private void EvaluateDeferredConstants()
     {
-        if (_deferredConstants.Count == 0)
+        if (_deferredConstants is [])
             return;
 
         // Create a ConstFnEvaluator to interpret const functions
@@ -976,7 +976,7 @@ public partial class IrBuilder
         }
 
         // Force size calculation for non-generic enums
-        if (genericParams.Count == 0)
+        if (genericParams is [])
         {
             _ = enumType.SizeInBytes;
         }
@@ -1017,7 +1017,7 @@ public partial class IrBuilder
         // This happens when PopulateFromAnalysisResult has already registered the struct
         // with fields from the semantic analyzer, and then import processing tries to
         // re-register the same struct. Without this check, fields would be duplicated.
-        if (existingStruct.Fields.Count == 0)
+        if (existingStruct.Fields is [])
         {
             foreach (var fieldCtx in context.structField())
             {
@@ -1045,7 +1045,7 @@ public partial class IrBuilder
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // Generic structs will be monomorphized later when instantiated with concrete types
-        if (genericParams.Count == 0)
+        if (genericParams is [])
         {
             _ = existingStruct.SizeInBytes;
 
@@ -1212,7 +1212,7 @@ public partial class IrBuilder
     private Novus.SemanticAnalysis.AttributeCollection ProcessAndFilterModuleAttributes(NovusParser.AttributeContext[]? attributeContexts)
     {
         var collection = new Novus.SemanticAnalysis.AttributeCollection();
-        if (attributeContexts == null || attributeContexts.Length == 0)
+        if (attributeContexts == null || attributeContexts is [])
             return collection;
 
         foreach (var attrCtx in attributeContexts)
@@ -1354,7 +1354,7 @@ public partial class IrBuilder
     private Novus.SemanticAnalysis.AttributeCollection ParseAttributesSimple(NovusParser.AttributeContext[]? attributeContexts)
     {
         var collection = new Novus.SemanticAnalysis.AttributeCollection();
-        if (attributeContexts == null || attributeContexts.Length == 0)
+        if (attributeContexts == null || attributeContexts is [])
             return collection;
 
         foreach (var attrCtx in attributeContexts)

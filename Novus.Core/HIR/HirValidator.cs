@@ -321,7 +321,7 @@ public class HirValidator
             missingChannels.Add("C");
         }
 
-        if (missingChannels.Count > 0)
+        if (missingChannels is not [])
         {
             _diagnostics.ReportError(
                 ErrorCodes.InvalidHardwareOperation,

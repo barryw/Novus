@@ -7,9 +7,8 @@ namespace Novus.IR;
 /// 2. Insert phi functions at dominance frontiers
 /// 3. Rename variables with version numbers
 /// </summary>
-public class SsaConstructor
+public class SsaConstructor(IrFunction function)
 {
-    private readonly IrFunction _function;
     private ControlFlowGraph? _cfg;
     private DominatorTree? _domTree;
 
@@ -29,18 +28,13 @@ public class SsaConstructor
     /// </summary>
     private Dictionary<string, Stack<int>> _versionStacks = new();
 
-    public SsaConstructor(IrFunction function)
-    {
-        _function = function;
-    }
-
     /// <summary>
     /// Convert the function to SSA form
     /// </summary>
     public void ConstructSsa()
     {
         // Step 1: Build CFG and dominator tree
-        _cfg = new ControlFlowGraph(_function);
+        _cfg = new ControlFlowGraph(function);
         _domTree = _cfg.BuildDominatorTree();
 
         // Step 2: Find all variable definitions
@@ -60,7 +54,7 @@ public class SsaConstructor
     {
         _defSites.Clear();
 
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -185,7 +179,7 @@ public class SsaConstructor
     private IrType GetVariableType(string varName)
     {
         // Search for first definition or use of this variable
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var instruction in block.Instructions)
             {
@@ -235,7 +229,7 @@ public class SsaConstructor
         }
 
         // Also initialize for variables in phi functions
-        foreach (var block in _function.BasicBlocks)
+        foreach (var block in function.BasicBlocks)
         {
             foreach (var phi in block.PhiFunctions)
             {
@@ -249,7 +243,7 @@ public class SsaConstructor
         }
 
         // Start renaming from the entry block
-        var entryBlock = _function.BasicBlocks.FirstOrDefault();
+        var entryBlock = function.BasicBlocks.FirstOrDefault();
         if (entryBlock != null)
         {
             RenameBlock(entryBlock);
