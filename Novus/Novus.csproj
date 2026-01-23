@@ -19,6 +19,8 @@
     <ItemGroup>
         <PackageReference Include="CommandLineParser" Version="2.9.1" />
         <PackageReference Include="Tomlyn" Version="0.17.0" />
+        <!-- Pin ilc version to avoid crash in 10.0.2 -->
+        <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="10.0.0" />
     </ItemGroup>
 
     <ItemGroup>
