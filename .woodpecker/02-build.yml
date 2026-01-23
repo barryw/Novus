@@ -12,7 +12,8 @@ matrix:
       rid: linux-x64
       binary_name: novus-linux-x64
       image: mcr.microsoft.com/dotnet/sdk:10.0
-    - platform: darwin/amd64
+    # Both macOS builds run on arm64 agent via cross-compilation
+    - platform: darwin/arm64
       rid: osx-x64
       binary_name: novus-macos-x64
       image: bash
