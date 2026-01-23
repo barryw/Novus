@@ -19,7 +19,7 @@ public class StdlibCacheFixture : IDisposable
     private void RebuildStdlibCache()
     {
         var projectRoot = GetProjectRoot();
-        var novusExe = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
+        var novusExe = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net10.0", "Novus.dll");
 
         if (!File.Exists(novusExe))
         {

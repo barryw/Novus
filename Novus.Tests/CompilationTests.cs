@@ -47,7 +47,7 @@ public class CompilationTests
             $"VBCC toolchain not found at {vbccPath}. Set VBCC environment variable or install VBCC.");
 
         // Run the compiler
-        var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
+        var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net10.0", "Novus.dll");
         Assert.True(File.Exists(compilerPath), $"Compiler not found at {compilerPath}. Build the project first.");
 
         var startInfo = new ProcessStartInfo

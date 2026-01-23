@@ -1620,9 +1620,9 @@ public class IrStructType : IrType
                 // 68000 requires word alignment (2 bytes) for word and long accesses.
                 // Byte accesses can be at any address.
                 int size = 0;
-                foreach (var field in Fields)
+                foreach (var structField in Fields)
                 {
-                    int fieldSize = field.Type.SizeInBytes;
+                    int fieldSize = structField.Type.SizeInBytes;
 
                     // For packed structs, fields are placed sequentially without padding
                     if (!isPacked)
@@ -1644,7 +1644,7 @@ public class IrStructType : IrType
                             size += alignment - (size % alignment);
                     }
 
-                    field.Offset = size;
+                    structField.Offset = size;
                     size += fieldSize;
                 }
 

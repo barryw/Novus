@@ -155,7 +155,7 @@ public class ExampleFullCompilationTests : ExampleCompilationTestBase
         Assert.True(File.Exists(inputFile), $"Input file not found: {inputFile}");
 
         // Run the compiler (full compilation)
-        var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net9.0", "Novus.dll");
+        var compilerPath = Path.Combine(projectRoot, "Novus", "bin", "Debug", "net10.0", "Novus.dll");
         Assert.True(File.Exists(compilerPath),
             $"Compiler not found at {compilerPath}. Build the project first.");
 
