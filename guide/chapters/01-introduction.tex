@@ -4,21 +4,116 @@
 
 Novus is a systems programming language designed specifically for the Amiga 68k platform. It transpiles to C99, which VBCC then compiles to native 68020+ machine code. The result is executables that integrate deeply with AmigaOS and run on real hardware and accurate emulators alike.
 
-The name comes from the Latin word for ``new''—reflecting the project's mission to bring modern language design to classic machines. Novus is not a port of an existing language, nor is it a lowest-common-denominator cross-platform tool. Every design decision is made with the Amiga in mind.
+The name comes from the Latin word for ``new''---reflecting the project's mission to bring modern language design to classic machines. Novus is not a port of an existing language, nor is it a lowest-common-denominator cross-platform tool. Every design decision is made with the Amiga in mind.
+
+\subsection{The Compilation Pipeline}
+
+Understanding how Novus code becomes an Amiga executable helps you debug problems and optimize performance. The pipeline has four stages:
+
+\begin{center}
+\begin{tikzpicture}[node distance=1.5cm, auto,
+    box/.style={rectangle, draw, rounded corners, minimum width=2.5cm, minimum height=0.8cm, align=center}]
+    \node[box] (novus) {Novus Source\\{\small .novus}};
+    \node[box, right=of novus] (ir) {IR\\{\small Internal}};
+    \node[box, right=of ir] (c) {C99\\{\small .c}};
+    \node[box, right=of c] (asm) {68k Assembly\\{\small .s}};
+    \node[box, right=of asm] (exe) {Amiga Executable\\{\small HUNK format}};
+
+    \draw[->] (novus) -- node[above] {\small novus} (ir);
+    \draw[->] (ir) -- node[above] {\small codegen} (c);
+    \draw[->] (c) -- node[above] {\small vbcc} (asm);
+    \draw[->] (asm) -- node[above] {\small vasm/vlink} (exe);
+\end{tikzpicture}
+\end{center}
+
+\begin{enumerate}
+    \item \textbf{Novus Compiler}: Parses your source, performs type checking, generates intermediate representation (IR)
+    \item \textbf{Code Generation}: Converts IR to clean, readable C99 code
+    \item \textbf{VBCC}: Compiles C to optimized 68k assembly
+    \item \textbf{VASM/VLINK}: Assembles and links into an AmigaOS HUNK executable
+\end{enumerate}
+
+You can examine any stage:
+
+\begin{lstlisting}[style=bash]
+# Emit IR to see the compiler's internal representation
+novus compile myfile.novus -o out --emit-ir
+
+# Emit assembly to see exactly what instructions are generated
+novus compile myfile.novus -o out --emit-asm
+\end{lstlisting}
 
 \subsection{Key Characteristics}
 
 \begin{description}
     \item[Native Performance] Novus transpiles to C99, leveraging VBCC's mature 68k code generator to produce Amiga executables. There is no interpreter, no virtual machine, no runtime overhead beyond what you explicitly request.
 
-    \item[Modern Safety] The type system catches errors at compile time. \texttt{Result} and \texttt{Option} types make error handling explicit. Resource cleanup is deterministic via \texttt{defer} blocks. You get safety without garbage collection.
+    \item[Modern Safety] The type system catches errors at compile time. \texttt{Result} and \texttt{Option} types make error handling explicit. Resource cleanup is deterministic via the \texttt{Drop} trait and \texttt{defer} blocks. You get safety without garbage collection.
 
-    \item[Direct Hardware Access] Novus doesn't hide the Amiga's hardware behind abstractions you can't escape. Custom chip registers, Exec library calls, copper lists, blitter operations—all are first-class citizens with typed, safe interfaces.
+    \item[Direct Hardware Access] Novus doesn't hide the Amiga's hardware behind abstractions you can't escape. Custom chip registers, Exec library calls, copper lists, blitter operations---all are first-class citizens with typed, safe interfaces.
 
-    \item[Readable Output] The generated C code is clean and readable. When you need to understand what the compiler is doing—and on the Amiga, you often do—the output won't fight you. You can also emit assembly via \texttt{--emit-asm} to see exactly what VBCC produces.
+    \item[Readable Output] The generated C code is clean and readable. When you need to understand what the compiler is doing---and on the Amiga, you often do---the output won't fight you.
 
-    \item[Amiga-Native Async] The \texttt{async}/\texttt{await} model maps directly to AmigaOS primitives: Exec signals and message ports. No hidden threads, no runtime scheduler—just the OS facilities the Amiga provides.
+    \item[Amiga-Native Async] The \texttt{async}/\texttt{await} model maps directly to AmigaOS primitives: Exec signals and message ports. No hidden threads, no runtime scheduler---just the OS facilities the Amiga provides.
 \end{description}
+
+\subsection{A First Comparison}
+
+Here's a simple function that opens a file and reads its size. First, the C version:
+
+\begin{lstlisting}[language=C]
+// C: Opening a file and getting its size
+LONG get_file_size(const char *path) {
+    BPTR lock = Lock(path, ACCESS_READ);
+    if (!lock) {
+        return -1;  // Caller must check return value!
+    }
+
+    struct FileInfoBlock *fib = AllocMem(sizeof(struct FileInfoBlock),
+                                         MEMF_PUBLIC);
+    if (!fib) {
+        UnLock(lock);  // Must remember to clean up!
+        return -1;
+    }
+
+    LONG size = -1;
+    if (Examine(lock, fib)) {
+        size = fib->fib_Size;
+    }
+
+    FreeMem(fib, sizeof(struct FileInfoBlock));  // Must match size!
+    UnLock(lock);  // Must remember cleanup order!
+    return size;
+}
+\end{lstlisting}
+
+Now the same function in Novus:
+
+\begin{lstlisting}
+// Novus: Opening a file and getting its size
+fn get_file_size(path: &str) -> Result<i32, DosError> {
+    let lock = Lock::new(path, ACCESS_READ)?  // ? propagates errors
+    let fib = FileInfoBlock::alloc()?
+
+    lock.examine(&fib)?
+    return Result::Ok(fib.size())
+}  // lock and fib automatically cleaned up via Drop
+\end{lstlisting}
+
+The Novus version is shorter, but more importantly:
+
+\begin{itemize}
+    \item The return type \texttt{Result<i32, DosError>} makes failure explicit---callers \emph{must} handle it
+    \item The \texttt{?} operator propagates errors automatically, no forgotten checks
+    \item Resources are cleaned up automatically when they go out of scope
+    \item No size mismatches possible---\texttt{FileInfoBlock} knows its own size
+\end{itemize}
+
+\begin{comingfromc}
+In C, every function that can fail returns a value that might be an error. You must remember to check it. You must remember to clean up. You must match every allocation size.
+
+In Novus, the type system enforces these rules. A \texttt{Result} \emph{must} be handled. Resources with \texttt{Drop} \emph{will} be cleaned up. The compiler tracks sizes for you.
+\end{comingfromc}
 
 \section{Why Novus Exists}
 
@@ -26,21 +121,96 @@ The Amiga platform has capable C compilers. VBCC, in particular, generates excel
 
 \subsection{The Limits of C}
 
-C was revolutionary in 1972. It remains useful today precisely because it's minimal—a portable assembler that gets out of your way. But that minimalism has costs:
+C was revolutionary in 1972. It remains useful today precisely because it's minimal---a portable assembler that gets out of your way. But that minimalism has costs:
 
 \begin{itemize}
     \item \textbf{No sum types.} Representing ``this value is either an error or a result'' requires conventions that the compiler can't enforce.
 
     \item \textbf{No built-in error handling.} Return codes are easily ignored. Exceptions don't exist. Every function call is an opportunity for silent failure.
 
-    \item \textbf{Manual resource management.} Matching every \texttt{AllocMem} with a \texttt{FreeMem}, every \texttt{OpenLibrary} with a \texttt{CloseLibrary}, every \texttt{Lock} with an \texttt{UnLock}—across all control flow paths, including error cases.
+    \item \textbf{Manual resource management.} Matching every \texttt{AllocMem} with a \texttt{FreeMem}, every \texttt{OpenLibrary} with a \texttt{CloseLibrary}, every \texttt{Lock} with an \texttt{UnLock}---across all control flow paths, including error cases.
 
     \item \textbf{Primitive module system.} Header files and \texttt{\#include} are textual substitution. Name collisions, include order dependencies, and compile time explosion are facts of life.
 
     \item \textbf{No metaprogramming.} The preprocessor is powerful but crude. Anything beyond simple macros quickly becomes write-only code.
 \end{itemize}
 
-These aren't theoretical concerns. They're the source of real bugs in real Amiga software—memory leaks, use-after-free, null pointer crashes, resource exhaustion from unclosed libraries.
+\subsection{Real Bugs from Real Software}
+
+These aren't theoretical concerns. They're the source of real bugs in real Amiga software:
+
+\textbf{The Forgotten \texttt{UnLock}:}
+\begin{lstlisting}[language=C]
+BOOL check_file(const char *path) {
+    BPTR lock = Lock(path, ACCESS_READ);
+    if (!lock) return FALSE;
+
+    struct FileInfoBlock fib;
+    if (!Examine(lock, &fib)) {
+        return FALSE;  // BUG: lock leaked!
+    }
+
+    UnLock(lock);
+    return TRUE;
+}
+\end{lstlisting}
+
+Every early return is an opportunity to forget cleanup. In a large function with multiple resources, the combinations explode.
+
+\textbf{The Ignored Return Value:}
+\begin{lstlisting}[language=C]
+void process_data(void) {
+    Open("output.dat", MODE_NEWFILE);  // BUG: return value ignored!
+    Write(file, data, size);           // file is uninitialized
+}
+\end{lstlisting}
+
+C happily compiles this. The result: random corruption.
+
+\textbf{The Mismatched Size:}
+\begin{lstlisting}[language=C]
+struct MyData *data = AllocMem(sizeof(struct MyData), MEMF_PUBLIC);
+// ... 500 lines later, after the struct changed ...
+FreeMem(data, sizeof(struct OtherData));  // BUG: wrong size!
+\end{lstlisting}
+
+Memory corruption. Guru meditation. Hours of debugging.
+
+\subsection{How Novus Prevents These Bugs}
+
+Each of these bugs is impossible in Novus:
+
+\textbf{The Forgotten \texttt{UnLock}:}
+\begin{lstlisting}
+fn check_file(path: &str) -> Result<bool, DosError> {
+    let lock = Lock::new(path, ACCESS_READ)?
+
+    let fib = FileInfoBlock::alloc()?
+    lock.examine(&fib)?
+
+    return Result::Ok(true)
+}  // lock.drop() called automatically on ALL paths
+\end{lstlisting}
+
+\textbf{The Ignored Return Value:}
+\begin{lstlisting}
+fn process_data() -> Result<(), DosError> {
+    // This won't compile - Result must be handled:
+    // let _ = open("output.dat", MODE_NEWFILE)  // Error: unused Result
+
+    let file = open("output.dat", MODE_NEWFILE)?  // Must use ? or match
+    write(&file, data, size)?
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\textbf{The Mismatched Size:}
+\begin{lstlisting}
+fn allocate_data() -> Result<Allocation<MyData>, ExecError> {
+    let data = Allocation::<MyData>::alloc(MEMF_PUBLIC)?
+    return Result::Ok(data)
+}  // data.drop() frees with correct size automatically
+\end{lstlisting}
 
 \subsection{Modern Solutions, Amiga Constraints}
 
@@ -49,9 +219,9 @@ Languages like Rust address these problems elegantly. But Rust targets modern sy
 Novus takes a different approach: provide modern ergonomics within Amiga constraints.
 
 \begin{itemize}
-    \item \texttt{Result[T, E]} and \texttt{Option[T]} are zero-cost at runtime—they're just tagged unions that the compiler understands.
+    \item \texttt{Result<T, E>} and \texttt{Option<T>} are zero-cost at runtime---they're just tagged unions that the compiler understands.
 
-    \item \texttt{defer} blocks compile to straightforward cleanup code inserted at scope exit. No hidden allocations, no unwinding tables.
+    \item The \texttt{Drop} trait compiles to cleanup code inserted at scope exit. No hidden allocations, no unwinding tables.
 
     \item Pattern matching compiles to efficient jump tables or comparison chains as appropriate.
 
@@ -64,31 +234,221 @@ The result is a language that \emph{feels} modern but \emph{runs} like hand-tune
 
 \section{Design Philosophy}
 
-Novus follows several core principles that inform every language decision:
+Novus follows several core principles that inform every language decision.
 
 \subsection{Explicit Over Implicit}
 
 If something allocates memory, the code should say so. If something can fail, the type should reflect it. If a function has side effects, they should be visible at the call site.
 
-This doesn't mean verbose—Novus has type inference, sensible defaults, and concise syntax. But it means no hidden costs, no action at a distance, no ``magic'' that obscures what the machine is actually doing.
+\begin{lstlisting}
+// Allocation is explicit - you know this allocates
+var buffer = MemoryBlock::alloc(1024, MEMF_CHIP)?
+
+// Failure is explicit - Result type, can't ignore
+let file = open("data.dat", MODE_OLDFILE)?
+
+// Mutation is explicit at the call site
+process(&var player)  // Clearly modifying player
+\end{lstlisting}
+
+This doesn't mean verbose---Novus has type inference, sensible defaults, and concise syntax. But it means no hidden costs, no action at a distance, no ``magic'' that obscures what the machine is actually doing.
+
+\begin{comingfromc}
+In C, \texttt{process(player)} might modify \texttt{player} or it might not---you have to read the function signature.
+
+In Novus, \texttt{process(\&player)} is read-only. \texttt{process(\&var player)} mutates. The call site tells you.
+\end{comingfromc}
 
 \subsection{Predictable Performance}
 
-On a 7~MHz 68000, every cycle matters. On a 50~MHz 68060, you have more headroom—but you still can't afford hidden allocations in a tight loop or cache-hostile memory access patterns.
+On a 7~MHz 68000, every cycle matters. On a 50~MHz 68060, you have more headroom---but you still can't afford hidden allocations in a tight loop or cache-hostile memory access patterns.
 
 Novus gives you control. The compiler won't secretly box values, won't insert invisible runtime checks in release builds, won't generate code that's impossible to reason about.
+
+Consider this function:
+
+\begin{lstlisting}
+fn sum_array(data: &[i32]) -> i32 {
+    var total: i32 = 0
+    for value in data {
+        total = total + value
+    }
+    return total
+}
+\end{lstlisting}
+
+The generated 68k assembly is exactly what you'd expect:
+
+\begin{lstlisting}[style=bash]
+sum_array:
+    moveq   #0,d0           ; total = 0
+    move.l  d2,-(sp)        ; save d2
+    move.l  (a0),d2         ; d2 = slice length
+    addq.l  #4,a0           ; a0 = data pointer
+.loop:
+    subq.l  #1,d2           ; decrement counter
+    bmi.s   .done           ; done if negative
+    add.l   (a0)+,d0        ; total += *data++
+    bra.s   .loop
+.done:
+    move.l  (sp)+,d2        ; restore d2
+    rts
+\end{lstlisting}
+
+No hidden function calls. No allocations. Just a tight loop.
 
 \subsection{Respect the Machine}
 
 The Amiga isn't a Unix workstation. It has custom chips that do things no other hardware can do. Its operating system uses message passing and signals, not files and processes. Its memory model is flat and physical.
 
-Novus doesn't pretend otherwise. The standard library wraps AmigaOS idiomatically—\texttt{Result} types for operations that can fail, handles for resources that need cleanup—but it doesn't try to be POSIX. Amiga code should look like Amiga code.
+Novus doesn't pretend otherwise. The standard library wraps AmigaOS idiomatically---\texttt{Result} types for operations that can fail, handles for resources that need cleanup---but it doesn't try to be POSIX. Amiga code should look like Amiga code.
+
+\begin{lstlisting}
+// Copper lists, typed and safe
+var builder = CopperListBuilder::new()
+builder.wait(100, 0)?
+builder.move_color(0, rgb12(15, 0, 0))?  // Set background red
+let copper_list = builder.build()?
+copper_list.activate()
+
+// Blitter operations
+blitter.blit_fill(&var bitmap, x, y, width, height, color)?
+
+// Message ports for IPC
+let port = MsgPort::create("myport")?
+let signal = port.signal_bit()
+let sigs = Wait(1 << signal)
+\end{lstlisting}
 
 \subsection{Fail Fast, Fail Clearly}
 
 When something goes wrong, you should know immediately and know exactly what happened. Compile-time errors are better than runtime errors. Runtime errors with clear messages are better than silent corruption.
 
-In debug builds, Novus checks array bounds, validates pointers, and panics with meaningful diagnostics. In release builds, those checks can be removed—but the type system still prevents the errors that checks would catch.
+In debug builds, Novus checks array bounds, validates pointers, and panics with meaningful diagnostics:
+
+\begin{lstlisting}[style=bash]
+PANIC at src/player.novus:42
+  Array index out of bounds: index 10, length 8
+
+  Stack trace:
+    update_score (src/player.novus:42)
+    game_loop (src/main.novus:156)
+    main (src/main.novus:12)
+\end{lstlisting}
+
+In release builds, those checks can be removed via \texttt{--safety-level}---but the type system still prevents the errors that checks would catch.
+
+\section{A Taste of Novus}
+
+Before diving into the full language, let's look at a complete program. This opens an Intuition window, draws a message, and waits for the user to close it:
+
+\begin{lstlisting}
+// hello_window.novus - A complete Novus program
+from std::core import Result
+from std::ffi::intuition import OpenWindowTags, CloseWindow
+from std::ffi::graphics import SetAPen, Move, Text
+from std::ffi::exec import Wait
+from std::ffi::amiga_consts import (
+    WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP,
+    WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_ACTIVATE,
+    IDCMP_CLOSEWINDOW, TAG_DONE
+)
+
+pub fn main() -> i32 {
+    // Open a window with the close gadget
+    var window: *Window = null
+
+    unsafe {
+        window = OpenWindowTags(null,
+            WA_Width, 320,
+            WA_Height, 100,
+            WA_Title, "Hello from Novus!",
+            WA_Flags, WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_ACTIVATE,
+            WA_IDCMP, IDCMP_CLOSEWINDOW,
+            TAG_DONE)
+    }
+
+    if window == null {
+        return 1  // Window open failed
+    }
+
+    // Draw text in the window
+    unsafe {
+        let rp = window.RPort
+        SetAPen(rp, 1)           // Color 1 (usually white)
+        Move(rp, 20, 50)         // Position cursor
+        Text(rp, "Welcome to Novus!", 17)
+    }
+
+    // Wait for close gadget
+    unsafe {
+        let signal = 1u32 << window.UserPort.mp_SigBit
+        Wait(signal)
+    }
+
+    // Clean up
+    unsafe {
+        CloseWindow(window)
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+This is deliberately written in ``raw'' style, calling AmigaOS functions directly with \texttt{unsafe} blocks. Later chapters show the safer stdlib wrappers, but this demonstrates that Novus gives you full access to the platform.
+
+\begin{comingfromc}
+Notice what's different from C:
+\begin{itemize}
+    \item No \texttt{\#include} files---\texttt{from...import} brings in what you need
+    \item No semicolons required (they're optional)
+    \item \texttt{null} instead of \texttt{NULL}
+    \item \texttt{unsafe \{\}} blocks mark where you're bypassing safety checks
+    \item Return type comes after the function name: \texttt{fn main() -> i32}
+\end{itemize}
+
+What's the same:
+\begin{itemize}
+    \item Same AmigaOS functions: \texttt{OpenWindowTags}, \texttt{Wait}, etc.
+    \item Same structures: \texttt{Window}, \texttt{RastPort}
+    \item Same constants: \texttt{WA\_Width}, \texttt{IDCMP\_CLOSEWINDOW}
+    \item Same calling convention and memory layout
+\end{itemize}
+\end{comingfromc}
+
+\section{What Novus Doesn't Do}
+
+Honesty about limitations helps you make informed decisions. Novus is not a general-purpose language. It's designed for Amiga development, and it makes trade-offs accordingly.
+
+\subsection{No Garbage Collection}
+
+Novus uses deterministic resource management via RAII (the \texttt{Drop} trait). When a value goes out of scope, its destructor runs immediately. This is predictable and has zero overhead---but it means you must think about ownership.
+
+Cyclic data structures require extra care. Reference counting (via \texttt{Rc<T>}) is available when needed, but it's explicit, not automatic.
+
+\subsection{No Exceptions}
+
+Error handling uses \texttt{Result<T, E>} and the \texttt{?} operator, not exceptions. This means:
+
+\begin{itemize}
+    \item No invisible control flow jumps
+    \item No unwinding tables taking up code space
+    \item Errors are always visible in function signatures
+\end{itemize}
+
+But it also means you can't \texttt{catch} an error from deep in a call stack without propagating it explicitly through each level.
+
+\subsection{No Hidden Threads}
+
+The Amiga's multitasking is cooperative and explicit. Novus's \texttt{async}/\texttt{await} compiles to state machines driven by Exec signals---there's no hidden thread pool, no automatic parallelism.
+
+If you want parallel execution, you create Exec tasks explicitly. Novus gives you tools to do this safely, but it doesn't do it behind your back.
+
+\subsection{68020 Minimum}
+
+Novus targets 68020+ processors. The 68000/68010 lacks instructions that the compiler relies on (32-bit multiply/divide, bitfield operations). If you're targeting a stock A500 or A1000, Novus isn't the right choice---use C with VBCC directly.
+
+This isn't a significant limitation in practice. Most Amiga users have accelerators, and the A1200/A4000 shipped with 68020/68040.
 
 \section{Target Audience}
 
@@ -107,7 +467,7 @@ Prior experience with Rust, Swift, or other modern systems languages will make N
 The guide is organized in layers:
 
 \begin{description}
-    \item[Part I: Language Fundamentals] covers the core language—syntax, types, control flow, functions, and modules. Read this first.
+    \item[Part I: Language Fundamentals] covers the core language---syntax, types, control flow, functions, and modules. Read this first.
 
     \item[Part II: Standard Library] documents the \texttt{std} packages: collections, strings, memory management, and Amiga OS bindings.
 
@@ -117,5 +477,96 @@ The guide is organized in layers:
 \end{description}
 
 Code examples are designed to be complete and runnable. When a snippet requires context, we provide it. When we omit boilerplate, we say so.
+
+\section{Showcase: Copper Rainbow}
+
+To close this introduction, here's a program that demonstrates what makes Novus special for Amiga development. It uses the copper coprocessor to create a smooth rainbow gradient across the screen---something that would be impossible on any other platform.
+
+\begin{lstlisting}
+// copper_rainbow.novus - A visual showcase
+from std::core import Result
+from std::graphics::copper import CopperListBuilder, CopperListHandle, CopperError
+from std::hardware::registers import rgb12
+from std::os::timer import delay, Duration
+from std::ffi::graphics import WaitTOF
+
+/// Interpolate between two colors
+fn lerp_color(c1: u16, c2: u16, t: u16) -> u16 {
+    let r1 = (c1 >> 8) & $F
+    let r2 = (c2 >> 8) & $F
+    let g1 = (c1 >> 4) & $F
+    let g2 = (c2 >> 4) & $F
+    let b1 = c1 & $F
+    let b2 = c2 & $F
+
+    let r = r1 + ((r2 - r1) * t) / 256
+    let g = g1 + ((g2 - g1) * t) / 256
+    let b = b1 + ((b2 - b1) * t) / 256
+
+    return rgb12((u8)r, (u8)g, (u8)b)
+}
+
+/// Get rainbow color for position 0-255
+fn rainbow(pos: u8) -> u16 {
+    let p = (u16)pos
+    let segment = p / 43
+    let offset = (p % 43) * 6
+
+    match segment {
+        0 => lerp_color(rgb12(15,0,0), rgb12(15,15,0), offset),
+        1 => lerp_color(rgb12(15,15,0), rgb12(0,15,0), offset),
+        2 => lerp_color(rgb12(0,15,0), rgb12(0,15,15), offset),
+        3 => lerp_color(rgb12(0,15,15), rgb12(0,0,15), offset),
+        4 => lerp_color(rgb12(0,0,15), rgb12(15,0,15), offset),
+        _ => lerp_color(rgb12(15,0,15), rgb12(15,0,0), offset),
+    }
+}
+
+/// Build copper list with rainbow gradient
+fn build_rainbow() -> Result<CopperListHandle, CopperError> {
+    var builder = CopperListBuilder::new()
+
+    var line: u16 = 0
+    while line < 200 {
+        let scanline = 44 + line
+        let color_pos = (line * 256) / 200
+        let color = rainbow((u8)color_pos)
+
+        builder.wait(scanline, 0)?
+        builder.move_color(0, color)?
+
+        line = line + 2
+    }
+
+    builder.wait(244, 0)?
+    builder.move_color(0, rgb12(0, 0, 0))?
+
+    return builder.build()
+}
+
+pub fn main() -> i32 {
+    unsafe { WaitTOF() }
+
+    match build_rainbow() {
+        Result::Ok(copper_list) => {
+            unsafe { copper_list.activate() }
+            let _ = delay(Duration::secs(5))
+            return 0  // Copper list cleaned up by Drop
+        },
+        Result::Err(_) => return 1
+    }
+}
+\end{lstlisting}
+
+This 70-line program:
+
+\begin{itemize}
+    \item Uses \texttt{Result} for error handling throughout
+    \item Relies on RAII---the copper list restores the display when dropped
+    \item Talks directly to the copper hardware through safe abstractions
+    \item Compiles to tight, efficient 68k code
+\end{itemize}
+
+Run it on real hardware or in FS-UAE to see a smooth, colorful gradient scroll across your screen. This is what Novus is for: making the Amiga's unique capabilities accessible with modern safety and ergonomics.
 
 Let's begin.
