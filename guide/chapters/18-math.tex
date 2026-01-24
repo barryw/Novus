@@ -1,0 +1,1416 @@
+\chapter{Math}
+\label{chap:math}
+
+The \texttt{std::math} module provides mathematical operations optimized for 68k Amigas. Since most classic Amigas lack a floating-point unit (FPU), the library emphasizes fixed-point arithmetic, lookup tables, and integer math---all designed for predictable performance without FPU dependencies.
+
+\section{Core Integer Math}
+\label{sec:math-core}
+
+The \texttt{std::math::core} module provides fundamental integer operations with optimized 68020+ assembly implementations.
+
+\subsection{Importing Core Math}
+
+\begin{lstlisting}
+from std::math::core import (
+    abs, min, max, clamp, sign, diff,
+    is_power_of_two, next_power_of_two,
+    div_ceil, div_round
+)
+\end{lstlisting}
+
+\subsection{Absolute Value}
+
+The \texttt{abs()} function returns the absolute value of a signed integer:
+
+\begin{lstlisting}
+let x: i32 = -42
+let positive = abs(x)  // Returns 42
+
+let small: i16 = -100
+let pos_small = abs(small)  // Returns 100
+\end{lstlisting}
+
+The function is overloaded for \texttt{i8}, \texttt{i16}, and \texttt{i32} types. The implementation uses optimized assembly that avoids branches on 68020+.
+
+\subsection{Minimum and Maximum}
+
+Find the smaller or larger of two values:
+
+\begin{lstlisting}
+let a: i32 = 10
+let b: i32 = 25
+
+let smaller = min(a, b)  // Returns 10
+let larger = max(a, b)   // Returns 25
+
+// Works with unsigned types too
+let x: u32 = 100
+let y: u32 = 50
+let result = max(x, y)  // Returns 100
+\end{lstlisting}
+
+\begin{notebox}
+\texttt{min()} and \texttt{max()} are overloaded for all integer types: \texttt{i8}, \texttt{i16}, \texttt{i32}, \texttt{u8}, \texttt{u16}, and \texttt{u32}.
+\end{notebox}
+
+\subsection{Clamping Values}
+
+The \texttt{clamp()} function restricts a value to a range:
+
+\begin{lstlisting}
+let value: i32 = 150
+let clamped = clamp(value, 0, 100)  // Returns 100
+
+let low_value: i32 = -50
+let clamped_low = clamp(low_value, 0, 100)  // Returns 0
+
+let in_range: i32 = 50
+let unchanged = clamp(in_range, 0, 100)  // Returns 50
+\end{lstlisting}
+
+This is essential for keeping coordinates on screen, volumes within range, or any bounded value.
+
+\subsection{Sign Function}
+
+The \texttt{sign()} function returns -1, 0, or 1 based on the value's sign:
+
+\begin{lstlisting}
+sign(-42)  // Returns -1
+sign(0)    // Returns 0
+sign(100)  // Returns 1
+\end{lstlisting}
+
+\subsection{Absolute Difference}
+
+The \texttt{diff()} function returns the absolute difference between two values:
+
+\begin{lstlisting}
+diff(10, 25)   // Returns 15
+diff(25, 10)   // Returns 15 (order doesn't matter)
+diff(-5, 5)    // Returns 10
+\end{lstlisting}
+
+\subsection{Power of Two Operations}
+
+Test whether a value is a power of two, or find the next power of two:
+
+\begin{lstlisting}
+is_power_of_two(16)   // true
+is_power_of_two(17)   // false
+is_power_of_two(256)  // true
+is_power_of_two(0)    // false
+
+next_power_of_two(5)    // Returns 8
+next_power_of_two(16)   // Returns 16 (already power of 2)
+next_power_of_two(100)  // Returns 128
+\end{lstlisting}
+
+Power-of-two sizes are often required for Amiga hardware resources like bitplanes and copper lists.
+
+\subsection{Division with Rounding}
+
+Standard integer division truncates toward zero. These functions provide alternative rounding:
+
+\begin{lstlisting}
+// Round up (ceiling division)
+div_ceil(10, 3)   // Returns 4 (10/3 = 3.33, rounds up)
+div_ceil(9, 3)    // Returns 3 (exact division)
+
+// Round to nearest
+div_round(10, 3)  // Returns 3 (10/3 = 3.33, rounds to nearest)
+div_round(11, 3)  // Returns 4 (11/3 = 3.67, rounds to nearest)
+\end{lstlisting}
+
+\section{Fixed-Point Arithmetic}
+\label{sec:math-fixed}
+
+For 68k Amigas without FPUs, fixed-point math provides fractional precision using integer operations. The \texttt{std::math::fixed} module provides two fixed-point types optimized for different use cases.
+
+\subsection{Understanding Fixed-Point}
+
+Fixed-point numbers store fractional values using integers by dedicating some bits to the fractional part. For example, a 16.16 format uses 16 bits for the integer part and 16 bits for the fraction.
+
+The value stored is: \texttt{actual\_value = raw\_value / scale\_factor}
+
+\begin{comingfromc}
+In C, fixed-point math requires manual scaling and tracking. Novus provides typed wrappers that handle scaling automatically while generating the same efficient code.
+\end{comingfromc}
+
+\subsection{Fixed32: 16.16 Format}
+
+\texttt{Fixed32} uses a 16.16 format (16 integer bits, 16 fractional bits):
+
+\begin{lstlisting}
+from std::math::fixed import Fixed32
+
+// Create from integer
+let ten = Fixed32::from_i32(10)
+
+// Create from integer and fractional parts
+let mixed = Fixed32::from_parts(3, 32768)  // 3.5 (32768 = 0.5 * 65536)
+
+// Create from raw value (already scaled)
+let raw = Fixed32::from_raw(65536)  // 1.0 (65536 = 1 << 16)
+let half = Fixed32::from_raw(32768) // 0.5
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{Property} & \textbf{Value} \\
+\hline
+Format & 16.16 (signed) \\
+Range & -32768.0 to +32767.99998 \\
+Precision & ~0.000015 (1/65536) \\
+Scale factor & 65536 \\
+\end{tabular}
+\caption{Fixed32 characteristics}
+\end{table}
+
+\subsubsection{Arithmetic Operations}
+
+\begin{lstlisting}
+let a = Fixed32::from_i32(10)
+let b = Fixed32::from_parts(2, 32768)  // 2.5
+
+// Basic arithmetic
+let sum = a.add(b)        // 12.5
+let diff = a.sub(b)       // 7.5
+let product = a.mul(b)    // 25.0
+let quotient = a.div(b)   // 4.0
+let negated = a.neg()     // -10.0
+let absolute = negated.abs()  // 10.0
+\end{lstlisting}
+
+\subsubsection{Rounding and Conversion}
+
+\begin{lstlisting}
+let value = Fixed32::from_parts(3, 32768)  // 3.5
+
+let floored = value.floor()   // Fixed32 representing 3.0
+let ceiled = value.ceil()     // Fixed32 representing 4.0
+let rounded = value.round()   // Fixed32 representing 4.0
+
+// Convert to integer
+let int_floor = value.to_i32()          // 3 (truncates toward zero)
+let int_round = value.to_i32_rounded()  // 4 (rounds to nearest)
+\end{lstlisting}
+
+\subsubsection{Comparison}
+
+\begin{lstlisting}
+let x = Fixed32::from_i32(5)
+let y = Fixed32::from_parts(5, 32768)  // 5.5
+
+x.lt(y)  // true (5 < 5.5)
+x.le(y)  // true
+x.gt(y)  // false
+x.ge(y)  // false
+x.eq(y)  // false
+\end{lstlisting}
+
+\subsubsection{Mathematical Constants}
+
+\begin{lstlisting}
+from std::math::fixed import (
+    fixed32_pi, fixed32_half_pi,
+    fixed32_two_pi, fixed32_sqrt2, fixed32_one
+)
+
+let pi = fixed32_pi()           // 3.14159...
+let half_pi = fixed32_half_pi() // 1.57079...
+let two_pi = fixed32_two_pi()   // 6.28318...
+let sqrt2 = fixed32_sqrt2()     // 1.41421...
+let one = fixed32_one()         // 1.0
+\end{lstlisting}
+
+\subsection{Fixed16: 8.8 Format}
+
+For situations where memory is tight or less precision is acceptable, \texttt{Fixed16} uses an 8.8 format:
+
+\begin{lstlisting}
+from std::math::fixed import Fixed16
+
+let x = Fixed16::from_i8(10)
+let y = Fixed16::from_raw(64)  // 0.25 (64 = 0.25 * 256)
+
+let sum = x.add(y)  // 10.25
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{Property} & \textbf{Value} \\
+\hline
+Format & 8.8 (signed) \\
+Range & -128.0 to +127.996 \\
+Precision & ~0.004 (1/256) \\
+Scale factor & 256 \\
+\end{tabular}
+\caption{Fixed16 characteristics}
+\end{table}
+
+\texttt{Fixed16} is useful for:
+\begin{itemize}
+\item Sprite animation deltas (sub-pixel movement)
+\item Color component interpolation
+\item Compact storage when precision isn't critical
+\end{itemize}
+
+\subsection{Converting Between Fixed Types}
+
+\begin{lstlisting}
+from std::math::fixed import fixed32_to_fixed16, fixed16_to_fixed32
+
+// Fixed32 to Fixed16 (loses precision)
+let big = Fixed32::from_i32(5)
+let small = fixed32_to_fixed16(big)
+
+// Fixed16 to Fixed32 (preserves value)
+let compact = Fixed16::from_i8(5)
+let expanded = fixed16_to_fixed32(compact)
+\end{lstlisting}
+
+\begin{warningbox}
+Converting from \texttt{Fixed32} to \texttt{Fixed16} can overflow if the value exceeds \texttt{Fixed16}'s range (-128 to +127).
+\end{warningbox}
+
+\section{Trigonometry}
+\label{sec:math-trig}
+
+The \texttt{std::math::trig} module provides sine, cosine, and related functions using lookup tables. This is essential for games and demos on FPU-less Amigas.
+
+\subsection{Binary Angular Measurement (BAMS)}
+
+Angles in Novus use \textbf{Binary Angular Measurement} (BAMS), where a full circle is represented by the range 0-65535 (\texttt{u16}):
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{BAMS Value} & \textbf{Degrees} \\
+\hline
+0 & 0\textdegree \\
+16384 & 90\textdegree \\
+32768 & 180\textdegree \\
+49152 & 270\textdegree \\
+65535 & ~360\textdegree \\
+\end{tabular}
+\caption{BAMS angle values}
+\end{table}
+
+BAMS has several advantages:
+\begin{itemize}
+\item Angles wrap naturally with 16-bit overflow (65535 + 1 = 0)
+\item No need to normalize angles to 0-360 range
+\item Fast lookup table indexing
+\item Angle addition/subtraction works directly
+\end{itemize}
+
+\subsection{Sine and Cosine}
+
+\begin{lstlisting}
+from std::math::trig import sin_fixed32, cos_fixed32
+
+// 90 degrees in BAMS
+let angle: u16 = 16384
+
+let s = sin_fixed32(angle)  // ~1.0
+let c = cos_fixed32(angle)  // ~0.0
+
+// Use for movement
+let speed = Fixed32::from_i32(5)
+let dx = speed.mul(cos_fixed32(angle))
+let dy = speed.mul(sin_fixed32(angle))
+\end{lstlisting}
+
+\subsubsection{Raw Integer Results}
+
+For performance-critical code, get raw 14-bit scaled values:
+
+\begin{lstlisting}
+from std::math::trig import sin_i16, cos_i16
+
+let angle: u16 = 16384
+let s = sin_i16(angle)  // 16384 (represents 1.0)
+let c = cos_i16(angle)  // 0
+
+// Scale: 16384 = 1.0, -16384 = -1.0
+\end{lstlisting}
+
+This avoids \texttt{Fixed32} wrapper overhead for blitter or copper calculations.
+
+\subsubsection{Higher-Precision with Interpolation}
+
+For smoother results, use interpolated variants:
+
+\begin{lstlisting}
+from std::math::trig import sin_fixed32_interp, cos_fixed32_interp
+
+let angle: u16 = 1000  // Arbitrary angle
+let s = sin_fixed32_interp(angle)  // Linear interpolation between table entries
+\end{lstlisting}
+
+Interpolated functions are slightly slower but provide smoother results for fine angle increments.
+
+\subsection{Angle Conversion}
+
+\begin{lstlisting}
+from std::math::trig import (
+    degrees_to_angle, angle_to_degrees,
+    radians_to_angle, angle_to_radians
+)
+from std::math::fixed import fixed32_pi
+
+// Degrees to BAMS
+let angle = degrees_to_angle(45)  // Returns 8192
+
+// BAMS to degrees
+let deg = angle_to_degrees(16384)  // Returns 90
+
+// Radians (as Fixed32) to BAMS
+let pi = fixed32_pi()
+let angle_rad = radians_to_angle(pi)  // Returns 32768 (180 degrees)
+\end{lstlisting}
+
+\subsection{Tangent}
+
+\begin{lstlisting}
+from std::math::trig import tan_fixed32
+
+let angle: u16 = 8192  // 45 degrees
+let t = tan_fixed32(angle)  // ~1.0
+\end{lstlisting}
+
+\begin{warningbox}
+Tangent approaches infinity at 90\textdegree{} and 270\textdegree{}. The function returns clamped maximum values at these points.
+\end{warningbox}
+
+\subsection{Atan2: Angle from Coordinates}
+
+Calculate the angle from x,y coordinates (essential for aiming, pathfinding):
+
+\begin{lstlisting}
+from std::math::trig import atan2_angle
+
+// Point at (10, 10) from origin
+let angle = atan2_angle(10, 10)  // ~8192 (45 degrees)
+
+// Point at (-10, 0) from origin
+let angle2 = atan2_angle(0, -10)  // 32768 (180 degrees)
+
+// Use for "look at" behavior
+let dx = target_x - entity_x
+let dy = target_y - entity_y
+let facing_angle = atan2_angle(dy, dx)
+\end{lstlisting}
+
+\subsection{Angle Constants}
+
+\begin{lstlisting}
+from std::math::trig import (
+    ANGLE_FULL,           // 0 (360 degrees wraps to 0)
+    ANGLE_HALF,           // 32768 (180 degrees)
+    ANGLE_QUARTER,        // 16384 (90 degrees)
+    ANGLE_THREE_QUARTER,  // 49152 (270 degrees)
+    ANGLE_ONE_DEGREE      // 182 (~1 degree)
+)
+\end{lstlisting}
+
+\section{Square Root and Distance}
+\label{sec:math-sqrt}
+
+The \texttt{std::math::sqrt} module provides square root operations with automatic FPU detection on equipped machines.
+
+\subsection{Integer Square Root}
+
+\begin{lstlisting}
+from std::math::sqrt import sqrt
+
+let root = sqrt(16u32)   // Returns 4
+let root2 = sqrt(100u32) // Returns 10
+let root3 = sqrt(2u32)   // Returns 1 (integer truncation)
+\end{lstlisting}
+
+The function is overloaded for \texttt{u32}, \texttt{i32}, and \texttt{u16}. For signed values, negative inputs return 0.
+
+\subsection{Fixed-Point Square Root}
+
+\begin{lstlisting}
+let value = Fixed32::from_i32(2)
+let root = sqrt(value)  // ~1.414 (sqrt of 2)
+\end{lstlisting}
+
+\begin{tipbox}
+On systems with an FPU (68881, 68882, 68040, 68060), the compiler automatically uses hardware \texttt{FSQRT} instructions for dramatically faster execution.
+\end{tipbox}
+
+\subsection{Fast Approximate Square Root}
+
+When precision is less important than speed:
+
+\begin{lstlisting}
+from std::math::sqrt import sqrt_fast
+
+let approx = sqrt_fast(value)  // Newton-Raphson approximation
+\end{lstlisting}
+
+\subsection{Distance Calculations}
+
+\begin{lstlisting}
+from std::math::sqrt import distance, distance_less_than, distance_within
+
+// Euclidean distance between two points
+let d = distance(x1, y1, x2, y2)
+
+// Optimized distance comparisons (avoid sqrt when possible)
+if distance_less_than(x1, y1, x2, y2, 100) {
+    // Points are less than 100 units apart
+}
+
+if distance_within(x1, y1, x2, y2, 100) {
+    // Points are within 100 units (inclusive)
+}
+\end{lstlisting}
+
+\subsection{Hypotenuse}
+
+Overflow-safe hypotenuse calculation:
+
+\begin{lstlisting}
+from std::math::sqrt import hypot
+
+// Calculate sqrt(x^2 + y^2) without overflow
+let length = hypot(30000, 40000)  // Returns 50000
+\end{lstlisting}
+
+\subsection{Inverse Square Root}
+
+For vector normalization:
+
+\begin{lstlisting}
+from std::math::sqrt import inv_sqrt
+
+let value = Fixed32::from_i32(4)
+let inv = inv_sqrt(value)  // 0.5 (1/sqrt(4))
+\end{lstlisting}
+
+\section{Angle Utilities}
+\label{sec:math-angle}
+
+The \texttt{std::math::angle} module extends trigonometry with angle manipulation functions.
+
+\subsection{Angle Normalization}
+
+\begin{lstlisting}
+from std::math::angle import angle_normalize
+
+// BAMS angles wrap automatically, but this ensures consistency
+let normalized = angle_normalize(angle)
+\end{lstlisting}
+
+\subsection{Angle Difference}
+
+Find the shortest angular distance between two angles:
+
+\begin{lstlisting}
+from std::math::angle import angle_diff, angle_diff_abs
+
+let a: u16 = 1000   // Small angle
+let b: u16 = 64000  // Near full circle
+
+// Signed difference (shortest path)
+let diff = angle_diff(a, b)  // Negative (b is "behind" a)
+
+// Absolute difference
+let abs_diff = angle_diff_abs(a, b)  // Always positive
+\end{lstlisting}
+
+This correctly handles the wraparound at 360\textdegree.
+
+\subsection{Angle Interpolation}
+
+Smoothly rotate between angles:
+
+\begin{lstlisting}
+from std::math::angle import angle_lerp, angle_smoothstep, angle_damp
+
+let start: u16 = 0
+let end: u16 = 16384  // 90 degrees
+
+// Linear interpolation (t = 0.5)
+let mid = angle_lerp(start, end, Fixed32::from_raw(32768))  // 45 degrees
+
+// Smooth interpolation (ease in/out)
+let smooth = angle_smoothstep(start, end, t)
+
+// Frame-rate independent smooth rotation
+let current = angle_damp(current, target, smoothness, delta_time)
+\end{lstlisting}
+
+\subsection{Angle Snapping}
+
+Snap angles to fixed increments:
+
+\begin{lstlisting}
+from std::math::angle import angle_snap, angle_snap_45, angle_snap_8way
+
+// Snap to arbitrary increment
+let snapped = angle_snap(angle, 8192)  // Snap to 45-degree increments
+
+// Convenience for common cases
+let snapped45 = angle_snap_45(angle)   // Same as above
+let snapped8 = angle_snap_8way(angle)  // 8 directions
+\end{lstlisting}
+
+\subsection{Direction Conversion}
+
+Convert angles to discrete direction indices:
+
+\begin{lstlisting}
+from std::math::angle import angle_to_8way, angle_to_4way
+
+// Get direction index (0-7) for sprite animation frames
+let dir = angle_to_8way(facing_angle)
+
+// Get cardinal direction index (0-3)
+let cardinal = angle_to_4way(facing_angle)
+
+// Direction values:
+// 4-way: 0=right, 1=down, 2=left, 3=up
+// 8-way: 0=right, 1=down-right, 2=down, 3=down-left, etc.
+\end{lstlisting}
+
+\subsection{Quadrant and Facing Detection}
+
+\begin{lstlisting}
+from std::math::angle import (
+    quadrant, facing_right, facing_left, facing_up, facing_down
+)
+
+let angle: u16 = 8192  // 45 degrees
+
+let q = quadrant(angle)  // Returns 0 (first quadrant)
+
+// Boolean facing checks
+if facing_right(angle) {
+    // Angle is between -90 and +90 degrees
+}
+
+if facing_up(angle) {
+    // Angle is between 0 and 180 degrees (upper half)
+}
+\end{lstlisting}
+
+\section{Interpolation}
+\label{sec:math-interp}
+
+The \texttt{std::math::interp} module provides functions for smooth value transitions.
+
+\subsection{Linear Interpolation (Lerp)}
+
+\begin{lstlisting}
+from std::math::interp import lerp, lerp_i32, lerp_clamped
+
+let start = Fixed32::from_i32(0)
+let end = Fixed32::from_i32(100)
+let t = Fixed32::from_raw(16384)  // 0.25 (16384 = 0.25 * 65536)
+
+let result = lerp(start, end, t)  // 25.0
+
+// Integer version
+let int_result = lerp_i32(0, 100, t)  // 25
+
+// Clamped version (t is clamped to 0-1)
+let safe = lerp_clamped(start, end, Fixed32::from_i32(2))  // 100 (not 200)
+\end{lstlisting}
+
+\subsection{Inverse Lerp and Remap}
+
+\begin{lstlisting}
+from std::math::interp import inv_lerp, remap
+
+// Find t value for a result
+let t = inv_lerp(0, 100, 25)  // 0.25
+
+// Remap from one range to another
+let remapped = remap(25, 0, 100, 0, 1000)  // 250
+\end{lstlisting}
+
+\subsection{Smoothstep}
+
+Hermite interpolation with smooth acceleration/deceleration:
+
+\begin{lstlisting}
+from std::math::interp import smoothstep, smootherstep
+
+let t = Fixed32::from_raw(32768)  // 0.5
+
+// Standard smoothstep (3t^2 - 2t^3)
+let smooth = smoothstep(t)
+
+// Ken Perlin's smoother version (6t^5 - 15t^4 + 10t^3)
+let smoother = smootherstep(t)
+\end{lstlisting}
+
+\subsection{Movement Functions}
+
+\begin{lstlisting}
+from std::math::interp import move_towards, damp, spring_damp
+
+// Move toward target at fixed speed
+let new_pos = move_towards(current, target, max_delta)
+
+// Exponential decay (frame-rate independent smoothing)
+let smoothed = damp(current, target, smoothness, delta_time)
+
+// Spring physics (overshoots and settles)
+let spring_pos = spring_damp(current, target, velocity, stiffness, damping, delta_time)
+\end{lstlisting}
+
+\subsection{Bezier Curves}
+
+\begin{lstlisting}
+from std::math::interp import bezier_quadratic, bezier_cubic
+
+let t = Fixed32::from_raw(32768)  // 0.5
+
+// Quadratic Bezier (3 control points)
+let p0 = Fixed32::from_i32(0)
+let p1 = Fixed32::from_i32(50)   // Control point
+let p2 = Fixed32::from_i32(100)
+let quad = bezier_quadratic(p0, p1, p2, t)
+
+// Cubic Bezier (4 control points)
+let c1 = Fixed32::from_i32(25)   // Control point 1
+let c2 = Fixed32::from_i32(75)   // Control point 2
+let cubic = bezier_cubic(p0, c1, c2, p2, t)
+\end{lstlisting}
+
+\subsection{Looping Functions}
+
+\begin{lstlisting}
+from std::math::interp import ping_pong, repeat
+
+// Oscillate between 0 and length
+let pp = ping_pong(time, length)  // 0 -> length -> 0 -> length...
+
+// Repeat in range (like modulo but for Fixed32)
+let r = repeat(value, length)  // 0 -> length, wraps to 0
+\end{lstlisting}
+
+\section{Easing Functions}
+\label{sec:math-ease}
+
+The \texttt{std::math::ease} module provides Robert Penner's easing equations for smooth animations.
+
+\subsection{Easing Overview}
+
+Each easing function takes a \texttt{t} value from 0.0 to 1.0 and returns a modified value. There are three variants for each curve:
+\begin{itemize}
+\item \texttt{ease\_in\_*}: Starts slow, accelerates
+\item \texttt{ease\_out\_*}: Starts fast, decelerates
+\item \texttt{ease\_in\_out\_*}: Smooth start and end
+\end{itemize}
+
+\subsection{Basic Usage}
+
+\begin{lstlisting}
+from std::math::ease import ease_in_quad, ease_out_quad, ease_in_out_quad
+
+let t = Fixed32::from_raw(32768)  // 0.5
+
+let slow_start = ease_in_quad(t)      // Accelerating
+let slow_end = ease_out_quad(t)       // Decelerating
+let smooth = ease_in_out_quad(t)      // Both
+\end{lstlisting}
+
+\subsection{Available Easing Curves}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\textbf{Family} & \textbf{Description} \\
+\hline
+\texttt{linear} & No easing (straight line) \\
+\texttt{quad} & Quadratic ($t^2$) - gentle curve \\
+\texttt{cubic} & Cubic ($t^3$) - more pronounced \\
+\texttt{quart} & Quartic ($t^4$) - even stronger \\
+\texttt{quint} & Quintic ($t^5$) - very strong \\
+\texttt{sine} & Sinusoidal - very smooth \\
+\texttt{expo} & Exponential - dramatic acceleration \\
+\texttt{circ} & Circular - based on circle equation \\
+\texttt{back} & Overshoots slightly, then settles \\
+\texttt{elastic} & Spring-like bounce \\
+\texttt{bounce} & Bouncing ball effect \\
+\end{tabular}
+\caption{Easing function families}
+\end{table}
+
+\subsection{Example: Animating Position}
+
+\begin{lstlisting}
+from std::math::ease import ease_out_cubic
+from std::math::interp import lerp
+
+struct Animation {
+    start_x: i32,
+    end_x: i32,
+    duration: i32,     // Frames
+    current_frame: i32,
+}
+
+impl Animation {
+    fn update(&var self) -> i32 {
+        if self.current_frame >= self.duration {
+            return self.end_x
+        }
+
+        // Calculate t (0.0 to 1.0)
+        // t = current_frame / duration (as fixed-point)
+        let t = Fixed32::from_i32(self.current_frame)
+            .div(Fixed32::from_i32(self.duration))
+
+        // Apply easing
+        let eased_t = ease_out_cubic(t)
+
+        // Interpolate position
+        self.current_frame++
+        return lerp_i32(self.start_x, self.end_x, eased_t)
+    }
+}
+\end{lstlisting}
+
+\subsection{Special Easing Functions}
+
+\subsubsection{Back (Overshoot)}
+
+\begin{lstlisting}
+from std::math::ease import ease_in_back, ease_out_back, ease_in_out_back
+
+// Pulls back before moving forward
+let backed = ease_in_back(t)
+\end{lstlisting}
+
+Good for UI elements that need a "windup" feel.
+
+\subsubsection{Elastic (Spring)}
+
+\begin{lstlisting}
+from std::math::ease import ease_in_elastic, ease_out_elastic, ease_in_out_elastic
+
+// Spring oscillation
+let elastic = ease_out_elastic(t)
+\end{lstlisting}
+
+Creates a spring-like wobble effect.
+
+\subsubsection{Bounce}
+
+\begin{lstlisting}
+from std::math::ease import ease_in_bounce, ease_out_bounce, ease_in_out_bounce
+
+// Bouncing ball effect
+let bounced = ease_out_bounce(t)
+\end{lstlisting}
+
+Simulates an object bouncing and settling.
+
+\subsubsection{Steps}
+
+\begin{lstlisting}
+from std::math::ease import ease_steps
+
+// Staircase animation (for pixel art, retro effects)
+let stepped = ease_steps(t, 4)  // 4 discrete steps
+\end{lstlisting}
+
+\section{2D Vectors}
+\label{sec:math-vec2}
+
+The \texttt{std::math::vec2} module provides 2D vector types for games and graphics.
+
+\subsection{Vec2: Fixed-Point Vectors}
+
+\texttt{Vec2} uses \texttt{Fixed32} components for sub-pixel precision:
+
+\begin{lstlisting}
+from std::math::vec2 import Vec2
+
+// Create vectors
+let pos = Vec2::new(
+    Fixed32::from_i32(100),
+    Fixed32::from_i32(50)
+)
+let zero = Vec2::zero()
+let unit_x = Vec2::unit_x()  // (1, 0)
+let unit_y = Vec2::unit_y()  // (0, 1)
+
+// From integers
+let from_int = Vec2::from_i32(10, 20)
+\end{lstlisting}
+
+\subsection{Vec2i: Integer Vectors}
+
+\texttt{Vec2i} uses \texttt{i32} components for pixel-perfect operations:
+
+\begin{lstlisting}
+from std::math::vec2 import Vec2i
+
+let screen_pos = Vec2i::new(320, 200)
+let origin = Vec2i::zero()
+\end{lstlisting}
+
+\subsection{Vector Operations}
+
+\begin{lstlisting}
+let a = Vec2::from_i32(10, 20)
+let b = Vec2::from_i32(5, 10)
+
+// Basic arithmetic
+let sum = a.add(b)        // (15, 30)
+let diff = a.sub(b)       // (5, 10)
+let neg = a.neg()         // (-10, -20)
+
+// Scaling
+let scaled = a.scale(Fixed32::from_i32(2))  // (20, 40)
+let halved = a.div(Fixed32::from_i32(2))    // (5, 10)
+
+// Component-wise multiplication (Hadamard product)
+let hadamard = a.hadamard(b)  // (50, 200)
+\end{lstlisting}
+
+\subsection{Dot and Cross Products}
+
+\begin{lstlisting}
+let a = Vec2::from_i32(1, 0)
+let b = Vec2::from_i32(0, 1)
+
+// Dot product (scalar)
+let dot = a.dot(b)  // 0 (perpendicular)
+
+// 2D cross product (scalar, represents z-component)
+let cross = a.cross(b)  // 1 (counter-clockwise)
+\end{lstlisting}
+
+\subsection{Length and Distance}
+
+\begin{lstlisting}
+let v = Vec2::from_i32(3, 4)
+
+// Squared length (fast, avoids sqrt)
+let len_sq = v.length_sq()  // 25
+
+// Approximate length (alpha-max-beta-min algorithm)
+let len_approx = v.length_approx()  // ~5 (fast approximation)
+
+// Distance between points
+let a = Vec2::from_i32(0, 0)
+let b = Vec2::from_i32(3, 4)
+let dist_sq = distance_sq(a, b)        // 25
+let dist_approx = distance_approx(a, b) // ~5
+\end{lstlisting}
+
+\begin{tipbox}
+The alpha-max-beta-min algorithm provides ~3\% accuracy for length calculations without expensive square roots. It's ideal for collision detection where exact values aren't critical.
+\end{tipbox}
+
+\subsection{Perpendicular Vectors}
+
+\begin{lstlisting}
+let v = Vec2::from_i32(1, 0)
+
+// Counter-clockwise perpendicular
+let perp = v.perp()     // (0, 1)
+
+// Clockwise perpendicular
+let perp_cw = v.perp_cw()  // (0, -1)
+\end{lstlisting}
+
+\subsection{Reflection}
+
+\begin{lstlisting}
+let velocity = Vec2::from_i32(1, -1)  // Moving down-right
+let normal = Vec2::from_i32(0, 1)     // Horizontal surface
+
+let reflected = velocity.reflect(normal)  // Bounces up-right
+\end{lstlisting}
+
+\subsection{Rotation}
+
+\begin{lstlisting}
+from std::math::vec2 import Vec2
+from std::math::trig import ANGLE_QUARTER
+
+let v = Vec2::from_i32(1, 0)  // Pointing right
+
+// Rotate 90 degrees counter-clockwise
+let rotated = v.rotate(ANGLE_QUARTER)  // Now pointing up
+\end{lstlisting}
+
+\subsection{Direction and Angle}
+
+\begin{lstlisting}
+from std::math::vec2 import direction_from_angle, angle_from_direction
+
+// Create unit vector from angle
+let angle: u16 = 8192  // 45 degrees
+let dir = direction_from_angle(angle)  // (~0.707, ~0.707)
+
+// Get angle from vector
+let v = Vec2::from_i32(1, 1)
+let a = angle_from_direction(v)  // ~8192 (45 degrees)
+\end{lstlisting}
+
+\subsection{Interpolation}
+
+\begin{lstlisting}
+from std::math::vec2 import lerp_vec2
+
+let start = Vec2::from_i32(0, 0)
+let end = Vec2::from_i32(100, 50)
+let t = Fixed32::from_raw(32768)  // 0.5
+
+let mid = lerp_vec2(start, end, t)  // (50, 25)
+\end{lstlisting}
+
+\subsection{Converting Between Vec2 and Vec2i}
+
+\begin{lstlisting}
+let fixed_pos = Vec2::from_i32(10, 20)
+
+// Convert to integer tuple (for screen drawing)
+let (screen_x, screen_y) = fixed_pos.to_i32()  // Truncates fractional parts
+
+// Create Vec2i from integers
+let screen_pos = Vec2i::new(screen_x, screen_y)
+
+// Convert Vec2i back to Vec2 (for physics)
+let physics_pos = screen_pos.to_vec2()
+\end{lstlisting}
+
+\section{Practical Example: 2D Game Physics}
+\label{sec:math-example}
+
+Here's a complete example showing fixed-point math, vectors, and trigonometry working together:
+
+\begin{lstlisting}
+from std::math::fixed import Fixed32
+from std::math::vec2 import Vec2, Vec2i, lerp_vec2
+from std::math::trig import sin_fixed32, cos_fixed32, atan2_angle
+from std::math::interp import move_towards
+from std::math::core import clamp
+
+struct Entity {
+    pos: Vec2,           // Sub-pixel position
+    velocity: Vec2,      // Movement per frame
+    facing: u16,         // BAMS angle
+    speed: Fixed32,
+    max_speed: Fixed32,
+}
+
+impl Entity {
+    fn new(x: i32, y: i32) -> Entity {
+        return Entity {
+            pos: Vec2::from_i32(x, y),
+            velocity: Vec2::zero(),
+            facing: 0,
+            speed: Fixed32::from_i32(0),
+            max_speed: Fixed32::from_i32(4),
+        }
+    }
+
+    fn accelerate(&var self, angle: u16, accel: Fixed32) {
+        // Calculate acceleration vector
+        let ax = accel.mul(cos_fixed32(angle))
+        let ay = accel.mul(sin_fixed32(angle))
+
+        // Add to velocity
+        self.velocity = self.velocity.add(Vec2::new(ax, ay))
+
+        // Clamp to max speed
+        let speed_sq = self.velocity.length_sq()
+        let max_sq = self.max_speed.mul(self.max_speed)
+        if speed_sq.gt(max_sq) {
+            // Normalize and scale to max
+            let len = self.velocity.length_approx()
+            self.velocity = self.velocity.scale(self.max_speed.div(len))
+        }
+
+        // Update facing angle (threshold = 0.01)
+        if speed_sq.gt(Fixed32::from_raw(655)) {  // ~0.01
+            self.facing = atan2_angle(
+                self.velocity.y.to_i32(),
+                self.velocity.x.to_i32()
+            )
+        }
+    }
+
+    fn apply_friction(&var self, friction: Fixed32) {
+        self.velocity = self.velocity.scale(friction)
+    }
+
+    fn update(&var self) {
+        // Apply velocity to position
+        self.pos = self.pos.add(self.velocity)
+    }
+
+    fn screen_pos(&self) -> Vec2i {
+        // Convert fixed-point position to screen coordinates
+        let (x, y) = self.pos.to_i32()
+        return Vec2i::new(x, y)
+    }
+}
+
+fn main() -> i32 {
+    var player = Entity::new(160, 100)
+
+    // Game loop simulation
+    while var frame < 60 {
+        // Accelerate right
+        let right: u16 = 0
+        player.accelerate(right, Fixed32::from_raw(16384))  // 0.25
+
+        // Apply friction (0.95)
+        player.apply_friction(Fixed32::from_raw(62259))  // ~0.95
+
+        // Update position
+        player.update()
+
+        // Get screen position for drawing
+        let screen = player.screen_pos()
+
+        frame++
+    }
+
+    return 0
+}
+\end{lstlisting}
+
+\section{Performance Considerations}
+\label{sec:math-perf}
+
+\subsection{Avoiding Expensive Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Operation} & \textbf{Cost} & \textbf{Alternative} \\
+\hline
+Division & High & Multiply by reciprocal, bit shift \\
+Square root & Very high & Use squared distances \\
+Trig functions & Medium & Lookup tables (built-in) \\
+Floating point & N/A & Fixed-point (no FPU) \\
+\end{tabular}
+\caption{Operation costs on 68k}
+\end{table}
+
+\subsection{Squared Distance Pattern}
+
+\begin{lstlisting}
+// Slow: calculates actual distance
+if distance(a, b) < threshold {
+    // ...
+}
+
+// Fast: compare squared values
+let threshold_sq = threshold * threshold
+if distance_sq(a, b) < threshold_sq {
+    // ...
+}
+\end{lstlisting}
+
+\subsection{Precomputing Constants}
+
+\begin{lstlisting}
+// Calculate once at startup
+let inv_screen_width = Fixed32::from_i32(1).div(Fixed32::from_i32(320))
+
+// Use in loop (multiply is faster than divide)
+let normalized_x = x.mul(inv_screen_width)
+\end{lstlisting}
+
+\section{Processor-Specific Tuning}
+\label{sec:math-processor}
+
+The 68k processor family spans multiple generations, from the 68020 to the FPGA-based 68080. Novus targets 68020 and later processors, which provide native 32-bit multiply and divide operations essential for efficient fixed-point math. Understanding the differences between processors is essential for writing efficient code.
+
+\subsection{Processor Overview}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccc}
+\textbf{Processor} & \textbf{Multiply} & \textbf{Divide} & \textbf{FPU} & \textbf{Cache} \\
+\hline
+68020 & 32$\times$32 & 64$\div$32 & External & 256B I \\
+68030 & 32$\times$32 & 64$\div$32 & External & 256B I+D \\
+68040 & 32$\times$32 & 64$\div$32 & Built-in* & 4KB I+D \\
+68060 & 32$\times$32 & 64$\div$32 & Built-in* & 8KB I+D \\
+68080 & 32$\times$32$\rightarrow$64 & 64$\div$32 & Built-in & 32KB I+D \\
+\end{tabular}
+\caption{68k processor capabilities. *Some FPU instructions emulated in software.}
+\end{table}
+
+\subsection{68020/68030: The Baseline}
+
+The 68020 (A1200 stock, some A3000) and 68030 (A3000, A4000, accelerators) add crucial features:
+
+\begin{itemize}
+\item \textbf{32-bit multiply}: \texttt{MULS.L}/\texttt{MULU.L} are 32$\times$32$\rightarrow$32 or 64
+\item \textbf{64-bit divide}: \texttt{DIVS.L}/\texttt{DIVU.L} are 64$\div$32$\rightarrow$32
+\item \textbf{Bit field operations}: \texttt{BFEXTU}, \texttt{BFINS}, etc.
+\item \textbf{Instruction cache}: 256 bytes (68020) or 256+256 (68030)
+\item \textbf{Optional FPU}: 68881 or 68882 coprocessor
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrl}
+\textbf{Operation} & \textbf{Cycles} & \textbf{Notes} \\
+\hline
+\texttt{MULU.L} & 28--44 & 32$\times$32$\rightarrow$32 \\
+\texttt{MULU.L} (64-bit) & 28--44 & 32$\times$32$\rightarrow$64 \\
+\texttt{DIVU.L} & 42--90 & 64$\div$32$\rightarrow$32 \\
+\texttt{DIVS.L} & 58--122 & Signed division slower \\
+\end{tabular}
+\caption{68020/030 instruction timing (approximate cycles)}
+\end{table}
+
+\textbf{68020/030 Optimization Tips:}
+\begin{itemize}
+\item Use full 32-bit \texttt{Fixed32} operations---hardware supports them natively
+\item Bit field instructions are powerful for packed data (sprites, graphics)
+\item Loop unrolling helps due to small instruction cache
+\item Consider 68881/68882 FPU if available (adds hardware sin, cos, sqrt, etc.)
+\end{itemize}
+
+\subsection{68040: Built-in FPU with Caveats}
+
+The 68040 (A4000, many accelerators) integrates the FPU but with important limitations:
+
+\begin{itemize}
+\item \textbf{Partial FPU}: Some 68882 instructions are emulated in software
+\item \textbf{Larger caches}: 4KB instruction + 4KB data
+\item \textbf{Pipelined}: Better instruction throughput
+\item \textbf{Copyback cache}: Can cause issues with DMA if not flushed
+\end{itemize}
+
+\begin{warningbox}
+The 68040 FPU does \textbf{not} implement these 68882 instructions in hardware:
+\texttt{FSIN}, \texttt{FCOS}, \texttt{FTAN}, \texttt{FASIN}, \texttt{FACOS}, \texttt{FATAN}, \texttt{FSINH}, \texttt{FCOSH}, \texttt{FTANH}, \texttt{FATANH}, \texttt{FLOG10}, \texttt{FLOG2}, \texttt{FLOGN}, \texttt{FMOD}, \texttt{FREM}, \texttt{FETOX}, \texttt{FGETEXP}, \texttt{FGETMAN}, \texttt{FTWOTOX}, \texttt{FTENTOX}.
+
+These generate F-line exceptions and are handled by the \texttt{68040.library} FPSP (Floating Point Support Package). Software emulation is 10--100$\times$ slower than hardware.
+\end{warningbox}
+
+\textbf{Hardware FPU Operations (fast):}
+\begin{itemize}
+\item \texttt{FADD}, \texttt{FSUB}, \texttt{FMUL}, \texttt{FDIV}
+\item \texttt{FSQRT} (hardware!)
+\item \texttt{FABS}, \texttt{FNEG}, \texttt{FMOVE}
+\item \texttt{FCMP}, \texttt{FTST}
+\end{itemize}
+
+\textbf{68040 Optimization Tips:}
+\begin{itemize}
+\item Use lookup tables for trig functions---faster than emulated \texttt{FSIN}/\texttt{FCOS}
+\item \texttt{FSQRT} is hardware and fast---use it!
+\item Flush caches before DMA operations
+\item The math library uses hardware \texttt{FSQRT} automatically on 68040+
+\end{itemize}
+
+\subsection{68060: Fastest Classic 68k}
+
+The 68060 (Blizzard, Apollo, etc.) is the pinnacle of classic 68k:
+
+\begin{itemize}
+\item \textbf{Superscalar}: Can execute 2 instructions per cycle
+\item \textbf{Branch prediction}: Reduces pipeline stalls
+\item \textbf{Faster multiply}: Single-cycle for common cases
+\item \textbf{8KB caches}: Instruction and data
+\item \textbf{Even more emulated FPU ops}: More instructions trap than 68040
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrl}
+\textbf{Operation} & \textbf{Cycles} & \textbf{Notes} \\
+\hline
+\texttt{MULU.L} & 2 & Most cases! \\
+\texttt{MULS.L} & 2--4 & Depends on operands \\
+\texttt{DIVU.L} & 35--37 & Still expensive \\
+\texttt{FSQRT} & 1 & Hardware, pipelined \\
+\texttt{FMUL} & 1 & Hardware, pipelined \\
+\end{tabular}
+\caption{68060 instruction timing (cycles)}
+\end{table}
+
+\begin{warningbox}
+The 68060 emulates even more instructions than 68040. Additionally, these \textbf{integer} instructions trap and are emulated:
+\begin{itemize}
+\item \texttt{MOVEP} (move peripheral)
+\item \texttt{CAS2} (compare and swap)
+\item Some \texttt{CHK2}/\texttt{CMP2} forms
+\item \texttt{MULU.L}/\texttt{MULS.L} with 64-bit result (Dh:Dl form)
+\item \texttt{DIVU.L}/\texttt{DIVS.L} with 64-bit dividend (Dr:Dq form)
+\end{itemize}
+
+Always install the \texttt{68060.library} for proper emulation support.
+\end{warningbox}
+
+\textbf{68060 Optimization Tips:}
+\begin{itemize}
+\item Native multiply is so fast that shift/add sequences are often \textbf{slower}
+\item Division is still expensive---precompute reciprocals
+\item Use lookup tables for trig (emulated FPU trig is very slow)
+\item Hardware \texttt{FSQRT} and \texttt{FMUL} are excellent
+\item Align loops to cache lines for best branch prediction
+\end{itemize}
+
+\subsection{68080 (Apollo Core): Modern Performance}
+
+The FPGA-based 68080 brings modern features to the 68k architecture:
+
+\begin{itemize}
+\item \textbf{AMMX SIMD}: 64-bit vector operations (8$\times$8-bit, 4$\times$16-bit, 2$\times$32-bit)
+\item \textbf{Fast multiply}: 32$\times$32$\rightarrow$64 hardware multiply, fully pipelined
+\item \textbf{Complete FPU}: All instructions in hardware, no emulation
+\item \textbf{Large caches}: 32KB instruction + 32KB data
+\item \textbf{Fast memory}: Direct SDRAM access
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrl}
+\textbf{Operation} & \textbf{Cycles} & \textbf{Notes} \\
+\hline
+\texttt{MULU.L} & 2--4 & Pipelined, depends on data \\
+\texttt{DIVU.L} & 10--20 & Hardware but still iterative \\
+\texttt{FSIN}/\texttt{FCOS} & 15--30 & Hardware, no emulation needed \\
+\texttt{FSQRT} & 8--15 & Hardware, iterative algorithm \\
+AMMX vector op & 1--2 & Up to 8 operations in parallel \\
+\end{tabular}
+\caption{68080 instruction timing (approximate)}
+\end{table}
+
+\textbf{68080 AMMX Features:}
+\begin{itemize}
+\item 32 64-bit data registers (D0--D7, E0--E23)
+\item SIMD arithmetic: 8$\times$8-bit or 4$\times$16-bit parallel operations
+\item Butterfly operations for DSP (FFT, audio processing)
+\item 3-operand instructions: \texttt{D = A op B}
+\item Similar to SSE/AltiVec on x86/PowerPC
+\end{itemize}
+
+\begin{notebox}
+Novus does not yet generate AMMX instructions automatically. For AMMX optimization, use inline assembly with the \texttt{asm \{\}} block. Future versions may add AMMX intrinsics.
+\end{notebox}
+
+\subsection{FPU Availability Summary}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccccc}
+\textbf{System} & \textbf{CPU} & \textbf{FPU} & \textbf{FSQRT} & \textbf{FSIN/FCOS} & \textbf{Recommendation} \\
+\hline
+A1200 stock & 68EC020 & None & -- & -- & Fixed-point + tables \\
+A1200 + 68030 & 68030 & Optional & HW/Emu & HW/Emu & Check at runtime \\
+A3000 & 68030 & Optional & HW/Emu & HW/Emu & Check at runtime \\
+A4000/030 & 68030 & Optional & HW/Emu & HW/Emu & Check at runtime \\
+A4000/040 & 68040 & Built-in & HW & Emulated & Use tables for trig \\
+Accelerators & 68060 & Built-in & HW & Emulated & Use tables for trig \\
+Vampire/Icedrake & 68080 & Built-in & HW & HW & Full FPU available \\
+\end{tabular}
+\caption{FPU availability by system}
+\end{table}
+
+\subsection{Choosing the Right Approach}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lp{5cm}p{5cm}}
+\textbf{Target} & \textbf{Best Approach} & \textbf{Avoid} \\
+\hline
+68020/030 & Fixed32, lookup tables for trig & Assuming FPU exists \\
+68040/060 & Fixed32 or FPU for basic math, tables for trig & \texttt{FSIN}/\texttt{FCOS} (emulated) \\
+68080 & Full FPU, consider AMMX for heavy math & None---everything is fast \\
+Multi-target & Fixed32 + tables (works everywhere) & FPU-only code paths \\
+\end{tabular}
+\caption{Recommended math strategies by target}
+\end{table}
+
+\subsection{Runtime CPU Detection}
+
+Novus provides CPU detection to choose optimal code paths:
+
+\begin{lstlisting}
+from std::os::cpu import get_cpu_type, has_fpu, CpuType
+from std::math::sqrt import fixed32_sqrt
+from std::math::fixed import Fixed32
+
+// Choose optimal sqrt implementation based on detected CPU
+fn compute_sqrt(value: Fixed32) -> Fixed32 {
+    match get_cpu_type() {
+        CpuType::M68040 | CpuType::M68060 | CpuType::M68080 => {
+            if has_fpu() {
+                // Hardware FSQRT available
+                let f = value.to_f32();
+                Fixed32::from_f32(f.sqrt())
+            } else {
+                fixed32_sqrt(value)
+            }
+        },
+        _ => {
+            // 68020/030: Use lookup table + interpolation
+            fixed32_sqrt(value)
+        }
+    }
+}
+\end{lstlisting}
+
+\begin{tipbox}
+The standard library math functions already perform this detection internally. You typically don't need to check CPU type yourself unless writing custom optimized routines.
+\end{tipbox}
+
+\subsection{Compiler Target Flags}
+
+Use compiler flags to optimize for specific processors:
+
+\begin{lstlisting}[style=bash]
+# Target specific processor
+novus compile --cpu=68020 game.novus    # A1200/A3000 minimum (default)
+novus compile --cpu=68040 game.novus    # 68040 optimizations
+novus compile --cpu=68060 game.novus    # 68060 optimizations
+
+# Multi-target fat binary
+novus compile --cpu=fat:68020,68040,68060 game.novus
+\end{lstlisting}
+
+With \texttt{--cpu=68060}, the compiler:
+\begin{itemize}
+\item Uses native multiply instead of shift/add sequences
+\item Avoids instructions that trap (like \texttt{MOVEP})
+\item Generates cache-aligned loop entry points
+\item Uses \texttt{FSQRT} for square root operations (when FPU available)
+\end{itemize}
+
+\section{Module Reference}
+\label{sec:math-reference}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lp{8cm}}
+\textbf{Module} & \textbf{Contents} \\
+\hline
+\texttt{std::math::core} & abs, min, max, clamp, sign, diff, power-of-two, division \\
+\texttt{std::math::fixed} & Fixed32, Fixed16, constants \\
+\texttt{std::math::trig} & sin, cos, tan, atan2, angle conversion \\
+\texttt{std::math::sqrt} & Square root, distance, hypot, inv\_sqrt \\
+\texttt{std::math::angle} & Angle diff, lerp, snap, direction conversion \\
+\texttt{std::math::interp} & lerp, smoothstep, bezier, spring, ping\_pong \\
+\texttt{std::math::ease} & Complete easing function library \\
+\texttt{std::math::vec2} & Vec2 (fixed), Vec2i (integer), operations \\
+\end{tabular}
+\caption{Math module summary}
+\end{table}
