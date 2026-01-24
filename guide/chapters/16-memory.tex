@@ -1,0 +1,991 @@
+\chapter{Memory Management}
+\label{chap:memory}
+
+Memory management on the Amiga is both powerful and perilous. Unlike modern systems with virtual memory and memory protection, the Amiga has a flat address space where any program can read from or write to any memory location. One wrong pointer dereferences the wrong address, and the entire system crashes---often spectacularly.
+
+Novus addresses this challenge head-on with a memory system designed around three principles:
+\begin{enumerate}
+    \item \textbf{RAII everywhere}: Memory is automatically freed when variables go out of scope
+    \item \textbf{Size tracking}: No more passing size parameters that can get out of sync
+    \item \textbf{Result/Option returns}: Allocation failures are explicit, not hidden null pointers
+\end{enumerate}
+
+\begin{warningbox}
+\textbf{There is no memory protection on the Amiga.} A null pointer dereference, buffer overflow, or use-after-free doesn't cause a clean error message---it corrupts memory, hangs the system, or produces bizarre behavior. The patterns in this chapter exist to prevent these disasters.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Amiga Memory Architecture}
+\label{sec:memory-architecture}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Understanding Amiga memory types is essential for effective programming:
+
+\subsection{Chip RAM vs Fast RAM}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Type} & \textbf{Access} & \textbf{Use Cases} \\
+\hline
+\textbf{Chip RAM} & CPU + DMA & Graphics, audio, blitter operations \\
+\textbf{Fast RAM} & CPU only & Code, data, general computation \\
+\end{tabular}
+\caption{Amiga memory types}
+\end{table}
+
+\textbf{Chip RAM} (up to 2MB) is accessible by both the CPU and the custom chips (Paula, Blitter, Copper). All graphics data, audio samples, and blitter operations \emph{must} use chip RAM.
+
+\textbf{Fast RAM} (expansion memory) is accessible only by the CPU but runs at full speed without DMA contention. Use fast RAM for code, data structures, and anything that doesn't need custom chip access.
+
+\begin{comingfromc}
+In C, you'd use \texttt{AllocMem()} with \texttt{MEMF\_CHIP} or \texttt{MEMF\_FAST} flags and manually track the size for \texttt{FreeMem()}. Forget the size or use the wrong flag, and you're debugging a guru meditation.
+\end{comingfromc}
+
+\subsection{Memory Flags}
+
+\begin{lstlisting}
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_ANY, MEMF_CLEAR
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{Flag} & \textbf{Purpose} \\
+\hline
+\texttt{MEMF\_PUBLIC} & Accessible by other tasks \\
+\texttt{MEMF\_CHIP} & Chip RAM (DMA accessible) \\
+\texttt{MEMF\_FAST} & Fast RAM (CPU only) \\
+\texttt{MEMF\_ANY} & Either chip or fast \\
+\texttt{MEMF\_CLEAR} & Zero-fill on allocation \\
+\end{tabular}
+\end{table}
+
+Common flag combinations:
+\begin{itemize}
+    \item \texttt{MEMF\_CHIP | MEMF\_CLEAR}: Graphics buffers, audio samples
+    \item \texttt{MEMF\_FAST | MEMF\_PUBLIC}: General data structures
+    \item \texttt{MEMF\_ANY | MEMF\_PUBLIC}: Don't care, just give me memory
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Core Memory Types}
+\label{sec:memory-types}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The \texttt{std::memory} module provides a hierarchy of memory types, from low-level to high-level:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\textbf{Type} & \textbf{Level} & \textbf{Size Tracking} & \textbf{Use Case} \\
+\hline
+\texttt{MemoryBlock} & Low & Manual & FFI buffers, raw bytes \\
+\texttt{Allocation<T>} & Mid & Automatic & Typed arrays \\
+\texttt{Box<T>} & High & Automatic & Single heap values \\
+\texttt{MemHandle} & High & Automatic & Simple RAII wrapper \\
+\end{tabular}
+\caption{Memory type hierarchy}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{MemoryBlock --- Raw Memory with Size Tracking}
+\label{sec:memoryblock}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{MemoryBlock} is the fundamental building block. It wraps a raw pointer and its size, ensuring you can never ``forget'' how big an allocation is.
+
+\begin{lstlisting}
+from std::memory::block import MemoryBlock
+from std::ffi::amiga_consts import MEMF_FAST
+
+fn allocate_buffer() {
+    // Allocate 1024 bytes of fast RAM
+    match MemoryBlock::alloc(1024, MEMF_FAST) {
+        Option::Some(var block) => {
+            // Use the block
+            let ptr: *u8 = block.ptr()
+            let size: u32 = block.size()
+
+            // Write data
+            ptr[0] = 42u8
+            ptr[1] = 43u8
+
+            // Memory automatically freed here!
+        },
+        Option::None => {
+            // Allocation failed - handle gracefully
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Key Points}
+
+\begin{itemize}
+    \item \texttt{alloc()} returns \texttt{Option<MemoryBlock>}---no null pointer surprises
+    \item \texttt{size()} always returns the correct size---no tracking bugs
+    \item Implements \texttt{Drop}---memory freed automatically when block goes out of scope
+    \item \texttt{free()} can be called explicitly if needed (idempotent)
+\end{itemize}
+
+\subsection{The try\_alloc Variant}
+
+For code using the \texttt{?} operator, use \texttt{try\_alloc()}:
+
+\begin{lstlisting}
+fn process_data() -> Result<(), ExecError> {
+    var block = MemoryBlock::try_alloc(1024, MEMF_FAST)?
+
+    // Use block...
+
+    return Result::Ok(())
+}  // block freed automatically
+\end{lstlisting}
+
+\subsection{Resizing Memory}
+
+\begin{lstlisting}
+match MemoryBlock::alloc(256, MEMF_FAST) {
+    Option::Some(var block) => {
+        // Need more space
+        if block.resize(512, MEMF_FAST) {
+            // Success - block now holds 512 bytes
+            // Old data is preserved (up to min(old_size, new_size))
+        } else {
+            // Resize failed - block unchanged
+        }
+    },
+    Option::None => {}
+}
+\end{lstlisting}
+
+\begin{warningbox}
+Unlike C's \texttt{realloc()}, Novus always allocates new memory and copies---AmigaOS doesn't support in-place growth. This means resizing is O(n). Pre-allocate when possible!
+\end{warningbox}
+
+\subsection{Taking Ownership with into\_raw()}
+
+Sometimes you need to transfer ownership to external code:
+
+\begin{lstlisting}
+match MemoryBlock::alloc(1024, MEMF_CHIP) {
+    Option::Some(var block) => {
+        // Take ownership - block won't free on drop
+        let (ptr, size) = block.into_raw()
+
+        // ptr and size are now YOUR responsibility!
+        // You MUST call FreeMem(ptr, size) eventually
+    },
+    Option::None => {}
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{into\_raw() transfers ownership to YOU.} The returned pointer and size MUST be manually freed with \texttt{FreeMem(ptr, size)}. Forgetting this causes a memory leak. On the Amiga, \textbf{leaked memory is lost until reboot}---there is no garbage collector, no automatic cleanup, nothing. This function exists for FFI interop; avoid it unless absolutely necessary.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Allocation<T> --- Type-Safe Bulk Allocation}
+\label{sec:allocation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Allocation<T>} provides type-safe allocation for arrays of a specific type. It automatically calculates the byte size from the element count.
+
+\begin{lstlisting}
+from std::memory::block import Allocation
+from std::ffi::amiga_consts import MEMF_FAST
+
+struct Vertex {
+    x: i32,
+    y: i32,
+    z: i32,
+}
+
+fn allocate_vertices() {
+    // Allocate space for 100 vertices
+    match Allocation::<Vertex>::new(100, MEMF_FAST) {
+        Option::Some(var vertices) => {
+            let count: u32 = vertices.count()        // 100
+            let bytes: u32 = vertices.size_bytes()   // 100 * 12 = 1200
+
+            // Get typed pointer
+            let ptr: *Vertex = vertices.as_mut_ptr()
+            ptr[0] = Vertex { x: 10, y: 20, z: 30 }
+
+            // Resize to 200 vertices
+            if vertices.resize(200, MEMF_FAST) {
+                // Now holds 200 vertices
+            }
+        },
+        Option::None => {}
+    }
+}  // Memory freed automatically
+\end{lstlisting}
+
+\subsection{Overflow Protection}
+
+\texttt{Allocation} checks for integer overflow when calculating total bytes:
+
+\begin{lstlisting}
+// This would overflow: $FFFFFFFF * 4 > u32::MAX
+match Allocation::<u32>::new($FFFFFFFFu32, MEMF_FAST) {
+    Option::Some(_) => {},  // Never reached
+    Option::None => {}      // Returns None - overflow detected
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Box<T> --- Single Heap Values}
+\label{sec:box}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Box<T>} is the simplest way to put a single value on the heap. Use it for large structs or recursive data structures.
+
+\begin{lstlisting}
+from std::memory::block import Box
+from std::ffi::amiga_consts import MEMF_CHIP
+
+struct LargeBuffer {
+    data: [u8; 4096],
+}
+
+fn use_large_struct() {
+    // Too big for stack? Put it on the heap
+    let initial = LargeBuffer { data: [0u8; 4096] }
+
+    match Box::new(initial) {
+        Option::Some(var boxed) => {
+            // Access via get() / get_mut()
+            let ptr: *LargeBuffer = boxed.get_mut()
+            (*ptr).data[0] = 42u8
+        },
+        Option::None => {}
+    }
+}  // Memory freed automatically
+
+// Or with specific memory flags:
+fn chip_ram_struct() {
+    match Box::new_in(my_value, MEMF_CHIP) {
+        Option::Some(var boxed) => {
+            // boxed.get() is in chip RAM - DMA accessible
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{MemHandle --- Simple RAII Wrapper}
+\label{sec:memhandle}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{MemHandle} provides convenient factory methods for common allocation patterns using \texttt{AllocVec}/\texttt{FreeVec}:
+
+\begin{lstlisting}
+from std::memory::amiga import MemHandle
+
+fn allocation_examples() {
+    // Chip RAM (DMA accessible)
+    match MemHandle::new_chip(1024) {
+        Option::Some(var chip_mem) => {
+            let ptr: *u8 = chip_mem.ptr()
+            // Use for graphics, audio...
+        },
+        Option::None => {}
+    }
+
+    // Fast RAM (CPU only, faster)
+    match MemHandle::new_fast(2048) {
+        Option::Some(var fast_mem) => {
+            let ptr: *u8 = fast_mem.ptr()
+            // Use for data structures...
+        },
+        Option::None => {}
+    }
+
+    // Any available memory
+    match MemHandle::new_any(512) {
+        Option::Some(var any_mem) => {
+            // Don't care where it comes from
+        },
+        Option::None => {}
+    }
+
+    // Custom flags
+    match MemHandle::new_with_flags(1024, MEMF_CHIP | MEMF_CLEAR) {
+        Option::Some(var mem) => {
+            // Chip RAM, zero-filled
+        },
+        Option::None => {}
+    }
+}  // All memory freed automatically
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Slice<T> --- Fat Pointers for Safety}
+\label{sec:slice}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Slice<T>} is a ``fat pointer'' containing both a pointer and length. This eliminates the classic C bug of passing arrays without their sizes.
+
+\begin{lstlisting}
+from std::memory::slice import Slice
+
+fn sum_values(numbers: &Slice<i32>) -> i32 {
+    var total: i32 = 0
+    var i: u32 = 0
+    while i < numbers.len() {
+        // Safe access with bounds checking
+        match numbers.get(i) {
+            Option::Some(val) => total = total + val,
+            Option::None => {}
+        }
+        i = i + 1
+    }
+    return total
+}
+
+fn use_slice() {
+    var arr: [i32; 5] = [1, 2, 3, 4, 5]
+    let slice = Slice::new((*i32)&arr[0], 5)
+
+    let result = sum_values(&slice)  // No size parameter needed!
+}
+\end{lstlisting}
+
+\begin{tipbox}
+Slices don't own their data---they're just views. The underlying memory must remain valid for the slice's lifetime.
+\end{tipbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Chip RAM Management}
+\label{sec:chip-ram}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Chip RAM is precious on the Amiga (typically 512KB to 2MB). Novus provides specialized tools for managing it efficiently.
+
+\subsection{ChipBuffer --- Direct Allocation}
+
+For simple chip RAM needs:
+
+\begin{lstlisting}
+from std::memory::chip import ChipBuffer
+
+fn graphics_buffer() {
+    match ChipBuffer::alloc(32000) {
+        Option::Some(var buffer) => {
+            // Copy data with automatic cache flush (68040/060 safe)
+            buffer.copy_from(source_ptr, 32000)
+
+            // Get pointer for DMA operations
+            let dma_ptr: *u8 = buffer.as_ptr()
+        },
+        Option::None => {
+            // Not enough chip RAM
+        }
+    }
+}  // Chip RAM freed automatically
+\end{lstlisting}
+
+\subsection{Checking Memory Type}
+
+\begin{lstlisting}
+from std::memory::chip import is_chip_ram
+
+fn validate_dma_pointer(ptr: *u8) -> bool {
+    if !is_chip_ram(ptr) {
+        // ERROR: This pointer can't be used for DMA!
+        return false
+    }
+    return true
+}
+\end{lstlisting}
+
+\subsection{Cache-Safe Copying (68040/68060)}
+
+On 68040 and 68060 systems, the CPU cache can contain data that DMA hardware hasn't seen. Always use cache-safe functions:
+
+\begin{lstlisting}
+from std::memory::chip import copy_to_chip
+
+fn safe_copy(dst_chip: *u8, src_fast: *u8, size: u32) {
+    // Copies data AND flushes CPU cache for this range
+    copy_to_chip(dst_chip, src_fast, size)
+    // Now safe for Blitter/Paula to read
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Never use raw \texttt{CopyMem()} for chip RAM on 68040/060!} The CPU cache may contain data that DMA hardware can't see. Always use \texttt{copy\_to\_chip()} or manually call \texttt{CacheClearE()}.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{ChipPool --- Pooled Allocation}
+\label{sec:chip-pool}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Frequent small allocations fragment memory. \texttt{ChipPool} uses AmigaOS's pool functions (V39+) to allocate from pre-allocated ``puddles,'' reducing fragmentation.
+
+\begin{lstlisting}
+from std::memory::chip_pool import ChipPool, PoolSizeClass
+
+fn pooled_allocation() {
+    // Initialize pool (once at startup)
+    ChipPool::init()
+
+    // Allocate from pool (returns pointer to size-class block)
+    match ChipPool::alloc(3000) {
+        Option::Some(ptr) => {
+            // Got 4KB block (smallest class >= 3000)
+
+            // Use for sprites, samples, etc...
+
+            // Return to pool
+            ChipPool::free(ptr)
+        },
+        Option::None => {}
+    }
+
+    // Shutdown frees all pool memory
+    ChipPool::shutdown()
+}
+\end{lstlisting}
+
+\subsection{Size Classes}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\textbf{Class} & \textbf{Size} & \textbf{Puddle} & \textbf{Use Case} \\
+\hline
+Small & 4KB & 32KB & Sprites, small samples \\
+Medium & 8KB & 64KB & Copper lists, medium samples \\
+Large & 16KB & 64KB & Streaming buffers \\
+Huge & 32KB & 128KB & Large streaming buffers \\
+\end{tabular}
+\caption{ChipPool size classes}
+\end{table}
+
+Requests are rounded up to the next size class. For allocations $>$ 32KB, use direct \texttt{AllocMem()}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{ChipCache --- LRU Caching}
+\label{sec:chip-cache}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{ChipCache} provides automatic caching of assets in chip RAM with priority-based LRU eviction. Assets in fast RAM are transparently copied to chip RAM when needed.
+
+\begin{lstlisting}
+from std::memory::chip_cache import ChipCache
+from std::memory::chip import Priority
+
+fn cached_asset() {
+    // Initialize cache (once at startup)
+    ChipCache::init()
+
+    // Get asset into chip RAM (copies if not already there)
+    let asset_id: u32 = (u32)my_asset_ptr  // Unique ID
+    match ChipCache::get(
+        asset_id,
+        my_asset_ptr,    // Source (may be fast RAM)
+        asset_size,
+        Priority::Normal,
+        "player_sprite"  // Debug name
+    ) {
+        Result::Ok(chip_ptr) => {
+            // chip_ptr is guaranteed to be in chip RAM
+            // Use for DMA operations
+        },
+        Result::Err(e) => {
+            // Not enough chip RAM even after eviction
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Pinning Assets}
+
+During DMA operations, you must prevent eviction:
+
+\begin{lstlisting}
+// Before DMA
+ChipCache::pin(asset_id)
+
+// ... DMA operation (Blitter, audio, etc.) ...
+
+// After DMA complete
+ChipCache::unpin(asset_id)
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Always pin assets during DMA!} If an asset is evicted while the Blitter or Paula is reading it, you'll get corrupted graphics or audio---or worse, the system reads freed memory and crashes.
+\end{warningbox}
+
+\subsection{Priority Levels}
+
+\begin{lstlisting}
+pub enum Priority {
+    Low,     // Evict first (large, infrequent assets)
+    Normal,  // Default
+    High,    // Evict last (small, frequently used)
+}
+\end{lstlisting}
+
+The cache evicts in this order:
+\begin{enumerate}
+    \item Lowest priority first
+    \item Within same priority, oldest access first (LRU)
+    \item Pinned assets are never evicted
+\end{enumerate}
+
+\subsection{Cache Statistics}
+
+\begin{lstlisting}
+let stats = ChipCache::stats()
+// stats.entries        - Cached asset count
+// stats.pinned_entries - Pinned asset count
+// stats.total_cached   - Total bytes cached
+// stats.cache_hits     - Hit count
+// stats.cache_misses   - Miss count
+// stats.evictions      - Eviction count
+// stats.chip_available - Available chip RAM
+\end{lstlisting}
+
+The \texttt{CacheStats} structure:
+
+\begin{lstlisting}
+pub struct CacheStats {
+    entries: u32,        // Total cached entries
+    pinned_entries: u32, // Pinned (non-evictable) entries
+    total_cached: u32,   // Bytes in cache
+    pinned_bytes: u32,   // Bytes in pinned entries
+    chip_available: u32, // Free chip RAM (AvailMem)
+    chip_largest: u32,   // Largest contiguous block
+    cache_hits: u32,     // Successful lookups
+    cache_misses: u32,   // Lookups requiring load
+    evictions: u32,      // Times entries were evicted
+}
+\end{lstlisting}
+
+\subsection{Advanced Cache Operations}
+
+\begin{lstlisting}
+// Update LRU timestamp (call once per frame)
+ChipCache::tick()
+
+// Manually evict a specific asset
+ChipCache::evict(asset_id)
+
+// Evict all unpinned assets (emergency memory recovery)
+ChipCache::clear_unpinned()
+\end{lstlisting}
+
+\begin{tipbox}
+Call \texttt{ChipCache::tick()} once per frame in your main loop. This updates the LRU timestamps used for eviction decisions. Without it, the cache can't distinguish recently-used assets from stale ones.
+\end{tipbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{ResourceBank --- Proactive Management}
+\label{sec:resource-bank}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+While \texttt{ChipCache} is reactive (caching on use), \texttt{ResourceBank} is proactive---you explicitly load groups of related assets when entering a level or scene.
+
+\begin{lstlisting}
+from std::memory::resource_bank import ResourceBank, BankBuilder
+from std::memory::chip import Priority
+
+fn level_loading() -> Result<(), BankError> {
+    // Build a bank for level 1 assets
+    // Methods marked @chain return &var self for fluent chaining
+    var level1 = ResourceBank::builder("level1")
+        .add_asset(sprite_id, sprite_ptr, sprite_size, Priority::High)
+        .add_asset(tileset_id, tileset_ptr, tileset_size, Priority::Normal)
+        .add_asset_named(music_id, music_ptr, music_size, Priority::Low, "level_music")
+        .persistent(false)  // Unload when done
+        .build()?
+
+    // Load all assets atomically
+    level1.load()?
+
+    // Get chip RAM pointer for an asset
+    match level1.get_by_id(sprite_id) {
+        Option::Some(chip_ptr) => {
+            // Use for DMA...
+        },
+        Option::None => {}
+    }
+
+    // When leaving level, unload everything
+    level1.unload()
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Bank Features}
+
+\begin{itemize}
+    \item \textbf{Atomic loading}: All assets load or none do (rollback on failure)
+    \item \textbf{Reference counting}: Shared assets across banks are pinned correctly
+    \item \textbf{will\_fit() check}: Verify before loading to avoid partial failures
+    \item \textbf{Persistent banks}: Mark UI/font banks to never unload
+\end{itemize}
+
+\subsection{Pinning Banks for DMA Safety}
+
+For multi-frame DMA operations (e.g., a long Blitter chain), pin the entire bank:
+
+\begin{lstlisting}
+// Before multi-frame DMA
+level1.pin()  // Increment pin count on all assets
+
+// ... several frames of DMA operations ...
+
+// When done
+level1.unpin()  // Decrement pin counts
+\end{lstlisting}
+
+\subsection{Bank State Checking}
+
+\begin{lstlisting}
+// Check if bank is loaded
+if level1.is_loaded() {
+    let ptr = level1.get_by_id(sprite_id)
+}
+
+// Get detailed state
+match level1.state() {
+    BankState::Unloaded => { /* Not in chip RAM */ },
+    BankState::Loading => { /* Async load in progress */ },
+    BankState::Loaded => { /* Ready for use */ },
+    BankState::Failed => { /* Load failed */ },
+}
+
+// Statistics
+let count = level1.entry_count()   // Number of assets
+let bytes = level1.total_size()    // Total bytes
+let name = level1.name()           // Bank name
+\end{lstlisting}
+
+\subsection{Memory Budgeting}
+
+\begin{lstlisting}
+from std::memory::resource_bank import ChipBudget
+
+fn plan_memory() {
+    let available_chip = AvailMem(MEMF_CHIP)
+
+    // Typical budget: 25% persistent, 50% level, 25% streaming
+    let budget = ChipBudget::typical(available_chip)
+
+    // Check if level bank fits
+    if budget.level_will_fit(&level1_bank) {
+        level1_bank.load()?
+    } else {
+        // Need to unload something first
+    }
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Streaming Large Assets}
+\label{sec:streaming}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For assets too large to fit in chip RAM (music modules, video), use streaming with double or triple buffering.
+
+\subsection{The Streamable Trait}
+
+\begin{lstlisting}
+from std::memory::streamable import Streamable
+
+impl Streamable for MyAudioAsset {
+    fn stream_data(&self) -> *u8 {
+        return self.data_ptr
+    }
+
+    fn stream_size(&self) -> u32 {
+        return self.data_size
+    }
+
+    fn suggested_buffer_size(&self) -> u32 {
+        return 16384  // 16KB per buffer
+    }
+
+    fn suggested_buffer_count(&self) -> u8 {
+        return 3  // Triple-buffered
+    }
+}
+\end{lstlisting}
+
+\subsection{ChipStream --- High-Level Streaming}
+
+\texttt{ChipStream} manages streaming buffers for you. The constructor:
+
+\begin{lstlisting}
+pub fn new(source: *u8, size: u32, buffer_count: u8, buffer_size: u32)
+    -> Result<ChipStream, ChipCacheError>
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+from std::memory::streamable import ChipStream
+
+fn stream_audio(audio: &MyAudioAsset) -> Result<(), ChipCacheError> {
+    // Create stream with triple buffering
+    var stream = ChipStream::new(
+        audio.stream_data(),
+        audio.stream_size(),
+        3,      // buffer count
+        16384   // buffer size
+    )?
+
+    // Prime all buffers
+    stream.fill_all()?
+
+    // Playback loop
+    while !stream.is_finished() {
+        // Get current buffer for Paula
+        let chip_ptr = stream.current_buffer()
+        let filled = stream.current_buffer_filled()
+
+        // Start Paula playing this buffer...
+        // ... wait for buffer to finish ...
+
+        // Advance to next buffer (refills the one just played)
+        stream.advance()?
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Buffer Strategy}
+
+\begin{itemize}
+    \item \textbf{Double buffering (2)}: One plays while one fills. Tight timing.
+    \item \textbf{Triple buffering (3)}: Extra buffer absorbs timing jitter. Recommended.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{DMA Cache Management (68040/68060)}
+\label{sec:dma-cache}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+On 68040 and 68060 systems with data caches, you must synchronize between CPU and DMA:
+
+\begin{lstlisting}
+from std::memory::chip import (
+    prepare_for_dma_read,
+    complete_dma_read,
+    prepare_for_dma_write,
+    complete_dma_write
+)
+
+fn blitter_copy(src: *u8, dst: *u8, size: u32) {
+    // Prepare source (flush cache so Blitter sees correct data)
+    let src_dma = prepare_for_dma_read(src, size)
+
+    // Prepare destination (invalidate cache)
+    let dst_dma = prepare_for_dma_write(dst, size)
+
+    // ... perform Blitter operation ...
+
+    // Complete (invalidate destination cache so CPU sees DMA result)
+    complete_dma_read(src, size)
+    complete_dma_write(dst, size)
+}
+\end{lstlisting}
+
+\begin{notebox}
+These functions are no-ops on 68000/020/030. They're always safe to call---the cost is negligible on systems that don't need them.
+\end{notebox}
+
+\begin{warningbox}
+\textbf{The function names describe the DMA hardware's perspective, not the CPU's:}
+\begin{itemize}
+    \item \texttt{prepare\_for\_dma\_read}: DMA will \textbf{READ} from this buffer (e.g., Blitter source, Paula sample). Flushes CPU cache so DMA sees correct data.
+    \item \texttt{prepare\_for\_dma\_write}: DMA will \textbf{WRITE} to this buffer (e.g., Blitter destination). Invalidates CPU cache.
+\end{itemize}
+This naming convention matches the AmigaOS \texttt{CacheClearE()} flags.
+\end{warningbox}
+
+\subsection{Critical: WaitBlit() Before Freeing}
+
+When freeing chip RAM that the Blitter may have been using, you \textbf{must} wait for the Blitter to finish first:
+
+\begin{lstlisting}
+from std::ffi::graphics import WaitBlit
+
+fn safe_free_chip_buffer(buffer: &var MemoryBlock) {
+    // CRITICAL: Blitter might still be reading/writing this memory!
+    WaitBlit()  // Block until all Blitter DMA completes
+
+    // Now safe to free
+    buffer.free()
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Never free chip RAM without calling WaitBlit() first!} The Blitter operates asynchronously. If you free memory while the Blitter is still using it, the Blitter will read or write freed (or reallocated) memory, causing data corruption, graphical glitches, or system crashes.
+
+This rule applies to:
+\begin{itemize}
+    \item Manual \texttt{FreeMem()}/\texttt{FreeVec()} calls
+    \item RAII \texttt{Drop} implementations (Novus's built-in types handle this)
+    \item Pool returns via \texttt{ChipPool::free()}
+\end{itemize}
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Common Patterns}
+\label{sec:memory-patterns}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Pattern 1: Load-Use-Free}
+
+The most common pattern---allocate, use, automatically free:
+
+\begin{lstlisting}
+fn process() -> Result<(), ExecError> {
+    var buffer = MemoryBlock::try_alloc(1024, MEMF_FAST)?
+
+    // Use buffer...
+    let ptr = buffer.ptr()
+    // ... work with ptr ...
+
+    return Result::Ok(())
+}  // buffer.drop() called automatically
+\end{lstlisting}
+
+\subsection{Pattern 2: defer for Complex Logic}
+
+When you need cleanup at multiple exit points:
+
+\begin{lstlisting}
+fn complex_operation() -> Result<(), Error> {
+    match MemoryBlock::alloc(1024, MEMF_FAST) {
+        Option::Some(var buffer) => {
+            defer {
+                buffer.free()  // Always runs on scope exit
+            }
+
+            if some_condition() {
+                return Result::Err(Error::Something)
+                // buffer freed here
+            }
+
+            if other_condition() {
+                return Result::Err(Error::Other)
+                // buffer freed here too
+            }
+
+            return Result::Ok(())
+            // buffer freed here as well
+        },
+        Option::None => return Result::Err(Error::NoMem)
+    }
+}
+\end{lstlisting}
+
+\subsection{Pattern 3: Pre-allocation for Performance}
+
+Avoid allocation in hot paths:
+
+\begin{lstlisting}
+struct GameState {
+    sprite_buffer: MemoryBlock,
+    tile_buffer: MemoryBlock,
+}
+
+fn init_game() -> Option<GameState> {
+    let sprites = MemoryBlock::alloc(64000, MEMF_CHIP)?
+    let tiles = MemoryBlock::alloc(128000, MEMF_CHIP)?
+
+    return Option::Some(GameState {
+        sprite_buffer: sprites,
+        tile_buffer: tiles,
+    })
+}
+
+fn game_loop(state: &var GameState) {
+    // No allocation here - use pre-allocated buffers
+    let sprite_ptr = state.sprite_buffer.ptr()
+    // ... fast path, no allocations ...
+}
+\end{lstlisting}
+
+\subsection{Pattern 4: Graceful Degradation}
+
+When memory is tight, fall back to smaller allocations:
+
+\begin{lstlisting}
+fn allocate_with_fallback() -> Option<MemoryBlock> {
+    // Try ideal size first
+    match MemoryBlock::alloc(65536, MEMF_CHIP) {
+        Option::Some(block) => return Option::Some(block),
+        Option::None => {}
+    }
+
+    // Fall back to smaller
+    match MemoryBlock::alloc(32768, MEMF_CHIP) {
+        Option::Some(block) => return Option::Some(block),
+        Option::None => {}
+    }
+
+    // Minimum viable
+    return MemoryBlock::alloc(16384, MEMF_CHIP)
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Memory Safety Checklist}
+\label{sec:memory-checklist}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Follow these rules to avoid memory disasters:
+
+\begin{enumerate}
+    \item \textbf{Always check allocation results}---never assume success
+    \item \textbf{Let RAII handle cleanup}---don't call \texttt{free()} unless necessary
+    \item \textbf{Pin assets during DMA}---unpinned assets can be evicted
+    \item \textbf{Use cache-safe copies on 68040/060}---raw \texttt{CopyMem} causes corruption
+    \item \textbf{Pre-allocate in init, not in loops}---avoid fragmentation
+    \item \textbf{Check \texttt{is\_chip\_ram()} before DMA}---fast RAM won't work
+    \item \textbf{Match allocation and deallocation}---\texttt{AllocMem}/\texttt{FreeMem}, \texttt{AllocVec}/\texttt{FreeVec}
+    \item \textbf{Never use freed memory}---the RAII types make this hard to do wrong
+    \item \textbf{Track sizes with types, not variables}---use \texttt{MemoryBlock}, not raw pointers
+    \item \textbf{Call WaitBlit() before freeing chip RAM}---the Blitter runs asynchronously
+\end{enumerate}
+
+\begin{warningbox}
+\textbf{The Amiga has no safety net.} Modern operating systems kill your process when you access invalid memory. The Amiga doesn't---it corrupts data, hangs, or produces bizarre effects. The discipline enforced by these patterns isn't optional; it's survival.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Performance Considerations}
+\label{sec:memory-performance}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Operation} & \textbf{Cost} & \textbf{Notes} \\
+\hline
+\texttt{MemoryBlock::alloc()} & O(1) & AmigaOS first-fit \\
+\texttt{MemoryBlock::free()} & O(1) & Returns to free list \\
+\texttt{MemoryBlock::resize()} & O(n) & Always copies \\
+\texttt{ChipPool::alloc()} & O(1) & Pool allocation \\
+\texttt{ChipCache::get()} (hit) & O(n) & Linear search \\
+\texttt{ChipCache::get()} (miss) & O(n) & Search + alloc + copy \\
+\texttt{is\_chip\_ram()} & O(1) & \texttt{TypeOfMem} syscall \\
+\end{tabular}
+\caption{Memory operation costs}
+\end{table}
+
+\begin{tipbox}
+\textbf{Allocation is not free.} Every \texttt{AllocMem} call takes time. For real-time code (games, audio), pre-allocate everything during initialization and reuse buffers during gameplay.
+\end{tipbox}
