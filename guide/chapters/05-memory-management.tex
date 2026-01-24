@@ -28,8 +28,7 @@ The Amiga has distinct memory types with different characteristics:
 When allocating memory, you specify flags to request the appropriate type:
 
 \begin{lstlisting}
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_PUBLIC, MEMF_CLEAR
-
+// ... (with memory flags imported from std::ffi::amiga_consts)
 // Chip RAM for graphics buffers
 let bitmap = MemoryBlock::alloc(size, MEMF_CHIP | MEMF_CLEAR)
 
@@ -169,7 +168,12 @@ An immutable reference \texttt{\&T} provides read-only access:
 fn read_point(p: &Point) -> i32 {
     return p.x + p.y  // Can read fields
 }
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Point and read_point defined above)
 let pt = Point { x: 10, y: 20 }
 let sum = read_point(&pt)  // Borrow pt immutably
 \end{lstlisting}
@@ -183,7 +187,12 @@ fn scale_point(p: &var Point, factor: i32) {
     p.x = p.x * factor
     p.y = p.y * factor
 }
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Point and scale_point defined above)
 var pt = Point { x: 10, y: 20 }
 scale_point(&var pt, 2)  // Borrow pt mutably
 // pt is now { x: 20, y: 40 }
@@ -1119,21 +1128,29 @@ Some types can be duplicated safely. Novus provides two traits for this.
 
 \texttt{Copy} is a marker trait for types that can be implicitly copied:
 
-\begin{lstlisting}
-from std::core import Copy
+Primitive types are implicitly Copy:
 
+\begin{lstlisting}
 // Primitive types are Copy
 let x: i32 = 42
 let y = x   // x is copied, both x and y are valid
+\end{lstlisting}
 
-// Structs can be Copy if all fields are Copy
+Structs can be marked as Copy if all fields are Copy:
+
+\begin{lstlisting}
 struct Point {
     x: i32,
     y: i32,
 }
 
 impl Copy for Point {}
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Point defined as Copy above)
 let p1 = Point { x: 1, y: 2 }
 let p2 = p1  // p1 is copied, both valid
 \end{lstlisting}
@@ -1145,15 +1162,18 @@ Types that manage resources (like \texttt{String}, \texttt{Vec}, \texttt{MemoryB
 \texttt{Clone} provides explicit deep copying. It returns \texttt{Option<Self>} because cloning types that allocate memory (like \texttt{Vec} or \texttt{String}) can fail:
 
 \begin{lstlisting}
-from std::core import Clone
-
-// For simple types, clone always succeeds
+// ... (with Point defined above)
 impl Clone for Point {
     fn clone(&self) -> Option<Point> {
         return Option::Some(Point { x: self.x, y: self.y })
     }
 }
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Point and Clone impl above)
 let p1 = Point { x: 1, y: 2 }
 
 match p1.clone() {
@@ -1162,7 +1182,7 @@ match p1.clone() {
     },
     Option::None => {
         // Clone failed - only happens for types that allocate
-    }
+    },
 }
 \end{lstlisting}
 

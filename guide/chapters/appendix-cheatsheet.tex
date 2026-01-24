@@ -6,7 +6,7 @@ This appendix provides a compact reference for Novus syntax and common patterns.
 \section{Variables and Constants}
 
 \begin{lstlisting}
-// Mutable variable
+// ... (variable examples - illustrative)
 var x = 10
 x = 20
 
@@ -49,7 +49,7 @@ var buffer = [0u8; 256]   // Size inferred
 \section{Literals}
 
 \begin{lstlisting}
-// Integers
+// ... (literal examples - illustrative)
 42          // i32 (default)
 42u32       // u32
 42i8        // i8
@@ -231,12 +231,12 @@ match msg {
 \section{Option and Result}
 
 \begin{lstlisting}
-// Option
+// ... (Option/Result patterns - illustrative)
 let maybe: Option<i32> = Option::Some(42)
 let none: Option<i32> = Option::None
 
 match maybe {
-    Option::Some(x) => use(x),
+    Option::Some(x) => use_value(x),
     Option::None => handle_missing(),
 }
 
@@ -247,7 +247,7 @@ let result: Result<i32, Error> = Result::Ok(42)
 let error: Result<i32, Error> = Result::Err(Error::NotFound)
 
 match result {
-    Result::Ok(x) => use(x),
+    Result::Ok(x) => use_value(x),
     Result::Err(e) => handle_error(e),
 }
 
@@ -346,7 +346,7 @@ let (x, y) = point  // Destructure
 \section{Modules and Imports}
 
 \begin{lstlisting}
-// Import specific items
+// ... (import examples - illustrative)
 from std::collections::vec import Vec
 from std::io::file import println, read_file
 
@@ -360,29 +360,27 @@ let v: Vec<i32> = Vec::new()
 \section{Traits}
 
 \begin{lstlisting}
-// Define trait
 trait Printable {
     fn print(&self)
 }
+\end{lstlisting}
 
-// Implement trait
+Implementation:
+
+\begin{lstlisting}
+// ... (with Point and Printable defined above)
 impl Printable for Point {
     fn print(&self) {
         println(f"({self.x}, {self.y})")
     }
 }
-
-// Common traits
-Drop    // Destructor
-Clone   // Clone values
-Eq      // Equality comparison
-Display // String conversion
-Hash    // Hashable
 \end{lstlisting}
+
+Common traits: \texttt{Drop} (destructor), \texttt{Clone}, \texttt{Eq}, \texttt{Hash}.
 
 \section{Common Attributes}
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
 @test                     // Test function
 @test(skip = "reason")    // Skipped test
 @benchmark                // Benchmark function
@@ -397,12 +395,12 @@ Hash    // Hashable
 
 \section{Intrinsics}
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
 @sizeof(T)      // Size of type in bytes
-@alignof(T)     // Alignment of type
 @zeroed(T)      // Zero-initialized value
-@typeof(expr)   // Type of expression
 \end{lstlisting}
+
+Note: \texttt{alignof()} is only available in inline assembly blocks.
 
 \section{Compiler Commands}
 

@@ -108,10 +108,10 @@ struct Private {
 Create instances using struct literal syntax:
 
 \begin{lstlisting}
-let origin = Point { x: 0, y: 0 };
-let pixel = Point { x: 100, y: 200 };
+let origin = Point { x: 0, y: 0 }
+let pixel = Point { x: 100, y: 200 }
 
-let red = Color { r: 255, g: 0, b: 0, a: 255 };
+let red = Color { r: 255, g: 0, b: 0, a: 255 }
 \end{lstlisting}
 
 All fields must be initialized. The order of fields in the literal doesn't matter.
@@ -121,17 +121,17 @@ All fields must be initialized. The order of fields in the literal doesn't matte
 Access struct fields using dot notation:
 
 \begin{lstlisting}
-let p = Point { x: 10, y: 20 };
-let x_coord = p.x;  // 10
-let y_coord = p.y;  // 20
+let p = Point { x: 10, y: 20 }
+let x_coord = p.x  // 10
+let y_coord = p.y  // 20
 \end{lstlisting}
 
 To modify fields, the binding must be mutable:
 
 \begin{lstlisting}
-var p = Point { x: 10, y: 20 };
-p.x = 15;
-p.y = 25;
+var p = Point { x: 10, y: 20 }
+p.x = 15
+p.y = 25
 \end{lstlisting}
 
 \subsection{Struct Update Syntax}
@@ -139,13 +139,12 @@ p.y = 25;
 The spread operator \texttt{..} allows creating a new struct from an existing one, updating specific fields:
 
 \begin{lstlisting}
-let p1 = Point { x: 10, y: 20 };
-let p2 = Point { x: 100, ..p1 };  // { x: 100, y: 20 }
-let p3 = Point { y: 200, ..p1 };  // { x: 10, y: 200 }
-let p4 = Point { ..p1 };          // { x: 10, y: 20 }
+let p1 = Point { x: 10, y: 20 }
+let p2 = Point { x: 100, ..p1 }  // { x: 100, y: 20 }
+let p3 = Point { y: 200, ..p1 }  // { x: 10, y: 200 }
 \end{lstlisting}
 
-The \texttt{..expr} must appear last in the literal and copies all unspecified fields from the given expression.
+The \texttt{..expr} must appear last in the literal and copies all unspecified fields from the given expression. At least one field must be explicitly specified; you cannot use spread alone.
 
 \subsection{Generic Structs}
 
@@ -156,15 +155,20 @@ struct Pair<T, U> {
     first: T,
     second: U,
 }
+\end{lstlisting}
 
-let int_pair = Pair { first: 42, second: 100 };
-let mixed = Pair { first: 10, second: "hello" };
+Usage:
+
+\begin{lstlisting}
+// ... (with Pair defined above)
+let int_pair = Pair { first: 42, second: 100 }
+let mixed = Pair { first: 10, second: "hello" }
 \end{lstlisting}
 
 The compiler infers type arguments from usage, or you can specify them explicitly:
 
 \begin{lstlisting}
-let explicit: Pair<i32, i32> = Pair { first: 1, second: 2 };
+let explicit: Pair<i32, i32> = Pair { first: 1, second: 2 }
 \end{lstlisting}
 
 \subsection{Const Generic Parameters}
@@ -176,15 +180,20 @@ struct Buffer<const N: u32> {
     data: [u8; N],
     len: u32,
 }
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Buffer defined above)
 let small_buf: Buffer<64> = Buffer {
     data: [0; 64],
     len: 0
-};
+}
 let large_buf: Buffer<1024> = Buffer {
     data: [0; 1024],
     len: 0
-};
+}
 \end{lstlisting}
 
 Const parameters must be integer types and are known at compile time.
@@ -213,14 +222,14 @@ impl Point {
     }
 
     fn distance(&self) -> f32 {
-        let dx = self.x as f32;
-        let dy = self.y as f32;
+        let dx = self.x as f32
+        let dy = self.y as f32
         sqrt(dx * dx + dy * dy)
     }
 
     fn translate(&var self, dx: i32, dy: i32) {
-        self.x = self.x + dx;
-        self.y = self.y + dy;
+        self.x = self.x + dx
+        self.y = self.y + dy
     }
 }
 \end{lstlisting}
@@ -253,8 +262,8 @@ impl Point {
 
     // Mutable borrow - modifies in place
     fn scale(&var self, factor: i32) {
-        self.x = self.x * factor;
-        self.y = self.y * factor;
+        self.x = self.x * factor
+        self.y = self.y * factor
     }
 
     // Consumes self - takes ownership
@@ -286,9 +295,14 @@ impl Point {
         }
     }
 }
+\end{lstlisting}
 
-let origin = Point::origin();
-let p = Point::from_polar(10.0, 3.14159 / 4.0);
+Usage:
+
+\begin{lstlisting}
+// ... (with Point defined above)
+let origin = Point::origin()
+let p = Point::from_polar(10.0, 3.14159 / 4.0)
 \end{lstlisting}
 
 \subsection{Generic Implementations}
@@ -296,6 +310,7 @@ let p = Point::from_polar(10.0, 3.14159 / 4.0);
 Implementations can be generic:
 
 \begin{lstlisting}
+// ... (illustrative - with Pair defined above)
 impl<T, U> Pair<T, U> {
     fn new(first: T, second: U) -> Pair<T, U> {
         Pair { first: first, second: second }
@@ -305,13 +320,22 @@ impl<T, U> Pair<T, U> {
         &self.first
     }
 }
+\end{lstlisting}
 
+Specialized implementations can use where clauses:
+
+\begin{lstlisting}
+// ... (with Pair defined above)
 impl<T> Pair<T, T> where T: Clone {
     fn duplicate_first(self) -> Option<Pair<T, T>> {
-        if let Option::Some(copy) = self.first.clone() {
-            return Option::Some(Pair { first: self.first, second: copy })
+        match self.first.clone() {
+            Option::Some(copy) => {
+                return Option::Some(Pair { first: self.first, second: copy })
+            },
+            Option::None => {
+                return Option::None
+            },
         }
-        return Option::None
     }
 }
 \end{lstlisting}
@@ -351,8 +375,13 @@ enum Direction {
     East,
     West,
 }
+\end{lstlisting}
 
-let heading = Direction::North;
+Usage:
+
+\begin{lstlisting}
+// ... (with Direction defined above)
+let heading = Direction::North
 \end{lstlisting}
 
 \subsection{Tuple Variants}
@@ -366,10 +395,15 @@ enum Command {
     Write(i32),
     ChangeColor(u8, u8, u8),
 }
+\end{lstlisting}
 
-let cmd1 = Command::Quit;
-let cmd2 = Command::Move(10, 20);
-let cmd3 = Command::ChangeColor(255, 0, 0);
+Usage:
+
+\begin{lstlisting}
+// ... (with Command defined above)
+let cmd1 = Command::Quit
+let cmd2 = Command::Move(10, 20)
+let cmd3 = Command::ChangeColor(255, 0, 0)
 \end{lstlisting}
 
 Each variant can have a different number and type of fields.
@@ -397,14 +431,18 @@ These are the foundation of Novus's error handling and null safety (covered in d
 \textbf{Important:} Novus enums support only \textit{unit variants} and \textit{tuple variants}. Struct-style variants are \textbf{not supported}:
 
 \begin{lstlisting}
-// NOT SUPPORTED - struct variants
+// NOT SUPPORTED - struct variants (example only - invalid syntax)
 enum Message {
-    Move { x: i32, y: i32 },  // ERROR!
+    Move { x: i32, y: i32 },  // ... (compile error!)
 }
+\end{lstlisting}
 
-// Instead, use tuple variants:
+Instead, use tuple variants:
+
+\begin{lstlisting}
 enum Message {
-    Move(i32, i32),  // OK
+    Move(i32, i32),
+    Quit,
 }
 \end{lstlisting}
 
@@ -456,10 +494,10 @@ Traits can provide default implementations:
 trait Printable {
     fn print(&self) {
         // Default implementation
-        println("Printable object");
+        println("Printable object")
     }
 
-    fn debug_print(&self);  // Must be implemented
+    fn debug_print(&self)  // Must be implemented
 }
 \end{lstlisting}
 
@@ -540,7 +578,7 @@ struct FileHandle {
 
 impl Drop for FileHandle {
     fn drop(&var self) {
-        close_file(self.fd);
+        close_file(self.fd)
     }
 }
 \end{lstlisting}
@@ -557,8 +595,13 @@ impl From<i32> for Point {
         return Point { x: value, y: value }
     }
 }
+\end{lstlisting}
 
-let p = Point::convert(42)  // Point { x: 42, y: 42 }
+Usage:
+
+\begin{lstlisting}
+// ... (with Point and From impl defined above)
+let p = Point::convert(42)
 \end{lstlisting}
 
 \subsection{Trait Bounds}
@@ -621,10 +664,11 @@ _           // Matches anything, discards value
 Destructure enum variants:
 
 \begin{lstlisting}
+// Pattern syntax examples (illustrative)
 Option::Some(x)           // Matches Some, binds inner value to x
 Option::None              // Matches None
 Command::Move(x, y)       // Matches Move, binds coordinates
-Result::Err(_)            // Matches Err, discards error value
+Result::Err(e)            // Matches Err, binds error value to e
 \end{lstlisting}
 
 \subsubsection{Or Patterns}
@@ -672,36 +716,36 @@ Each arm consists of a pattern, optional guard, and an expression. The first mat
 \subsubsection{Basic Matching}
 
 \begin{lstlisting}
-let number = 42;
+let number = 42
 let description = match number {
     0 => "zero",
     1 => "one",
     2 | 3 | 5 | 7 => "small prime",
     42 => "the answer",
     _ => "something else",
-};
+}
 \end{lstlisting}
 
 \subsubsection{Matching Enums}
 
 \begin{lstlisting}
-let cmd = Command::Move(10, 20);
+let cmd = Command::Move(10, 20)
 
 match cmd {
     Command::Quit => {
-        println("Exiting");
-        exit();
+        println("Exiting")
+        exit()
     },
     Command::Move(x, y) => {
-        println("Moving to ({}, {})", x, y);
-        move_cursor(x, y);
+        println("Moving to ({}, {})", x, y)
+        move_cursor(x, y)
     },
     Command::Write(ch) => {
-        println("Writing character {}", ch);
-        write_char(ch);
+        println("Writing character {}", ch)
+        write_char(ch)
     },
     Command::ChangeColor(r, g, b) => {
-        set_color(r, g, b);
+        set_color(r, g, b)
     },
 }
 \end{lstlisting}
@@ -711,7 +755,7 @@ match cmd {
 Guards add conditional logic to patterns:
 
 \begin{lstlisting}
-let number = 15;
+let number = 15
 
 match number {
     x if x < 0 => println("negative"),
@@ -754,66 +798,31 @@ The compiler verifies exhaustiveness and reports errors if any case is unhandled
 
 \subsection{If Let Expressions}
 
-For simple matches with one pattern, \texttt{if let} is more concise:
+Novus provides \texttt{if let} for binding values that pass a truthiness check. This is useful for checking pointers for null or integers for zero:
 
 \begin{lstlisting}
-let opt = Option::Some(42);
+let ptr: *u8 = get_pointer()
 
-if let Option::Some(x) = opt {
-    println("Got value: {}", x);
+if let p = ptr {
+    // p is bound to ptr (non-null)
+    use_pointer(p)
+} else {
+    // ptr was null
 }
 \end{lstlisting}
 
-This is equivalent to:
+The condition succeeds if the value is ``truthy'' (non-null for pointers, non-zero for integers). The bound variable is available in the \texttt{if} block.
+
+For \texttt{Option} and \texttt{Result} types, use \texttt{match} for pattern matching:
 
 \begin{lstlisting}
 match opt {
     Option::Some(x) => {
-        println("Got value: {}", x);
+        println("Got value: {}", x)
     },
-    _ => {},
-}
-\end{lstlisting}
-
-You can add an \texttt{else} clause:
-
-\begin{lstlisting}
-if let Option::Some(x) = opt {
-    println("Got value: {}", x);
-} else {
-    println("No value");
-}
-\end{lstlisting}
-
-\subsection{Let Else Expressions}
-
-\texttt{let else} combines pattern matching with early return for error handling:
-
-\begin{lstlisting}
-fn process(opt: Option<i32>) -> i32 {
-    let Option::Some(x) = opt else {
-        return 0;  // Must diverge (return/break/continue)
-    };
-
-    x * 2
-}
-\end{lstlisting}
-
-The \texttt{else} block must diverge (never return normally) via \texttt{return}, \texttt{break}, \texttt{continue}, or calling a function that never returns.
-
-This is particularly useful for unwrapping \texttt{Option} and \texttt{Result} values:
-
-\begin{lstlisting}
-fn read_config(path: &str) -> Result<Config, Error> {
-    let Result::Ok(file) = open_file(path) else {
-        return Result::Err(Error::FileNotFound);
-    };
-
-    let Result::Ok(contents) = read_file(&file) else {
-        return Result::Err(Error::ReadFailed);
-    };
-
-    parse_config(&contents)
+    Option::None => {
+        println("No value")
+    },
 }
 \end{lstlisting}
 
@@ -855,11 +864,6 @@ let opt = Option::Some(42)
 match opt {
     Option::Some(x) => println("Value: %ld", x),
     Option::None => println("No value"),
-}
-
-// if let for single-case matching
-if let Option::Some(x) = opt {
-    println("Got value: %ld", x)
 }
 \end{lstlisting}
 
@@ -949,9 +953,10 @@ match result {
     Result::Err(e) => println("Parse failed"),
 }
 
-// if let for single-case matching
-if let Result::Ok(n) = result {
-    println("Got number: %ld", n)
+// Another match if you only care about Ok
+match result {
+    Result::Ok(n) => println("Got number: %ld", n),
+    Result::Err(_) => {},
 }
 \end{lstlisting}
 
@@ -1010,9 +1015,9 @@ The \texttt{?} operator provides early return on error:
 
 \begin{lstlisting}
 fn read_number_from_file(path: &str) -> Result<i32, Error> {
-    let file = open_file(path)?;        // Returns Err early
-    let contents = read_file(&file)?;   // Returns Err early
-    let number = parse_number(&contents)?;  // Returns Err early
+    let file = open_file(path)?        // Returns Err early
+    let contents = read_file(&file)?   // Returns Err early
+    let number = parse_number(&contents)?  // Returns Err early
     Result::Ok(number)
 }
 \end{lstlisting}
@@ -1031,17 +1036,17 @@ fn read_number_from_file(path: &str) -> Result<i32, Error> {
     let file = match open_file(path) {
         Result::Ok(f) => f,
         Result::Err(e) => return Result::Err(e),
-    };
+    }
 
     let contents = match read_file(&file) {
         Result::Ok(c) => c,
         Result::Err(e) => return Result::Err(e),
-    };
+    }
 
     let number = match parse_number(&contents) {
         Result::Ok(n) => n,
         Result::Err(e) => return Result::Err(e),
-    };
+    }
 
     Result::Ok(number)
 }
@@ -1051,7 +1056,7 @@ The \texttt{?} operator works with both \texttt{Result} and \texttt{Option}:
 
 \begin{lstlisting}
 fn get_first_element(vec: &Vec<i32>) -> Option<i32> {
-    let first = vec.get(0)?;  // Returns None early if empty
+    let first = vec.get(0)?  // Returns None early if empty
     Option::Some(*first * 2)
 }
 \end{lstlisting}
@@ -1068,9 +1073,14 @@ Functions can be generic over types:
 fn identity<T>(value: T) -> T {
     value
 }
+\end{lstlisting}
 
-let x = identity(42);        // T = i32
-let s = identity("hello");   // T = &str
+Usage:
+
+\begin{lstlisting}
+// ... (with identity defined above)
+let x = identity(42)        // T = i32
+let s = identity("hello")   // T = &str
 \end{lstlisting}
 
 Multiple type parameters:
@@ -1079,8 +1089,13 @@ Multiple type parameters:
 fn pair<T, U>(first: T, second: U) -> (T, U) {
     (first, second)
 }
+\end{lstlisting}
 
-let p = pair(42, "hello");  // T = i32, U = &str
+Usage:
+
+\begin{lstlisting}
+// ... (with pair defined above)
+let p = pair(42, "hello")  // T = i32, U = &str
 \end{lstlisting}
 
 \subsection{Generic Structs}
@@ -1089,23 +1104,28 @@ Structs can be generic (as shown earlier):
 
 \begin{lstlisting}
 struct Vec<T> {
-    data: *var T,
+    ptr: *T,
     len: u32,
     capacity: u32,
 }
+\end{lstlisting}
 
+Implementation:
+
+\begin{lstlisting}
+// ... (with Vec defined above)
 impl<T> Vec<T> {
     fn new() -> Vec<T> {
-        Vec { data: null, len: 0, capacity: 0 }
+        return @zeroed(Vec<T>)
     }
 
     fn push(&var self, value: T) {
-        // Implementation
+        // ... Implementation
     }
 
     fn get(&self, index: u32) -> Option<&T> {
         if index < self.len {
-            Option::Some(&self.data[index])
+            Option::Some(&self.ptr[index])
         } else {
             Option::None
         }
@@ -1121,10 +1141,19 @@ Functions and types can be parameterized with compile-time constants:
 fn create_array<const N: u32>() -> [i32; N] {
     [0; N]
 }
+\end{lstlisting}
 
-let arr1 = create_array::<10>();   // [i32; 10]
-let arr2 = create_array::<100>();  // [i32; 100]
+Usage:
 
+\begin{lstlisting}
+// ... (with create_array defined above)
+let arr1 = create_array::<10>()   // [i32; 10]
+let arr2 = create_array::<100>()  // [i32; 100]
+\end{lstlisting}
+
+Structs with const generics:
+
+\begin{lstlisting}
 struct Matrix<const ROWS: u32, const COLS: u32> {
     data: [f32; ROWS * COLS],
 }
@@ -1137,11 +1166,9 @@ Const parameters must be integer types and known at compile time.
 Generic parameters can be constrained with \texttt{where} clauses:
 
 \begin{lstlisting}
-fn hash_clone<T>(value: &T) -> Option<u32> where T: Clone + Hash {
-    if let Option::Some(copy) = value.clone() {
-        return Option::Some(copy.hash())
-    }
-    return Option::None
+fn hash_clone<T>(value: &T) -> u32 where T: Clone + Hash {
+    let copy = value.clone()
+    return copy.hash()
 }
 \end{lstlisting}
 
@@ -1166,19 +1193,19 @@ fn process<T>(value: T) where T: Clone + Eq + Hash {
 Type arguments can be specified explicitly using turbofish syntax \texttt{::<>}:
 
 \begin{lstlisting}
-let vec = Vec::<i32>::new();
-let result = parse::<u32>("42");
-let pair = Pair::<i32, bool>::new(10, true);
+let vec = Vec::<i32>::new()
+let result = parse::<u32>("42")
+let pair = Pair::<i32, bool>::new(10, true)
 \end{lstlisting}
 
 This is necessary when the compiler cannot infer type arguments:
 
 \begin{lstlisting}
 // Ambiguous - compiler doesn't know T
-let vec = Vec::new();  // ERROR
+let vec = Vec::new()  // ERROR
 
 // Explicit - compiler knows T = i32
-let vec = Vec::<i32>::new();  // OK
+let vec = Vec::<i32>::new()  // OK
 \end{lstlisting}
 
 \subsection{Generic Constraints in Practice}
@@ -1187,43 +1214,55 @@ Here's a complete example showing generic constraints:
 
 \begin{lstlisting}
 trait Comparable {
-    fn compare(&self, other: &Self) -> i32;
+    fn compare(&self, other: &Self) -> i32
 }
+\end{lstlisting}
 
-fn find_max<T>(items: &[T]) -> Option<&T>
-    where T: Comparable
-{
+Function with trait constraint:
+
+\begin{lstlisting}
+fn find_max<T>(items: &[T]) -> Option<&T> where T: Comparable {
     if items.len() == 0 {
-        return Option::None;
+        return Option::None
     }
 
-    var max = &items[0];
-    var i = 1;
+    var max = &items[0]
+    var i = 1
 
     while i < items.len() {
         if items[i].compare(max) > 0 {
-            max = &items[i];
+            max = &items[i]
         }
-        i = i + 1;
+        i = i + 1
     }
 
     Option::Some(max)
 }
+\end{lstlisting}
 
+Implementing the trait:
+
+\begin{lstlisting}
+// ... (with Comparable defined above)
 impl Comparable for i32 {
     fn compare(&self, other: &i32) -> i32 {
         if *self < *other {
-            -1
+            return -1
         } else if *self > *other {
-            1
+            return 1
         } else {
-            0
+            return 0
         }
     }
 }
+\end{lstlisting}
 
-let numbers = [10, 5, 20, 15];
-let max = find_max(&numbers);  // Some(&20)
+Usage:
+
+\begin{lstlisting}
+// ... (with Comparable, find_max, and impl above)
+let numbers = [10, 5, 20, 15]
+let max = find_max(&numbers)  // Some(&20)
 \end{lstlisting}
 
 \section{Type Coercions and Casts}
@@ -1235,8 +1274,8 @@ Novus has strict type checking with limited implicit conversions.
 Smaller integer types can be implicitly widened to larger ones in some contexts:
 
 \begin{lstlisting}
-let x: i8 = 42;
-let y: i32 = x;  // Implicit widening OK (i8 -> i32)
+let x: i8 = 42
+let y: i32 = x  // Implicit widening OK (i8 -> i32)
 \end{lstlisting}
 
 \subsection{Integer Narrowing}
@@ -1244,8 +1283,8 @@ let y: i32 = x;  // Implicit widening OK (i8 -> i32)
 Narrowing requires explicit casts:
 
 \begin{lstlisting}
-let x: i32 = 1000;
-let y: i8 = x as i8;  // Explicit cast required (truncates)
+let x: i32 = 1000
+let y: i8 = x as i8  // Explicit cast required (truncates)
 \end{lstlisting}
 
 \subsection{Reference to Pointer}
@@ -1253,9 +1292,9 @@ let y: i8 = x as i8;  // Explicit cast required (truncates)
 References can be converted to raw pointers:
 
 \begin{lstlisting}
-let x = 42;
-let r: &i32 = &x;
-let p: *i32 = r as *i32;  // Reference to pointer
+let x = 42
+let r: &i32 = &x
+let p: *i32 = r as *i32  // Reference to pointer
 \end{lstlisting}
 
 \subsection{Array to Pointer}
@@ -1263,8 +1302,8 @@ let p: *i32 = r as *i32;  // Reference to pointer
 Arrays decay to pointers in some contexts:
 
 \begin{lstlisting}
-let arr = [1, 2, 3, 4, 5];
-let ptr: *i32 = arr as *i32;  // Array to pointer
+let arr = [1, 2, 3, 4, 5]
+let ptr: *i32 = arr as *i32  // Array to pointer
 \end{lstlisting}
 
 \subsection{Explicit Casts}
@@ -1272,10 +1311,10 @@ let ptr: *i32 = arr as *i32;  // Array to pointer
 Use \texttt{as} for explicit type conversions:
 
 \begin{lstlisting}
-let x: i32 = 42;
-let y: f32 = x as f32;    // Int to float
-let z: u32 = x as u32;    // Signed to unsigned
-let b: u8 = (x & 0xFF) as u8;  // Truncation
+let x: i32 = 42
+let y: f32 = x as f32    // Int to float
+let z: u32 = x as u32    // Signed to unsigned
+let b: u8 = (x & 0xFF) as u8  // Truncation
 \end{lstlisting}
 
 Always prefer explicit casts to make your intent clear.
@@ -1289,18 +1328,18 @@ Novus uses type inference to reduce verbosity while maintaining static typing.
 The \texttt{let} keyword allows the compiler to infer types:
 
 \begin{lstlisting}
-let x = 42;           // Inferred as i32
-let s = "hello";      // Inferred as &str
-let v = Vec::new();   // ERROR: cannot infer T
-let v = Vec::<i32>::new();  // OK: explicit type argument
+let x = 42           // Inferred as i32
+let s = "hello"      // Inferred as &str
+let v = Vec::new()   // ERROR: cannot infer T
+let v = Vec::<i32>::new()  // OK: explicit type argument
 \end{lstlisting}
 
 You can always specify types explicitly:
 
 \begin{lstlisting}
-let x: i32 = 42;
-let s: &str = "hello";
-let v: Vec<i32> = Vec::new();
+let x: i32 = 42
+let s: &str = "hello"
+let v: Vec<i32> = Vec::new()
 \end{lstlisting}
 
 \subsection{Function Return Type Inference}
@@ -1324,16 +1363,16 @@ fn add(a: i32, b: i32) -> i32 {
 Generic type arguments are often inferred from usage:
 
 \begin{lstlisting}
-var vec = Vec::<i32>::new();
-vec.push(42);  // T inferred as i32
+var vec = Vec::<i32>::new()
+vec.push(42)  // T inferred as i32
 
-let opt = Option::Some(42);  // T inferred as i32
+let opt = Option::Some(42)  // T inferred as i32
 \end{lstlisting}
 
 When inference fails, use turbofish syntax:
 
 \begin{lstlisting}
-let result = parse::<i32>("42");
+let result = parse::<i32>("42")
 \end{lstlisting}
 
 \section{Summary}

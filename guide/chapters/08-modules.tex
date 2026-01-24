@@ -134,8 +134,12 @@ Rename imports to avoid conflicts or for convenience:
 \begin{lstlisting}
 from std::collections::vec import Vec as DynamicArray
 from std::collections::hashmap import HashMap as Map
+\end{lstlisting}
 
-// Now use the aliases
+Using the aliases:
+
+\begin{lstlisting}
+// ... (with DynamicArray and Map imported above)
 var items = DynamicArray::<i32>::new()
 var lookup = Map::<Str, i32>::new()
 \end{lstlisting}
@@ -250,11 +254,11 @@ The mapping:
 The \texttt{internal} modifier makes items visible within the same package (workspace) but not exported to external code:
 
 \begin{lstlisting}
-// Visible to all modules in this workspace, not exported
+// ... (internal visibility - illustrative)
 internal const SHARED_BUFFER_SIZE: u32 = 4096
 
 internal fn shared_helper() -> i32 {
-    100
+    return 100
 }
 \end{lstlisting}
 
@@ -266,11 +270,10 @@ Use \texttt{internal} for implementation details shared between modules in a lib
 The \texttt{extern} keyword declares items defined elsewhere, resolved at link time:
 
 \begin{lstlisting}
-// AmigaOS library base (provided by startup code)
+// ... (extern declarations - illustrative)
 extern var SysBase: *ExecBase
 
 // Hardware register at specific address
-// The 'at ADDRESS' syntax maps to absolute memory locations
 extern var CUSTOM: *Custom at 0xdff000
 
 // Function from another object file or assembly
@@ -298,7 +301,7 @@ Re-exports allow modules to expose items from other modules as part of their own
 \label{subsec:pub-use}
 
 \begin{lstlisting}
-// In std/prelude.novus:
+// ... (example from std/prelude.novus - illustrative)
 
 // Re-export core types
 pub use std::core::Option, Result, Drop, From
@@ -328,7 +331,7 @@ from std::prelude import Option, Result, Str, DosError
 Re-export multiple items to create a convenient API:
 
 \begin{lstlisting}
-// In std/async/mod.novus:
+// ... (example from std/async/mod.novus - illustrative)
 
 // Re-export future types
 pub use std::async::future::Future, Poll, Context, Waker
@@ -437,7 +440,7 @@ myapp/
 
 The \texttt{project.toml} file:
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
 [package]
 name = "myapp"
 version = "0.1.0"
@@ -480,7 +483,7 @@ myworkspace/
 
 The \texttt{workspace.toml} file:
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
 [workspace]
 name = "myworkspace"
 version = "0.1.0"
@@ -675,7 +678,7 @@ The FFI modules provide direct bindings to AmigaOS libraries:
 The prelude (\texttt{std::prelude}) re-exports commonly used types:
 
 \begin{lstlisting}
-// Contents of std/prelude.novus:
+// ... (contents of std/prelude.novus - illustrative)
 pub use std::core::Option, Result, Drop, From
 pub use std::strings::core::Str
 pub use std::error::errors::DosError, ExecError, IntuitionError, GraphicsError

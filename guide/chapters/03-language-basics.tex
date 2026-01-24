@@ -679,15 +679,13 @@ Novus provides compile-time intrinsics that look like function calls but are han
 // Get size of a type in bytes
 let size = @sizeof(MyStruct)
 
-// Get alignment requirement of a type
-let align = @alignof(MyStruct)
-
 // Create a zero-initialized value of a type
 let data = @zeroed(MyStruct)
-
-// Get the type of an expression (for generic code)
-type T = @typeof(some_expression)
 \end{lstlisting}
+
+Additionally, \texttt{@drop\_in\_place(expr)} can be used to explicitly drop a value before it goes out of scope.
+
+\textbf{Note:} The \texttt{alignof()} intrinsic is currently only available in inline assembly blocks.
 
 These intrinsics are resolved at compile time and have no runtime overhead.
 

@@ -104,11 +104,12 @@ The \texttt{?} operator:
 Use \texttt{unwrap\_or} for safe fallback values:
 
 \begin{lstlisting}
+// ... (illustrative - with load_config defined elsewhere)
 let config = load_config("app.cfg")
 let value = config.unwrap_or(default_config())
 
-// Or with a closure for lazy evaluation
-let value = config.unwrap_or_else(|| compute_default())
+// Or with a closure for lazy evaluation (note space between pipes)
+let value = config.unwrap_or_else(| | compute_default())
 \end{lstlisting}
 
 \subsection{Panicking on Error}
@@ -326,12 +327,13 @@ fn process(data: *u8, len: u32) -> Result<(), Error> {
 Add context when propagating errors:
 
 \begin{lstlisting}
+// ... (illustrative - error context example)
 fn load_user_config() -> Result<Config, ConfigError> {
     let path = get_config_path()?
     let file = open(path, MODE_OLDFILE)
-        .map_err(|_| ConfigError::FileNotFound)?
+        .map_err(|e: DosError| ConfigError::FileNotFound)?
     let data = read_all(&file)
-        .map_err(|_| ConfigError::ReadFailed)?
+        .map_err(|e: DosError| ConfigError::ReadFailed)?
     parse_config(&data)
 }
 \end{lstlisting}
@@ -341,15 +343,18 @@ fn load_user_config() -> Result<Config, ConfigError> {
 Try multiple approaches, falling back on failure:
 
 \begin{lstlisting}
+// ... (illustrative - fallback chains)
 fn find_config() -> Result<Config, ConfigError> {
     // Try user config first
-    if let Result::Ok(cfg) = load_from("ENV:app.cfg") {
-        return Result::Ok(cfg)
+    match load_from("ENV:app.cfg") {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {},
     }
 
     // Fall back to system config
-    if let Result::Ok(cfg) = load_from("SYS:Prefs/app.cfg") {
-        return Result::Ok(cfg)
+    match load_from("SYS:Prefs/app.cfg") {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {},
     }
 
     // Use defaults

@@ -165,15 +165,13 @@ The reference type syntax mirrors the declaration:
 The \texttt{consuming} keyword indicates that a function takes ownership of a value, consuming it so it cannot be used afterward:
 
 \begin{lstlisting}
-from std::strings::core import String
-
 fn take_ownership(consuming s: String) {
     // s is now owned by this function
-    // The original variable is no longer usable
+    // ... (The original variable is no longer usable)
 }
 
 fn use_string() {
-    var s = String::from("Hello")
+    var s = String::new()
     take_ownership(s)
     // s is no longer valid here - compilation error if used
 }
@@ -268,7 +266,7 @@ pub fn api_function() -> i32 {
 The \texttt{internal} modifier makes a function visible within the same package but not to external code:
 
 \begin{lstlisting}
-// Visible within the package, not exported
+// ... (illustrative - internal visibility modifier)
 internal fn package_utility() -> i32 {
     return 100
 }
@@ -427,6 +425,7 @@ impl Resource {
 Functions without a \texttt{self} parameter are called \emph{associated functions}. They're called using the type name:
 
 \begin{lstlisting}
+// ... (with Vec defined elsewhere)
 impl<T> Vec<T> {
     // Associated function - no self
     // @zeroed creates a zero-initialized instance
@@ -436,11 +435,15 @@ impl<T> Vec<T> {
 
     // Associated function with parameters
     pub fn with_capacity(cap: u32) -> Result<Vec<T>, ExecError> {
-        // Allocate memory and return Vec
+        // ... Allocate memory and return Vec
     }
 }
+\end{lstlisting}
 
-// Calling associated functions
+Calling associated functions:
+
+\begin{lstlisting}
+// ... (with Vec and impl defined above)
 var v = Vec::<i32>::new()
 var v2 = Vec::<i32>::with_capacity(100)?
 \end{lstlisting}
@@ -519,14 +522,10 @@ Type parameters are declared in angle brackets after the function name.
 Use \texttt{where} clauses to constrain type parameters to types that implement specific traits:
 
 \begin{lstlisting}
-from std::core import Eq
-from std::strings::format import Display
-
-pub fn expect_eq<T>(actual: T, expected: T, message: Str)
-    where T: Eq + Display
-{
+// ... (with Eq and Display imported)
+pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display {
     if actual != expected {
-        // Report failure - can use Eq and Display methods on T
+        // ... Report failure - can use Eq and Display methods on T
     }
 }
 \end{lstlisting}
@@ -563,9 +562,10 @@ The turbofish is especially useful when calling generic functions where the type
 Implement traits for generic types:
 
 \begin{lstlisting}
+// ... (with HashMap defined elsewhere)
 impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
     fn drop(&var self) {
-        // Free all buckets and entries
+        // ... Free all buckets and entries
     }
 }
 \end{lstlisting}
@@ -708,13 +708,13 @@ let multiplier = 10
 let scale = |x: i32| -> i32 { x * multiplier }
 let result = scale(5)  // 50
 
-// No parameters
-let get_value = || -> i32 { 42 }
+// No parameters (note: space between pipes required)
+let get_value = | | -> i32 { 42 }
 \end{lstlisting}
 
 Closures use pipes (\texttt{|}) to delimit parameters:
 
-\begin{lstlisting}
+\begin{lstlisting}[language=bash]
 |parameters| -> ReturnType { body }
 \end{lstlisting}
 

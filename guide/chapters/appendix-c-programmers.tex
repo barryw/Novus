@@ -31,7 +31,7 @@ static int z = 30;       // File-local
 \end{lstlisting}
 
 \begin{lstlisting}
-// Novus
+// ... (Novus equivalent - illustrative)
 var x = 10               // Mutable (explicit)
 let y = 20               // Immutable (explicit)
 const Z: i32 = 30        // Compile-time constant
@@ -99,12 +99,16 @@ int x = ptr->x;          // Arrow for pointer access
 \end{lstlisting}
 
 \begin{lstlisting}
-// Novus: no typedef needed, uniform dot access
 struct Point {
     x: i32,
     y: i32,
 }
+\end{lstlisting}
 
+Usage:
+
+\begin{lstlisting}
+// ... (with Point defined above)
 let p = Point { x: 10, y: 20 }
 let ptr = &p
 let x = ptr.x            // Dot works for everything
@@ -195,7 +199,7 @@ rect_scale(&rect, 2);
 \end{lstlisting}
 
 \begin{lstlisting}
-// Novus: Methods with auto-borrow
+// ... (with Rectangle defined elsewhere - illustrative)
 impl Rectangle {
     fn area(&self) -> i32 {
         return self.width * self.height
@@ -205,8 +209,12 @@ impl Rectangle {
         self.height = self.height * factor
     }
 }
+\end{lstlisting}
 
-// Usage - compiler auto-borrows
+Usage:
+
+\begin{lstlisting}
+// ... (with Rectangle defined above)
 let a = rect.area()
 rect.scale(2)
 \end{lstlisting}
@@ -445,7 +453,7 @@ Note: Novus inverts C's default. In C, symbols are public unless marked \texttt{
 The NDK bindings are organized by library in \texttt{std::ffi}:
 
 \begin{lstlisting}
-// Import any AmigaOS function directly
+// ... (FFI import examples - illustrative)
 from std::ffi::exec import AllocMem, FreeMem, FindTask, Wait, Signal
 from std::ffi::dos import Open, Close, Read, Write, IoErr, Lock, UnLock
 from std::ffi::graphics import BltBitMap, SetAPen, RectFill, Text
@@ -453,15 +461,14 @@ from std::ffi::intuition import OpenWindow, CloseWindow, RefreshGList
 from std::ffi::gadtools import CreateMenus, FreeMenus, LayoutMenus
 from std::ffi::layers import CreateUpfrontLayer, DeleteLayer
 from std::ffi::utility import AllocateTagItems, FreeTagItems
+\end{lstlisting}
 
-// All structures are available
-from std::ffi::amiga_structs import Window, Screen, BitMap, RastPort,
-    Task, MsgPort, Message, TagItem, NewWindow, NewScreen
+Structures and constants:
 
-// All constants are available
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR,
-    IDCMP_CLOSEWINDOW, IDCMP_MOUSEBUTTONS, WFLG_CLOSEGADGET,
-    MODE_OLDFILE, MODE_NEWFILE, ACCESS_READ
+\begin{lstlisting}
+// ... (structure and constant imports - illustrative)
+from std::ffi::amiga_structs import Window, Screen, BitMap
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 \end{lstlisting}
 
 \subsection{Calling Raw NDK Functions}
@@ -624,10 +631,10 @@ custom[0x96/2] = 0x8020;  // DMACON
 \end{lstlisting}
 
 \begin{lstlisting}
-// Novus: Requires unsafe block
+// ... (Novus unsafe block - illustrative)
 unsafe {
     let custom = 0xdff000 as *u16
-    *(custom + 0x96 / 2) = 0x8020  // DMACON
+    *(custom + 0x96 / 2) = 0x8020
 }
 \end{lstlisting}
 

@@ -248,8 +248,12 @@ impl Builder {
         self.color = c
     }
 }
+\end{lstlisting}
 
-// Usage:
+Usage:
+
+\begin{lstlisting}
+// ... (with Builder defined above)
 var builder = Builder { width: 0, height: 0, color: 0 }
 builder.width(100).height(200).color(0xFF0000)
 \end{lstlisting}
