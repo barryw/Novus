@@ -935,3 +935,709 @@ The full source code is available in \texttt{Novus.Tests/Examples/config\_loader
 \end{itemize}
 
 Error handling in Novus is explicit but ergonomic. The \texttt{?} operator and \texttt{Result} combinators make it easy to write code that correctly handles failures without obscuring the happy path.
+
+% ============================================================================
+\section{Advanced Error Patterns}
+\label{sec:advanced-error-patterns}
+% ============================================================================
+
+This section covers advanced patterns for complex error handling scenarios.
+
+\subsection{Collecting Multiple Errors}
+
+Sometimes you want to validate everything before reporting, collecting all errors rather than stopping at the first:
+
+\begin{lstlisting}
+pub struct ValidationErrors {
+    errors: Vec<*u8>,
+}
+
+impl ValidationErrors {
+    pub fn new() -> ValidationErrors {
+        return ValidationErrors { errors: Vec::new() }
+    }
+
+    pub fn add(&var self, message: *u8) {
+        self.errors.push(message)
+    }
+
+    pub fn has_errors(&self) -> bool {
+        return self.errors.len() > 0
+    }
+
+    pub fn to_result(&self) -> Result<(), ValidationError> {
+        if self.has_errors() {
+            return Result::Err(ValidationError::Multiple(self.errors.len()))
+        }
+        Result::Ok(())
+    }
+}
+
+fn validate_user(user: &User) -> Result<(), ValidationError> {
+    var errors = ValidationErrors::new()
+
+    if user.name.len() == 0 {
+        errors.add("Name is required")
+    }
+    if user.age < 0 {
+        errors.add("Age must be non-negative")
+    }
+    if user.email.len() == 0 {
+        errors.add("Email is required")
+    }
+    if !user.email.contains('@') {
+        errors.add("Email must contain @")
+    }
+
+    // Print all errors
+    for i in 0..errors.errors.len() {
+        print("  - ")
+        println(errors.errors[i])
+    }
+
+    errors.to_result()
+}
+\end{lstlisting}
+
+\subsection{Error Recovery Strategies}
+
+Different errors require different recovery strategies. Here's a pattern that encapsulates recovery logic:
+
+\begin{lstlisting}
+pub enum RecoveryAction {
+    Retry,        // Try the operation again
+    Skip,         // Skip this item, continue with others
+    Fallback,     // Use a fallback value or method
+    Abort,        // Stop completely
+}
+
+fn determine_recovery(err: &DosError) -> RecoveryAction {
+    match *err {
+        // Transient errors - retry makes sense
+        DosError::NoDisk => RecoveryAction::Retry,
+
+        // Missing files - skip or use fallback
+        DosError::NotFound => RecoveryAction::Fallback,
+
+        // Permission errors - cannot recover
+        DosError::PermissionDenied => RecoveryAction::Abort,
+
+        // Other errors - skip by default
+        _ => RecoveryAction::Skip
+    }
+}
+
+fn process_files(paths: &[*u8]) -> Result<u32, DosError> {
+    var processed: u32 = 0
+
+    for i in 0..paths.len() {
+        let path = paths[i]
+
+        loop {
+            match open(path, MODE_OLDFILE) {
+                Result::Ok(file) => {
+                    defer { close(file) }
+                    process_file(&file)?
+                    processed += 1
+                    break
+                },
+                Result::Err(err) => {
+                    match determine_recovery(&err) {
+                        RecoveryAction::Retry => {
+                            delay(Duration::from_millis(500))
+                            continue
+                        },
+                        RecoveryAction::Skip => break,
+                        RecoveryAction::Fallback => {
+                            use_fallback(path)
+                            processed += 1
+                            break
+                        },
+                        RecoveryAction::Abort => return Result::Err(err)
+                    }
+                }
+            }
+        }
+    }
+
+    Result::Ok(processed)
+}
+\end{lstlisting}
+
+\subsection{Error Logging Pattern}
+
+For production code, logging errors before propagating them helps debugging:
+
+\begin{lstlisting}
+fn log_error(location: *u8, err: &NovusError) {
+    print("[ERROR] ")
+    print(location)
+    print(": ")
+    println(err.message())
+}
+
+fn load_with_logging(path: *u8) -> Result<Data, NovusError> {
+    let file = match open(path, MODE_OLDFILE) {
+        Result::Ok(f) => f,
+        Result::Err(e) => {
+            let err = novus_error_from_dos(e)
+            log_error("load_with_logging:open", &err)
+            return Result::Err(err)
+        }
+    }
+    defer { close(file) }
+
+    let data = match read_all(&file) {
+        Result::Ok(d) => d,
+        Result::Err(e) => {
+            let err = novus_error_from_dos(e)
+            log_error("load_with_logging:read", &err)
+            return Result::Err(err)
+        }
+    }
+
+    Result::Ok(data)
+}
+\end{lstlisting}
+
+\begin{comingfromc}
+C programs often use preprocessor macros for error logging:
+
+\begin{lstlisting}[language=C]
+#define CHECK_ERROR(expr, msg) \
+    do { \
+        if (!(expr)) { \
+            fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, msg); \
+            return -1; \
+        } \
+    } while(0)
+\end{lstlisting}
+
+In Novus, logging is explicit and type-safe. You can create helper functions that log and return errors in a single call, but the pattern remains clear and debuggable.
+\end{comingfromc}
+
+\subsection{Error Wrapping for Context}
+
+Add high-level context to low-level errors:
+
+\begin{lstlisting}
+pub enum AppError {
+    ConfigLoad(ConfigError),
+    DatabaseConnect(DbError),
+    NetworkTimeout(NetworkError),
+    Initialization(*u8),  // Free-form context message
+}
+
+impl AppError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            AppError::ConfigLoad(_) => "Failed to load configuration",
+            AppError::DatabaseConnect(_) => "Failed to connect to database",
+            AppError::NetworkTimeout(_) => "Network operation timed out",
+            AppError::Initialization(msg) => msg,
+        }
+    }
+
+    pub fn inner(&self) -> Option<*u8> {
+        match *self {
+            AppError::ConfigLoad(ref e) => Option::Some(e.message()),
+            AppError::DatabaseConnect(ref e) => Option::Some(e.message()),
+            AppError::NetworkTimeout(ref e) => Option::Some(e.message()),
+            AppError::Initialization(_) => Option::None,
+        }
+    }
+}
+
+fn init_app() -> Result<App, AppError> {
+    // Wrap errors with context
+    let config = load_config("app.cfg")
+        .map_err(|e| AppError::ConfigLoad(e))?
+
+    let db = connect_database(&config.db_path)
+        .map_err(|e| AppError::DatabaseConnect(e))?
+
+    Result::Ok(App { config, db })
+}
+
+// Display both layers
+fn report_error(err: &AppError) {
+    print("Error: ")
+    println(err.message())
+
+    match err.inner() {
+        Option::Some(inner) => {
+            print("  Cause: ")
+            println(inner)
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Testing Error Conditions}
+\label{sec:testing-errors}
+% ============================================================================
+
+Testing that your code handles errors correctly is just as important as testing the happy path.
+
+\subsection{Triggering Specific Errors}
+
+Create test helpers that return specific errors:
+
+\begin{lstlisting}
+#[test]
+fn test_handles_not_found() {
+    // Use a path that definitely doesn't exist
+    let result = load_config("NONEXISTENT:fake.cfg")
+
+    match result {
+        Result::Err(ConfigError::FileNotFound) => {
+            // Expected - test passes
+        },
+        Result::Ok(_) => {
+            panic!("Expected FileNotFound, got Ok")
+        },
+        Result::Err(e) => {
+            panic!("Expected FileNotFound, got different error")
+        }
+    }
+}
+
+#[test]
+fn test_handles_parse_error() {
+    // Create a file with invalid content
+    let file = create_test_file("test_bad.cfg", "invalid { content")
+    defer { delete_test_file("test_bad.cfg") }
+
+    let result = parse_config(&file)
+
+    match result {
+        Result::Err(ConfigError::ParseError(line)) => {
+            assert!(line == 1, "Error should be on line 1")
+        },
+        _ => panic!("Expected ParseError")
+    }
+}
+\end{lstlisting}
+
+\subsection{Error Injection with Function Parameters}
+
+Design functions to accept fallible operations as parameters:
+
+\begin{lstlisting}
+// Production signature
+type FileOpener = fn(*u8) -> Result<FileHandle, DosError>
+
+// Use dependency injection for testing
+fn process_with_opener(
+    path: *u8,
+    opener: FileOpener
+) -> Result<Data, DosError> {
+    let file = opener(path)?
+    defer { close(file) }
+    read_and_parse(&file)
+}
+
+// In tests, provide a mock opener
+#[test]
+fn test_handles_open_failure() {
+    fn failing_opener(path: *u8) -> Result<FileHandle, DosError> {
+        Result::Err(DosError::PermissionDenied)
+    }
+
+    let result = process_with_opener("test.txt", failing_opener)
+
+    match result {
+        Result::Err(DosError::PermissionDenied) => { /* pass */ },
+        _ => panic!("Expected PermissionDenied")
+    }
+}
+\end{lstlisting}
+
+\subsection{Testing Error Messages}
+
+Verify that error messages are correct:
+
+\begin{lstlisting}
+#[test]
+fn test_error_messages() {
+    assert_eq!(
+        DosError::NotFound.message(),
+        "Object not found"
+    )
+    assert_eq!(
+        DosError::DiskFull.message(),
+        "Disk is full"
+    )
+    assert_eq!(
+        ConfigError::MissingKey.message(),
+        "Required configuration key is missing"
+    )
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Performance Considerations}
+\label{sec:error-performance}
+% ============================================================================
+
+Error handling in Novus is designed to be zero-cost when errors don't occur.
+
+\subsection{Result is Zero-Cost}
+
+The \texttt{Result<T, E>} type is a tagged union. When \texttt{T} and \texttt{E} have the same size, \texttt{Result} is just \texttt{sizeof(T) + 1} byte for the discriminant (often padded to alignment). There's no heap allocation, no vtable, no exception tables.
+
+\begin{lstlisting}
+// Result<i32, i32> is exactly 8 bytes:
+// - 4 bytes for the value (i32)
+// - 4 bytes for alignment (includes discriminant)
+
+// Result<*u8, DosError> is 8 bytes:
+// - 4 bytes for the pointer or error code
+// - 4 bytes for alignment
+
+// Compare to C++ exceptions:
+// - Exception tables in every function
+// - RTTI for type matching
+// - Stack unwinding machinery
+\end{lstlisting}
+
+\subsection{The Cost of the ? Operator}
+
+The \texttt{?} operator compiles to a simple conditional branch:
+
+\begin{lstlisting}
+// This Novus code:
+let value = operation()?
+
+// Compiles to roughly this 68k:
+//     move.l  d0,d2           ; save result
+//     tst.l   d0              ; check discriminant
+//     bne.s   .error          ; branch if error
+//     move.l  4(sp),d0        ; extract value
+//     bra.s   .continue
+// .error:
+//     move.l  d2,d0           ; return error
+//     rts
+// .continue:
+\end{lstlisting}
+
+This is essentially the same cost as checking a return value in C.
+
+\subsection{Avoid Unwrap in Hot Paths}
+
+While \texttt{unwrap()} is convenient, it has overhead from the panic path:
+
+\begin{lstlisting}
+// Slower - has panic machinery
+fn sum_values(results: &[Result<i32, Error>]) -> i32 {
+    var total: i32 = 0
+    for i in 0..results.len() {
+        total += results[i].unwrap()  // Panic check each iteration
+    }
+    return total
+}
+
+// Faster - single error check
+fn sum_values_checked(results: &[Result<i32, Error>]) -> Result<i32, Error> {
+    var total: i32 = 0
+    for i in 0..results.len() {
+        total += results[i]?  // Early return, no panic code
+    }
+    Result::Ok(total)
+}
+\end{lstlisting}
+
+\subsection{When to Use unwrap\_or}
+
+For performance-critical code with known-safe defaults, \texttt{unwrap\_or} avoids branch misprediction:
+
+\begin{lstlisting}
+// For optional lookups with a sensible default
+fn get_color(palette: &Palette, index: u32) -> u32 {
+    // Returns black (0) if index is out of range
+    return palette.get(index).unwrap_or(0)
+}
+
+// This compiles to efficient branchless code on 68020+
+\end{lstlisting}
+
+% ============================================================================
+\section{Real-World Error Handling}
+\label{sec:real-world-errors}
+% ============================================================================
+
+This section shows complete error handling for common Amiga scenarios.
+
+\subsection{File Processing Pipeline}
+
+A complete file processing example with proper cleanup:
+
+\begin{lstlisting}
+pub fn convert_file(
+    input_path: *u8,
+    output_path: *u8
+) -> Result<u32, ConvertError> {
+    // Open input file
+    let input = match open(input_path, MODE_OLDFILE) {
+        Result::Ok(f) => f,
+        Result::Err(e) => return Result::Err(ConvertError::InputOpen(e))
+    }
+    defer { close(input) }
+
+    // Get file size for progress reporting
+    let size = match examine(&input) {
+        Result::Ok(info) => info.size,
+        Result::Err(e) => return Result::Err(ConvertError::InputRead(e))
+    }
+
+    // Open output file
+    let output = match open(output_path, MODE_NEWFILE) {
+        Result::Ok(f) => f,
+        Result::Err(e) => return Result::Err(ConvertError::OutputOpen(e))
+    }
+    defer {
+        close(output)
+        // Delete partial output on error (defers run in reverse order)
+        if error_occurred {
+            delete_file(output_path)
+        }
+    }
+
+    var error_occurred = false
+    var bytes_written: u32 = 0
+
+    // Process in chunks
+    var buffer = [0u8; 4096]
+    loop {
+        let bytes_read = match read(&input, &buffer) {
+            Result::Ok(0) => break,  // EOF
+            Result::Ok(n) => n,
+            Result::Err(e) => {
+                error_occurred = true
+                return Result::Err(ConvertError::InputRead(e))
+            }
+        }
+
+        let converted = convert_chunk(&buffer, bytes_read)?
+
+        match write(&output, &converted, converted.len()) {
+            Result::Ok(n) => bytes_written += n,
+            Result::Err(e) => {
+                error_occurred = true
+                return Result::Err(ConvertError::OutputWrite(e))
+            }
+        }
+    }
+
+    Result::Ok(bytes_written)
+}
+\end{lstlisting}
+
+\subsection{GUI Error Feedback}
+
+Reporting errors through Intuition requesters:
+
+\begin{lstlisting}
+pub fn show_error(window: *Window, err: &NovusError) {
+    var body = EasyStruct {
+        struct_size: size_of::<EasyStruct>(),
+        flags: 0,
+        title: "Error",
+        text_format: err.message(),
+        gadget_format: "OK",
+    }
+
+    EasyRequest(window, &body, null, null)
+}
+
+pub fn show_error_with_retry(
+    window: *Window,
+    err: &NovusError
+) -> bool {
+    var body = EasyStruct {
+        struct_size: size_of::<EasyStruct>(),
+        flags: 0,
+        title: "Error",
+        text_format: err.message(),
+        gadget_format: "Retry|Cancel",
+    }
+
+    // Returns 1 for Retry, 0 for Cancel
+    return EasyRequest(window, &body, null, null) == 1
+}
+
+// Usage with retry loop
+fn load_with_ui_retry(
+    window: *Window,
+    path: *u8
+) -> Result<Data, NovusError> {
+    loop {
+        match load_data(path) {
+            Result::Ok(data) => return Result::Ok(data),
+            Result::Err(err) => {
+                if !show_error_with_retry(window, &err) {
+                    return Result::Err(err)
+                }
+                // User chose Retry - loop continues
+            }
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Multi-Step Initialization}
+
+Initializing multiple subsystems with proper cleanup on partial failure:
+
+\begin{lstlisting}
+pub struct Application {
+    screen: *Screen,
+    window: *Window,
+    audio: AudioContext,
+    font: *TextFont,
+}
+
+impl Application {
+    pub fn init() -> Result<Application, AppError> {
+        // Step 1: Open screen
+        let screen = match open_screen(&SCREEN_SPEC) {
+            Result::Ok(s) => s,
+            Result::Err(e) => return Result::Err(AppError::Screen(e))
+        }
+
+        // Step 2: Open window (cleanup screen on failure)
+        let window = match open_window(screen, &WINDOW_SPEC) {
+            Result::Ok(w) => w,
+            Result::Err(e) => {
+                close_screen(screen)
+                return Result::Err(AppError::Window(e))
+            }
+        }
+
+        // Step 3: Initialize audio (cleanup window and screen on failure)
+        let audio = match AudioContext::init() {
+            Result::Ok(a) => a,
+            Result::Err(e) => {
+                close_window(window)
+                close_screen(screen)
+                return Result::Err(AppError::Audio(e))
+            }
+        }
+
+        // Step 4: Open font (cleanup all previous on failure)
+        let font = match open_font("topaz.font", 8) {
+            Result::Ok(f) => f,
+            Result::Err(e) => {
+                audio.shutdown()
+                close_window(window)
+                close_screen(screen)
+                return Result::Err(AppError::Font(e))
+            }
+        }
+
+        Result::Ok(Application { screen, window, audio, font })
+    }
+}
+
+impl Drop for Application {
+    fn drop(&var self) {
+        close_font(self.font)
+        self.audio.shutdown()
+        close_window(self.window)
+        close_screen(self.screen)
+    }
+}
+\end{lstlisting}
+
+\begin{comingfromc}
+In C, multi-step initialization often uses the ``goto cleanup'' pattern:
+
+\begin{lstlisting}[language=C]
+int init_app(App *app) {
+    app->screen = OpenScreen(&spec);
+    if (!app->screen) goto fail_screen;
+
+    app->window = OpenWindow(&spec);
+    if (!app->window) goto fail_window;
+
+    app->audio = init_audio();
+    if (!app->audio) goto fail_audio;
+
+    return 0;  // Success
+
+fail_audio:
+    CloseWindow(app->window);
+fail_window:
+    CloseScreen(app->screen);
+fail_screen:
+    return -1;
+}
+\end{lstlisting}
+
+While functional, this pattern is error-prone. Novus's RAII with \texttt{Drop} ensures cleanup happens automatically and in the correct order.
+\end{comingfromc}
+
+% ============================================================================
+\section{Error Handling Best Practices}
+\label{sec:error-best-practices}
+% ============================================================================
+
+\subsection{Do's}
+
+\begin{itemize}
+    \item \textbf{Do} use \texttt{?} for concise error propagation
+    \item \textbf{Do} pattern match to handle specific error variants
+    \item \textbf{Do} use \texttt{defer} for cleanup that must happen
+    \item \textbf{Do} create custom error types for your domain
+    \item \textbf{Do} implement \texttt{message()} for human-readable errors
+    \item \textbf{Do} use \texttt{unwrap\_or} when a default makes sense
+    \item \textbf{Do} test error paths, not just the happy path
+    \item \textbf{Do} log errors before propagating in complex systems
+\end{itemize}
+
+\subsection{Don'ts}
+
+\begin{itemize}
+    \item \textbf{Don't} use \texttt{unwrap()} unless failure is impossible
+    \item \textbf{Don't} ignore \texttt{Result} return values
+    \item \textbf{Don't} use \texttt{panic!()} for recoverable errors
+    \item \textbf{Don't} catch and re-throw without adding context
+    \item \textbf{Don't} use sentinel values (0, -1, null) instead of \texttt{Result}
+    \item \textbf{Don't} forget to handle all error variants in match
+    \item \textbf{Don't} mix error handling strategies in the same codebase
+\end{itemize}
+
+\subsection{Error Design Guidelines}
+
+When designing error types for a library or module:
+
+\begin{enumerate}
+    \item \textbf{Be specific}: Create variants for each distinct failure mode
+    \item \textbf{Include context}: Add data that helps diagnose the problem
+    \item \textbf{Be recoverable}: If an error can be retried or worked around, make that obvious
+    \item \textbf{Be consistent}: Use similar patterns across your codebase
+    \item \textbf{Document errors}: Each variant should have a doc comment
+\end{enumerate}
+
+\begin{lstlisting}
+/// Errors that can occur during network operations
+pub enum NetworkError {
+    /// Connection to server failed
+    /// Contains: host address, port
+    ConnectionFailed { host: *u8, port: u16 },
+
+    /// Connection timed out after max_wait milliseconds
+    /// Recoverable: retry with longer timeout
+    Timeout { operation: *u8, max_wait: u32 },
+
+    /// Server sent invalid response
+    /// Not recoverable: protocol error
+    InvalidResponse { code: u32 },
+
+    /// Network stack not initialized
+    /// Recoverable: call network_init() first
+    NotInitialized,
+}
+\end{lstlisting}
