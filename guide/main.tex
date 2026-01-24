@@ -126,6 +126,41 @@
     },
 }
 
+% === Note/Warning/Tip Boxes ===
+\definecolor{notecolor}{RGB}{230, 243, 255}    % Light blue
+\definecolor{noteborder}{RGB}{66, 139, 202}    % Blue
+\definecolor{warncolor}{RGB}{255, 243, 230}    % Light orange
+\definecolor{warnborder}{RGB}{202, 139, 66}    % Orange
+\definecolor{tipcolor}{RGB}{230, 255, 243}     % Light green
+\definecolor{tipborder}{RGB}{66, 202, 139}     % Green
+
+\newtcolorbox{notebox}{
+    enhanced, breakable,
+    colback=notecolor, colframe=noteborder,
+    boxrule=1pt, arc=3pt,
+    left=8pt, right=8pt, top=6pt, bottom=6pt,
+    fonttitle=\bfseries\small,
+    title={Note},
+}
+
+\newtcolorbox{warningbox}{
+    enhanced, breakable,
+    colback=warncolor, colframe=warnborder,
+    boxrule=1pt, arc=3pt,
+    left=8pt, right=8pt, top=6pt, bottom=6pt,
+    fonttitle=\bfseries\small,
+    title={Warning},
+}
+
+\newtcolorbox{tipbox}{
+    enhanced, breakable,
+    colback=tipcolor, colframe=tipborder,
+    boxrule=1pt, arc=3pt,
+    left=8pt, right=8pt, top=6pt, bottom=6pt,
+    fonttitle=\bfseries\small,
+    title={Tip},
+}
+
 % === Hyperlinks ===
 \usepackage{hyperref}
 \hypersetup{
@@ -202,7 +237,7 @@
 
 % Part II: Standard Library
 \include{chapters/12-stdlib-overview}
-% \include{chapters/13-core-types}
+\include{chapters/13-core-types}
 % \include{chapters/14-collections}
 % \include{chapters/15-strings}
 % \include{chapters/16-memory}

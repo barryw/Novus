@@ -1,0 +1,971 @@
+\chapter{Core Types and Traits}
+\label{ch:core-types}
+
+The \texttt{std::core} module is the foundation of Novus's type system. It defines the fundamental types and traits that enable safe error handling, resource management, and generic programming. This chapter provides complete documentation for every type and trait in \texttt{std::core}.
+
+% ============================================================================
+\section{Option\textless T\textgreater}
+\label{sec:option}
+% ============================================================================
+
+\texttt{Option<T>} represents a value that may or may not be present. Use it instead of null pointers to make absence explicit and force handling.
+
+\begin{lstlisting}
+pub enum Option<T> {
+    Some(T),
+    None,
+}
+\end{lstlisting}
+
+\subsection{When to Use Option}
+
+\begin{itemize}
+    \item Function might not have a value to return (e.g., \texttt{Vec::pop()})
+    \item A field is optional
+    \item Lookup operations that may fail to find an element
+    \item Simple failure modes where ``not found'' is the only error
+\end{itemize}
+
+\begin{notebox}
+Use \texttt{Option} when there's only one failure mode. Use \texttt{Result} when you need to distinguish between different error conditions.
+\end{notebox}
+
+\subsection{Creating Options}
+
+\begin{lstlisting}
+// Explicit construction
+let some_value: Option<i32> = Option::Some(42)
+let no_value: Option<i32> = Option::None
+
+// From a pointer (non-null check)
+let ptr: *u8 = get_some_pointer()
+let opt = Option::FromPointer(ptr)  // Some(ptr) if non-null, None otherwise
+\end{lstlisting}
+
+\subsection{Option Methods}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_some(self) -> bool} & Returns \texttt{true} if the option contains a value \\
+\texttt{is\_none(self) -> bool} & Returns \texttt{true} if the option is \texttt{None} \\
+\texttt{unwrap(self) -> T} & Returns the value, panics if \texttt{None} \\
+\texttt{unwrap\_or(self, default: T) -> T} & Returns the value or a default \\
+\texttt{unwrap\_or\_else(self, default: T) -> T} & Same as \texttt{unwrap\_or} (closures planned) \\
+\texttt{or(self, optb: Option<T>) -> Option<T>} & Returns self if \texttt{Some}, otherwise \texttt{optb} \\
+\texttt{contains(self, val: T) -> bool} & Returns \texttt{true} if contains the value (requires \texttt{Eq}) \\
+\texttt{ok\_or<E>(self, err: E) -> Result<T, E>} & Converts to \texttt{Result}, mapping \texttt{None} to \texttt{Err(err)} \\
+\texttt{FromPointer(ptr: *T) -> Option<*T>} & Creates \texttt{Some(ptr)} if non-null, \texttt{None} otherwise \\
+\end{tabular}
+\end{center}
+
+\subsection{Pattern Matching with Option}
+
+The idiomatic way to handle \texttt{Option} is with pattern matching:
+
+\begin{lstlisting}
+fn find_user(id: u32) -> Option<User> {
+    // ... lookup logic ...
+}
+
+// Exhaustive match
+match find_user(42) {
+    Option::Some(user) => {
+        println(user.name)
+    },
+    Option::None => {
+        println("User not found")
+    }
+}
+
+// If-let for single-arm matches
+if let Option::Some(user) = find_user(42) {
+    println(user.name)
+}
+
+// While-let for iteration
+var stack = create_stack()
+while let Option::Some(item) = stack.pop() {
+    process(item)
+}
+\end{lstlisting}
+
+\subsection{Combining Options}
+
+\begin{lstlisting}
+// Chain with or()
+let primary = get_primary_config()
+let fallback = get_fallback_config()
+let config = primary.or(fallback)  // Use fallback if primary is None
+
+// Convert to Result for richer error info
+let user = find_user(id).ok_or(UserError::NotFound)?
+
+// Check contents
+let x = Option::Some(42)
+if x.contains(42) {
+    println("Found 42!")
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Avoid \texttt{unwrap()} in library code.} It panics on \texttt{None}, crashing the program. Use \texttt{unwrap\_or()}, pattern matching, or the \texttt{?} operator with \texttt{ok\_or()} instead.
+\end{warningbox}
+
+% ============================================================================
+\section{Result\textless T, E\textgreater}
+\label{sec:result}
+% ============================================================================
+
+\texttt{Result<T, E>} represents an operation that can succeed with value \texttt{T} or fail with error \texttt{E}. It's the primary mechanism for error handling in Novus.
+
+\begin{lstlisting}
+pub enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+\end{lstlisting}
+
+\subsection{When to Use Result}
+
+\begin{itemize}
+    \item Operations that can fail in multiple ways
+    \item I/O operations (file, network, hardware)
+    \item Memory allocation
+    \item Parsing and validation
+    \item Any operation where callers need error details
+\end{itemize}
+
+\subsection{Result Methods}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_ok(self) -> bool} & Returns \texttt{true} if the result is \texttt{Ok} \\
+\texttt{is\_err(self) -> bool} & Returns \texttt{true} if the result is \texttt{Err} \\
+\texttt{unwrap(self) -> T} & Returns the value, panics if \texttt{Err} \\
+\texttt{unwrap\_err(self) -> E} & Returns the error, panics if \texttt{Ok} \\
+\texttt{unwrap\_or(self, default: T) -> T} & Returns the value or a default \\
+\texttt{or(self, res: Result<T, E>) -> Result<T, E>} & Returns self if \texttt{Ok}, otherwise \texttt{res} \\
+\texttt{ok(self) -> Option<T>} & Converts \texttt{Ok(v)} to \texttt{Some(v)}, \texttt{Err} to \texttt{None} \\
+\texttt{err(self) -> Option<E>} & Converts \texttt{Err(e)} to \texttt{Some(e)}, \texttt{Ok} to \texttt{None} \\
+\end{tabular}
+\end{center}
+
+\subsection{The ? Operator}
+
+The \texttt{?} operator is syntactic sugar for early return on error:
+
+\begin{lstlisting}
+fn read_config(path: *u8) -> Result<Config, DosError> {
+    let file = open(path, MODE_OLDFILE)?  // Returns Err early if failed
+    defer { close(file) }
+
+    let data = read_all(file)?
+    let config = parse_config(data)?
+
+    return Result::Ok(config)
+}
+
+// Equivalent without ?:
+fn read_config_verbose(path: *u8) -> Result<Config, DosError> {
+    match open(path, MODE_OLDFILE) {
+        Result::Ok(file) => {
+            defer { close(file) }
+            match read_all(file) {
+                Result::Ok(data) => {
+                    match parse_config(data) {
+                        Result::Ok(config) => return Result::Ok(config),
+                        Result::Err(e) => return Result::Err(e)
+                    }
+                },
+                Result::Err(e) => return Result::Err(e)
+            }
+        },
+        Result::Err(e) => return Result::Err(e)
+    }
+}
+\end{lstlisting}
+
+\subsection{Error Type Conversion with ?}
+
+The \texttt{?} operator automatically converts error types using the \texttt{From} trait:
+
+\begin{lstlisting}
+// DosError -> NovusError conversion is automatic with ?
+fn load_and_display(path: *u8) -> Result<(), NovusError> {
+    let data = read_file(path)?         // DosError -> NovusError
+    let window = open_window()?         // IntuitionError -> NovusError
+    draw_data(window, data)?            // GraphicsError -> NovusError
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+This works because \texttt{impl From<DosError> for NovusError} exists in the error module.
+
+\subsection{Pattern Matching with Result}
+
+\begin{lstlisting}
+match allocate_buffer(size) {
+    Result::Ok(buffer) => {
+        // Use buffer
+        process(buffer)
+    },
+    Result::Err(ExecError::NoMem) => {
+        println("Out of memory!")
+    },
+    Result::Err(e) => {
+        // Handle other errors
+        println(e.message())
+    }
+}
+\end{lstlisting}
+
+\subsection{Converting Between Option and Result}
+
+\begin{lstlisting}
+// Option -> Result: provide an error for None case
+let user = find_user(id).ok_or(UserError::NotFound)?
+
+// Result -> Option: discard error information
+let maybe_value = risky_operation().ok()
+\end{lstlisting}
+
+% ============================================================================
+\section{LibraryVersion}
+\label{sec:library-version}
+% ============================================================================
+
+\texttt{LibraryVersion} represents semantic version information for AmigaOS libraries:
+
+\begin{lstlisting}
+pub struct LibraryVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+\end{lstlisting}
+
+\subsection{LibraryVersion Methods}
+
+\begin{lstlisting}
+// Creation
+let version = LibraryVersion::new(39, 5, 0)
+
+// Access components
+let major = version.major()  // 39
+let minor = version.minor()  // 5
+let patch = version.patch()  // 0
+
+// Comparison (returns: negative if <, zero if ==, positive if >)
+let cmp_result = version.cmp(&other_version)
+if cmp_result < 0 {
+    println("version is older")
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Resource Management Traits}
+\label{sec:resource-traits}
+% ============================================================================
+
+These traits enable automatic resource management (RAII) and explicit copying.
+
+\subsection{Drop --- Automatic Cleanup}
+
+The \texttt{Drop} trait enables automatic resource cleanup when values go out of scope:
+
+\begin{lstlisting}
+pub trait Drop {
+    fn drop(&var self)
+}
+\end{lstlisting}
+
+\textbf{When drop() is called:}
+\begin{itemize}
+    \item At the end of a block scope
+    \item Before reassignment to a variable
+    \item Before early returns
+    \item When a variable is shadowed
+\end{itemize}
+
+\textbf{When drop() is NOT called:}
+\begin{itemize}
+    \item If the value was moved to another location
+    \item If a field was partially moved (only non-moved fields are dropped)
+\end{itemize}
+
+\begin{lstlisting}
+impl Drop for MemoryBlock {
+    fn drop(&var self) {
+        if self.size > 0 {
+            unsafe { FreeMem(self.ptr, self.size) }
+            self.ptr = (*u8)0
+            self.size = 0
+        }
+    }
+}
+
+// Usage - cleanup is automatic
+fn example() -> Result<(), ExecError> {
+    let mem = MemoryBlock::alloc(1024, MEMF_FAST).unwrap()
+    // ... use mem ...
+    return Result::Ok(())
+}  // mem.drop() called automatically here
+\end{lstlisting}
+
+\begin{notebox}
+\textbf{Drop order:} Variables are dropped in reverse order of creation. Struct fields are dropped in declaration order. \texttt{defer} blocks run before automatic drop.
+\end{notebox}
+
+\subsection{Copy --- Implicit Bitwise Copy}
+
+The \texttt{Copy} trait is a marker trait indicating a type can be copied bitwise:
+
+\begin{lstlisting}
+pub trait Copy {}
+\end{lstlisting}
+
+Types implementing \texttt{Copy} are implicitly copied when passed by value, rather than moved.
+
+\textbf{When to implement Copy:}
+\begin{itemize}
+    \item Simple value types (integers, bools, pointers)
+    \item Small structs containing only \texttt{Copy} types
+    \item Wrapper types around primitives
+\end{itemize}
+
+\textbf{When NOT to implement Copy:}
+\begin{itemize}
+    \item Types that own heap memory (\texttt{Vec}, \texttt{String}, \texttt{Box})
+    \item Types with \texttt{Drop} implementations
+    \item Types containing non-\texttt{Copy} fields
+\end{itemize}
+
+\begin{lstlisting}
+struct Point { x: i32, y: i32 }
+impl Copy for Point {}
+
+let p1 = Point { x: 10, y: 20 }
+let p2 = p1  // Copies p1 instead of moving it
+// p1 is still valid here!
+\end{lstlisting}
+
+\begin{notebox}
+Primitive types (\texttt{i32}, \texttt{u32}, \texttt{bool}, etc.) and pointer types are automatically \texttt{Copy} without requiring explicit \texttt{impl}.
+\end{notebox}
+
+\subsection{Clone --- Explicit Deep Copy}
+
+The \texttt{Clone} trait provides explicit deep copying for types where copying may allocate:
+
+\begin{lstlisting}
+pub trait Clone {
+    fn clone(&self) -> Option<Self>
+}
+\end{lstlisting}
+
+\textbf{Key difference from Copy:}
+\begin{itemize}
+    \item \texttt{Copy} is implicit and infallible (bitwise)
+    \item \texttt{Clone} is explicit and can fail (returns \texttt{Option})
+\end{itemize}
+
+\begin{lstlisting}
+impl Clone for Vec<T> {
+    fn clone(&self) -> Option<Self> {
+        // with_capacity returns Result, convert to Option
+        var new_vec = match Vec::with_capacity(self.len()) {
+            Result::Ok(v) => v,
+            Result::Err(_) => return Option::None
+        }
+        for i in 0..self.len {
+            match new_vec.push(self.get(i).unwrap()) {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Option::None
+            }
+        }
+        return Option::Some(new_vec)
+    }
+}
+
+// Usage
+let original = Vec::new()
+original.push(1).ok()  // Ignore result for simple example
+original.push(2)?
+
+match original.clone() {
+    Option::Some(copy) => {
+        // copy is independent of original
+    },
+    Option::None => {
+        // Allocation failed during clone
+    }
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Type Conversion Traits}
+\label{sec:conversion-traits}
+% ============================================================================
+
+These traits enable type conversions between different types.
+
+\subsection{From\textless T\textgreater\ --- Infallible Conversion}
+
+The \texttt{From} trait enables automatic type conversions:
+
+\begin{lstlisting}
+pub trait From<T> {
+    fn convert(value: T) -> Self
+}
+\end{lstlisting}
+
+\begin{notebox}
+The method is named \texttt{convert} instead of \texttt{from} because \texttt{from} is a keyword in Novus (used in import statements).
+\end{notebox}
+
+Primary use case: automatic error conversions with the \texttt{?} operator.
+
+\begin{lstlisting}
+impl From<DosError> for NovusError {
+    fn convert(err: DosError) -> NovusError {
+        return NovusError::Dos(err)
+    }
+}
+
+// Now ? automatically converts DosError to NovusError
+fn foo() -> Result<i32, NovusError> {
+    let file = open_file("test.txt")?  // DosError -> NovusError
+    return Result::Ok(42)
+}
+\end{lstlisting}
+
+\subsection{Into\textless T\textgreater\ --- Consuming Conversion}
+
+The complement to \texttt{From}:
+
+\begin{lstlisting}
+pub trait Into<T> {
+    fn into(consuming self) -> T
+}
+\end{lstlisting}
+
+If you implement \texttt{From<A> for B}, you conceptually get \texttt{Into<B> for A}.
+
+\begin{tipbox}
+Prefer implementing \texttt{From} over \texttt{Into}. \texttt{From} is more flexible and provides better type inference.
+\end{tipbox}
+
+\subsection{TryFrom and TryInto --- Fallible Conversion}
+
+For conversions that can fail:
+
+\begin{lstlisting}
+pub trait TryFrom<T, E> {
+    fn try_from(value: T) -> Result<Self, E>
+}
+
+pub trait TryInto<T, E> {
+    fn try_into(consuming self) -> Result<T, E>
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// Example: parsing strings to numbers
+impl TryFrom<Str, ParseError> for i32 {
+    fn try_from(s: Str) -> Result<i32, ParseError> {
+        return s.parse_i32()
+    }
+}
+
+let num = i32::try_from("42")?  // Result<i32, ParseError>
+\end{lstlisting}
+
+% ============================================================================
+\section{Comparison Traits}
+\label{sec:comparison-traits}
+% ============================================================================
+
+\subsection{Eq --- Equality}
+
+The \texttt{Eq} trait enables equality comparison with \texttt{==} and \texttt{!=}:
+
+\begin{lstlisting}
+pub trait Eq {
+    fn eq(&self, other: &Self) -> bool
+}
+\end{lstlisting}
+
+\textbf{Contract:}
+\begin{itemize}
+    \item Reflexive: \texttt{a.eq(\&a)} must return \texttt{true}
+    \item Symmetric: \texttt{a.eq(\&b)} must equal \texttt{b.eq(\&a)}
+    \item Transitive: if \texttt{a.eq(\&b)} and \texttt{b.eq(\&c)}, then \texttt{a.eq(\&c)}
+\end{itemize}
+
+\begin{lstlisting}
+impl Eq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+\end{lstlisting}
+
+\subsection{Ord --- Total Ordering}
+
+The \texttt{Ord} trait provides total ordering:
+
+\begin{lstlisting}
+pub trait Ord {
+    fn cmp(&self, other: &Self) -> i32
+}
+\end{lstlisting}
+
+Return value semantics:
+\begin{itemize}
+    \item Negative: \texttt{self < other}
+    \item Zero: \texttt{self == other}
+    \item Positive: \texttt{self > other}
+\end{itemize}
+
+\begin{lstlisting}
+impl Ord for Version {
+    fn cmp(&self, other: &Version) -> i32 {
+        if self.major != other.major {
+            return (i32)self.major - (i32)other.major
+        }
+        if self.minor != other.minor {
+            return (i32)self.minor - (i32)other.minor
+        }
+        return (i32)self.patch - (i32)other.patch
+    }
+}
+\end{lstlisting}
+
+\subsection{PartialOrd --- Comparison Operators}
+
+For types that support \texttt{<}, \texttt{<=}, \texttt{>}, \texttt{>=}:
+
+\begin{lstlisting}
+pub trait PartialOrd {
+    fn lt(&self, other: &Self) -> bool
+    fn le(&self, other: &Self) -> bool
+    fn gt(&self, other: &Self) -> bool
+    fn ge(&self, other: &Self) -> bool
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Hash Trait}
+\label{sec:hash-trait}
+% ============================================================================
+
+The \texttt{Hash} trait enables types to be used as keys in hash-based collections:
+
+\begin{lstlisting}
+pub trait Hash {
+    fn hash(&self) -> u32
+}
+\end{lstlisting}
+
+\textbf{Contract:}
+\begin{itemize}
+    \item If two values are equal (via \texttt{Eq}), they \textbf{must} produce the same hash
+    \item Different values \textit{may} produce the same hash (collision)
+    \item Hash should distribute values uniformly across the \texttt{u32} range
+\end{itemize}
+
+\begin{lstlisting}
+impl Hash for Point {
+    fn hash(&self) -> u32 {
+        // Combine hashes using XOR and FNV-1a mixing constant
+        var h: u32 = self.x.hash()
+        h = h ^ (self.y.hash() * 2246822507u32)
+        return h
+    }
+}
+\end{lstlisting}
+
+\begin{warningbox}
+If you implement both \texttt{Hash} and \texttt{Eq}, maintain the invariant: \texttt{a.eq(\&b)} implies \texttt{a.hash() == b.hash()}.
+\end{warningbox}
+
+All primitive types (\texttt{u8}, \texttt{u16}, \texttt{u32}, \texttt{i8}, \texttt{i16}, \texttt{i32}, \texttt{bool}) have built-in \texttt{Hash} implementations using FNV-1a inspired mixing.
+
+% ============================================================================
+\section{Operator Traits}
+\label{sec:operator-traits}
+% ============================================================================
+
+These traits enable operator overloading for custom types.
+
+\subsection{Arithmetic Operators}
+
+\begin{lstlisting}
+pub trait Add { fn add(&self, other: &Self) -> Self }
+pub trait Sub { fn sub(&self, other: &Self) -> Self }
+pub trait Mul { fn mul(&self, other: &Self) -> Self }
+pub trait Div { fn div(&self, other: &Self) -> Self }
+pub trait Rem { fn rem(&self, other: &Self) -> Self }
+pub trait Neg { fn neg(&self) -> Self }
+\end{lstlisting}
+
+\begin{lstlisting}
+impl Add for Point {
+    fn add(&self, other: &Point) -> Point {
+        return Point { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+let p1 = Point { x: 10, y: 20 }
+let p2 = Point { x: 5, y: 15 }
+let p3 = p1 + p2  // Point { x: 15, y: 35 }
+\end{lstlisting}
+
+\subsection{Index Operators}
+
+\begin{lstlisting}
+pub trait Index<I, T> {
+    fn index(&self, idx: I) -> T
+}
+
+pub trait IndexMut<I, T> {
+    fn index_set(&var self, idx: I, value: T)
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+impl Index<u32, i32> for MyArray {
+    fn index(&self, idx: u32) -> i32 {
+        return self.data[idx]
+    }
+}
+
+impl IndexMut<u32, i32> for MyArray {
+    fn index_set(&var self, idx: u32, value: i32) {
+        self.data[idx] = value
+    }
+}
+
+let arr = MyArray::new()
+let val = arr[0]      // Calls index()
+arr[0] = 42           // Calls index_set()
+\end{lstlisting}
+
+% ============================================================================
+\section{Iterator Traits}
+\label{sec:iterator-traits}
+% ============================================================================
+
+\subsection{Iterable --- For-In Loop Support}
+
+The \texttt{Iterable} trait enables types to be used in for-in loops:
+
+\begin{lstlisting}
+pub trait Iterable<T> {
+    fn get(&self, index: u32) -> Option<T>
+    fn len(&self) -> u32
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+impl<T> Iterable<T> for Vec<T> {
+    fn get(&self, index: u32) -> Option<T> { ... }
+    fn len(&self) -> u32 { ... }
+}
+
+// For-in loop desugars to index-based iteration
+for item in vec {
+    process(item)
+}
+\end{lstlisting}
+
+\subsection{Iterator --- Stateful Iteration}
+
+For more advanced iteration patterns:
+
+\begin{lstlisting}
+pub trait Iterator<T> {
+    fn next(&var self) -> Option<T>
+}
+\end{lstlisting}
+
+Unlike \texttt{Iterable}, \texttt{Iterator} is stateful and consumed as it advances:
+
+\begin{lstlisting}
+struct RangeIter {
+    current: u32,
+    end: u32,
+}
+
+impl Iterator<u32> for RangeIter {
+    fn next(&var self) -> Option<u32> {
+        if self.current >= self.end {
+            return Option::None
+        }
+        let val = self.current
+        self.current = self.current + 1
+        return Option::Some(val)
+    }
+}
+
+// Usage with while-let
+var iter = string.split(",")
+while let Option::Some(part) = iter.next() {
+    process(part)
+}
+\end{lstlisting}
+
+\subsection{Collection Building Traits}
+
+\begin{lstlisting}
+pub trait Extend<T> {
+    fn extend_from_ptr(&var self, source: *T, count: u32) -> bool
+}
+
+pub trait FromIterator<T> {
+    fn from_slice(ptr: *T, count: u32) -> Option<Self>
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Numeric Traits}
+\label{sec:numeric-traits}
+% ============================================================================
+
+\subsection{Default --- Default Values}
+
+\begin{lstlisting}
+pub trait Default {
+    fn default() -> Self
+}
+\end{lstlisting}
+
+Built-in defaults:
+\begin{itemize}
+    \item Integers: \texttt{0}
+    \item \texttt{bool}: \texttt{false}
+    \item \texttt{Option<T>}: \texttt{None}
+\end{itemize}
+
+\begin{lstlisting}
+impl Default for MyConfig {
+    fn default() -> MyConfig {
+        return MyConfig { timeout: 1000, retries: 3 }
+    }
+}
+
+let config = MyConfig::default()
+\end{lstlisting}
+
+\subsection{Zero and One --- Identity Elements}
+
+\begin{lstlisting}
+pub trait Zero {
+    fn zero() -> Self
+    fn is_zero(&self) -> bool
+}
+
+pub trait One {
+    fn one() -> Self
+}
+\end{lstlisting}
+
+Used in generic numeric algorithms:
+
+\begin{lstlisting}
+fn sum<T: Zero + Add>(values: &Vec<T>) -> T {
+    var total = T::zero()
+    for v in values {
+        total = total.add(&v)
+    }
+    return total
+}
+\end{lstlisting}
+
+\subsection{Bounded --- Min/Max Values}
+
+\begin{lstlisting}
+pub trait Bounded {
+    fn min_value() -> Self
+    fn max_value() -> Self
+}
+\end{lstlisting}
+
+\begin{center}
+\begin{tabular}{lrr}
+\textbf{Type} & \textbf{min\_value()} & \textbf{max\_value()} \\
+\hline
+\texttt{u8} & 0 & 255 \\
+\texttt{u16} & 0 & 65,535 \\
+\texttt{u32} & 0 & 4,294,967,295 \\
+\texttt{i8} & -128 & 127 \\
+\texttt{i16} & -32,768 & 32,767 \\
+\texttt{i32} & -2,147,483,648 & 2,147,483,647 \\
+\end{tabular}
+\end{center}
+
+\subsection{Primitive Trait Implementations Summary}
+
+The following table shows which traits are implemented for primitive types:
+
+\begin{center}
+\begin{tabular}{lccccccc}
+\textbf{Type} & \textbf{Hash} & \textbf{Eq} & \textbf{Ord} & \textbf{Default} & \textbf{Zero} & \textbf{One} & \textbf{Bounded} \\
+\hline
+\texttt{u8}, \texttt{u16}, \texttt{u32} & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet \\
+\texttt{i8}, \texttt{i16}, \texttt{i32} & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet & \textbullet \\
+\texttt{bool} & \textbullet & \textbullet & \textbullet & \textbullet & --- & --- & --- \\
+\texttt{Option<T>} & --- & --- & --- & \textbullet & --- & --- & --- \\
+\texttt{LibraryVersion} & --- & --- & \textbullet & --- & --- & --- & --- \\
+\end{tabular}
+\end{center}
+
+All primitive integer and boolean types have complete trait coverage. The \texttt{Copy} trait is implicit for all primitives and pointer types.
+
+% ============================================================================
+\section{View Conversion Traits}
+\label{sec:view-traits}
+% ============================================================================
+
+\subsection{AsRef and AsMut}
+
+Zero-cost reference-to-reference conversions:
+
+\begin{lstlisting}
+pub trait AsRef<T> {
+    fn as_ref(&self) -> T
+}
+
+pub trait AsMut<T> {
+    fn as_mut(&var self) -> T
+}
+\end{lstlisting}
+
+\begin{lstlisting}
+// String can be viewed as Str
+impl AsRef<Str> for String {
+    fn as_ref(&self) -> Str {
+        return self.as_str()
+    }
+}
+
+// Generic function accepting any string-like type
+fn process<S: AsRef<Str>>(s: &S) {
+    let str_view: Str = s.as_ref()
+    // Works with String, PathString, etc.
+}
+\end{lstlisting}
+
+\subsection{Write --- Unified Output}
+
+\begin{lstlisting}
+pub trait Write {
+    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool
+    fn write_byte(&var self, b: u8) -> bool
+}
+\end{lstlisting}
+
+Implemented by \texttt{StringBuilder}, \texttt{String}, formatters, and (future) file handles.
+
+% ============================================================================
+\section{Error Trait}
+\label{sec:error-trait}
+% ============================================================================
+
+\begin{lstlisting}
+pub trait Error {
+    fn message(&self) -> *u8
+}
+\end{lstlisting}
+
+All stdlib error types implement this trait:
+
+\begin{lstlisting}
+impl Error for DosError {
+    fn message(&self) -> *u8 {
+        match *self {
+            DosError::NotFound => return "File not found",
+            DosError::DiskFull => return "Disk full",
+            _ => return "Unknown error"
+        }
+    }
+}
+
+// Usage
+fn handle_error(err: &dyn Error) {
+    println(err.message())
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Function Traits}
+\label{sec:function-traits}
+% ============================================================================
+
+These traits represent callable types (for future closure support):
+
+\begin{lstlisting}
+pub trait FnOnce<Args, Output> {
+    fn call_once(consuming self, args: Args) -> Output
+}
+
+pub trait FnMut<Args, Output> {
+    fn call_mut(&var self, args: Args) -> Output
+}
+
+pub trait Fn<Args, Output> {
+    fn call(&self, args: Args) -> Output
+}
+\end{lstlisting}
+
+Hierarchy:
+\begin{itemize}
+    \item \texttt{Fn} --- can be called repeatedly without mutation
+    \item \texttt{FnMut} --- can be called repeatedly with mutation
+    \item \texttt{FnOnce} --- can be called at least once (consumes self)
+\end{itemize}
+
+\begin{notebox}
+Closures are not yet implemented in Novus. These traits are defined for future compatibility.
+\end{notebox}
+
+% ============================================================================
+\section{Summary}
+\label{sec:core-summary}
+% ============================================================================
+
+The \texttt{std::core} module provides:
+
+\begin{description}
+    \item[Fundamental Types] \texttt{Option<T>}, \texttt{Result<T, E>}, \texttt{LibraryVersion}
+
+    \item[Resource Management] \texttt{Drop} (automatic cleanup), \texttt{Copy} (bitwise copy), \texttt{Clone} (explicit deep copy)
+
+    \item[Type Conversion] \texttt{From}/\texttt{Into} (infallible), \texttt{TryFrom}/\texttt{TryInto} (fallible)
+
+    \item[Comparison] \texttt{Eq} (equality), \texttt{Ord} (total ordering), \texttt{PartialOrd} (operators), \texttt{Hash}
+
+    \item[Operators] \texttt{Add}, \texttt{Sub}, \texttt{Mul}, \texttt{Div}, \texttt{Rem}, \texttt{Neg}, \texttt{Index}, \texttt{IndexMut}
+
+    \item[Iteration] \texttt{Iterable} (for-in), \texttt{Iterator} (stateful), \texttt{Extend}, \texttt{FromIterator}
+
+    \item[Numeric] \texttt{Default}, \texttt{Zero}, \texttt{One}, \texttt{Bounded}
+
+    \item[Views] \texttt{AsRef}, \texttt{AsMut}, \texttt{Write}
+
+    \item[Error Handling] \texttt{Error}
+
+    \item[Functions] \texttt{Fn}, \texttt{FnMut}, \texttt{FnOnce} (future)
+\end{description}
+
+\begin{tipbox}
+Import commonly used types from the prelude:
+\begin{lstlisting}
+from std::prelude import *
+// Imports: Option, Result, Drop, From, Str, and error types
+\end{lstlisting}
+\end{tipbox}
