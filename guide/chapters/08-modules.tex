@@ -8,6 +8,8 @@
 
 \vspace{1em}
 
+As programs grow beyond a single file, organization becomes critical. Novus provides a module system that enforces explicit dependencies and visibility, preventing the tangled ``include spaghetti'' that plagues large C codebases. This chapter covers how to structure your code into modules, manage visibility, and organize multi-file projects.
+
 Novus provides a module system for organizing code into logical units with explicit visibility control. This chapter covers imports, visibility modifiers, project structure, and the standard library organization.
 
 \section{Module Basics}
@@ -515,21 +517,21 @@ Novus supports several project types, each with different startup behavior:
 \subsection{Creating Projects}
 \label{subsec:creating-projects}
 
-Use the \texttt{novusc new} command to create projects:
+Use the \texttt{novus new} command to create projects:
 
 \begin{lstlisting}[language=bash]
 # Create a new workspace
-novusc new myworkspace
+novus new myworkspace
 
 # Create a CLI project in the workspace
 cd myworkspace
-novusc new mytool --type cli
+novus new mytool --type cli
 
 # Create a Workbench application
-novusc new mygui --type workbench
+novus new mygui --type workbench
 
 # Create a library
-novusc new mylib --type library
+novus new mylib --type library
 \end{lstlisting}
 
 \subsection{Building Projects}
@@ -539,13 +541,13 @@ Build commands:
 
 \begin{lstlisting}[language=bash]
 # Build all projects in workspace
-novusc build
+novus build
 
 # Build a specific project
-novusc build mytool
+novus build mytool
 
 # Build with specific CPU target
-novusc build --cpu 68040
+novus build --cpu 68040
 \end{lstlisting}
 
 \section{Standard Library Organization}
@@ -743,6 +745,589 @@ pub fn main() -> i32 {
 \texttt{static var} & Global state (use sparingly, prefer safer alternatives) \\
 \end{tabular}
 \end{center}
+
+\section{Common Module Patterns}
+\label{sec:module-patterns}
+
+This section presents idiomatic patterns for organizing Novus projects.
+
+\subsection{The Facade Pattern}
+
+Create a simple public interface that hides complex internal modules:
+
+\begin{lstlisting}[language=bash]
+graphics/
+  mod.novus         # Facade - re-exports public API
+  bitmap.novus      # Internal: bitmap operations
+  sprite.novus      # Internal: sprite handling
+  copper.novus      # Internal: copper list generation
+  blitter.novus     # Internal: blitter operations
+\end{lstlisting}
+
+The facade module (\texttt{mod.novus}):
+
+\begin{lstlisting}
+// graphics/mod.novus - Public facade
+
+// Re-export only what users need
+pub use crate::graphics::bitmap::Bitmap, BitmapFlags
+pub use crate::graphics::sprite::Sprite, SpriteSheet
+pub use crate::graphics::copper::CopperList
+pub use crate::graphics::blitter::Blit, BlitMode
+
+// Convenience functions that combine internal modules
+pub fn create_display(width: u16, height: u16, depth: u8)
+    -> Result<Display, GraphicsError>
+{
+    let bitmap = bitmap::create_bitmap(width, height, depth)?
+    let copper = copper::create_copper_list(&bitmap)?
+    return Result::Ok(Display { bitmap, copper })
+}
+\end{lstlisting}
+
+Users import from the facade:
+
+\begin{lstlisting}
+// Clean import from facade
+from mylib::graphics import Bitmap, Sprite, create_display
+
+// Instead of multiple internal imports:
+// from mylib::graphics::bitmap import Bitmap
+// from mylib::graphics::sprite import Sprite
+// etc.
+\end{lstlisting}
+
+\subsection{The Error Module Pattern}
+
+Centralize error types in a single module:
+
+\begin{lstlisting}
+// errors.novus
+pub enum AppError {
+    Io(DosError),
+    Graphics(GraphicsError),
+    Audio(AudioError),
+    InvalidInput(*u8),
+    NotFound,
+    OutOfMemory,
+}
+
+impl AppError {
+    pub fn from_dos(e: DosError) -> AppError {
+        return AppError::Io(e)
+    }
+
+    pub fn from_graphics(e: GraphicsError) -> AppError {
+        return AppError::Graphics(e)
+    }
+}
+
+impl Display for AppError {
+    fn display(&self, f: &var Formatter) -> bool {
+        match *self {
+            AppError::Io(ref e) => f.write_str("I/O error"),
+            AppError::Graphics(ref e) => f.write_str("Graphics error"),
+            AppError::Audio(ref e) => f.write_str("Audio error"),
+            AppError::InvalidInput(msg) => {
+                f.write_str("Invalid input: ")
+                f.write_str(Str::from_ptr(msg))
+            },
+            AppError::NotFound => f.write_str("Not found"),
+            AppError::OutOfMemory => f.write_str("Out of memory"),
+        }
+    }
+}
+\end{lstlisting}
+
+All modules use the centralized error type:
+
+\begin{lstlisting}
+from crate::errors import AppError
+
+pub fn load_asset(path: *u8) -> Result<Asset, AppError> {
+    let file = open_file(path).map_err(AppError::from_dos)?
+    // ...
+}
+\end{lstlisting}
+
+\subsection{The Configuration Module Pattern}
+
+Keep configuration constants in one place:
+
+\begin{lstlisting}
+// config.novus
+pub const APP_NAME: *u8 = "MyGame"
+pub const VERSION: u32 = 0x0001_0000  // 1.0
+
+// Display settings
+pub const SCREEN_WIDTH: u16 = 320
+pub const SCREEN_HEIGHT: u16 = 256
+pub const SCREEN_DEPTH: u8 = 5
+
+// Memory budgets
+pub const CHIP_BUDGET: u32 = 512 * 1024   // 512 KB
+pub const FAST_BUDGET: u32 = 1024 * 1024  // 1 MB
+
+// Timing
+pub const FRAME_RATE: u32 = 50  // PAL
+pub const TICK_RATE: u32 = 100
+
+// Build-time options
+pub const DEBUG_ENABLED: bool = true
+pub const PROFILE_ENABLED: bool = false
+\end{lstlisting}
+
+Import configuration where needed:
+
+\begin{lstlisting}
+from crate::config import SCREEN_WIDTH, SCREEN_HEIGHT, CHIP_BUDGET
+
+fn initialize_display() -> Result<Display, Error> {
+    let display = create_display(SCREEN_WIDTH, SCREEN_HEIGHT)?
+    // ...
+}
+\end{lstlisting}
+
+\subsection{The Plugin Architecture Pattern}
+
+Define a trait interface for plugins:
+
+\begin{lstlisting}
+// plugin.novus - Plugin interface
+pub trait Plugin {
+    fn name(&self) -> *u8
+    fn version(&self) -> u32
+    fn init(&var self) -> Result<(), PluginError>
+    fn shutdown(&var self)
+    fn process(&var self, data: &var PluginData) -> Result<(), PluginError>
+}
+
+pub struct PluginManager {
+    plugins: Vec<Box<dyn Plugin>>,
+}
+
+impl PluginManager {
+    pub fn new() -> PluginManager {
+        return PluginManager {
+            plugins: Vec::new(),
+        }
+    }
+
+    pub fn register(&var self, plugin: Box<dyn Plugin>) -> Result<(), PluginError> {
+        plugin.init()?
+        self.plugins.push(plugin)
+        return Result::Ok(())
+    }
+
+    pub fn process_all(&var self, data: &var PluginData) -> Result<(), PluginError> {
+        for i in 0u32..self.plugins.len() {
+            self.plugins.get_mut(i).unwrap().process(data)?
+        }
+        return Result::Ok(())
+    }
+}
+\end{lstlisting}
+
+Implement plugins in separate modules:
+
+\begin{lstlisting}
+// plugins/audio_visualizer.novus
+from crate::plugin import Plugin, PluginData, PluginError
+
+pub struct AudioVisualizer {
+    active: bool,
+    intensity: fixed32,
+}
+
+impl Plugin for AudioVisualizer {
+    fn name(&self) -> *u8 { "AudioVisualizer" }
+    fn version(&self) -> u32 { 0x0001_0000 }
+
+    fn init(&var self) -> Result<(), PluginError> {
+        self.active = true
+        self.intensity = 1.0
+        return Result::Ok(())
+    }
+
+    fn shutdown(&var self) {
+        self.active = false
+    }
+
+    fn process(&var self, data: &var PluginData) -> Result<(), PluginError> {
+        if !self.active {
+            return Result::Ok(())
+        }
+        // Process audio data and update visuals
+        return Result::Ok(())
+    }
+}
+\end{lstlisting}
+
+\subsection{The Module Index Pattern}
+
+For large modules with many files, create an index module:
+
+\begin{lstlisting}[language=bash]
+collections/
+  mod.novus           # Index - re-exports all collections
+  vec.novus
+  hashmap.novus
+  hashset.novus
+  vecdeque.novus
+  ringbuffer.novus
+\end{lstlisting}
+
+The index module:
+
+\begin{lstlisting}
+// collections/mod.novus
+pub use crate::collections::vec::Vec
+pub use crate::collections::hashmap::HashMap
+pub use crate::collections::hashset::HashSet
+pub use crate::collections::vecdeque::VecDeque
+pub use crate::collections::ringbuffer::RingBuffer
+\end{lstlisting}
+
+Users can import from the index or specific modules:
+
+\begin{lstlisting}
+// Import from index (common items)
+from std::collections import Vec, HashMap
+
+// Import from specific module (less common items)
+from std::collections::ringbuffer import RingBuffer, RingBufferOptions
+\end{lstlisting}
+
+\section{Showcase: Modular Game Framework}
+
+This showcase demonstrates module organization in a game framework:
+
+\begin{lstlisting}[language=bash]
+amigame/
+  workspace.toml
+  engine/
+    project.toml
+    src/
+      lib.novus           # Engine facade
+      config.novus        # Configuration constants
+      errors.novus        # Error types
+      display/
+        mod.novus         # Display subsystem facade
+        screen.novus
+        bitmap.novus
+        palette.novus
+      input/
+        mod.novus         # Input subsystem facade
+        keyboard.novus
+        joystick.novus
+        mouse.novus
+      audio/
+        mod.novus         # Audio subsystem facade
+        paula.novus
+        sample.novus
+        module_player.novus
+      resources/
+        mod.novus         # Resource management facade
+        loader.novus
+        cache.novus
+        asset.novus
+  game/
+    project.toml
+    src/
+      main.novus          # Game entry point
+      game_state.novus    # Game state management
+      entities/
+        mod.novus
+        player.novus
+        enemy.novus
+        projectile.novus
+\end{lstlisting}
+
+\textbf{Engine Facade (engine/src/lib.novus):}
+
+\begin{lstlisting}
+// engine/src/lib.novus
+// Public API facade for the game engine
+
+// Re-export configuration
+pub use crate::config::*
+
+// Re-export error types
+pub use crate::errors::EngineError, DisplayError, InputError, AudioError
+
+// Re-export subsystem facades
+pub use crate::display::Display, Screen, Bitmap, Palette
+pub use crate::input::Input, KeyCode, JoyButton, MouseButton
+pub use crate::audio::Audio, Sample, ModulePlayer
+pub use crate::resources::ResourceManager, Asset, AssetId
+
+// Engine core
+pub struct Engine {
+    display: Display,
+    input: Input,
+    audio: Audio,
+    resources: ResourceManager,
+    running: bool,
+}
+
+impl Engine {
+    pub fn new() -> Result<Engine, EngineError> {
+        let display = Display::init()?
+        let input = Input::init()?
+        let audio = Audio::init()?
+        let resources = ResourceManager::new()?
+
+        return Result::Ok(Engine {
+            display,
+            input,
+            audio,
+            resources,
+            running: false,
+        })
+    }
+
+    pub fn run(&var self, game: &var dyn Game) -> Result<(), EngineError> {
+        self.running = true
+        game.init(&var self.resources)?
+
+        while self.running {
+            self.input.poll()
+
+            if self.input.quit_requested() {
+                self.running = false
+                break
+            }
+
+            game.update(&self.input)?
+            game.render(&var self.display)?
+
+            self.display.flip()
+        }
+
+        game.shutdown()
+        return Result::Ok(())
+    }
+
+    pub fn quit(&var self) {
+        self.running = false
+    }
+}
+
+// Game trait - implemented by user's game
+pub trait Game {
+    fn init(&var self, resources: &var ResourceManager) -> Result<(), EngineError>
+    fn update(&var self, input: &Input) -> Result<(), EngineError>
+    fn render(&self, display: &var Display) -> Result<(), EngineError>
+    fn shutdown(&var self)
+}
+\end{lstlisting}
+
+\textbf{Display Subsystem (engine/src/display/mod.novus):}
+
+\begin{lstlisting}
+// engine/src/display/mod.novus
+// Display subsystem facade
+
+pub use crate::display::screen::Screen, ScreenMode
+pub use crate::display::bitmap::Bitmap, BitmapDepth
+pub use crate::display::palette::Palette, Color
+
+use crate::errors::DisplayError
+use crate::config::{SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_DEPTH}
+
+pub struct Display {
+    screen: Screen,
+    front_buffer: Bitmap,
+    back_buffer: Bitmap,
+    palette: Palette,
+}
+
+impl Display {
+    pub fn init() -> Result<Display, DisplayError> {
+        let screen = Screen::open(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_DEPTH)?
+        let front = Bitmap::create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_DEPTH)?
+        let back = Bitmap::create(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_DEPTH)?
+        let palette = Palette::default()
+
+        return Result::Ok(Display {
+            screen,
+            front_buffer: front,
+            back_buffer: back,
+            palette,
+        })
+    }
+
+    pub fn clear(&var self) {
+        self.back_buffer.clear()
+    }
+
+    pub fn blit(&var self, src: &Bitmap, x: i16, y: i16) {
+        self.back_buffer.blit(src, x, y)
+    }
+
+    pub fn flip(&var self) {
+        // Swap buffers
+        let temp = self.front_buffer
+        self.front_buffer = self.back_buffer
+        self.back_buffer = temp
+
+        // Update screen
+        self.screen.show(&self.front_buffer)
+    }
+
+    pub fn set_palette(&var self, palette: &Palette) {
+        self.palette = palette.clone().unwrap()
+        self.screen.load_palette(&self.palette)
+    }
+}
+
+impl Drop for Display {
+    fn drop(&var self) {
+        // Cleanup handled by member drops
+    }
+}
+\end{lstlisting}
+
+\textbf{Game Implementation (game/src/main.novus):}
+
+\begin{lstlisting}
+// game/src/main.novus
+// Main game using the engine
+
+from engine import Engine, Game, ResourceManager, Display, Input
+from engine import EngineError, KeyCode
+from crate::game_state import GameState
+from crate::entities import Player, Enemy
+
+struct MyGame {
+    state: GameState,
+    player: Player,
+    enemies: Vec<Enemy>,
+}
+
+impl MyGame {
+    pub fn new() -> MyGame {
+        return MyGame {
+            state: GameState::Title,
+            player: Player::new(),
+            enemies: Vec::new(),
+        }
+    }
+}
+
+impl Game for MyGame {
+    fn init(&var self, resources: &var ResourceManager) -> Result<(), EngineError> {
+        // Load game assets
+        let player_gfx = resources.load_bitmap("player.iff")?
+        self.player.set_graphics(player_gfx)
+
+        // Initialize enemies
+        for i in 0..5 {
+            var enemy = Enemy::new()
+            enemy.set_position(50 + i * 40, 50)
+            self.enemies.push(enemy)
+        }
+
+        return Result::Ok(())
+    }
+
+    fn update(&var self, input: &Input) -> Result<(), EngineError> {
+        match self.state {
+            GameState::Title => {
+                if input.key_pressed(KeyCode::Space) {
+                    self.state = GameState::Playing
+                }
+            },
+            GameState::Playing => {
+                // Update player based on input
+                if input.key_down(KeyCode::Left) {
+                    self.player.move_left()
+                }
+                if input.key_down(KeyCode::Right) {
+                    self.player.move_right()
+                }
+                if input.key_pressed(KeyCode::Space) {
+                    self.player.fire()
+                }
+
+                // Update enemies
+                for i in 0u32..self.enemies.len() {
+                    self.enemies.get_mut(i).unwrap().update()
+                }
+
+                // Check collisions
+                self.check_collisions()
+            },
+            GameState::GameOver => {
+                if input.key_pressed(KeyCode::Space) {
+                    self.reset()
+                    self.state = GameState::Title
+                }
+            },
+        }
+
+        return Result::Ok(())
+    }
+
+    fn render(&self, display: &var Display) -> Result<(), EngineError> {
+        display.clear()
+
+        match self.state {
+            GameState::Title => {
+                // Draw title screen
+            },
+            GameState::Playing => {
+                self.player.draw(display)
+                for i in 0u32..self.enemies.len() {
+                    self.enemies.get(i).unwrap().draw(display)
+                }
+            },
+            GameState::GameOver => {
+                // Draw game over screen
+            },
+        }
+
+        return Result::Ok(())
+    }
+
+    fn shutdown(&var self) {
+        // Cleanup
+    }
+}
+
+fn main() -> i32 {
+    // Initialize engine
+    let engine_result = Engine::new()
+    match engine_result {
+        Result::Ok(var engine) => {
+            var game = MyGame::new()
+
+            match engine.run(&var game) {
+                Result::Ok(()) => return 0,
+                Result::Err(e) => {
+                    println(f"Game error: {e}")
+                    return 1
+                }
+            }
+        },
+        Result::Err(e) => {
+            println(f"Failed to initialize engine: {e}")
+            return 1
+        }
+    }
+}
+\end{lstlisting}
+
+This showcase demonstrates:
+\begin{itemize}
+    \item \textbf{Workspace structure} with engine library and game application
+    \item \textbf{Facade pattern} hiding subsystem complexity
+    \item \textbf{Re-exports} creating clean public APIs
+    \item \textbf{Trait-based plugin architecture} with the \texttt{Game} trait
+    \item \textbf{Module hierarchy} organizing related functionality
+    \item \textbf{Visibility control} keeping internals private
+    \item \textbf{Configuration module} for centralized constants
+\end{itemize}
 
 \section{Summary}
 \label{sec:modules-summary}

@@ -1,0 +1,482 @@
+// modular_framework_showcase.novus
+// Showcase demonstrating Chapter 8 Modules and Project Organization concepts:
+// - Module organization patterns
+// - Visibility modifiers (pub, internal)
+// - Re-exports and facades
+// - Configuration modules
+// - Error type centralization
+// - Plugin architecture with traits
+
+from std::io import println
+from std::core import Option, Result, Drop
+
+// ============================================================================
+// Configuration Module Pattern
+// Centralize all configuration constants
+// ============================================================================
+
+mod config {
+    pub const APP_NAME: *u8 = "ModularShowcase"
+    pub const VERSION: u32 = 0x0001_0000  // 1.0.0
+
+    pub const DISPLAY_WIDTH: u16 = 320
+    pub const DISPLAY_HEIGHT: u16 = 256
+
+    pub const MAX_ENTITIES: u32 = 100
+    pub const MAX_PLUGINS: u32 = 10
+
+    pub const DEBUG_ENABLED: bool = true
+}
+
+// ============================================================================
+// Error Module Pattern
+// Centralize all error types
+// ============================================================================
+
+mod errors {
+    pub enum FrameworkError {
+        InitFailed,
+        OutOfMemory,
+        InvalidPlugin,
+        ResourceNotFound,
+        DisplayError,
+        InputError,
+    }
+
+    impl FrameworkError {
+        pub fn message(&self) -> *u8 {
+            match *self {
+                FrameworkError::InitFailed => "Initialization failed",
+                FrameworkError::OutOfMemory => "Out of memory",
+                FrameworkError::InvalidPlugin => "Invalid plugin",
+                FrameworkError::ResourceNotFound => "Resource not found",
+                FrameworkError::DisplayError => "Display error",
+                FrameworkError::InputError => "Input error",
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Display Subsystem
+// Demonstrates module facade pattern
+// ============================================================================
+
+mod display {
+    use super::errors::FrameworkError
+    use super::config::{DISPLAY_WIDTH, DISPLAY_HEIGHT}
+
+    // Internal type - not exported
+    struct FrameBuffer {
+        width: u16,
+        height: u16,
+        data: *u8,
+    }
+
+    // Public types
+    pub struct Display {
+        frame_buffer: FrameBuffer,
+        frame_count: u32,
+        is_active: bool,
+    }
+
+    impl Display {
+        pub fn init() -> Result<Display, FrameworkError> {
+            println("  [Display] Initializing...")
+
+            let fb = FrameBuffer {
+                width: DISPLAY_WIDTH,
+                height: DISPLAY_HEIGHT,
+                data: null,
+            }
+
+            return Result::Ok(Display {
+                frame_buffer: fb,
+                frame_count: 0,
+                is_active: true,
+            })
+        }
+
+        pub fn clear(&var self) {
+            // Clear frame buffer
+        }
+
+        pub fn present(&var self) {
+            self.frame_count += 1
+        }
+
+        pub fn is_active(&self) -> bool {
+            return self.is_active
+        }
+
+        pub fn frame_count(&self) -> u32 {
+            return self.frame_count
+        }
+    }
+
+    impl Drop for Display {
+        fn drop(&var self) {
+            println("  [Display] Shutting down...")
+            self.is_active = false
+        }
+    }
+}
+
+// ============================================================================
+// Input Subsystem
+// ============================================================================
+
+mod input {
+    use super::errors::FrameworkError
+
+    pub enum KeyCode {
+        Up,
+        Down,
+        Left,
+        Right,
+        Space,
+        Escape,
+        Unknown,
+    }
+
+    pub struct Input {
+        key_states: [bool; 8],
+        quit_requested: bool,
+    }
+
+    impl Input {
+        pub fn init() -> Result<Input, FrameworkError> {
+            println("  [Input] Initializing...")
+            return Result::Ok(Input {
+                key_states: [false; 8],
+                quit_requested: false,
+            })
+        }
+
+        pub fn poll(&var self) {
+            // Poll hardware for input
+        }
+
+        pub fn key_down(&self, key: KeyCode) -> bool {
+            let idx = key_to_index(key)
+            return self.key_states[idx]
+        }
+
+        pub fn simulate_key(&var self, key: KeyCode, down: bool) {
+            let idx = key_to_index(key)
+            self.key_states[idx] = down
+        }
+
+        pub fn request_quit(&var self) {
+            self.quit_requested = true
+        }
+
+        pub fn quit_requested(&self) -> bool {
+            return self.quit_requested
+        }
+    }
+
+    fn key_to_index(key: KeyCode) -> u32 {
+        match key {
+            KeyCode::Up => 0,
+            KeyCode::Down => 1,
+            KeyCode::Left => 2,
+            KeyCode::Right => 3,
+            KeyCode::Space => 4,
+            KeyCode::Escape => 5,
+            KeyCode::Unknown => 7,
+        }
+    }
+
+    impl Drop for Input {
+        fn drop(&var self) {
+            println("  [Input] Shutting down...")
+        }
+    }
+}
+
+// ============================================================================
+// Plugin System
+// Demonstrates trait-based extensibility
+// ============================================================================
+
+mod plugins {
+    use super::errors::FrameworkError
+
+    pub struct PluginContext {
+        pub frame: u32,
+        pub delta_time: fixed32,
+    }
+
+    pub trait Plugin {
+        fn name(&self) -> *u8
+        fn version(&self) -> u32
+        fn on_init(&var self) -> Result<(), FrameworkError>
+        fn on_update(&var self, ctx: &PluginContext) -> Result<(), FrameworkError>
+        fn on_shutdown(&var self)
+    }
+
+    // Example plugin: Frame Counter
+    pub struct FrameCounterPlugin {
+        total_frames: u32,
+        report_interval: u32,
+    }
+
+    impl FrameCounterPlugin {
+        pub fn new(interval: u32) -> FrameCounterPlugin {
+            return FrameCounterPlugin {
+                total_frames: 0,
+                report_interval: interval,
+            }
+        }
+    }
+
+    impl Plugin for FrameCounterPlugin {
+        fn name(&self) -> *u8 { "FrameCounter" }
+        fn version(&self) -> u32 { 0x0001_0000 }
+
+        fn on_init(&var self) -> Result<(), FrameworkError> {
+            println("    [FrameCounter] Plugin initialized")
+            return Result::Ok(())
+        }
+
+        fn on_update(&var self, ctx: &PluginContext) -> Result<(), FrameworkError> {
+            self.total_frames += 1
+            if self.total_frames % self.report_interval == 0 {
+                println(f"    [FrameCounter] Frame {self.total_frames}")
+            }
+            return Result::Ok(())
+        }
+
+        fn on_shutdown(&var self) {
+            println(f"    [FrameCounter] Total frames: {self.total_frames}")
+        }
+    }
+
+    // Example plugin: Performance Monitor
+    pub struct PerfMonitorPlugin {
+        sample_count: u32,
+        accumulated_time: fixed32,
+    }
+
+    impl PerfMonitorPlugin {
+        pub fn new() -> PerfMonitorPlugin {
+            return PerfMonitorPlugin {
+                sample_count: 0,
+                accumulated_time: 0.0,
+            }
+        }
+    }
+
+    impl Plugin for PerfMonitorPlugin {
+        fn name(&self) -> *u8 { "PerfMonitor" }
+        fn version(&self) -> u32 { 0x0001_0000 }
+
+        fn on_init(&var self) -> Result<(), FrameworkError> {
+            println("    [PerfMonitor] Plugin initialized")
+            return Result::Ok(())
+        }
+
+        fn on_update(&var self, ctx: &PluginContext) -> Result<(), FrameworkError> {
+            self.sample_count += 1
+            self.accumulated_time += ctx.delta_time
+            return Result::Ok(())
+        }
+
+        fn on_shutdown(&var self) {
+            let avg = self.accumulated_time / fixed32::from_int((i32)self.sample_count)
+            println(f"    [PerfMonitor] Average frame time: {avg.to_int()}ms")
+        }
+    }
+}
+
+// ============================================================================
+// Framework Facade
+// Re-exports and provides unified API
+// ============================================================================
+
+mod framework {
+    // Re-export public types
+    pub use super::config::*
+    pub use super::errors::FrameworkError
+    pub use super::display::Display
+    pub use super::input::{Input, KeyCode}
+    pub use super::plugins::{Plugin, PluginContext, FrameCounterPlugin, PerfMonitorPlugin}
+
+    pub struct Framework {
+        display: Display,
+        input: Input,
+        plugins: [Option<*var dyn Plugin>; 10],
+        plugin_count: u32,
+        running: bool,
+    }
+
+    impl Framework {
+        pub fn init() -> Result<Framework, FrameworkError> {
+            println("[Framework] Initializing...")
+
+            let display = Display::init()?
+            let input = Input::init()?
+
+            return Result::Ok(Framework {
+                display,
+                input,
+                plugins: [Option::None; 10],
+                plugin_count: 0,
+                running: false,
+            })
+        }
+
+        pub fn register_plugin(&var self, plugin: *var dyn Plugin) -> Result<(), FrameworkError> {
+            if self.plugin_count >= 10 {
+                return Result::Err(FrameworkError::InvalidPlugin)
+            }
+
+            // Initialize plugin
+            unsafe {
+                (*plugin).on_init()?
+            }
+
+            self.plugins[self.plugin_count] = Option::Some(plugin)
+            self.plugin_count += 1
+            return Result::Ok(())
+        }
+
+        pub fn run(&var self, max_frames: u32) -> Result<(), FrameworkError> {
+            println("[Framework] Starting main loop...")
+            self.running = true
+            var frame = 0u32
+
+            while self.running && frame < max_frames {
+                // Poll input
+                self.input.poll()
+
+                if self.input.quit_requested() {
+                    self.running = false
+                    break
+                }
+
+                // Update plugins
+                let ctx = PluginContext {
+                    frame,
+                    delta_time: 16.67,  // ~60 fps
+                }
+
+                for i in 0u32..self.plugin_count {
+                    match self.plugins[i] {
+                        Option::Some(plugin) => {
+                            unsafe {
+                                (*plugin).on_update(&ctx)?
+                            }
+                        },
+                        Option::None => { }
+                    }
+                }
+
+                // Clear and present
+                self.display.clear()
+                self.display.present()
+
+                frame += 1
+            }
+
+            println(f"[Framework] Completed {frame} frames")
+            return Result::Ok(())
+        }
+
+        pub fn shutdown(&var self) {
+            println("[Framework] Shutting down...")
+
+            // Shutdown plugins in reverse order
+            var i = self.plugin_count
+            while i > 0 {
+                i -= 1
+                match self.plugins[i] {
+                    Option::Some(plugin) => {
+                        unsafe {
+                            (*plugin).on_shutdown()
+                        }
+                    },
+                    Option::None => { }
+                }
+            }
+
+            self.running = false
+        }
+
+        pub fn input(&var self) -> &var Input {
+            return &var self.input
+        }
+
+        pub fn display(&var self) -> &var Display {
+            return &var self.display
+        }
+    }
+
+    impl Drop for Framework {
+        fn drop(&var self) {
+            if self.running {
+                // Ensure proper shutdown
+                self.shutdown()
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Main - Using the framework facade
+// ============================================================================
+
+use framework::*
+
+fn main() -> i32 {
+    println("=== Modular Framework Showcase ===\n")
+    println(f"Application: {APP_NAME}")
+    println(f"Version: {VERSION >> 16}.{VERSION & 0xFFFF}\n")
+
+    // Initialize framework through facade
+    match Framework::init() {
+        Result::Ok(var fw) => {
+            println("\n[Main] Registering plugins...")
+
+            // Create and register plugins
+            var frame_counter = FrameCounterPlugin::new(5)
+            var perf_monitor = PerfMonitorPlugin::new()
+
+            match fw.register_plugin(&var frame_counter as *var dyn Plugin) {
+                Result::Ok(()) => { },
+                Result::Err(e) => {
+                    println(f"Failed to register FrameCounter: {e.message()}")
+                }
+            }
+
+            match fw.register_plugin(&var perf_monitor as *var dyn Plugin) {
+                Result::Ok(()) => { },
+                Result::Err(e) => {
+                    println(f"Failed to register PerfMonitor: {e.message()}")
+                }
+            }
+
+            // Run for 20 frames
+            println("\n[Main] Running framework...")
+            match fw.run(20) {
+                Result::Ok(()) => {
+                    println("\n[Main] Framework completed successfully")
+                },
+                Result::Err(e) => {
+                    println(f"\n[Main] Framework error: {e.message()}")
+                }
+            }
+
+            // Explicit shutdown
+            fw.shutdown()
+        },
+        Result::Err(e) => {
+            println(f"[Main] Failed to initialize framework: {e.message()}")
+            return 1
+        }
+    }
+
+    println("\n=== Showcase Complete ===")
+    return 0
+}
