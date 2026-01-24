@@ -1,0 +1,946 @@
+\chapter{Input/Output}
+\label{chap:io}
+
+Input and output on the Amiga spans two distinct worlds: the CLI (Command Line Interface) where text-based programs read arguments and write output, and Workbench where programs are launched from icons with tooltypes. Novus provides unified support for both, with RAII wrappers that prevent the resource leaks that plagued classic Amiga development.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Console Output}
+\label{sec:console-output}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The \texttt{std::io::file} module provides basic console I/O functions:
+
+\begin{lstlisting}
+from std::io::file import write, print, println
+
+fn hello() {
+    // Simple string output
+    print("Hello, ")
+    println("Amiga!")  // Adds newline
+
+    // Printf-style formatting (AmigaOS RawDoFmt syntax)
+    let count: i32 = 42
+    let name: *u8 = "Player"
+    write("Score: %ld for %s\n", count, name)
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Use \texttt{\%ld} for 32-bit integers, not \texttt{\%d}!} AmigaOS \texttt{RawDoFmt} expects 16-bit values for \texttt{\%d}. Since Novus passes all integers as 32-bit, always use the \texttt{l} (long) prefix: \texttt{\%ld}, \texttt{\%lu}, \texttt{\%lx}.
+\end{warningbox}
+
+\subsection{Format Specifiers}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{Specifier} & \textbf{Meaning} \\
+\hline
+\texttt{\%ld} & Signed 32-bit decimal \\
+\texttt{\%lu} & Unsigned 32-bit decimal \\
+\texttt{\%lx} & Hexadecimal (lowercase) \\
+\texttt{\%lX} & Hexadecimal (uppercase) \\
+\texttt{\%s} & Null-terminated string \\
+\texttt{\%c} & Single character \\
+\texttt{\%b} & BSTR (BPTR to byte-counted string) \\
+\end{tabular}
+\caption{AmigaOS format specifiers}
+\end{table}
+
+\subsection{Array-Based Formatting}
+
+When building arguments programmatically:
+
+\begin{lstlisting}
+from std::io::file import write_array
+
+fn formatted_output(major: i32, minor: i32, patch: i32) {
+    var args: [i32; 3] = [major, minor, patch]
+    write_array("Version: %ld.%ld.%ld\n", &args[0])
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Console Input}
+\label{sec:console-input}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{lstlisting}
+from std::io::file import wait_for_key, key_pressed, read_key
+
+fn input_examples() {
+    // Block until any key pressed
+    print("Press any key to continue...")
+    wait_for_key()
+    println("")
+
+    // Non-blocking check
+    if key_pressed() {
+        let ch = read_key()
+        write("You pressed: %c\n", (i32)ch)
+    }
+
+    // Blocking read of single key
+    print("Enter a character: ")
+    let input = read_key()  // Returns u8
+    write("Got: %c\n", (i32)input)  // Cast to i32 for format string
+}
+\end{lstlisting}
+
+\begin{notebox}
+\texttt{read\_key()} returns \texttt{u8}. The cast to \texttt{i32} is required because AmigaOS \texttt{\%c} format expects a 32-bit value on the stack.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{ANSI Console Control}
+\label{sec:ansi}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The Amiga console supports ANSI X3.64 escape sequences for cursor control, colors, and text styling. The \texttt{std::io::ansi} module provides type-safe access to these sequences.
+
+\begin{notebox}
+\textbf{Return types:} Simple functions like \texttt{reset()}, \texttt{bold()}, \texttt{clear\_screen()} return \texttt{Str} (static escape sequences). Parameterized functions like \texttt{move\_to()}, \texttt{fg()}, \texttt{cursor\_up()} return \texttt{String} (dynamically built). Both have \texttt{as\_cstr()} for use with \texttt{write()}.
+\end{notebox}
+
+\subsection{Basic Functions}
+
+\begin{lstlisting}
+from std::io::ansi import clear_screen, home, reset, bold, underline, reverse
+from std::io::file import write
+
+fn styled_output() {
+    // Clear screen and move to top-left
+    write("%s%s", clear_screen().as_cstr(), home().as_cstr())
+
+    // Styled text
+    write("%sThis is bold%s\n", bold().as_cstr(), reset().as_cstr())
+    write("%sThis is underlined%s\n", underline().as_cstr(), reset().as_cstr())
+    write("%sThis is reversed%s\n", reverse().as_cstr(), reset().as_cstr())
+}
+\end{lstlisting}
+
+\subsection{Pen Colors}
+
+The Amiga console uses \emph{pen numbers}, not fixed colors. The actual color depends on the Workbench palette:
+
+\begin{lstlisting}
+from std::io::ansi import Pen, fg, bg, reset
+from std::io::file import write
+
+fn colored_output() {
+    // Foreground colors
+    write("%sText in Pen 1%s\n", fg(Pen::Pen1).as_cstr(), reset().as_cstr())
+    write("%sText in Pen 2%s\n", fg(Pen::Pen2).as_cstr(), reset().as_cstr())
+    write("%sText in Pen 3%s\n", fg(Pen::Pen3).as_cstr(), reset().as_cstr())
+
+    // Background colors
+    write("%sHighlighted%s\n", bg(Pen::Pen3).as_cstr(), reset().as_cstr())
+}
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Pen} & \textbf{Workbench 2.0+ Default} & \textbf{ANSI Code} \\
+\hline
+Pen0 & Grey (background) & 30/40 \\
+Pen1 & Black (text) & 31/41 \\
+Pen2 & White (highlight) & 32/42 \\
+Pen3 & Blue (shine/fill) & 33/43 \\
+Pen4--7 & Only on 8+ color screens & 34--37/44--47 \\
+\end{tabular}
+\caption{Amiga console pen mapping}
+\end{table}
+
+\begin{notebox}
+On 4-color screens, pens 4--7 are remapped: Pen4 becomes invisible (same as background), Pen5 maps to Pen1, Pen6 to Pen2, Pen7 to Pen3.
+\end{notebox}
+
+\subsection{Cursor Movement}
+
+\begin{lstlisting}
+from std::io::ansi import move_to, cursor_up, cursor_down, cursor_left, cursor_right
+from std::io::file import write
+
+fn cursor_demo() {
+    // Absolute positioning (1-indexed, row then column)
+    write("%s", move_to(10, 20).as_cstr())
+    write("At row 10, column 20")
+
+    // Relative movement
+    write("%s", cursor_up(5).as_cstr())    // Move up 5 rows
+    write("%s", cursor_right(10).as_cstr()) // Move right 10 columns
+}
+\end{lstlisting}
+
+\subsection{Screen and Line Clearing}
+
+\begin{lstlisting}
+from std::io::ansi import clear_screen, clear_line, clear_to_eol, clear_to_eos
+from std::io::ansi import ClearMode, clear
+from std::io::file import write
+
+fn clearing_demo() {
+    // Simple functions
+    write("%s", clear_screen().as_cstr())  // Clear entire screen
+    write("%s", clear_line().as_cstr())    // Clear current line
+    write("%s", clear_to_eol().as_cstr())  // Clear to end of line
+    write("%s", clear_to_eos().as_cstr())  // Clear to end of screen
+
+    // Parameterized clearing
+    write("%s", clear(ClearMode::ToEnd).as_cstr())   // From cursor to end
+    write("%s", clear(ClearMode::ToStart).as_cstr()) // From start to cursor
+    write("%s", clear(ClearMode::All).as_cstr())     // Entire screen
+}
+\end{lstlisting}
+
+\subsection{The Ansi Builder}
+
+For complex styling, use the builder pattern:
+
+\begin{lstlisting}
+from std::io::ansi import Ansi, Pen, reset
+from std::io::file import write
+
+fn builder_demo() {
+    // Build complex style
+    var style = Ansi::new()
+    style.bold()
+    style.fg(Pen::Pen2)
+    style.bg(Pen::Pen1)
+
+    // Apply and reset
+    let seq = style.build()
+    write("%sStyled Text%s\n", seq.as_cstr(), reset().as_cstr())
+}
+
+// Method chaining
+fn chained_demo() {
+    var style = Ansi::new()
+    style.bold().underline().fg(Pen::Pen3)
+
+    write("%sChained%s\n", style.build().as_cstr(), reset().as_cstr())
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{File I/O}
+\label{sec:file-io}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The \texttt{std::os::dos} module provides RAII wrappers for AmigaOS file operations.
+
+\subsection{OwnedFileHandle --- RAII File Access}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle
+from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+
+fn read_file_example() -> Result<(), DosError> {
+    // Open file - automatically closed when handle goes out of scope
+    let file = OwnedFileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?
+
+    // Read content
+    var buffer: [u8; 1024] = [0u8; 1024]
+    let bytes_read = file.read((*u8)&buffer[0], 1024)
+
+    if bytes_read > 0 {
+        // Process buffer...
+    }
+
+    return Result::Ok(())
+}  // file automatically closed here!
+\end{lstlisting}
+
+\begin{comingfromc}
+In C, you'd use \texttt{Open()} and must remember to call \texttt{Close()} on every code path---including error paths. With \texttt{OwnedFileHandle}, the file is closed automatically when the handle goes out of scope, even if an error occurs.
+\end{comingfromc}
+
+\subsection{File Open Modes}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Mode} & \textbf{Value} & \textbf{Description} \\
+\hline
+\texttt{MODE\_OLDFILE} & 1005 & Open existing file (read/write) \\
+\texttt{MODE\_NEWFILE} & 1006 & Create new file (truncate if exists) \\
+\texttt{MODE\_READWRITE} & 1004 & Open with shared lock \\
+\end{tabular}
+\caption{DOS file open modes}
+\end{table}
+
+\subsection{Reading and Writing}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle
+from std::ffi::amiga_consts import MODE_NEWFILE
+
+fn write_file_example() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("RAM:output.txt", MODE_NEWFILE)?
+
+    // Write bytes
+    let data: *u8 = "Hello, Amiga!\n"
+    let written = file.write(data, 14)
+
+    // Write all bytes (loops until complete)
+    file.write_all(data, 14)?
+
+    return Result::Ok(())
+}
+
+fn read_all_example() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("RAM:input.txt", MODE_OLDFILE)?
+
+    var buffer: [u8; 4096] = [0u8; 4096]
+
+    // Read up to buffer size
+    let total = file.read_all((*u8)&buffer[0], 4096)?
+
+    write("Read %ld bytes\n", (i32)total)
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Reading Lines}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle
+from std::ffi::amiga_consts import MODE_OLDFILE
+
+fn read_lines_example() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?
+
+    var line_buffer: [u8; 256] = [0u8; 256]
+    var line_num: i32 = 1
+
+    loop {
+        match file.read_line((*u8)&line_buffer[0], 256) {
+            Result::Ok(len) => {
+                if len == 0 {
+                    break  // EOF
+                }
+                write("%ld: %s", line_num, (*u8)&line_buffer[0])
+                line_num++
+            },
+            Result::Err(_) => break,
+        }
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Seeking}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle
+from std::ffi::amiga_consts import MODE_OLDFILE, OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
+
+fn seek_example() -> Result<(), DosError> {
+    let file = OwnedFileHandle::open("RAM:data.bin", MODE_OLDFILE)?
+
+    // Seek to beginning
+    file.seek(0, OFFSET_BEGINNING)
+
+    // Seek forward 100 bytes from current position
+    file.seek(100, OFFSET_CURRENT)
+
+    // Get file size by seeking to end
+    let size = file.seek(0, OFFSET_END)
+    write("File size: %ld bytes\n", size)
+
+    // Seek back to start
+    file.seek(0, OFFSET_BEGINNING)
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Constant} & \textbf{Value} & \textbf{Meaning} \\
+\hline
+\texttt{OFFSET\_BEGINNING} & $-1$ & From start of file \\
+\texttt{OFFSET\_CURRENT} & 0 & From current position \\
+\texttt{OFFSET\_END} & 1 & From end of file \\
+\end{tabular}
+\caption{DOS seek offset constants}
+\end{table}
+
+\subsection{Ownership Transfer}
+
+When you need to pass a file handle to external code:
+
+\begin{lstlisting}
+fn ownership_example() -> Result<i32, DosError> {
+    let file = OwnedFileHandle::open("RAM:test.txt", MODE_OLDFILE)?
+
+    // Transfer ownership - prevents automatic close
+    let raw_handle: i32 = file.into_raw()
+
+    // raw_handle is now YOUR responsibility!
+    // You must call Close(raw_handle) when done
+
+    return Result::Ok(raw_handle)
+}
+
+fn from_raw_example(handle: i32) {
+    // Take ownership of an existing handle
+    let file = OwnedFileHandle::from_raw(handle)
+
+    // Use file...
+
+}  // Handle closed automatically
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Never use \texttt{from\_raw()} on system handles!} Handles like \texttt{Input()}, \texttt{Output()}, and \texttt{Error()} are owned by the system and must not be closed. Only use \texttt{from\_raw()} on handles you own.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Directory Locks}
+\label{sec:dir-locks}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+AmigaOS uses ``locks'' to access directories. \texttt{DirLockHandle} provides RAII management:
+
+\begin{lstlisting}
+from std::os::dos import DirLockHandle
+from std::ffi::amiga_consts import ACCESS_READ, ACCESS_WRITE
+
+fn lock_example() -> Result<(), DosError> {
+    // Lock directory for reading
+    let lock = DirLockHandle::lock("SYS:", ACCESS_READ)?
+
+    // Get raw lock for FFI
+    let raw_lock = lock.handle()
+
+    // Use with Examine(), ExNext(), etc...
+
+    return Result::Ok(())
+}  // Lock automatically released
+\end{lstlisting}
+
+\begin{warningbox}
+\textbf{Lock leaks prevent floppy ejection!} If a lock on a floppy disk isn't released, the user cannot eject the disk and sees ``Volume is in use.'' Always use \texttt{DirLockHandle} to ensure locks are released.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{File System Helpers}
+\label{sec:fs-helpers}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{lstlisting}
+from std::os::dos import file_exists, delete_file, create_dir, file_info
+
+fn fs_examples() -> Result<(), DosError> {
+    // Check existence
+    if file_exists("RAM:test.txt") {
+        println("File exists!")
+    }
+
+    // Delete file
+    delete_file("RAM:temp.txt")?
+
+    // Create directory
+    create_dir("RAM:NewFolder")?
+
+    // Get file information
+    match file_info("SYS:C/Dir") {
+        Result::Ok(info) => {
+            if info.is_file {
+                write("Size: %ld bytes\n", info.size)
+            } else if info.is_directory {
+                println("It's a directory")
+            }
+        },
+        Result::Err(_) => println("Cannot get info"),
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+The \texttt{FileInfo} structure:
+
+\begin{lstlisting}
+pub struct FileInfo {
+    is_file: bool,      // True if regular file
+    is_directory: bool, // True if directory
+    size: i32,          // File size in bytes
+    protection: i32,    // Protection bits (FIBF_*)
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Command-Line Arguments}
+\label{sec:args}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+AmigaOS uses \texttt{ReadArgs()} for parsing command-line arguments with a template syntax. The \texttt{std::args} module provides a type-safe wrapper.
+
+\subsection{Basic Argument Parsing}
+
+\begin{lstlisting}
+from std::args import Args
+
+pub fn main() -> i32 {
+    match Args::parse("FROM/A,TO/A,VERBOSE/S") {
+        Result::Ok(args) => {
+            // Get required string arguments
+            let from = args.get_str("FROM") or { return 10 }
+            let to = args.get_str("TO") or { return 10 }
+
+            // Get optional switch
+            let verbose = args.get_switch("VERBOSE")
+
+            if verbose {
+                write("Copying %s to %s\n", from.as_cstr(), to.as_cstr())
+            }
+
+            // ... do work ...
+
+            return 0
+        },
+        Result::Err(e) => {
+            write("Error: %s\n", e.message())
+            return 10
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Template Syntax}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Modifier} & \textbf{Meaning} & \textbf{Example} \\
+\hline
+(none) & Optional positional & \texttt{FILE} \\
+\texttt{/A} & Required argument & \texttt{FILE/A} \\
+\texttt{/S} & Switch (boolean flag) & \texttt{VERBOSE/S} \\
+\texttt{/K} & Keyword (NAME=value) & \texttt{OUTPUT/K} \\
+\texttt{/N} & Numeric argument & \texttt{COUNT/N} \\
+\texttt{/M} & Multiple values & \texttt{FILES/M} \\
+\texttt{/F} & Rest of line & \texttt{COMMAND/F} \\
+\end{tabular}
+\caption{ReadArgs template modifiers}
+\end{table}
+
+Modifiers can be combined: \texttt{COUNT/N/A} means required number, \texttt{OUTPUT/K/A} means required keyword.
+
+\subsection{Argument Types}
+
+\begin{lstlisting}
+from std::args import Args
+
+fn argument_types() {
+    match Args::parse("FILE,COUNT/N,VERBOSE/S,FILES/M") {
+        Result::Ok(args) => {
+            // String argument
+            match args.get_str("FILE") {
+                Option::Some(f) => write("File: %s\n", f.as_cstr()),
+                Option::None => println("No file specified"),
+            }
+
+            // Numeric argument
+            let count = args.get_number("COUNT") or { 10 }  // Default 10
+            write("Count: %ld\n", count)
+
+            // Switch (boolean)
+            if args.get_switch("VERBOSE") {
+                println("Verbose mode enabled")
+            }
+
+            // Multiple arguments
+            match args.get_multi("FILES") {
+                Option::Some(var files) => {
+                    while var i < files.len {
+                        match files.get(i) {
+                            Option::Some(f) => write("  %s\n", f.as_cstr()),
+                            Option::None => {},
+                        }
+                        i++
+                    }
+                },
+                Option::None => {},
+            }
+        },
+        Result::Err(_) => {},
+    }
+}
+\end{lstlisting}
+
+\subsection{ArgParser Builder}
+
+For programmatic template construction:
+
+\begin{lstlisting}
+from std::args import ArgParser, ArgType
+
+fn builder_example() -> Result<(), ArgsError> {
+    var parser = ArgParser::new()
+    parser.add("FROM", ArgType::Required)
+    parser.add("TO", ArgType::Required)
+    parser.add("VERBOSE", ArgType::Switch)
+    parser.add("BUFFER", ArgType::Number)
+
+    let args = parser.parse()?
+
+    // Retrieve values just like with Args::parse()
+    let from = args.get_str("FROM") or { return Result::Err(ArgsError::MissingRequired) }
+    let to = args.get_str("TO") or { return Result::Err(ArgsError::MissingRequired) }
+    let verbose = args.get_switch("VERBOSE")
+    let buffer_size = args.get_number("BUFFER") or { 4096 }  // Default
+
+    if verbose {
+        write("Copying %s to %s (buffer: %ld)\n", from.as_cstr(), to.as_cstr(), buffer_size)
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{ArgType} & \textbf{Template Equivalent} \\
+\hline
+\texttt{Optional} & (none) \\
+\texttt{Required} & \texttt{/A} \\
+\texttt{Switch} & \texttt{/S} \\
+\texttt{Keyword} & \texttt{/K} \\
+\texttt{Number} & \texttt{/N} \\
+\texttt{Multi} & \texttt{/M} \\
+\texttt{RestOfLine} & \texttt{/F} \\
+\texttt{RequiredNumber} & \texttt{/N/A} \\
+\texttt{RequiredKeyword} & \texttt{/K/A} \\
+\end{tabular}
+\caption{ArgType enum values}
+\end{table}
+
+\subsection{Argument Errors}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\textbf{ArgsError} & \textbf{Meaning} \\
+\hline
+\texttt{Dos(DosError)} & Underlying DOS error (wrapped) \\
+\texttt{InvalidTemplate} & Template syntax error \\
+\texttt{MissingRequired} & Required argument not provided \\
+\texttt{InvalidValue} & Argument value is invalid \\
+\texttt{TooManyArgs} & Template has $>$ 32 arguments \\
+\texttt{AllocationFailed} & Memory allocation failed \\
+\texttt{ArgNotFound} & Argument name not in template \\
+\end{tabular}
+\caption{ArgsError enum variants}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Workbench Support}
+\label{sec:workbench}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Programs can be launched from either the CLI or Workbench. The two modes require different handling.
+
+\subsection{Detecting Launch Mode}
+
+\begin{lstlisting}
+from std::args import is_workbench, Args, get_workbench_startup
+
+pub fn main() -> i32 {
+    if is_workbench() {
+        // Launched from icon - no stdin/stdout
+        return handle_workbench()
+    } else {
+        // Launched from CLI
+        return handle_cli()
+    }
+}
+
+fn handle_cli() -> i32 {
+    match Args::parse("FILE/A") {
+        Result::Ok(args) => {
+            let file = args.get_str("FILE") or { return 10 }
+            // Process file...
+            return 0
+        },
+        Result::Err(_) => return 10,
+    }
+}
+
+fn handle_workbench() -> i32 {
+    match get_workbench_startup() {
+        Option::Some(wb) => {
+            // Process Workbench arguments
+            if wb.num_args() > 1 {
+                // User shift-clicked files
+                let arg = wb.arg(1) or { return 20 }
+                // Process first selected file...
+            }
+            return 0
+        },
+        Option::None => return 20,
+    }
+}
+\end{lstlisting}
+
+\subsection{Workbench Startup Message}
+
+When launched from Workbench, the program receives a \texttt{WBStartup} message containing information about the icon clicked and any files selected:
+
+\begin{notebox}
+\textbf{Message reply is automatic.} The Novus runtime startup code retrieves the WBStartup message and handles replying to it when the program exits. You do \textbf{not} need to manually reply to the message---the runtime handles this for you.
+\end{notebox}
+
+\begin{lstlisting}
+from std::args import get_workbench_startup, WorkbenchStartup
+
+fn workbench_example() {
+    let wb = get_workbench_startup() or { return }
+
+    // Number of arguments (index 0 = program icon)
+    let count = wb.num_args()
+    write("Got %ld arguments\n", (i32)count)
+
+    // Get program's own icon (always index 0)
+    match wb.arg(0) {
+        Option::Some(prog) => {
+            match prog.name() {
+                Option::Some(name) => {
+                    write("Program: %s\n", name.as_cstr())
+                },
+                Option::None => {},
+            }
+        },
+        Option::None => {},
+    }
+
+    // Process any selected files (indices 1..n)
+    while var i: u32 = 1 {
+        if i >= count { break }
+
+        match wb.arg(i) {
+            Option::Some(arg) => {
+                match arg.full_path() {
+                    Result::Ok(path) => {
+                        write("File: %s\n", path.as_cstr())
+                    },
+                    Result::Err(_) => {},
+                }
+            },
+            Option::None => {},
+        }
+        i++
+    }
+}
+\end{lstlisting}
+
+\subsection{WBArgument Structure}
+
+Each Workbench argument provides:
+
+\begin{lstlisting}
+pub struct WBArgument {
+    lock: i32,      // Lock on containing directory
+    name_ptr: *u8,  // Filename (not full path)
+}
+
+impl WBArgument {
+    /// Get directory lock (for CurrentDir)
+    pub fn lock(&self) -> i32
+
+    /// Get filename only
+    pub fn name(&self) -> Option<Str>
+
+    /// Get full path (returns String, auto-freed on drop)
+    pub fn full_path(&self) -> Result<String, DosError>
+}
+\end{lstlisting}
+
+\begin{tipbox}
+The \texttt{lock} field is a DOS lock on the \emph{directory} containing the file, not the file itself. Use it with \texttt{CurrentDir()} to access the file by name, or call \texttt{full\_path()} to get the complete path. The \texttt{String} returned by \texttt{full\_path()} is automatically freed when it goes out of scope.
+\end{tipbox}
+
+\subsection{Tool Window}
+
+If the program's icon has a \texttt{TOOLWINDOW} tooltype, you can get the window specification:
+
+\begin{lstlisting}
+fn check_tool_window(wb: &WorkbenchStartup) {
+    match wb.tool_window() {
+        Option::Some(window) => {
+            // window is something like "CON:0/0/640/200/Output"
+            write("Tool window: %s\n", window.as_cstr())
+        },
+        Option::None => {
+            // No TOOLWINDOW specified
+        },
+    }
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Error Handling}
+\label{sec:io-errors}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+I/O operations return \texttt{Result} types for proper error handling:
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle, DosError
+from std::ffi::dos import IoErr
+
+fn robust_io() -> Result<(), DosError> {
+    // The ? operator propagates errors
+    let file = OwnedFileHandle::open("RAM:data.txt", MODE_OLDFILE)?
+
+    var buffer: [u8; 1024] = [0u8; 1024]
+    let result = file.read_all((*u8)&buffer[0], 1024)?
+
+    return Result::Ok(())
+}
+
+fn detailed_error_handling() {
+    match OwnedFileHandle::open("NONEXISTENT:", MODE_OLDFILE) {
+        Result::Ok(file) => {
+            // Use file...
+        },
+        Result::Err(e) => {
+            write("Error: %s\n", e.message())
+
+            // Get detailed DOS error code
+            let code = IoErr()
+            write("DOS error code: %ld\n", code)
+        },
+    }
+}
+\end{lstlisting}
+
+\subsection{Common DOS Errors}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Error Code} & \textbf{Constant} & \textbf{Meaning} \\
+\hline
+103 & \texttt{ERROR\_NO\_FREE\_STORE} & Out of memory \\
+205 & \texttt{ERROR\_OBJECT\_NOT\_FOUND} & File not found \\
+212 & \texttt{ERROR\_OBJECT\_IN\_USE} & File locked by another \\
+214 & \texttt{ERROR\_DISK\_FULL} & No space on disk \\
+221 & \texttt{ERROR\_DISK\_WRITE\_PROTECTED} & Write-protected \\
+225 & \texttt{ERROR\_SEEK\_ERROR} & Invalid seek position \\
+232 & \texttt{ERROR\_NO\_MORE\_ENTRIES} & Directory scan complete \\
+\end{tabular}
+\caption{Common DOS error codes}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{I/O Patterns}
+\label{sec:io-patterns}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Pattern 1: Read Entire File}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle, file_info
+from std::memory::block import MemoryBlock
+from std::ffi::amiga_consts import MODE_OLDFILE, MEMF_ANY, OFFSET_BEGINNING
+
+fn read_entire_file(path: Str) -> Result<MemoryBlock, DosError> {
+    // Get file size
+    let info = file_info(path)?
+    let size = (u32)info.size
+
+    // Allocate buffer
+    let buffer = MemoryBlock::try_alloc(size, MEMF_ANY)?
+
+    // Read file
+    let file = OwnedFileHandle::open(path, MODE_OLDFILE)?
+    let read = file.read_all(buffer.ptr(), size)?
+
+    return Result::Ok(buffer)
+}
+\end{lstlisting}
+
+\subsection{Pattern 2: Write with Backup}
+
+\begin{lstlisting}
+from std::os::dos import OwnedFileHandle, file_exists, delete_file
+from std::ffi::amiga_consts import MODE_NEWFILE
+
+fn write_with_backup(path: Str, data: *u8, len: u32) -> Result<(), DosError> {
+    // Create backup filename
+    var backup_path = String::from(path)
+    backup_path.push_str(".bak")
+
+    // Delete old backup
+    if file_exists(backup_path.as_str()) {
+        let _ = delete_file(backup_path.as_str())
+    }
+
+    // Rename current to backup (if exists)
+    if file_exists(path) {
+        // Use Rename() from FFI...
+    }
+
+    // Write new file
+    let file = OwnedFileHandle::open(path, MODE_NEWFILE)?
+    file.write_all(data, len)?
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Pattern 3: Process File Line by Line}
+
+\begin{lstlisting}
+fn process_lines(path: Str, handler: fn(*u8, u32) -> bool) -> Result<u32, DosError> {
+    let file = OwnedFileHandle::open(path, MODE_OLDFILE)?
+
+    var buffer: [u8; 1024] = [0u8; 1024]
+    var line_count: u32 = 0
+
+    loop {
+        match file.read_line((*u8)&buffer[0], 1024) {
+            Result::Ok(len) => {
+                if len == 0 { break }  // EOF
+
+                // Call handler, stop if it returns false
+                if !handler((*u8)&buffer[0], len) {
+                    break
+                }
+                line_count++
+            },
+            Result::Err(_) => break,
+        }
+    }
+
+    return Result::Ok(line_count)
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{I/O Best Practices}
+\label{sec:io-best-practices}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{enumerate}
+    \item \textbf{Always use RAII wrappers}---\texttt{OwnedFileHandle} and \texttt{DirLockHandle} prevent leaks
+    \item \textbf{Check for Workbench vs CLI}---handle both launch modes
+    \item \textbf{Use \texttt{\%ld} for integers}---AmigaOS expects 32-bit values
+    \item \textbf{Handle errors explicitly}---use \texttt{Result} and the \texttt{?} operator
+    \item \textbf{Buffer reads and writes}---minimize system calls for performance
+    \item \textbf{Close files promptly}---don't hold files open longer than necessary
+    \item \textbf{Check disk space}---verify writes succeeded (\texttt{ERROR\_DISK\_FULL})
+\end{enumerate}
+
+\begin{warningbox}
+\textbf{DOS has limited file handles!} Each process can have at most ~20 files open simultaneously. If you open many files, close them promptly or batch your operations.
+\end{warningbox}
+
