@@ -736,3 +736,587 @@ You now have a working Novus installation and understand the basic workflow. The
 \end{itemize}
 
 When you're ready, turn the page and start learning the language itself.
+
+% ============================================================================
+\section{Emulator Setup}
+\label{sec:emulator-setup}
+% ============================================================================
+
+If you don't have real Amiga hardware, emulators provide an excellent development environment. This section covers setup for the most popular options.
+
+\subsection{FS-UAE Setup}
+
+FS-UAE is a cross-platform Amiga emulator with excellent accuracy:
+
+\begin{enumerate}
+\item Install FS-UAE from \texttt{https://fs-uae.net} or your package manager
+
+\item Download Kickstart ROMs (required for legality, obtain from your real Amiga or Amiga Forever)
+
+\item Configure a basic A4000 setup in \texttt{\textasciitilde/.fs-uae/Configurations/dev.fs-uae}:
+
+\begin{lstlisting}[language=bash]
+[fs-uae]
+amiga_model = A4000
+kickstart_file = ~/Kickstart/kick40063.A4000.rom
+chip_memory = 2048
+fast_memory = 8192
+jit_compiler = 1
+hard_drive_0 = ~/Amiga/System
+hard_drive_0_type = dir
+
+# Shared folder for development
+hard_drive_1 = ~/amiga_share
+hard_drive_1_type = dir
+hard_drive_1_label = DEV
+\end{lstlisting}
+
+\item Launch with: \texttt{fs-uae dev.fs-uae}
+\end{enumerate}
+
+\textbf{Performance Tip:} Enable JIT compilation (\texttt{jit\_compiler = 1}) for significantly faster 68040/68060 emulation.
+
+\subsection{WinUAE Setup (Windows)}
+
+WinUAE offers the most configuration options:
+
+\begin{enumerate}
+\item Download from \texttt{https://www.winuae.net}
+
+\item Create a new configuration:
+\begin{itemize}
+    \item Select ``A4000'' as the base configuration
+    \item Set CPU to 68040 or 68060
+    \item Enable 8MB Fast RAM
+    \item Add a directory hardfile pointing to your shared folder
+\end{itemize}
+
+\item Under ``Expansions'', ensure ``BSDSocket'' is enabled for network access
+\end{enumerate}
+
+\subsection{Amiberry Setup (Raspberry Pi)}
+
+Amiberry is optimized for ARM single-board computers:
+
+\begin{lstlisting}[language=bash]
+# Install on Raspberry Pi OS
+sudo apt install amiberry
+
+# Copy your Kickstart ROMs to ~/.amiberry/Kickstarts/
+\end{lstlisting}
+
+Configuration is similar to FS-UAE. Amiberry's built-in GUI makes setup straightforward.
+
+\begin{comingfromc}
+When developing C for Amiga, you typically cross-compile on a powerful host machine and test in an emulator. The same workflow applies to Novus:
+
+\begin{enumerate}
+\item Write code on your host (macOS/Linux/Windows)
+\item Compile with \texttt{novus compile}
+\item Transfer via shared folder
+\item Test in emulator or on real hardware
+\item Debug, fix, repeat
+\end{enumerate}
+
+The main difference: Novus gives you immediate feedback on type errors before you even try to run the program. No more ``undefined reference'' linker errors or segfaults from type mismatches.
+\end{comingfromc}
+
+% ============================================================================
+\section{Working with the Amiga Shell}
+\label{sec:amiga-shell}
+% ============================================================================
+
+When testing your programs, you'll interact with the Amiga Shell. Here are essential commands:
+
+\subsection{Basic Navigation}
+
+\begin{lstlisting}[language=bash]
+# Change directory
+CD Work:Projects
+
+# List files (like ls)
+DIR
+
+# Show current directory
+CD
+
+# Create a directory
+MAKEDIR NewFolder
+\end{lstlisting}
+
+\subsection{Running Programs}
+
+\begin{lstlisting}[language=bash]
+# Run from current directory
+myprogram
+
+# Run with full path
+Work:Projects/myprogram
+
+# Run and capture output
+myprogram >T:output.txt
+
+# Run with input redirection
+myprogram <T:input.txt
+
+# Run in background
+RUN myprogram
+\end{lstlisting}
+
+\subsection{Checking Exit Codes}
+
+\begin{lstlisting}[language=bash]
+# Run your program
+myprogram
+
+# Check the return code
+IF WARN
+  ECHO "Program returned error (exit code >= 5)"
+ENDIF
+
+# Or use conditional execution
+myprogram && ECHO "Success" || ECHO "Failed"
+\end{lstlisting}
+
+\subsection{Useful Shell Variables}
+
+\begin{lstlisting}[language=bash]
+# Get the return code of last command
+ECHO $RC
+
+# Current directory
+ECHO $CD
+
+# Date and time
+ECHO $DATE $TIME
+\end{lstlisting}
+
+\subsection{Environment and Assigns}
+
+\begin{lstlisting}[language=bash]
+# Create an assign (like a symbolic link)
+ASSIGN MYPROJECT: Work:Novus/MyProject
+
+# Now you can use it
+CD MYPROJECT:
+TYPE MYPROJECT:main.novus
+
+# Set an environment variable
+SETENV MYVAR "Hello"
+\end{lstlisting}
+
+% ============================================================================
+\section{Common Issues and Solutions}
+\label{sec:common-issues}
+% ============================================================================
+
+This section addresses frequent issues developers encounter.
+
+\subsection{Compilation Errors}
+
+\textbf{``Module not found: std::io::file''}
+
+The standard library isn't being found. Ensure you're running from the Novus repository directory, or set the \texttt{NOVUS\_HOME} environment variable:
+
+\begin{lstlisting}[language=bash]
+export NOVUS_HOME=/path/to/Novus
+novus compile hello.novus
+\end{lstlisting}
+
+\textbf{``Type mismatch: expected i32, found u32''}
+
+Novus requires explicit type conversions. Add a cast:
+
+\begin{lstlisting}
+// Wrong
+let x: i32 = some_u32_value
+
+// Right
+let x: i32 = (i32)some_u32_value
+\end{lstlisting}
+
+\textbf{``Cannot borrow as mutable''}
+
+You're trying to modify something through an immutable reference:
+
+\begin{lstlisting}
+// Wrong
+fn modify(x: &i32) {
+    *x = 42  // Error: cannot modify through &
+}
+
+// Right
+fn modify(x: &var i32) {
+    *x = 42  // OK: &var is mutable reference
+}
+\end{lstlisting}
+
+\subsection{Runtime Errors on Amiga}
+
+\textbf{``Error: Not enough memory''}
+
+Your program ran out of chip or fast RAM. Solutions:
+\begin{itemize}
+    \item Reduce buffer sizes
+    \item Free unused allocations earlier
+    \item Check for memory leaks (unmatched \texttt{AllocMem}/\texttt{FreeMem})
+    \item Increase emulator memory configuration
+\end{itemize}
+
+\textbf{``Guru Meditation''}
+
+A crash occurred. Common causes:
+\begin{itemize}
+    \item Null pointer dereference
+    \item Stack overflow (increase stack size with \texttt{STACK 10000} before running)
+    \item Invalid memory access
+    \item Incorrect FFI calling convention
+\end{itemize}
+
+Enable debug builds (the default) for bounds checking that catches many issues.
+
+\textbf{``Program just exits with no output''}
+
+Possible causes:
+\begin{itemize}
+    \item Program returned non-zero exit code (check with \texttt{ECHO \$RC})
+    \item Output buffering issue---try \texttt{print} followed by explicit newline
+    \item Early \texttt{return} before print statements
+\end{itemize}
+
+\subsection{Linking Errors}
+
+\textbf{``Undefined reference to \_main''}
+
+The entry point wasn't found. Ensure:
+\begin{itemize}
+    \item You have a \texttt{pub fn main() -> i32} function
+    \item It's marked \texttt{pub}
+    \item The file was included in compilation
+\end{itemize}
+
+\textbf{``Multiple definitions of ...''}
+
+Two files define the same symbol. Common when accidentally including the same code twice. Check your imports and ensure you're not compiling object files multiple times.
+
+\subsection{Transfer and Execution Issues}
+
+\textbf{Executable won't run (``Command not found'')}
+
+Check that:
+\begin{itemize}
+    \item The file has the correct protection bits (\texttt{PROTECT myprogram +e})
+    \item You're using the correct path
+    \item The file wasn't corrupted during transfer (check file size)
+\end{itemize}
+
+\textbf{``Wrong CPU type''}
+
+The executable was compiled for a CPU your Amiga doesn't have:
+\begin{lstlisting}[language=bash]
+# Compile for base 68020 (works on all supported systems)
+novus compile hello.novus --cpu 68020
+\end{lstlisting}
+
+% ============================================================================
+\section{Workspaces for Multi-Project Development}
+\label{sec:workspaces}
+% ============================================================================
+
+For larger development efforts with multiple related projects, use workspaces.
+
+\subsection{Creating a Workspace}
+
+\begin{lstlisting}[language=bash]
+mkdir myworkspace
+cd myworkspace
+
+# Create workspace.toml
+cat > workspace.toml << 'EOF'
+[workspace]
+members = [
+    "app",
+    "library",
+    "tests"
+]
+
+[build]
+target_cpu = "68020"
+optimization_level = 1
+EOF
+
+# Create member projects
+novus new app --type cli
+novus new library --type library
+novus new tests --type cli
+\end{lstlisting}
+
+\subsection{Workspace Structure}
+
+\begin{lstlisting}[language=bash]
+myworkspace/
+    workspace.toml      # Workspace configuration
+    app/                # Main application
+        project.toml
+        src/
+            main.novus
+    library/            # Shared library
+        project.toml
+        src/
+            lib.novus
+    tests/              # Test suite
+        project.toml
+        src/
+            main.novus
+\end{lstlisting}
+
+\subsection{Building the Workspace}
+
+\begin{lstlisting}[language=bash]
+# Build all projects
+novus build
+
+# Build specific project
+novus build app
+
+# Build with release optimizations
+novus build --release
+\end{lstlisting}
+
+\subsection{Project Dependencies}
+
+Projects can depend on other workspace members:
+
+\begin{lstlisting}
+# app/project.toml
+[package]
+name = "app"
+
+[dependencies]
+library = { path = "../library" }
+\end{lstlisting}
+
+Then import from the dependency:
+
+\begin{lstlisting}
+// app/src/main.novus
+from library::utils import helper_function
+
+pub fn main() -> i32 {
+    helper_function()
+    return 0
+}
+\end{lstlisting}
+
+\begin{comingfromc}
+In C Amiga development, you'd manage this with Makefiles:
+
+\begin{lstlisting}[language=make]
+# Typical C Makefile
+CC = vc
+CFLAGS = -c99 -O2
+
+all: app
+
+app: app.o library.o
+    $(CC) -o $@ $^
+
+%.o: %.c
+    $(CC) $(CFLAGS) -c $<
+\end{lstlisting}
+
+Novus workspaces provide similar functionality with less boilerplate. The \texttt{workspace.toml} and \texttt{project.toml} files replace Makefiles for most cases, though you can still use Make for complex build scenarios.
+\end{comingfromc}
+
+% ============================================================================
+\section{Debugging Techniques}
+\label{sec:debugging}
+% ============================================================================
+
+Debugging on the Amiga requires different techniques than modern desktop development.
+
+\subsection{Print Debugging}
+
+The simplest technique---add print statements to trace execution:
+
+\begin{lstlisting}
+fn process_data(data: &Data) -> Result<Output, Error> {
+    println("DEBUG: entering process_data")
+    print("DEBUG: data.len = ")
+    print_u32(data.len)
+    println("")
+
+    let result = expensive_operation(data)?
+
+    println("DEBUG: operation completed")
+    Result::Ok(result)
+}
+\end{lstlisting}
+
+For release builds, use conditional compilation:
+
+\begin{lstlisting}
+const DEBUG: bool = true
+
+fn debug_print(msg: *u8) {
+    if DEBUG {
+        println(msg)
+    }
+}
+\end{lstlisting}
+
+\subsection{Assert for Invariants}
+
+Use assertions to catch bugs early:
+
+\begin{lstlisting}
+fn get_element(arr: &[i32], index: u32) -> i32 {
+    assert!(index < arr.len(), "index out of bounds")
+    return arr[index].unwrap()
+}
+
+fn normalize(vec: &var Vec3) {
+    let len = vec.length()
+    assert!(len > 0.0, "cannot normalize zero vector")
+    vec.x = vec.x / len
+    vec.y = vec.y / len
+    vec.z = vec.z / len
+}
+\end{lstlisting}
+
+\subsection{Memory Tracking}
+
+Track allocations to find leaks:
+
+\begin{lstlisting}
+var g_alloc_count: u32 = 0
+var g_free_count: u32 = 0
+
+fn tracked_alloc(size: u32) -> *u8 {
+    let ptr = unsafe { AllocMem(size, MEMF_PUBLIC) }
+    if ptr != null {
+        g_alloc_count += 1
+    }
+    return ptr
+}
+
+fn tracked_free(ptr: *u8, size: u32) {
+    if ptr != null {
+        g_free_count += 1
+        unsafe { FreeMem(ptr, size) }
+    }
+}
+
+fn report_leaks() {
+    if g_alloc_count != g_free_count {
+        print("WARNING: ")
+        print_u32(g_alloc_count - g_free_count)
+        println(" allocations not freed!")
+    }
+}
+\end{lstlisting}
+
+\subsection{Using Amiga Debuggers}
+
+For complex issues, use an Amiga debugger:
+
+\begin{itemize}
+    \item \textbf{Barfly} --- Integrated assembler and debugger
+    \item \textbf{SnoopDOS} --- Monitor DOS and library calls
+    \item \textbf{Enforcer} --- Catch illegal memory accesses (requires MMU)
+    \item \textbf{MuForce} --- Similar to Enforcer, works on 68040/060
+\end{itemize}
+
+Compile with debug symbols for better stack traces:
+
+\begin{lstlisting}[language=bash]
+novus compile myprogram.novus -o myprogram --debug-symbols
+\end{lstlisting}
+
+% ============================================================================
+\section{Build System Integration}
+\label{sec:build-integration}
+% ============================================================================
+
+While Novus has its own build system, you can integrate it with external tools.
+
+\subsection{Using Make with Novus}
+
+Create a \texttt{Makefile} for complex builds:
+
+\begin{lstlisting}[language=make]
+NOVUS = novus compile
+OUTPUT_DIR = build
+SRC = src/main.novus
+
+.PHONY: all clean release test
+
+all: $(OUTPUT_DIR)/myapp
+
+$(OUTPUT_DIR)/myapp: $(SRC)
+	@mkdir -p $(OUTPUT_DIR)
+	$(NOVUS) $< -o $@
+
+release: $(SRC)
+	@mkdir -p $(OUTPUT_DIR)
+	$(NOVUS) $< -o $(OUTPUT_DIR)/myapp --release
+
+clean:
+	rm -rf $(OUTPUT_DIR)
+
+test:
+	novus test tests/test_main.novus -o $(OUTPUT_DIR)/test_runner
+\end{lstlisting}
+
+\subsection{CI/CD Integration}
+
+Example GitHub Actions workflow:
+
+\begin{lstlisting}[language=yaml]
+name: Build
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Build Novus
+        run: dotnet build
+
+      - name: Compile Project
+        run: |
+          ./Novus/bin/Debug/net9.0/novus compile \
+            src/main.novus -o build/myapp
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: myapp-amiga
+          path: build/myapp
+\end{lstlisting}
+
+% ============================================================================
+\section{Summary}
+\label{sec:getting-started-summary}
+% ============================================================================
+
+You now have everything needed to start developing with Novus:
+
+\begin{itemize}
+    \item \textbf{Installation} --- .NET SDK + clone the repository
+    \item \textbf{First program} --- \texttt{novus compile hello.novus}
+    \item \textbf{Pipeline understanding} --- Source → IR → C → Object → HUNK
+    \item \textbf{Project structure} --- \texttt{novus new} creates standard layout
+    \item \textbf{Workflow} --- Edit, compile, transfer, test, repeat
+    \item \textbf{Emulator setup} --- FS-UAE, WinUAE, or Amiberry
+    \item \textbf{Debugging} --- Print statements, assertions, and Amiga debuggers
+\end{itemize}
+
+The following chapters teach the language itself. Keep this chapter handy as a reference for the development workflow.
