@@ -1,5 +1,13 @@
 \chapter{Introduction}
 
+\begin{quote}
+\textit{``The best way to predict the future is to invent it.''} --- Alan Kay
+\end{quote}
+
+\vspace{1em}
+
+This guide teaches you Novus, a modern systems programming language designed exclusively for the Amiga. Whether you're building games, demos, productivity software, or exploring what these remarkable machines can do, Novus gives you the tools to write safe, efficient code that fully leverages the platform's unique capabilities.
+
 \section{What is Novus?}
 
 Novus is a systems programming language designed specifically for the Amiga 68k platform. It transpiles to C99, which VBCC then compiles to native 68020+ machine code. The result is executables that integrate deeply with AmigaOS and run on real hardware and accurate emulators alike.
@@ -568,5 +576,437 @@ This 70-line program:
 \end{itemize}
 
 Run it on real hardware or in FS-UAE to see a smooth, colorful gradient scroll across your screen. This is what Novus is for: making the Amiga's unique capabilities accessible with modern safety and ergonomics.
+
+% ============================================================================
+\section{Language Features at a Glance}
+\label{sec:features-glance}
+% ============================================================================
+
+Before diving deep, here's a summary of what Novus offers:
+
+\subsection{Type System}
+
+\begin{description}
+    \item[Static Typing] Every variable has a type known at compile time. No runtime type checks.
+    \item[Type Inference] The compiler deduces types where possible: \texttt{let x = 42} infers \texttt{i32}.
+    \item[Generics] Write type-safe code that works with any type: \texttt{Vec<T>}, \texttt{Result<T, E>}.
+    \item[Traits] Define shared behavior across types, similar to interfaces or typeclasses.
+    \item[Sum Types] Enums can contain data: \texttt{Option<T>} is either \texttt{Some(value)} or \texttt{None}.
+    \item[Fixed-Point] Native \texttt{fixed16} and \texttt{fixed32} types for efficient math without FPU.
+\end{description}
+
+\subsection{Memory Safety}
+
+\begin{description}
+    \item[Ownership] Each value has one owner. When the owner goes out of scope, the value is freed.
+    \item[References] Borrow values without taking ownership: \texttt{\&T} (read) or \texttt{\&var T} (write).
+    \item[No Null] Pointers (\texttt{*T}) can be null; references (\texttt{\&T}) cannot.
+    \item[Bounds Checking] Array accesses are checked in debug builds.
+    \item[RAII] Resources are released automatically via the \texttt{Drop} trait.
+\end{description}
+
+\subsection{Error Handling}
+
+\begin{description}
+    \item[Result Type] Functions that can fail return \texttt{Result<T, E>}.
+    \item[? Operator] Propagate errors with \texttt{?}: \texttt{let file = open(path)?}
+    \item[No Exceptions] All error paths are explicit---no hidden control flow.
+    \item[Pattern Matching] Handle all cases with \texttt{match} expressions.
+\end{description}
+
+\subsection{Amiga-Specific}
+
+\begin{description}
+    \item[Direct FFI] Call any AmigaOS function with zero overhead.
+    \item[Async/Await] Map to Exec signals and message ports, not threads.
+    \item[Inline Assembly] Embed 68k assembly in your code when needed.
+    \item[Copper/Blitter] First-class support for custom chip programming.
+    \item[Library/Device] Build shared libraries and device drivers.
+\end{description}
+
+% ============================================================================
+\section{Comparison with Other Languages}
+\label{sec:comparisons}
+% ============================================================================
+
+\subsection{Novus vs C}
+
+C is the traditional choice for Amiga development. Here's how Novus compares:
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Aspect} & \textbf{C} & \textbf{Novus} \\
+\hline
+Error handling & Return codes, \texttt{errno} & \texttt{Result<T, E>}, \texttt{?} operator \\
+Resource cleanup & Manual & Automatic via \texttt{Drop} \\
+Null safety & None & \texttt{*T} vs \texttt{\&T} distinction \\
+Generics & Macros, \texttt{void*} & Real type parameters \\
+Modules & \texttt{\#include} & \texttt{from...import} \\
+Compile speed & Fast & Similar (via C backend) \\
+Runtime overhead & Zero & Zero \\
+Tooling & Mature & Growing \\
+\end{tabular}
+\end{center}
+
+\textbf{When to use C:} When targeting 68000 (Novus requires 68020+), when you need existing C libraries without wrappers, or when your team is more comfortable with C.
+
+\textbf{When to use Novus:} When you want modern safety guarantees, cleaner code organization, and are targeting 68020 or later.
+
+\subsection{Novus vs Rust}
+
+Rust is the primary inspiration for Novus's safety features. Key differences:
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Aspect} & \textbf{Rust} & \textbf{Novus} \\
+\hline
+Borrow checker & Full lifetime analysis & Simpler scope-based \\
+Target platforms & Many & Amiga only \\
+Runtime size & Can be large & Minimal \\
+Async model & tokio, std futures & Exec signals/ports \\
+Standard library & Large & Amiga-focused \\
+\texttt{unsafe} usage & Rarely needed & Common for FFI \\
+\end{tabular}
+\end{center}
+
+Rust's borrow checker provides stronger guarantees but is more complex. Novus trades some of that safety for simplicity and Amiga-specific integration.
+
+\subsection{Novus vs AMOS/Blitz BASIC}
+
+AMOS and Blitz BASIC made Amiga programming accessible. Novus aims for similar accessibility with more power:
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Aspect} & \textbf{BASIC} & \textbf{Novus} \\
+\hline
+Learning curve & Easy & Moderate \\
+Performance & Good & Excellent \\
+Type safety & Limited & Strong \\
+OS access & Limited & Full \\
+Memory management & Automatic (GC) & Explicit (RAII) \\
+Modern features & No & Yes \\
+\end{tabular}
+\end{center}
+
+If you learned programming on AMOS or Blitz, Novus is a natural next step when you need more control.
+
+% ============================================================================
+\section{A Day in the Life: Novus Development}
+\label{sec:day-in-life}
+% ============================================================================
+
+Here's what developing with Novus looks like in practice:
+
+\subsection{Morning: Starting a New Feature}
+
+You're adding joystick support to your game. First, check the existing code:
+
+\begin{lstlisting}[language=bash]
+# See what input-related code exists
+novus search "input" --file-pattern "*.novus"
+\end{lstlisting}
+
+Create a new module for joystick input:
+
+\begin{lstlisting}
+// src/input/joystick.novus
+from std::ffi::exec import custom_chips
+from std::ffi::amiga_consts import JOYDAT0, JOYDAT1
+
+pub struct JoystickState {
+    left: bool,
+    right: bool,
+    up: bool,
+    down: bool,
+    fire: bool,
+}
+
+pub fn read_joystick(port: u8) -> JoystickState {
+    let data = unsafe {
+        if port == 0 {
+            custom_chips().joy0dat
+        } else {
+            custom_chips().joy1dat
+        }
+    }
+
+    // Decode joystick register bits
+    JoystickState {
+        left: (data & $0002) != 0,
+        right: (data & $0200) != 0,
+        up: ((data >> 1) ^ data) & $0001 != 0,
+        down: ((data >> 1) ^ data) & $0100 != 0,
+        fire: false,  // Read from CIA
+    }
+}
+\end{lstlisting}
+
+\subsection{Midday: Debugging}
+
+Something's wrong---the joystick reads backwards. Add debug output:
+
+\begin{lstlisting}
+pub fn read_joystick_debug(port: u8) -> JoystickState {
+    let data = unsafe {
+        if port == 0 { custom_chips().joy0dat }
+        else { custom_chips().joy1dat }
+    }
+
+    // Debug: print raw register value
+    print("JOY DAT: $")
+    print_hex(data)
+    println("")
+
+    // ... decoding ...
+}
+\end{lstlisting}
+
+Compile and test:
+
+\begin{lstlisting}[language=bash]
+novus compile src/main.novus -o build/game
+# Transfer to Amiga shared folder
+cp build/game ~/amiga_share/
+\end{lstlisting}
+
+Run in the emulator, spot the bug: bit positions were wrong.
+
+\subsection{Afternoon: Refactoring}
+
+The input code works, but it's not reusable. Create an abstraction:
+
+\begin{lstlisting}
+pub trait InputDevice {
+    fn poll(&var self)
+    fn left(&self) -> bool
+    fn right(&self) -> bool
+    fn up(&self) -> bool
+    fn down(&self) -> bool
+    fn fire(&self) -> bool
+}
+
+impl InputDevice for JoystickState {
+    fn poll(&var self) {
+        *self = read_joystick(0)
+    }
+    fn left(&self) -> bool { self.left }
+    fn right(&self) -> bool { self.right }
+    fn up(&self) -> bool { self.up }
+    fn down(&self) -> bool { self.down }
+    fn fire(&self) -> bool { self.fire }
+}
+\end{lstlisting}
+
+Now the game can accept any input device without code changes.
+
+\subsection{Evening: Testing}
+
+Write unit tests for the input decoding:
+
+\begin{lstlisting}
+#[test]
+fn test_joystick_decode() {
+    // Simulate joystick left
+    let state = decode_joydat($0002)
+    assert!(state.left, "left should be true")
+    assert!(!state.right, "right should be false")
+}
+
+#[test]
+fn test_joystick_up() {
+    // Simulate joystick up (XOR logic)
+    let state = decode_joydat($0100)
+    assert!(state.up, "up should be true")
+}
+\end{lstlisting}
+
+Run the tests:
+
+\begin{lstlisting}[language=bash]
+novus test tests/input_test.novus -o build/test_runner
+# Transfer and run on Amiga
+\end{lstlisting}
+
+\subsection{Key Takeaways}
+
+This workflow demonstrates:
+
+\begin{itemize}
+    \item \textbf{Rapid iteration} --- Changes compile quickly, transfer is simple
+    \item \textbf{Safe FFI} --- Direct hardware access with \texttt{unsafe} blocks
+    \item \textbf{Abstraction} --- Traits let you write reusable code
+    \item \textbf{Testing} --- Unit tests catch bugs before they reach hardware
+\end{itemize}
+
+% ============================================================================
+\section{What's Different from Rust?}
+\label{sec:rust-differences}
+% ============================================================================
+
+If you're coming from Rust, Novus will feel familiar but simpler. Here are the key differences:
+
+\subsection{No Lifetimes}
+
+Rust's lifetime system (\texttt{'a}, \texttt{'static}, etc.) doesn't exist in Novus. References are valid for their lexical scope only:
+
+\begin{lstlisting}
+// Rust: explicit lifetime
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str { ... }
+
+// Novus: no lifetimes, simpler rules
+fn longest(x: &str, y: &str) -> String {
+    // Must return owned value, not reference
+    if x.len() > y.len() {
+        return x.to_string()
+    }
+    return y.to_string()
+}
+\end{lstlisting}
+
+This means some patterns that work in Rust require copying in Novus. The trade-off is a much simpler mental model.
+
+\subsection{Mutable References are Marked Differently}
+
+\begin{lstlisting}
+// Rust
+fn modify(x: &mut i32) { *x = 42; }
+modify(&mut value);
+
+// Novus
+fn modify(x: &var i32) { *x = 42 }
+modify(&var value)
+\end{lstlisting}
+
+Novus uses \texttt{var} consistently: variables declared with \texttt{var} are mutable, references with \texttt{\&var} are mutable.
+
+\subsection{Simpler Pattern Matching}
+
+Novus pattern matching is powerful but doesn't include all Rust features:
+
+\begin{lstlisting}
+// Novus patterns
+match value {
+    0 => println("zero"),
+    1..10 => println("small"),
+    n if n > 100 => println("large"),
+    _ => println("other"),
+}
+\end{lstlisting}
+
+No slice patterns, no @ bindings, no or-patterns (yet).
+
+\subsection{No Closures}
+
+Novus uses function pointers and explicit context, not closures:
+
+\begin{lstlisting}
+// Rust
+let add_x = |y| x + y;
+
+// Novus - explicit approach
+fn add_with(x: i32, y: i32) -> i32 { x + y }
+
+// Or use a context struct
+struct Adder { x: i32 }
+impl Adder {
+    fn add(&self, y: i32) -> i32 { self.x + y }
+}
+\end{lstlisting}
+
+This keeps the runtime simple and code explicit.
+
+\subsection{Smaller Standard Library}
+
+Novus's stdlib is focused on Amiga development. There's no networking, no filesystem abstraction layers, no cross-platform compatibility code. Instead, you get:
+
+\begin{itemize}
+    \item Complete AmigaOS FFI bindings
+    \item Amiga-optimized collections
+    \item Fixed-point math
+    \item Custom chip abstractions
+\end{itemize}
+
+% ============================================================================
+\section{Community and Resources}
+\label{sec:community}
+% ============================================================================
+
+Novus is an open-source project. Here's how to get involved:
+
+\subsection{Getting Help}
+
+\begin{description}
+    \item[GitHub Issues] Report bugs or request features at the repository
+    \item[Discord] Join the Amiga development community for real-time chat
+    \item[Forums] The English Amiga Board has an active development section
+\end{description}
+
+\subsection{Contributing}
+
+Contributions are welcome:
+
+\begin{itemize}
+    \item Bug fixes and improvements to the compiler
+    \item Standard library additions
+    \item Documentation improvements
+    \item Example programs and tutorials
+    \item Testing on different Amiga configurations
+\end{itemize}
+
+\subsection{Reporting Issues}
+
+When reporting bugs, include:
+
+\begin{enumerate}
+    \item A minimal reproducing example
+    \item Novus version (\texttt{novus --version})
+    \item Target configuration (CPU, FPU, OS version)
+    \item Actual vs expected behavior
+\end{enumerate}
+
+\subsection{Learning Path}
+
+Depending on your background, here's a suggested reading order:
+
+\textbf{If you're new to systems programming:}
+\begin{enumerate}
+    \item Chapters 1--3: Basics and syntax
+    \item Chapter 5: Memory management (important!)
+    \item Chapter 10: Error handling
+    \item Then explore based on your project needs
+\end{enumerate}
+
+\textbf{If you're an experienced C programmer:}
+\begin{enumerate}
+    \item Skim Chapter 2 for setup
+    \item Read Chapter 4 (Types) for the type system
+    \item Read Chapter 5 (Memory) for RAII and references
+    \item Chapter 10 (Errors) for Result-based handling
+    \item Appendix: Guide for C Programmers
+\end{enumerate}
+
+\textbf{If you're coming from Rust:}
+\begin{enumerate}
+    \item Skim this chapter for Amiga-specific differences
+    \item Read Chapter 5 for the simpler ownership model
+    \item Jump to Chapter 11 for traits and generics
+    \item Explore FFI chapters for AmigaOS integration
+\end{enumerate}
+
+% ============================================================================
+\section{Summary}
+\label{sec:intro-summary}
+% ============================================================================
+
+Novus brings modern language design to the Amiga:
+
+\begin{itemize}
+    \item \textbf{Safety without overhead} --- Result types, RAII, bounds checking
+    \item \textbf{Expressiveness} --- Generics, traits, pattern matching
+    \item \textbf{Amiga integration} --- Direct FFI, copper/blitter support, async via Exec
+    \item \textbf{Familiar performance} --- Compiles to tight 68k code via VBCC
+\end{itemize}
+
+The following chapters teach you the language systematically, from basic syntax through advanced topics. Code examples are complete and runnable. When in doubt, compile and run---that's the best way to learn.
 
 Let's begin.
