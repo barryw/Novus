@@ -438,9 +438,8 @@ Note: Novus inverts C's default. In C, symbols are public unless marked \texttt{
 \textbf{C} & \textbf{Novus} \\
 \hline
 \texttt{sizeof(T)} & \texttt{@sizeof(T)} \\
-\texttt{\_Alignof(T)} & \texttt{@alignof(T)} \\
+\texttt{\_Alignof(T)} & \texttt{alignof(T)} (in inline asm only) \\
 \texttt{memset(\&x, 0, sizeof(x))} & \texttt{@zeroed(T)} \\
-\texttt{typeof(expr)} (GCC) & \texttt{@typeof(expr)} \\
 \end{tabular}
 \end{center}
 

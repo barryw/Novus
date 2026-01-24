@@ -1,0 +1,1483 @@
+\chapter{Advanced Traits and Generics}
+\label{ch:traits-generics}
+
+\begin{quote}
+\textit{``Abstraction is not about vagueness, it is about being precise on a new semantic level.''} --- Edsger W. Dijkstra
+\end{quote}
+
+Chapter 4 introduced traits as a way to define shared behavior across types. This chapter goes deeper, covering operator overloading, the complete trait ecosystem, advanced generic patterns, and real-world idioms that make Novus code both flexible and efficient.
+
+By the end of this chapter, you'll understand how to:
+\begin{itemize}
+    \item Make your types work with Novus operators (\texttt{+}, \texttt{-}, \texttt{*}, \texttt{[]}, etc.)
+    \item Implement comparison and ordering for custom types
+    \item Create fallible and infallible type conversions
+    \item Build custom iterators for any data structure
+    \item Write generic numeric algorithms
+    \item Design flexible APIs with reference traits
+    \item Apply common patterns like newtype, extension traits, and blanket implementations
+\end{itemize}
+
+\section{Operator Overloading}
+\label{sec:operator-overloading}
+
+Novus allows you to define how operators work with your custom types by implementing operator traits. When you implement the \texttt{Add} trait for a type, the \texttt{+} operator works with values of that type.
+
+\subsection{Arithmetic Operator Traits}
+
+The arithmetic operator traits are defined in \texttt{std::core}:
+
+\begin{lstlisting}
+pub trait Add {
+    fn add(&self, other: &Self) -> Self
+}
+
+pub trait Sub {
+    fn sub(&self, other: &Self) -> Self
+}
+
+pub trait Mul {
+    fn mul(&self, other: &Self) -> Self
+}
+
+pub trait Div {
+    fn div(&self, other: &Self) -> Self
+}
+
+pub trait Rem {
+    fn rem(&self, other: &Self) -> Self
+}
+
+pub trait Neg {
+    fn neg(&self) -> Self
+}
+\end{lstlisting}
+
+Each trait method takes references and returns an owned value. This design avoids unnecessary copies while keeping the interface simple.
+
+\subsubsection{Complete Operator-to-Trait Mapping}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\hline
+\textbf{Operator} & \textbf{Trait} & \textbf{Method Signature} \\
+\hline
+\texttt{a + b} & \texttt{Add} & \texttt{fn add(\&self, other: \&Self) -> Self} \\
+\texttt{a - b} & \texttt{Sub} & \texttt{fn sub(\&self, other: \&Self) -> Self} \\
+\texttt{a * b} & \texttt{Mul} & \texttt{fn mul(\&self, other: \&Self) -> Self} \\
+\texttt{a / b} & \texttt{Div} & \texttt{fn div(\&self, other: \&Self) -> Self} \\
+\texttt{a \% b} & \texttt{Rem} & \texttt{fn rem(\&self, other: \&Self) -> Self} \\
+\texttt{-a} & \texttt{Neg} & \texttt{fn neg(\&self) -> Self} \\
+\hline
+\end{tabular}
+\caption{Arithmetic Operator Traits}
+\end{table}
+
+\subsection{Implementing Arithmetic Operators}
+
+Let's implement arithmetic for a 2D vector type:
+
+\begin{lstlisting}
+from std::core import Add, Sub, Neg
+
+struct Vec2 {
+    x: i32,
+    y: i32,
+}
+
+impl Vec2 {
+    pub fn new(x: i32, y: i32) -> Vec2 {
+        return Vec2 { x: x, y: y }
+    }
+}
+
+impl Add for Vec2 {
+    fn add(&self, other: &Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x + other.x,
+            y: self.y + other.y
+        }
+    }
+}
+
+impl Sub for Vec2 {
+    fn sub(&self, other: &Vec2) -> Vec2 {
+        return Vec2 {
+            x: self.x - other.x,
+            y: self.y - other.y
+        }
+    }
+}
+
+impl Neg for Vec2 {
+    fn neg(&self) -> Vec2 {
+        return Vec2 { x: -self.x, y: -self.y }
+    }
+}
+\end{lstlisting}
+
+Now you can use operators naturally:
+
+\begin{lstlisting}
+// ... (with Vec2 and operator impls defined above)
+let a = Vec2::new(10, 20)
+let b = Vec2::new(5, 15)
+
+let sum = a + b       // Vec2 { x: 15, y: 35 }
+let diff = a - b      // Vec2 { x: 5, y: 5 }
+let negated = -a      // Vec2 { x: -10, y: -20 }
+\end{lstlisting}
+
+\subsection{Fixed-Point Arithmetic Example}
+
+Here's how \texttt{fixed32} (16.16 fixed-point) implements multiplication:
+
+\begin{lstlisting}
+// ... (illustrative - actual impl is in compiler)
+impl Mul for fixed32 {
+    fn mul(&self, other: &fixed32) -> fixed32 {
+        // Fixed-point multiplication requires shifting
+        // a * b = (a_raw * b_raw) >> 16
+        // This is handled by the compiler intrinsic
+        return fixed32_mul(*self, *other)
+    }
+}
+\end{lstlisting}
+
+\textbf{Performance note:} On 68000, 32-bit multiplication is done in software. The 68020+ have hardware \texttt{MULU.L} and \texttt{MULS.L} instructions. The compiler generates appropriate code based on your \texttt{--cpu} target.
+
+\subsection{Common Mistakes}
+
+\textbf{Mistake 1: Forgetting that methods take references}
+
+\begin{lstlisting}
+// WRONG - takes self by value
+impl Add for Vec2 {
+    fn add(self, other: Vec2) -> Vec2 {  // Wrong signature!
+        // ...
+    }
+}
+
+// CORRECT - takes references
+impl Add for Vec2 {
+    fn add(&self, other: &Vec2) -> Vec2 {
+        // ...
+    }
+}
+\end{lstlisting}
+
+\textbf{Mistake 2: Division by zero}
+
+Operator traits don't have built-in error handling. If your type can encounter division by zero, you have options:
+
+\begin{lstlisting}
+// Option 1: Panic (simple but crashes)
+impl Div for Fraction {
+    fn div(&self, other: &Fraction) -> Fraction {
+        if other.numerator == 0 {
+            panic!("Division by zero")
+        }
+        // ... normal division
+    }
+}
+
+// Option 2: Saturate or return a sentinel value
+impl Div for Fixed32 {
+    fn div(&self, other: &Fixed32) -> Fixed32 {
+        if other.is_zero() {
+            return Fixed32::max_value()  // Saturate to max
+        }
+        // ... normal division
+    }
+}
+\end{lstlisting}
+
+For fallible operations, consider providing a separate \texttt{try\_div} method that returns \texttt{Result}.
+
+\subsection{Index Operators}
+\label{sec:index-operators}
+
+The \texttt{Index} and \texttt{IndexMut} traits enable the \texttt{[]} operator for your types.
+
+\begin{lstlisting}
+pub trait Index<I, T> {
+    fn index(&self, idx: I) -> T
+}
+
+pub trait IndexMut<I, T> {
+    fn index_set(&var self, idx: I, value: T)
+}
+\end{lstlisting}
+
+Note the asymmetry: \texttt{Index} returns a value, while \texttt{IndexMut} takes a value to set. This differs from some other languages where both return references.
+
+\subsubsection{Implementing Index for a Grid}
+
+\begin{lstlisting}
+from std::core import Index, IndexMut
+
+struct Grid {
+    data: Vec<i32>,
+    width: u32,
+    height: u32,
+}
+
+impl Grid {
+    pub fn new(width: u32, height: u32) -> Option<Grid> {
+        let size = width * height
+        match Vec::with_capacity(size) {
+            Option::Some(var v) => {
+                // Initialize with zeros
+                for i in 0..size {
+                    v.push(0)
+                }
+                return Option::Some(Grid {
+                    data: v,
+                    width: width,
+                    height: height
+                })
+            },
+            Option::None => return Option::None
+        }
+    }
+
+    fn calc_index(&self, x: u32, y: u32) -> u32 {
+        return y * self.width + x
+    }
+}
+
+// Read access: let value = grid[(x, y)]
+impl Index<(u32, u32), i32> for Grid {
+    fn index(&self, pos: (u32, u32)) -> i32 {
+        let (x, y) = pos
+        let idx = self.calc_index(x, y)
+        return self.data.get(idx).unwrap()
+    }
+}
+
+// Write access: grid[(x, y)] = value
+impl IndexMut<(u32, u32), i32> for Grid {
+    fn index_set(&var self, pos: (u32, u32), value: i32) {
+        let (x, y) = pos
+        let idx = self.calc_index(x, y)
+        self.data.set(idx, value)
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with Grid defined above)
+var grid = Grid::new(10, 10).unwrap()
+
+grid[(5, 3)] = 42           // Write using IndexMut
+let value = grid[(5, 3)]    // Read using Index
+\end{lstlisting}
+
+\subsubsection{Bounds Checking}
+
+In debug builds, you should add bounds checking to catch programming errors:
+
+\begin{lstlisting}
+// ... (with Grid defined above)
+impl Index<(u32, u32), i32> for Grid {
+    fn index(&self, pos: (u32, u32)) -> i32 {
+        let (x, y) = pos
+        if x >= self.width || y >= self.height {
+            panic!("Grid index out of bounds")
+        }
+        let idx = self.calc_index(x, y)
+        return self.data.get(idx).unwrap()
+    }
+}
+\end{lstlisting}
+
+For production code where bounds are guaranteed, you can use unchecked access for performance.
+
+
+\section{Comparison and Equality Traits}
+\label{sec:comparison-traits}
+
+Beyond the basic \texttt{Eq} trait (covered in Chapter 4), Novus provides \texttt{PartialOrd} and \texttt{Ord} for ordering comparisons.
+
+\subsection{The Equality Contract}
+
+The \texttt{Eq} trait requires these mathematical properties:
+
+\begin{itemize}
+    \item \textbf{Reflexive}: \texttt{a.eq(\&a)} must return \texttt{true}
+    \item \textbf{Symmetric}: \texttt{a.eq(\&b)} must equal \texttt{b.eq(\&a)}
+    \item \textbf{Transitive}: if \texttt{a.eq(\&b)} and \texttt{b.eq(\&c)}, then \texttt{a.eq(\&c)}
+\end{itemize}
+
+Violating these properties will cause collections like \texttt{HashMap} to behave incorrectly.
+
+\subsection{PartialOrd --- Comparison Operators}
+
+\texttt{PartialOrd} enables the \texttt{<}, \texttt{<=}, \texttt{>}, and \texttt{>=} operators:
+
+\begin{lstlisting}
+pub trait PartialOrd {
+    fn lt(&self, other: &Self) -> bool   // <
+    fn le(&self, other: &Self) -> bool   // <=
+    fn gt(&self, other: &Self) -> bool   // >
+    fn ge(&self, other: &Self) -> bool   // >=
+}
+\end{lstlisting}
+
+\subsubsection{Implementing PartialOrd}
+
+\begin{lstlisting}
+from std::core import Eq, PartialOrd
+
+struct Version {
+    major: u32,
+    minor: u32,
+    patch: u32,
+}
+
+impl Eq for Version {
+    fn eq(&self, other: &Version) -> bool {
+        if self.major != other.major { return false }
+        if self.minor != other.minor { return false }
+        return self.patch == other.patch
+    }
+}
+
+impl PartialOrd for Version {
+    fn lt(&self, other: &Version) -> bool {
+        if self.major != other.major {
+            return self.major < other.major
+        }
+        if self.minor != other.minor {
+            return self.minor < other.minor
+        }
+        return self.patch < other.patch
+    }
+
+    fn le(&self, other: &Version) -> bool {
+        return self.lt(other) || self.eq(other)
+    }
+
+    fn gt(&self, other: &Version) -> bool {
+        return other.lt(self)
+    }
+
+    fn ge(&self, other: &Version) -> bool {
+        return other.le(self)
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with Version defined above)
+let v1 = Version { major: 1, minor: 2, patch: 0 }
+let v2 = Version { major: 1, minor: 3, patch: 0 }
+
+if v1 < v2 {
+    println("v1 is older than v2")
+}
+
+if v1 >= v2 {
+    println("v1 is at least as new as v2")
+}
+\end{lstlisting}
+
+\subsection{Ord --- Total Ordering}
+
+\texttt{Ord} is for types where every value is comparable. It's required for sorting and binary search.
+
+\begin{lstlisting}
+pub trait Ord {
+    /// Returns: negative if self < other, zero if equal, positive if self > other
+    fn cmp(&self, other: &Self) -> i32
+}
+\end{lstlisting}
+
+The return value convention:
+\begin{itemize}
+    \item Negative (\texttt{< 0}): \texttt{self} is less than \texttt{other}
+    \item Zero (\texttt{== 0}): \texttt{self} equals \texttt{other}
+    \item Positive (\texttt{> 0}): \texttt{self} is greater than \texttt{other}
+\end{itemize}
+
+\begin{lstlisting}
+from std::core import Ord
+
+// ... (with Version and Eq defined above)
+impl Ord for Version {
+    fn cmp(&self, other: &Version) -> i32 {
+        if self.major != other.major {
+            return (i32)self.major - (i32)other.major
+        }
+        if self.minor != other.minor {
+            return (i32)self.minor - (i32)other.minor
+        }
+        return (i32)self.patch - (i32)other.patch
+    }
+}
+\end{lstlisting}
+
+With \texttt{Ord} implemented, your type works with sorting:
+
+\begin{lstlisting}
+// ... (with Version and Ord defined above)
+var versions: Vec<Version> = load_versions()
+versions.sort()  // Sorts using Ord::cmp
+\end{lstlisting}
+
+\subsection{When to Use PartialOrd vs Ord}
+
+\begin{itemize}
+    \item Use \texttt{PartialOrd} when comparison might not always be possible (e.g., floating-point with NaN)
+    \item Use \texttt{Ord} when all values are comparable (integers, strings, versions)
+\end{itemize}
+
+Floating-point types implement \texttt{PartialOrd} but not \texttt{Ord} because NaN is not comparable to anything, including itself.
+
+\subsection{Deriving Comparison Traits}
+
+For simple structs, use \texttt{@derive}:
+
+\begin{lstlisting}
+#[derive(Eq)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+\end{lstlisting}
+
+The derived \texttt{Eq} compares all fields in declaration order. Note that \texttt{@derive} currently supports \texttt{Eq} and \texttt{Hash}, but not \texttt{Ord}.
+
+\subsection{Common Mistakes}
+
+\textbf{Mistake 1: Inconsistent Eq and Hash}
+
+If two values are equal via \texttt{Eq}, they \emph{must} produce the same hash:
+
+\begin{lstlisting}
+// WRONG - case-insensitive eq but case-sensitive hash
+impl Eq for CaseInsensitiveString {
+    fn eq(&self, other: &Self) -> bool {
+        return self.to_lowercase() == other.to_lowercase()
+    }
+}
+
+impl Hash for CaseInsensitiveString {
+    fn hash(&self) -> u32 {
+        return self.data.hash()  // BUG: "Hello" and "hello" hash differently!
+    }
+}
+
+// CORRECT - both use lowercase
+impl Hash for CaseInsensitiveString {
+    fn hash(&self) -> u32 {
+        return self.to_lowercase().hash()
+    }
+}
+\end{lstlisting}
+
+\textbf{Mistake 2: Ord that disagrees with Eq}
+
+If \texttt{a.cmp(\&b) == 0}, then \texttt{a.eq(\&b)} should return \texttt{true}. Violating this causes subtle bugs in sorted collections.
+
+
+\section{Conversion Traits}
+\label{sec:conversion-traits}
+
+Novus provides a family of traits for type conversion, covered in Chapter 4's \texttt{From} section. Here we cover the complete picture.
+
+\subsection{The Conversion Trait Family}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llp{6cm}}
+\hline
+\textbf{Trait} & \textbf{Method} & \textbf{Use Case} \\
+\hline
+\texttt{From<T>} & \texttt{convert(T) -> Self} & Infallible conversion from T \\
+\texttt{Into<T>} & \texttt{into(self) -> T} & Infallible conversion to T \\
+\texttt{TryFrom<T, E>} & \texttt{try\_from(T) -> Result<Self, E>} & Fallible conversion from T \\
+\texttt{TryInto<T, E>} & \texttt{try\_into(self) -> Result<T, E>} & Fallible conversion to T \\
+\hline
+\end{tabular}
+\caption{Conversion Traits}
+\end{table}
+
+\subsection{From and Into}
+
+\texttt{From<T>} was covered in Chapter 4. The key insight is that \texttt{Into} is the reverse direction:
+
+\begin{lstlisting}
+pub trait From<T> {
+    fn convert(value: T) -> Self
+}
+
+pub trait Into<T> {
+    fn into(consuming self) -> T
+}
+\end{lstlisting}
+
+If you implement \texttt{From<A>} for B, Novus can automatically provide \texttt{Into<B>} for A. Always prefer implementing \texttt{From} over \texttt{Into}.
+
+\subsection{TryFrom and TryInto}
+
+When conversion can fail, use the fallible variants:
+
+\begin{lstlisting}
+pub trait TryFrom<T, E> {
+    fn try_from(value: T) -> Result<Self, E>
+}
+
+pub trait TryInto<T, E> {
+    fn try_into(consuming self) -> Result<T, E>
+}
+\end{lstlisting}
+
+\subsubsection{Example: Parsing with TryFrom}
+
+\begin{lstlisting}
+from std::core import TryFrom, Result
+
+pub enum ParseError {
+    InvalidFormat,
+    OutOfRange,
+    Empty,
+}
+
+impl TryFrom<*u8, ParseError> for u8 {
+    fn try_from(s: *u8) -> Result<u8, ParseError> {
+        if s == null {
+            return Result::Err(ParseError::Empty)
+        }
+
+        // Simple ASCII digit parsing
+        var value: u32 = 0
+        var ptr = s
+        while *ptr != 0 {
+            let c = *ptr
+            if c < '0' || c > '9' {
+                return Result::Err(ParseError::InvalidFormat)
+            }
+            value = value * 10 + (u32)(c - '0')
+            if value > 255 {
+                return Result::Err(ParseError::OutOfRange)
+            }
+            ptr = ptr + 1
+        }
+        return Result::Ok((u8)value)
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with u8 TryFrom impl defined above)
+match u8::try_from("255") {
+    Result::Ok(n) => println(f"Parsed: {n}"),
+    Result::Err(ParseError::OutOfRange) => println("Number too large"),
+    Result::Err(ParseError::InvalidFormat) => println("Not a number"),
+    Result::Err(ParseError::Empty) => println("Empty string"),
+}
+\end{lstlisting}
+
+\subsection{Designing Error Types for Conversions}
+
+Good conversion error types are:
+\begin{itemize}
+    \item \textbf{Specific}: Different failure modes get different variants
+    \item \textbf{Informative}: Include context when useful
+    \item \textbf{Lightweight}: Don't allocate in the error path if possible
+\end{itemize}
+
+\begin{lstlisting}
+// Good - specific variants, no allocation
+pub enum NumericParseError {
+    Empty,
+    InvalidCharacter,
+    Overflow,
+    Underflow,
+}
+
+// Less good - loses information
+pub enum GenericError {
+    Failed,
+}
+\end{lstlisting}
+
+\subsection{Choosing the Right Conversion Trait}
+
+\begin{itemize}
+    \item Use \texttt{From}/\texttt{Into} when conversion always succeeds
+    \item Use \texttt{TryFrom}/\texttt{TryInto} when conversion can fail
+    \item Implement \texttt{From}, not \texttt{Into} (you get \texttt{Into} for free)
+    \item Never panic in \texttt{From} --- if it can fail, use \texttt{TryFrom}
+\end{itemize}
+
+
+\section{The Iterator System}
+\label{sec:iterators}
+
+Iterators provide a uniform way to traverse sequences. Implementing \texttt{Iterator} lets your type work with loops and iterator-consuming functions.
+
+\subsection{The Iterator Trait}
+
+\begin{lstlisting}
+pub trait Iterator<T> {
+    fn next(&var self) -> Option<T>
+}
+\end{lstlisting}
+
+The contract:
+\begin{itemize}
+    \item \texttt{next()} returns \texttt{Some(value)} for each element
+    \item When exhausted, returns \texttt{None}
+    \item After returning \texttt{None}, should continue returning \texttt{None}
+\end{itemize}
+
+\subsection{Creating a Custom Iterator}
+
+Let's implement an iterator for a simple range:
+
+\begin{lstlisting}
+from std::core import Iterator, Option
+
+struct RangeIter {
+    current: i32,
+    end: i32,
+}
+
+impl RangeIter {
+    pub fn new(start: i32, end: i32) -> RangeIter {
+        return RangeIter { current: start, end: end }
+    }
+}
+
+impl Iterator<i32> for RangeIter {
+    fn next(&var self) -> Option<i32> {
+        if self.current >= self.end {
+            return Option::None
+        }
+        let value = self.current
+        self.current = self.current + 1
+        return Option::Some(value)
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with RangeIter defined above)
+var iter = RangeIter::new(0, 5)
+loop {
+    match iter.next() {
+        Option::Some(n) => println(f"{n}"),
+        Option::None => break,
+    }
+}
+// Output: 0, 1, 2, 3, 4
+\end{lstlisting}
+
+\subsection{Iterating Collections}
+
+The \texttt{Iterable} trait connects collections to for-loops:
+
+\begin{lstlisting}
+pub trait Iterable<T> {
+    fn get(&self, index: u32) -> Option<T>
+    fn len(&self) -> u32
+}
+\end{lstlisting}
+
+When you write \texttt{for item in collection}, the compiler uses \texttt{len()} to determine bounds and \texttt{get()} to access each element by index.
+
+\subsubsection{Vec Iterator Example}
+
+\begin{lstlisting}
+// ... (illustrative - actual impl in stdlib)
+struct VecIter<T> {
+    vec: *Vec<T>,
+    index: u32,
+}
+
+impl<T> Iterator<T> for VecIter<T> {
+    fn next(&var self) -> Option<T> {
+        if self.index >= (*self.vec).len() {
+            return Option::None
+        }
+        let value = (*self.vec).get(self.index)
+        self.index = self.index + 1
+        return value
+    }
+}
+\end{lstlisting}
+
+\subsection{Iterator for a Linked List}
+
+Here's a more complex example --- iterating a singly-linked list:
+
+\begin{lstlisting}
+from std::core import Iterator, Option
+
+struct Node<T> {
+    value: T,
+    next: *Node<T>,
+}
+
+struct LinkedList<T> {
+    head: *Node<T>,
+    len: u32,
+}
+
+struct LinkedListIter<T> {
+    current: *Node<T>,
+}
+
+impl<T> LinkedList<T> {
+    pub fn iter(&self) -> LinkedListIter<T> {
+        return LinkedListIter { current: self.head }
+    }
+}
+
+impl<T> Iterator<T> for LinkedListIter<T> {
+    fn next(&var self) -> Option<T> {
+        if self.current == null {
+            return Option::None
+        }
+        let value = (*self.current).value
+        self.current = (*self.current).next
+        return Option::Some(value)
+    }
+}
+\end{lstlisting}
+
+\subsection{Performance Considerations}
+
+Iterators in Novus are designed for zero overhead:
+
+\begin{itemize}
+    \item Iterator structs are typically small (a pointer and an index)
+    \item \texttt{next()} calls are inlined by the optimizer
+    \item No heap allocation for iteration itself
+    \item Performance matches hand-written loops
+\end{itemize}
+
+When iterators might be slower:
+\begin{itemize}
+    \item Very tight loops where function call overhead matters
+    \item When the optimizer can't inline (rare)
+    \item Complex iterator chains (consider breaking into loops)
+\end{itemize}
+
+\subsection{Common Mistakes}
+
+\textbf{Mistake 1: Modifying the collection while iterating}
+
+\begin{lstlisting}
+// ... (illustrative - shows incorrect pattern)
+// WRONG - undefined behavior
+var vec = Vec::new()
+vec.push(1)
+vec.push(2)
+vec.push(3)
+
+var iter = vec.iter()
+loop {
+    match iter.next() {
+        Option::Some(n) => {
+            if n == 2 {
+                vec.push(4)  // BUG: modifying while iterating!
+            }
+        },
+        Option::None => break,
+    }
+}
+\end{lstlisting}
+
+\textbf{Mistake 2: Using an exhausted iterator}
+
+\begin{lstlisting}
+// ... (illustrative - shows incorrect pattern)
+var iter = vec.iter()
+// Consume all elements
+loop {
+    match iter.next() {
+        Option::Some(_) => {},
+        Option::None => break,
+    }
+}
+
+// This won't iterate anything - iterator is exhausted
+loop {
+    match iter.next() {
+        Option::Some(n) => println(f"{n}"),  // Never reached
+        Option::None => break,
+    }
+}
+\end{lstlisting}
+
+Create a new iterator if you need to iterate again.
+
+
+\section{Numeric Traits}
+\label{sec:numeric-traits}
+
+These traits enable generic programming over numeric types --- essential for math libraries and algorithms.
+
+\subsection{Zero and One}
+
+\begin{lstlisting}
+pub trait Zero {
+    fn zero() -> Self
+    fn is_zero(&self) -> bool
+}
+
+pub trait One {
+    fn one() -> Self
+}
+\end{lstlisting}
+
+These represent the additive and multiplicative identity elements.
+
+\subsubsection{Implementations for Primitive Types}
+
+All numeric primitives implement these traits:
+
+\begin{lstlisting}
+// ... (implemented in std::core)
+impl Zero for i32 {
+    fn zero() -> i32 { return 0i32 }
+    fn is_zero(&self) -> bool { return *self == 0i32 }
+}
+
+impl One for i32 {
+    fn one() -> i32 { return 1i32 }
+}
+\end{lstlisting}
+
+\subsection{Writing Generic Numeric Functions}
+
+\begin{lstlisting}
+from std::core import Zero, One, Add, Mul
+
+fn sum<T>(items: *T, count: u32) -> T where T: Zero + Add {
+    var total = T::zero()
+    for i in 0..count {
+        total = total + *(items + i)
+    }
+    return total
+}
+
+fn product<T>(items: *T, count: u32) -> T where T: One + Mul {
+    var result = T::one()
+    for i in 0..count {
+        result = result * *(items + i)
+    }
+    return result
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with sum and product defined above)
+let numbers = [1, 2, 3, 4, 5]
+let total = sum(&numbers[0], 5)      // 15
+let prod = product(&numbers[0], 5)   // 120
+\end{lstlisting}
+
+\subsection{Bounded --- Min and Max Values}
+
+\begin{lstlisting}
+pub trait Bounded {
+    fn min_value() -> Self
+    fn max_value() -> Self
+}
+\end{lstlisting}
+
+\subsubsection{Bounds for Novus Numeric Types}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lrr}
+\hline
+\textbf{Type} & \textbf{min\_value()} & \textbf{max\_value()} \\
+\hline
+\texttt{i8} & $-128$ & $127$ \\
+\texttt{i16} & $-32{,}768$ & $32{,}767$ \\
+\texttt{i32} & $-2{,}147{,}483{,}648$ & $2{,}147{,}483{,}647$ \\
+\texttt{u8} & $0$ & $255$ \\
+\texttt{u16} & $0$ & $65{,}535$ \\
+\texttt{u32} & $0$ & $4{,}294{,}967{,}295$ \\
+\hline
+\end{tabular}
+\caption{Numeric Type Bounds}
+\end{table}
+
+\subsection{Practical Use: Saturating Arithmetic}
+
+Saturating arithmetic clamps at bounds instead of overflowing:
+
+\begin{lstlisting}
+// ... (illustrative - generic numeric functions)
+from std::core import Add, Bounded, PartialOrd
+
+fn saturating_add<T>(a: T, b: T) -> T where T: Add + Bounded + PartialOrd {
+    let result = a + b
+    // Check for overflow: if result wrapped around
+    if result.lt(&a) {
+        return T::max_value()
+    }
+    return result
+}
+
+fn clamp<T>(value: T, min: T, max: T) -> T where T: PartialOrd {
+    if value.lt(&min) { return min }
+    if value.gt(&max) { return max }
+    return value
+}
+\end{lstlisting}
+
+\subsection{Fixed-Point and Bounded}
+
+Fixed-point types also implement \texttt{Bounded}:
+
+\begin{lstlisting}
+// ... (illustrative - actual values depend on representation)
+impl Bounded for fixed32 {
+    fn min_value() -> fixed32 {
+        // -32768.0 in 16.16 format
+        return fixed32_from_raw(-2147483648i32)
+    }
+    fn max_value() -> fixed32 {
+        // 32767.99998... in 16.16 format
+        return fixed32_from_raw(2147483647i32)
+    }
+}
+\end{lstlisting}
+
+
+\section{Reference Traits}
+\label{sec:reference-traits}
+
+\texttt{AsRef} and \texttt{AsMut} enable functions to accept multiple types that can be ``viewed as'' a common type.
+
+\subsection{AsRef --- Cheap Reference Conversion}
+
+\begin{lstlisting}
+pub trait AsRef<T> {
+    fn as_ref(&self) -> T
+}
+\end{lstlisting}
+
+Note: In Novus, \texttt{AsRef} returns \texttt{T} directly (typically a slice or reference type), not \texttt{\&T}.
+
+\subsection{Designing Flexible APIs}
+
+Without \texttt{AsRef}:
+
+\begin{lstlisting}
+// Inflexible - only accepts Str
+fn count_lines(s: Str) -> u32 {
+    var count: u32 = 0
+    for c in s.bytes() {
+        if c == '\n' {
+            count = count + 1
+        }
+    }
+    return count
+}
+\end{lstlisting}
+
+With \texttt{AsRef}:
+
+\begin{lstlisting}
+// Flexible - accepts String, Str, or anything AsRef<Str>
+fn count_lines<S>(s: &S) -> u32 where S: AsRef<Str> {
+    let str_view = s.as_ref()
+    var count: u32 = 0
+    // ... count newlines
+    return count
+}
+\end{lstlisting}
+
+\subsection{AsMut --- Mutable View Conversion}
+
+\begin{lstlisting}
+pub trait AsMut<T> {
+    fn as_mut(&var self) -> T
+}
+\end{lstlisting}
+
+Use when your function needs to modify the underlying data.
+
+\subsection{Standard Library Usage}
+
+Many stdlib functions use \texttt{AsRef} for flexibility:
+
+\begin{lstlisting}
+// ... (illustrative - file opening API)
+pub fn open<P>(path: &P, mode: u32) -> Result<FileHandle, DosError>
+    where P: AsRef<Str>
+{
+    let path_str = path.as_ref()
+    // ... open the file using path_str
+}
+\end{lstlisting}
+
+Callers benefit:
+
+\begin{lstlisting}
+// Works with string literal (Str)
+let f1 = open(&"config.txt", MODE_OLDFILE)
+
+// Works with owned String
+var path = String::new()
+path.push_str("data/file.dat")
+let f2 = open(&path, MODE_OLDFILE)
+\end{lstlisting}
+
+\subsection{When Not to Use AsRef}
+
+\begin{itemize}
+    \item When you need ownership (use \texttt{Into} instead)
+    \item When the conversion is expensive (AsRef should be cheap)
+    \item When it makes the API confusing (simpler is sometimes better)
+\end{itemize}
+
+
+\section{Advanced Generics}
+\label{sec:advanced-generics}
+
+This section covers more sophisticated generic patterns.
+
+\subsection{Multiple Trait Bounds}
+
+Use \texttt{+} to require multiple traits:
+
+\begin{lstlisting}
+fn debug_and_hash<T>(value: &T) -> u32 where T: Debug + Hash {
+    println(value.debug_string())
+    return value.hash()
+}
+\end{lstlisting}
+
+\subsection{Multiple Type Parameters}
+
+\begin{lstlisting}
+// ... (illustrative - multiple generic parameters)
+fn convert_and_store<T, U>(input: T, storage: &var Vec<U>) where T: Into<U> {
+    let converted: U = input.into()
+    storage.push(converted)
+}
+\end{lstlisting}
+
+\subsection{Where Clauses on Structs}
+
+Constrain which types can instantiate a generic struct:
+
+\begin{lstlisting}
+// ... (illustrative - where clause on struct)
+struct SortedVec<T> where T: Ord {
+    items: Vec<T>,
+}
+
+impl<T> SortedVec<T> where T: Ord {
+    pub fn new() -> Option<SortedVec<T>> {
+        match Vec::new() {
+            Option::Some(v) => {
+                return Option::Some(SortedVec { items: v })
+            },
+            Option::None => return Option::None
+        }
+    }
+
+    pub fn insert(&var self, value: T) {
+        // Find insertion point to maintain sorted order
+        var idx: u32 = 0
+        for i in 0..self.items.len() {
+            match self.items.get(i) {
+                Option::Some(item) => {
+                    if item.cmp(&value) > 0 {
+                        break
+                    }
+                },
+                Option::None => break,
+            }
+            idx = i + 1
+        }
+        self.items.insert(idx, value)
+    }
+}
+\end{lstlisting}
+
+\subsection{Generic Implementations}
+
+Implement traits generically for families of types:
+
+\begin{lstlisting}
+// ... (illustrative - Display for all Option<T> where T: Display)
+impl<T> Display for Option<T> where T: Display {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        match *self {
+            Option::Some(ref v) => {
+                f.write_str("Some(")
+                v.fmt(f)
+                f.write_str(")")
+            },
+            Option::None => {
+                f.write_str("None")
+            },
+        }
+        return true
+    }
+}
+\end{lstlisting}
+
+\subsection{Bounds on Individual Methods}
+
+Add bounds to specific methods rather than the entire impl:
+
+\begin{lstlisting}
+// ... (illustrative - method-level where clause)
+impl<T> Vec<T> {
+    // Available for all Vec<T>
+    pub fn len(&self) -> u32 {
+        return self.length
+    }
+
+    // Only available when T: Eq
+    pub fn contains(&self, value: &T) -> bool where T: Eq {
+        for i in 0..self.len() {
+            match self.get(i) {
+                Option::Some(item) => {
+                    if item.eq(value) {
+                        return true
+                    }
+                },
+                Option::None => {},
+            }
+        }
+        return false
+    }
+}
+\end{lstlisting}
+
+\subsection{Const Generic Parameters}
+
+For compile-time size parameters:
+
+\begin{lstlisting}
+struct FixedBuffer<const N: u32> {
+    data: [u8; N],
+    len: u32,
+}
+
+impl<const N: u32> FixedBuffer<N> {
+    pub fn new() -> FixedBuffer<N> {
+        return FixedBuffer {
+            data: [0u8; N],
+            len: 0,
+        }
+    }
+
+    pub fn capacity(&self) -> u32 {
+        return N
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with FixedBuffer defined above)
+let small = FixedBuffer::<64>::new()   // 64-byte buffer
+let large = FixedBuffer::<1024>::new() // 1KB buffer
+\end{lstlisting}
+
+\subsection{Monomorphization}
+
+Generics in Novus are monomorphized --- the compiler generates specialized code for each concrete type used:
+
+\begin{lstlisting}
+fn max<T>(a: T, b: T) -> T where T: Ord {
+    if a.cmp(&b) > 0 { return a }
+    return b
+}
+
+// When you call:
+let m1 = max(10i32, 20i32)
+let m2 = max(5u8, 3u8)
+
+// Compiler generates:
+// fn max_i32(a: i32, b: i32) -> i32 { ... }
+// fn max_u8(a: u8, b: u8) -> u8 { ... }
+\end{lstlisting}
+
+\textbf{Benefits:} Zero runtime overhead, full optimization.
+
+\textbf{Cost:} Code size increases with each instantiation. On memory-constrained 68k systems, be mindful of instantiating generics with many different types.
+
+
+\section{Common Patterns and Idioms}
+\label{sec:patterns}
+
+These patterns appear frequently in well-designed Novus code.
+
+\subsection{The Newtype Pattern}
+
+Wrap a type to give it distinct identity:
+
+\begin{lstlisting}
+struct Pixels {
+    value: i32,
+}
+
+struct Bytes {
+    value: u32,
+}
+
+struct ChipAddr {
+    ptr: *u8,
+}
+
+impl Pixels {
+    pub fn new(value: i32) -> Pixels {
+        return Pixels { value: value }
+    }
+
+    pub fn get(&self) -> i32 {
+        return self.value
+    }
+}
+\end{lstlisting}
+
+Now the compiler prevents mixing them up:
+
+\begin{lstlisting}
+// ... (with Pixels and Bytes defined above)
+fn allocate_pixels(width: Pixels, height: Pixels) -> *u8 {
+    // ...
+}
+
+fn allocate_bytes(size: Bytes) -> *u8 {
+    // ...
+}
+
+let w = Pixels::new(320)
+let h = Pixels::new(256)
+let size = Bytes { value: 1024 }
+
+allocate_pixels(w, h)    // OK
+allocate_pixels(w, size) // Compile error! Bytes != Pixels
+\end{lstlisting}
+
+\subsubsection{Newtype for Chip RAM Addresses}
+
+On the Amiga, chip RAM and fast RAM serve different purposes. Use newtypes to prevent bugs:
+
+\begin{lstlisting}
+struct ChipPtr {
+    ptr: *u8,  // Pointer to chip RAM
+}
+
+struct FastPtr {
+    ptr: *u8,  // Pointer to fast RAM
+}
+
+fn setup_copper_list(gfx: ChipPtr) {
+    // Copper can only access chip RAM
+    // Type system ensures we can't accidentally pass fast RAM
+}
+
+fn cache_data(buf: FastPtr) {
+    // Data caching works best in fast RAM
+}
+\end{lstlisting}
+
+\subsection{Extension Traits}
+
+Add methods to types you don't own:
+
+\begin{lstlisting}
+trait I32Ext {
+    fn is_even(&self) -> bool
+    fn is_positive(&self) -> bool
+    fn abs(&self) -> i32
+}
+
+impl I32Ext for i32 {
+    fn is_even(&self) -> bool {
+        return *self % 2 == 0
+    }
+
+    fn is_positive(&self) -> bool {
+        return *self > 0
+    }
+
+    fn abs(&self) -> i32 {
+        if *self < 0 { return -*self }
+        return *self
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with I32Ext defined above)
+let x: i32 = -42
+if x.is_even() {
+    println("Even!")
+}
+let positive = x.abs()  // 42
+\end{lstlisting}
+
+\subsection{Blanket Implementations}
+
+Implement a trait for all types matching a bound:
+
+\begin{lstlisting}
+// ... (illustrative - every Display type gets to_string)
+impl<T> ToString for T where T: Display {
+    fn to_string(&self) -> Option<String> {
+        match String::new() {
+            Option::Some(var s) => {
+                // Use Display to write to string
+                self.fmt(&var s.as_formatter())
+                return Option::Some(s)
+            },
+            Option::None => return Option::None,
+        }
+    }
+}
+\end{lstlisting}
+
+Now any type implementing \texttt{Display} automatically gets \texttt{to\_string()}.
+
+\subsection{Marker Traits}
+
+Traits with no methods, used to mark capabilities:
+
+\begin{lstlisting}
+pub trait Copy {}
+\end{lstlisting}
+
+The \texttt{Copy} marker tells the compiler a type can be implicitly copied (bitwise) rather than moved. Primitives like \texttt{i32}, \texttt{u8}, and \texttt{bool} are \texttt{Copy}.
+
+\subsection{The Builder Pattern}
+
+For complex object construction:
+
+\begin{lstlisting}
+struct WindowConfig {
+    title: *u8,
+    width: u32,
+    height: u32,
+    borderless: bool,
+}
+
+struct WindowBuilder {
+    config: WindowConfig,
+}
+
+impl WindowBuilder {
+    pub fn new() -> WindowBuilder {
+        return WindowBuilder {
+            config: WindowConfig {
+                title: "Untitled",
+                width: 320,
+                height: 256,
+                borderless: false,
+            }
+        }
+    }
+
+    @chain
+    pub fn title(&var self, t: *u8) {
+        self.config.title = t
+    }
+
+    @chain
+    pub fn size(&var self, w: u32, h: u32) {
+        self.config.width = w
+        self.config.height = h
+    }
+
+    @chain
+    pub fn borderless(&var self) {
+        self.config.borderless = true
+    }
+
+    pub fn build(&self) -> Result<WindowHandle, IntuitionError> {
+        // ... create the window
+    }
+}
+\end{lstlisting}
+
+Usage:
+
+\begin{lstlisting}
+// ... (with WindowBuilder defined above)
+var builder = WindowBuilder::new()
+let window = builder
+    .title("My App")
+    .size(640, 480)
+    .borderless()
+    .build()?
+\end{lstlisting}
+
+\subsection{The Handle Pattern}
+
+Wrap OS resources with RAII cleanup:
+
+\begin{lstlisting}
+struct FileHandle {
+    lock: *FileLock,
+}
+
+impl FileHandle {
+    pub fn open(path: *u8, mode: i32) -> Result<FileHandle, DosError> {
+        let lock = Lock(path, mode)
+        if lock == null {
+            return Result::Err(dos_last_error())
+        }
+        return Result::Ok(FileHandle { lock: lock })
+    }
+}
+
+impl Drop for FileHandle {
+    fn drop(&var self) {
+        if self.lock != null {
+            UnLock(self.lock)
+            self.lock = null
+        }
+    }
+}
+\end{lstlisting}
+
+The file is automatically closed when the \texttt{FileHandle} goes out of scope.
+
+
+\section{Summary}
+
+This chapter covered advanced trait and generic features:
+
+\begin{itemize}
+    \item \textbf{Operator traits} --- \texttt{Add}, \texttt{Sub}, \texttt{Mul}, \texttt{Div}, \texttt{Rem}, \texttt{Neg}, \texttt{Index}, \texttt{IndexMut}
+    \item \textbf{Comparison traits} --- \texttt{Eq}, \texttt{PartialOrd}, \texttt{Ord}
+    \item \textbf{Conversion traits} --- \texttt{From}, \texttt{Into}, \texttt{TryFrom}, \texttt{TryInto}
+    \item \textbf{Iterator traits} --- \texttt{Iterator}, \texttt{Iterable}
+    \item \textbf{Numeric traits} --- \texttt{Zero}, \texttt{One}, \texttt{Bounded}
+    \item \textbf{Reference traits} --- \texttt{AsRef}, \texttt{AsMut}
+    \item \textbf{Advanced generics} --- multiple bounds, where clauses, const generics
+    \item \textbf{Common patterns} --- newtype, extension traits, blanket implementations, builder, handle
+\end{itemize}
+
+Traits are the foundation of generic programming in Novus. Master them, and you'll write code that is both flexible and efficient --- code worthy of the Amiga.
