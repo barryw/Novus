@@ -59,3 +59,9 @@ vendor/vbcc/bin/.build_complete
 
 # Linker map files
 *.map
+
+# Release artifacts (built by scripts/release.sh)
+release/
+
+# Published binaries
+publish/
