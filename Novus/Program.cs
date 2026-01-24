@@ -142,7 +142,7 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
@@ -153,6 +153,7 @@ class Program
                 (CleanOptions options) => Task.FromResult(Commands.CleanCommand.Run(options)),
                 (TestOptions options) => Commands.TestCommand.Run(options),
                 (BenchOptions options) => Commands.BenchCommand.Run(options),
+                (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
                 errors => Task.FromResult(1)
             );
     }
