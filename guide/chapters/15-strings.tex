@@ -1,0 +1,919 @@
+\chapter{Strings}
+\label{chap:strings}
+
+The \texttt{std::strings} module provides a comprehensive string handling system designed for Amiga development. It offers both borrowed views (zero-copy) and owned strings (heap-allocated), plus AmigaDOS-specific types like BCPL strings.
+
+\section{Overview}
+
+Novus provides multiple string types for different use cases:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\textbf{Type} & \textbf{Size} & \textbf{Allocation} & \textbf{Use Case} \\
+\hline
+\texttt{Str} & 8 bytes & None (view) & Parameters, slices \\
+\texttt{String} & 12 bytes & Heap (Vec) & Building, ownership \\
+\texttt{NameString} & 36 bytes & Stack (32 chars) & Short names \\
+\texttt{GadgetString} & 132 bytes & Stack (128 chars) & UI text buffers \\
+\texttt{PathString} & 260 bytes & Stack (256 chars) & File paths \\
+\texttt{StringBuilder} & 12 bytes & Heap & Efficient concatenation \\
+\texttt{BStr} & 4 bytes & Heap (BCPL) & AmigaDOS interop \\
+\end{tabular}
+\caption{String types and their characteristics}
+\end{table}
+
+\begin{notebox}
+All Novus strings are Latin-1 (ISO-8859-1) encoded, matching AmigaOS conventions. ASCII is a subset of Latin-1, so ASCII text works naturally. UTF-8 support may be added in future versions.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Str --- Borrowed String Slice}
+\label{sec:str}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Str} is a ``fat pointer'' containing a pointer and length. It does NOT own the data---it's just a view into existing memory. This makes it extremely efficient for passing strings to functions.
+
+\begin{lstlisting}
+from std::strings::core import Str
+
+fn greet(name: Str) {
+    // name is just a view - no allocation, no copy
+    print_str(name)
+}
+
+fn main() {
+    // Create Str from C string literal
+    match Str::from_cstr("Hello, World!") {
+        Option::Some(s) => greet(s),
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+\subsection{Creating Str Values}
+
+\begin{lstlisting}
+// From null-terminated C string (scans for length)
+let s1 = Str::from_cstr("Hello")?
+
+// From raw pointer and known length (unsafe - must be valid)
+let s2 = Str::from_raw(ptr, 5)
+\end{lstlisting}
+
+\begin{warningbox}
+\texttt{Str::from\_raw()} does not validate the pointer. The caller must ensure \texttt{ptr} points to valid memory of at least \texttt{len} bytes.
+\end{warningbox}
+
+\subsection{Basic Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{len()} & \texttt{u32} & Length in bytes \\
+\texttt{is\_empty()} & \texttt{bool} & Check if length is zero \\
+\texttt{as\_ptr()} & \texttt{*u8} & Get raw pointer \\
+\texttt{get(idx)} & \texttt{Option<u8>} & Get byte at index \\
+\texttt{as\_cstr()} & \texttt{*u8} & Get C string pointer \\
+\end{tabular}
+\caption{\texttt{Str} basic methods}
+\end{table}
+
+\subsection{Slicing}
+
+Create substrings without copying:
+
+\begin{lstlisting}
+let text = Str::from_cstr("Hello, World!")?
+
+// Slice with start and end indices
+let hello = text.slice(0, 5)?    // "Hello"
+let world = text.slice(7, 12)?   // "World"
+
+// Slice from index to end
+let rest = text.slice_from(7)?   // "World!"
+
+// Slice from start to index
+let prefix = text.slice_to(5)?   // "Hello"
+\end{lstlisting}
+
+\begin{notebox}
+Slicing returns \texttt{Result<Str, StringError>} with bounds checking. The slice is a view into the original data---no allocation occurs.
+\end{notebox}
+
+\subsection{Comparison}
+
+\begin{lstlisting}
+let a = Str::from_cstr("hello")?
+let b = Str::from_cstr("HELLO")?
+let c = Str::from_cstr("hello")?
+
+// Exact equality
+if a.equals(c) {
+    // true - same bytes
+}
+
+// Case-insensitive equality
+if a.eq_ignore_case(b) {
+    // true - ignores ASCII case
+}
+
+// Lexicographic comparison (returns i32: <0, 0, or >0)
+let cmp = a.compare(b)  // negative (lowercase < uppercase in ASCII)
+\end{lstlisting}
+
+\begin{comingfromc}
+On 68020+, \texttt{equals()} uses optimized inline assembly with \texttt{cmpm.l} for $\sim$4x speedup on strings $\geq$ 8 bytes. The compiler automatically uses byte-by-byte comparison on 68000/68010.
+\end{comingfromc}
+
+\subsection{Searching}
+
+\begin{lstlisting}
+let text = Str::from_cstr("Hello, World!")?
+
+// Check prefix/suffix
+if text.starts_with(Str::from_cstr("Hello")?) {
+    // true
+}
+if text.ends_with(Str::from_cstr("!")?) {
+    // true
+}
+
+// Case-insensitive prefix check
+if text.starts_with_ignore_case(Str::from_cstr("HELLO")?) {
+    // true
+}
+
+// Find substring
+match text.find(Str::from_cstr("World")?) {
+    Option::Some(idx) => {},  // idx == 7
+    Option::None => {}
+}
+
+// Check if contains substring
+if text.contains(Str::from_cstr(",")?) {
+    // true
+}
+
+// Find single byte
+match text.find_byte($2C) {  // ','
+    Option::Some(idx) => {},  // idx == 5
+    Option::None => {}
+}
+
+// Find last occurrence of byte
+match text.rfind_byte($6F) {  // 'o'
+    Option::Some(idx) => {},  // idx == 8 (second 'o')
+    Option::None => {}
+}
+\end{lstlisting}
+
+\subsection{Trimming}
+
+\begin{lstlisting}
+let padded = Str::from_cstr("  hello  ")?
+
+let trimmed = padded.trim()        // "hello"
+let left = padded.trim_start()     // "hello  "
+let right = padded.trim_end()      // "  hello"
+\end{lstlisting}
+
+Trimming removes ASCII whitespace: space (\texttt{\$20}), tab (\texttt{\$09}), LF (\texttt{\$0A}), and CR (\texttt{\$0D}).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{String --- Owned Heap String}
+\label{sec:string-type}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{String} is a heap-allocated, growable, mutable string backed by \texttt{Vec<u8>}. Use it when you need to build strings dynamically or own string data.
+
+\begin{lstlisting}
+from std::strings::core import String, Str
+
+fn build_greeting(name: Str) -> Result<String, StringError> {
+    var greeting = String::new()
+    greeting.push_str(Str::from_cstr("Hello, ")?)?
+    greeting.push_str(name)?
+    greeting.push_byte($21)?  // '!'
+    return Result::Ok(greeting)
+}
+\end{lstlisting}
+
+\subsection{Creating Strings}
+
+\begin{lstlisting}
+// Empty string (no allocation until first push)
+var s1 = String::new()
+
+// Pre-allocated capacity
+var s2 = String::with_capacity(256)?
+
+// From Str (allocates and copies)
+let s3 = String::new_from_str(Str::from_cstr("Hello")?)?
+\end{lstlisting}
+
+\subsection{Core Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{push\_str(s)} & \texttt{Result<(), StringError>} & Append Str \\
+\texttt{push\_byte(b)} & \texttt{Result<(), StringError>} & Append single byte \\
+\texttt{len()} & \texttt{u32} & Current length \\
+\texttt{capacity()} & \texttt{u32} & Current capacity \\
+\texttt{is\_empty()} & \texttt{bool} & Check if empty \\
+\texttt{clear()} & \texttt{()} & Clear contents (keep capacity) \\
+\texttt{reserve(n)} & \texttt{Result<(), StringError>} & Reserve additional bytes \\
+\texttt{as\_str()} & \texttt{Str} & Borrow as Str slice \\
+\texttt{as\_ptr()} & \texttt{*u8} & Get raw pointer \\
+\texttt{as\_mut\_ptr()} & \texttt{*u8} & Get mutable pointer \\
+\end{tabular}
+\caption{\texttt{String} method summary}
+\end{table}
+
+\subsection{Memory Management}
+
+\texttt{String} implements the \texttt{Drop} trait for automatic cleanup:
+
+\begin{lstlisting}
+fn process() -> Result<(), StringError> {
+    var message = String::with_capacity(100)?
+    message.push_str(Str::from_cstr("Processing...")?)?
+
+    // ... use message ...
+
+    return Result::Ok(())
+}  // message.drop() called automatically
+\end{lstlisting}
+
+\subsection{Converting Between Types}
+
+\begin{lstlisting}
+// Str -> String (allocates)
+let owned = str_slice.to_string()?
+
+// String -> Str (borrows)
+let borrowed = owned.as_str()
+
+// Both implement AsRef<Str>
+fn accepts_str<T: AsRef<Str>>(s: T) {
+    let slice: Str = s.as_ref()
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Fixed-Size Strings}
+\label{sec:fixed-strings}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For embedded systems work, heap allocation can be expensive or unpredictable. Novus provides stack-allocated fixed-size strings for common use cases.
+
+\subsection{NameString (32 bytes)}
+
+For short identifiers, variable names, and labels:
+
+\begin{lstlisting}
+from std::strings::core import NameString, Str
+
+var name = NameString::new()
+name.push_str(Str::from_cstr("Player1")?)?
+
+if name.len() < name.capacity() {
+    name.push_byte($31)?  // '1'
+}
+
+let slice: Str = name.as_str()
+\end{lstlisting}
+
+\subsection{GadgetString (128 bytes)}
+
+For Intuition gadget text buffers and UI strings:
+
+\begin{lstlisting}
+from std::strings::core import GadgetString, Str
+
+var button_text = GadgetString::new()
+button_text.push_str(Str::from_cstr("Click Here")?)?
+
+// Use for gadget creation
+let label_ptr: *u8 = button_text.as_mut_ptr()
+\end{lstlisting}
+
+\subsection{PathString (256 bytes)}
+
+For AmigaDOS file paths (max path length is typically 256 bytes):
+
+\begin{lstlisting}
+from std::strings::core import PathString, Str
+
+var path = PathString::new()
+path.push_str(Str::from_cstr("Work:Projects/")?)?
+path.push_str(Str::from_cstr("MyApp/main.novus")?)?
+
+// Get as Str for DOS functions
+let path_slice: Str = path.as_str()
+\end{lstlisting}
+
+\begin{tipbox}
+Fixed strings return \texttt{Result::Err(StringError::TooLong)} if you exceed their capacity. Always check the result or use \texttt{capacity()} to verify space.
+\end{tipbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{StringBuilder --- Efficient Construction}
+\label{sec:stringbuilder}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{StringBuilder} provides efficient string construction with built-in formatting methods for numbers:
+
+\begin{lstlisting}
+from std::strings::core import StringBuilder, Str
+
+fn format_status(x: i32, y: i32, health: u32) -> Result<String, StringError> {
+    var sb = StringBuilder::new()?
+
+    sb.push_str(Str::from_cstr("Position: (")?)?
+    sb.push_i32(x)?
+    sb.push_str(Str::from_cstr(", ")?)?
+    sb.push_i32(y)?
+    sb.push_str(Str::from_cstr(") Health: ")?)?
+    sb.push_u32(health)?
+
+    return Result::Ok(sb.build())
+}
+\end{lstlisting}
+
+\subsection{Formatting Methods}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Parameter} & \textbf{Description} \\
+\hline
+\texttt{push\_str(s)} & \texttt{Str} & Append string \\
+\texttt{push\_byte(b)} & \texttt{u8} & Append single byte \\
+\texttt{push\_char(c)} & \texttt{u8} & Append character (alias) \\
+\texttt{push\_i32(n)} & \texttt{i32} & Format signed integer \\
+\texttt{push\_u32(n)} & \texttt{u32} & Format unsigned integer \\
+\texttt{push\_hex(n)} & \texttt{u32} & Format as lowercase hex \\
+\texttt{push\_hex\_upper(n)} & \texttt{u32} & Format as uppercase hex \\
+\texttt{push\_bool(b)} & \texttt{bool} & Format as ``true''/``false'' \\
+\end{tabular}
+\caption{\texttt{StringBuilder} formatting methods}
+\end{table}
+
+\begin{lstlisting}
+var sb = StringBuilder::new()?
+
+sb.push_str(Str::from_cstr("Address: $")?)?
+sb.push_hex_upper(0xDFF000)?  // "DFF000"
+
+sb.push_str(Str::from_cstr(" Active: ")?)?
+sb.push_bool(true)?           // "true"
+
+let result: String = sb.build()
+// "Address: $DFF000 Active: true"
+\end{lstlisting}
+
+\begin{notebox}
+\texttt{StringBuilder::new()} pre-allocates 256 bytes. Use \texttt{with\_capacity(n)} if you know you need more or less.
+\end{notebox}
+
+\begin{warningbox}
+\texttt{StringBuilder::build()} \textbf{consumes} the builder---you cannot use the builder after calling \texttt{build()}. The \texttt{consuming} keyword in the signature enforces this at compile time.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{BStr --- BCPL Strings for AmigaDOS}
+\label{sec:bstr}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+AmigaDOS uses BCPL-style strings for many operations. These have a length byte prefix and use ``BPTR'' addressing (address divided by 4).
+
+\begin{lstlisting}
+from std::strings::core import BStr, Str
+
+fn dos_example() -> Result<(), StringError> {
+    // Create BCPL string from Str
+    let bstr = BStr::new_from_str(Str::from_cstr("Work:Projects")?)?
+
+    // Get BPTR for DOS functions
+    let bptr: u32 = bstr.as_bptr()
+
+    // Get actual memory address
+    let ptr: *u8 = bstr.as_ptr()
+
+    // Get length
+    let len: u32 = bstr.len()
+
+    // View as Str (excludes length byte)
+    let slice: Str = bstr.as_str()
+
+    return Result::Ok(())
+}  // bstr automatically freed via Drop
+\end{lstlisting}
+
+\begin{warningbox}
+BCPL strings have a maximum length of 255 bytes (stored in a single byte). \texttt{BStr::new\_from\_str()} returns \texttt{Err(StringError::TooLong)} if the input exceeds this limit.
+\end{warningbox}
+
+\subsection{BCPL String Format}
+
+\begin{lstlisting}
+// Memory layout of BStr for "Hello" (5 bytes)
+// Address 0x1000: [05][H][e][l][l][o]
+//                  ^-- length byte
+// BPTR = 0x1000 / 4 = 0x400
+\end{lstlisting}
+
+\begin{comingfromc}
+In C, you'd manage BPTR conversion manually:
+\begin{lstlisting}[language=C]
+BPTR bptr = MKBADDR(str);  // str / 4
+char *str = BADDR(bptr);   // bptr * 4
+\end{lstlisting}
+\texttt{BStr} handles this automatically and provides RAII cleanup.
+\end{comingfromc}
+
+\begin{notebox}
+\texttt{BStr} has a \texttt{free()} method for explicit cleanup, but this is \textbf{deprecated}. Prefer letting the \texttt{Drop} trait handle cleanup automatically when the \texttt{BStr} goes out of scope.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{String Parsing}
+\label{sec:string-parsing}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Str} provides methods to parse common types from string representations:
+
+\subsection{Integer Parsing}
+
+\begin{lstlisting}
+let decimal = Str::from_cstr("12345")?
+let negative = Str::from_cstr("-42")?
+let hex1 = Str::from_cstr("0xFF00")?
+let hex2 = Str::from_cstr("ff00")?
+
+// Parse unsigned
+match decimal.parse_u32() {
+    Result::Ok(n) => {},    // n == 12345
+    Result::Err(e) => {}
+}
+
+// Parse signed (handles - and +)
+match negative.parse_i32() {
+    Result::Ok(n) => {},    // n == -42
+    Result::Err(e) => {}
+}
+
+// Parse hex (case-insensitive, optional 0x prefix)
+match hex1.parse_hex() {
+    Result::Ok(n) => {},    // n == 0xFF00
+    Result::Err(e) => {}
+}
+\end{lstlisting}
+
+\subsection{Boolean Parsing}
+
+\begin{lstlisting}
+// Accepts: "true", "false", "1", "0" (case-insensitive)
+let t1 = Str::from_cstr("true")?.parse_bool()?   // true
+let t2 = Str::from_cstr("TRUE")?.parse_bool()?   // true
+let t3 = Str::from_cstr("1")?.parse_bool()?      // true
+let f1 = Str::from_cstr("false")?.parse_bool()?  // false
+let f2 = Str::from_cstr("0")?.parse_bool()?      // false
+\end{lstlisting}
+
+\subsection{Parse Errors}
+
+\begin{lstlisting}
+pub enum ParseError {
+    Empty,              // Empty string
+    InvalidChar(u32),   // Bad character at index
+    Overflow,           // Value too large
+    Underflow,          // Value too small (signed)
+    InvalidBool,        // Not "true"/"false"/"1"/"0"
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Splitting and Iteration}
+\label{sec:string-iteration}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Splitting by Delimiter}
+
+\begin{lstlisting}
+let csv = Str::from_cstr("apple,banana,cherry")?
+
+var iter = csv.split($2C)  // ',' = 0x2C
+while true {
+    match iter.next() {
+        Option::Some(part) => {
+            // part: "apple", "banana", "cherry"
+            print_str(part)
+        },
+        Option::None => break
+    }
+}
+\end{lstlisting}
+
+\subsection{Splitting into Lines}
+
+\begin{lstlisting}
+let text = Str::from_cstr("Line 1\nLine 2\r\nLine 3")?
+
+var lines = text.lines()
+while true {
+    match lines.next() {
+        Option::Some(line) => {
+            // Handles LF, CR, and CRLF
+            print_str(line)
+        },
+        Option::None => break
+    }
+}
+\end{lstlisting}
+
+\begin{notebox}
+\texttt{SplitIter} and \texttt{LinesIter} implement the \texttt{Iterator<Str>} trait, returning \texttt{Str} slices into the original string. No allocation occurs during iteration.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{String Transformations}
+\label{sec:string-transform}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Case Conversion}
+
+\begin{lstlisting}
+let text = Str::from_cstr("Hello, World!")?
+
+// Convert to uppercase (allocates new String)
+let upper: String = text.to_uppercase()?
+// "HELLO, WORLD!"
+
+// Convert to lowercase (allocates new String)
+let lower: String = text.to_lowercase()?
+// "hello, world!"
+\end{lstlisting}
+
+Case conversion handles both ASCII (A-Z, a-z) and Latin-1 extended characters (\`{a}-\"{o}, \`{A}-\"{O}, etc.).
+
+\subsection{Search and Replace}
+
+\begin{lstlisting}
+let text = Str::from_cstr("foo bar foo baz foo")?
+
+// Replace all occurrences
+let result: String = text.replace(
+    Str::from_cstr("foo")?,
+    Str::from_cstr("qux")?
+)?
+// "qux bar qux baz qux"
+\end{lstlisting}
+
+\subsection{Joining Strings}
+
+\begin{lstlisting}
+from std::strings::core import str_join, Str
+
+// Join array of Str with separator
+var parts: [Str; 3] = [
+    Str::from_cstr("SYS")?,
+    Str::from_cstr("C")?,
+    Str::from_cstr("Dir")?
+]
+
+let path: String = str_join((*Str)&parts, 3, Str::from_cstr("/")?)?
+// "SYS/C/Dir"
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{AmigaDOS Path Manipulation}
+\label{sec:path-manipulation}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Novus provides AmigaDOS-aware path utilities:
+
+\begin{lstlisting}
+from std::strings::core import (
+    path_split, path_filename, path_dirname,
+    path_is_absolute, path_join, PathComponents
+)
+
+let full_path = Str::from_cstr("Work:Projects/Novus/main.novus")?
+
+// Split into components
+let parts: PathComponents = path_split(full_path)
+// parts.volume = Some("Work:")
+// parts.directory = Some("Projects/Novus")
+// parts.filename = Some("main.novus")
+
+// Get just the filename
+match path_filename(full_path) {
+    Option::Some(name) => {},  // "main.novus"
+    Option::None => {}
+}
+
+// Get the directory
+match path_dirname(full_path) {
+    Option::Some(dir) => {},   // "Work:Projects/Novus"
+    Option::None => {}
+}
+
+// Check if absolute (has volume)
+if path_is_absolute(full_path) {
+    // true - has "Work:"
+}
+
+// Join paths (handles separators correctly)
+let joined: String = path_join(
+    Str::from_cstr("Work:Projects")?,
+    Str::from_cstr("NewApp")?
+)?
+// "Work:Projects/NewApp"
+\end{lstlisting}
+
+\begin{tipbox}
+AmigaDOS path conventions:
+\begin{itemize}
+    \item Volume names end with colon: \texttt{SYS:}, \texttt{Work:}, \texttt{RAM:}
+    \item Directories separated by forward slash: \texttt{/}
+    \item Parent directory: \texttt{/} (just slash, unlike \texttt{..} in Unix)
+    \item Current directory: \texttt{""} (empty string)
+\end{itemize}
+\end{tipbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Display and Debug Traits}
+\label{sec:display-debug}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+The \texttt{std::strings::format} module provides traits for formatted output:
+
+\begin{lstlisting}
+from std::strings::format import Display, Debug, Formatter
+
+// Display - user-facing output
+pub trait Display {
+    fn fmt(&self, f: &var Formatter) -> bool
+}
+
+// Debug - programmer-facing debug output
+pub trait Debug {
+    fn fmt(&self, f: &var Formatter) -> bool
+}
+\end{lstlisting}
+
+\subsection{Implementing Display}
+
+\begin{lstlisting}
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Display for Point {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        if !f.write_char($28) { return false }  // '('
+        // ... write x ...
+        if !f.write_str(Str::from_cstr(", ")?) { return false }
+        // ... write y ...
+        if !f.write_char($29) { return false }  // ')'
+        return true
+    }
+}
+\end{lstlisting}
+
+\subsection{Primitive Implementations}
+
+All primitive types implement \texttt{Display} and \texttt{Debug}:
+
+\begin{itemize}
+    \item \texttt{i8}, \texttt{i16}, \texttt{i32}, \texttt{i64} --- decimal representation
+    \item \texttt{u8}, \texttt{u16}, \texttt{u32}, \texttt{u64} --- decimal representation
+    \item \texttt{bool} --- ``true'' or ``false''
+    \item \texttt{Str}, \texttt{String} --- string contents
+\end{itemize}
+
+\subsection{StackFormatter}
+
+For zero-allocation formatting (e.g., in interrupt handlers), use \texttt{StackFormatter}:
+
+\begin{lstlisting}
+from std::strings::format import StackFormatter
+
+fn format_on_stack() {
+    var fmt = StackFormatter::new()  // 256-byte stack buffer
+
+    fmt.write_str(Str::from_cstr("Value: ")?)
+    // ... format values ...
+
+    let result: Str = fmt.as_str()
+    // WARNING: result only valid while fmt is in scope!
+}
+\end{lstlisting}
+
+\begin{warningbox}
+\texttt{StackFormatter::as\_str()} returns a \texttt{Str} pointing into the formatter's stack buffer. This reference becomes invalid when the formatter goes out of scope.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Error Types}
+\label{sec:string-errors}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{StringError}
+
+\begin{lstlisting}
+pub enum StringError {
+    OutOfBounds(u32, u32),  // (index, length)
+    InvalidUtf8(u32),       // position
+    AllocationFailed,
+    TooLong(u32),           // length (for BStr: max 255)
+    InvalidFormat,
+    NullPointer,
+}
+\end{lstlisting}
+
+\subsection{ParseError}
+
+\begin{lstlisting}
+pub enum ParseError {
+    Empty,              // Empty string
+    InvalidChar(u32),   // position of bad character
+    Overflow,           // Value too large
+    Underflow,          // Value too small (signed)
+    InvalidBool,        // Not true/false/1/0
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{C FFI Functions}
+\label{sec:string-ffi}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+For low-level operations and C library interop, standard C string functions are available:
+
+\begin{lstlisting}
+extern fn strlen(str: *u8) -> u32
+extern fn strcmp(s1: *u8, s2: *u8) -> i32
+extern fn strncmp(s1: *u8, s2: *u8, n: u32) -> i32
+extern fn strcpy(dest: *u8, src: *u8) -> *u8
+extern fn strncpy(dest: *u8, src: *u8, n: u32) -> *u8
+extern fn strcat(dest: *u8, src: *u8) -> *u8
+extern fn strncat(dest: *u8, src: *u8, n: u32) -> *u8
+extern fn strchr(str: *u8, ch: i32) -> *u8
+extern fn strrchr(str: *u8, ch: i32) -> *u8
+extern fn strstr(haystack: *u8, needle: *u8) -> *u8
+extern fn memmove(dest: *u8, src: *u8, n: u32) -> *u8
+extern fn memset(ptr: *u8, value: i32, n: u32) -> *u8
+extern fn memcmp(s1: *u8, s2: *u8, n: u32) -> i32
+\end{lstlisting}
+
+\begin{warningbox}
+These functions provide no bounds checking and can easily cause buffer overflows. Prefer the safe Novus string types whenever possible. These are provided for performance-critical code and C library interop.
+\end{warningbox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Trait Implementations}
+\label{sec:string-traits}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+String types implement several important traits for idiomatic usage:
+
+\subsection{Clone}
+
+\texttt{String} and \texttt{StringBuilder} implement \texttt{Clone} for deep copying:
+
+\begin{lstlisting}
+let original = String::new_from_str(Str::from_cstr("Hello")?)?
+
+// Clone creates a complete copy (allocates new memory)
+match original.clone() {
+    Option::Some(copy) => {
+        // copy is independent of original
+    },
+    Option::None => {
+        // allocation failed
+    }
+}
+\end{lstlisting}
+
+\subsection{Write}
+
+\texttt{String}, \texttt{StringBuilder}, and \texttt{PathString} implement the \texttt{Write} trait for generic output:
+
+\begin{lstlisting}
+from std::core import Write
+
+// Generic function that writes to any Write implementor
+fn write_header<W: Write>(w: &var W) -> bool {
+    return w.write_bytes("Header: ", 8)
+}
+
+var s = String::new()
+write_header(&s)  // Works with String
+
+var sb = StringBuilder::new()?
+write_header(&sb)  // Works with StringBuilder
+
+var path = PathString::new()
+write_header(&path)  // Works with PathString
+\end{lstlisting}
+
+\subsection{Ord (Ordering)}
+
+\texttt{Str} implements \texttt{Ord} for lexicographic comparison:
+
+\begin{lstlisting}
+let a = Str::from_cstr("apple")?
+let b = Str::from_cstr("banana")?
+
+// Compare using Ord trait
+let cmp: i32 = a.cmp(&b)
+if cmp < 0 {
+    // a comes before b lexicographically
+}
+\end{lstlisting}
+
+\subsection{Iterator}
+
+\texttt{SplitIter} and \texttt{LinesIter} implement \texttt{Iterator<Str>}:
+
+\begin{lstlisting}
+let csv = Str::from_cstr("a,b,c")?
+
+// Iterators implement Iterator<Str> trait
+var iter = csv.split($2C)  // ','
+
+// Can use in while loops with next()
+while true {
+    match iter.next() {
+        Option::Some(part) => process(part),
+        Option::None => break
+    }
+}
+\end{lstlisting}
+
+\subsection{AsRef}
+
+Multiple types implement \texttt{AsRef<Str>} for unified string access:
+
+\begin{lstlisting}
+// These all implement AsRef<Str>:
+// - Str (identity)
+// - String
+// - StringBuilder
+// - PathString
+
+fn print_anything<T: AsRef<Str>>(s: T) {
+    let slice: Str = s.as_ref()
+    // Now use slice...
+}
+
+let owned = String::new_from_str(Str::from_cstr("Hello")?)?
+print_anything(owned)  // Works!
+
+let path = PathString::new()
+print_anything(path)   // Also works!
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Performance Summary}
+\label{sec:string-performance}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccc}
+\textbf{Operation} & \textbf{Str} & \textbf{String} & \textbf{FixedString} \\
+\hline
+Create empty & --- & O(1) & O(1) \\
+Create from C str & O(n) & O(n) & O(n) \\
+Length & O(1) & O(1) & O(1) \\
+Index byte & O(1) & O(1) & O(1) \\
+Slice & O(1) & --- & --- \\
+Push byte & --- & O(1)* & O(1) \\
+Push string & --- & O(n)* & O(n) \\
+Equals & O(n) & O(n) & O(n) \\
+Find substring & O(nm) & O(nm) & O(nm) \\
+\end{tabular}
+\caption{String operation complexity. *Amortized for String (may reallocate).}
+\end{table}
+
+\begin{comingfromc}
+Key differences from C strings:
+\begin{itemize}
+    \item \textbf{Length stored}: No need to scan for null terminator
+    \item \textbf{Bounds checking}: Index operations return \texttt{Option}
+    \item \textbf{RAII cleanup}: \texttt{String} and \texttt{BStr} free memory automatically
+    \item \textbf{Safe slicing}: No pointer arithmetic errors
+    \item \textbf{Type safety}: \texttt{Str} vs \texttt{String} distinguish borrowed vs owned
+\end{itemize}
+\end{comingfromc}
