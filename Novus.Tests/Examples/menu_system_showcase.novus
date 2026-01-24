@@ -1,0 +1,446 @@
+// menu_system_showcase.novus
+// Showcase demonstrating Chapter 6 Control Flow concepts:
+// - if/else conditionals
+// - while and forever loops
+// - for loops (C-style and range-based)
+// - match expressions with enums
+// - break, continue, and labeled loops
+// - defer for cleanup
+// - try operator for error propagation
+// - Postfix conditionals (if/unless)
+
+from std::io import println
+from std::core import Option, Result
+
+// ============================================================================
+// Menu Item Types
+// ============================================================================
+
+enum MenuItem {
+    Action { id: i32, label: *u8, shortcut: u8 },
+    Submenu { id: i32, label: *u8, child_count: i32 },
+    Separator,
+    Toggle { id: i32, label: *u8, enabled: bool },
+}
+
+impl MenuItem {
+    pub fn is_selectable(&self) -> bool {
+        match *self {
+            MenuItem::Separator => false,
+            _ => true,
+        }
+    }
+
+    pub fn get_id(&self) -> i32 {
+        match *self {
+            MenuItem::Action { id, .. } => id,
+            MenuItem::Submenu { id, .. } => id,
+            MenuItem::Toggle { id, .. } => id,
+            MenuItem::Separator => -1,
+        }
+    }
+}
+
+// ============================================================================
+// Menu Result Types
+// ============================================================================
+
+enum MenuResult {
+    Selected(i32),
+    Toggled { id: i32, new_state: bool },
+    Cancelled,
+    Timeout,
+    Error(i32),
+}
+
+enum NavigationAction {
+    MoveUp,
+    MoveDown,
+    Select,
+    Cancel,
+    None,
+}
+
+// ============================================================================
+// Menu State
+// ============================================================================
+
+struct MenuState {
+    current_index: i32,
+    is_open: bool,
+    highlight_flash: bool,
+    timeout_ticks: i32,
+}
+
+impl MenuState {
+    pub fn new() -> MenuState {
+        return MenuState {
+            current_index: 0,
+            is_open: false,
+            highlight_flash: false,
+            timeout_ticks: 0,
+        }
+    }
+
+    pub fn reset(&var self) {
+        self.current_index = 0
+        self.is_open = false
+        self.highlight_flash = false
+        self.timeout_ticks = 0
+    }
+}
+
+// ============================================================================
+// Simulated Hardware/Input Functions
+// ============================================================================
+
+// Simulated keyboard state for demo
+var g_key_sequence: [u8; 10] = ['j', 'j', 'k', '\r', 27, 0, 0, 0, 0, 0]
+var g_key_index: i32 = 0
+
+fn simulate_read_key() -> Option<u8> {
+    if g_key_index >= 10 {
+        return Option::None
+    }
+    let key = g_key_sequence[g_key_index]
+    if key == 0 {
+        return Option::None
+    }
+    g_key_index++
+    return Option::Some(key)
+}
+
+fn simulate_delay(ticks: i32) {
+    // Simulated delay - in real code this would call Delay()
+}
+
+// ============================================================================
+// Navigation Logic
+// ============================================================================
+
+fn key_to_action(key: u8) -> NavigationAction {
+    // Demonstrate match on integer literals
+    match key {
+        'j' => NavigationAction::MoveDown,
+        'k' => NavigationAction::MoveUp,
+        '\r' => NavigationAction::Select,
+        ' ' => NavigationAction::Select,
+        27 => NavigationAction::Cancel,    // Escape
+        'q' => NavigationAction::Cancel,
+        _ => NavigationAction::None,
+    }
+}
+
+fn find_next_selectable(items: &[MenuItem; 6], current: i32, direction: i32) -> i32 {
+    let item_count = 6
+    var pos = current
+
+    // C-style for loop for bounded iteration
+    for var attempts = 0; attempts < item_count; attempts++ {
+        pos += direction
+
+        // Wrap around
+        if pos < 0 {
+            pos = item_count - 1
+        } else if pos >= item_count {
+            pos = 0
+        }
+
+        // Check if selectable
+        if items[pos].is_selectable() {
+            return pos
+        }
+    }
+
+    // No selectable item found, return original
+    return current
+}
+
+// ============================================================================
+// Menu Drawing (Simulated)
+// ============================================================================
+
+fn draw_menu(items: &[MenuItem; 6], state: &MenuState) {
+    println("\n--- Menu ---")
+
+    // Range-based for loop
+    for i in 0..6 {
+        let is_selected = (i32)i == state.current_index
+
+        // Postfix conditional for selection marker
+        let marker = if is_selected { ">" } else { " " }
+
+        match items[i] {
+            MenuItem::Action { label, shortcut, .. } => {
+                println(f"{marker} {(i32)i}: Action - shortcut: {shortcut}")
+            },
+            MenuItem::Submenu { label, child_count, .. } => {
+                println(f"{marker} {(i32)i}: Submenu ({child_count} items)")
+            },
+            MenuItem::Separator => {
+                println("  ────────────")
+            },
+            MenuItem::Toggle { label, enabled, .. } => {
+                let toggle_state = if enabled { "[X]" } else { "[ ]" }
+                println(f"{marker} {(i32)i}: Toggle {toggle_state}")
+            },
+        }
+    }
+
+    println("------------")
+}
+
+// ============================================================================
+// Menu Processing
+// ============================================================================
+
+fn process_selection(item: &MenuItem) -> MenuResult {
+    match *item {
+        MenuItem::Action { id, .. } => {
+            println(f"  -> Action {id} selected!")
+            return MenuResult::Selected(id)
+        },
+        MenuItem::Submenu { id, .. } => {
+            println(f"  -> Opening submenu {id}...")
+            // In real code, this would recurse into submenu
+            return MenuResult::Selected(id)
+        },
+        MenuItem::Toggle { id, enabled, .. } => {
+            let new_state = !enabled
+            println(f"  -> Toggled {id} to {new_state}")
+            return MenuResult::Toggled { id, new_state }
+        },
+        MenuItem::Separator => {
+            // Should never happen due to is_selectable check
+            return MenuResult::Error(-1)
+        },
+    }
+}
+
+fn run_menu(items: &[MenuItem; 6], state: &var MenuState) -> MenuResult {
+    const MAX_TIMEOUT: i32 = 100
+    state.is_open = true
+
+    // Defer cleanup - runs when function exits
+    defer {
+        state.is_open = false
+        println("  [Menu closed]")
+    }
+
+    // Find first selectable item
+    state.current_index = find_next_selectable(items, -1, 1)
+
+    // Main event loop using forever
+    forever {
+        draw_menu(items, state)
+
+        // Check timeout
+        if state.timeout_ticks > MAX_TIMEOUT {
+            println("  [Timeout!]")
+            return MenuResult::Timeout
+        }
+
+        // Get input
+        let key_opt = simulate_read_key()
+
+        match key_opt {
+            Option::Some(key) => {
+                state.timeout_ticks = 0  // Reset timeout
+
+                let action = key_to_action(key)
+
+                match action {
+                    NavigationAction::MoveUp => {
+                        state.current_index = find_next_selectable(
+                            items, state.current_index, -1
+                        )
+                        println(f"  [Moved to {state.current_index}]")
+                    },
+                    NavigationAction::MoveDown => {
+                        state.current_index = find_next_selectable(
+                            items, state.current_index, 1
+                        )
+                        println(f"  [Moved to {state.current_index}]")
+                    },
+                    NavigationAction::Select => {
+                        let item = &items[state.current_index]
+                        return process_selection(item)
+                    },
+                    NavigationAction::Cancel => {
+                        println("  [Cancelled]")
+                        return MenuResult::Cancelled
+                    },
+                    NavigationAction::None => {
+                        // Unknown key, continue
+                        println(f"  [Unknown key: {key}]")
+                    },
+                }
+            },
+            Option::None => {
+                state.timeout_ticks++
+                simulate_delay(1)
+
+                // Use continue to skip to next iteration
+                continue
+            },
+        }
+    }
+}
+
+// ============================================================================
+// Labeled Loop Demo
+// ============================================================================
+
+fn search_2d_array() -> (i32, i32) {
+    let grid: [[i32; 4]; 3] = [
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+        [9, 10, 42, 12],  // Target: 42 at (2, 2)
+    ]
+
+    const TARGET: i32 = 42
+
+    // Labeled outer loop
+    outer: for row in 0..3 {
+        for col in 0..4 {
+            if grid[row][col] == TARGET {
+                println(f"Found {TARGET} at ({(i32)row}, {(i32)col})")
+                break outer  // Exit both loops
+            }
+        }
+    }
+
+    return (2, 2)
+}
+
+// ============================================================================
+// Let-Else Pattern Demo
+// ============================================================================
+
+enum ParseResult {
+    Value(i32),
+    Empty,
+    Invalid,
+}
+
+fn parse_menu_id(input: *u8) -> Result<i32, i32> {
+    // Simulate parsing
+    if input == null {
+        return Result::Err(-1)
+    }
+
+    // Use let-else for early exit
+    let ParseResult::Value(id) = validate_input(input) else {
+        return Result::Err(-2)
+    }
+
+    // id is now available
+    return Result::Ok(id)
+}
+
+fn validate_input(input: *u8) -> ParseResult {
+    // Simulated validation
+    return ParseResult::Value(42)
+}
+
+// ============================================================================
+// While Loop with Conditions Demo
+// ============================================================================
+
+fn count_selectable_items(items: &[MenuItem; 6]) -> i32 {
+    var count = 0
+    var i = 0
+
+    while i < 6 {
+        // Postfix unless - skip if NOT selectable
+        i++ unless items[i].is_selectable()
+
+        // Only count selectable items
+        if items[i].is_selectable() {
+            count++
+        }
+        i++
+    }
+
+    return count
+}
+
+fn find_by_shortcut(items: &[MenuItem; 6], shortcut: u8) -> Option<i32> {
+    var i = 0
+
+    while i < 6 {
+        match items[i] {
+            MenuItem::Action { id, shortcut: s, .. } => {
+                if s == shortcut {
+                    return Option::Some(id)
+                }
+            },
+            _ => { }
+        }
+        i++
+    }
+
+    return Option::None
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+fn main() -> i32 {
+    println("=== Menu System Control Flow Showcase ===\n")
+
+    // Build menu items
+    let items: [MenuItem; 6] = [
+        MenuItem::Action { id: 1, label: "New", shortcut: 'n' },
+        MenuItem::Action { id: 2, label: "Open", shortcut: 'o' },
+        MenuItem::Separator,
+        MenuItem::Toggle { id: 3, label: "Auto-save", enabled: true },
+        MenuItem::Submenu { id: 4, label: "Recent", child_count: 5 },
+        MenuItem::Action { id: 5, label: "Quit", shortcut: 'q' },
+    ]
+
+    // Create menu state
+    var state = MenuState::new()
+
+    // Demo 1: Labeled loop search
+    println("--- Demo: Labeled Loop Search ---")
+    let (row, col) = search_2d_array()
+    println(f"Search returned: ({row}, {col})\n")
+
+    // Demo 2: Run the menu
+    println("--- Demo: Interactive Menu ---")
+    println("Simulating key sequence: j, j, k, Enter, Escape\n")
+
+    let result = run_menu(&items, &var state)
+
+    // Handle result with match
+    println("\n--- Final Result ---")
+    match result {
+        MenuResult::Selected(id) => {
+            println(f"Menu returned: Selected item {id}")
+        },
+        MenuResult::Toggled { id, new_state } => {
+            println(f"Menu returned: Toggled item {id} to {new_state}")
+        },
+        MenuResult::Cancelled => {
+            println("Menu returned: Cancelled by user")
+        },
+        MenuResult::Timeout => {
+            println("Menu returned: Timed out")
+        },
+        MenuResult::Error(code) => {
+            println(f"Menu returned: Error {code}")
+        },
+    }
+
+    // Demo 3: Find by shortcut
+    println("\n--- Demo: Find by Shortcut ---")
+    match find_by_shortcut(&items, 'o') {
+        Option::Some(id) => println(f"Shortcut 'o' maps to item {id}"),
+        Option::None => println("Shortcut 'o' not found"),
+    }
+
+    println("\n=== Showcase Complete ===")
+    return 0
+}

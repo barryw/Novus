@@ -1,7 +1,16 @@
 \chapter{Control Flow}
 \label{ch:control-flow}
 
+\begin{quote}
+\textit{``The art of programming is the art of organizing complexity.''}\\
+---Edsger W. Dijkstra
+\end{quote}
+
+\vspace{1em}
+
 Control flow constructs determine the order in which statements are executed. Novus provides a comprehensive set of control flow mechanisms, from basic conditionals to sophisticated pattern matching. This chapter covers all the ways you can direct program execution in Novus.
+
+Programs aren't just sequences of statements---they branch, loop, and make decisions. Novus provides control flow constructs that are both familiar to C programmers and enhanced with modern safety features. Pattern matching ensures you handle all cases; labeled loops prevent off-by-one errors in nested structures; and the try operator makes error handling concise without hiding the control flow.
 
 \section{Conditional Statements}
 \label{sec:conditionals}
@@ -26,6 +35,20 @@ fn classify_temperature(temp: i32) -> i32 {
 \end{lstlisting}
 
 The condition must be of type \texttt{bool}. Unlike C, Novus does not implicitly convert integers to booleans---you must use explicit comparisons.
+
+\begin{comingfromc}
+C allows any integer or pointer as a condition. Novus requires explicit boolean expressions:
+
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\texttt{if (ptr)} & \texttt{if ptr != null} \\
+\texttt{if (count)} & \texttt{if count != 0} \\
+\texttt{while (n--)} & \texttt{while n > 0 \{ n--; ... \}} \\
+\texttt{if (flags \& MASK)} & \texttt{if (flags \& MASK) != 0} \\
+\end{tabular}
+
+This catches common bugs like \texttt{if (x = 10)} (assignment instead of comparison), which would silently succeed in C but is a type error in Novus.
+\end{comingfromc}
 
 \textbf{Blocks are required.} Unlike C, the braces around the body are mandatory, even for single statements:
 
@@ -185,6 +208,61 @@ while count < 10 {
 
 The condition is evaluated before each iteration. If the condition is initially false, the body never executes.
 
+\begin{comingfromc}
+Novus \texttt{while} loops work exactly like C's:
+
+\begin{tabular}{ll}
+\textbf{C} & \textbf{Novus} \\
+\texttt{while (x > 0) \{ ... \}} & \texttt{while x > 0 \{ ... \}} \\
+\texttt{do \{ ... \} while (x);} & (not supported; use \texttt{forever} + \texttt{break}) \\
+\end{tabular}
+
+Novus doesn't have \texttt{do-while} loops. Use \texttt{forever} with a conditional \texttt{break} at the end instead.
+\end{comingfromc}
+
+\subsubsection{Practical While Loop Patterns}
+
+Common patterns using \texttt{while} loops:
+
+\begin{lstlisting}
+// Wait for hardware ready with timeout
+fn wait_blitter_with_timeout(max_frames: i32) -> bool {
+    var frames = 0
+    while (custom.dmaconr & DMAF_BLTDONE) != 0 {
+        frames++
+        if frames > max_frames {
+            return false  // Timeout
+        }
+        WaitTOF()  // Wait for frame
+    }
+    return true  // Blitter finished
+}
+
+// Process a linked list
+fn count_nodes(mut head: *Node) -> i32 {
+    var count = 0
+    while head != null {
+        count++
+        head = head.next
+    }
+    return count
+}
+
+// Read until delimiter
+fn read_until_newline(buffer: *var u8, max_len: i32) -> i32 {
+    var pos = 0
+    while pos < max_len {
+        let ch = read_char()
+        if ch == '\n' || ch == 0 {
+            break
+        }
+        buffer[pos] = ch
+        pos++
+    }
+    return pos
+}
+\end{lstlisting}
+
 \begin{lstlisting}
 fn find_first_even(start: i32, max: i32) -> i32 {
     var n = start
@@ -220,6 +298,49 @@ fn wait_for_signal() -> i32 {
 \end{lstlisting}
 
 The \texttt{forever} keyword is clearer than \texttt{while true} and signals the programmer's intent that the loop is designed to be exited via control flow rather than a condition becoming false.
+
+\subsubsection{Common Forever Loop Patterns}
+
+\begin{lstlisting}
+// Game main loop
+fn game_loop() {
+    forever {
+        handle_input()
+        update_game_state()
+        render_frame()
+
+        if game_over {
+            break
+        }
+
+        WaitTOF()  // Sync to vertical blank
+    }
+}
+
+// State machine
+fn run_state_machine() -> i32 {
+    var state = State::Init
+
+    forever {
+        state = match state {
+            State::Init => {
+                initialize()
+                State::Running
+            },
+            State::Running => {
+                if process_tick() {
+                    State::Running
+                } else {
+                    State::Finished
+                }
+            },
+            State::Finished => break,
+        }
+    }
+
+    return 0
+}
+\end{lstlisting}
 
 This is particularly useful for event loops in Amiga applications:
 
@@ -919,6 +1040,424 @@ fn process_files() -> i32 {
     // handle closed here by defer
 }
 \end{lstlisting}
+
+\section{Common Control Flow Patterns}
+\label{sec:control-flow-patterns}
+
+This section presents idiomatic patterns that combine multiple control flow constructs effectively.
+
+\subsection{Early Exit Pattern}
+
+Use early returns to handle error cases first, keeping the happy path unindented:
+
+\begin{lstlisting}
+fn process_data(input: *Data) -> Result<i32, Error> {
+    // Guard clauses first
+    if input == null {
+        return Result::Err(Error::NullInput)
+    }
+
+    if input.size == 0 {
+        return Result::Err(Error::EmptyData)
+    }
+
+    if input.size > MAX_SIZE {
+        return Result::Err(Error::TooLarge)
+    }
+
+    // Happy path - not nested inside if/else
+    let result = compute(input)?
+    return Result::Ok(result)
+}
+\end{lstlisting}
+
+Compare this to the nested alternative:
+
+\begin{lstlisting}
+// Less readable - deep nesting
+fn process_data_nested(input: *Data) -> Result<i32, Error> {
+    if input != null {
+        if input.size > 0 {
+            if input.size <= MAX_SIZE {
+                let result = compute(input)?
+                return Result::Ok(result)
+            } else {
+                return Result::Err(Error::TooLarge)
+            }
+        } else {
+            return Result::Err(Error::EmptyData)
+        }
+    } else {
+        return Result::Err(Error::NullInput)
+    }
+}
+\end{lstlisting}
+
+\subsection{Resource Acquisition Pattern}
+
+Acquire resources with early exit, using defer for cleanup:
+
+\begin{lstlisting}
+fn safe_window_operation() -> Result<i32, Error> {
+    // Acquire screen
+    let screen = LockPubScreen(null)
+    if screen == null {
+        return Result::Err(Error::NoScreen)
+    }
+    defer { UnlockPubScreen(null, screen) }
+
+    // Acquire visual info
+    let vi = GetVisualInfo(screen, null)
+    if vi == null {
+        return Result::Err(Error::NoVisualInfo)
+    }
+    defer { FreeVisualInfo(vi) }
+
+    // Acquire window
+    let window = OpenWindow(screen, vi)
+    if window == null {
+        return Result::Err(Error::NoWindow)
+    }
+    defer { CloseWindow(window) }
+
+    // All resources acquired - do work
+    // Any return path will properly clean up all resources
+    let result = process_window_events(window)?
+    return Result::Ok(result)
+}
+\end{lstlisting}
+
+\subsection{Retry Pattern}
+
+Retry operations with exponential backoff:
+
+\begin{lstlisting}
+fn retry_connect(addr: *u8, max_retries: i32) -> Result<*Connection, Error> {
+    var delay_ms = 100
+    var attempt = 0
+
+    while attempt < max_retries {
+        attempt++
+
+        match try_connect(addr) {
+            Result::Ok(conn) => return Result::Ok(conn),
+            Result::Err(e) => {
+                if attempt >= max_retries {
+                    return Result::Err(e)
+                }
+                // Wait before retry
+                Delay(delay_ms / 20)  // Convert to ticks
+                delay_ms *= 2  // Exponential backoff
+            }
+        }
+    }
+
+    return Result::Err(Error::MaxRetriesExceeded)
+}
+\end{lstlisting}
+
+\subsection{State Machine Pattern}
+
+Implement state machines using match:
+
+\begin{lstlisting}
+enum ParserState {
+    Start,
+    InTag,
+    InAttribute,
+    InValue,
+    Done,
+}
+
+fn parse_tag(input: *u8, len: i32) -> Result<Tag, ParseError> {
+    var state = ParserState::Start
+    var pos = 0
+
+    while pos < len {
+        let ch = input[pos]
+
+        state = match state {
+            ParserState::Start => {
+                if ch == '<' {
+                    ParserState::InTag
+                } else {
+                    return Result::Err(ParseError::ExpectedOpenTag)
+                }
+            },
+            ParserState::InTag => {
+                if ch == ' ' {
+                    ParserState::InAttribute
+                } else if ch == '>' {
+                    ParserState::Done
+                } else {
+                    ParserState::InTag  // Keep reading tag name
+                }
+            },
+            ParserState::InAttribute => {
+                if ch == '=' {
+                    ParserState::InValue
+                } else if ch == '>' {
+                    ParserState::Done
+                } else {
+                    ParserState::InAttribute
+                }
+            },
+            ParserState::InValue => {
+                if ch == ' ' {
+                    ParserState::InAttribute
+                } else if ch == '>' {
+                    ParserState::Done
+                } else {
+                    ParserState::InValue
+                }
+            },
+            ParserState::Done => break,
+        }
+
+        pos++
+    }
+
+    return build_tag(input, len)
+}
+\end{lstlisting}
+
+\subsection{Search Pattern with Multiple Collections}
+
+Search through multiple sources with early exit:
+
+\begin{lstlisting}
+fn find_resource(name: *u8) -> Option<*Resource> {
+    // Check cache first
+    if let res = cache_lookup(name) {
+        return Option::Some(res)
+    }
+
+    // Check local directory
+    if let res = local_lookup(name) {
+        cache_store(name, res)
+        return Option::Some(res)
+    }
+
+    // Check system paths
+    for i in 0u32..system_paths.len() {
+        let path = system_paths.get(i)
+        if let res = path_lookup(path, name) {
+            cache_store(name, res)
+            return Option::Some(res)
+        }
+    }
+
+    return Option::None
+}
+\end{lstlisting}
+
+\section{Showcase: Menu System}
+
+This showcase demonstrates control flow constructs in a practical menu system:
+
+\begin{lstlisting}
+// menu_system_showcase.novus
+// Demonstrates: conditionals, loops, match, defer, error handling
+
+from std::io import println
+from std::core import Result, Option
+
+// Menu item types
+enum MenuItem {
+    Action { id: i32, label: *u8 },
+    Submenu { id: i32, label: *u8, items: *MenuList },
+    Separator,
+}
+
+// Menu result from user interaction
+enum MenuResult {
+    Selected(i32),      // Item ID selected
+    Cancelled,          // User cancelled
+    Timeout,            // No selection in time
+}
+
+struct MenuState {
+    current_item: i32,
+    is_open: bool,
+    parent: Option<*MenuState>,
+}
+
+impl MenuState {
+    pub fn new() -> MenuState {
+        return MenuState {
+            current_item: 0,
+            is_open: false,
+            parent: Option::None,
+        }
+    }
+}
+
+// Process a single menu item
+fn process_menu_item(item: &MenuItem, state: &var MenuState) -> MenuResult {
+    match *item {
+        MenuItem::Action { id, label } => {
+            // Action item - return selection
+            return MenuResult::Selected(id)
+        },
+        MenuItem::Submenu { id, label, items } => {
+            // Open submenu - recursive handling
+            var sub_state = MenuState::new()
+            sub_state.parent = Option::Some(state as *MenuState)
+
+            forever {
+                let result = run_menu_loop(items, &var sub_state)
+                match result {
+                    MenuResult::Selected(sub_id) => {
+                        return MenuResult::Selected(sub_id)
+                    },
+                    MenuResult::Cancelled => {
+                        // Return to parent menu
+                        break
+                    },
+                    MenuResult::Timeout => {
+                        return MenuResult::Timeout
+                    },
+                }
+            }
+
+            // Continue in parent menu
+            return MenuResult::Cancelled
+        },
+        MenuItem::Separator => {
+            // Skip separators
+            return MenuResult::Cancelled
+        },
+    }
+}
+
+// Navigate menu with keyboard
+fn handle_menu_key(key: u8, state: &var MenuState, item_count: i32) -> Option<MenuResult> {
+    // Use match for key handling
+    match key {
+        'j' => {
+            // Move down, skip separators
+            var next = state.current_item + 1
+            while next < item_count {
+                if !is_separator(next) {
+                    state.current_item = next
+                    break
+                }
+                next++
+            }
+            return Option::None
+        },
+        'k' => {
+            // Move up, skip separators
+            var prev = state.current_item - 1
+            while prev >= 0 {
+                if !is_separator(prev) {
+                    state.current_item = prev
+                    break
+                }
+                prev--
+            }
+            return Option::None
+        },
+        '\r' => {
+            // Enter - select current
+            return Option::Some(MenuResult::Selected(state.current_item))
+        },
+        27 => {
+            // Escape - cancel
+            return Option::Some(MenuResult::Cancelled)
+        },
+        _ => {
+            // Unknown key
+            return Option::None
+        },
+    }
+}
+
+// Main menu loop
+fn run_menu_loop(items: *MenuList, state: &var MenuState) -> MenuResult {
+    var timeout_counter = 0
+    const MAX_TIMEOUT: i32 = 3000  // 30 seconds at 100 ticks/sec
+
+    state.is_open = true
+    defer {
+        state.is_open = false
+    }
+
+    forever {
+        // Draw current state
+        draw_menu(items, state)
+
+        // Wait for input with timeout
+        let key_result = wait_for_key_with_timeout(10)
+
+        match key_result {
+            Option::Some(key) => {
+                timeout_counter = 0  // Reset timeout
+
+                // Handle navigation
+                let nav_result = handle_menu_key(key, state, items.len())
+
+                if let result = nav_result {
+                    match result {
+                        MenuResult::Selected(idx) => {
+                            // Process the selected item
+                            let item = items.get(idx)
+                            return process_menu_item(item, state)
+                        },
+                        MenuResult::Cancelled => {
+                            return MenuResult::Cancelled
+                        },
+                        _ => { }
+                    }
+                }
+            },
+            Option::None => {
+                timeout_counter++
+                if timeout_counter > MAX_TIMEOUT {
+                    return MenuResult::Timeout
+                }
+            },
+        }
+    }
+}
+
+// Example usage
+fn main() -> i32 {
+    println("=== Menu System Showcase ===")
+
+    // Build a sample menu structure
+    var state = MenuState::new()
+
+    // Simulate menu interaction
+    let result = simulate_menu_interaction(&var state)
+
+    match result {
+        MenuResult::Selected(id) => {
+            println(f"Selected item: {id}")
+            return 0
+        },
+        MenuResult::Cancelled => {
+            println("Menu cancelled")
+            return 1
+        },
+        MenuResult::Timeout => {
+            println("Menu timed out")
+            return 2
+        },
+    }
+}
+\end{lstlisting}
+
+This showcase demonstrates:
+\begin{itemize}
+    \item \textbf{Match expressions} for handling enums with associated data
+    \item \textbf{Forever loops} for event-driven menu processing
+    \item \textbf{While loops} for skipping separators during navigation
+    \item \textbf{If let} for handling optional values
+    \item \textbf{Defer} for cleanup when menu closes
+    \item \textbf{Nested match} for complex input handling
+    \item \textbf{Early exit} with break and return
+\end{itemize}
 
 \section{Summary}
 \label{sec:control-flow-summary}
