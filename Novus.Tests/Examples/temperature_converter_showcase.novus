@@ -1,0 +1,313 @@
+// temperature_converter_showcase.novus
+// Showcase demonstrating Chapter 3 Language Basics concepts:
+// - Variables (let, var, const)
+// - Primitive types (integers, fixed-point, bool)
+// - Literals (decimal, hex, binary)
+// - Operators (arithmetic, comparison, logical, bitwise)
+// - References and pointers
+// - Arrays and tuples
+// - Expressions and statements
+// - Intrinsics
+
+from std::io import println
+
+// ============================================================================
+// Constants - Compile-time values
+// ============================================================================
+
+const FAHRENHEIT_OFFSET: fixed32 = 32.0
+const CELSIUS_MULTIPLIER: fixed32 = 1.8  // 9/5 = 1.8
+const KELVIN_OFFSET: fixed32 = 273.15
+const ABSOLUTE_ZERO_C: fixed32 = -273.15
+
+// Hardware-style constants (demonstrating different literal formats)
+const TEMP_SENSOR_ADDR: u32 = $DFF100    // Hex with $ prefix
+const SENSOR_ENABLE_BIT: u16 = %00000001  // Binary literal
+const SENSOR_READY_BIT: u16 = 0x0002      // Hex with 0x prefix
+const MAX_SENSORS: u32 = 8
+
+// ============================================================================
+// Temperature Scale Enum
+// ============================================================================
+
+enum Scale {
+    Celsius,
+    Fahrenheit,
+    Kelvin,
+}
+
+// ============================================================================
+// Temperature Struct
+// ============================================================================
+
+struct Temperature {
+    value: fixed32,
+    scale: Scale,
+}
+
+impl Temperature {
+    // Constructor using @zeroed intrinsic pattern
+    pub fn new(value: fixed32, scale: Scale) -> Temperature {
+        return Temperature { value, scale }
+    }
+
+    // Create from raw sensor reading (demonstrating type conversion)
+    pub fn from_raw_reading(raw: u16) -> Temperature {
+        // Sensor returns 0-1023 mapped to -40C to 125C
+        let range: fixed32 = 165.0  // 125 - (-40)
+        let offset: fixed32 = -40.0
+        let normalized: fixed32 = fixed32::from_int((i32)raw) / 1023.0
+        let celsius = normalized * range + offset
+        return Temperature::new(celsius, Scale::Celsius)
+    }
+
+    // Convert to Celsius (all conversions go through Celsius)
+    pub fn to_celsius(&self) -> fixed32 {
+        match self.scale {
+            Scale::Celsius => self.value,
+            Scale::Fahrenheit => (self.value - FAHRENHEIT_OFFSET) / CELSIUS_MULTIPLIER,
+            Scale::Kelvin => self.value - KELVIN_OFFSET,
+        }
+    }
+
+    // Convert to Fahrenheit
+    pub fn to_fahrenheit(&self) -> fixed32 {
+        let celsius = self.to_celsius()
+        return celsius * CELSIUS_MULTIPLIER + FAHRENHEIT_OFFSET
+    }
+
+    // Convert to Kelvin
+    pub fn to_kelvin(&self) -> fixed32 {
+        let celsius = self.to_celsius()
+        return celsius + KELVIN_OFFSET
+    }
+
+    // Boolean checks using comparison operators
+    pub fn is_freezing(&self) -> bool {
+        return self.to_celsius() <= 0.0
+    }
+
+    pub fn is_boiling(&self) -> bool {
+        return self.to_celsius() >= 100.0
+    }
+
+    pub fn is_comfortable(&self) -> bool {
+        let c = self.to_celsius()
+        // Logical AND operator
+        return c >= 18.0 && c <= 26.0
+    }
+
+    pub fn is_extreme(&self) -> bool {
+        let c = self.to_celsius()
+        // Logical OR operator
+        return c < -20.0 || c > 45.0
+    }
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+// Demonstrate tuple return
+fn min_max(temps: &[Temperature; 4]) -> (fixed32, fixed32) {
+    var min_c: fixed32 = 1000.0
+    var max_c: fixed32 = -1000.0
+
+    for i in 0u32..4 {
+        let c = temps[i].to_celsius()
+        if c < min_c {
+            min_c = c
+        }
+        if c > max_c {
+            max_c = c
+        }
+    }
+
+    return (min_c, max_c)
+}
+
+// Demonstrate pointer usage
+fn swap_temps(a: *var Temperature, b: *var Temperature) {
+    let temp = *a
+    *a = *b
+    *b = temp
+}
+
+// Demonstrate bitwise operations for sensor register
+fn configure_sensor(sensor_id: u32) -> u16 {
+    var config: u16 = 0
+
+    // Set enable bit
+    config |= SENSOR_ENABLE_BIT
+
+    // Set sensor ID in bits 4-6
+    config |= ((u16)(sensor_id & 0x7)) << 4
+
+    // Set high precision mode (bit 7)
+    config |= %10000000
+
+    return config
+}
+
+fn decode_sensor_config(config: u16) -> (bool, u32, bool) {
+    let enabled = (config & SENSOR_ENABLE_BIT) != 0
+    let sensor_id = (u32)((config >> 4) & 0x7)
+    let high_precision = (config & %10000000) != 0
+    return (enabled, sensor_id, high_precision)
+}
+
+// ============================================================================
+// Main Function
+// ============================================================================
+
+fn main() -> i32 {
+    println("=== Temperature Converter Showcase ===\n")
+
+    // -------------------------------------------------------------------------
+    // Variables: let (immutable) vs var (mutable)
+    // -------------------------------------------------------------------------
+    println("--- Variables ---")
+
+    let freezing_point = Temperature::new(32.0, Scale::Fahrenheit)
+    var current_temp = Temperature::new(72.0, Scale::Fahrenheit)
+
+    println(f"Freezing point: {freezing_point.to_celsius().to_int()}C")
+    println(f"Current temp: {current_temp.to_celsius().to_int()}C")
+
+    // Mutate current_temp
+    current_temp = Temperature::new(85.0, Scale::Fahrenheit)
+    println(f"Updated temp: {current_temp.to_celsius().to_int()}C\n")
+
+    // -------------------------------------------------------------------------
+    // Fixed-point arithmetic
+    // -------------------------------------------------------------------------
+    println("--- Fixed-Point Arithmetic ---")
+
+    let temp_c: fixed32 = 25.5
+    let temp_f = temp_c * CELSIUS_MULTIPLIER + FAHRENHEIT_OFFSET
+
+    println(f"25.5C = {temp_f.to_int()}F (fixed32 precision)")
+
+    // Demonstrate fixed-point precision
+    let pi_approx: fixed32 = 3.14159
+    let circle_area = pi_approx * 10.0 * 10.0  // radius = 10
+    println(f"Circle area (r=10): {circle_area.to_int()} sq units\n")
+
+    // -------------------------------------------------------------------------
+    // Boolean operations
+    // -------------------------------------------------------------------------
+    println("--- Boolean Operations ---")
+
+    let hot_day = Temperature::new(95.0, Scale::Fahrenheit)
+    let cold_day = Temperature::new(28.0, Scale::Fahrenheit)
+    let nice_day = Temperature::new(72.0, Scale::Fahrenheit)
+
+    println(f"Hot day is extreme: {hot_day.is_extreme()}")
+    println(f"Cold day is freezing: {cold_day.is_freezing()}")
+    println(f"Nice day is comfortable: {nice_day.is_comfortable()}")
+
+    // Combined boolean logic
+    let outdoor_ok = nice_day.is_comfortable() && !nice_day.is_extreme()
+    println(f"Outdoor activities OK: {outdoor_ok}\n")
+
+    // -------------------------------------------------------------------------
+    // Arrays
+    // -------------------------------------------------------------------------
+    println("--- Arrays ---")
+
+    var temps = [
+        Temperature::new(0.0, Scale::Celsius),      // Freezing
+        Temperature::new(100.0, Scale::Celsius),    // Boiling
+        Temperature::new(20.0, Scale::Celsius),     // Room temp
+        Temperature::new(-40.0, Scale::Fahrenheit), // Same in both scales!
+    ]
+
+    // Find min/max using tuple return
+    let (min_temp, max_temp) = min_max(&temps)
+    println(f"Min: {min_temp.to_int()}C, Max: {max_temp.to_int()}C")
+
+    // Demonstrate pointer usage with swap
+    println(f"Before swap: temps[0]={temps[0u32].to_celsius().to_int()}C, temps[1]={temps[1u32].to_celsius().to_int()}C")
+    swap_temps(&var temps[0u32], &var temps[1u32])
+    println(f"After swap:  temps[0]={temps[0u32].to_celsius().to_int()}C, temps[1]={temps[1u32].to_celsius().to_int()}C\n")
+
+    // -------------------------------------------------------------------------
+    // Bitwise operations (hardware register style)
+    // -------------------------------------------------------------------------
+    println("--- Bitwise Operations ---")
+
+    let sensor_config = configure_sensor(3)
+    println(f"Sensor config: ${sensor_config:04X} (binary: %{sensor_config:b})")
+
+    let (enabled, id, hi_prec) = decode_sensor_config(sensor_config)
+    println(f"  Enabled: {enabled}, ID: {id}, High Precision: {hi_prec}")
+
+    // Demonstrate bit manipulation
+    var flags: u16 = 0
+    flags |= %00000001  // Set bit 0
+    flags |= %00000100  // Set bit 2
+    flags |= %00010000  // Set bit 4
+    println(f"Flags after setting: %{flags:b}")
+
+    flags &= ~%00000100  // Clear bit 2
+    println(f"Flags after clearing bit 2: %{flags:b}")
+
+    flags ^= %00010001  // Toggle bits 0 and 4
+    println(f"Flags after toggle: %{flags:b}\n")
+
+    // -------------------------------------------------------------------------
+    // Type conversions
+    // -------------------------------------------------------------------------
+    println("--- Type Conversions ---")
+
+    let raw_reading: u16 = 512  // Mid-range sensor reading
+    let from_sensor = Temperature::from_raw_reading(raw_reading)
+    println(f"Raw reading {raw_reading} = {from_sensor.to_celsius().to_int()}C")
+
+    // Integer to fixed-point
+    let int_temp: i32 = 25
+    let fixed_temp = fixed32::from_int(int_temp)
+    println(f"Integer {int_temp} to fixed: {fixed_temp.to_int()}")
+
+    // Fixed-point to integer (truncates)
+    let precise: fixed32 = 25.9
+    let truncated = precise.to_int()
+    let rounded = precise.round()
+    println(f"Fixed {precise.to_int()}.9 -> truncated: {truncated}, rounded: {rounded}\n")
+
+    // -------------------------------------------------------------------------
+    // Increment/decrement operators
+    // -------------------------------------------------------------------------
+    println("--- Increment/Decrement ---")
+
+    var counter: i32 = 0
+    println(f"Initial: {counter}")
+
+    ++counter
+    println(f"After ++counter: {counter}")
+
+    let old_val = counter++
+    println(f"counter++ returned {old_val}, counter is now {counter}")
+
+    --counter
+    --counter
+    println(f"After two decrements: {counter}\n")
+
+    // -------------------------------------------------------------------------
+    // Using intrinsics
+    // -------------------------------------------------------------------------
+    println("--- Intrinsics ---")
+
+    let temp_size = @sizeof(Temperature)
+    println(f"sizeof(Temperature) = {temp_size} bytes")
+
+    let scale_size = @sizeof(Scale)
+    println(f"sizeof(Scale) = {scale_size} bytes")
+
+    // Create zeroed struct
+    let zeroed_temp = @zeroed(Temperature)
+    println(f"Zeroed temperature value: {zeroed_temp.value.to_int()}")
+
+    println("\n=== Showcase Complete ===")
+    return 0
+}

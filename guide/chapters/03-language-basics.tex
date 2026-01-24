@@ -10,6 +10,8 @@
 
 This chapter covers the fundamental building blocks of Novus: how to declare variables, what types are available, how literals work, and how expressions combine values. By the end, you'll understand the core syntax and be ready to write meaningful programs.
 
+Every language has its foundation---the atoms from which programs are built. In Novus, these foundations are designed with systems programming in mind: explicit types, predictable memory layout, and direct mapping to 68k machine operations. Understanding these basics thoroughly will make everything else fall into place.
+
 \section{Comments}
 
 Novus supports two comment styles:
@@ -162,6 +164,73 @@ Novus provides fixed-point arithmetic for efficient fractional math on integer h
 \end{description}
 
 Fixed-point types use native 68k integer instructions, making them dramatically faster than soft-float on systems without an FPU.
+
+\subsubsection{Fixed-Point Representation}
+
+Fixed-point numbers store fractional values by scaling integers. A \texttt{fixed16} with 8.8 format stores the value multiplied by 256:
+
+\begin{lstlisting}
+// fixed16 (8.8 format)
+let half: fixed16 = 0.5       // Stored as 128 (0.5 * 256)
+let quarter: fixed16 = 0.25   // Stored as 64 (0.25 * 256)
+let pi: fixed16 = 3.14        // Stored as ~804 (3.14 * 256)
+
+// fixed32 (16.16 format) - more precision
+let precise_pi: fixed32 = 3.14159  // Stored as 205887 (3.14159 * 65536)
+\end{lstlisting}
+
+\subsubsection{Fixed-Point Arithmetic}
+
+All standard arithmetic operations work on fixed-point types:
+
+\begin{lstlisting}
+let a: fixed32 = 2.5
+let b: fixed32 = 1.5
+
+let sum = a + b        // 4.0
+let diff = a - b       // 1.0
+let product = a * b    // 3.75
+let quotient = a / b   // 1.666...
+\end{lstlisting}
+
+The compiler automatically handles the scaling during multiplication and division, using efficient shift operations where possible.
+
+\subsubsection{Converting Between Fixed and Integer}
+
+Convert between fixed-point and integers explicitly:
+
+\begin{lstlisting}
+let f: fixed32 = 3.75
+let i: i32 = f.to_int()       // 3 (truncates)
+let rounded: i32 = f.round()  // 4 (rounds to nearest)
+
+let from_int: fixed32 = fixed32::from_int(5)  // 5.0
+\end{lstlisting}
+
+\subsubsection{When to Use Fixed-Point}
+
+Fixed-point excels in these scenarios:
+
+\begin{itemize}
+    \item \textbf{Game physics} --- Position, velocity, acceleration calculations
+    \item \textbf{Audio processing} --- Sample interpolation, volume scaling
+    \item \textbf{Graphics} --- Texture mapping, rotation, scaling
+    \item \textbf{Animation} --- Smooth movement, easing functions
+\end{itemize}
+
+\begin{comingfromc}
+C programmers often implement fixed-point manually with macros and shift operations:
+
+\begin{tabular}{ll}
+\textbf{C (manual)} & \textbf{Novus} \\
+\texttt{\#define FP\_SHIFT 16} & (built-in) \\
+\texttt{int fp\_mul(int a, int b)} & \texttt{a * b} \\
+\texttt{\{ return (a * b) >> 16; \}} & (automatic scaling) \\
+\texttt{int x = (3 << 16) / 2;} & \texttt{let x: fixed32 = 3.0 / 2.0} \\
+\end{tabular}
+
+Novus handles the bit manipulation automatically while generating identical machine code.
+\end{comingfromc}
 
 \subsection{Boolean Type}
 
@@ -411,6 +480,57 @@ let shifted_right = 16 >> 2 // 4
 
 Bitwise operations compile to single 68k instructions and execute in one or two cycles---essential for custom chip programming.
 
+\subsubsection{Practical Bitwise Examples}
+
+Bitwise operations are fundamental for Amiga programming:
+
+\begin{lstlisting}
+// Setting bits (turn ON)
+var flags: u16 = 0
+flags |= %00000001   // Set bit 0
+flags |= %00000100   // Set bit 2
+// flags is now %00000101
+
+// Clearing bits (turn OFF)
+flags &= ~%00000001  // Clear bit 0
+// flags is now %00000100
+
+// Toggling bits (flip)
+flags ^= %00001111   // Toggle bottom 4 bits
+// flags is now %00001011
+
+// Testing bits
+if (flags & %00001000) != 0 {
+    // Bit 3 is set
+}
+
+// Extracting bit fields
+let color: u16 = $0ABC
+let red = (color >> 8) & $F    // Extract bits 8-11: $A
+let green = (color >> 4) & $F  // Extract bits 4-7: $B
+let blue = color & $F          // Extract bits 0-3: $C
+\end{lstlisting}
+
+\subsubsection{Hardware Register Manipulation}
+
+Custom chip programming relies heavily on bitwise operations:
+
+\begin{lstlisting}
+// Enable DMA channels
+const DMAF_SETCLR: u16 = $8000
+const DMAF_COPPER: u16 = $0080
+const DMAF_BITPLANE: u16 = $0100
+const DMAF_BLITTER: u16 = $0040
+
+// Turn on Copper, Bitplane, and Blitter DMA
+let dmacon_value = DMAF_SETCLR | DMAF_COPPER | DMAF_BITPLANE | DMAF_BLITTER
+
+// Mask and shift for sprite position
+let x: u16 = 150
+let y: u16 = 100
+let sprite_pos = ((y & $FF) << 8) | ((x >> 1) & $FF)
+\end{lstlisting}
+
 \subsection{Compound Assignment Operators}
 
 Compound assignment combines an operation with assignment:
@@ -468,6 +588,62 @@ for j in 0..=10 {
 \end{lstlisting}
 
 Ranges are covered in detail in Chapter~\ref{ch:control-flow}.
+
+\subsection{Operator Precedence}
+
+When multiple operators appear in an expression, precedence determines evaluation order. Higher precedence operators bind more tightly:
+
+\begin{center}
+\begin{tabular}{clc}
+\textbf{Precedence} & \textbf{Operators} & \textbf{Associativity} \\
+\hline
+1 (highest) & \texttt{()} \texttt{[]} \texttt{.} \texttt{->} & Left-to-right \\
+2 & \texttt{!} \texttt{\textasciitilde} \texttt{++} \texttt{--} \texttt{*} \texttt{\&} (unary) & Right-to-left \\
+3 & \texttt{*} \texttt{/} \texttt{\%} (binary) & Left-to-right \\
+4 & \texttt{+} \texttt{-} (binary) & Left-to-right \\
+5 & \texttt{<<} \texttt{>>} & Left-to-right \\
+6 & \texttt{<} \texttt{<=} \texttt{>} \texttt{>=} & Left-to-right \\
+7 & \texttt{==} \texttt{!=} & Left-to-right \\
+8 & \texttt{\&} (bitwise AND) & Left-to-right \\
+9 & \texttt{\textasciicircum} (bitwise XOR) & Left-to-right \\
+10 & \texttt{|} (bitwise OR) & Left-to-right \\
+11 & \texttt{\&\&} & Left-to-right \\
+12 & \texttt{||} & Left-to-right \\
+13 & \texttt{..} \texttt{..=} & Left-to-right \\
+14 (lowest) & \texttt{=} \texttt{+=} \texttt{-=} etc. & Right-to-left \\
+\end{tabular}
+\end{center}
+
+\subsubsection{Precedence Examples}
+
+\begin{lstlisting}
+// Multiplication before addition
+let x = 2 + 3 * 4      // 14, not 20
+
+// Shifts before comparison
+let y = 1 << 4 > 10    // true (16 > 10)
+
+// Bitwise AND before OR
+let z = 1 | 2 & 3      // 3 (2 & 3 = 2, then 1 | 2 = 3)
+
+// Use parentheses for clarity
+let clear = (flags & mask) == 0
+let combined = (a | b) & (c | d)
+\end{lstlisting}
+
+\begin{comingfromc}
+Novus uses the same operator precedence as C, so your intuition transfers directly. The common gotcha in both languages is that bitwise operators have lower precedence than comparison:
+
+\begin{lstlisting}
+// WRONG in both C and Novus:
+if flags & MASK == 0 { ... }  // Parsed as: flags & (MASK == 0)
+
+// CORRECT:
+if (flags & MASK) == 0 { ... }
+\end{lstlisting}
+
+Always parenthesize bitwise operations in conditions.
+\end{comingfromc}
 
 \section{Type Conversions}
 
@@ -546,6 +722,21 @@ if ptr == null {
 
 Raw pointers are essential for FFI and hardware access, but prefer references when possible.
 
+\begin{comingfromc}
+Novus distinguishes between references (guaranteed non-null) and pointers (nullable):
+
+\begin{tabular}{lll}
+\textbf{C} & \textbf{Novus} & \textbf{Meaning} \\
+\hline
+\texttt{int *p} & \texttt{*i32} & Nullable pointer \\
+(no equivalent) & \texttt{\&i32} & Non-null reference \\
+\texttt{int * const p} & \texttt{let p: *i32} & Immutable pointer \\
+\texttt{const int *p} & \texttt{*i32} (read-only) & Pointer to const \\
+\end{tabular}
+
+References eliminate an entire class of null pointer bugs by making non-null the default.
+\end{comingfromc}
+
 \subsection{Dereferencing}
 
 Use \texttt{*} to dereference a pointer or reference:
@@ -557,6 +748,59 @@ let value = *ref_x  // 10
 \end{lstlisting}
 
 For pointers, dereferencing an invalid or null pointer is undefined behavior.
+
+\subsection{Pointer Arithmetic}
+
+Pointer arithmetic works like C---offsets are scaled by the pointed-to type's size:
+
+\begin{lstlisting}
+let arr = [10, 20, 30, 40, 50]
+let ptr: *i32 = &arr[0u32]
+
+let first = *ptr           // 10
+let second = *(ptr + 1)    // 20 (advances by sizeof(i32) = 4 bytes)
+let third = *(ptr + 2)     // 30
+\end{lstlisting}
+
+Pointer subtraction returns the number of elements between two pointers:
+
+\begin{lstlisting}
+let start: *i32 = &arr[0u32]
+let end: *i32 = &arr[4u32]
+let count = end - start    // 4 elements
+\end{lstlisting}
+
+\subsection{Auto-Dereferencing}
+
+Novus automatically dereferences pointers when accessing struct fields:
+
+\begin{lstlisting}
+struct Point { x: i32, y: i32 }
+
+let p = Point { x: 10, y: 20 }
+let ptr: *Point = &p
+
+// Both work identically:
+let x1 = (*ptr).x  // Explicit dereference
+let x2 = ptr.x     // Auto-dereference (preferred)
+\end{lstlisting}
+
+This convenience applies to method calls as well---you don't need \texttt{(*ptr).method()}.
+
+\subsection{Address-of Operator}
+
+The \texttt{\&} operator takes the address of a value:
+
+\begin{lstlisting}
+var x: i32 = 42
+let ptr: *i32 = &x     // Address of x
+
+// For mutable access:
+let mut_ptr: *var i32 = &var x
+*mut_ptr = 100         // Modifies x
+\end{lstlisting}
+
+You cannot take the address of a temporary value or literal---only named variables and array elements have stable addresses.
 
 \section{Arrays}
 
@@ -689,6 +933,16 @@ Additionally, \texttt{@drop\_in\_place(expr)} can be used to explicitly drop a v
 
 These intrinsics are resolved at compile time and have no runtime overhead.
 
+\subsection{Available Intrinsics}
+
+\begin{description}
+    \item[\texttt{@sizeof(T)}] Returns the size of type \texttt{T} in bytes
+    \item[\texttt{@zeroed(T)}] Creates a zero-initialized value of type \texttt{T}
+    \item[\texttt{@drop\_in\_place(expr)}] Explicitly drops a value before scope end
+    \item[\texttt{@unreachable()}] Marks code as unreachable (optimization hint)
+    \item[\texttt{@type\_name(T)}] Returns the name of type \texttt{T} as a string
+\end{description}
+
 \subsection{Common Uses}
 
 The \texttt{@sizeof} intrinsic is essential for memory allocation:
@@ -707,6 +961,237 @@ impl Vec<T> {
     }
 }
 \end{lstlisting}
+
+\section{Best Practices}
+
+Following these guidelines will help you write clear, efficient Novus code:
+
+\subsection{Variable Declarations}
+
+\begin{itemize}
+    \item \textbf{Prefer \texttt{let} over \texttt{var}} --- Immutability is the default; only use \texttt{var} when you need to reassign.
+    \item \textbf{Use meaningful names} --- \texttt{player\_count} is better than \texttt{pc} or \texttt{x}.
+    \item \textbf{Initialize at declaration} --- Avoid declaring variables without immediate initialization.
+    \item \textbf{Use \texttt{const} for true constants} --- Screen dimensions, hardware addresses, magic numbers.
+\end{itemize}
+
+\begin{lstlisting}
+// Good
+const SCREEN_WIDTH: u16 = 320
+let player_count = get_player_count()
+var current_score = 0u32
+
+// Avoid
+var x = 0       // What is x?
+let BUFFER_SIZE = 1024  // Should be const
+\end{lstlisting}
+
+\subsection{Type Annotations}
+
+\begin{itemize}
+    \item \textbf{Omit when obvious} --- \texttt{let x = 42} is fine; the type is clearly \texttt{i32}.
+    \item \textbf{Annotate for clarity} --- \texttt{let mask: u16 = \$FFFF} makes the intended type explicit.
+    \item \textbf{Always annotate function signatures} --- Parameters and return types should be explicit.
+\end{itemize}
+
+\subsection{Numeric Types}
+
+\begin{itemize}
+    \item \textbf{Match the hardware} --- Use \texttt{u16} for hardware registers, \texttt{u32} for addresses.
+    \item \textbf{Use unsigned for bit manipulation} --- Bitwise operations on signed types can surprise you.
+    \item \textbf{Prefer \texttt{fixed32} over \texttt{f32}} --- On non-FPU systems, fixed-point is 10-100x faster.
+\end{itemize}
+
+\section{Common Pitfalls}
+
+\subsection{Integer Overflow}
+
+Unlike some languages, Novus does not check for integer overflow in release builds:
+
+\begin{lstlisting}
+var x: u8 = 255
+x += 1  // x becomes 0, not 256!
+
+var y: i8 = 127
+y += 1  // y becomes -128 (overflow wraps)
+\end{lstlisting}
+
+Use wider types or explicit overflow checks when necessary.
+
+\subsection{Signed vs Unsigned Comparisons}
+
+Comparing signed and unsigned integers can produce surprising results:
+
+\begin{lstlisting}
+let signed: i32 = -1
+let unsigned: u32 = 1
+
+// This requires explicit casting
+if (u32)signed > unsigned {  // -1 as u32 is 4294967295
+    // This branch executes!
+}
+\end{lstlisting}
+
+The compiler warns about mixed signed/unsigned comparisons. Heed these warnings.
+
+\subsection{Precedence Surprises}
+
+Bitwise operators have lower precedence than comparison operators:
+
+\begin{lstlisting}
+// WRONG: Parsed as flags & (MASK != 0)
+if flags & MASK != 0 { }
+
+// CORRECT: Explicit parentheses
+if (flags & MASK) != 0 { }
+\end{lstlisting}
+
+When in doubt, add parentheses.
+
+\subsection{Reference vs Copy}
+
+Understanding when you have a reference vs a copy is crucial:
+
+\begin{lstlisting}
+var x = 42
+var y = x      // y is a COPY of x
+y = 100        // x is still 42
+
+var a = [1, 2, 3]
+let b = &a     // b is a REFERENCE to a
+// Modifying through b would modify a
+\end{lstlisting}
+
+Primitive types (\texttt{i32}, \texttt{bool}, etc.) are always copied. Arrays and structs may be copied or referenced depending on context.
+
+\section{Showcase: Temperature Converter}
+
+This example demonstrates many concepts from this chapter in a practical application:
+
+\begin{lstlisting}
+// temperature_converter.novus
+// Demonstrates: variables, types, operators, fixed-point, functions
+
+from std::io import println
+
+// Constants for conversion formulas
+const FAHRENHEIT_OFFSET: fixed32 = 32.0
+const CELSIUS_MULTIPLIER: fixed32 = 1.8  // 9/5
+
+// Temperature scales as an enum
+enum Scale {
+    Celsius,
+    Fahrenheit,
+    Kelvin,
+}
+
+// A temperature value with its scale
+struct Temperature {
+    value: fixed32,
+    scale: Scale,
+}
+
+impl Temperature {
+    // Create a new temperature
+    pub fn new(value: fixed32, scale: Scale) -> Temperature {
+        return Temperature { value, scale }
+    }
+
+    // Convert to Celsius
+    pub fn to_celsius(&self) -> fixed32 {
+        match self.scale {
+            Scale::Celsius => self.value,
+            Scale::Fahrenheit => (self.value - FAHRENHEIT_OFFSET) / CELSIUS_MULTIPLIER,
+            Scale::Kelvin => self.value - 273.15,
+        }
+    }
+
+    // Convert to Fahrenheit
+    pub fn to_fahrenheit(&self) -> fixed32 {
+        let celsius = self.to_celsius()
+        return celsius * CELSIUS_MULTIPLIER + FAHRENHEIT_OFFSET
+    }
+
+    // Convert to Kelvin
+    pub fn to_kelvin(&self) -> fixed32 {
+        let celsius = self.to_celsius()
+        return celsius + 273.15
+    }
+
+    // Check if freezing
+    pub fn is_freezing(&self) -> bool {
+        return self.to_celsius() <= 0.0
+    }
+
+    // Check if boiling (water at sea level)
+    pub fn is_boiling(&self) -> bool {
+        return self.to_celsius() >= 100.0
+    }
+}
+
+fn main() -> i32 {
+    // Create some temperatures
+    let room_temp = Temperature::new(72.0, Scale::Fahrenheit)
+    let freezing = Temperature::new(0.0, Scale::Celsius)
+    let absolute_zero = Temperature::new(0.0, Scale::Kelvin)
+
+    // Convert and display
+    println(f"Room temperature: {room_temp.to_celsius().to_int()}C")
+    println(f"Freezing point: {freezing.to_fahrenheit().to_int()}F")
+    println(f"Absolute zero: {absolute_zero.to_celsius().to_int()}C")
+
+    // Boolean operations
+    if room_temp.is_freezing() {
+        println("Brrr! It's freezing!")
+    } else {
+        println("Temperature is above freezing.")
+    }
+
+    // Array of temperatures
+    var temps = [
+        Temperature::new(32.0, Scale::Fahrenheit),
+        Temperature::new(100.0, Scale::Celsius),
+        Temperature::new(273.15, Scale::Kelvin),
+    ]
+
+    // Find the hottest
+    var max_celsius: fixed32 = -1000.0
+    for i in 0u32..3 {
+        let c = temps[i].to_celsius()
+        if c > max_celsius {
+            max_celsius = c
+        }
+    }
+
+    println(f"Hottest: {max_celsius.to_int()}C")
+
+    // Bit manipulation example: encode temp + scale in u16
+    // Format: [scale:2][temp_int:14]
+    let temp_int = room_temp.to_celsius().to_int()
+    let scale_bits: u16 = 0u16  // Celsius = 0
+    let encoded: u16 = (scale_bits << 14) | ((u16)(temp_int) & $3FFF)
+
+    // Decode
+    let decoded_scale = encoded >> 14
+    let decoded_temp = (i16)(encoded & $3FFF)
+
+    println(f"Encoded: ${encoded:04X}, Scale: {decoded_scale}, Temp: {decoded_temp}")
+
+    return 0
+}
+\end{lstlisting}
+
+This showcase demonstrates:
+\begin{itemize}
+    \item Constants with \texttt{const} and fixed-point values
+    \item Enums for type-safe categories
+    \item Structs with methods via \texttt{impl}
+    \item Fixed-point arithmetic for precise calculations
+    \item Boolean expressions and comparisons
+    \item Arrays and iteration
+    \item Bitwise operations for data packing
+    \item F-strings for output formatting
+\end{itemize}
 
 \section{Summary}
 
