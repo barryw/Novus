@@ -3091,20 +3091,34 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         public override object? VisitAssignmentStatement(NovusParser.AssignmentStatementContext context)
         {
             // Check for assignment to global variable
-            // AssignmentStatementContext has IDENTIFIER() directly
-            var identifier = context.IDENTIFIER();
+            // The identifier is now nested inside lvalueExpression
+            var lvalueExpr = context.lvalueExpression();
+            var identifier = lvalueExpr?.IDENTIFIER();
+            var parenDeref = lvalueExpr?.parenDeref();
+
+            string? name = null;
             if (identifier != null)
             {
-                var name = identifier.GetText();
-                if (_analyzer._globalVariables.ContainsKey(name))
+                name = identifier.GetText();
+            }
+            else if (parenDeref != null)
+            {
+                // Check inside parenthesized dereference
+                var parenIdentifier = parenDeref.IDENTIFIER();
+                if (parenIdentifier != null)
                 {
-                    var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
-                    _analyzer._diagnostics.ReportError(
-                        ErrorCodes.ConstFnCannotAccessGlobal,
-                        $"const fn '{_functionName}': cannot write to global variable '{name}'",
-                        location
-                    );
+                    name = parenIdentifier.GetText();
                 }
+            }
+
+            if (name != null && _analyzer._globalVariables.ContainsKey(name))
+            {
+                var location = SourceLocationHelper.FromContext(context, _analyzer._filePath, _analyzer._sourceLines);
+                _analyzer._diagnostics.ReportError(
+                    ErrorCodes.ConstFnCannotAccessGlobal,
+                    $"const fn '{_functionName}': cannot write to global variable '{name}'",
+                    location
+                );
             }
             return base.VisitAssignmentStatement(context);
         }
@@ -4008,12 +4022,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
-        // Get the identifier or 'self' keyword
-        var identifier = context.IDENTIFIER();
-        var selfKeyword = context.KW_SELF();
+        // Get the lvalue expression (contains the assignment target)
+        var lvalueExpr = context.lvalueExpression();
+
+        // Get the identifier or 'self' keyword from lvalue expression
+        var identifier = lvalueExpr.IDENTIFIER();
+        var selfKeyword = lvalueExpr.KW_SELF();
+        var parenDeref = lvalueExpr.parenDeref();
 
         string name;
         SourceLocation location;
+        bool hasParenDeref = parenDeref != null;
 
         if (identifier != null)
         {
@@ -4024,6 +4043,32 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             name = "self";
             location = SourceLocationHelper.FromToken(selfKeyword.Symbol, _filePath, _sourceLines);
+        }
+        else if (hasParenDeref)
+        {
+            // Handle (*ptr).field style access - extract identifier from parenDeref
+            var parenIdentifier = parenDeref!.IDENTIFIER();
+            var parenSelf = parenDeref!.KW_SELF();
+            if (parenIdentifier != null)
+            {
+                name = parenIdentifier.GetText();
+                location = SourceLocationHelper.FromToken(parenIdentifier.Symbol, _filePath, _sourceLines);
+            }
+            else if (parenSelf != null)
+            {
+                name = "self";
+                location = SourceLocationHelper.FromToken(parenSelf.Symbol, _filePath, _sourceLines);
+            }
+            else
+            {
+                var errorLocation = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    ErrorCodes.InternalCompilerError,
+                    "Parenthesized dereference must contain IDENTIFIER or KW_SELF (internal parser error)",
+                    errorLocation
+                );
+                return IrIntType.I32;
+            }
         }
         else
         {
@@ -4070,19 +4115,46 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Count dereference operators before the identifier
         int derefCount = 0;
-        for (int i = 0; i < context.ChildCount; i++)
+        if (hasParenDeref)
         {
-            if (context.GetChild(i).GetText() == "*")
+            // For (*ptr).field, count stars inside the parens
+            for (int i = 0; i < parenDeref!.ChildCount; i++)
             {
-                derefCount++;
+                if (parenDeref!.GetChild(i).GetText() == "*")
+                {
+                    derefCount++;
+                }
+                else if (parenDeref!.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+                {
+                    break;
+                }
             }
-            else if (context.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+        }
+        else
+        {
+            // For *ptr, count stars at the lvalue expression level
+            for (int i = 0; i < lvalueExpr.ChildCount; i++)
             {
-                break; // Stop at the first identifier
+                if (lvalueExpr.GetChild(i).GetText() == "*")
+                {
+                    derefCount++;
+                }
+                else if (lvalueExpr.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+                {
+                    break; // Stop at the first identifier
+                }
             }
         }
 
-        var lvalueSuffixes = context.lvalueSuffix();
+        // Get lvalue suffixes - combine from both lvalueExpr and parenDeref if present
+        var lvalueSuffixes = lvalueExpr.lvalueSuffix();
+        NovusParser.LvalueSuffixContext[] parenDerefSuffixes = hasParenDeref ? parenDeref!.lvalueSuffix() : [];
+
+        // If there are suffixes inside the parens, they come first
+        if (parenDerefSuffixes.Length > 0)
+        {
+            lvalueSuffixes = parenDerefSuffixes.Concat(lvalueSuffixes).ToArray();
+        }
 
         // Handle post-increment/decrement statements (no expression)
         if (isPostIncDec)

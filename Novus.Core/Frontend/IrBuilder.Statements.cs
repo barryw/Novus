@@ -522,11 +522,30 @@ public partial class IrBuilder
         // Declare errorLocation once at method start to avoid CS0136 errors
         SourceLocation errorLocation;
 
-        // Get the identifier or 'self' keyword
-        var identifier = context.IDENTIFIER();
-        var selfKeyword = context.KW_SELF();
+        // Get the lvalue expression (the left side of the assignment)
+        var lvalueExpr = context.lvalueExpression();
+
+        // Check for null lvalue expression (shouldn't happen with valid grammar, but handle defensively)
+        if (lvalueExpr == null)
+        {
+            errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InternalCompilerError,
+                "Assignment statement has no lvalue expression (internal parser error)",
+                errorLocation
+            );
+            return null;
+        }
+
+        // Get the identifier or 'self' keyword from the lvalue expression
+        // Note: parenDeref is handled by extracting the identifier from within the parens
+        var identifier = lvalueExpr.IDENTIFIER();
+        var selfKeyword = lvalueExpr.KW_SELF();
+        var parenDeref = lvalueExpr.parenDeref();
 
         string name;
+        bool hasParenDeref = parenDeref != null;
+
         if (identifier != null)
         {
             name = identifier.GetText();
@@ -534,6 +553,30 @@ public partial class IrBuilder
         else if (selfKeyword != null)
         {
             name = "self";
+        }
+        else if (hasParenDeref)
+        {
+            // Handle (*ptr).field style access - extract identifier from parenDeref
+            var parenIdentifier = parenDeref!.IDENTIFIER();
+            var parenSelf = parenDeref!.KW_SELF();
+            if (parenIdentifier != null)
+            {
+                name = parenIdentifier.GetText();
+            }
+            else if (parenSelf != null)
+            {
+                name = "self";
+            }
+            else
+            {
+                errorLocation = GetLocation(context);
+                _diagnostics.ReportError(
+                    ErrorCodes.CannotAssignToExpression,
+                    "Parenthesized dereference must contain IDENTIFIER or KW_SELF",
+                    errorLocation
+                );
+                return null;
+            }
         }
         else
         {
@@ -577,15 +620,38 @@ public partial class IrBuilder
 
         // Count dereference operators before the identifier
         int derefCount = 0;
-        for (int i = 0; i < context.ChildCount; i++)
+        if (hasParenDeref)
         {
-            if (context.GetChild(i).GetText() == "*")
-                derefCount++;
-            else if (context.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
-                break;
+            // For (*ptr).field, count stars inside the parens
+            for (int i = 0; i < parenDeref!.ChildCount; i++)
+            {
+                if (parenDeref!.GetChild(i).GetText() == "*")
+                    derefCount++;
+                else if (parenDeref!.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+                    break;
+            }
+        }
+        else
+        {
+            // For *ptr, count stars at the lvalue expression level
+            for (int i = 0; i < lvalueExpr.ChildCount; i++)
+            {
+                if (lvalueExpr.GetChild(i).GetText() == "*")
+                    derefCount++;
+                else if (lvalueExpr.GetChild(i) is ITerminalNode terminal && terminal.Symbol.Type == NovusLexer.IDENTIFIER)
+                    break;
+            }
         }
 
-        var lvalueSuffixes = context.lvalueSuffix();
+        // Get lvalue suffixes - combine from both lvalueExpr and parenDeref if present
+        var lvalueSuffixes = lvalueExpr.lvalueSuffix();
+        NovusParser.LvalueSuffixContext[] parenDerefSuffixes = hasParenDeref ? parenDeref!.lvalueSuffix() : [];
+
+        // If there are suffixes inside the parens, they come first
+        if (parenDerefSuffixes.Length > 0)
+        {
+            lvalueSuffixes = parenDerefSuffixes.Concat(lvalueSuffixes).ToArray();
+        }
 
         // Handle post-increment/decrement statements (no expression)
         if (isPostIncDec)

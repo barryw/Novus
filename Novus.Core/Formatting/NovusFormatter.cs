@@ -1258,26 +1258,55 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     {
         EmitHiddenTokensBefore(context);
 
-        // Handle prefix dereferences
-        var prefixStars = context.children
-            .TakeWhile(c => c.GetText() == "*")
-            .Count();
-        for (int i = 0; i < prefixStars; i++) Write("*");
+        var lvalueExpr = context.lvalueExpression();
+        var parenDeref = lvalueExpr.parenDeref();
 
-        // Write identifier or self
-        if (context.KW_SELF() != null)
+        if (parenDeref != null)
         {
-            Write("self");
+            // Handle (*ptr).field style
+            Write("(");
+            var parenStars = parenDeref.children
+                .TakeWhile(c => c.GetText() == "*")
+                .Count();
+            for (int i = 0; i < parenStars; i++) Write("*");
+
+            if (parenDeref.KW_SELF() != null)
+                Write("self");
+            else
+                Write(parenDeref.IDENTIFIER().GetText());
+
+            foreach (var suffix in parenDeref.lvalueSuffix())
+                Visit(suffix);
+
+            Write(")");
+
+            // Also write any suffixes on the outer lvalueExpr
+            foreach (var suffix in lvalueExpr.lvalueSuffix())
+                Visit(suffix);
         }
         else
         {
-            Write(context.IDENTIFIER().GetText());
-        }
+            // Handle normal *ptr or ptr.field style
+            var prefixStars = lvalueExpr.children
+                .TakeWhile(c => c.GetText() == "*")
+                .Count();
+            for (int i = 0; i < prefixStars; i++) Write("*");
 
-        // Write suffixes
-        foreach (var suffix in context.lvalueSuffix())
-        {
-            Visit(suffix);
+            // Write identifier or self
+            if (lvalueExpr.KW_SELF() != null)
+            {
+                Write("self");
+            }
+            else
+            {
+                Write(lvalueExpr.IDENTIFIER().GetText());
+            }
+
+            // Write suffixes
+            foreach (var suffix in lvalueExpr.lvalueSuffix())
+            {
+                Visit(suffix);
+            }
         }
 
         // Write assignment operator and expression (or increment/decrement)
@@ -1520,23 +1549,51 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
 
     private void VisitAssignmentStatementInline(NovusParser.AssignmentStatementContext context)
     {
-        var prefixStars = context.children
-            .TakeWhile(c => c.GetText() == "*")
-            .Count();
-        for (int i = 0; i < prefixStars; i++) Write("*");
+        var lvalueExpr = context.lvalueExpression();
+        var parenDeref = lvalueExpr.parenDeref();
 
-        if (context.KW_SELF() != null)
+        if (parenDeref != null)
         {
-            Write("self");
+            // Handle (*ptr).field style
+            Write("(");
+            var parenStars = parenDeref.children
+                .TakeWhile(c => c.GetText() == "*")
+                .Count();
+            for (int i = 0; i < parenStars; i++) Write("*");
+
+            if (parenDeref.KW_SELF() != null)
+                Write("self");
+            else
+                Write(parenDeref.IDENTIFIER().GetText());
+
+            foreach (var suffix in parenDeref.lvalueSuffix())
+                Visit(suffix);
+
+            Write(")");
+
+            foreach (var suffix in lvalueExpr.lvalueSuffix())
+                Visit(suffix);
         }
         else
         {
-            Write(context.IDENTIFIER().GetText());
-        }
+            var prefixStars = lvalueExpr.children
+                .TakeWhile(c => c.GetText() == "*")
+                .Count();
+            for (int i = 0; i < prefixStars; i++) Write("*");
 
-        foreach (var suffix in context.lvalueSuffix())
-        {
-            Visit(suffix);
+            if (lvalueExpr.KW_SELF() != null)
+            {
+                Write("self");
+            }
+            else
+            {
+                Write(lvalueExpr.IDENTIFIER().GetText());
+            }
+
+            foreach (var suffix in lvalueExpr.lvalueSuffix())
+            {
+                Visit(suffix);
+            }
         }
 
         var text = context.GetText();

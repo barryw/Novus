@@ -336,8 +336,20 @@ tuplePattern
     ;
 
 assignmentStatement
-    : (STAR)* (IDENTIFIER | KW_SELF) (lvalueSuffix)* (PLUSPLUS | MINUSMINUS) postfixCondition?
-    | (STAR)* (IDENTIFIER | KW_SELF) (lvalueSuffix)* (EQ | PLUSEQ | MINUSEQ | STAREQ | SLASHEQ | PERCENTEQ | AMPEQ | PIPEEQ | CARETEQ | LSHIFT_ASSIGN | RSHIFT_ASSIGN) expression postfixCondition?
+    : lvalueExpression (PLUSPLUS | MINUSMINUS) postfixCondition?
+    | lvalueExpression (EQ | PLUSEQ | MINUSEQ | STAREQ | SLASHEQ | PERCENTEQ | AMPEQ | PIPEEQ | CARETEQ | LSHIFT_ASSIGN | RSHIFT_ASSIGN) expression postfixCondition?
+    ;
+
+// Lvalue expression: something that can appear on the left side of an assignment
+// Supports: x, *x, **x, x.field, x[i], (*x).field, (**ptr).field[i], etc.
+lvalueExpression
+    : (STAR)* (IDENTIFIER | KW_SELF | parenDeref) (lvalueSuffix)*
+    ;
+
+// Parenthesized dereference: (*ptr), (**ptr), (*ptr.field), etc.
+// Allows C-style explicit dereference before field access
+parenDeref
+    : LPAREN (STAR)+ (IDENTIFIER | KW_SELF) (lvalueSuffix)* RPAREN
     ;
 
 lvalueSuffix
