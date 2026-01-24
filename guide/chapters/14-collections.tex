@@ -1,0 +1,1001 @@
+\chapter{Collections}
+\label{chap:collections}
+
+The \texttt{std::collections} module provides a comprehensive set of data structures optimized for Amiga systems. Each collection is designed with the constraints and opportunities of 68k processors in mind: deterministic memory management, cache-friendly layouts, and zero hidden allocations.
+
+\section{Overview}
+
+Novus collections fall into several categories based on their use cases:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Category} & \textbf{Collections} & \textbf{Use Case} \\
+\hline
+Sequential & \texttt{Vec}, \texttt{VecDeque}, \texttt{SmallVec} & Ordered elements \\
+Associative & \texttt{HashMap}, \texttt{HashSet} & Key-value lookup \\
+Bit-level & \texttt{BitSet} & Compact boolean storage \\
+Streaming & \texttt{RingBuffer}, \texttt{RingBufferPow2} & Fixed-size queues \\
+Intrusive & \texttt{IntrusiveList}, \texttt{PriorityList} & AmigaOS interop \\
+Arena & \texttt{SlotMap}, \texttt{ObjectPool} & Stable handles \\
+\end{tabular}
+\caption{Collection categories and their primary use cases}
+\end{table}
+
+\subsection{Choosing the Right Collection}
+
+\begin{itemize}
+    \item \textbf{Need a growable array?} Use \texttt{Vec<T>}
+    \item \textbf{Need a queue or deque?} Use \texttt{VecDeque<T>}
+    \item \textbf{Know the typical size?} Use \texttt{SmallVec<T, N>}
+    \item \textbf{Need key-value storage?} Use \texttt{HashMap<K, V>}
+    \item \textbf{Need unique values?} Use \texttt{HashSet<T>}
+    \item \textbf{Need compact flags?} Use \texttt{BitSet}
+    \item \textbf{Need a fixed-size buffer?} Use \texttt{RingBuffer<T>}
+    \item \textbf{Interfacing with AmigaOS lists?} Use \texttt{IntrusiveList<T>}
+    \item \textbf{Need stable handles to objects?} Use \texttt{SlotMap<T>}
+    \item \textbf{Need a pool allocator?} Use \texttt{ObjectPool<T>}
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Vec<T> --- Dynamic Array}
+\label{sec:vec}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{Vec<T>} is a contiguous, growable array type with heap-allocated contents. It's the most commonly used collection in Novus, similar to Rust's \texttt{Vec} or C++'s \texttt{std::vector}.
+
+\begin{lstlisting}
+from std::collections::vec import Vec
+
+fn example() -> Result<(), ExecError> {
+    // Create an empty vector
+    var numbers = Vec::<u32>::new()
+
+    // Push elements (may allocate)
+    numbers.push(1)?
+    numbers.push(2)?
+    numbers.push(3)?
+
+    // Access by index
+    match numbers.get(0) {
+        Option::Some(val) => print_u32(val),
+        Option::None => {}
+    }
+
+    // Pop from the end
+    match numbers.pop() {
+        Option::Some(val) => print_u32(val),  // 3
+        Option::None => {}
+    }
+
+    return Result::Ok(())
+}
+// Memory automatically freed when numbers goes out of scope
+\end{lstlisting}
+
+\subsection{Creating Vectors}
+
+\begin{lstlisting}
+// Empty vector (zero capacity, no allocation)
+var v1 = Vec::<u32>::new()
+
+// Pre-allocated capacity (reduces reallocations)
+var v2 = Vec::<u32>::with_capacity(100)?
+\end{lstlisting}
+
+\begin{notebox}
+\texttt{Vec::new()} performs no allocation. Memory is only allocated on the first \texttt{push()} or \texttt{reserve()} call.
+\end{notebox}
+
+\subsection{Core Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llll}
+\textbf{Method} & \textbf{Returns} & \textbf{Complexity} & \textbf{Description} \\
+\hline
+\texttt{push(val)} & \texttt{Result<(), ExecError>} & O(1)* & Append to end \\
+\texttt{pop()} & \texttt{Option<T>} & O(1) & Remove from end \\
+\texttt{get(idx)} & \texttt{Option<T>} & O(1) & Read element \\
+\texttt{set(idx, val)} & \texttt{Result<(), ExecError>} & O(1) & Write element \\
+\texttt{insert(idx, val)} & \texttt{Result<(), ExecError>} & O(n) & Insert at position \\
+\texttt{remove(idx)} & \texttt{Result<T, ExecError>} & O(n) & Remove at position \\
+\texttt{len()} & \texttt{u32} & O(1) & Element count \\
+\texttt{capacity()} & \texttt{u32} & O(1) & Current capacity \\
+\texttt{is\_empty()} & \texttt{bool} & O(1) & Check if empty \\
+\texttt{clear()} & \texttt{()} & O(1) & Remove all elements \\
+\texttt{reserve(n)} & \texttt{Result<(), ExecError>} & O(n) & Ensure capacity \\
+\texttt{shrink\_to\_fit()} & \texttt{Result<(), ExecError>} & O(n) & Reduce capacity \\
+\end{tabular}
+\caption{\texttt{Vec<T>} method summary. *Amortized O(1), O(n) when growing.}
+\end{table}
+
+\subsection{Growth Strategy}
+
+When a \texttt{Vec} needs more capacity, it doubles its current capacity (minimum 4 elements). This amortized doubling strategy provides O(1) push operations on average while minimizing reallocations.
+
+\begin{lstlisting}
+var v = Vec::<u32>::new()
+// capacity: 0
+
+v.push(1)?   // allocates 4 elements
+// capacity: 4
+
+v.push(2)?
+v.push(3)?
+v.push(4)?
+v.push(5)?   // reallocates to 8 elements
+// capacity: 8
+\end{lstlisting}
+
+\begin{comingfromc}
+Unlike C's \texttt{realloc()}, Novus always allocates new memory and copies data. This is because AmigaOS's \texttt{AllocMem}/\texttt{FreeMem} don't support in-place growth. Pre-allocate with \texttt{with\_capacity()} when you know the expected size.
+\end{comingfromc}
+
+\subsection{Iteration}
+
+\texttt{Vec<T>} implements the \texttt{Iterable<T>} trait, enabling use in \texttt{for-in} loops:
+
+\begin{lstlisting}
+var numbers = Vec::<u32>::new()
+numbers.push(10)?
+numbers.push(20)?
+numbers.push(30)?
+
+for num in numbers {
+    print_u32(num)
+}
+// Prints: 10 20 30
+\end{lstlisting}
+
+\subsection{Memory and RAII}
+
+\texttt{Vec<T>} implements \texttt{Drop}, automatically freeing its memory when it goes out of scope:
+
+\begin{lstlisting}
+fn process_data() -> Result<(), ExecError> {
+    var data = Vec::<u32>::with_capacity(1000)?
+
+    // ... use data ...
+
+    return Result::Ok(())
+}  // data.drop() called automatically, memory freed
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{VecDeque<T> --- Double-Ended Queue}
+\label{sec:vecdeque}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{VecDeque<T>} is a double-ended queue implemented as a ring buffer. It provides O(1) insertion and removal at both ends, making it ideal for queues, sliding windows, and work-stealing algorithms.
+
+\begin{lstlisting}
+from std::collections::vecdeque import VecDeque
+
+fn message_queue() -> Result<(), ExecError> {
+    var queue = VecDeque::<Message>::with_capacity(32)?
+
+    // Enqueue (add to back)
+    queue.push_back(msg1)?
+    queue.push_back(msg2)?
+
+    // Urgent message to front
+    queue.push_front(urgent_msg)?
+
+    // Dequeue (remove from front)
+    match queue.pop_front() {
+        Option::Some(msg) => process(msg),
+        Option::None => {}  // empty
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Ring Buffer Implementation}
+
+Internally, \texttt{VecDeque} uses a circular buffer with \texttt{head} and \texttt{len} indices:
+
+\begin{lstlisting}
+// Logical view:    [A, B, C, D]
+// Physical memory: [C, D, _, _, A, B]  (head=4, len=4)
+//                           ^-- unused space
+\end{lstlisting}
+
+This allows both \texttt{push\_front} and \texttt{push\_back} to be O(1) operations without shifting elements.
+
+\subsection{Core Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{push\_back(val)} & \texttt{Result<(), ExecError>} & Add to back (enqueue) \\
+\texttt{push\_front(val)} & \texttt{Result<(), ExecError>} & Add to front \\
+\texttt{pop\_back()} & \texttt{Option<T>} & Remove from back \\
+\texttt{pop\_front()} & \texttt{Option<T>} & Remove from front (dequeue) \\
+\texttt{front()} & \texttt{Option<T>} & Peek at front \\
+\texttt{back()} & \texttt{Option<T>} & Peek at back \\
+\texttt{get(idx)} & \texttt{Option<T>} & Access by logical index \\
+\texttt{rotate\_left(n)} & \texttt{()} & Rotate elements left \\
+\texttt{rotate\_right(n)} & \texttt{()} & Rotate elements right \\
+\end{tabular}
+\caption{\texttt{VecDeque<T>} method summary}
+\end{table}
+
+\subsection{Use Cases}
+
+\begin{itemize}
+    \item \textbf{FIFO queues}: \texttt{push\_back()} + \texttt{pop\_front()}
+    \item \textbf{LIFO stacks}: \texttt{push\_back()} + \texttt{pop\_back()}
+    \item \textbf{Sliding windows}: Maintain a fixed-size window of recent values
+    \item \textbf{Priority bypass}: Insert urgent items at front
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{SmallVec<T, N> --- Small Vector Optimization}
+\label{sec:smallvec}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{SmallVec<T, N>} is a vector that uses the const generic \texttt{N} as its initial capacity. This reduces allocation overhead when you know a typical size.
+
+\begin{lstlisting}
+from std::collections::smallvec import SmallVec
+
+// Create a SmallVec with initial capacity of 8
+var coords = SmallVec::<Point, 8>::new()
+
+// First push allocates N=8 capacity
+coords.push(Point { x: 10, y: 20 })?
+
+// Subsequent pushes use existing capacity
+coords.push(Point { x: 30, y: 40 })?
+\end{lstlisting}
+
+\begin{notebox}
+The current implementation allocates \texttt{N} elements on first push. A future version may store small arrays inline (true small-vector optimization) once Novus supports array types with const generic sizes.
+\end{notebox}
+
+\subsection{When to Use SmallVec}
+
+Use \texttt{SmallVec} when:
+\begin{itemize}
+    \item You know the typical size of your collection
+    \item Most instances stay below a certain threshold
+    \item You want to avoid the overhead of dynamic resizing
+\end{itemize}
+
+\begin{lstlisting}
+// A polygon usually has 3-8 vertices
+var vertices = SmallVec::<Vertex, 8>::new()
+
+// A function usually has 0-4 parameters
+var params = SmallVec::<Param, 4>::new()
+\end{lstlisting}
+
+\subsection{Core Operations}
+
+\texttt{SmallVec} provides the same interface as \texttt{Vec}:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{push(val)} & \texttt{Result<(), ExecError>} & Append element \\
+\texttt{pop()} & \texttt{Option<T>} & Remove last element \\
+\texttt{get(idx)} & \texttt{Option<T>} & Read element by index \\
+\texttt{get\_mut(idx)} & \texttt{Option<*T>} & Get mutable pointer \\
+\texttt{len()} & \texttt{u32} & Element count \\
+\texttt{capacity()} & \texttt{u32} & Current capacity \\
+\texttt{is\_empty()} & \texttt{bool} & Check if empty \\
+\texttt{clear()} & \texttt{()} & Remove all elements \\
+\end{tabular}
+\caption{\texttt{SmallVec<T, N>} method summary}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{HashMap<K, V> --- Hash Map}
+\label{sec:hashmap}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{HashMap<K, V>} is a hash table with generic keys using open addressing and linear probing. Keys must implement the \texttt{Hash} and \texttt{Eq} traits.
+
+\begin{lstlisting}
+from std::collections::hashmap import HashMap
+
+fn symbol_table() -> Result<(), ExecError> {
+    var symbols: HashMap<u32, u32> = HashMap::new()?
+
+    // Insert key-value pairs
+    symbols.insert(hash("foo"), 100)?
+    symbols.insert(hash("bar"), 200)?
+
+    // Lookup by key
+    match symbols.get(&hash("foo")) {
+        Option::Some(val_ptr) => print_u32(*val_ptr),
+        Option::None => print("not found")
+    }
+
+    // Check existence
+    if symbols.contains_key(&hash("foo")) {
+        // key exists
+    }
+
+    // Remove
+    match symbols.remove(&hash("bar")) {
+        Option::Some(old_val) => {},  // was 200
+        Option::None => {}
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Implementation Details}
+
+\texttt{HashMap} uses several optimizations for 68k performance:
+
+\begin{itemize}
+    \item \textbf{Open addressing}: All entries in a single array (better cache locality)
+    \item \textbf{Linear probing}: Simple collision resolution
+    \item \textbf{Tombstones}: Lazy deletion for correct probe sequences
+    \item \textbf{Power-of-2 capacity}: Fast modulo via bitwise AND
+    \item \textbf{70\% load factor}: Automatic resize threshold
+    \item \textbf{Cached entry size}: Avoids expensive multiplication
+\end{itemize}
+
+\subsection{Core Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{insert(k, v)} & \texttt{Result<Option<V>, ExecError>} & Insert/update \\
+\texttt{get(\&k)} & \texttt{Option<\&V>} & Lookup by key \\
+\texttt{get\_mut(\&k)} & \texttt{Option<\&var V>} & Mutable lookup \\
+\texttt{remove(\&k)} & \texttt{Option<V>} & Remove by key \\
+\texttt{contains\_key(\&k)} & \texttt{bool} & Check existence \\
+\texttt{len()} & \texttt{u32} & Number of pairs \\
+\texttt{is\_empty()} & \texttt{bool} & Check if empty \\
+\texttt{clear()} & \texttt{()} & Remove all entries \\
+\texttt{reserve(n)} & \texttt{Result<(), ExecError>} & Reserve capacity \\
+\texttt{compact()} & \texttt{Result<(), ExecError>} & Clear tombstones \\
+\texttt{iter()} & \texttt{HashMapIter<K, V>} & Iterator \\
+\end{tabular}
+\caption{\texttt{HashMap<K, V>} method summary}
+\end{table}
+
+\subsection{Iteration}
+
+The iterator returns \texttt{KeyValueRef} structs containing \emph{pointers} to the keys and values:
+
+\begin{lstlisting}
+// KeyValueRef structure (returned by iter().next())
+struct KeyValueRef<K, V> {
+    key: *K,     // Pointer to key
+    value: *V,   // Pointer to value
+}
+\end{lstlisting}
+
+Use pointer dereferencing (\texttt{*}) to access the actual values:
+
+\begin{lstlisting}
+var map: HashMap<u32, u32> = HashMap::new()?
+map.insert(1u32, 100u32)?
+map.insert(2u32, 200u32)?
+
+var iter = map.iter()
+while true {
+    match iter.next() {
+        Option::Some(kv) => {
+            // Note: kv.key and kv.value are pointers
+            print_u32(*kv.key)    // Dereference to get key
+            print_u32(*kv.value)  // Dereference to get value
+        },
+        Option::None => break
+    }
+}
+\end{lstlisting}
+
+\begin{warningbox}
+Do not modify the map while iterating. This invalidates the iterator and may cause undefined behavior.
+\end{warningbox}
+
+\subsection{Key Requirements}
+
+Keys must implement \texttt{Hash} and \texttt{Eq}:
+
+\begin{lstlisting}
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+impl Hash for Point {
+    fn hash(&self) -> u32 {
+        var h: u32 = self.x.hash()
+        h = h ^ (self.y.hash() * 2246822507u32)
+        return h
+    }
+}
+
+impl Eq for Point {
+    fn eq(&self, other: &Point) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+
+// Now Point can be used as a HashMap key
+var point_map: HashMap<Point, u32> = HashMap::new()?
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{HashSet<T> --- Hash Set}
+\label{sec:hashset}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{HashSet<T>} is a set of unique values backed by \texttt{HashMap<T, ()>}. It provides O(1) insert, remove, and contains operations.
+
+\begin{lstlisting}
+from std::collections::hashset import HashSet
+
+fn unique_ids() -> Result<(), ExecError> {
+    var seen: HashSet<u32> = HashSet::new()?
+
+    // Insert returns Ok(true) for new, Ok(false) for existing
+    seen.insert(1u32)?  // Ok(true)
+    seen.insert(2u32)?  // Ok(true)
+    seen.insert(1u32)?  // Ok(false) - already present
+
+    // Check membership
+    if seen.contains(&1u32) {
+        // value is in set
+    }
+
+    // Remove
+    seen.remove(&2u32)  // returns true
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Set Operations}
+
+\begin{lstlisting}
+var a: HashSet<u32> = HashSet::new()?
+var b: HashSet<u32> = HashSet::new()?
+
+// Check subset relationship
+if a.is_subset(&b) {
+    // every element in a is also in b
+}
+
+// Check if sets have common elements
+if a.intersects(&b) {
+    // at least one element in common
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{BitSet --- Compact Bit Storage}
+\label{sec:bitset}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{BitSet} provides compact storage for boolean flags using 1 bit per element. This is 32x more memory-efficient than a \texttt{bool} array, essential for resource-constrained Amiga development.
+
+\begin{lstlisting}
+from std::collections::bitset import BitSet
+
+fn track_sprites() -> Result<(), ExecError> {
+    // 64 bits = 8 bytes (vs 64 bytes for bool array)
+    match BitSet::with_capacity(64) {
+        Option::Some(var active_sprites) => {
+            // Set bits
+            active_sprites.set(0)   // sprite 0 is active
+            active_sprites.set(5)   // sprite 5 is active
+
+            // Check bits
+            if active_sprites.get(0) {
+                // sprite 0 is active
+            }
+
+            // Count active sprites
+            let count = active_sprites.count_ones()  // 2
+
+            // Find first active sprite
+            match active_sprites.find_first_set() {
+                Option::Some(idx) => {},  // idx == 0
+                Option::None => {}
+            }
+        },
+        Option::None => {}
+    }
+
+    return Result::Ok(())
+}
+\end{lstlisting}
+
+\subsection{Bitwise Operations}
+
+\begin{lstlisting}
+var a = BitSet::with_capacity(32)?
+var b = BitSet::with_capacity(32)?
+
+// Set some bits
+a.set(0)
+a.set(2)
+b.set(1)
+b.set(2)
+
+// Bitwise operations (mutate a)
+a.and(&b)   // a = a & b (intersection)
+a.or(&b)    // a = a | b (union)
+a.xor(&b)   // a = a ^ b (symmetric difference)
+a.not()     // a = ~a (complement)
+\end{lstlisting}
+
+\subsection{Core Operations}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\textbf{Method} & \textbf{Returns} & \textbf{Description} \\
+\hline
+\texttt{set(idx)} & \texttt{bool} & Set bit to true \\
+\texttt{clear(idx)} & \texttt{bool} & Set bit to false \\
+\texttt{get(idx)} & \texttt{bool} & Get bit value \\
+\texttt{toggle(idx)} & \texttt{bool} & Flip bit \\
+\texttt{set\_all()} & \texttt{()} & Set all bits \\
+\texttt{clear\_all()} & \texttt{()} & Clear all bits \\
+\texttt{count\_ones()} & \texttt{u32} & Population count \\
+\texttt{count\_zeros()} & \texttt{u32} & Count cleared bits \\
+\texttt{find\_first\_set()} & \texttt{Option<u32>} & First set bit \\
+\texttt{find\_first\_clear()} & \texttt{Option<u32>} & First clear bit \\
+\texttt{all()} & \texttt{bool} & All bits set? \\
+\texttt{any()} & \texttt{bool} & Any bit set? \\
+\texttt{none()} & \texttt{bool} & No bits set? \\
+\end{tabular}
+\caption{\texttt{BitSet} method summary}
+\end{table}
+
+\begin{comingfromc}
+\texttt{BitSet} uses Brian Kernighan's algorithm for population count and binary search for first-set-bit. On 68020+, these could be replaced with native \texttt{BFFFO} (find first one) instructions for better performance.
+\end{comingfromc}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{RingBuffer<T> --- Fixed-Size Circular Buffer}
+\label{sec:ringbuffer}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{RingBuffer<T>} is a fixed-capacity circular buffer ideal for streaming data, audio buffering, and interrupt-safe producer-consumer patterns.
+
+\begin{lstlisting}
+from std::collections::ringbuffer import RingBuffer, RingBufferPow2
+
+fn audio_buffer() {
+    // Create a 256-sample buffer
+    match RingBuffer::<i16>::with_capacity(256) {
+        Option::Some(var buffer) => {
+            // Producer (e.g., interrupt handler)
+            buffer.push_back(sample)  // returns false if full
+
+            // Consumer (e.g., main task)
+            match buffer.pop_front() {
+                Option::Some(sample) => play(sample),
+                Option::None => {}  // buffer empty
+            }
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+\subsection{Power-of-2 Optimization}
+
+For maximum performance, use \texttt{RingBufferPow2<T>} which uses bitwise AND instead of modulo for index wrapping:
+
+\begin{lstlisting}
+// Request 100, get 128 (next power of 2)
+match RingBufferPow2::<Sample>::with_capacity(100) {
+    Option::Some(var buffer) => {
+        // buffer.capacity() == 128
+        // ~6x faster push/pop on 68000
+    },
+    Option::None => {}
+}
+\end{lstlisting}
+
+\begin{tipbox}
+\textbf{Performance on 68000}:
+\begin{itemize}
+    \item \texttt{RingBuffer::push\_back}: $\sim$150 cycles (uses modulo)
+    \item \texttt{RingBufferPow2::push\_back}: $\sim$25 cycles (uses bitmask)
+\end{itemize}
+That's approximately 6x faster! Always prefer \texttt{RingBufferPow2} for performance-critical code like audio streaming and interrupt handlers.
+\end{tipbox}
+
+\subsection{Interrupt Safety}
+
+Ring buffers are safe for single-producer/single-consumer patterns:
+
+\begin{itemize}
+    \item \textbf{Producer}: Interrupt handler writes via \texttt{push\_back()}
+    \item \textbf{Consumer}: Main task reads via \texttt{pop\_front()}
+\end{itemize}
+
+\begin{warningbox}
+Ring buffers are NOT safe for multiple producers or multiple consumers without external synchronization (Exec \texttt{Forbid}/\texttt{Permit} or semaphores).
+\end{warningbox}
+
+\subsection{Amiga Use Cases}
+
+\begin{itemize}
+    \item Paula audio sample streaming (16-bit PCM at 28kHz)
+    \item Serial port buffering (up to 115200 baud)
+    \item Vertical blank event queues (50Hz PAL)
+    \item Trackdisk sector buffering
+    \item Interrupt-to-task message passing
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{IntrusiveList<T> --- AmigaOS-Compatible Lists}
+\label{sec:intrusivelist}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{IntrusiveList<T>} is an intrusive doubly-linked list that matches AmigaOS Exec's \texttt{MinList}/\texttt{MinNode} pattern exactly. It uses native Exec list functions for maximum compatibility.
+
+\begin{lstlisting}
+from std::collections::intrusive_list import IntrusiveList, init_min_node
+from std::ffi::amiga_structs import MinNode
+
+struct MyData {
+    node: MinNode,  // MUST be first field
+    value: u32,
+}
+
+fn use_list() {
+    var list = IntrusiveList::<MyData>::new()
+    list.init()  // MUST call after assignment
+
+    // Create node (caller manages lifetime)
+    var item = MyData {
+        node: MinNode { mln_Succ: null, mln_Pred: null },
+        value: 42
+    }
+
+    // Add to list
+    list.add_tail(&item)
+
+    // Iterate
+    match list.first() {
+        Option::Some(ptr) => {
+            var current = ptr
+            while true {
+                print_u32((*current).value)
+                match list.next(current) {
+                    Option::Some(next) => current = next,
+                    Option::None => break
+                }
+            }
+        },
+        Option::None => {}
+    }
+
+    // Remove before freeing
+    list.remove(&item)
+}
+\end{lstlisting}
+
+\begin{warningbox}
+You \textbf{MUST} call \texttt{init()} immediately after creating an \texttt{IntrusiveList}. The list contains self-referential pointers that are invalid until \texttt{init()} is called. Using an uninitialized list will corrupt memory or crash.
+\end{warningbox}
+
+\subsection{Key Constraints}
+
+\begin{enumerate}
+    \item \textbf{Node must be first field}: The \texttt{MinNode} must be the first field of your struct
+    \item \textbf{Call init() after assignment}: The list has self-referential pointers that must be set up after the list is at its final location
+    \item \textbf{Caller manages node lifetime}: The list does NOT own the nodes
+    \item \textbf{One list per node}: A node can only be in one list at a time
+\end{enumerate}
+
+\subsection{PriorityList<T>}
+
+\texttt{PriorityList<T>} is similar but uses full \texttt{Node} structures with priority support:
+
+\begin{lstlisting}
+from std::collections::intrusive_list import PriorityList, init_node
+from std::ffi::amiga_structs import Node
+
+struct Task {
+    node: Node,  // Full node with priority
+    data: u32,
+}
+
+fn priority_queue() {
+    var tasks = PriorityList::<Task>::new()
+    tasks.init()
+
+    var high = Task { node: @zeroed(Node), data: 1 }
+    var low = Task { node: @zeroed(Node), data: 2 }
+
+    // Set priorities
+    init_node(&high.node, 10, null)  // priority 10
+    init_node(&low.node, 1, null)    // priority 1
+
+    // Insert in priority order (higher = closer to head)
+    tasks.enqueue(&high)
+    tasks.enqueue(&low)
+
+    // First will be the high-priority task
+    match tasks.first() {
+        Option::Some(ptr) => {
+            // (*ptr).data == 1 (high priority)
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{SlotMap<T> --- Generational Arena}
+\label{sec:slotmap}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{SlotMap<T>} is a generational index arena that provides stable handles to objects. It detects use-after-free by tracking a generation counter for each slot.
+
+\begin{lstlisting}
+from std::collections::slotmap import SlotMap, SlotKey
+
+struct Entity {
+    x: i32,
+    y: i32,
+    health: u32,
+}
+
+fn game_entities() {
+    match SlotMap::<Entity>::new() {
+        Option::Some(var entities) => {
+            // Insert returns a SlotKey handle
+            match entities.insert(Entity { x: 100, y: 50, health: 100 }) {
+                Option::Some(player_key) => {
+                    // Access via handle
+                    match entities.get(player_key) {
+                        Option::Some(entity) => {
+                            print_i32((*entity).x)
+                        },
+                        Option::None => {}
+                    }
+
+                    // Remove the entity
+                    entities.remove(player_key)
+
+                    // Old key is now invalid!
+                    match entities.get(player_key) {
+                        Option::Some(_) => {},  // Never reached
+                        Option::None => {}      // Key is stale
+                    }
+                },
+                Option::None => {}
+            }
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+\subsection{How Generations Work}
+
+Each slot has a generation counter. When an object is removed, the generation is incremented. Old keys have the old generation and fail the check:
+
+\begin{lstlisting}
+// Slot 0, Generation 0 -> player inserted
+let player_key = SlotKey { index: 0, generation: 0 }
+
+// Slot 0, Generation 1 -> player removed
+entities.remove(player_key)
+
+// Slot 0 reused for enemy
+let enemy_key = SlotKey { index: 0, generation: 1 }
+
+// Old player_key fails - generation mismatch!
+entities.get(player_key)  // Returns None
+\end{lstlisting}
+
+\subsection{SlotKey}
+
+\texttt{SlotKey} contains both index and generation:
+
+\begin{lstlisting}
+struct SlotKey {
+    index: u32,
+    generation: u32,
+}
+
+// Pack into single u32 (16 bits each)
+let packed: u32 = key.pack()
+
+// Unpack
+let key = SlotKey::unpack(packed)
+
+// Sentinel/null key
+let null_key = SlotKey::sentinel()
+if key.is_sentinel() { /* invalid */ }
+\end{lstlisting}
+
+\subsection{Use Cases}
+
+\begin{itemize}
+    \item \textbf{ECS game entities}: Players, enemies, projectiles, pickups
+    \item \textbf{Resource handles}: Textures, sounds, fonts
+    \item \textbf{Window/Screen handles}: Multiple windows with stable IDs
+    \item \textbf{Network object sync}: Stable references across frames
+    \item \textbf{Undo/redo systems}: References that survive modifications
+\end{itemize}
+
+\subsection{SlotMapFixed<T>}
+
+\texttt{SlotMapFixed<T>} is a variant with fixed capacity (no growth). It uses separate arrays for generations, occupancy flags, and values, providing better cache behavior during iteration:
+
+\begin{lstlisting}
+from std::collections::slotmap import SlotMapFixed
+
+// Fixed capacity - never grows, but more cache-friendly
+match SlotMapFixed::<Entity>::with_capacity(1024) {
+    Option::Some(var entities) => {
+        // Same API as SlotMap
+        match entities.insert(player) {
+            Option::Some(key) => { /* ... */ },
+            Option::None => { /* capacity full */ }
+        }
+    },
+    Option::None => {}
+}
+\end{lstlisting}
+
+\begin{notebox}
+Use \texttt{SlotMap<T>} when you need dynamic growth. Use \texttt{SlotMapFixed<T>} when you know the maximum count upfront and want better iteration performance.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{ObjectPool<T> --- Pool Allocator}
+\label{sec:objectpool}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\texttt{ObjectPool<T>} is a slab allocator for fixed-size objects with O(1) allocation and deallocation. After initialization, no system calls are needed.
+
+\begin{lstlisting}
+from std::collections::freelist import ObjectPool
+
+struct Bullet {
+    x: i32,
+    y: i32,
+    dx: i32,
+    dy: i32,
+}
+
+fn bullet_system() {
+    // Pre-allocate pool of 128 bullets
+    match ObjectPool::<Bullet>::with_capacity(128) {
+        Option::Some(var pool) => {
+            // Allocate a bullet (O(1), no syscall)
+            match pool.alloc() {
+                Option::Some(bullet) => {
+                    (*bullet).x = 100
+                    (*bullet).y = 50
+                    (*bullet).dx = 5
+                    (*bullet).dy = 0
+
+                    // ... use bullet ...
+
+                    // Return to pool (O(1))
+                    pool.free(bullet)
+                },
+                Option::None => {}  // pool exhausted
+            }
+        },
+        Option::None => {}
+    }
+}
+\end{lstlisting}
+
+\subsection{Interrupt Safety}
+
+\texttt{ObjectPool} is safe for single-producer/single-consumer patterns:
+\begin{itemize}
+    \item \textbf{Producer}: Interrupt handler allocates via \texttt{alloc()}
+    \item \textbf{Consumer}: Main task frees via \texttt{free()}
+\end{itemize}
+
+\begin{warningbox}
+\textbf{Safety requirements}:
+\begin{itemize}
+    \item Do NOT free objects not allocated from this pool
+    \item Do NOT double-free objects
+    \item Do NOT use objects after freeing them
+\end{itemize}
+\end{warningbox}
+
+\subsection{ObjectPoolFixed<T>}
+
+\texttt{ObjectPoolFixed<T>} uses an index-stack approach instead of a linked free list. This provides additional capabilities:
+
+\begin{itemize}
+    \item \textbf{Allocation tracking}: Knows exactly which slots are in use
+    \item \textbf{Proper Drop support}: Calls \texttt{Drop} on all allocated objects when pool is dropped or reset
+    \item \textbf{Index-based iteration}: Can iterate over allocated objects by index
+    \item \textbf{Free validation}: Detects double-free and invalid free operations
+\end{itemize}
+
+\begin{lstlisting}
+from std::collections::freelist import ObjectPoolFixed
+
+match ObjectPoolFixed::<Enemy>::with_capacity(32) {
+    Option::Some(var pool) => {
+        // Allocate
+        match pool.alloc() {
+            Option::Some(enemy) => {
+                // Initialize...
+            },
+            Option::None => {}
+        }
+
+        // Iterate over all allocated enemies
+        var i: u32 = 0
+        while i < pool.capacity() {
+            if pool.is_allocated(i) {
+                match pool.get(i) {
+                    Option::Some(enemy) => update(enemy),
+                    Option::None => {}
+                }
+            }
+            i = i + 1
+        }
+
+        // Reset calls Drop on all allocated objects
+        pool.reset()
+    },
+    Option::None => {}
+}
+\end{lstlisting}
+
+\begin{notebox}
+Use \texttt{ObjectPool<T>} for maximum speed when you don't need iteration or Drop support. Use \texttt{ObjectPoolFixed<T>} when you need to iterate over allocated objects or when \texttt{T} owns resources that must be cleaned up.
+\end{notebox}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Performance Summary}
+\label{sec:collection-performance}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\textbf{Collection} & \textbf{Insert} & \textbf{Remove} & \textbf{Access} & \textbf{Search} & \textbf{Memory} \\
+\hline
+\texttt{Vec<T>} & O(1)* & O(n) & O(1) & O(n) & Contiguous \\
+\texttt{VecDeque<T>} & O(1) & O(1)** & O(1) & O(n) & Ring buffer \\
+\texttt{HashMap<K,V>} & O(1)* & O(1) & O(1) & O(1) & Hash table \\
+\texttt{HashSet<T>} & O(1)* & O(1) & --- & O(1) & Hash table \\
+\texttt{BitSet} & O(1) & O(1) & O(1) & O(n) & 1 bit/element \\
+\texttt{RingBuffer<T>} & O(1) & O(1) & O(1) & O(n) & Fixed size \\
+\texttt{IntrusiveList<T>} & O(1) & O(1) & O(n) & O(n) & No allocation \\
+\texttt{SlotMap<T>} & O(1)* & O(1) & O(1) & --- & Arena \\
+\texttt{ObjectPool<T>} & O(1) & O(1) & --- & --- & Fixed size \\
+\end{tabular}
+\caption{Collection complexity summary. *Amortized. **Front/back only.}
+\end{table}
+
+\begin{comingfromc}
+Unlike C's standard library, all Novus collections:
+\begin{itemize}
+    \item Use AmigaOS \texttt{AllocMem}/\texttt{FreeMem} for memory management
+    \item Are properly aligned for 68k DMA and cache efficiency
+    \item Implement RAII via the \texttt{Drop} trait
+    \item Return \texttt{Result} or \texttt{Option} instead of null pointers
+\end{itemize}
+\end{comingfromc}
