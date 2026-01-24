@@ -8,6 +8,8 @@
 
 \vspace{1em}
 
+Functions are the foundation of structured programming. In Novus, they're designed with systems programming in mind---explicit parameter passing, clear ownership semantics, and direct integration with the Amiga's calling conventions. Whether you're writing a simple utility function or implementing complex data structures, understanding Novus's function system is essential.
+
 Functions are the fundamental building blocks of Novus programs. This chapter covers everything from basic function definitions to generic methods, closures, and compile-time evaluation. By the end, you'll understand how to write reusable, type-safe code that integrates seamlessly with the Novus type system.
 
 \section{Function Basics}
@@ -901,6 +903,581 @@ match MemoryBlock::alloc(1024, MEMF_FAST) {
     \item Use \texttt{into\_*} for consuming conversions: \texttt{into\_raw}, \texttt{into\_string}
     \item Use \texttt{as\_*} for borrowing conversions: \texttt{as\_str}, \texttt{as\_slice}
     \item Use \texttt{try\_*} for fallible operations returning \texttt{Result}: \texttt{try\_alloc}
+\end{itemize}
+
+\section{Common Function Patterns}
+\label{sec:fn-patterns}
+
+This section presents idiomatic patterns for function design in Novus.
+
+\subsection{The Builder Pattern}
+
+Builders accumulate configuration before producing a final value:
+
+\begin{lstlisting}
+struct WindowBuilder {
+    title: *u8,
+    width: u16,
+    height: u16,
+    left: u16,
+    top: u16,
+    flags: u32,
+}
+
+impl WindowBuilder {
+    pub fn new(title: *u8) -> WindowBuilder {
+        return WindowBuilder {
+            title: title,
+            width: 640,
+            height: 400,
+            left: 0,
+            top: 0,
+            flags: 0,
+        }
+    }
+
+    // Each setter returns self for chaining
+    pub fn size(&var self, width: u16, height: u16) -> &var WindowBuilder {
+        self.width = width
+        self.height = height
+        return self
+    }
+
+    pub fn position(&var self, left: u16, top: u16) -> &var WindowBuilder {
+        self.left = left
+        self.top = top
+        return self
+    }
+
+    pub fn borderless(&var self) -> &var WindowBuilder {
+        self.flags |= WFLG_BORDERLESS
+        return self
+    }
+
+    pub fn backdrop(&var self) -> &var WindowBuilder {
+        self.flags |= WFLG_BACKDROP
+        return self
+    }
+
+    // Final build consumes the builder
+    pub fn build(consuming self) -> Result<*Window, IntuitionError> {
+        // Create the window from accumulated settings
+        let window = unsafe {
+            OpenWindowTags(
+                null,
+                WA_Title, self.title,
+                WA_Width, (u32)self.width,
+                WA_Height, (u32)self.height,
+                WA_Left, (u32)self.left,
+                WA_Top, (u32)self.top,
+                WA_Flags, self.flags,
+                TAG_DONE
+            )
+        }
+
+        if window == null {
+            return Result::Err(IntuitionError::OpenFailed)
+        }
+        return Result::Ok(window)
+    }
+}
+
+// Usage
+fn open_game_window() -> Result<*Window, IntuitionError> {
+    var builder = WindowBuilder::new("My Game")
+    let window = builder
+        .size(320, 256)
+        .position(0, 0)
+        .borderless()
+        .backdrop()
+        .build()?
+
+    return Result::Ok(window)
+}
+\end{lstlisting}
+
+\subsection{The Factory Pattern}
+
+Factories create objects based on runtime conditions:
+
+\begin{lstlisting}
+enum AudioDriver {
+    Paula { channels: u8 },
+    Ahi { device_id: i32 },
+    Null,
+}
+
+impl AudioDriver {
+    // Factory method chooses implementation at runtime
+    pub fn create(prefer_ahi: bool) -> Result<AudioDriver, AudioError> {
+        if prefer_ahi {
+            // Try AHI first
+            match try_open_ahi() {
+                Result::Ok(id) => {
+                    return Result::Ok(AudioDriver::Ahi { device_id: id })
+                },
+                Result::Err(_) => {
+                    // Fall through to Paula
+                }
+            }
+        }
+
+        // Try Paula hardware
+        if is_paula_available() {
+            return Result::Ok(AudioDriver::Paula { channels: 4 })
+        }
+
+        // No audio available - return null driver
+        return Result::Ok(AudioDriver::Null)
+    }
+
+    pub fn play(&self, sample: &Sample) -> Result<(), AudioError> {
+        match *self {
+            AudioDriver::Paula { channels } => play_paula(sample, channels),
+            AudioDriver::Ahi { device_id } => play_ahi(sample, device_id),
+            AudioDriver::Null => Result::Ok(()),  // Silent success
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{The Callback Pattern}
+
+Pass functions as parameters for customizable behavior:
+
+\begin{lstlisting}
+// Type alias for callback signature
+type Comparator<T> = fn(&T, &T) -> i32
+
+// Sort with custom comparator
+pub fn sort_by<T>(items: &var [T], count: u32, compare: Comparator<T>) {
+    // Simple bubble sort for demonstration
+    for i in 0u32..count {
+        for j in 0u32..(count - 1 - i) {
+            if compare(&items[j], &items[j + 1]) > 0 {
+                // Swap
+                let temp = items[j]
+                items[j] = items[j + 1]
+                items[j + 1] = temp
+            }
+        }
+    }
+}
+
+// Usage
+fn example() {
+    var scores = [100, 50, 75, 25, 90]
+
+    // Sort ascending
+    sort_by(&var scores, 5, |a: &i32, b: &i32| -> i32 { *a - *b })
+
+    // Sort descending
+    sort_by(&var scores, 5, |a: &i32, b: &i32| -> i32 { *b - *a })
+}
+\end{lstlisting}
+
+\subsection{The RAII Guard Pattern}
+
+Functions that return guards for automatic cleanup:
+
+\begin{lstlisting}
+struct ForbidGuard {
+    _dummy: u8,
+}
+
+impl ForbidGuard {
+    pub fn new() -> ForbidGuard {
+        unsafe { Forbid() }
+        return ForbidGuard { _dummy: 0 }
+    }
+}
+
+impl Drop for ForbidGuard {
+    fn drop(&var self) {
+        unsafe { Permit() }
+    }
+}
+
+// Usage - interrupts disabled for the scope
+fn critical_section() {
+    let _guard = ForbidGuard::new()
+    // Forbid() is active here
+    modify_shared_data()
+    // Permit() called automatically when _guard goes out of scope
+}
+\end{lstlisting}
+
+\subsection{The Visitor Pattern}
+
+Process structures without knowing their internals:
+
+\begin{lstlisting}
+trait FileVisitor {
+    fn visit_file(&var self, path: &Str, size: u32)
+    fn visit_directory(&var self, path: &Str)
+    fn should_descend(&self, path: &Str) -> bool
+}
+
+fn walk_directory(path: &Str, visitor: &var dyn FileVisitor) -> Result<(), DosError> {
+    let lock = Lock(path.as_ptr(), ACCESS_READ)
+    if lock == 0 {
+        return Result::Err(DosError::NotFound)
+    }
+    defer { UnLock(lock) }
+
+    var fib = @zeroed(FileInfoBlock)
+    if !Examine(lock, &var fib) {
+        return Result::Err(DosError::ExamineFailed)
+    }
+
+    while ExNext(lock, &var fib) {
+        let name = fib_name(&fib)
+
+        if fib.fib_DirEntryType > 0 {
+            // Directory
+            visitor.visit_directory(&name)
+            if visitor.should_descend(&name) {
+                let sub_path = path.concat(&name)
+                walk_directory(&sub_path, visitor)?
+            }
+        } else {
+            // File
+            visitor.visit_file(&name, fib.fib_Size as u32)
+        }
+    }
+
+    return Result::Ok(())
+}
+
+// Example visitor
+struct FileSizeCounter {
+    total_bytes: u64,
+    file_count: u32,
+}
+
+impl FileVisitor for FileSizeCounter {
+    fn visit_file(&var self, path: &Str, size: u32) {
+        self.total_bytes += (u64)size
+        self.file_count += 1
+    }
+
+    fn visit_directory(&var self, path: &Str) {
+        // Ignore directories
+    }
+
+    fn should_descend(&self, path: &Str) -> bool {
+        return true  // Descend into all directories
+    }
+}
+\end{lstlisting}
+
+\section{Showcase: Animation System}
+
+This showcase demonstrates functions and methods in a practical animation system:
+
+\begin{lstlisting}
+// animation_system_showcase.novus
+// Demonstrates: functions, methods, traits, generics, closures
+
+from std::io import println
+from std::core import Option, Clone
+from std::collections::vec import Vec
+
+// ============================================================================
+// Easing Functions
+// ============================================================================
+
+type EasingFn = fn(fixed32) -> fixed32
+
+// Linear interpolation (no easing)
+pub fn ease_linear(t: fixed32) -> fixed32 {
+    return t
+}
+
+// Quadratic ease-in
+pub fn ease_in_quad(t: fixed32) -> fixed32 {
+    return t * t
+}
+
+// Quadratic ease-out
+pub fn ease_out_quad(t: fixed32) -> fixed32 {
+    return t * (2.0 - t)
+}
+
+// Quadratic ease-in-out
+pub fn ease_in_out_quad(t: fixed32) -> fixed32 {
+    if t < 0.5 {
+        return 2.0 * t * t
+    }
+    return -1.0 + (4.0 - 2.0 * t) * t
+}
+
+// ============================================================================
+// Animatable Trait
+// ============================================================================
+
+trait Animatable {
+    fn lerp(&self, target: &Self, t: fixed32) -> Self
+}
+
+impl Animatable for i32 {
+    fn lerp(&self, target: &i32, t: fixed32) -> i32 {
+        let diff = *target - *self
+        return *self + (fixed32::from_int(diff) * t).to_int()
+    }
+}
+
+impl Animatable for fixed32 {
+    fn lerp(&self, target: &fixed32, t: fixed32) -> fixed32 {
+        return *self + (*target - *self) * t
+    }
+}
+
+// ============================================================================
+// Animation State
+// ============================================================================
+
+enum AnimationState {
+    Playing,
+    Paused,
+    Finished,
+}
+
+// ============================================================================
+// Tween Structure
+// ============================================================================
+
+struct Tween<T> where T: Animatable + Clone {
+    start_value: T,
+    end_value: T,
+    duration_frames: u32,
+    current_frame: u32,
+    easing: EasingFn,
+    state: AnimationState,
+}
+
+impl<T> Tween<T> where T: Animatable + Clone {
+    // Constructor with default linear easing
+    pub fn new(start: T, end: T, duration: u32) -> Tween<T> {
+        return Tween {
+            start_value: start,
+            end_value: end,
+            duration_frames: duration,
+            current_frame: 0,
+            easing: ease_linear,
+            state: AnimationState::Playing,
+        }
+    }
+
+    // Builder method to set easing function
+    pub fn with_easing(&var self, easing: EasingFn) -> &var Tween<T> {
+        self.easing = easing
+        return self
+    }
+
+    // Get current interpolated value
+    pub fn value(&self) -> T {
+        if self.duration_frames == 0 {
+            return self.end_value.clone().unwrap()
+        }
+
+        // Calculate normalized time (0.0 to 1.0)
+        let t_raw = fixed32::from_int((i32)self.current_frame)
+            / fixed32::from_int((i32)self.duration_frames)
+
+        // Clamp to [0, 1]
+        let t_clamped = if t_raw > 1.0 { 1.0 } else { t_raw }
+
+        // Apply easing function
+        let t_eased = (self.easing)(t_clamped)
+
+        // Interpolate between start and end
+        return self.start_value.lerp(&self.end_value, t_eased)
+    }
+
+    // Advance animation by one frame
+    pub fn tick(&var self) {
+        match self.state {
+            AnimationState::Playing => {
+                self.current_frame += 1
+                if self.current_frame >= self.duration_frames {
+                    self.state = AnimationState::Finished
+                }
+            },
+            _ => { }
+        }
+    }
+
+    // Check if animation is complete
+    pub fn is_finished(&self) -> bool {
+        match self.state {
+            AnimationState::Finished => true,
+            _ => false,
+        }
+    }
+
+    // Pause the animation
+    pub fn pause(&var self) {
+        match self.state {
+            AnimationState::Playing => {
+                self.state = AnimationState::Paused
+            },
+            _ => { }
+        }
+    }
+
+    // Resume the animation
+    pub fn resume(&var self) {
+        match self.state {
+            AnimationState::Paused => {
+                self.state = AnimationState::Playing
+            },
+            _ => { }
+        }
+    }
+
+    // Reset to beginning
+    pub fn reset(&var self) {
+        self.current_frame = 0
+        self.state = AnimationState::Playing
+    }
+}
+
+// ============================================================================
+// Animation Sequence
+// ============================================================================
+
+struct AnimationSequence<T> where T: Animatable + Clone {
+    tweens: Vec<Tween<T>>,
+    current_index: u32,
+    loop_count: i32,  // -1 for infinite
+    loops_remaining: i32,
+}
+
+impl<T> AnimationSequence<T> where T: Animatable + Clone {
+    pub fn new() -> Option<AnimationSequence<T>> {
+        let tweens = Vec::<Tween<T>>::new()
+        return Option::Some(AnimationSequence {
+            tweens: tweens,
+            current_index: 0,
+            loop_count: 1,
+            loops_remaining: 1,
+        })
+    }
+
+    pub fn add(&var self, tween: Tween<T>) {
+        self.tweens.push(tween)
+    }
+
+    pub fn set_loop_count(&var self, count: i32) {
+        self.loop_count = count
+        self.loops_remaining = count
+    }
+
+    pub fn value(&self) -> Option<T> {
+        if self.current_index >= self.tweens.len() {
+            return Option::None
+        }
+        return Option::Some(self.tweens.get(self.current_index).unwrap().value())
+    }
+
+    pub fn tick(&var self) -> bool {
+        if self.current_index >= self.tweens.len() {
+            return false  // Sequence complete
+        }
+
+        let current = self.tweens.get_mut(self.current_index).unwrap()
+        current.tick()
+
+        if current.is_finished() {
+            self.current_index += 1
+
+            // Check if we should loop
+            if self.current_index >= self.tweens.len() {
+                if self.loop_count < 0 || self.loops_remaining > 1 {
+                    // Reset for next loop
+                    self.current_index = 0
+                    for i in 0u32..self.tweens.len() {
+                        self.tweens.get_mut(i).unwrap().reset()
+                    }
+                    if self.loops_remaining > 0 {
+                        self.loops_remaining -= 1
+                    }
+                    return true  // Still playing
+                }
+                return false  // Done
+            }
+        }
+
+        return true  // Still playing
+    }
+}
+
+// ============================================================================
+// Example Usage
+// ============================================================================
+
+fn main() -> i32 {
+    println("=== Animation System Showcase ===\n")
+
+    // Simple tween with linear easing
+    println("--- Linear Tween (0 to 100, 10 frames) ---")
+    var linear_tween = Tween::new(0, 100, 10)
+
+    while !linear_tween.is_finished() {
+        println(f"Frame {linear_tween.current_frame}: value = {linear_tween.value()}")
+        linear_tween.tick()
+    }
+
+    // Tween with custom easing
+    println("\n--- Ease-Out Quad Tween ---")
+    var eased_tween = Tween::new(0, 100, 10)
+    eased_tween.with_easing(ease_out_quad)
+
+    while !eased_tween.is_finished() {
+        println(f"Frame {eased_tween.current_frame}: value = {eased_tween.value()}")
+        eased_tween.tick()
+    }
+
+    // Animation sequence
+    println("\n--- Animation Sequence (3 tweens, 2 loops) ---")
+    match AnimationSequence::<i32>::new() {
+        Option::Some(var seq) => {
+            seq.add(Tween::new(0, 50, 5))
+            seq.add(Tween::new(50, 25, 5))
+            seq.add(Tween::new(25, 100, 5))
+            seq.set_loop_count(2)
+
+            var frame = 0
+            while seq.tick() {
+                match seq.value() {
+                    Option::Some(val) => {
+                        println(f"Frame {frame}: value = {val}")
+                    },
+                    Option::None => { }
+                }
+                frame += 1
+            }
+        },
+        Option::None => {
+            println("Failed to create sequence")
+        }
+    }
+
+    println("\n=== Showcase Complete ===")
+    return 0
+}
+\end{lstlisting}
+
+This showcase demonstrates:
+\begin{itemize}
+    \item \textbf{Function types} as easing function callbacks
+    \item \textbf{Traits} for defining animatable behavior
+    \item \textbf{Generic structs and methods} with trait bounds
+    \item \textbf{Builder pattern} with \texttt{with\_easing}
+    \item \textbf{Consuming and reference self} in methods
+    \item \textbf{Match expressions} for state handling
+    \item \textbf{Closures} (implicitly in function type usage)
 \end{itemize}
 
 \section{Summary}

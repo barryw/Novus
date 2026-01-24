@@ -1,0 +1,387 @@
+// animation_system_showcase.novus
+// Showcase demonstrating Chapter 7 Functions and Methods concepts:
+// - Function definitions and parameters
+// - Methods and impl blocks
+// - Traits and trait implementations
+// - Generic functions with trait bounds
+// - Function types and callbacks
+// - Builder pattern
+// - Consuming self for ownership transfer
+
+from std::io import println
+from std::core import Option, Clone
+
+// ============================================================================
+// Easing Functions - Demonstrate function types
+// ============================================================================
+
+type EasingFn = fn(fixed32) -> fixed32
+
+// Linear interpolation (no easing)
+pub fn ease_linear(t: fixed32) -> fixed32 {
+    return t
+}
+
+// Quadratic ease-in: slow start, fast end
+pub fn ease_in_quad(t: fixed32) -> fixed32 {
+    return t * t
+}
+
+// Quadratic ease-out: fast start, slow end
+pub fn ease_out_quad(t: fixed32) -> fixed32 {
+    return t * (2.0 - t)
+}
+
+// Quadratic ease-in-out: slow start and end
+pub fn ease_in_out_quad(t: fixed32) -> fixed32 {
+    if t < 0.5 {
+        return 2.0 * t * t
+    }
+    return -1.0 + (4.0 - 2.0 * t) * t
+}
+
+// Cubic ease-in
+pub fn ease_in_cubic(t: fixed32) -> fixed32 {
+    return t * t * t
+}
+
+// Cubic ease-out
+pub fn ease_out_cubic(t: fixed32) -> fixed32 {
+    let t1 = t - 1.0
+    return t1 * t1 * t1 + 1.0
+}
+
+// Bounce ease-out (approximate)
+pub fn ease_out_bounce(t: fixed32) -> fixed32 {
+    if t < 0.363636 {  // 4/11
+        return 7.5625 * t * t
+    } else if t < 0.727272 {  // 8/11
+        let t1 = t - 0.545454  // 6/11
+        return 7.5625 * t1 * t1 + 0.75
+    } else if t < 0.909090 {  // 10/11
+        let t1 = t - 0.818181  // 9/11
+        return 7.5625 * t1 * t1 + 0.9375
+    } else {
+        let t1 = t - 0.954545  // 21/22
+        return 7.5625 * t1 * t1 + 0.984375
+    }
+}
+
+// ============================================================================
+// Animatable Trait - Demonstrate trait definition
+// ============================================================================
+
+pub trait Animatable {
+    fn lerp(&self, target: &Self, t: fixed32) -> Self
+}
+
+// Implement for i32
+impl Animatable for i32 {
+    fn lerp(&self, target: &i32, t: fixed32) -> i32 {
+        let diff = *target - *self
+        let scaled = fixed32::from_int(diff) * t
+        return *self + scaled.to_int()
+    }
+}
+
+// Implement for fixed32
+impl Animatable for fixed32 {
+    fn lerp(&self, target: &fixed32, t: fixed32) -> fixed32 {
+        let diff = *target - *self
+        return *self + diff * t
+    }
+}
+
+// ============================================================================
+// Color struct to demonstrate compound animatable
+// ============================================================================
+
+struct Color {
+    r: u8,
+    g: u8,
+    b: u8,
+}
+
+impl Color {
+    pub fn new(r: u8, g: u8, b: u8) -> Color {
+        return Color { r, g, b }
+    }
+
+    pub fn to_u32(&self) -> u32 {
+        return ((u32)self.r << 16) | ((u32)self.g << 8) | (u32)self.b
+    }
+}
+
+impl Animatable for Color {
+    fn lerp(&self, target: &Color, t: fixed32) -> Color {
+        // Lerp each component
+        let r = ((i32)self.r).lerp(&(i32)target.r, t)
+        let g = ((i32)self.g).lerp(&(i32)target.g, t)
+        let b = ((i32)self.b).lerp(&(i32)target.b, t)
+        return Color::new((u8)r, (u8)g, (u8)b)
+    }
+}
+
+impl Clone for Color {
+    fn clone(&self) -> Option<Color> {
+        return Option::Some(Color::new(self.r, self.g, self.b))
+    }
+}
+
+// ============================================================================
+// Animation State Enum
+// ============================================================================
+
+enum AnimationState {
+    Idle,
+    Playing,
+    Paused,
+    Finished,
+}
+
+// ============================================================================
+// Tween Structure - Demonstrate generic struct with methods
+// ============================================================================
+
+struct Tween<T> where T: Animatable + Clone {
+    start_value: T,
+    end_value: T,
+    duration_frames: u32,
+    current_frame: u32,
+    easing: EasingFn,
+    state: AnimationState,
+}
+
+impl<T> Tween<T> where T: Animatable + Clone {
+    // Constructor - associated function (no self)
+    pub fn new(start: T, end: T, duration: u32) -> Tween<T> {
+        return Tween {
+            start_value: start,
+            end_value: end,
+            duration_frames: duration,
+            current_frame: 0,
+            easing: ease_linear,
+            state: AnimationState::Idle,
+        }
+    }
+
+    // Builder method - returns &var self for chaining
+    pub fn with_easing(&var self, easing: EasingFn) -> &var Tween<T> {
+        self.easing = easing
+        return self
+    }
+
+    // Start the animation
+    pub fn start(&var self) {
+        self.current_frame = 0
+        self.state = AnimationState::Playing
+    }
+
+    // Get current interpolated value - immutable self
+    pub fn value(&self) -> T {
+        match self.state {
+            AnimationState::Idle => {
+                return self.start_value.clone().unwrap()
+            },
+            AnimationState::Finished => {
+                return self.end_value.clone().unwrap()
+            },
+            _ => { }
+        }
+
+        if self.duration_frames == 0 {
+            return self.end_value.clone().unwrap()
+        }
+
+        // Calculate normalized time (0.0 to 1.0)
+        let t_raw = fixed32::from_int((i32)self.current_frame)
+            / fixed32::from_int((i32)self.duration_frames)
+
+        // Clamp to [0, 1]
+        var t = t_raw
+        if t < 0.0 { t = 0.0 }
+        if t > 1.0 { t = 1.0 }
+
+        // Apply easing function
+        let t_eased = (self.easing)(t)
+
+        // Interpolate between start and end
+        return self.start_value.lerp(&self.end_value, t_eased)
+    }
+
+    // Advance animation by one frame - mutable self
+    pub fn tick(&var self) {
+        match self.state {
+            AnimationState::Playing => {
+                self.current_frame += 1
+                if self.current_frame >= self.duration_frames {
+                    self.state = AnimationState::Finished
+                }
+            },
+            _ => { }
+        }
+    }
+
+    // Check if animation is complete
+    pub fn is_finished(&self) -> bool {
+        match self.state {
+            AnimationState::Finished => true,
+            _ => false,
+        }
+    }
+
+    // Check if animation is playing
+    pub fn is_playing(&self) -> bool {
+        match self.state {
+            AnimationState::Playing => true,
+            _ => false,
+        }
+    }
+
+    // Pause the animation
+    pub fn pause(&var self) {
+        match self.state {
+            AnimationState::Playing => {
+                self.state = AnimationState::Paused
+            },
+            _ => { }
+        }
+    }
+
+    // Resume the animation
+    pub fn resume(&var self) {
+        match self.state {
+            AnimationState::Paused => {
+                self.state = AnimationState::Playing
+            },
+            _ => { }
+        }
+    }
+
+    // Reset to beginning
+    pub fn reset(&var self) {
+        self.current_frame = 0
+        self.state = AnimationState::Idle
+    }
+
+    // Get progress as percentage (0-100)
+    pub fn progress(&self) -> i32 {
+        if self.duration_frames == 0 {
+            return 100
+        }
+        return (i32)(self.current_frame * 100 / self.duration_frames)
+    }
+}
+
+// ============================================================================
+// Helper function to run animation and print values
+// ============================================================================
+
+fn run_and_print_i32(name: *u8, tween: &var Tween<i32>) {
+    println(f"\n--- {name} ---")
+    tween.start()
+
+    while !tween.is_finished() {
+        let val = tween.value()
+        let progress = tween.progress()
+        println(f"  Frame {tween.current_frame}: value={val}, progress={progress}%")
+        tween.tick()
+    }
+
+    println(f"  Final: value={tween.value()}")
+}
+
+fn run_and_print_color(name: *u8, tween: &var Tween<Color>) {
+    println(f"\n--- {name} ---")
+    tween.start()
+
+    while !tween.is_finished() {
+        let color = tween.value()
+        let hex = color.to_u32()
+        println(f"  Frame {tween.current_frame}: RGB({color.r}, {color.g}, {color.b}) = ${hex:06X}")
+        tween.tick()
+    }
+
+    let final_color = tween.value()
+    println(f"  Final: RGB({final_color.r}, {final_color.g}, {final_color.b})")
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
+fn main() -> i32 {
+    println("=== Animation System Showcase ===")
+    println("Demonstrating functions, methods, traits, and generics\n")
+
+    // Demo 1: Simple linear tween with i32
+    var linear = Tween::new(0, 100, 5)
+    run_and_print_i32("Linear Tween (0 -> 100)", &var linear)
+
+    // Demo 2: Ease-out quad tween - smooth deceleration
+    var ease_out = Tween::new(0, 100, 5)
+    ease_out.with_easing(ease_out_quad)
+    run_and_print_i32("Ease-Out Quad (0 -> 100)", &var ease_out)
+
+    // Demo 3: Ease-in quad tween - smooth acceleration
+    var ease_in = Tween::new(0, 100, 5)
+    ease_in.with_easing(ease_in_quad)
+    run_and_print_i32("Ease-In Quad (0 -> 100)", &var ease_in)
+
+    // Demo 4: Ease-in-out quad tween
+    var ease_inout = Tween::new(0, 100, 8)
+    ease_inout.with_easing(ease_in_out_quad)
+    run_and_print_i32("Ease-In-Out Quad (0 -> 100)", &var ease_inout)
+
+    // Demo 5: Bounce tween
+    var bounce = Tween::new(0, 100, 10)
+    bounce.with_easing(ease_out_bounce)
+    run_and_print_i32("Bounce Out (0 -> 100)", &var bounce)
+
+    // Demo 6: Color animation - demonstrates compound animatable
+    let red = Color::new(255, 0, 0)
+    let blue = Color::new(0, 0, 255)
+    var color_tween = Tween::new(red, blue, 5)
+    run_and_print_color("Color Fade (Red -> Blue)", &var color_tween)
+
+    // Demo 7: Pause and resume
+    println("\n--- Pause/Resume Demo ---")
+    var pausable = Tween::new(0, 50, 10)
+    pausable.start()
+
+    for i in 0..12 {
+        if i == 3 {
+            println(f"  [Pausing at frame {pausable.current_frame}]")
+            pausable.pause()
+        }
+        if i == 6 {
+            println(f"  [Resuming at frame {pausable.current_frame}]")
+            pausable.resume()
+        }
+
+        if pausable.is_playing() {
+            println(f"  Frame {pausable.current_frame}: value={pausable.value()}")
+            pausable.tick()
+        } else if !pausable.is_finished() {
+            println(f"  (paused) value={pausable.value()}")
+        } else {
+            println(f"  (finished) value={pausable.value()}")
+        }
+    }
+
+    // Demo 8: Using fixed32 for smoother animation
+    println("\n--- Fixed32 Tween Demo ---")
+    var smooth: Tween<fixed32> = Tween::new(0.0, 10.0, 5)
+    smooth.with_easing(ease_out_cubic)
+    smooth.start()
+
+    while !smooth.is_finished() {
+        let val = smooth.value()
+        // Fixed32 gives sub-integer precision
+        println(f"  Frame {smooth.current_frame}: value={val.to_int()}.{((val - fixed32::from_int(val.to_int())) * 100.0).to_int()}")
+        smooth.tick()
+    }
+
+    println("\n=== Showcase Complete ===")
+    return 0
+}
