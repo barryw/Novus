@@ -280,8 +280,11 @@ let x = 42          // i32 (default integer type)
 let y = true        // bool
 let z = "hello"     // str
 let a = [1, 2, 3]   // [i32; 3]
+```
 
-// Function return types can be inferred from context
+Function return types can also be inferred from context:
+
+```novus
 fn get_number() -> i32 {
     return 42  // return type matches function signature
 }

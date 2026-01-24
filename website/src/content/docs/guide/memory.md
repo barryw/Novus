@@ -290,22 +290,25 @@ AmigaOS provides flexible memory allocation with different memory types:
 ### Memory Types
 
 ```novus
-from std::ffi::amiga_consts import *
+from std::ffi::amiga_consts import MEMF_ANY, MEMF_CHIP, MEMF_FAST, MEMF_PUBLIC, MEMF_CLEAR
+from std::ffi::exec import AllocMem
 
-// Any available memory
-let ptr1 = AllocMem(1024, MEMF_ANY)
+fn main() {
+    // Any available memory
+    let ptr1 = AllocMem(1024, MEMF_ANY)
 
-// Chip memory (accessible by custom chips)
-let ptr2 = AllocMem(1024, MEMF_CHIP)
+    // Chip memory (accessible by custom chips)
+    let ptr2 = AllocMem(1024, MEMF_CHIP)
 
-// Fast memory (not accessible by custom chips, but faster)
-let ptr3 = AllocMem(1024, MEMF_FAST)
+    // Fast memory (not accessible by custom chips, but faster)
+    let ptr3 = AllocMem(1024, MEMF_FAST)
 
-// Public memory (can be shared across tasks)
-let ptr4 = AllocMem(1024, MEMF_PUBLIC)
+    // Public memory (can be shared across tasks)
+    let ptr4 = AllocMem(1024, MEMF_PUBLIC)
 
-// Clear to zero
-let ptr5 = AllocMem(1024, MEMF_CLEAR | MEMF_ANY)
+    // Clear to zero
+    let ptr5 = AllocMem(1024, MEMF_CLEAR | MEMF_ANY)
+}
 ```
 
 Memory flags:
@@ -512,18 +515,18 @@ struct Pool {
 }
 
 impl Pool {
-    fn allocate(self: &var Pool, size: u32) -> Option<*u8> {
+    fn allocate(&var self, size: u32) -> Option<*u8> {
         if self.used + size > self.size {
             return Option::None
         }
 
-        let ptr = (u32)self.memory + self.used
+        let ptr = self.memory as u32 + self.used
         self.used = self.used + size
 
-        return Option::Some((*u8)ptr)
+        return Option::Some(ptr as *u8)
     }
 
-    fn reset(self: &var Pool) {
+    fn reset(&var self) {
         self.used = 0
     }
 }
@@ -537,8 +540,8 @@ struct ScreenHandle {
 }
 
 impl Drop for ScreenHandle {
-    fn drop(self: &var ScreenHandle) {
-        if self.screen != 0 {
+    fn drop(&var self) {
+        if self.screen != null {
             CloseScreen(self.screen)
         }
     }

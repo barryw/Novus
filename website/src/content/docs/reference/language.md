@@ -20,13 +20,10 @@ Novus supports two comment styles:
 */
 ```
 
-Multi-line comments can be nested:
+Multi-line comments end at the first `*/`:
 
 ```novus
-/* outer comment
-   /* inner comment */
-   still in outer comment
-*/
+/* This is a comment */
 ```
 
 ### Identifiers
@@ -67,14 +64,13 @@ while       zeroed
 ```
 
 **Macro-like keywords:**
-```novus
-dbg!        matches!    unreachable!
-```
+- `dbg!` - debug print
+- `matches!` - pattern matching test
+- `unreachable!` - mark unreachable code
 
 **Inline assembly keywords:**
-```novus
-asm         clobbers
-```
+- `asm` - inline assembly block
+- `clobbers` - specify clobbered registers
 
 ## Literals
 
@@ -246,10 +242,9 @@ let rgb: (u8, u8, u8) = (255, 128, 0)
 let mixed: (i32, bool, u8) = (42, true, 255)
 ```
 
-**Tuple access:**
+**Tuple destructuring:**
 ```novus
-let x = point.0
-let y = point.1
+let (x, y) = point
 ```
 
 ### Slices
@@ -293,22 +288,17 @@ Structures define custom data types with named fields:
 ```novus
 pub struct Point {
     x: i16,
-    y: i16
+    y: i16,
 }
 
 pub struct Color {
     r: u8,
     g: u8,
-    b: u8
-}
-
-// With visibility modifiers
-pub struct Config {
-    pub name: String,
-    internal version: u32,
-    timeout: u16  // private
+    b: u8,
 }
 ```
+
+Visibility is specified at the struct level, not per-field.
 
 **Creating instances:**
 ```novus
@@ -395,10 +385,10 @@ let point = Point { x: 10, y: 20 }
 Mutable variables with `var`:
 
 ```novus
-let var counter = 0
+var counter = 0
 counter = counter + 1
 
-let var buffer: [u8; 64]
+var buffer: [u8; 64] = @zeroed([u8; 64])
 buffer[0] = 255
 ```
 
@@ -408,7 +398,7 @@ Explicit type annotations:
 
 ```novus
 let x: i32 = 42
-let var count: u16 = 0
+var count: u16 = 0
 let result: Result<i32, Error> = get_value()
 ```
 
@@ -452,17 +442,6 @@ if x < 0 {
 **If as an expression:**
 ```novus
 let sign = if x >= 0 { 1 } else { -1 }
-```
-
-### Unless Expressions
-
-Inverted `if` condition:
-
-```novus
-unless error {
-    proceed()
-}
-// equivalent to: if !error { proceed() }
 ```
 
 ### Match Expressions
@@ -569,9 +548,13 @@ Use tuples for multiple return values:
 
 ```novus
 fn div_mod(a: u32, b: u32) -> (u32, u32) {
-    (a / b, a % b)
+    return (a / b, a % b)
 }
+```
 
+Destructure the result:
+
+```novus
 let (quotient, remainder) = div_mod(17, 5)
 ```
 
@@ -648,7 +631,7 @@ Operations that bypass safety checks:
 
 ```novus
 unsafe {
-    let ptr = $DFF000 as *var u16
+    let ptr = $DFF000 as *u16
     *ptr = 0x0020
 }
 ```
@@ -685,8 +668,6 @@ fn process_file(path: String) {
 from std::collections::vec import Vec
 from std::io import print, println
 from std::core import Option, Result
-
-use std::math  // import entire module
 ```
 
 ### Import Aliases
@@ -697,11 +678,10 @@ from std::collections::hashmap import HashMap as Map
 
 ## Visibility and Access Control
 
-```novus
-pub         // public visibility
-internal    // internal to current project
-// default   // private (default)
-```
+Visibility modifiers:
+- `pub` — public visibility
+- `internal` — internal to current project
+- (no modifier) — private (default)
 
 ## Compile-Time Features
 
@@ -711,10 +691,14 @@ Functions that can be evaluated at compile time:
 
 ```novus
 const fn square(x: i32) -> i32 {
-    x * x
+    return x * x
 }
+```
 
-let size: u32 = square(16)  // evaluated at compile time
+Called at compile time:
+
+```novus
+let size: u32 = square(16)
 ```
 
 ### Sizeof, Offsetof, Alignof
@@ -732,8 +716,8 @@ alignof(f64)             // alignment requirement
 Runtime and compile-time assertions:
 
 ```novus
-assert(x > 0)
-assert(buffer.len() > 0)
+assert!(x > 0)
+assert!(buffer.len() > 0)
 ```
 
 ## Attributes
@@ -743,17 +727,21 @@ Attributes provide metadata for functions, types, and other items:
 ```novus
 @test
 fn test_addition() {
-    assert(add(2, 3) == 5)
+    assert!(add(2, 3) == 5)
 }
+```
 
+```novus
 @bench
 fn bench_sort() {
-    // benchmark code
+    // ... benchmark code
 }
+```
 
+```novus
 @export
 fn exported_function() {
-    // function exported to C
+    // ... function exported to C
 }
 ```
 

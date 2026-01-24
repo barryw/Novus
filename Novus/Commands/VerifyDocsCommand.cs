@@ -11,9 +11,14 @@ namespace Novus.Commands;
 /// </summary>
 public static class VerifyDocsCommand
 {
-    // Regex to match ```novus code blocks
+    // Regex to match ```novus code blocks in markdown
     private static readonly Regex NovusCodeBlockRegex = new(
         @"```novus\s*\n(.*?)```",
+        RegexOptions.Singleline | RegexOptions.Compiled);
+
+    // Regex to match \begin{lstlisting}...\end{lstlisting} in LaTeX (excluding language=bash)
+    private static readonly Regex LatexNovusCodeBlockRegex = new(
+        @"\\begin\{lstlisting\}(?!\[language=bash\])\s*\n(.*?)\\end\{lstlisting\}",
         RegexOptions.Singleline | RegexOptions.Compiled);
 
     // Regex to detect incomplete/illustrative markers
@@ -38,11 +43,13 @@ public static class VerifyDocsCommand
             var results = new List<SnippetResult>();
             var searchOption = options.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
-            // Find all markdown and mdx files
+            // Find all markdown, mdx, and LaTeX files
             var mdFiles = Directory.EnumerateFiles(targetPath, "*.md", searchOption)
                 .Concat(Directory.EnumerateFiles(targetPath, "*.mdx", searchOption))
+                .Concat(Directory.EnumerateFiles(targetPath, "*.tex", searchOption))
                 .Where(f => !f.Contains("node_modules"))
-                .OrderBy(f => f);
+                .OrderBy(f => f)
+                .ToList();
 
             foreach (var file in mdFiles)
             {
@@ -77,7 +84,12 @@ public static class VerifyDocsCommand
         var content = File.ReadAllText(filePath);
         var relativePath = Path.GetRelativePath(basePath, filePath);
 
-        var matches = NovusCodeBlockRegex.Matches(content);
+        // Use appropriate regex based on file extension
+        var isLatex = filePath.EndsWith(".tex", StringComparison.OrdinalIgnoreCase);
+        var matches = isLatex
+            ? LatexNovusCodeBlockRegex.Matches(content)
+            : NovusCodeBlockRegex.Matches(content);
+
 
         foreach (Match match in matches)
         {
@@ -117,6 +129,12 @@ public static class VerifyDocsCommand
 
         // Prepare the snippet - wrap if needed
         var wrappedSnippet = WrapSnippetIfNeeded(snippet);
+
+        // Debug: show wrapped snippet
+        if (Environment.GetEnvironmentVariable("NOVUS_DEBUG_VERIFY") == "1")
+        {
+            Console.WriteLine($"=== Original snippet ===\n{snippet}\n=== Wrapped ===\n{wrappedSnippet}\n===");
+        }
 
         // Parse the snippet
         var diagnostics = new DiagnosticBag();
@@ -160,8 +178,15 @@ public static class VerifyDocsCommand
     {
         var trimmed = snippet.Trim();
 
-        // If it's empty or just comments, don't wrap
-        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("//"))
+        // If it's empty, don't wrap
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return snippet;
+        }
+
+        // If it's ONLY comments (all lines start with //), don't wrap
+        var allLines = trimmed.Split('\n').Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+        if (allLines.Count > 0 && allLines.All(l => l.TrimStart().StartsWith("//")))
         {
             return snippet;
         }
@@ -197,25 +222,29 @@ public static class VerifyDocsCommand
         }
 
         // Check if any line looks like a statement that needs wrapping
-        bool needsWrapping = lines.Any(l =>
-            l.StartsWith("let ") ||
-            l.StartsWith("var ") ||
-            l.StartsWith("if ") ||
-            l.StartsWith("while ") ||
-            l.StartsWith("loop ") ||
-            l.StartsWith("loop{") ||
-            l.StartsWith("for ") ||
-            l.StartsWith("match ") ||
-            l.StartsWith("return ") ||
-            l.StartsWith("defer ") ||
-            l.StartsWith("using ") ||
-            l.StartsWith("unsafe ") ||
-            l.StartsWith("unsafe{") ||
-            l.StartsWith("asm ") ||
-            l.StartsWith("asm{") ||
-            Regex.IsMatch(l, @"^\w+\s*=") ||  // Assignment like x = 5
-            Regex.IsMatch(l, @"^\w+\s*\(")    // Function call like print("hello")
-        );
+        // Use the original lines (not trimmed) but trim for pattern matching
+        var originalLines = snippet.Split('\n');
+        bool needsWrapping = originalLines.Any(l =>
+        {
+            var lt = l.TrimStart();
+            return lt.StartsWith("let ") ||
+                   lt.StartsWith("var ") ||
+                   lt.StartsWith("if ") ||
+                   lt.StartsWith("while ") ||
+                   lt.StartsWith("loop ") ||
+                   lt.StartsWith("loop{") ||
+                   lt.StartsWith("for ") ||
+                   lt.StartsWith("match ") ||
+                   lt.StartsWith("return ") ||
+                   lt.StartsWith("defer ") ||
+                   lt.StartsWith("using ") ||
+                   lt.StartsWith("unsafe ") ||
+                   lt.StartsWith("unsafe{") ||
+                   lt.StartsWith("asm ") ||
+                   lt.StartsWith("asm{") ||
+                   Regex.IsMatch(lt, @"^\w+\s*=") ||  // Assignment like x = 5
+                   Regex.IsMatch(lt, @"^\w+\s*\(");   // Function call like print("hello")
+        });
 
         if (needsWrapping)
         {
