@@ -5,14 +5,25 @@
 \textit{``Metadata is a love note to the future.''} --- Jason Scott
 \end{quote}
 
-Attributes provide a way to attach metadata to code elements---functions, structs, enums, and variables. The compiler uses this metadata to alter behavior, generate code, or produce warnings. This chapter covers all implemented attributes.
+Attributes provide a way to attach metadata to code elements---functions, structs, enums, and variables. The compiler uses this metadata to alter behavior, generate code, or produce warnings. This chapter covers all implemented attributes with practical examples.
+
+\section{Understanding Attributes}
+\label{sec:understanding-attributes}
+
+In systems programming, we often need to tell the compiler things that can't be expressed in the code itself. Should this function be inlined? Is this struct packed for hardware access? Is this function safe to call from an interrupt handler?
+
+Attributes provide these hints and directives. Unlike comments, attributes are part of the language---the compiler parses them, validates them, and acts on them.
+
+\begin{comingfromc}
+\textbf{GCC/Clang Attributes:} C has \texttt{\_\_attribute\_\_((packed))}, \texttt{\_\_attribute\_\_((always\_inline))}, etc. Novus uses cleaner \texttt{@packed} and \texttt{@inline} syntax. Same ideas, better ergonomics.
+\end{comingfromc}
 
 \section{Attribute Syntax}
 \label{sec:attribute-syntax}
 
-Novus supports two attribute syntaxes:
+Novus supports two equivalent attribute syntaxes. Choose whichever feels more natural for your codebase.
 
-\subsection{At-Sign Syntax}
+\subsection{At-Sign Syntax (Recommended)}
 
 The primary syntax uses \texttt{@} followed by the attribute name:
 
@@ -28,6 +39,8 @@ fn fast_add(a: i32, b: i32) -> i32 {
 }
 \end{lstlisting}
 
+This syntax is concise and visually distinct from code.
+
 \subsection{Bracket Syntax}
 
 An alternative bracket syntax is also supported:
@@ -37,9 +50,15 @@ An alternative bracket syntax is also supported:
 fn test_multiplication() {
     expect_eq(3 * 7, 21, "multiplication")
 }
+
+#[derive(Eq, Hash)]
+struct Point {
+    x: i32,
+    y: i32,
+}
 \end{lstlisting}
 
-Both syntaxes are equivalent. Use whichever feels more natural.
+The bracket syntax is useful when attributes have complex arguments.
 
 \subsection{Attribute Arguments}
 
@@ -63,6 +82,12 @@ fn test_sort_perf() {
 fn test_future() {
     // Skipped during test runs
 }
+
+// Mixed arguments
+@libfunc(offset = -30)  // LVO offset -30 bytes
+pub fn my_library_function() -> i32 {
+    return 42
+}
 \end{lstlisting}
 
 \subsection{Multiple Attributes}
@@ -73,12 +98,22 @@ Multiple attributes can be stacked on a single item:
 @test
 @inline
 pub fn test_fast_path() {
-    // ...
+    // This function is both a test case and should be inlined
+}
+
+@interrupt
+@export
+pub fn vblank_handler() {
+    // Interrupt handler that must be preserved in the binary
 }
 \end{lstlisting}
 
+The order of attributes generally doesn't matter, though some combinations are invalid (the compiler will warn you).
+
 \section{Testing Attributes}
 \label{sec:testing-attributes}
+
+Novus has first-class support for testing through attributes.
 
 \subsection{@test}
 
@@ -103,14 +138,14 @@ fn test_with_description() {
 \end{description}
 
 \begin{lstlisting}
-@test(skip = "Not implemented yet")
-fn test_future_feature() {
-    // This test won't run - it's marked as skipped
+@test(skip = "Hardware not available in CI")
+fn test_blitter_operations() {
+    // This test requires real Amiga hardware
 }
 
 @test(skip)
-fn test_broken() {
-    // Also skipped (no reason given)
+fn test_known_broken() {
+    // Skipped without explanation (not recommended)
 }
 \end{lstlisting}
 
@@ -134,10 +169,12 @@ fn bench_hash() {
 }
 \end{lstlisting}
 
-Benchmark functions are included when you run \texttt{novus test -b}.
+Benchmark functions are included when you run \texttt{novus test -b}. The runner executes each benchmark multiple times and reports timing statistics.
 
 \section{Optimization Attributes}
 \label{sec:optimization-attributes}
+
+These attributes guide the compiler's optimization decisions.
 
 \subsection{@inline}
 
@@ -148,9 +185,26 @@ Hints that the compiler should inline this function at call sites:
 fn min(a: i32, b: i32) -> i32 {
     if a < b { return a } else { return b }
 }
+
+@inline
+fn abs(x: i32) -> i32 {
+    if x < 0 { return -x } else { return x }
+}
 \end{lstlisting}
 
-Small, frequently-called functions benefit most from inlining. The compiler may ignore this hint for recursive functions or very large functions.
+Small, frequently-called functions benefit most from inlining. Benefits include:
+\begin{itemize}
+    \item Elimination of function call overhead
+    \item Better register allocation across the inlined code
+    \item Opportunities for constant folding when arguments are known
+\end{itemize}
+
+The compiler may ignore this hint for:
+\begin{itemize}
+    \item Recursive functions
+    \item Very large functions
+    \item Functions with complex control flow
+\end{itemize}
 
 \subsection{@noinline}
 
@@ -161,8 +215,23 @@ Prevents inlining even when the compiler might otherwise choose to inline:
 fn error_handler() {
     // Keep error handling out of hot paths
     // to improve instruction cache locality
+    log_error("Something went wrong")
+    cleanup_resources()
+}
+
+@noinline
+fn cold_path_check(value: i32) -> bool {
+    // Rarely-taken branch - don't pollute hot code
+    return validate_complex_condition(value)
 }
 \end{lstlisting}
+
+Use \texttt{@noinline} for:
+\begin{itemize}
+    \item Error handling code (rarely executed)
+    \item Large functions called from tight loops
+    \item Functions where you need predictable stack usage
+\end{itemize}
 
 \section{Layout Attributes}
 \label{sec:layout-attributes}
@@ -172,20 +241,42 @@ fn error_handler() {
 Removes padding between struct fields:
 
 \begin{lstlisting}
-@packed
-struct TightStruct {
+// Without @packed: 8 bytes (a=1, padding=3, b=4)
+struct Normal {
     a: u8,
-    b: u32,  // No padding after a
-    c: u16,
+    b: u32,
+}
+
+// With @packed: 5 bytes (a=1, b=4, no padding)
+@packed
+struct Packed {
+    a: u8,
+    b: u32,
 }
 \end{lstlisting}
 
-\textbf{Warning:} Packed structs may have unaligned fields, which can cause slow memory access or crashes on some 68k processors. Use when matching external data formats or hardware registers.
+\begin{comingfromc}
+\textbf{C Equivalent:} \texttt{\#pragma pack(1)} or \texttt{\_\_attribute\_\_((packed))}. Same effect, but Novus makes it explicit per-struct.
+\end{comingfromc}
+
+\textbf{Warning:} Packed structs may have unaligned fields, which can cause:
+\begin{itemize}
+    \item Slower memory access (multiple bus cycles)
+    \item Address errors on 68000/68010 (crashes!)
+    \item Correct but slow access on 68020+
+\end{itemize}
+
+Use when:
+\begin{itemize}
+    \item Matching external data formats (file formats, network protocols)
+    \item Mapping hardware registers
+    \item Memory-constrained situations where every byte matters
+\end{itemize}
 
 \section{Trait Derivation}
 \label{sec:derive-attributes}
 
-\subsection{@derive}
+\subsection{@derive / \#[derive]}
 
 Automatically generates trait implementations for structs:
 
@@ -208,7 +299,7 @@ struct UserId {
     \item[\texttt{Hash}] Generates \texttt{hash(\&self) -> u32} combining field hashes
 \end{description}
 
-You can derive multiple traits:
+You can derive multiple traits at once:
 
 \begin{lstlisting}
 #[derive(Eq, Hash)]
@@ -216,6 +307,9 @@ struct CacheKey {
     module: u32,
     offset: u32,
 }
+
+// Now CacheKey can be used as HashMap key
+var cache = HashMap::<CacheKey, Data>::new()
 \end{lstlisting}
 
 \section{Method Chaining}
@@ -226,13 +320,23 @@ struct CacheKey {
 Enables fluent method chaining by making a method return \texttt{\&var Self}:
 
 \begin{lstlisting}
-struct Builder {
+struct WindowBuilder {
     width: i32,
     height: i32,
-    color: u32,
+    title: *u8,
+    flags: u32,
 }
 
-impl Builder {
+impl WindowBuilder {
+    pub fn new() -> WindowBuilder {
+        return WindowBuilder {
+            width: 640,
+            height: 480,
+            title: "Window",
+            flags: 0,
+        }
+    }
+
     @chain
     pub fn width(&var self, w: i32) {
         self.width = w
@@ -244,8 +348,12 @@ impl Builder {
     }
 
     @chain
-    pub fn color(&var self, c: u32) {
-        self.color = c
+    pub fn title(&var self, t: *u8) {
+        self.title = t
+    }
+
+    pub fn build(&self) -> Window {
+        // Create actual window...
     }
 }
 \end{lstlisting}
@@ -253,9 +361,11 @@ impl Builder {
 Usage:
 
 \begin{lstlisting}
-// ... (with Builder defined above)
-var builder = Builder { width: 0, height: 0, color: 0 }
-builder.width(100).height(200).color(0xFF0000)
+var window = WindowBuilder::new()
+    .width(800)
+    .height(600)
+    .title("My Application")
+    .build()
 \end{lstlisting}
 
 The \texttt{@chain} attribute automatically adds an implicit \texttt{return self} at the end of the method.
@@ -273,11 +383,17 @@ pub fn my_callback(data: *u8) -> i32 {
     // Can be called from external C code or AmigaOS
     return process(data)
 }
+
+@export
+pub fn _UserLibInit() -> i32 {
+    // Entry point called by AmigaOS
+    return initialize_library()
+}
 \end{lstlisting}
 
 Use this when:
 \begin{itemize}
-    \item Creating callback functions for AmigaOS
+    \item Creating callback functions for AmigaOS (hooks, interrupt handlers)
     \item Functions that need to be called from assembly or C
     \item Entry points that might appear unused to the optimizer
 \end{itemize}
@@ -292,12 +408,21 @@ struct timeval {
     tv_sec: i32,
     tv_usec: i32,
 }
+
+@extern_type
+struct Library {
+    node: Node,
+    flags: u8,
+    // ... matches C header definition
+}
 \end{lstlisting}
 
-This tells the compiler ``this type is defined elsewhere (in C headers); just use it, don't define it.''
+This tells the compiler: ``This type is defined elsewhere (in C headers or runtime); just use it, don't emit a definition.''
 
 \section{Synchronization Attributes}
 \label{sec:sync-attributes}
+
+These attributes provide automatic synchronization wrappers.
 
 \subsection{@atomic}
 
@@ -310,9 +435,31 @@ pub fn update_shared_counter(counter: *u32) {
     *counter = *counter + 1
     // Permit() called on exit (even if returning early)
 }
+
+@atomic
+pub fn swap_values(a: *i32, b: *i32) {
+    let temp = *a
+    *a = *b
+    *b = temp
+    // No task can switch during this operation
+}
 \end{lstlisting}
 
-This prevents task switching while the function executes. Use for short, fast operations on shared data.
+This prevents task switching while the function executes. The compiler ensures Permit() is called on all exit paths.
+
+\textbf{Use for:}
+\begin{itemize}
+    \item Short, fast operations on shared data
+    \item Lock-free data structure updates
+    \item Counter increments visible to multiple tasks
+\end{itemize}
+
+\textbf{Avoid for:}
+\begin{itemize}
+    \item Functions that might block (I/O, waiting)
+    \item Long-running computations
+    \item Anything that allocates memory
+\end{itemize}
 
 \subsection{@no\_interrupts}
 
@@ -325,12 +472,32 @@ pub fn poke_hardware_register(addr: *u16, value: u16) {
     *addr = value
     // Enable() called on exit
 }
+
+@no_interrupts
+pub fn read_modify_write(reg: *u16, mask: u16, value: u16) {
+    let current = *reg
+    *reg = (current & ~mask) | (value & mask)
+}
 \end{lstlisting}
 
-\textbf{Warning:} Use sparingly! This blocks all interrupts including audio and disk I/O. Only use for timing-critical hardware access.
+\textbf{Warning:} Use sparingly! This blocks \textit{all} interrupts including:
+\begin{itemize}
+    \item Audio DMA (causes audio glitches)
+    \item Disk I/O (can corrupt data)
+    \item Vertical blank (freezes display updates)
+    \item Timer interrupts (breaks timing)
+\end{itemize}
+
+Only use for timing-critical hardware access that must be atomic.
+
+\begin{comingfromc}
+\textbf{AmigaOS:} Disable() disables all hardware interrupts by setting the processor interrupt mask. Enable() restores it. These are Exec functions, not direct hardware access.
+\end{comingfromc}
 
 \section{Interrupt Handling Attributes}
 \label{sec:interrupt-attributes}
+
+These attributes are essential for writing interrupt-driven code.
 
 \subsection{@interrupt}
 
@@ -343,7 +510,21 @@ pub fn vblank_handler() {
     // All registers properly saved/restored
     update_frame_counter()
 }
+
+@interrupt
+pub fn audio_handler() {
+    // Called when audio channel needs more data
+    feed_next_sample()
+}
 \end{lstlisting}
+
+The compiler generates:
+\begin{itemize}
+    \item Register save (MOVEM.L to stack)
+    \item Your function body
+    \item Register restore (MOVEM.L from stack)
+    \item RTE (Return from Exception)
+\end{itemize}
 
 \subsection{@interrupt\_safe}
 
@@ -355,9 +536,27 @@ pub fn increment_counter(counter: *u32) {
     // Safe: no allocations, no blocking calls
     *counter = *counter + 1
 }
+
+@interrupt_safe
+fn calculate_checksum(data: *u8, len: u32) -> u32 {
+    // Safe: pure computation, no system calls
+    var sum: u32 = 0
+    for i in 0..len {
+        sum = sum + (data[i] as u32)
+    }
+    return sum
+}
 \end{lstlisting}
 
-This is currently documentation-only but helps communicate intent.
+Functions marked \texttt{@interrupt\_safe} must:
+\begin{itemize}
+    \item Never allocate memory
+    \item Never call blocking functions (Wait, WaitIO, etc.)
+    \item Never call Permit() without matching Forbid()
+    \item Complete quickly (microseconds, not milliseconds)
+\end{itemize}
+
+This is currently documentation-only but helps communicate intent and catch errors during code review.
 
 \section{Diagnostic Attributes}
 \label{sec:diagnostic-attributes}
@@ -370,14 +569,22 @@ Suppresses specific compiler warnings:
 @suppress("W0002", "Known safe: buffer size validated externally")
 pub fn write_unchecked(buffer: *u8, data: *u8, len: i32) {
     // Warning W0002 (unchecked buffer access) suppressed
+    // We accept responsibility for bounds checking
+}
+
+@suppress("W0001")  // Minimum suppression - just the code
+pub fn use_deprecated_api() {
+    call_old_function()
 }
 \end{lstlisting}
 
 \textbf{Arguments:}
 \begin{description}
     \item[warning code] The warning ID to suppress (e.g., \texttt{"W0001"})
-    \item[justification] Explanation of why the warning is safe to ignore
+    \item[justification] Explanation of why the warning is safe to ignore (recommended)
 \end{description}
+
+Always prefer fixing warnings over suppressing them. When suppression is necessary, document why.
 
 \section{Program Configuration}
 \label{sec:program-attributes}
@@ -405,14 +612,14 @@ fn main() -> i32 {
 \hline
 Simple programs & 8KB -- 16KB \\
 Typical applications & 32KB -- 64KB (default) \\
-Deep recursion & 128KB -- 256KB \\
+Deep recursion (parsers, tree traversal) & 128KB -- 256KB \\
 Large stack arrays & Array size + 32KB buffer \\
 \hline
 \end{tabular}
 \caption{Stack Size Recommendations}
 \end{table}
 
-\textbf{Note:} AmigaOS CLI default stack is only 4KB, far too small for most Novus programs. The default Novus stack size of 64KB works for typical applications.
+\textbf{Note:} AmigaOS CLI default stack is only 4KB, far too small for most Novus programs. The Novus runtime automatically checks and increases stack size if needed.
 
 \section{Library Attributes}
 \label{sec:library-attributes}
@@ -428,6 +635,7 @@ Marks a struct as an Amiga shared library:
 pub struct ExampleLibrary {
     base: Library,  // Must include Library base
     counter: u32,
+    initialized: bool,
 }
 \end{lstlisting}
 
@@ -438,6 +646,14 @@ pub struct ExampleLibrary {
     \item[\texttt{revision}] Minor revision number
 \end{description}
 
+The compiler generates:
+\begin{itemize}
+    \item ROMTag structure
+    \item Library vector table
+    \item Open/Close/Expunge handlers
+    \item Proper HUNK structure for library loading
+\end{itemize}
+
 \subsection{@libfunc}
 
 Marks a method as a library vector entry point:
@@ -445,11 +661,18 @@ Marks a method as a library vector entry point:
 \begin{lstlisting}
 impl ExampleLibrary {
     @libfunc
-    pub fn my_function(&self) -> i32 {
-        return 42
+    pub fn add_numbers(&self, a: i32, b: i32) -> i32 {
+        return a + b
+    }
+
+    @libfunc
+    pub fn get_counter(&self) -> u32 {
+        return self.counter
     }
 }
 \end{lstlisting}
+
+Library functions are called through the library base pointer, following AmigaOS calling conventions.
 
 \subsection{Library Lifecycle Hooks}
 
@@ -458,24 +681,29 @@ impl ExampleLibrary {
     @libinit
     pub fn init() -> bool {
         // One-time initialization when library loads
+        // Allocate resources, open dependencies
         return true
     }
 
     @libopen
     pub fn open(version: u32) -> bool {
         // Called each time library is opened
-        return version >= 1
+        if version > 1 { return false }  // Version check
+        self.counter = self.counter + 1
+        return true
     }
 
     @libclose
     pub fn close() {
         // Called each time library is closed
+        self.counter = self.counter - 1
     }
 
     @libexpunge
     pub fn expunge() -> bool {
         // Return true if library can be unloaded
-        return true
+        // Return false to keep library resident
+        return self.counter == 0
     }
 }
 \end{lstlisting}
@@ -493,7 +721,8 @@ Marks a struct as an Amiga device:
 @device(name = "example.device", version = 1, revision = 0)
 pub struct ExampleDevice {
     base: Device,
-    // device-specific fields
+    unit: u32,
+    active: bool,
 }
 \end{lstlisting}
 
@@ -506,6 +735,14 @@ impl ExampleDevice {
     @devicecmd(CMD_READ)
     pub fn handle_read(&self, io: *IORequest) {
         // Handle read command
+        io.io_Actual = read_data(io.io_Data, io.io_Length)
+    }
+
+    @devicecmd(CMD_WRITE)
+    pub fn handle_write(&self, io: *IORequest) {
+        // Handle write command
+        write_data(io.io_Data, io.io_Length)
+        io.io_Actual = io.io_Length
     }
 }
 \end{lstlisting}
@@ -519,11 +756,18 @@ impl ExampleDevice {
     @beginio
     pub fn begin_io(&self, io: *IORequest) {
         // Start I/O operation
+        let cmd = io.io_Command
+        match cmd {
+            CMD_READ => self.handle_read(io),
+            CMD_WRITE => self.handle_write(io),
+            _ => io.io_Error = IOERR_NOCMD,
+        }
     }
 
     @abortio
     pub fn abort_io(&self, io: *IORequest) -> i32 {
         // Abort pending I/O
+        // Return 0 if aborted, error otherwise
         return 0
     }
 }
@@ -532,6 +776,183 @@ impl ExampleDevice {
 \subsection{Device Lifecycle Hooks}
 
 Similar to libraries: \texttt{@deviceinit}, \texttt{@deviceopen}, \texttt{@deviceclose}, \texttt{@deviceexpunge}.
+
+\section{Common Attribute Patterns}
+\label{sec:common-patterns}
+
+\subsection{Interrupt-Safe State Updates}
+
+Combining \texttt{@atomic} with \texttt{@interrupt\_safe}:
+
+\begin{lstlisting}
+static var frame_count: u32 = 0
+static var frames_per_second: u32 = 0
+
+@interrupt_safe
+@inline
+fn increment_frame_count() {
+    frame_count = frame_count + 1
+}
+
+@atomic
+pub fn get_and_reset_fps() -> u32 {
+    let fps = frames_per_second
+    frames_per_second = 0
+    return fps
+}
+
+@interrupt
+@export
+pub fn vblank_interrupt() {
+    increment_frame_count()
+    if frame_count >= 50 {  // PAL: 50 frames = 1 second
+        frames_per_second = frame_count
+        frame_count = 0
+    }
+}
+\end{lstlisting}
+
+\subsection{Builder Pattern with Validation}
+
+\begin{lstlisting}
+struct ConfigBuilder {
+    width: Option<i32>,
+    height: Option<i32>,
+    depth: i32,
+}
+
+impl ConfigBuilder {
+    pub fn new() -> ConfigBuilder {
+        return ConfigBuilder {
+            width: Option::None,
+            height: Option::None,
+            depth: 8,
+        }
+    }
+
+    @chain
+    pub fn width(&var self, w: i32) {
+        self.width = Option::Some(w)
+    }
+
+    @chain
+    pub fn height(&var self, h: i32) {
+        self.height = Option::Some(h)
+    }
+
+    @chain
+    pub fn depth(&var self, d: i32) {
+        self.depth = d
+    }
+
+    pub fn build(&self) -> Result<Config, ConfigError> {
+        // Validate all required fields are set
+        let w = match self.width {
+            Option::Some(v) => v,
+            Option::None => return Result::Err(ConfigError::MissingWidth),
+        }
+        let h = match self.height {
+            Option::Some(v) => v,
+            Option::None => return Result::Err(ConfigError::MissingHeight),
+        }
+        return Result::Ok(Config { width: w, height: h, depth: self.depth })
+    }
+}
+\end{lstlisting}
+
+\section{Showcase: Interrupt-Driven Music Player}
+\label{sec:showcase-music-player}
+
+This showcase demonstrates interrupt and synchronization attributes for audio playback.
+
+\begin{lstlisting}
+// music_player_showcase.novus - Demonstrates interrupt attributes
+
+from std::core import Option
+from std::io::file import print, println
+from std::ffi::exec import Forbid, Permit, Disable, Enable
+
+// Player state stored as globals for interrupt access
+static var g_is_playing: bool = false
+static var g_current_position: u32 = 0
+static var g_sample_length: u32 = 0
+static var g_tempo_counter: u32 = 0
+static var g_tempo_divider: u32 = 6  // ~8 ticks/sec at PAL
+static var g_volume: u16 = 64
+
+// @interrupt_safe: Documents this is safe to call from interrupt
+// @inline: Hint to inline for performance
+@interrupt_safe
+@inline
+fn advance_position() -> bool {
+    if g_current_position >= g_sample_length {
+        return false
+    }
+    g_current_position = g_current_position + 1u32
+    return true
+}
+
+// @no_interrupts: Wraps in Disable/Enable for hardware access
+@no_interrupts
+fn write_audio_volume(volume: u16) {
+    g_volume = volume
+    // In real code: write to Paula register here
+}
+
+// @atomic: Wraps in Forbid/Permit for task-safe state access
+@atomic
+fn start_playback(length: u32, tempo: u32) -> bool {
+    if g_is_playing { return false }
+    g_sample_length = length
+    g_current_position = 0u32
+    g_tempo_divider = tempo
+    g_is_playing = true
+    return true
+}
+
+@atomic
+fn stop_playback() {
+    if g_is_playing {
+        g_is_playing = false
+        write_audio_volume(0u16)
+    }
+}
+
+// @interrupt: Generates proper save/restore and RTE
+// @export: Prevents dead code elimination
+@interrupt
+@export
+pub fn vblank_music_handler() {
+    if !g_is_playing { return }
+
+    g_tempo_counter = g_tempo_counter + 1u32
+    if g_tempo_counter < g_tempo_divider { return }
+    g_tempo_counter = 0u32
+
+    if !advance_position() {
+        g_is_playing = false
+    }
+}
+
+pub fn main() -> i32 {
+    println("Key Attributes Demonstrated:")
+    println("  @interrupt     - VBlank handler")
+    println("  @interrupt_safe - Safe helper functions")
+    println("  @atomic        - Critical sections")
+    println("  @no_interrupts - Hardware access")
+    println("  @inline        - Performance hints")
+    println("  @export        - Callback preservation")
+    return 0
+}
+\end{lstlisting}
+
+This pattern is typical for:
+\begin{itemize}
+    \item MOD/XM music players
+    \item Sample playback engines
+    \item Sound effect systems
+    \item Any audio requiring precise timing
+\end{itemize}
 
 \section{Attribute Reference}
 \label{sec:attribute-reference}
@@ -582,3 +1003,15 @@ warning[W2001]: unknown attribute 'foo'
 \end{lstlisting}
 
 This helps catch typos while allowing forward compatibility with future attributes.
+
+\section{Future Attributes}
+
+The following attributes are planned for future versions:
+
+\begin{description}
+    \item[\texttt{@deprecated}] Mark functions as deprecated with migration notes
+    \item[\texttt{@must\_use}] Require return value to be used
+    \item[\texttt{@cold}] Mark function as unlikely to be called (affects code layout)
+    \item[\texttt{@hot}] Mark function as frequently called (affects optimization)
+    \item[\texttt{@pure}] Function has no side effects (enables memoization)
+\end{description}

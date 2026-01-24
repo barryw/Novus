@@ -1,0 +1,365 @@
+// ============================================================================
+// Interrupt-Driven Music Player - Attributes Showcase
+// ============================================================================
+//
+// This program demonstrates Novus attributes for Amiga development:
+//
+//   - @interrupt for interrupt handlers
+//   - @interrupt_safe for functions callable from interrupt context
+//   - @atomic for critical sections (Forbid/Permit)
+//   - @no_interrupts for hardware register access (Disable/Enable)
+//   - @inline for performance-critical code
+//   - @export for callbacks exposed to AmigaOS
+//
+// Note: This is a demonstration of attributes, not a complete player.
+//
+// ============================================================================
+
+from std::core import Option
+from std::io::file import print, println
+from std::ffi::exec import Forbid, Permit, Disable, Enable
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const PAULA_BASE: u32 = 0xDFF000
+const DMAF_AUDIO0: u16 = 0x0001
+const DMAF_SETCLR: u16 = 0x8000
+
+// ============================================================================
+// Player State (Global Variables)
+// ============================================================================
+
+// Player state stored as globals for interrupt handler access
+// This is the typical pattern for Amiga interrupt-driven code
+static var g_is_playing: bool = false
+static var g_current_position: u32 = 0
+static var g_sample_length: u32 = 0
+static var g_tempo_counter: u32 = 0
+static var g_tempo_divider: u32 = 6   // 50/6 = ~8.3 ticks per second at PAL
+static var g_volume: u16 = 64
+
+// ============================================================================
+// Interrupt-Safe Functions
+// ============================================================================
+
+/// Increment the position counter safely
+/// @interrupt_safe documents that this function has no side effects
+/// that would be unsafe in interrupt context (no allocations, no blocking)
+@interrupt_safe
+@inline
+fn advance_position() -> bool {
+    let pos = g_current_position
+    let len = g_sample_length
+
+    if pos >= len {
+        return false  // Reached end
+    }
+
+    g_current_position = pos + 1u32
+    return true
+}
+
+/// Calculate volume level for fading
+/// @interrupt_safe because it only performs arithmetic
+@interrupt_safe
+@inline
+fn calculate_fade_volume(base_volume: u16, position: u32, length: u32) -> u16 {
+    // Simple linear fade out over last 10% of sample
+    let fade_start = length - (length / 10u32)
+    if position < fade_start {
+        return base_volume
+    }
+
+    let fade_progress = position - fade_start
+    let fade_range = length - fade_start
+    if fade_range == 0u32 {
+        return 0u16
+    }
+
+    let fade_factor = ((fade_range - fade_progress) * (base_volume as u32)) / fade_range
+    return (fade_factor as u16)
+}
+
+// ============================================================================
+// Hardware Access Functions
+// ============================================================================
+
+/// Write to Paula audio register
+/// @no_interrupts ensures atomic access to hardware registers
+/// This prevents interrupt handlers from interfering with register writes
+@no_interrupts
+fn write_audio_volume(volume: u16) {
+    // Disable() called automatically - all interrupts blocked
+
+    // In real code, we would write to PAULA_AUD0VOL here
+    // let vol_reg = ((PAULA_BASE + 0xA8) as *u16)
+    // unsafe { *vol_reg = volume }
+
+    // For demonstration, just update our global
+    g_volume = volume
+
+    // Enable() called automatically on exit
+}
+
+/// Set up audio DMA (demonstration)
+/// @no_interrupts for safe hardware register writes
+@no_interrupts
+fn setup_audio_channel(period: u16, volume: u16) {
+    // In real code: write to AUDxPER and AUDxVOL registers
+    // All register writes happen with interrupts disabled
+
+    // Demonstration: just store volume
+    g_volume = volume
+
+    // Note: period would control playback rate (PAL ~3579545 / period Hz)
+}
+
+// ============================================================================
+// Critical Section Functions
+// ============================================================================
+
+/// Start playback - uses @atomic for task-level synchronization
+/// @atomic wraps the function in Forbid/Permit
+@atomic
+fn start_playback(length: u32, tempo: u32) -> bool {
+    // Forbid() called automatically - task switching disabled
+
+    if g_is_playing {
+        return false  // Already playing
+    }
+
+    g_sample_length = length
+    g_current_position = 0u32
+    g_tempo_counter = 0u32
+    g_tempo_divider = tempo
+    g_is_playing = true
+
+    // Set up initial audio
+    setup_audio_channel(428u16, g_volume)  // ~8363 Hz sample rate
+
+    // Permit() called automatically on exit
+    return true
+}
+
+/// Stop playback atomically
+@atomic
+fn stop_playback() {
+    if g_is_playing {
+        g_is_playing = false
+        write_audio_volume(0u16)
+    }
+}
+
+/// Get current playback position (thread-safe read)
+@atomic
+fn get_position() -> u32 {
+    return g_current_position
+}
+
+/// Check if player is active (thread-safe read)
+@atomic
+fn is_playing() -> bool {
+    return g_is_playing
+}
+
+/// Set playback volume atomically
+@atomic
+fn set_volume(vol: u16) {
+    g_volume = vol
+    if g_is_playing {
+        write_audio_volume(vol)
+    }
+}
+
+// ============================================================================
+// Interrupt Handler
+// ============================================================================
+
+/// VBlank interrupt handler for audio timing
+/// @interrupt generates proper register save/restore and RTE
+/// @export prevents the linker from removing this "unused" function
+@interrupt
+@export
+pub fn vblank_music_handler() {
+    // Interrupt handlers must be fast and never block
+
+    if !g_is_playing {
+        return  // Nothing to do
+    }
+
+    // Tempo timing - only process on tempo tick
+    g_tempo_counter = g_tempo_counter + 1u32
+    if g_tempo_counter < g_tempo_divider {
+        return
+    }
+    g_tempo_counter = 0u32
+
+    // Advance playback position
+    if !advance_position() {
+        // Reached end of sample
+        g_is_playing = false
+        return
+    }
+
+    // Calculate volume with fade effect
+    let faded_vol = calculate_fade_volume(g_volume, g_current_position, g_sample_length)
+
+    // In a real player, we would update audio registers here
+    // For demo, the fade volume would be written to Paula
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+/// Initialize the music player system
+@export
+pub fn player_init() {
+    println("Music Player initialized")
+    println("Attributes demonstrated:")
+    println("  @interrupt     - VBlank handler")
+    println("  @interrupt_safe - Safe helper functions")
+    println("  @atomic        - Critical sections")
+    println("  @no_interrupts - Hardware access")
+    println("  @inline        - Performance hints")
+    println("  @export        - Callback preservation")
+}
+
+/// Play a sample with the given parameters
+@export
+pub fn player_play(length: u32) -> bool {
+    return start_playback(length, 6u32)
+}
+
+/// Stop current playback
+@export
+pub fn player_stop() {
+    stop_playback()
+}
+
+/// Get current playback status
+@export
+pub fn player_status() {
+    print("Playing: ")
+    if is_playing() {
+        println("Yes")
+        print("Position: ")
+        print_number(get_position())
+        println("")
+    } else {
+        println("No")
+    }
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Print a u32 number
+fn print_number(n: u32) {
+    if n == 0u32 {
+        print("0")
+        return
+    }
+    print_number_recursive(n)
+}
+
+fn print_number_recursive(n: u32) {
+    if n == 0u32 {
+        return
+    }
+    print_number_recursive(n / 10u32)
+    let digit: u8 = (u8)(n % 10u32) + 48u8
+    var buf = [0u8; 2]
+    buf[0] = digit
+    buf[1] = 0u8
+    print(&buf[0])
+}
+
+/// Print a separator line
+fn print_separator() {
+    println("========================================")
+}
+
+// ============================================================================
+// Main Program
+// ============================================================================
+
+pub fn main() -> i32 {
+    print_separator()
+    println("INTERRUPT-DRIVEN MUSIC PLAYER")
+    println("Attributes Showcase for Chapter 9")
+    print_separator()
+    println("")
+
+    // Initialize player
+    player_init()
+    println("")
+
+    // Show initial status
+    println("Initial Status:")
+    player_status()
+    println("")
+
+    // Demonstrate starting playback (simulation)
+    println("Starting playback simulation...")
+
+    if player_play(1000u32) {
+        println("Playback started successfully")
+    } else {
+        println("Failed to start playback")
+    }
+
+    println("")
+    println("Status during playback:")
+    player_status()
+
+    // Simulate some playback progress
+    g_current_position = 500u32
+
+    println("")
+    println("After advancing position:")
+    player_status()
+
+    // Stop playback
+    player_stop()
+    println("")
+    println("Playback stopped")
+    player_status()
+
+    println("")
+    print_separator()
+    println("Showcase Complete")
+    println("")
+    println("Key Attributes Demonstrated:")
+    println("")
+    println("  @interrupt")
+    println("    Marks vblank_music_handler as interrupt")
+    println("    Compiler generates save/restore and RTE")
+    println("")
+    println("  @interrupt_safe")
+    println("    Documents functions safe for interrupts")
+    println("    No allocations, no blocking calls")
+    println("")
+    println("  @atomic")
+    println("    Wraps function in Forbid/Permit")
+    println("    Prevents task switching")
+    println("")
+    println("  @no_interrupts")
+    println("    Wraps function in Disable/Enable")
+    println("    Blocks ALL interrupts for hardware")
+    println("")
+    println("  @inline")
+    println("    Hints compiler to inline function")
+    println("    Used on hot path functions")
+    println("")
+    println("  @export")
+    println("    Preserves from dead code elimination")
+    println("    Required for callbacks")
+    println("")
+    print_separator()
+
+    return 0
+}
