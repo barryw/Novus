@@ -7,8 +7,10 @@
 
 Novus treats errors as values, not exceptions. Every operation that can fail returns a \texttt{Result} type, making error handling explicit and impossible to ignore. This chapter covers Novus's error handling philosophy, the standard error types, and patterns for writing robust code.
 
+% ============================================================================
 \section{Philosophy: Errors as Values}
 \label{sec:error-philosophy}
+% ============================================================================
 
 Unlike languages with exceptions, Novus requires explicit handling of errors:
 
@@ -19,21 +21,80 @@ Unlike languages with exceptions, Novus requires explicit handling of errors:
     \item \textbf{Zero runtime cost} --- No exception tables or unwinding machinery
 \end{itemize}
 
+\subsection{Why Not Exceptions?}
+
+Many languages use exceptions for error handling. While convenient in some ways, exceptions have significant drawbacks for systems programming:
+
+\textbf{1. Stack Unwinding Cost:}
+Exception handling requires runtime machinery to unwind the stack, search for handlers, and call destructors. On a 68020 running at 14 MHz, this overhead is unacceptable.
+
+\textbf{2. Invisible Control Flow:}
+Any function call might throw, making control flow analysis difficult. In Novus, functions that can fail are marked by their return type.
+
+\textbf{3. Unpredictable Cleanup:}
+With exceptions, you need \texttt{try/finally} blocks to ensure resources are released. In Novus, \texttt{Result} combinators and pattern matching make cleanup explicit.
+
+\textbf{4. Binary Size:}
+Exception tables and unwinding code add significant size to executables. Every byte counts on classic Amiga systems.
+
+\subsection{Why Not errno?}
+
+The traditional C approach of global error codes has its own problems:
+
+\begin{lstlisting}[language=C]
+// C with errno
+FILE *f = fopen("data.txt", "r");
+if (f == NULL) {
+    if (errno == ENOENT) { /* not found */ }
+    else if (errno == EACCES) { /* permission denied */ }
+    // Easy to forget, hard to get right
+}
+\end{lstlisting}
+
+\textbf{Problems with errno:}
+\begin{itemize}
+    \item Global mutable state is inherently error-prone
+    \item Easy to forget to check it
+    \item Can be overwritten by intermediate calls
+    \item Not type-safe --- any integer could be assigned
+    \item Thread-unsafe without special handling
+\end{itemize}
+
+AmigaOS uses a similar pattern with \texttt{IoErr()}:
+
+\begin{lstlisting}[language=C]
+// AmigaOS with IoErr()
+BPTR lock = Lock("myfile", ACCESS_READ);
+if (lock == 0) {
+    LONG err = IoErr();  // Must call immediately!
+    // But what if you call something else first?
+    PrintFault(err, "Error");
+}
+\end{lstlisting}
+
+The danger: if you call \emph{any} other DOS function before \texttt{IoErr()}, the error code may be overwritten.
+
 \begin{comingfromc}
-In C, errors are typically indicated by return values (\texttt{-1}, \texttt{NULL}) or global \texttt{errno}. This leads to bugs when callers forget to check.
+In C, errors are typically indicated by return values (\texttt{-1}, \texttt{NULL}) or global \texttt{errno}/\texttt{IoErr()}. This leads to bugs when callers forget to check.
 
 In Novus, \texttt{Result<T, E>} forces you to handle both success and failure cases. You cannot accidentally use an error value as if it were successful.
 
+\begin{center}
 \begin{tabular}{ll}
-\textbf{C} & \textbf{Novus} \\
+\textbf{C (AmigaOS)} & \textbf{Novus} \\
+\hline
 \texttt{if (ptr == NULL)} & \texttt{match result \{ ... \}} \\
 \texttt{if (fd < 0)} & \texttt{let file = open(path)?} \\
-\texttt{errno} & \texttt{Result::Err(DosError::NotFound)} \\
+\texttt{IoErr()} & \texttt{Result::Err(DosError::NotFound)} \\
+Manual conversion & \texttt{From} trait auto-conversion \\
 \end{tabular}
+\end{center}
 \end{comingfromc}
 
+% ============================================================================
 \section{The Result Type}
 \label{sec:result-type}
+% ============================================================================
 
 The core error handling type is \texttt{Result<T, E>}:
 
@@ -56,39 +117,131 @@ fn open_file(path: *u8) -> Result<FileHandle, DosError> {
 }
 \end{lstlisting}
 
-\section{Working with Results}
-\label{sec:working-with-results}
+\subsection{Result Methods Reference}
 
-\subsection{Pattern Matching}
+The \texttt{Result} type provides several methods for working with values:
 
-The most explicit way to handle results:
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_ok()} & Returns \texttt{true} if the result is \texttt{Ok} \\
+\texttt{is\_err()} & Returns \texttt{true} if the result is \texttt{Err} \\
+\texttt{unwrap()} & Extracts the \texttt{Ok} value, panics on \texttt{Err} \\
+\texttt{unwrap\_or(default)} & Returns the \texttt{Ok} value or the provided default \\
+\texttt{expect(msg)} & Like \texttt{unwrap()} but with a custom panic message \\
+\texttt{ok()} & Converts to \texttt{Option<T>}, discarding the error \\
+\texttt{err()} & Converts to \texttt{Option<E>}, discarding the success value \\
+\end{tabular}
+\end{center}
 
 \begin{lstlisting}
-let result = open_file("data.txt")
+let result: Result<i32, Error> = some_operation()
 
-match result {
-    Result::Ok(file) => {
-        // Use the file
-        let data = read_all(&file)
-        close(file)
-    },
-    Result::Err(err) => {
-        println("Failed to open file")
-        println(err.message())
+// Query the state
+if result.is_ok() {
+    println("Operation succeeded")
+}
+
+// Get value with default
+let value = result.unwrap_or(0)
+
+// Convert to Option
+let maybe_value: Option<i32> = result.ok()
+\end{lstlisting}
+
+% ============================================================================
+\section{The Option Type}
+\label{sec:option-type}
+% ============================================================================
+
+While \texttt{Result} represents success or failure, \texttt{Option} represents presence or absence:
+
+\begin{lstlisting}
+enum Option<T> {
+    Some(T),  // Value present
+    None,     // No value
+}
+\end{lstlisting}
+
+\subsection{When to Use Option vs Result}
+
+\begin{itemize}
+    \item Use \textbf{Option} when the only failure mode is ``not found'' or ``not available''
+    \item Use \textbf{Result} when there are multiple failure modes to distinguish
+    \item Use \textbf{Result} for operations that interact with the OS or hardware
+\end{itemize}
+
+\begin{lstlisting}
+// Option: "not found" is the only failure
+fn find_user(id: u32) -> Option<User> { ... }
+
+// Result: multiple failure modes possible
+fn load_user(id: u32) -> Result<User, DbError> { ... }
+\end{lstlisting}
+
+\subsection{Option Methods Reference}
+
+\begin{center}
+\begin{tabular}{lp{8cm}}
+\textbf{Method} & \textbf{Description} \\
+\hline
+\texttt{is\_some()} & Returns \texttt{true} if value is present \\
+\texttt{is\_none()} & Returns \texttt{true} if no value \\
+\texttt{unwrap()} & Extracts the value, panics on \texttt{None} \\
+\texttt{unwrap\_or(default)} & Returns value or provided default \\
+\texttt{expect(msg)} & Like \texttt{unwrap()} with custom panic message \\
+\end{tabular}
+\end{center}
+
+\subsection{Converting Between Option and Result}
+
+Sometimes you need to convert between the two types:
+
+\begin{lstlisting}
+// Option -> Result: provide an error for None
+fn get_config_value(key: *u8) -> Result<*u8, ConfigError> {
+    match config.get(key) {
+        Option::Some(val) => Result::Ok(val),
+        Option::None => Result::Err(ConfigError::MissingKey)
     }
 }
 \end{lstlisting}
 
-\subsection{The ? Operator}
+\begin{comingfromc}
+In C, null pointers serve double duty: representing ``no value'' (Option) and ``error occurred'' (Result). This conflation causes bugs.
 
-For functions that return \texttt{Result}, the \texttt{?} operator provides concise error propagation:
+\begin{lstlisting}[language=C]
+// C: Is NULL "not found" or "error"?
+Node *node = find_node(list, key);
+if (node == NULL) {
+    // Did find fail, or is the key just missing?
+    // Have to check errno to know...
+}
+\end{lstlisting}
 
+In Novus, the type system distinguishes these cases. \texttt{Option<T>} means ``might not exist'' while \texttt{Result<T, E>} means ``might have failed''.
+\end{comingfromc}
+
+% ============================================================================
+\section{The ? Operator In Depth}
+\label{sec:question-operator}
+% ============================================================================
+
+The \texttt{?} operator is syntactic sugar for early return on error. It transforms verbose error checking into concise, readable code.
+
+\subsection{What ? Actually Does}
+
+When you write:
 \begin{lstlisting}
-fn process_file(path: *u8) -> Result<String, DosError> {
-    let file = open_file(path)?       // Returns Err early if failed
-    let data = read_all(&file)?       // Returns Err early if failed
-    let parsed = parse_data(&data)?   // Returns Err early if failed
-    Result::Ok(parsed)
+let file = open_file(path)?
+\end{lstlisting}
+
+The compiler generates equivalent code to:
+\begin{lstlisting}
+let file = match open_file(path) {
+    Result::Ok(val) => val,
+    Result::Err(e) => return Result::Err(e)
 }
 \end{lstlisting}
 
@@ -99,35 +252,88 @@ The \texttt{?} operator:
     \item If \texttt{Ok}, unwraps the value and continues
 \end{enumerate}
 
-\subsection{Providing Defaults}
+\subsection{Chaining Multiple ? Calls}
 
-Use \texttt{unwrap\_or} for safe fallback values:
-
-\begin{lstlisting}
-// ... (illustrative - with load_config defined elsewhere)
-let config = load_config("app.cfg")
-let value = config.unwrap_or(default_config())
-
-// Or with a closure for lazy evaluation (note space between pipes)
-let value = config.unwrap_or_else(| | compute_default())
-\end{lstlisting}
-
-\subsection{Panicking on Error}
-
-Use \texttt{unwrap()} only when failure is impossible or indicates a bug:
+The real power of \texttt{?} shows when chaining fallible operations:
 
 \begin{lstlisting}
-// Only use when you KNOW it can't fail
-let value = result.unwrap()  // Panics on Err!
-
-// Better: use expect() with a message
-let value = result.expect("Config file must exist")
+fn process_file(path: *u8) -> Result<Data, DosError> {
+    let file = open_file(path)?       // Returns Err early if failed
+    let header = read_header(&file)?  // Returns Err early if failed
+    let body = read_body(&file)?      // Returns Err early if failed
+    let data = parse_data(&body)?     // Returns Err early if failed
+    Result::Ok(data)
+}
 \end{lstlisting}
 
-\textbf{Warning:} Panics crash the program. Use sparingly.
+Without \texttt{?}, this would require deeply nested match statements:
 
+\begin{lstlisting}
+fn process_file(path: *u8) -> Result<Data, DosError> {
+    match open_file(path) {
+        Result::Ok(file) => {
+            match read_header(&file) {
+                Result::Ok(header) => {
+                    match read_body(&file) {
+                        Result::Ok(body) => {
+                            match parse_data(&body) {
+                                Result::Ok(data) => Result::Ok(data),
+                                Result::Err(e) => Result::Err(e)
+                            }
+                        },
+                        Result::Err(e) => Result::Err(e)
+                    }
+                },
+                Result::Err(e) => Result::Err(e)
+            }
+        },
+        Result::Err(e) => Result::Err(e)
+    }
+}
+\end{lstlisting}
+
+\subsection{Using ? in main()}
+
+In Novus, \texttt{main()} returns \texttt{i32} (the exit code). You can still use \texttt{?} by wrapping your logic:
+
+\begin{lstlisting}
+fn run() -> Result<(), AppError> {
+    let config = load_config()?
+    let window = open_window()?
+    main_loop(&window)?
+    Result::Ok(())
+}
+
+pub fn main() -> i32 {
+    match run() {
+        Result::Ok(_) => return 0,
+        Result::Err(err) => {
+            println(err.message())
+            return 1
+        }
+    }
+}
+\end{lstlisting}
+
+\subsection{Limitations of ?}
+
+The \texttt{?} operator can only be used in functions that return \texttt{Result}:
+
+\begin{lstlisting}
+fn valid() -> Result<(), Error> {
+    let x = fallible_op()?  // OK: function returns Result
+    Result::Ok(())
+}
+
+fn invalid() {
+    let x = fallible_op()?  // ERROR: function doesn't return Result
+}
+\end{lstlisting}
+
+% ============================================================================
 \section{Standard Error Types}
 \label{sec:standard-errors}
+% ============================================================================
 
 Novus provides error types for each AmigaOS subsystem.
 
@@ -137,32 +343,38 @@ Errors from the DOS library (file operations, paths):
 
 \begin{lstlisting}
 pub enum DosError {
-    NotFound,           // File/directory not found
-    AlreadyExists,      // Object already exists
-    DirNotFound,        // Directory not found
-    DirectoryNotEmpty,  // Can't delete non-empty dir
-    PermissionDenied,   // Access denied
-    WriteProtected,     // File is write-protected
-    ReadProtected,      // File is read-protected
-    DiskFull,           // No space on disk
-    NoDisk,             // No disk in drive
-    DeviceNotMounted,   // Device not available
-    InvalidLock,        // Bad file lock
+    NotFound,           // File/directory not found (IoErr 205)
+    AlreadyExists,      // Object already exists (IoErr 203)
+    DirNotFound,        // Directory not found (IoErr 212)
+    DirectoryNotEmpty,  // Can't delete non-empty dir (IoErr 216)
+    PermissionDenied,   // Access denied (IoErr 214)
+    WriteProtected,     // Disk is write-protected (IoErr 223)
+    ReadProtected,      // File is read-protected (IoErr 224)
+    DiskFull,           // No space on disk (IoErr 221)
+    NoDisk,             // No disk in drive (IoErr 218)
+    DeviceNotMounted,   // Device not available (IoErr 225)
+    InvalidLock,        // Bad file lock (IoErr 211)
     Unknown,            // Unmapped error code
 }
 \end{lstlisting}
 
-\begin{lstlisting}
-from std::error::errors import DosError, dos_last_error
-
-fn read_config() -> Result<String, DosError> {
-    let file = match open("config.txt", MODE_OLDFILE) {
-        Result::Ok(f) => f,
-        Result::Err(_) => return Result::Err(dos_last_error())
-    }
-    // ...
-}
-\end{lstlisting}
+\begin{center}
+\begin{tabular}{lll}
+\textbf{DosError Variant} & \textbf{IoErr() Code} & \textbf{Description} \\
+\hline
+\texttt{NotFound} & 205 & Object not found \\
+\texttt{AlreadyExists} & 203 & Object already exists \\
+\texttt{DirNotFound} & 212 & Directory not found \\
+\texttt{DirectoryNotEmpty} & 216 & Directory not empty \\
+\texttt{PermissionDenied} & 214 & Object is protected \\
+\texttt{WriteProtected} & 223 & Disk is write-protected \\
+\texttt{ReadProtected} & 224 & File is read-protected \\
+\texttt{DiskFull} & 221 & Disk is full \\
+\texttt{NoDisk} & 218 & No disk in drive \\
+\texttt{DeviceNotMounted} & 225 & Device not mounted \\
+\texttt{InvalidLock} & 211 & Invalid lock \\
+\end{tabular}
+\end{center}
 
 \subsection{ExecError}
 
@@ -180,18 +392,6 @@ pub enum ExecError {
     LibraryNotFound,    // OpenLibrary failed
     IndexOutOfBounds,   // Array bounds violation
     CapacityExceeded,   // Fixed buffer full
-}
-\end{lstlisting}
-
-\begin{lstlisting}
-from std::error::errors import ExecError
-
-fn allocate_buffer(size: u32) -> Result<*u8, ExecError> {
-    let ptr = AllocMem(size, MEMF_PUBLIC)
-    if ptr == null {
-        return Result::Err(ExecError::NoMem)
-    }
-    Result::Ok(ptr)
 }
 \end{lstlisting}
 
@@ -228,8 +428,10 @@ pub enum GraphicsError {
 }
 \end{lstlisting}
 
+% ============================================================================
 \section{The NovusError Wrapper}
 \label{sec:novus-error}
+% ============================================================================
 
 When a function may fail with errors from multiple subsystems, use \texttt{NovusError}:
 
@@ -254,32 +456,24 @@ fn load_and_display(path: *u8) -> Result<(), NovusError> {
 }
 \end{lstlisting}
 
-\section{Error Messages}
-\label{sec:error-messages}
+% ============================================================================
+\section{Error Conversion with From}
+\label{sec:error-conversion}
+% ============================================================================
 
-All standard error types implement a \texttt{message()} method:
+The \texttt{From} trait enables automatic error type conversion when using \texttt{?}:
 
 \begin{lstlisting}
-match result {
-    Result::Err(err) => {
-        println("Error: ")
-        println(err.message())
-    },
-    _ => {}
+trait From<T> {
+    fn convert(value: T) -> Self
 }
 \end{lstlisting}
 
-Error messages are human-readable strings:
-\begin{itemize}
-    \item \texttt{DosError::NotFound} $\rightarrow$ \texttt{"Object not found"}
-    \item \texttt{ExecError::NoMem} $\rightarrow$ \texttt{"Memory allocation failed"}
-    \item \texttt{IntuitionError::WindowOpenFailed} $\rightarrow$ \texttt{"Failed to open window"}
-\end{itemize}
+When you use \texttt{?} in a function returning \texttt{Result<T, NovusError>}, and the inner call returns \texttt{Result<T, DosError>}, the compiler automatically calls \texttt{NovusError::From<DosError>::convert()} to wrap the error.
 
-\section{Error Conversion}
-\label{sec:error-conversion}
+\subsection{Manual Conversion}
 
-Convert between error types using provided functions:
+You can also convert errors manually:
 
 \begin{lstlisting}
 from std::error::errors import novus_error_from_dos
@@ -293,7 +487,9 @@ fn wrapper() -> Result<(), NovusError> {
 }
 \end{lstlisting}
 
-Or get raw error codes for debugging:
+\subsection{Getting Raw Error Codes}
+
+For debugging or interop with C code, get raw AmigaOS error codes:
 
 \begin{lstlisting}
 from std::error::errors import dos_error_to_code
@@ -301,113 +497,432 @@ from std::error::errors import dos_error_to_code
 let code = dos_error_to_code(DosError::NotFound)  // Returns 205
 \end{lstlisting}
 
-\section{Patterns and Best Practices}
+% ============================================================================
+\section{Error Messages}
+\label{sec:error-messages}
+% ============================================================================
+
+All standard error types implement a \texttt{message()} method:
+
+\begin{lstlisting}
+match result {
+    Result::Err(err) => {
+        print("Error: ")
+        println(err.message())
+    },
+    _ => {}
+}
+\end{lstlisting}
+
+Error messages are human-readable strings:
+\begin{itemize}
+    \item \texttt{DosError::NotFound} $\rightarrow$ \texttt{"Object not found"}
+    \item \texttt{ExecError::NoMem} $\rightarrow$ \texttt{"Memory allocation failed"}
+    \item \texttt{IntuitionError::WindowOpenFailed} $\rightarrow$ \texttt{"Failed to open window"}
+\end{itemize}
+
+% ============================================================================
+\section{Error Handling Patterns}
 \label{sec:error-patterns}
+% ============================================================================
+
+This section covers common patterns for handling errors effectively.
 
 \subsection{Early Return Pattern}
 
-Validate inputs and return early on error:
+Validate inputs at the start of a function and return errors immediately. This keeps the main logic clean:
 
 \begin{lstlisting}
 fn process(data: *u8, len: u32) -> Result<(), Error> {
+    // Validate all inputs first
     if data == null {
         return Result::Err(Error::InvalidInput)
     }
     if len == 0 {
         return Result::Err(Error::EmptyData)
     }
+    if len > MAX_SIZE {
+        return Result::Err(Error::TooLarge)
+    }
 
-    // Main logic here
-    Result::Ok(())
+    // All validation passed - main logic here
+    do_actual_work(data, len)
 }
 \end{lstlisting}
 
-\subsection{Error Context}
+\begin{comingfromc}
+In C, you often see scattered validation throughout functions:
 
-Add context when propagating errors:
+\begin{lstlisting}[language=C]
+int process(char *data, size_t len) {
+    int result = init_something();
+    if (result < 0) return result;
 
-\begin{lstlisting}
-// ... (illustrative - error context example)
-fn load_user_config() -> Result<Config, ConfigError> {
-    let path = get_config_path()?
-    let file = open(path, MODE_OLDFILE)
-        .map_err(|e: DosError| ConfigError::FileNotFound)?
-    let data = read_all(&file)
-        .map_err(|e: DosError| ConfigError::ReadFailed)?
-    parse_config(&data)
+    if (data == NULL) return -EINVAL;  // Mixed with logic!
+
+    result = do_more_work();
+    if (result < 0) goto cleanup;
+
+    if (len == 0) goto cleanup;  // Validation too late!
+    // ...
 }
 \end{lstlisting}
+
+The early return pattern in Novus collects all validation at the top, making the ``happy path'' obvious.
+\end{comingfromc}
 
 \subsection{Fallback Chains}
 
-Try multiple approaches, falling back on failure:
+Try multiple approaches, falling back on failure. This is common for finding configuration files or resources:
 
 \begin{lstlisting}
-// ... (illustrative - fallback chains)
 fn find_config() -> Result<Config, ConfigError> {
     // Try user config first
     match load_from("ENV:app.cfg") {
         Result::Ok(cfg) => return Result::Ok(cfg),
-        Result::Err(_) => {},
+        Result::Err(_) => {}
+    }
+
+    // Fall back to archive
+    match load_from("ENVARC:app.cfg") {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
     }
 
     // Fall back to system config
-    match load_from("SYS:Prefs/app.cfg") {
+    match load_from("S:app.cfg") {
         Result::Ok(cfg) => return Result::Ok(cfg),
-        Result::Err(_) => {},
+        Result::Err(_) => {}
     }
 
-    // Use defaults
+    // Use defaults as last resort
     Result::Ok(default_config())
 }
 \end{lstlisting}
 
-\subsection{Cleanup on Error}
+\subsection{Cleanup on Error with defer}
 
-Use \texttt{defer} to ensure cleanup even when returning early:
+Use \texttt{defer} to ensure cleanup even when returning early on error:
 
 \begin{lstlisting}
 fn process_file(path: *u8) -> Result<Data, DosError> {
     let file = open(path, MODE_OLDFILE)?
-    defer { close(file) }  // Always runs
+    defer { close(file) }  // Always runs, even on error return
 
     let header = read_header(&file)?  // May return early
     let body = read_body(&file)?      // May return early
 
     Result::Ok(combine(header, body))
+    // defer runs here on success too
 }
 \end{lstlisting}
 
-\section{Creating Custom Errors}
-\label{sec:custom-errors}
+\subsection{Error Context}
 
-Define domain-specific error types:
+Add context when propagating errors by matching and re-wrapping with domain-specific information:
 
 \begin{lstlisting}
-pub enum ImageError {
-    InvalidFormat,
-    UnsupportedDepth(u8),
-    CorruptedData,
-    TooLarge(u32, u32),
-}
+fn load_user_config() -> Result<Config, ConfigError> {
+    let path = get_config_path()?
 
-impl ImageError {
+    let file = match open(path, MODE_OLDFILE) {
+        Result::Ok(f) => f,
+        Result::Err(_) => return Result::Err(ConfigError::FileNotFound)
+    }
+
+    let data = match read_all(&file) {
+        Result::Ok(d) => d,
+        Result::Err(_) => return Result::Err(ConfigError::ReadFailed)
+    }
+
+    parse_config(&data)
+}
+\end{lstlisting}
+
+\subsection{Retry Pattern}
+
+For transient failures (disk not ready, network timeout), retry a few times:
+
+\begin{lstlisting}
+fn open_with_retry(path: *u8, max_retries: u32) -> Result<FileHandle, DosError> {
+    var attempts: u32 = 0
+
+    while attempts < max_retries {
+        match open(path, MODE_OLDFILE) {
+            Result::Ok(file) => return Result::Ok(file),
+            Result::Err(DosError::NoDisk) => {
+                // Disk not ready - wait and retry
+                delay(Duration::from_secs(1))
+                attempts = attempts + 1u32
+            },
+            Result::Err(e) => return Result::Err(e)  // Non-retriable
+        }
+    }
+
+    Result::Err(DosError::NoDisk)
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Panic: When Errors Are Bugs}
+\label{sec:panic}
+% ============================================================================
+
+A \textbf{panic} is for situations where continuing is impossible---invariant violations, impossible states, or programmer errors.
+
+\begin{lstlisting}
+// Panic on invariant violation
+fn get_first(vec: &Vec<i32>) -> i32 {
+    if vec.len() == 0 {
+        panic!("get_first called on empty vector")
+    }
+    return vec[0].unwrap()
+}
+\end{lstlisting}
+
+\subsection{Panic vs Error}
+
+\begin{center}
+\begin{tabular}{lll}
+\textbf{Use} & \textbf{When} & \textbf{Example} \\
+\hline
+\texttt{Result::Err} & Failure is expected & File not found \\
+\texttt{panic!()} & Failure is a bug & Index out of bounds \\
+\end{tabular}
+\end{center}
+
+\subsection{assert!() for Debug Checks}
+
+Use \texttt{assert!()} to catch programming errors during development:
+
+\begin{lstlisting}
+fn process_buffer(buf: *u8, len: u32) {
+    assert!(buf != null, "buffer must not be null")
+    assert!(len > 0, "length must be positive")
+    // ...
+}
+\end{lstlisting}
+
+Assertions are checked in debug builds. They verify invariants that should always hold if the code is correct.
+
+% ============================================================================
+\section{Creating Custom Errors}
+\label{sec:custom-errors}
+% ============================================================================
+
+Define domain-specific error types for your application:
+
+\begin{lstlisting}
+pub enum ConfigError {
+    /// Config file not found in any search location
+    FileNotFound,
+
+    /// File exists but cannot be read
+    ReadFailed(DosError),
+
+    /// File is too large to load
+    FileTooLarge(u32),
+
+    /// Syntax error at specific line
+    ParseError(u32),
+
+    /// Required key is missing
+    MissingKey,
+
+    /// Value is invalid for expected type
+    InvalidValue,
+
+    /// Memory allocation failed
+    OutOfMemory,
+}
+\end{lstlisting}
+
+\subsection{Implementing message()}
+
+Provide human-readable messages:
+
+\begin{lstlisting}
+impl ConfigError {
     pub fn message(&self) -> *u8 {
         match *self {
-            ImageError::InvalidFormat => return "Invalid image format",
-            ImageError::UnsupportedDepth(_) => return "Unsupported color depth",
-            ImageError::CorruptedData => return "Image data corrupted",
-            ImageError::TooLarge(_, _) => return "Image dimensions too large",
+            ConfigError::FileNotFound =>
+                return "Config file not found in any search location",
+            ConfigError::ReadFailed(_) =>
+                return "Failed to read config file",
+            ConfigError::FileTooLarge(_) =>
+                return "Config file exceeds maximum size",
+            ConfigError::ParseError(_) =>
+                return "Syntax error in config file",
+            ConfigError::MissingKey =>
+                return "Required configuration key is missing",
+            ConfigError::InvalidValue =>
+                return "Configuration value is invalid",
+            ConfigError::OutOfMemory =>
+                return "Out of memory loading config",
         }
     }
 }
 \end{lstlisting}
 
+\subsection{Extracting Error Details}
+
+For errors with associated data, provide accessor methods:
+
+\begin{lstlisting}
+impl ConfigError {
+    /// Get the line number for parse errors
+    pub fn line_number(&self) -> Option<u32> {
+        match *self {
+            ConfigError::ParseError(line) => Option::Some(line),
+            _ => Option::None
+        }
+    }
+
+    /// Get the file size for too-large errors
+    pub fn file_size(&self) -> Option<u32> {
+        match *self {
+            ConfigError::FileTooLarge(size) => Option::Some(size),
+            _ => Option::None
+        }
+    }
+}
+\end{lstlisting}
+
+% ============================================================================
+\section{Showcase: Config Loader}
+\label{sec:showcase-config-loader}
+% ============================================================================
+
+This complete program demonstrates comprehensive error handling in Novus. It loads configuration files with fallback locations, custom error types, and proper error reporting.
+
+\begin{lstlisting}
+// config_loader.novus - Robust Config Loader
+
+from std::core import Option, Result
+from std::error::errors import DosError
+from std::ffi::dos import Open, Close, Read, Lock, UnLock, Examine
+from std::ffi::amiga_consts import MODE_OLDFILE, ACCESS_READ
+from std::io::file import print, println
+
+// ----------------------------------------------------------------------------
+// Custom Error Type with Rich Information
+// ----------------------------------------------------------------------------
+
+pub enum ConfigError {
+    FileNotFound,
+    ReadFailed(DosError),
+    FileTooLarge(u32),
+    ParseError(u32),  // Line number
+    MissingKey,
+    InvalidValue,
+    OutOfMemory,
+}
+
+impl ConfigError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ConfigError::FileNotFound =>
+                return "Config file not found in any search location",
+            ConfigError::ReadFailed(_) =>
+                return "Failed to read config file",
+            ConfigError::FileTooLarge(_) =>
+                return "Config file exceeds maximum size (64KB)",
+            ConfigError::ParseError(_) =>
+                return "Syntax error in config file",
+            ConfigError::MissingKey =>
+                return "Required configuration key is missing",
+            ConfigError::InvalidValue =>
+                return "Configuration value is invalid",
+            ConfigError::OutOfMemory =>
+                return "Out of memory loading config",
+        }
+    }
+
+    pub fn line_number(&self) -> Option<u32> {
+        match *self {
+            ConfigError::ParseError(line) => Option::Some(line),
+            _ => Option::None
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Fallback Chain: Try Multiple Locations
+// ----------------------------------------------------------------------------
+
+pub fn load_config(name: *u8) -> Result<Config, ConfigError> {
+    var path_buffer = [0u8; 256]
+
+    // Try ENV: first (volatile)
+    copy_path(&path_buffer[0], "ENV:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try ENVARC: (persistent)
+    copy_path(&path_buffer[0], "ENVARC:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try S: (startup scripts)
+    copy_path(&path_buffer[0], "S:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try current directory
+    match try_load_from(name) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(e) => return Result::Err(e)
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Main: Demonstrating Error Handling
+// ----------------------------------------------------------------------------
+
+pub fn main() -> i32 {
+    println("Config Loader - Error Handling Showcase")
+    println("")
+
+    match load_config("test.config") {
+        Result::Ok(config) => {
+            println("Config loaded successfully!")
+            print("  Source: ")
+            println(&config.source_path[0])
+            return 0
+        },
+        Result::Err(err) => {
+            print("Error: ")
+            println(err.message())
+            return 1
+        }
+    }
+}
+\end{lstlisting}
+
+This program demonstrates:
+\begin{itemize}
+    \item \textbf{Custom error types} with variant-specific data (line numbers, file sizes)
+    \item \textbf{Fallback chains} trying multiple locations (ENV:, ENVARC:, S:, current dir)
+    \item \textbf{Error messages} via the \texttt{message()} method
+    \item \textbf{Error context} extraction via \texttt{line\_number()}
+\end{itemize}
+
+The full source code is available in \texttt{Novus.Tests/Examples/config\_loader\_showcase.novus}.
+
+% ============================================================================
 \section{Summary}
 \label{sec:error-summary}
+% ============================================================================
 
 \begin{itemize}
     \item \textbf{Use \texttt{Result<T, E>}} for all fallible operations
+    \item \textbf{Use \texttt{Option<T>}} when ``not found'' is the only failure mode
     \item \textbf{Pattern match} for explicit handling of all cases
     \item \textbf{Use \texttt{?}} to propagate errors concisely
     \item \textbf{Use \texttt{unwrap\_or}} for safe defaults
@@ -415,6 +930,8 @@ impl ImageError {
     \item \textbf{Use standard errors} (DosError, ExecError, etc.) for AmigaOS operations
     \item \textbf{Use NovusError} when crossing subsystem boundaries
     \item \textbf{Use \texttt{defer}} to ensure cleanup on error paths
+    \item \textbf{Use panic} only for invariant violations and bugs
+    \item \textbf{Create custom errors} for domain-specific failure modes
 \end{itemize}
 
 Error handling in Novus is explicit but ergonomic. The \texttt{?} operator and \texttt{Result} combinators make it easy to write code that correctly handles failures without obscuring the happy path.

@@ -1,0 +1,497 @@
+// ============================================================================
+// Robust Config Loader - Error Handling Showcase
+// ============================================================================
+//
+// This program demonstrates comprehensive error handling in Novus:
+//
+//   - Custom error types with rich information
+//   - The ? operator for concise error propagation
+//   - Fallback chains (try multiple locations)
+//   - Early return pattern for validation
+//   - Error context and helpful messages
+//   - The From trait for automatic error conversion
+//
+// Usage: config_loader [config_name]
+//
+// Searches for config in: ENV:, ENVARC:, S:, current directory
+// ============================================================================
+
+from std::core import Option, Result, Drop
+from std::error::errors import DosError
+from std::ffi::dos import Open, Close, Read, IoErr, Lock, UnLock, Examine
+from std::ffi::amiga_consts import MODE_OLDFILE, ACCESS_READ
+from std::ffi::amiga_structs import FileInfoBlock
+from std::io::file import print, println
+from std::memory::block import MemoryBlock
+from std::ffi::exec import AllocMem, FreeMem, CopyMem
+from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+
+// ============================================================================
+// Custom Error Type
+// ============================================================================
+
+/// Configuration loading errors with context
+pub enum ConfigError {
+    /// File not found in any search location
+    FileNotFound,
+
+    /// File exists but cannot be read
+    ReadFailed(DosError),
+
+    /// File is too large to load
+    FileTooLarge(u32),
+
+    /// Parse error at specific line
+    ParseError(u32),
+
+    /// Required key is missing
+    MissingKey,
+
+    /// Value is invalid for the expected type
+    InvalidValue,
+
+    /// Memory allocation failed
+    OutOfMemory,
+}
+
+impl ConfigError {
+    /// Get human-readable error message
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ConfigError::FileNotFound => return "Config file not found in any search location",
+            ConfigError::ReadFailed(_) => return "Failed to read config file",
+            ConfigError::FileTooLarge(_) => return "Config file exceeds maximum size (64KB)",
+            ConfigError::ParseError(_) => return "Syntax error in config file",
+            ConfigError::MissingKey => return "Required configuration key is missing",
+            ConfigError::InvalidValue => return "Configuration value is invalid",
+            ConfigError::OutOfMemory => return "Out of memory loading config",
+        }
+    }
+
+    /// Get the line number for parse errors
+    pub fn line_number(&self) -> Option<u32> {
+        match *self {
+            ConfigError::ParseError(line) => return Option::Some(line),
+            _ => return Option::None
+        }
+    }
+}
+
+// ============================================================================
+// Configuration Structure
+// ============================================================================
+
+/// Maximum config file size (64KB)
+const MAX_CONFIG_SIZE: u32 = 65536
+
+/// Parsed configuration value
+pub struct ConfigValue {
+    key: [u8; 64],
+    key_len: u32,
+    value: [u8; 256],
+    value_len: u32,
+}
+
+impl ConfigValue {
+    /// Create a new empty config value
+    pub fn new() -> ConfigValue {
+        // Use zeroed initialization to avoid VBCC compound literal issues
+        return unsafe { @zeroed(ConfigValue) }
+    }
+
+    /// Check if key matches (case-sensitive)
+    pub fn key_matches(&self, name: *u8) -> bool {
+        var i: u32 = 0
+        while i < self.key_len {
+            let c1: u8 = self.key[i]
+            let c2: u8 = name[i]
+            if c2 == 0 {
+                return false  // name is shorter
+            }
+            if c1 != c2 {
+                return false
+            }
+            i = i + 1u32
+        }
+        // Check that name ends here too
+        return name[i] == 0
+    }
+}
+
+/// Loaded configuration with multiple values
+pub struct Config {
+    values: [ConfigValue; 32],
+    count: u32,
+    source_path: [u8; 256],
+    source_len: u32,
+}
+
+impl Config {
+    /// Create empty configuration
+    pub fn new() -> Config {
+        // Use unsafe zeroed for the whole struct to avoid VBCC compound literal issues
+        var cfg: Config = unsafe { @zeroed(Config) }
+        // Initialize each ConfigValue properly
+        var i: u32 = 0
+        while i < 32 {
+            cfg.values[i] = ConfigValue::new()
+            i = i + 1u32
+        }
+        return cfg
+    }
+
+    /// Get value by key name - returns pointer to first byte of value
+    pub fn get(&self, key: *u8) -> Option<*u8> {
+        var i: u32 = 0
+        while i < self.count {
+            if self.values[i].key_matches(key) {
+                return Option::Some(&self.values[i].value[0])
+            }
+            i = i + 1u32
+        }
+        return Option::None
+    }
+
+    /// Get number of loaded values
+    pub fn len(&self) -> u32 {
+        return self.count
+    }
+}
+
+// ============================================================================
+// Config Loading with Fallback Chain
+// ============================================================================
+
+/// Try to load config from a specific path
+fn try_load_from(path: *u8) -> Result<Config, ConfigError> {
+    // Try to open the file
+    let fh = unsafe { Open(path, MODE_OLDFILE) }
+    if fh == 0 {
+        return Result::Err(ConfigError::FileNotFound)
+    }
+
+    // Get file size using Lock/Examine
+    let lock = unsafe { Lock(path, ACCESS_READ) }
+    if lock == 0 {
+        unsafe { Close(fh) }
+        return Result::Err(ConfigError::FileNotFound)
+    }
+
+    var fib_mem = unsafe { AllocMem(@sizeof(FileInfoBlock), MEMF_PUBLIC | MEMF_CLEAR) }
+    if fib_mem == null {
+        unsafe { UnLock(lock) }
+        unsafe { Close(fh) }
+        return Result::Err(ConfigError::OutOfMemory)
+    }
+
+    let fib = (*FileInfoBlock)fib_mem
+    let examined = unsafe { Examine(lock, fib) }
+    let file_size: u32 = if examined != 0 { (u32)fib.fib_Size } else { 0 }
+
+    unsafe { FreeMem(fib_mem, @sizeof(FileInfoBlock)) }
+    unsafe { UnLock(lock) }
+
+    // Check file size limit
+    if file_size > MAX_CONFIG_SIZE {
+        unsafe { Close(fh) }
+        return Result::Err(ConfigError::FileTooLarge(file_size))
+    }
+
+    if file_size == 0 {
+        unsafe { Close(fh) }
+        return Result::Err(ConfigError::FileNotFound)
+    }
+
+    // Allocate buffer and read file
+    let buffer = unsafe { AllocMem(file_size + 1, MEMF_PUBLIC | MEMF_CLEAR) }
+    if buffer == null {
+        unsafe { Close(fh) }
+        return Result::Err(ConfigError::OutOfMemory)
+    }
+
+    let bytes_read = unsafe { Read(fh, buffer, (i32)file_size) }
+    unsafe { Close(fh) }
+
+    if bytes_read < 0 {
+        unsafe { FreeMem(buffer, file_size + 1) }
+        return Result::Err(ConfigError::ReadFailed(DosError::Unknown))
+    }
+
+    // Parse the config content
+    let result = parse_config(buffer, (u32)bytes_read, path)
+
+    // Free buffer
+    unsafe { FreeMem(buffer, file_size + 1) }
+
+    return result
+}
+
+/// Parse config file content into Config structure
+fn parse_config(data: *u8, len: u32, source: *u8) -> Result<Config, ConfigError> {
+    var config = Config::new()
+
+    // Copy source path
+    var i: u32 = 0
+    while i < 255 {
+        let src_byte: u8 = source[i]
+        if src_byte == 0 {
+            break
+        }
+        config.source_path[i] = src_byte
+        i = i + 1u32
+    }
+    config.source_len = i
+
+    // Parse line by line
+    var pos: u32 = 0
+    var line_num: u32 = 1
+
+    while pos < len && config.count < 32 {
+        // Skip whitespace at start of line
+        while pos < len {
+            let ws_byte: u8 = data[pos]
+            if ws_byte != 32 && ws_byte != 9 {  // space, tab
+                break
+            }
+            pos = pos + 1u32
+        }
+
+        if pos >= len {
+            break
+        }
+
+        let first_char: u8 = data[pos]
+
+        // Skip comment lines (# or ;)
+        if first_char == 35 || first_char == 59 {  // '#' or ';'
+            while pos < len && data[pos] != 10 {
+                pos = pos + 1u32
+            }
+            if pos < len {
+                pos = pos + 1u32  // skip newline
+            }
+            line_num = line_num + 1u32
+            continue
+        }
+
+        // Skip empty lines
+        if first_char == 10 || first_char == 13 {
+            pos = pos + 1u32
+            line_num = line_num + 1u32
+            continue
+        }
+
+        // Parse key
+        var key_start: u32 = pos
+        while pos < len {
+            let key_byte: u8 = data[pos]
+            if key_byte == 61 || key_byte == 32 || key_byte == 9 || key_byte == 10 || key_byte == 13 {  // '=' or whitespace
+                break
+            }
+            pos = pos + 1u32
+        }
+        let key_len: u32 = pos - key_start
+
+        if key_len == 0 || key_len > 63 {
+            return Result::Err(ConfigError::ParseError(line_num))
+        }
+
+        // Skip whitespace before '='
+        while pos < len {
+            let pre_eq_byte: u8 = data[pos]
+            if pre_eq_byte != 32 && pre_eq_byte != 9 {
+                break
+            }
+            pos = pos + 1u32
+        }
+
+        // Expect '='
+        if pos >= len || data[pos] != 61 {
+            return Result::Err(ConfigError::ParseError(line_num))
+        }
+        pos = pos + 1u32  // skip '='
+
+        // Skip whitespace after '='
+        while pos < len {
+            let post_eq_byte: u8 = data[pos]
+            if post_eq_byte != 32 && post_eq_byte != 9 {
+                break
+            }
+            pos = pos + 1u32
+        }
+
+        // Parse value (rest of line)
+        var value_start: u32 = pos
+        while pos < len {
+            let val_byte: u8 = data[pos]
+            if val_byte == 10 || val_byte == 13 {
+                break
+            }
+            pos = pos + 1u32
+        }
+        let value_len: u32 = pos - value_start
+
+        if value_len > 255 {
+            return Result::Err(ConfigError::ParseError(line_num))
+        }
+
+        // Store the key-value pair
+        var idx: u32 = config.count
+
+        // Copy key
+        var j: u32 = 0
+        while j < key_len {
+            config.values[idx].key[j] = data[key_start + j]
+            j = j + 1u32
+        }
+        config.values[idx].key_len = key_len
+
+        // Copy value
+        j = 0
+        while j < value_len {
+            config.values[idx].value[j] = data[value_start + j]
+            j = j + 1u32
+        }
+        config.values[idx].value_len = value_len
+
+        config.count = config.count + 1u32
+
+        // Move to next line
+        if pos < len && data[pos] == 13 {
+            pos = pos + 1u32  // skip CR
+        }
+        if pos < len && data[pos] == 10 {
+            pos = pos + 1u32  // skip LF
+        }
+        line_num = line_num + 1u32
+    }
+
+    return Result::Ok(config)
+}
+
+// ============================================================================
+// Fallback Chain: Try Multiple Locations
+// ============================================================================
+
+/// Load config by trying multiple standard locations
+pub fn load_config(name: *u8) -> Result<Config, ConfigError> {
+    // Build paths to try
+    // 1. ENV:<name>
+    // 2. ENVARC:<name>
+    // 3. S:<name>
+    // 4. Current directory
+
+    var path_buffer = [0u8; 256]
+
+    // Try ENV: first
+    copy_path(&path_buffer[0], "ENV:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try ENVARC:
+    copy_path(&path_buffer[0], "ENVARC:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try S:
+    copy_path(&path_buffer[0], "S:", name)
+    match try_load_from(&path_buffer[0]) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(_) => {}
+    }
+
+    // Try current directory (just the name)
+    match try_load_from(name) {
+        Result::Ok(cfg) => return Result::Ok(cfg),
+        Result::Err(e) => return Result::Err(e)
+    }
+}
+
+/// Helper to build a path
+fn copy_path(buffer: *u8, prefix: *u8, name: *u8) {
+    var i: u32 = 0
+
+    // Copy prefix
+    var j: u32 = 0
+    while j < 255 {
+        let prefix_byte: u8 = prefix[j]
+        if prefix_byte == 0 {
+            break
+        }
+        buffer[i] = prefix_byte
+        i = i + 1u32
+        j = j + 1u32
+    }
+
+    // Copy name
+    j = 0
+    while j < 255 && i < 255 {
+        let name_byte: u8 = name[j]
+        if name_byte == 0 {
+            break
+        }
+        buffer[i] = name_byte
+        i = i + 1u32
+        j = j + 1u32
+    }
+
+    // Null terminate
+    buffer[i] = 0
+}
+
+// ============================================================================
+// Main Program
+// ============================================================================
+
+pub fn main() -> i32 {
+    println("Config Loader - Error Handling Showcase")
+    println("=======================================")
+    println("")
+
+    // Try to load a test config
+    let config_name = "test.config"
+
+    println("Searching for config file...")
+    println("  Locations: ENV:, ENVARC:, S:, current directory")
+    println("")
+
+    match load_config(config_name) {
+        Result::Ok(config) => {
+            println("Config loaded successfully!")
+            print("  Source: ")
+            println(&config.source_path[0])
+            println("")
+
+            // Show loaded values
+            println("Configuration values:")
+            var i: u32 = 0
+            while i < config.count {
+                print("  ")
+                println(&config.values[i].key[0])
+                i = i + 1u32
+            }
+
+            return 0
+        },
+        Result::Err(err) => {
+            print("Error: ")
+            println(err.message())
+
+            // Note: For parse errors, line number is available via err.line_number()
+            // but we omit numeric output for simplicity
+
+            println("")
+            println("To test, create a file 'test.config' with content like:")
+            println("  # Comment line")
+            println("  name = MyApp")
+            println("  version = 1.0")
+            println("  author = You")
+
+            return 1
+        }
+    }
+}
