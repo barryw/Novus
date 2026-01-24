@@ -9,6 +9,10 @@
         <InvariantGlobalization>true</InvariantGlobalization>
         <TrimMode>partial</TrimMode>
         <Version>0.1.1</Version>
+        <Copyright>Copyright (c) 2026 Barry Walker</Copyright>
+        <Authors>Barry Walker</Authors>
+        <Product>Novus</Product>
+        <Description>A modern systems programming language for the Amiga</Description>
         <!-- Suppress trim warnings from third-party assemblies as errors -->
         <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
         <TrimmerSingleWarn>false</TrimmerSingleWarn>
