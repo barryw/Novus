@@ -1,0 +1,160 @@
+// ============================================================================
+// System Info - Getting Started Showcase
+// ============================================================================
+//
+// This program demonstrates key Novus concepts for beginners:
+//
+//   - Importing modules from the standard library
+//   - Using enums and structs
+//   - Pattern matching with match expressions
+//   - Calling unsafe FFI functions
+//   - Basic output and formatting
+//
+// ============================================================================
+
+from std::core import Option
+from std::io::file import print, println
+from std::ffi::exec import AvailMem
+from std::ffi::amiga_consts import MEMF_FAST, MEMF_CHIP, MEMF_TOTAL, MEMF_LARGEST
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Print a labeled line with a string value
+fn print_info(label: *u8, value: *u8) {
+    print("  ")
+    print(label)
+    print(": ")
+    println(value)
+}
+
+/// Print memory size in KB
+fn print_memory(label: *u8, bytes: u32) {
+    print("  ")
+    print(label)
+    print(": ")
+
+    // Convert to KB for readability
+    let kb: u32 = bytes / 1024u32
+
+    // Print the number digit by digit
+    if kb == 0 {
+        print("0")
+    } else {
+        print_number(kb)
+    }
+    println(" KB")
+}
+
+/// Print a u32 number (simple implementation)
+fn print_number(n: u32) {
+    if n == 0 {
+        return
+    }
+
+    // Recursively print higher digits first
+    if n >= 10 {
+        print_number(n / 10u32)
+    }
+
+    // Print the last digit
+    let digit: u8 = (u8)(n % 10u32) + 48u8  // '0' = 48 in ASCII
+    var buf = [0u8; 2]
+    buf[0] = digit
+    buf[1] = 0
+    print(&buf[0])
+}
+
+/// Print a separator line
+fn print_separator() {
+    println("----------------------------------------")
+}
+
+// ============================================================================
+// System Detection Functions
+// ============================================================================
+
+/// Display memory information using AvailMem
+fn show_memory_info() {
+    println("")
+    println("MEMORY")
+    print_separator()
+
+    // Get chip RAM info via AvailMem
+    let chip_total = unsafe { AvailMem(MEMF_CHIP | MEMF_TOTAL) }
+    let chip_largest = unsafe { AvailMem(MEMF_CHIP | MEMF_LARGEST) }
+
+    print_memory("Chip RAM Total", chip_total)
+    print_memory("Chip RAM Largest Block", chip_largest)
+
+    println("")
+
+    // Get fast RAM info via AvailMem
+    let fast_total = unsafe { AvailMem(MEMF_FAST | MEMF_TOTAL) }
+    let fast_largest = unsafe { AvailMem(MEMF_FAST | MEMF_LARGEST) }
+
+    if fast_total > 0 {
+        print_memory("Fast RAM Total", fast_total)
+        print_memory("Fast RAM Largest Block", fast_largest)
+    } else {
+        println("  Fast RAM: Not installed")
+    }
+
+    println("")
+
+    // Total system memory
+    let total_mem = chip_total + fast_total
+    print_memory("Total System RAM", total_mem)
+}
+
+/// Display a welcome banner
+fn show_banner() {
+    println("============================================")
+    println("         NOVUS SYSTEM INFORMATION")
+    println("============================================")
+    println("")
+    println("This program demonstrates Novus language")
+    println("features by querying your Amiga's hardware.")
+}
+
+/// Display tips for the Getting Started chapter
+fn show_tips() {
+    println("")
+    println("GETTING STARTED TIPS")
+    print_separator()
+    println("")
+    println("This program demonstrates key Novus concepts:")
+    println("")
+    println("  1. IMPORTS")
+    println("     from std::ffi::exec import AvailMem")
+    println("     from std::ffi::amiga_consts import MEMF_CHIP")
+    println("")
+    println("  2. UNSAFE FFI CALLS")
+    println("     let mem = unsafe [AvailMem(flags)]")
+    println("")
+    println("  3. BASIC ARITHMETIC")
+    println("     let kb = bytes / 1024u32")
+    println("")
+    println("  4. CONTROL FLOW")
+    println("     if fast_total > 0 [handle it]")
+    println("")
+    println("See the Programmer's Guide Chapter 2 for more!")
+}
+
+// ============================================================================
+// Main Program
+// ============================================================================
+
+pub fn main() -> i32 {
+    show_banner()
+    show_memory_info()
+    show_tips()
+
+    println("")
+    println("============================================")
+    println("              End of Report")
+    println("============================================")
+
+    return 0
+}
