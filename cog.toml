@@ -41,5 +41,3 @@ cog verify --file $1
 """
 
 [bump_profiles]
-
-[packages]
