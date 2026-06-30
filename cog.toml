@@ -8,9 +8,12 @@ tag_prefix = "v"
 skip_ci = "[skip ci]"
 skip_untracked = false
 
-# Version bump hooks - update .csproj files when version changes
+# Version bump hooks - update .csproj files when version changes.
+# NOTE: cog bump runs in the linux cog CI image, so use GNU/busybox sed
+# in-place syntax (`sed -i`), NOT the BSD `sed -i ''` form which treats the
+# empty arg as the script and fails on linux.
 pre_bump_hooks = [
-    "sed -i '' 's/<Version>.*<\\/Version>/<Version>{{version}}<\\/Version>/g' Novus/Novus.csproj Novus.Core/Novus.Core.csproj",
+    "sed -i 's/<Version>.*<\\/Version>/<Version>{{version}}<\\/Version>/g' Novus/Novus.csproj Novus.Core/Novus.Core.csproj",
     "git add Novus/Novus.csproj Novus.Core/Novus.Core.csproj"
 ]
 post_bump_hooks = []
@@ -23,6 +26,7 @@ authors = [
 
 # Commit types and their changelog sections
 [commit_types]
+brand = { changelog_title = "Branding" }
 feat = { changelog_title = "Features" }
 fix = { changelog_title = "Bug Fixes" }
 docs = { changelog_title = "Documentation" }
