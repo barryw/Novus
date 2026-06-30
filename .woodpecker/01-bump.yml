@@ -20,7 +20,7 @@ steps:
   # GH_APP_* are org-level Woodpecker secrets scoped to that image. The token
   # expires in ~1h — a natural fit for a short-lived pipeline, no rotation.
   - name: bump-version
-    image: ghcr.io/barryw/woodpecker-release:latest
+    image: ghcr.io/barryw/woodpecker-release:go
     pull: true
     environment:
       GH_APP_ID:
