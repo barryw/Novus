@@ -1,6 +1,6 @@
 # Novus Language Support for VS Code
 
-Official VS Code extension for the [Novus programming language](https://github.com/yourusername/novus) - a modern systems programming language for Amiga 68k.
+Official VS Code extension for the [Novus programming language](https://github.com/barryw/novus) - a modern systems programming language for Amiga 68k.
 
 **Tagline**: "New code for classic machines"
 
@@ -140,7 +140,7 @@ Currently, the extension works with zero configuration. Future versions will sup
 
 ```bash
 # Clone the Novus repository
-git clone https://github.com/yourusername/novus.git
+git clone https://github.com/barryw/novus.git
 cd novus
 
 # Build the language server
@@ -250,11 +250,11 @@ The language server currently analyzes files independently. Cross-file symbol re
 
 ## Contributing
 
-Contributions are welcome! Please see the main [Novus repository](https://github.com/yourusername/novus) for contribution guidelines.
+Contributions are welcome! Please see the main [Novus repository](https://github.com/barryw/novus) for contribution guidelines.
 
 ### Reporting Issues
 
-Please report issues on the [GitHub issue tracker](https://github.com/yourusername/novus/issues) with:
+Please report issues on the [GitHub issue tracker](https://github.com/barryw/novus/issues) with:
 
 1. VS Code version
 2. Extension version
@@ -267,9 +267,9 @@ Please report issues on the [GitHub issue tracker](https://github.com/youruserna
 
 ## Links
 
-- [Novus Language Repository](https://github.com/yourusername/novus)
-- [Language Design Document](https://github.com/yourusername/novus/blob/main/LanguageDesignDoc.md)
-- [LSP Architecture Documentation](https://github.com/yourusername/novus/blob/main/docs/LSP_ARCHITECTURE.md)
+- [Novus Language Repository](https://github.com/barryw/novus)
+- [Language Design Document](https://github.com/barryw/novus/blob/main/LanguageDesignDoc.md)
+- [LSP Architecture Documentation](https://github.com/barryw/novus/blob/main/docs/LSP_ARCHITECTURE.md)
 
 ## Changelog
 
