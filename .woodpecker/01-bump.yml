@@ -44,5 +44,15 @@ steps:
       - GITHUB_TOKEN=$(cat "$CI_WORKSPACE/.ci-token")
       - rm -f "$CI_WORKSPACE/.ci-token"
       - git remote set-url origin "https://x-access-token:$GITHUB_TOKEN@github.com/${CI_REPO}.git"
-      - cog bump --auto && git push --follow-tags || echo "No version bump needed"
+      # cog bump --auto exits non-zero when there are no bump-worthy commits;
+      # treat only THAT as "nothing to do". When it does bump, push the commit
+      # + tag explicitly to main (the CI checkout has no upstream tracking, so a
+      # bare `git push --follow-tags` fatals) and let a real push failure FAIL
+      # the step instead of masking it behind `|| echo`.
+      - |
+        if cog bump --auto; then
+          git push origin HEAD:main --follow-tags
+        else
+          echo "No bump-worthy commits since last tag; skipping."
+        fi
       - echo "Current version:" && cog get-version
