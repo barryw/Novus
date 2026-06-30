@@ -35,6 +35,8 @@ pub fn main() -> i32 {
 
 This compiles to clean 68k assembly that runs natively on any Amiga.
 
+**Pairs with Miggy Draw** — the Mac-native pixel-asset editor for Amiga graphics (sprites, BOBs, fonts, palettes). Novus brings the language; Miggy Draw brings the assets — one modern workflow for classic Amiga projects.
+
 ## Features
 
 ### Implemented
