@@ -5,7 +5,7 @@ when:
     path:
       include:
         - guide/**
-        - .woodpecker/guide.yml
+        - .woodpecker/guide.yaml
 
 # Use Linux runner for LaTeX builds
 labels:

@@ -1,4 +1,4 @@
-# Bump version on push to main
+# Bump version on push to main, then publish the GitHub Release with cog notes
 when:
   - event: push
     branch: main
@@ -23,5 +23,48 @@ steps:
       - git config user.name "Woodpecker CI"
       - git config user.email "ci@novuslang.com"
       - git remote set-url origin "https://x-access-token:$GITHUB_TOKEN@github.com/${CI_REPO}.git"
+      # Capture the current tag + the changelog for the unreleased commits BEFORE
+      # bumping. The changelog becomes the release notes (cog-generated, per
+      # build-and-release-standard section 3). Tags carry the 'v' prefix
+      # (cog.toml tag_prefix = "v"); use git describe so the release targets the
+      # real tag rather than the bare version from cog get-version.
+      - git describe --tags --abbrev=0 > .release_before 2>/dev/null || echo "none" > .release_before
+      - cog changelog > .release_notes.md 2>/dev/null || true
       - cog bump --auto && git push --follow-tags || echo "No version bump needed"
-      - echo "Current version:" && cog get-version
+      - git describe --tags --abbrev=0 > .release_after 2>/dev/null || echo "none" > .release_after
+      - echo "Current version:" && cat .release_after
+
+  # Publish the GitHub Release for the new v tag with cog changelog notes.
+  # Compiler/toolkit artifacts are attached by 02-build's matrix upload step.
+  # Best-effort: if this step is skipped or fails, 02-build still creates the
+  # Release (--generate-notes) and attaches artifacts, so acceptance holds.
+  - name: publish-release
+    image: debian:stable-slim
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - BEFORE=$(cat .release_before)
+      - VERSION=$(cat .release_after)
+      - |
+        if [ "$VERSION" = "$BEFORE" ] || [ "$VERSION" = "none" ]; then
+          echo "No new version tag; nothing to publish."
+          exit 0
+        fi
+      # Install gh CLI (same approach proven in 02-build's upload-to-release step)
+      - |
+        if ! command -v gh > /dev/null 2>&1; then
+          apt-get update && apt-get install -y curl gpg
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+          apt-get update && apt-get install -y gh
+        fi
+      # Prefer cog-generated notes; fall back to GitHub auto-notes if empty.
+      - |
+        if [ -s .release_notes.md ]; then
+          NOTES_ARG="--notes-file .release_notes.md"
+        else
+          NOTES_ARG="--generate-notes"
+        fi
+      - echo "Publishing release $VERSION for ${CI_REPO}"
+      - gh release create "$VERSION" --repo ${CI_REPO} --title "$VERSION" $NOTES_ARG || gh release edit "$VERSION" --repo ${CI_REPO} $NOTES_ARG || true
