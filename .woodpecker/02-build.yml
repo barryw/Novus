@@ -21,10 +21,6 @@ matrix:
       rid: osx-arm64
       binary_name: novus-macos-arm64
       image: bash
-    - platform: windows/amd64
-      rid: win-x64
-      binary_name: novus-windows-x64.exe
-      image: powershell
 
 labels:
   platform: ${platform}
@@ -58,32 +54,25 @@ steps:
       - dotnet --version
       - echo "NUGET_PACKAGES=$NUGET_PACKAGES"
       - dotnet publish Novus/Novus.csproj -c Release -r ${rid} -o ./publish --self-contained true
-      - ls -la ./publish/ || dir ./publish/
+      - ls -la ./publish/
 
   - name: prepare-artifacts
     image: ${image}
     commands:
       - |
-        if [ -f ./publish/novus.exe ]; then
-          cp ./publish/novus.exe ./${binary_name}
-        elif [ -f ./publish/novus ]; then
+        if [ -f ./publish/novus ]; then
           cp ./publish/novus ./${binary_name}
-          chmod +x ./${binary_name}
-        elif [ -f ./publish/Novus.exe ]; then
-          cp ./publish/Novus.exe ./${binary_name}
         else
           cp ./publish/Novus ./${binary_name}
-          chmod +x ./${binary_name} 2>/dev/null || true
         fi
+      - chmod +x ./${binary_name} 2>/dev/null || true
       - |
         if command -v sha256sum > /dev/null 2>&1; then
           sha256sum ${binary_name} > ${binary_name}.sha256
-        elif command -v shasum > /dev/null 2>&1; then
-          shasum -a 256 ${binary_name} > ${binary_name}.sha256
         else
-          powershell -Command "(Get-FileHash -Algorithm SHA256 ${binary_name}).Hash.ToLower() + '  ${binary_name}'" > ${binary_name}.sha256
+          shasum -a 256 ${binary_name} > ${binary_name}.sha256
         fi
-      - ls -la ${binary_name}* 2>/dev/null || dir ${binary_name}*
+      - ls -la ${binary_name}*
 
   - name: upload-to-release
     image: ${image}
