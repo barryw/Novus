@@ -35,6 +35,14 @@ const description = "A modern systems programming language for the Amiga 68k";
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- WHI shared download-latest control (WAL-39). Vendored brand assets under
+         /brand: tokens + the .whi-* component layer only (NOT the full whi.css
+         bundle — its base.css would clobber the Novus design). See
+         public/brand/README.md. -->
+    <link rel="stylesheet" href="/brand/css/tokens.css" />
+    <link rel="stylesheet" href="/brand/css/components.css" />
+    <link rel="stylesheet" href="/brand/css/whi-control.css" />
   </head>
   <body class="bg-white text-novus-gray-900 antialiased" style="font-family: 'Inter', system-ui, -apple-system, sans-serif;">
     <!-- Fixed Navigation Bar -->
@@ -126,5 +134,8 @@ const description = "A modern systems programming language for the Amiga 68k";
         });
       }
     </script>
+
+    <!-- WHI shared download-latest behavior — load once, end of body (WAL-39). -->
+    <script src="/brand/js/download-latest.js" defer></script>
   </body>
 </html>

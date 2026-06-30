@@ -1,0 +1,13 @@
+/*
+ * WHI download-latest control — site glue (Novus).
+ * The shared component CSS (components.css) styles .whi-btn / .whi-download but
+ * leaves .whi-icon sizing to the consumer (see whi-brand web/brand/icons/README.md:
+ * `.whi-icon { width:20px; height:20px; }`). This is the only site-owned rule;
+ * everything else is the byte-identical shared source. Loaded only on the
+ * homepage, after tokens.css + components.css.
+ */
+.whi-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
