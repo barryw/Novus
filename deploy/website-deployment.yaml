@@ -25,6 +25,13 @@ spec:
       labels:
         app: novuslang-website
     spec:
+      # ADR 0007 (item 8, WAL-148): with maxUnavailable:0/maxSurge:1 a terminating
+      # pod is dropped from Endpoints and gets SIGTERM (nginx fast-shutdown) before
+      # Traefik finishes deregistering it, so requests routed in that ~1s window
+      # briefly 502/conn-refuse. preStop holds the pod in rotation across the
+      # endpoint-propagation window, then `nginx -s quit` drains in-flight conns.
+      # graceperiod (35s) must exceed sleep+quit.
+      terminationGracePeriodSeconds: 35
       containers:
         - name: website
           image: ghcr.io/barryw/novuslang-website:latest
@@ -32,6 +39,10 @@ spec:
           ports:
             - containerPort: 80
               name: http
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 8; nginx -s quit"]
           resources:
             requests:
               memory: "32Mi"
