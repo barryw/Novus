@@ -124,7 +124,8 @@ public class NovusErrorListenerTests
         var formatted = diagnostics.FormatDiagnostics();
         Assert.Contains("test.novus", formatted);
         Assert.Contains("E0001", formatted);
-        Assert.Contains("-->", formatted); // Should have location pointer
+        // Lead line carries the location as file:line:col (ADR 0005 §2 GNU-style)
+        Assert.Matches(@"test\.novus:\d+:\d+: error:", formatted);
     }
 
     [Fact]
