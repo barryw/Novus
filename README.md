@@ -1,5 +1,7 @@
 # Novus
 
+_**Novus** is a Walker Heavy Industries project._
+
 [![Build Status](https://ci.barrywalker.io/api/badges/5/status.svg)](https://ci.barrywalker.io/repos/5)
 
 **A modern systems programming language for the Amiga**
@@ -135,3 +137,11 @@ TBD
 ---
 
 *Built with love for the Amiga community*
+
+## Part of the suite
+
+Novus is part of the **Walker Heavy Industries** retro toolchain —
+modern tools for the retro 8- and 16-bit ecosystem.
+
+- **House hub:** https://whi.dev
+- **Siblings:** VICE Mac · VICE MCP · FamiForge · NESBasic · Novus · Miggy Draw · NovaVM
