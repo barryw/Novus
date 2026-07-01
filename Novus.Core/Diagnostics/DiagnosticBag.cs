@@ -70,17 +70,23 @@ public class DiagnosticBag
 
     private void FormatDiagnostic(StringBuilder sb, Diagnostic diagnostic, bool useColor)
     {
-        // Header: error[E0001]: message
+        // Canonical lead line (WHI Toolchain CLI Conventions §2):
+        //   <file>:<line>:<col>: <severity>: <message> [<CODE>]
+        // Machine-parseable, fixed-shape prefix. The bracketed code is the only
+        // optional element and always comes last. Rich context (source snippet,
+        // carets, help/note hints) follows BELOW as indented continuation lines,
+        // so a consumer reading only lead lines still gets a complete diagnostic.
         var severityLabel = diagnostic.Severity switch
         {
             DiagnosticSeverity.Error => "error",
             DiagnosticSeverity.Warning => "warning",
-            DiagnosticSeverity.Info => "info",
-            _ => "diagnostic"
+            DiagnosticSeverity.Info => "note",
+            _ => "note"
         };
 
-        sb.AppendLine($"{severityLabel}[{diagnostic.Code}]: {diagnostic.Message}");
-        sb.AppendLine($"  --> {diagnostic.Location}");
+        var loc = diagnostic.Location;
+        var codeSuffix = string.IsNullOrEmpty(diagnostic.Code) ? "" : $" [{diagnostic.Code}]";
+        sb.AppendLine($"{loc.FilePath}:{loc.Line}:{loc.Column}: {severityLabel}: {diagnostic.Message}{codeSuffix}");
 
         // Source snippet with caret pointing to error
         var lineNumStr = diagnostic.Location.Line.ToString();
