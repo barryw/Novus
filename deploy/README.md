@@ -100,3 +100,7 @@ kubectl describe deployment novuslang-website -n novus
   namespace had no ready `novuslang-website` endpoints (service unreachable in-cluster,
   Traefik 502). Re-ran this website pipeline (kaniko rebuild → `kubectl apply -k deploy/`
   → `kubectl set image` → `rollout status` → Cloudflare cache purge) to restore the site.
+
+- **2026-07-01 (WAL-104, follow-up):** deploy step now deletes the Deployment
+  before `apply` — the live spec had a duplicate `http` container port that made
+  `kubectl apply` reject the object, leaving zero ready pods.
