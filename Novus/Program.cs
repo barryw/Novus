@@ -142,6 +142,14 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
+        // --version: print a single machine-parseable line to stdout and exit 0
+        // (ADR 0005 §4), before CommandLineParser sees the args.
+        if (args.Contains("--version"))
+        {
+            Console.WriteLine(CliConventions.VersionLine());
+            return CliConventions.ExitSuccess;
+        }
+
         return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
@@ -154,7 +162,7 @@ class Program
                 (TestOptions options) => Commands.TestCommand.Run(options),
                 (BenchOptions options) => Commands.BenchCommand.Run(options),
                 (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
-                errors => Task.FromResult(1)
+                errors => Task.FromResult(CliConventions.ExitUsage)
             );
     }
 
@@ -309,7 +317,7 @@ class Program
             // Check for preprocessor errors
             if (diagnostics.HasErrors)
             {
-                Console.WriteLine(diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 return null;
             }
 
@@ -341,7 +349,7 @@ class Program
                 // Check for parse errors
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     return null;
                 }
 
@@ -356,7 +364,7 @@ class Program
             // Always print diagnostics (warnings and errors)
             if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
             }
 
             if (!analysisSucceeded)
@@ -374,7 +382,7 @@ class Program
             // Always print diagnostics (warnings and errors) from IR building
             if (irBuilder.Diagnostics.HasErrors || irBuilder.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
             }
 
             // Check for IR building errors
@@ -477,7 +485,7 @@ class Program
             // Check for preprocessor errors
             if (diagnostics.HasErrors)
             {
-                Console.WriteLine(diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 return null;
             }
 
@@ -509,7 +517,7 @@ class Program
                 // Check for parse errors
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     return null;
                 }
 
@@ -524,7 +532,7 @@ class Program
             // Always print diagnostics (warnings and errors)
             if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
             }
 
             if (!analysisSucceeded)
@@ -668,10 +676,12 @@ class Program
 
     public static async Task<int> RunCompiler(CompilerOptions options)
     {
-        Console.WriteLine("Novus Compiler");
-        Console.WriteLine($"Target: {options.Cpu.ToUpper()}");
-        Console.WriteLine($"FPU Mode: {options.Fpu}");
-        Console.WriteLine("==================================\n");
+        // Banner/progress is not program output — it belongs on stderr (ADR 0005 §5),
+        // so stdout stays reserved for machine output (--version, --emit-ir, etc.).
+        Console.Error.WriteLine("Novus Compiler");
+        Console.Error.WriteLine($"Target: {options.Cpu.ToUpper()}");
+        Console.Error.WriteLine($"FPU Mode: {options.Fpu}");
+        Console.Error.WriteLine("==================================\n");
 
         // EXPERIMENTAL WARNING: M68k backend is not production-ready
         if (options.Backend == "m68k")
@@ -765,9 +775,9 @@ class Program
             {
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 }
-                return 1;
+                return CliConventions.ExitCompileError;
             }
 
             // Check for test file compiled with 'compile' instead of 'test'
@@ -795,8 +805,8 @@ class Program
             {
                 if (!circularImportDetector.RecordDependency(options.InputFile, import))
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
-                    return 1;
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                    return CliConventions.ExitCompileError;
                 }
             }
 
@@ -824,13 +834,13 @@ class Program
                 {
                     if (diagnostics.HasErrors)
                     {
-                        Console.WriteLine(diagnostics.FormatDiagnostics());
+                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     }
                     else
                     {
                         Console.WriteLine($"Failed to compile dependency: {modulePath}");
                     }
-                    return 1;
+                    return CliConventions.ExitCompileError;
                 }
 
                 allModulesIR[modulePath] = moduleIR;
@@ -840,8 +850,8 @@ class Program
                 {
                     if (!circularImportDetector.RecordDependency(modulePath, import))
                     {
-                        Console.WriteLine(diagnostics.FormatDiagnostics());
-                        return 1;
+                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                        return CliConventions.ExitCompileError;
                     }
 
                     if (!processed.Contains(import))

@@ -70,17 +70,19 @@ public class DiagnosticBag
 
     private void FormatDiagnostic(StringBuilder sb, Diagnostic diagnostic, bool useColor)
     {
-        // Header: error[E0001]: message
+        // Lead line follows the WHI toolchain CLI conventions (ADR 0005 §2):
+        //   <file>:<line>:<col>: <severity>: <message> [<CODE>]
+        // The bracketed code is the only optional element and always comes last.
         var severityLabel = diagnostic.Severity switch
         {
             DiagnosticSeverity.Error => "error",
             DiagnosticSeverity.Warning => "warning",
-            DiagnosticSeverity.Info => "info",
-            _ => "diagnostic"
+            DiagnosticSeverity.Info => "note",
+            _ => "note"
         };
 
-        sb.AppendLine($"{severityLabel}[{diagnostic.Code}]: {diagnostic.Message}");
-        sb.AppendLine($"  --> {diagnostic.Location}");
+        var codeSuffix = string.IsNullOrEmpty(diagnostic.Code) ? "" : $" [{diagnostic.Code}]";
+        sb.AppendLine($"{diagnostic.Location}: {severityLabel}: {diagnostic.Message}{codeSuffix}");
 
         // Source snippet with caret pointing to error
         var lineNumStr = diagnostic.Location.Line.ToString();
