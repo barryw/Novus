@@ -1,0 +1,30 @@
+# Build the solution and run the CLI-conventions conformance tests.
+#
+# Runs on every push and pull request so changes are verified BEFORE they
+# reach main. The release pipeline (01-bump + 02-build) only fires on push
+# to main and only publishes AOT binaries, so it never runs the test suite.
+when:
+  - event: [push, pull_request]
+
+labels:
+  platform: linux/amd64
+
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      tags: true
+
+steps:
+  - name: test
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    commands:
+      # Native tools for the vendored VBCC build target invoked during build.
+      - apt-get update && apt-get install -y make gcc clang zlib1g-dev
+      - dotnet --version
+      - dotnet build Novus.Tests/Novus.Tests.csproj -c Debug
+      # Scope execution to the CLI-surface tests: deterministic, no native
+      # toolchain (vbcc/assembler) needed, so this is a reliable gate.
+      - >-
+        dotnet test Novus.Tests/Novus.Tests.csproj -c Debug --no-build
+        --filter "FullyQualifiedName~CliConventionsTests|FullyQualifiedName~NovusErrorListenerTests"
