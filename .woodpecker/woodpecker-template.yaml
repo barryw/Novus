@@ -1,0 +1,20 @@
+# Novus (novuslang.com) — deploy via the shared release-static-site template.
+# Build & Release Standard §5 (WAL-32 / WAL-39): every product site adopts the
+# same kaniko -> GHCR -> k8s -> Cloudflare flow. The config service
+# (woodpecker-release) expands this stub into the full pipeline, so the pattern
+# lives in ONE place instead of a hand-maintained per-repo .woodpecker/website.yml
+# (this replaces the previous .woodpecker/website.yml, which was already an exact
+# copy of the release-static-site pattern).
+#
+# Trigger path: release-static-site fires on `website/**` and `deploy/**`.
+# Novus's site lives under website/ (the template default), so content edits
+# auto-trigger — no extra params needed.
+template: release-static-site
+data:
+  site: novuslang
+  k8s_namespace: novus
+  # Defaults cover the rest:
+  #   image_name / deployment_name = "novuslang-website"
+  #   website_context = website/ ; dockerfile = website/Dockerfile
+  #   container = "website" ; deploy_path = "deploy/"
+  #   cloudflare_zone secret = "cloudflare_zone_id" (set to the novuslang.com zone)

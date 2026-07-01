@@ -34,6 +34,23 @@
         </a>
       </div>
 
+      <!-- WHI shared download-latest control (WAL-39, Build & Release Standard §6).
+           Identical markup/behavior on every product site — change ONLY the data-*.
+           Novus is a PRIVATE repo, so data-private skips the GitHub API call and keeps
+           the static fallback link to the releases page. Styling + behavior come from
+           the vendored /brand assets, linked + scripted in index.astro. -->
+      <div class="mt-8 flex justify-center">
+        <div class="whi-download whi-download--center" data-whi-download
+             data-repo="barryw/Novus" data-private data-product="Novus">
+          <a class="whi-btn whi-btn--line" data-whi-download-link
+             href="https://github.com/barryw/Novus/releases/latest">
+            <svg class="whi-icon" aria-hidden="true"><use href="/brand/icons/icons.svg#whi-download"></use></svg>
+            <span data-whi-download-label>Download latest</span>
+          </a>
+          <p class="whi-download__meta" data-whi-download-meta></p>
+        </div>
+      </div>
+
       <!-- Quick info badges -->
       <div class="mt-12 flex flex-wrap items-center justify-center gap-4 text-sm text-novus-gray-400">
         <div class="flex items-center gap-2">

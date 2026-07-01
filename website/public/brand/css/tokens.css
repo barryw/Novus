@@ -1,0 +1,123 @@
+/*
+ * Walker Heavy Industries — house design tokens (CSS custom properties).
+ * Mirror of tokens/tokens.json (the single source of truth). v1.1.0.
+ * Spec: WAL-16 brand-guidelines rev 4 §4 + WHI Design System v1.0 (WAL-23).
+ *
+ * Consume from any product site:
+ *   <link rel="stylesheet" href="…/web/brand/tokens/tokens.css">
+ * then reference var(--whi-*) anywhere. web/check.sh verifies parity with tokens.json.
+ *
+ * A11y (Design System v1): see the rules on --whi-line-amiga, --whi-text-faint and the
+ * (off-white, NOT line-colored) focus ring below.
+ */
+:root {
+  /* --- Base / surfaces (dark) --- */
+  --whi-bg:        #0d1117;
+  --whi-bg-alt:    #111311;
+  --whi-surface:   #161b22;
+  --whi-surface-2: #1c222b;
+  --whi-border:    #2a2f37;
+
+  /* --- Text (warm off-white) --- */
+  --whi-text:         #f3f0e6;
+  --whi-text-muted:   #b9b4a6;
+  --whi-text-faint:   #7e7a70; /* 4.4:1 — AA-large ONLY (captions/non-essential) */
+  --whi-text-inverse: #0d1117;
+
+  /* --- Per-line accents (wayfinding; one per platform line) --- */
+  --whi-line-commodore: #0a84ff;
+  --whi-line-amiga:     #e63030; /* 4.35:1 — accents/large-text ONLY, never normal-text color */
+  --whi-line-nes:       #f5b700; /* PROPOSED — §4 NES TBD; ratification is Quill/CEO (WAL-23 §1.4/§9) */
+  --whi-line-nova:      #53e0d8;
+  --whi-accent-amiga-alt: #ff8c00; /* Miggy Draw orange, within-Amiga product accent */
+
+  /* The house itself stays neutral — lines carry the color. A surface sets
+     --whi-line to its line accent; components read var(--whi-line). */
+  --whi-line: var(--whi-text);
+
+  /* --- Semantic colors (AA-safe as text on #0d1117; status red is NOT Amiga red) --- */
+  --whi-success:    #3fb950;
+  --whi-success-bg: rgba(63,185,80,0.15);
+  --whi-warning:    #d29922;
+  --whi-warning-bg: rgba(210,153,34,0.15);
+  --whi-danger:     #f85149;
+  --whi-danger-bg:  rgba(248,81,73,0.15);
+  --whi-info:       #58a6ff;
+  --whi-info-bg:    rgba(88,166,255,0.15);
+
+  /* --- Typography --- */
+  --whi-font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --whi-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+
+  --whi-weight-regular:  400;
+  --whi-weight-medium:   500;
+  --whi-weight-semibold: 600;
+  --whi-weight-bold:     700;
+
+  --whi-leading-tight:   1.15; /* display / headings */
+  --whi-leading-snug:    1.3;  /* eyebrows / chips */
+  --whi-leading-normal:  1.5;  /* lead / small / code */
+  --whi-leading-relaxed: 1.6;  /* body copy */
+
+  /* --- Type scale --- */
+  --whi-text-xs:   0.75rem;
+  --whi-text-sm:   0.875rem;
+  --whi-text-base: 1rem;
+  --whi-text-lg:   1.125rem;
+  --whi-text-xl:   1.375rem;
+  --whi-text-2xl:  1.75rem;
+  --whi-text-3xl:  2.25rem;
+  --whi-text-4xl:  3rem;
+
+  /* --- Spacing --- */
+  --whi-space-1:  0.25rem;
+  --whi-space-2:  0.5rem;
+  --whi-space-3:  0.75rem;
+  --whi-space-4:  1rem;
+  --whi-space-6:  1.5rem;
+  --whi-space-8:  2rem;
+  --whi-space-12: 3rem;
+  --whi-space-16: 4rem;
+
+  /* --- Radius --- */
+  --whi-radius-sm:   4px;
+  --whi-radius-md:   8px;
+  --whi-radius-lg:   14px;
+  --whi-radius-pill: 9999px;
+
+  /* --- Elevation (dark-UI shadow ramp; pair with surface step) --- */
+  --whi-elev-0: none;
+  --whi-elev-1: 0 1px 2px rgba(0,0,0,0.4);
+  --whi-elev-2: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.25);
+  --whi-elev-3: 0 4px 8px rgba(0,0,0,0.4), 0 16px 40px rgba(0,0,0,0.35);
+  --whi-elev-4: 0 8px 16px rgba(0,0,0,0.45), 0 24px 64px rgba(0,0,0,0.5);
+  --whi-shadow-card: var(--whi-elev-2); /* back-compat alias */
+
+  /* --- Motion (reduced-motion override enforced in base.css) --- */
+  --whi-dur-fast: 120ms;
+  --whi-dur-base: 200ms;
+  --whi-dur-slow: 320ms;
+  --whi-ease-standard:   cubic-bezier(0.2, 0, 0, 1);
+  --whi-ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  --whi-ease-exit:       cubic-bezier(0.4, 0, 1, 1);
+
+  /* --- Focus ring (off-white, line-agnostic — WAL-23 §1.6) --- */
+  --whi-focus-ring:   var(--whi-text);
+  --whi-focus-offset: 2px;
+
+  /* --- Z-index scale --- */
+  --whi-z-base:    0;
+  --whi-z-sticky:  100;
+  --whi-z-popover: 200;
+  --whi-z-modal:   300;
+  --whi-z-toast:   400;
+
+  /* --- Layout --- */
+  --whi-max-width: 1080px;
+}
+
+/* Line scoping helpers: set the active accent for a subtree. */
+.whi-line-commodore { --whi-line: var(--whi-line-commodore); }
+.whi-line-amiga     { --whi-line: var(--whi-line-amiga); }
+.whi-line-nes       { --whi-line: var(--whi-line-nes); }
+.whi-line-nova      { --whi-line: var(--whi-line-nova); }
