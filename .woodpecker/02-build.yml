@@ -79,8 +79,12 @@ steps:
   - name: upload-to-release
     image: ${image}
     environment:
-      GITHUB_TOKEN:
-        from_secret: github_token
+      GH_APP_ID:
+        from_secret: gh_app_id
+      GH_APP_INSTALLATION_ID:
+        from_secret: gh_app_installation_id
+      GH_APP_PRIVATE_KEY:
+        from_secret: gh_app_private_key
     commands:
       # Install gh CLI if not present (Linux Docker)
       - |
@@ -90,6 +94,12 @@ steps:
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list 2>/dev/null || true
           apt-get update && apt-get install -y gh 2>/dev/null || true
         fi
+      # WAL-74: mint a single-repo, ~1h GitHub App token (contents=write) in
+      # place of the shared admin PAT. The vendored minter runs on every
+      # remaining leg (linux dotnet image + macOS local backend); ensure its
+      # deps (openssl/curl) on the Linux image first, then export for gh.
+      - command -v openssl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || { command -v apt-get >/dev/null 2>&1 && apt-get update && apt-get install -y --no-install-recommends openssl curl ca-certificates; }
+      - export GITHUB_TOKEN=$(bash ci/mint-token.sh)
       - VERSION=$(cat .version)
       - echo "Uploading ${binary_name} for version $VERSION"
       - |
