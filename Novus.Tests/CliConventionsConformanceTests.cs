@@ -125,6 +125,78 @@ public class CliConventionsConformanceTests
         Assert.Equal(string.Empty, sw.ToString());
     }
 
+    // ----- §1 Verbs (canonical `build`, `compile` alias) -------------------
+
+    [Fact]
+    public void BareSourceFile_NormalizesToCompileVerb()
+    {
+        // §1: `<tool> <file>` with no verb means build → routed to the single-file path.
+        var norm = Program.NormalizeInvocation(new[] { "game.novus" });
+        Assert.Equal(new[] { "compile", "game.novus" }, norm);
+    }
+
+    [Fact]
+    public void BareSourceFile_PreservesTrailingFlags()
+    {
+        var norm = Program.NormalizeInvocation(new[] { "game.novus", "-O", "3", "--emit-asm" });
+        Assert.Equal(new[] { "compile", "game.novus", "-O", "3", "--emit-asm" }, norm);
+    }
+
+    [Fact]
+    public void BuildWithSourceFile_RoutesToCompilePath()
+    {
+        // `build <file>.novus` is the canonical single-file spelling; it must reach the
+        // full-featured compile path (zero flag-parity loss) rather than the project path.
+        var norm = Program.NormalizeInvocation(new[] { "build", "game.novus", "-o", "game.exe" });
+        Assert.Equal(new[] { "compile", "game.novus", "-o", "game.exe" }, norm);
+    }
+
+    [Fact]
+    public void BuildWithSourceFile_DetectsFileAfterFlags()
+    {
+        var norm = Program.NormalizeInvocation(new[] { "build", "--emit-asm", "game.novus" });
+        Assert.Equal(new[] { "compile", "--emit-asm", "game.novus" }, norm);
+    }
+
+    [Fact]
+    public void BuildWithoutSourceFile_StaysOnProjectPath()
+    {
+        // Project/workspace builds must never be rewritten.
+        Assert.Equal(new[] { "build" }, Program.NormalizeInvocation(new[] { "build" }));
+        Assert.Equal(new[] { "build", "-p", "./game" },
+            Program.NormalizeInvocation(new[] { "build", "-p", "./game" }));
+    }
+
+    [Fact]
+    public void ExplicitCompile_IsLeftUntouched()
+    {
+        // The repo's compile-for-a-file contract stays a first-class, stable spelling.
+        Assert.Equal(new[] { "compile", "game.novus" },
+            Program.NormalizeInvocation(new[] { "compile", "game.novus" }));
+    }
+
+    [Fact]
+    public void OtherVerbs_AreNotRewritten()
+    {
+        Assert.Equal(new[] { "fmt", "game.novus" },
+            Program.NormalizeInvocation(new[] { "fmt", "game.novus" }));
+        Assert.Equal(new[] { "new", "mygame" },
+            Program.NormalizeInvocation(new[] { "new", "mygame" }));
+    }
+
+    [Fact]
+    public void EmptyArgs_AreUnchanged()
+    {
+        Assert.Empty(Program.NormalizeInvocation(System.Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void SourceFile_MatchIsCaseInsensitive()
+    {
+        var norm = Program.NormalizeInvocation(new[] { "GAME.NOVUS" });
+        Assert.Equal(new[] { "compile", "GAME.NOVUS" }, norm);
+    }
+
     // ----- §3 Exit codes ---------------------------------------------------
 
     [Fact]

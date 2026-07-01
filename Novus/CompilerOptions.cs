@@ -3,7 +3,12 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Novus;
 
-[Verb("compile", isDefault: true, HelpText = "Compile a Novus source file to an Amiga executable")]
+// `compile` is the single-file compilation verb. Per ADR 0005 the canonical verb
+// is `build`; `compile` is kept as an explicit, always-supported alias for the
+// single-file path (`build <file>.novus` normalizes to `compile <file>.novus`).
+// Hidden from the top-level help so `build` reads as canonical, but never removed
+// (repo CLAUDE.md: "if i ask you to compile a file, use the compile command").
+[Verb("compile", isDefault: false, Hidden = true, HelpText = "Compile a single Novus source file (alias for `build <file>.novus`)")]
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class CompilerOptions
 {
