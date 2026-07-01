@@ -104,3 +104,12 @@ kubectl describe deployment novuslang-website -n novus
 - **2026-07-01 (WAL-104, follow-up):** deploy step now deletes the Deployment
   before `apply` — the live spec had a duplicate `http` container port that made
   `kubectl apply` reject the object, leaving zero ready pods.
+
+- **2026-07-01 (WAL-104, hardening):** replaced the delete-before-apply (which
+  briefly took the site down on *every* deploy) with a zero-downtime, fail-safe
+  pattern: server-side `--dry-run` validation before any mutation, `kubectl apply
+  --server-side --force-conflicts` (no client-side merge → no duplicate-port
+  wedge), and automatic `kubectl rollout undo` if the new revision never becomes
+  healthy. Combined with the Deployment's `maxUnavailable: 0` and a
+  PodDisruptionBudget (`minAvailable: 1`), a bad manifest or image can no longer
+  take novuslang.com offline.

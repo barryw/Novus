@@ -8,6 +8,7 @@ resources:
   - website-deployment.yaml
   - website-service.yaml
   - website-ingress.yaml
+  - website-pdb.yaml
   # ci-rbac.yaml is applied manually, not via CI (chicken-and-egg problem)
 
 commonLabels:

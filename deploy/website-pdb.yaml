@@ -1,0 +1,18 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: novuslang-website
+  namespace: novus
+  labels:
+    app: novuslang-website
+    app.kubernetes.io/name: novuslang-website
+    app.kubernetes.io/component: website
+    app.kubernetes.io/part-of: novus-lang
+spec:
+  # Keep at least one pod serving during voluntary disruptions (node drain,
+  # cluster upgrade). Paired with replicas: 2 this guarantees the site stays
+  # up while a node is cordoned/drained.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: novuslang-website

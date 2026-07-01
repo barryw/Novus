@@ -28,16 +28,27 @@ steps:
     image: bitnami/kubectl:latest
     commands:
       - kubectl get namespace novus || kubectl create namespace novus
-      # WAL-104: the live Deployment carried a stale second container port also
-      # named "http", so `kubectl apply`'s 3-way strategic merge produced an
-      # invalid object ("Duplicate value: http") and never reconciled -> zero
-      # ready pods -> Traefik 502. Delete the Deployment first so apply recreates
-      # it cleanly from the manifest. Service/Ingress are apply-safe and the site
-      # is already down, so the brief gap is a no-op.
-      - kubectl delete deployment novuslang-website -n novus --ignore-not-found
-      - kubectl apply -k deploy/
+      # WAL-104 hardening — a deploy must never take the site down.
+      # 1) Validate the rendered manifests server-side BEFORE mutating anything,
+      #    so an invalid object (e.g. the duplicate "http" port that once wedged
+      #    this Deployment) fails the pipeline without touching the live site.
+      - kubectl apply -k deploy/ --server-side --force-conflicts --dry-run=server
+      # 2) Server-side apply reconciles by field ownership instead of the
+      #    client-side 3-way strategic merge that duplicated the container port
+      #    and left the Deployment unreconcilable. No delete, no downtime.
+      - kubectl apply -k deploy/ --server-side --force-conflicts
       - kubectl set image deployment/novuslang-website website=ghcr.io/barryw/novuslang-website:build-$CI_PIPELINE_NUMBER -n novus
-      - kubectl rollout status deployment/novuslang-website -n novus --timeout=120s
+      # 3) Roll forward; the Deployment's maxUnavailable:0 keeps old pods serving
+      #    until new ones are Ready. If the new revision never becomes healthy,
+      #    auto-revert to the last good ReplicaSet so the site is never stranded
+      #    on a broken revision.
+      - |
+        if ! kubectl rollout status deployment/novuslang-website -n novus --timeout=120s; then
+          echo "Rollout did not become healthy — rolling back to previous revision"
+          kubectl rollout undo deployment/novuslang-website -n novus
+          kubectl rollout status deployment/novuslang-website -n novus --timeout=120s
+          exit 1
+        fi
       - kubectl get pods -n novus
     depends_on:
       - build-push
