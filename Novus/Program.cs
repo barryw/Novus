@@ -67,8 +67,16 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 /// - Build config change (CPU/FPU/mode/opt): invalidates object caches
 /// - Dependency change: cascades through IR cache's dependency graph
 /// </summary>
-class Program
+public class Program
 {
+    // WHI Toolchain CLI Conventions (docs/toolchain-cli-conventions.md §3) exit-code floor:
+    //   0 = success, 1 = usage/environment error (couldn't start),
+    //   2 = compilation error (source was processed and diagnostics were emitted).
+    // A toolchain may use finer-grained codes above 2, but this floor is fixed.
+    public const int EXIT_SUCCESS = 0;
+    public const int EXIT_USAGE = 1;
+    public const int EXIT_COMPILE_ERROR = 2;
+
     // Codegen format version - increment to invalidate all cached object files
     // when making breaking changes to code generation or compilation process.
     // This is the "nuclear option" - prefer targeted invalidation when possible.
@@ -142,6 +150,14 @@ class Program
 
     static async Task<int> Main(string[] args)
     {
+        // Canonical `--version` (WHI Toolchain CLI Conventions §4): print a single
+        // machine-parseable line "novus <semver>" to stdout and exit 0. Handled
+        // before argument parsing so it never emits the compile banner (stderr) or
+        // CommandLineParser's own heading, and so its shape stays fixed.
+        var versionExit = TryHandleVersion(args, Console.Out);
+        if (versionExit.HasValue)
+            return versionExit.Value;
+
         return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
@@ -154,8 +170,46 @@ class Program
                 (TestOptions options) => Commands.TestCommand.Run(options),
                 (BenchOptions options) => Commands.BenchCommand.Run(options),
                 (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
-                errors => Task.FromResult(1)
+                // Parse failures (unknown verb, bad/missing flags) are usage errors.
+                errors => Task.FromResult(EXIT_USAGE)
             );
+    }
+
+    /// <summary>
+    /// Handle the canonical <c>--version</c> flag (WHI Toolchain CLI Conventions §4).
+    /// When present, writes "novus &lt;semver&gt;" to <paramref name="stdout"/> and
+    /// returns <see cref="EXIT_SUCCESS"/>; otherwise returns <c>null</c> so normal
+    /// verb dispatch continues.
+    /// </summary>
+    public static int? TryHandleVersion(string[] args, TextWriter stdout)
+    {
+        if (args != null && Array.IndexOf(args, "--version") >= 0)
+        {
+            stdout.WriteLine(VersionLine());
+            return EXIT_SUCCESS;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Canonical version line: "novus &lt;semver&gt;" (assembly version, no "v"
+    /// prefix, no "Compiler" word, no banner). See WHI Toolchain CLI Conventions §4.
+    /// </summary>
+    public static string VersionLine() => $"novus {AssemblyVersion()}";
+
+    private static string AssemblyVersion()
+    {
+        var asm = typeof(Program).Assembly;
+        var info = asm
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion;
+        var version = info ?? asm.GetName().Version?.ToString() ?? "0.0.0";
+        // Strip any build-metadata suffix the SDK may append (e.g. "0.2.2+abc1234").
+        var plus = version.IndexOf('+');
+        if (plus >= 0)
+            version = version.Substring(0, plus);
+        return version;
     }
 
     static async Task<int> RunBuild(BuildOptions buildOptions)
@@ -248,7 +302,7 @@ class Program
             // Read source file
             if (!File.Exists(inputFile))
             {
-                Console.WriteLine($"Error: Module file not found: {inputFile}");
+                Console.Error.WriteLine($"error: module file not found: {inputFile}");
                 return null;
             }
 
@@ -309,7 +363,7 @@ class Program
             // Check for preprocessor errors
             if (diagnostics.HasErrors)
             {
-                Console.WriteLine(diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 return null;
             }
 
@@ -341,7 +395,7 @@ class Program
                 // Check for parse errors
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     return null;
                 }
 
@@ -356,7 +410,7 @@ class Program
             // Always print diagnostics (warnings and errors)
             if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
             }
 
             if (!analysisSucceeded)
@@ -374,7 +428,7 @@ class Program
             // Always print diagnostics (warnings and errors) from IR building
             if (irBuilder.Diagnostics.HasErrors || irBuilder.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
             }
 
             // Check for IR building errors
@@ -449,7 +503,7 @@ class Program
             // Read source file
             if (!File.Exists(inputFile))
             {
-                Console.WriteLine($"Error: Module file not found: {inputFile}");
+                Console.Error.WriteLine($"error: module file not found: {inputFile}");
                 return null;
             }
 
@@ -477,7 +531,7 @@ class Program
             // Check for preprocessor errors
             if (diagnostics.HasErrors)
             {
-                Console.WriteLine(diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 return null;
             }
 
@@ -509,7 +563,7 @@ class Program
                 // Check for parse errors
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     return null;
                 }
 
@@ -524,7 +578,7 @@ class Program
             // Always print diagnostics (warnings and errors)
             if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
             {
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
+                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
             }
 
             if (!analysisSucceeded)
@@ -668,10 +722,12 @@ class Program
 
     public static async Task<int> RunCompiler(CompilerOptions options)
     {
-        Console.WriteLine("Novus Compiler");
-        Console.WriteLine($"Target: {options.Cpu.ToUpper()}");
-        Console.WriteLine($"FPU Mode: {options.Fpu}");
-        Console.WriteLine("==================================\n");
+        // Compile banner is progress output, not program output → stderr
+        // (WHI Toolchain CLI Conventions §5). Keeps stdout clean for scripts.
+        Console.Error.WriteLine("Novus Compiler");
+        Console.Error.WriteLine($"Target: {options.Cpu.ToUpper()}");
+        Console.Error.WriteLine($"FPU Mode: {options.Fpu}");
+        Console.Error.WriteLine("==================================\n");
 
         // EXPERIMENTAL WARNING: M68k backend is not production-ready
         if (options.Backend == "m68k")
@@ -720,8 +776,10 @@ class Program
             // Read source file
             if (!File.Exists(options.InputFile))
             {
-                Console.WriteLine($"Error: File not found: {options.InputFile}");
-                return 1;
+                // Missing input is an environment/usage error (couldn't start),
+                // not a compilation error → stderr, exit 1 (§3/§5).
+                Console.Error.WriteLine($"error: input file not found: {options.InputFile}");
+                return EXIT_USAGE;
             }
 
             if (options.Verbose)
@@ -765,9 +823,9 @@ class Program
             {
                 if (diagnostics.HasErrors)
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                 }
-                return 1;
+                return EXIT_COMPILE_ERROR;
             }
 
             // Check for test file compiled with 'compile' instead of 'test'
@@ -795,8 +853,8 @@ class Program
             {
                 if (!circularImportDetector.RecordDependency(options.InputFile, import))
                 {
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
-                    return 1;
+                    Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                    return EXIT_COMPILE_ERROR;
                 }
             }
 
@@ -824,13 +882,13 @@ class Program
                 {
                     if (diagnostics.HasErrors)
                     {
-                        Console.WriteLine(diagnostics.FormatDiagnostics());
+                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
                     }
                     else
                     {
-                        Console.WriteLine($"Failed to compile dependency: {modulePath}");
+                        Console.Error.WriteLine($"error: failed to compile dependency: {modulePath}");
                     }
-                    return 1;
+                    return EXIT_COMPILE_ERROR;
                 }
 
                 allModulesIR[modulePath] = moduleIR;
@@ -840,8 +898,8 @@ class Program
                 {
                     if (!circularImportDetector.RecordDependency(modulePath, import))
                     {
-                        Console.WriteLine(diagnostics.FormatDiagnostics());
-                        return 1;
+                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                        return EXIT_COMPILE_ERROR;
                     }
 
                     if (!processed.Contains(import))
@@ -918,7 +976,7 @@ class Program
                     {
                         Console.Error.WriteLine($"  - {error}");
                     }
-                    return 1;
+                    return EXIT_COMPILE_ERROR;
                 }
 
                 if (options.Verbose)
@@ -1551,8 +1609,8 @@ ___stack:
                     Console.WriteLine($"  → {asmFileName}");
                     if (!await toolchain.Assemble(asmFile, objFile, assemblyCpu, false))
                     {
-                        Console.WriteLine($"\n✗ Failed to assemble {asmFileName}");
-                        return 1;
+                        Console.Error.WriteLine($"\n✗ Failed to assemble {asmFileName}");
+                        return EXIT_COMPILE_ERROR;
                     }
 
                     objectFiles.Add(objFile);
@@ -1764,8 +1822,8 @@ ___stack:
 
                                 if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
                                 {
-                                    Console.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
-                                    return 1;
+                                    Console.Error.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
+                                    return EXIT_COMPILE_ERROR;
                                 }
 
                                 objectFiles.Add(objFile);
@@ -1787,8 +1845,8 @@ ___stack:
                     Console.WriteLine($"  → {cFileName}");
                     if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
                     {
-                        Console.WriteLine($"\n✗ Failed to compile {cFileName}");
-                        return 1;
+                        Console.Error.WriteLine($"\n✗ Failed to compile {cFileName}");
+                        return EXIT_COMPILE_ERROR;
                     }
 
                     objectFiles.Add(objFile);
@@ -2149,12 +2207,12 @@ ___stack:
                 var failures = results.Where(r => !r.success).ToList();
                 if (failures.Any())
                 {
-                    Console.WriteLine($"\n✗ Failed to compile:");
+                    Console.Error.WriteLine($"\n✗ Failed to compile:");
                     foreach (var failure in failures)
                     {
-                        Console.WriteLine($"  → {failure.cFileName}");
+                        Console.Error.WriteLine($"  → {failure.cFileName}");
                     }
-                    return 1;
+                    return EXIT_COMPILE_ERROR;
                 }
 
                 // All compilations succeeded - now cache the .o files and add to objectFiles list
@@ -2363,15 +2421,22 @@ ___stack:
             }
             else
             {
-                Console.WriteLine("\n✗ Linking failed");
-                return 1;
+                Console.Error.WriteLine("\n✗ Linking failed");
+                return EXIT_COMPILE_ERROR;
             }
+        }
+        catch (ArgumentException aex)
+        {
+            // Bad flag combinations (e.g. --unsafe with --safety-level) are usage
+            // errors detected before/while validating options → exit 1 (§3).
+            Console.Error.WriteLine($"error: {aex.Message}");
+            return EXIT_USAGE;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"\nError: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
-            return 1;
+            Console.Error.WriteLine($"\nError: {ex.Message}");
+            Console.Error.WriteLine(ex.StackTrace);
+            return EXIT_COMPILE_ERROR;
         }
     }
 

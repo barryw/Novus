@@ -47,9 +47,12 @@ public class Diagnostic
         {
             DiagnosticSeverity.Error => "error",
             DiagnosticSeverity.Warning => "warning",
-            DiagnosticSeverity.Info => "info",
-            _ => "unknown"
+            DiagnosticSeverity.Info => "note",
+            _ => "note"
         };
-        return $"{severityStr}[{Code}]: {Message}";
+        // Canonical lead-line shape (WHI Toolchain CLI Conventions §2):
+        //   <file>:<line>:<col>: <severity>: <message> [<CODE>]
+        var codeSuffix = string.IsNullOrEmpty(Code) ? "" : $" [{Code}]";
+        return $"{Location.FilePath}:{Location.Line}:{Location.Column}: {severityStr}: {Message}{codeSuffix}";
     }
 }

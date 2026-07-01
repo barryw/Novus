@@ -11,7 +11,19 @@ The Novus compiler (`novus`) provides a comprehensive command-line interface for
 novus [command] [options] <input>
 ```
 
-When no command is specified, `compile` is used by default.
+When no command is specified, `compile` is used by default — a bare file
+argument (`novus hello.novus`) compiles that file. Use `compile` for single
+files and `build` for projects and workspaces.
+
+## Global Options
+
+These flags are available across the toolchain:
+
+- `--version` - Print the version line `novus <semver>` to stdout and exit `0`.
+- `-h, --help` - Show usage.
+- `-o, --output <path>` - Output artifact path.
+- `-O, --optimize <n>` - Optimization level.
+- `-v, --verbose` - Verbose progress on stderr.
 
 ## Commands
 
@@ -262,10 +274,43 @@ The Novus compiler respects the following environment variables:
 | `VBCC` | Path to VBCC installation | `/opt/vbcc` |
 | `NDK_PATH` | Path to Amiga NDK | `~/amiga-cc/NDK3.9` |
 
+## Diagnostics
+
+Every error, warning, and note leads with a single machine-parseable line:
+
+```
+<file>:<line>:<col>: <severity>: <message> [<CODE>]
+```
+
+- `<severity>` is `error`, `warning`, or `note`. `<line>` and `<col>` are 1-based.
+- The bracketed diagnostic code (`E####` / `W####`) always comes last and is the
+  only optional element, so the prefix stays fixed-shape.
+- Rich context (source snippet, carets, `help:` hints) follows **below** the lead
+  line as indented continuation. A tool that reads only lead lines still gets a
+  complete, parseable stream.
+- Diagnostics are written to **stderr**; program output (`--version`, `--emit-ir`)
+  goes to **stdout**. So `novus compile x.novus 2>/dev/null` is silent on success.
+
+```
+main.novus:5:10: error: type 'NotAType' not found [E2001]
+   |
+ 5 | let x: NotAType = 42
+   |        ^^^^^^^^^
+   |
+help: did you mean 'i32'?
+```
+
 ## Exit Codes
 
-- `0` - Success
-- `1` - Compilation error or invalid arguments
+Novus honours the Walker Heavy Industries toolchain exit-code floor:
+
+- `0` - Success. Artifact produced (or nothing to do).
+- `1` - Usage / environment error — bad flags, missing input file, or a missing
+  external tool. No source diagnostics were produced.
+- `2` - Compilation error — the source was processed and one or more `error`
+  diagnostics were emitted.
+
+A non-zero exit always accompanies an `error` diagnostic.
 
 ## Examples
 

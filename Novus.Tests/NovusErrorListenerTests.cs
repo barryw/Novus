@@ -124,7 +124,9 @@ public class NovusErrorListenerTests
         var formatted = diagnostics.FormatDiagnostics();
         Assert.Contains("test.novus", formatted);
         Assert.Contains("E0001", formatted);
-        Assert.Contains("-->", formatted); // Should have location pointer
+        // Canonical lead line carries file:line:col directly (WHI Toolchain CLI
+        // Conventions §2) — replaces the old Rust-style "--> file:line:col".
+        Assert.Matches(@"test\.novus:\d+:\d+: error:", formatted);
     }
 
     [Fact]
