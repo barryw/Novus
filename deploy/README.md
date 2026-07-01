@@ -93,3 +93,10 @@ kubectl get events -n novus --sort-by='.lastTimestamp'
 # Describe deployment
 kubectl describe deployment novuslang-website -n novus
 ```
+
+## Recovery Log
+
+- **2026-07-01 (WAL-104):** novuslang.com was returning HTTP 502 — the `novus`
+  namespace had no ready `novuslang-website` endpoints (service unreachable in-cluster,
+  Traefik 502). Re-ran this website pipeline (kaniko rebuild → `kubectl apply -k deploy/`
+  → `kubectl set image` → `rollout status` → Cloudflare cache purge) to restore the site.
