@@ -158,6 +158,14 @@ public class Program
         if (versionExit.HasValue)
             return versionExit.Value;
 
+        // ADR 0005 §1: `build` is the canonical, default verb, and a bare source file
+        // must be treated as a build. Novus keeps a distinct single-file compile path
+        // (`compile`) that carries the full set of single-file flags. Normalize the two
+        // build-a-file spellings — `novus <file>.novus` and `novus build <file>.novus`
+        // — onto that path so every compile option is honored with zero parity loss,
+        // while `novus build` with no source file stays on the project/workspace path.
+        args = NormalizeInvocation(args);
+
         return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
@@ -173,6 +181,64 @@ public class Program
                 // Parse failures (unknown verb, bad/missing flags) are usage errors.
                 errors => Task.FromResult(EXIT_USAGE)
             );
+    }
+
+    /// <summary>
+    /// Normalize the invocation so <c>build</c> is the single canonical, default verb
+    /// (WHI Toolchain CLI Conventions / ADR 0005 §1) while the full-featured single-file
+    /// compile path remains reachable and lossless.
+    ///
+    /// Two spellings of "build a single source file" are rewritten to the <c>compile</c>
+    /// verb, which owns the complete set of single-file flags:
+    /// <list type="bullet">
+    ///   <item><c>novus &lt;file&gt;.novus [flags]</c> → <c>novus compile &lt;file&gt;.novus [flags]</c></item>
+    ///   <item><c>novus build &lt;file&gt;.novus [flags]</c> → <c>novus compile &lt;file&gt;.novus [flags]</c></item>
+    /// </list>
+    /// Everything else is passed through untouched: <c>novus build</c> (no source file)
+    /// and <c>novus build -p …</c> stay on the project/workspace path, and an explicit
+    /// <c>novus compile …</c> is already on the right verb. A <c>.novus</c> token is only
+    /// ever a source file (outputs are <c>.exe</c>/<c>a.out</c>), so it is an unambiguous
+    /// signal for single-file mode.
+    /// </summary>
+    public static string[] NormalizeInvocation(string[] args)
+    {
+        if (args.Length == 0)
+            return args;
+
+        // Case 1: bare source file with no verb — make the compile verb explicit.
+        if (IsNovusSourceFile(args[0]))
+        {
+            var withVerb = new string[args.Length + 1];
+            withVerb[0] = "compile";
+            Array.Copy(args, 0, withVerb, 1, args.Length);
+            return withVerb;
+        }
+
+        // Case 2: `build <file>.novus` — route the single-file case to the compile path
+        // so every single-file flag is honored, without touching project builds.
+        if (args[0] == "build" && HasNovusSourceFileArg(args))
+        {
+            var rewritten = (string[])args.Clone();
+            rewritten[0] = "compile";
+            return rewritten;
+        }
+
+        return args;
+    }
+
+    // A `.novus` token that is not an option flag denotes a source file.
+    private static bool IsNovusSourceFile(string token) =>
+        !token.StartsWith('-') &&
+        token.EndsWith(".novus", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasNovusSourceFileArg(string[] args)
+    {
+        for (int i = 1; i < args.Length; i++)
+        {
+            if (IsNovusSourceFile(args[i]))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

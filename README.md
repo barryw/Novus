@@ -77,8 +77,15 @@ This compiles to clean 68k assembly that runs natively on any Amiga.
 # Build the compiler
 dotnet build
 
-# Compile a Novus program
+# Build a Novus program — `build` is the canonical verb and takes either a
+# single source file or a project (project.toml / workspace) in the current dir.
+dotnet run --project Novus -- build examples/hello.novus -o hello
+
+# `compile` is the dedicated single-file verb (equivalent to `build <file>.novus`):
 dotnet run --project Novus -- compile examples/hello.novus -o hello
+
+# Bare file works too: no verb means build.
+dotnet run --project Novus -- examples/hello.novus -o hello
 
 # Run tests
 dotnet test

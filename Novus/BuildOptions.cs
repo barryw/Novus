@@ -3,7 +3,12 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Novus;
 
-[Verb("build", HelpText = "Build a project using project.toml configuration")]
+// `build` is the canonical, default toolchain verb (ADR 0005 §1): it produces the
+// target artifact from either a project (project.toml / workspace) or a single
+// source file. A bare `novus <file>.novus` and `novus build <file>.novus` are
+// normalized to the single-file compile path in Program.Main; with no source file
+// argument, `build` operates on the project/workspace in the current directory.
+[Verb("build", isDefault: true, HelpText = "Build a Novus project (project.toml/workspace) or a single source file (build <file>.novus)")]
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class BuildOptions
 {
