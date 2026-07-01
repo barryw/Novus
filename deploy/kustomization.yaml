@@ -4,11 +4,16 @@ kind: Kustomization
 namespace: novus
 
 resources:
-  - namespace.yaml
+  # namespace.yaml is intentionally NOT applied by CI: the woodpecker:default SA
+  # is namespace-scoped and cannot patch the cluster-scoped Namespace (server-side
+  # apply always PATCHes). The deploy step ensures the namespace exists with
+  # `kubectl get namespace novus || kubectl create namespace novus`. Apply
+  # namespace.yaml manually on first bootstrap. (Same convention as WAL-66.)
   - website-deployment.yaml
   - website-service.yaml
   - website-ingress.yaml
-  - website-pdb.yaml
+  # website-pdb.yaml is applied manually until the CI Role (ci-rbac.yaml) grants
+  # policy/poddisruptionbudgets — the woodpecker:default SA cannot patch PDBs yet.
   # ci-rbac.yaml is applied manually, not via CI (chicken-and-egg problem)
 
 commonLabels:
