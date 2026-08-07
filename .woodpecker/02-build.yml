@@ -12,11 +12,9 @@ matrix:
       rid: linux-x64
       binary_name: novus-linux-x64
       image: mcr.microsoft.com/dotnet/sdk:10.0
-    # Both macOS builds run on arm64 agent via cross-compilation
-    - platform: darwin/arm64
-      rid: osx-x64
-      binary_name: novus-macos-x64
-      image: bash
+    # macOS is arm64 only. An osx-x64 leg would have to cross-compile from this
+    # same arm64 agent, and the bundled vbcc is built by `make` for the host, so
+    # the package would carry an arm64 toolchain inside an x64 compiler.
     - platform: darwin/arm64
       rid: osx-arm64
       binary_name: novus-macos-arm64
@@ -61,20 +59,25 @@ steps:
   - name: prepare-artifacts
     image: ${image}
     commands:
+      # The compiler is not a single file. It needs std/, runtime/, stubs/,
+      # templates/ and vendor/vbcc beside it, so the release artifact is the whole
+      # publish tree. Shipping the bare executable produced a download that failed
+      # on the first compile with "module 'std::core' not found".
       - |
         if [ -f ./publish/novus ]; then
-          cp ./publish/novus ./${binary_name}
+          chmod +x ./publish/novus
         else
-          cp ./publish/Novus ./${binary_name}
+          chmod +x ./publish/Novus
         fi
-      - chmod +x ./${binary_name} 2>/dev/null || true
+      - chmod +x ./publish/vendor/vbcc/bin/* 2>/dev/null || true
+      - tar czf ${binary_name}.tar.gz -C ./publish .
       - |
         if command -v sha256sum > /dev/null 2>&1; then
-          sha256sum ${binary_name} > ${binary_name}.sha256
+          sha256sum ${binary_name}.tar.gz > ${binary_name}.tar.gz.sha256
         else
-          shasum -a 256 ${binary_name} > ${binary_name}.sha256
+          shasum -a 256 ${binary_name}.tar.gz > ${binary_name}.tar.gz.sha256
         fi
-      - ls -la ${binary_name}*
+      - ls -la ${binary_name}.tar.gz*
 
   - name: upload-to-release
     image: ${image}
@@ -101,7 +104,7 @@ steps:
       - command -v openssl >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || { command -v apt-get >/dev/null 2>&1 && apt-get update && apt-get install -y --no-install-recommends openssl curl ca-certificates; }
       - export GITHUB_TOKEN=$(bash ci/mint-token.sh)
       - VERSION=$(cat .version)
-      - echo "Uploading ${binary_name} for version $VERSION"
+      - echo "Uploading ${binary_name}.tar.gz for version $VERSION"
       - |
         if [ "$VERSION" = "dev" ]; then
           echo "No version tag, skipping upload"
@@ -109,5 +112,5 @@ steps:
         fi
       # VERSION already contains the 'v' prefix from git describe
       - gh release create "$VERSION" --repo ${CI_REPO} --generate-notes 2>/dev/null || echo "Release exists"
-      - gh release upload "$VERSION" ${binary_name} ${binary_name}.sha256 --repo ${CI_REPO} --clobber
-      - echo "Uploaded ${binary_name}"
+      - gh release upload "$VERSION" ${binary_name}.tar.gz ${binary_name}.tar.gz.sha256 --repo ${CI_REPO} --clobber
+      - echo "Uploaded ${binary_name}.tar.gz"

@@ -229,6 +229,32 @@ public static class PathUtility
     }
 
     /// <summary>
+    /// Gets the compiler's runtime resource directory.
+    ///
+    /// MSBuild copies runtime/ next to the compiler binary in both the dev layout
+    /// (Novus/bin/&lt;cfg&gt;/&lt;tfm&gt;/) and the published layout, so it always sits directly
+    /// beside the executable. Resolving it by walking a fixed number of parent
+    /// directories only works for one of those layouts.
+    /// </summary>
+    public static string GetRuntimeDir(string? baseDirectory = null)
+    {
+        return Path.Combine(baseDirectory ?? AppContext.BaseDirectory, "runtime");
+    }
+
+    /// <summary>
+    /// Finds a file in the compiler's runtime directory, or returns null if it is missing.
+    ///
+    /// Callers must treat null as a fatal installation error. Skipping a missing runtime
+    /// file silently produces a program that compiles but cannot link, and the failure
+    /// surfaces as an undefined symbol in generated C rather than as a Novus error.
+    /// </summary>
+    public static string? FindRuntimeFile(string fileName, string? baseDirectory = null)
+    {
+        var path = Path.Combine(GetRuntimeDir(baseDirectory), fileName);
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
     /// Finds the project root directory by looking for Novus.sln.
     /// </summary>
     public static string? FindProjectRoot(string? startDirectory = null)

@@ -158,7 +158,7 @@ public class Program
         if (versionExit.HasValue)
             return versionExit.Value;
 
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions, ConfigOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
@@ -170,6 +170,7 @@ public class Program
                 (TestOptions options) => Commands.TestCommand.Run(options),
                 (BenchOptions options) => Commands.BenchCommand.Run(options),
                 (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
+                (ConfigOptions options) => Task.FromResult(Commands.ConfigCommand.Run(options)),
                 // Parse failures (unknown verb, bad/missing flags) are usage errors.
                 errors => Task.FromResult(EXIT_USAGE)
             );
@@ -244,8 +245,21 @@ public class Program
 
     static int RunGenerateStubs(GenerateStubsOptions options)
     {
+        // Bindings are generated from the NDK's own SFD and header files, so this command
+        // needs an NDK just as much as a compile does.
+        string ndkPath;
+        try
+        {
+            ndkPath = UserConfig.RequireNdkPath(options.NdkPath);
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            Console.Error.WriteLine($"error: {ex.Message}");
+            return EXIT_USAGE;
+        }
+
         // Generate FFI bindings from SFD files (NDK 3.9+)
-        var sfdGenerator = new SfdGenerator(options.NdkPath, options.OutputPath);
+        var sfdGenerator = new SfdGenerator(ndkPath, options.OutputPath);
         sfdGenerator.GenerateAllBindings();
         return 0;
     }
@@ -752,6 +766,22 @@ public class Program
         Console.Error.WriteLine($"Target: {options.Cpu.ToUpper()}");
         Console.Error.WriteLine($"FPU Mode: {options.Fpu}");
         Console.Error.WriteLine("==================================\n");
+
+        // Check the NDK up front. It is only needed once the generated C is compiled, but
+        // discovering it is missing at that point means the user has already waited through
+        // parsing, IR, optimization and codegen for an error we could have given instantly.
+        if (!options.EmitIr)
+        {
+            try
+            {
+                options.NdkPath = UserConfig.RequireNdkPath(options.NdkPath);
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                Console.Error.WriteLine($"error: {ex.Message}");
+                return EXIT_USAGE;
+            }
+        }
 
         // EXPERIMENTAL WARNING: M68k backend is not production-ready
         if (options.Backend == "m68k")
@@ -1447,7 +1477,6 @@ public class Program
             // The linker can eliminate entire unused .o files, so splitting the runtime
             // into logical groups allows programs that don't use (e.g.) MMU protection
             // to avoid linking that code entirely.
-            var runtimeDir = Path.Combine(compilerDir, "runtime");
             var runtimeFiles = new[]
             {
                 "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
@@ -1462,11 +1491,14 @@ public class Program
 
             foreach (var runtimeFile in runtimeFiles)
             {
-                var runtimeCFile = Path.Combine(runtimeDir, runtimeFile);
-                if (File.Exists(runtimeCFile))
+                var runtimeCFile = PathUtility.FindRuntimeFile(runtimeFile);
+                if (runtimeCFile == null)
                 {
-                    cFiles.Add(runtimeCFile);
+                    Console.Error.WriteLine($"error: runtime file '{runtimeFile}' not found in {PathUtility.GetRuntimeDir()}");
+                    Console.Error.WriteLine("The Novus installation is incomplete: the 'runtime' directory must sit beside the compiler binary.");
+                    return 1;
                 }
+                cFiles.Add(runtimeCFile);
             }
             Console.WriteLine($"  → {runtimeFiles.Length} runtime modules (split for DCE)");
 
@@ -1578,17 +1610,24 @@ ___stack:
             var runtimeAsmFiles = new[] { "novus_io" };
             foreach (var runtimeFile in runtimeAsmFiles)
             {
-                var runtimeSource = Path.Combine(compilerDir, "..", "..", "..", "runtime", $"{runtimeFile}.s");
-                if (File.Exists(runtimeSource))
+                var runtimeSource = PathUtility.FindRuntimeFile($"{runtimeFile}.s");
+                if (runtimeSource == null)
                 {
-                    var runtimeObj = Path.Combine(outputDir, $"{runtimeFile}.o");
-                    if (!await toolchain.Assemble(runtimeSource, runtimeObj, assemblyCpu, false))
-                    {
-                        Console.WriteLine($"Failed to assemble {runtimeFile}");
-                        return 1;
-                    }
-                    objectFiles.Add(runtimeObj);
+                    // Never skip: novus_io.s provides _write, which std::io::file declares
+                    // as extern. Omitting it links a program that fails on an undefined
+                    // symbol in generated C instead of reporting a Novus-level error.
+                    Console.Error.WriteLine($"error: runtime file '{runtimeFile}.s' not found in {PathUtility.GetRuntimeDir()}");
+                    Console.Error.WriteLine("The Novus installation is incomplete: the 'runtime' directory must sit beside the compiler binary.");
+                    return 1;
                 }
+
+                var runtimeObj = Path.Combine(outputDir, $"{runtimeFile}.o");
+                if (!await toolchain.Assemble(runtimeSource, runtimeObj, assemblyCpu, false))
+                {
+                    Console.WriteLine($"Failed to assemble {runtimeFile}");
+                    return 1;
+                }
+                objectFiles.Add(runtimeObj);
             }
 
             // For libraries, assemble the A6 wrapper file and library stub

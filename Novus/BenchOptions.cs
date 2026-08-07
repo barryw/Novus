@@ -41,6 +41,6 @@ public class BenchOptions
     [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation")]
     public string VbccPath { get; set; } = PathUtility.GetVbccPath();
 
-    [Option("ndk-path", Required = false, HelpText = "Path to Amiga NDK")]
-    public string NdkPath { get; set; } = PathUtility.GetNdkPath();
+    [Option("ndk-path", Required = false, HelpText = "Path to your Amiga NDK 3.9 (default: $NDK, then 'novus config set ndk-path')")]
+    public string NdkPath { get; set; } = UserConfig.ResolveNdkPath() ?? "";
 }

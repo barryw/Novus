@@ -7,8 +7,8 @@ namespace Novus;
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class GenerateStubsOptions
 {
-    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: auto-detect from NDK_PATH env var or common locations)")]
-    public string NdkPath { get; set; } = PathUtility.GetNdkPath();
+    [Option("ndk-path", Required = false, HelpText = "Path to your Amiga NDK 3.9 (default: $NDK, then 'novus config set ndk-path')")]
+    public string NdkPath { get; set; } = UserConfig.ResolveNdkPath() ?? "";
 
     [Option('o', "output", Required = false, HelpText = "Output directory (default: current directory)")]
     public string OutputPath { get; set; } = ".";

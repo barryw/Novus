@@ -91,4 +91,102 @@
                  Importance="low" />
     </Target>
 
+    <!--
+      Ship the vendored VBCC beside the compiler.
+
+      PathUtility.GetVbccPath() looks in <compiler>/vendor/vbcc first, so a compiler that
+      carries its own toolchain needs no VBCC environment variable and never falls back to
+      a system vbcc that lacks the aos68k_fpu config and Novus's optimizer patches.
+
+      Only bin, config and targets are copied: docs are not needed to compile, and ndks/ is
+      deliberately excluded - the NDK cannot be redistributed, and nothing requires it.
+
+      The item groups are built inside the targets on purpose. bin/ is produced by BuildVbcc
+      during this same build, so a glob evaluated at project-load time would come up empty.
+    -->
+    <Target Name="CopyVbccToOutput" AfterTargets="Build" DependsOnTargets="BuildVbcc">
+        <ItemGroup>
+            <VbccBin Include="$(MSBuildProjectDirectory)/../vendor/vbcc/bin/**/*" />
+            <VbccConfig Include="$(MSBuildProjectDirectory)/../vendor/vbcc/config/**/*" />
+            <!-- Everything except the AmigaOS system headers: those come from the NDK,
+                 which cannot be redistributed. vbcc's own libc headers sit flat in
+                 include/, and inline/ is vbcc-generated, so both stay. -->
+            <VbccTargets Include="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/**/*"
+                         Exclude="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/m68k-amigaos/include/*/**/*" />
+            <VbccInline Include="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/m68k-amigaos/include/inline/**/*" />
+        </ItemGroup>
+
+        <!-- One Copy per tree: %(RecursiveDir) is relative to its own wildcard root, so a
+             single combined item group would flatten bin/, config/ and targets/ together. -->
+        <Copy SourceFiles="@(VbccBin)"
+              DestinationFiles="@(VbccBin->'$(OutDir)vendor/vbcc/bin/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccConfig)"
+              DestinationFiles="@(VbccConfig->'$(OutDir)vendor/vbcc/config/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccTargets)"
+              DestinationFiles="@(VbccTargets->'$(OutDir)vendor/vbcc/targets/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccInline)"
+              DestinationFiles="@(VbccInline->'$(OutDir)vendor/vbcc/targets/m68k-amigaos/include/inline/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+
+        <!-- MSBuild's Copy does not carry the executable bit across on Unix. -->
+        <Exec Condition="'$(OS)' != 'Windows_NT' AND Exists('$(OutDir)vendor/vbcc/bin')"
+              Command="chmod +x &quot;$(OutDir)vendor/vbcc/bin&quot;/*" />
+    </Target>
+
+    <Target Name="CopyVbccToPublish" AfterTargets="Publish">
+        <ItemGroup>
+            <VbccPubBin Include="$(MSBuildProjectDirectory)/../vendor/vbcc/bin/**/*" />
+            <VbccPubConfig Include="$(MSBuildProjectDirectory)/../vendor/vbcc/config/**/*" />
+            <VbccPubTargets Include="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/**/*"
+                            Exclude="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/m68k-amigaos/include/*/**/*" />
+            <VbccPubInline Include="$(MSBuildProjectDirectory)/../vendor/vbcc/targets/m68k-amigaos/include/inline/**/*" />
+        </ItemGroup>
+
+        <!-- A published compiler with no toolchain fails at link on every program it
+             builds, so this is an error rather than a skipped copy. -->
+        <Error Condition="'@(VbccPubBin)' == ''"
+               Text="Vendored VBCC binaries not found. Run 'make -C vendor/vbcc' before publishing." />
+
+        <!--
+          vbcc is built by `make` for the machine doing the build, while dotnet happily
+          cross-publishes for another. Publishing osx-x64 from an arm64 agent would ship
+          an arm64 vbcc inside an x64 compiler, and the mismatch would only surface as a
+          failure to exec the assembler on a user's machine. Fail here instead.
+        -->
+        <Exec Condition="'$(OS)' != 'Windows_NT' AND '$(RuntimeIdentifier)' != ''"
+              Command="&#xA;
+                  case '$(RuntimeIdentifier)' in&#xA;
+                    osx-arm64|linux-arm64) want='arm64|aarch64' ;;&#xA;
+                    osx-x64|linux-x64)     want='x86_64|x86-64' ;;&#xA;
+                    win-*)                 want='PE32' ;;&#xA;
+                    *) exit 0 ;;&#xA;
+                  esac&#xA;
+                  have=`file -b '$(MSBuildProjectDirectory)/../vendor/vbcc/bin/vasmm68k_mot'`&#xA;
+                  echo &quot;$have&quot; | grep -Eq &quot;$want&quot; || {&#xA;
+                    echo &quot;vendored vbcc does not match $(RuntimeIdentifier): $have&quot; >&amp;2&#xA;
+                    echo &quot;Rebuild it on a $(RuntimeIdentifier) host (make -C vendor/vbcc clean all).&quot; >&amp;2&#xA;
+                    exit 1&#xA;
+                  }&#xA;
+              " />
+
+        <Copy SourceFiles="@(VbccPubBin)"
+              DestinationFiles="@(VbccPubBin->'$(PublishDir)vendor/vbcc/bin/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccPubConfig)"
+              DestinationFiles="@(VbccPubConfig->'$(PublishDir)vendor/vbcc/config/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccPubTargets)"
+              DestinationFiles="@(VbccPubTargets->'$(PublishDir)vendor/vbcc/targets/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+        <Copy SourceFiles="@(VbccPubInline)"
+              DestinationFiles="@(VbccPubInline->'$(PublishDir)vendor/vbcc/targets/m68k-amigaos/include/inline/%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+
+        <Exec Condition="'$(OS)' != 'Windows_NT'"
+              Command="chmod +x &quot;$(PublishDir)vendor/vbcc/bin&quot;/*" />
+    </Target>
+
 </Project>

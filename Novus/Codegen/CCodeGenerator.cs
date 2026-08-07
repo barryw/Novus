@@ -5126,7 +5126,7 @@ public partial class CCodeGenerator
     {
         if (_buildMode == BuildMode.Debug && _lastLineDirectiveFile != null)
         {
-            var escapedPath = _lastLineDirectiveFile.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            var escapedPath = DebugSourcePath(_lastLineDirectiveFile).Replace("\\", "\\\\").Replace("\"", "\\\"");
             _output.AppendLine($"#line {_lastLineDirectiveLine} \"{escapedPath}\"");
         }
         _output.AppendLine(code);
@@ -5137,6 +5137,31 @@ public partial class CCodeGenerator
     /// This makes compiler error messages reference the original Novus source file and line.
     /// Only emitted in Debug builds to help with debugging generated C code.
     /// </summary>
+    /// <summary>
+    /// Normalize a source path for debug info.
+    ///
+    /// The path recorded here is what a debugger has to open later, and it is the only
+    /// record of where the source lived. A relative path resolves against whatever
+    /// directory the debugger happens to run in, which is rarely the one the compile ran
+    /// in, so it is stored absolute.
+    /// </summary>
+    private static string DebugSourcePath(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || filePath == "<unknown>" || filePath == "<compiler-generated>")
+            return filePath;
+
+        try
+        {
+            return Path.GetFullPath(filePath);
+        }
+        catch (Exception)
+        {
+            // Unrooted or malformed paths are kept as-is; a wrong-looking path in debug
+            // info is better than failing the compile over it.
+            return filePath;
+        }
+    }
+
     private void MaybeEmitLineDirective(IrInstruction instruction)
     {
         // Only emit #line directives in debug builds
@@ -5162,7 +5187,7 @@ public partial class CCodeGenerator
 
         // Emit #line directive: #line linenum "filename"
         // The filename must be escaped for C string literal (quotes, backslashes)
-        var escapedPath = loc.FilePath.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        var escapedPath = DebugSourcePath(loc.FilePath).Replace("\\", "\\\\").Replace("\"", "\\\"");
         _output.AppendLine($"#line {loc.Line} \"{escapedPath}\"");
     }
 
@@ -8233,8 +8258,12 @@ public partial class CCodeGenerator
         {
             foreach (var instruction in block.Instructions)
             {
+                // Array fields count too. Writing through a copied array field - either
+                // self.buf[i] = c or &self.buf[i] handed to memcpy - updates the copy and
+                // discards it on return, so the field never changes. That is a silent
+                // wrong answer, not a compile error.
                 if (instruction is IrMemberAccess memberAccess &&
-                    memberAccess.FieldType is IrStructType &&
+                    memberAccess.FieldType is IrStructType or IrArrayType &&
                     !string.IsNullOrEmpty(memberAccess.ResultName))
                 {
                     var resultName = SanitizeVariableName(memberAccess.ResultName);
@@ -8611,6 +8640,16 @@ public partial class CCodeGenerator
             case IrIndexStore indexStore:
                 CheckValue(indexStore.Value, isAddressContext: false);
                 CheckValue(indexStore.Index, isAddressContext: false);
+                // The array being stored into is a place, not a value: keeping the copy
+                // here is what makes `self.buf[i] = c` write to a discarded temporary.
+                CheckValue(indexStore.Array, isAddressContext: true);
+                break;
+
+            case IrIndexAccess indexAccess:
+                CheckValue(indexAccess.Index, isAddressContext: false);
+                // Reading one element never needs the whole array copied out; indexing the
+                // field in place gives the same value for less work.
+                CheckValue(indexAccess.Array, isAddressContext: true);
                 break;
 
             case IrDereferenceStore derefStore:
@@ -9163,8 +9202,18 @@ public partial class CCodeGenerator
             return value.ToString();
         }
 
+        // A member access whose copy was elided has no C variable of its own, so every
+        // use has to name the field in place (self->buf) instead of a temporary that was
+        // never declared.
+        var variableName = SanitizeVariableName(variable.Name);
+        if (_addressOnlyStructMemberAccess.Contains(variableName) &&
+            _fieldAccessChainInfo.ContainsKey(variableName))
+        {
+            return ReconstructFieldAccessChain(variable.Name);
+        }
+
         // Not a constant - emit the variable name
-        return SanitizeVariableName(variable.Name);
+        return variableName;
     }
 
     internal string EmitStructLiteral(IrStructLiteral structLit)
@@ -9887,7 +9936,7 @@ public partial class CCodeGenerator
         if (dropInPlace.Location != null)
         {
             var loc = dropInPlace.Location;
-            _output.AppendLine($"#line {loc.Line} \"{EscapeCString(loc.FilePath)}\"");
+            _output.AppendLine($"#line {loc.Line} \"{EscapeCString(DebugSourcePath(loc.FilePath))}\"");
         }
 
         // Get the drop call expression

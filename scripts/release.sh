@@ -87,7 +87,6 @@ mkdir -p "$RELEASE_DIR"
 # Target configurations: name, rid (runtime identifier)
 declare -a TARGETS=(
     "novus-macos-arm64:osx-arm64"
-    "novus-macos-x64:osx-x64"
     "novus-linux-x64:linux-x64"
     "novus-linux-arm64:linux-arm64"
     "novus-win-x64:win-x64"
@@ -111,12 +110,16 @@ build_binary() {
         -p:StripSymbols=true \
         -o "$RELEASE_DIR/build-$rid"
 
-    # Copy the binary
+    # Package the whole tree, not just the executable. The compiler loads std/,
+    # runtime/, stubs/, templates/ and vendor/vbcc from beside its own binary, so a
+    # lone executable cannot compile anything - it fails on the first import with
+    # "module 'std::core' not found".
     if [[ "$rid" == win-* ]]; then
-        cp "$RELEASE_DIR/build-$rid/novus.exe" "$output_path.exe"
+        (cd "$RELEASE_DIR/build-$rid" && zip -qr "../$name.zip" .)
     else
-        cp "$RELEASE_DIR/build-$rid/novus" "$output_path"
-        chmod +x "$output_path"
+        chmod +x "$RELEASE_DIR/build-$rid/novus" 2>/dev/null || true
+        chmod +x "$RELEASE_DIR/build-$rid"/vendor/vbcc/bin/* 2>/dev/null || true
+        tar czf "$output_path.tar.gz" -C "$RELEASE_DIR/build-$rid" .
     fi
 
     # Clean up build directory
@@ -147,17 +150,17 @@ generate_sha256() {
 
 create_zip_package() {
     local name="$1"
-    local binary_path="$RELEASE_DIR/$name"
-    local zip_path="$RELEASE_DIR/$name.zip"
+    # build_binary produces a complete tree, not a bare executable: .tar.gz on unix,
+    # .zip on Windows. Package whichever one it left behind.
+    local binary_path="$RELEASE_DIR/$name.tar.gz"
+    local zip_path="$RELEASE_DIR/$name-package.zip"
 
-    # Handle Windows executables
-    if [[ -f "$binary_path.exe" ]]; then
-        binary_path="$binary_path.exe"
-        name="$name.exe"
+    if [[ -f "$RELEASE_DIR/$name.zip" ]]; then
+        binary_path="$RELEASE_DIR/$name.zip"
     fi
 
     if [[ ! -f "$binary_path" ]]; then
-        warn "Binary not found: $binary_path (skipping)"
+        warn "Archive not found: $binary_path (skipping)"
         return 1
     fi
 
@@ -182,7 +185,7 @@ Novus Compiler - $VERSION
 ==========================
 
 This package contains:
-- $binary_name        The Novus compiler binary
+- $binary_name        The Novus compiler and everything it needs
 - $binary_name.sha256 SHA256 checksum for verification
 
 Verification:
@@ -190,8 +193,14 @@ Verification:
   Windows:     certutil -hashfile $binary_name SHA256
 
 Installation:
-  1. Extract to a directory of your choice
-  2. Add to your PATH or use full path to invoke
+  1. Extract $binary_name to a directory of your choice
+  2. Invoke the 'novus' binary from that directory, or add it to your PATH
+
+  Keep the extracted tree intact. The compiler loads its standard library,
+  runtime and bundled vbcc toolchain from directories beside its own binary,
+  so moving the executable out on its own stops it compiling. No separate
+  vbcc or NDK installation is needed.
+
   3. Run: novus --version
 
 Documentation: https://github.com/barryw/Novus
@@ -235,12 +244,12 @@ upload_to_github() {
             --draft
     fi
 
-    # Upload zip files and their SHA256s
+    # Upload packages and their SHA256s
     local upload_files=()
     for target in "${TARGETS[@]}"; do
         local name="${target%%:*}"
-        local zip_path="$RELEASE_DIR/$name.zip"
-        local sha_path="$RELEASE_DIR/$name.zip.sha256"
+        local zip_path="$RELEASE_DIR/$name-package.zip"
+        local sha_path="$zip_path.sha256"
 
         if [[ -f "$zip_path" ]]; then
             upload_files+=("$zip_path")

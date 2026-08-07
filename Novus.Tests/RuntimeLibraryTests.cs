@@ -172,22 +172,20 @@ pub fn main() -> i32 {
         Assert.True(writeFunc.IsExtern, "write() should be extern");
     }
 
-    [Fact]
-    public void RuntimeCFile_IsCopiedToBuildOutput()
+    [Theory]
+    [InlineData("novus_io.s")]
+    [InlineData("runtime_core.c")]
+    [InlineData("runtime_errors.c")]
+    public void RuntimeFile_IsCopiedToBuildOutput(string fileName)
     {
-        // Verify novus_io.c exists in runtime directory
         var runtimeFile = Path.Combine(
             Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
             "runtime",
-            "novus_io.c"
+            fileName
         );
 
-        // The file should be copied by MSBuild during compiler build
-        if (Directory.Exists(Path.GetDirectoryName(runtimeFile)))
-        {
-            Assert.True(File.Exists(runtimeFile) || true,
-                "novus_io.c should be copied to output directory by MSBuild");
-        }
+        Assert.True(File.Exists(runtimeFile),
+            $"{fileName} should be copied to the output directory by MSBuild; not found at {runtimeFile}");
     }
 
     [Fact]

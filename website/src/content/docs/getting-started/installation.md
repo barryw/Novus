@@ -11,130 +11,84 @@ This guide will walk you through setting up the Novus compiler and its dependenc
 
 Before installing Novus, you'll need the following tools:
 
-### 1. .NET 9.0 SDK
+### Amiga NDK 3.9
 
-The Novus compiler is written in C# and requires the .NET 9.0 SDK.
-
-**Download:** [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
-
-**Verify installation:**
-```bash
-dotnet --version
-# Should show 9.0.x or higher
-```
-
-### 2. VBCC Toolchain
-
-Novus uses the VBCC toolchain (`vasm` and `vlink`) to assemble and link 68k code.
-
-**Download:** [http://www.compilers.de/vbcc.html](http://www.compilers.de/vbcc.html)
-
-You'll need:
-- `vasm` - The assembler (specifically the Motorola syntax version: `vasmm68k_mot`)
-- `vlink` - The linker
-
-**macOS/Linux Installation:**
-
-```bash
-# Download and extract VBCC
-wget http://www.compilers.de/vbcc_bin_mac.tar.gz
-tar xzf vbcc_bin_mac.tar.gz
-sudo mv vbcc /opt/vbcc
-
-# Add to PATH in ~/.bashrc or ~/.zshrc
-export VBCC=/opt/vbcc
-export PATH=$VBCC/bin:$PATH
-```
-
-**Windows Installation:**
-
-1. Download the Windows VBCC package
-2. Extract to `C:\vbcc`
-3. Add `C:\vbcc\bin` to your PATH environment variable
-
-**Verify installation:**
-```bash
-vasmm68k_mot -help
-vlink -h
-```
-
-### 3. Amiga NDK 3.9
-
-The Amiga Native Development Kit provides headers and libraries for AmigaOS development.
+This is the only thing you need to supply yourself. The NDK contains the AmigaOS
+system headers (`exec/`, `dos/`, `intuition/`, `proto/` and friends). Its licence
+does not allow us to redistribute it, so Novus ships everything **except** the NDK
+and you point it at your own copy.
 
 **Download:** [http://www.amigadev.com](http://www.amigadev.com) or search for "NDK 3.9"
 
-Extract the NDK and note its location. You'll reference this path when compiling Novus programs.
+Extract it anywhere you like, then tell Novus where it is (see
+[Configuration](#configuration) below).
 
-**Typical installation locations:**
-- macOS/Linux: `/opt/amiga/ndk39`
-- Windows: `C:\amiga\ndk39`
+:::note[What you do *not* need]
+You no longer need to install VBCC, vasm or vlink. Novus bundles a patched VBCC
+toolchain, and it is used in preference to any system install. A stock VBCC lacks
+the `aos68k_fpu` target config and the optimizer fixes Novus depends on, so using
+one would fail or miscompile.
+
+You also do not need the .NET SDK unless you are building the compiler from source.
+:::
 
 ## Installing Novus
 
-### Option 1: Build from Source (Recommended)
+### Option 1: Download a Release (Recommended)
 
-Clone the Novus repository and build the compiler:
+Grab the archive for your platform from the
+[releases page](https://github.com/barryw/novus/releases), extract it, and run it:
 
 ```bash
-# Clone the repository
+tar xzf novus-macos-arm64.tar.gz -C ~/novus
+~/novus/novus --version
+```
+
+Add `~/novus` to your `PATH` to invoke it as `novus` from anywhere.
+
+:::caution[Keep the extracted tree together]
+The compiler loads its standard library, runtime and bundled VBCC toolchain from
+directories beside its own binary. Copying just the executable somewhere else stops
+it compiling, with errors like `module 'std::core' not found`.
+:::
+
+### Option 2: Build from Source
+
+Building the compiler needs the [.NET 10 SDK](https://dotnet.microsoft.com/download),
+plus `make` and a C compiler to build the vendored VBCC toolchain.
+
+```bash
 git clone https://github.com/barryw/novus.git
 cd novus
-
-# Build the compiler
 dotnet build
-
-# Run the test suite to verify
 dotnet test
 ```
 
-The compiled binary will be located at:
-```
-Novus/bin/Debug/net9.0/Novus.dll
-```
-
-### Option 2: Install Release Binary (Coming Soon)
-
-Pre-built releases will be available on GitHub once the compiler reaches stable status.
-
 ## Configuration
 
-### Environment Variables
+Tell Novus where your NDK is, once:
 
-Set these environment variables for convenience:
-
-**~/.bashrc or ~/.zshrc (macOS/Linux):**
 ```bash
-# VBCC toolchain
-export VBCC=/opt/vbcc
-export PATH=$VBCC/bin:$PATH
-
-# Amiga NDK
-export NDK=/opt/amiga/ndk39
-
-# Optional: Alias for running Novus compiler
-alias novus="dotnet run --project ~/novus/Novus/Novus.csproj --"
+novus config set ndk-path /path/to/NDK3.9
 ```
 
-**Windows (System Environment Variables):**
-```
-VBCC=C:\vbcc
-NDK=C:\amiga\ndk39
-Path=%Path%;%VBCC%\bin
+This is written to `~/.novus/config.toml`. Check it at any time:
+
+```bash
+novus config show
 ```
 
-### Compiler Configuration File (Optional)
-
-You can create a `novus.config` file in your home directory to set default compiler options:
-
-```json
-{
-  "vbccPath": "/opt/vbcc",
-  "ndkPath": "/opt/amiga/ndk39",
-  "defaultCpu": "68020",
-  "defaultOptLevel": 2
-}
 ```
+config file: /Users/you/.novus/config.toml
+ndk-path   : /path/to/NDK3.9
+```
+
+The path is validated when you set it, so a typo is reported immediately rather
+than turning into a confusing missing-header error on your next build.
+
+If you prefer not to use the config file, Novus also accepts `--ndk-path` per
+invocation, or an `NDK` environment variable. Precedence is `--ndk-path`, then
+`NDK`, then the config file, then the usual install locations.
 
 ## Platform-Specific Notes
 
@@ -142,7 +96,7 @@ You can create a `novus.config` file in your home directory to set default compi
 
 **Apple Silicon (M1/M2/M3):**
 
-The .NET SDK and VBCC both work on Apple Silicon Macs via Rosetta 2. No special configuration needed.
+Novus ships a native arm64 build with a matching arm64 VBCC toolchain. No Rosetta needed.
 
 **Homebrew users:**
 
@@ -181,34 +135,26 @@ All tools work natively on Windows. Use PowerShell or Command Prompt for command
 
 Let's verify your installation is working correctly:
 
-### 1. Check .NET
+### 1. Check the compiler
 ```bash
-dotnet --version
-# Expected: 9.0.x
+novus --version
+# Expected: novus 0.4.0 (or later)
 ```
 
-### 2. Check VBCC
+### 2. Check the NDK is configured
 ```bash
-vasmm68k_mot -help | head -5
-# Expected: vasm 1.9x (or similar)
-
-vlink -h | head -5
-# Expected: vlink 0.x (or similar)
+novus config show
+# Expected: ndk-path pointing at your NDK 3.9 directory
 ```
 
-### 3. Check Novus Compiler
+### 3. Compile something
+
 ```bash
-cd ~/novus  # Or wherever you cloned it
-dotnet run --project Novus/Novus.csproj -- --version
-# Expected: Novus compiler version x.x.x
+novus compile hello.novus -o hello
 ```
 
-### 4. Run Test Suite
-```bash
-cd ~/novus
-dotnet test
-# Expected: All tests passing (77+ tests)
-```
+If that produces an executable, the compiler, its bundled toolchain and your NDK
+are all wired up correctly.
 
 ## Running on Amiga
 
@@ -264,15 +210,15 @@ which dotnet
 
 If not found, reinstall .NET SDK and ensure it's in your PATH.
 
-### "vasmm68k_mot: command not found"
+### "Amiga NDK not found"
 
-VBCC is not installed or not in your PATH. Verify:
+Novus cannot bundle the NDK, so it has to be told where yours is:
 ```bash
-echo $VBCC
-ls $VBCC/bin
+novus config set ndk-path /path/to/NDK3.9
 ```
 
-Make sure the VBCC bin directory is in your PATH.
+If that reports the directory "does not look like an NDK 3.9 tree", check it
+contains `Include/include_h/exec/types.h`.
 
 ### Compilation Errors: "NDK headers not found"
 
