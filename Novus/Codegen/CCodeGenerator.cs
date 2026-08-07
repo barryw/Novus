@@ -5098,6 +5098,25 @@ public partial class CCodeGenerator
     }
 
     /// <summary>
+    /// Emit a line of generated epilogue code re-anchored to the last known source line.
+    ///
+    /// `#line N` sets the line number of the *next* line, so vbcc keeps counting upward
+    /// for every line emitted after it. Generated cleanup and return statements carry no
+    /// location of their own, so without re-anchoring they drift past the end of the
+    /// source file (a 9-line .novus file produced debug records for lines 10, 12 and 13).
+    /// Re-emitting the anchor before each line pins them all to the same real line.
+    /// </summary>
+    private void EmitAnchored(string code)
+    {
+        if (_buildMode == BuildMode.Debug && _lastLineDirectiveFile != null)
+        {
+            var escapedPath = _lastLineDirectiveFile.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            _output.AppendLine($"#line {_lastLineDirectiveLine} \"{escapedPath}\"");
+        }
+        _output.AppendLine(code);
+    }
+
+    /// <summary>
     /// Emit a #line directive if the instruction has a location that differs from the last emitted directive.
     /// This makes compiler error messages reference the original Novus source file and line.
     /// Only emitted in Debug builds to help with debugging generated C code.
@@ -7141,8 +7160,8 @@ public partial class CCodeGenerator
             _currentEmittingFunction != null &&
             _currentEmittingFunction.Name == "main")
         {
-            _output.AppendLine("    __novus_memory_report();");
-            _output.AppendLine("    __novus_cleanup_mmu_protection();");
+            EmitAnchored("    __novus_memory_report();");
+            EmitAnchored("    __novus_cleanup_mmu_protection();");
         }
 
         // Step 6: Finally, emit the actual return statement
@@ -7154,13 +7173,13 @@ public partial class CCodeGenerator
             if (isStructOrEnumReturn)
             {
                 // Struct/enum/array was already copied to __out above
-                _output.AppendLine("    return;");
+                EmitAnchored("    return;");
             }
             else
             {
                 // Direct return for primitives/pointers
                 var value = EmitValue(returnInst.Value);
-                _output.AppendLine($"    return {value};");
+                EmitAnchored($"    return {value};");
             }
         }
         else
@@ -7170,19 +7189,19 @@ public partial class CCodeGenerator
             // need to satisfy the compiler by providing a return value for non-void functions.
             if (_currentEmittingFunction?.ReturnType is IrVoidType or null)
             {
-                _output.AppendLine("    return;");
+                EmitAnchored("    return;");
             }
             else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType or IrTupleType)
             {
                 // For struct/enum returns (which use __out parameter), just return;
-                _output.AppendLine("    return;");
+                EmitAnchored("    return;");
             }
             else
             {
                 // Non-void primitive/pointer return - provide a dummy zero value
                 // This path should never be reached at runtime (exhaustive matches)
                 var cType = GetCType(_currentEmittingFunction!.ReturnType);
-                _output.AppendLine($"    return ({cType})0; /* unreachable */");
+                EmitAnchored($"    return ({cType})0; /* unreachable */");
             }
         }
     }
