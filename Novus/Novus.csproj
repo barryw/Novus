@@ -189,4 +189,9 @@
               Command="chmod +x &quot;$(PublishDir)vendor/vbcc/bin&quot;/*" />
     </Target>
 
+    <ItemGroup>
+        <!-- NewCommand.CopyDirectory is exercised directly by the template tests. -->
+        <InternalsVisibleTo Include="Novus.Tests" />
+    </ItemGroup>
+
 </Project>

@@ -169,7 +169,22 @@ public static class NewCommand
         return 0;
     }
 
-    private static void CopyDirectory(string sourceDir, string destDir, bool recursive)
+    /// <summary>
+    /// Build output that must never be copied out of a template.
+    ///
+    /// Anyone who runs a build inside templates/ leaves these behind. They are
+    /// gitignored, so a clean checkout looks fine, but the directory on disk is what
+    /// gets copied - so a stale tree silently ships its leftovers into every new
+    /// project. That is how a 468-byte skeleton executable ended up in the bins/
+    /// directory of freshly created gui and workbench workspaces, alongside the real
+    /// ones and indistinguishable from them at a glance.
+    /// </summary>
+    internal static readonly HashSet<string> BuildOutputDirectories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "target", "build", ".novus-cache", "usercache", "bin", "obj"
+    };
+
+    internal static void CopyDirectory(string sourceDir, string destDir, bool recursive)
     {
         var dir = new DirectoryInfo(sourceDir);
 
@@ -184,6 +199,7 @@ public static class NewCommand
         // Copy files
         foreach (FileInfo file in dir.GetFiles())
         {
+            if (file.Name == ".DS_Store") continue;
             string targetFilePath = Path.Combine(destDir, file.Name);
             file.CopyTo(targetFilePath);
         }
@@ -193,6 +209,7 @@ public static class NewCommand
         {
             foreach (DirectoryInfo subDir in dir.GetDirectories())
             {
+                if (BuildOutputDirectories.Contains(subDir.Name)) continue;
                 string newDestinationDir = Path.Combine(destDir, subDir.Name);
                 CopyDirectory(subDir.FullName, newDestinationDir, true);
             }
