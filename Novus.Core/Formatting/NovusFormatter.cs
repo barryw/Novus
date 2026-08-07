@@ -282,6 +282,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         // Add blank line after imports if there are any and more content follows
         if ((imports.Length > 0 || reexports.Length > 0) &&
             (context.constDeclaration().Length > 0 || context.staticDeclaration().Length > 0 ||
+             context.typeAliasDeclaration().Length > 0 ||
              context.globalVariableDeclaration().Length > 0 || context.structDeclaration().Length > 0 ||
              context.enumDeclaration().Length > 0 || context.traitDeclaration().Length > 0 ||
              context.implDeclaration().Length > 0 || context.functionDeclaration().Length > 0))
@@ -293,6 +294,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         var allDeclarations = new List<(int Index, IParseTree Node)>();
 
         foreach (var c in context.constDeclaration()) allDeclarations.Add((c.Start.StartIndex, c));
+        foreach (var a in context.typeAliasDeclaration()) allDeclarations.Add((a.Start.StartIndex, a));
         foreach (var s in context.staticDeclaration()) allDeclarations.Add((s.Start.StartIndex, s));
         foreach (var g in context.globalVariableDeclaration()) allDeclarations.Add((g.Start.StartIndex, g));
         foreach (var st in context.structDeclaration()) allDeclarations.Add((st.Start.StartIndex, st));
@@ -501,6 +503,20 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
 
         Write(" = ");
         Visit(context.expression());
+        WriteLine();
+        return null;
+    }
+
+    public override object? VisitTypeAliasDeclaration(NovusParser.TypeAliasDeclarationContext context)
+    {
+        EmitHiddenTokensBefore(context);
+        foreach (var attr in context.attribute()) Visit(attr);
+        if (context.KW_PUB() != null) Write("pub ");
+        if (context.KW_INTERNAL() != null) Write("internal ");
+        Write("type ");
+        Write(context.IDENTIFIER().GetText());
+        Write(" = ");
+        Visit(context.type());
         WriteLine();
         return null;
     }

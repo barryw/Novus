@@ -165,6 +165,12 @@ public static class ModuleImportHelper
                 }
             }
 
+            foreach (var aliasDecl in context.typeAliasDeclaration())
+            {
+                if (IsPub(aliasDecl))
+                    namesToImport.Add(aliasDecl.IDENTIFIER().GetText());
+            }
+
             // Import all pub constants
             foreach (var constDecl in context.constDeclaration())
             {
@@ -234,6 +240,13 @@ public static class ModuleImportHelper
                                     namesToImport.Add(name);
                                 }
                             }
+                        }
+
+                        foreach (var aliasDecl in context.typeAliasDeclaration())
+                        {
+                            var name = aliasDecl.IDENTIFIER().GetText();
+                            if (IsPub(aliasDecl) && name.EndsWith(suffix))
+                                namesToImport.Add(name);
                         }
 
                         // Match all pub constants with this suffix
@@ -315,6 +328,13 @@ public static class ModuleImportHelper
                                     namesToImport.Add(name);
                                 }
                             }
+                        }
+
+                        foreach (var aliasDecl in context.typeAliasDeclaration())
+                        {
+                            var name = aliasDecl.IDENTIFIER().GetText();
+                            if (IsPub(aliasDecl) && name.StartsWith(prefix))
+                                namesToImport.Add(name);
                         }
 
                         // Match all pub constants with this prefix

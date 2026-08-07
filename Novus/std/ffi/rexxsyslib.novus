@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: rexxsyslib.library
 // Base: _RexxSysBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -22,6 +24,7 @@
 /// argstr - A pointer to the argument string.  The results are returned
 ///
 /// See also: DeleteArgstring(), LengthArgstring(), ClearRexxMsg(), FillRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn CreateArgstring(string: *u8, length: u32) -> *u8
 /// Releases an Argstring created by CreateArgstring()
 ///
@@ -31,6 +34,7 @@ extern pub fn CreateArgstring(string: *u8, length: u32) -> *u8
 /// * `argstring` - A pointer to the string buffer of an argstring.
 ///
 /// See also: CreateArgstring(), ClearRexxMsg(), FillRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn DeleteArgstring(argstring: *u8)
 /// Returns the length value stored in the argstring
 ///
@@ -44,6 +48,7 @@ extern pub fn DeleteArgstring(argstring: *u8)
 /// length - The length of the argstring.
 ///
 /// See also: CreateArgstring()
+@library("rexxsyslib.library")
 extern pub fn LengthArgstring(argstring: *u8) -> u32
 /// Create an ARexx message structure
 ///
@@ -60,6 +65,7 @@ extern pub fn LengthArgstring(argstring: *u8) -> u32
 /// rexxmsg - A RexxMsg structure
 ///
 /// See also: DeleteRexxMsg(), ClearRexxMsg(), FillRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn CreateRexxMsg(port: *MsgPort, extension: *u8, host: *u8) -> *RexxMsg
 /// Releases a RexxMsg structure created by CreateRexxMsg()
 ///
@@ -71,6 +77,7 @@ extern pub fn CreateRexxMsg(port: *MsgPort, extension: *u8, host: *u8) -> *RexxM
 /// * `packet` - A pointer to a RexxMsg structure allocated by CreateRexxM...
 ///
 /// See also: CreateRexxMsg(), ClearRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn DeleteRexxMsg(packet: *RexxMsg)
 /// Releases and clears the argument array in a RexxMsg
 ///
@@ -85,6 +92,7 @@ extern pub fn DeleteRexxMsg(packet: *RexxMsg)
 /// All of the slots in the given count will be cleared and the argstring
 ///
 /// See also: FillRexxMsg(), DeleteRexxMsg(), DeleteArgstring(), CreateArgstring()
+@library("rexxsyslib.library")
 extern pub fn ClearRexxMsg(msgptr: *RexxMsg, count: u32)
 /// Fill the argument strings as needed
 ///
@@ -102,6 +110,7 @@ extern pub fn ClearRexxMsg(msgptr: *RexxMsg, count: u32)
 /// result - A boolean.  If it is TRUE, the call worked.  If it is false,
 ///
 /// See also: ClearRexxMsg(), CreateArgstring(), DeleteArgstring(), CreateRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn FillRexxMsg(msgptr: *RexxMsg, count: u32, mask: u32) -> i16
 /// Function to determine if a message came from ARexx
 ///
@@ -115,6 +124,7 @@ extern pub fn FillRexxMsg(msgptr: *RexxMsg, count: u32, mask: u32) -> i16
 /// result - A boolean:  TRUE if it is an ARexx message, FALSE if not.
 ///
 /// See also: CreateRexxMsg()
+@library("rexxsyslib.library")
 extern pub fn IsRexxMsg(msgptr: *RexxMsg) -> i16
 /// Obtain a semaphore lock on the RexxBase structure
 ///
@@ -124,6 +134,7 @@ extern pub fn IsRexxMsg(msgptr: *RexxMsg) -> i16
 /// * `resource` - A manifest constant defining which resource to lock. ZERO...
 ///
 /// See also: UnlockRexxBase()
+@library("rexxsyslib.library")
 extern pub fn LockRexxBase(resource: u32)
 /// Release a semaphore lock on the RexxBase structure
 ///
@@ -133,4 +144,5 @@ extern pub fn LockRexxBase(resource: u32)
 /// * `resource` - A manifest constant defining which resource to unlock. Th...
 ///
 /// See also: LockRexxBase()
+@library("rexxsyslib.library")
 extern pub fn UnlockRexxBase(resource: u32)

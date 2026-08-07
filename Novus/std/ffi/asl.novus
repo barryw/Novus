@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: asl.library
 // Base: _AslBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -11,14 +13,17 @@
 /// Allocates an ASL FileRequester structure. (V36)
 ///
 /// See also: AllocAslRequest()
+@library("asl.library")
 extern pub fn AllocFileRequest() -> *FileRequester
 /// Free file requester structure. (V36)
 ///
 /// See also: FreeAslRequest()
+@library("asl.library")
 extern pub fn FreeFileRequest(fileReq: *FileRequester)
 /// Request user to select files. (V36)
 ///
 /// See also: AslRequest()
+@library("asl.library")
 extern pub fn RequestFile(fileReq: *FileRequester) -> i16
 /// Allocate an ASL requester. (V36)
 ///
@@ -44,6 +49,7 @@ extern pub fn RequestFile(fileReq: *FileRequester) -> i16
 /// All ASL requester data structures are READ-ONLY and can only be
 ///
 /// See also: AslRequest(), FreeAslRequest()
+@library("asl.library")
 extern pub fn AllocAslRequest(reqType: u32, tagList: *TagItem) -> *u8
 // Varargs function AllocAslRequestTags skipped - needs manual implementation
 /// Frees resources allocated by AllocAslRequest(). (V36)
@@ -57,6 +63,7 @@ extern pub fn AllocAslRequest(reqType: u32, tagList: *TagItem) -> *u8
 ///   which case this function does nothing.
 ///
 /// See also: AllocAslRequest()
+@library("asl.library")
 extern pub fn FreeAslRequest(requester: *u8)
 /// Get input from user using an ASL requester. (V36)
 ///
@@ -81,6 +88,7 @@ extern pub fn FreeAslRequest(requester: *u8)
 /// All ASL requester data structures are READ-ONLY and can only be
 ///
 /// See also: AllocAslRequest(), FreeAslRequest()
+@library("asl.library")
 extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i16
 // Varargs function AslRequestTags skipped - needs manual implementation
 /// Attempt to abort an asl requester. (V44)
@@ -93,6 +101,7 @@ extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i16
 ///   which case this function does nothing.
 ///
 /// See also: AslRequest()
+@library("asl.library")
 extern pub fn AbortAslRequest(requester: *u8)
 /// Attempt to activate an asl requester. (V44)
 ///
@@ -105,4 +114,5 @@ extern pub fn AbortAslRequest(requester: *u8)
 ///   which case this function does nothing.
 ///
 /// See also: AslRequest()
+@library("asl.library")
 extern pub fn ActivateAslRequest(requester: *u8)

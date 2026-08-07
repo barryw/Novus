@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: exec.library
 // Base: _SysBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -31,7 +33,8 @@ from std::ffi::amiga_structs import StackSwapStruct
 /// result - Whatever values the userFunc left in the registers.
 ///
 /// See also: SuperState, UserState
-extern pub fn Supervisor(userFunction: *u8) -> u32
+@library("exec.library")
+extern pub fn Supervisor(userFunction: fn() -> u32) -> u32
 /// Initialize resident code modules (internal function)
 ///
 /// (This function may be ignored by application programmers) Call
@@ -46,6 +49,7 @@ extern pub fn Supervisor(userFunction: *u8) -> u32
 ///   number
 ///
 /// See also: ResidentTag (RT) structure definition (resident.h)
+@library("exec.library")
 extern pub fn InitCode(startClass: u32, version: u32)
 /// Initialize memory from a table
 ///
@@ -64,6 +68,7 @@ extern pub fn InitCode(startClass: u32, version: u32)
 ///   not cleared before initializing.
 ///
 /// See also: exec/initializers.i
+@library("exec.library")
 extern pub fn InitStruct(initTable: *u8, memory: *u8, size: u32)
 /// Construct a library
 ///
@@ -91,7 +96,8 @@ extern pub fn InitStruct(initTable: *u8, memory: *u8, size: u32)
 /// is available, this function will return NULL.
 ///
 /// See also: InitStruct, InitResident, exec/initializers.i
-extern pub fn MakeLibrary(funcInit: *u8, structInit: *u8, libInit: *u8, dataSize: u32, segList: u32) -> *Library
+@library("exec.library")
+extern pub fn MakeLibrary(funcInit: *u8, structInit: *u8, libInit: fn() -> u32, dataSize: u32, segList: u32) -> *Library
 /// Construct a function jump table
 ///
 /// A low level function used by MakeLibrary to build jump tables of the type
@@ -102,6 +108,7 @@ extern pub fn MakeLibrary(funcInit: *u8, structInit: *u8, libInit: *u8, dataSize
 /// tableSize - size of the new table in bytes (for LIB_NEGSIZE).
 ///
 /// See also: exec/MakeLibrary
+@library("exec.library")
 extern pub fn MakeFunctions(target: *u8, functionArray: *u8, funcDispBase: *u8)
 /// Find a resident module by name
 ///
@@ -116,6 +123,7 @@ extern pub fn MakeFunctions(target: *u8, functionArray: *u8, funcDispBase: *u8)
 /// resident - pointer to the resident tag structure or zero if none found.
 ///
 /// See also: exec/resident.h, InitResident
+@library("exec.library")
 extern pub fn FindResident(name: *u8) -> *Resident
 /// Initialize resident module
 ///
@@ -132,6 +140,7 @@ extern pub fn FindResident(name: *u8) -> *Resident
 /// base. NULL for failure.
 ///
 /// See also: exec/resident.i, FindResident
+@library("exec.library")
 extern pub fn InitResident(resident: *Resident, segList: u32) -> *u8
 /// Alert the user of an error
 ///
@@ -140,6 +149,7 @@ extern pub fn InitResident(resident: *Resident, segList: u32) -> *u8
 /// with a message stating what happened.
 ///
 /// See also: exec/alerts.h
+@library("exec.library")
 extern pub fn Alert(alertNum: u32)
 /// Run the system debugger
 ///
@@ -147,6 +157,7 @@ extern pub fn Alert(alertNum: u32)
 /// in >= V39 and "ROM-WACK" in < V39.
 ///
 /// See also: SetFunction() your favorite debugger's manual... the SAD autodocs... the ROM-WACK chapter of the ROM Kernel Manual... (pre-V39)
+@library("exec.library")
 extern pub fn Debug(flags: u32)
 /// Disable interrupt processing.
 ///
@@ -161,6 +172,7 @@ extern pub fn Debug(flags: u32)
 /// call to Enable() for every call to Disable().
 ///
 /// See also: Forbid, Permit, Enable
+@library("exec.library")
 extern pub fn Disable()
 /// Permit system interrupts to resume.
 ///
@@ -172,6 +184,7 @@ extern pub fn Disable()
 /// must execute exactly one call to Enable() for every call to Disable().
 ///
 /// See also: Forbid, Permit, Disable
+@library("exec.library")
 extern pub fn Enable()
 /// Forbid task rescheduling.
 ///
@@ -189,6 +202,7 @@ extern pub fn Enable()
 /// In the event of a task entering a Wait() after a Forbid(), the system
 ///
 /// See also: Permit, Disable, ObtainSemaphore, ObtainSemaphoreShared
+@library("exec.library")
 extern pub fn Forbid()
 /// Permit task rescheduling.
 ///
@@ -201,6 +215,7 @@ extern pub fn Forbid()
 /// one call to Permit() for every call to Forbid().
 ///
 /// See also: Forbid, Disable, Enable
+@library("exec.library")
 extern pub fn Permit()
 /// Get and/or set processor status register
 ///
@@ -215,6 +230,7 @@ extern pub fn Permit()
 ///
 /// # Returns
 /// oldSR - the entire status register before new bits
+@library("exec.library")
 extern pub fn SetSR(newSR: u32, mask: u32) -> u32
 /// Enter supervisor state with user stack
 ///
@@ -227,6 +243,7 @@ extern pub fn SetSR(newSR: u32, mask: u32) -> u32
 /// mode, oldSysStack is zero.
 ///
 /// See also: UserState/Supervisor
+@library("exec.library")
 extern pub fn SuperState() -> *u8
 /// Return to user state with user stack
 ///
@@ -235,6 +252,7 @@ extern pub fn SuperState() -> *u8
 /// above.
 ///
 /// See also: SuperState/Supervisor
+@library("exec.library")
 extern pub fn UserState(sysStack: *u8)
 /// Set a new handler for a system interrupt vector
 ///
@@ -255,6 +273,7 @@ extern pub fn UserState(sysStack: *u8)
 /// interrupt.
 ///
 /// See also: AddIntServer(), exec/interrupts.i, hardware/intbits.i
+@library("exec.library")
 extern pub fn SetIntVector(intNumber: i32, interrupt: *Interrupt) -> *Interrupt
 /// Add an interrupt server to a system server chain
 ///
@@ -274,6 +293,7 @@ extern pub fn SetIntVector(intNumber: i32, interrupt: *Interrupt) -> *Interrupt
 /// Some compilers or assemblers may optimize code in unexpected ways,
 ///
 /// See also: RemIntServer, SetIntVector, hardware/intbits.i, exec/interrupts.i
+@library("exec.library")
 extern pub fn AddIntServer(intNumber: i32, interrupt: *Interrupt)
 /// Remove an interrupt server from a server chain
 ///
@@ -286,6 +306,7 @@ extern pub fn AddIntServer(intNumber: i32, interrupt: *Interrupt)
 ///   interrupt server node
 ///
 /// See also: AddIntServer, hardware/intbits.h
+@library("exec.library")
 extern pub fn RemIntServer(intNumber: i32, interrupt: *Interrupt)
 /// Cause a software interrupt
 ///
@@ -295,6 +316,7 @@ extern pub fn RemIntServer(intNumber: i32, interrupt: *Interrupt)
 ///
 /// # Arguments
 /// * `interrupt` - pointer to a properly initialized interrupt node
+@library("exec.library")
 extern pub fn Cause(interrupt: *Interrupt)
 /// Allocate a block of memory
 ///
@@ -312,6 +334,7 @@ extern pub fn Cause(interrupt: *Interrupt)
 /// no free regions large enough to satisfy the request, return zero.
 ///
 /// See also: Deallocate, exec/memory.h
+@library("exec.library")
 extern pub fn Allocate(freeList: *MemHeader, byteSize: u32) -> *u8
 /// Deallocate a block of memory
 ///
@@ -326,6 +349,7 @@ extern pub fn Allocate(freeList: *MemHeader, byteSize: u32) -> *u8
 ///   the block in bytes. If NULL, nothing happens.
 ///
 /// See also: Allocate, exec/memory.h
+@library("exec.library")
 extern pub fn Deallocate(freeList: *MemHeader, consuming memoryBlock: *u8, byteSize: u32)
 /// Allocate memory given certain requirements
 ///
@@ -350,6 +374,7 @@ extern pub fn Deallocate(freeList: *MemHeader, consuming memoryBlock: *u8, byteS
 /// The result of any memory allocation MUST be checked, and a viable
 ///
 /// See also: FreeMem
+@library("exec.library")
 extern pub fn AllocMem(byteSize: u32, requirements: u32) -> *u8
 /// Allocate at a given location
 ///
@@ -367,6 +392,7 @@ extern pub fn AllocMem(byteSize: u32, requirements: u32) -> *u8
 /// failed.
 ///
 /// See also: AllocMem, FreeMem
+@library("exec.library")
 extern pub fn AllocAbs(byteSize: u32, location: *u8) -> *u8
 /// Deallocate with knowledge
 ///
@@ -380,6 +406,7 @@ extern pub fn AllocAbs(byteSize: u32, location: *u8) -> *u8
 ///   chunk size)
 ///
 /// See also: AllocMem
+@library("exec.library")
 extern pub fn FreeMem(consuming memoryBlock: *u8, byteSize: u32)
 /// Memory available given certain requirements
 ///
@@ -399,6 +426,7 @@ extern pub fn FreeMem(consuming memoryBlock: *u8, byteSize: u32)
 /// Due to the effect of multitasking, the value returned may not
 ///
 /// See also: exec/memory.h
+@library("exec.library")
 extern pub fn AvailMem(requirements: u32) -> u32
 /// Allocate many regions of memory
 ///
@@ -416,6 +444,7 @@ extern pub fn AvailMem(requirements: u32) -> u32
 /// failed is returned and bit 31 is set.
 ///
 /// See also: exec/memory.h
+@library("exec.library")
 extern pub fn AllocEntry(entry: *MemList) -> *MemList
 /// Free many regions of memory
 ///
@@ -425,6 +454,7 @@ extern pub fn AllocEntry(entry: *MemList) -> *MemList
 /// # Arguments
 ///
 /// See also: AllocEntry
+@library("exec.library")
 extern pub fn FreeEntry(consuming entry: *MemList)
 /// Insert a node into a list
 ///
@@ -441,6 +471,7 @@ extern pub fn FreeEntry(consuming entry: *MemList)
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, AddTail, Enqueue, RemHead, Remove
+@library("exec.library")
 extern pub fn Insert(list: *List, node: *Node, pred: *Node)
 /// Insert node at the head of a list
 ///
@@ -455,6 +486,7 @@ extern pub fn Insert(list: *List, node: *Node, pred: *Node)
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddTail, Enqueue, Insert, Remove, RemHead
+@library("exec.library")
 extern pub fn AddHead(list: *List, node: *Node)
 /// Append node to tail of a list
 ///
@@ -469,6 +501,7 @@ extern pub fn AddHead(list: *List, node: *Node)
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, Enqueue, Insert, Remove, RemHead
+@library("exec.library")
 extern pub fn AddTail(list: *List, node: *Node)
 /// Remove a node from a list
 ///
@@ -482,6 +515,7 @@ extern pub fn AddTail(list: *List, node: *Node)
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, AddTail, Enqueue, Insert, RemHead
+@library("exec.library")
 extern pub fn Remove(node: *Node)
 /// Remove the head node from a list
 ///
@@ -498,6 +532,7 @@ extern pub fn Remove(node: *Node)
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, AddTail, Enqueue, Insert, Remove
+@library("exec.library")
 extern pub fn RemHead(list: *List) -> *Node
 /// Remove the tail node from a list
 ///
@@ -514,6 +549,7 @@ extern pub fn RemHead(list: *List) -> *Node
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, AddTail, Enqueue, Insert, Remove
+@library("exec.library")
 extern pub fn RemTail(list: *List) -> *Node
 /// Insert or append node to a system queue
 ///
@@ -529,6 +565,7 @@ extern pub fn RemTail(list: *List) -> *Node
 /// This function does not arbitrate for access to the list.  The
 ///
 /// See also: AddHead, AddTail, Insert, Remove, RemHead
+@library("exec.library")
 extern pub fn Enqueue(list: *List, node: *Node)
 /// Find a system list node with a given name
 ///
@@ -544,6 +581,7 @@ extern pub fn Enqueue(list: *List, node: *Node)
 /// # Returns
 /// node - a pointer to the node with the same name else zero to indicate
 /// that the string was not found.
+@library("exec.library")
 extern pub fn FindName(list: *List, name: *u8) -> *Node
 /// Add a task to the system
 ///
@@ -566,6 +604,7 @@ extern pub fn FindName(list: *List, name: *u8) -> *Node
 /// Tasks are a low-level building block, and are unable to call
 ///
 /// See also: RemTask, FindTask, amiga.lib/CreateTask, dos/CreateProc, amiga.lib/NewList
+@library("exec.library")
 extern pub fn AddTask(task: *Task, initPC: *u8, finalPC: *u8) -> *u8
 /// Remove a task from the system
 ///
@@ -578,6 +617,7 @@ extern pub fn AddTask(task: *Task, initPC: *u8, finalPC: *u8) -> *u8
 ///   ready task to begin execution.
 ///
 /// See also: AddTask, exec/AllocEntry, amiga.lib/DeleteTask
+@library("exec.library")
 extern pub fn RemTask(task: *Task)
 /// Find a task with the given name or find oneself
 ///
@@ -587,6 +627,7 @@ extern pub fn RemTask(task: *Task)
 ///
 /// # Returns
 /// task - pointer to the task (or Process)
+@library("exec.library")
 extern pub fn FindTask(name: *u8) -> *Task
 /// Get and set the priority of a task
 ///
@@ -598,6 +639,7 @@ extern pub fn FindTask(name: *u8) -> *Task
 ///
 /// # Returns
 /// oldPriority - the tasks previous priority
+@library("exec.library")
 extern pub fn SetTaskPri(task: *Task, priority: i32) -> i8
 /// Define the state of this task's signals
 ///
@@ -612,6 +654,7 @@ extern pub fn SetTaskPri(task: *Task, priority: i32) -> i8
 /// oldSignals - the prior values for all signals
 ///
 /// See also: Signal, Wait
+@library("exec.library")
 extern pub fn SetSignal(newSignals: u32, signalSet: u32) -> u32
 /// Define certain signals to cause exceptions
 ///
@@ -627,6 +670,7 @@ extern pub fn SetSignal(newSignals: u32, signalSet: u32) -> u32
 /// oldSignals - the prior exception signals
 ///
 /// See also: Signal, SetSignal
+@library("exec.library")
 extern pub fn SetExcept(newSignals: u32, signalSet: u32) -> u32
 /// Wait for one or more signals
 ///
@@ -636,6 +680,7 @@ extern pub fn SetExcept(newSignals: u32, signalSet: u32) -> u32
 ///
 /// # Returns
 /// signals - the set of signals that were active
+@library("exec.library")
 extern pub fn Wait(signalSet: u32) -> u32
 /// Signal a task
 ///
@@ -644,6 +689,7 @@ extern pub fn Wait(signalSet: u32) -> u32
 /// and a reschedule will occur.
 ///
 /// See also: Wait, SetSignal
+@library("exec.library")
 extern pub fn Signal(task: *Task, signalSet: u32)
 /// Allocate a signal bit
 ///
@@ -662,6 +708,7 @@ extern pub fn Signal(task: *Task, signalSet: u32)
 /// Signals may not be allocated or freed from exception handling code.
 ///
 /// See also: FreeSignal
+@library("exec.library")
 extern pub fn AllocSignal(signalNum: i8) -> i8
 /// Free a signal bit
 ///
@@ -674,6 +721,7 @@ extern pub fn AllocSignal(signalNum: i8) -> i8
 ///
 /// # Warning
 /// Signals may not be allocated or freed from exception handling code.
+@library("exec.library")
 extern pub fn FreeSignal(signalNum: i8)
 /// Allocate a processor trap vector
 ///
@@ -693,6 +741,7 @@ extern pub fn FreeSignal(signalNum: i8)
 /// Traps may not be allocated or freed from exception handling code.
 ///
 /// See also: FreeTrap
+@library("exec.library")
 extern pub fn AllocTrap(trapNum: i32) -> i32
 /// Free a processor trap
 ///
@@ -705,6 +754,7 @@ extern pub fn AllocTrap(trapNum: i32) -> i32
 ///
 /// # Warning
 /// Traps may not be allocated or freed from exception handling code.
+@library("exec.library")
 extern pub fn FreeTrap(trapNum: i32)
 /// Add a public message port to the system
 ///
@@ -717,6 +767,7 @@ extern pub fn FreeTrap(trapNum: i32)
 /// * `port` - pointer to a message port
 ///
 /// See also: RemPort, FindPort, amiga.lib/CreatePort, amiga.lib/NewList
+@library("exec.library")
 extern pub fn AddPort(port: *MsgPort)
 /// Remove a message port from the system
 ///
@@ -728,6 +779,7 @@ extern pub fn AddPort(port: *MsgPort)
 /// * `port` - pointer to a message port
 ///
 /// See also: AddPort, FindPort
+@library("exec.library")
 extern pub fn RemPort(port: *MsgPort)
 /// Put a message to a message port
 ///
@@ -735,6 +787,7 @@ extern pub fn RemPort(port: *MsgPort)
 /// provides a fast, non-copying message sending mechanism.
 ///
 /// See also: GetMsg, ReplyMsg, exec/ports.h
+@library("exec.library")
 extern pub fn PutMsg(port: *MsgPort, message: *Message)
 /// Get next message from a message port
 ///
@@ -746,6 +799,7 @@ extern pub fn PutMsg(port: *MsgPort, message: *Message)
 /// messages, return zero. Callers must be prepared for zero at any time.
 ///
 /// See also: PutMsg, ReplyMsg, WaitPort, Wait, exec/ports.h
+@library("exec.library")
 extern pub fn GetMsg(port: *MsgPort) -> *Message
 /// Put a message to its reply port
 ///
@@ -754,6 +808,7 @@ extern pub fn GetMsg(port: *MsgPort) -> *Message
 /// (so that it can be re-used or deallocated, whatever).
 ///
 /// See also: GetMsg, PutMsg, exec/ports.h
+@library("exec.library")
 extern pub fn ReplyMsg(message: *Message)
 /// Wait for a given port to be non-empty
 ///
@@ -761,11 +816,13 @@ extern pub fn ReplyMsg(message: *Message)
 /// the Wait() function will be called to wait for the port signal.
 ///
 /// See also: GetMsg  SAD/--Overview--                                             SAD/--Overview--  Simple Amiga Debugging Kernel, known as "SAD" It is in EXEC starting in V39   -- General description --  The Simple Amiga Debugging Kernel (SAD) is a set of very simple control routines stored in the Kickstart ROM that would let debuggers control the Amiga's development enviroment from the outside.  These tools would make it possible to do remote machine development/debugging via just the on-board serial port.  This set of control routines is very simple and yet completely flexible, thus making it possible to control the whole machine.   -- Technical Issues --  SAD will make use of the motherboard serial port that exists in all Amiga systems.  The connection via the serial port lets the system be able to execute SAD without needing any of the system software up and running. (SAD will play with the serial port directly)  With some minor changes to the Amiga hardware, an NMI-like line could be hooked up to a pin on the serial port.  This would let external control of the machine and would let the external controller stop the machine no matter what state it is in.  (NMI is that way)  In order to function correctly, SAD requires the some of the EXEC CPU control functions work and that ExecBase be valid.  Beyond that
+@library("exec.library")
 extern pub fn WaitPort(port: *MsgPort) -> *Message  // Returns pointer to first message (doesn't remove it)
 /// Find a given system message port
 ///
 /// This function will search the system message port list for a port with the
 /// given name. The first port matching this name will be returned.
+@library("exec.library")
 extern pub fn FindPort(name: *u8) -> *MsgPort
 /// Add a library to the system
 ///
@@ -776,6 +833,7 @@ extern pub fn FindPort(name: *u8) -> *MsgPort
 /// * `library` - pointer to a properly initialized library structure
 ///
 /// See also: RemLibrary, CloseLibrary, OpenLibrary, MakeLibrary
+@library("exec.library")
 extern pub fn AddLibrary(library: *Library)
 /// Remove a library from the system
 ///
@@ -785,6 +843,7 @@ extern pub fn AddLibrary(library: *Library)
 ///
 /// # Arguments
 /// * `library` - pointer to a library node structure
+@library("exec.library")
 extern pub fn RemLibrary(library: *Library)
 /// Obsolete OpenLibrary
 ///
@@ -800,6 +859,7 @@ extern pub fn RemLibrary(library: *Library)
 /// library - a library pointer for a successful open, else zero
 ///
 /// See also: CloseLibrary
+@library("exec.library")
 extern pub fn OldOpenLibrary(libName: *u8) -> *Library
 /// Conclude access to a library
 ///
@@ -811,6 +871,7 @@ extern pub fn OldOpenLibrary(libName: *u8) -> *Library
 /// * `library` - pointer to a library node
 ///
 /// See also: OpenLibrary
+@library("exec.library")
 extern pub fn CloseLibrary(consuming library: *Library)
 /// Change a function vector in a library
 ///
@@ -828,7 +889,8 @@ extern pub fn CloseLibrary(consuming library: *Library)
 ///
 /// # Warning
 /// If you use SetFunction on a function that can be called from
-extern pub fn SetFunction(library: *Library, funcOffset: i32, newFunction: *u8) -> *u8
+@library("exec.library")
+extern pub fn SetFunction(library: *Library, funcOffset: i32, newFunction: fn() -> u32) -> *u8
 /// Compute and check the checksum on a library
 ///
 /// SumLibrary computes a new checksum on a library. It can also be used to
@@ -838,6 +900,7 @@ extern pub fn SetFunction(library: *Library, funcOffset: i32, newFunction: *u8) 
 /// * `library` - a pointer to the library to be changed
 ///
 /// See also: SetFunction
+@library("exec.library")
 extern pub fn SumLibrary(library: *Library)
 /// Add a device to the system
 ///
@@ -849,6 +912,7 @@ extern pub fn SumLibrary(library: *Library)
 /// * `device` - pointer to a properly initialized device node
 ///
 /// See also: RemDevice, OpenDevice, CloseDevice, MakeLibrary
+@library("exec.library")
 extern pub fn AddDevice(device: *Device)
 /// Remove a device from the system
 ///
@@ -860,6 +924,7 @@ extern pub fn AddDevice(device: *Device)
 /// * `device` - pointer to a device node
 ///
 /// See also: AddLibrary
+@library("exec.library")
 extern pub fn RemDevice(device: *Device)
 /// Opens the narrator device.
 ///
@@ -875,6 +940,7 @@ extern pub fn RemDevice(device: *Device)
 /// (assume IORB points to the IOrequest block):
 ///
 /// See also: The include files contain the complete IORequest block definition, default settings, and error return codes. Exec input/output documentation.
+@library("exec.library")
 extern pub fn OpenDevice(devName: *u8, unit: u32, ioRequest: *IORequest, flags: u32) -> i8
 /// Terminates access to the narrator device
 ///
@@ -887,6 +953,7 @@ extern pub fn OpenDevice(devName: *u8, unit: u32, ioRequest: *IORequest, flags: 
 /// # Returns
 /// CloseDevice invalidates the unit and device pointers in the IORequest
 /// block.
+@library("exec.library")
 extern pub fn CloseDevice(consuming ioRequest: *IORequest)
 /// Perform an I/O command and wait for completion
 ///
@@ -902,6 +969,7 @@ extern pub fn CloseDevice(consuming ioRequest: *IORequest)
 /// Most device commands require that the error return be checked.
 ///
 /// See also: SendIO, CheckIO, WaitIO, AbortIO, amiga.lib/BeginIO
+@library("exec.library")
 extern pub fn DoIO(ioRequest: *IORequest) -> i8
 /// Initiate an I/O command
 ///
@@ -914,6 +982,7 @@ extern pub fn DoIO(ioRequest: *IORequest) -> i8
 ///   extended IORequest.
 ///
 /// See also: DoIO, CheckIO, WaitIO, AbortIO
+@library("exec.library")
 extern pub fn SendIO(ioRequest: *IORequest)
 /// Start up an I/O process
 ///
@@ -928,6 +997,7 @@ extern pub fn SendIO(ioRequest: *IORequest)
 /// reported until the io completes.
 ///
 /// See also: devices/serial.h
+@library("exec.library")
 extern pub fn BeginIO(ioRequest: *IORequest)
 /// Get the status of an IORequest
 ///
@@ -943,6 +1013,7 @@ extern pub fn BeginIO(ioRequest: *IORequest)
 /// IORequest block.
 ///
 /// See also: DoIO, SendIO, WaitIO, AbortIO
+@library("exec.library")
 extern pub fn CheckIO(ioRequest: *IORequest) -> *IORequest
 /// Wait for completion of an I/O request
 ///
@@ -961,6 +1032,7 @@ extern pub fn CheckIO(ioRequest: *IORequest) -> *IORequest
 /// If this IORequest was "Quick" or otherwise finished BEFORE this
 ///
 /// See also: DoIO, SendIO, CheckIO, AbortIO
+@library("exec.library")
 extern pub fn WaitIO(ioRequest: *IORequest) -> i8
 /// Abort an IO request
 ///
@@ -971,6 +1043,7 @@ extern pub fn WaitIO(ioRequest: *IORequest) -> i8
 ///
 /// # Returns
 /// io_Error field in the IORequest block set to #IOERR_ABORTED.
+@library("exec.library")
 extern pub fn AbortIO(ioRequest: *IORequest)
 /// Add a resource to the system
 ///
@@ -981,6 +1054,7 @@ extern pub fn AbortIO(ioRequest: *IORequest)
 /// * `resource` - pointer an initialized resource node
 ///
 /// See also: RemResource, OpenResource, MakeLibrary
+@library("exec.library")
 extern pub fn AddResource(resource: *u8)
 /// Remove a resource from the system
 ///
@@ -991,6 +1065,7 @@ extern pub fn AddResource(resource: *u8)
 /// * `resource` - pointer to a resource node
 ///
 /// See also: AddResource
+@library("exec.library")
 extern pub fn RemResource(resource: *u8)
 /// Gain access to a resource
 ///
@@ -1002,6 +1077,7 @@ extern pub fn RemResource(resource: *u8)
 ///
 /// # Returns
 /// resource - if successful, a resource pointer, else NULL
+@library("exec.library")
 extern pub fn OpenResource(resName: *u8) -> *u8
 /// Format data into a character stream.
 ///
@@ -1037,7 +1113,8 @@ extern pub fn OpenResource(resName: *u8) -> *u8
 /// This Amiga ROM function formats word values in the data stream.  If
 ///
 /// See also: Documentation on the C language "printf" call in any C language reference book.
-extern pub fn RawDoFmt(formatString: *u8, dataStream: *u8, putChProc: *u8, putChData: *u8) -> *u8
+@library("exec.library")
+extern pub fn RawDoFmt(formatString: *u8, dataStream: *u8, putChProc: fn(), putChData: *u8) -> *u8
 /// Get condition codes in a 68010 compatible way.
 ///
 /// The 68000 processor has a "MOVE SR,<ea>" instruction which gets a copy of
@@ -1046,6 +1123,7 @@ extern pub fn RawDoFmt(formatString: *u8, dataStream: *u8, putChProc: *u8, putCh
 ///
 /// # Returns
 /// conditions - the 680XX condition codes
+@library("exec.library")
 extern pub fn GetCC() -> u32
 /// Determine attributes of a given memory address
 ///
@@ -1058,6 +1136,7 @@ extern pub fn GetCC() -> u32
 /// not in known RAM, zero is returned.
 ///
 /// See also: AllocMem()
+@library("exec.library")
 extern pub fn TypeOfMem(address: *u8) -> u32
 /// Bid for a semaphore                                   (V39)
 ///
@@ -1066,6 +1145,7 @@ extern pub fn TypeOfMem(address: *u8) -> u32
 /// ObtainSemaphore(), you will not block until you get the semaphore.
 ///
 /// See also: ObtainSemaphoreShared(), InitSemaphore(), ReleaseSemaphore(), AttemptSemaphore(), ObtainSemaphoreList()
+@library("exec.library")
 extern pub fn Procure(sigSem: *SignalSemaphore, bidMsg: *u8) -> u32
 /// Release a bitMessage from Procure()                    (V39)
 ///
@@ -1074,6 +1154,7 @@ extern pub fn Procure(sigSem: *SignalSemaphore, bidMsg: *u8) -> u32
 /// semaphore that has not yet responded.
 ///
 /// See also: ObtainSemaphoreShared(), InitSemaphore(), ReleaseSemaphore(), AttemptSemaphore(), ObtainSemaphoreList()
+@library("exec.library")
 extern pub fn Vacate(sigSem: *SignalSemaphore, bidMsg: *u8)
 /// Gain access to a library
 ///
@@ -1090,6 +1171,7 @@ extern pub fn Vacate(sigSem: *SignalSemaphore, bidMsg: *u8)
 /// library - a library pointer for a successful open, else zero
 ///
 /// See also: CloseLibrary
+@library("exec.library")
 extern pub fn OpenLibrary(libName: *u8, version: u32) -> *Library
 /// Initialize a signal semaphore
 ///
@@ -1098,6 +1180,7 @@ extern pub fn OpenLibrary(libName: *u8, version: u32) -> *Library
 /// semaphore counters.
 ///
 /// See also: ObtainSemaphore, ObtainSemaphoreShared, AttemptSemaphore, ReleaseSemaphore, Procure
+@library("exec.library")
 extern pub fn InitSemaphore(sigSem: *SignalSemaphore)
 /// Gain exclusive access to a semaphore
 ///
@@ -1105,6 +1188,7 @@ extern pub fn InitSemaphore(sigSem: *SignalSemaphore)
 /// ObtainSemaphore is the call used to gain this access.
 ///
 /// See also: ObtainSemaphoreShared(), InitSemaphore(), ReleaseSemaphore(), AttemptSemaphore(), ObtainSemaphoreList()
+@library("exec.library")
 extern pub fn ObtainSemaphore(sigSem: *SignalSemaphore)
 /// Make signal semaphore available to others
 ///
@@ -1112,6 +1196,7 @@ extern pub fn ObtainSemaphore(sigSem: *SignalSemaphore)
 /// semaphore lockable to other users.
 ///
 /// See also: InitSemaphore(), ObtainSemaphore(), ObtainSemaphoreShared()
+@library("exec.library")
 extern pub fn ReleaseSemaphore(sigSem: *SignalSemaphore)
 /// Try to obtain without blocking
 ///
@@ -1124,6 +1209,7 @@ extern pub fn ReleaseSemaphore(sigSem: *SignalSemaphore)
 /// already possessed the semaphore.
 ///
 /// See also: ObtainSemaphore() ObtainSemaphoreShared(), ReleaseSemaphore(), exec/semaphores.h
+@library("exec.library")
 extern pub fn AttemptSemaphore(sigSem: *SignalSemaphore) -> u32
 /// Get a list of semaphores.
 ///
@@ -1131,6 +1217,7 @@ extern pub fn AttemptSemaphore(sigSem: *SignalSemaphore) -> u32
 /// list of these semaphores and attempts to lock all of them at once.
 ///
 /// See also: ObtainSemaphoreShared(), InitSemaphore(), ReleaseSemaphore(), AttemptSemaphore(), ObtainSemaphoreShared()
+@library("exec.library")
 extern pub fn ObtainSemaphoreList(sigSem: *List)
 /// Make a list of semaphores available
 ///
@@ -1138,6 +1225,7 @@ extern pub fn ObtainSemaphoreList(sigSem: *List)
 /// each element in the semaphore list.
 ///
 /// See also: ObtainSemaphoreList()
+@library("exec.library")
 extern pub fn ReleaseSemaphoreList(sigSem: *List)
 /// Find a given system signal semaphore
 ///
@@ -1147,6 +1235,7 @@ extern pub fn ReleaseSemaphoreList(sigSem: *List)
 ///
 /// # Returns
 /// semaphore - a pointer to the signal semaphore, or zero if not found.
+@library("exec.library")
 extern pub fn FindSemaphore(name: *u8) -> *SignalSemaphore
 /// Initialize then add a signal semaphore to the system
 ///
@@ -1157,6 +1246,7 @@ extern pub fn FindSemaphore(name: *u8) -> *SignalSemaphore
 /// # Arguments
 ///
 /// See also: RemSemaphore, FindSemaphore, InitSemaphore
+@library("exec.library")
 extern pub fn AddSemaphore(sigSem: *SignalSemaphore)
 /// Remove a signal semaphore from the system
 ///
@@ -1167,6 +1257,7 @@ extern pub fn AddSemaphore(sigSem: *SignalSemaphore)
 /// # Arguments
 ///
 /// See also: AddSemaphore, FindSemaphore
+@library("exec.library")
 extern pub fn RemSemaphore(sigSem: *SignalSemaphore)
 /// Compute the checksum for the Kickstart delta list
 ///
@@ -1181,6 +1272,7 @@ extern pub fn RemSemaphore(sigSem: *SignalSemaphore)
 /// After writing to KickCheckSum, you should push the data cache.
 ///
 /// See also: InitResident, FindResident
+@library("exec.library")
 extern pub fn SumKickData() -> u32
 /// Add memory to the system free pool
 ///
@@ -1198,6 +1290,7 @@ extern pub fn SumKickData() -> u32
 ///   must remain valid for as long as the memory header is in the system.
 ///
 /// See also: AllocMem, exec/memory.h
+@library("exec.library")
 extern pub fn AddMemList(size: u32, attributes: u32, pri: i32, base: *u8, name: *u8)
 /// General purpose memory copy function
 ///
@@ -1210,6 +1303,7 @@ extern pub fn AddMemList(size: u32, attributes: u32, pri: i32, base: *u8, name: 
 ///   area. Zero copies zero bytes
 ///
 /// See also: CopyMemQuick
+@library("exec.library")
 extern pub fn CopyMem(source: *u8, dest: *u8, size: u32)
 /// Optimized memory copy function
 ///
@@ -1223,6 +1317,7 @@ extern pub fn CopyMem(source: *u8, dest: *u8, size: u32)
 ///   (in bytes) of the memory area. Zero copies zero bytes.
 ///
 /// See also: CopyMem
+@library("exec.library")
 extern pub fn CopyMemQuick(source: *u8, dest: *u8, size: u32)
 /// User callable simple cache clearing (V37)
 ///
@@ -1230,6 +1325,7 @@ extern pub fn CopyMemQuick(source: *u8, dest: *u8, size: u32)
 /// cache lines are present, push them to memory first.
 ///
 /// See also: exec/execbase.i, CacheControl, CacheClearE
+@library("exec.library")
 extern pub fn CacheClearU()
 /// Cache clearing with extended control (V37)
 ///
@@ -1245,6 +1341,7 @@ extern pub fn CacheClearU()
 ///   cache All other bits are reserved for future definition.
 ///
 /// See also: exec/execbase.i, CacheControl, CacheClearU
+@library("exec.library")
 extern pub fn CacheClearE(address: *u8, length: u32, caches: u32)
 /// Instruction & data cache control
 ///
@@ -1260,6 +1357,7 @@ extern pub fn CacheClearE(address: *u8, length: u32, caches: u32)
 /// oldBits - the complete prior values for all settings.
 ///
 /// See also: exec/execbase.i, CacheClearU, CacheClearE
+@library("exec.library")
 extern pub fn CacheControl(cacheBits: u32, cacheMask: u32) -> u32
 /// Create an IORequest structure  (V36)
 ///
@@ -1276,6 +1374,7 @@ extern pub fn CacheControl(cacheBits: u32, cacheMask: u32) -> u32
 /// ioReq - A pointer to the new IORequest block, or NULL.
 ///
 /// See also: DeleteIORequest, CreateMsgPort(), amiga.lib/CreateExtIO()
+@library("exec.library")
 extern pub fn CreateIORequest(port: *MsgPort, size: u32) -> *u8
 /// Free a request made by CreateIORequest()  (V36)
 ///
@@ -1287,6 +1386,7 @@ extern pub fn CreateIORequest(port: *MsgPort, size: u32) -> *u8
 ///   free.
 ///
 /// See also: CreateIORequest(), amiga.lib/DeleteExtIO()
+@library("exec.library")
 extern pub fn DeleteIORequest(consuming iorequest: *u8)
 /// Allocate and initialize a new message port  (V36)
 ///
@@ -1300,6 +1400,7 @@ extern pub fn DeleteIORequest(consuming iorequest: *u8)
 /// forget RemPort()!
 ///
 /// See also: DeleteMsgPort(), exec/AddPort(), exec/ports.h, amiga.lib/CreatePort()
+@library("exec.library")
 extern pub fn CreateMsgPort() -> *MsgPort
 /// Free a message port created by CreateMsgPort  (V36)
 ///
@@ -1310,6 +1411,7 @@ extern pub fn CreateMsgPort() -> *MsgPort
 /// * `msgPort` - A message port.  NULL for no action.
 ///
 /// See also: CreateMsgPort(), amiga.lib/DeletePort()
+@library("exec.library")
 extern pub fn DeleteMsgPort(consuming port: *MsgPort)
 /// Gain shared access to a semaphore (V36)
 ///
@@ -1317,6 +1419,7 @@ extern pub fn DeleteMsgPort(consuming port: *MsgPort)
 /// locks are granted by the ObtainSemaphore() and AttemptSemaphore() functions.
 ///
 /// See also: ObtainSemaphore(), InitSemaphore(), ReleaseSemaphore(), AttemptSemaphore(), ObtainSemaphoreList()
+@library("exec.library")
 extern pub fn ObtainSemaphoreShared(sigSem: *SignalSemaphore)
 /// Allocate memory and keep track of the size  (V36)
 ///
@@ -1327,6 +1430,7 @@ extern pub fn ObtainSemaphoreShared(sigSem: *SignalSemaphore)
 /// The result of any memory allocation MUST be checked, and a viable
 ///
 /// See also: FreeVec, AllocMem
+@library("exec.library")
 extern pub fn AllocVec(byteSize: u32, requirements: u32) -> *u8
 /// Return AllocVec() memory to the system  (V36)
 ///
@@ -1337,6 +1441,7 @@ extern pub fn AllocVec(byteSize: u32, requirements: u32) -> *u8
 /// * `memoryBlock` - pointer to the memory block to free, or NULL.
 ///
 /// See also: AllocVec
+@library("exec.library")
 extern pub fn FreeVec(consuming memoryBlock: *u8)
 /// Generate a private memory pool header (V39)
 ///
@@ -1353,6 +1458,7 @@ extern pub fn FreeVec(consuming memoryBlock: *u8)
 /// The address of a new pool header, or NULL for error.
 ///
 /// See also: DeletePool(), AllocPooled(), FreePooled(), exec/memory.i
+@library("exec.library")
 extern pub fn CreatePool(requirements: u32, puddleSize: u32, threshSize: u32) -> *u8
 /// Drain an entire memory pool (V39)
 ///
@@ -1363,6 +1469,7 @@ extern pub fn CreatePool(requirements: u32, puddleSize: u32, threshSize: u32) ->
 /// * `poolHeader` - as returned by CreatePool().
 ///
 /// See also: CreatePool(), AllocPooled(), FreePooled()
+@library("exec.library")
 extern pub fn DeletePool(consuming poolHeader: *u8)
 /// Allocate memory with the pool manager (V39)
 ///
@@ -1378,6 +1485,7 @@ extern pub fn DeletePool(consuming poolHeader: *u8)
 /// word aligned.
 ///
 /// See also: FreePooled(), CreatePool(), DeletePool()
+@library("exec.library")
 extern pub fn AllocPooled(poolHeader: *u8, memSize: u32) -> *u8
 /// Free pooled memory  (V39)
 ///
@@ -1389,6 +1497,7 @@ extern pub fn AllocPooled(poolHeader: *u8, memSize: u32) -> *u8
 ///   specific private pool header.
 ///
 /// See also: AllocPooled(), CreatePool(), DeletePool()
+@library("exec.library")
 extern pub fn FreePooled(poolHeader: *u8, consuming memory: *u8, memSize: u32)
 /// Try to obtain without blocking       (V37)
 ///
@@ -1401,17 +1510,27 @@ extern pub fn FreePooled(poolHeader: *u8, consuming memory: *u8, memSize: u32)
 /// already possessed the semaphore in exclusive mode.
 ///
 /// See also: ObtainSemaphore() ObtainSemaphoreShared(), ReleaseSemaphore(), exec/semaphores.h
+@library("exec.library")
 extern pub fn AttemptSemaphoreShared(sigSem: *SignalSemaphore) -> u32
 
 // Void pointer wrappers for semaphore functions (to avoid FFI type issues in generated C)
+@library("exec.library")
 extern pub fn __novus_init_semaphore(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_obtain_semaphore(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_release_semaphore(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_attempt_semaphore(sigSem: *u8) -> i32
+@library("exec.library")
 extern pub fn __novus_obtain_semaphore_shared(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_attempt_semaphore_shared(sigSem: *u8) -> i32
+@library("exec.library")
 extern pub fn __novus_add_semaphore(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_rem_semaphore(sigSem: *u8)
+@library("exec.library")
 extern pub fn __novus_find_semaphore(name: *u8) -> *u8
 /// Reboot the Amiga (V36)
 ///
@@ -1420,6 +1539,7 @@ extern pub fn __novus_find_semaphore(name: *u8) -> *u8
 ///
 /// # Returns
 /// An altogether totally integrated living system.
+@library("exec.library")
 extern pub fn ColdReboot()
 /// EXEC supported method of replacing task's stack      (V37)
 ///
@@ -1438,6 +1558,7 @@ extern pub fn ColdReboot()
 /// that StackSwap(foo); StackSwap(foo); will effectively do nothing.
 ///
 /// See also: AddTask, RemTask, exec/tasks.h
+@library("exec.library")
 extern pub fn StackSwap(newStack: *StackSwapStruct)
 /// Take actions prior to hardware DMA  (V37)
 ///
@@ -1463,6 +1584,7 @@ extern pub fn StackSwap(newStack: *StackSwapStruct)
 /// and the DMA_Continue flag.
 ///
 /// See also: exec/execbase.i, CachePostDMA, CacheClearU, CacheClearE
+@library("exec.library")
 extern pub fn CachePreDMA(address: *u8, length: *u8, flags: u32) -> *u8
 /// Take actions after to hardware DMA  (V37)
 ///
@@ -1480,6 +1602,7 @@ extern pub fn CachePreDMA(address: *u8, length: *u8, flags: u32) -> *u8
 ///   performance. This flag is safe in all versions of CachePostDMA()
 ///
 /// See also: exec/execbase.i, CachePreDMA, CacheClearU, CacheClearE
+@library("exec.library")
 extern pub fn CachePostDMA(address: *u8, length: *u8, flags: u32)
 /// Add a low memory handler to exec                 (V39)
 ///
@@ -1497,6 +1620,7 @@ extern pub fn CachePostDMA(address: *u8, length: *u8, flags: u32)
 ///   0)
 ///
 /// See also: RemMemHandler, exec/interrupts.i
+@library("exec.library")
 extern pub fn AddMemHandler(memhand: *Interrupt)
 /// Remove low memory handler from exec              (V39)
 ///
@@ -1507,8 +1631,11 @@ extern pub fn AddMemHandler(memhand: *Interrupt)
 /// * `memHandler` - Pointer to a handler added with AddMemHandler()
 ///
 /// See also: AddMemHandler, exec/interrupts.i
+@library("exec.library")
 extern pub fn RemMemHandler(memhand: *Interrupt)
+@library("exec.library")
 extern pub fn ObtainQuickVector(interruptCode: *u8) -> u32
+@library("exec.library")
 extern pub fn NewMinList(minlist: *MinList)
 /// Add node to the tree (V45)
 ///
@@ -1531,6 +1658,7 @@ extern pub fn NewMinList(minlist: *MinList)
 /// returned and the given node will not be added.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindFirstNode(), AVL_RemNodeByKey(), AVL_RemNodeByAddress(), AVL_FindNextNodeByKey()
+@library("exec.library")
 extern pub fn AVL_AddNode(root: *u8, node: *u8, func: *u8) -> *u8
 /// Remove a given node (V45)
 ///
@@ -1545,6 +1673,7 @@ extern pub fn AVL_AddNode(root: *u8, node: *u8, func: *u8) -> *u8
 /// A pointer to the removed node.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindNode(), AVL_FindFirstNode(), AVL_RemNodeByAddress(), AVL_AddNode()
+@library("exec.library")
 extern pub fn AVL_RemNodeByAddress(root: *u8, node: *u8) -> *u8
 /// Remove a node identified by its key (V45)
 ///
@@ -1561,6 +1690,7 @@ extern pub fn AVL_RemNodeByAddress(root: *u8, node: *u8) -> *u8
 /// A pointer to the removed node or NULL if the node could not be found.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindNode(), AVL_FindFirstNode(), AVL_RemNodeByAddress(), AVL_AddNode()
+@library("exec.library")
 extern pub fn AVL_RemNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// Find a node identified by its key (V45)
 ///
@@ -1578,6 +1708,7 @@ extern pub fn AVL_RemNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// A pointer to the node or NULL if the node could not be found.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindFirstNode(), AVL_AddNode(), AVL_RemNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindNode(root: *u8, key: *u8, func: *u8) -> *u8
 /// Return previous node of a tree (V45)
 ///
@@ -1592,6 +1723,7 @@ extern pub fn AVL_FindNode(root: *u8, key: *u8, func: *u8) -> *u8
 /// A pointer to the logically previous AVLNode or NULL if there is none.
 ///
 /// See also: AVL_FindLastNode(), AVL_RemNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindPrevNodeByAddress(node: *u8) -> *u8
 /// Find node identified by a key (V45)
 ///
@@ -1611,6 +1743,7 @@ extern pub fn AVL_FindPrevNodeByAddress(node: *u8) -> *u8
 /// exact match was found.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindFirstNode(), AVL_AddNode(), AVL_RemNodeByAddress(), AVL_FindPrevNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindPrevNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// Return the next node of a tree (V45)
 ///
@@ -1625,6 +1758,7 @@ extern pub fn AVL_FindPrevNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// A pointer to the logically next AVLNode or NULL if there is none.
 ///
 /// See also: AVL_FindFirstNode(), AVL_RemNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindNextNodeByAddress(node: *u8) -> *u8
 /// Find node identified by a key (V45)
 ///
@@ -1644,6 +1778,7 @@ extern pub fn AVL_FindNextNodeByAddress(node: *u8) -> *u8
 /// exact match was found.
 ///
 /// See also: AVL_FindLastNode(), AVL_FindFirstNode(), AVL_AddNode(), AVL_RemNodeByAddress(), AVL_FindNextNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindNextNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// Return the lowest/smallest node (V45)
 ///
@@ -1659,6 +1794,7 @@ extern pub fn AVL_FindNextNodeByKey(root: *u8, key: *u8, func: *u8) -> *u8
 /// tree.
 ///
 /// See also: AVL_FindNextNodeByAddress(), AVL_RemNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindFirstNode(root: *u8) -> *u8
 /// Return the highest/biggest node (V45)
 ///
@@ -1674,4 +1810,5 @@ extern pub fn AVL_FindFirstNode(root: *u8) -> *u8
 /// tree.
 ///
 /// See also: AVL_FindPrevNodeByAddress(), AVL_RemNodeByAddress()
+@library("exec.library")
 extern pub fn AVL_FindLastNode(root: *u8) -> *u8

@@ -174,6 +174,16 @@ public class LibraryGenerator
         return name.Replace("::", "_");
     }
 
+    private static string SanitizeAssemblyIdentifier(string name)
+    {
+        var sanitized = new StringBuilder(name.Length);
+        foreach (var c in name)
+        {
+            sanitized.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
+        }
+        return sanitized.ToString();
+    }
+
     /// <summary>
     /// Analyze which functions belong to the library.
     /// </summary>
@@ -538,9 +548,10 @@ public class LibraryGenerator
         sb.AppendLine($"static const char LibIdString[] = \"{libName} {version}.{revision}\";");
         sb.AppendLine();
 
-        // Use extern SysBase from runtime, or get it from location 4
-        sb.AppendLine("// Get exec.library base from absolute location 4");
-        sb.AppendLine("#define SysBase (*(struct ExecBase**)4)");
+        sb.AppendLine("// Shared with generated code and the Novus runtime");
+        sb.AppendLine("extern struct ExecBase* SysBase;");
+        sb.AppendLine("extern int __novus_ffi_init(void);");
+        sb.AppendLine("extern void __novus_ffi_cleanup(void);");
         sb.AppendLine();
 
         sb.AppendLine("// ============================================================================");
@@ -551,6 +562,8 @@ public class LibraryGenerator
         // LibInit - always generate this as it's required
         // AutoInit calls with: D0=base, A0=segList, A6=SysBase
         sb.AppendLine($"struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
+        sb.AppendLine("    SysBase = sysBase;");
+        sb.AppendLine("    if (!__novus_ffi_init()) return NULL;");
         sb.AppendLine("    // Initialize library base fields");
         sb.AppendLine("    // Node fields (ln_Succ and ln_Pred set by Exec's AddLibrary)");
         sb.AppendLine("    base->lib.lib_Node.ln_Type = NT_LIBRARY;");
@@ -634,6 +647,7 @@ public class LibraryGenerator
             sb.AppendLine();
             sb.AppendLine("    // Save segList before freeing base");
             sb.AppendLine("    BPTR segList = base->lib_SegList;");
+            sb.AppendLine("    __novus_ffi_cleanup();");
             sb.AppendLine();
             sb.AppendLine("    // Remove library from system list");
             sb.AppendLine("    Remove((struct Node*)&base->lib);");
@@ -666,9 +680,9 @@ public class LibraryGenerator
         sb.AppendLine();
         sb.AppendLine("// LibraryVersion struct (matches std::core::LibraryVersion)");
         sb.AppendLine("struct LibraryVersion {");
-        sb.AppendLine("    uint16_t major;");
-        sb.AppendLine("    uint16_t minor;");
-        sb.AppendLine("    uint16_t patch;");
+        sb.AppendLine("    UWORD major;");
+        sb.AppendLine("    UWORD minor;");
+        sb.AppendLine("    UWORD patch;");
         sb.AppendLine("};");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get library version from {structName}");
@@ -693,7 +707,7 @@ public class LibraryGenerator
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get total library function calls");
-        sb.AppendLine($"uint32_t {_libraryStruct.StructName}_GetCallCount(struct {structName}* base) {{");
+        sb.AppendLine($"ULONG {_libraryStruct.StructName}_GetCallCount(struct {structName}* base) {{");
         sb.AppendLine("    if (!base) return 0;");
         sb.AppendLine("    return base->__call_count;");
         sb.AppendLine("}");
@@ -717,12 +731,12 @@ public class LibraryGenerator
         sb.AppendLine();
         sb.AppendLine("// LibraryDebugInfo struct (matches std::core::LibraryDebugInfo)");
         sb.AppendLine("struct LibraryDebugInfo {");
-        sb.AppendLine("    uint16_t open_count;");
-        sb.AppendLine("    uint16_t max_opens;");
-        sb.AppendLine("    uint32_t total_opens;");
-        sb.AppendLine("    uint32_t total_closes;");
-        sb.AppendLine("    uint32_t flags;");
-        sb.AppendLine("    uint32_t call_count;");
+        sb.AppendLine("    UWORD open_count;");
+        sb.AppendLine("    UWORD max_opens;");
+        sb.AppendLine("    ULONG total_opens;");
+        sb.AppendLine("    ULONG total_closes;");
+        sb.AppendLine("    ULONG flags;");
+        sb.AppendLine("    ULONG call_count;");
         sb.AppendLine("};");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get debug info from {structName}");
@@ -748,7 +762,7 @@ public class LibraryGenerator
         sb.AppendLine($"//   Bit 1: Has 68020+");
         sb.AppendLine($"//   Bit 2: Has 68040+");
         sb.AppendLine($"//   Bit 3: Has RTG");
-        sb.AppendLine($"uint32_t {_libraryStruct.StructName}_GetFeatureFlags(struct {structName}* base) {{");
+        sb.AppendLine($"ULONG {_libraryStruct.StructName}_GetFeatureFlags(struct {structName}* base) {{");
         sb.AppendLine("    // Feature flags can be populated from project.toml settings");
         sb.AppendLine("    // or detected at runtime via Exec ReadVBR, etc.");
         sb.AppendLine("    return 0;  // Base configuration: 68000, no FPU, no RTG");
@@ -1055,7 +1069,7 @@ public class LibraryGenerator
         var sb = new StringBuilder();
         var libName = GetLibraryName();
         var structName = $"{_libraryStruct.StructName}Base";
-        var headerGuard = $"_{libName.Replace(".", "_").ToUpper()}_H";
+        var headerGuard = $"_{SanitizeAssemblyIdentifier(libName).ToUpperInvariant()}_H";
 
         sb.AppendLine($"#ifndef {headerGuard}");
         sb.AppendLine($"#define {headerGuard}");
@@ -1343,8 +1357,9 @@ public class LibraryGenerator
         var baseName = $"_{_libraryStruct.StructName}Base";
         var libName = GetLibraryName();
         var minVersion = GetLibraryVersion();
-        var initName = $"__INIT_{libName.Replace(".", "_")}";
-        var exitName = $"__EXIT_{libName.Replace(".", "_")}";
+        var identifier = SanitizeAssemblyIdentifier(libName);
+        var initName = $"__INIT_{identifier}";
+        var exitName = $"__EXIT_{identifier}";
 
         sb.AppendLine("; Auto-generated library stub for VBCC");
         sb.AppendLine($"; Opens {libName} automatically");

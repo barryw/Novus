@@ -218,6 +218,30 @@ public class Program
         return await Commands.BuildCommand.Run(buildOptions);
     }
 
+    private static IReadOnlyList<FfiModuleMetadata> FindRequiredFfiModules(
+        ModuleIR mainModule,
+        IEnumerable<ModuleIR> importedModules)
+    {
+        var modules = importedModules.Prepend(mainModule).ToList();
+        var calledFunctions = modules
+            .SelectMany(m => m.IrModule.Functions)
+            .Where(f => !f.IsExtern)
+            .SelectMany(f => f.BasicBlocks)
+            .SelectMany(b => b.Instructions)
+            .OfType<IrCall>()
+            .Select(c => c.FunctionName)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return modules
+            .Select(module => (Module: module, Metadata: FfiModuleMetadata.TryRead(module.ModulePath)))
+            .Where(item => item.Metadata != null &&
+                           item.Module.IrModule.Functions.Any(f => f.IsExtern && calledFunctions.Contains(f.Name)))
+            .Select(item => item.Metadata!)
+            .DistinctBy(metadata => metadata.ModuleName)
+            .OrderBy(metadata => metadata.ModuleName, StringComparer.Ordinal)
+            .ToList();
+    }
+
     static int RunGenerateStubs(GenerateStubsOptions options)
     {
         // Generate FFI bindings from SFD files (NDK 3.9+)
@@ -230,7 +254,7 @@ public class Program
     {
         // Pre-compile standard library to .o files for faster linking
         var cpus = options.Cpu == "all"
-            ? new[] { "68000", "68020", "68040", "68060" }
+            ? new[] { "68020", "68030", "68040", "68060" }
             : new[] { options.Cpu };
 
         var modes = options.Mode == "both"
@@ -914,6 +938,8 @@ public class Program
                 Console.WriteLine($"  ✓ Compiled {allModulesIR.Count + 1} module{(allModulesIR.Count > 0 ? "s" : "")}");
             }
 
+            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values);
+
             if (options.Verbose && moduleCache.Count > 0)
             {
                 Console.WriteLine($"  Module cache: {moduleCache.Count} modules cached");
@@ -1047,6 +1073,23 @@ public class Program
 
             // Generate shared types header
             var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctionsForHeader);
+            var ffiHeaders = requiredFfiModules
+                .SelectMany(module => module.Headers)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(header => header, StringComparer.Ordinal)
+                .Select(header => $"#include <{header}>")
+                .ToList();
+            if (ffiHeaders.Count > 0)
+            {
+                var ffiDirectory = Path.GetDirectoryName(requiredFfiModules[0].ModulePath)!;
+                var ndkTypesPath = Path.Combine(ffiDirectory, "ndk_types.h");
+                var ndkTypes = File.Exists(ndkTypesPath)
+                    ? string.Join(Environment.NewLine, File.ReadLines(ndkTypesPath)
+                        .Where(line => !sharedTypesHeader.Contains(line, StringComparison.Ordinal)))
+                    : "";
+                sharedTypesHeader = string.Join(Environment.NewLine, ffiHeaders) + Environment.NewLine +
+                                    ndkTypes + sharedTypesHeader;
+            }
 
             // Determine output directory - NEVER write to repo root
             // Use a dedicated build directory for intermediate files
@@ -1452,6 +1495,18 @@ public class Program
             var enableFpu = options.Fpu == "auto" || options.Fpu == "68881" || options.Fpu == "68882" ||
                            options.Fpu == "68040" || options.Fpu == "68060";
 
+            // Every target gets one exact FFI lifecycle object. For programs it is
+            // called by startup; libraries/devices call it from their generated lifecycle.
+            var ffiRuntimeSource = Path.Combine(outputDir, "novus_ffi_runtime.s");
+            await File.WriteAllTextAsync(ffiRuntimeSource, FfiRuntimeGenerator.Generate(requiredFfiModules));
+            var ffiRuntimeObj = Path.Combine(outputDir, "novus_ffi_runtime.o");
+            if (!await toolchain.Assemble(ffiRuntimeSource, ffiRuntimeObj, assemblyCpu, false))
+            {
+                Console.WriteLine("Failed to assemble FFI lifecycle");
+                return 1;
+            }
+            objectFiles.Add(ffiRuntimeObj);
+
             // Assemble core Novus runtime files (only for executables, not libraries)
             var isLibrary = options.ProjectType.ToLowerInvariant() == "library";
             var isDevice = options.ProjectType.ToLowerInvariant() == "device";
@@ -1461,7 +1516,7 @@ public class Program
                 // Only executables need startup code and library initialization
                 // NOTE: bsdsocket_bases and amissl_bases are included to support optional networking/TLS
                 // They just provide BSS storage for library bases (one longword each)
-                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "graphics_init", "diskfont_init", "intuition_init", "gadtools_init", "reaction_init", "mui_init", "rexxsyslib_init", "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
+                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "mui_init", "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
                 // Files that require FPU instructions (68881+)
                 var fpuRequiredFiles = new HashSet<string> { "math_sqrt" };
                 foreach (var coreFile in coreFiles)
@@ -1560,11 +1615,10 @@ ___stack:
                     Console.WriteLine($"  ✓ Assembled library stub: {baseName}_lib.o");
                 }
 
-                // Libraries need library base objects for AmigaOS calls
-                // These provide the global _SysBase and _DOSBase symbols
-                if (true) // Always include for libraries
+                // Libraries and devices use the same base storage as executables.
+                // Their lifecycle code initializes the bases they actually use.
                 {
-                    var libraryBases = new[] { "exec_base", "dos_base" };
+                    var libraryBases = new[] { "library_bases" };
                     foreach (var baseFile in libraryBases)
                     {
                         var baseSource = Path.Combine(compilerDir, "stubs", $"{baseFile}.s");
@@ -1833,7 +1887,7 @@ ___stack:
                     }
                 }  // end if typesHeaderValid
             }
-            else if (stdlibCFiles.Count > 0)
+            if (!usePrecompiledStdlib && stdlibCFiles.Count > 0)
             {
                 // No pre-compiled stdlib cache exists - compile and cache all stdlib files
                 Console.WriteLine($"\nCompiling stdlib modules ({stdlibCFiles.Count} files)...");
@@ -1906,172 +1960,27 @@ ___stack:
                 }
             }
 
-            // ============================================================================
-            // DETECT REQUIRED LIBRARIES: Scan C code to determine which stubs to link
-            // ============================================================================
+            Console.WriteLine("\nFFI dependencies:");
+            var requiredStubModules = requiredFfiModules
+                .Select(binding => binding.ModuleName)
+                .Append("exec")
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+            Console.WriteLine($"  {string.Join(", ", requiredFfiModules.Select(m => m.LibraryName).Prepend("exec.library"))}");
 
-            // Detect which library stubs are actually needed by scanning generated C code
-            Console.WriteLine("\n=== DEBUG: Detecting required libraries from C code ===");
-
-            var requiredLibraries = new HashSet<string>();
-
-            // Always include exec (needed for basic Amiga operations like AllocMem/FreeMem)
-            requiredLibraries.Add("exec");
-            Console.WriteLine("  ✓ Always including 'exec' library");
-
-            // Scan generated C files for DOS and Intuition library function calls
-            // Note: DOS is NOT unconditionally included - only if actually used
-            // Also scan stdlib C files to detect library dependencies from stdlib modules
-            // IMPORTANT: Skip runtime files - they're designed for DCE and will only pull in
-            // library deps when actually used. Scanning them would force all libraries.
-            var allCFilesToScan = new List<string>(cFiles);
-            allCFilesToScan.AddRange(stdlibCFiles);
-
-            foreach (var cFile in allCFilesToScan.Where(f => !Path.GetFileName(f).StartsWith("runtime_")))
+            foreach (var stub in requiredStubModules)
             {
-                var cCode = await File.ReadAllTextAsync(cFile);
-
-                // Check for DOS function calls in the C code
-                if (cCode.Contains("_Output(") ||
-                    cCode.Contains("_Input(") ||
-                    cCode.Contains("_Write(") ||
-                    cCode.Contains("_Read(") ||
-                    cCode.Contains("_Printf(") ||
-                    cCode.Contains("IoErr("))
+                var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
+                if (File.Exists(stubSource))
                 {
-                    requiredLibraries.Add("dos");
-                    Console.WriteLine($"  ✓ Detected DOS library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for Intuition library function calls
-                if (cCode.Contains("EasyRequest") ||
-                    cCode.Contains("__novus_assert_failed") ||
-                    cCode.Contains("OpenScreen(") ||
-                    cCode.Contains("OpenScreenTagList(") ||
-                    cCode.Contains("CloseScreen(") ||
-                    cCode.Contains("OpenWindow(") ||
-                    cCode.Contains("OpenWindowTagList(") ||
-                    cCode.Contains("CloseWindow(") ||
-                    cCode.Contains("DisplayAlert(") ||
-                    cCode.Contains("AutoRequest(") ||
-                    cCode.Contains("_IntuitionBase"))
-                {
-                    requiredLibraries.Add("intuition");
-                    Console.WriteLine($"  ✓ Detected Intuition library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for Graphics library function calls
-                if (cCode.Contains("LoadView(") ||
-                    cCode.Contains("WaitTOF(") ||
-                    cCode.Contains("WaitBlit(") ||
-                    cCode.Contains("SetRast(") ||
-                    cCode.Contains("BltBitMap(") ||
-                    cCode.Contains("Text(") ||
-                    cCode.Contains("_GfxBase"))
-                {
-                    requiredLibraries.Add("graphics");
-                    Console.WriteLine($"  ✓ Detected Graphics library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for MUI library function calls
-                if (cCode.Contains("MUI_NewObjectA(") ||
-                    cCode.Contains("MUI_DisposeObject(") ||
-                    cCode.Contains("MUI_RequestA(") ||
-                    cCode.Contains("MUI_MakeObjectA(") ||
-                    cCode.Contains("MUI_GetClass(") ||
-                    cCode.Contains("MUI_CreateCustomClass(") ||
-                    cCode.Contains("_MUIMasterBase"))
-                {
-                    requiredLibraries.Add("muimaster");
-                    Console.WriteLine($"  ✓ Detected MUI library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for ARexx library function calls
-                if (cCode.Contains("CreateRexxMsg(") ||
-                    cCode.Contains("DeleteRexxMsg(") ||
-                    cCode.Contains("CreateArgstring(") ||
-                    cCode.Contains("DeleteArgstring(") ||
-                    cCode.Contains("LengthArgstring(") ||
-                    cCode.Contains("IsRexxMsg(") ||
-                    cCode.Contains("ClearRexxMsg(") ||
-                    cCode.Contains("FillRexxMsg(") ||
-                    cCode.Contains("_RexxSysBase"))
-                {
-                    requiredLibraries.Add("rexxsyslib");
-                    Console.WriteLine($"  ✓ Detected ARexx library usage in {Path.GetFileName(cFile)}");
-                }
-
-                // Check for BSD Socket library function calls (AmiTCP, Miami, Roadshow)
-                if (cCode.Contains("_SocketBase") ||
-                    cCode.Contains("socket(") ||
-                    cCode.Contains("bind(") ||
-                    cCode.Contains("listen(") ||
-                    cCode.Contains("accept(") ||
-                    cCode.Contains("connect(") ||
-                    cCode.Contains("send(") ||
-                    cCode.Contains("recv(") ||
-                    cCode.Contains("sendto(") ||
-                    cCode.Contains("recvfrom(") ||
-                    cCode.Contains("gethostbyname(") ||
-                    cCode.Contains("gethostbyaddr(") ||
-                    cCode.Contains("inet_aton(") ||
-                    cCode.Contains("inet_ntoa(") ||
-                    cCode.Contains("SetErrnoPtr(") ||
-                    cCode.Contains("SocketBaseTags(") ||
-                    cCode.Contains("CloseSocket(") ||
-                    cCode.Contains("shutdown(") ||
-                    cCode.Contains("setsockopt(") ||
-                    cCode.Contains("getsockopt(") ||
-                    cCode.Contains("select(") ||
-                    cCode.Contains("WaitSelect("))
-                {
-                    requiredLibraries.Add("bsdsocket");
-                    Console.WriteLine($"  ✓ Detected BSD Socket library usage in {Path.GetFileName(cFile)}");
-                }
-            }
-
-            Console.WriteLine($"=== Required libraries: {string.Join(", ", requiredLibraries)} ===\n");
-
-            // NOTE: Library bases are handled differently for different project types:
-            // - Executables: Use library_bases.s (provides both _SysBase and _DOSBase) - assembled at line 627
-            // - Libraries: Use exec_base.s and dos_base.s separately - assembled at line 697
-            // No additional dos_base assembly needed here
-
-            // Assemble library stubs (skip for libraries/devices - they handle SysBase differently)
-            if (!isLibrary && !isDevice)
-            {
-                foreach (var stub in requiredLibraries)
-                {
-                    var stubSource = Path.Combine(compilerDir, "stubs", $"{stub}_stubs.s");
-                    if (File.Exists(stubSource))
+                    var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
+                    if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
                     {
-                        var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
-                        if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine($"Failed to assemble {stub} stubs");
-                            return 1;
-                        }
-                        objectFiles.Add(stubObj);
-
-                        // NOTE: dos_init.o is already assembled earlier for executables
-                        // No need to assemble it again here
+                        Console.WriteLine($"Failed to assemble {stub} stubs");
+                        return 1;
                     }
-
-                    // Also check for library base storage files (e.g., bsdsocket_bases.s)
-                    // These provide storage for extern vars like SocketBase
-                    // Skip if already included in coreFiles (bsdsocket_bases, amissl_bases are core)
-                    var basesSource = Path.Combine(compilerDir, "stubs", $"{stub}_bases.s");
-                    var isCoreBase = stub == "bsdsocket" || stub == "amissl";
-                    if (!isCoreBase && File.Exists(basesSource))
-                    {
-                        var basesObj = Path.Combine(outputDir, $"{stub}_bases.o");
-                        if (!await toolchain.Assemble(basesSource, basesObj, assemblyCpu, false))
-                        {
-                            Console.WriteLine($"Failed to assemble {stub} bases");
-                            return 1;
-                        }
-                        objectFiles.Add(basesObj);
-                    }
+                    objectFiles.Add(stubObj);
                 }
             }
 

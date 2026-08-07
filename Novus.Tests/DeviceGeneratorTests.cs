@@ -154,7 +154,7 @@ pub struct TestDevice {
         Assert.Contains("UWORD dev_Patch;", baseStruct);    // Patch version field
         Assert.Contains("dev_Units[4]", baseStruct);        // Unit pointer array
         Assert.Contains("dev_TotalCommands", baseStruct);   // Statistics
-        Assert.Contains("custom_field", baseStruct);        // Custom field from struct
+        Assert.Contains("TestDevice state", baseStruct);    // Novus-defined state, embedded once
     }
 
     [Fact]

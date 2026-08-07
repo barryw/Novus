@@ -98,6 +98,25 @@ public partial class IrBuilder
 
         // Evaluate the constant expression using the evaluator
         var valueExpr = context.expression();
+        var declaredType = context.type() != null ? ParseType(context.type()) : null;
+
+        if (valueExpr is NovusParser.PrimaryExprContext stringPrimary &&
+            stringPrimary.primaryExpression() is NovusParser.StringLiteralContext stringLiteral)
+        {
+            var type = declaredType ?? new IrPointerType(IrIntType.U8);
+            var text = ProcessEscapeSequences(stringLiteral.STRING_LITERAL().GetText()[1..^1]);
+            _symbols.RegisterConstant(name, type, text);
+            _module.Constants[name] = (visibility, type, text);
+            return;
+        }
+
+        if (declaredType is IrFixedType or IrFloatType &&
+            ConstantExpressionEvaluator.TryParseFloatingLiteral(valueExpr, out var floatingValue))
+        {
+            _symbols.RegisterConstant(name, declaredType, floatingValue);
+            _module.Constants[name] = (visibility, declaredType, floatingValue);
+            return;
+        }
 
         // Convert constants dict to use object values for evaluator
         var constantValues = GetConstantValues();
@@ -109,17 +128,7 @@ public partial class IrBuilder
         {
             // Handle type - either explicit or inferred
             IrType type;
-            if (context.type() != null)
-            {
-                // Explicit type annotation provided
-                type = ParseType(context.type());
-            }
-            else
-            {
-                // Infer type from the evaluated value
-                // Default to i32 for integer literals
-                type = IrIntType.I32;
-            }
+            type = declaredType ?? IrIntType.I32;
 
             _symbols.RegisterConstant(name, type, value);
             // Also store in the IR module for code generator access
@@ -272,13 +281,17 @@ public partial class IrBuilder
 
         // Evaluate the initial value expression
         var valueExpr = context.expression();
+        var explicitType = context.type() != null ? ParseType(context.type()) : null;
 
         // For now, we'll create a temporary function context to evaluate the expression
         // In the future, we should allow const expressions only
         _currentFunction = new IrFunction("__static_init", IrVoidType.Instance);
         _currentBlock = _currentFunction.CreateBasicBlock("entry");
 
+        var savedExpectedType = _expectedType;
+        _expectedType = explicitType;
         var initialValue = (IrValue?)Visit(valueExpr);
+        _expectedType = savedExpectedType;
 
         // Restore state
         _currentFunction = null;
@@ -288,11 +301,9 @@ public partial class IrBuilder
         {
             // Handle type - either explicit or inferred from initial value
             IrType type;
-            IrType? explicitType = null;
-            if (context.type() != null)
+            if (explicitType != null)
             {
                 // Explicit type annotation provided
-                explicitType = ParseType(context.type());
                 type = explicitType;
             }
             else
@@ -1058,6 +1069,11 @@ public partial class IrBuilder
         {
             _module.AddStruct(existingStruct);
         }
+    }
+
+    private void RegisterTypeAlias(NovusParser.TypeAliasDeclarationContext context)
+    {
+        _symbols.RegisterTypeAlias(context.IDENTIFIER().GetText(), ParseType(context.type()));
     }
 
     /// <summary>

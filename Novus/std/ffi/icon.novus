@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: icon.library
 // Base: _IconBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -16,6 +18,7 @@
 /// # Arguments
 ///
 /// See also: exec.library/AllocEntry exec.library/FreeEntry icon.library/AddFreeList workbench/workbench.h
+@library("icon.library")
 extern pub fn FreeFreeList(freelist: *FreeList)
 /// Add memory to a free list.
 ///
@@ -28,6 +31,7 @@ extern pub fn FreeFreeList(freelist: *FreeList)
 /// status -- TRUE if the call succeeded else FALSE;
 ///
 /// See also: exec.library/AllocEntry exec.library/FreeEntry icon.library/FreeFreeList workbench/workbench.h
+@library("icon.library")
 extern pub fn AddFreeList(freelist: *FreeList, mem: *u8, size: u32) -> i16
 /// Read in a Workbench disk object from disk.
 ///
@@ -41,6 +45,7 @@ extern pub fn AddFreeList(freelist: *FreeList, mem: *u8, size: u32) -> i16
 /// diskobj -- the Workbench disk object in question
 ///
 /// See also: dos.library/IoErr icon.library/DeleteDiskObject icon.library/FreeDiskObject icon.library/GetDiskObjectNew icon.library/GetIconTagList icon.library/NewDiskObject icon.library/PutDiskObject icon.library/PutIconTagList workbench.library/AddAppIconA
+@library("icon.library")
 extern pub fn GetDiskObject(name: *u8) -> *DiskObject
 /// Write out a DiskObject to disk.
 ///
@@ -54,6 +59,7 @@ extern pub fn GetDiskObject(name: *u8) -> *DiskObject
 /// status -- TRUE if the call succeeded else FALSE
 ///
 /// See also: dos.library/IoErr icon.library/DeleteDiskObject icon.library/FreeDiskObject icon.library/GetDiskObject icon.library/GetIconTagList icon.library/PutIconTagList
+@library("icon.library")
 extern pub fn PutDiskObject(name: *u8, diskobj: *DiskObject) -> i16
 /// Free all memory in a Workbench disk object.
 ///
@@ -63,6 +69,7 @@ extern pub fn PutDiskObject(name: *u8, diskobj: *DiskObject) -> i16
 /// # Arguments
 ///
 /// See also: icon.library/GetDiskObject icon.library/PutDiskObject icon.library/DeleteDiskObject icon.library/FreeFreeList icon.library/GetIconTagList icon.library/PutIconTagList
+@library("icon.library")
 extern pub fn FreeDiskObject(diskobj: *DiskObject)
 /// Find the value of a ToolType variable.
 ///
@@ -77,6 +84,7 @@ extern pub fn FreeDiskObject(diskobj: *DiskObject)
 /// NULL if typeName is not in the toolTypeArray.
 ///
 /// See also: icon.library/MatchToolValue
+@library("icon.library")
 extern pub fn FindToolType(toolTypeArray: *u8, typeName: *u8) -> *u8
 /// Check a tool type variable for a particular value.
 ///
@@ -90,6 +98,7 @@ extern pub fn FindToolType(toolTypeArray: *u8, typeName: *u8) -> *u8
 /// result -- TRUE if the value was in typeString else FALSE.
 ///
 /// See also: icon.library/FindToolType utility.library/Stricmp
+@library("icon.library")
 extern pub fn MatchToolValue(typeString: *u8, value: *u8) -> i16
 /// Reformat a name for a second copy.
 ///
@@ -102,6 +111,7 @@ extern pub fn MatchToolValue(typeString: *u8, value: *u8) -> i16
 ///
 /// # Returns
 /// result - a pointer to newbuf
+@library("icon.library")
 extern pub fn BumpRevision(newname: *u8, oldname: *u8) -> *u8
 /// Read default wb disk object from disk.       (V36)
 ///
@@ -115,6 +125,7 @@ extern pub fn BumpRevision(newname: *u8, oldname: *u8) -> *u8
 /// diskobj -- the default Workbench disk object in question
 ///
 /// See also: dos.library/IoErr icon.library/PutDefDiskObject icon.library/PutIconTagList
+@library("icon.library")
 extern pub fn GetDefDiskObject(_type: i32) -> *DiskObject
 /// Write disk object as the default for its type.  (V36)
 ///
@@ -127,6 +138,7 @@ extern pub fn GetDefDiskObject(_type: i32) -> *DiskObject
 /// status -- TRUE if the call succeeded else FALSE
 ///
 /// See also: dos.library/IoErr icon.library/GetDefDiskObject icon.library/GetIconTagList icon.library/PutDiskObject
+@library("icon.library")
 extern pub fn PutDefDiskObject(diskObject: *DiskObject) -> i16
 /// Read in a Workbench disk object from disk.    (V36)
 ///
@@ -140,6 +152,7 @@ extern pub fn PutDefDiskObject(diskObject: *DiskObject) -> i16
 /// diskobj -- the Workbench disk object in question
 ///
 /// See also: dos.library/IoErr icon.library/FreeDiskObject icon.library/GetDiskObject icon.library/PutDiskObject icon.library/DeleteDiskObject icon.library/GetIconTagList icon.library/PutIconTagList workbench.library/AddAppIconA
+@library("icon.library")
 extern pub fn GetDiskObjectNew(name: *u8) -> *DiskObject
 /// Delete a Workbench disk object from disk.     (V37)
 ///
@@ -153,6 +166,7 @@ extern pub fn GetDiskObjectNew(name: *u8) -> *DiskObject
 /// result -- TRUE if it worked, FALSE if not.
 ///
 /// See also: dos.library/IoErr icon.library/PutDiskObject icon.library/GetDiskObject icon.library/FreeDiskObject icon.library/GetIconTagList icon.library/PutIconTagList
+@library("icon.library")
 extern pub fn DeleteDiskObject(name: *u8) -> i16
 /// Duplicate an icon (V44)
 ///
@@ -168,6 +182,7 @@ extern pub fn DeleteDiskObject(name: *u8) -> i16
 /// tag instead.
 ///
 /// See also: dos.library/IoErr icon.library/GetIconTagList workbench/icon.h workbench/workbench.h
+@library("icon.library")
 extern pub fn DupDiskObjectA(diskObject: *DiskObject, tags: *TagItem) -> *DiskObject
 // Varargs function DupDiskObject skipped - needs manual implementation
 /// Set and get icon and icon.library options (V44)
@@ -186,6 +201,7 @@ extern pub fn DupDiskObjectA(diskObject: *DiskObject, tags: *TagItem) -> *DiskOb
 /// can set up for you.
 ///
 /// See also: dos.library/IoErr icon.library/DupDiskObjectA icon.library/GetIconTagList icon.library/LayoutIcon icon.library/NewDiskObject graphics.library/BltMaskBitMapRastPort graphics.library/ObtainBestPenA utility.library/CallHookPkt graphics/view.h workbench/icon.h workbench/workbench.h
+@library("icon.library")
 extern pub fn IconControlA(icon: *DiskObject, tags: *TagItem) -> u32
 // Varargs function IconControl skipped - needs manual implementation
 /// Draw an icon as if it were an image (V44)
@@ -196,6 +212,7 @@ extern pub fn IconControlA(icon: *DiskObject, tags: *TagItem) -> u32
 /// # Arguments
 ///
 /// See also: workbench/icon.h workbench/workbench.h intuition/imageclass.h intuition/screens.h intuition.library/DrawImageState icon.library/GetIconRectangleA icon.library/IconControlA
+@library("icon.library")
 extern pub fn DrawIconStateA(rp: *RastPort, icon: *DiskObject, label: *u8, leftOffset: i32, topOffset: i32, state: u32, tags: *TagItem)
 // Varargs function DrawIconState skipped - needs manual implementation
 /// Query the size of the area an icon renders into (V44)
@@ -211,6 +228,7 @@ extern pub fn DrawIconStateA(rp: *RastPort, icon: *DiskObject, label: *u8, leftO
 /// the image is too large for a signed 16 bit integer to hold).
 ///
 /// See also: workbench/icon.h workbench/workbench.h icon.library/DrawIconState icon.library/IconControlA icon.library/LayoutIconA
+@library("icon.library")
 extern pub fn GetIconRectangleA(rp: *RastPort, icon: *DiskObject, label: *u8, rect: *Rectangle, tags: *TagItem) -> i16
 // Varargs function GetIconRectangle skipped - needs manual implementation
 /// Create an empty icon (V44)
@@ -226,6 +244,7 @@ extern pub fn GetIconRectangleA(rp: *RastPort, icon: *DiskObject, label: *u8, re
 /// can use IoErr() to retrieve the error code.
 ///
 /// See also: dos.library/IoErr workbench/icon.h workbench/workbench.h
+@library("icon.library")
 extern pub fn NewDiskObject(_type: i32) -> *DiskObject
 /// Retrieve an icon (V44)
 ///
@@ -240,6 +259,7 @@ extern pub fn NewDiskObject(_type: i32) -> *DiskObject
 /// tag instead.
 ///
 /// See also: workbench/icon.h workbench/workbench.h icon.library/GetDiskObject icon.library/GetDiskObjectNew icon.library/GetDefDiskObject icon.library/IconControlA icon.library/PutIconTagList
+@library("icon.library")
 extern pub fn GetIconTagList(name: *u8, tags: *TagItem) -> *DiskObject
 // Varargs function GetIconTags skipped - needs manual implementation
 /// Store an icon (V44)
@@ -255,6 +275,7 @@ extern pub fn GetIconTagList(name: *u8, tags: *TagItem) -> *DiskObject
 /// tag instead.
 ///
 /// See also: workbench/icon.h workbench/workbench.h icon.library/GetIconTagList icon.library/PutDefDiskObject icon.library/PutDiskObject
+@library("icon.library")
 extern pub fn PutIconTagList(name: *u8, icon: *DiskObject, tags: *TagItem) -> i16
 // Varargs function PutIconTags skipped - needs manual implementation
 /// Adapt a palette-mapped icon for display (V44)
@@ -266,6 +287,7 @@ extern pub fn PutIconTagList(name: *u8, icon: *DiskObject, tags: *TagItem) -> i1
 /// # Arguments
 ///
 /// See also: dos.library/IoErr graphics.library/ObtainBestPenA graphics.library/ReleasePen icon.library/FreeDiskObject icon.library/GetIconRectangleA icon.library/GetIconTagList icon.library/IconControl intuition.library/LockPubScreen intuition.library/UnlockPubScreen graphics/view.h
+@library("icon.library")
 extern pub fn LayoutIconA(icon: *DiskObject, screen: *Screen, tags: *TagItem) -> i16
 // Varargs function LayoutIcon skipped - needs manual implementation
 /// Modify an RGB colour value for use in
@@ -275,4 +297,5 @@ extern pub fn LayoutIconA(icon: *DiskObject, screen: *Screen, tags: *TagItem) ->
 /// colour.
 ///
 /// # Arguments
+@library("icon.library")
 extern pub fn ChangeToSelectedIconColor(cr: *ColorRegister)

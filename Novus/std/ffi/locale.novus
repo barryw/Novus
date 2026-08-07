@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: locale.library
 // Base: _LocaleBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -18,6 +20,7 @@
 ///   parameter and is simply ignored.
 ///
 /// See also: OpenCatalog(), GetCatalogStr()
+@library("locale.library")
 extern pub fn CloseCatalog(catalog: *Catalog)
 /// Close a locale. (V38)
 ///
@@ -28,6 +31,7 @@ extern pub fn CloseCatalog(catalog: *Catalog)
 ///   is simply ignored.
 ///
 /// See also: OpenLocale(), <libraries/locale.h>
+@library("locale.library")
 extern pub fn CloseLocale(locale: *Locale)
 /// Convert a character to lower case. (V38)
 ///
@@ -41,6 +45,7 @@ extern pub fn CloseLocale(locale: *Locale)
 ///
 /// # Returns
 /// char - a (possibly) converted character
+@library("locale.library")
 extern pub fn ConvToLower(locale: *Locale, character: u32) -> u32
 /// Convert a character to upper case. (V38)
 ///
@@ -54,6 +59,7 @@ extern pub fn ConvToLower(locale: *Locale, character: u32) -> u32
 ///
 /// # Returns
 /// char - a (possibly) converted character
+@library("locale.library")
 extern pub fn ConvToUpper(locale: *Locale, character: u32) -> u32
 /// Generate a date string based on a date formatting
 ///
@@ -90,6 +96,7 @@ extern pub fn ConvToUpper(locale: *Locale, character: u32) -> u32
 ///   (not a pointer!) A2 - locale pointer
 ///
 /// See also: ParseDate(), <libraries/locale.h>, <dos/dos.h>
+@library("locale.library")
 extern pub fn FormatDate(locale: *Locale, fmtTemplate: *u8, date: *DateStamp, putCharFunc: *Hook)
 /// Format data into a character stream. (V38)
 ///
@@ -136,6 +143,7 @@ extern pub fn FormatDate(locale: *Locale, fmtTemplate: *u8, date: *DateStamp, pu
 /// This function formats word values in the data stream. If your compiler
 ///
 /// See also: exec.library/RawDoFmt()
+@library("locale.library")
 extern pub fn FormatString(locale: *Locale, fmtTemplate: *u8, dataStream: *u8, putCharFunc: *Hook) -> *u8
 /// Get a string from a message catalog. (V38)
 ///
@@ -155,6 +163,7 @@ extern pub fn FormatString(locale: *Locale, fmtTemplate: *u8, dataStream: *u8, p
 /// the catalog remains open.
 ///
 /// See also: OpenCatalog(), CloseCatalog()
+@library("locale.library")
 extern pub fn GetCatalogStr(catalog: *Catalog, stringNum: i32, defaultString: *u8) -> *u8
 /// Get a standard string from a locale. (V38)
 ///
@@ -172,18 +181,31 @@ extern pub fn GetCatalogStr(catalog: *Catalog, stringNum: i32, defaultString: *u
 /// the locale remains open.
 ///
 /// See also: OpenLocale(), CloseLocale(), <libraries/locale.h>
+@library("locale.library")
 extern pub fn GetLocaleStr(locale: *Locale, stringNum: u32) -> *u8
+@library("locale.library")
 extern pub fn IsAlNum(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsAlpha(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsCntrl(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsDigit(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsGraph(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsLower(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsPrint(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsPunct(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsSpace(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsUpper(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn IsXDigit(locale: *Locale, character: u32) -> i16
+@library("locale.library")
 extern pub fn OpenCatalogA(locale: *Locale, name: *u8, tags: *TagItem) -> *Catalog
 // Varargs function OpenCatalog skipped - needs manual implementation
 /// Open a locale. (V38)
@@ -207,6 +229,7 @@ extern pub fn OpenCatalogA(locale: *Locale, name: *u8, tags: *TagItem) -> *Catal
 /// failure.
 ///
 /// See also: CloseLocale(), <libraries/locale.h>, <prefs/locale.h>
+@library("locale.library")
 extern pub fn OpenLocale(name: *u8) -> *Locale
 /// Interpret a string according to the date formatting
 ///
@@ -232,6 +255,7 @@ extern pub fn OpenLocale(name: *u8) -> *Locale
 /// match the template
 ///
 /// See also: FormatDate(), <dos/dos.h>
+@library("locale.library")
 extern pub fn ParseDate(locale: *Locale, date: *DateStamp, fmtTemplate: *u8, getCharFunc: *Hook) -> i16
 /// Transform a string according to collation information.
 ///
@@ -252,6 +276,7 @@ extern pub fn ParseDate(locale: *Locale, date: *DateStamp, fmtTemplate: *u8, get
 /// deposited in the buffer minus 1 (since strings are NULL- terminated)
 ///
 /// See also: StrnCmp(), <libraries/locale.h>
+@library("locale.library")
 extern pub fn StrConvert(locale: *Locale, string: *u8, buffer: *u8, bufferSize: u32, _type: u32) -> u32
 /// Localized string comparison. (V38)
 ///
@@ -278,4 +303,5 @@ extern pub fn StrConvert(locale: *Locale, string: *u8, buffer: *u8, bufferSize: 
 /// string2 =0 means string1 = string2 >0 means string1 > string2
 ///
 /// See also: OpenLocale(), CloseLocale(), StrConvert()
+@library("locale.library")
 extern pub fn StrnCmp(locale: *Locale, string1: *u8, string2: *u8, length: i32, _type: u32) -> i32

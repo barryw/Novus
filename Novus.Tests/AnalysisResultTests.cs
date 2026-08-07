@@ -78,6 +78,31 @@ fn main() {
     }
 
     [Fact]
+    public void AnalysisResult_ContainsTransparentTypeAliases()
+    {
+        var source = @"
+type Count = i16
+type Callback = fn(Count) -> Count
+
+struct Counter {
+    value: Count
+}
+
+fn identity(value: Count) -> Count { return value }
+";
+        var analyzer = new SemanticAnalyzer("test.novus", source, "std");
+        analyzer.Analyze(CompilerTestHelper.Parse(source));
+
+        var result = analyzer.GetResult();
+
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics.Diagnostics.Select(d => d.Message)));
+        Assert.Equal(IrIntType.I16, result.TypeAliases["Count"]);
+        Assert.IsType<IrFunctionPointerType>(result.TypeAliases["Callback"]);
+        Assert.Equal(IrIntType.I16, result.Structs["Counter"].Fields[0].Type);
+        Assert.Equal(IrIntType.I16, result.Functions["identity"].ReturnType);
+    }
+
+    [Fact]
     public void AnalysisResult_ContainsConstants()
     {
         var source = @"

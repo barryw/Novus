@@ -41,6 +41,12 @@ public class TestOptions
     [Option('b', "benchmark", Required = false, HelpText = "Enable timing for each test, showing duration in microseconds")]
     public bool Benchmark { get; set; }
 
+    [Option("run", Required = false, HelpText = "Run the test executable with vamos after building")]
+    public bool RunWithVamos { get; set; }
+
+    [Option("timeout", Required = false, Default = 30, HelpText = "Maximum seconds to wait when running with vamos")]
+    public int TimeoutSeconds { get; set; } = 30;
+
     [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation")]
     public string VbccPath { get; set; } = PathUtility.GetVbccPath();
 

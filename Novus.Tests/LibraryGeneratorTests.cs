@@ -130,6 +130,9 @@ pub struct TestLibrary {
         Assert.Contains("LibClose", lifecycle);
         Assert.Contains("LibExpunge", lifecycle);
         Assert.Contains("LibReserved", lifecycle);
+        Assert.Contains("ULONG TestLibrary_GetCallCount", lifecycle);
+        Assert.Contains("UWORD open_count", lifecycle);
+        Assert.DoesNotContain("uint32_t TestLibrary_GetCallCount", lifecycle);
     }
 
     [Fact]

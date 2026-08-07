@@ -9,7 +9,7 @@ public class NewCommandOptions
     public string ProjectName { get; set; } = "";
 
     [Option('t', "type", Required = false, Default = null,
-        HelpText = "Project type: cli, workbench, dual, library, device")]
+        HelpText = "Project type: cli, workbench, dual, library, device, gui")]
     public string? ProjectType { get; set; } = null;
 
     [Option('a', "author", Required = false, HelpText = "Author name")]

@@ -17,10 +17,10 @@ from std::core import Option, Result
 // ============================================================================
 
 enum MenuItem {
-    Action { id: i32, label: *u8, shortcut: u8 },
-    Submenu { id: i32, label: *u8, child_count: i32 },
+    Action(i32, *u8, u8),
+    Submenu(i32, *u8, i32),
     Separator,
-    Toggle { id: i32, label: *u8, enabled: bool },
+    Toggle(i32, *u8, bool),
 }
 
 impl MenuItem {
@@ -33,9 +33,9 @@ impl MenuItem {
 
     pub fn get_id(&self) -> i32 {
         match *self {
-            MenuItem::Action { id, .. } => id,
-            MenuItem::Submenu { id, .. } => id,
-            MenuItem::Toggle { id, .. } => id,
+            MenuItem::Action(id, _, _) => id,
+            MenuItem::Submenu(id, _, _) => id,
+            MenuItem::Toggle(id, _, _) => id,
             MenuItem::Separator => -1,
         }
     }
@@ -47,7 +47,7 @@ impl MenuItem {
 
 enum MenuResult {
     Selected(i32),
-    Toggled { id: i32, new_state: bool },
+    Toggled(i32, bool),
     Cancelled,
     Timeout,
     Error(i32),
@@ -95,8 +95,8 @@ impl MenuState {
 // ============================================================================
 
 // Simulated keyboard state for demo
-var g_key_sequence: [u8; 10] = ['j', 'j', 'k', '\r', 27, 0, 0, 0, 0, 0]
-var g_key_index: i32 = 0
+static var g_key_sequence: [u8] = ['j', 'j', 'k', '\r', 27, 0, 0, 0, 0, 0]
+static var g_key_index: i32 = 0
 
 fn simulate_read_key() -> Option<u8> {
     if g_key_index >= 10 {
@@ -171,16 +171,16 @@ fn draw_menu(items: &[MenuItem; 6], state: &MenuState) {
         let marker = if is_selected { ">" } else { " " }
 
         match items[i] {
-            MenuItem::Action { label, shortcut, .. } => {
+            MenuItem::Action(_, label, shortcut) => {
                 println(f"{marker} {(i32)i}: Action - shortcut: {shortcut}")
             },
-            MenuItem::Submenu { label, child_count, .. } => {
+            MenuItem::Submenu(_, label, child_count) => {
                 println(f"{marker} {(i32)i}: Submenu ({child_count} items)")
             },
             MenuItem::Separator => {
                 println("  ────────────")
             },
-            MenuItem::Toggle { label, enabled, .. } => {
+            MenuItem::Toggle(_, label, enabled) => {
                 let toggle_state = if enabled { "[X]" } else { "[ ]" }
                 println(f"{marker} {(i32)i}: Toggle {toggle_state}")
             },
@@ -196,19 +196,19 @@ fn draw_menu(items: &[MenuItem; 6], state: &MenuState) {
 
 fn process_selection(item: &MenuItem) -> MenuResult {
     match *item {
-        MenuItem::Action { id, .. } => {
+        MenuItem::Action(id, _, _) => {
             println(f"  -> Action {id} selected!")
             return MenuResult::Selected(id)
         },
-        MenuItem::Submenu { id, .. } => {
+        MenuItem::Submenu(id, _, _) => {
             println(f"  -> Opening submenu {id}...")
             // In real code, this would recurse into submenu
             return MenuResult::Selected(id)
         },
-        MenuItem::Toggle { id, enabled, .. } => {
+        MenuItem::Toggle(id, _, enabled) => {
             let new_state = !enabled
             println(f"  -> Toggled {id} to {new_state}")
-            return MenuResult::Toggled { id, new_state }
+            return MenuResult::Toggled(id, new_state)
         },
         MenuItem::Separator => {
             // Should never happen due to is_selectable check
@@ -218,7 +218,7 @@ fn process_selection(item: &MenuItem) -> MenuResult {
 }
 
 fn run_menu(items: &[MenuItem; 6], state: &var MenuState) -> MenuResult {
-    const MAX_TIMEOUT: i32 = 100
+    let MAX_TIMEOUT: i32 = 100
     state.is_open = true
 
     // Defer cleanup - runs when function exits
@@ -292,13 +292,13 @@ fn run_menu(items: &[MenuItem; 6], state: &var MenuState) -> MenuResult {
 // ============================================================================
 
 fn search_2d_array() -> (i32, i32) {
-    let grid: [[i32; 4]; 3] = [
+    let grid: [[i32; 4]] = [
         [1, 2, 3, 4],
         [5, 6, 7, 8],
         [9, 10, 42, 12],  // Target: 42 at (2, 2)
     ]
 
-    const TARGET: i32 = 42
+    let TARGET: i32 = 42
 
     // Labeled outer loop
     outer: for row in 0..3 {
@@ -370,7 +370,7 @@ fn find_by_shortcut(items: &[MenuItem; 6], shortcut: u8) -> Option<i32> {
 
     while i < 6 {
         match items[i] {
-            MenuItem::Action { id, shortcut: s, .. } => {
+            MenuItem::Action(id, _, s) => {
                 if s == shortcut {
                     return Option::Some(id)
                 }
@@ -391,13 +391,13 @@ fn main() -> i32 {
     println("=== Menu System Control Flow Showcase ===\n")
 
     // Build menu items
-    let items: [MenuItem; 6] = [
-        MenuItem::Action { id: 1, label: "New", shortcut: 'n' },
-        MenuItem::Action { id: 2, label: "Open", shortcut: 'o' },
+    let items: [MenuItem] = [
+        MenuItem::Action(1, "New", 'n'),
+        MenuItem::Action(2, "Open", 'o'),
         MenuItem::Separator,
-        MenuItem::Toggle { id: 3, label: "Auto-save", enabled: true },
-        MenuItem::Submenu { id: 4, label: "Recent", child_count: 5 },
-        MenuItem::Action { id: 5, label: "Quit", shortcut: 'q' },
+        MenuItem::Toggle(3, "Auto-save", true),
+        MenuItem::Submenu(4, "Recent", 5),
+        MenuItem::Action(5, "Quit", 'q'),
     ]
 
     // Create menu state
@@ -420,7 +420,7 @@ fn main() -> i32 {
         MenuResult::Selected(id) => {
             println(f"Menu returned: Selected item {id}")
         },
-        MenuResult::Toggled { id, new_state } => {
+        MenuResult::Toggled(id, new_state) => {
             println(f"Menu returned: Toggled item {id} to {new_state}")
         },
         MenuResult::Cancelled => {

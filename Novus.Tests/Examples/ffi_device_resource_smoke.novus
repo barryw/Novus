@@ -1,0 +1,10 @@
+from std::ffi::amiga_structs import timeval
+from std::ffi::battclock_resource import ReadBattClock
+from std::ffi::timer_device import CmpTime
+
+pub fn main() -> i32 {
+    var now = timeval { tv_secs: 0, tv_micro: 0 }
+    let comparison = unsafe { CmpTime(&now, &now) }
+    let clock = unsafe { ReadBattClock() }
+    return comparison + (i32)(clock & 0)
+}

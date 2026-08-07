@@ -320,6 +320,11 @@ public partial class IrBuilder
                         (value, _) = ParseBinaryLiteral(literalText);
                         parsed = true;
                     }
+                    else if (literalPattern.CHAR_LITERAL() != null)
+                    {
+                        value = ParseCharLiteralValue(literalPattern.CHAR_LITERAL().GetText());
+                        parsed = true;
+                    }
                     else
                     {
                         value = 0;
@@ -761,10 +766,13 @@ public partial class IrBuilder
         // For literal patterns (integers, booleans, etc.)
         if (pattern is NovusParser.LiteralPatternContext literalPattern)
         {
-            var literalText = literalPattern.INTEGER_LITERAL().GetText();
-            if (int.TryParse(literalText, out var literalValue))
+            var literalText = literalPattern.GetText();
+            var parsed = literalPattern.CHAR_LITERAL() != null
+                ? ParseCharLiteralValue(literalText)
+                : int.TryParse(literalText, out var integerValue) ? integerValue : -1;
+            if (parsed >= 0)
             {
-                var literalConstant = new IrConstant(literalValue, IrIntType.I32);
+                var literalConstant = new IrConstant(parsed, exprIr.Type);
                 var compareResultName = $"%matches_cmp_{_tempCounter++}";
                 Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, exprIr, literalConstant, IrBoolType.Instance));
                 return new IrVariable(compareResultName, IrBoolType.Instance);

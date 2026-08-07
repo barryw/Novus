@@ -309,7 +309,10 @@ public class VbccToolchain
         var optLevel = 0;
 
         // Build include path arguments
-        var includeArgs = new List<string>();
+        var includeArgs = new List<string>
+        {
+            $"-I{Path.Combine(_ndkPath, "Include", "include_h")}"
+        };
         if (extraIncludePaths != null)
         {
             foreach (var path in extraIncludePaths)

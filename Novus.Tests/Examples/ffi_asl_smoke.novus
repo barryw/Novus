@@ -1,0 +1,9 @@
+from std::ffi::asl import AllocFileRequest, FreeFileRequest
+
+pub fn main() -> i32 {
+    let requester = unsafe { AllocFileRequest() }
+    if requester {
+        unsafe { FreeFileRequest(requester) }
+    }
+    return 0
+}

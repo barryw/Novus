@@ -14,15 +14,7 @@
 from std::core import Result, Option, Drop, Error
 from std::strings::core import Str
 from std::ffi::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearE, CachePreDMA, CachePostDMA
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
-
-// Cache control flags for CacheClearE (exec.library/CacheClearE)
-const CACRF_ClearI: u32 = $0008  // Instruction cache
-const CACRF_ClearD: u32 = $0002  // Data cache
-
-// DMA cache flags for CachePreDMA/CachePostDMA
-const DMA_ReadFromRAM: u32 = 0   // DMA will read from RAM (e.g., blitter source)
-const DMA_Continue: u32 = 2      // DMA not complete, more transfers coming
+from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, CACRF_ClearI, CACRF_ClearD, DMA_ReadFromRAM, DMA_Continue
 
 // ============================================================================
 // Priority for cache eviction

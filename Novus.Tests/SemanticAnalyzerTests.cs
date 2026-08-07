@@ -9,7 +9,7 @@ namespace Novus.Tests;
 
 public class SemanticAnalyzerTests
 {
-    private DiagnosticBag Analyze(string source)
+    private DiagnosticBag Analyze(string source, string stdLibPath = "std")
     {
         var inputStream = new AntlrInputStream(source);
         var lexer = new NovusLexer(inputStream);
@@ -18,9 +18,33 @@ public class SemanticAnalyzerTests
         var tree = parser.compilationUnit();
 
         // For tests, use a dummy stdLibPath since most tests don't use imports
-        var analyzer = new SemanticAnalyzer("test.novus", source, "std");
+        var analyzer = new SemanticAnalyzer("test.novus", source, stdLibPath);
         analyzer.Analyze(tree);
         return analyzer.Diagnostics;
+    }
+
+    [Fact]
+    public void Analyze_ReimportedEmptyStruct_DoesNotReportDuplicate()
+    {
+        var stdLibPath = Path.Combine(Path.GetTempPath(), $"novus-import-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(stdLibPath, "ffi"));
+            File.WriteAllText(Path.Combine(stdLibPath, "core.novus"), "");
+            File.WriteAllText(Path.Combine(stdLibPath, "ffi", "types.novus"), "#[extern_type]\npub struct IClass {}\n");
+
+            var diagnostics = Analyze("""
+                from std::ffi::types import IClass
+                from std::ffi::types import IClass
+                fn use_class(value: *IClass) {}
+                """, stdLibPath);
+
+            Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "E0019");
+        }
+        finally
+        {
+            Directory.Delete(stdLibPath, recursive: true);
+        }
     }
 
     [Fact]

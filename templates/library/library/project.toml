@@ -1,5 +1,5 @@
 [package]
-name = "greeting"
+name = "{{PROJECT_NAME}}"
 version = "1.0.0"
 type = "library"
 entry = "./src/lib.novus"

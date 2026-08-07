@@ -206,6 +206,19 @@ public class CompletionHandler : ICompletionHandler
             });
         }
 
+        foreach (var (name, type) in analyzer.TypeAliases)
+        {
+            if (filter != null && !name.StartsWith(filter, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            completions.Add(new CompletionItem
+            {
+                Label = name,
+                Kind = CompletionItemKind.TypeParameter,
+                Detail = $"type {name} = {type.Name}"
+            });
+        }
+
         // Add structs
         foreach (var (name, structType) in analyzer.Structs)
         {

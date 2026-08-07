@@ -6,16 +6,16 @@
 //   - Close the device with CloseDevice()
 //   - Properly manage IOStdReq and MsgPort resources
 
-from std::io import println, print
+from std::io::file import println, print
 from std::ffi::exec import OpenDevice, CloseDevice, DoIO
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort
 from std::ffi::exec import CreateIORequest, DeleteIORequest
-from std::ffi::amiga_structs import IOStdReq, MsgPort
+from std::ffi::amiga_structs import IORequest, IOStdReq, MsgPort
+from std::ffi::amiga_consts import CMD_RESET
 
 // Device command constants (match those in dev.novus)
-const CMD_RESET: u16 = 1
-const CMD_STATUS: u16 = 9
-const CMD_CONFIG: u16 = 10
+const NOVUS_CMD_STATUS: u16 = 9
+const NOVUS_CMD_CONFIG: u16 = 10
 
 pub fn main() -> i32 {
     println("{{PROJECT_NAME}}.device Example")
@@ -41,11 +41,12 @@ pub fn main() -> i32 {
         return 1
     }
     let ioReq = (*IOStdReq)req
+    let baseReq = (*IORequest)req
     println("OK")
 
     // Step 3: Open the device (unit 0)
     print("Opening {{PROJECT_NAME}}.device unit 0... ")
-    let error = OpenDevice("{{PROJECT_NAME}}.device".as_cstr(), 0, req, 0)
+    let error = unsafe { OpenDevice("{{PROJECT_NAME}}.device", 0, baseReq, 0) }
     if error != 0 {
         println("FAILED!")
         println("Make sure {{PROJECT_NAME}}.device is in DEVS:")
@@ -64,7 +65,7 @@ pub fn main() -> i32 {
     unsafe {
         (*ioReq).io_Command = CMD_RESET
     }
-    let result = DoIO(req)
+    let result = unsafe { DoIO(baseReq) }
     if result == 0 {
         println("OK")
     } else {
@@ -74,11 +75,11 @@ pub fn main() -> i32 {
     // Configure the device
     print("  CMD_CONFIG... ")
     unsafe {
-        (*ioReq).io_Command = CMD_CONFIG
+        (*ioReq).io_Command = NOVUS_CMD_CONFIG
         (*ioReq).io_Data = null
         (*ioReq).io_Length = 0
     }
-    let result2 = DoIO(req)
+    let result2 = unsafe { DoIO(baseReq) }
     if result2 == 0 {
         println("OK")
     } else {
@@ -88,9 +89,9 @@ pub fn main() -> i32 {
     // Get device status
     print("  CMD_STATUS... ")
     unsafe {
-        (*ioReq).io_Command = CMD_STATUS
+        (*ioReq).io_Command = NOVUS_CMD_STATUS
     }
-    let result3 = DoIO(req)
+    let result3 = unsafe { DoIO(baseReq) }
     if result3 == 0 {
         print("OK (status = ")
         unsafe {
@@ -108,7 +109,7 @@ pub fn main() -> i32 {
     // Step 5: Close the device
     println("")
     print("Closing device... ")
-    CloseDevice(req)
+    unsafe { CloseDevice(baseReq) }
     println("OK")
 
     // Step 6: Clean up resources

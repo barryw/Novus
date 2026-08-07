@@ -14,6 +14,7 @@ public interface ITypeParsingContext
     // Lookups
     IrType? LookupGenericParameter(string name);
     IrConstGenericParam? LookupConstGenericParameter(string name);
+    IrType? LookupTypeAlias(string name);
     IrStructType? LookupStruct(string name);
     IrEnumType? LookupEnum(string name);
     IrStructType? LookupMonomorphizedStruct(string cacheKey);
@@ -249,6 +250,14 @@ public class TypeParser : ITypeSubstitutionEngine
             _context.CurrentTypeSubstitutions.ContainsKey(typeName))
         {
             return _context.CurrentTypeSubstitutions[typeName];
+        }
+
+        var aliasType = _context.LookupTypeAlias(typeName);
+        if (aliasType != null)
+        {
+            if (context.genericTypeArgs() != null)
+                throw new TypeParseException($"type alias '{typeName}' is not generic");
+            return aliasType;
         }
 
         // Check if it's a struct type

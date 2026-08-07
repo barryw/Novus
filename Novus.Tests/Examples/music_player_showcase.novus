@@ -25,7 +25,6 @@ from std::ffi::exec import Forbid, Permit, Disable, Enable
 
 const PAULA_BASE: u32 = 0xDFF000
 const DMAF_AUDIO0: u16 = 0x0001
-const DMAF_SETCLR: u16 = 0x8000
 
 // ============================================================================
 // Player State (Global Variables)

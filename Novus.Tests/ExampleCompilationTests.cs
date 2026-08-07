@@ -21,8 +21,13 @@ public abstract class ExampleCompilationTestBase
         "19_enums",                 // Enum handling
         "20_generics",              // Generic monomorphization
         "38_amiga_library_calls",   // Amiga FFI
+        "ffi_asl_smoke",            // Generated struct-typed FFI + library lifecycle
+        "ffi_callback_smoke",       // Typed NDK callback ABI
+        "ffi_device_resource_smoke",// Device/resource lifecycle generation
+        "ffi_mathffp_smoke",        // Generated floating-point FFI
         "mem_block_demo",           // Memory management
         "operator_overload_test",   // Trait-based operators
+        "type_alias_smoke",         // Local and imported transparent aliases
     };
 
     protected static string GetProjectRoot()

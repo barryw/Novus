@@ -98,3 +98,12 @@ _MUIMasterBase:
 _WBStartupMsg:
 	ds.l	1			; Reserve 1 longword for WBStartup message
 
+; ============================================================================
+; Workbench Startup Accessor
+; ============================================================================
+	section	"CODE",code
+
+	xdef	___get_wb_startup_msg
+___get_wb_startup_msg:
+	move.l	_WBStartupMsg,d0
+	rts

@@ -257,7 +257,7 @@ impl GelsSystem {
     // the callback registered for type A is called.
     //
     // Callback signature: fn(sprite_a: *VSprite, sprite_b: *VSprite)
-    pub fn set_collision(&var self, type_num: u8, callback: *u8) -> Result<(), GelError> {
+    pub fn set_collision(&var self, type_num: u8, callback: fn(*VSprite, *VSprite)) -> Result<(), GelError> {
         if !self.initialized {
             return Result::Err(GelError::GelsNotInitialized)
         }

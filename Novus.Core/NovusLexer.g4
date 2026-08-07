@@ -17,6 +17,7 @@ KW_USE      : 'use';
 KW_PUB      : 'pub';
 KW_INTERNAL : 'internal';
 KW_CONST    : 'const';
+KW_TYPE     : 'type';
 KW_STATIC   : 'static';
 KW_EXTERN   : 'extern';
 KW_VAR      : 'var';

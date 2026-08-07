@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: layers.library
 // Base: _LayersBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -18,6 +20,7 @@
 /// * `li` - pointer to LayerInfo structure
 ///
 /// See also: NewLayerInfo(), DisposeLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn InitLayers(li: *Layer_Info)
 /// Create a new layer on top of existing layers.
 ///
@@ -36,6 +39,7 @@ extern pub fn InitLayers(li: *Layer_Info)
 /// successful
 ///
 /// See also: DeleteLayer(), graphics/layers.h, graphics/clip.h, graphics/gfx.h
+@library("layers.library")
 extern pub fn CreateUpfrontLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
 /// Create a new layer behind all existing layers.
 ///
@@ -55,6 +59,7 @@ extern pub fn CreateUpfrontLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32,
 /// successful
 ///
 /// See also: DeleteLayer(), graphics/layers.h, graphics/clip.h, graphics/gfx.h
+@library("layers.library")
 extern pub fn CreateBehindLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
 /// Put layer in front of all other layers.
 ///
@@ -70,6 +75,7 @@ extern pub fn CreateBehindLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, 
 /// (probably out of memory)
 ///
 /// See also: graphics/layers.h
+@library("layers.library")
 extern pub fn UpfrontLayer(dummy: i32, layer: *Layer) -> i32
 /// Put layer behind other layers.
 ///
@@ -86,6 +92,7 @@ extern pub fn UpfrontLayer(dummy: i32, layer: *Layer) -> i32
 /// (probably out of memory)
 ///
 /// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn BehindLayer(dummy: i32, layer: *Layer) -> i32
 /// Move layer to new position in BitMap.
 ///
@@ -99,6 +106,7 @@ extern pub fn BehindLayer(dummy: i32, layer: *Layer) -> i32
 ///   of memory)
 ///
 /// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn MoveLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
 /// Swap bits between common bitmap
 ///
@@ -113,6 +121,7 @@ extern pub fn MoveLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
 /// result - TRUE if operation successful FALSE if failed (out of memory)
 ///
 /// See also: graphics/clip.h, graphics/rastport.h, graphics/clip.h
+@library("layers.library")
 extern pub fn SizeLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
 /// Scroll around in a superbitmap, translate coordinates
 ///
@@ -126,6 +135,7 @@ extern pub fn SizeLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
 ///   x scroll value dy - delta to add to current y scroll value
 ///
 /// See also: graphics/layers.h
+@library("layers.library")
 extern pub fn ScrollLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32)
 /// Prepare to repair damaged layer.
 ///
@@ -140,6 +150,7 @@ extern pub fn ScrollLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32)
 /// FALSE if list conversion aborted. (probably out of memory)
 ///
 /// See also: EndUpdate(), graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn BeginUpdate(l: *Layer) -> i32
 /// Remove damage list and restore state of layer to normal.
 ///
@@ -153,6 +164,7 @@ extern pub fn BeginUpdate(l: *Layer) -> i32
 ///   list is retained.
 ///
 /// See also: BeginUpdate(), graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn EndUpdate(layer: *Layer, flag: u16)
 /// Delete layer from layer list.
 ///
@@ -167,6 +179,7 @@ extern pub fn EndUpdate(layer: *Layer, flag: u16)
 /// if layer not deleted. (probably out of memory )
 ///
 /// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn DeleteLayer(dummy: i32, layer: *Layer) -> i32
 /// Lock layer to make changes to ClipRects.
 ///
@@ -178,6 +191,7 @@ extern pub fn DeleteLayer(dummy: i32, layer: *Layer) -> i32
 /// * `dummy` - unused l - pointer to a layer
 ///
 /// See also: UnlockLayer(), LockLayerInfo(), UnlockLayerInfo(), graphics.library/LockLayerRom(), graphics/layers.h
+@library("layers.library")
 extern pub fn LockLayer(dummy: i32, layer: *Layer)
 /// Unlock layer and allow graphics routines to use it.
 ///
@@ -189,6 +203,7 @@ extern pub fn LockLayer(dummy: i32, layer: *Layer)
 /// * `l` - pointer to a layer
 ///
 /// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
 extern pub fn UnlockLayer(layer: *Layer)
 /// Lock all layers from graphics output.
 ///
@@ -198,6 +213,7 @@ extern pub fn UnlockLayer(layer: *Layer)
 /// * `li` - pointer to Layer_Info structure
 ///
 /// See also: LockLayer(), LockLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn LockLayers(li: *Layer_Info)
 /// Unlock all layers from graphics output.
 ///
@@ -207,6 +223,7 @@ extern pub fn LockLayers(li: *Layer_Info)
 /// * `li` - pointer to the Layer_Info structure
 ///
 /// See also: LockLayers(), UnlockLayer(), graphics/layers.h
+@library("layers.library")
 extern pub fn UnlockLayers(li: *Layer_Info)
 /// Lock the LayerInfo structure.
 ///
@@ -218,7 +235,9 @@ extern pub fn UnlockLayers(li: *Layer_Info)
 /// * `li` - pointer to Layer_Info structure
 ///
 /// See also: UnlockLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn LockLayerInfo(li: *Layer_Info)
+@library("layers.library")
 extern pub fn SwapBitsRastPortClipRect(rp: *RastPort, cr: *ClipRect)
 /// Which Layer is this point in?
 ///
@@ -232,6 +251,7 @@ extern pub fn SwapBitsRastPortClipRect(rp: *RastPort, cr: *ClipRect)
 /// point is not in a layer
 ///
 /// See also: graphics/layers.h
+@library("layers.library")
 extern pub fn WhichLayer(li: *Layer_Info, x: i16, y: i16) -> *Layer
 /// Unlock the LayerInfo structure.
 ///
@@ -242,6 +262,7 @@ extern pub fn WhichLayer(li: *Layer_Info, x: i16, y: i16) -> *Layer
 /// * `li` - pointer to the Layer_Info structure
 ///
 /// See also: LockLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn UnlockLayerInfo(li: *Layer_Info)
 /// Allocate and Initialize full Layer_Info structure.
 ///
@@ -256,6 +277,7 @@ extern pub fn UnlockLayerInfo(li: *Layer_Info)
 /// enough memory
 ///
 /// See also: graphics/layers.h
+@library("layers.library")
 extern pub fn NewLayerInfo() -> *Layer_Info
 /// Return all memory for LayerInfo to memory pool
 ///
@@ -268,6 +290,7 @@ extern pub fn NewLayerInfo() -> *Layer_Info
 /// * `li` - pointer to LayerInfo structure
 ///
 /// See also: DeleteLayer(), graphics/layers.h
+@library("layers.library")
 extern pub fn DisposeLayerInfo(li: *Layer_Info)
 /// Convert 1.0 LayerInfo to 1.1 LayerInfo
 ///
@@ -280,6 +303,7 @@ extern pub fn DisposeLayerInfo(li: *Layer_Info)
 /// * `li` - pointer to LayerInfo structure
 ///
 /// See also: NewLayerInfo(), ThinLayerInfo(), DisposeLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn FattenLayerInfo(li: *Layer_Info) -> i32
 /// Convert 1.1 LayerInfo to 1.0 LayerInfo.
 ///
@@ -290,6 +314,7 @@ extern pub fn FattenLayerInfo(li: *Layer_Info) -> i32
 /// * `li` - pointer to LayerInfo structure
 ///
 /// See also: DisposeLayerInfo(), FattenLayerInfo(), graphics/layers.h
+@library("layers.library")
 extern pub fn ThinLayerInfo(li: *Layer_Info)
 /// Put layer in front of another layer.
 ///
@@ -306,6 +331,7 @@ extern pub fn ThinLayerInfo(li: *Layer_Info)
 /// (probably out of memory)
 ///
 /// See also: graphics/layers.h
+@library("layers.library")
 extern pub fn MoveLayerInFrontOf(layer_to_move: *Layer, other_layer: *Layer) -> i32
 /// Install clip region in layer
 ///
@@ -320,9 +346,13 @@ extern pub fn MoveLayerInFrontOf(layer_to_move: *Layer, other_layer: *Layer) -> 
 /// installed. Returns NULL if no previous ClipRegion installed.
 ///
 /// See also: BeginUpdate() EndUpdate(), graphics/layers.h, graphics/clip.h, graphics/regions.h
+@library("layers.library")
 extern pub fn InstallClipRegion(layer: *Layer, region: *Region) -> *Region
+@library("layers.library")
 extern pub fn MoveSizeLayer(layer: *Layer, dx: i32, dy: i32, dw: i32, dh: i32) -> i32
+@library("layers.library")
 extern pub fn CreateUpfrontHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
+@library("layers.library")
 extern pub fn CreateBehindHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
 /// Safely install a new Layer->BackFill hook.    (V36)
 ///
@@ -342,6 +372,7 @@ extern pub fn CreateBehindHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i
 /// return 1 if there was no hook.
 ///
 /// See also: graphics/clip.h utility/hooks.h
+@library("layers.library")
 extern pub fn InstallLayerHook(layer: *Layer, hook: *Hook) -> *Hook
 /// Install a backfill hook for non-layer      (V39)
 ///
@@ -361,7 +392,9 @@ extern pub fn InstallLayerHook(layer: *Layer, hook: *Hook) -> *Hook
 /// if there was a NO-OP hook. Returns -1 if there was some failure.
 ///
 /// See also: InstallLayerHook()
+@library("layers.library")
 extern pub fn InstallLayerInfoHook(li: *Layer_Info, hook: *Hook) -> *Hook
+@library("layers.library")
 extern pub fn SortLayerCR(layer: *Layer, dx: i16, dy: i16)
 /// Do the given hook for each of the ClipRects    (V39)
 ///
@@ -380,4 +413,5 @@ extern pub fn SortLayerCR(layer: *Layer, dx: i16, dy: i16)
 ///   is non-layered!
 ///
 /// See also: graphics/clip.h utility/hooks.h
+@library("layers.library")
 extern pub fn DoHookClipRects(hook: *Hook, rport: *RastPort, rect: *Rectangle)

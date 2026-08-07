@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: realtime.library
 // Base: _RealTimeBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -22,6 +24,7 @@
 /// handle - if lockType is valid, returns a value that must be passed
 ///
 /// See also: UnlockRealTime()
+@library("realtime.library")
 extern pub fn LockRealTime(lockType: u32) -> *u8
 /// Unlock internal lists. (V37)
 ///
@@ -31,7 +34,9 @@ extern pub fn LockRealTime(lockType: u32) -> *u8
 /// * `lockHandle` - value returned by LockRealTime(). May be NULL.
 ///
 /// See also: LockRealTime()
+@library("realtime.library")
 extern pub fn UnlockRealTime(lock: *u8)
+@library("realtime.library")
 extern pub fn CreatePlayerA(tagList: *TagItem) -> *Player
 // Varargs function CreatePlayer skipped - needs manual implementation
 /// Delete a player. (V37)
@@ -43,7 +48,9 @@ extern pub fn CreatePlayerA(tagList: *TagItem) -> *Player
 /// * `player` - Player structure to delete, as allocated by CreatePlayer(...
 ///
 /// See also: CreatePlayer()
+@library("realtime.library")
 extern pub fn DeletePlayer(player: *Player)
+@library("realtime.library")
 extern pub fn SetPlayerAttrsA(player: *Player, tagList: *TagItem) -> i16
 // Varargs function SetPlayerAttrs skipped - needs manual implementation
 /// Change the play state of a player's
@@ -60,6 +67,7 @@ extern pub fn SetPlayerAttrsA(player: *Player, tagList: *TagItem) -> i16
 ///
 /// # Returns
 /// result - 0 if everything went OK, or a realtime.library error code
+@library("realtime.library")
 extern pub fn SetConductorState(player: *Player, state: u32, time: i32) -> i32
 /// Provide external source clock for a player's
 ///
@@ -72,6 +80,7 @@ extern pub fn SetConductorState(player: *Player, state: u32, time: i32) -> i32
 ///
 /// # Returns
 /// result - TRUE if everything went OK, FALSE if the player is not the
+@library("realtime.library")
 extern pub fn ExternalSync(player: *Player, minTime: i32, maxTime: i32) -> i16
 /// Return the next conductor on realtime.library's
 ///
@@ -85,6 +94,7 @@ extern pub fn ExternalSync(player: *Player, minTime: i32, maxTime: i32) -> i16
 /// conductor - next conductor on the list, or NULL if no more.
 ///
 /// See also: FindConductor(), LockRealTime(), UnlockRealTime()
+@library("realtime.library")
 extern pub fn NextConductor(previousConductor: *Conductor) -> *Conductor
 /// Find a conductor by name. (V37)
 ///
@@ -98,6 +108,7 @@ extern pub fn NextConductor(previousConductor: *Conductor) -> *Conductor
 /// conductor - pointer to a Conductor structure, or NULL if not found.
 ///
 /// See also: NextConductor(), LockRealTime(), UnlockRealTime()
+@library("realtime.library")
 extern pub fn FindConductor(name: *u8) -> *Conductor
 /// Get the attributes of a player. (V37)
 ///
@@ -113,5 +124,6 @@ extern pub fn FindConductor(name: *u8) -> *Conductor
 /// numProcessed - the number of attributes successfully filled in.
 ///
 /// See also: CreatePlayer(), SetPlayerAttrs()
+@library("realtime.library")
 extern pub fn GetPlayerAttrsA(player: *Player, tagList: *TagItem) -> u32
 // Varargs function GetPlayerAttrs skipped - needs manual implementation

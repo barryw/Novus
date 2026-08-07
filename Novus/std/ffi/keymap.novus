@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: keymap.library
 // Base: _KeymapBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -18,6 +20,7 @@
 /// * `keyMap` - a pointer to a keyMap structure.  This key map must be pe...
 ///
 /// See also: devices/keymap.h, keymap.library/AskKeyMapDefault(), console.device ...KEYMAP functions
+@library("keymap.library")
 extern pub fn SetKeyMapDefault(keyMap: *KeyMap)
 /// Ask for a pointer to the current default
 ///
@@ -28,6 +31,7 @@ extern pub fn SetKeyMapDefault(keyMap: *KeyMap)
 /// keyMap - a pointer to a keyMap structure.  This key map is
 ///
 /// See also: devices/keymap.h, keymap.library/SetKeyMapDefault(), console.device ...KEYMAP functions
+@library("keymap.library")
 extern pub fn AskKeyMapDefault() -> *KeyMap
 /// Decode single raw key input event to an ANSI
 ///
@@ -41,6 +45,7 @@ extern pub fn AskKeyMapDefault() -> *KeyMap
 /// actual - the number of characters in the buffer, or -1 if
 ///
 /// See also: devices/inputevent.h, devices/keymap.h
+@library("keymap.library")
 extern pub fn MapRawKey(event: *InputEvent, buffer: *u8, length: i16, keyMap: *KeyMap) -> i16
 /// Encode an ANSI string into keycodes. (V36)
 ///
@@ -59,4 +64,5 @@ extern pub fn MapRawKey(event: *InputEvent, buffer: *u8, length: i16, keyMap: *K
 /// actual - the number of code/qualifier pairs in the buffer,
 ///
 /// See also: devices/inputevent.h, devices/keymap.h
+@library("keymap.library")
 extern pub fn MapANSI(string: *u8, count: i32, buffer: *u8, length: i32, keyMap: *KeyMap) -> i32

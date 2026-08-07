@@ -39,6 +39,12 @@
         <None Include="std/**/*.novus">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <None Include="std/ffi/ndk_headers.txt">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Include="std/ffi/ndk_types.h">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
         <None Include="stdlib/**/*.novus">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>

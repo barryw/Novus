@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: diskfont.library
 // Base: _DiskfontBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -21,6 +23,7 @@
 ///
 /// # Returns
 /// D0 is zero if the desired font cannot be found.
+@library("diskfont.library")
 extern pub fn OpenDiskFont(textAttr: *TextAttr) -> *TextFont
 /// Inquire available memory & disk fonts.
 ///
@@ -52,6 +55,7 @@ extern pub fn OpenDiskFont(textAttr: *TextAttr) -> *TextFont
 /// this indicates the number of bytes needed for AvailFonts in addition to
 /// those supplied. Thus structure elements were not returned because of
 /// insufficient bufBytes.
+@library("diskfont.library")
 extern pub fn AvailFonts(buffer: *u8, bufBytes: i32, flags: i32) -> i32
 /// Create a FontContents image for a font. (V34)
 ///
@@ -69,6 +73,7 @@ extern pub fn AvailFonts(buffer: *u8, bufBytes: i32, flags: i32) -> i32
 /// fontContentsHeader - a struct FontContentsHeader pointer.
 ///
 /// See also: DisposeFontContents() to free the structure acquired here.
+@library("diskfont.library")
 extern pub fn NewFontContents(fontsLock: i32, fontName: *u8) -> *FontContentsHeader
 /// Free the result from NewFontContents. (V34)
 ///
@@ -80,6 +85,7 @@ extern pub fn NewFontContents(fontsLock: i32, fontName: *u8) -> *FontContentsHea
 ///   by NewFontContents.
 ///
 /// See also: NewFontContents() to get structure freed here.
+@library("diskfont.library")
 extern pub fn DisposeFontContents(fontContentsHeader: *FontContentsHeader)
 /// Create a DiskFont scaled from another. (V36)
 ///
@@ -91,6 +97,7 @@ extern pub fn DisposeFontContents(fontContentsHeader: *FontContentsHeader)
 /// # Returns
 /// header - a pointer to a DiskFontHeader structure. This is not being
 /// managed by the diskfont.library, however.
+@library("diskfont.library")
 extern pub fn NewScaledDiskFont(sourceFont: *TextFont, destTextAttr: *TextAttr) -> *DiskFont
 /// Inquire diskfont global settings. (V45)
 ///
@@ -108,6 +115,7 @@ extern pub fn NewScaledDiskFont(sourceFont: *TextFont, destTextAttr: *TextAttr) 
 /// The result code is undocumented if an unknown tag value is passed in.
 ///
 /// See also: diskfont/diskfonttag.h
+@library("diskfont.library")
 extern pub fn GetDiskFontCtrl(tagid: i32) -> i32
 /// Adjust disk font global settings (V45)
 ///
@@ -121,5 +129,6 @@ extern pub fn GetDiskFontCtrl(tagid: i32) -> i32
 ///   adjusted.
 ///
 /// See also: diskfont/diskfonttag.h, utility/tagitem.h
+@library("diskfont.library")
 extern pub fn SetDiskFontCtrlA(taglist: *TagItem)
 // Varargs function SetDiskFontCtrl skipped - needs manual implementation

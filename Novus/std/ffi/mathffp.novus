@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: mathffp.library
 // Base: _MathBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,15 +11,27 @@
 // Library Functions
 // ============================================================================
 
-extern pub fn SPFix(parm: *u8 /* FLOAT */) -> i32
-extern pub fn SPFlt(integer: i32) -> *u8 /* FLOAT */
-extern pub fn SPCmp(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> i32
-extern pub fn SPTst(parm: *u8 /* FLOAT */) -> i32
-extern pub fn SPAbs(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPNeg(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPAdd(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPSub(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPMul(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPDiv(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPFloor(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPCeil(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+@library("mathffp.library")
+extern pub fn SPFix(parm: f32) -> i32
+@library("mathffp.library")
+extern pub fn SPFlt(integer: i32) -> f32
+@library("mathffp.library")
+extern pub fn SPCmp(leftParm: f32, rightParm: f32) -> i32
+@library("mathffp.library")
+extern pub fn SPTst(parm: f32) -> i32
+@library("mathffp.library")
+extern pub fn SPAbs(parm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPNeg(parm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPAdd(leftParm: f32, rightParm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPSub(leftParm: f32, rightParm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPMul(leftParm: f32, rightParm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPDiv(leftParm: f32, rightParm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPFloor(parm: f32) -> f32
+@library("mathffp.library")
+extern pub fn SPCeil(parm: f32) -> f32

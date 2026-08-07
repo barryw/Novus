@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: misc.resource
 // Base: _MiscBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,5 +11,7 @@
 // Library Functions
 // ============================================================================
 
+@library("misc.resource")
 extern pub fn AllocMiscResource(unitNum: u32, name: *u8) -> *u8
+@library("misc.resource")
 extern pub fn FreeMiscResource(unitNum: u32)

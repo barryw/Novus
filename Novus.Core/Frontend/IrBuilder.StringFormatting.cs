@@ -231,6 +231,11 @@ public partial class IrBuilder
             // This bypasses the Display trait which expects Formatter, not StackFormatter
             EmitFormatString(formatterVarName, formatterType, exprValue);
         }
+        else if (exprType is IrPointerType pointerType && pointerType.PointeeType == IrIntType.U8)
+        {
+            // Amiga APIs expose text as NUL-terminated STRPTR/*u8 values.
+            EmitFormatCString(formatterVarName, formatterType, exprValue);
+        }
         else if (exprType is IrIntType intType)
         {
             // For integer types, convert to string using built-in functions
@@ -289,6 +294,31 @@ public partial class IrBuilder
             fmtCall.Arguments.Add(formatterBorrow);
             _currentBlock!.AddInstruction(fmtCall);
         }
+    }
+
+    private void EmitFormatCString(string formatterVarName, IrType formatterType, IrValue pointer)
+    {
+        var strlen = _module.GetFunction("strlen");
+        var strType = _symbols.LookupStruct("Str");
+        if (strlen == null || strType == null)
+        {
+            _diagnostics.ReportError(
+                ErrorCodes.MethodNotFound,
+                "Formatting *u8 requires strlen() and Str from std::strings::core",
+                new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, ""));
+            return;
+        }
+
+        var lengthName = $"%t{_tempCounter++}";
+        var strlenCall = new IrCall("strlen", strlen.ReturnType, lengthName);
+        strlenCall.Arguments.Add(pointer);
+        _currentBlock!.AddInstruction(strlenCall);
+
+        EmitWriteStr(formatterVarName, formatterType, new IrStructLiteral(strType, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = pointer,
+            ["len"] = new IrVariable(lengthName, strlen.ReturnType)
+        }));
     }
 
     /// <summary>

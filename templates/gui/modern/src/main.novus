@@ -1,16 +1,36 @@
-// Modern Amiga GUI Event Loop Example
-// This will demonstrate high-level abstractions for event handling
-// (Iterator, Callback, and Async patterns)
-//
-// TODO: Implement modern event loop patterns once the high-level APIs are created
-// See docs/event_loop_design.md and docs/event_loop_implementation_plan.md for design details
+// ReAction application using Novus's owning builder API.
+
+from std::ui::reaction import ReActionBuilder, ReActionEvent, LayoutOrientation
+from std::ffi::intuition import LockPubScreen, UnlockPubScreen
 
 pub fn main() -> i32 {
-    // Placeholder for modern event loop implementation
-    // Will include:
-    // - Iterator-based event loop (Level 2)
-    // - Callback-based event handling (Level 3)
-    // - Async/await pattern (Level 4)
+    let screen = LockPubScreen(null)
+    if !screen {
+        return 20
+    }
 
+    var builder = ReActionBuilder::new(screen)
+    var root = builder.layout(LayoutOrientation::Vertical)
+    root.space_outer()
+    root.add_button(1, "Close")
+
+    match builder.build("{{PROJECT_NAME}}") {
+        Result::Ok(window) => {
+            var running = true
+            while running {
+                match window.wait_event() {
+                    ReActionEvent::Close => { running = false },
+                    ReActionEvent::GadgetUp(1) => { running = false },
+                    _ => {},
+                }
+            }
+        },
+        Result::Err(_) => {
+            UnlockPubScreen(null, screen)
+            return 20
+        },
+    }
+
+    UnlockPubScreen(null, screen)
     return 0
 }

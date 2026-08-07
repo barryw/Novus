@@ -1,10 +1,7 @@
 // Novus Standard Library - Amiga OS Type Mapping Reference
 // Namespace: std::amiga_types
 //
-// This file documents the Amiga OS type system and how it maps to Novus types.
-// Once Novus supports type aliases, these will become actual type definitions.
-//
-// For now, use this as a reference when reading/writing FFI code:
+// This file defines the Amiga OS type system in native Novus terms.
 //
 // Amiga Type    Novus Type    Description
 // ===========   ===========   ================================================
@@ -24,6 +21,21 @@
 //   divided by 4 (BCPL word addressing). To convert BPTR to native pointer:
 //     let ptr: *u8 = (*u8)(u32)((bptr_value << 2))
 //
+// ============================================================================
+// Type aliases
+// ============================================================================
+
+pub type BYTE = i8
+pub type UBYTE = u8
+pub type WORD = i16
+pub type UWORD = u16
+pub type LONG = i32
+pub type ULONG = u32
+pub type BOOL = i16
+pub type APTR = *u8
+pub type STRPTR = *u8
+pub type BPTR = i32
+
 // ============================================================================
 // Constants
 // ============================================================================

@@ -9,7 +9,6 @@
 // - Consuming self for ownership transfer
 
 from std::io import println
-from std::core import Option, Clone
 
 // ============================================================================
 // Easing Functions - Demonstrate function types
@@ -73,15 +72,21 @@ pub fn ease_out_bounce(t: fixed32) -> fixed32 {
 
 pub trait Animatable {
     fn lerp(&self, target: &Self, t: fixed32) -> Self
+    fn duplicate(&self) -> Self
 }
 
 // Implement for i32
+fn lerp_i32(start: i32, target: i32, t: fixed32) -> i32 {
+    let scaled = (fixed32)(target - start) * t
+    return start + (i32)scaled
+}
+
 impl Animatable for i32 {
     fn lerp(&self, target: &i32, t: fixed32) -> i32 {
-        let diff = *target - *self
-        let scaled = fixed32::from_int(diff) * t
-        return *self + scaled.to_int()
+        return lerp_i32(*self, *target, t)
     }
+
+    fn duplicate(&self) -> i32 { return *self }
 }
 
 // Implement for fixed32
@@ -90,6 +95,8 @@ impl Animatable for fixed32 {
         let diff = *target - *self
         return *self + diff * t
     }
+
+    fn duplicate(&self) -> fixed32 { return *self }
 }
 
 // ============================================================================
@@ -104,7 +111,7 @@ struct Color {
 
 impl Color {
     pub fn new(r: u8, g: u8, b: u8) -> Color {
-        return Color { r, g, b }
+        return Color { r: r, g: g, b: b }
     }
 
     pub fn to_u32(&self) -> u32 {
@@ -115,17 +122,13 @@ impl Color {
 impl Animatable for Color {
     fn lerp(&self, target: &Color, t: fixed32) -> Color {
         // Lerp each component
-        let r = ((i32)self.r).lerp(&(i32)target.r, t)
-        let g = ((i32)self.g).lerp(&(i32)target.g, t)
-        let b = ((i32)self.b).lerp(&(i32)target.b, t)
+        let r = lerp_i32((i32)self.r, (i32)target.r, t)
+        let g = lerp_i32((i32)self.g, (i32)target.g, t)
+        let b = lerp_i32((i32)self.b, (i32)target.b, t)
         return Color::new((u8)r, (u8)g, (u8)b)
     }
-}
 
-impl Clone for Color {
-    fn clone(&self) -> Option<Color> {
-        return Option::Some(Color::new(self.r, self.g, self.b))
-    }
+    fn duplicate(&self) -> Color { return Color::new(self.r, self.g, self.b) }
 }
 
 // ============================================================================
@@ -143,7 +146,7 @@ enum AnimationState {
 // Tween Structure - Demonstrate generic struct with methods
 // ============================================================================
 
-struct Tween<T> where T: Animatable + Clone {
+struct Tween<T> where T: Animatable {
     start_value: T,
     end_value: T,
     duration_frames: u32,
@@ -152,7 +155,7 @@ struct Tween<T> where T: Animatable + Clone {
     state: AnimationState,
 }
 
-impl<T> Tween<T> where T: Animatable + Clone {
+impl<T> Tween<T> where T: Animatable {
     // Constructor - associated function (no self)
     pub fn new(start: T, end: T, duration: u32) -> Tween<T> {
         return Tween {
@@ -181,21 +184,20 @@ impl<T> Tween<T> where T: Animatable + Clone {
     pub fn value(&self) -> T {
         match self.state {
             AnimationState::Idle => {
-                return self.start_value.clone().unwrap()
+                return self.start_value.duplicate()
             },
             AnimationState::Finished => {
-                return self.end_value.clone().unwrap()
+                return self.end_value.duplicate()
             },
             _ => { }
         }
 
         if self.duration_frames == 0 {
-            return self.end_value.clone().unwrap()
+            return self.end_value.duplicate()
         }
 
         // Calculate normalized time (0.0 to 1.0)
-        let t_raw = fixed32::from_int((i32)self.current_frame)
-            / fixed32::from_int((i32)self.duration_frames)
+        let t_raw = (fixed32)(i32)self.current_frame / (fixed32)(i32)self.duration_frames
 
         // Clamp to [0, 1]
         var t = t_raw
@@ -371,14 +373,14 @@ fn main() -> i32 {
 
     // Demo 8: Using fixed32 for smoother animation
     println("\n--- Fixed32 Tween Demo ---")
-    var smooth: Tween<fixed32> = Tween::new(0.0, 10.0, 5)
+    var smooth: Tween<fixed32> = Tween::new(0.0fixed32, 10.0fixed32, 5)
     smooth.with_easing(ease_out_cubic)
     smooth.start()
 
     while !smooth.is_finished() {
         let val = smooth.value()
         // Fixed32 gives sub-integer precision
-        println(f"  Frame {smooth.current_frame}: value={val.to_int()}.{((val - fixed32::from_int(val.to_int())) * 100.0).to_int()}")
+        println(f"  Frame {smooth.current_frame}: value={(i32)val}.{(i32)((val - (fixed32)(i32)val) * 100.0)}")
         smooth.tick()
     }
 

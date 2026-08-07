@@ -1,0 +1,4 @@
+// Novus Standard Library - I/O facade
+// Namespace: std::io
+
+pub use std::io::file::*

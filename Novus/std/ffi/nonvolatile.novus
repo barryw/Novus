@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: nonvolatile.library
 // Base: _NVBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -21,6 +23,7 @@
 /// data - pointer to a copy of the data found in the nonvolatile storage
 ///
 /// See also: FreeNVData(), <libraries/nonvolatile.h>
+@library("nonvolatile.library")
 extern pub fn GetCopyNV(appName: *u8, itemName: *u8, killRequesters: i16) -> *u8
 /// Release the memory allocated by a function of this
 ///
@@ -31,6 +34,7 @@ extern pub fn GetCopyNV(appName: *u8, itemName: *u8, killRequesters: i16) -> *u8
 /// * `data` - pointer to the memory block to be freed. If passed NULL, ...
 ///
 /// See also: GetCopyNV(), GetNVInfo(), GetNVList()
+@library("nonvolatile.library")
 extern pub fn FreeNVData(data: *u8)
 /// Store data in nonvolatile storage. (V40)
 ///
@@ -44,6 +48,7 @@ extern pub fn FreeNVData(data: *u8)
 /// error - 0                means no error,
 ///
 /// See also: GetCopyNV(), GetNVInfo()
+@library("nonvolatile.library")
 extern pub fn StoreNV(appName: *u8, itemName: *u8, data: *u8, length: u32, killRequesters: i16) -> u16
 /// Remove an entry from nonvoltatile storage. (V40)
 ///
@@ -55,6 +60,7 @@ extern pub fn StoreNV(appName: *u8, itemName: *u8, data: *u8, length: u32, killR
 ///
 /// # Returns
 /// success - TRUE will be returned if the entry is found and deleted.
+@library("nonvolatile.library")
 extern pub fn DeleteNV(appName: *u8, itemName: *u8, killRequesters: i16) -> i16
 /// Report information on the current nonvolatile storage.
 ///
@@ -68,6 +74,7 @@ extern pub fn DeleteNV(appName: *u8, itemName: *u8, killRequesters: i16) -> i16
 /// information - pointer to an NVInfo structure. This structure contains
 ///
 /// See also: FreeNVData(), StoreNV(), <libraries/nonvolatile.h>
+@library("nonvolatile.library")
 extern pub fn GetNVInfo(killRequesters: i16) -> *NVInfo
 /// Return a list of the items stored in nonvolatile
 ///
@@ -82,6 +89,7 @@ extern pub fn GetNVInfo(killRequesters: i16) -> *NVInfo
 /// list - a pointer to an Exec MinList of NVEntries. A NULL will be
 ///
 /// See also: FreeNVData(), SetNVProtection()
+@library("nonvolatile.library")
 extern pub fn GetNVList(appName: *u8, killRequesters: i16) -> *MinList
 /// Set the protection flags. (V40)
 ///
@@ -96,4 +104,5 @@ extern pub fn GetNVList(appName: *u8, killRequesters: i16) -> *MinList
 /// success - FALSE if the protection could not be change (ie the data
 ///
 /// See also: GetNVList(), <libraries/nonvolatile.h>
+@library("nonvolatile.library")
 extern pub fn SetNVProtection(appName: *u8, itemName: *u8, mask: i32, killRequesters: i16) -> i16

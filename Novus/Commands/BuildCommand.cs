@@ -674,7 +674,8 @@ public static class BuildCommand
         foreach (var asmFile in asmFiles)
         {
             // Skip files in build output directories
-            if (!PathUtility.ContainsDirectory(asmFile, "target"))
+            if (!PathUtility.ContainsDirectory(asmFile, "target") &&
+                !PathUtility.ContainsDirectory(asmFile, "build"))
             {
                 var normalizedPath = Path.GetFullPath(asmFile);
                 // Only add if not already in the list from project.toml

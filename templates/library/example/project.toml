@@ -1,5 +1,5 @@
 [package]
-name = "greeting-example"
+name = "{{PROJECT_NAME}}-example"
 version = "1.0.0"
 type = "cli"
 entry = "./src/main.novus"

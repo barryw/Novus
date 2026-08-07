@@ -8,10 +8,10 @@ members = ["traditional", "modern"]
 # Default build settings for all workspace members
 # These can be overridden in individual project.toml files
 
-# Target CPU: auto, 68000, 68020, 68030, 68040, 68060
+# Target CPU: auto, 68020, 68030, 68040, 68060
 target_cpu = "68020"
 
-# FPU mode: auto, none, 68881, 68882, 68040, 68060
+# FPU mode: auto, soft, 68881, 68040
 fpu = "auto"
 
 # Optimization level: 0 (none), 1 (basic), 2 (full), 3 (aggressive)

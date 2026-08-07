@@ -347,28 +347,30 @@ public partial class IrBuilder
                 // Expected type is a monomorphized struct like Vec<i32>
                 monomorphizedStruct = expectedStruct;
             }
-            // 3. No explicit type args and no expected type - create unresolved generic
+            // 3. Infer the struct type from associated-function arguments.
             else if (_expectedType == null)
             {
-                // No expected type - create unresolved generic that will be inferred from usage
-                // Example: let vec = Vec::new() → vec has type Vec<UnresolvedGeneric>
-                // When vec.push(42i32) is called later, we'll resolve it to Vec<i32>
-
-                var unresolvedTypeArgs = new List<IrType>();
-                for (int i = 0; i < genericAssocFunc.GenericParameters.Count; i++)
+                var inferredTypes = InferGenericAssociatedFunctionTypes(genericAssocFunc, arguments);
+                if (inferredTypes != null)
                 {
-                    unresolvedTypeArgs.Add(new IrUnresolvedGenericType());
+                    var baseStruct = _symbols.LookupStruct(genericAssocFunc.TypeName)!;
+                    var typeArgs = genericAssocFunc.GenericParameters.Select(name => inferredTypes[name]).ToList();
+                    var cacheKey = $"{baseStruct.StructName}<{string.Join(",", typeArgs.Select(GetTypeCacheKey))}>";
+                    monomorphizedStruct = _symbols.LookupMonomorphizedStruct(cacheKey)
+                        ?? IrStructType.Monomorphize(baseStruct, typeArgs);
+                    _symbols.RegisterMonomorphizedStruct(cacheKey, monomorphizedStruct);
                 }
+                else
+                {
+                    // Zero-argument constructors such as Vec::new() remain unresolved until use.
+                    var unresolvedTypeArgs = genericAssocFunc.GenericParameters
+                        .Select(_ => (IrType)new IrUnresolvedGenericType())
+                        .ToList();
 
-                var partiallyResolvedType = new IrPartiallyResolvedGenericType(
-                    genericAssocFunc.TypeName,
-                    unresolvedTypeArgs
-                );
-
-                // Return a placeholder value with the partially resolved type
-                // The actual instantiation will happen when we see method calls on this value
-                var placeholderResult = $"%t{_tempCounter++}";
-                return new IrVariable(placeholderResult, partiallyResolvedType);
+                    return new IrVariable(
+                        $"%t{_tempCounter++}",
+                        new IrPartiallyResolvedGenericType(genericAssocFunc.TypeName, unresolvedTypeArgs));
+                }
             }
 
             if (monomorphizedStruct == null)
@@ -1490,6 +1492,23 @@ public partial class IrBuilder
         return null;
     }
 
+    private Dictionary<string, IrType>? InferGenericAssociatedFunctionTypes(
+        IrGenericAssociatedFunction function,
+        List<IrValue> arguments)
+    {
+        if (!_genericInstantiator.TryGetMethodTemplate($"{function.TypeName}::{function.MethodName}", out var template) ||
+            template == null)
+            return null;
+
+        using var genericParamsScope = new GenericParametersScope(this, template.GenericParams);
+        using var typeSubstitutionScope = new TypeSubstitutionScope(this, null);
+        var parameters = new List<IrParameter>();
+        if (template.Context.parameterList() != null)
+            ParseRegularParameters(template.Context.parameterList(), parameters);
+
+        return _genericInstantiator.InferGenericTypes(function.GenericParameters, parameters, arguments);
+    }
+
     /// <summary>
     /// Try to resolve generic type parameters from a method call
     /// Example: vec.push(42i32) where vec is Vec<UnresolvedGeneric> → infer T = i32
@@ -1617,6 +1636,8 @@ public partial class IrBuilder
             return null;
         }
 
+        List<IrValue>? evaluatedMethodArgs = null;
+
         // Handle unresolved generic types - resolve them from method arguments
         if (receiver.Type is IrPartiallyResolvedGenericType partialType)
         {
@@ -1633,6 +1654,7 @@ public partial class IrBuilder
                     }
                 }
             }
+            evaluatedMethodArgs = methodArgs;
 
             // Try to resolve the generic type from method arguments
             var resolvedType = TryResolveGenericFromMethodCall(partialType, methodName, methodArgs);
@@ -1848,7 +1870,7 @@ public partial class IrBuilder
                 typeName = mutRefType.PointeeType.Name;
             }
         }
-        else if (receiverType is IrIntType || receiverType is IrBoolType)
+        else if (receiverType is IrIntType or IrBoolType or IrFloatType or IrFixedType)
         {
             // Primitive types can have trait method implementations (e.g., u32::hash())
             typeName = receiverType.Name;
@@ -1900,7 +1922,8 @@ public partial class IrBuilder
             IrEnumType? monomorphizedEnum = null;
 
             // Check if receiver is a monomorphized struct
-            if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
+            if (receiverType is IrStructType receiverStruct &&
+                (receiverStruct.CacheKey != null || _genericInstantiator.HasMethodTemplate($"{receiverStruct.StructName}::{methodName}")))
             {
                 monomorphizedStruct = receiverStruct;
             }
@@ -1910,12 +1933,14 @@ public partial class IrBuilder
                 monomorphizedStruct = pointeeStruct;
             }
             // Check if receiver is a reference to a monomorphized struct (&Vec<i32>)
-            else if (receiverType is IrReferenceType refType && refType.PointeeType is IrStructType refPointeeStruct && refPointeeStruct.CacheKey != null)
+            else if (receiverType is IrReferenceType refType && refType.PointeeType is IrStructType refPointeeStruct &&
+                     (refPointeeStruct.CacheKey != null || _genericInstantiator.HasMethodTemplate($"{refPointeeStruct.StructName}::{methodName}")))
             {
                 monomorphizedStruct = refPointeeStruct;
             }
             // Check if receiver is a mutable reference to a monomorphized struct (&var Vec<i32>)
-            else if (receiverType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType mutRefPointeeStruct && mutRefPointeeStruct.CacheKey != null)
+            else if (receiverType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrStructType mutRefPointeeStruct &&
+                     (mutRefPointeeStruct.CacheKey != null || _genericInstantiator.HasMethodTemplate($"{mutRefPointeeStruct.StructName}::{methodName}")))
             {
                 monomorphizedStruct = mutRefPointeeStruct;
             }
@@ -1978,7 +2003,12 @@ public partial class IrBuilder
 
             if (monomorphizedStruct != null)
             {
-                method = _genericInstantiator.InstantiateStructMethod(monomorphizedStruct, methodName);
+                evaluatedMethodArgs ??= callCtx.argumentList()?.expression()
+                    .Select(Visit)
+                    .OfType<IrValue>()
+                    .ToList() ?? new List<IrValue>();
+                method = _genericInstantiator.InstantiateStructMethod(
+                    monomorphizedStruct, methodName, arguments: evaluatedMethodArgs);
             }
             else if (monomorphizedEnum != null)
             {
@@ -2121,7 +2151,11 @@ public partial class IrBuilder
         var arguments = new List<IrValue> { receiverArg };
 
         // Add user-provided arguments
-        if (callCtx.argumentList() != null)
+        if (evaluatedMethodArgs != null)
+        {
+            arguments.AddRange(evaluatedMethodArgs);
+        }
+        else if (callCtx.argumentList() != null)
         {
             // Build expected types list from method parameters (skip first, that's the receiver)
             var paramTypes = method.Parameters.Skip(1)
@@ -2276,6 +2310,12 @@ public partial class IrBuilder
             return null;
         }
 
+        // Indexing references follows the same auto-dereference rule as member access.
+        if (baseExpr.Type is IrReferenceType refType)
+            baseExpr = new IrDereferenceValue(baseExpr, refType.PointeeType);
+        else if (baseExpr.Type is IrMutReferenceType mutRefType)
+            baseExpr = new IrDereferenceValue(baseExpr, mutRefType.PointeeType);
+
         // Handle array indexing
         if (baseExpr.Type is IrArrayType arrayType)
         {
@@ -2332,16 +2372,22 @@ public partial class IrBuilder
     {
         var expressions = context.expression();
         var elements = new List<IrValue>();
+        var expectedElementType = (_expectedType as IrArrayType)?.ElementType;
 
         // Visit all element expressions
         foreach (var exprCtx in expressions)
         {
+            var savedExpectedType = _expectedType;
+            _expectedType = expectedElementType;
             var value = Visit(exprCtx) as IrValue;
+            _expectedType = savedExpectedType;
             if (value == null)
             {
                 // Error already reported by child visitor, bail out
                 return null;
             }
+            if (value is IrConstant integer && value.Type is IrIntType && expectedElementType is IrIntType expectedInteger)
+                value = new IrConstant(integer.Value, expectedInteger);
             elements.Add(value);
         }
 
@@ -2357,7 +2403,7 @@ public partial class IrBuilder
         }
 
         // Infer array type from first element
-        var elementType = elements[0].Type;
+        var elementType = expectedElementType ?? elements[0].Type;
         var arrayType = _typeInterner.GetArrayType(elementType, elements.Count);
 
         // Create array literal value
@@ -4273,7 +4319,11 @@ public partial class IrBuilder
 
     public override object? VisitCharLiteral([NotNull] NovusParser.CharLiteralContext context)
     {
-        var text = context.CHAR_LITERAL().GetText();
+        return new IrConstant(ParseCharLiteralValue(context.CHAR_LITERAL().GetText()), IrIntType.U8);
+    }
+
+    private static byte ParseCharLiteralValue(string text)
+    {
         // Remove surrounding quotes: 'X' -> X
         var charContent = text.Substring(1, text.Length - 2);
 
@@ -4319,7 +4369,7 @@ public partial class IrBuilder
             charValue = 0;
         }
 
-        return new IrConstant(charValue, IrIntType.U8);
+        return charValue;
     }
 
     public override object? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
@@ -4599,7 +4649,19 @@ public partial class IrBuilder
         var constantSymbol = _symbols.LookupConstant(name);
         if (constantSymbol != null)
         {
-            return new IrConstant((int)constantSymbol.Value, constantSymbol.Type);
+            if (constantSymbol.Value is string stringValue)
+            {
+                var stringLiteral = new IrStringLiteral(stringValue, $"_str{_stringCounter++}");
+                StringLiterals.Add(stringLiteral);
+                return stringLiteral;
+            }
+
+            return constantSymbol.Type switch
+            {
+                IrFixedType fixedType => new IrFixedConstant(Convert.ToDouble(constantSymbol.Value), fixedType),
+                IrFloatType floatType => new IrFloatConstant(Convert.ToDouble(constantSymbol.Value), floatType),
+                _ => new IrConstant(Convert.ToInt64(constantSymbol.Value), constantSymbol.Type)
+            };
         }
         else
         {

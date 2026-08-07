@@ -221,6 +221,7 @@ public class DeviceGenerator
         sb.AppendLine();
 
         // Include headers
+        sb.AppendLine("#include \"novus_types.h\"");
         sb.AppendLine("#include <exec/types.h>");
         sb.AppendLine("#include <exec/nodes.h>");
         sb.AppendLine("#include <exec/devices.h>");
@@ -254,12 +255,7 @@ public class DeviceGenerator
         sb.AppendLine("    ULONG dev_TotalOpens;           // Statistics: lifetime Opens");
         sb.AppendLine("    ULONG dev_TotalCloses;          // Statistics: lifetime Closes");
 
-        // Add custom fields from the @device struct
-        foreach (var field in _deviceStruct.Fields)
-        {
-            var cType = GetCType(field.Type);
-            sb.AppendLine($"    {cType} {field.Name};");
-        }
+        sb.AppendLine($"    {_deviceStruct.StructName} state;          // Novus-defined device state");
 
         sb.AppendLine("};");
         sb.AppendLine();
@@ -394,7 +390,9 @@ public class DeviceGenerator
         sb.AppendLine($"static const char DevIdString[] = \"{deviceName} {version}.{revision}\";");
         sb.AppendLine();
 
-        sb.AppendLine("#define SysBase (*(struct ExecBase**)4)");
+        sb.AppendLine("extern struct ExecBase* SysBase;");
+        sb.AppendLine("extern int __novus_ffi_init(void);");
+        sb.AppendLine("extern void __novus_ffi_cleanup(void);");
         sb.AppendLine();
 
         sb.AppendLine("// ============================================================================");
@@ -404,6 +402,8 @@ public class DeviceGenerator
 
         // DevInit
         sb.AppendLine($"struct Device* DevInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
+        sb.AppendLine("    SysBase = sysBase;");
+        sb.AppendLine("    if (!__novus_ffi_init()) return NULL;");
         sb.AppendLine("    // Initialize device node fields");
         sb.AppendLine("    base->dev.dd_Library.lib_Node.ln_Type = NT_DEVICE;");
         sb.AppendLine("    base->dev.dd_Library.lib_Node.ln_Pri = 0;");
@@ -435,7 +435,7 @@ public class DeviceGenerator
             sb.AppendLine("    // Initialize custom fields");
             foreach (var field in _deviceStruct.Fields)
             {
-                sb.AppendLine($"    base->{field.Name} = 0;");
+                sb.AppendLine($"    base->state.{field.Name} = 0;");
             }
             sb.AppendLine();
         }
@@ -526,6 +526,7 @@ public class DeviceGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    BPTR segList = base->dev_SegList;");
+        sb.AppendLine("    __novus_ffi_cleanup();");
         sb.AppendLine();
         sb.AppendLine("    // Free all unit structures");
         sb.AppendLine($"    for (int i = 0; i < {maxUnits}; i++) {{");
@@ -570,6 +571,7 @@ public class DeviceGenerator
     /// </summary>
     private void GenerateBeginIO(StringBuilder sb, string structName)
     {
+        var stateName = _deviceStruct!.StructName;
         sb.AppendLine("// ============================================================================");
         sb.AppendLine("// BeginIO - Command Dispatcher");
         sb.AppendLine("// ============================================================================");
@@ -578,7 +580,7 @@ public class DeviceGenerator
         // Forward declarations for command handlers
         foreach (var cmd in _deviceCommands)
         {
-            sb.AppendLine($"LONG {cmd.CName}(struct IORequest* ioReq, struct {structName}* base);");
+            sb.AppendLine($"BYTE {cmd.CName}(struct IORequest* ioReq, {stateName}* state);");
         }
         sb.AppendLine();
 
@@ -601,7 +603,7 @@ public class DeviceGenerator
             {
                 sb.AppendLine("            ioReq->io_Flags |= IOF_QUICK;  // Can complete immediately");
             }
-            sb.AppendLine($"            ioReq->io_Error = {cmd.CName}(ioReq, base);");
+            sb.AppendLine($"            ioReq->io_Error = {cmd.CName}(ioReq, &base->state);");
             sb.AppendLine("            break;");
         }
 

@@ -54,9 +54,18 @@ public static class TypeSubstitutionHelper
                 ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoRefType.PointeeType, substitutions, visited);
                 break;
 
+            case IrMutReferenceType baseRefType when monomorphizedType is IrPointerType monoPtrType:
+                // IR borrows are represented as pointers after semantic reference checking.
+                ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoPtrType.PointeeType, substitutions, visited);
+                break;
+
             case IrReferenceType baseRefType when monomorphizedType is IrReferenceType monoRefType:
                 // Recurse into immutable reference types
                 ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoRefType.PointeeType, substitutions, visited);
+                break;
+
+            case IrReferenceType baseRefType when monomorphizedType is IrPointerType monoPtrType:
+                ExtractGenericTypeMappingInternal(baseRefType.PointeeType, monoPtrType.PointeeType, substitutions, visited);
                 break;
 
             case IrArrayType baseArrayType when monomorphizedType is IrArrayType monoArrayType:

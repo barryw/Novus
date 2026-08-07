@@ -25,7 +25,7 @@ extern var SocketBase: *u8
 /// Create a socket
 /// Returns socket descriptor on success, -1 on error
 @library("bsdsocket.library")
-extern fn socket(domain: i32, type: i32, protocol: i32) -> i32
+extern fn socket(domain: i32, kind: i32, protocol: i32) -> i32
 
 /// Bind socket to local address
 /// Returns 0 on success, -1 on error
@@ -136,7 +136,7 @@ extern fn GetSocketEvents(s: i32, eventmask: *u32) -> i32
 /// Obtain a socket event signal
 /// Returns signal bit number, or -1 on error
 @library("bsdsocket.library")
-extern fn ObtainSocket(id: i32, domain: i32, type: i32, protocol: i32) -> i32
+extern fn ObtainSocket(id: i32, domain: i32, kind: i32, protocol: i32) -> i32
 
 /// Release a socket for another task to obtain
 @library("bsdsocket.library")
@@ -159,7 +159,7 @@ extern fn gethostbyname(name: *u8) -> *hostent
 /// Reverse DNS lookup (IP to hostname)
 /// Returns pointer to static hostent, or null on error
 @library("bsdsocket.library")
-extern fn gethostbyaddr(addr: *u8, len: i32, type: i32) -> *hostent
+extern fn gethostbyaddr(addr: *u8, len: i32, kind: i32) -> *hostent
 
 /// Get protocol by name ("tcp", "udp", etc.)
 @library("bsdsocket.library")

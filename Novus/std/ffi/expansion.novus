@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: expansion.library
 // Base: _ExpansionBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -21,6 +23,7 @@
 /// EXCEPTIONS
 ///
 /// See also: RemConfigDev()
+@library("expansion.library")
 extern pub fn AddConfigDev(configDev: *ConfigDev)
 /// Add a BOOTNODE to the system (V36)
 ///
@@ -34,7 +37,9 @@ extern pub fn AddConfigDev(configDev: *ConfigDev)
 /// ok - non-zero everything went ok, zero if we ran out of memory
 ///
 /// See also: AddDosNode()
+@library("expansion.library")
 extern pub fn AddBootNode(bootPri: i32, flags: u32, deviceNode: *DeviceNode, configDev: *ConfigDev) -> i16
+@library("expansion.library")
 extern pub fn AllocBoardMem(slotSpec: u32)
 /// Allocate a ConfigDev structure
 ///
@@ -46,6 +51,7 @@ extern pub fn AllocBoardMem(slotSpec: u32)
 /// configDev - either a valid ConfigDev structure or NULL.
 ///
 /// See also: FreeConfigDev()
+@library("expansion.library")
 extern pub fn AllocConfigDev() -> *ConfigDev
 /// Allocate expansion memory
 ///
@@ -60,6 +66,7 @@ extern pub fn AllocConfigDev() -> *ConfigDev
 /// startSlot - the slot number that was allocated, or -1 for error.
 ///
 /// See also: FreeExpansionMem()
+@library("expansion.library")
 extern pub fn AllocExpansionMem(numSlots: u32, slotAlign: u32) -> *u8
 /// Configure a board
 ///
@@ -74,7 +81,9 @@ extern pub fn AllocExpansionMem(numSlots: u32, slotAlign: u32) -> *u8
 /// error - non-zero if there was a problem configuring this board
 ///
 /// See also: FreeConfigDev()
+@library("expansion.library")
 extern pub fn ConfigBoard(board: *u8, configDev: *ConfigDev)
+@library("expansion.library")
 extern pub fn ConfigChain(baseAddr: *u8)
 /// Find a matching ConfigDev entry
 ///
@@ -88,7 +97,9 @@ extern pub fn ConfigChain(baseAddr: *u8)
 ///
 /// # Returns
 /// configDev - the next ConfigDev entry that matches the
+@library("expansion.library")
 extern pub fn FindConfigDev(oldConfigDev: *ConfigDev, manufacturer: i32, product: i32) -> *ConfigDev
+@library("expansion.library")
 extern pub fn FreeBoardMem(startSlot: u32, slotSpec: u32)
 /// Free a ConfigDev structure
 ///
@@ -101,6 +112,7 @@ extern pub fn FreeBoardMem(startSlot: u32, slotSpec: u32)
 /// EXCEPTIONS
 ///
 /// See also: AllocConfigDev()
+@library("expansion.library")
 extern pub fn FreeConfigDev(configDev: *ConfigDev)
 /// Allocate standard device expansion memory
 ///
@@ -112,6 +124,7 @@ extern pub fn FreeConfigDev(configDev: *ConfigDev)
 /// * `startSlot` - the slot number that was allocated, or -1 for error. numS...
 ///
 /// See also: AllocExpansionMem()
+@library("expansion.library")
 extern pub fn FreeExpansionMem(startSlot: u32, numSlots: u32)
 /// Read a byte nybble by nybble.
 ///
@@ -126,6 +139,7 @@ extern pub fn FreeExpansionMem(startSlot: u32, numSlots: u32)
 /// byte - a byte of data from the expansion board.
 ///
 /// See also: WriteExpansionByte(), ReadExpansionRom()
+@library("expansion.library")
 extern pub fn ReadExpansionByte(board: *u8, offset: u32) -> u8
 /// Read a boards configuration ROM space
 ///
@@ -143,6 +157,7 @@ extern pub fn ReadExpansionByte(board: *u8, offset: u32) -> u8
 /// error - If the board address does not contain a valid new style
 ///
 /// See also: ReadExpansionByte(), WriteExpansionByte()
+@library("expansion.library")
 extern pub fn ReadExpansionRom(board: *u8, configDev: *ConfigDev)
 /// Remove a ConfigDev structure from the system
 ///
@@ -156,6 +171,7 @@ extern pub fn ReadExpansionRom(board: *u8, configDev: *ConfigDev)
 /// EXCEPTIONS
 ///
 /// See also: AddConfigDev()
+@library("expansion.library")
 extern pub fn RemConfigDev(configDev: *ConfigDev)
 /// Write a byte nybble by nybble.
 ///
@@ -167,6 +183,7 @@ extern pub fn RemConfigDev(configDev: *ConfigDev)
 /// * `board` - a pointer to the base of a new style expansion board. off...
 ///
 /// See also: ReadExpansionByte(), ReadExpansionRom()
+@library("expansion.library")
 extern pub fn WriteExpansionByte(board: *u8, offset: u32, byte: u8)
 /// Try to get permission to bind drivers
 ///
@@ -178,6 +195,7 @@ extern pub fn WriteExpansionByte(board: *u8, offset: u32, byte: u8)
 /// EXCEPTIONS
 ///
 /// See also: ReleaseConfigBinding()
+@library("expansion.library")
 extern pub fn ObtainConfigBinding()
 /// Allow others to bind to drivers
 ///
@@ -186,6 +204,7 @@ extern pub fn ObtainConfigBinding()
 /// drivers to ConfigDev structures.
 ///
 /// See also: ObtainConfigBinding()
+@library("expansion.library")
 extern pub fn ReleaseConfigBinding()
 /// Sets static board configuration area
 ///
@@ -197,6 +216,7 @@ extern pub fn ReleaseConfigBinding()
 /// * `size` - The size of the user's binddriver structure.  No more tha...
 ///
 /// See also: GetCurrentBinding()
+@library("expansion.library")
 extern pub fn SetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u32)
 /// Gets static board configuration area
 ///
@@ -211,6 +231,7 @@ extern pub fn SetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u3
 /// actual - the true size of a CurrentBinding structure is returned.
 ///
 /// See also: SetCurrentBinding()
+@library("expansion.library")
 extern pub fn GetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u32) -> u32
 /// Construct dos data structures that a disk needs
 ///
@@ -225,6 +246,7 @@ extern pub fn GetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u3
 /// deviceNode - pointer to initialize device node structure, or
 ///
 /// See also: AddDosNode(), libraries/dosextens.h, libraries/filehandler.h
+@library("expansion.library")
 extern pub fn MakeDosNode(parmPacket: *u8) -> *DeviceNode
 /// Mount a disk to the system
 ///
@@ -236,4 +258,5 @@ extern pub fn MakeDosNode(parmPacket: *u8) -> *DeviceNode
 /// ok - non-zero everything went ok, zero if we ran out of memory
 ///
 /// See also: MakeDosNode(), AddBootNode()
+@library("expansion.library")
 extern pub fn AddDosNode(bootPri: i32, flags: u32, deviceNode: *DeviceNode) -> i16

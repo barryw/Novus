@@ -21,7 +21,7 @@ public static class StdlibBuildCommand
     /// <summary>
     /// Valid CPU targets for pre-compilation
     /// </summary>
-    private static readonly string[] ValidCpuTargets = { "68000", "68020", "68040", "68060" };
+    private static readonly string[] ValidCpuTargets = { "68020", "68030", "68040", "68060" };
 
     /// <summary>
     /// Valid build modes
@@ -461,6 +461,11 @@ public static class StdlibBuildCommand
 
         var binStdlibDir = Path.Combine(compilerDir, "std");
         Directory.CreateDirectory(binStdlibDir);
+
+        using var lockManager = new CacheLockManager(compilerDir);
+        using var refreshLock = lockManager.AcquireLockAsync("stdlib-refresh", TimeSpan.FromSeconds(30))
+            .GetAwaiter().GetResult()
+            ?? throw new TimeoutException("Timed out waiting to refresh the compiler standard library");
 
         int copiedCount = 0;
         var sourceFiles = Directory.GetFiles(projectStdlibDir, "*.novus", SearchOption.AllDirectories);

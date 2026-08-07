@@ -43,6 +43,7 @@ public class SymbolTable
     private readonly Dictionary<string, IrStructType> _structs = new();
     private readonly Dictionary<string, IrEnumType> _enums = new();
     private readonly Dictionary<string, IrTrait> _traits = new();
+    private readonly Dictionary<string, IrType> _typeAliases = new();
 
     // Functions and variables
     // Functions are stored as overload sets (list of functions with same name but different signatures)
@@ -174,6 +175,27 @@ public class SymbolTable
     /// Gets all structs defined in this scope (not including parent scopes)
     /// </summary>
     public IReadOnlyDictionary<string, IrStructType> GetLocalStructs() => _structs;
+
+    public void RegisterTypeAlias(string name, IrType type) => _typeAliases[name] = type;
+
+    public IrType? LookupTypeAlias(string name)
+    {
+        if (_typeAliases.TryGetValue(name, out var type))
+            return type;
+        return _parent?.LookupTypeAlias(name);
+    }
+
+    public IReadOnlyDictionary<string, IrType> GetLocalTypeAliases() => _typeAliases;
+
+    /// <summary>Removes imported type candidates so a module-local declaration can shadow them.</summary>
+    public void RemoveNamedType(string name)
+    {
+        _structs.Remove(name);
+        _structLocations.Remove(name);
+        _enums.Remove(name);
+        _enumLocations.Remove(name);
+        _typeAliases.Remove(name);
+    }
 
     // ============================================================================
     // ENUM REGISTRATION AND LOOKUP

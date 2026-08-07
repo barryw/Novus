@@ -38,6 +38,20 @@ public delegate ConstFnCallResult? ConstFnCallEvaluator(string functionName, Lis
 /// </summary>
 public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
 {
+    public static bool TryParseFloatingLiteral(NovusParser.ExpressionContext context, out double value)
+    {
+        var text = context.GetText();
+        foreach (var suffix in new[] { "fixed16", "fixed32", "f32", "f64" })
+        {
+            if (text.EndsWith(suffix, StringComparison.Ordinal))
+            {
+                text = text[..^suffix.Length];
+                break;
+            }
+        }
+        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+    }
+
     private readonly Dictionary<string, object> _constants;
     private readonly Action<string> _onError;
     private readonly ConstFnCallEvaluator? _constFnEvaluator;

@@ -23,8 +23,10 @@ public class CHeaderParser
     public class CStruct
     {
         public string Name { get; set; } = "";
+        public string TagName { get; set; } = "";
         public List<CField> Fields { get; set; } = new();
         public bool HasUnion { get; set; }
+        public bool IsTypedef { get; set; }
     }
 
     public class CField
@@ -94,11 +96,23 @@ public class CHeaderParser
             }
 
             // Parse struct definitions
-            if (line.StartsWith("struct") && line.Contains("{"))
+            if ((line.StartsWith("struct") || line.StartsWith("typedef struct")) &&
+                (line.Contains("{") || (i + 1 < preprocessed.Count && preprocessed[i + 1].TrimStart().StartsWith("{"))))
             {
                 var structDef = ParseStruct(preprocessed, ref i);
                 if (structDef != null)
+                {
                     header.Structs.Add(structDef);
+                    if (!string.IsNullOrWhiteSpace(structDef.TagName) &&
+                        structDef.TagName != structDef.Name)
+                    {
+                        header.Structs.Add(new CStruct
+                        {
+                            Name = structDef.TagName,
+                            TagName = structDef.TagName
+                        });
+                    }
+                }
             }
 
             // Parse enum definitions
@@ -200,6 +214,13 @@ public class CHeaderParser
             }
 
             if (!string.IsNullOrWhiteSpace(trimmed))
+            {
+                var lineCommentIndex = trimmed.IndexOf("//", StringComparison.Ordinal);
+                if (lineCommentIndex >= 0)
+                    trimmed = trimmed[..lineCommentIndex].Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(trimmed))
                 result.Add(trimmed);
         }
 
@@ -231,13 +252,15 @@ public class CHeaderParser
     {
         var line = lines[index];
 
-        // Extract struct name: "struct Name {" or "struct {"
-        var structMatch = Regex.Match(line, @"struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{");
-        if (!structMatch.Success)
+        // Extract struct name from either `struct Name {` or the common NDK
+        // style where the opening brace is on the following line.
+        var isTypedef = line.StartsWith("typedef struct", StringComparison.Ordinal);
+        var structMatch = Regex.Match(line, @"struct(?:\s+([A-Za-z_][A-Za-z0-9_]*))?");
+        if (!structMatch.Success || !isTypedef && !structMatch.Groups[1].Success)
             return null;
 
         var structName = structMatch.Groups[1].Value;
-        var structDef = new CStruct { Name = structName };
+        var structDef = new CStruct { Name = structName, TagName = structName, IsTypedef = isTypedef };
 
         // Check if this is a single-line struct: struct Name { fields };
         if (line.Contains("};"))
@@ -250,15 +273,16 @@ public class CHeaderParser
                 var content = line.Substring(startBrace + 1, endBrace - startBrace - 1).Trim();
                 if (!string.IsNullOrWhiteSpace(content))
                 {
-                    // Parse the field (there should only be one on single-line structs)
-                    var field = ParseField(content + ";");
-                    if (field != null)
-                        structDef.Fields.Add(field);
+                    structDef.Fields.AddRange(ParseFields(content + ";"));
                 }
             }
+            if (isTypedef)
+                structDef.Name = GetTypedefName(line) ?? structDef.Name;
             return structDef;
         }
 
+        if (!line.Contains("{"))
+            index++; // Move to the separate opening-brace line
         index++; // Move past opening brace
 
         // Parse fields until we hit closing brace
@@ -269,23 +293,98 @@ public class CHeaderParser
             if (fieldLine.StartsWith("}"))
                 break;
 
-            if (fieldLine.StartsWith("union"))
+            if (fieldLine.StartsWith("union") &&
+                (fieldLine.Contains('{') ||
+                 (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("{"))))
             {
                 structDef.HasUnion = true;
-                // Skip union for now - would need more complex parsing
+                SkipBracedBlock(lines, ref index);
                 index++;
                 continue;
             }
 
             // Parse field: TYPE name; or TYPE name[SIZE];
-            var field = ParseField(fieldLine);
-            if (field != null)
-                structDef.Fields.Add(field);
+            structDef.Fields.AddRange(ParseFields(fieldLine));
 
             index++;
         }
 
-        return structDef;
+        if (isTypedef)
+            structDef.Name = GetTypedefName(lines[index]) ?? structDef.Name;
+        return string.IsNullOrWhiteSpace(structDef.Name) ? null : structDef;
+    }
+
+    private static string? GetTypedefName(string closingLine)
+    {
+        var match = Regex.Match(closingLine, @"}\s*([A-Za-z_][A-Za-z0-9_]*)\s*;");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private static void SkipBracedBlock(List<string> lines, ref int index)
+    {
+        while (index < lines.Count && !lines[index].Contains('{'))
+            index++;
+
+        var depth = 0;
+        do
+        {
+            depth += lines[index].Count(c => c == '{');
+            depth -= lines[index].Count(c => c == '}');
+            index++;
+        } while (index < lines.Count && depth > 0);
+
+        index--;
+    }
+
+    private static IEnumerable<CField> ParseFields(string line)
+    {
+        if (!line.EndsWith(";"))
+            yield break;
+
+        var declaration = line.TrimEnd(';').Trim();
+        var declarators = SplitTopLevel(declaration, ',');
+        if (declarators.Count == 1)
+        {
+            var field = ParseField(line);
+            if (field != null)
+                yield return field;
+            yield break;
+        }
+
+        var firstMatch = Regex.Match(
+            declarators[0],
+            @"^(.+?)\s+((?:\*+\s*)?[A-Za-z_][A-Za-z0-9_]*(?:\s*\[[^\]]+\])?)$");
+        if (!firstMatch.Success)
+            yield break;
+
+        var baseType = firstMatch.Groups[1].Value.Trim();
+        declarators[0] = firstMatch.Groups[2].Value;
+        foreach (var declarator in declarators)
+        {
+            var field = ParseField($"{baseType} {declarator.Trim()};");
+            if (field != null)
+                yield return field;
+        }
+    }
+
+    private static List<string> SplitTopLevel(string value, char separator)
+    {
+        var parts = new List<string>();
+        var start = 0;
+        var depth = 0;
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            depth += value[i] is '(' or '[' ? 1 : value[i] is ')' or ']' ? -1 : 0;
+            if (value[i] == separator && depth == 0)
+            {
+                parts.Add(value[start..i]);
+                start = i + 1;
+            }
+        }
+
+        parts.Add(value[start..]);
+        return parts;
     }
 
     private static CField? ParseField(string line)
@@ -295,28 +394,34 @@ public class CHeaderParser
 
         line = line.TrimEnd(';').Trim();
 
-        // Handle function pointers: RETURNTYPE (*fieldName)()
-        var funcPtrMatch = Regex.Match(line, @"^(.+?)\s*\(\*([A-Za-z_][A-Za-z0-9_]*)\)\s*\(.*?\)$");
+        // Handle direct callbacks and NDK's RET (*name) __CLIB_PROTOTYPE((args)) form.
+        var funcPtrMatch = Regex.Match(
+            line,
+            @"^(.+?)\s*\(\*([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[([^\]]+)\])?\)\s*(?:__CLIB_PROTOTYPE\s*)?\((.*)\)$");
         if (funcPtrMatch.Success)
         {
+            var parameters = funcPtrMatch.Groups[4].Value.Trim();
+            if (parameters.StartsWith('(') && parameters.EndsWith(')'))
+                parameters = parameters[1..^1];
             return new CField
             {
-                Type = "*u8",  // Function pointers become *u8
+                Type = $"{funcPtrMatch.Groups[1].Value.Trim()} (*{funcPtrMatch.Groups[2].Value})({parameters})",
                 Name = funcPtrMatch.Groups[2].Value.Trim(),
-                IsArray = false
+                IsArray = funcPtrMatch.Groups[3].Success,
+                ArraySize = funcPtrMatch.Groups[3].Value.Trim()
             };
         }
 
         // Handle arrays: TYPE name[SIZE]
-        var arrayMatch = Regex.Match(line, @"^(.+?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[(.+?)\]$");
+        var arrayMatch = Regex.Match(line, @"^(.+?)\s+(\*+)?([A-Za-z_][A-Za-z0-9_]*)\s*\[(.+)\]$");
         if (arrayMatch.Success)
         {
             return new CField
             {
-                Type = arrayMatch.Groups[1].Value.Trim(),
-                Name = arrayMatch.Groups[2].Value.Trim(),
+                Type = (arrayMatch.Groups[1].Value + " " + arrayMatch.Groups[2].Value).Trim(),
+                Name = arrayMatch.Groups[3].Value.Trim(),
                 IsArray = true,
-                ArraySize = arrayMatch.Groups[3].Value.Trim()
+                ArraySize = arrayMatch.Groups[4].Value.Trim()
             };
         }
 

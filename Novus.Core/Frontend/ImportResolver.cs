@@ -155,8 +155,7 @@ public class ImportResolver
             foreach (var reexportDecl in moduleContext.reexportDeclaration())
             {
                 var reexportPath = reexportDecl.modulePath().GetText();
-                var reexportText = reexportDecl.GetText();
-                if (reexportText.EndsWith("::*"))
+            if (reexportDecl.STAR() != null)
                 {
                     ImportModule(reexportPath, importAll: true, importList: null);
                 }
@@ -255,8 +254,7 @@ public class ImportResolver
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
             var reexportPath = reexportDecl.modulePath().GetText();
-            var text = reexportDecl.GetText();
-            bool reexportAll = text.EndsWith("::*");
+            bool reexportAll = reexportDecl.STAR() != null;
 
             if (reexportAll)
             {

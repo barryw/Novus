@@ -1,7 +1,7 @@
 [package]
-name = "modern"
+name = "{{PROJECT_NAME}}-modern"
 type = "executable"
 entry = "src/main.novus"
 
 [build]
-output_name = "modern"
+output_name = "{{PROJECT_NAME}}-modern"

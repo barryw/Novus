@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: mathieeesingbas.library
 // Base: _MathIeeeSingBasBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,15 +11,27 @@
 // Library Functions
 // ============================================================================
 
-extern pub fn IEEESPFix(parm: *u8 /* FLOAT */) -> i32
-extern pub fn IEEESPFlt(integer: i32) -> *u8 /* FLOAT */
-extern pub fn IEEESPCmp(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> i32
-extern pub fn IEEESPTst(parm: *u8 /* FLOAT */) -> i32
-extern pub fn IEEESPAbs(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPNeg(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPAdd(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPSub(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPMul(leftParm: *u8 /* FLOAT */, rightParm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPDiv(dividend: *u8 /* FLOAT */, divisor: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPFloor(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn IEEESPCeil(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFix(parm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFlt(integer: i32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPCmp(leftParm: f32, rightParm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPTst(parm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPAbs(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPNeg(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPAdd(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPSub(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPMul(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPDiv(dividend: f32, divisor: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFloor(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPCeil(parm: f32) -> f32

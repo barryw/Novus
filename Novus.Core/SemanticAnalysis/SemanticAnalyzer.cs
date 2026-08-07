@@ -128,6 +128,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public IReadOnlyDictionary<string, VariableSymbol> GlobalVariables => _globalVariables;
     public IReadOnlyDictionary<string, IrStructType> Structs => _symbols.GetLocalStructs();
     public IReadOnlyDictionary<string, IrEnumType> Enums => _symbols.GetLocalEnums();
+    public IReadOnlyDictionary<string, IrType> TypeAliases => _symbols.GetLocalTypeAliases();
     public IReadOnlyDictionary<string, IrTrait> Traits => _symbols.GetLocalTraits();
     public IReadOnlyDictionary<string, ConstantSymbol> Constants => _symbols.GetLocalConstants();
 
@@ -170,6 +171,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             globalVariables: _globalVariables,
             structs: _symbols.GetLocalStructs(),
             enums: _symbols.GetLocalEnums(),
+            typeAliases: _symbols.GetLocalTypeAliases(),
             traits: _symbols.GetLocalTraits(),
             constants: _symbols.GetLocalConstants(),
             structLocations: _structLocations,
@@ -595,6 +597,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             ProcessImport(importDecl);
         }
 
+        // Local declarations shadow imported and transitive-imported type names.
+        foreach (var name in context.structDeclaration().Select(x => x.IDENTIFIER().GetText())
+                     .Concat(context.enumDeclaration().Select(x => x.IDENTIFIER().GetText()))
+                     .Concat(context.typeAliasDeclaration().Select(x => x.IDENTIFIER().GetText()))
+                     .Distinct())
+        {
+            _symbols.RemoveNamedType(name);
+            _importedNames.Remove(name);
+        }
+
         // First pass: register all struct PLACEHOLDERS first (before parsing fields)
         // This allows mutually recursive struct definitions (struct A { b: *B } struct B { a: *A })
         foreach (var structDecl in context.structDeclaration())
@@ -607,6 +619,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         foreach (var enumDecl in context.enumDeclaration())
         {
             RegisterEnumStub(enumDecl);
+        }
+
+        // Transparent aliases must be known before struct fields and enum payloads are parsed.
+        foreach (var aliasDecl in context.typeAliasDeclaration())
+        {
+            RegisterTypeAlias(aliasDecl);
         }
 
         // Third pass: fill in all struct fields (now all struct and enum names are known)
@@ -729,6 +747,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 {
                     RegisterStruct(structDecl);
                     return; // Found it
+                }
+            }
+            foreach (var aliasDecl in moduleContext.typeAliasDeclaration())
+            {
+                if (aliasDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    if (_symbols.LookupTypeAlias(symbolName) == null)
+                        RegisterTypeAlias(aliasDecl);
+                    return;
                 }
             }
             // Check constants
@@ -854,13 +881,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     var structName = structDecl.IDENTIFIER().GetText();
                     if (selectiveImports.Contains(structName))
                     {
-                        // Check if struct exists and has fields (fully registered)
-                        // This mirrors the enum logic above - a struct may exist as a
-                        // placeholder stub with empty Fields list
                         var existingStruct = _symbols.LookupStruct(structName);
-                        if (existingStruct == null || existingStruct.Fields is [])
+                        if (existingStruct == null)
                         {
-                            // Struct doesn't exist or is a stub - register the full definition
                             RegisterStruct(structDecl);
                         }
                         _importedNames[structName] = moduleNamespace;
@@ -918,8 +941,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
             var reexportPath = reexportDecl.modulePath().GetText();
-            var text = reexportDecl.GetText();
-            bool reexportAll = text.EndsWith("::*");
+            bool reexportAll = reexportDecl.STAR() != null;
 
             if (reexportAll)
             {
@@ -1002,6 +1024,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Register placeholder first - fields will be filled in the next pass
             RegisterStructPlaceholder(structDecl);
         }
+
+        RegisterTypeAliasesForImport(moduleContext);
 
         // Pass 2: Fill in struct fields now that all struct names are known
         // We must fill in ALL structs (including private ones) because public structs
@@ -1271,6 +1295,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
     }
 
+    private void RegisterTypeAliasesForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var aliasDecl in moduleContext.typeAliasDeclaration())
+        {
+            var name = aliasDecl.IDENTIFIER().GetText();
+            if (_symbols.LookupTypeAlias(name) == null)
+                RegisterTypeAlias(aliasDecl);
+        }
+    }
+
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
     {
         var name = context.IDENTIFIER().GetText();
@@ -1302,10 +1336,32 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Parse the type
-        var type = ParseType(context.type());
+        IrType? type = context.type() != null ? ParseType(context.type()) : null;
 
         // Evaluate the constant expression
         var valueExpr = context.expression();
+
+        if (valueExpr is NovusParser.PrimaryExprContext stringPrimary &&
+            stringPrimary.primaryExpression() is NovusParser.StringLiteralContext stringLiteral)
+        {
+            type ??= new IrPointerType(IrIntType.U8);
+            if (type is not IrPointerType { PointeeType: IrIntType { BitWidth: 8, IsSigned: false } })
+            {
+                _diagnostics.ReportError("E0032", "string constants must have type *u8", location);
+                return;
+            }
+
+            var text = stringLiteral.STRING_LITERAL().GetText();
+            _symbols.RegisterConstant(name, new ConstantSymbol(name, type, text[1..^1], location));
+            return;
+        }
+
+        if (type is IrFixedType or IrFloatType &&
+            ConstantExpressionEvaluator.TryParseFloatingLiteral(valueExpr, out var floatingValue))
+        {
+            _symbols.RegisterConstant(name, new ConstantSymbol(name, type, floatingValue, location));
+            return;
+        }
 
         // Check if this is a struct literal constant
         // Struct literals come as: PrimaryExpr -> StructLiteral
@@ -1332,7 +1388,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
 
             // Store placeholder value (0) - the struct literal itself will be handled in IR generation
-            _symbols.RegisterConstant(name, new ConstantSymbol(name, type, 0, location));
+            _symbols.RegisterConstant(name, new ConstantSymbol(name, type ?? IrIntType.I32, 0, location));
             return;
         }
 
@@ -1368,7 +1424,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 // so we can't validate that the function is a const fn here.
                 // The IrBuilder will validate and evaluate this constant later.
                 // Use placeholder value (0) - actual evaluation happens in IrBuilder.
-                _symbols.RegisterConstant(name, new ConstantSymbol(name, type, 0, location, isDeferredConstFn: true));
+                _symbols.RegisterConstant(name, new ConstantSymbol(name, type ?? IrIntType.I32, 0, location, isDeferredConstFn: true));
                 return;
             }
 
@@ -1384,7 +1440,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return;
         }
 
-        _symbols.RegisterConstant(name, new ConstantSymbol(name, type, value, location));
+        _symbols.RegisterConstant(name, new ConstantSymbol(name, type ?? IrIntType.I32, value, location));
     }
 
     /// <summary>
@@ -2191,6 +2247,23 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         RegisterStructPlaceholder(context);
         FillStructFields(context);
         RegisterDerivedMethods(context);
+    }
+
+    private void RegisterTypeAlias(NovusParser.TypeAliasDeclarationContext context)
+    {
+        var name = context.IDENTIFIER().GetText();
+        var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+
+        if (!ValidateNotReservedKeyword(name, location, "type alias"))
+            return;
+
+        if (_symbols.GetLocalTypeAliases().ContainsKey(name))
+        {
+            _diagnostics.ReportError("E0019", $"type alias '{name}' is defined multiple times", location);
+            return;
+        }
+
+        _symbols.RegisterTypeAlias(name, ParseType(context.type()));
     }
 
     /// <summary>
@@ -3316,6 +3389,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (stmt.panicStatement() != null)
             return true;
 
+        // An unconditional loop diverges unless a break can exit that loop.
+        if (stmt.foreverStatement() is { } forever)
+            return !ContainsBreakForCurrentLoop(forever.block(), isRoot: true);
+
         // Unsafe block returns if its inner block returns
         if (stmt.unsafeBlock() != null)
         {
@@ -3425,6 +3502,22 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
+        return false;
+    }
+
+    private static bool ContainsBreakForCurrentLoop(IParseTree node, bool isRoot)
+    {
+        if (node is NovusParser.BreakStatementContext)
+            return true;
+        if (!isRoot && node is NovusParser.WhileStatementContext or NovusParser.ForStatementContext or
+            NovusParser.ForeverStatementContext or NovusParser.LabeledLoopContext)
+            return false;
+
+        for (var i = 0; i < node.ChildCount; i++)
+        {
+            if (ContainsBreakForCurrentLoop(node.GetChild(i), isRoot: false))
+                return true;
+        }
         return false;
     }
 
@@ -3759,8 +3852,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 TypesCompatible(unsizedArrayType.ElementType, sizedArrayType.ElementType))
             {
                 // Unsized annotation with sized literal - this is the preferred syntax
-                // The IrBuilder will use the sized type from the expression
+                // Preserve the inferred length for later calls and indexing.
                 typesMatch = true;
+                varType = sizedArrayType;
             }
 
             // Check type compatibility with initializer
@@ -8048,8 +8142,39 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // The function name should be in a primary expression (identifier)
-        if (funcExpr is not NovusParser.PrimaryExprContext primaryCtx)
+        if (funcExpr is not NovusParser.PrimaryExprContext primaryCtx ||
+            primaryCtx.primaryExpression() is not NovusParser.IdentifierExprContext)
         {
+            var callableType = Visit(funcExpr);
+            if (callableType is IrFunctionPointerType functionPointer)
+            {
+                var arguments = context.argumentList()?.expression() ?? [];
+                if (arguments.Length != functionPointer.ParameterTypes.Count)
+                {
+                    _diagnostics.ReportError(
+                        "E0014",
+                        $"function pointer expects {functionPointer.ParameterTypes.Count} argument(s), but {arguments.Length} were provided",
+                        SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+                    return functionPointer.ReturnType;
+                }
+
+                for (var i = 0; i < arguments.Length; i++)
+                {
+                    var savedExpectedType = _expectedType;
+                    _expectedType = functionPointer.ParameterTypes[i];
+                    var argumentType = Visit(arguments[i]);
+                    _expectedType = savedExpectedType;
+                    if (argumentType != null && !TypesCompatible(functionPointer.ParameterTypes[i], argumentType))
+                    {
+                        _diagnostics.ReportError(
+                            "E0015",
+                            $"argument {i + 1} type mismatch",
+                            SourceLocationHelper.FromContext(arguments[i], _filePath, _sourceLines));
+                    }
+                }
+                return functionPointer.ReturnType;
+            }
+
             var location = SourceLocationHelper.FromContext(funcExpr, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0012",
@@ -8060,17 +8185,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Check if the primary expression is an identifier
-        var identifierExpr = primaryCtx.primaryExpression() as NovusParser.IdentifierExprContext;
-        if (identifierExpr == null)
-        {
-            var location = SourceLocationHelper.FromContext(primaryCtx, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0012",
-                "function call target must be an identifier or path expression",
-                location
-            );
-            return null;
-        }
+        var identifierExpr = (NovusParser.IdentifierExprContext)primaryCtx.primaryExpression();
 
         var functionName = identifierExpr.identifier().GetText();
         var argCount = context.argumentList()?.expression().Length ?? 0;
@@ -8982,7 +9097,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Build type substitution map for generic methods
         var typeSubstitutions = new Dictionary<string, IrType>();
-        if (receiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
+        var concreteReceiverType = receiverType switch
+        {
+            IrReferenceType reference => reference.PointeeType,
+            IrMutReferenceType reference => reference.PointeeType,
+            _ => receiverType
+        };
+        if (concreteReceiverType is IrStructType receiverStruct && receiverStruct.CacheKey != null)
         {
             // Receiver is a monomorphized struct (e.g., Vec<i32>, HashMap<u32, u32>)
             // Get the base generic struct to find generic parameter names
@@ -9025,7 +9146,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
         }
-        else if (receiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
+        else if (concreteReceiverType is IrEnumType receiverEnum && receiverEnum.CacheKey != null)
         {
             // Receiver is a monomorphized enum (e.g., Option<i32>)
             // Get the base generic enum to find generic parameter names
@@ -9133,6 +9254,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var argType = Visit(arguments[i]);
                 _expectedType = savedExpectedType;
                 var param = method.Parameters[paramStartIndex + i];
+
+                if (argType != null && method.MethodGenericParameters is { Count: > 0 })
+                    TypeSubstitutionHelper.ExtractGenericTypeMapping(paramType, argType, typeSubstitutions);
 
                 // Check if this parameter is consuming and mark the argument as moved
                 if (param.IsConsuming)
@@ -11760,6 +11884,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return _constGenericParams[typeName];
         }
 
+        var aliasType = _symbols.LookupTypeAlias(typeName);
+        if (aliasType != null)
+        {
+            if (context.genericTypeArgs() != null)
+            {
+                var location = SourceLocationHelper.FromToken(context.typeName().Start, _filePath, _sourceLines);
+                _diagnostics.ReportError("E0031", $"type alias '{typeName}' is not generic", location);
+            }
+            return aliasType;
+        }
+
         // Check if it's a struct type
         var structType = _symbols.LookupStruct(typeName);
         if (structType != null)
@@ -12105,6 +12240,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (expected is IrReferenceType expectedRef && actual is IrReferenceType actualRef)
         {
             return TypesCompatible(expectedRef.PointeeType, actualRef.PointeeType);
+        }
+
+        // A mutable borrow can always be viewed through an immutable reference.
+        if (expected is IrReferenceType immutableRef && actual is IrMutReferenceType mutableRef)
+        {
+            return TypesCompatible(immutableRef.PointeeType, mutableRef.PointeeType);
         }
 
         // Pointer types - must point to compatible types
@@ -12639,6 +12780,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             "u16" => IrIntType.U16,
             "u32" => IrIntType.U32,
             "u64" => IrIntType.U64,
+            "f32" => IrFloatType.F32,
+            "f64" => IrFloatType.F64,
+            "fixed16" => IrFixedType.Fixed16,
+            "fixed32" => IrFixedType.Fixed32,
             _ => null
         };
     }
@@ -13021,6 +13166,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         public IrConstGenericParam? LookupConstGenericParameter(string name)
         {
             return _analyzer._symbols.LookupConstGenericParameter(name);
+        }
+
+        public IrType? LookupTypeAlias(string name)
+        {
+            return _analyzer._symbols.LookupTypeAlias(name);
         }
 
         public IrStructType? LookupStruct(string name)

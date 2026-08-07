@@ -1,0 +1,12 @@
+from std::os::types import WORD, ULONG
+
+type Transform = fn(WORD) -> ULONG
+
+fn widen(value: WORD) -> ULONG {
+    return (ULONG)(u16)value
+}
+
+fn main() -> i32 {
+    let value: WORD = 21
+    return (i32)widen(value)
+}

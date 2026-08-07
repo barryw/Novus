@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: lowlevel.library
 // Base: _LowLevelBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -25,6 +27,7 @@
 /// device attached.
 ///
 /// See also: SetJoyPortAttrs()
+@library("lowlevel.library")
 extern pub fn ReadJoyPort(port: u32) -> u32
 /// Returns the current language selection. (V40)
 ///
@@ -36,6 +39,7 @@ extern pub fn ReadJoyPort(port: u32) -> u32
 /// supported language.
 ///
 /// See also: <libraries/lowlevel.h>, locale.doc
+@library("lowlevel.library")
 extern pub fn GetLanguageSelection() -> u8
 /// Returns the currently pressed rawkey code and qualifiers.
 ///
@@ -51,6 +55,7 @@ extern pub fn GetLanguageSelection() -> u8
 /// LLKB_RALT Right Alt LLKB_LAMIGA Left Amiga LLKB_RAMIGA Right Amiga
 ///
 /// See also: <libraries/lowlevel.h>
+@library("lowlevel.library")
 extern pub fn GetKey() -> u32
 /// Return the states for a set of keys. (V40)
 ///
@@ -67,6 +72,7 @@ extern pub fn GetKey() -> u32
 ///   queryArray
 ///
 /// See also: <libraries/lowlevel.h>
+@library("lowlevel.library")
 extern pub fn QueryKeys(queryArray: *KeyQuery, arraySize: u8)
 /// Adds a routine to the keyboard interrupt. (V40)
 ///
@@ -86,6 +92,7 @@ extern pub fn QueryKeys(queryArray: *KeyQuery, arraySize: u8)
 /// was not possible to attach the routine.
 ///
 /// See also: RemKBInt()
+@library("lowlevel.library")
 extern pub fn AddKBInt(intRoutine: *u8, intData: *u8) -> *u8
 /// Remove a previously installed keyboard interrupt. (V40)
 ///
@@ -96,6 +103,7 @@ extern pub fn AddKBInt(intRoutine: *u8, intData: *u8) -> *u8
 ///   which case this function does nothing.
 ///
 /// See also: AddKBInt()
+@library("lowlevel.library")
 extern pub fn RemKBInt(intHandle: *u8)
 /// Method for selectively disabling OS features. (V40)
 ///
@@ -112,6 +120,7 @@ extern pub fn RemKBInt(intHandle: *u8)
 /// that has failed. It is possible that other tags may fail as well.
 ///
 /// See also: <libraries/lowlevel.h>
+@library("lowlevel.library")
 extern pub fn SystemControlA(tagList: *TagItem) -> u32
 // Varargs function SystemControl skipped - needs manual implementation
 /// Adds an interrupt that is executed at regular
@@ -132,6 +141,7 @@ extern pub fn SystemControlA(tagList: *TagItem) -> u32
 /// was not possible to attach the routine.
 ///
 /// See also: RemTimerInt(), StopTimerInt(), StartTimerInt()
+@library("lowlevel.library")
 extern pub fn AddTimerInt(intRoutine: *u8, intData: *u8) -> *u8
 /// Remove a previously installed timer interrupt. (V40)
 ///
@@ -142,6 +152,7 @@ extern pub fn AddTimerInt(intRoutine: *u8, intData: *u8) -> *u8
 ///   in which case this function does nothing.
 ///
 /// See also: AddTimerInt(), StopTimerInt(), StartTimerInt()
+@library("lowlevel.library")
 extern pub fn RemTimerInt(intHandle: *u8)
 /// Stop the timer associated with the timer interrupt.
 ///
@@ -152,6 +163,7 @@ extern pub fn RemTimerInt(intHandle: *u8)
 /// * `intHandle` - handle obtained from AddTimerInt().
 ///
 /// See also: AddTimerInt(), RemTimerInt(), StartTimerInt()
+@library("lowlevel.library")
 extern pub fn StopTimerInt(intHandle: *u8)
 /// Start the timer associated with the timer interrupt.
 ///
@@ -166,6 +178,7 @@ extern pub fn StopTimerInt(intHandle: *u8)
 ///   multiple interrupts.
 ///
 /// See also: AddTimerInt(), RemTimerInt(), StopTimerInt()
+@library("lowlevel.library")
 extern pub fn StartTimerInt(intHandle: *u8, timeInterval: u32, continuous: i16)
 /// Returns the time elapsed since it was last called. (V40)
 ///
@@ -191,6 +204,7 @@ extern pub fn StartTimerInt(intHandle: *u8, timeInterval: u32, continuous: i16)
 /// The first call to this function will return a non-sense value. Only
 ///
 /// See also: timer.device/ReadEClock()
+@library("lowlevel.library")
 extern pub fn ElapsedTime(context: *EClockVal) -> u32
 /// Adds a routine executed every vertical blank. (V40)
 ///
@@ -210,6 +224,7 @@ extern pub fn ElapsedTime(context: *EClockVal) -> u32
 /// was not possible to attach the routine.
 ///
 /// See also: RemVBlankInt()
+@library("lowlevel.library")
 extern pub fn AddVBlankInt(intRoutine: *u8, intData: *u8) -> *u8
 /// Remove a previously installed vertical blank routine.
 ///
@@ -221,6 +236,7 @@ extern pub fn AddVBlankInt(intRoutine: *u8, intData: *u8) -> *u8
 ///   in which case this function does nothing.
 ///
 /// See also: AddVBlankInt()
+@library("lowlevel.library")
 extern pub fn RemVBlankInt(intHandle: *u8)
 /// Change the attributes of a port.  (V40.27)
 ///
@@ -240,5 +256,6 @@ extern pub fn RemVBlankInt(intHandle: *u8)
 /// failure
 ///
 /// See also: ReadJoyPort(), <libraries/lowlevel.h>
+@library("lowlevel.library")
 extern pub fn SetJoyPortAttrsA(portNumber: u32, tagList: *TagItem) -> i16
 // Varargs function SetJoyPortAttrs skipped - needs manual implementation

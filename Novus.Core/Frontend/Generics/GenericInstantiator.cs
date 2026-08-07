@@ -34,7 +34,8 @@ public interface IGenericInstantiator
         string methodName,
         bool isTraitImpl = false,
         string? traitName = null,
-        List<IrType>? traitTypeArgs = null
+        List<IrType>? traitTypeArgs = null,
+        List<IrValue>? arguments = null
     );
 
     /// <summary>

@@ -183,6 +183,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         // Lookups
         public IrType? LookupGenericParameter(string name) => _builder._symbols.LookupGenericParameter(name);
         public IrConstGenericParam? LookupConstGenericParameter(string name) => _builder._symbols.LookupConstGenericParameter(name);
+        public IrType? LookupTypeAlias(string name) => _builder._symbols.LookupTypeAlias(name);
         public IrStructType? LookupStruct(string name) => _builder._symbols.LookupStruct(name);
         public IrEnumType? LookupEnum(string name) => _builder._symbols.LookupEnum(name);
         public IrStructType? LookupMonomorphizedStruct(string cacheKey) => _builder._symbols.LookupMonomorphizedStruct(cacheKey);
@@ -523,6 +524,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         {
             var location = analysisResult.EnumLocations.TryGetValue(name, out var loc) ? loc : null;
             _symbols.RegisterEnum(name, enumType, location);
+        }
+        foreach (var (name, type) in analysisResult.TypeAliases)
+        {
+            _symbols.RegisterTypeAlias(name, type);
         }
         foreach (var (name, trait) in analysisResult.Traits)
         {
@@ -930,6 +935,28 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             ProcessImport(importDecl);
         }
 
+        foreach (var declaration in context.structDeclaration())
+        {
+            var name = declaration.IDENTIFIER().GetText();
+            _symbols.RemoveNamedType(name);
+            if (_analysisResult?.Structs.TryGetValue(name, out var type) == true)
+                _symbols.RegisterStruct(name, type);
+        }
+        foreach (var declaration in context.enumDeclaration())
+        {
+            var name = declaration.IDENTIFIER().GetText();
+            _symbols.RemoveNamedType(name);
+            if (_analysisResult?.Enums.TryGetValue(name, out var type) == true)
+                _symbols.RegisterEnum(name, type);
+        }
+        foreach (var declaration in context.typeAliasDeclaration())
+        {
+            var name = declaration.IDENTIFIER().GetText();
+            _symbols.RemoveNamedType(name);
+            if (_analysisResult?.TypeAliases.TryGetValue(name, out var type) == true)
+                _symbols.RegisterTypeAlias(name, type);
+        }
+
         // Pass 1: Register all constant values
         foreach (var constContext in context.constDeclaration())
         {
@@ -979,6 +1006,12 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             var genericParams = ParseGenericParameters(structContext.genericParams());
             var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null);
             _symbols.RegisterStruct(structName, placeholderStruct);
+        }
+
+        // Aliases are transparent and emit no IR, but fields/signatures may depend on them.
+        foreach (var aliasContext in context.typeAliasDeclaration())
+        {
+            RegisterTypeAlias(aliasContext);
         }
 
         // Pass 2b: Fill in enum variants for all enums
@@ -1154,11 +1187,11 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             {
                 var funcDecl = implItem.functionDeclaration();
                 if (funcDecl == null) continue;
-
                 var methodName = funcDecl.IDENTIFIER().GetText();
+                var methodGenericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams());
 
                 // For generic impl blocks, store methods as templates for later instantiation
-                if (genericParams.Count > 0)
+                if (genericParams.Count > 0 || methodGenericParams.Count > 0)
                 {
                     StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
@@ -1357,6 +1390,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             {
                 var funcDecl = implItem.functionDeclaration();
                 if (funcDecl == null) continue;
+                if (funcDecl.genericParams() != null) continue;
 
                 var methodName = funcDecl.IDENTIFIER().GetText();
 

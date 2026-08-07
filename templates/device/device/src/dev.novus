@@ -1,190 +1,42 @@
-// {{PROJECT_NAME}}.device - AmigaOS device driver
+// {{PROJECT_NAME}}.device - minimal Novus device driver
 //
-// This is a template for creating AmigaOS device drivers.
-//
-// Device drivers differ from libraries:
-//   - Libraries expose functions via vector tables
-//   - Devices process commands via BeginIO/AbortIO using IORequest
-//
-// The compiler will generate:
-//   - ROMTag for exec.library scanning
-//   - DevInit, DevOpen, DevClose, DevExpunge lifecycle functions
-//   - BeginIO command dispatcher
-//   - AbortIO handler
-//   - A6 calling convention wrappers
+// The compiler generates the resident tag, lifecycle vectors, unit handling,
+// BeginIO dispatcher, AbortIO handler, and A6 wrappers. Application code only
+// defines persistent state and command handlers.
 
-from std::ffi::amiga_structs import IOStdReq, Unit, Device
-from std::ffi::amiga_consts import IOERR_NOCMD
+from std::ffi::amiga_structs import IORequest, IOStdReq
+from std::ffi::amiga_consts import CMD_RESET
 
-// ============================================================================
-// Device Constants
-// ============================================================================
-
-// Standard Exec commands
-pub const CMD_INVALID: u16 = 0
-pub const CMD_RESET: u16 = 1
-pub const CMD_READ: u16 = 2
-pub const CMD_WRITE: u16 = 3
-pub const CMD_UPDATE: u16 = 4
-pub const CMD_CLEAR: u16 = 5
-pub const CMD_STOP: u16 = 6
-pub const CMD_START: u16 = 7
-pub const CMD_FLUSH: u16 = 8
-pub const CMD_NONSTD: u16 = 9  // First device-specific command
-
-// Custom command constants for this device
-pub const CMD_MYDEVICE_STATUS: u16 = 9
-pub const CMD_MYDEVICE_CONFIG: u16 = 10
-
-// ============================================================================
-// Device State Structure
-// ============================================================================
-// This struct holds your device's global state.
-// It will be embedded in the generated device base structure.
-
-pub struct MyDeviceState {
-    initialized: bool,
-    buffer_ptr: *u8,
-    buffer_size: u32,
+@device(name = "{{PROJECT_NAME}}.device", units = 1)
+pub struct DeviceState {
+    configured: bool,
     command_count: u32,
 }
 
-// ============================================================================
-// Command Handlers
-// ============================================================================
-// These functions handle device commands dispatched by BeginIO.
-// Each takes an IOStdReq pointer and device state pointer.
-// Returns 0 on success, or an IOERR_* code on failure.
-
-// CMD_RESET - Reset device to initial state
-pub fn handle_reset(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
+@devicecmd(cmd = "CMD_RESET", quick = true)
+pub fn reset(io_req: *IORequest, state: *DeviceState) -> i8 {
     unsafe {
-        (*state).initialized = false
-        (*state).buffer_ptr = null
-        (*state).buffer_size = 0
-        (*state).command_count = (*state).command_count + 1
+        (*state).configured = false
+        (*state).command_count++
     }
     return 0
 }
 
-// CMD_READ - Read data from device
-pub fn handle_read(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
-    // Access IOStdReq fields:
-    //   (*ioReq).io_Data   - destination buffer pointer
-    //   (*ioReq).io_Length - requested read length
-    //   (*ioReq).io_Actual - set to actual bytes read
-
+@devicecmd(cmd = 9, quick = true)
+pub fn status(io_req: *IORequest, state: *DeviceState) -> i8 {
     unsafe {
-        (*state).command_count = (*state).command_count + 1
-    }
-
-    // TODO: Implement read logic
-    // For now, return "not implemented"
-    return (i8)IOERR_NOCMD
-}
-
-// CMD_WRITE - Write data to device
-pub fn handle_write(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
-    // Access IOStdReq fields:
-    //   (*ioReq).io_Data   - source buffer pointer
-    //   (*ioReq).io_Length - data length
-    //   (*ioReq).io_Actual - set to actual bytes written
-
-    unsafe {
-        (*state).command_count = (*state).command_count + 1
-    }
-
-    // TODO: Implement write logic
-    return (i8)IOERR_NOCMD
-}
-
-// CMD_MYDEVICE_STATUS - Custom status command
-pub fn handle_status(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
-    unsafe {
-        (*state).command_count = (*state).command_count + 1
-
-        // Return device status in io_Actual
-        if (*state).initialized {
-            (*ioReq).io_Actual = 1
-        } else {
-            (*ioReq).io_Actual = 0
-        }
+        (*state).command_count++
+        let std_req = (*IOStdReq)io_req
+        (*std_req).io_Actual = if (*state).configured { 1 } else { 0 }
     }
     return 0
 }
 
-// CMD_MYDEVICE_CONFIG - Custom config command
-pub fn handle_config(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
+@devicecmd(cmd = 10, quick = true)
+pub fn configure(io_req: *IORequest, state: *DeviceState) -> i8 {
     unsafe {
-        (*state).command_count = (*state).command_count + 1
-        (*state).initialized = true
+        (*state).configured = true
+        (*state).command_count++
     }
     return 0
-}
-
-// ============================================================================
-// Command Dispatcher
-// ============================================================================
-// This function routes io_Command to the appropriate handler.
-// The compiler-generated BeginIO will call this.
-
-pub fn dispatch_command(ioReq: *IOStdReq, state: *MyDeviceState) -> i8 {
-    let cmd: u16 = 0
-    unsafe {
-        cmd = (*ioReq).io_Command
-    }
-
-    if cmd == CMD_RESET {
-        return handle_reset(ioReq, state)
-    }
-    if cmd == CMD_READ {
-        return handle_read(ioReq, state)
-    }
-    if cmd == CMD_WRITE {
-        return handle_write(ioReq, state)
-    }
-    if cmd == CMD_MYDEVICE_STATUS {
-        return handle_status(ioReq, state)
-    }
-    if cmd == CMD_MYDEVICE_CONFIG {
-        return handle_config(ioReq, state)
-    }
-
-    // Unknown command
-    return (i8)IOERR_NOCMD
-}
-
-// ============================================================================
-// Device Lifecycle Functions
-// ============================================================================
-// These are called by the generated device code.
-
-// Called when device is first loaded
-pub fn device_init(state: *MyDeviceState) -> bool {
-    unsafe {
-        (*state).initialized = false
-        (*state).buffer_ptr = null
-        (*state).buffer_size = 0
-        (*state).command_count = 0
-    }
-    return true
-}
-
-// Called when a program opens the device
-pub fn device_open(unit: u32, state: *MyDeviceState) -> i8 {
-    // Unit validation is handled by generated code
-    // Add per-unit initialization here if needed
-    return 0
-}
-
-// Called when a program closes the device
-pub fn device_close(unit: u32, state: *MyDeviceState) {
-    // Add per-unit cleanup here if needed
-}
-
-// Called when device should be removed from memory
-pub fn device_expunge(state: *MyDeviceState) -> bool {
-    // Free any allocated resources
-    // Return true if device can be expunged
-    return true
 }

@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: iffparse.library
 // Base: _IFFParseBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -18,6 +20,7 @@
 /// iff - pointer to IFFHandle structure or NULL if the allocation failed.
 ///
 /// See also: FreeIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn AllocIFF() -> *IFFHandle
 /// Prepare an IFFHandle to read or write a new IFF stream.
 ///
@@ -34,6 +37,7 @@ extern pub fn AllocIFF() -> *IFFHandle
 /// error - contains an error code or 0 if successful
 ///
 /// See also: CloseIFF(), InitIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn OpenIFF(iff: *IFFHandle, rwMode: i32) -> i32
 /// Parse an IFF file from an IFFHandle structure stream. (V36)
 ///
@@ -49,6 +53,7 @@ extern pub fn OpenIFF(iff: *IFFHandle, rwMode: i32) -> i32
 /// error - 0 or IFFERR_#? value or return value from user handler.
 ///
 /// See also: PushChunk(), PopChunk(), EntryHandler(), ExitHandler(), PropChunk()
+@library("iffparse.library")
 extern pub fn ParseIFF(iff: *IFFHandle, control: i32) -> i32
 /// Close an IFF context. (V36)
 ///
@@ -61,6 +66,7 @@ extern pub fn ParseIFF(iff: *IFFHandle, control: i32) -> i32
 ///   OpenIFF(). Starting with V39, this may be NULL.
 ///
 /// See also: OpenIFF(), InitIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn CloseIFF(iff: *IFFHandle)
 /// Deallocate an IFFHandle structure. (V36)
 ///
@@ -72,6 +78,7 @@ extern pub fn CloseIFF(iff: *IFFHandle)
 ///   this may be NULL.
 ///
 /// See also: AllocIFF(), CloseIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FreeIFF(iff: *IFFHandle)
 /// Read bytes from the current chunk into a buffer.
 ///
@@ -88,6 +95,7 @@ extern pub fn FreeIFF(iff: *IFFHandle)
 /// IFFERR_#? error code if unsuccessful.
 ///
 /// See also: ReadChunkRecords(), ParseIFF(), WriteChunkBytes(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn ReadChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
 /// Write data from a buffer into the current chunk.
 ///
@@ -104,6 +112,7 @@ extern pub fn ReadChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
 /// (negative) IFFERR_#? error code if unsuccessful.
 ///
 /// See also: PushChunk(), PopChunk(), WriteChunkRecords(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn WriteChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
 /// Read record elements from the current chunk into
 ///
@@ -121,6 +130,7 @@ extern pub fn WriteChunkBytes(iff: *IFFHandle, buf: *u8, numBytes: i32) -> i32
 /// (negative) IFFERR_#? error code if unsuccessful.
 ///
 /// See also: ReadChunkBytes(), ParseIFF(), WriteChunkRecords(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn ReadChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, numRecords: i32) -> i32
 /// Write records from a buffer to the current
 ///
@@ -137,6 +147,7 @@ extern pub fn ReadChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, n
 /// (negative) IFFERR_#? error code if unsuccessful.
 ///
 /// See also: WriteChunkBytes(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn WriteChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, numRecords: i32) -> i32
 /// Push a new context node on the context stack. (V36)
 ///
@@ -155,6 +166,7 @@ extern pub fn WriteChunkRecords(iff: *IFFHandle, buf: *u8, bytesPerRecord: i32, 
 /// error - 0 if successful or an IFFERR_#? error code if not unsuccessful.
 ///
 /// See also: PopChunk(), WriteChunkRecords(), WriteChunkBytes(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn PushChunk(iff: *IFFHandle, _type: i32, id: i32, size: i32) -> i32
 /// Pop top context node off context stack. (V36)
 ///
@@ -169,6 +181,7 @@ extern pub fn PushChunk(iff: *IFFHandle, _type: i32, id: i32, size: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: PushChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn PopChunk(iff: *IFFHandle) -> i32
 /// Add an entry handler to the IFFHandle context. (V36)
 ///
@@ -187,6 +200,7 @@ extern pub fn PopChunk(iff: *IFFHandle) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: ExitHandler(), StoreLocalItem(), StoreItemInContext(), <utility/hooks.h>, <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn EntryHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, handler: *Hook, object: *u8) -> i32
 /// Add an exit handler to the IFFHandle context. (V36)
 ///
@@ -205,6 +219,7 @@ extern pub fn EntryHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, 
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: EntryHandler(), StoreLocalItem(), StoreItemInContext(), <utility/hooks.h>, <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn ExitHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, handler: *Hook, object: *u8) -> i32
 /// Specify a property chunk to store. (V36)
 ///
@@ -223,6 +238,7 @@ extern pub fn ExitHandler(iff: *IFFHandle, _type: i32, id: i32, position: i32, h
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: PropChunks(), FindProp(), CollectionChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn PropChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// Declare many property chunks at once. (V36)
 ///
@@ -240,6 +256,7 @@ extern pub fn PropChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: PropChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn PropChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
 /// Declare a chunk which should cause ParseIFF to return.
 ///
@@ -257,6 +274,7 @@ extern pub fn PropChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: StopChunks(), ParseIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn StopChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// Declare many stop chunks at once. (V36)
 ///
@@ -271,6 +289,7 @@ extern pub fn StopChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: StopChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn StopChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
 /// Declare a chunk type for collection. (V36)
 ///
@@ -288,6 +307,7 @@ extern pub fn StopChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: CollectionChunks(), FindCollection(), PropChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn CollectionChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// Declare many collection chunks at once. (V36)
 ///
@@ -303,6 +323,7 @@ extern pub fn CollectionChunk(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful
 ///
 /// See also: CollectionChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn CollectionChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -> i32
 /// Declare a stop condition for exiting a chunk. (V36)
 ///
@@ -320,6 +341,7 @@ extern pub fn CollectionChunks(iff: *IFFHandle, propArray: *u8, numPairs: i32) -
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: ParseIFF(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn StopOnExit(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// Search for a stored property chunk. (V36)
 ///
@@ -336,6 +358,7 @@ extern pub fn StopOnExit(iff: *IFFHandle, _type: i32, id: i32) -> i32
 /// sp - pointer to stored property, or NULL if none found.
 ///
 /// See also: PropChunk(), PropChunks(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FindProp(iff: *IFFHandle, _type: i32, id: i32) -> *StoredProperty
 /// Get a pointer to the current list of collection
 ///
@@ -353,6 +376,7 @@ extern pub fn FindProp(iff: *IFFHandle, _type: i32, id: i32) -> *StoredProperty
 /// previous ones.
 ///
 /// See also: CollectionChunk(), CollectionChunks(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FindCollection(iff: *IFFHandle, _type: i32, id: i32) -> *CollectionItem
 /// Get the property context for the current state.
 ///
@@ -367,6 +391,7 @@ extern pub fn FindCollection(iff: *IFFHandle, _type: i32, id: i32) -> *Collectio
 /// cn - ContextNode of property scoping chunk.
 ///
 /// See also: CurrentChunk(), ParentChunk(), StoreItemInContext(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FindPropContext(iff: *IFFHandle) -> *ContextNode
 /// Get context node for current chunk. (V36)
 ///
@@ -381,6 +406,7 @@ extern pub fn FindPropContext(iff: *IFFHandle) -> *ContextNode
 /// top - pointer to top context node or NULL if none
 ///
 /// See also: PushChunk(), PopChunk(), ParseIFF(), ParentChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn CurrentChunk(iff: *IFFHandle) -> *ContextNode
 /// Get the nesting context node for the given chunk. (V36)
 ///
@@ -395,6 +421,7 @@ extern pub fn CurrentChunk(iff: *IFFHandle) -> *ContextNode
 /// parent - pointer to the enclosing context node or NULL if none.
 ///
 /// See also: CurrentChunk(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn ParentChunk(contextNode: *ContextNode) -> *ContextNode
 /// Create a local context item structure. (V36)
 ///
@@ -412,6 +439,7 @@ extern pub fn ParentChunk(contextNode: *ContextNode) -> *ContextNode
 /// allocation failed.
 ///
 /// See also: FreeLocalItem(), LocalItemData(), StoreLocalItem(), StoreItemInContext(), SetLocalItemPurge()
+@library("iffparse.library")
 extern pub fn AllocLocalItem(_type: i32, id: i32, ident: i32, dataSize: i32) -> *LocalContextItem
 /// Get pointer to user data for local context item. (V36)
 ///
@@ -426,6 +454,7 @@ extern pub fn AllocLocalItem(_type: i32, id: i32, ident: i32, dataSize: i32) -> 
 /// data - pointer to user data area or NULL if localItem is NULL.
 ///
 /// See also: AllocLocalItem(), FreeLocalItem(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn LocalItemData(localItem: *LocalContextItem) -> *u8
 /// Set purge vector for a local context item. (V36)
 ///
@@ -439,6 +468,7 @@ extern pub fn LocalItemData(localItem: *LocalContextItem) -> *u8
 ///   a Hook structure.
 ///
 /// See also: AllocLocalItem(), FreeLocalItem(), <utility/hooks.h> <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn SetLocalItemPurge(localItem: *LocalContextItem, purgeHook: *Hook)
 /// Deallocate a local context item structure. (V36)
 ///
@@ -452,6 +482,7 @@ extern pub fn SetLocalItemPurge(localItem: *LocalContextItem, purgeHook: *Hook)
 ///   AllocLocalItem. Starting with V39, this may be NULL.
 ///
 /// See also: AllocLocalItem(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FreeLocalItem(localItem: *LocalContextItem)
 /// Return a local context item from the context stack.
 ///
@@ -470,6 +501,7 @@ extern pub fn FreeLocalItem(localItem: *LocalContextItem)
 /// lci - pointer to local context item, or NULL if nothing matched.
 ///
 /// See also: StoreLocalItem(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn FindLocalItem(iff: *IFFHandle, _type: i32, id: i32, ident: i32) -> *LocalContextItem
 /// Insert a local context item into the context stack.
 ///
@@ -488,6 +520,7 @@ extern pub fn FindLocalItem(iff: *IFFHandle, _type: i32, id: i32, ident: i32) ->
 /// error - 0 if successful or an IFFERR_#? error code if unsuccessful.
 ///
 /// See also: FindLocalItem(), StoreItemInContext(), EntryHandler(), ExitHandler(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn StoreLocalItem(iff: *IFFHandle, localItem: *LocalContextItem, position: i32) -> i32
 /// Store local context item in given context node.
 ///
@@ -501,6 +534,7 @@ extern pub fn StoreLocalItem(iff: *IFFHandle, localItem: *LocalContextItem, posi
 ///   context node in which to store item.
 ///
 /// See also: StoreLocalItem(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn StoreItemInContext(iff: *IFFHandle, localItem: *LocalContextItem, contextNode: *ContextNode)
 /// Initialize an IFFHandle structure as a user stream. (V36)
 ///
@@ -515,6 +549,7 @@ extern pub fn StoreItemInContext(iff: *IFFHandle, localItem: *LocalContextItem, 
 ///   I/O flags for the IFFHandle. streamHook - pointer to Hook structure.
 ///
 /// See also: <utility/hooks.h>, <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn InitIFF(iff: *IFFHandle, flags: i32, streamHook: *Hook)
 /// Initialize an IFFHandle as a DOS stream. (V36)
 ///
@@ -526,6 +561,7 @@ extern pub fn InitIFF(iff: *IFFHandle, flags: i32, streamHook: *Hook)
 /// * `iff` - pointer to IFFHandle structure.
 ///
 /// See also: InitIFF()
+@library("iffparse.library")
 extern pub fn InitIFFasDOS(iff: *IFFHandle)
 /// Initialize an IFFHandle as a clipboard stream. (V36)
 ///
@@ -537,6 +573,7 @@ extern pub fn InitIFFasDOS(iff: *IFFHandle)
 /// * `iff` - pointer to IFFHandle structure.
 ///
 /// See also: InitIFF(), OpenClipboard(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn InitIFFasClip(iff: *IFFHandle)
 /// Create a handle on a clipboard unit. (V36)
 ///
@@ -551,6 +588,7 @@ extern pub fn InitIFFasClip(iff: *IFFHandle)
 /// ch - pointer to ClipboardHandle structure or NULL if unsuccessful.
 ///
 /// See also: InitIFFasClip(), CloseClipboard(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn OpenClipboard(unitNumber: i32) -> *ClipboardHandle
 /// Close and free an open ClipboardHandle. (V36)
 ///
@@ -561,6 +599,7 @@ extern pub fn OpenClipboard(unitNumber: i32) -> *ClipboardHandle
 ///   OpenClipboard(). Starting with V39, this may be NULL.
 ///
 /// See also: OpenClipboard(), InitIFFasClip(), <libraries/iffparse.h>
+@library("iffparse.library")
 extern pub fn CloseClipboard(clipHandle: *ClipboardHandle)
 /// Test if an identifier follows the IFF 85 specification. (V36)
 ///
@@ -574,6 +613,7 @@ extern pub fn CloseClipboard(clipHandle: *ClipboardHandle)
 /// isok - non-zero if this is a valid ID, 0 otherwise.
 ///
 /// See also: GoodType()
+@library("iffparse.library")
 extern pub fn GoodID(id: i32) -> i32
 /// Test if a type follows the IFF 85 specification. (V36)
 ///
@@ -589,6 +629,7 @@ extern pub fn GoodID(id: i32) -> i32
 /// isok - non-zero if this is a valid type id, 0 otherwise.
 ///
 /// See also: GoodID()
+@library("iffparse.library")
 extern pub fn GoodType(_type: i32) -> i32
 /// Convert a longword identifier to a null-terminated string.
 ///
@@ -601,4 +642,5 @@ extern pub fn GoodType(_type: i32) -> i32
 ///
 /// # Returns
 /// str - the value of 'buf'.
+@library("iffparse.library")
 extern pub fn IDtoStr(id: i32, buf: *u8) -> *u8

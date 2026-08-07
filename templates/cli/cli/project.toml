@@ -1,14 +1,14 @@
 [package]
-name = "myapp"
+name = "{{PROJECT_NAME}}"
 version = "1.0.0"
 type = "cli"
 entry = "./src/main.novus"
 
 [build]
-# Target CPU: auto, 68000, 68020, 68030, 68040, 68060
+# Target CPU: auto, 68020, 68030, 68040, 68060
 target_cpu = "68020"
 
-# FPU mode: auto, none, 68881, 68882, 68040, 68060
+# FPU mode: auto, soft, 68881, 68040
 fpu = "auto"
 
 # Chipset: auto, OCS, ECS, AGA

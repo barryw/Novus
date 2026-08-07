@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: scroller.library
 // Base: _ScrollerBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,4 +11,5 @@
 // Library Functions
 // ============================================================================
 
+@library("scroller.library")
 extern pub fn SCROLLER_GetClass() -> *u8

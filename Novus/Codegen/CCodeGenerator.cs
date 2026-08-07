@@ -1549,7 +1549,6 @@ public partial class CCodeGenerator
                             "intuition.library",
                             "graphics.library",
                             "gadtools.library",
-                            "timer.device",  // timer protos are also included
                             // Note: MUI_* functions are handled by our stubs, not proto headers
                         };
 
@@ -9066,6 +9065,18 @@ public partial class CCodeGenerator
         // If so, inline the constant value instead of emitting the variable name
         if (_module.Constants.TryGetValue(variable.Name, out var constant))
         {
+            if (constant.Type is IrFixedType fixedType)
+            {
+                var raw = (long)(Convert.ToDouble(constant.Value) * (1 << (fixedType.BitWidth / 2)));
+                return $"({GetCType(fixedType)}){raw}";
+            }
+            if (constant.Type is IrFloatType floatType)
+            {
+                var floatValue = Convert.ToDouble(constant.Value);
+                return floatType.BitWidth == 32
+                    ? floatValue.ToString("G9", System.Globalization.CultureInfo.InvariantCulture) + "f"
+                    : floatValue.ToString("G17", System.Globalization.CultureInfo.InvariantCulture);
+            }
             return constant.Value.ToString() ?? "0";
         }
 

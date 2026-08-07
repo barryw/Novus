@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: utility.library
 // Base: _UtilityBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -22,6 +24,7 @@
 /// no match was found.
 ///
 /// See also: <utility/tagitem.h>, GetTagData(), PackBoolTags(), NextTagItem()
+@library("utility.library")
 extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
 /// Obtain the data corresponding to a tag. (V36)
 ///
@@ -38,6 +41,7 @@ extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
 /// if a ti_Tag matching 'Tag' is not found.
 ///
 /// See also: <utility/tagitem.h>, FindTagItem(), PackBoolTags(), NextTagItem()
+@library("utility.library")
 extern pub fn GetTagData(tagValue: *u8 /* Tag */, defaultVal: u32, tagList: *TagItem) -> u32
 /// Builds a "flag" word from a tag list. (V36)
 ///
@@ -65,6 +69,7 @@ extern pub fn GetTagData(tagValue: *u8 /* Tag */, defaultVal: u32, tagList: *Tag
 /// In a case where there is duplication of a tag in tagList, the
 ///
 /// See also: <utility/tagitem.h>, GetTagData(), FindTagItem(), NextTagItem()
+@library("utility.library")
 extern pub fn PackBoolTags(initialFlags: u32, tagList: *TagItem, boolMap: *TagItem) -> u32
 /// Iterate through a tag list. (V36)
 ///
@@ -85,6 +90,7 @@ extern pub fn PackBoolTags(initialFlags: u32, tagList: *TagItem, boolMap: *TagIt
 /// Do NOT use the value of *tagItemPtr, but rather use the pointer
 ///
 /// See also: <utility/tagitem.h>, GetTagData(), PackBoolTags(), FindTagItem()
+@library("utility.library")
 extern pub fn NextTagItem(tagListPtr: *TagItem) -> *TagItem
 /// Eliminate tags which specify no change. (V36)
 ///
@@ -99,7 +105,9 @@ extern pub fn NextTagItem(tagListPtr: *TagItem) -> *TagItem
 ///   values in changeList.
 ///
 /// See also: <utility/tagitem.h>, ApplyTagChanges()
+@library("utility.library")
 extern pub fn FilterTagChanges(changeList: *TagItem, originalList: *TagItem, apply: u32)
+@library("utility.library")
 extern pub fn MapTags(tagList: *TagItem, mapList: *TagItem, mapType: u32)
 /// Allocate a tag list. (V36)
 ///
@@ -115,6 +123,7 @@ extern pub fn MapTags(tagList: *TagItem, mapList: *TagItem, mapType: u32)
 /// using FreeTagItems().
 ///
 /// See also: <utility/tagitem.h>, FreeTagItems(), CloneTagItems()
+@library("utility.library")
 extern pub fn AllocateTagItems(numTags: u32) -> *TagItem
 /// Copy a tag list. (V36)
 ///
@@ -132,6 +141,7 @@ extern pub fn AllocateTagItems(numTags: u32) -> *TagItem
 /// FreeTagItems().
 ///
 /// See also: <utility/tagitem.h>, AllocateTagItems(), FreeTagItems(), RefreshTagItemClones()
+@library("utility.library")
 extern pub fn CloneTagItems(tagList: *TagItem) -> *TagItem
 /// Free an allocated tag list. (V36)
 ///
@@ -143,6 +153,7 @@ extern pub fn CloneTagItems(tagList: *TagItem) -> *TagItem
 ///   AllocateTagItems() or CloneTagItems() (may be NULL)
 ///
 /// See also: <utility/tagitem.h>, AllocateTagItems(), CloneTagItems()
+@library("utility.library")
 extern pub fn FreeTagItems(tagList: *TagItem)
 /// Rejuvenate a clone from the original. (V36)
 ///
@@ -155,6 +166,7 @@ extern pub fn FreeTagItems(tagList: *TagItem)
 ///   list that hasn't changed since CloneTagItems()
 ///
 /// See also: <utility/tagitem.h>, CloneTagItems(), AllocateTagItems(), FreeTagItems(), ApplyTagChanges()
+@library("utility.library")
 extern pub fn RefreshTagItemClones(clone: *TagItem, original: *TagItem)
 /// Check if a tag value appears in an array of tag values.
 ///
@@ -169,6 +181,7 @@ extern pub fn RefreshTagItemClones(clone: *TagItem, original: *TagItem)
 /// result - TRUE if tagValue was found in tagArray.
 ///
 /// See also: <utility/tagitem.h>, FilterTagItems()
+@library("utility.library")
 extern pub fn TagInArray(tagValue: *u8 /* Tag */, tagArray: *u8) -> i16
 /// Remove selected items from a tag list. (V36)
 ///
@@ -187,6 +200,7 @@ extern pub fn TagInArray(tagValue: *u8 /* Tag */, tagArray: *u8) -> i16
 /// numValid - number of valid items left in resulting filtered list.
 ///
 /// See also: <utility/tagitem.h>, TagInArray()
+@library("utility.library")
 extern pub fn FilterTagItems(tagList: *TagItem, filterArray: *u8, logic: u32) -> u32
 /// Invoke a Hook function callback. (V36)
 ///
@@ -207,6 +221,7 @@ extern pub fn FilterTagItems(tagList: *TagItem, filterArray: *u8, logic: u32) ->
 /// The functions called through this function should follow normal
 ///
 /// See also: <utility/hooks.h>
+@library("utility.library")
 extern pub fn CallHookPkt(hook: *Hook, object: *u8, paramPacket: *u8) -> u32
 /// Fill in a ClockData structure based on a system
 ///
@@ -219,6 +234,7 @@ extern pub fn CallHookPkt(hook: *Hook, object: *u8, paramPacket: *u8) -> u32
 ///   function
 ///
 /// See also: CheckDate(), Date2Amiga()
+@library("utility.library")
 extern pub fn Amiga2Date(seconds: u32, result: *ClockData)
 /// Calculate seconds from 01-Jan-1978. (V36)
 ///
@@ -236,6 +252,7 @@ extern pub fn Amiga2Date(seconds: u32, result: *ClockData)
 /// This function does no sanity checking of the data in the ClockData
 ///
 /// See also: Amiga2Date(), CheckDate()
+@library("utility.library")
 extern pub fn Date2Amiga(date: *ClockData) -> u32
 /// Checks a ClockData structure for legal date. (V36)
 ///
@@ -251,6 +268,7 @@ extern pub fn Date2Amiga(date: *ClockData) -> u32
 /// 01-Jan-1978 to the date
 ///
 /// See also: Amiga2Date(), Date2Amiga()
+@library("utility.library")
 extern pub fn CheckDate(date: *ClockData) -> u32
 /// Signed 32 by 32 bit multiply with 32 bit result. (V36)
 ///
@@ -263,6 +281,7 @@ extern pub fn CheckDate(date: *ClockData) -> u32
 /// result - the signed 32 bit result of multiplying arg1 by arg2.
 ///
 /// See also: SDivMod32(), UDivMod32(), UMult32(), SMult64(), UMult64()
+@library("utility.library")
 extern pub fn SMult32(arg1: i32, arg2: i32) -> i32
 /// Unsigned 32 by 32 bit multiply with 32 bit result. (V36)
 ///
@@ -275,6 +294,7 @@ extern pub fn SMult32(arg1: i32, arg2: i32) -> i32
 /// result - the unsigned 32 bit result of multiplying arg1 by arg2.
 ///
 /// See also: SDivMod32(), SMult32(), UDivMod32(), SMult64(), UMult64()
+@library("utility.library")
 extern pub fn UMult32(arg1: u32, arg2: u32) -> u32
 /// Signed 32 by 32 bit division and modulus. (V36)
 ///
@@ -289,6 +309,7 @@ extern pub fn UMult32(arg1: u32, arg2: u32) -> u32
 /// remainder of the division.
 ///
 /// See also: SMult32(), UDivMod32(), UMult32(), SMult64(), UMult64()
+@library("utility.library")
 extern pub fn SDivMod32(dividend: i32, divisor: i32) -> i32
 /// Unsigned 32 by 32 bit division and modulus. (V36)
 ///
@@ -304,7 +325,9 @@ extern pub fn SDivMod32(dividend: i32, divisor: i32) -> i32
 /// 32 remainder of the division.
 ///
 /// See also: SDivMod32(), SMult32(), UMult32()
+@library("utility.library")
 extern pub fn UDivMod32(dividend: u32, divisor: u32) -> u32
+@library("utility.library")
 extern pub fn Stricmp(string1: *u8, string2: *u8) -> i32
 /// Length-limited case-insensitive string compare. (V37)
 ///
@@ -321,6 +344,7 @@ extern pub fn Stricmp(string1: *u8, string2: *u8) -> i32
 /// string2 =0 means string1 = string2 >0 means string1 > string2
 ///
 /// See also: Stricmp(), locale.library/StrnCmp()
+@library("utility.library")
 extern pub fn Strnicmp(string1: *u8, string2: *u8, length: i32) -> i32
 /// Convert a character to upper case. (V37)
 ///
@@ -333,6 +357,7 @@ extern pub fn Strnicmp(string1: *u8, string2: *u8, length: i32) -> i32
 /// char - upper case version of input character.
 ///
 /// See also: ToUpper(), locale.library/ConvToLower()
+@library("utility.library")
 extern pub fn ToUpper(character: u8) -> u8
 /// Convert a character to lower case. (V37)
 ///
@@ -345,6 +370,7 @@ extern pub fn ToUpper(character: u8) -> u8
 /// char - lower case version of the input character.
 ///
 /// See also: ToUpper(), locale.library/ConvToLower()
+@library("utility.library")
 extern pub fn ToLower(character: u8) -> u8
 /// Change a tag list based on a second tag list. (V39)
 ///
@@ -358,6 +384,7 @@ extern pub fn ToLower(character: u8) -> u8
 ///   tags to modify 'list' with (may be NULL)
 ///
 /// See also: <utility/tagitem.h>, FilterTagChanges()
+@library("utility.library")
 extern pub fn ApplyTagChanges(list: *TagItem, changeList: *TagItem)
 /// Signed 32 by 32 bit multiply with 64 bit result. (V39)
 ///
@@ -370,6 +397,7 @@ extern pub fn ApplyTagChanges(list: *TagItem, changeList: *TagItem)
 /// result - the signed 64 bit result of multiplying arg1 by arg2.
 ///
 /// See also: SDivMod32(), UDivMod32(), UMult32(), UMult64()
+@library("utility.library")
 extern pub fn SMult64(arg1: i32, arg2: i32) -> i32
 /// Unsigned 32 by 32 bit multiply with 64 bit result. (V39)
 ///
@@ -382,6 +410,7 @@ extern pub fn SMult64(arg1: i32, arg2: i32) -> i32
 /// result - the unsigned 64 bit result of multiplying arg1 by arg2.
 ///
 /// See also: SDivMod32(), SMult32(), UDivMod32(), SMult64()
+@library("utility.library")
 extern pub fn UMult64(arg1: u32, arg2: u32) -> u32
 /// Pack a structure with values from taglist. (V39)
 ///
@@ -399,6 +428,7 @@ extern pub fn UMult64(arg1: u32, arg2: u32) -> u32
 /// num - the number of tag items packed
 ///
 /// See also: <utility/pack.h>, FindTagItem(), UnpackStructureTags()
+@library("utility.library")
 extern pub fn PackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
 /// Unpack a structure to values in taglist. (V39)
 ///
@@ -416,6 +446,7 @@ extern pub fn PackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) ->
 /// num - the number of tag items unpacked
 ///
 /// See also: <utility/pack.h>, FindTagItem(), PackStructureTags()
+@library("utility.library")
 extern pub fn UnpackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) -> u32
 /// Add a named object to the given namespace. (V39)
 ///
@@ -431,6 +462,7 @@ extern pub fn UnpackStructureTags(pack: *u8, packTable: *u8, tagList: *TagItem) 
 /// success - whether the operation succeeded. Check this always!
 ///
 /// See also: AttemptRemNamedObject(), RemNamedObject()
+@library("utility.library")
 extern pub fn AddNamedObject(nameSpace: *NamedObject, object: *NamedObject) -> i16
 /// Allocate a named object. (V39)
 ///
@@ -448,6 +480,7 @@ extern pub fn AddNamedObject(nameSpace: *NamedObject, object: *NamedObject) -> i
 /// asked for in the tags.)
 ///
 /// See also: FreeNamedObject(), <utility/name.h>
+@library("utility.library")
 extern pub fn AllocNamedObjectA(name: *u8, tagList: *TagItem) -> *NamedObject
 // Varargs function AllocNamedObject skipped - needs manual implementation
 /// Attempt to remove a named object. (V39)
@@ -464,6 +497,7 @@ extern pub fn AllocNamedObjectA(name: *u8, tagList: *TagItem) -> *NamedObject
 /// was removed
 ///
 /// See also: RemNamedObject(), AddNamedObject(), ReleaseNamedObject()
+@library("utility.library")
 extern pub fn AttemptRemNamedObject(object: *NamedObject) -> i32
 /// Find the next object of a given name. (V39)
 ///
@@ -478,6 +512,7 @@ extern pub fn AttemptRemNamedObject(object: *NamedObject) -> i32
 /// object - the first match found, or NULL for no match
 ///
 /// See also: ReleaseNamedObject(), <utility/name.h>
+@library("utility.library")
 extern pub fn FindNamedObject(nameSpace: *NamedObject, name: *u8, lastObject: *NamedObject) -> *NamedObject
 /// Frees a name object. (V39)
 ///
@@ -489,6 +524,7 @@ extern pub fn FindNamedObject(nameSpace: *NamedObject, name: *u8, lastObject: *N
 /// * `object` - the object to be freed
 ///
 /// See also: AllocNamedObjectA()
+@library("utility.library")
 extern pub fn FreeNamedObject(object: *NamedObject)
 /// Return the name of the object. (V39)
 ///
@@ -503,6 +539,7 @@ extern pub fn FreeNamedObject(object: *NamedObject)
 /// name - pointer to the name string, or NULL if 'object' is NULL.
 ///
 /// See also: FindNamedObject(), RemNamedObject()
+@library("utility.library")
 extern pub fn NamedObjectName(object: *NamedObject) -> *u8
 /// Free a named object. (V39)
 ///
@@ -514,6 +551,7 @@ extern pub fn NamedObjectName(object: *NamedObject) -> *u8
 /// * `object` - the object to release.  (No action if NULL)
 ///
 /// See also: FindNamedObject(), RemNamedObject()
+@library("utility.library")
 extern pub fn ReleaseNamedObject(object: *NamedObject)
 /// Remove a named object. (V39)
 ///
@@ -530,6 +568,7 @@ extern pub fn ReleaseNamedObject(object: *NamedObject)
 /// or NULL. If it contains the object, the object is completely removed.
 ///
 /// See also: AttemptRemNamedObject(), AddNamedObject(), ReleaseNamedObject()
+@library("utility.library")
 extern pub fn RemNamedObject(object: *NamedObject, message: *Message)
 /// Return a relatively unique number. (V39)
 ///
@@ -538,4 +577,5 @@ extern pub fn RemNamedObject(object: *NamedObject, message: *Message)
 ///
 /// # Returns
 /// id - a 32-bit value that is unique.
+@library("utility.library")
 extern pub fn GetUniqueID() -> u32

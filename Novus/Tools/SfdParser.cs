@@ -129,11 +129,12 @@ public class SfdParser
             var parsed = ParseFunctionSignature(functionLine);
             if (parsed != null)
             {
+                var occupiesVector = !isAlias && !isVarargs;
                 var function = new SfdFunction
                 {
                     ReturnType = parsed.Value.returnType,
                     Name = parsed.Value.name,
-                    Offset = currentOffset,
+                    Offset = occupiesVector ? currentOffset : currentOffset - 6,
                     Version = currentVersion,
                     IsAlias = isAlias,
                     IsVarargs = isVarargs
@@ -155,7 +156,8 @@ public class SfdParser
                 }
 
                 library.Functions.Add(function);
-                currentOffset += 6; // Each function is 6 bytes (JMP instruction)
+                if (occupiesVector)
+                    currentOffset += 6; // Each real function is a 6-byte JMP vector
 
                 // Reset per-function flags
                 isAlias = false;
@@ -330,11 +332,23 @@ public class SfdParser
             ["LONG"] = "i32",
             ["ULONG"] = "u32",
             ["BOOL"] = "i16",
+            ["FLOAT"] = "f32",
+            ["DOUBLE"] = "f64",
+            ["char"] = "i8",
+            ["short"] = "i16",
+            ["int"] = "i32",
+            ["BSTR"] = "i32",
+            ["FIXED"] = "i32",
+            ["VUserStuff"] = "i16",
+            ["BUserStuff"] = "i16",
+            ["AUserStuff"] = "i16",
+            ["Tag"] = "u32",
 
             // Pointer types
             ["APTR"] = "*u8",
             ["STRPTR"] = "*u8",
             ["CONST_STRPTR"] = "*u8",
+            ["ClassID"] = "*u8",
             ["BPTR"] = "i32",  // BCPL pointer - special case!
             ["PLANEPTR"] = "*u8",
 
@@ -366,9 +380,34 @@ public class SfdParser
         if (typeMap.TryGetValue(cleanType, out mapped))
             return mapped;
 
-        // Handle function pointer types (e.g., "ULONG (*func)()")
-        if (amigaType.Contains("(*") && amigaType.Contains(")"))
-            return "*u8";  // Function pointers become *u8 for FFI
+        // Preserve callback signatures so NDK hooks can be implemented in Novus.
+        var callback = Regex.Match(amigaType,
+            @"^(.+?)\s*\(\s*\*\s*(?:CONST\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\((.*?)\)$",
+            RegexOptions.IgnoreCase);
+        if (callback.Success)
+        {
+            var returnType = MapAmigaTypeToNovus(callback.Groups[1].Value.Trim());
+            var parameterText = callback.Groups[2].Value.Trim();
+            var parameterTypes = parameterText is "" or "void" or "VOID"
+                ? []
+                : SplitParameters(parameterText)
+                    .Select(StripParameterName)
+                    .Select(MapAmigaTypeToNovus)
+                    .ToList();
+            return $"fn({string.Join(", ", parameterTypes)})" +
+                   (returnType == "void" ? "" : $" -> {returnType}");
+        }
+
+        var typedPointer = Regex.Match(cleanType, @"^(.+?)\s*(\*+)$");
+        if (typedPointer.Success)
+        {
+            var pointeeType = MapAmigaTypeToNovus(typedPointer.Groups[1].Value.Trim());
+            if (pointeeType == "void")
+                pointeeType = "u8";
+            return pointeeType.Contains("/*", StringComparison.Ordinal)
+                ? "*u8"
+                : typedPointer.Groups[2].Value + pointeeType;
+        }
 
         // Handle struct pointer types (struct Foo *)
         if (amigaType.Contains("struct ") && amigaType.Contains("*"))
@@ -407,5 +446,31 @@ public class SfdParser
 
         // Unknown type - keep as-is and add comment
         return $"*u8 /* {amigaType} */";
+    }
+
+    private static IEnumerable<string> SplitParameters(string parameters)
+    {
+        var start = 0;
+        var depth = 0;
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            depth += parameters[i] == '(' ? 1 : parameters[i] == ')' ? -1 : 0;
+            if (parameters[i] == ',' && depth == 0)
+            {
+                yield return parameters[start..i].Trim();
+                start = i + 1;
+            }
+        }
+        yield return parameters[start..].Trim();
+    }
+
+    private static string StripParameterName(string parameter)
+    {
+        var pointerName = Regex.Match(parameter, @"^(.+?\*)\s*[A-Za-z_][A-Za-z0-9_]*$");
+        if (pointerName.Success)
+            return pointerName.Groups[1].Value.Trim();
+
+        var named = Regex.Match(parameter, @"^(.+\S)\s+[A-Za-z_][A-Za-z0-9_]*$");
+        return named.Success ? named.Groups[1].Value.Trim() : parameter;
     }
 }

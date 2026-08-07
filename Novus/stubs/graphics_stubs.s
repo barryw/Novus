@@ -2,10 +2,8 @@
 ; Library: graphics.library
 ; Base: _GfxBase
 ; Each function is in its own section for dead code elimination
-; NOTE: Uses lazy initialization via ___graphics_ensure
 
 	xref	_GfxBase
-	xref	___graphics_ensure	; Lazy init - opens library if needed, returns base in A6
 
 	section	_BltBitMap_stub,code
 
@@ -23,7 +21,7 @@ _BltBitMap:
 	move.l	36(sp),d6
 	move.l	40(sp),d7
 	movea.l	44(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-30(a6)
 	rts
 
@@ -40,7 +38,7 @@ _BltTemplate:
 	move.l	24(sp),d3
 	move.l	28(sp),d4
 	move.l	32(sp),d5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-36(a6)
 	rts
 
@@ -50,7 +48,7 @@ _BltTemplate:
 	xdef	_ClearEOL
 _ClearEOL:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-42(a6)
 	rts
 
@@ -60,7 +58,7 @@ _ClearEOL:
 	xdef	_ClearScreen
 _ClearScreen:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-48(a6)
 	rts
 
@@ -72,7 +70,7 @@ _TextLength:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-54(a6)
 	rts
 
@@ -84,7 +82,7 @@ _Text:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-60(a6)
 	rts
 
@@ -95,7 +93,7 @@ _Text:
 _SetFont:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-66(a6)
 	rts
 
@@ -105,7 +103,7 @@ _SetFont:
 	xdef	_OpenFont
 _OpenFont:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-72(a6)
 	rts
 
@@ -115,7 +113,7 @@ _OpenFont:
 	xdef	_CloseFont
 _CloseFont:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-78(a6)
 	rts
 
@@ -125,7 +123,7 @@ _CloseFont:
 	xdef	_AskSoftStyle
 _AskSoftStyle:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-84(a6)
 	rts
 
@@ -137,7 +135,7 @@ _SetSoftStyle:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-90(a6)
 	rts
 
@@ -148,7 +146,7 @@ _SetSoftStyle:
 _AddBob:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-96(a6)
 	rts
 
@@ -159,7 +157,7 @@ _AddBob:
 _AddVSprite:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-102(a6)
 	rts
 
@@ -169,7 +167,7 @@ _AddVSprite:
 	xdef	_DoCollision
 _DoCollision:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-108(a6)
 	rts
 
@@ -180,7 +178,7 @@ _DoCollision:
 _DrawGList:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-114(a6)
 	rts
 
@@ -192,7 +190,7 @@ _InitGels:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-120(a6)
 	rts
 
@@ -202,7 +200,7 @@ _InitGels:
 	xdef	_InitMasks
 _InitMasks:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-126(a6)
 	rts
 
@@ -214,7 +212,7 @@ _RemIBob:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-132(a6)
 	rts
 
@@ -224,7 +222,7 @@ _RemIBob:
 	xdef	_RemVSprite
 _RemVSprite:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-138(a6)
 	rts
 
@@ -236,7 +234,7 @@ _SetCollision:
 	move.l	4(sp),d0
 	movea.l	8(sp),a0
 	movea.l	12(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-144(a6)
 	rts
 
@@ -246,7 +244,7 @@ _SetCollision:
 	xdef	_SortGList
 _SortGList:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-150(a6)
 	rts
 
@@ -258,7 +256,7 @@ _AddAnimOb:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-156(a6)
 	rts
 
@@ -269,7 +267,7 @@ _AddAnimOb:
 _Animate:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-162(a6)
 	rts
 
@@ -281,7 +279,7 @@ _GetGBuffers:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-168(a6)
 	rts
 
@@ -291,7 +289,7 @@ _GetGBuffers:
 	xdef	_InitGMasks
 _InitGMasks:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-174(a6)
 	rts
 
@@ -305,7 +303,7 @@ _DrawEllipse:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-180(a6)
 	rts
 
@@ -319,7 +317,7 @@ _AreaEllipse:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-186(a6)
 	rts
 
@@ -331,7 +329,7 @@ _LoadRGB4:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-192(a6)
 	rts
 
@@ -341,7 +339,7 @@ _LoadRGB4:
 	xdef	_InitRastPort
 _InitRastPort:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-198(a6)
 	rts
 
@@ -351,7 +349,7 @@ _InitRastPort:
 	xdef	_InitVPort
 _InitVPort:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-204(a6)
 	rts
 
@@ -361,7 +359,7 @@ _InitVPort:
 	xdef	_MrgCop
 _MrgCop:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-210(a6)
 	rts
 
@@ -372,7 +370,7 @@ _MrgCop:
 _MakeVPort:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-216(a6)
 	rts
 
@@ -382,7 +380,7 @@ _MakeVPort:
 	xdef	_LoadView
 _LoadView:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-222(a6)
 	rts
 
@@ -391,7 +389,7 @@ _LoadView:
 ; VOID WaitBlit()
 	xdef	_WaitBlit
 _WaitBlit:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-228(a6)
 	rts
 
@@ -402,7 +400,7 @@ _WaitBlit:
 _SetRast:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-234(a6)
 	rts
 
@@ -414,7 +412,7 @@ _Move:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-240(a6)
 	rts
 
@@ -426,7 +424,7 @@ _Draw:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-246(a6)
 	rts
 
@@ -438,7 +436,7 @@ _AreaMove:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-252(a6)
 	rts
 
@@ -450,7 +448,7 @@ _AreaDraw:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-258(a6)
 	rts
 
@@ -460,7 +458,7 @@ _AreaDraw:
 	xdef	_AreaEnd
 _AreaEnd:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-264(a6)
 	rts
 
@@ -469,7 +467,7 @@ _AreaEnd:
 ; VOID WaitTOF()
 	xdef	_WaitTOF
 _WaitTOF:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-270(a6)
 	rts
 
@@ -479,7 +477,7 @@ _WaitTOF:
 	xdef	_QBlit
 _QBlit:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-276(a6)
 	rts
 
@@ -491,7 +489,7 @@ _InitArea:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-282(a6)
 	rts
 
@@ -505,7 +503,7 @@ _SetRGB4:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-288(a6)
 	rts
 
@@ -515,7 +513,7 @@ _SetRGB4:
 	xdef	_QBSBlit
 _QBSBlit:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-294(a6)
 	rts
 
@@ -527,7 +525,7 @@ _BltClear:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-300(a6)
 	rts
 
@@ -541,7 +539,7 @@ _RectFill:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-306(a6)
 	rts
 
@@ -557,7 +555,7 @@ _BltPattern:
 	move.l	20(sp),d2
 	move.l	24(sp),d3
 	move.l	28(sp),d4
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-312(a6)
 	rts
 
@@ -569,7 +567,7 @@ _ReadPixel:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-318(a6)
 	rts
 
@@ -581,7 +579,7 @@ _WritePixel:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-324(a6)
 	rts
 
@@ -594,7 +592,7 @@ _Flood:
 	move.l	8(sp),d2
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-330(a6)
 	rts
 
@@ -606,7 +604,7 @@ _PolyDraw:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	movea.l	12(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-336(a6)
 	rts
 
@@ -617,7 +615,7 @@ _PolyDraw:
 _SetAPen:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-342(a6)
 	rts
 
@@ -628,7 +626,7 @@ _SetAPen:
 _SetBPen:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-348(a6)
 	rts
 
@@ -639,7 +637,7 @@ _SetBPen:
 _SetDrMd:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-354(a6)
 	rts
 
@@ -649,7 +647,7 @@ _SetDrMd:
 	xdef	_InitView
 _InitView:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-360(a6)
 	rts
 
@@ -659,7 +657,7 @@ _InitView:
 	xdef	_CBump
 _CBump:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-366(a6)
 	rts
 
@@ -671,7 +669,7 @@ _CMove:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-372(a6)
 	rts
 
@@ -683,7 +681,7 @@ _CWait:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-378(a6)
 	rts
 
@@ -692,7 +690,7 @@ _CWait:
 ; LONG VBeamPos()
 	xdef	_VBeamPos
 _VBeamPos:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-384(a6)
 	rts
 
@@ -705,7 +703,7 @@ _InitBitMap:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	move.l	16(sp),d2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-390(a6)
 	rts
 
@@ -721,7 +719,7 @@ _ScrollRaster:
 	move.l	20(sp),d3
 	move.l	24(sp),d4
 	move.l	28(sp),d5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-396(a6)
 	rts
 
@@ -731,7 +729,7 @@ _ScrollRaster:
 	xdef	_WaitBOVP
 _WaitBOVP:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-402(a6)
 	rts
 
@@ -742,7 +740,7 @@ _WaitBOVP:
 _GetSprite:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-408(a6)
 	rts
 
@@ -752,7 +750,7 @@ _GetSprite:
 	xdef	_FreeSprite
 _FreeSprite:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-414(a6)
 	rts
 
@@ -764,7 +762,7 @@ _ChangeSprite:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-420(a6)
 	rts
 
@@ -777,7 +775,7 @@ _MoveSprite:
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
 	move.l	16(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-426(a6)
 	rts
 
@@ -787,7 +785,7 @@ _MoveSprite:
 	xdef	_LockLayerRom
 _LockLayerRom:
 	movea.l	4(sp),a5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-432(a6)
 	rts
 
@@ -797,7 +795,7 @@ _LockLayerRom:
 	xdef	_UnlockLayerRom
 _UnlockLayerRom:
 	movea.l	4(sp),a5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-438(a6)
 	rts
 
@@ -807,7 +805,7 @@ _UnlockLayerRom:
 	xdef	_SyncSBitMap
 _SyncSBitMap:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-444(a6)
 	rts
 
@@ -817,7 +815,7 @@ _SyncSBitMap:
 	xdef	_CopySBitMap
 _CopySBitMap:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-450(a6)
 	rts
 
@@ -826,7 +824,7 @@ _CopySBitMap:
 ; VOID OwnBlitter()
 	xdef	_OwnBlitter
 _OwnBlitter:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-456(a6)
 	rts
 
@@ -835,7 +833,7 @@ _OwnBlitter:
 ; VOID DisownBlitter()
 	xdef	_DisownBlitter
 _DisownBlitter:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-462(a6)
 	rts
 
@@ -847,7 +845,7 @@ _InitTmpRas:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-468(a6)
 	rts
 
@@ -858,7 +856,7 @@ _InitTmpRas:
 _AskFont:
 	movea.l	4(sp),a1
 	movea.l	8(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-474(a6)
 	rts
 
@@ -868,7 +866,7 @@ _AskFont:
 	xdef	_AddFont
 _AddFont:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-480(a6)
 	rts
 
@@ -878,7 +876,7 @@ _AddFont:
 	xdef	_RemFont
 _RemFont:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-486(a6)
 	rts
 
@@ -889,7 +887,7 @@ _RemFont:
 _AllocRaster:
 	move.l	4(sp),d0
 	move.l	8(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-492(a6)
 	rts
 
@@ -901,7 +899,7 @@ _FreeRaster:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-498(a6)
 	rts
 
@@ -912,7 +910,7 @@ _FreeRaster:
 _AndRectRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-504(a6)
 	rts
 
@@ -923,7 +921,7 @@ _AndRectRegion:
 _OrRectRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-510(a6)
 	rts
 
@@ -932,7 +930,7 @@ _OrRectRegion:
 ; struct Region * NewRegion()
 	xdef	_NewRegion
 _NewRegion:
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-516(a6)
 	rts
 
@@ -943,7 +941,7 @@ _NewRegion:
 _ClearRectRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-522(a6)
 	rts
 
@@ -953,7 +951,7 @@ _ClearRectRegion:
 	xdef	_ClearRegion
 _ClearRegion:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-528(a6)
 	rts
 
@@ -963,7 +961,7 @@ _ClearRegion:
 	xdef	_DisposeRegion
 _DisposeRegion:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-534(a6)
 	rts
 
@@ -973,7 +971,7 @@ _DisposeRegion:
 	xdef	_FreeVPortCopLists
 _FreeVPortCopLists:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-540(a6)
 	rts
 
@@ -983,7 +981,7 @@ _FreeVPortCopLists:
 	xdef	_FreeCopList
 _FreeCopList:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-546(a6)
 	rts
 
@@ -1001,7 +999,7 @@ _ClipBlit:
 	move.l	28(sp),d4
 	move.l	32(sp),d5
 	move.l	36(sp),d6
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-552(a6)
 	rts
 
@@ -1012,7 +1010,7 @@ _ClipBlit:
 _XorRectRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-558(a6)
 	rts
 
@@ -1022,7 +1020,7 @@ _XorRectRegion:
 	xdef	_FreeCprList
 _FreeCprList:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-564(a6)
 	rts
 
@@ -1032,7 +1030,7 @@ _FreeCprList:
 	xdef	_GetColorMap
 _GetColorMap:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-570(a6)
 	rts
 
@@ -1042,7 +1040,7 @@ _GetColorMap:
 	xdef	_FreeColorMap
 _FreeColorMap:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-576(a6)
 	rts
 
@@ -1053,7 +1051,7 @@ _FreeColorMap:
 _GetRGB4:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-582(a6)
 	rts
 
@@ -1063,7 +1061,7 @@ _GetRGB4:
 	xdef	_ScrollVPort
 _ScrollVPort:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-588(a6)
 	rts
 
@@ -1074,7 +1072,7 @@ _ScrollVPort:
 _UCopperListInit:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-594(a6)
 	rts
 
@@ -1086,7 +1084,7 @@ _FreeGBuffers:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	move.l	12(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-600(a6)
 	rts
 
@@ -1104,7 +1102,7 @@ _BltBitMapRastPort:
 	move.l	28(sp),d4
 	move.l	32(sp),d5
 	move.l	36(sp),d6
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-606(a6)
 	rts
 
@@ -1115,7 +1113,7 @@ _BltBitMapRastPort:
 _OrRegionRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-612(a6)
 	rts
 
@@ -1126,7 +1124,7 @@ _OrRegionRegion:
 _XorRegionRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-618(a6)
 	rts
 
@@ -1137,7 +1135,7 @@ _XorRegionRegion:
 _AndRegionRegion:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-624(a6)
 	rts
 
@@ -1151,7 +1149,7 @@ _SetRGB4CM:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-630(a6)
 	rts
 
@@ -1170,7 +1168,7 @@ _BltMaskBitMapRastPort:
 	move.l	32(sp),d5
 	move.l	36(sp),d6
 	movea.l	40(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-636(a6)
 	rts
 
@@ -1180,7 +1178,7 @@ _BltMaskBitMapRastPort:
 	xdef	_AttemptLockLayerRom
 _AttemptLockLayerRom:
 	movea.l	4(sp),a5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-654(a6)
 	rts
 
@@ -1190,7 +1188,7 @@ _AttemptLockLayerRom:
 	xdef	_GfxNew
 _GfxNew:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-660(a6)
 	rts
 
@@ -1200,7 +1198,7 @@ _GfxNew:
 	xdef	_GfxFree
 _GfxFree:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-666(a6)
 	rts
 
@@ -1211,7 +1209,7 @@ _GfxFree:
 _GfxAssociate:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-672(a6)
 	rts
 
@@ -1221,7 +1219,7 @@ _GfxAssociate:
 	xdef	_BitMapScale
 _BitMapScale:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-678(a6)
 	rts
 
@@ -1233,7 +1231,7 @@ _ScalerDiv:
 	move.l	4(sp),d0
 	move.l	8(sp),d1
 	move.l	12(sp),d2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-684(a6)
 	rts
 
@@ -1246,7 +1244,7 @@ _TextExtent:
 	movea.l	8(sp),a0
 	move.l	12(sp),d0
 	movea.l	16(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-690(a6)
 	rts
 
@@ -1263,7 +1261,7 @@ _TextFit:
 	move.l	24(sp),d1
 	move.l	28(sp),d2
 	move.l	32(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-696(a6)
 	rts
 
@@ -1273,7 +1271,7 @@ _TextFit:
 	xdef	_GfxLookUp
 _GfxLookUp:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-702(a6)
 	rts
 
@@ -1284,7 +1282,7 @@ _GfxLookUp:
 _VideoControl:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-708(a6)
 	rts
 
@@ -1295,7 +1293,7 @@ _VideoControl:
 _OpenMonitor:
 	movea.l	4(sp),a1
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-714(a6)
 	rts
 
@@ -1305,7 +1303,7 @@ _OpenMonitor:
 	xdef	_CloseMonitor
 _CloseMonitor:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-720(a6)
 	rts
 
@@ -1315,7 +1313,7 @@ _CloseMonitor:
 	xdef	_FindDisplayInfo
 _FindDisplayInfo:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-726(a6)
 	rts
 
@@ -1325,7 +1323,7 @@ _FindDisplayInfo:
 	xdef	_NextDisplayInfo
 _NextDisplayInfo:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-732(a6)
 	rts
 
@@ -1339,7 +1337,7 @@ _GetDisplayInfoData:
 	move.l	12(sp),d0
 	move.l	16(sp),d1
 	move.l	20(sp),d2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-756(a6)
 	rts
 
@@ -1350,7 +1348,7 @@ _GetDisplayInfoData:
 _FontExtent:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-762(a6)
 	rts
 
@@ -1365,7 +1363,7 @@ _ReadPixelLine8:
 	move.l	16(sp),d2
 	movea.l	20(sp),a2
 	movea.l	24(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-768(a6)
 	rts
 
@@ -1380,7 +1378,7 @@ _WritePixelLine8:
 	move.l	16(sp),d2
 	movea.l	20(sp),a2
 	movea.l	24(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-774(a6)
 	rts
 
@@ -1396,7 +1394,7 @@ _ReadPixelArray8:
 	move.l	20(sp),d3
 	movea.l	24(sp),a2
 	movea.l	28(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-780(a6)
 	rts
 
@@ -1412,7 +1410,7 @@ _WritePixelArray8:
 	move.l	20(sp),d3
 	movea.l	24(sp),a2
 	movea.l	28(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-786(a6)
 	rts
 
@@ -1422,7 +1420,7 @@ _WritePixelArray8:
 	xdef	_GetVPModeID
 _GetVPModeID:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-792(a6)
 	rts
 
@@ -1432,7 +1430,7 @@ _GetVPModeID:
 	xdef	_ModeNotAvailable
 _ModeNotAvailable:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-798(a6)
 	rts
 
@@ -1446,7 +1444,7 @@ _EraseRect:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-810(a6)
 	rts
 
@@ -1457,7 +1455,7 @@ _EraseRect:
 _ExtendFont:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-816(a6)
 	rts
 
@@ -1467,7 +1465,7 @@ _ExtendFont:
 	xdef	_StripFont
 _StripFont:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-822(a6)
 	rts
 
@@ -1478,7 +1476,7 @@ _StripFont:
 _CalcIVG:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-828(a6)
 	rts
 
@@ -1489,7 +1487,7 @@ _CalcIVG:
 _AttachPalExtra:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-834(a6)
 	rts
 
@@ -1503,7 +1501,7 @@ _ObtainBestPenA:
 	move.l	12(sp),d2
 	move.l	16(sp),d3
 	movea.l	20(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-840(a6)
 	rts
 
@@ -1517,7 +1515,7 @@ _SetRGB32:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-852(a6)
 	rts
 
@@ -1527,7 +1525,7 @@ _SetRGB32:
 	xdef	_GetAPen
 _GetAPen:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-858(a6)
 	rts
 
@@ -1537,7 +1535,7 @@ _GetAPen:
 	xdef	_GetBPen
 _GetBPen:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-864(a6)
 	rts
 
@@ -1547,7 +1545,7 @@ _GetBPen:
 	xdef	_GetDrMd
 _GetDrMd:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-870(a6)
 	rts
 
@@ -1557,7 +1555,7 @@ _GetDrMd:
 	xdef	_GetOutlinePen
 _GetOutlinePen:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-876(a6)
 	rts
 
@@ -1568,7 +1566,7 @@ _GetOutlinePen:
 _LoadRGB32:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-882(a6)
 	rts
 
@@ -1578,7 +1576,7 @@ _LoadRGB32:
 	xdef	_SetChipRev
 _SetChipRev:
 	move.l	4(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-888(a6)
 	rts
 
@@ -1591,7 +1589,7 @@ _SetABPenDrMd:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	move.l	16(sp),d2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-894(a6)
 	rts
 
@@ -1604,7 +1602,7 @@ _GetRGB32:
 	move.l	8(sp),d0
 	move.l	12(sp),d1
 	movea.l	16(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-900(a6)
 	rts
 
@@ -1618,7 +1616,7 @@ _AllocBitMap:
 	move.l	12(sp),d2
 	move.l	16(sp),d3
 	movea.l	20(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-918(a6)
 	rts
 
@@ -1628,7 +1626,7 @@ _AllocBitMap:
 	xdef	_FreeBitMap
 _FreeBitMap:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-924(a6)
 	rts
 
@@ -1639,7 +1637,7 @@ _FreeBitMap:
 _GetExtSpriteA:
 	movea.l	4(sp),a2
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-930(a6)
 	rts
 
@@ -1651,7 +1649,7 @@ _CoerceMode:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
 	move.l	12(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-936(a6)
 	rts
 
@@ -1663,7 +1661,7 @@ _ChangeVPBitMap:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-942(a6)
 	rts
 
@@ -1674,7 +1672,7 @@ _ChangeVPBitMap:
 _ReleasePen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-948(a6)
 	rts
 
@@ -1689,7 +1687,7 @@ _ObtainPen:
 	move.l	16(sp),d2
 	move.l	20(sp),d3
 	move.l	24(sp),d4
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-954(a6)
 	rts
 
@@ -1700,7 +1698,7 @@ _ObtainPen:
 _GetBitMapAttr:
 	movea.l	4(sp),a0
 	move.l	8(sp),d1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-960(a6)
 	rts
 
@@ -1710,7 +1708,7 @@ _GetBitMapAttr:
 	xdef	_AllocDBufInfo
 _AllocDBufInfo:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-966(a6)
 	rts
 
@@ -1720,7 +1718,7 @@ _AllocDBufInfo:
 	xdef	_FreeDBufInfo
 _FreeDBufInfo:
 	movea.l	4(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-972(a6)
 	rts
 
@@ -1731,7 +1729,7 @@ _FreeDBufInfo:
 _SetOutlinePen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-978(a6)
 	rts
 
@@ -1742,7 +1740,7 @@ _SetOutlinePen:
 _SetWriteMask:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-984(a6)
 	rts
 
@@ -1753,7 +1751,7 @@ _SetWriteMask:
 _SetMaxPen:
 	movea.l	4(sp),a0
 	move.l	8(sp),d0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-990(a6)
 	rts
 
@@ -1767,7 +1765,7 @@ _SetRGB32CM:
 	move.l	12(sp),d1
 	move.l	16(sp),d2
 	move.l	20(sp),d3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-996(a6)
 	rts
 
@@ -1783,7 +1781,7 @@ _ScrollRasterBF:
 	move.l	20(sp),d3
 	move.l	24(sp),d4
 	move.l	28(sp),d5
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1002(a6)
 	rts
 
@@ -1797,7 +1795,7 @@ _FindColor:
 	move.l	12(sp),d2
 	move.l	16(sp),d3
 	move.l	20(sp),d4
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1008(a6)
 	rts
 
@@ -1808,7 +1806,7 @@ _FindColor:
 _AllocSpriteDataA:
 	movea.l	4(sp),a2
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1020(a6)
 	rts
 
@@ -1821,7 +1819,7 @@ _ChangeExtSpriteA:
 	movea.l	8(sp),a1
 	movea.l	12(sp),a2
 	movea.l	16(sp),a3
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1026(a6)
 	rts
 
@@ -1831,7 +1829,7 @@ _ChangeExtSpriteA:
 	xdef	_FreeSpriteData
 _FreeSpriteData:
 	movea.l	4(sp),a2
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1032(a6)
 	rts
 
@@ -1842,7 +1840,7 @@ _FreeSpriteData:
 _SetRPAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1038(a6)
 	rts
 
@@ -1853,7 +1851,7 @@ _SetRPAttrsA:
 _GetRPAttrsA:
 	movea.l	4(sp),a0
 	movea.l	8(sp),a1
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1044(a6)
 	rts
 
@@ -1863,7 +1861,7 @@ _GetRPAttrsA:
 	xdef	_BestModeIDA
 _BestModeIDA:
 	movea.l	4(sp),a0
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1050(a6)
 	rts
 
@@ -1879,7 +1877,7 @@ _WriteChunkyPixels:
 	move.l	20(sp),d3
 	movea.l	24(sp),a2
 	move.l	28(sp),d4
-	jsr	___graphics_ensure
+	movea.l	_GfxBase,a6
 	jsr	-1056(a6)
 	rts
 

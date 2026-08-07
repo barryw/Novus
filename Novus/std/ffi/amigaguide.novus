@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: amigaguide.library
 // Base: _AmigaGuideBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -18,7 +20,9 @@
 /// * `handle` - AMIGAGUIDECONTEXT handle obtained with OpenAmigaGuideAsyn...
 ///
 /// See also: UnlockAmigaGuideBase()
+@library("amigaguide.library")
 extern pub fn LockAmigaGuideBase(handle: *u8) -> i32
+@library("amigaguide.library")
 extern pub fn UnlockAmigaGuideBase(key: i32)
 /// Remove a dynamic node host.     (V34)
 ///
@@ -31,8 +35,10 @@ extern pub fn UnlockAmigaGuideBase(key: i32)
 /// * `RETURNS use` - Number of outstanding clients of this database.  You can ...
 ///
 /// See also: AddAmigaGuideHostA()
+@library("amigaguide.library")
 extern pub fn OpenAmigaGuideA(nag: *NewAmigaGuide, tags: *TagItem) -> *u8
 // Varargs function OpenAmigaGuide skipped - needs manual implementation
+@library("amigaguide.library")
 extern pub fn OpenAmigaGuideAsyncA(nag: *NewAmigaGuide, attrs: *TagItem) -> *u8
 // Varargs function OpenAmigaGuideAsync skipped - needs manual implementation
 /// Close a AmigaGuide client.            (V34)
@@ -44,6 +50,7 @@ extern pub fn OpenAmigaGuideAsyncA(nag: *NewAmigaGuide, attrs: *TagItem) -> *u8
 /// * `handle` - Handle to an AmigaGuide client.
 ///
 /// See also: OpenAmigaGuideA(), OpenAmigaGuideAsyncA()
+@library("amigaguide.library")
 extern pub fn CloseAmigaGuide(cl: *u8)
 /// Obtain aysnc AmigaGuide signal.      (V34)
 ///
@@ -53,6 +60,7 @@ extern pub fn CloseAmigaGuide(cl: *u8)
 /// # Arguments
 ///
 /// See also: OpenAmigaGuideAsyncA(), GetAmigaGuideMsg(), ReplyAmigaGuideMsg()
+@library("amigaguide.library")
 extern pub fn AmigaGuideSignal(cl: *u8) -> u32
 /// Receive async AmigaGuide message.    (V34)
 ///
@@ -63,6 +71,7 @@ extern pub fn AmigaGuideSignal(cl: *u8) -> u32
 /// * `handle` - Handle to a AmigaGuide system.
 ///
 /// See also: OpenAmigaGuideAsyncA(), AmigaGuideSignal(), ReplyAmigaGuideMsg()
+@library("amigaguide.library")
 extern pub fn GetAmigaGuideMsg(cl: *u8) -> *AmigaGuideMsg
 /// Reply to an AmigaGuide message.    (V34)
 ///
@@ -72,9 +81,12 @@ extern pub fn GetAmigaGuideMsg(cl: *u8) -> *AmigaGuideMsg
 /// * `msg` - Pointer to a SIPC message returned by a previous call to ...
 ///
 /// See also: OpenAmigaGuideAsyncA(), AmigaGuideSignal(), GetAmigaGuideMsg()
+@library("amigaguide.library")
 extern pub fn ReplyAmigaGuideMsg(amsg: *AmigaGuideMsg)
+@library("amigaguide.library")
 extern pub fn SetAmigaGuideContextA(cl: *u8, id: u32, attrs: *TagItem) -> i32
 // Varargs function SetAmigaGuideContext skipped - needs manual implementation
+@library("amigaguide.library")
 extern pub fn SendAmigaGuideContextA(cl: *u8, attrs: *TagItem) -> i32
 // Varargs function SendAmigaGuideContext skipped - needs manual implementation
 /// Align an AmigaGuide system on the context ID
@@ -87,6 +99,7 @@ extern pub fn SendAmigaGuideContextA(cl: *u8, attrs: *TagItem) -> i32
 /// * `handle` - Handle to an AmigaGuide system. future - Future expansion...
 ///
 /// See also: SetAmigaGuideContextA(), SendAmigaGuideCmdA()
+@library("amigaguide.library")
 extern pub fn SendAmigaGuideCmdA(cl: *u8, cmd: *u8, attrs: *TagItem) -> i32
 // Varargs function SendAmigaGuideCmd skipped - needs manual implementation
 /// Unlock an AmigaGuide client.     (V34)
@@ -97,6 +110,7 @@ extern pub fn SendAmigaGuideCmdA(cl: *u8, cmd: *u8, attrs: *TagItem) -> i32
 /// * `key` - Value returned by LockAmigaGuideBase().
 ///
 /// See also: LockAmigaGuideBase().
+@library("amigaguide.library")
 extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
 // Varargs function SetAmigaGuideAttrs skipped - needs manual implementation
 /// Get an AmigaGuide attribute.        (V34)
@@ -107,8 +121,11 @@ extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
 /// * `tag` - Attribute to obtain. handle - Handle to an AmigaGuide sys...
 ///
 /// See also: SetAmigaGuideAttrsA()
+@library("amigaguide.library")
 extern pub fn GetAmigaGuideAttr(tag: *u8 /* Tag */, cl: *u8, storage: *u8) -> i32
+@library("amigaguide.library")
 extern pub fn LoadXRef(lock: i32, name: *u8) -> i32
+@library("amigaguide.library")
 extern pub fn ExpungeXRef()
 /// Add a dynamic node host.           (V34)
 ///
@@ -120,8 +137,10 @@ extern pub fn ExpungeXRef()
 /// * `hook` - The callback hook. name - Name of the AmigaGuideHost data...
 ///
 /// See also: RemoveAmigaGuideHostA()
+@library("amigaguide.library")
 extern pub fn AddAmigaGuideHostA(h: *Hook, name: *u8, attrs: *TagItem) -> *u8
 // Varargs function AddAmigaGuideHost skipped - needs manual implementation
+@library("amigaguide.library")
 extern pub fn RemoveAmigaGuideHostA(hh: *u8, attrs: *TagItem) -> i32
 // Varargs function RemoveAmigaGuideHost skipped - needs manual implementation
 /// Get an AmigaGuide string.
@@ -129,4 +148,5 @@ extern pub fn RemoveAmigaGuideHostA(hh: *u8, attrs: *TagItem) -> i32
 /// This function is used to obtain a localized string given the ID.
 ///
 /// # Arguments
+@library("amigaguide.library")
 extern pub fn GetAmigaGuideString(id: i32) -> *u8

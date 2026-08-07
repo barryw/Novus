@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: space.library
 // Base: _SpaceBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,4 +11,5 @@
 // Library Functions
 // ============================================================================
 
+@library("space.library")
 extern pub fn SPACE_GetClass() -> *u8

@@ -33,7 +33,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
         string methodName,
         bool isTraitImpl = false,
         string? traitName = null,
-        List<IrType>? traitTypeArgs = null)
+        List<IrType>? traitTypeArgs = null,
+        List<IrValue>? arguments = null)
     {
         var baseTypeName = monomorphizedStruct.StructName;
         var templateKey = InstantiationKeyBuilder.BuildMethodTemplateKey(baseTypeName, methodName);
@@ -44,31 +45,10 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             return null; // No template found
         }
 
-        var (genericParams, funcDecl, templateConstants, _, _, sourceModulePath) = template;
+        var (genericParams, funcDecl, templateConstants, _, methodGenericParams, sourceModulePath) = template;
 
         // Restore constants from template
         _context.RestoreConstantsFromTuples(templateConstants);
-
-        // Build instantiation key
-        var instantiationKey = InstantiationKeyBuilder.BuildMethodKey(
-            monomorphizedStruct.CacheKey ?? baseTypeName,
-            methodName,
-            isTraitImpl,
-            traitName);
-
-        // Check if already instantiated
-        if (_cache.IsMethodInstantiated(instantiationKey))
-        {
-            // Already generated, look it up
-            var mangledName = _context.GenerateMethodMangledName(
-                monomorphizedStruct.CacheKey ?? baseTypeName,
-                methodName,
-                isTraitImpl,
-                traitName,
-                traitTypeArgs ?? new List<IrType>()
-            );
-            return _context.Module.GetFunction(mangledName);
-        }
 
         // Build type substitution map
         var baseStruct = _context.LookupStruct(baseTypeName);
@@ -113,6 +93,65 @@ public class GenericInstantiatorImpl : IGenericInstantiator
             }
         }
 
+        if (methodGenericParams is { Count: > 0 })
+        {
+            var savedInferenceSubstitutions = _context.CurrentTypeSubstitutions;
+            var savedGenericParams = methodGenericParams
+                .Select(name => (name, type: _context.LookupGenericParameter(name)))
+                .Where(entry => entry.type != null)
+                .ToDictionary(entry => entry.name, entry => entry.type!);
+
+            foreach (var name in methodGenericParams)
+                _context.RegisterGenericParameter(name, new IrGenericType(name));
+            _context.CurrentTypeSubstitutions = typeSubstitutions;
+
+            try
+            {
+                var parameterContexts = funcDecl.parameterList()?.parameter() ?? [];
+                for (var i = 0; i < parameterContexts.Length && i < (arguments?.Count ?? 0); i++)
+                {
+                    TypeSubstitutionHelper.ExtractGenericTypeMapping(
+                        _context.ParseType(parameterContexts[i].type()),
+                        arguments![i].Type,
+                        typeSubstitutions);
+                }
+            }
+            finally
+            {
+                _context.CurrentTypeSubstitutions = savedInferenceSubstitutions;
+                _context.ClearGenericParameters();
+                foreach (var (name, type) in savedGenericParams)
+                    _context.RegisterGenericParameter(name, type);
+            }
+
+            foreach (var name in methodGenericParams)
+            {
+                if (!typeSubstitutions.ContainsKey(name))
+                {
+                    _context.ReportError(
+                        ErrorCodes.GenericParameterNotFound,
+                        $"Cannot infer type for method generic parameter '{name}' in {baseTypeName}::{methodName}",
+                        new SourceLocation(_context.InputFilePath ?? "unknown", 0, 0, 0, ""));
+                    return null;
+                }
+            }
+        }
+
+        var methodTypeSuffix = methodGenericParams is { Count: > 0 }
+            ? "_" + string.Join("_", methodGenericParams.Select(name => _context.GetTypeCacheKey(typeSubstitutions[name])))
+            : "";
+        var instantiationKey = InstantiationKeyBuilder.BuildMethodKey(
+            monomorphizedStruct.CacheKey ?? baseTypeName, methodName, isTraitImpl, traitName) + methodTypeSuffix;
+        var mangledMethodName = _context.GenerateMethodMangledName(
+            monomorphizedStruct.CacheKey ?? baseTypeName,
+            methodName,
+            isTraitImpl,
+            traitName,
+            traitTypeArgs ?? new List<IrType>()) + methodTypeSuffix;
+
+        if (_cache.IsMethodInstantiated(instantiationKey))
+            return _context.Module.GetFunction(mangledMethodName);
+
         // Set up instantiation state
         var savedSubstitutions = _context.CurrentTypeSubstitutions;
         var savedSelfType = _context.CurrentSelfType;
@@ -133,14 +172,6 @@ public class GenericInstantiatorImpl : IGenericInstantiator
 
             // Generate mangled name
             var mangledTypeName = monomorphizedStruct.CacheKey ?? baseTypeName;
-            var mangledMethodName = _context.GenerateMethodMangledName(
-                mangledTypeName,
-                methodName,
-                isTraitImpl,
-                traitName,
-                traitTypeArgs ?? new List<IrType>()
-            );
-
             var function = new IrFunction(mangledMethodName, returnType!, Visibility.Private, false);
 
             // Parse parameters with substitutions

@@ -97,7 +97,7 @@ extern fn SSL_CTX_load_verify_locations(ctx: *SSL_CTX, ca_file: *u8, ca_path: *u
 /// Use certificate file for client/server
 /// Returns: 1 on success, 0 on failure
 @library("amissl.library")
-extern fn SSL_CTX_use_certificate_file(ctx: *SSL_CTX, file: *u8, type: i32) -> i32
+extern fn SSL_CTX_use_certificate_file(ctx: *SSL_CTX, file: *u8, kind: i32) -> i32
 
 /// Use certificate chain file
 /// Returns: 1 on success, 0 on failure
@@ -107,7 +107,7 @@ extern fn SSL_CTX_use_certificate_chain_file(ctx: *SSL_CTX, file: *u8) -> i32
 /// Use private key file
 /// Returns: 1 on success, 0 on failure
 @library("amissl.library")
-extern fn SSL_CTX_use_PrivateKey_file(ctx: *SSL_CTX, file: *u8, type: i32) -> i32
+extern fn SSL_CTX_use_PrivateKey_file(ctx: *SSL_CTX, file: *u8, kind: i32) -> i32
 
 /// Check private key matches certificate
 /// Returns: 1 on success, 0 on failure
@@ -327,7 +327,7 @@ extern fn SSL_set_tlsext_host_name(ssl: *SSL, name: *u8) -> i32
 
 /// Get hostname from SNI
 @library("amissl.library")
-extern fn SSL_get_servername(ssl: *SSL, type: i32) -> *u8
+extern fn SSL_get_servername(ssl: *SSL, kind: i32) -> *u8
 
 // ============================================================================
 // TLS Methods
@@ -419,7 +419,7 @@ extern fn SSL_get_version(ssl: *SSL) -> *u8
 
 /// Create new BIO
 @library("amissl.library")
-extern fn BIO_new(type: *BIO_METHOD) -> *BIO
+extern fn BIO_new(method: *BIO_METHOD) -> *BIO
 
 /// Free BIO
 @library("amissl.library")

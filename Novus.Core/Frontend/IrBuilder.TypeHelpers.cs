@@ -39,6 +39,10 @@ public partial class IrBuilder
             "u32" => IrIntType.U32,
             "u64" => IrIntType.U64,
             "bool" => IrBoolType.Instance,
+            "f32" => IrFloatType.F32,
+            "f64" => IrFloatType.F64,
+            "fixed16" => IrFixedType.Fixed16,
+            "fixed32" => IrFixedType.Fixed32,
             _ => throw new CompilerBugException(
                 $"Unknown primitive type name: {primitiveTypeName}",
                 "MapPrimitiveTypeName",

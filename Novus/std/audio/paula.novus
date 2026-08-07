@@ -615,7 +615,7 @@ impl AudioChannel {
             // channel_dma_bit = this channel's DMA bit
             let dma_bit = channel_dma_bit(self.channel)
             let dmacon = (*u16)(CUSTOM_BASE + DMACON)
-            *dmacon = DMAF_SETCLR | DMAF_MASTER | dma_bit
+            *dmacon = (u16)(DMAF_SETCLR | DMAF_MASTER | dma_bit)
 
             self.active = true
         }
@@ -723,7 +723,7 @@ impl AudioChannel {
             // Enable audio DMA for this channel
             let dma_bit = channel_dma_bit(self.channel)
             let dmacon = (*u16)(CUSTOM_BASE + DMACON)
-            *dmacon = DMAF_SETCLR | DMAF_MASTER | dma_bit
+            *dmacon = (u16)(DMAF_SETCLR | DMAF_MASTER | dma_bit)
 
             self.active = true
         }

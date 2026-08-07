@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: mathtrans.library
 // Base: _MathTransBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,20 +11,37 @@
 // Library Functions
 // ============================================================================
 
-extern pub fn SPAtan(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPSin(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPCos(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPTan(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPSincos(cosResult: *u8, parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPSinh(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPCosh(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPTanh(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPExp(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPLog(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPPow(power: *u8 /* FLOAT */, arg: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPSqrt(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPTieee(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPFieee(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPAsin(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPAcos(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
-extern pub fn SPLog10(parm: *u8 /* FLOAT */) -> *u8 /* FLOAT */
+@library("mathtrans.library")
+extern pub fn SPAtan(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPSin(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPCos(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPTan(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPSincos(cosResult: *u8, parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPSinh(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPCosh(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPTanh(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPExp(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPLog(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPPow(power: f32, arg: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPSqrt(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPTieee(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPFieee(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPAsin(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPAcos(parm: f32) -> f32
+@library("mathtrans.library")
+extern pub fn SPLog10(parm: f32) -> f32

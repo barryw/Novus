@@ -48,6 +48,8 @@
 #include <proto/exec.h>
 #include <proto/intuition.h>
 
+extern struct ExecBase *SysBase;
+
 // Integer types - fallback definitions if stdint.h not included
 // VBCC's exec/types.h includes <stdint.h> which defines __STDINT_H
 #ifndef __STDINT_H

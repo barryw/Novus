@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: commodities.library
 // Base: _CxBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -27,6 +29,7 @@
 /// CxObjError().
 ///
 /// See also: CxObjError(), cx_lib/CxFilter(), cx_lib/CxSender(), cx_lib/CxSignal(), cx_lib/CxTranslate()
+@library("commodities.library")
 extern pub fn CreateCxObj(_type: u32, arg1: i32, arg2: i32) -> *u8
 /// Create a commodity broker. (V36)
 ///
@@ -45,6 +48,7 @@ extern pub fn CreateCxObj(_type: u32, arg1: i32, arg2: i32) -> *u8
 /// include:
 ///
 /// See also: SetCxObjPri(), <libraries/commodities.h>
+@library("commodities.library")
 extern pub fn CxBroker(nb: *NewBroker, error: *u8) -> *u8
 /// Change the activation state of a commodity object.
 ///
@@ -61,6 +65,7 @@ extern pub fn CxBroker(nb: *NewBroker, error: *u8) -> *u8
 /// or if 'co' was NULL, anything else if the object was active
 ///
 /// See also: CxBroker()
+@library("commodities.library")
 extern pub fn ActivateCxObj(co: *u8, doIt: i32) -> i32
 /// Delete a commmodity object. (V36)
 ///
@@ -71,6 +76,7 @@ extern pub fn ActivateCxObj(co: *u8, doIt: i32) -> i32
 /// * `co` - the commodity object to delete (may be NULL)
 ///
 /// See also: DeleteCxObjAll()
+@library("commodities.library")
 extern pub fn DeleteCxObj(co: *u8)
 /// Recursively delete a tree of commodity objects.
 ///
@@ -82,6 +88,7 @@ extern pub fn DeleteCxObj(co: *u8)
 /// * `co` - the first commodity object to delete (may be NULL)
 ///
 /// See also: DeleteCxObj()
+@library("commodities.library")
 extern pub fn DeleteCxObjAll(co: *u8)
 /// Obtain the type of a commodity object. (V36)
 ///
@@ -97,6 +104,7 @@ extern pub fn DeleteCxObjAll(co: *u8)
 /// <libraries/commodities.h>. Returns CX_INVALID if 'co' is NULL.
 ///
 /// See also: CreateCxObj()
+@library("commodities.library")
 extern pub fn CxObjType(co: *u8) -> u32
 /// Obtain a commodity object's accumulated error. (V36)
 ///
@@ -111,6 +119,7 @@ extern pub fn CxObjType(co: *u8) -> u32
 /// error - the accumulated error, or 0 if 'co' is NULL
 ///
 /// See also: SetFilter(), SetFilterIX(), AttachCxObj(), ActivateCxObj(), ClearCxObjError()
+@library("commodities.library")
 extern pub fn CxObjError(co: *u8) -> i32
 /// Clear the accumulated error value of a commodity
 ///
@@ -121,6 +130,7 @@ extern pub fn CxObjError(co: *u8) -> i32
 /// * `co` - the object to affect (may be NULL)
 ///
 /// See also: CxObjError()
+@library("commodities.library")
 extern pub fn ClearCxObjError(co: *u8)
 /// Set the priority of a commodity object. (V36)
 ///
@@ -140,6 +150,7 @@ extern pub fn ClearCxObjError(co: *u8)
 /// This value is only returned in V38 and beyond.
 ///
 /// See also: EnqueueCxObj()
+@library("commodities.library")
 extern pub fn SetCxObjPri(co: *u8, pri: i32) -> i32
 /// Attach a commodity object to the end of an existing
 ///
@@ -157,6 +168,7 @@ extern pub fn SetCxObjPri(co: *u8, pri: i32) -> i32
 /// using CxObjError() and cleared using ClearCxObjError().
 ///
 /// See also: CxObjError(), ClearCxObjError()
+@library("commodities.library")
 extern pub fn AttachCxObj(headObj: *u8, co: *u8)
 /// Insert a commodity object within a list of objects
 ///
@@ -174,6 +186,7 @@ extern pub fn AttachCxObj(headObj: *u8, co: *u8)
 /// using CxObjError() and cleared using ClearCxObjError().
 ///
 /// See also: SetCxObjPri(), CxObjError(), ClearCxObjError()
+@library("commodities.library")
 extern pub fn EnqueueCxObj(headObj: *u8, co: *u8)
 /// Insert a commodity object in a list after a given
 ///
@@ -193,6 +206,7 @@ extern pub fn EnqueueCxObj(headObj: *u8, co: *u8)
 /// using CxObjError() and cleared using ClearCxObjError().
 ///
 /// See also: CxObjError(), ClearCxObjError()
+@library("commodities.library")
 extern pub fn InsertCxObj(headObj: *u8, co: *u8, pred: *u8)
 /// Remove a commodity object from a list. (V36)
 ///
@@ -203,6 +217,7 @@ extern pub fn InsertCxObj(headObj: *u8, co: *u8, pred: *u8)
 /// * `co` - the object to remove (may be NULL)
 ///
 /// See also: AttachCxObj(), EnqueueCxObj(), InsertCxObj()
+@library("commodities.library")
 extern pub fn RemoveCxObj(co: *u8)
 /// Replace a translator object's translation list. (V36)
 ///
@@ -216,6 +231,7 @@ extern pub fn RemoveCxObj(co: *u8)
 ///   the new input event translation list
 ///
 /// See also: <devices/inputevent.h>, cx_lib/CxTranslate()
+@library("commodities.library")
 extern pub fn SetTranslate(translator: *u8, events: *InputEvent)
 /// Change the matching condition of a commodity filter.
 ///
@@ -231,6 +247,7 @@ extern pub fn SetTranslate(translator: *u8, events: *InputEvent)
 /// cleared depending on the failure or success of this function.
 ///
 /// See also: SetFilterIX(), CxObjError()
+@library("commodities.library")
 extern pub fn SetFilter(filter: *u8, text: *u8)
 /// Change the matching condition of a commodity filter.
 ///
@@ -247,6 +264,7 @@ extern pub fn SetFilter(filter: *u8, text: *u8)
 /// cleared depending on the failure or success of this function.
 ///
 /// See also: SetFilter(), CxObjError()
+@library("commodities.library")
 extern pub fn SetFilterIX(filter: *u8, ix: *u8)
 /// Initialize an input expression given a description string.
 ///
@@ -262,6 +280,7 @@ extern pub fn SetFilterIX(filter: *u8, ix: *u8)
 /// if 'description' was NULL
 ///
 /// See also: <libraries/commodities.h>, MatchIX()
+@library("commodities.library")
 extern pub fn ParseIX(description: *u8, ix: *u8) -> i32
 /// Obtain the type of a commodity message. (V36)
 ///
@@ -274,6 +293,7 @@ extern pub fn ParseIX(description: *u8, ix: *u8) -> i32
 /// # Returns
 /// type - the type of the commodity message, possible values are defined
 /// in <libraries/commodities.h>
+@library("commodities.library")
 extern pub fn CxMsgType(cxm: *u8) -> u32
 /// Obtain a pointer to a commodity message's data area. (V36)
 ///
@@ -290,6 +310,7 @@ extern pub fn CxMsgType(cxm: *u8) -> u32
 /// inspected.
 ///
 /// See also: cx_lib/CxSender(), cx_lib/CxCustom()
+@library("commodities.library")
 extern pub fn CxMsgData(cxm: *u8) -> *u8
 /// Obtain the ID of a commodity message. (V36)
 ///
@@ -306,6 +327,7 @@ extern pub fn CxMsgData(cxm: *u8) -> *u8
 /// program as a rule may identify some possible errors.
 ///
 /// See also: cx_lib/CxSender(), cx_lib/CxCustom()
+@library("commodities.library")
 extern pub fn CxMsgID(cxm: *u8) -> i32
 /// Send a commodity message down an object list. (V36)
 ///
@@ -320,6 +342,7 @@ extern pub fn CxMsgID(cxm: *u8) -> i32
 ///   to use as a place holder
 ///
 /// See also: RouteCxMsg()
+@library("commodities.library")
 extern pub fn DivertCxMsg(cxm: *u8, headObj: *u8, returnObj: *u8)
 /// Set the next destination of a commodity message. (V36)
 ///
@@ -333,6 +356,7 @@ extern pub fn DivertCxMsg(cxm: *u8, headObj: *u8, returnObj: *u8)
 ///   commodity object to route the message to (must NOT be NULL)
 ///
 /// See also: DivertCxMsg()
+@library("commodities.library")
 extern pub fn RouteCxMsg(cxm: *u8, co: *u8)
 /// Delete a commodity message. (V36)
 ///
@@ -342,6 +366,7 @@ extern pub fn RouteCxMsg(cxm: *u8, co: *u8)
 ///
 /// # Arguments
 /// * `cxm` - the commodity message to delete (must NOT be NULL)
+@library("commodities.library")
 extern pub fn DisposeCxMsg(cxm: *u8)
 /// Generate an input event from an ANSI code. (V36)
 ///
@@ -358,6 +383,7 @@ extern pub fn DisposeCxMsg(cxm: *u8)
 /// success - TRUE if the translation worked, FALSE otherwise.
 ///
 /// See also: cx_lib/InvertString()
+@library("commodities.library")
 extern pub fn InvertKeyMap(ansiCode: u32, event: *InputEvent, km: *KeyMap) -> i16
 /// Add input events to commodities' input stream. (V36)
 ///
@@ -372,6 +398,7 @@ extern pub fn InvertKeyMap(ansiCode: u32, event: *InputEvent, km: *KeyMap) -> i1
 /// The cx_lib/InvertString() function creates lists of input events that
 ///
 /// See also: cx_lib/FreeIEvents()
+@library("commodities.library")
 extern pub fn AddIEvents(events: *InputEvent)
 /// See if an input event matches an initialized input
 ///
@@ -388,4 +415,5 @@ extern pub fn AddIEvents(events: *InputEvent)
 /// if not
 ///
 /// See also: <libraries/commodities.h>, ParseIX()
+@library("commodities.library")
 extern pub fn MatchIX(event: *InputEvent, ix: *u8) -> i16

@@ -47,6 +47,11 @@ public class AnalysisResult
     public IReadOnlyDictionary<string, IrEnumType> Enums { get; }
 
     /// <summary>
+    /// Transparent type aliases.
+    /// </summary>
+    public IReadOnlyDictionary<string, IrType> TypeAliases { get; }
+
+    /// <summary>
     /// Trait definitions.
     /// </summary>
     public IReadOnlyDictionary<string, IrTrait> Traits { get; }
@@ -118,6 +123,7 @@ public class AnalysisResult
         IReadOnlyDictionary<string, VariableSymbol> globalVariables,
         IReadOnlyDictionary<string, IrStructType> structs,
         IReadOnlyDictionary<string, IrEnumType> enums,
+        IReadOnlyDictionary<string, IrType> typeAliases,
         IReadOnlyDictionary<string, IrTrait> traits,
         IReadOnlyDictionary<string, ConstantSymbol> constants,
         IReadOnlyDictionary<string, SourceLocation> structLocations,
@@ -138,6 +144,7 @@ public class AnalysisResult
         GlobalVariables = globalVariables;
         Structs = structs;
         Enums = enums;
+        TypeAliases = typeAliases;
         Traits = traits;
         Constants = constants;
         StructLocations = structLocations;

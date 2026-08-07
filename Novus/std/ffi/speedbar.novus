@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: speedbar.library
 // Base: _SpeedBarBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,11 +11,16 @@
 // Library Functions
 // ============================================================================
 
+@library("speedbar.library")
 extern pub fn SPEEDBAR_GetClass() -> *u8
+@library("speedbar.library")
 extern pub fn AllocSpeedButtonNodeA(number: u16, tags: *TagItem) -> *Node
 // Varargs function AllocSpeedButtonNode skipped - needs manual implementation
+@library("speedbar.library")
 extern pub fn FreeSpeedButtonNode(node: *Node)
+@library("speedbar.library")
 extern pub fn SetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
 // Varargs function SetSpeedButtonNodeAttrs skipped - needs manual implementation
+@library("speedbar.library")
 extern pub fn GetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
 // Varargs function GetSpeedButtonNodeAttrs skipped - needs manual implementation

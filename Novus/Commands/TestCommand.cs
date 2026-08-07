@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Collections.Generic;
@@ -38,6 +39,12 @@ public static class TestCommand
     {
         try
         {
+            if (options.RunWithVamos && options.TimeoutSeconds <= 0)
+            {
+                Console.WriteLine("Error: --timeout must be greater than zero");
+                return 1;
+            }
+
             // Determine the path to test
             string targetPath;
 
@@ -196,7 +203,8 @@ public static class TestCommand
                     NdkPath = options.NdkPath,
                     Verbose = options.Verbose,
                     OptimizationLevel = options.Release ? 2 : 0,
-                    SafetyLevelOption = options.SafetyLevel
+                    SafetyLevelOption = options.SafetyLevel,
+                    UseStdlibCache = true
                 };
 
                 var result = await Program.RunCompiler(compilerOptions);
@@ -204,17 +212,56 @@ public static class TestCommand
                 // Update outputExe to absolute path for reporting
                 outputExe = Path.Combine(outputDir, "tests");
 
-                if (result == 0)
+                if (result != 0)
                 {
-                    Console.WriteLine($"\n===================================");
-                    Console.WriteLine($"Test runner built successfully!");
-                    Console.WriteLine($"Output: {outputExe}");
-                    Console.WriteLine($"Tests: {activeTests.Count} active, {skippedTests.Count} skipped");
-                    Console.WriteLine($"\nCopy to Amiga and run to execute tests.");
-                    Console.WriteLine($"===================================");
+                    return result;
                 }
 
-                return result;
+                Console.WriteLine($"\n===================================");
+                Console.WriteLine($"Test runner built successfully!");
+                Console.WriteLine($"Output: {outputExe}");
+                Console.WriteLine($"Tests: {activeTests.Count} active, {skippedTests.Count} skipped");
+
+                if (!options.RunWithVamos)
+                {
+                    Console.WriteLine($"\nCopy to Amiga and run to execute tests, or pass --run to use vamos.");
+                    Console.WriteLine($"===================================");
+                    return 0;
+                }
+
+                Console.WriteLine($"===================================");
+                Console.WriteLine($"\nRunning with vamos...\n");
+
+                var startInfo = new ProcessStartInfo("vamos")
+                {
+                    UseShellExecute = false
+                };
+                startInfo.ArgumentList.Add("-C");
+                startInfo.ArgumentList.Add(options.Cpu);
+                startInfo.ArgumentList.Add("--vols-base-dir");
+                startInfo.ArgumentList.Add(Path.Combine(Path.GetTempPath(), "novus-vamos-volumes"));
+                startInfo.ArgumentList.Add(outputExe);
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                {
+                    Console.WriteLine("Error: Failed to start vamos");
+                    return 1;
+                }
+
+                try
+                {
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(options.TimeoutSeconds));
+                }
+                catch (TimeoutException)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync();
+                    Console.WriteLine($"\nError: Test run timed out after {options.TimeoutSeconds} seconds");
+                    return 124;
+                }
+
+                return process.ExitCode;
             }
             finally
             {

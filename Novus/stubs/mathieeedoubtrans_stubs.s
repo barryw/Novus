@@ -10,7 +10,7 @@
 ; DOUBLE IEEEDPAtan(DOUBLE parm)
 	xdef	_IEEEDPAtan
 _IEEEDPAtan:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-30(a6)
 	rts
@@ -20,7 +20,7 @@ _IEEEDPAtan:
 ; DOUBLE IEEEDPSin(DOUBLE parm)
 	xdef	_IEEEDPSin
 _IEEEDPSin:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-36(a6)
 	rts
@@ -30,7 +30,7 @@ _IEEEDPSin:
 ; DOUBLE IEEEDPCos(DOUBLE parm)
 	xdef	_IEEEDPCos
 _IEEEDPCos:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-42(a6)
 	rts
@@ -40,7 +40,7 @@ _IEEEDPCos:
 ; DOUBLE IEEEDPTan(DOUBLE parm)
 	xdef	_IEEEDPTan
 _IEEEDPTan:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-48(a6)
 	rts
@@ -51,7 +51,7 @@ _IEEEDPTan:
 	xdef	_IEEEDPSincos
 _IEEEDPSincos:
 	movea.l	4(sp),a0
-	move.l	8(sp),d0-d1
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-54(a6)
 	rts
@@ -61,7 +61,7 @@ _IEEEDPSincos:
 ; DOUBLE IEEEDPSinh(DOUBLE parm)
 	xdef	_IEEEDPSinh
 _IEEEDPSinh:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-60(a6)
 	rts
@@ -71,7 +71,7 @@ _IEEEDPSinh:
 ; DOUBLE IEEEDPCosh(DOUBLE parm)
 	xdef	_IEEEDPCosh
 _IEEEDPCosh:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-66(a6)
 	rts
@@ -81,7 +81,7 @@ _IEEEDPCosh:
 ; DOUBLE IEEEDPTanh(DOUBLE parm)
 	xdef	_IEEEDPTanh
 _IEEEDPTanh:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-72(a6)
 	rts
@@ -91,7 +91,7 @@ _IEEEDPTanh:
 ; DOUBLE IEEEDPExp(DOUBLE parm)
 	xdef	_IEEEDPExp
 _IEEEDPExp:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-78(a6)
 	rts
@@ -101,7 +101,7 @@ _IEEEDPExp:
 ; DOUBLE IEEEDPLog(DOUBLE parm)
 	xdef	_IEEEDPLog
 _IEEEDPLog:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-84(a6)
 	rts
@@ -111,8 +111,8 @@ _IEEEDPLog:
 ; DOUBLE IEEEDPPow(DOUBLE exp, DOUBLE arg)
 	xdef	_IEEEDPPow
 _IEEEDPPow:
-	move.l	4(sp),d2-d3
-	move.l	8(sp),d0-d1
+	movem.l	4(sp),d2-d3
+	movem.l	12(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-90(a6)
 	rts
@@ -122,7 +122,7 @@ _IEEEDPPow:
 ; DOUBLE IEEEDPSqrt(DOUBLE parm)
 	xdef	_IEEEDPSqrt
 _IEEEDPSqrt:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-96(a6)
 	rts
@@ -132,7 +132,7 @@ _IEEEDPSqrt:
 ; FLOAT IEEEDPTieee(DOUBLE parm)
 	xdef	_IEEEDPTieee
 _IEEEDPTieee:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-102(a6)
 	rts
@@ -152,7 +152,7 @@ _IEEEDPFieee:
 ; DOUBLE IEEEDPAsin(DOUBLE parm)
 	xdef	_IEEEDPAsin
 _IEEEDPAsin:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-114(a6)
 	rts
@@ -162,7 +162,7 @@ _IEEEDPAsin:
 ; DOUBLE IEEEDPAcos(DOUBLE parm)
 	xdef	_IEEEDPAcos
 _IEEEDPAcos:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-120(a6)
 	rts
@@ -172,8 +172,7 @@ _IEEEDPAcos:
 ; DOUBLE IEEEDPLog10(DOUBLE parm)
 	xdef	_IEEEDPLog10
 _IEEEDPLog10:
-	move.l	4(sp),d0-d1
+	movem.l	4(sp),d0-d1
 	movea.l	_MathIeeeDoubTransBase,a6
 	jsr	-126(a6)
 	rts
-

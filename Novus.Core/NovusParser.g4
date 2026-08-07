@@ -21,7 +21,7 @@ using Novus.Frontend;
 // Parser Rules
 
 compilationUnit
-    : NEWLINE* importDeclaration* reexportDeclaration* (functionDeclaration | constDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration)* EOF
+    : NEWLINE* importDeclaration* reexportDeclaration* (functionDeclaration | constDeclaration | typeAliasDeclaration | staticDeclaration | globalVariableDeclaration | structDeclaration | enumDeclaration | traitDeclaration | implDeclaration)* EOF
     ;
 
 attribute
@@ -78,6 +78,10 @@ reexportList
 
 constDeclaration
     : attribute* (KW_PUB | KW_INTERNAL)? KW_CONST IDENTIFIER (COLON type)? EQ expression NEWLINE*
+    ;
+
+typeAliasDeclaration
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_TYPE IDENTIFIER EQ type NEWLINE*
     ;
 
 staticDeclaration
@@ -158,6 +162,7 @@ implTargetType
 
 primitiveTypeName
     : KW_U8 | KW_U16 | KW_U32 | KW_U64 | KW_I8 | KW_I16 | KW_I32 | KW_I64 | KW_BOOL
+    | KW_F32 | KW_F64 | KW_FIXED16 | KW_FIXED32
     ;
 
 implItem
@@ -299,6 +304,7 @@ pattern
     | HEX_LITERAL                                # LiteralPattern
     | BINARY_LITERAL                             # LiteralPattern
     | STRING_LITERAL                             # LiteralPattern
+    | CHAR_LITERAL                               # LiteralPattern
     | KW_TRUE                                    # BoolLiteralPattern
     | KW_FALSE                                   # BoolLiteralPattern
     | KW_NULL                                    # NullLiteralPattern

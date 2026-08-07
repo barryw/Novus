@@ -113,6 +113,12 @@ public class StdlibIndexer
                 }
             }
 
+            foreach (var aliasDecl in tree.typeAliasDeclaration())
+            {
+                if (aliasDecl.KW_PUB() != null)
+                    exports.Add(aliasDecl.IDENTIFIER().GetText());
+            }
+
             // Public enums
             foreach (var enumDecl in tree.enumDeclaration())
             {

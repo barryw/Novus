@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: battmem.resource
 // Base: _BattMemBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,7 +11,11 @@
 // Library Functions
 // ============================================================================
 
+@library("battmem.resource")
 extern pub fn ObtainBattSemaphore()
+@library("battmem.resource")
 extern pub fn ReleaseBattSemaphore()
+@library("battmem.resource")
 extern pub fn ReadBattMem(buffer: *u8, offset: u32, length: u32) -> u32
+@library("battmem.resource")
 extern pub fn WriteBattMem(buffer: *u8, offset: u32, length: u32) -> u32

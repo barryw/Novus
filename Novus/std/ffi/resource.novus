@@ -1,6 +1,8 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: resource.library
 // Base: _ResourceBase
+
+from std::ffi::amiga_structs import *
 //
 // NOTE: Constants are in std::ffi::amiga_consts
 // NOTE: Structs are in std::ffi::amiga_structs
@@ -9,13 +11,21 @@
 // Library Functions
 // ============================================================================
 
+@library("resource.library")
 extern pub fn RL_OpenResource(resource: *u8, screen: *Screen, catalog: *Catalog) -> *u8 /* RESOURCEFILE */
+@library("resource.library")
 extern pub fn RL_CloseResource(resfile: *u8 /* RESOURCEFILE */)
+@library("resource.library")
 extern pub fn RL_NewObjectA(resfile: *u8 /* RESOURCEFILE */, resid: *u8 /* RESOURCEID */, tags: *TagItem) -> *u8
 // Varargs function RL_NewObject skipped - needs manual implementation
+@library("resource.library")
 extern pub fn RL_DisposeObject(resfile: *u8 /* RESOURCEFILE */, obj: *u8)
+@library("resource.library")
 extern pub fn RL_NewGroupA(resfile: *u8 /* RESOURCEFILE */, id: *u8 /* RESOURCEID */, taglist: *TagItem) -> *u8
 // Varargs function RL_NewGroup skipped - needs manual implementation
+@library("resource.library")
 extern pub fn RL_DisposeGroup(resfile: *u8 /* RESOURCEFILE */, obj: *u8)
+@library("resource.library")
 extern pub fn RL_GetObjectArray(resfile: *u8 /* RESOURCEFILE */, obj: *u8, id: *u8 /* RESOURCEID */) -> *u8
+@library("resource.library")
 extern pub fn RL_SetResourceScreen(resfile: *u8 /* RESOURCEFILE */, screen: *Screen) -> i16

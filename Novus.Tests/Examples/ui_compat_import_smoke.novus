@@ -1,0 +1,6 @@
+from std::ui::events import WindowEvent
+from std::graphics::intuition import WindowHandle
+
+pub fn main() -> i32 {
+    return 0
+}

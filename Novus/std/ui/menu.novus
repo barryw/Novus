@@ -16,7 +16,7 @@
 
 from std::core import Option, Result, Vec
 from std::error::errors import IntuitionError, StringError
-from std::ffi::amiga_structs import Menu, MenuItem, VisualInfo, Window, Screen, TagItem
+from std::ffi::amiga_structs import Menu, MenuItem, Window, Screen, TagItem
 from std::ffi::gadtools import NewMenu
 from std::ffi::amiga_consts import *
 from std::ffi::intuition import SetMenuStrip, ClearMenuStrip, ItemAddress
@@ -565,7 +565,7 @@ impl MenuItemHandle {
 
 pub struct GadToolsMenuStrip {
     menu: *Menu
-    visual_info: *VisualInfo
+    visual_info: *u8
     screen: *Screen
     menu_array: *NewMenu
     // Track allocated label pointers for cleanup

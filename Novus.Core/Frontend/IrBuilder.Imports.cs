@@ -45,8 +45,7 @@ public partial class IrBuilder
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
             var reexportPath = reexportDecl.modulePath().GetText();
-            var reexportText = reexportDecl.GetText();
-            if (reexportText.EndsWith("::*"))
+            if (reexportDecl.STAR() != null)
             {
                 ImportModule(reexportPath, importAll: true, importList: null);
             }
@@ -124,6 +123,14 @@ public partial class IrBuilder
                 {
                     RegisterStruct(structDecl);
                     goto nextSymbol; // Found it, move to next symbol
+                }
+            }
+            foreach (var aliasDecl in moduleContext.typeAliasDeclaration())
+            {
+                if (aliasDecl.IDENTIFIER().GetText() == symbolName)
+                {
+                    RegisterTypeAlias(aliasDecl);
+                    goto nextSymbol;
                 }
             }
             // Check traits
@@ -574,9 +581,11 @@ public partial class IrBuilder
         // FFI modules (only extern functions) don't need to be compiled separately
         bool hasImplementation = ModuleImportHelper.CheckHasImplementation(moduleContext);
 
-        // Track this module for compilation only if it has real implementations
-        // (avoid duplicates)
-        if (hasImplementation && !_importedModulePaths.Contains(modulePath))
+        // Extern-only FFI modules still carry the library metadata needed by the
+        // linker/startup pipeline. Plain type/constant modules remain parse-only.
+        var hasFfiMetadata = File.ReadLines(modulePath).Take(12)
+            .Any(line => line.StartsWith("// Library:", StringComparison.Ordinal));
+        if ((hasImplementation || hasFfiMetadata) && !_importedModulePaths.Contains(modulePath))
         {
             _importedModulePaths.Add(modulePath);
         }
@@ -593,8 +602,7 @@ public partial class IrBuilder
         foreach (var reexportDecl in moduleContext.reexportDeclaration())
         {
             var reexportPath = reexportDecl.modulePath().GetText();
-            var text = reexportDecl.GetText();
-            bool reexportAll = text.EndsWith("::*");
+            bool reexportAll = reexportDecl.STAR() != null;
 
             if (reexportAll)
             {
@@ -636,6 +644,9 @@ public partial class IrBuilder
 
         // Step 1b: Register ALL struct placeholders from the module (not just imported ones)
         RegisterAllStructPlaceholdersForImport(moduleContext);
+
+        // Step 1c: Resolve transparent aliases before any fields or signatures use them.
+        RegisterTypeAliasesForImport(moduleContext);
 
         // CRITICAL PHASE 2: Fill in type details
 
@@ -1689,6 +1700,16 @@ public partial class IrBuilder
             // The struct will be filled in later only if it's in the import list
             var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
             _symbols.RegisterStruct(structName, placeholderStruct);
+        }
+    }
+
+    private void RegisterTypeAliasesForImport(NovusParser.CompilationUnitContext moduleContext)
+    {
+        foreach (var aliasDecl in moduleContext.typeAliasDeclaration())
+        {
+            var name = aliasDecl.IDENTIFIER().GetText();
+            if (_symbols.LookupTypeAlias(name) == null)
+                RegisterTypeAlias(aliasDecl);
         }
     }
 

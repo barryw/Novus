@@ -28,7 +28,8 @@
 	xref	_WBStartupMsg		; From library_bases.s (WBStartup message)
 	xref	___dos_init		; From dos_init.s
 	xref	___dos_cleanup		; From dos_init.s
-	xref	___graphics_init	; From graphics_init.s
+	xref	___novus_ffi_init	; Generated exact FFI dependencies
+	xref	___novus_ffi_cleanup
 
 ; ============================================================================
 ; Entry Point
@@ -101,77 +102,27 @@ _start:
 	jsr	-126(a6)		; CurrentDir() - LVO -126
 
 .skip_currentdir:
-	; ========================================================================
-	; Initialize all required libraries BEFORE main()
-	;
-	; CRITICAL: VBCC's amiga.lib stubs expect library bases to be initialized.
-	; They do NOT do lazy initialization. We must explicitly initialize all
-	; libraries that might be used.
-	;
-	; Libraries initialized:
-	;   - graphics.library (for all Graphics functions)
-	;   - intuition.library (for Screen/Window functions)
-	;   - diskfont.library (for font functions)
-	;   - gadtools.library (for GadTools functions)
-	; ========================================================================
-
-	; Initialize graphics.library
-	tst.l	_GfxBase		; Check if already initialized
-	bne.s	.graphics_ok		; Skip if already open
-	jsr	___graphics_init	; Open graphics.library
-	tst.l	d0			; Check result
-	beq.w	.exit_no_graphics	; Exit if failed
-.graphics_ok:
-
-	; Initialize intuition.library
-	tst.l	_IntuitionBase		; Check if already initialized
-	bne.s	.intuition_ok		; Skip if already open
-	movem.l	d1/a0-a1/a6,-(sp)	; Save registers
-	movea.l	_SysBase,a6		; Get exec.library base
-	move.l	#intuition_name,a1	; Library name (absolute addressing)
-	moveq	#0,d0			; Any version
-	jsr	-552(a6)		; OpenLibrary()
-	move.l	d0,_IntuitionBase	; Store result
-	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
-	tst.l	_IntuitionBase		; Check result
-	beq.w	.exit_no_intuition	; Exit if failed
-.intuition_ok:
-
-	; Initialize diskfont.library
-	tst.l	_DiskfontBase		; Check if already initialized
-	bne.s	.diskfont_ok		; Skip if already open
-	movem.l	d1/a0-a1/a6,-(sp)	; Save registers
-	movea.l	_SysBase,a6		; Get exec.library base
-	move.l	#diskfont_name,a1	; Library name (absolute addressing)
-	moveq	#0,d0			; Any version
-	jsr	-552(a6)		; OpenLibrary()
-	move.l	d0,_DiskfontBase	; Store result
-	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
-	; DiskfontBase is optional - don't fail if it's not available
-.diskfont_ok:
-
-	; Initialize gadtools.library
-	tst.l	_GadToolsBase		; Check if already initialized
-	bne.s	.gadtools_ok		; Skip if already open
-	movem.l	d1/a0-a1/a6,-(sp)	; Save registers
-	movea.l	_SysBase,a6		; Get exec.library base
-	move.l	#gadtools_name,a1	; Library name (absolute addressing)
-	moveq	#37,d0			; Requires OS 2.0+
-	jsr	-552(a6)		; OpenLibrary()
-	move.l	d0,_GadToolsBase	; Store result
-	movem.l	(sp)+,d1/a0-a1/a6	; Restore registers
-	; GadToolsBase is optional - don't fail if it's not available
-.gadtools_ok:
+	; Open only the libraries/resources/devices proven reachable in IR.
+	jsr	___novus_ffi_init
+	tst.l	d0
+	beq.s	.ffi_init_failed
 
 	; Call main()
 	jsr	_main
 
 	; Save return code
 	move.l	d0,-(sp)
+	jsr	___novus_ffi_cleanup
+	bra.s	.cleanup_core
+
+.ffi_init_failed:
+	moveq	#20,d0			; RETURN_FAIL
+	move.l	d0,-(sp)
 
 	; Clean up libraries that were lazily initialized
 	; Note: We check if the base is non-NULL before closing
 
+.cleanup_core:
 	; Close GadTools if it was opened
 	tst.l	_GadToolsBase
 	beq.s	.no_gadtools
@@ -219,26 +170,7 @@ _start:
 	jsr	-378(a6)		; ReplyMsg() - LVO -378
 
 .no_wb_reply:
-.exit_no_graphics:
-.exit_no_intuition:
 .exit_no_dos:
 .exit_no_msg:
 	; Exit with return code from main (already in d0)
 	rts				; Return to CLI/Workbench
-
-; ============================================================================
-; Data Section - Library Names
-; ============================================================================
-	section	data,data
-
-intuition_name:
-	dc.b	'intuition.library',0
-	even
-
-diskfont_name:
-	dc.b	'diskfont.library',0
-	even
-
-gadtools_name:
-	dc.b	'gadtools.library',0
-	even

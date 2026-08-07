@@ -1,0 +1,10 @@
+from std::ffi::exec import Supervisor
+
+fn supervisor_callback() -> u32 {
+    return 0
+}
+
+pub fn main() -> i32 {
+    let result = unsafe { Supervisor(supervisor_callback) }
+    return (i32)(result & 0)
+}

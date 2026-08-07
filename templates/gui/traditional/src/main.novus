@@ -1,18 +1,19 @@
-// Traditional GUI Template
-// A simple Amiga GUI application using direct Intuition API calls
-//
-// This template demonstrates the traditional Intuition.library approach
-// to creating Amiga GUIs with direct API calls and manual event handling
-//
-// TODO: Full GUI implementation requires FFI type generation fix
-// See compiler issue with extern function pointer types
+// Traditional Intuition application using Novus's owning window wrapper.
+
+from std::ui::window import WindowHandle, WindowEvent
 
 pub fn main() -> i32 {
-    // Placeholder for traditional Intuition-based GUI
-    // Will include:
-    // - OpenWindow() / CloseWindow() calls
-    // - Manual IDCMP event loop
-    // - Direct manipulation of Intuition structures
-
-    return 0
+    match WindowHandle::simple("{{PROJECT_NAME}}", 480, 160) {
+        Result::Ok(window) => {
+            var running = true
+            while running {
+                match window.wait_event() {
+                    WindowEvent::Close => { running = false },
+                    _ => {},
+                }
+            }
+            return 0
+        },
+        Result::Err(_) => return 20,
+    }
 }
