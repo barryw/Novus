@@ -66,3 +66,6 @@ release/
 # Published binaries
 publish/
 publish-*/
+
+# Compiled Amiga-side test tools (rebuild with tools/amiga/README.md)
+tools/amiga/wrun

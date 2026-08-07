@@ -237,7 +237,9 @@ public static class TestCommand
                     UseShellExecute = false
                 };
                 startInfo.ArgumentList.Add("-C");
-                startInfo.ArgumentList.Add(options.Cpu);
+                // vamos only accepts concrete CPU names; "auto" is ours, not its.
+                // Map it the same way the assembler path does.
+                startInfo.ArgumentList.Add(options.Cpu == "auto" ? "68020" : options.Cpu);
                 startInfo.ArgumentList.Add("--vols-base-dir");
                 startInfo.ArgumentList.Add(Path.Combine(Path.GetTempPath(), "novus-vamos-volumes"));
                 startInfo.ArgumentList.Add(outputExe);
