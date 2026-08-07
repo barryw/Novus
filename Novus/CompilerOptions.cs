@@ -29,14 +29,13 @@ public class CompilerOptions
     public bool EmitIr { get; set; }
 
     [Option("vbcc-path", Required = false, HelpText = "Path to VBCC installation (default: vendored VBCC)")]
-    public string VbccPath { get; set; } = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "vendor", "vbcc");
+    public string VbccPath { get; set; } = PathUtility.GetVbccPath();
 
-    [Option("ndk-path", Required = false, HelpText = "Path to NDK installation (default: $NDK or ~/amiga-cc/NDK3.9)")]
-    public string NdkPath { get; set; } = Environment.GetEnvironmentVariable("NDK")
-        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9");
+    [Option("ndk-path", Required = false, HelpText = "Path to your Amiga NDK 3.9 (default: $NDK, then 'novus config set ndk-path')")]
+    public string NdkPath { get; set; } = UserConfig.ResolveNdkPath() ?? "";
 
-    [Option('O', "optimize", Required = false, Default = 2, HelpText = "Optimization level (0-3, default: 2)")]
-    public int OptimizationLevel { get; set; } = 2;
+    [Option('O', "optimize", Required = false, Default = 1, HelpText = "Optimization level (0-3, default: 1)")]
+    public int OptimizationLevel { get; set; } = 1;
 
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }

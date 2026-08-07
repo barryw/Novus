@@ -27,7 +27,9 @@ public class BuildSection
     public string TargetCpu { get; set; } = "68020";  // 68020, 68030, 68040, 68060, auto
     public string Fpu { get; set; } = "auto";          // soft, 68881, 68040, auto
     public string Output { get; set; } = "build";      // Output directory
-    public int OptimizationLevel { get; set; } = 2;    // 0-3 (default: 2 - frame pointers fix VBCC optimizer)
+    public int OptimizationLevel { get; set; } = 1;    // 0-3. Measured on the cli template:
+    // -O=1 13196 bytes, -O=2 15984, -O=0 14332. -O=2 enables IR inlining that costs
+    // more size than it saves on 68k, so it is not a good default.
     public bool EmitAsm { get; set; } = false;         // Emit assembly files
     public string[] AsmFiles { get; set; } = Array.Empty<string>();  // External assembly files to link
 }

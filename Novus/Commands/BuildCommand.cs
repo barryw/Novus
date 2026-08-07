@@ -597,7 +597,9 @@ public static class BuildCommand
         }
         else if (buildMode == BuildMode.Release)
         {
-            optimizationLevel = 2;  // Release default
+            // Measured on the cli template: -O=1 13196 bytes, -O=2 15984, -O=0 14332.
+            // -O=2 turns on IR inlining that costs more size than it saves on 68k.
+            optimizationLevel = 1;  // Release default
         }
         else
         {
@@ -728,8 +730,8 @@ public static class BuildCommand
             OptimizationLevel = optimizationLevel,
             BuildMode = buildMode,
             EmitAsmOnly = buildOptions.EmitAsmOnly || project.Build.EmitAsm,
-            VbccPath = buildOptions.VbccPath ?? Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "vendor", "vbcc"),
-            NdkPath = buildOptions.NdkPath ?? Environment.GetEnvironmentVariable("NDK") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "amiga-cc", "NDK3.9"),
+            VbccPath = buildOptions.VbccPath ?? PathUtility.GetVbccPath(),
+            NdkPath = UserConfig.ResolveNdkPath(buildOptions.NdkPath) ?? "",
             Verbose = buildOptions.Verbose,
             ProjectType = projectType,
             PackageName = project.Package.Name,  // Inject as PKG_NAME compile-time constant

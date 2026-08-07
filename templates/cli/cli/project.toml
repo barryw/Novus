@@ -15,7 +15,7 @@ fpu = "auto"
 chipset = "auto"
 
 # Optimization level: 0 (none), 1 (basic), 2 (full), 3 (aggressive)
-optimization_level = 2
+optimization_level = 1
 
 [dependencies]
 # Add dependencies here

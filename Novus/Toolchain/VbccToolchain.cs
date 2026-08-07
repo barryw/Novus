@@ -25,8 +25,25 @@ public class VbccToolchain
         if (!Directory.Exists(_vbccPath))
             throw new DirectoryNotFoundException($"VBCC path not found: {_vbccPath}");
 
-        if (!Directory.Exists(_ndkPath))
-            throw new DirectoryNotFoundException($"NDK path not found: {_ndkPath}");
+        // The NDK cannot be redistributed, so Novus ships vbcc's own libc and inline
+        // headers but none of the AmigaOS system headers. novus_types.h includes
+        // <dos/datetime.h> and the runtime includes <exec/types.h>, <proto/exec.h> and
+        // more, so a compile needs the user's own NDK and cannot proceed without one.
+        _ndkPath = UserConfig.RequireNdkPath(_ndkPath);
+
+        // Novus drives vbcc through its own target configs. A stock vbcc install has
+        // aos68k but not aos68k_fpu, and vbcc reports only "No config file!" on stderr
+        // while still exiting non-zero, so the failure otherwise surfaces as an
+        // unexplained "failed to compile <generated file>.c".
+        foreach (var requiredConfig in new[] { "aos68k", "aos68k_fpu" })
+        {
+            var configFile = Path.Combine(_vbccPath, "config", requiredConfig);
+            if (!File.Exists(configFile))
+                throw new FileNotFoundException(
+                    $"VBCC at {_vbccPath} is missing the '{requiredConfig}' target config. " +
+                    "Novus requires its vendored VBCC (vendor/vbcc); point --vbcc-path at it " +
+                    "or set the VBCC environment variable.", configFile);
+        }
     }
 
     /// <summary>
@@ -304,15 +321,13 @@ public class VbccToolchain
         // aos68k_fpu config has -m68881 in the assembler command to accept FPU instructions
         var configName = enableFpu ? "+aos68k_fpu" : "+aos68k";
 
-        // Determine optimization level based on build mode
-        // Note: Using O=0 for release to test if optimization is the issue
-        var optLevel = 0;
+        // Debug stays at -O=0 so the generated C maps cleanly onto the assembly;
+        // release honours whatever the caller asked for.
+        var optLevel = buildMode == BuildMode.Debug ? 0 : optimization;
 
-        // Build include path arguments
-        var includeArgs = new List<string>
-        {
-            $"-I{Path.Combine(_ndkPath, "Include", "include_h")}"
-        };
+        // Build include path arguments. The NDK supplies the AmigaOS system headers that
+        // Novus does not ship; vbcc's own target include dir supplies libc and inline/.
+        var includeArgs = new List<string> { $"-I{UserConfig.IncludeDir(_ndkPath)}" };
         if (extraIncludePaths != null)
         {
             foreach (var path in extraIncludePaths)
