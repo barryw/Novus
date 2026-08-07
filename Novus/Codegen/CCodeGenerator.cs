@@ -201,6 +201,14 @@ public partial class CCodeGenerator
     /// </summary>
     private HashSet<string> _safeToInlineComparisons = new();
 
+    // A comparison whose result feeds straight into the next conditional branch is
+    // stored, then never read - the branch inlines the expression instead. vbcc does
+    // not remove the dead store (verified at -O=2), and materialising a bool costs
+    // roughly five instructions, so we hold the store back until we know whether the
+    // branch consumes it. Flushed by FlushPendingComparisonStore if anything else runs.
+    private string? _pendingComparisonSlot;
+    private string? _pendingComparisonStore;
+
     // Threshold for element-by-element array initialization vs memcpy
     // Arrays smaller than this use element-by-element assignment (safer on 68k)
     // Arrays larger use memcpy from a static const temporary (better performance)
@@ -1698,6 +1706,10 @@ public partial class CCodeGenerator
         _addressOnlyIndexAccess.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
         _safeToInlineComparisons.Clear();  // OPTIMIZATION: reset safe inline tracking
+        // Anything still pending belonged to the previous function and was never
+        // consumed there, so it is dead. Drop it rather than emit it into this one.
+        _pendingComparisonSlot = null;
+        _pendingComparisonStore = null;
 
         // Reset debug line tracking for this function
         _lastEmittedDebugLine = -1;
@@ -4687,6 +4699,10 @@ public partial class CCodeGenerator
         _activatedDeferBlocks.Clear();
         _inlineableComparisons.Clear();  // VBCC workaround: reset comparison tracking
         _safeToInlineComparisons.Clear();  // OPTIMIZATION: reset safe inline tracking
+        // Anything still pending belonged to the previous function and was never
+        // consumed there, so it is dead. Drop it rather than emit it into this one.
+        _pendingComparisonSlot = null;
+        _pendingComparisonStore = null;
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
@@ -5208,6 +5224,15 @@ public partial class CCodeGenerator
         if (instruction is not (IrBinaryOp or IrConditionalBranch or IrLabel or IrBranch))
         {
             _safeToInlineComparisons.Clear();
+        }
+
+        // A held-back comparison store is only dead if the branch consuming it comes
+        // next. EmitConditionalBranch decides that; everything else forces a flush.
+        // A label counts as "everything else": another path can jump to it, so the
+        // slot may be read without this comparison having run.
+        if (_pendingComparisonStore != null && instruction is not IrConditionalBranch)
+        {
+            FlushPendingComparisonStore();
         }
 
         switch (instruction)
@@ -6307,14 +6332,13 @@ public partial class CCodeGenerator
                 else
                     wrapperCall = $"({left} {op} {right})";  // < <= > >= don't have wrappers yet
 
-                if (alreadyDeclared)
-                {
-                    _output.AppendLine($"    {resultName} = {wrapperCall};");
-                }
-                else
-                {
-                    _output.AppendLine($"    {cType} {resultName} = {wrapperCall};");
-                }
+                // Hold the store back rather than emitting it. If the next instruction
+                // is the branch that consumes this slot, the branch inlines the
+                // expression and the store is dead; otherwise it gets flushed intact.
+                _pendingComparisonSlot = resultName;
+                _pendingComparisonStore = alreadyDeclared
+                    ? $"    {resultName} = {wrapperCall};"
+                    : $"    {cType} {resultName} = {wrapperCall};";
             }
             else if (alreadyDeclared)
             {
@@ -6693,9 +6717,33 @@ public partial class CCodeGenerator
         _output.AppendLine($"    goto {targetLabel};");
     }
 
+    /// <summary>
+    /// Write out a comparison store that turned out not to be consumed by a branch.
+    /// Safe to call at any point; does nothing when there is nothing pending.
+    /// </summary>
+    private void FlushPendingComparisonStore()
+    {
+        if (_pendingComparisonStore == null) return;
+        _output.AppendLine(_pendingComparisonStore);
+        _pendingComparisonStore = null;
+        _pendingComparisonSlot = null;
+    }
+
     private void EmitConditionalBranch(IrConditionalBranch condBranch)
     {
         var conditionVar = EmitValue(condBranch.Condition);
+
+        // If this is the branch the pending comparison was waiting for, it inlines the
+        // expression and the store is dead - drop it. Otherwise it has to be written.
+        if (_pendingComparisonSlot == conditionVar && _safeToInlineComparisons.Contains(conditionVar))
+        {
+            _pendingComparisonStore = null;
+            _pendingComparisonSlot = null;
+        }
+        else
+        {
+            FlushPendingComparisonStore();
+        }
 
         // VBCC WORKAROUND (VBCC_001): VBCC's optimizer can move stack cleanup instructions
         // between a comparison and its conditional branch, clobbering the CPU condition flags.
