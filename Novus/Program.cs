@@ -1505,7 +1505,11 @@ public class Program
                 Console.WriteLine("Failed to assemble FFI lifecycle");
                 return 1;
             }
-            objectFiles.Add(ffiRuntimeObj);
+            // NOTE: deliberately NOT added here. AmigaOS starts execution at the first
+            // byte of the first hunk, so novus_startup.o must be the first object in the
+            // link. Adding this object first put ___novus_ffi_init at CODE+0, and the
+            // program ran that stub instead of _start (exited immediately with d0=1).
+            // It is appended after the core files below.
 
             // Assemble core Novus runtime files (only for executables, not libraries)
             var isLibrary = options.ProjectType.ToLowerInvariant() == "library";
@@ -1565,6 +1569,10 @@ ___stack:
                 }
                 objectFiles.Add(stackConfigObj);
             }
+
+            // Safe to add now: for executables novus_startup.o is already first, so
+            // _start keeps CODE+0 (the AmigaOS entry point).
+            objectFiles.Add(ffiRuntimeObj);
 
             // Assemble runtime library assembly files (needed for all project types)
             var runtimeAsmFiles = new[] { "novus_io" };
