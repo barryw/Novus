@@ -34,6 +34,8 @@ TestResults/
 !runtime/**/*.c
 !Novus/runtime/**/*.c
 !vendor/vbcc/**/*.c
+# Amiga-side tools are hand-written C sources, not generated build artifacts
+!tools/amiga/*.c
 *.out
 a.out
 novus_types.h
