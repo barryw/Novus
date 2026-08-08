@@ -767,6 +767,16 @@ public class Program
         Console.Error.WriteLine($"FPU Mode: {options.Fpu}");
         Console.Error.WriteLine("==================================\n");
 
+        try
+        {
+            CompilerOptions.ValidateOptimizationLevel(options.OptimizationLevel);
+        }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
+
         // Check the NDK up front. It is only needed once the generated C is compiled, but
         // discovering it is missing at that point means the user has already waited through
         // parsing, IR, optimization and codegen for an error we could have given instantly.

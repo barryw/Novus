@@ -5439,7 +5439,23 @@ int emit_peephole(void)
        c1==c4&&r1==r4&&c2==c3&&r2==r3&&r1>=0&&r1<=7&&r2>=0&&r2<=7&&
        (c1=='a'||c1=='d')&&(c2=='a'||c2=='d')){
       /* create tst instruction if condition codes of address register are needed */
-      if(c1=='d'&&c2=='a'&&cc_set!=0&&(cc_set->flags&(REG|DREFOBJ))==REG&&cc_set->reg==a0+r2)
+      /* The removed instruction here is "move.l a<r2>,d<r1>", a move into a data
+         register, so it sets the condition codes. Dropping it is only safe when
+         nothing needs them. The original test covered cc_set naming the address
+         register; it also has to cover cc_set naming the data register being
+         written, which is the far more common case - a pointer returned in d0,
+         parked in an address register and tested:
+
+             jsr     _ReadArgs
+             move.l  d0,a1        ; MOVEA, sets no flags
+             move.l  a1,d0        ; sets flags - removed here
+             bne     l44          ; ...so this branched on stale flags
+
+         The preceding TEST was already elided on the strength of that move, so
+         removing it silently inverted the branch depending on what the callee
+         happened to leave in the flags. */
+      if(c1=='d'&&c2=='a'&&cc_set!=0&&(cc_set->flags&(REG|DREFOBJ))==REG&&
+         (cc_set->reg==a0+r2||cc_set->reg==d0+r1))
 	sprintf(asmline[0],"\ttst.l\t%s\n",mregnames[d0+r1]);
       else
 	remove_asm();

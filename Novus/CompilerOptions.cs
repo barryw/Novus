@@ -55,6 +55,41 @@ public class CompilerOptions
     public BuildMode BuildMode { get; set; } = BuildMode.Debug;
 
     /// <summary>
+    /// Highest optimization level we will emit code at.
+    ///
+    /// This was capped at 2 for a while: vbcc's emit-level peephole collapsed a
+    /// "move.l d0,a1 / move.l a1,d0" round trip and removed the second move, which was
+    /// the only instruction setting the condition codes. The preceding tst had already
+    /// been elided on the strength of it, so the branch read whatever the callee left:
+    ///
+    ///     jsr     _ReadArgs
+    ///     move.l  d0,a1          ; MOVEA - sets no flags
+    ///     add.w   #12,a7         ; ADDQ to An - sets no flags
+    ///     bne     l44            ; branched on stale flags
+    ///
+    /// Args::parse took the failure path under vamos and the success path on a real
+    /// 68040, on the same binary. Fixed in vendor/vbcc: the peephole's guard only
+    /// covered cc_set naming the address register, and now also covers it naming the
+    /// data register the removed move writes, re-emitting a tst in that case.
+    ///
+    /// Note this only holds because the toolchain pins PATH to the vendored vbcc.
+    /// A vbcc from elsewhere on PATH would still carry the bug.
+    /// </summary>
+    public const int MaxOptimizationLevel = 3;
+
+    /// <summary>
+    /// Validate an optimization level.
+    /// </summary>
+    public static void ValidateOptimizationLevel(int level)
+    {
+        if (level < 0 || level > MaxOptimizationLevel)
+        {
+            throw new ArgumentException(
+                $"Invalid optimization level: {level}. Must be 0 to {MaxOptimizationLevel}.");
+        }
+    }
+
+    /// <summary>
     /// Computed safety level based on command-line flags and build mode
     /// </summary>
     public SafetyLevel GetSafetyLevel()

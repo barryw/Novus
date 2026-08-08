@@ -1210,6 +1210,17 @@ public class VbccToolchain
         // Set VBCC environment variable so it can find config files
         startInfo.EnvironmentVariables["VBCC"] = _vbccPath;
 
+        // vc resolves the tools it drives ("vbccm68k", "vasmm68k_mot", "vlink")
+        // through PATH, not through $VBCC. Without pinning it, a vbcc installed
+        // elsewhere on the user's PATH silently compiles the build instead of the
+        // vendored one - so a fix made in vendor/vbcc has no effect, and two machines
+        // with identical source produce different binaries.
+        var vbccBin = Path.Combine(_vbccPath, "bin");
+        var existingPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        startInfo.EnvironmentVariables["PATH"] = existingPath.Length > 0
+            ? vbccBin + Path.PathSeparator + existingPath
+            : vbccBin;
+
         try
         {
             using var process = Process.Start(startInfo);
@@ -1280,6 +1291,17 @@ public class VbccToolchain
 
         // Set VBCC environment variable so it can find config files
         startInfo.EnvironmentVariables["VBCC"] = _vbccPath;
+
+        // vc resolves the tools it drives ("vbccm68k", "vasmm68k_mot", "vlink")
+        // through PATH, not through $VBCC. Without pinning it, a vbcc installed
+        // elsewhere on the user's PATH silently compiles the build instead of the
+        // vendored one - so a fix made in vendor/vbcc has no effect, and two machines
+        // with identical source produce different binaries.
+        var vbccBin = Path.Combine(_vbccPath, "bin");
+        var existingPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        startInfo.EnvironmentVariables["PATH"] = existingPath.Length > 0
+            ? vbccBin + Path.PathSeparator + existingPath
+            : vbccBin;
 
         try
         {

@@ -614,6 +614,10 @@ public static class BuildCommand
                 : workspace.Workspace.Build.OptimizationLevel;
         }
 
+        // Reject levels we will not emit code at, wherever the value came from -
+        // command line, project.toml or workspace.toml.
+        CompilerOptions.ValidateOptimizationLevel(optimizationLevel);
+
         // Get dependency library paths if in workspace build
         var additionalLibraries = new List<string>();
         if (buildContext != null)
