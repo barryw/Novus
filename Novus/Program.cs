@@ -83,6 +83,44 @@ public class Program
     // v4: Added debug label injection via assembly post-processing in debug builds
     private const int CODEGEN_VERSION = 4;
 
+    internal static string ComputeCompilationConfigHash(CompilerOptions options)
+    {
+        var mode = options.BuildMode == BuildMode.Release ? "release" : "debug";
+        var codegen = string.Join('|', mode, options.GetSafetyLevel(), options.Backend,
+            options.Chipset, options.ProjectType, options.PackageName, options.PackageVersion,
+            options.PgoGenerate, options.PgoUse);
+        return CompilationCache.ComputeConfigHash(
+            options.Cpu, options.Fpu, options.OptimizationLevel, codegen);
+    }
+
+    private static string ComputeBuildSignature(CompilerOptions options, string configHash)
+    {
+        static string HashFile(string path)
+        {
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
+        }
+
+        var compilerDir = AppContext.BaseDirectory;
+        var files = options.AdditionalCFiles
+            .Concat(options.AdditionalAsmFiles)
+            .Concat(options.AdditionalLibraries)
+            .Concat(new[] { options.PgoUse })
+            .Where(path => !string.IsNullOrEmpty(path) && File.Exists(path))
+            .Cast<string>()
+            .Concat(new[] { "runtime", "stubs" }
+                .Select(dir => Path.Combine(compilerDir, dir))
+                .Where(Directory.Exists)
+                .SelectMany(dir => Directory.GetFiles(
+                    dir, "*", SearchOption.AllDirectories)))
+            .OrderBy(path => path, StringComparer.Ordinal);
+        var parts = files.Select(path => $"{Path.GetFullPath(path)}:{HashFile(path)}")
+            .Prepend(Commands.StdlibBuildCommand.ComputeCompilerHash())
+            .Prepend(configHash);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts))));
+    }
+
     /// <summary>
     /// Build preprocessor constants dictionary based on compiler options.
     /// Used for conditional compilation with #if/#elif/#else/#endif directives.
@@ -347,11 +385,7 @@ public class Program
             // Check compilation cache first (if enabled)
             if (compilationCache != null)
             {
-                var configHash = CompilationCache.ComputeConfigHash(
-                    options.Cpu,
-                    options.Fpu,
-                    options.OptimizationLevel,
-                    options.BuildMode == BuildMode.Release ? "release" : "debug");
+                var configHash = ComputeCompilationConfigHash(options);
 
                 var (cachedModule, cachedStringLiterals, cachedImports) =
                     compilationCache.GetCachedIrModule(inputFile, configHash);
@@ -481,11 +515,7 @@ public class Program
             // Cache the successful compilation result
             if (compilationCache != null)
             {
-                var configHash = CompilationCache.ComputeConfigHash(
-                    options.Cpu,
-                    options.Fpu,
-                    options.OptimizationLevel,
-                    options.BuildMode == BuildMode.Release ? "release" : "debug");
+                var configHash = ComputeCompilationConfigHash(options);
 
                 compilationCache.CacheCompilationResult(
                     inputFile,
@@ -866,6 +896,24 @@ public class Program
             {
                 var projectRoot = Path.GetDirectoryName(Path.GetFullPath(options.InputFile)) ?? ".";
                 compilationCache = new CompilationCache(projectRoot, CODEGEN_VERSION);
+            }
+
+            string? buildStampPath = null;
+            string? buildSignature = null;
+            if (compilationCache != null && !options.EmitAsmOnly && !options.EmitIr)
+            {
+                var configHash = ComputeCompilationConfigHash(options);
+                buildStampPath = Path.GetFullPath(options.OutputFile) + ".novus-build";
+                buildSignature = ComputeBuildSignature(options, configHash);
+                if (File.Exists(options.OutputFile) && File.Exists(buildStampPath) &&
+                    await File.ReadAllTextAsync(buildStampPath) == buildSignature &&
+                    !compilationCache.NeedsRecompilation(options.InputFile, configHash))
+                {
+                    Console.WriteLine($"✓ Up to date: {Path.GetFileName(options.OutputFile)}");
+                    return 0;
+                }
+
+                File.Delete(buildStampPath);
             }
 
             // Create diagnostic bag and circular import detector
@@ -1515,6 +1563,8 @@ public class Program
             // Handle emit-only mode (just generate C files and stop)
             if (options.EmitAsmOnly)
             {
+                if (compilationCache != null)
+                    await compilationCache.FlushAsync();
                 Console.WriteLine($"\nC files and header written to: {outputDir}");
                 Console.WriteLine($"  novus_types.h (shared types)");
                 Console.WriteLine($"  {cFiles.Count} function file{(cFiles.Count > 1 ? "s" : "")}");
@@ -1739,7 +1789,7 @@ ___stack:
             var buildModeStr = options.BuildMode == BuildMode.Release ? "release" : "debug";
             var stdlibCacheRootDir = Path.Combine(compilerDir, "stdlib");
             var stdlibVariant = $"{options.Fpu}-O{options.OptimizationLevel}-S{(int)safetyLevel}";
-            var stdlibPrecompiledDir = Path.Combine(stdlibCacheRootDir, assemblyCpu, buildModeStr, stdlibVariant);
+            var stdlibPrecompiledDir = Path.Combine(stdlibCacheRootDir, assemblyCpu, buildModeStr, stdlibVariant, typesHeaderHash);
 
             // Create cache lock manager for cross-process synchronization
             Directory.CreateDirectory(stdlibCacheRootDir);
@@ -2371,6 +2421,10 @@ ___stack:
 
             if (success)
             {
+                if (compilationCache != null)
+                    await compilationCache.FlushAsync();
+                if (buildStampPath != null && buildSignature != null)
+                    await AtomicCacheWriter.WriteFileAtomicallyAsync(buildStampPath, buildSignature);
                 Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
 
                 // Display cache statistics if requested

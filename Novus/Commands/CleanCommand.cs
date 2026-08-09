@@ -50,28 +50,8 @@ public static class CleanCommand
             return 0;
         }
 
-        int count = 0;
-        foreach (var cpuDir in Directory.GetDirectories(stdlibCacheDir))
-        {
-            foreach (var modeDir in Directory.GetDirectories(cpuDir))
-            {
-                // Delete all .o files
-                var oFiles = Directory.GetFiles(modeDir, "*.o", SearchOption.TopDirectoryOnly);
-                foreach (var oFile in oFiles)
-                {
-                    File.Delete(oFile);
-                    count++;
-                }
-
-                // Delete manifest
-                var manifestPath = Path.Combine(modeDir, "manifest.json");
-                if (File.Exists(manifestPath))
-                {
-                    File.Delete(manifestPath);
-                    count++;
-                }
-            }
-        }
+        var count = Directory.GetFiles(stdlibCacheDir, "*", SearchOption.AllDirectories).Length;
+        Directory.Delete(stdlibCacheDir, recursive: true);
 
         Console.WriteLine($"  ✓ Stdlib cache: deleted {count} file(s)");
         return count;

@@ -14,6 +14,20 @@ namespace Novus.Tests;
 /// </summary>
 public class CompilationCacheTests : IDisposable
 {
+    [Fact]
+    public void CompilerConfigHashIncludesSafetyAndPackageMetadata()
+    {
+        var options = new CompilerOptions { SafetyLevelOption = 1, PackageName = "one" };
+        var first = Program.ComputeCompilationConfigHash(options);
+
+        options.SafetyLevelOption = 2;
+        Assert.NotEqual(first, Program.ComputeCompilationConfigHash(options));
+
+        options.SafetyLevelOption = 1;
+        options.PackageName = "two";
+        Assert.NotEqual(first, Program.ComputeCompilationConfigHash(options));
+    }
+
     private readonly string _testCacheDir;
     private readonly CompilationCache _cache;
     private const int TestCompilerVersion = 1;
