@@ -10,7 +10,9 @@
 ; Class * SLIDER_GetClass()
 	xdef	_SLIDER_GetClass
 _SLIDER_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_SliderBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -10,11 +10,13 @@
 ; RESOURCEFILE RL_OpenResource(APTR resource, struct Screen * screen, struct Catalog * catalog)
 	xdef	_RL_OpenResource
 _RL_OpenResource:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_ResourceBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_RL_CloseResource_stub,code
@@ -22,9 +24,11 @@ _RL_OpenResource:
 ; VOID RL_CloseResource(RESOURCEFILE resfile)
 	xdef	_RL_CloseResource
 _RL_CloseResource:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ResourceBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_NewObjectA_stub,code
@@ -32,11 +36,27 @@ _RL_CloseResource:
 ; Object * RL_NewObjectA(RESOURCEFILE resfile, RESOURCEID resid, struct TagItem * tags)
 	xdef	_RL_NewObjectA
 _RL_NewObjectA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a1
 	movea.l	_ResourceBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_RL_NewObject_stub,code
+
+; Object * RL_NewObject(RESOURCEFILE resfile, RESOURCEID resid, ... )
+	xdef	_RL_NewObject
+_RL_NewObject:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	lea	16(sp),a1
+	movea.l	_ResourceBase,a6
+	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_DisposeObject_stub,code
@@ -44,10 +64,12 @@ _RL_NewObjectA:
 ; VOID RL_DisposeObject(RESOURCEFILE resfile, Object * obj)
 	xdef	_RL_DisposeObject
 _RL_DisposeObject:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ResourceBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_NewGroupA_stub,code
@@ -55,11 +77,27 @@ _RL_DisposeObject:
 ; Object ** RL_NewGroupA(RESOURCEFILE resfile, RESOURCEID id, struct TagItem * taglist)
 	xdef	_RL_NewGroupA
 _RL_NewGroupA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a1
 	movea.l	_ResourceBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_RL_NewGroup_stub,code
+
+; Object ** RL_NewGroup(RESOURCEFILE resfile, RESOURCEID id, ... )
+	xdef	_RL_NewGroup
+_RL_NewGroup:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	lea	16(sp),a1
+	movea.l	_ResourceBase,a6
+	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_DisposeGroup_stub,code
@@ -67,10 +105,12 @@ _RL_NewGroupA:
 ; VOID RL_DisposeGroup(RESOURCEFILE resfile, Object ** obj)
 	xdef	_RL_DisposeGroup
 _RL_DisposeGroup:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ResourceBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_GetObjectArray_stub,code
@@ -78,11 +118,13 @@ _RL_DisposeGroup:
 ; Object ** RL_GetObjectArray(RESOURCEFILE resfile, Object * obj, RESOURCEID id)
 	xdef	_RL_GetObjectArray
 _RL_GetObjectArray:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_ResourceBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RL_SetResourceScreen_stub,code
@@ -90,9 +132,11 @@ _RL_GetObjectArray:
 ; BOOL RL_SetResourceScreen(RESOURCEFILE resfile, struct Screen * screen)
 	xdef	_RL_SetResourceScreen
 _RL_SetResourceScreen:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ResourceBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 

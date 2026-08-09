@@ -10,8 +10,10 @@
 ; struct IClass * LISTBROWSER_GetClass()
 	xdef	_LISTBROWSER_GetClass
 _LISTBROWSER_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_ListBrowserBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AllocListBrowserNodeA_stub,code
@@ -19,10 +21,25 @@ _LISTBROWSER_GetClass:
 ; struct Node * AllocListBrowserNodeA(UWORD columns, struct TagItem * tags)
 	xdef	_AllocListBrowserNodeA
 _AllocListBrowserNodeA:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_AllocListBrowserNode_stub,code
+
+; struct Node * AllocListBrowserNode(UWORD columns, ... )
+	xdef	_AllocListBrowserNode
+_AllocListBrowserNode:
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	lea	12(sp),a0
+	movea.l	_ListBrowserBase,a6
+	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeListBrowserNode_stub,code
@@ -30,9 +47,11 @@ _AllocListBrowserNodeA:
 ; VOID FreeListBrowserNode(struct Node * node)
 	xdef	_FreeListBrowserNode
 _FreeListBrowserNode:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetListBrowserNodeAttrsA_stub,code
@@ -40,10 +59,25 @@ _FreeListBrowserNode:
 ; VOID SetListBrowserNodeAttrsA(struct Node * node, struct TagItem * tags)
 	xdef	_SetListBrowserNodeAttrsA
 _SetListBrowserNodeAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ListBrowserBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetListBrowserNodeAttrs_stub,code
+
+; VOID SetListBrowserNodeAttrs(struct Node * node, ... )
+	xdef	_SetListBrowserNodeAttrs
+_SetListBrowserNodeAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_ListBrowserBase,a6
+	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetListBrowserNodeAttrsA_stub,code
@@ -51,10 +85,25 @@ _SetListBrowserNodeAttrsA:
 ; VOID GetListBrowserNodeAttrsA(struct Node * node, struct TagItem * tags)
 	xdef	_GetListBrowserNodeAttrsA
 _GetListBrowserNodeAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ListBrowserBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_GetListBrowserNodeAttrs_stub,code
+
+; VOID GetListBrowserNodeAttrs(struct Node * node, ... )
+	xdef	_GetListBrowserNodeAttrs
+_GetListBrowserNodeAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_ListBrowserBase,a6
+	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ListBrowserSelectAll_stub,code
@@ -62,9 +111,11 @@ _GetListBrowserNodeAttrsA:
 ; VOID ListBrowserSelectAll(struct List * list)
 	xdef	_ListBrowserSelectAll
 _ListBrowserSelectAll:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ShowListBrowserNodeChildren_stub,code
@@ -72,10 +123,12 @@ _ListBrowserSelectAll:
 ; VOID ShowListBrowserNodeChildren(struct Node * node, WORD depth)
 	xdef	_ShowListBrowserNodeChildren
 _ShowListBrowserNodeChildren:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_ListBrowserBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_HideListBrowserNodeChildren_stub,code
@@ -83,9 +136,11 @@ _ShowListBrowserNodeChildren:
 ; VOID HideListBrowserNodeChildren(struct Node * node)
 	xdef	_HideListBrowserNodeChildren
 _HideListBrowserNodeChildren:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ShowAllListBrowserChildren_stub,code
@@ -93,9 +148,11 @@ _HideListBrowserNodeChildren:
 ; VOID ShowAllListBrowserChildren(struct List * list)
 	xdef	_ShowAllListBrowserChildren
 _ShowAllListBrowserChildren:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_HideAllListBrowserChildren_stub,code
@@ -103,9 +160,11 @@ _ShowAllListBrowserChildren:
 ; VOID HideAllListBrowserChildren(struct List * list)
 	xdef	_HideAllListBrowserChildren
 _HideAllListBrowserChildren:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeListBrowserList_stub,code
@@ -113,9 +172,11 @@ _HideAllListBrowserChildren:
 ; VOID FreeListBrowserList(struct List * list)
 	xdef	_FreeListBrowserList
 _FreeListBrowserList:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AllocLBColumnInfoA_stub,code
@@ -123,10 +184,25 @@ _FreeListBrowserList:
 ; struct ColumnInfo * AllocLBColumnInfoA(UWORD columns, struct TagItem * tags)
 	xdef	_AllocLBColumnInfoA
 _AllocLBColumnInfoA:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_AllocLBColumnInfo_stub,code
+
+; struct ColumnInfo * AllocLBColumnInfo(UWORD columns, ... )
+	xdef	_AllocLBColumnInfo
+_AllocLBColumnInfo:
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	lea	12(sp),a0
+	movea.l	_ListBrowserBase,a6
+	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetLBColumnInfoAttrsA_stub,code
@@ -134,10 +210,25 @@ _AllocLBColumnInfoA:
 ; LONG SetLBColumnInfoAttrsA(struct ColumnInfo * columninfo, struct TagItem * tags)
 	xdef	_SetLBColumnInfoAttrsA
 _SetLBColumnInfoAttrsA:
-	movea.l	4(sp),a1
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	movea.l	12(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetLBColumnInfoAttrs_stub,code
+
+; LONG SetLBColumnInfoAttrs(struct ColumnInfo * columninfo, ... )
+	xdef	_SetLBColumnInfoAttrs
+_SetLBColumnInfoAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	lea	12(sp),a0
+	movea.l	_ListBrowserBase,a6
+	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetLBColumnInfoAttrsA_stub,code
@@ -145,10 +236,25 @@ _SetLBColumnInfoAttrsA:
 ; LONG GetLBColumnInfoAttrsA(struct ColumnInfo * columninfo, struct TagItem * tags)
 	xdef	_GetLBColumnInfoAttrsA
 _GetLBColumnInfoAttrsA:
-	movea.l	4(sp),a1
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	movea.l	12(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_GetLBColumnInfoAttrs_stub,code
+
+; LONG GetLBColumnInfoAttrs(struct ColumnInfo * columninfo, ... )
+	xdef	_GetLBColumnInfoAttrs
+_GetLBColumnInfoAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	lea	12(sp),a0
+	movea.l	_ListBrowserBase,a6
+	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeLBColumnInfo_stub,code
@@ -156,9 +262,11 @@ _GetLBColumnInfoAttrsA:
 ; VOID FreeLBColumnInfo(struct ColumnInfo * columninfo)
 	xdef	_FreeLBColumnInfo
 _FreeLBColumnInfo:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ListBrowserClearAll_stub,code
@@ -166,8 +274,10 @@ _FreeLBColumnInfo:
 ; VOID ListBrowserClearAll(struct List * list)
 	xdef	_ListBrowserClearAll
 _ListBrowserClearAll:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_ListBrowserBase,a6
 	jsr	-120(a6)
+	movem.l	(sp)+,a6
 	rts
 

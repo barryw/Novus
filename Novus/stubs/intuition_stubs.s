@@ -10,8 +10,10 @@
 ; VOID OpenIntuition()
 	xdef	_OpenIntuition
 _OpenIntuition:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_Intuition_stub,code
@@ -19,9 +21,11 @@ _OpenIntuition:
 ; VOID Intuition(struct InputEvent * iEvent)
 	xdef	_Intuition
 _Intuition:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AddGadget_stub,code
@@ -29,11 +33,13 @@ _Intuition:
 ; UWORD AddGadget(struct Window * window, struct Gadget * gadget, UWORD position)
 	xdef	_AddGadget
 _AddGadget:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ClearDMRequest_stub,code
@@ -41,9 +47,11 @@ _AddGadget:
 ; BOOL ClearDMRequest(struct Window * window)
 	xdef	_ClearDMRequest
 _ClearDMRequest:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ClearMenuStrip_stub,code
@@ -51,9 +59,11 @@ _ClearDMRequest:
 ; VOID ClearMenuStrip(struct Window * window)
 	xdef	_ClearMenuStrip
 _ClearMenuStrip:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ClearPointer_stub,code
@@ -61,9 +71,11 @@ _ClearMenuStrip:
 ; VOID ClearPointer(struct Window * window)
 	xdef	_ClearPointer
 _ClearPointer:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CloseScreen_stub,code
@@ -71,9 +83,11 @@ _ClearPointer:
 ; BOOL CloseScreen(struct Screen * screen)
 	xdef	_CloseScreen
 _CloseScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CloseWindow_stub,code
@@ -81,9 +95,11 @@ _CloseScreen:
 ; VOID CloseWindow(struct Window * window)
 	xdef	_CloseWindow
 _CloseWindow:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CloseWorkBench_stub,code
@@ -91,8 +107,10 @@ _CloseWindow:
 ; LONG CloseWorkBench()
 	xdef	_CloseWorkBench
 _CloseWorkBench:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CurrentTime_stub,code
@@ -100,10 +118,12 @@ _CloseWorkBench:
 ; VOID CurrentTime(ULONG * seconds, ULONG * micros)
 	xdef	_CurrentTime
 _CurrentTime:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DisplayAlert_stub,code
@@ -111,11 +131,13 @@ _CurrentTime:
 ; BOOL DisplayAlert(ULONG alertNumber, CONST_STRPTR string, UWORD height)
 	xdef	_DisplayAlert
 _DisplayAlert:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DisplayBeep_stub,code
@@ -123,9 +145,11 @@ _DisplayAlert:
 ; VOID DisplayBeep(struct Screen * screen)
 	xdef	_DisplayBeep
 _DisplayBeep:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DoubleClick_stub,code
@@ -133,12 +157,14 @@ _DisplayBeep:
 ; BOOL DoubleClick(ULONG sSeconds, ULONG sMicros, ULONG cSeconds, ULONG cMicros)
 	xdef	_DoubleClick
 _DoubleClick:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
-	move.l	12(sp),d2
-	move.l	16(sp),d3
+	movem.l	d2/d3/a6,-(sp)
+	move.l	16(sp),d0
+	move.l	20(sp),d1
+	move.l	24(sp),d2
+	move.l	28(sp),d3
 	movea.l	_IntuitionBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_DrawBorder_stub,code
@@ -146,12 +172,14 @@ _DoubleClick:
 ; VOID DrawBorder(struct RastPort * rp, const struct Border * border, WORD leftOffset, WORD topOffset)
 	xdef	_DrawBorder
 _DrawBorder:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
+	move.l	20(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DrawImage_stub,code
@@ -159,12 +187,14 @@ _DrawBorder:
 ; VOID DrawImage(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset)
 	xdef	_DrawImage
 _DrawImage:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
+	move.l	20(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_EndRequest_stub,code
@@ -172,10 +202,12 @@ _DrawImage:
 ; VOID EndRequest(struct Requester * requester, struct Window * window)
 	xdef	_EndRequest
 _EndRequest:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-120(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetDefPrefs_stub,code
@@ -183,10 +215,12 @@ _EndRequest:
 ; struct Preferences * GetDefPrefs(struct Preferences * preferences, WORD size)
 	xdef	_GetDefPrefs
 _GetDefPrefs:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetPrefs_stub,code
@@ -194,10 +228,12 @@ _GetDefPrefs:
 ; struct Preferences * GetPrefs(struct Preferences * preferences, WORD size)
 	xdef	_GetPrefs
 _GetPrefs:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-132(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_InitRequester_stub,code
@@ -205,9 +241,11 @@ _GetPrefs:
 ; VOID InitRequester(struct Requester * requester)
 	xdef	_InitRequester
 _InitRequester:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-138(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ItemAddress_stub,code
@@ -215,10 +253,12 @@ _InitRequester:
 ; struct MenuItem * ItemAddress(const struct Menu * menuStrip, UWORD menuNumber)
 	xdef	_ItemAddress
 _ItemAddress:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-144(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ModifyIDCMP_stub,code
@@ -226,10 +266,12 @@ _ItemAddress:
 ; BOOL ModifyIDCMP(struct Window * window, ULONG flags)
 	xdef	_ModifyIDCMP
 _ModifyIDCMP:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-150(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ModifyProp_stub,code
@@ -237,16 +279,18 @@ _ModifyIDCMP:
 ; VOID ModifyProp(struct Gadget * gadget, struct Window * window, struct Requester * requester, UWORD flags, UWORD horizPot, UWORD vertPot, UWORD horizBody, UWORD vertBody)
 	xdef	_ModifyProp
 _ModifyProp:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
-	move.l	20(sp),d1
-	move.l	24(sp),d2
-	move.l	28(sp),d3
-	move.l	32(sp),d4
+	movem.l	d2/d3/d4/a2/a6,-(sp)
+	movea.l	24(sp),a0
+	movea.l	28(sp),a1
+	movea.l	32(sp),a2
+	move.l	36(sp),d0
+	move.l	40(sp),d1
+	move.l	44(sp),d2
+	move.l	48(sp),d3
+	move.l	52(sp),d4
 	movea.l	_IntuitionBase,a6
 	jsr	-156(a6)
+	movem.l	(sp)+,d2/d3/d4/a2/a6
 	rts
 
 	section	_MoveScreen_stub,code
@@ -254,11 +298,13 @@ _ModifyProp:
 ; VOID MoveScreen(struct Screen * screen, WORD dx, WORD dy)
 	xdef	_MoveScreen
 _MoveScreen:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-162(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_MoveWindow_stub,code
@@ -266,11 +312,13 @@ _MoveScreen:
 ; VOID MoveWindow(struct Window * window, WORD dx, WORD dy)
 	xdef	_MoveWindow
 _MoveWindow:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-168(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OffGadget_stub,code
@@ -278,11 +326,13 @@ _MoveWindow:
 ; VOID OffGadget(struct Gadget * gadget, struct Window * window, struct Requester * requester)
 	xdef	_OffGadget
 _OffGadget:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-174(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_OffMenu_stub,code
@@ -290,10 +340,12 @@ _OffGadget:
 ; VOID OffMenu(struct Window * window, UWORD menuNumber)
 	xdef	_OffMenu
 _OffMenu:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-180(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OnGadget_stub,code
@@ -301,11 +353,13 @@ _OffMenu:
 ; VOID OnGadget(struct Gadget * gadget, struct Window * window, struct Requester * requester)
 	xdef	_OnGadget
 _OnGadget:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-186(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_OnMenu_stub,code
@@ -313,10 +367,12 @@ _OnGadget:
 ; VOID OnMenu(struct Window * window, UWORD menuNumber)
 	xdef	_OnMenu
 _OnMenu:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-192(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenScreen_stub,code
@@ -324,9 +380,11 @@ _OnMenu:
 ; struct Screen * OpenScreen(const struct NewScreen * newScreen)
 	xdef	_OpenScreen
 _OpenScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-198(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenWindow_stub,code
@@ -334,9 +392,11 @@ _OpenScreen:
 ; struct Window * OpenWindow(const struct NewWindow * newWindow)
 	xdef	_OpenWindow
 _OpenWindow:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-204(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenWorkBench_stub,code
@@ -344,8 +404,10 @@ _OpenWindow:
 ; ULONG OpenWorkBench()
 	xdef	_OpenWorkBench
 _OpenWorkBench:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-210(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_PrintIText_stub,code
@@ -353,12 +415,14 @@ _OpenWorkBench:
 ; VOID PrintIText(struct RastPort * rp, const struct IntuiText * iText, WORD left, WORD top)
 	xdef	_PrintIText
 _PrintIText:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
+	move.l	20(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-216(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RefreshGadgets_stub,code
@@ -366,11 +430,13 @@ _PrintIText:
 ; VOID RefreshGadgets(struct Gadget * gadgets, struct Window * window, struct Requester * requester)
 	xdef	_RefreshGadgets
 _RefreshGadgets:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-222(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_RemoveGadget_stub,code
@@ -378,10 +444,12 @@ _RefreshGadgets:
 ; UWORD RemoveGadget(struct Window * window, struct Gadget * gadget)
 	xdef	_RemoveGadget
 _RemoveGadget:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-228(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReportMouse_stub,code
@@ -389,10 +457,25 @@ _RemoveGadget:
 ; VOID ReportMouse(BOOL flag, struct Window * window)
 	xdef	_ReportMouse
 _ReportMouse:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-234(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_ReportMouse1_stub,code
+
+; VOID ReportMouse1(struct Window * window, LONG flag)
+	xdef	_ReportMouse1
+_ReportMouse1:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	_IntuitionBase,a6
+	jsr	-234(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_Request_stub,code
@@ -400,10 +483,12 @@ _ReportMouse:
 ; BOOL Request(struct Requester * requester, struct Window * window)
 	xdef	_Request
 _Request:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-240(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ScreenToBack_stub,code
@@ -411,9 +496,11 @@ _Request:
 ; VOID ScreenToBack(struct Screen * screen)
 	xdef	_ScreenToBack
 _ScreenToBack:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-246(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ScreenToFront_stub,code
@@ -421,9 +508,11 @@ _ScreenToBack:
 ; VOID ScreenToFront(struct Screen * screen)
 	xdef	_ScreenToFront
 _ScreenToFront:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-252(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetDMRequest_stub,code
@@ -431,10 +520,12 @@ _ScreenToFront:
 ; BOOL SetDMRequest(struct Window * window, struct Requester * requester)
 	xdef	_SetDMRequest
 _SetDMRequest:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-258(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetMenuStrip_stub,code
@@ -442,10 +533,12 @@ _SetDMRequest:
 ; BOOL SetMenuStrip(struct Window * window, struct Menu * menu)
 	xdef	_SetMenuStrip
 _SetMenuStrip:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-264(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetPointer_stub,code
@@ -453,14 +546,16 @@ _SetMenuStrip:
 ; VOID SetPointer(struct Window * window, UWORD * pointer, WORD height, WORD width, WORD xOffset, WORD yOffset)
 	xdef	_SetPointer
 _SetPointer:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
-	move.l	20(sp),d2
-	move.l	24(sp),d3
+	movem.l	d2/d3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	move.l	24(sp),d0
+	move.l	28(sp),d1
+	move.l	32(sp),d2
+	move.l	36(sp),d3
 	movea.l	_IntuitionBase,a6
 	jsr	-270(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_SetWindowTitles_stub,code
@@ -468,11 +563,13 @@ _SetPointer:
 ; VOID SetWindowTitles(struct Window * window, CONST_STRPTR windowTitle, CONST_STRPTR screenTitle)
 	xdef	_SetWindowTitles
 _SetWindowTitles:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-276(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_ShowTitle_stub,code
@@ -480,10 +577,12 @@ _SetWindowTitles:
 ; VOID ShowTitle(struct Screen * screen, BOOL showIt)
 	xdef	_ShowTitle
 _ShowTitle:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-282(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SizeWindow_stub,code
@@ -491,11 +590,13 @@ _ShowTitle:
 ; VOID SizeWindow(struct Window * window, WORD dx, WORD dy)
 	xdef	_SizeWindow
 _SizeWindow:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-288(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ViewAddress_stub,code
@@ -503,8 +604,10 @@ _SizeWindow:
 ; struct View * ViewAddress()
 	xdef	_ViewAddress
 _ViewAddress:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-294(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ViewPortAddress_stub,code
@@ -512,9 +615,11 @@ _ViewAddress:
 ; struct ViewPort * ViewPortAddress(const struct Window * window)
 	xdef	_ViewPortAddress
 _ViewPortAddress:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-300(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WindowToBack_stub,code
@@ -522,9 +627,11 @@ _ViewPortAddress:
 ; VOID WindowToBack(struct Window * window)
 	xdef	_WindowToBack
 _WindowToBack:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-306(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WindowToFront_stub,code
@@ -532,9 +639,11 @@ _WindowToBack:
 ; VOID WindowToFront(struct Window * window)
 	xdef	_WindowToFront
 _WindowToFront:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-312(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WindowLimits_stub,code
@@ -542,13 +651,15 @@ _WindowToFront:
 ; BOOL WindowLimits(struct Window * window, LONG widthMin, LONG heightMin, ULONG widthMax, ULONG heightMax)
 	xdef	_WindowLimits
 _WindowLimits:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	move.l	16(sp),d2
-	move.l	20(sp),d3
+	movem.l	d2/d3/a6,-(sp)
+	movea.l	16(sp),a0
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
 	movea.l	_IntuitionBase,a6
 	jsr	-318(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_SetPrefs_stub,code
@@ -556,11 +667,13 @@ _WindowLimits:
 ; struct Preferences * SetPrefs(const struct Preferences * preferences, LONG size, BOOL inform)
 	xdef	_SetPrefs
 _SetPrefs:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-324(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IntuiTextLength_stub,code
@@ -568,9 +681,11 @@ _SetPrefs:
 ; LONG IntuiTextLength(const struct IntuiText * iText)
 	xdef	_IntuiTextLength
 _IntuiTextLength:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-330(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WBenchToBack_stub,code
@@ -578,8 +693,10 @@ _IntuiTextLength:
 ; BOOL WBenchToBack()
 	xdef	_WBenchToBack
 _WBenchToBack:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-336(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WBenchToFront_stub,code
@@ -587,8 +704,10 @@ _WBenchToBack:
 ; BOOL WBenchToFront()
 	xdef	_WBenchToFront
 _WBenchToFront:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-342(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AutoRequest_stub,code
@@ -596,16 +715,18 @@ _WBenchToFront:
 ; BOOL AutoRequest(struct Window * window, const struct IntuiText * body, const struct IntuiText * posText, const struct IntuiText * negText, ULONG pFlag, ULONG nFlag, UWORD width, UWORD height)
 	xdef	_AutoRequest
 _AutoRequest:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
-	move.l	20(sp),d0
-	move.l	24(sp),d1
-	move.l	28(sp),d2
-	move.l	32(sp),d3
+	movem.l	d2/d3/a2/a3/a6,-(sp)
+	movea.l	24(sp),a0
+	movea.l	28(sp),a1
+	movea.l	32(sp),a2
+	movea.l	36(sp),a3
+	move.l	40(sp),d0
+	move.l	44(sp),d1
+	move.l	48(sp),d2
+	move.l	52(sp),d3
 	movea.l	_IntuitionBase,a6
 	jsr	-348(a6)
+	movem.l	(sp)+,d2/d3/a2/a3/a6
 	rts
 
 	section	_BeginRefresh_stub,code
@@ -613,9 +734,11 @@ _AutoRequest:
 ; VOID BeginRefresh(struct Window * window)
 	xdef	_BeginRefresh
 _BeginRefresh:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-354(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_BuildSysRequest_stub,code
@@ -623,15 +746,17 @@ _BeginRefresh:
 ; struct Window * BuildSysRequest(struct Window * window, const struct IntuiText * body, const struct IntuiText * posText, const struct IntuiText * negText, ULONG flags, UWORD width, UWORD height)
 	xdef	_BuildSysRequest
 _BuildSysRequest:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
-	move.l	20(sp),d0
-	move.l	24(sp),d1
-	move.l	28(sp),d2
+	movem.l	d2/a2/a3/a6,-(sp)
+	movea.l	20(sp),a0
+	movea.l	24(sp),a1
+	movea.l	28(sp),a2
+	movea.l	32(sp),a3
+	move.l	36(sp),d0
+	move.l	40(sp),d1
+	move.l	44(sp),d2
 	movea.l	_IntuitionBase,a6
 	jsr	-360(a6)
+	movem.l	(sp)+,d2/a2/a3/a6
 	rts
 
 	section	_EndRefresh_stub,code
@@ -639,10 +764,12 @@ _BuildSysRequest:
 ; VOID EndRefresh(struct Window * window, LONG complete)
 	xdef	_EndRefresh
 _EndRefresh:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-366(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeSysRequest_stub,code
@@ -650,9 +777,11 @@ _EndRefresh:
 ; VOID FreeSysRequest(struct Window * window)
 	xdef	_FreeSysRequest
 _FreeSysRequest:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-372(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_MakeScreen_stub,code
@@ -660,9 +789,11 @@ _FreeSysRequest:
 ; LONG MakeScreen(struct Screen * screen)
 	xdef	_MakeScreen
 _MakeScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-378(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RemakeDisplay_stub,code
@@ -670,8 +801,10 @@ _MakeScreen:
 ; LONG RemakeDisplay()
 	xdef	_RemakeDisplay
 _RemakeDisplay:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-384(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RethinkDisplay_stub,code
@@ -679,8 +812,10 @@ _RemakeDisplay:
 ; LONG RethinkDisplay()
 	xdef	_RethinkDisplay
 _RethinkDisplay:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-390(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AllocRemember_stub,code
@@ -688,11 +823,13 @@ _RethinkDisplay:
 ; APTR AllocRemember(struct Remember ** rememberKey, ULONG size, ULONG flags)
 	xdef	_AllocRemember
 _AllocRemember:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-396(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeRemember_stub,code
@@ -700,10 +837,12 @@ _AllocRemember:
 ; VOID FreeRemember(struct Remember ** rememberKey, BOOL reallyForget)
 	xdef	_FreeRemember
 _FreeRemember:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-408(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LockIBase_stub,code
@@ -711,9 +850,11 @@ _FreeRemember:
 ; ULONG LockIBase(ULONG dontknow)
 	xdef	_LockIBase
 _LockIBase:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-414(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_UnlockIBase_stub,code
@@ -721,9 +862,11 @@ _LockIBase:
 ; VOID UnlockIBase(ULONG ibLock)
 	xdef	_UnlockIBase
 _UnlockIBase:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-420(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetScreenData_stub,code
@@ -731,12 +874,14 @@ _UnlockIBase:
 ; LONG GetScreenData(APTR buffer, UWORD size, UWORD type, const struct Screen * screen)
 	xdef	_GetScreenData
 _GetScreenData:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	movea.l	16(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
+	movea.l	20(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-426(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RefreshGList_stub,code
@@ -744,12 +889,14 @@ _GetScreenData:
 ; VOID RefreshGList(struct Gadget * gadgets, struct Window * window, struct Requester * requester, WORD numGad)
 	xdef	_RefreshGList
 _RefreshGList:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
+	move.l	24(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-432(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_AddGList_stub,code
@@ -757,13 +904,15 @@ _RefreshGList:
 ; UWORD AddGList(struct Window * window, struct Gadget * gadget, UWORD position, WORD numGad, struct Requester * requester)
 	xdef	_AddGList
 _AddGList:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
-	movea.l	20(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	movea.l	28(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-438(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_RemoveGList_stub,code
@@ -771,11 +920,13 @@ _AddGList:
 ; UWORD RemoveGList(struct Window * remPtr, struct Gadget * gadget, WORD numGad)
 	xdef	_RemoveGList
 _RemoveGList:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-444(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ActivateWindow_stub,code
@@ -783,9 +934,11 @@ _RemoveGList:
 ; VOID ActivateWindow(struct Window * window)
 	xdef	_ActivateWindow
 _ActivateWindow:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-450(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RefreshWindowFrame_stub,code
@@ -793,9 +946,11 @@ _ActivateWindow:
 ; VOID RefreshWindowFrame(struct Window * window)
 	xdef	_RefreshWindowFrame
 _RefreshWindowFrame:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-456(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ActivateGadget_stub,code
@@ -803,11 +958,13 @@ _RefreshWindowFrame:
 ; BOOL ActivateGadget(struct Gadget * gadgets, struct Window * window, struct Requester * requester)
 	xdef	_ActivateGadget
 _ActivateGadget:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-462(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_NewModifyProp_stub,code
@@ -815,17 +972,19 @@ _ActivateGadget:
 ; VOID NewModifyProp(struct Gadget * gadget, struct Window * window, struct Requester * requester, UWORD flags, UWORD horizPot, UWORD vertPot, UWORD horizBody, UWORD vertBody, WORD numGad)
 	xdef	_NewModifyProp
 _NewModifyProp:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
-	move.l	20(sp),d1
-	move.l	24(sp),d2
-	move.l	28(sp),d3
-	move.l	32(sp),d4
-	move.l	36(sp),d5
+	movem.l	d2/d3/d4/d5/a2/a6,-(sp)
+	movea.l	28(sp),a0
+	movea.l	32(sp),a1
+	movea.l	36(sp),a2
+	move.l	40(sp),d0
+	move.l	44(sp),d1
+	move.l	48(sp),d2
+	move.l	52(sp),d3
+	move.l	56(sp),d4
+	move.l	60(sp),d5
 	movea.l	_IntuitionBase,a6
 	jsr	-468(a6)
+	movem.l	(sp)+,d2/d3/d4/d5/a2/a6
 	rts
 
 	section	_QueryOverscan_stub,code
@@ -833,11 +992,13 @@ _NewModifyProp:
 ; LONG QueryOverscan(ULONG displayID, struct Rectangle * rect, WORD oScanType)
 	xdef	_QueryOverscan
 _QueryOverscan:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-474(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_MoveWindowInFrontOf_stub,code
@@ -845,10 +1006,12 @@ _QueryOverscan:
 ; VOID MoveWindowInFrontOf(struct Window * window, struct Window * behindWindow)
 	xdef	_MoveWindowInFrontOf
 _MoveWindowInFrontOf:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-480(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ChangeWindowBox_stub,code
@@ -856,13 +1019,15 @@ _MoveWindowInFrontOf:
 ; VOID ChangeWindowBox(struct Window * window, WORD left, WORD top, WORD width, WORD height)
 	xdef	_ChangeWindowBox
 _ChangeWindowBox:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	move.l	16(sp),d2
-	move.l	20(sp),d3
+	movem.l	d2/d3/a6,-(sp)
+	movea.l	16(sp),a0
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
 	movea.l	_IntuitionBase,a6
 	jsr	-486(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_SetEditHook_stub,code
@@ -870,9 +1035,11 @@ _ChangeWindowBox:
 ; struct Hook * SetEditHook(struct Hook * hook)
 	xdef	_SetEditHook
 _SetEditHook:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-492(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetMouseQueue_stub,code
@@ -880,10 +1047,12 @@ _SetEditHook:
 ; LONG SetMouseQueue(struct Window * window, UWORD queueLength)
 	xdef	_SetMouseQueue
 _SetMouseQueue:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-498(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ZipWindow_stub,code
@@ -891,9 +1060,11 @@ _SetMouseQueue:
 ; VOID ZipWindow(struct Window * window)
 	xdef	_ZipWindow
 _ZipWindow:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-504(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LockPubScreen_stub,code
@@ -901,9 +1072,11 @@ _ZipWindow:
 ; struct Screen * LockPubScreen(CONST_STRPTR name)
 	xdef	_LockPubScreen
 _LockPubScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-510(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_UnlockPubScreen_stub,code
@@ -911,10 +1084,12 @@ _LockPubScreen:
 ; VOID UnlockPubScreen(CONST_STRPTR name, struct Screen * screen)
 	xdef	_UnlockPubScreen
 _UnlockPubScreen:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-516(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LockPubScreenList_stub,code
@@ -922,8 +1097,10 @@ _UnlockPubScreen:
 ; struct List * LockPubScreenList()
 	xdef	_LockPubScreenList
 _LockPubScreenList:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-522(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_UnlockPubScreenList_stub,code
@@ -931,8 +1108,10 @@ _LockPubScreenList:
 ; VOID UnlockPubScreenList()
 	xdef	_UnlockPubScreenList
 _UnlockPubScreenList:
+	movem.l	a6,-(sp)
 	movea.l	_IntuitionBase,a6
 	jsr	-528(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_NextPubScreen_stub,code
@@ -940,10 +1119,12 @@ _UnlockPubScreenList:
 ; STRPTR NextPubScreen(const struct Screen * screen, STRPTR namebuf)
 	xdef	_NextPubScreen
 _NextPubScreen:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-534(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetDefaultPubScreen_stub,code
@@ -951,9 +1132,11 @@ _NextPubScreen:
 ; VOID SetDefaultPubScreen(CONST_STRPTR name)
 	xdef	_SetDefaultPubScreen
 _SetDefaultPubScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-540(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetPubScreenModes_stub,code
@@ -961,9 +1144,11 @@ _SetDefaultPubScreen:
 ; UWORD SetPubScreenModes(UWORD modes)
 	xdef	_SetPubScreenModes
 _SetPubScreenModes:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-546(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_PubScreenStatus_stub,code
@@ -971,10 +1156,12 @@ _SetPubScreenModes:
 ; UWORD PubScreenStatus(struct Screen * screen, UWORD statusFlags)
 	xdef	_PubScreenStatus
 _PubScreenStatus:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-552(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ObtainGIRPort_stub,code
@@ -982,9 +1169,11 @@ _PubScreenStatus:
 ; struct RastPort * ObtainGIRPort(struct GadgetInfo * gInfo)
 	xdef	_ObtainGIRPort
 _ObtainGIRPort:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-558(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReleaseGIRPort_stub,code
@@ -992,9 +1181,11 @@ _ObtainGIRPort:
 ; VOID ReleaseGIRPort(struct RastPort * rp)
 	xdef	_ReleaseGIRPort
 _ReleaseGIRPort:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-564(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GadgetMouse_stub,code
@@ -1002,11 +1193,13 @@ _ReleaseGIRPort:
 ; VOID GadgetMouse(struct Gadget * gadget, struct GadgetInfo * gInfo, WORD * mousePoint)
 	xdef	_GadgetMouse
 _GadgetMouse:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-570(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_GetDefaultPubScreen_stub,code
@@ -1014,9 +1207,11 @@ _GadgetMouse:
 ; VOID GetDefaultPubScreen(STRPTR nameBuffer)
 	xdef	_GetDefaultPubScreen
 _GetDefaultPubScreen:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-582(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_EasyRequestArgs_stub,code
@@ -1024,12 +1219,29 @@ _GetDefaultPubScreen:
 ; LONG EasyRequestArgs(struct Window * window, const struct EasyStruct * easyStruct, ULONG * idcmpPtr, const APTR args)
 	xdef	_EasyRequestArgs
 _EasyRequestArgs:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_IntuitionBase,a6
 	jsr	-588(a6)
+	movem.l	(sp)+,a2/a3/a6
+	rts
+
+	section	_EasyRequest_stub,code
+
+; LONG EasyRequest(struct Window * window, const struct EasyStruct * easyStruct, ULONG * idcmpPtr, ... )
+	xdef	_EasyRequest
+_EasyRequest:
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	lea	28(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-588(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_BuildEasyRequestArgs_stub,code
@@ -1037,12 +1249,29 @@ _EasyRequestArgs:
 ; struct Window * BuildEasyRequestArgs(struct Window * window, const struct EasyStruct * easyStruct, ULONG idcmp, const APTR args)
 	xdef	_BuildEasyRequestArgs
 _BuildEasyRequestArgs:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	movea.l	16(sp),a3
+	movem.l	a3/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	move.l	20(sp),d0
+	movea.l	24(sp),a3
 	movea.l	_IntuitionBase,a6
 	jsr	-594(a6)
+	movem.l	(sp)+,a3/a6
+	rts
+
+	section	_BuildEasyRequest_stub,code
+
+; struct Window * BuildEasyRequest(struct Window * window, const struct EasyStruct * easyStruct, ULONG idcmp, ... )
+	xdef	_BuildEasyRequest
+_BuildEasyRequest:
+	movem.l	a3/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	move.l	20(sp),d0
+	lea	24(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-594(a6)
+	movem.l	(sp)+,a3/a6
 	rts
 
 	section	_SysReqHandler_stub,code
@@ -1050,11 +1279,13 @@ _BuildEasyRequestArgs:
 ; LONG SysReqHandler(struct Window * window, ULONG * idcmpPtr, BOOL waitInput)
 	xdef	_SysReqHandler
 _SysReqHandler:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-600(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenWindowTagList_stub,code
@@ -1062,10 +1293,25 @@ _SysReqHandler:
 ; struct Window * OpenWindowTagList(const struct NewWindow * newWindow, const struct TagItem * tagList)
 	xdef	_OpenWindowTagList
 _OpenWindowTagList:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-606(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_OpenWindowTags_stub,code
+
+; struct Window * OpenWindowTags(const struct NewWindow * newWindow, ULONG tagList, ... )
+	xdef	_OpenWindowTags
+_OpenWindowTags:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-606(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenScreenTagList_stub,code
@@ -1073,10 +1319,25 @@ _OpenWindowTagList:
 ; struct Screen * OpenScreenTagList(const struct NewScreen * newScreen, const struct TagItem * tagList)
 	xdef	_OpenScreenTagList
 _OpenScreenTagList:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-612(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_OpenScreenTags_stub,code
+
+; struct Screen * OpenScreenTags(const struct NewScreen * newScreen, ULONG tagList, ... )
+	xdef	_OpenScreenTags
+_OpenScreenTags:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-612(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DrawImageState_stub,code
@@ -1084,14 +1345,16 @@ _OpenScreenTagList:
 ; VOID DrawImageState(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset, ULONG state, const struct DrawInfo * drawInfo)
 	xdef	_DrawImageState
 _DrawImageState:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
-	move.l	20(sp),d2
-	movea.l	24(sp),a2
+	movem.l	d2/a2/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	move.l	24(sp),d0
+	move.l	28(sp),d1
+	move.l	32(sp),d2
+	movea.l	36(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-618(a6)
+	movem.l	(sp)+,d2/a2/a6
 	rts
 
 	section	_PointInImage_stub,code
@@ -1099,10 +1362,12 @@ _DrawImageState:
 ; BOOL PointInImage(ULONG point, struct Image * image)
 	xdef	_PointInImage
 _PointInImage:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-624(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_EraseImage_stub,code
@@ -1110,12 +1375,14 @@ _PointInImage:
 ; VOID EraseImage(struct RastPort * rp, struct Image * image, WORD leftOffset, WORD topOffset)
 	xdef	_EraseImage
 _EraseImage:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
-	move.l	16(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
+	move.l	20(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-630(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_NewObjectA_stub,code
@@ -1123,11 +1390,27 @@ _EraseImage:
 ; APTR NewObjectA(struct IClass * classPtr, CONST_STRPTR classID, const struct TagItem * tagList)
 	xdef	_NewObjectA
 _NewObjectA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_IntuitionBase,a6
 	jsr	-636(a6)
+	movem.l	(sp)+,a2/a6
+	rts
+
+	section	_NewObject_stub,code
+
+; APTR NewObject(struct IClass * classPtr, CONST_STRPTR classID, ULONG tagList, ... )
+	xdef	_NewObject
+_NewObject:
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	lea	20(sp),a2
+	movea.l	_IntuitionBase,a6
+	jsr	-636(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_DisposeObject_stub,code
@@ -1135,9 +1418,11 @@ _NewObjectA:
 ; VOID DisposeObject(APTR object)
 	xdef	_DisposeObject
 _DisposeObject:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-642(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetAttrsA_stub,code
@@ -1145,10 +1430,25 @@ _DisposeObject:
 ; ULONG SetAttrsA(APTR object, const struct TagItem * tagList)
 	xdef	_SetAttrsA
 _SetAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-648(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetAttrs_stub,code
+
+; ULONG SetAttrs(APTR object, ULONG tagList, ... )
+	xdef	_SetAttrs
+_SetAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-648(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetAttr_stub,code
@@ -1156,11 +1456,13 @@ _SetAttrsA:
 ; ULONG GetAttr(ULONG attrID, APTR object, ULONG * storagePtr)
 	xdef	_GetAttr
 _GetAttr:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-654(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetGadgetAttrsA_stub,code
@@ -1168,12 +1470,29 @@ _GetAttr:
 ; ULONG SetGadgetAttrsA(struct Gadget * gadget, struct Window * window, struct Requester * requester, const struct TagItem * tagList)
 	xdef	_SetGadgetAttrsA
 _SetGadgetAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_IntuitionBase,a6
 	jsr	-660(a6)
+	movem.l	(sp)+,a2/a3/a6
+	rts
+
+	section	_SetGadgetAttrs_stub,code
+
+; ULONG SetGadgetAttrs(struct Gadget * gadget, struct Window * window, struct Requester * requester, ULONG tagList, ... )
+	xdef	_SetGadgetAttrs
+_SetGadgetAttrs:
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	lea	28(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-660(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_NextObject_stub,code
@@ -1181,9 +1500,11 @@ _SetGadgetAttrsA:
 ; APTR NextObject(APTR objectPtrPtr)
 	xdef	_NextObject
 _NextObject:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-666(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_MakeClass_stub,code
@@ -1191,13 +1512,15 @@ _NextObject:
 ; struct IClass * MakeClass(CONST_STRPTR classID, CONST_STRPTR superClassID, const struct IClass * superClassPtr, UWORD instanceSize, ULONG flags)
 	xdef	_MakeClass
 _MakeClass:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
-	move.l	20(sp),d1
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
+	move.l	24(sp),d0
+	move.l	28(sp),d1
 	movea.l	_IntuitionBase,a6
 	jsr	-678(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_AddClass_stub,code
@@ -1205,9 +1528,11 @@ _MakeClass:
 ; VOID AddClass(struct IClass * classPtr)
 	xdef	_AddClass
 _AddClass:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-684(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetScreenDrawInfo_stub,code
@@ -1215,9 +1540,11 @@ _AddClass:
 ; struct DrawInfo * GetScreenDrawInfo(struct Screen * screen)
 	xdef	_GetScreenDrawInfo
 _GetScreenDrawInfo:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-690(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeScreenDrawInfo_stub,code
@@ -1225,10 +1552,12 @@ _GetScreenDrawInfo:
 ; VOID FreeScreenDrawInfo(struct Screen * screen, struct DrawInfo * drawInfo)
 	xdef	_FreeScreenDrawInfo
 _FreeScreenDrawInfo:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-696(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ResetMenuStrip_stub,code
@@ -1236,10 +1565,12 @@ _FreeScreenDrawInfo:
 ; BOOL ResetMenuStrip(struct Window * window, struct Menu * menu)
 	xdef	_ResetMenuStrip
 _ResetMenuStrip:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-702(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RemoveClass_stub,code
@@ -1247,9 +1578,11 @@ _ResetMenuStrip:
 ; VOID RemoveClass(struct IClass * classPtr)
 	xdef	_RemoveClass
 _RemoveClass:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-708(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeClass_stub,code
@@ -1257,9 +1590,11 @@ _RemoveClass:
 ; BOOL FreeClass(struct IClass * classPtr)
 	xdef	_FreeClass
 _FreeClass:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_IntuitionBase,a6
 	jsr	-714(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AllocScreenBuffer_stub,code
@@ -1267,11 +1602,13 @@ _FreeClass:
 ; struct ScreenBuffer * AllocScreenBuffer(struct Screen * sc, struct BitMap * bm, ULONG flags)
 	xdef	_AllocScreenBuffer
 _AllocScreenBuffer:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-768(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeScreenBuffer_stub,code
@@ -1279,10 +1616,12 @@ _AllocScreenBuffer:
 ; VOID FreeScreenBuffer(struct Screen * sc, struct ScreenBuffer * sb)
 	xdef	_FreeScreenBuffer
 _FreeScreenBuffer:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-774(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ChangeScreenBuffer_stub,code
@@ -1290,10 +1629,12 @@ _FreeScreenBuffer:
 ; ULONG ChangeScreenBuffer(struct Screen * sc, struct ScreenBuffer * sb)
 	xdef	_ChangeScreenBuffer
 _ChangeScreenBuffer:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-780(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ScreenDepth_stub,code
@@ -1301,11 +1642,13 @@ _ChangeScreenBuffer:
 ; VOID ScreenDepth(struct Screen * screen, ULONG flags, APTR reserved)
 	xdef	_ScreenDepth
 _ScreenDepth:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-786(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ScreenPosition_stub,code
@@ -1313,14 +1656,16 @@ _ScreenDepth:
 ; VOID ScreenPosition(struct Screen * screen, ULONG flags, LONG x1, LONG y1, LONG x2, LONG y2)
 	xdef	_ScreenPosition
 _ScreenPosition:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	move.l	16(sp),d2
-	move.l	20(sp),d3
-	move.l	24(sp),d4
+	movem.l	d2/d3/d4/a6,-(sp)
+	movea.l	20(sp),a0
+	move.l	24(sp),d0
+	move.l	28(sp),d1
+	move.l	32(sp),d2
+	move.l	36(sp),d3
+	move.l	40(sp),d4
 	movea.l	_IntuitionBase,a6
 	jsr	-792(a6)
+	movem.l	(sp)+,d2/d3/d4/a6
 	rts
 
 	section	_ScrollWindowRaster_stub,code
@@ -1328,15 +1673,17 @@ _ScreenPosition:
 ; VOID ScrollWindowRaster(struct Window * win, WORD dx, WORD dy, WORD xMin, WORD yMin, WORD xMax, WORD yMax)
 	xdef	_ScrollWindowRaster
 _ScrollWindowRaster:
-	movea.l	4(sp),a1
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	move.l	16(sp),d2
-	move.l	20(sp),d3
-	move.l	24(sp),d4
-	move.l	28(sp),d5
+	movem.l	d2/d3/d4/d5/a6,-(sp)
+	movea.l	24(sp),a1
+	move.l	28(sp),d0
+	move.l	32(sp),d1
+	move.l	36(sp),d2
+	move.l	40(sp),d3
+	move.l	44(sp),d4
+	move.l	48(sp),d5
 	movea.l	_IntuitionBase,a6
 	jsr	-798(a6)
+	movem.l	(sp)+,d2/d3/d4/d5/a6
 	rts
 
 	section	_LendMenus_stub,code
@@ -1344,10 +1691,12 @@ _ScrollWindowRaster:
 ; VOID LendMenus(struct Window * fromwindow, struct Window * towindow)
 	xdef	_LendMenus
 _LendMenus:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-804(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DoGadgetMethodA_stub,code
@@ -1355,12 +1704,29 @@ _LendMenus:
 ; ULONG DoGadgetMethodA(struct Gadget * gad, struct Window * win, struct Requester * req, Msg message)
 	xdef	_DoGadgetMethodA
 _DoGadgetMethodA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_IntuitionBase,a6
 	jsr	-810(a6)
+	movem.l	(sp)+,a2/a3/a6
+	rts
+
+	section	_DoGadgetMethod_stub,code
+
+; ULONG DoGadgetMethod(struct Gadget * gad, struct Window * win, struct Requester * req, ULONG message, ... )
+	xdef	_DoGadgetMethod
+_DoGadgetMethod:
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	lea	28(sp),a3
+	movea.l	_IntuitionBase,a6
+	jsr	-810(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_SetWindowPointerA_stub,code
@@ -1368,10 +1734,25 @@ _DoGadgetMethodA:
 ; VOID SetWindowPointerA(struct Window * win, const struct TagItem * taglist)
 	xdef	_SetWindowPointerA
 _SetWindowPointerA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-816(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetWindowPointer_stub,code
+
+; VOID SetWindowPointer(struct Window * win, ULONG taglist, ... )
+	xdef	_SetWindowPointer
+_SetWindowPointer:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_IntuitionBase,a6
+	jsr	-816(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_TimedDisplayAlert_stub,code
@@ -1379,12 +1760,14 @@ _SetWindowPointerA:
 ; BOOL TimedDisplayAlert(ULONG alertNumber, CONST_STRPTR string, UWORD height, ULONG time)
 	xdef	_TimedDisplayAlert
 _TimedDisplayAlert:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
-	move.l	12(sp),d1
-	movea.l	16(sp),a1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
+	move.l	16(sp),d1
+	movea.l	20(sp),a1
 	movea.l	_IntuitionBase,a6
 	jsr	-822(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_HelpControl_stub,code
@@ -1392,9 +1775,10 @@ _TimedDisplayAlert:
 ; VOID HelpControl(struct Window * win, ULONG flags)
 	xdef	_HelpControl
 _HelpControl:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_IntuitionBase,a6
 	jsr	-828(a6)
+	movem.l	(sp)+,a6
 	rts
-

@@ -33,7 +33,9 @@ public class SfdGenerator
         var ffiPath = Path.Combine(_outputPath, "std", "ffi");
         var stubsPath = Path.Combine(_outputPath, "stubs");
 
-        var sfdFiles = Directory.GetFiles(sfdPath, "*_lib.sfd");
+        var sfdFiles = Directory.GetFiles(sfdPath, "*_lib.sfd")
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
         Console.WriteLine($"Found {sfdFiles.Length} SFD files");
 
         // First pass: collect all includes from all SFD files
@@ -42,47 +44,38 @@ public class SfdGenerator
 
         foreach (var sfdFile in sfdFiles)
         {
-            try
-            {
-                var library = SfdParser.ParseFile(sfdFile);
-                allLibraries.Add(library);
+            var library = SfdParser.ParseFile(sfdFile);
+            if (string.IsNullOrWhiteSpace(library.LibraryName))
+                throw new InvalidDataException($"{Path.GetFileName(sfdFile)} has no library identity");
+            allLibraries.Add(library);
 
-                foreach (var include in library.Includes)
-                {
-                    allIncludes.Add(include);
-                }
-            }
-            catch (Exception ex)
+            foreach (var include in library.Includes)
             {
-                Console.WriteLine($"Error parsing {sfdFile}: {ex.Message}");
+                allIncludes.Add(include);
             }
         }
 
         // Generate central structs file from ALL headers
         Console.WriteLine("\nGenerating central amiga_structs.novus...");
+        var allFunctions = allLibraries.SelectMany(library => library.Functions).ToList();
         GenerateCentralStructsFile(
             allIncludes.ToList(),
-            allLibraries.SelectMany(library => library.Functions).Select(function => function.Name).ToHashSet(StringComparer.Ordinal));
+            allFunctions.Select(function => function.Name).ToHashSet(StringComparer.Ordinal),
+            allFunctions.SelectMany(function => function.Parameters.Select(parameter => parameter.Type)
+                .Append(function.ReturnType)));
         GenerateHeaderMap(allLibraries);
 
         // Second pass: generate bindings
         Console.WriteLine("\nGenerating FFI bindings...");
         foreach (var library in allLibraries)
         {
-            try
-            {
-                Console.WriteLine($"Processing {library.LibraryName}...");
+            Console.WriteLine($"Processing {library.LibraryName}...");
 
-                // Generate Novus FFI bindings
-                GenerateNovusBindings(library);
+            // Generate Novus FFI bindings
+            GenerateNovusBindings(library);
 
-                // Generate assembly stubs
-                GenerateAssemblyStubs(library);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error processing library: {ex.Message}");
-            }
+            // Generate assembly stubs
+            GenerateAssemblyStubs(library);
         }
     }
 
@@ -122,7 +115,7 @@ public class SfdGenerator
 
         sb.AppendLine("// Generated from SFD file by Novus SFD Parser");
         sb.AppendLine($"// Library: {library.LibraryName}");
-        sb.AppendLine($"// Base: {library.BaseSymbol}");
+        sb.AppendLine($"// Base: {(string.IsNullOrWhiteSpace(library.BaseSymbol) ? "caller-supplied" : library.BaseSymbol)}");
         sb.AppendLine("//");
         sb.AppendLine("// NOTE: Constants are in std::ffi::amiga_consts");
         sb.AppendLine("// NOTE: Structs are in std::ffi::amiga_structs");
@@ -136,20 +129,13 @@ public class SfdGenerator
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
 
-        // Only generate real functions (not aliases or reserved slots)
+        // Reserved slots have no callable API. Aliases and varargs are official NDK APIs.
         var realFunctions = library.Functions
-            .Where(f => !f.IsReserved && !f.IsAlias)
+            .Where(f => !f.IsReserved)
             .ToList();
 
         foreach (var func in realFunctions)
         {
-            // Skip varargs for now - they need special handling
-            if (func.IsVarargs)
-            {
-                sb.AppendLine($"// Varargs function {func.Name} skipped - needs manual implementation");
-                continue;
-            }
-
             // Generate extern function declaration
             sb.AppendLine($"@library(\"{library.LibraryName}\")");
             sb.Append($"extern pub fn {func.Name}(");
@@ -159,6 +145,11 @@ public class SfdGenerator
             for (int i = 0; i < func.Parameters.Count; i++)
             {
                 var param = func.Parameters[i];
+                if (param.Type == "...")
+                {
+                    novusParams.Add("...args");
+                    continue;
+                }
                 var paramType = SfdParser.MapAmigaTypeToNovus(param.Type);
                 var paramName = string.IsNullOrWhiteSpace(param.Name) ? $"arg{i}" : SanitizeIdentifier(param.Name);
 
@@ -200,17 +191,20 @@ public class SfdGenerator
 
         sb.AppendLine("; Generated from SFD file by Novus SFD Parser");
         sb.AppendLine($"; Library: {library.LibraryName}");
-        sb.AppendLine($"; Base: {library.BaseSymbol}");
+        sb.AppendLine($"; Base: {(string.IsNullOrWhiteSpace(library.BaseSymbol) ? "caller-supplied" : library.BaseSymbol)}");
         sb.AppendLine("; Each function is in its own section for dead code elimination");
         sb.AppendLine();
 
         // External declaration for library base (global)
-        sb.AppendLine($"\txref\t{library.BaseSymbol}");
-        sb.AppendLine();
+        if (!string.IsNullOrWhiteSpace(library.BaseSymbol))
+        {
+            sb.AppendLine($"\txref\t{library.BaseSymbol}");
+            sb.AppendLine();
+        }
 
-        // Only generate real functions (not aliases or reserved slots)
+        // Reserved slots have no callable API. Aliases and varargs share an existing vector.
         var realFunctions = library.Functions
-            .Where(f => !f.IsReserved && !f.IsAlias && !f.IsVarargs)
+            .Where(f => !f.IsReserved)
             .ToList();
 
         foreach (var func in realFunctions)
@@ -237,13 +231,21 @@ public class SfdGenerator
         // For 68000, parameters come on stack at 4(sp), 8(sp), etc.
         // We need to move them to registers according to the SFD
 
-        var stackOffset = 4; // Skip return address
-        var usedRegisters = new HashSet<string>();
+        var usedRegisters = func.Registers
+            .Select(reg => reg.ToLowerInvariant())
+            .ToArray();
+        var preservedRegisters = new[] { "d2", "d3", "d4", "d5", "d6", "d7", "a2", "a3", "a4", "a5", "a6" }
+            .Where(reg => reg == "a6" || usedRegisters.Any(spec => RegisterSpecContains(spec, reg)))
+            .ToArray();
+        var preservedRegisterList = string.Join("/", preservedRegisters);
 
-        for (int i = 0; i < func.Registers.Count && i < func.Parameters.Count; i++)
+        sb.AppendLine($"\tmovem.l\t{preservedRegisterList},-(sp)");
+        var stackOffset = 4 + preservedRegisters.Length * 4; // Return address + saved registers
+
+        var registerParameterCount = func.IsVarargs ? func.Registers.Count - 1 : func.Registers.Count;
+        for (int i = 0; i < registerParameterCount && i < func.Parameters.Count; i++)
         {
             var reg = func.Registers[i].ToLower();
-            usedRegisters.Add(reg);
             var parameterSize = GetStackSize(func.Parameters[i].Type);
 
             // Move parameter from stack to register
@@ -265,11 +267,33 @@ public class SfdGenerator
             stackOffset += parameterSize;
         }
 
-        // Load library base into a6
-        sb.AppendLine($"\tmovea.l\t{library.BaseSymbol},a6");
+        if (func.IsVarargs)
+        {
+            var concreteParameterCount = func.Parameters.Count(parameter => parameter.Type != "...");
+            if (func.Registers.Count == 0 || func.Parameters.LastOrDefault()?.Type != "..." ||
+                concreteParameterCount < registerParameterCount || concreteParameterCount > registerParameterCount + 1)
+                throw new InvalidDataException($"Unsupported varargs ABI for {library.LibraryName}/{func.Name}");
+
+            var pointerRegister = func.Registers[^1].ToLowerInvariant();
+            if (Regex.IsMatch(pointerRegister, @"^a[0-7]$"))
+                sb.AppendLine($"\tlea\t{stackOffset}(sp),{pointerRegister}");
+            else if (Regex.IsMatch(pointerRegister, @"^d[0-7]$"))
+            {
+                sb.AppendLine($"\tlea\t{stackOffset}(sp),a6");
+                sb.AppendLine($"\tmove.l\ta6,{pointerRegister}");
+            }
+            else
+                throw new InvalidDataException($"Unsupported varargs pointer register '{pointerRegister}' for {library.LibraryName}/{func.Name}");
+        }
+
+        // Normal libraries use a global base. cia.resource supplies CIAA/CIAB
+        // as the explicit A6 parameter already loaded above.
+        if (!string.IsNullOrWhiteSpace(library.BaseSymbol))
+            sb.AppendLine($"\tmovea.l\t{library.BaseSymbol},a6");
 
         // Call the library function
         sb.AppendLine($"\tjsr\t-{func.Offset}(a6)");
+        sb.AppendLine($"\tmovem.l\t(sp)+,{preservedRegisterList}");
 
         // Return value is in d0 (or d0/d1 for 64-bit)
         sb.AppendLine($"\trts");
@@ -282,7 +306,15 @@ public class SfdGenerator
         return type is "DOUBLE" or "QUAD" or "UQUAD" ? 8 : 4;
     }
 
-    private void GenerateCentralStructsFile(List<string> _, IReadOnlySet<string> functionNames)
+    private static bool RegisterSpecContains(string spec, string register) =>
+        spec == register ||
+        spec.Length == 5 && spec[2] == '-' && spec[0] == register[0] && spec[3] == register[0] &&
+        spec[1] <= register[1] && register[1] <= spec[4];
+
+    private void GenerateCentralStructsFile(
+        List<string> _,
+        IReadOnlySet<string> functionNames,
+        IEnumerable<string> functionTypes)
     {
         var allStructs = new Dictionary<string, CHeaderParser.CStruct>();
         var allConstants = new Dictionary<string, CHeaderParser.CConstant>();
@@ -312,7 +344,9 @@ public class SfdGenerator
         // Forward-declared NDK tags still need a Novus name for typed pointers.
         var referencedTags = allStructs.Values
             .SelectMany(structDef => structDef.Fields)
-            .Select(field => Regex.Match(field.Type, @"\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)"))
+            .Select(field => field.Type)
+            .Concat(functionTypes)
+            .Select(type => Regex.Match(type, @"\b(?:struct|union)\s+([A-Za-z_][A-Za-z0-9_]*)"))
             .Where(match => match.Success)
             .Select(match => match.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
@@ -328,7 +362,7 @@ public class SfdGenerator
         constsSb.AppendLine("// Generated from NDK headers by Novus SFD Parser");
         constsSb.AppendLine("// AmigaOS constant definitions (source of truth)");
         constsSb.AppendLine("//");
-        constsSb.AppendLine("// This file contains ALL constants from the NDK headers.");
+        constsSb.AppendLine("// This file contains numeric and string constants from the NDK headers.");
         constsSb.AppendLine("// Struct definitions are in std::ffi::amiga_structs");
         constsSb.AppendLine();
         constsSb.AppendLine("// ============================================================================");
@@ -337,6 +371,24 @@ public class SfdGenerator
         constsSb.AppendLine();
 
         var constantNames = allConstants.Keys.ToHashSet(StringComparer.Ordinal);
+        var stringConstants = allConstants.Values
+            .Where(constant => IsCStringLiteral(constant.Value))
+            .ToDictionary(constant => constant.Name, constant => constant.Value.Trim(), StringComparer.Ordinal);
+        bool addedStringAlias;
+        do
+        {
+            addedStringAlias = false;
+            foreach (var constant in allConstants.Values)
+            {
+                var alias = constant.Value.Trim();
+                if (!stringConstants.ContainsKey(constant.Name) && stringConstants.ContainsKey(alias))
+                {
+                    stringConstants[constant.Name] = alias;
+                    addedStringAlias = true;
+                }
+            }
+        } while (addedStringAlias);
+
         var convertedConstants = allConstants.Values
             .Select(constant => (constant.Name, Value: ConvertConstantValue(constant.Value, constantNames)))
             .Where(constant => constant.Value != null)
@@ -357,13 +409,22 @@ public class SfdGenerator
             constsSb.AppendLine($"pub const {constant.Key}: u32 = {constant.Value}");
         if (!allConstants.ContainsKey("WA_SIZE_UNLIMITED"))
             constsSb.AppendLine("pub const WA_SIZE_UNLIMITED: u32 = $FFFFFFFF");
+        foreach (var constant in TopologicalSortConstants(stringConstants))
+            constsSb.AppendLine($"pub const {constant.Key}: *u8 = {constant.Value}");
 
         var constsOutputFile = Path.Combine(_outputPath, "std", "ffi", "amiga_consts.novus");
         Directory.CreateDirectory(Path.GetDirectoryName(constsOutputFile)!);
         File.WriteAllText(constsOutputFile, constsSb.ToString());
-        var includedCount = convertedConstants.Count;
+        var includedCount = convertedConstants.Count + stringConstants.Count;
         var skippedCount = allConstants.Count - includedCount;
         Console.WriteLine($"  Generated {constsOutputFile} with {includedCount} constants ({skippedCount} skipped)");
+
+        var unsupportedOutputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_unsupported_macros.txt");
+        var includedNames = convertedConstants.Keys.Concat(stringConstants.Keys).ToHashSet(StringComparer.Ordinal);
+        File.WriteAllLines(unsupportedOutputFile, allConstants.Values
+            .Where(constant => !includedNames.Contains(constant.Name))
+            .OrderBy(constant => constant.Name, StringComparer.Ordinal)
+            .Select(constant => $"{constant.Name} = {constant.Value}"));
 
         // Generate amiga_structs.novus (structs only)
         var structsSb = new StringBuilder();
@@ -399,7 +460,7 @@ public class SfdGenerator
             if (functionNames.Contains(structDef.Name) || structDef.IsTypedef)
                 continue;
             var tagName = string.IsNullOrWhiteSpace(structDef.TagName) ? structDef.Name : structDef.TagName;
-            ndkTypes.AppendLine($"typedef struct {tagName} {structDef.Name};");
+            ndkTypes.AppendLine($"typedef {(structDef.IsUnion ? "union" : "struct")} {tagName} {structDef.Name};");
         }
         File.WriteAllText(ndkTypesOutputFile, ndkTypes.ToString());
     }
@@ -474,7 +535,7 @@ public class SfdGenerator
             foreach (var field in structDef.Fields)
             {
                 // Extract struct name from type like "*MemChunk" or "Node"
-                var taggedType = Regex.Match(field.Type, @"\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)");
+                var taggedType = Regex.Match(field.Type, @"\b(?:struct|union)\s+([A-Za-z_][A-Za-z0-9_]*)");
                 var fieldType = taggedType.Success
                     ? taggedType.Groups[1].Value
                     : field.Type.TrimStart('*').Trim();
@@ -563,10 +624,23 @@ public class SfdGenerator
     {
         cValue = cValue.Trim();
 
+        var id = Regex.Match(cValue,
+            @"^MAKE_ID\s*\(\s*'(.)'\s*,\s*'(.)'\s*,\s*'(.)'\s*,\s*'(.)'\s*\)$");
+        if (id.Success)
+        {
+            var value = Enumerable.Range(1, 4)
+                .Aggregate(0u, (result, index) => (result << 8) | id.Groups[index].Value[0]);
+            return $"${value:X8}";
+        }
+
         cValue = Regex.Replace(
             cValue,
             @"\(\s*(BYTE|UBYTE|WORD|UWORD|LONG|ULONG|QUAD|UQUAD|Tag|signed\s+char|unsigned\s+char|short|unsigned\s+short|int|unsigned\s+int|long|unsigned\s+long)\s*\)",
             "");
+        cValue = Regex.Replace(cValue,
+            @"\(\s*(?:const\s+)?(?:struct\s+[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*)\s*\*+\s*\)",
+            "");
+        cValue = Regex.Replace(cValue, @"\bNULL\b", "0");
 
         // C declaration helpers and casts are macros, but not numeric constants.
         if (Regex.IsMatch(cValue, @"\b(const|enum|extern|float|int|long|NULL|register|short|signed|sizeof|static|struct|union|unsigned|void|volatile)\b"))
@@ -618,7 +692,7 @@ public class SfdGenerator
             @"0[xX]([0-9A-Fa-f]+)[uUlL]*",
             match => "$" + match.Groups[1].Value);
         expression = Regex.Replace(expression, @"(?<=\d)[uUlL]+\b", "");
-        if (Regex.IsMatch(expression, @"^[A-Za-z0-9_$\s()+\-*/%<>&|~]+$") &&
+        if (Regex.IsMatch(expression, @"^[A-Za-z0-9_$\s()+\-*/%<>&|~^]+$") &&
             HasBalancedParentheses(expression) &&
             GetConstantIdentifiers(expression).All(constantNames.Contains))
             return expression;
@@ -626,6 +700,9 @@ public class SfdGenerator
         // Skip anything else (expressions, aliases, etc.) - these need manual handling or evaluation
         return null;
     }
+
+    private static bool IsCStringLiteral(string value) =>
+        Regex.IsMatch(value.Trim(), "^\\\"(?:\\\\.|[^\\\"\\\\])*\\\"$");
 
     private static IEnumerable<string> GetConstantIdentifiers(string expression) =>
         Regex.Matches(expression, @"(?<!\$)\b[A-Za-z_][A-Za-z0-9_]*\b")

@@ -122,7 +122,8 @@ extern pub fn RemKBInt(intHandle: *u8)
 /// See also: <libraries/lowlevel.h>
 @library("lowlevel.library")
 extern pub fn SystemControlA(tagList: *TagItem) -> u32
-// Varargs function SystemControl skipped - needs manual implementation
+@library("lowlevel.library")
+extern pub fn SystemControl(tagList: u32, ...args) -> u32
 /// Adds an interrupt that is executed at regular
 ///
 /// Calling this routine causes the system to allocate a CIA timer and set up
@@ -258,4 +259,5 @@ extern pub fn RemVBlankInt(intHandle: *u8)
 /// See also: ReadJoyPort(), <libraries/lowlevel.h>
 @library("lowlevel.library")
 extern pub fn SetJoyPortAttrsA(portNumber: u32, tagList: *TagItem) -> i16
-// Varargs function SetJoyPortAttrs skipped - needs manual implementation
+@library("lowlevel.library")
+extern pub fn SetJoyPortAttrs(portNumber: u32, tagList: u32, ...args) -> i16

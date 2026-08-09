@@ -17,6 +17,7 @@ public static class FfiRuntimeGenerator
     {
         var bindings = modules
             .Where(m => m.ModuleName is not "exec" and not "dos")
+            .Where(m => m.Kind != FfiModuleKind.CallerSupplied)
             .DistinctBy(m => m.BaseSymbol)
             .OrderBy(m => m.ModuleName, StringComparer.Ordinal)
             .ToList();

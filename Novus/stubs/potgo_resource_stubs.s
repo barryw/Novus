@@ -10,9 +10,11 @@
 ; UWORD AllocPotBits(UWORD bits)
 	xdef	_AllocPotBits
 _AllocPotBits:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_PotgoBase,a6
 	jsr	-6(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreePotBits_stub,code
@@ -20,9 +22,11 @@ _AllocPotBits:
 ; VOID FreePotBits(UWORD bits)
 	xdef	_FreePotBits
 _FreePotBits:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_PotgoBase,a6
 	jsr	-12(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_WritePotgo_stub,code
@@ -30,9 +34,11 @@ _FreePotBits:
 ; VOID WritePotgo(UWORD word, UWORD mask)
 	xdef	_WritePotgo
 _WritePotgo:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_PotgoBase,a6
 	jsr	-18(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -176,6 +176,7 @@ pub fn main() -> i32 {
     [InlineData("novus_io.s")]
     [InlineData("runtime_core.c")]
     [InlineData("runtime_errors.c")]
+    [InlineData("runtime_mmu.c")]
     public void RuntimeFile_IsCopiedToBuildOutput(string fileName)
     {
         var runtimeFile = Path.Combine(
@@ -186,6 +187,33 @@ pub fn main() -> i32 {
 
         Assert.True(File.Exists(runtimeFile),
             $"{fileName} should be copied to the output directory by MSBuild; not found at {runtimeFile}");
+    }
+
+    [Fact]
+    public void RuntimeStartup_DoesNotMutateTheSystemMmuContext()
+    {
+        var runtimeFile = Path.Combine(
+            Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
+            "runtime",
+            "runtime_mmu.c"
+        );
+        var content = File.ReadAllText(runtimeFile);
+        var start = content.IndexOf("void __novus_init_mmu_protection(void)", StringComparison.Ordinal);
+        var end = content.IndexOf("void __novus_cleanup_mmu_protection(void)", start, StringComparison.Ordinal);
+
+        Assert.DoesNotContain("__novus_enable_null_page_protection();", content[start..end]);
+    }
+
+    [Fact]
+    public void RuntimeFailures_EmitAMachineReadableMarker()
+    {
+        var runtimeFile = Path.Combine(
+            Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
+            "runtime",
+            "runtime_core.c"
+        );
+
+        Assert.Contains("NOVUS_RUNTIME_ERROR\\n", File.ReadAllText(runtimeFile));
     }
 
     [Fact]

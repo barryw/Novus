@@ -10,8 +10,10 @@
 ; Class * POPCYCLE_GetClass()
 	xdef	_POPCYCLE_GetClass
 _POPCYCLE_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_PopCycleBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AllocPopCycleNodeA_stub,code
@@ -19,9 +21,23 @@ _POPCYCLE_GetClass:
 ; struct Node * AllocPopCycleNodeA(struct TagItem * tags)
 	xdef	_AllocPopCycleNodeA
 _AllocPopCycleNodeA:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_PopCycleBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_AllocPopCycleNode_stub,code
+
+; struct Node * AllocPopCycleNode(Tag tags, ... )
+	xdef	_AllocPopCycleNode
+_AllocPopCycleNode:
+	movem.l	a6,-(sp)
+	lea	8(sp),a0
+	movea.l	_PopCycleBase,a6
+	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreePopCycleNode_stub,code
@@ -29,9 +45,11 @@ _AllocPopCycleNodeA:
 ; VOID FreePopCycleNode(struct Node * node)
 	xdef	_FreePopCycleNode
 _FreePopCycleNode:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_PopCycleBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetPopCycleNodeAttrsA_stub,code
@@ -39,10 +57,25 @@ _FreePopCycleNode:
 ; VOID SetPopCycleNodeAttrsA(struct Node * node, struct TagItem * tags)
 	xdef	_SetPopCycleNodeAttrsA
 _SetPopCycleNodeAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_PopCycleBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetPopCycleNodeAttrs_stub,code
+
+; VOID SetPopCycleNodeAttrs(struct Node * node, ... )
+	xdef	_SetPopCycleNodeAttrs
+_SetPopCycleNodeAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_PopCycleBase,a6
+	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetPopCycleNodeAttrsA_stub,code
@@ -50,9 +83,24 @@ _SetPopCycleNodeAttrsA:
 ; VOID GetPopCycleNodeAttrsA(struct Node * node, struct TagItem * tags)
 	xdef	_GetPopCycleNodeAttrsA
 _GetPopCycleNodeAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_PopCycleBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_GetPopCycleNodeAttrs_stub,code
+
+; VOID GetPopCycleNodeAttrs(struct Node * node, ... )
+	xdef	_GetPopCycleNodeAttrs
+_GetPopCycleNodeAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_PopCycleBase,a6
+	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -10,7 +10,9 @@
 ; UWORD PeekQualifier()
 	xdef	_PeekQualifier
 _PeekQualifier:
+	movem.l	a6,-(sp)
 	movea.l	_InputBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 

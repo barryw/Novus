@@ -15,12 +15,15 @@ from std::ffi::amiga_structs import *
 extern pub fn CLICKTAB_GetClass() -> *u8
 @library("clicktab.library")
 extern pub fn AllocClickTabNodeA(tags: *TagItem) -> *Node
-// Varargs function AllocClickTabNode skipped - needs manual implementation
+@library("clicktab.library")
+extern pub fn AllocClickTabNode(tags: u32, ...args) -> *Node
 @library("clicktab.library")
 extern pub fn FreeClickTabNode(node: *Node)
 @library("clicktab.library")
 extern pub fn SetClickTabNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function SetClickTabNodeAttrs skipped - needs manual implementation
+@library("clicktab.library")
+extern pub fn SetClickTabNodeAttrs(node: *Node, ...args)
 @library("clicktab.library")
 extern pub fn GetClickTabNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function GetClickTabNodeAttrs skipped - needs manual implementation
+@library("clicktab.library")
+extern pub fn GetClickTabNodeAttrs(node: *Node, ...args)

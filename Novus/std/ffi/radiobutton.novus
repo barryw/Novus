@@ -15,12 +15,15 @@ from std::ffi::amiga_structs import *
 extern pub fn RADIOBUTTON_GetClass() -> *u8
 @library("radiobutton.library")
 extern pub fn AllocRadioButtonNodeA(columns: u16, tags: *TagItem) -> *Node
-// Varargs function AllocRadioButtonNode skipped - needs manual implementation
+@library("radiobutton.library")
+extern pub fn AllocRadioButtonNode(columns: u16, tags: u32, ...args) -> *Node
 @library("radiobutton.library")
 extern pub fn FreeRadioButtonNode(node: *Node)
 @library("radiobutton.library")
 extern pub fn SetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function SetRadioButtonNodeAttrs skipped - needs manual implementation
+@library("radiobutton.library")
+extern pub fn SetRadioButtonNodeAttrs(node: *Node, ...args)
 @library("radiobutton.library")
 extern pub fn GetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function GetRadioButtonNodeAttrs skipped - needs manual implementation
+@library("radiobutton.library")
+extern pub fn GetRadioButtonNodeAttrs(node: *Node, ...args)

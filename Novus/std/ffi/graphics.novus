@@ -1652,7 +1652,8 @@ extern pub fn GfxLookUp(associateNode: *u8) -> *u8
 /// See also: graphics/videocontrol.h, GetColorMap(), FreeColorMap()
 @library("graphics.library")
 extern pub fn VideoControl(colorMap: *ColorMap, tagarray: *TagItem) -> i16
-// Varargs function VideoControlTags skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn VideoControlTags(colorMap: *ColorMap, tagarray: u32, ...args) -> i16
 /// Open a named MonitorSpec (V36)
 ///
 /// Locate and open a named MonitorSpec.
@@ -1699,7 +1700,7 @@ extern pub fn CloseMonitor(consuming monitorSpec: *MonitorSpec) -> i16
 ///
 /// See also: graphics/displayinfo.h
 @library("graphics.library")
-extern pub fn FindDisplayInfo(displayID: u32) -> *u8 /* DisplayInfoHandle */
+extern pub fn FindDisplayInfo(displayID: u32) -> *u8
 /// Iterate current displayinfo identifiers (V36)
 ///
 /// The basic iteration function with which to find all records in the graphics
@@ -1734,7 +1735,7 @@ extern pub fn NextDisplayInfo(displayID: u32) -> u32
 ///
 /// See also: FindDisplayInfo(), NextDisplayInfo() graphics/displayinfo.h
 @library("graphics.library")
-extern pub fn GetDisplayInfoData(handle: *u8 /* const DisplayInfoHandle */, buf: *u8, size: u32, tagID: u32, displayID: u32) -> u32
+extern pub fn GetDisplayInfoData(handle: *u8, buf: *u8, size: u32, tagID: u32, displayID: u32) -> u32
 /// Get the font attributes of the current font (V36)
 ///
 /// This function fills the text extent structure with a bounding (i.e. maximum)
@@ -1896,7 +1897,8 @@ extern pub fn EraseRect(rp: *RastPort, xMin: i16, yMin: i16, xMax: i16, yMax: i1
 /// See also: graphics/text.h
 @library("graphics.library")
 extern pub fn ExtendFont(font: *TextFont, fontTags: *TagItem) -> u32
-// Varargs function ExtendFontTags skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn ExtendFontTags(font: *TextFont, fontTags: u32, ...args) -> u32
 /// Remove the tf_Extension from a font (V36)
 @library("graphics.library")
 extern pub fn StripFont(font: *TextFont)
@@ -1933,7 +1935,8 @@ extern pub fn CalcIVG(v: *View, vp: *ViewPort) -> u16
 extern pub fn AttachPalExtra(cm: *ColorMap, vp: *ViewPort) -> i32
 @library("graphics.library")
 extern pub fn ObtainBestPenA(cm: *ColorMap, r: u32, g: u32, b: u32, tags: *TagItem) -> i32
-// Varargs function ObtainBestPen skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn ObtainBestPen(cm: *ColorMap, r: u32, g: u32, b: u32, tags: u32, ...args) -> i32
 /// Set one color register for this Viewport. (V39)
 ///
 /// # Arguments
@@ -2071,7 +2074,8 @@ extern pub fn FreeBitMap(consuming bm: *BitMap)
 /// See also: FreeSprite() ChangeSprite() MoveSprite() GetSprite() graphics/sprite.h
 @library("graphics.library")
 extern pub fn GetExtSpriteA(ss: *ExtSprite, tags: *TagItem) -> i32
-// Varargs function GetExtSprite skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn GetExtSprite(ss: *ExtSprite, tags: u32, ...args) -> i32
 /// Calculate ViewPort mode coercion (V39)
 ///
 /// To determine the best mode in the MonitorID to coerce RealViewPort to, given
@@ -2263,7 +2267,8 @@ extern pub fn FindColor(cm: *ColorMap, r: u32, g: u32, b: u32, maxcolor: i32) ->
 /// See also: FreeSpriteData() FreeSprite() ChangeSprite() MoveSprite() GetExtSpriteA() AllocBitMap() graphics/sprite.h
 @library("graphics.library")
 extern pub fn AllocSpriteDataA(bm: *BitMap, tags: *TagItem) -> *ExtSprite
-// Varargs function AllocSpriteData skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn AllocSpriteData(bm: *BitMap, tags: u32, ...args) -> *ExtSprite
 /// Change the sprite image pointer. (V39)
 ///
 /// Attempt to change which sprite is displayed for a given sprite engine.
@@ -2280,7 +2285,8 @@ extern pub fn AllocSpriteDataA(bm: *BitMap, tags: *TagItem) -> *ExtSprite
 /// See also: FreeSprite() ChangeSprite() MoveSprite() AllocSpriteDataA() graphics/sprite.h
 @library("graphics.library")
 extern pub fn ChangeExtSpriteA(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: *ExtSprite, tags: *TagItem) -> i32
-// Varargs function ChangeExtSprite skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn ChangeExtSprite(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: *ExtSprite, tags: u32, ...args) -> i32
 /// Free sprite data allocated by AllocSpriteData() (V39)
 ///
 /// # Arguments
@@ -2292,10 +2298,12 @@ extern pub fn ChangeExtSpriteA(vp: *ViewPort, oldsprite: *ExtSprite, newsprite: 
 extern pub fn FreeSpriteData(consuming sp: *ExtSprite)
 @library("graphics.library")
 extern pub fn SetRPAttrsA(rp: *RastPort, tags: *TagItem)
-// Varargs function SetRPAttrs skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn SetRPAttrs(rp: *RastPort, tags: u32, ...args)
 @library("graphics.library")
 extern pub fn GetRPAttrsA(rp: *RastPort, tags: *TagItem)
-// Varargs function GetRPAttrs skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn GetRPAttrs(rp: *RastPort, tags: u32, ...args)
 /// Calculate the best ModeID with given parameters (V39)
 ///
 /// To determine the best ModeID to fit the parameters set in the TagList.
@@ -2310,7 +2318,8 @@ extern pub fn GetRPAttrsA(rp: *RastPort, tags: *TagItem)
 /// See also: <graphics/modeid.h> <graphics/displayinfo.h>
 @library("graphics.library")
 extern pub fn BestModeIDA(tags: *TagItem) -> u32
-// Varargs function BestModeID skipped - needs manual implementation
+@library("graphics.library")
+extern pub fn BestModeID(tags: u32, ...args) -> u32
 /// Write the pen number value of a rectangular array
 ///
 /// For each pixel in a rectangular region, decode the pen number selector from

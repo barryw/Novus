@@ -1738,29 +1738,30 @@ ___stack:
 
             var buildModeStr = options.BuildMode == BuildMode.Release ? "release" : "debug";
             var stdlibCacheRootDir = Path.Combine(compilerDir, "stdlib");
-            var stdlibPrecompiledDir = Path.Combine(stdlibCacheRootDir, assemblyCpu, buildModeStr);
+            var stdlibVariant = $"{options.Fpu}-O{options.OptimizationLevel}-S{(int)safetyLevel}";
+            var stdlibPrecompiledDir = Path.Combine(stdlibCacheRootDir, assemblyCpu, buildModeStr, stdlibVariant);
 
             // Create cache lock manager for cross-process synchronization
             Directory.CreateDirectory(stdlibCacheRootDir);
             using var cacheLockManager = new CacheLockManager(stdlibCacheRootDir);
 
             // Check if stdlib cache should be used
-            // By default, always rebuild stdlib fresh to avoid stale cache issues
-            // Use --use-stdlib-cache to opt-in to using cached stdlib
+            // Reuse stdlib objects by default; the cache path includes every
+            // compilation mode that can change generated code or object ABI.
             // Use --rebuild-stdlib-cache to rebuild and cache for future use
             bool forceRebuildAndCache = options.RebuildStdlibCache;
-            bool useCache = options.UseStdlibCache && !forceRebuildAndCache;
+            bool useCache = !options.NoCache && !forceRebuildAndCache;
             string? cacheInvalidReason = null;
             bool needsRebuild = forceRebuildAndCache
                 || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
                 || !AtomicCacheWriter.IsCacheComplete(stdlibPrecompiledDir)  // Check completion marker
-                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION, out cacheInvalidReason);
+                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION, out cacheInvalidReason, stdlibPrecompiledDir);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
             // Use locking to prevent race conditions during cache invalidation
-            if (needsRebuild && Directory.Exists(stdlibPrecompiledDir))
+            if (needsRebuild && !options.NoCache && Directory.Exists(stdlibPrecompiledDir))
             {
                 var reason = cacheInvalidReason ?? (forceRebuildAndCache ? "forced rebuild" : "cache not used by default");
                 Console.WriteLine($"\n⚠ Stdlib cache invalidated: {reason}");
@@ -1948,26 +1949,33 @@ ___stack:
             {
                 // No pre-compiled stdlib cache exists - compile and cache all stdlib files
                 Console.WriteLine($"\nCompiling stdlib modules ({stdlibCFiles.Count} files)...");
-                foreach (var cFile in stdlibCFiles)
+                foreach (var batch in stdlibCFiles.Chunk(Math.Max(1, Environment.ProcessorCount)))
                 {
-                    var cFileName = Path.GetFileName(cFile);
-                    var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
-
-                    Console.WriteLine($"  → {cFileName}");
-                    if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
+                    var results = await Task.WhenAll(batch.Select(async cFile =>
                     {
-                        Console.Error.WriteLine($"\n✗ Failed to compile {cFileName}");
-                        return EXIT_COMPILE_ERROR;
-                    }
+                        var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
+                        var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu);
+                        return (cFile, objFile, success);
+                    }));
 
-                    objectFiles.Add(objFile);
-                    stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                    foreach (var result in results)
+                    {
+                        if (!result.success)
+                        {
+                            Console.Error.WriteLine($"\n✗ Failed to compile {Path.GetFileName(result.cFile)}");
+                            return EXIT_COMPILE_ERROR;
+                        }
+
+                        Console.WriteLine($"  → {Path.GetFileName(result.cFile)}");
+                        objectFiles.Add(result.objFile);
+                        stdlibOFilesToCache.Add((result.cFile, result.objFile));
+                    }
                 }
             }
 
             // Cache any newly compiled stdlib .o files (from either path above)
             // Use locking and atomic writes to prevent race conditions
-            if (stdlibOFilesToCache.Count > 0)
+            if (stdlibOFilesToCache.Count > 0 && !options.NoCache)
             {
                 Console.WriteLine($"\n  ✓ Caching {stdlibOFilesToCache.Count} stdlib object files for future builds...");
 

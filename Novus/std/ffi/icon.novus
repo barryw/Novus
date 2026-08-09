@@ -184,7 +184,8 @@ extern pub fn DeleteDiskObject(name: *u8) -> i16
 /// See also: dos.library/IoErr icon.library/GetIconTagList workbench/icon.h workbench/workbench.h
 @library("icon.library")
 extern pub fn DupDiskObjectA(diskObject: *DiskObject, tags: *TagItem) -> *DiskObject
-// Varargs function DupDiskObject skipped - needs manual implementation
+@library("icon.library")
+extern pub fn DupDiskObject(diskObject: *DiskObject, ...args) -> *DiskObject
 /// Set and get icon and icon.library options (V44)
 ///
 /// This function is used to modify and query icon and icon.library options.
@@ -203,7 +204,8 @@ extern pub fn DupDiskObjectA(diskObject: *DiskObject, tags: *TagItem) -> *DiskOb
 /// See also: dos.library/IoErr icon.library/DupDiskObjectA icon.library/GetIconTagList icon.library/LayoutIcon icon.library/NewDiskObject graphics.library/BltMaskBitMapRastPort graphics.library/ObtainBestPenA utility.library/CallHookPkt graphics/view.h workbench/icon.h workbench/workbench.h
 @library("icon.library")
 extern pub fn IconControlA(icon: *DiskObject, tags: *TagItem) -> u32
-// Varargs function IconControl skipped - needs manual implementation
+@library("icon.library")
+extern pub fn IconControl(icon: *DiskObject, ...args) -> u32
 /// Draw an icon as if it were an image (V44)
 ///
 /// This function will draw an icon as if it were an image; if a label is
@@ -214,7 +216,8 @@ extern pub fn IconControlA(icon: *DiskObject, tags: *TagItem) -> u32
 /// See also: workbench/icon.h workbench/workbench.h intuition/imageclass.h intuition/screens.h intuition.library/DrawImageState icon.library/GetIconRectangleA icon.library/IconControlA
 @library("icon.library")
 extern pub fn DrawIconStateA(rp: *RastPort, icon: *DiskObject, label: *u8, leftOffset: i32, topOffset: i32, state: u32, tags: *TagItem)
-// Varargs function DrawIconState skipped - needs manual implementation
+@library("icon.library")
+extern pub fn DrawIconState(rp: *RastPort, icon: *DiskObject, label: *u8, leftOffset: i32, topOffset: i32, state: u32, ...args)
 /// Query the size of the area an icon renders into (V44)
 ///
 /// This function will calculate the size of the area icon rendering would
@@ -230,7 +233,8 @@ extern pub fn DrawIconStateA(rp: *RastPort, icon: *DiskObject, label: *u8, leftO
 /// See also: workbench/icon.h workbench/workbench.h icon.library/DrawIconState icon.library/IconControlA icon.library/LayoutIconA
 @library("icon.library")
 extern pub fn GetIconRectangleA(rp: *RastPort, icon: *DiskObject, label: *u8, rect: *Rectangle, tags: *TagItem) -> i16
-// Varargs function GetIconRectangle skipped - needs manual implementation
+@library("icon.library")
+extern pub fn GetIconRectangle(rp: *RastPort, icon: *DiskObject, label: *u8, rect: *Rectangle, ...args) -> i16
 /// Create an empty icon (V44)
 ///
 /// This function is used to create an "empty" DiskObject structure, which has
@@ -261,7 +265,8 @@ extern pub fn NewDiskObject(_type: i32) -> *DiskObject
 /// See also: workbench/icon.h workbench/workbench.h icon.library/GetDiskObject icon.library/GetDiskObjectNew icon.library/GetDefDiskObject icon.library/IconControlA icon.library/PutIconTagList
 @library("icon.library")
 extern pub fn GetIconTagList(name: *u8, tags: *TagItem) -> *DiskObject
-// Varargs function GetIconTags skipped - needs manual implementation
+@library("icon.library")
+extern pub fn GetIconTags(name: *u8, ...args) -> *DiskObject
 /// Store an icon (V44)
 ///
 /// This function is used to store an icon; the icon can belong to a
@@ -277,7 +282,8 @@ extern pub fn GetIconTagList(name: *u8, tags: *TagItem) -> *DiskObject
 /// See also: workbench/icon.h workbench/workbench.h icon.library/GetIconTagList icon.library/PutDefDiskObject icon.library/PutDiskObject
 @library("icon.library")
 extern pub fn PutIconTagList(name: *u8, icon: *DiskObject, tags: *TagItem) -> i16
-// Varargs function PutIconTags skipped - needs manual implementation
+@library("icon.library")
+extern pub fn PutIconTags(name: *u8, icon: *DiskObject, ...args) -> i16
 /// Adapt a palette-mapped icon for display (V44)
 ///
 /// This function will prepare an icon for display, either on a specific screen
@@ -289,7 +295,8 @@ extern pub fn PutIconTagList(name: *u8, icon: *DiskObject, tags: *TagItem) -> i1
 /// See also: dos.library/IoErr graphics.library/ObtainBestPenA graphics.library/ReleasePen icon.library/FreeDiskObject icon.library/GetIconRectangleA icon.library/GetIconTagList icon.library/IconControl intuition.library/LockPubScreen intuition.library/UnlockPubScreen graphics/view.h
 @library("icon.library")
 extern pub fn LayoutIconA(icon: *DiskObject, screen: *Screen, tags: *TagItem) -> i16
-// Varargs function LayoutIcon skipped - needs manual implementation
+@library("icon.library")
+extern pub fn LayoutIcon(icon: *DiskObject, screen: *Screen, ...args) -> i16
 /// Modify an RGB colour value for use in
 ///
 /// This function will change the provided RGB colour value to make it suitable

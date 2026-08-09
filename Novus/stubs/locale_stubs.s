@@ -10,9 +10,11 @@
 ; VOID CloseCatalog(struct Catalog * catalog)
 	xdef	_CloseCatalog
 _CloseCatalog:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_LocaleBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CloseLocale_stub,code
@@ -20,9 +22,11 @@ _CloseCatalog:
 ; VOID CloseLocale(struct Locale * locale)
 	xdef	_CloseLocale
 _CloseLocale:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_LocaleBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ConvToLower_stub,code
@@ -30,10 +34,12 @@ _CloseLocale:
 ; ULONG ConvToLower(struct Locale * locale, ULONG character)
 	xdef	_ConvToLower
 _ConvToLower:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ConvToUpper_stub,code
@@ -41,10 +47,12 @@ _ConvToLower:
 ; ULONG ConvToUpper(struct Locale * locale, ULONG character)
 	xdef	_ConvToUpper
 _ConvToUpper:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FormatDate_stub,code
@@ -52,12 +60,14 @@ _ConvToUpper:
 ; VOID FormatDate(struct Locale * locale, STRPTR fmtTemplate, struct DateStamp * date, struct Hook * putCharFunc)
 	xdef	_FormatDate
 _FormatDate:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_LocaleBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_FormatString_stub,code
@@ -65,12 +75,14 @@ _FormatDate:
 ; APTR FormatString(struct Locale * locale, STRPTR fmtTemplate, APTR dataStream, struct Hook * putCharFunc)
 	xdef	_FormatString
 _FormatString:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_LocaleBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_GetCatalogStr_stub,code
@@ -78,11 +90,13 @@ _FormatString:
 ; STRPTR GetCatalogStr(struct Catalog * catalog, LONG stringNum, STRPTR defaultString)
 	xdef	_GetCatalogStr
 _GetCatalogStr:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a1
 	movea.l	_LocaleBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetLocaleStr_stub,code
@@ -90,10 +104,12 @@ _GetCatalogStr:
 ; STRPTR GetLocaleStr(struct Locale * locale, ULONG stringNum)
 	xdef	_GetLocaleStr
 _GetLocaleStr:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsAlNum_stub,code
@@ -101,10 +117,12 @@ _GetLocaleStr:
 ; BOOL IsAlNum(struct Locale * locale, ULONG character)
 	xdef	_IsAlNum
 _IsAlNum:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsAlpha_stub,code
@@ -112,10 +130,12 @@ _IsAlNum:
 ; BOOL IsAlpha(struct Locale * locale, ULONG character)
 	xdef	_IsAlpha
 _IsAlpha:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsCntrl_stub,code
@@ -123,10 +143,12 @@ _IsAlpha:
 ; BOOL IsCntrl(struct Locale * locale, ULONG character)
 	xdef	_IsCntrl
 _IsCntrl:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsDigit_stub,code
@@ -134,10 +156,12 @@ _IsCntrl:
 ; BOOL IsDigit(struct Locale * locale, ULONG character)
 	xdef	_IsDigit
 _IsDigit:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsGraph_stub,code
@@ -145,10 +169,12 @@ _IsDigit:
 ; BOOL IsGraph(struct Locale * locale, ULONG character)
 	xdef	_IsGraph
 _IsGraph:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsLower_stub,code
@@ -156,10 +182,12 @@ _IsGraph:
 ; BOOL IsLower(struct Locale * locale, ULONG character)
 	xdef	_IsLower
 _IsLower:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsPrint_stub,code
@@ -167,10 +195,12 @@ _IsLower:
 ; BOOL IsPrint(struct Locale * locale, ULONG character)
 	xdef	_IsPrint
 _IsPrint:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-120(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsPunct_stub,code
@@ -178,10 +208,12 @@ _IsPrint:
 ; BOOL IsPunct(struct Locale * locale, ULONG character)
 	xdef	_IsPunct
 _IsPunct:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsSpace_stub,code
@@ -189,10 +221,12 @@ _IsPunct:
 ; BOOL IsSpace(struct Locale * locale, ULONG character)
 	xdef	_IsSpace
 _IsSpace:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-132(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsUpper_stub,code
@@ -200,10 +234,12 @@ _IsSpace:
 ; BOOL IsUpper(struct Locale * locale, ULONG character)
 	xdef	_IsUpper
 _IsUpper:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-138(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsXDigit_stub,code
@@ -211,10 +247,12 @@ _IsUpper:
 ; BOOL IsXDigit(struct Locale * locale, ULONG character)
 	xdef	_IsXDigit
 _IsXDigit:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_LocaleBase,a6
 	jsr	-144(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenCatalogA_stub,code
@@ -222,11 +260,27 @@ _IsXDigit:
 ; struct Catalog * OpenCatalogA(struct Locale * locale, STRPTR name, struct TagItem * tags)
 	xdef	_OpenCatalogA
 _OpenCatalogA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_LocaleBase,a6
 	jsr	-150(a6)
+	movem.l	(sp)+,a2/a6
+	rts
+
+	section	_OpenCatalog_stub,code
+
+; struct Catalog * OpenCatalog(struct Locale * locale, STRPTR name, Tag tags, ... )
+	xdef	_OpenCatalog
+_OpenCatalog:
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	lea	20(sp),a2
+	movea.l	_LocaleBase,a6
+	jsr	-150(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_OpenLocale_stub,code
@@ -234,9 +288,11 @@ _OpenCatalogA:
 ; struct Locale * OpenLocale(STRPTR name)
 	xdef	_OpenLocale
 _OpenLocale:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_LocaleBase,a6
 	jsr	-156(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ParseDate_stub,code
@@ -244,12 +300,14 @@ _OpenLocale:
 ; BOOL ParseDate(struct Locale * locale, struct DateStamp * date, STRPTR fmtTemplate, struct Hook * getCharFunc)
 	xdef	_ParseDate
 _ParseDate:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_LocaleBase,a6
 	jsr	-162(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_StrConvert_stub,code
@@ -257,13 +315,15 @@ _ParseDate:
 ; ULONG StrConvert(struct Locale * locale, STRPTR string, APTR buffer, ULONG bufferSize, ULONG type)
 	xdef	_StrConvert
 _StrConvert:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
-	move.l	20(sp),d1
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
+	move.l	24(sp),d0
+	move.l	28(sp),d1
 	movea.l	_LocaleBase,a6
 	jsr	-174(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_StrnCmp_stub,code
@@ -271,12 +331,14 @@ _StrConvert:
 ; LONG StrnCmp(struct Locale * locale, STRPTR string1, STRPTR string2, LONG length, ULONG type)
 	xdef	_StrnCmp
 _StrnCmp:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	move.l	16(sp),d0
-	move.l	20(sp),d1
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
+	move.l	24(sp),d0
+	move.l	28(sp),d1
 	movea.l	_LocaleBase,a6
 	jsr	-180(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 

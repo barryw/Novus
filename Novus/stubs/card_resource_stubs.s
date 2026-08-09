@@ -10,9 +10,11 @@
 ; struct CardHandle * OwnCard(struct CardHandle * handle)
 	xdef	_OwnCard
 _OwnCard:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_CardResource,a6
 	jsr	-6(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReleaseCard_stub,code
@@ -20,10 +22,12 @@ _OwnCard:
 ; VOID ReleaseCard(struct CardHandle * handle, ULONG flags)
 	xdef	_ReleaseCard
 _ReleaseCard:
-	movea.l	4(sp),a1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
 	movea.l	_CardResource,a6
 	jsr	-12(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetCardMap_stub,code
@@ -31,8 +35,10 @@ _ReleaseCard:
 ; struct CardMemoryMap * GetCardMap()
 	xdef	_GetCardMap
 _GetCardMap:
+	movem.l	a6,-(sp)
 	movea.l	_CardResource,a6
 	jsr	-18(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_BeginCardAccess_stub,code
@@ -40,9 +46,11 @@ _GetCardMap:
 ; BOOL BeginCardAccess(struct CardHandle * handle)
 	xdef	_BeginCardAccess
 _BeginCardAccess:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_CardResource,a6
 	jsr	-24(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_EndCardAccess_stub,code
@@ -50,9 +58,11 @@ _BeginCardAccess:
 ; BOOL EndCardAccess(struct CardHandle * handle)
 	xdef	_EndCardAccess
 _EndCardAccess:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_CardResource,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReadCardStatus_stub,code
@@ -60,8 +70,10 @@ _EndCardAccess:
 ; UBYTE ReadCardStatus()
 	xdef	_ReadCardStatus
 _ReadCardStatus:
+	movem.l	a6,-(sp)
 	movea.l	_CardResource,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardResetRemove_stub,code
@@ -69,10 +81,12 @@ _ReadCardStatus:
 ; BOOL CardResetRemove(struct CardHandle * handle, ULONG flag)
 	xdef	_CardResetRemove
 _CardResetRemove:
-	movea.l	4(sp),a1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
 	movea.l	_CardResource,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardMiscControl_stub,code
@@ -80,10 +94,12 @@ _CardResetRemove:
 ; UBYTE CardMiscControl(struct CardHandle * handle, UBYTE control_bits)
 	xdef	_CardMiscControl
 _CardMiscControl:
-	movea.l	4(sp),a1
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	move.l	12(sp),d1
 	movea.l	_CardResource,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardAccessSpeed_stub,code
@@ -91,10 +107,12 @@ _CardMiscControl:
 ; ULONG CardAccessSpeed(struct CardHandle * handle, ULONG nanoseconds)
 	xdef	_CardAccessSpeed
 _CardAccessSpeed:
-	movea.l	4(sp),a1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
 	movea.l	_CardResource,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardProgramVoltage_stub,code
@@ -102,10 +120,12 @@ _CardAccessSpeed:
 ; LONG CardProgramVoltage(struct CardHandle * handle, ULONG voltage)
 	xdef	_CardProgramVoltage
 _CardProgramVoltage:
-	movea.l	4(sp),a1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	move.l	12(sp),d0
 	movea.l	_CardResource,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardResetCard_stub,code
@@ -113,9 +133,11 @@ _CardProgramVoltage:
 ; BOOL CardResetCard(struct CardHandle * handle)
 	xdef	_CardResetCard
 _CardResetCard:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_CardResource,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CopyTuple_stub,code
@@ -123,12 +145,14 @@ _CardResetCard:
 ; BOOL CopyTuple(const struct CardHandle * handle, UBYTE * buffer, ULONG tuplecode, ULONG size)
 	xdef	_CopyTuple
 _CopyTuple:
-	movea.l	4(sp),a1
-	movea.l	8(sp),a0
-	move.l	12(sp),d1
-	move.l	16(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
+	movea.l	12(sp),a0
+	move.l	16(sp),d1
+	move.l	20(sp),d0
 	movea.l	_CardResource,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DeviceTuple_stub,code
@@ -136,10 +160,12 @@ _CopyTuple:
 ; ULONG DeviceTuple(const UBYTE * tuple_data, struct DeviceTData * storage)
 	xdef	_DeviceTuple
 _DeviceTuple:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_CardResource,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IfAmigaXIP_stub,code
@@ -147,9 +173,11 @@ _DeviceTuple:
 ; struct Resident * IfAmigaXIP(const struct CardHandle * handle)
 	xdef	_IfAmigaXIP
 _IfAmigaXIP:
-	movea.l	4(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a2
 	movea.l	_CardResource,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_CardForceChange_stub,code
@@ -157,8 +185,10 @@ _IfAmigaXIP:
 ; BOOL CardForceChange()
 	xdef	_CardForceChange
 _CardForceChange:
+	movem.l	a6,-(sp)
 	movea.l	_CardResource,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardChangeCount_stub,code
@@ -166,8 +196,10 @@ _CardForceChange:
 ; ULONG CardChangeCount()
 	xdef	_CardChangeCount
 _CardChangeCount:
+	movem.l	a6,-(sp)
 	movea.l	_CardResource,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CardInterface_stub,code
@@ -175,7 +207,9 @@ _CardChangeCount:
 ; ULONG CardInterface()
 	xdef	_CardInterface
 _CardInterface:
+	movem.l	a6,-(sp)
 	movea.l	_CardResource,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 

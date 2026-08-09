@@ -15,12 +15,15 @@ from std::ffi::amiga_structs import *
 extern pub fn CHOOSER_GetClass() -> *u8
 @library("chooser.library")
 extern pub fn AllocChooserNodeA(tags: *TagItem) -> *Node
-// Varargs function AllocChooserNode skipped - needs manual implementation
+@library("chooser.library")
+extern pub fn AllocChooserNode(tags: u32, ...args) -> *Node
 @library("chooser.library")
 extern pub fn FreeChooserNode(node: *Node)
 @library("chooser.library")
 extern pub fn SetChooserNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function SetChooserNodeAttrs skipped - needs manual implementation
+@library("chooser.library")
+extern pub fn SetChooserNodeAttrs(node: *Node, ...args)
 @library("chooser.library")
 extern pub fn GetChooserNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function GetChooserNodeAttrs skipped - needs manual implementation
+@library("chooser.library")
+extern pub fn GetChooserNodeAttrs(node: *Node, ...args)

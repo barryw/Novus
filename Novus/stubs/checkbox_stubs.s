@@ -10,7 +10,9 @@
 ; Class * CHECKBOX_GetClass()
 	xdef	_CHECKBOX_GetClass
 _CHECKBOX_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_CheckBoxBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

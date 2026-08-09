@@ -36,9 +36,21 @@ public class FfiToolingTests
                 {
                     WORD x, y;
                 } Point;
+                enum ResultCode
+                {
+                    RESULT_OK = 4,
+                    RESULT_RETRY,
+                    RESULT_FAILED
+                };
+                union Choice {
+                    ULONG value;
+                    UBYTE bytes[4];
+                };
+                struct Single { ULONG first; UWORD second; };
                 """);
 
-            var structs = CHeaderParser.ParseFile(path).Structs;
+            var header = CHeaderParser.ParseFile(path);
+            var structs = header.Structs;
             var example = Assert.Single(structs, value => value.Name == "Example");
             var fields = example.Fields;
 
@@ -55,6 +67,13 @@ public class FfiToolingTests
             Assert.True(example.HasUnion);
             Assert.Equal(["x", "y"], Assert.Single(structs, value => value.Name == "Point").Fields.Select(field => field.Name));
             Assert.Empty(Assert.Single(structs, value => value.Name == "tPoint").Fields);
+            Assert.Equal("4", Assert.Single(header.Constants, value => value.Name == "RESULT_OK").Value);
+            Assert.Equal("(RESULT_OK + 1)", Assert.Single(header.Constants, value => value.Name == "RESULT_RETRY").Value);
+            Assert.Equal("(RESULT_RETRY + 1)", Assert.Single(header.Constants, value => value.Name == "RESULT_FAILED").Value);
+            var union = Assert.Single(structs, value => value.Name == "Choice");
+            Assert.True(union.IsUnion);
+            Assert.Equal(["value", "bytes"], union.Fields.Select(field => field.Name));
+            Assert.Equal(["first", "second"], Assert.Single(structs, value => value.Name == "Single").Fields.Select(field => field.Name));
         }
         finally
         {
@@ -114,6 +133,12 @@ public class FfiToolingTests
                 #define ALIAS_TAG (BASE_TAG + 0x01)
                 #define TAG_USER ((ULONG)(1L << 31))
                 #define WA_Dummy (TAG_USER + 99)
+                #define TEST_CLASS "test.class"
+                #define TEST_CLASS_ALIAS TEST_CLASS
+                #define TEST_ID MAKE_ID('T','E','S','T')
+                #define MULTILINE_BITS (BASE_TAG | \
+                    ALIAS_TAG)
+                #define NULL_SENTINEL ((struct Hook *) NULL)
                 #define CONST const
                 #define BROKEN BASE_TAG)
                 #define BROKEN_ALIAS BROKEN
@@ -129,9 +154,31 @@ public class FfiToolingTests
                 ==bias 30
                 ==include <test.h>
                 DOUBLE AddDouble(DOUBLE left, DOUBLE right)(d0-d1,d2-d3)
+                struct Missing * FindMissing(void)()
+                ULONG OpenTagList(ULONG object, const struct TagItem * tags)(a0,a1)
                 ==varargs
-                DOUBLE AddDoubleTags(Tag first, ...)(d0-d1)
+                ULONG OpenTags(ULONG object, Tag first, ...)(a0,a1)
+                ULONG VPrintArgs(ULONG object, APTR args)(d2,d3)
+                ==varargs
+                ULONG PrintArgs(ULONG object, ...)(d2,d3)
+                ==alias
+                ULONG PrintArgsAlias(ULONG object, APTR args)(d2,d3)
                 ULONG SetHook(ULONG (*hook)(APTR object, APTR message))(a0)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "cia_lib.sfd"), """
+                ==bias 6
+                ==public
+                ==include <test.h>
+                struct Interrupt * AddICRVector(struct Library * resource, WORD bit, struct Interrupt * interrupt) (a6,d0,a1)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "intuition_lib.sfd"), """
+                ==base _IntuitionBase
+                ==libname intuition.library
+                ==bias 234
+                ==include <test.h>
+                VOID ReportMouse(BOOL flag, struct Window * window) (d0,a0)
+                ==alias
+                VOID ReportMouse1(struct Window * flag, BOOL window) (d0,a0)
                 """);
 
             new SfdGenerator(ndk, output).GenerateAllBindings();
@@ -141,33 +188,75 @@ public class FfiToolingTests
             var constants = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_consts.novus"));
             var structs = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_structs.novus"));
             Assert.Contains("hook: fn(*u8, *u8) -> u32", binding);
+            Assert.Contains("extern pub fn OpenTags(object: u32, first: u32, ...args) -> u32", binding);
+            Assert.Contains("extern pub fn PrintArgs(object: u32, ...args) -> u32", binding);
+            Assert.Contains("extern pub fn PrintArgsAlias(object: u32, args: *u8) -> u32", binding);
             Assert.Equal("i8", SfdParser.MapAmigaTypeToNovus("char"));
             Assert.Equal("i32", SfdParser.MapAmigaTypeToNovus("BSTR"));
+            Assert.Equal("i64", SfdParser.MapAmigaTypeToNovus("QUAD"));
+            Assert.Equal("u64", SfdParser.MapAmigaTypeToNovus("UQUAD"));
+            Assert.Equal("u16", SfdParser.MapAmigaTypeToNovus("USHORT"));
+            Assert.Equal("u32", SfdParser.MapAmigaTypeToNovus("CPTR"));
+            Assert.Equal("u32", SfdParser.MapAmigaTypeToNovus("RESOURCEID"));
+            Assert.Equal("*u8", SfdParser.MapAmigaTypeToNovus("const DisplayInfoHandle"));
+            Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("Msg"));
             Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("ULONG *"));
             Assert.Equal("*u8", SfdParser.MapAmigaTypeToNovus("void *"));
             Assert.Contains("pub const POINTERSIZE: u32 = (1 + 16 + 1) * 2", constants);
             Assert.Contains("pub const ALIAS_TAG: u32 = (BASE_TAG + $01)", constants);
             Assert.Contains("pub const TAG_USER: u32 = ((1 << 31))", constants);
             Assert.Contains("pub const WA_Dummy: u32 = (TAG_USER + 99)", constants);
+            Assert.Contains("pub const TEST_CLASS: *u8 = \"test.class\"", constants);
+            Assert.Contains("pub const TEST_CLASS_ALIAS: *u8 = TEST_CLASS", constants);
+            Assert.Contains("pub const TEST_ID: u32 = $54455354", constants);
+            Assert.Contains("pub const MULTILINE_BITS: u32 =", constants);
+            Assert.Contains("pub const NULL_SENTINEL: u32 =", constants);
             Assert.True(constants.IndexOf("pub const BASE_TAG", StringComparison.Ordinal) <
                         constants.IndexOf("pub const ALIAS_TAG", StringComparison.Ordinal));
             Assert.DoesNotContain("pub const CONST", constants);
             Assert.DoesNotContain("pub const BROKEN", constants);
             Assert.DoesNotContain("pub const BROKEN_ALIAS", constants);
+            Assert.Contains("BROKEN = BASE_TAG)", File.ReadAllText(
+                Path.Combine(output, "std", "ffi", "ndk_unsupported_macros.txt")));
             Assert.Contains("from std::ffi::amiga_consts import *", structs);
             Assert.Contains("#[extern_type]\npub struct PointerData", structs);
             Assert.Contains("words: [u8; ((1 + 16 + 1) * 2)]", structs);
             Assert.Contains("_blitter: *u8", structs);
             Assert.Contains("languages: [[i8; 30]; 10]", structs);
+            Assert.Contains("pub struct Missing", structs);
             Assert.Contains("test|test.h", File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_headers.txt")));
             var ndkTypes = File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_types.h"));
             Assert.Contains("typedef struct PointerData PointerData;", ndkTypes);
             Assert.DoesNotContain("typedef struct tPoint Point;", ndkTypes);
             Assert.Contains("test.h", Assert.IsType<FfiModuleMetadata>(
                 FfiModuleMetadata.TryRead(Path.Combine(output, "std", "ffi", "test.novus"))).Headers);
-            Assert.Contains("movem.l\t4(sp),d0-d1", stub);
-            Assert.Contains("movem.l\t12(sp),d2-d3", stub);
+            Assert.Contains("movem.l\td2/d3/a6,-(sp)", stub);
+            Assert.Contains("movem.l\t16(sp),d0-d1", stub);
+            Assert.Contains("movem.l\t24(sp),d2-d3", stub);
+            Assert.Contains("jsr\t-30(a6)\n\tmovem.l\t(sp)+,d2/d3/a6", stub);
             Assert.Contains("jsr\t-36(a6)", stub);
+            Assert.Contains("lea\t12(sp),a1", stub);
+            Assert.Contains("lea\t20(sp),a6\n\tmove.l\ta6,d3", stub);
+            Assert.Equal(
+                SfdParser.ParseFile(Path.Combine(sfdDirectory, "test_lib.sfd")).Functions.Count,
+                Count(binding, "extern pub fn "));
+            Assert.Equal(Count(binding, "extern pub fn "), Count(stub, "\txdef\t_"));
+
+            var ciaBindingPath = Path.Combine(output, "std", "ffi", "cia_resource.novus");
+            var ciaStub = File.ReadAllText(Path.Combine(output, "stubs", "cia_resource_stubs.s"));
+            var ciaMetadata = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(ciaBindingPath));
+            Assert.Equal(FfiModuleKind.CallerSupplied, ciaMetadata.Kind);
+            Assert.Contains("resource: *Library", File.ReadAllText(ciaBindingPath));
+            Assert.Contains("movea.l\t8(sp),a6", ciaStub);
+            Assert.DoesNotContain("\txref\t", ciaStub);
+            Assert.DoesNotContain("movea.l\tcaller-supplied,a6", ciaStub);
+            Assert.DoesNotContain("__novus_cia_resource_name", FfiRuntimeGenerator.Generate([ciaMetadata]));
+            var intuitionBinding = File.ReadAllText(Path.Combine(output, "std", "ffi", "intuition.novus"));
+            var intuitionStub = File.ReadAllText(Path.Combine(output, "stubs", "intuition_stubs.s"));
+            Assert.Contains("ReportMouse1(window: *Window, flag: i32)", intuitionBinding);
+            Assert.Contains("movea.l\t8(sp),a0\n\tmove.l\t12(sp),d0", intuitionStub);
+            Assert.Equal(3, Directory.GetFiles(sfdDirectory, "*_lib.sfd").Length);
+            Assert.Equal(3, Directory.GetFiles(Path.Combine(output, "stubs"), "*_stubs.s").Length);
         }
         finally
         {

@@ -7,6 +7,35 @@
 // Buffer for building error messages (shared by error handlers)
 char error_buffer[512];
 
+static int32_t runtime_dos_output(__reg("a6") void* dosBase) = "\tjsr\t-60(a6)";
+static int32_t runtime_dos_write(__reg("a6") void* dosBase, __reg("d1") int32_t file,
+                                 __reg("d2") const char* buffer, __reg("d3") int32_t length) =
+    "\tjsr\t-48(a6)";
+
+static void report_error_to_console(void)
+{
+    static const char marker[] = "NOVUS_RUNTIME_ERROR\n";
+    struct Library* dosBase = OpenLibrary("dos.library", 0L);
+    int32_t file;
+    int32_t length = 0;
+
+    if (dosBase == NULL) {
+        return;
+    }
+
+    file = runtime_dos_output(dosBase);
+    if (file != 0) {
+        while (error_buffer[length] != '\0') {
+            length++;
+        }
+        runtime_dos_write(dosBase, file, marker, sizeof(marker) - 1);
+        runtime_dos_write(dosBase, file, error_buffer, length);
+        runtime_dos_write(dosBase, file, "\n", 1);
+    }
+
+    CloseLibrary(dosBase);
+}
+
 // ============================================================================
 // Interrupt Context Detection
 // ============================================================================
@@ -166,6 +195,8 @@ void display_error_requester(uint32_t alert_code)
         display_error_alert(alert_code);
         return;
     }
+
+    report_error_to_console();
 
     // Try to open intuition.library
     IntuitionBase = OpenLibrary("intuition.library", 33L);

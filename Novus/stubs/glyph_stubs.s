@@ -10,7 +10,9 @@
 ; Class * GLYPH_GetClass()
 	xdef	_GLYPH_GetClass
 _GLYPH_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_GlyphBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

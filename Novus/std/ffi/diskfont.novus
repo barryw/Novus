@@ -131,4 +131,5 @@ extern pub fn GetDiskFontCtrl(tagid: i32) -> i32
 /// See also: diskfont/diskfonttag.h, utility/tagitem.h
 @library("diskfont.library")
 extern pub fn SetDiskFontCtrlA(taglist: *TagItem)
-// Varargs function SetDiskFontCtrl skipped - needs manual implementation
+@library("diskfont.library")
+extern pub fn SetDiskFontCtrl(...args)

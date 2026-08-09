@@ -10,7 +10,9 @@
 ; Class * GETFILE_GetClass()
 	xdef	_GETFILE_GetClass
 _GETFILE_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_GetFileBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

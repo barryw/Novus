@@ -10,9 +10,11 @@
 ; LONG IEEESPFix(FLOAT parm)
 	xdef	_IEEESPFix
 _IEEESPFix:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPFlt_stub,code
@@ -20,9 +22,11 @@ _IEEESPFix:
 ; FLOAT IEEESPFlt(LONG integer)
 	xdef	_IEEESPFlt
 _IEEESPFlt:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPCmp_stub,code
@@ -30,10 +34,12 @@ _IEEESPFlt:
 ; LONG IEEESPCmp(FLOAT leftParm, FLOAT rightParm)
 	xdef	_IEEESPCmp
 _IEEESPCmp:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPTst_stub,code
@@ -41,9 +47,11 @@ _IEEESPCmp:
 ; LONG IEEESPTst(FLOAT parm)
 	xdef	_IEEESPTst
 _IEEESPTst:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPAbs_stub,code
@@ -51,9 +59,11 @@ _IEEESPTst:
 ; FLOAT IEEESPAbs(FLOAT parm)
 	xdef	_IEEESPAbs
 _IEEESPAbs:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPNeg_stub,code
@@ -61,9 +71,11 @@ _IEEESPAbs:
 ; FLOAT IEEESPNeg(FLOAT parm)
 	xdef	_IEEESPNeg
 _IEEESPNeg:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPAdd_stub,code
@@ -71,10 +83,12 @@ _IEEESPNeg:
 ; FLOAT IEEESPAdd(FLOAT leftParm, FLOAT rightParm)
 	xdef	_IEEESPAdd
 _IEEESPAdd:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPSub_stub,code
@@ -82,10 +96,12 @@ _IEEESPAdd:
 ; FLOAT IEEESPSub(FLOAT leftParm, FLOAT rightParm)
 	xdef	_IEEESPSub
 _IEEESPSub:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPMul_stub,code
@@ -93,10 +109,12 @@ _IEEESPSub:
 ; FLOAT IEEESPMul(FLOAT leftParm, FLOAT rightParm)
 	xdef	_IEEESPMul
 _IEEESPMul:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPDiv_stub,code
@@ -104,10 +122,12 @@ _IEEESPMul:
 ; FLOAT IEEESPDiv(FLOAT dividend, FLOAT divisor)
 	xdef	_IEEESPDiv
 _IEEESPDiv:
-	move.l	4(sp),d0
-	move.l	8(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	move.l	12(sp),d1
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPFloor_stub,code
@@ -115,9 +135,11 @@ _IEEESPDiv:
 ; FLOAT IEEESPFloor(FLOAT parm)
 	xdef	_IEEESPFloor
 _IEEESPFloor:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPCeil_stub,code
@@ -125,8 +147,10 @@ _IEEESPFloor:
 ; FLOAT IEEESPCeil(FLOAT parm)
 	xdef	_IEEESPCeil
 _IEEESPCeil:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingBasBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 

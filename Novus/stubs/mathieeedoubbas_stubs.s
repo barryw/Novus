@@ -10,9 +10,11 @@
 ; LONG IEEEDPFix(DOUBLE parm)
 	xdef	_IEEEDPFix
 _IEEEDPFix:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPFlt_stub,code
@@ -20,9 +22,11 @@ _IEEEDPFix:
 ; DOUBLE IEEEDPFlt(LONG integer)
 	xdef	_IEEEDPFlt
 _IEEEDPFlt:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPCmp_stub,code
@@ -30,10 +34,12 @@ _IEEEDPFlt:
 ; LONG IEEEDPCmp(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPCmp
 _IEEEDPCmp:
-	movem.l	4(sp),d0-d1
-	movem.l	12(sp),d2-d3
+	movem.l	d2/d3/a6,-(sp)
+	movem.l	16(sp),d0-d1
+	movem.l	24(sp),d2-d3
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_IEEEDPTst_stub,code
@@ -41,9 +47,11 @@ _IEEEDPCmp:
 ; LONG IEEEDPTst(DOUBLE parm)
 	xdef	_IEEEDPTst
 _IEEEDPTst:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPAbs_stub,code
@@ -51,9 +59,11 @@ _IEEEDPTst:
 ; DOUBLE IEEEDPAbs(DOUBLE parm)
 	xdef	_IEEEDPAbs
 _IEEEDPAbs:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPNeg_stub,code
@@ -61,9 +71,11 @@ _IEEEDPAbs:
 ; DOUBLE IEEEDPNeg(DOUBLE parm)
 	xdef	_IEEEDPNeg
 _IEEEDPNeg:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPAdd_stub,code
@@ -71,10 +83,12 @@ _IEEEDPNeg:
 ; DOUBLE IEEEDPAdd(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPAdd
 _IEEEDPAdd:
-	movem.l	4(sp),d0-d1
-	movem.l	12(sp),d2-d3
+	movem.l	d2/d3/a6,-(sp)
+	movem.l	16(sp),d0-d1
+	movem.l	24(sp),d2-d3
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_IEEEDPSub_stub,code
@@ -82,10 +96,12 @@ _IEEEDPAdd:
 ; DOUBLE IEEEDPSub(DOUBLE leftParm, DOUBLE rightParm)
 	xdef	_IEEEDPSub
 _IEEEDPSub:
-	movem.l	4(sp),d0-d1
-	movem.l	12(sp),d2-d3
+	movem.l	d2/d3/a6,-(sp)
+	movem.l	16(sp),d0-d1
+	movem.l	24(sp),d2-d3
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_IEEEDPMul_stub,code
@@ -93,10 +109,12 @@ _IEEEDPSub:
 ; DOUBLE IEEEDPMul(DOUBLE factor1, DOUBLE factor2)
 	xdef	_IEEEDPMul
 _IEEEDPMul:
-	movem.l	4(sp),d0-d1
-	movem.l	12(sp),d2-d3
+	movem.l	d2/d3/a6,-(sp)
+	movem.l	16(sp),d0-d1
+	movem.l	24(sp),d2-d3
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_IEEEDPDiv_stub,code
@@ -104,10 +122,12 @@ _IEEEDPMul:
 ; DOUBLE IEEEDPDiv(DOUBLE dividend, DOUBLE divisor)
 	xdef	_IEEEDPDiv
 _IEEEDPDiv:
-	movem.l	4(sp),d0-d1
-	movem.l	12(sp),d2-d3
+	movem.l	d2/d3/a6,-(sp)
+	movem.l	16(sp),d0-d1
+	movem.l	24(sp),d2-d3
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_IEEEDPFloor_stub,code
@@ -115,9 +135,11 @@ _IEEEDPDiv:
 ; DOUBLE IEEEDPFloor(DOUBLE parm)
 	xdef	_IEEEDPFloor
 _IEEEDPFloor:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEEDPCeil_stub,code
@@ -125,8 +147,10 @@ _IEEEDPFloor:
 ; DOUBLE IEEEDPCeil(DOUBLE parm)
 	xdef	_IEEEDPCeil
 _IEEEDPCeil:
-	movem.l	4(sp),d0-d1
+	movem.l	a6,-(sp)
+	movem.l	8(sp),d0-d1
 	movea.l	_MathIeeeDoubBasBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 

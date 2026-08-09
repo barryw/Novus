@@ -3,11 +3,13 @@
 //
 // This file contains struct definitions from the NDK headers.
 // Constants are in std::ffi::amiga_consts
+
 from std::ffi::amiga_consts import *
 
 // ============================================================================
 // Struct Definitions
 // ============================================================================
+
 #[extern_type]
 pub struct Node {
     ln_Succ: *Node,
@@ -632,10 +634,10 @@ pub struct SignalSemaphore {
 
 #[extern_type]
 pub struct Layer_Info {
-    top_layer: *u8,
-    check_lp: *u8,
-    obs: *u8,
-    FreeClipRects: *u8,
+    top_layer: *Layer,
+    check_lp: *Layer,
+    obs: *ClipRect,
+    FreeClipRects: *ClipRect,
     PrivateReserve1: i32,
     PrivateReserve2: i32,
     Lock: SignalSemaphore,
@@ -800,8 +802,8 @@ pub struct Window {
 
 #[extern_type]
 pub struct ExtendedNode {
-    xln_Succ: *u8,
-    xln_Pred: *u8,
+    xln_Succ: *Node,
+    xln_Pred: *Node,
     xln_Type: u8,
     xln_Pri: i8,
     xln_Name: *i8,
@@ -849,18 +851,18 @@ pub struct ColorMap {
     Type: u8,
     Count: u16,
     ColorTable: *u8,
-    cm_vpe: *u8,
+    cm_vpe: *ViewPortExtra,
     LowColorBits: *u8,
     TransparencyPlane: u8,
     SpriteResolution: u8,
     SpriteResDefault: u8,
     AuxFlags: u8,
-    cm_vp: *u8,
+    cm_vp: *ViewPort,
     NormalDisplayInfo: *u8,
     CoerceDisplayInfo: *u8,
-    cm_batch_items: *u8,
+    cm_batch_items: *TagItem,
     VPModeID: u32,
-    PalExtra: *u8,
+    PalExtra: *PaletteExtra,
     SpriteBase_Even: u16,
     SpriteBase_Odd: u16,
     Bp_0_base: u16,
@@ -910,12 +912,12 @@ pub struct RasInfo {
 
 #[extern_type]
 pub struct ViewPort {
-    Next: *u8,
-    ColorMap: *u8,
-    DspIns: *u8,
-    SprIns: *u8,
-    ClrIns: *u8,
-    UCopIns: *u8,
+    Next: *ViewPort,
+    ColorMap: *ColorMap,
+    DspIns: *CopList,
+    SprIns: *CopList,
+    ClrIns: *CopList,
+    UCopIns: *UCopList,
     DWidth: i16,
     DHeight: i16,
     DxOffset: i16,
@@ -923,7 +925,7 @@ pub struct ViewPort {
     Modes: u16,
     SpritePriorities: u8,
     ExtendedModes: u8,
-    RasInfo: *u8,
+    RasInfo: *RasInfo,
 }
 
 #[extern_type]
@@ -1017,7 +1019,8 @@ pub struct opMember {
 }
 
 #[extern_type]
-pub struct IClass {}
+pub struct IClass {
+}
 
 #[extern_type]
 pub struct Class {
@@ -1055,7 +1058,8 @@ pub struct Rect32 {
 }
 
 #[extern_type]
-pub struct tPoint {}
+pub struct tPoint {
+}
 
 #[extern_type]
 pub struct SemaphoreMessage {
@@ -1083,8 +1087,8 @@ pub struct copinit {
     fm0: [u16; 2],
     diwstart: [u16; 10],
     bplcon2: [u16; 2],
-    sprfix: [u16; 2 * 8],
-    sprstrtup: [u16; (2 * 8 * 2)],
+    sprfix: [u16; 2*8],
+    sprstrtup: [u16; (2*8*2)],
     wait14: [u16; 2],
     norm_hblank: [u16; 2],
     jump: [u16; 2],
@@ -1123,7 +1127,7 @@ pub struct MonitorSpec {
     DeniseMaxDisplayColumn: u16,
     BeamCon0: u16,
     min_row: u16,
-    ms_Special: *u8,
+    ms_Special: *SpecialMonitor,
     ms_OpenCount: u16,
     ms_transform: fn() -> i32,
     ms_translate: fn() -> i32,
@@ -1188,7 +1192,7 @@ pub struct DimensionInfo {
 #[extern_type]
 pub struct MonitorInfo {
     Header: QueryHeader,
-    Mspc: *u8,
+    Mspc: *MonitorSpec,
     ViewPosition: Point,
     ViewResolution: Point,
     ViewPositionRange: Rectangle,
@@ -1309,9 +1313,9 @@ pub struct SpriteDef {
 
 #[extern_type]
 pub struct View {
-    ViewPort: *u8,
-    LOFCprList: *u8,
-    SHFCprList: *u8,
+    ViewPort: *ViewPort,
+    LOFCprList: *cprlist,
+    SHFCprList: *cprlist,
     DyOffset: i16,
     DxOffset: i16,
     Modes: u16,
@@ -2149,7 +2153,8 @@ pub struct NewAmigaGuide {
 }
 
 #[extern_type]
-pub struct DocFile {}
+pub struct DocFile {
+}
 
 #[extern_type]
 pub struct XRef {
@@ -3032,7 +3037,8 @@ pub struct PrinterSegment {
 }
 
 #[extern_type]
-pub struct PrinterUnit {}
+pub struct PrinterUnit {
+}
 
 #[extern_type]
 pub struct PrinterData {
@@ -3067,7 +3073,7 @@ pub struct PrinterData {
 pub struct PrtDriverPreferences {
     pdp_Version: u16,
     pdp_PrinterID: [u8; 32],
-    pdp_PrefName: [i8; () - 16],
+    pdp_PrefName: [i8; (30)-16],
     pdp_Length: u32,
 }
 
@@ -3146,10 +3152,17 @@ pub struct dtTrigger {
 }
 
 #[extern_type]
+pub struct printerIO {
+    ios: IOStdReq,
+    iodrp: IODRPReq,
+    iopc: IOPrtCmdReq,
+}
+
+#[extern_type]
 pub struct dtPrint {
     MethodID: u32,
     dtp_GInfo: *GadgetInfo,
-    dtp_PIO: *u8,
+    dtp_PIO: *printerIO,
     dtp_AttrList: *TagItem,
 }
 
@@ -3209,7 +3222,7 @@ pub struct FontContents {
 
 #[extern_type]
 pub struct TFontContents {
-    tfc_FileName: [i8; () - 2],
+    tfc_FileName: [i8; (256)-2],
     tfc_TagCount: u16,
     tfc_YSize: u16,
     tfc_Style: u8,
@@ -4066,6 +4079,12 @@ pub struct RMSF {
 }
 
 #[extern_type]
+pub struct LSNMSF {
+    MSF: RMSF,
+    LSN: u32,
+}
+
+#[extern_type]
 pub struct CDXL {
     Node: MinNode,
     Buffer: *i8,
@@ -4079,27 +4098,33 @@ pub struct CDXL {
 pub struct TOCSummary {
     FirstTrack: u8,
     LastTrack: u8,
-    LeadOut: *u8,
+    LeadOut: LSNMSF,
 }
 
-/* union LSNMSF */ #[extern_type]
+#[extern_type]
 pub struct TOCEntry {
     CtlAdr: u8,
     Track: u8,
-    Position: *u8,
+    Position: LSNMSF,
 }
 
-/* union LSNMSF */ #[extern_type]
+#[extern_type]
+pub struct CDTOC {
+    Summary: TOCSummary,
+    Entry: TOCEntry,
+}
+
+#[extern_type]
 pub struct QCode {
     CtlAdr: u8,
     Track: u8,
     Index: u8,
     Zero: u8,
-    TrackPosition: *u8,
-    /* union LSNMSF */ DiskPosition: *u8,
+    TrackPosition: LSNMSF,
+    DiskPosition: LSNMSF,
 }
 
-/* union LSNMSF */ #[extern_type]
+#[extern_type]
 pub struct ConUnit {
     cu_MP: MsgPort,
     cu_Window: *Window,
@@ -4134,8 +4159,8 @@ pub struct ConUnit {
     cu_TxWidth: u16,
     cu_TxBaseline: u16,
     cu_TxSpacing: i16,
-    cu_Modes: [u8; ((((((20) + 1)) + 1)) + 7) / 8],
-    cu_RawEvents: [u8; (($15) + 8) / 8],
+    cu_Modes: [u8; ((((((20)+1))+1))+7)/8],
+    cu_RawEvents: [u8; (($15)+8)/8],
 }
 
 #[extern_type]
@@ -4296,17 +4321,24 @@ pub struct mouth_rb {
 }
 
 #[extern_type]
+pub struct colorEntry {
+    colorLong: u32,
+    colorByte: [u8; 4],
+    colorSByte: [i8; 4],
+}
+
+#[extern_type]
 pub struct PrtInfo {
     pi_render: fn() -> i32,
     pi_rp: *RastPort,
     pi_temprp: *RastPort,
     pi_RowBuf: *u16,
     pi_HamBuf: *u16,
-    pi_ColorMap: *u8,
-    pi_ColorInt: *u8,
-    pi_HamInt: *u8,
-    pi_Dest1Int: *u8,
-    pi_Dest2Int: *u8,
+    pi_ColorMap: *colorEntry,
+    pi_ColorInt: *colorEntry,
+    pi_HamInt: *colorEntry,
+    pi_Dest1Int: *colorEntry,
+    pi_Dest2Int: *colorEntry,
     pi_ScaleX: *u16,
     pi_ScaleXAlt: *u16,
     pi_dmatrix: *u8,
@@ -4410,8 +4442,8 @@ pub struct ExecBase {
     AlertData: *u8,
     MaxExtMem: *u8,
     ChkSum: u16,
-    IntVects: [*u8; 16],
-    /* struct	IntVector */ ThisTask: *u8,
+    IntVects: [IntVector; 16],
+    ThisTask: *Task,
     IdleCount: u32,
     DispCount: u32,
     Quantum: u16,
@@ -4435,8 +4467,8 @@ pub struct ExecBase {
     PortList: List,
     TaskReady: List,
     TaskWait: List,
-    SoftInts: [*u8; 5],
-    /* struct	SoftIntList */ LastAlert: [i32; 4],
+    SoftInts: [SoftIntList; 5],
+    LastAlert: [i32; 4],
     VBlankFrequency: u8,
     PowerSupplyFrequency: u8,
     SemaphoreList: List,
@@ -4458,47 +4490,71 @@ pub struct ExecBase {
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_ARexxCmd {
-    command: *GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    command: *u8,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_BlockInfo {
-    stopy: **GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    startx: *u32,
+    starty: *u32,
+    stopx: *u32,
+    stopy: *u32,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_ClearText {
-    GInfo: *u8,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_ExportText {
-    GInfo: *u8,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_HandleError {
-    errorcode: *u8,
+    MethodID: u32,
+    errorcode: u32,
 }
 
-/* ULONG MethodID; ULONG */ #[extern_type]
+#[extern_type]
 pub struct GP_TEXTEDITOR_InsertText {
-    pos: *GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    text: *u8,
+    pos: i32,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_MarkText {
-    stop_crsr_y: *GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    start_crsr_x: u32,
+    start_crsr_y: u32,
+    stop_crsr_x: u32,
+    stop_crsr_y: u32,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_Replace {
-    flags: *GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    newstring: *u8,
+    flags: u32,
 }
 
 #[extern_type]
 pub struct GP_TEXTEDITOR_Search {
-    flags: *GadgetInfo,
+    MethodID: u32,
+    GInfo: *GadgetInfo,
+    string: *u8,
+    flags: u32,
 }
 
 #[extern_type]
@@ -4510,21 +4566,21 @@ pub struct ClickMessage {
 #[extern_type]
 pub struct GfxBase {
     LibNode: Library,
-    ActiView: *u8,
-    copinit: *u8,
+    ActiView: *View,
+    copinit: *copinit,
     cia: *i32,
     _blitter: *i32,
     LOFlist: *u16,
     SHFlist: *u16,
-    blthd: *u8,
-    blttl: *u8,
-    bsblthd: *u8,
-    bsblttl: *u8,
+    blthd: *bltnode,
+    blttl: *bltnode,
+    bsblthd: *bltnode,
+    bsblttl: *bltnode,
     vbsrv: Interrupt,
     timsrv: Interrupt,
     bltsrv: Interrupt,
     TextFonts: List,
-    DefaultFont: *u8,
+    DefaultFont: *TextFont,
     Modes: u16,
     VBlank: i8,
     Debug: i8,
@@ -4536,17 +4592,17 @@ pub struct GfxBase {
     BlitLock: i16,
     BlitNest: i16,
     BlitWaitQ: List,
-    BlitOwner: *u8,
+    BlitOwner: *Task,
     TOF_WaitQ: List,
     DisplayFlags: u16,
-    SimpleSprites: *u8,
+    SimpleSprites: **SimpleSprite,
     MaxDisplayRow: u16,
     MaxDisplayColumn: u16,
     NormalDisplayRows: u16,
     NormalDisplayColumns: u16,
     NormalDPMX: u16,
     NormalDPMY: u16,
-    LastChanceMemory: *u8,
+    LastChanceMemory: *SignalSemaphore,
     LCMptr: *u16,
     MicrosPerLine: u16,
     MinDisplayColumn: u16,
@@ -4569,13 +4625,13 @@ pub struct GfxBase {
     a2024_sync_raster: *i32,
     control_delta_pal: u16,
     control_delta_ntsc: u16,
-    current_monitor: *u8,
+    current_monitor: *MonitorSpec,
     MonitorList: List,
-    default_monitor: *u8,
-    MonitorListSemaphore: *u8,
+    default_monitor: *MonitorSpec,
+    MonitorListSemaphore: *SignalSemaphore,
     DisplayInfoDataBase: *u8,
     TopLine: u16,
-    ActiViewCprSemaphore: *u8,
+    ActiViewCprSemaphore: *SignalSemaphore,
     UtilBase: *u32,
     ExecBase: *u32,
     bwshifts: *u8,
@@ -4602,13 +4658,13 @@ pub struct GfxBase {
     ScanDoubledSprites: u8,
     BP3Bits: u8,
     MonitorVBlank: AnalogSignalInterval,
-    natural_monitor: *u8,
+    natural_monitor: *MonitorSpec,
     ProgData: *u8,
     ExtSprites: u8,
     pad3: u8,
     GfxFlags: u16,
     VBCounter: u32,
-    HashTableSemaphore: *u8,
+    HashTableSemaphore: *SignalSemaphore,
     HWEmul: [*u32; 9],
 }
 
@@ -4703,26 +4759,27 @@ pub struct HDWLibrary {
     ml_SegList: u32,
     ml_Flags: u32,
     ml_ExecBase: *u8,
-    ml_relocs: *u8,
+    ml_relocs: *i32,
     ml_origbase: *HDWLibrary,
-    ml_numjmps: *u8,
+    ml_numjmps: i32,
 }
 
-/* long */ #[extern_type]
+#[extern_type]
 pub struct ValidIDstruct {
-    ready: [*u8; 16],
-    /* USHORT */ there: [*u8; 16],
+    ready: [u16; 16],
+    there: [u16; 16],
 }
 
-/* USHORT */ #[extern_type]
+#[extern_type]
 pub struct rw_return {
-    success: *u8,
-    /* USHORT */ failed_word: *u8,
-    /* USHORT */ block_written: *u8,
+    success: u16,
+    failed_word: u16,
+    block_written: u16,
 }
 
-/* USHORT */ #[extern_type]
-pub struct bootblock {}
+#[extern_type]
+pub struct bootblock {
+}
 
 #[extern_type]
 pub struct DefaultsArray {
@@ -4750,16 +4807,16 @@ pub struct HDWCallbackMsg {
 #[extern_type]
 pub struct MathIEEEBase {
     MathIEEEBase_LibNode: Library,
-    MathIEEEBase_reserved: [*u8; 18],
-    /* unsigned char */ MathIEEEBase_TaskOpenLib: fn() -> i32,
+    MathIEEEBase_reserved: [u8; 18],
+    MathIEEEBase_TaskOpenLib: fn() -> i32,
     MathIEEEBase_TaskCloseLib: fn() -> i32,
 }
 
 #[extern_type]
 pub struct MathIEEEResource {
     MathIEEEResource_Node: Node,
-    MathIEEEResource_Flags: *u8,
-    /* unsigned short */ MathIEEEResource_BaseAddr: *u8,
+    MathIEEEResource_Flags: u16,
+    MathIEEEResource_BaseAddr: *u16,
     MathIEEEResource_DblBasInit: fn(),
     MathIEEEResource_DblTransInit: fn(),
     MathIEEEResource_SglBasInit: fn(),
@@ -5087,8 +5144,8 @@ pub struct FileSysEntry {
     fse_Version: u32,
     fse_PatchFlags: u32,
     fse_Type: u32,
-    fse_Task: *u8,
-    /* CPTR */ fse_Lock: i32,
+    fse_Task: u32,
+    fse_Lock: i32,
     fse_Handler: i32,
     fse_StackSize: u32,
     fse_Priority: i32,
@@ -5115,4 +5172,12 @@ pub struct IconIdentifyMsg {
     iim_FIB: *FileInfoBlock,
     iim_FileHandle: i32,
     iim_Tags: *TagItem,
+}
+
+#[extern_type]
+pub struct DTMethods {
+}
+
+#[extern_type]
+pub struct DiskFont {
 }

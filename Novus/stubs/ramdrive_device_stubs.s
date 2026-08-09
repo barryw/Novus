@@ -10,8 +10,10 @@
 ; STRPTR KillRAD0()
 	xdef	_KillRAD0
 _KillRAD0:
+	movem.l	a6,-(sp)
 	movea.l	_RamdriveDevice,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_KillRAD_stub,code
@@ -19,8 +21,10 @@ _KillRAD0:
 ; STRPTR KillRAD(ULONG unit)
 	xdef	_KillRAD
 _KillRAD:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_RamdriveDevice,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 

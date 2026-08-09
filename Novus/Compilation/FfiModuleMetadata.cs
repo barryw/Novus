@@ -4,7 +4,8 @@ public enum FfiModuleKind
 {
     Library,
     Device,
-    Resource
+    Resource,
+    CallerSupplied
 }
 
 /// <summary>Machine-readable metadata carried by generated std::ffi modules.</summary>
@@ -68,7 +69,9 @@ public sealed record FfiModuleMetadata(
             return null;
 
         var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-        var kind = libraryName.EndsWith(".device", StringComparison.OrdinalIgnoreCase)
+        var kind = baseSymbol.Equals("caller-supplied", StringComparison.OrdinalIgnoreCase)
+            ? FfiModuleKind.CallerSupplied
+            : libraryName.EndsWith(".device", StringComparison.OrdinalIgnoreCase)
             ? FfiModuleKind.Device
             : libraryName.EndsWith(".resource", StringComparison.OrdinalIgnoreCase)
                 ? FfiModuleKind.Resource

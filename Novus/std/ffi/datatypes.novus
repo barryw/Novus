@@ -27,7 +27,8 @@ from std::ffi::amiga_structs import *
 /// See also: FreeDataType()
 @library("datatypes.library")
 extern pub fn ObtainDataTypeA(_type: u32, handle: *u8, attrs: *TagItem) -> *DataType
-// Varargs function ObtainDataType skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn ObtainDataType(_type: u32, handle: *u8, attrs: u32, ...args) -> *DataType
 /// Release a DataType structure.         (V39)
 ///
 /// This function is used to release a DataType structure obtained by
@@ -55,7 +56,8 @@ extern pub fn ReleaseDataType(dt: *DataType)
 /// See also: AddDTObject(), DisposeDTObject(), RemoveDTObject(), intuition.library/NewObjectA()
 @library("datatypes.library")
 extern pub fn NewDTObjectA(name: *u8, attrs: *TagItem) -> *u8
-// Varargs function NewDTObject skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn NewDTObject(name: *u8, attrs: u32, ...args) -> *u8
 /// Delete a data type object.            (V39)
 ///
 /// This function is used to dispose of a data type object that was obtained
@@ -80,7 +82,8 @@ extern pub fn DisposeDTObject(o: *u8)
 /// See also: GetDTAttrsA(), intuition.library/SetGadgetAttrsA()
 @library("datatypes.library")
 extern pub fn SetDTAttrsA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem) -> u32
-// Varargs function SetDTAttrs skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn SetDTAttrs(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args) -> u32
 /// Obtain attributes for an object.          (V39)
 ///
 /// This function is used to get the attributes of a data type object.
@@ -95,7 +98,8 @@ extern pub fn SetDTAttrsA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem
 /// See also: SetDTAttrsA(), intuition.library/GetAttr()
 @library("datatypes.library")
 extern pub fn GetDTAttrsA(o: *u8, attrs: *TagItem) -> u32
-// Varargs function GetDTAttrs skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn GetDTAttrs(o: *u8, attrs: u32, ...args) -> u32
 /// Add an object to a window or requester.   (V39)
 ///
 /// This function adds a single object to the gadget list of the given window or
@@ -127,8 +131,10 @@ extern pub fn AddDTObject(win: *Window, req: *Requester, o: *u8, pos: i32) -> i3
 /// See also: AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
 @library("datatypes.library")
 extern pub fn RefreshDTObjectA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem)
-// Varargs function RefreshDTObjects skipped - needs manual implementation
-// Varargs function RefreshDTObject skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn RefreshDTObjects(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
+@library("datatypes.library")
+extern pub fn RefreshDTObject(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
 /// Call the DTM_ASYNCLAYOUT method on a separate process.
 ///
 /// This function is used to asyncronously perform the object's DTM_ASYNCLAYOUT
@@ -151,8 +157,9 @@ extern pub fn DoAsyncLayout(o: *u8, gpl: *gpLayout) -> u32
 ///
 /// See also: intuition.library/DoGadgetMethod()
 @library("datatypes.library")
-extern pub fn DoDTMethodA(o: *u8, win: *Window, req: *Requester, msg: *u8 /* Msg */) -> u32
-// Varargs function DoDTMethod skipped - needs manual implementation
+extern pub fn DoDTMethodA(o: *u8, win: *Window, req: *Requester, msg: *u32) -> u32
+@library("datatypes.library")
+extern pub fn DoDTMethod(o: *u8, win: *Window, req: *Requester, msg: u32, ...args) -> u32
 /// Remove an object from a window.        (V39)
 ///
 /// Removes the object from the window's object list. This will wait until the
@@ -200,7 +207,8 @@ extern pub fn GetDTTriggerMethods(object: *u8) -> *DTMethods
 ///   requester that the object has been added to.
 @library("datatypes.library")
 extern pub fn PrintDTObjectA(o: *u8, w: *Window, r: *Requester, msg: *dtPrint) -> u32
-// Varargs function PrintDTObject skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn PrintDTObject(o: *u8, w: *Window, r: *Requester, msg: u32, ...args) -> u32
 /// Obtain a DataTypes object for drawing. (V44)
 ///
 /// This function is used to prepare a DataTypes object for drawing into a
@@ -214,7 +222,8 @@ extern pub fn PrintDTObjectA(o: *u8, w: *Window, r: *Requester, msg: *dtPrint) -
 /// See also: DrawDTObjectA(), ReleaseDTDrawInfo()
 @library("datatypes.library")
 extern pub fn ObtainDTDrawInfoA(o: *u8, attrs: *TagItem) -> *u8
-// Varargs function ObtainDTDrawInfo skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn ObtainDTDrawInfo(o: *u8, attrs: u32, ...args) -> *u8
 /// Draw a DataTypes object.                (V44)
 ///
 /// This function is used to draw a DataTypes object into a RastPort. This
@@ -231,7 +240,8 @@ extern pub fn ObtainDTDrawInfoA(o: *u8, attrs: *TagItem) -> *u8
 /// See also: ObtainDTDrawInfo(), ReleaseDTDrawInfo()
 @library("datatypes.library")
 extern pub fn DrawDTObjectA(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: *TagItem) -> i32
-// Varargs function DrawDTObject skipped - needs manual implementation
+@library("datatypes.library")
+extern pub fn DrawDTObject(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: u32, ...args) -> i32
 /// Release a DataTypes object from drawing. (V44)
 ///
 /// This function is used to release the information obtained with

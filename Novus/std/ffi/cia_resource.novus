@@ -1,0 +1,17 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: cia.resource
+// Base: caller-supplied
+//
+// CIA resources are opened explicitly as ciaa.resource or ciab.resource and
+// passed to each function. Importing this module does not open either one.
+
+from std::ffi::amiga_structs import Library, Interrupt
+
+@library("cia.resource")
+extern pub fn AddICRVector(resource: *Library, iCRBit: i16, interrupt: *Interrupt) -> *Interrupt
+@library("cia.resource")
+extern pub fn RemICRVector(resource: *Library, iCRBit: i16, interrupt: *Interrupt)
+@library("cia.resource")
+extern pub fn AbleICR(resource: *Library, mask: i16) -> i16
+@library("cia.resource")
+extern pub fn SetICR(resource: *Library, mask: i16) -> i16

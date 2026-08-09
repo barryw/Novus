@@ -1462,8 +1462,7 @@ public class LibraryGenerator
             sb.AppendLine($"        XDEF    {callName}");
             sb.AppendLine($"{callName}:");
             sb.AppendLine("        jsr     OpenLib");
-            sb.AppendLine($"        move.l  {baseName}.l,a6      ; Load library base");
-            sb.AppendLine("        tst.l   a6                       ; Check if library opened");
+            sb.AppendLine($"        tst.l   {baseName}.l             ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
             // Handle struct return (VBCC passes hidden result pointer as first param on stack)
@@ -1483,7 +1482,10 @@ public class LibraryGenerator
                 }
             }
 
+            sb.AppendLine("        move.l  a6,-(sp)                    ; Preserve C ABI register");
+            sb.AppendLine($"        move.l  {baseName}.l,a6          ; Load library base");
             sb.AppendLine($"        jsr     {func.VectorOffset}(a6)      ; Call {func.Name}");
+            sb.AppendLine("        movea.l (sp)+,a6");
             sb.AppendLine("        rts");
 
             sb.AppendLine(".fail:");
@@ -1519,8 +1521,7 @@ public class LibraryGenerator
             sb.AppendLine($"        XDEF    _call_{_libraryStruct.StructName}_{autoFunc.Name}");
             sb.AppendLine($"_call_{_libraryStruct.StructName}_{autoFunc.Name}:");
             sb.AppendLine("        jsr     OpenLib");
-            sb.AppendLine($"        move.l  {baseName}.l,a6      ; Load library base");
-            sb.AppendLine("        tst.l   a6                       ; Check if library opened");
+            sb.AppendLine($"        tst.l   {baseName}.l             ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
             if (autoFunc.ReturnsStruct)
@@ -1528,7 +1529,10 @@ public class LibraryGenerator
                 sb.AppendLine("        move.l  4(sp),a0                 ; A0 = result pointer passed by VBCC");
             }
 
+            sb.AppendLine("        move.l  a6,-(sp)                    ; Preserve C ABI register");
+            sb.AppendLine($"        move.l  {baseName}.l,a6          ; Load library base");
             sb.AppendLine($"        jsr     {autoGenOffset}(a6)      ; Call {autoFunc.Name}");
+            sb.AppendLine("        movea.l (sp)+,a6");
             sb.AppendLine("        rts");
             sb.AppendLine(".fail:");
 

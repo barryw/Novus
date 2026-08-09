@@ -10,12 +10,29 @@
 ; struct Gadget * CreateGadgetA(ULONG kind, struct Gadget * gad, const struct NewGadget * ng, const struct TagItem * taglist)
 	xdef	_CreateGadgetA
 _CreateGadgetA:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
-	movea.l	12(sp),a1
-	movea.l	16(sp),a2
+	movem.l	a2/a6,-(sp)
+	move.l	12(sp),d0
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
 	movea.l	_GadToolsBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a2/a6
+	rts
+
+	section	_CreateGadget_stub,code
+
+; struct Gadget * CreateGadget(ULONG kind, struct Gadget * gad, const struct NewGadget * ng, Tag taglist, ... )
+	xdef	_CreateGadget
+_CreateGadget:
+	movem.l	a2/a6,-(sp)
+	move.l	12(sp),d0
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	lea	24(sp),a2
+	movea.l	_GadToolsBase,a6
+	jsr	-30(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_FreeGadgets_stub,code
@@ -23,9 +40,11 @@ _CreateGadgetA:
 ; VOID FreeGadgets(struct Gadget * gad)
 	xdef	_FreeGadgets
 _FreeGadgets:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_SetGadgetAttrsA_stub,code
@@ -33,12 +52,29 @@ _FreeGadgets:
 ; VOID GT_SetGadgetAttrsA(struct Gadget * gad, struct Window * win, struct Requester * req, const struct TagItem * taglist)
 	xdef	_GT_SetGadgetAttrsA
 _GT_SetGadgetAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_GadToolsBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a2/a3/a6
+	rts
+
+	section	_GT_SetGadgetAttrs_stub,code
+
+; VOID GT_SetGadgetAttrs(struct Gadget * gad, struct Window * win, struct Requester * req, Tag taglist, ... )
+	xdef	_GT_SetGadgetAttrs
+_GT_SetGadgetAttrs:
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	lea	28(sp),a3
+	movea.l	_GadToolsBase,a6
+	jsr	-42(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 
 	section	_CreateMenusA_stub,code
@@ -46,10 +82,25 @@ _GT_SetGadgetAttrsA:
 ; struct Menu * CreateMenusA(const struct NewMenu * newmenu, const struct TagItem * taglist)
 	xdef	_CreateMenusA
 _CreateMenusA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_CreateMenus_stub,code
+
+; struct Menu * CreateMenus(const struct NewMenu * newmenu, Tag taglist, ... )
+	xdef	_CreateMenus
+_CreateMenus:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_GadToolsBase,a6
+	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeMenus_stub,code
@@ -57,9 +108,11 @@ _CreateMenusA:
 ; VOID FreeMenus(struct Menu * menu)
 	xdef	_FreeMenus
 _FreeMenus:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LayoutMenuItemsA_stub,code
@@ -67,11 +120,27 @@ _FreeMenus:
 ; BOOL LayoutMenuItemsA(struct MenuItem * firstitem, APTR vi, const struct TagItem * taglist)
 	xdef	_LayoutMenuItemsA
 _LayoutMenuItemsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_GadToolsBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a2/a6
+	rts
+
+	section	_LayoutMenuItems_stub,code
+
+; BOOL LayoutMenuItems(struct MenuItem * firstitem, APTR vi, Tag taglist, ... )
+	xdef	_LayoutMenuItems
+_LayoutMenuItems:
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	lea	20(sp),a2
+	movea.l	_GadToolsBase,a6
+	jsr	-60(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_LayoutMenusA_stub,code
@@ -79,11 +148,27 @@ _LayoutMenuItemsA:
 ; BOOL LayoutMenusA(struct Menu * firstmenu, APTR vi, const struct TagItem * taglist)
 	xdef	_LayoutMenusA
 _LayoutMenusA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	movea.l	20(sp),a2
 	movea.l	_GadToolsBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a2/a6
+	rts
+
+	section	_LayoutMenus_stub,code
+
+; BOOL LayoutMenus(struct Menu * firstmenu, APTR vi, Tag taglist, ... )
+	xdef	_LayoutMenus
+_LayoutMenus:
+	movem.l	a2/a6,-(sp)
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
+	lea	20(sp),a2
+	movea.l	_GadToolsBase,a6
+	jsr	-66(a6)
+	movem.l	(sp)+,a2/a6
 	rts
 
 	section	_GT_GetIMsg_stub,code
@@ -91,9 +176,11 @@ _LayoutMenusA:
 ; struct IntuiMessage * GT_GetIMsg(struct MsgPort * iport)
 	xdef	_GT_GetIMsg
 _GT_GetIMsg:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_ReplyIMsg_stub,code
@@ -101,9 +188,11 @@ _GT_GetIMsg:
 ; VOID GT_ReplyIMsg(struct IntuiMessage * imsg)
 	xdef	_GT_ReplyIMsg
 _GT_ReplyIMsg:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_RefreshWindow_stub,code
@@ -111,10 +200,12 @@ _GT_ReplyIMsg:
 ; VOID GT_RefreshWindow(struct Window * win, struct Requester * req)
 	xdef	_GT_RefreshWindow
 _GT_RefreshWindow:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_BeginRefresh_stub,code
@@ -122,9 +213,11 @@ _GT_RefreshWindow:
 ; VOID GT_BeginRefresh(struct Window * win)
 	xdef	_GT_BeginRefresh
 _GT_BeginRefresh:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_EndRefresh_stub,code
@@ -132,10 +225,12 @@ _GT_BeginRefresh:
 ; VOID GT_EndRefresh(struct Window * win, BOOL complete)
 	xdef	_GT_EndRefresh
 _GT_EndRefresh:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_GadToolsBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_FilterIMsg_stub,code
@@ -143,9 +238,11 @@ _GT_EndRefresh:
 ; struct IntuiMessage * GT_FilterIMsg(const struct IntuiMessage * imsg)
 	xdef	_GT_FilterIMsg
 _GT_FilterIMsg:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_PostFilterIMsg_stub,code
@@ -153,9 +250,11 @@ _GT_FilterIMsg:
 ; struct IntuiMessage * GT_PostFilterIMsg(struct IntuiMessage * imsg)
 	xdef	_GT_PostFilterIMsg
 _GT_PostFilterIMsg:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CreateContext_stub,code
@@ -163,9 +262,11 @@ _GT_PostFilterIMsg:
 ; struct Gadget * CreateContext(struct Gadget ** glistptr)
 	xdef	_CreateContext
 _CreateContext:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DrawBevelBoxA_stub,code
@@ -173,14 +274,33 @@ _CreateContext:
 ; VOID DrawBevelBoxA(struct RastPort * rport, WORD left, WORD top, WORD width, WORD height, const struct TagItem * taglist)
 	xdef	_DrawBevelBoxA
 _DrawBevelBoxA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
-	move.l	16(sp),d2
-	move.l	20(sp),d3
-	movea.l	24(sp),a1
+	movem.l	d2/d3/a6,-(sp)
+	movea.l	16(sp),a0
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
+	movea.l	36(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-120(a6)
+	movem.l	(sp)+,d2/d3/a6
+	rts
+
+	section	_DrawBevelBox_stub,code
+
+; VOID DrawBevelBox(struct RastPort * rport, WORD left, WORD top, WORD width, WORD height, Tag taglist, ... )
+	xdef	_DrawBevelBox
+_DrawBevelBox:
+	movem.l	d2/d3/a6,-(sp)
+	movea.l	16(sp),a0
+	move.l	20(sp),d0
+	move.l	24(sp),d1
+	move.l	28(sp),d2
+	move.l	32(sp),d3
+	lea	36(sp),a1
+	movea.l	_GadToolsBase,a6
+	jsr	-120(a6)
+	movem.l	(sp)+,d2/d3/a6
 	rts
 
 	section	_GetVisualInfoA_stub,code
@@ -188,10 +308,25 @@ _DrawBevelBoxA:
 ; APTR GetVisualInfoA(struct Screen * screen, const struct TagItem * taglist)
 	xdef	_GetVisualInfoA
 _GetVisualInfoA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_GadToolsBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_GetVisualInfo_stub,code
+
+; APTR GetVisualInfo(struct Screen * screen, Tag taglist, ... )
+	xdef	_GetVisualInfo
+_GetVisualInfo:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_GadToolsBase,a6
+	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeVisualInfo_stub,code
@@ -199,9 +334,11 @@ _GetVisualInfoA:
 ; VOID FreeVisualInfo(APTR vi)
 	xdef	_FreeVisualInfo
 _FreeVisualInfo:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_GadToolsBase,a6
 	jsr	-132(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GT_GetGadgetAttrsA_stub,code
@@ -209,11 +346,28 @@ _FreeVisualInfo:
 ; LONG GT_GetGadgetAttrsA(struct Gadget * gad, struct Window * win, struct Requester * req, const struct TagItem * taglist)
 	xdef	_GT_GetGadgetAttrsA
 _GT_GetGadgetAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	movea.l	12(sp),a2
-	movea.l	16(sp),a3
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	movea.l	28(sp),a3
 	movea.l	_GadToolsBase,a6
 	jsr	-174(a6)
+	movem.l	(sp)+,a2/a3/a6
+	rts
+
+	section	_GT_GetGadgetAttrs_stub,code
+
+; LONG GT_GetGadgetAttrs(struct Gadget * gad, struct Window * win, struct Requester * req, Tag taglist, ... )
+	xdef	_GT_GetGadgetAttrs
+_GT_GetGadgetAttrs:
+	movem.l	a2/a3/a6,-(sp)
+	movea.l	16(sp),a0
+	movea.l	20(sp),a1
+	movea.l	24(sp),a2
+	lea	28(sp),a3
+	movea.l	_GadToolsBase,a6
+	jsr	-174(a6)
+	movem.l	(sp)+,a2/a3/a6
 	rts
 

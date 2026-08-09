@@ -46,7 +46,7 @@ public class BuildOptions
     [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
     public bool UnsafeMode { get; set; }
 
-    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default: always rebuild stdlib fresh)")]
+    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default; retained for compatibility)")]
     public bool UseStdlibCache { get; set; }
 
     [Option("rebuild-stdlib-cache", Required = false, HelpText = "Rebuild stdlib and cache it for future use")]

@@ -275,6 +275,8 @@ pub fn get_value() -> i32 {
         // Verify client stubs for calling library functions
         Assert.Contains("get_value", stubs);
         Assert.Contains("_TestLibraryBase", stubs); // Uses library base
+        Assert.Contains("move.l  a6,-(sp)", stubs);
+        Assert.Contains("movea.l (sp)+,a6", stubs);
     }
 
     [Fact]

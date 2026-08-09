@@ -506,11 +506,11 @@ public static class StdlibBuildCommand
     /// Check if stdlib needs rebuilding for a specific target (with reason)
     /// Also checks nested directories (e.g., ffi/) for changes and compiler version
     /// </summary>
-    public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode, int codegenVersion, out string? reason)
+    public static bool NeedsRebuild(string compilerDir, string cpu, BuildMode buildMode, int codegenVersion, out string? reason, string? cacheDir = null)
     {
         reason = null;
         var buildModeStr = buildMode == BuildMode.Release ? "release" : "debug";
-        var stdlibDir = Path.Combine(compilerDir, "stdlib", cpu, buildModeStr);
+        var stdlibDir = cacheDir ?? Path.Combine(compilerDir, "stdlib", cpu, buildModeStr);
         var manifestPath = Path.Combine(stdlibDir, "manifest.json");
 
         // If manifest doesn't exist, needs rebuild

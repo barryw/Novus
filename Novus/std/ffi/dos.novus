@@ -466,7 +466,8 @@ extern pub fn Execute(string: *u8, file: i32, file2: i32) -> i32
 /// See also: FreeDosObject(), <dos/dostags.h>, <dos/dos.h>
 @library("dos.library")
 extern pub fn AllocDosObject(_type: u32, tags: *TagItem) -> *u8
-// Varargs function AllocDosObjectTags skipped - needs manual implementation
+@library("dos.library")
+extern pub fn AllocDosObjectTags(_type: u32, tags: u32, ...args) -> *u8
 /// Frees an object allocated by AllocDosObject() (V36)
 ///
 /// Frees an object allocated by AllocDosObject(). Do NOT call for objects
@@ -765,7 +766,8 @@ extern pub fn FPuts(fh: i32, str: *u8) -> i32
 /// See also: VFPrintf(), VFPrintf(), FPutC()
 @library("dos.library")
 extern pub fn VFWritef(fh: i32, format: *u8, argarray: *u8)
-// Varargs function FWritef skipped - needs manual implementation
+@library("dos.library")
+extern pub fn FWritef(fh: i32, format: *u8, ...args)
 /// Format and print a string to a file (buffered) (V36)
 ///
 /// Writes the formatted string and values to the given file. This routine is
@@ -782,7 +784,8 @@ extern pub fn VFWritef(fh: i32, format: *u8, argarray: *u8)
 /// See also: VPrintf(), VFWritef(), RawDoFmt(), FPutC()
 @library("dos.library")
 extern pub fn VFPrintf(fh: i32, format: *u8, argarray: *u8) -> i32
-// Varargs function FPrintf skipped - needs manual implementation
+@library("dos.library")
+extern pub fn FPrintf(fh: i32, format: *u8, ...args) -> i32
 /// Flushes buffers for a buffered filehandle (V36)
 ///
 /// Flushes any pending buffered writes to the filehandle. All buffered writes
@@ -1148,7 +1151,8 @@ extern pub fn Cli() -> *CommandLineInterface
 /// See also: LoadSeg(), CreateProc(), ReadArgs(), RunCommand(), <dos/dostags.h>
 @library("dos.library")
 extern pub fn CreateNewProc(tags: *TagItem) -> *u8  // Returns *Process, use *u8 to avoid struct gen issues
-// Varargs function CreateNewProcTags skipped - needs manual implementation
+@library("dos.library")
+extern pub fn CreateNewProcTags(tags: u32, ...args) -> *Process
 /// Runs a program using the current process (V36)
 ///
 /// Runs a command on your process/cli. Seglist may be any language, including
@@ -1403,7 +1407,8 @@ extern pub fn GetProgramDir() -> i32
 /// See also: Execute(), CreateNewProc(), <dos/dostags.h>, Input(), Output()
 @library("dos.library")
 extern pub fn SystemTagList(command: *u8, tags: *TagItem) -> i32
-// Varargs function SystemTags skipped - needs manual implementation
+@library("dos.library")
+extern pub fn SystemTags(command: *u8, tags: u32, ...args) -> i32
 /// Creates an assignment to a locked object (V36)
 ///
 /// Sets up an assign of a name to a given lock. Passing NULL for a lock cancels
@@ -1810,7 +1815,8 @@ extern pub fn InternalUnLoadSeg(seglist: i32, freefunc: fn()) -> i16
 /// See also: LoadSeg(), UnLoadSeg(), InternalLoadSeg(), InternalUnLoadSeg()
 @library("dos.library")
 extern pub fn NewLoadSeg(file: *u8, tags: *TagItem) -> i32
-// Varargs function NewLoadSegTags skipped - needs manual implementation
+@library("dos.library")
+extern pub fn NewLoadSegTags(file: *u8, tags: u32, ...args) -> i32
 /// Adds a resident segment to the resident list (V36)
 ///
 /// Adds a segment to the Dos resident list, with the specified Seglist and type
@@ -2261,7 +2267,8 @@ extern pub fn PutStr(str: *u8) -> i32
 /// See also: VFPrintf(), VFWritef(), RawDoFmt(), FPutC()
 @library("dos.library")
 extern pub fn VPrintf(format: *u8, argarray: *u8) -> i32
-// Varargs function Printf skipped - needs manual implementation
+@library("dos.library")
+extern pub fn Printf(format: *u8, ...args) -> i32
 /// Create a tokenized string for
 ///
 /// Tokenizes a pattern, for use by MatchPatternNoCase(). Also indicates if
@@ -2343,3 +2350,30 @@ extern pub fn ExAllEnd(lock: i32, buffer: *ExAllData, size: i32, data: i32, cont
 /// See also: SetProtect(), Examine(), ExNext(), ExAll(), <dos/dos.h>
 @library("dos.library")
 extern pub fn SetOwner(name: *u8, owner_info: i32) -> i16
+
+@library("dos.library")
+extern pub fn AllocDosObjectTagList(_type: u32, tags: *TagItem) -> *u8
+
+@library("dos.library")
+extern pub fn CreateNewProcTagList(tags: *TagItem) -> *Process
+
+@library("dos.library")
+extern pub fn DoPkt0(port: *MsgPort, action: i32) -> i32
+
+@library("dos.library")
+extern pub fn DoPkt1(port: *MsgPort, action: i32, arg1: i32) -> i32
+
+@library("dos.library")
+extern pub fn DoPkt2(port: *MsgPort, action: i32, arg1: i32, arg2: i32) -> i32
+
+@library("dos.library")
+extern pub fn DoPkt3(port: *MsgPort, action: i32, arg1: i32, arg2: i32, arg3: i32) -> i32
+
+@library("dos.library")
+extern pub fn DoPkt4(port: *MsgPort, action: i32, arg1: i32, arg2: i32, arg3: i32, arg4: i32) -> i32
+
+@library("dos.library")
+extern pub fn NewLoadSegTagList(file: *u8, tags: *TagItem) -> i32
+
+@library("dos.library")
+extern pub fn System(command: *u8, tags: *TagItem) -> i32

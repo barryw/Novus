@@ -1,0 +1,14 @@
+from std::ffi::exec import OpenResource
+from std::ffi::cia_resource import AbleICR
+from std::ffi::amiga_structs import Library
+from std::ffi::amiga_consts import operation_not_permitted
+
+pub fn main() -> i32 {
+    let cia = unsafe { OpenResource("ciaa.resource") }
+    if cia == null {
+        return 1
+    }
+
+    let state = unsafe { AbleICR((*Library)cia, 0) }
+    return (i32)(state & 0) + (i32)(operation_not_permitted & 0)
+}

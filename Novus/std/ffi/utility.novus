@@ -25,7 +25,7 @@ from std::ffi::amiga_structs import *
 ///
 /// See also: <utility/tagitem.h>, GetTagData(), PackBoolTags(), NextTagItem()
 @library("utility.library")
-extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
+extern pub fn FindTagItem(tagVal: u32, tagList: *TagItem) -> *TagItem
 /// Obtain the data corresponding to a tag. (V36)
 ///
 /// Searches a tag list for a matching tag, and returns the corresponding
@@ -42,7 +42,7 @@ extern pub fn FindTagItem(tagVal: *u8 /* Tag */, tagList: *TagItem) -> *TagItem
 ///
 /// See also: <utility/tagitem.h>, FindTagItem(), PackBoolTags(), NextTagItem()
 @library("utility.library")
-extern pub fn GetTagData(tagValue: *u8 /* Tag */, defaultVal: u32, tagList: *TagItem) -> u32
+extern pub fn GetTagData(tagValue: u32, defaultVal: u32, tagList: *TagItem) -> u32
 /// Builds a "flag" word from a tag list. (V36)
 ///
 /// Picks out the boolean tag items in a tag list and converts them into
@@ -182,7 +182,7 @@ extern pub fn RefreshTagItemClones(clone: *TagItem, original: *TagItem)
 ///
 /// See also: <utility/tagitem.h>, FilterTagItems()
 @library("utility.library")
-extern pub fn TagInArray(tagValue: *u8 /* Tag */, tagArray: *u8) -> i16
+extern pub fn TagInArray(tagValue: u32, tagArray: *u32) -> i16
 /// Remove selected items from a tag list. (V36)
 ///
 /// Removes tag items from a tag list (by changing ti_Tag to TAG_IGNORE)
@@ -482,7 +482,8 @@ extern pub fn AddNamedObject(nameSpace: *NamedObject, object: *NamedObject) -> i
 /// See also: FreeNamedObject(), <utility/name.h>
 @library("utility.library")
 extern pub fn AllocNamedObjectA(name: *u8, tagList: *TagItem) -> *NamedObject
-// Varargs function AllocNamedObject skipped - needs manual implementation
+@library("utility.library")
+extern pub fn AllocNamedObject(name: *u8, tagList: u32, ...args) -> *NamedObject
 /// Attempt to remove a named object. (V39)
 ///
 /// Attempts to remove an object from whatever NameSpace it's in. You must have

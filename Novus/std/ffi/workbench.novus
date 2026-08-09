@@ -26,7 +26,8 @@ from std::ffi::amiga_structs import *
 /// See also: dos.library/IoErr
 @library("workbench.library")
 extern pub fn AddAppWindowA(id: u32, userdata: u32, window: *Window, msgport: *MsgPort, taglist: *TagItem) -> *AppWindow
-// Varargs function AddAppWindow skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn AddAppWindow(id: u32, userdata: u32, window: *Window, msgport: *MsgPort, taglist: u32, ...args) -> *AppWindow
 /// Remove a drop zone from an AppWindow.
 ///
 /// Attempt to remove a drop zone from an AppWindow.
@@ -55,7 +56,8 @@ extern pub fn RemoveAppWindow(appWindow: *AppWindow) -> i16
 /// See also: workbench.library/RemoveAppIcon workbench.library/WorkbenchControlA icon.library/DrawIconStateA
 @library("workbench.library")
 extern pub fn AddAppIconA(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, lock: i32, diskobj: *DiskObject, taglist: *TagItem) -> *AppIcon
-// Varargs function AddAppIcon skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn AddAppIcon(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, lock: i32, diskobj: *DiskObject, taglist: u32, ...args) -> *AppIcon
 /// Remove an icon from Workbench's list            (V36)
 ///
 /// Attempt to remove an AppIcon from Workbench's list of AppIcons.
@@ -83,7 +85,8 @@ extern pub fn RemoveAppIcon(appIcon: *AppIcon) -> i16
 /// See also: workbench.library/RemoveAppMenuItem
 @library("workbench.library")
 extern pub fn AddAppMenuItemA(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, taglist: *TagItem) -> *AppMenuItem
-// Varargs function AddAppMenuItem skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn AddAppMenuItem(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, taglist: u32, ...args) -> *AppMenuItem
 /// Remove a menu item from Workbench's list     (V36)
 ///
 /// Attempt to remove an AppMenuItem from Workbench's list of AppMenuItems.
@@ -125,10 +128,12 @@ extern pub fn WBInfo(lock: i32, name: *u8, screen: *Screen)
 /// See also: dos.library/IoErr workbench.library/CloseWorkbenchObjectA <workbench/startup.h>
 @library("workbench.library")
 extern pub fn OpenWorkbenchObjectA(name: *u8, tags: *TagItem) -> i16
-// Varargs function OpenWorkbenchObject skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn OpenWorkbenchObject(name: *u8, ...args) -> i16
 @library("workbench.library")
 extern pub fn CloseWorkbenchObjectA(name: *u8, tags: *TagItem) -> i16
-// Varargs function CloseWorkbenchObject skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn CloseWorkbenchObject(name: *u8, ...args) -> i16
 /// Query or modify Workbench and icon
 ///
 /// With this function you can query or modify global Workbench parameters or
@@ -142,15 +147,19 @@ extern pub fn CloseWorkbenchObjectA(name: *u8, tags: *TagItem) -> i16
 /// See also: dos.library/FreeDosObject dos.library/IoErr <dos/dosextens.h>
 @library("workbench.library")
 extern pub fn WorkbenchControlA(name: *u8, tags: *TagItem) -> i16
-// Varargs function WorkbenchControl skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn WorkbenchControl(name: *u8, ...args) -> i16
 @library("workbench.library")
 extern pub fn AddAppWindowDropZoneA(aw: *AppWindow, id: u32, userdata: u32, tags: *TagItem) -> *AppWindowDropZone
-// Varargs function AddAppWindowDropZone skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn AddAppWindowDropZone(aw: *AppWindow, id: u32, userdata: u32, ...args) -> *AppWindowDropZone
 @library("workbench.library")
 extern pub fn RemoveAppWindowDropZone(aw: *AppWindow, dropZone: *AppWindowDropZone) -> i16
 @library("workbench.library")
 extern pub fn ChangeWorkbenchSelectionA(name: *u8, hook: *Hook, tags: *TagItem) -> i16
-// Varargs function ChangeWorkbenchSelection skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn ChangeWorkbenchSelection(name: *u8, hook: *Hook, ...args) -> i16
 @library("workbench.library")
 extern pub fn MakeWorkbenchObjectVisibleA(name: *u8, tags: *TagItem) -> i16
-// Varargs function MakeWorkbenchObjectVisible skipped - needs manual implementation
+@library("workbench.library")
+extern pub fn MakeWorkbenchObjectVisible(name: *u8, ...args) -> i16

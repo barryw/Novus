@@ -10,7 +10,9 @@
 ; Class * SPACE_GetClass()
 	xdef	_SPACE_GetClass
 _SPACE_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_SpaceBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

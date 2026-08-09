@@ -207,7 +207,8 @@ extern pub fn IsUpper(locale: *Locale, character: u32) -> i16
 extern pub fn IsXDigit(locale: *Locale, character: u32) -> i16
 @library("locale.library")
 extern pub fn OpenCatalogA(locale: *Locale, name: *u8, tags: *TagItem) -> *Catalog
-// Varargs function OpenCatalog skipped - needs manual implementation
+@library("locale.library")
+extern pub fn OpenCatalog(locale: *Locale, name: *u8, tags: u32, ...args) -> *Catalog
 /// Open a locale. (V38)
 ///
 /// This function opens a named locale. Locales contain many parameters that an

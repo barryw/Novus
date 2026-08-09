@@ -10,9 +10,11 @@
 ; FLOAT IEEESPAtan(FLOAT parm)
 	xdef	_IEEESPAtan
 _IEEESPAtan:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPSin_stub,code
@@ -20,9 +22,11 @@ _IEEESPAtan:
 ; FLOAT IEEESPSin(FLOAT parm)
 	xdef	_IEEESPSin
 _IEEESPSin:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPCos_stub,code
@@ -30,9 +34,11 @@ _IEEESPSin:
 ; FLOAT IEEESPCos(FLOAT parm)
 	xdef	_IEEESPCos
 _IEEESPCos:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPTan_stub,code
@@ -40,9 +46,11 @@ _IEEESPCos:
 ; FLOAT IEEESPTan(FLOAT parm)
 	xdef	_IEEESPTan
 _IEEESPTan:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPSincos_stub,code
@@ -50,10 +58,12 @@ _IEEESPTan:
 ; FLOAT IEEESPSincos(FLOAT * cosptr, FLOAT parm)
 	xdef	_IEEESPSincos
 _IEEESPSincos:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPSinh_stub,code
@@ -61,9 +71,11 @@ _IEEESPSincos:
 ; FLOAT IEEESPSinh(FLOAT parm)
 	xdef	_IEEESPSinh
 _IEEESPSinh:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPCosh_stub,code
@@ -71,9 +83,11 @@ _IEEESPSinh:
 ; FLOAT IEEESPCosh(FLOAT parm)
 	xdef	_IEEESPCosh
 _IEEESPCosh:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPTanh_stub,code
@@ -81,9 +95,11 @@ _IEEESPCosh:
 ; FLOAT IEEESPTanh(FLOAT parm)
 	xdef	_IEEESPTanh
 _IEEESPTanh:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPExp_stub,code
@@ -91,9 +107,11 @@ _IEEESPTanh:
 ; FLOAT IEEESPExp(FLOAT parm)
 	xdef	_IEEESPExp
 _IEEESPExp:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPLog_stub,code
@@ -101,9 +119,11 @@ _IEEESPExp:
 ; FLOAT IEEESPLog(FLOAT parm)
 	xdef	_IEEESPLog
 _IEEESPLog:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPPow_stub,code
@@ -111,10 +131,12 @@ _IEEESPLog:
 ; FLOAT IEEESPPow(FLOAT exp, FLOAT arg)
 	xdef	_IEEESPPow
 _IEEESPPow:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPSqrt_stub,code
@@ -122,9 +144,11 @@ _IEEESPPow:
 ; FLOAT IEEESPSqrt(FLOAT parm)
 	xdef	_IEEESPSqrt
 _IEEESPSqrt:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPTieee_stub,code
@@ -132,9 +156,11 @@ _IEEESPSqrt:
 ; FLOAT IEEESPTieee(FLOAT parm)
 	xdef	_IEEESPTieee
 _IEEESPTieee:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPFieee_stub,code
@@ -142,9 +168,11 @@ _IEEESPTieee:
 ; FLOAT IEEESPFieee(FLOAT parm)
 	xdef	_IEEESPFieee
 _IEEESPFieee:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPAsin_stub,code
@@ -152,9 +180,11 @@ _IEEESPFieee:
 ; FLOAT IEEESPAsin(FLOAT parm)
 	xdef	_IEEESPAsin
 _IEEESPAsin:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPAcos_stub,code
@@ -162,9 +192,11 @@ _IEEESPAsin:
 ; FLOAT IEEESPAcos(FLOAT parm)
 	xdef	_IEEESPAcos
 _IEEESPAcos:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-120(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IEEESPLog10_stub,code
@@ -172,8 +204,10 @@ _IEEESPAcos:
 ; FLOAT IEEESPLog10(FLOAT parm)
 	xdef	_IEEESPLog10
 _IEEESPLog10:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathIeeeSingTransBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
 

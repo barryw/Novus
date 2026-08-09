@@ -32,7 +32,8 @@ from std::ffi::amiga_structs import *
 /// See also: FreeGadgets(), GT_SetGadgetAttrs(), GetVisualInfo(), <libraries/gadtools.h>
 @library("gadtools.library")
 extern pub fn CreateGadgetA(kind: u32, gad: *Gadget, ng: *NewGadget, taglist: *TagItem) -> *Gadget
-// Varargs function CreateGadget skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn CreateGadget(kind: u32, gad: *Gadget, ng: *NewGadget, taglist: u32, ...args) -> *Gadget
 /// Free a linked list of gadgets. (V36)
 ///
 /// Frees any GadTools gadgets found on the linked list of gadgets beginning
@@ -63,7 +64,8 @@ extern pub fn FreeGadgets(gad: *Gadget)
 /// See also: GT_GetGadgetAttrs()
 @library("gadtools.library")
 extern pub fn GT_SetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem)
-// Varargs function GT_SetGadgetAttrs skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn GT_SetGadgetAttrs(gad: *Gadget, win: *Window, req: *Requester, taglist: u32, ...args)
 /// Allocate and fill out a menu structure. (V36)
 ///
 /// CreateMenusA() allocates and initializes a complete menu structure based on
@@ -87,7 +89,8 @@ extern pub fn GT_SetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, ta
 /// See also: LayoutMenusA(), FreeMenus(), gadtools.h/GTMENU_USERDATA(), gadtools.h/GTMENUITEM_USERDATA()
 @library("gadtools.library")
 extern pub fn CreateMenusA(newmenu: *NewMenu, taglist: *TagItem) -> *Menu
-// Varargs function CreateMenus skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn CreateMenus(newmenu: *NewMenu, taglist: u32, ...args) -> *Menu
 /// Frees memory allocated by CreateMenusA(). (V36)
 ///
 /// Frees the menus allocated by CreateMenusA(). It is safe to call this
@@ -119,7 +122,8 @@ extern pub fn FreeMenus(menu: *Menu)
 /// See also: CreateMenusA(), GetVisualInfoA()
 @library("gadtools.library")
 extern pub fn LayoutMenuItemsA(firstitem: *MenuItem, vi: *u8, taglist: *TagItem) -> i16
-// Varargs function LayoutMenuItems skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn LayoutMenuItems(firstitem: *MenuItem, vi: *u8, taglist: u32, ...args) -> i16
 /// Position all the menus and menu items. (V36)
 ///
 /// Lays out all the menus, menu items and sub-items in the supplied menu
@@ -139,7 +143,8 @@ extern pub fn LayoutMenuItemsA(firstitem: *MenuItem, vi: *u8, taglist: *TagItem)
 /// See also: CreateMenusA(), GetVisualInfoA()
 @library("gadtools.library")
 extern pub fn LayoutMenusA(firstmenu: *Menu, vi: *u8, taglist: *TagItem) -> i16
-// Varargs function LayoutMenus skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn LayoutMenus(firstmenu: *Menu, vi: *u8, taglist: u32, ...args) -> i16
 /// Get an IntuiMessage, with GadTools processing. (V36)
 ///
 /// Use GT_GetIMsg() in place of the usual exec.library/GetMsg() when reading
@@ -277,7 +282,8 @@ extern pub fn CreateContext(glistptr: *Gadget) -> *Gadget
 /// See also: GetVisualInfoA(), <libraries/gadtools.h>
 @library("gadtools.library")
 extern pub fn DrawBevelBoxA(rport: *RastPort, left: i16, top: i16, width: i16, height: i16, taglist: *TagItem)
-// Varargs function DrawBevelBox skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn DrawBevelBox(rport: *RastPort, left: i16, top: i16, width: i16, height: i16, taglist: u32, ...args)
 /// Get information GadTools needs for visuals. (V36)
 ///
 /// Get a pointer to a (private) block of data containing various bits of
@@ -297,7 +303,8 @@ extern pub fn DrawBevelBoxA(rport: *RastPort, left: i16, top: i16, width: i16, h
 /// See also: FreeVisualInfo(), intuition/LockPubScreen(), intuition/UnlockPubScreen()
 @library("gadtools.library")
 extern pub fn GetVisualInfoA(screen: *Screen, taglist: *TagItem) -> *u8
-// Varargs function GetVisualInfo skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn GetVisualInfo(screen: *Screen, taglist: u32, ...args) -> *u8
 /// Return any resources taken by GetVisualInfo. (V36)
 ///
 /// FreeVisualInfo() returns any memory or other resources that were allocated
@@ -333,7 +340,8 @@ extern pub fn FreeVisualInfo(vi: *u8)
 /// See also: GT_SetGadgetAttrs()
 @library("gadtools.library")
 extern pub fn GT_GetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem) -> i32
-// Varargs function GT_GetGadgetAttrs skipped - needs manual implementation
+@library("gadtools.library")
+extern pub fn GT_GetGadgetAttrs(gad: *Gadget, win: *Window, req: *Requester, taglist: u32, ...args) -> i32
 
 // GadTools NewMenu struct (from NDK headers)
 // Fields match NDK definition - VBCC handles layout and padding

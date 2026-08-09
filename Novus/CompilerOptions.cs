@@ -157,13 +157,13 @@ public class CompilerOptions
     public string? PackageVersion { get; set; }
 
     /// <summary>
-    /// Use cached stdlib if available (default: always rebuild stdlib fresh)
+    /// Use cached stdlib if available (retained for CLI compatibility; now the default)
     /// </summary>
-    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default: always rebuild stdlib fresh)")]
+    [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default; retained for compatibility)")]
     public bool UseStdlibCache { get; set; }
 
     /// <summary>
-    /// Rebuild stdlib and cache it for future use with --use-stdlib-cache
+    /// Rebuild stdlib and refresh the cache
     /// </summary>
     [Option("rebuild-stdlib-cache", Required = false, HelpText = "Rebuild stdlib and cache it for future use")]
     public bool RebuildStdlibCache { get; set; }

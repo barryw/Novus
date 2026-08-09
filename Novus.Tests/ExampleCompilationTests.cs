@@ -23,6 +23,8 @@ public abstract class ExampleCompilationTestBase
         "38_amiga_library_calls",   // Amiga FFI
         "ffi_asl_smoke",            // Generated struct-typed FFI + library lifecycle
         "ffi_callback_smoke",       // Typed NDK callback ABI
+        "ffi_ndk_varargs_smoke",    // Native NDK varargs convenience ABI
+        "ffi_cia_resource_smoke",   // Caller-supplied A6 resource ABI
         "ffi_device_resource_smoke",// Device/resource lifecycle generation
         "ffi_mathffp_smoke",        // Generated floating-point FFI
         "mem_block_demo",           // Memory management

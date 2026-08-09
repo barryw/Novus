@@ -1361,7 +1361,8 @@ extern pub fn GetDefaultPubScreen(nameBuffer: *u8)
 /// See also: exec.library/RawDoFmt(), BuildEasyRequestArgs(), SysReqHandler(), AutoRequest(), BuildSysRequest()
 @library("intuition.library")
 extern pub fn EasyRequestArgs(window: *Window, easyStruct: *EasyStruct, idcmpPtr: *u8, args: *u8) -> i32
-// Varargs function EasyRequest skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn EasyRequest(window: *Window, easyStruct: *EasyStruct, idcmpPtr: *u32, ...args) -> i32
 /// Simple creation of system request. (V36)
 ///
 /// This function is to EasyRequest() as BuildSysRequest() is to AutoRequest():
@@ -1380,7 +1381,8 @@ extern pub fn EasyRequestArgs(window: *Window, easyStruct: *EasyStruct, idcmpPtr
 /// See also: EasyRequestArgs(), FreeSysRequest(), SysReqHandler(), BuildSysRequest(), AutoRequest()
 @library("intuition.library")
 extern pub fn BuildEasyRequestArgs(window: *Window, easyStruct: *EasyStruct, idcmp: u32, args: *u8) -> *Window
-// Varargs function BuildEasyRequest skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn BuildEasyRequest(window: *Window, easyStruct: *EasyStruct, idcmp: u32, ...args) -> *Window
 /// Handle system requester input. (V36)
 ///
 /// Handles input for a window returned by either BuildSysRequest() or
@@ -1415,7 +1417,8 @@ extern pub fn SysReqHandler(window: *Window, idcmpPtr: *u8, waitInput: i16) -> i
 /// See also: OpenWindow()
 @library("intuition.library")
 extern pub fn OpenWindowTagList(newWindow: *NewWindow, tagList: *TagItem) -> *Window
-// Varargs function OpenWindowTags skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn OpenWindowTags(newWindow: *NewWindow, tagList: u32, ...args) -> *Window
 /// OpenScreen() with TagItem extension array. (V36)
 ///
 /// Provides an extension to the parameters passed to OpenScreen(). This
@@ -1435,7 +1438,8 @@ extern pub fn OpenWindowTagList(newWindow: *NewWindow, tagList: *TagItem) -> *Wi
 /// See also: OpenScreen()
 @library("intuition.library")
 extern pub fn OpenScreenTagList(newScreen: *NewScreen, tagList: *TagItem) -> *Screen
-// Varargs function OpenScreenTags skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn OpenScreenTags(newScreen: *NewScreen, tagList: u32, ...args) -> *Screen
 /// Draw an (extended) Intuition Image with
 ///
 /// This function draws an Intuition Image structure in a variety of "visual
@@ -1497,7 +1501,8 @@ extern pub fn PointInImage(point: u32, image: *Image) -> i16
 extern pub fn EraseImage(rp: *RastPort, image: *Image, leftOffset: i16, topOffset: i16)
 @library("intuition.library")
 extern pub fn NewObjectA(classPtr: *IClass, classID: *u8, tagList: *TagItem) -> *u8
-// Varargs function NewObject skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn NewObject(classPtr: *IClass, classID: *u8, tagList: u32, ...args) -> *u8
 /// Deletes a 'boopsi' object. (V36)
 ///
 /// Deletes a boopsi object and all of it auxiliary data. These objects are all
@@ -1528,7 +1533,8 @@ extern pub fn DisposeObject(consuming object: *u8)
 /// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 @library("intuition.library")
 extern pub fn SetAttrsA(object: *u8, tagList: *TagItem) -> u32
-// Varargs function SetAttrs skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn SetAttrs(object: *u8, tagList: u32, ...args) -> u32
 /// Inquire the value of some attribute of an object. (V36)
 ///
 /// Inquires from the specified object the value of the specified attribute. You
@@ -1562,7 +1568,8 @@ extern pub fn GetAttr(attrID: u32, object: *u8, storagePtr: *u8) -> u32
 /// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 @library("intuition.library")
 extern pub fn SetGadgetAttrsA(gadget: *Gadget, window: *Window, requester: *Requester, tagList: *TagItem) -> u32
-// Varargs function SetGadgetAttrs skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn SetGadgetAttrs(gadget: *Gadget, window: *Window, requester: *Requester, tagList: u32, ...args) -> u32
 /// Iterate through the object on an Exec list. (V36)
 ///
 /// This function is for boopsi class implementors only. When you collect a set
@@ -1805,8 +1812,9 @@ extern pub fn LendMenus(fromwindow: *Window, towindow: *Window)
 ///
 /// See also: NewObject(), DisposeObject(), GetAttr(), MakeClass(), Document "Basic Object-Oriented Programming System for Intuition" and the "boopsi Class Reference" document.
 @library("intuition.library")
-extern pub fn DoGadgetMethodA(gad: *Gadget, win: *Window, req: *Requester, message: *u8 /* Msg */) -> u32
-// Varargs function DoGadgetMethod skipped - needs manual implementation
+extern pub fn DoGadgetMethodA(gad: *Gadget, win: *Window, req: *Requester, message: *u32) -> u32
+@library("intuition.library")
+extern pub fn DoGadgetMethod(gad: *Gadget, win: *Window, req: *Requester, message: u32, ...args) -> u32
 /// Select a pointer for your window. (V39)
 ///
 /// Allows you to set the pointer image associated with the specified window.
@@ -1821,7 +1829,8 @@ extern pub fn DoGadgetMethodA(gad: *Gadget, win: *Window, req: *Requester, messa
 /// See also: SetPointer(), ClearPointer(), ROM Kernel Manual: Libraries
 @library("intuition.library")
 extern pub fn SetWindowPointerA(win: *Window, taglist: *TagItem)
-// Varargs function SetWindowPointer skipped - needs manual implementation
+@library("intuition.library")
+extern pub fn SetWindowPointer(win: *Window, taglist: u32, ...args)
 /// Display an alert with automatic time-out. (V39)
 ///
 /// This function is equivalent to DisplayAlert(), except that if the user fails
@@ -1858,3 +1867,6 @@ extern pub fn TimedDisplayAlert(alertNumber: u32, string: *u8, height: u16, time
 /// See also: WA_HelpGroup
 @library("intuition.library")
 extern pub fn HelpControl(win: *Window, flags: u32)
+
+@library("intuition.library")
+extern pub fn ReportMouse1(window: *Window, flag: i32)

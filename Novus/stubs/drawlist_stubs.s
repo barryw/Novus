@@ -10,7 +10,9 @@
 ; Class * DRAWLIST_GetClass()
 	xdef	_DRAWLIST_GetClass
 _DRAWLIST_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_DrawListBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

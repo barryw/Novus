@@ -10,7 +10,9 @@
 ; Class * LABEL_GetClass()
 	xdef	_LABEL_GetClass
 _LABEL_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_LabelBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -10,7 +10,9 @@
 ; Class * PENMAP_GetClass()
 	xdef	_PENMAP_GetClass
 _PENMAP_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_PenMapBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

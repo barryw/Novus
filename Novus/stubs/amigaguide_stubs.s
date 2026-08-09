@@ -10,9 +10,11 @@
 ; LONG LockAmigaGuideBase(APTR handle)
 	xdef	_LockAmigaGuideBase
 _LockAmigaGuideBase:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_UnlockAmigaGuideBase_stub,code
@@ -20,9 +22,11 @@ _LockAmigaGuideBase:
 ; VOID UnlockAmigaGuideBase(LONG key)
 	xdef	_UnlockAmigaGuideBase
 _UnlockAmigaGuideBase:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenAmigaGuideA_stub,code
@@ -30,10 +34,25 @@ _UnlockAmigaGuideBase:
 ; APTR OpenAmigaGuideA(struct NewAmigaGuide * nag, struct TagItem * tags)
 	xdef	_OpenAmigaGuideA
 _OpenAmigaGuideA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_OpenAmigaGuide_stub,code
+
+; APTR OpenAmigaGuide(struct NewAmigaGuide * nag, Tag tags, ... )
+	xdef	_OpenAmigaGuide
+_OpenAmigaGuide:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_OpenAmigaGuideAsyncA_stub,code
@@ -41,10 +60,26 @@ _OpenAmigaGuideA:
 ; APTR OpenAmigaGuideAsyncA(struct NewAmigaGuide * nag, struct TagItem * attrs)
 	xdef	_OpenAmigaGuideAsyncA
 _OpenAmigaGuideAsyncA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_OpenAmigaGuideAsync_stub,code
+
+; APTR OpenAmigaGuideAsync(struct NewAmigaGuide * nag, Tag attrs, ... )
+	xdef	_OpenAmigaGuideAsync
+_OpenAmigaGuideAsync:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a6
+	move.l	a6,d0
+	movea.l	_AmigaGuideBase,a6
+	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CloseAmigaGuide_stub,code
@@ -52,9 +87,11 @@ _OpenAmigaGuideAsyncA:
 ; VOID CloseAmigaGuide(APTR cl)
 	xdef	_CloseAmigaGuide
 _CloseAmigaGuide:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AmigaGuideSignal_stub,code
@@ -62,9 +99,11 @@ _CloseAmigaGuide:
 ; ULONG AmigaGuideSignal(APTR cl)
 	xdef	_AmigaGuideSignal
 _AmigaGuideSignal:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetAmigaGuideMsg_stub,code
@@ -72,9 +111,11 @@ _AmigaGuideSignal:
 ; struct AmigaGuideMsg * GetAmigaGuideMsg(APTR cl)
 	xdef	_GetAmigaGuideMsg
 _GetAmigaGuideMsg:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReplyAmigaGuideMsg_stub,code
@@ -82,9 +123,11 @@ _GetAmigaGuideMsg:
 ; VOID ReplyAmigaGuideMsg(struct AmigaGuideMsg * amsg)
 	xdef	_ReplyAmigaGuideMsg
 _ReplyAmigaGuideMsg:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetAmigaGuideContextA_stub,code
@@ -92,11 +135,28 @@ _ReplyAmigaGuideMsg:
 ; LONG SetAmigaGuideContextA(APTR cl, ULONG id, struct TagItem * attrs)
 	xdef	_SetAmigaGuideContextA
 _SetAmigaGuideContextA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetAmigaGuideContext_stub,code
+
+; LONG SetAmigaGuideContext(APTR cl, ULONG id, Tag attrs, ... )
+	xdef	_SetAmigaGuideContext
+_SetAmigaGuideContext:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	lea	16(sp),a6
+	move.l	a6,d1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SendAmigaGuideContextA_stub,code
@@ -104,10 +164,26 @@ _SetAmigaGuideContextA:
 ; LONG SendAmigaGuideContextA(APTR cl, struct TagItem * attrs)
 	xdef	_SendAmigaGuideContextA
 _SendAmigaGuideContextA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SendAmigaGuideContext_stub,code
+
+; LONG SendAmigaGuideContext(APTR cl, Tag attrs, ... )
+	xdef	_SendAmigaGuideContext
+_SendAmigaGuideContext:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a6
+	move.l	a6,d0
+	movea.l	_AmigaGuideBase,a6
+	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SendAmigaGuideCmdA_stub,code
@@ -115,11 +191,28 @@ _SendAmigaGuideContextA:
 ; LONG SendAmigaGuideCmdA(APTR cl, STRPTR cmd, struct TagItem * attrs)
 	xdef	_SendAmigaGuideCmdA
 _SendAmigaGuideCmdA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-102(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SendAmigaGuideCmd_stub,code
+
+; LONG SendAmigaGuideCmd(APTR cl, STRPTR cmd, Tag attrs, ... )
+	xdef	_SendAmigaGuideCmd
+_SendAmigaGuideCmd:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	lea	16(sp),a6
+	move.l	a6,d1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-102(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetAmigaGuideAttrsA_stub,code
@@ -127,10 +220,25 @@ _SendAmigaGuideCmdA:
 ; LONG SetAmigaGuideAttrsA(APTR cl, struct TagItem * attrs)
 	xdef	_SetAmigaGuideAttrsA
 _SetAmigaGuideAttrsA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-108(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetAmigaGuideAttrs_stub,code
+
+; LONG SetAmigaGuideAttrs(APTR cl, Tag attrs, ... )
+	xdef	_SetAmigaGuideAttrs
+_SetAmigaGuideAttrs:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-108(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetAmigaGuideAttr_stub,code
@@ -138,11 +246,13 @@ _SetAmigaGuideAttrsA:
 ; LONG GetAmigaGuideAttr(Tag tag, APTR cl, ULONG * storage)
 	xdef	_GetAmigaGuideAttr
 _GetAmigaGuideAttr:
-	move.l	4(sp),d0
-	movea.l	8(sp),a0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a0
+	movea.l	16(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-114(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LoadXRef_stub,code
@@ -150,10 +260,12 @@ _GetAmigaGuideAttr:
 ; LONG LoadXRef(BPTR lock, STRPTR name)
 	xdef	_LoadXRef
 _LoadXRef:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ExpungeXRef_stub,code
@@ -161,8 +273,10 @@ _LoadXRef:
 ; VOID ExpungeXRef()
 	xdef	_ExpungeXRef
 _ExpungeXRef:
+	movem.l	a6,-(sp)
 	movea.l	_AmigaGuideBase,a6
 	jsr	-132(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AddAmigaGuideHostA_stub,code
@@ -170,11 +284,27 @@ _ExpungeXRef:
 ; APTR AddAmigaGuideHostA(struct Hook * h, STRPTR name, struct TagItem * attrs)
 	xdef	_AddAmigaGuideHostA
 _AddAmigaGuideHostA:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	movea.l	12(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	movea.l	16(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-138(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_AddAmigaGuideHost_stub,code
+
+; APTR AddAmigaGuideHost(struct Hook * h, STRPTR name, Tag attrs, ... )
+	xdef	_AddAmigaGuideHost
+_AddAmigaGuideHost:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	lea	16(sp),a1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-138(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_RemoveAmigaGuideHostA_stub,code
@@ -182,10 +312,25 @@ _AddAmigaGuideHostA:
 ; LONG RemoveAmigaGuideHostA(APTR hh, struct TagItem * attrs)
 	xdef	_RemoveAmigaGuideHostA
 _RemoveAmigaGuideHostA:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_AmigaGuideBase,a6
 	jsr	-144(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_RemoveAmigaGuideHost_stub,code
+
+; LONG RemoveAmigaGuideHost(APTR hh, Tag attrs, ... )
+	xdef	_RemoveAmigaGuideHost
+_RemoveAmigaGuideHost:
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	lea	12(sp),a1
+	movea.l	_AmigaGuideBase,a6
+	jsr	-144(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetAmigaGuideString_stub,code
@@ -193,8 +338,10 @@ _RemoveAmigaGuideHostA:
 ; STRPTR GetAmigaGuideString(LONG id)
 	xdef	_GetAmigaGuideString
 _GetAmigaGuideString:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_AmigaGuideBase,a6
 	jsr	-210(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -10,10 +10,12 @@
 ; UBYTE * AllocMiscResource(ULONG unitNum, CONST_STRPTR name)
 	xdef	_AllocMiscResource
 _AllocMiscResource:
-	move.l	4(sp),d0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
+	movea.l	12(sp),a1
 	movea.l	_MiscBase,a6
 	jsr	-6(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeMiscResource_stub,code
@@ -21,8 +23,10 @@ _AllocMiscResource:
 ; VOID FreeMiscResource(ULONG unitNum)
 	xdef	_FreeMiscResource
 _FreeMiscResource:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MiscBase,a6
 	jsr	-12(a6)
+	movem.l	(sp)+,a6
 	rts
 

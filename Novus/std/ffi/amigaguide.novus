@@ -37,10 +37,12 @@ extern pub fn UnlockAmigaGuideBase(key: i32)
 /// See also: AddAmigaGuideHostA()
 @library("amigaguide.library")
 extern pub fn OpenAmigaGuideA(nag: *NewAmigaGuide, tags: *TagItem) -> *u8
-// Varargs function OpenAmigaGuide skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn OpenAmigaGuide(nag: *NewAmigaGuide, tags: u32, ...args) -> *u8
 @library("amigaguide.library")
 extern pub fn OpenAmigaGuideAsyncA(nag: *NewAmigaGuide, attrs: *TagItem) -> *u8
-// Varargs function OpenAmigaGuideAsync skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn OpenAmigaGuideAsync(nag: *NewAmigaGuide, attrs: u32, ...args) -> *u8
 /// Close a AmigaGuide client.            (V34)
 ///
 /// Closes a synchronous, or asynchronous, AmigaGuide client. This function will
@@ -85,10 +87,12 @@ extern pub fn GetAmigaGuideMsg(cl: *u8) -> *AmigaGuideMsg
 extern pub fn ReplyAmigaGuideMsg(amsg: *AmigaGuideMsg)
 @library("amigaguide.library")
 extern pub fn SetAmigaGuideContextA(cl: *u8, id: u32, attrs: *TagItem) -> i32
-// Varargs function SetAmigaGuideContext skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn SetAmigaGuideContext(cl: *u8, id: u32, attrs: u32, ...args) -> i32
 @library("amigaguide.library")
 extern pub fn SendAmigaGuideContextA(cl: *u8, attrs: *TagItem) -> i32
-// Varargs function SendAmigaGuideContext skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn SendAmigaGuideContext(cl: *u8, attrs: u32, ...args) -> i32
 /// Align an AmigaGuide system on the context ID
 ///
 /// This function is used to send a message to an AmigaGuide system to align it
@@ -101,7 +105,8 @@ extern pub fn SendAmigaGuideContextA(cl: *u8, attrs: *TagItem) -> i32
 /// See also: SetAmigaGuideContextA(), SendAmigaGuideCmdA()
 @library("amigaguide.library")
 extern pub fn SendAmigaGuideCmdA(cl: *u8, cmd: *u8, attrs: *TagItem) -> i32
-// Varargs function SendAmigaGuideCmd skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn SendAmigaGuideCmd(cl: *u8, cmd: *u8, attrs: u32, ...args) -> i32
 /// Unlock an AmigaGuide client.     (V34)
 ///
 /// This function is used to release a lock obtained with LockAmigaGuideBase().
@@ -112,7 +117,8 @@ extern pub fn SendAmigaGuideCmdA(cl: *u8, cmd: *u8, attrs: *TagItem) -> i32
 /// See also: LockAmigaGuideBase().
 @library("amigaguide.library")
 extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
-// Varargs function SetAmigaGuideAttrs skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn SetAmigaGuideAttrs(cl: *u8, attrs: u32, ...args) -> i32
 /// Get an AmigaGuide attribute.        (V34)
 ///
 /// This function is used to obtain attributes from AmigaGuide.
@@ -122,7 +128,7 @@ extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
 ///
 /// See also: SetAmigaGuideAttrsA()
 @library("amigaguide.library")
-extern pub fn GetAmigaGuideAttr(tag: *u8 /* Tag */, cl: *u8, storage: *u8) -> i32
+extern pub fn GetAmigaGuideAttr(tag: u32, cl: *u8, storage: *u32) -> i32
 @library("amigaguide.library")
 extern pub fn LoadXRef(lock: i32, name: *u8) -> i32
 @library("amigaguide.library")
@@ -139,10 +145,12 @@ extern pub fn ExpungeXRef()
 /// See also: RemoveAmigaGuideHostA()
 @library("amigaguide.library")
 extern pub fn AddAmigaGuideHostA(h: *Hook, name: *u8, attrs: *TagItem) -> *u8
-// Varargs function AddAmigaGuideHost skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn AddAmigaGuideHost(h: *Hook, name: *u8, attrs: u32, ...args) -> *u8
 @library("amigaguide.library")
 extern pub fn RemoveAmigaGuideHostA(hh: *u8, attrs: *TagItem) -> i32
-// Varargs function RemoveAmigaGuideHost skipped - needs manual implementation
+@library("amigaguide.library")
+extern pub fn RemoveAmigaGuideHost(hh: *u8, attrs: u32, ...args) -> i32
 /// Get an AmigaGuide string.
 ///
 /// This function is used to obtain a localized string given the ID.

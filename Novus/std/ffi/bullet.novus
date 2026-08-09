@@ -17,10 +17,13 @@ extern pub fn OpenEngine() -> *GlyphEngine
 extern pub fn CloseEngine(glyphEngine: *GlyphEngine)
 @library("bullet.library")
 extern pub fn SetInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
-// Varargs function SetInfo skipped - needs manual implementation
+@library("bullet.library")
+extern pub fn SetInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
 @library("bullet.library")
 extern pub fn ObtainInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
-// Varargs function ObtainInfo skipped - needs manual implementation
+@library("bullet.library")
+extern pub fn ObtainInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
 @library("bullet.library")
 extern pub fn ReleaseInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
-// Varargs function ReleaseInfo skipped - needs manual implementation
+@library("bullet.library")
+extern pub fn ReleaseInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32

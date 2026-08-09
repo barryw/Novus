@@ -10,9 +10,11 @@
 ; LONG SPFix(FLOAT parm)
 	xdef	_SPFix
 _SPFix:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPFlt_stub,code
@@ -20,9 +22,11 @@ _SPFix:
 ; FLOAT SPFlt(LONG integer)
 	xdef	_SPFlt
 _SPFlt:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPCmp_stub,code
@@ -30,10 +34,12 @@ _SPFlt:
 ; LONG SPCmp(FLOAT leftParm, FLOAT rightParm)
 	xdef	_SPCmp
 _SPCmp:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPTst_stub,code
@@ -41,9 +47,11 @@ _SPCmp:
 ; LONG SPTst(FLOAT parm)
 	xdef	_SPTst
 _SPTst:
-	move.l	4(sp),d1
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
 	movea.l	_MathBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPAbs_stub,code
@@ -51,9 +59,11 @@ _SPTst:
 ; FLOAT SPAbs(FLOAT parm)
 	xdef	_SPAbs
 _SPAbs:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPNeg_stub,code
@@ -61,9 +71,11 @@ _SPAbs:
 ; FLOAT SPNeg(FLOAT parm)
 	xdef	_SPNeg
 _SPNeg:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPAdd_stub,code
@@ -71,10 +83,12 @@ _SPNeg:
 ; FLOAT SPAdd(FLOAT leftParm, FLOAT rightParm)
 	xdef	_SPAdd
 _SPAdd:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPSub_stub,code
@@ -82,10 +96,12 @@ _SPAdd:
 ; FLOAT SPSub(FLOAT leftParm, FLOAT rightParm)
 	xdef	_SPSub
 _SPSub:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-72(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPMul_stub,code
@@ -93,10 +109,12 @@ _SPSub:
 ; FLOAT SPMul(FLOAT leftParm, FLOAT rightParm)
 	xdef	_SPMul
 _SPMul:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-78(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPDiv_stub,code
@@ -104,10 +122,12 @@ _SPMul:
 ; FLOAT SPDiv(FLOAT leftParm, FLOAT rightParm)
 	xdef	_SPDiv
 _SPDiv:
-	move.l	4(sp),d1
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d1
+	move.l	12(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-84(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPFloor_stub,code
@@ -115,9 +135,11 @@ _SPDiv:
 ; FLOAT SPFloor(FLOAT parm)
 	xdef	_SPFloor
 _SPFloor:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-90(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SPCeil_stub,code
@@ -125,8 +147,10 @@ _SPFloor:
 ; FLOAT SPCeil(FLOAT parm)
 	xdef	_SPCeil
 _SPCeil:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_MathBase,a6
 	jsr	-96(a6)
+	movem.l	(sp)+,a6
 	rts
 

@@ -9,6 +9,7 @@ bitmap|intuition/classes.h,intuition/intuition.h
 bullet|diskfont/glyph.h,utility/tagitem.h
 button|intuition/classes.h,intuition/intuition.h
 card_resource|exec/resident.h,exec/types.h,resources/card.h
+cia_resource|exec/interrupts.h,exec/libraries.h,exec/types.h
 checkbox|intuition/classes.h,intuition/intuition.h
 chooser|intuition/classes.h,intuition/intuition.h
 clicktab|intuition/classes.h,intuition/intuition.h

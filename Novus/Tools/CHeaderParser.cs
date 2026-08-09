@@ -26,6 +26,7 @@ public class CHeaderParser
         public string TagName { get; set; } = "";
         public List<CField> Fields { get; set; } = new();
         public bool HasUnion { get; set; }
+        public bool IsUnion { get; set; }
         public bool IsTypedef { get; set; }
     }
 
@@ -96,7 +97,8 @@ public class CHeaderParser
             }
 
             // Parse struct definitions
-            if ((line.StartsWith("struct") || line.StartsWith("typedef struct")) &&
+            if ((line.StartsWith("struct") || line.StartsWith("typedef struct") ||
+                 line.StartsWith("union") || line.StartsWith("typedef union")) &&
                 (line.Contains("{") || (i + 1 < preprocessed.Count && preprocessed[i + 1].TrimStart().StartsWith("{"))))
             {
                 var structDef = ParseStruct(preprocessed, ref i);
@@ -116,11 +118,20 @@ public class CHeaderParser
             }
 
             // Parse enum definitions
-            if (line.StartsWith("enum") && line.Contains("{"))
+            if (line.StartsWith("enum") &&
+                (line.Contains("{") ||
+                 (i + 1 < preprocessed.Count && preprocessed[i + 1].TrimStart().StartsWith("{"))))
             {
                 var enumDef = ParseEnum(preprocessed, ref i);
                 if (enumDef != null)
+                {
                     header.Enums.Add(enumDef);
+                    header.Constants.AddRange(enumDef.Values.Select(value => new CConstant
+                    {
+                        Name = value.Name,
+                        Value = value.Value
+                    }));
+                }
             }
 
             // Parse includes and recursively process them
@@ -165,8 +176,24 @@ public class CHeaderParser
     {
         var result = new List<string>();
         bool inBlockComment = false;
+        var logicalLines = new List<string>();
+        var continued = "";
 
-        foreach (var line in lines)
+        foreach (var physicalLine in lines)
+        {
+            var part = physicalLine.TrimEnd();
+            if (part.EndsWith('\\'))
+            {
+                continued += part[..^1] + " ";
+                continue;
+            }
+            logicalLines.Add(continued + part);
+            continued = "";
+        }
+        if (continued.Length > 0)
+            logicalLines.Add(continued);
+
+        foreach (var line in logicalLines)
         {
             var trimmed = line.Trim();
 
@@ -254,13 +281,22 @@ public class CHeaderParser
 
         // Extract struct name from either `struct Name {` or the common NDK
         // style where the opening brace is on the following line.
-        var isTypedef = line.StartsWith("typedef struct", StringComparison.Ordinal);
-        var structMatch = Regex.Match(line, @"struct(?:\s+([A-Za-z_][A-Za-z0-9_]*))?");
+        var isTypedef = line.StartsWith("typedef struct", StringComparison.Ordinal) ||
+                        line.StartsWith("typedef union", StringComparison.Ordinal);
+        var isUnion = line.StartsWith("union", StringComparison.Ordinal) ||
+                      line.StartsWith("typedef union", StringComparison.Ordinal);
+        var structMatch = Regex.Match(line, @"(?:struct|union)(?:\s+([A-Za-z_][A-Za-z0-9_]*))?");
         if (!structMatch.Success || !isTypedef && !structMatch.Groups[1].Success)
             return null;
 
         var structName = structMatch.Groups[1].Value;
-        var structDef = new CStruct { Name = structName, TagName = structName, IsTypedef = isTypedef };
+        var structDef = new CStruct
+        {
+            Name = structName,
+            TagName = structName,
+            IsTypedef = isTypedef,
+            IsUnion = isUnion
+        };
 
         // Check if this is a single-line struct: struct Name { fields };
         if (line.Contains("};"))
@@ -273,7 +309,9 @@ public class CHeaderParser
                 var content = line.Substring(startBrace + 1, endBrace - startBrace - 1).Trim();
                 if (!string.IsNullOrWhiteSpace(content))
                 {
-                    structDef.Fields.AddRange(ParseFields(content + ";"));
+                    foreach (var declaration in SplitTopLevel(content, ';'))
+                        if (!string.IsNullOrWhiteSpace(declaration))
+                            structDef.Fields.AddRange(ParseFields(declaration.Trim() + ";"));
                 }
             }
             if (isTypedef)
@@ -466,7 +504,11 @@ public class CHeaderParser
 
         var enumDef = new CEnum { Name = enumName };
 
+        if (!line.Contains("{"))
+            index++; // Move to the separate opening-brace line
         index++; // Move past opening brace
+
+        string? previousName = null;
 
         // Parse enum values
         while (index < lines.Count)
@@ -477,14 +519,20 @@ public class CHeaderParser
                 break;
 
             // Parse: NAME = value, or NAME,
-            var valueMatch = Regex.Match(valueLine, @"([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*(.+?))?[,}]");
+            var valueMatch = Regex.Match(valueLine,
+                @"^([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*(.*?))?\s*(?:[,}]|$)");
             if (valueMatch.Success)
             {
+                var name = valueMatch.Groups[1].Value;
+                var explicitValue = valueMatch.Groups.Count > 2 ? valueMatch.Groups[2].Value.Trim() : "";
                 enumDef.Values.Add(new CEnumValue
                 {
-                    Name = valueMatch.Groups[1].Value,
-                    Value = valueMatch.Groups.Count > 2 ? valueMatch.Groups[2].Value.Trim() : ""
+                    Name = name,
+                    Value = string.IsNullOrWhiteSpace(explicitValue)
+                        ? previousName == null ? "0" : $"({previousName} + 1)"
+                        : explicitValue
                 });
+                previousName = name;
             }
 
             index++;

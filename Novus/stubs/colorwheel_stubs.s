@@ -10,10 +10,12 @@
 ; VOID ConvertHSBToRGB(struct ColorWheelHSB * hsb, struct ColorWheelRGB * rgb)
 	xdef	_ConvertHSBToRGB
 _ConvertHSBToRGB:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ColorWheelBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ConvertRGBToHSB_stub,code
@@ -21,9 +23,11 @@ _ConvertHSBToRGB:
 ; VOID ConvertRGBToHSB(struct ColorWheelRGB * rgb, struct ColorWheelHSB * hsb)
 	xdef	_ConvertRGBToHSB
 _ConvertRGBToHSB:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_ColorWheelBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 

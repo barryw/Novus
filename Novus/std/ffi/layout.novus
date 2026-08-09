@@ -25,6 +25,7 @@ extern pub fn LayoutLimits(gadget: *Gadget, limits: *LayoutLimits, font: *TextFo
 extern pub fn PAGE_GetClass() -> *u8
 @library("layout.library")
 extern pub fn SetPageGadgetAttrsA(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, tags: *TagItem) -> u32
-// Varargs function SetPageGadgetAttrs skipped - needs manual implementation
+@library("layout.library")
+extern pub fn SetPageGadgetAttrs(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, ...args) -> u32
 @library("layout.library")
 extern pub fn RefreshPageGadget(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester)

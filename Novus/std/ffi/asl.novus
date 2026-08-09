@@ -51,7 +51,8 @@ extern pub fn RequestFile(fileReq: *FileRequester) -> i16
 /// See also: AslRequest(), FreeAslRequest()
 @library("asl.library")
 extern pub fn AllocAslRequest(reqType: u32, tagList: *TagItem) -> *u8
-// Varargs function AllocAslRequestTags skipped - needs manual implementation
+@library("asl.library")
+extern pub fn AllocAslRequestTags(reqType: u32, tagList: u32, ...args) -> *u8
 /// Frees resources allocated by AllocAslRequest(). (V36)
 ///
 /// FreeAslRequest() frees any system resources allocated by AllocAslRequest().
@@ -90,7 +91,8 @@ extern pub fn FreeAslRequest(requester: *u8)
 /// See also: AllocAslRequest(), FreeAslRequest()
 @library("asl.library")
 extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i16
-// Varargs function AslRequestTags skipped - needs manual implementation
+@library("asl.library")
+extern pub fn AslRequestTags(requester: *u8, tagList: u32, ...args) -> i16
 /// Attempt to abort an asl requester. (V44)
 ///
 /// The different types of asl requesters are modal (as of V44). Yet at times it

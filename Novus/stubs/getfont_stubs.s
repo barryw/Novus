@@ -10,7 +10,9 @@
 ; Class * GETFONT_GetClass()
 	xdef	_GETFONT_GetClass
 _GETFONT_GetClass:
+	movem.l	a6,-(sp)
 	movea.l	_GetFontBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 

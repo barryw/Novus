@@ -10,9 +10,11 @@
 ; struct TextFont * OpenDiskFont(struct TextAttr * textAttr)
 	xdef	_OpenDiskFont
 _OpenDiskFont:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_DiskfontBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_AvailFonts_stub,code
@@ -20,11 +22,13 @@ _OpenDiskFont:
 ; LONG AvailFonts(STRPTR buffer, LONG bufBytes, LONG flags)
 	xdef	_AvailFonts
 _AvailFonts:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_DiskfontBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_NewFontContents_stub,code
@@ -32,10 +36,12 @@ _AvailFonts:
 ; struct FontContentsHeader * NewFontContents(BPTR fontsLock, STRPTR fontName)
 	xdef	_NewFontContents
 _NewFontContents:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_DiskfontBase,a6
 	jsr	-42(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DisposeFontContents_stub,code
@@ -43,9 +49,11 @@ _NewFontContents:
 ; VOID DisposeFontContents(struct FontContentsHeader * fontContentsHeader)
 	xdef	_DisposeFontContents
 _DisposeFontContents:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_DiskfontBase,a6
 	jsr	-48(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_NewScaledDiskFont_stub,code
@@ -53,10 +61,12 @@ _DisposeFontContents:
 ; struct DiskFont * NewScaledDiskFont(struct TextFont * sourceFont, struct TextAttr * destTextAttr)
 	xdef	_NewScaledDiskFont
 _NewScaledDiskFont:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
 	movea.l	_DiskfontBase,a6
 	jsr	-54(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetDiskFontCtrl_stub,code
@@ -64,9 +74,11 @@ _NewScaledDiskFont:
 ; LONG GetDiskFontCtrl(LONG tagid)
 	xdef	_GetDiskFontCtrl
 _GetDiskFontCtrl:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_DiskfontBase,a6
 	jsr	-60(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_SetDiskFontCtrlA_stub,code
@@ -74,8 +86,22 @@ _GetDiskFontCtrl:
 ; VOID SetDiskFontCtrlA(struct TagItem * taglist)
 	xdef	_SetDiskFontCtrlA
 _SetDiskFontCtrlA:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_DiskfontBase,a6
 	jsr	-66(a6)
+	movem.l	(sp)+,a6
+	rts
+
+	section	_SetDiskFontCtrl_stub,code
+
+; VOID SetDiskFontCtrl(... )
+	xdef	_SetDiskFontCtrl
+_SetDiskFontCtrl:
+	movem.l	a6,-(sp)
+	lea	8(sp),a0
+	movea.l	_DiskfontBase,a6
+	jsr	-66(a6)
+	movem.l	(sp)+,a6
 	rts
 

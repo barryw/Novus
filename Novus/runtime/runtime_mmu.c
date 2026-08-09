@@ -762,7 +762,9 @@ void __novus_init_mmu_protection(void)
     // This calls the generated init function which sets up the symbol table
     __novus_init_debug_symbols();
 
-    __novus_enable_null_page_protection();
+    // AmigaOS stores SysBase at address 4, inside the MMU's first page. Marking
+    // that page invalid breaks every normal library call; generated null checks
+    // provide per-access protection without mutating the system MMU context.
 }
 
 /**

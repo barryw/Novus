@@ -10,20 +10,23 @@
 ; UBYTE * CreateArgstring(const STRPTR string, ULONG length)
 	xdef	_CreateArgstring
 _CreateArgstring:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_RexxSysBase,a6
 	jsr	-126(a6)
+	movem.l	(sp)+,a6
 	rts
-
 	section	_DeleteArgstring_stub,code
 
 ; VOID DeleteArgstring(UBYTE * argstring)
 	xdef	_DeleteArgstring
 _DeleteArgstring:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_RexxSysBase,a6
 	jsr	-132(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LengthArgstring_stub,code
@@ -31,9 +34,11 @@ _DeleteArgstring:
 ; ULONG LengthArgstring(const UBYTE * argstring)
 	xdef	_LengthArgstring
 _LengthArgstring:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_RexxSysBase,a6
 	jsr	-138(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_CreateRexxMsg_stub,code
@@ -41,11 +46,13 @@ _LengthArgstring:
 ; struct RexxMsg * CreateRexxMsg(const struct MsgPort * port, CONST_STRPTR extension, CONST_STRPTR host)
 	xdef	_CreateRexxMsg
 _CreateRexxMsg:
-	movea.l	4(sp),a0
-	movea.l	8(sp),a1
-	move.l	12(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	movea.l	12(sp),a1
+	move.l	16(sp),d0
 	movea.l	_RexxSysBase,a6
 	jsr	-144(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_DeleteRexxMsg_stub,code
@@ -53,9 +60,11 @@ _CreateRexxMsg:
 ; VOID DeleteRexxMsg(struct RexxMsg * packet)
 	xdef	_DeleteRexxMsg
 _DeleteRexxMsg:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_RexxSysBase,a6
 	jsr	-150(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ClearRexxMsg_stub,code
@@ -63,10 +72,12 @@ _DeleteRexxMsg:
 ; VOID ClearRexxMsg(struct RexxMsg * msgptr, ULONG count)
 	xdef	_ClearRexxMsg
 _ClearRexxMsg:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
 	movea.l	_RexxSysBase,a6
 	jsr	-156(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FillRexxMsg_stub,code
@@ -74,11 +85,13 @@ _ClearRexxMsg:
 ; BOOL FillRexxMsg(struct RexxMsg * msgptr, ULONG count, ULONG mask)
 	xdef	_FillRexxMsg
 _FillRexxMsg:
-	movea.l	4(sp),a0
-	move.l	8(sp),d0
-	move.l	12(sp),d1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
+	move.l	12(sp),d0
+	move.l	16(sp),d1
 	movea.l	_RexxSysBase,a6
 	jsr	-162(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_IsRexxMsg_stub,code
@@ -86,9 +99,11 @@ _FillRexxMsg:
 ; BOOL IsRexxMsg(const struct RexxMsg * msgptr)
 	xdef	_IsRexxMsg
 _IsRexxMsg:
-	movea.l	4(sp),a0
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a0
 	movea.l	_RexxSysBase,a6
 	jsr	-168(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_LockRexxBase_stub,code
@@ -96,9 +111,11 @@ _IsRexxMsg:
 ; VOID LockRexxBase(ULONG resource)
 	xdef	_LockRexxBase
 _LockRexxBase:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_RexxSysBase,a6
 	jsr	-450(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_UnlockRexxBase_stub,code
@@ -106,7 +123,9 @@ _LockRexxBase:
 ; VOID UnlockRexxBase(ULONG resource)
 	xdef	_UnlockRexxBase
 _UnlockRexxBase:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_RexxSysBase,a6
 	jsr	-456(a6)
+	movem.l	(sp)+,a6
 	rts

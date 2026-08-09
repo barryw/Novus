@@ -165,6 +165,28 @@ public class SfdParser
             }
         }
 
+        // cia.resource is the one NDK SFD without ==libname/==base: callers
+        // pass the opened ciaa.resource or ciab.resource pointer in A6.
+        if (string.IsNullOrWhiteSpace(library.LibraryName) &&
+            Path.GetFileName(filePath).Equals("cia_lib.sfd", StringComparison.OrdinalIgnoreCase))
+            library.LibraryName = "cia.resource";
+
+        // NDK 3.9's SFD crosses the names/types for this compatibility alias;
+        // clib/intuition_protos.h and intuition_pragmas.h give the real ABI.
+        if (library.LibraryName == "intuition.library")
+        {
+            var reportMouse1 = library.Functions.SingleOrDefault(function => function.Name == "ReportMouse1");
+            if (reportMouse1 != null)
+            {
+                reportMouse1.Parameters =
+                [
+                    new SfdParameter { Type = "struct Window *", Name = "window" },
+                    new SfdParameter { Type = "LONG", Name = "flag" }
+                ];
+                reportMouse1.Registers = ["a0", "d0"];
+            }
+        }
+
         return library;
     }
 
@@ -335,9 +357,22 @@ public class SfdParser
             ["FLOAT"] = "f32",
             ["DOUBLE"] = "f64",
             ["char"] = "i8",
+            ["signed char"] = "i8",
+            ["unsigned char"] = "u8",
             ["short"] = "i16",
+            ["signed short"] = "i16",
+            ["unsigned short"] = "u16",
+            ["USHORT"] = "u16",
             ["int"] = "i32",
+            ["signed int"] = "i32",
+            ["unsigned int"] = "u32",
+            ["long"] = "i32",
+            ["signed long"] = "i32",
+            ["unsigned long"] = "u32",
+            ["QUAD"] = "i64",
+            ["UQUAD"] = "u64",
             ["BSTR"] = "i32",
+            ["CPTR"] = "u32",
             ["FIXED"] = "i32",
             ["VUserStuff"] = "i16",
             ["BUserStuff"] = "i16",
@@ -351,6 +386,10 @@ public class SfdParser
             ["ClassID"] = "*u8",
             ["BPTR"] = "i32",  // BCPL pointer - special case!
             ["PLANEPTR"] = "*u8",
+            ["DisplayInfoHandle"] = "*u8",
+            ["Msg"] = "*u32",
+            ["RESOURCEFILE"] = "*u8",
+            ["RESOURCEID"] = "u32",
 
             // Void
             ["VOID"] = "void",
@@ -365,6 +404,7 @@ public class SfdParser
 
     public static string MapAmigaTypeToNovus(string amigaType)
     {
+        amigaType = Regex.Replace(amigaType.Trim(), @"\s+", " ");
         var typeMap = GetAmigaTypeMap();
 
         // Try direct lookup
@@ -431,11 +471,11 @@ public class SfdParser
             return "*u8";  // Generic pointers become *u8
 
         // Handle struct types without pointer (unusual, but possible)
-        if (amigaType.StartsWith("struct "))
+        if (amigaType.StartsWith("struct ") || amigaType.StartsWith("union "))
         {
             var structMatch = System.Text.RegularExpressions.Regex.Match(
                 amigaType,
-                @"struct\s+(\w+)");
+                @"(?:struct|union)\s+(\w+)");
 
             if (structMatch.Success)
             {

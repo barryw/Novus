@@ -15,15 +15,18 @@ from std::ffi::amiga_structs import *
 extern pub fn LISTBROWSER_GetClass() -> *IClass
 @library("listbrowser.library")
 extern pub fn AllocListBrowserNodeA(columns: u16, tags: *TagItem) -> *Node
-// Varargs function AllocListBrowserNode skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn AllocListBrowserNode(columns: u16, ...args) -> *Node
 @library("listbrowser.library")
 extern pub fn FreeListBrowserNode(node: *Node)
 @library("listbrowser.library")
 extern pub fn SetListBrowserNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function SetListBrowserNodeAttrs skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn SetListBrowserNodeAttrs(node: *Node, ...args)
 @library("listbrowser.library")
 extern pub fn GetListBrowserNodeAttrsA(node: *Node, tags: *TagItem)
-// Varargs function GetListBrowserNodeAttrs skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn GetListBrowserNodeAttrs(node: *Node, ...args)
 @library("listbrowser.library")
 extern pub fn ListBrowserSelectAll(list: *List)
 @library("listbrowser.library")
@@ -38,13 +41,16 @@ extern pub fn HideAllListBrowserChildren(list: *List)
 extern pub fn FreeListBrowserList(list: *List)
 @library("listbrowser.library")
 extern pub fn AllocLBColumnInfoA(columns: u16, tags: *TagItem) -> *ColumnInfo
-// Varargs function AllocLBColumnInfo skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn AllocLBColumnInfo(columns: u16, ...args) -> *ColumnInfo
 @library("listbrowser.library")
 extern pub fn SetLBColumnInfoAttrsA(columninfo: *ColumnInfo, tags: *TagItem) -> i32
-// Varargs function SetLBColumnInfoAttrs skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn SetLBColumnInfoAttrs(columninfo: *ColumnInfo, ...args) -> i32
 @library("listbrowser.library")
 extern pub fn GetLBColumnInfoAttrsA(columninfo: *ColumnInfo, tags: *TagItem) -> i32
-// Varargs function GetLBColumnInfoAttrs skipped - needs manual implementation
+@library("listbrowser.library")
+extern pub fn GetLBColumnInfoAttrs(columninfo: *ColumnInfo, ...args) -> i32
 @library("listbrowser.library")
 extern pub fn FreeLBColumnInfo(columninfo: *ColumnInfo)
 @library("listbrowser.library")

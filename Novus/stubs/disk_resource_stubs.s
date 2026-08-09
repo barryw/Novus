@@ -10,9 +10,11 @@
 ; BOOL AllocUnit(LONG unitNum)
 	xdef	_AllocUnit
 _AllocUnit:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_DiskBase,a6
 	jsr	-6(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_FreeUnit_stub,code
@@ -20,9 +22,11 @@ _AllocUnit:
 ; VOID FreeUnit(LONG unitNum)
 	xdef	_FreeUnit
 _FreeUnit:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_DiskBase,a6
 	jsr	-12(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetUnit_stub,code
@@ -30,9 +34,11 @@ _FreeUnit:
 ; struct DiscResourceUnit * GetUnit(struct DiscResourceUnit * unitPointer)
 	xdef	_GetUnit
 _GetUnit:
-	movea.l	4(sp),a1
+	movem.l	a6,-(sp)
+	movea.l	8(sp),a1
 	movea.l	_DiskBase,a6
 	jsr	-18(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GiveUnit_stub,code
@@ -40,8 +46,10 @@ _GetUnit:
 ; VOID GiveUnit()
 	xdef	_GiveUnit
 _GiveUnit:
+	movem.l	a6,-(sp)
 	movea.l	_DiskBase,a6
 	jsr	-24(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_GetUnitID_stub,code
@@ -49,9 +57,11 @@ _GiveUnit:
 ; LONG GetUnitID(LONG unitNum)
 	xdef	_GetUnitID
 _GetUnitID:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_DiskBase,a6
 	jsr	-30(a6)
+	movem.l	(sp)+,a6
 	rts
 
 	section	_ReadUnitID_stub,code
@@ -59,8 +69,10 @@ _GetUnitID:
 ; LONG ReadUnitID(LONG unitNum)
 	xdef	_ReadUnitID
 _ReadUnitID:
-	move.l	4(sp),d0
+	movem.l	a6,-(sp)
+	move.l	8(sp),d0
 	movea.l	_DiskBase,a6
 	jsr	-36(a6)
+	movem.l	(sp)+,a6
 	rts
 

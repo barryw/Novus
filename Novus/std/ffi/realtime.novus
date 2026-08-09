@@ -38,7 +38,8 @@ extern pub fn LockRealTime(lockType: u32) -> *u8
 extern pub fn UnlockRealTime(lock: *u8)
 @library("realtime.library")
 extern pub fn CreatePlayerA(tagList: *TagItem) -> *Player
-// Varargs function CreatePlayer skipped - needs manual implementation
+@library("realtime.library")
+extern pub fn CreatePlayer(tagList: u32, ...args) -> *Player
 /// Delete a player. (V37)
 ///
 /// Deletes the specified player. Flushes the conductor that the player was
@@ -52,7 +53,8 @@ extern pub fn CreatePlayerA(tagList: *TagItem) -> *Player
 extern pub fn DeletePlayer(player: *Player)
 @library("realtime.library")
 extern pub fn SetPlayerAttrsA(player: *Player, tagList: *TagItem) -> i16
-// Varargs function SetPlayerAttrs skipped - needs manual implementation
+@library("realtime.library")
+extern pub fn SetPlayerAttrs(player: *Player, tagList: u32, ...args) -> i16
 /// Change the play state of a player's
 ///
 /// Changes the play state of the conductor referenced by the player. The states
@@ -126,4 +128,5 @@ extern pub fn FindConductor(name: *u8) -> *Conductor
 /// See also: CreatePlayer(), SetPlayerAttrs()
 @library("realtime.library")
 extern pub fn GetPlayerAttrsA(player: *Player, tagList: *TagItem) -> u32
-// Varargs function GetPlayerAttrs skipped - needs manual implementation
+@library("realtime.library")
+extern pub fn GetPlayerAttrs(player: *Player, tagList: u32, ...args) -> u32
