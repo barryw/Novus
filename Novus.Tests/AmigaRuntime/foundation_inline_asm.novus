@@ -1,0 +1,48 @@
+// Target-executed conformance tests for 68020 inline assembly constraints.
+
+from std::test::test import expect
+
+fn asm_magic() -> u32 {
+    return unsafe asm() -> u32 in d0 {
+        moveq #42,d0
+    }
+}
+
+fn asm_add(a: u32, b: u32) -> u32 {
+    return unsafe asm(a in d0, b in d1) -> u32 {
+        add.l d1,d0
+    }
+}
+
+fn asm_with_clobbers(value: u32) -> u32 {
+    return unsafe asm(value in d0) -> u32 clobbers(d2, d3) {
+        move.l d0,d2
+        move.l d0,d3
+        add.l d2,d3
+        add.l d3,d0
+    }
+}
+
+fn asm_store(destination: *u32, value: u32) {
+    unsafe asm(destination in a0, value in d0) volatile clobbers(memory) {
+        move.l d0,(a0)
+    }
+}
+
+@test("inline asm outputs and explicit registers")
+pub fn foundation_asm_outputs() {
+    expect(asm_magic() == 42u32, "constant output")
+    expect(asm_add(10u32, 32u32) == 42u32, "input registers")
+}
+
+@test("inline asm clobber declarations preserve callers")
+pub fn foundation_asm_clobbers() {
+    expect(asm_with_clobbers(10u32) == 30u32, "scratch registers")
+}
+
+@test("inline asm memory clobber writes through pointers")
+pub fn foundation_asm_memory() {
+    var value: u32 = 0u32
+    asm_store((*u32)&value, 42u32)
+    expect(value == 42u32, "memory output")
+}

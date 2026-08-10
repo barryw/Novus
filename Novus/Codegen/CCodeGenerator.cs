@@ -187,7 +187,7 @@ public partial class CCodeGenerator
     /// The dictionary is cleared at the start of each function (see EmitFunction and
     /// EmitFunctionToBuilder) to prevent stale entries from leaking between functions.
     /// </summary>
-    private Dictionary<string, string> _inlineableComparisons = new();
+    private Dictionary<string, (string Expression, IrType OperandType)> _inlineableComparisons = new();
 
     /// <summary>
     /// OPTIMIZATION: Track comparison variables that can be safely inlined without the
@@ -252,6 +252,10 @@ public partial class CCodeGenerator
                         _output.AppendLine($"    {destExpr}[{i}].{kvp.Key} = {fieldValue};");
                     }
                 }
+                else if (elem is IrArrayLiteral nestedArray && arrayType.ElementType is IrArrayType nestedType)
+                {
+                    EmitSafeArrayCopy($"{destExpr}[{i}]", nestedArray, nestedType);
+                }
                 else
                 {
                     var elemValue = EmitValue(elem);
@@ -266,7 +270,7 @@ public partial class CCodeGenerator
         // We use a local static const array which VBCC places in .rodata with proper alignment
         var initValue = EmitArrayLiteralForInitializer(arrayLiteral);
         _output.AppendLine($"    {{");
-        _output.AppendLine($"        static const {elementType} __init[{size}] = {initValue};");
+        _output.AppendLine($"        static const {GetCVariableDeclaration(arrayType, "__init", $"= {initValue}")};");
         _output.AppendLine($"        __novus_memcpy((uint8_t*){destExpr}, (const uint8_t*)__init, sizeof({destExpr}));");
         _output.AppendLine($"    }}");
     }
@@ -1097,6 +1101,16 @@ public partial class CCodeGenerator
         sb.AppendLine("extern int32_t __novus_is_null(void* ptr);");
         sb.AppendLine("extern int32_t __novus_cmp_eq_i32(int32_t a, int32_t b);");
         sb.AppendLine("extern int32_t __novus_cmp_ne_i32(int32_t a, int32_t b);");
+        sb.AppendLine("extern int32_t __novus_cmp_eq_i64(int64_t a, int64_t b);");
+        sb.AppendLine("extern int32_t __novus_cmp_ne_i64(int64_t a, int64_t b);");
+        sb.AppendLine("extern int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b);");
+        sb.AppendLine("extern int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b);");
+        sb.AppendLine("extern int32_t __novus_cmp_eq_f32(float a, float b);");
+        sb.AppendLine("extern int32_t __novus_cmp_ne_f32(float a, float b);");
+        sb.AppendLine("extern int32_t __novus_cmp_eq_f64(double a, double b);");
+        sb.AppendLine("extern int32_t __novus_cmp_ne_f64(double a, double b);");
+        sb.AppendLine("extern float __novus_f32_from_bits(uint32_t bits);");
+        sb.AppendLine("extern double __novus_f64_from_bits(uint64_t bits);");
         sb.AppendLine();
 
         sb.AppendLine("#endif // NOVUS_TYPES_H");
@@ -1755,6 +1769,11 @@ public partial class CCodeGenerator
         var parameters = GetParameterList(function, shouldUseOutParam);
         var funcName = MangleName(function);
 
+        foreach (var param in function.Parameters)
+        {
+            _declaredVariables.Add(SanitizeVariableName(param.Name));
+        }
+
         // Special case: main must return 'int' for VBCC compatibility
         if (funcName == "main" && returnType == "int32_t")
         {
@@ -1890,7 +1909,7 @@ public partial class CCodeGenerator
         foreach (var (varName, varType) in deferReferencedVars)
         {
             var sanitizedName = SanitizeVariableName(varName);
-            if (!localDeclVars.ContainsKey(sanitizedName))
+            if (!_declaredVariables.Contains(sanitizedName) && !localDeclVars.ContainsKey(sanitizedName))
             {
                 var decl = GetCVariableDeclaration(varType, sanitizedName);
                 targetBuilder.AppendLine($"    {decl};  // Pre-declared for defer cleanup");
@@ -1911,16 +1930,12 @@ public partial class CCodeGenerator
 
             if (isArray)
             {
-                // Array declarations need special syntax
-                var arrayType = (IrArrayType)varType;
-                var elementType = GetCType(arrayType.ElementType);
-
                 // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
                 // to ensure they persist for the entire program duration. This is critical
                 // when the array is passed to external functions (like MUI's make_radio)
                 // that may store pointers to the array.
                 var staticPrefix = staticConstArrays.Contains(varName) ? "static " : "";
-                targetBuilder.AppendLine($"    {staticPrefix}{elementType} {varName}[{arraySize}];");
+                targetBuilder.AppendLine($"    {staticPrefix}{GetCVariableDeclaration(varType, varName)};");
             }
             else
             {
@@ -2207,9 +2222,7 @@ public partial class CCodeGenerator
         if (staticVar.Type is IrArrayType arrayType)
         {
             var initialValue = EmitValue(staticVar.InitialValue);
-            var elementType = GetCType(arrayType.ElementType);
-            var size = arrayType.Length;
-            sb.AppendLine($"{sectionAttr}{keywordStr}{elementType} {staticVar.Name}[{size}] = {initialValue};");
+            sb.AppendLine($"{sectionAttr}{keywordStr}{GetCVariableDeclaration(arrayType, staticVar.Name, $"= {initialValue}")};");
         }
         // VBCC FIX: For struct literals, use designated initializer syntax WITHOUT the type cast
         // VBCC doesn't support compound literal syntax `(Type){ ... }` for static initialization
@@ -2258,9 +2271,7 @@ public partial class CCodeGenerator
         // Special handling for arrays - use array syntax instead of pointer syntax
         if (staticVar.Type is IrArrayType arrayType)
         {
-            var elementType = GetCType(arrayType.ElementType);
-            var size = arrayType.Length;
-            sb.AppendLine($"extern {keywordStr}{elementType} {staticVar.Name}[{size}];");
+            sb.AppendLine($"extern {keywordStr}{GetCVariableDeclaration(arrayType, staticVar.Name)};");
         }
         else
         {
@@ -2280,8 +2291,7 @@ public partial class CCodeGenerator
         sb.AppendLine($"typedef struct {{");
         for (int i = 0; i < tupleType.ElementTypes.Count; i++)
         {
-            var elementType = GetCType(tupleType.ElementTypes[i]);
-            sb.AppendLine($"    {elementType} __{i};");
+            sb.AppendLine($"    {GetCVariableDeclaration(tupleType.ElementTypes[i], $"__{i}")};");
         }
         sb.AppendLine($"}} {tupleName};");
         sb.AppendLine();
@@ -2369,8 +2379,7 @@ public partial class CCodeGenerator
                     paddingFieldIndex++;
                 }
 
-                var elementType = GetCType(arrayType.ElementType);
-                sb.AppendLine($"    {elementType} {field.Name}[{arrayType.Length}];");
+                sb.AppendLine($"    {GetCVariableDeclaration(arrayType, field.Name)};");
             }
             else
             {
@@ -4218,8 +4227,7 @@ public partial class CCodeGenerator
             // Special handling for arrays - use array syntax instead of pointer syntax
             if (staticVar.Type is IrArrayType arrayType)
             {
-                var elementType = GetCType(arrayType.ElementType);
-                _output.AppendLine($"{keywordStr}{elementType} {staticVar.Name}[{arrayType.Length}] = {initialValue};");
+                _output.AppendLine($"{keywordStr}{GetCVariableDeclaration(arrayType, staticVar.Name, $"= {initialValue}")};");
             }
             else
             {
@@ -4915,12 +4923,9 @@ public partial class CCodeGenerator
 
             if (isArray)
             {
-                var arrayType = (IrArrayType)varType;
-                var elementType = GetCType(arrayType.ElementType);
-
                 // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
                 var staticPrefix = staticConstArrays.Contains(varName) ? "static " : "";
-                _output.AppendLine($"    {staticPrefix}{elementType} {varName}[{arraySize}];");
+                _output.AppendLine($"    {staticPrefix}{GetCVariableDeclaration(varType, varName)};");
             }
             else
             {
@@ -5059,12 +5064,9 @@ public partial class CCodeGenerator
 
                     if (isArray)
                     {
-                        var arrayType = (IrArrayType)varType;
-                        var elementType = GetCType(arrayType.ElementType);
-
                         // LIFETIME FIX: Arrays filled with compile-time constants should be 'static'
                         var staticPrefix = (_currentStaticConstArrays?.Contains(varName) ?? false) ? "static " : "";
-                        _output.AppendLine($"        {staticPrefix}{elementType} {varName}[{arraySize}];");
+                        _output.AppendLine($"        {staticPrefix}{GetCVariableDeclaration(varType, varName)};");
                     }
                     else
                     {
@@ -5241,23 +5243,16 @@ public partial class CCodeGenerator
         // Emit debug line marker before the instruction if location changed
         MaybeEmitDebugLineMarker(instruction);
 
-        // OPTIMIZATION: Clear the safe-to-inline comparison set for instructions that could
-        // generate code with side effects (function calls, stores, etc.). This ensures we only
-        // inline comparisons when they immediately precede the conditional branch.
-        // We keep the set valid for: IrBinaryOp (adds to set), IrConditionalBranch (uses set),
-        // IrLabel (no code generated), IrBranch (no comparison-affecting code)
-        if (instruction is not (IrBinaryOp or IrConditionalBranch or IrLabel or IrBranch))
+        EmitNullChecks(instruction);
+
+        // A comparison is safe to inline only when its branch is the very next instruction.
+        // Once its stored slot can be reused, retaining the expression can make a later branch
+        // test stale operands instead of the slot's current value.
+        if (instruction is not IrConditionalBranch)
         {
             _safeToInlineComparisons.Clear();
-        }
-
-        // A held-back comparison store is only dead if the branch consuming it comes
-        // next. EmitConditionalBranch decides that; everything else forces a flush.
-        // A label counts as "everything else": another path can jump to it, so the
-        // slot may be read without this comparison having run.
-        if (_pendingComparisonStore != null && instruction is not IrConditionalBranch)
-        {
             FlushPendingComparisonStore();
+            _inlineableComparisons.Clear();
         }
 
         switch (instruction)
@@ -5387,6 +5382,79 @@ public partial class CCodeGenerator
                 // All standard IR instructions should be handled in the cases above.
                 _output.AppendLine($"    // Unhandled: {instruction.GetType().Name}");
                 break;
+        }
+    }
+
+    private void EmitNullChecks(IrInstruction instruction)
+    {
+        if (!_safetyLevel.EnableNullChecks()) return;
+
+        void Check(IrValue? value)
+        {
+            if (value == null) return;
+            switch (value)
+            {
+                case IrDereferenceValue dereference:
+                    Check(dereference.PointerValue);
+                    var pointer = EmitValue(dereference.PointerValue);
+                    if (_knownNonNullPointers.Add(pointer))
+                    {
+                        var file = instruction.Location?.FilePath is { } path
+                            ? System.IO.Path.GetFileName(path)
+                            : "<compiler-generated>";
+                        var line = instruction.Location?.Line ?? 0;
+                        _output.AppendLine($"    if (__novus_is_null({pointer})) {{");
+                        _output.AppendLine($"        __novus_null_pointer_error(\"{EscapeString(file)}\", {line});");
+                        if (_currentEmittingFunction != null)
+                        {
+                            EmitDeferredCleanup(_currentEmittingFunction, 2);
+                        }
+                        EmitErrorPathReturn(2);
+                        _output.AppendLine("    }");
+                    }
+                    break;
+                case IrCastValue cast: Check(cast.Value); break;
+                case IrBorrowValue borrow: Check(borrow.BorrowedValue); break;
+                case IrTupleElementAccess tuple: Check(tuple.Tuple); break;
+                case IrFieldReference field: Check(field.Struct); break;
+                case IrStructLiteral structure:
+                    foreach (var fieldValue in structure.FieldValues.Values) Check(fieldValue);
+                    break;
+                case IrTupleLiteral tuple:
+                    foreach (var element in tuple.Elements) Check(element);
+                    break;
+                case IrArrayLiteral array:
+                    foreach (var element in array.Elements) Check(element);
+                    break;
+                case IrEnumValue enumValue:
+                    foreach (var associatedValue in enumValue.AssociatedValues) Check(associatedValue);
+                    break;
+            }
+        }
+
+        switch (instruction)
+        {
+            case IrLocalDecl local: Check(local.InitialValue); break;
+            case IrStore store: Check(store.Value); break;
+            case IrBinaryOp binary: Check(binary.Left); Check(binary.Right); break;
+            case IrCall call: foreach (var argument in call.Arguments) Check(argument); break;
+            case IrIndirectCall call:
+                Check(call.FunctionPointer);
+                foreach (var argument in call.Arguments) Check(argument);
+                break;
+            case IrReturn ret: Check(ret.Value); break;
+            case IrConditionalBranch branch: Check(branch.Condition); break;
+            case IrAssert assert: Check(assert.Condition); break;
+            case IrMemberAccess member: Check(member.Struct); break;
+            case IrMemberStore member: Check(member.Struct); Check(member.Value); break;
+            case IrIndexAccess index: Check(index.Array); Check(index.Index); break;
+            case IrIndexStore index: Check(index.Array); Check(index.Index); Check(index.Value); break;
+            case IrDereferenceStore store: Check(store.Pointer); Check(store.Value); break;
+            case IrInvokeClosure invoke:
+                Check(invoke.Closure);
+                foreach (var argument in invoke.Arguments) Check(argument);
+                break;
+            case IrStoreCapture capture: Check(capture.Value); break;
         }
     }
 
@@ -5826,9 +5894,6 @@ public partial class CCodeGenerator
             // Special handling for array types with array literal initialization
             if (localDecl.Type is IrArrayType arrayType && localDecl.InitialValue is IrArrayLiteral arrayLiteral)
             {
-                var elementType = GetCType(arrayType.ElementType);
-                var size = arrayType.Length;
-
                 // LIFETIME FIX: Arrays initialized with compile-time constants should be 'static'
                 // to ensure they live for the entire program duration. This is critical when
                 // the array is passed to external functions (like MUI's make_radio) that
@@ -5839,7 +5904,7 @@ public partial class CCodeGenerator
 
                 // Use standard C array initializer syntax: [static] Type name[size] = { elem1, elem2, ... };
                 // This works correctly with VBCC for all types including structs
-                _output.AppendLine($"    {staticPrefix}{elementType} {varName}[{size}] = {initValue};");
+                _output.AppendLine($"    {staticPrefix}{GetCVariableDeclaration(arrayType, varName, $"= {initValue}")};");
             }
             // VBCC FIX: For struct literals, declare variable then assign fields individually
             // This avoids VBCC C99 compound literal incompatibility
@@ -6342,7 +6407,7 @@ public partial class CCodeGenerator
                 var rightCast = rightIsPointer ? $"(int32_t){right}" : right;
 
                 // Store the comparison expression with casts for potential inlining
-                _inlineableComparisons[resultName] = $"{leftCast} {op} {rightCast}";
+                _inlineableComparisons[resultName] = ($"{leftCast} {op} {rightCast}", binaryOp.Left.Type);
 
                 // OPTIMIZATION: Mark this comparison as safe to inline if the branch immediately follows
                 // The _safeToInlineComparisons set will be cleared when any non-branch instruction
@@ -6350,10 +6415,8 @@ public partial class CCodeGenerator
                 _safeToInlineComparisons.Add(resultName);
 
                 string wrapperCall;
-                if (op == "==")
-                    wrapperCall = $"__novus_cmp_eq_i32({leftCast}, {rightCast})";
-                else if (op == "!=")
-                    wrapperCall = $"__novus_cmp_ne_i32({leftCast}, {rightCast})";
+                if (op is "==" or "!=")
+                    wrapperCall = $"{GetComparisonWrapper(binaryOp.Left.Type, op)}({leftCast}, {rightCast})";
                 else
                     wrapperCall = $"({left} {op} {right})";  // < <= > >= don't have wrappers yet
 
@@ -6789,8 +6852,9 @@ public partial class CCodeGenerator
         // This saves ~10 cycles per comparison in the common case.
 
         string condition;
-        if (_inlineableComparisons.TryGetValue(conditionVar, out var inlinedExpr))
+        if (_inlineableComparisons.TryGetValue(conditionVar, out var comparison))
         {
+            var (inlinedExpr, operandType) = comparison;
             // Check if this comparison is safe to inline (immediately precedes the branch)
             bool canInlineDirectly = _safeToInlineComparisons.Contains(conditionVar);
 
@@ -6804,10 +6868,8 @@ public partial class CCodeGenerator
             else if (TryParseComparison(inlinedExpr, out var left, out var op, out var right))
             {
                 // Need wrapper to avoid VBCC reordering issues
-                if (op == "==")
-                    condition = $"__novus_cmp_eq_i32({left}, {right})";
-                else if (op == "!=")
-                    condition = $"__novus_cmp_ne_i32({left}, {right})";
+                if (op is "==" or "!=")
+                    condition = $"{GetComparisonWrapper(operandType, op)}({left}, {right})";
                 else
                     // For other ops (<, >, etc), fall back to casting - these are less common
                     condition = $"(int32_t)({inlinedExpr})";
@@ -6833,6 +6895,19 @@ public partial class CCodeGenerator
             var falseTarget = condBranch.FalseTarget + _labelSuffix;
             _output.AppendLine($"    goto {falseTarget};");
         }
+    }
+
+    private static string GetComparisonWrapper(IrType type, string op)
+    {
+        var operation = op == "==" ? "eq" : "ne";
+        return type switch
+        {
+            IrFloatType { BitWidth: 32 } => $"__novus_cmp_{operation}_f32",
+            IrFloatType => $"__novus_cmp_{operation}_f64",
+            IrIntType { BitWidth: 64, IsSigned: false } => $"__novus_cmp_{operation}_u64",
+            IrIntType { BitWidth: 64 } => $"__novus_cmp_{operation}_i64",
+            _ => $"__novus_cmp_{operation}_i32"
+        };
     }
 
     /// <summary>
@@ -7845,12 +7920,15 @@ public partial class CCodeGenerator
 
     private void EmitExtractTag(IrExtractTag extractTag)
     {
-        var enumValue = EmitValue(extractTag.EnumValue);
         var resultName = SanitizeVariableName(extractTag.ResultName);
 
         var enumType = extractTag.EnumValue.Type as IrEnumType;
         if (enumType == null)
             throw new InvalidOperationException("ExtractTag must be on an enum type");
+
+        var enumValue = extractTag.EnumValue is IrEnumValue literal
+            ? $"{MangleName(enumType)}_{literal.VariantName}"
+            : EmitValue(extractTag.EnumValue);
 
         // Check if this enum has any associated data
         bool hasAnyData = enumType.Variants.Any(v => v.HasAssociatedData);
@@ -7858,7 +7936,7 @@ public partial class CCodeGenerator
         // Check if variable was already declared (e.g., as a slot for variable reuse)
         var alreadyDeclared = _declaredVariables.Contains(resultName);
 
-        if (!hasAnyData)
+        if (!hasAnyData || extractTag.EnumValue is IrEnumValue)
         {
             // OPTIMIZATION: For plain enums, the value IS the tag
             if (alreadyDeclared)
@@ -8476,6 +8554,11 @@ public partial class CCodeGenerator
                 CheckValue(indexStore.Value, isAddressContext: false);
                 break;
 
+            case IrIndexAccess indexAccess:
+                CheckValue(indexAccess.Array, isAddressContext: false);
+                CheckValue(indexAccess.Index, isAddressContext: false);
+                break;
+
             case IrDereferenceStore derefStore:
                 CheckValue(derefStore.Pointer, isAddressContext: false);
                 CheckValue(derefStore.Value, isAddressContext: false);
@@ -8749,8 +8832,20 @@ public partial class CCodeGenerator
         var arrayValue = EmitValue(indexAccess.Array);
         var indexValue = EmitValue(indexAccess.Index);
         var resultName = SanitizeVariableName(indexAccess.ResultName);
-        var elementType = GetCType(indexAccess.ElementType);
         var alreadyDeclared = _declaredVariables.Contains(resultName);
+
+        void EmitLoad(string indent)
+        {
+            if (indexAccess.ElementType is IrArrayType)
+            {
+                _output.AppendLine($"{indent}__novus_memcpy((uint8_t*){resultName}, " +
+                                   $"(const uint8_t*){arrayValue}[{indexValue}], sizeof({resultName}));");
+            }
+            else
+            {
+                _output.AppendLine($"{indent}{resultName} = {arrayValue}[{indexValue}];");
+            }
+        }
 
         // Store the array and index expressions for later use when taking address
         _indexAccessInfo[resultName] = (arrayValue, indexValue);
@@ -8776,7 +8871,7 @@ public partial class CCodeGenerator
             // Otherwise perform the actual array access
             if (!alreadyDeclared)
             {
-                _output.AppendLine($"    {elementType} {resultName};");
+                _output.AppendLine($"    {GetCVariableDeclaration(indexAccess.ElementType, resultName)};");
             }
             _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
 
@@ -8790,7 +8885,7 @@ public partial class CCodeGenerator
 
             EmitErrorPathReturn(2);  // Exit after bounds check failure
             _output.AppendLine($"    }} else {{");
-            _output.AppendLine($"        {resultName} = {arrayValue}[{indexValue}];");
+            EmitLoad("        ");
             _output.AppendLine($"    }}");
         }
         // Add use-after-free check for pointer access at safety level 3
@@ -8802,11 +8897,12 @@ public partial class CCodeGenerator
             // Then perform the access
             if (alreadyDeclared)
             {
-                _output.AppendLine($"    {resultName} = {arrayValue}[{indexValue}];");
+                EmitLoad("    ");
             }
             else
             {
-                _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+                _output.AppendLine($"    {GetCVariableDeclaration(indexAccess.ElementType, resultName)};");
+                EmitLoad("    ");
             }
         }
         else
@@ -8814,11 +8910,12 @@ public partial class CCodeGenerator
             // No checking - direct access
             if (alreadyDeclared)
             {
-                _output.AppendLine($"    {resultName} = {arrayValue}[{indexValue}];");
+                EmitLoad("    ");
             }
             else
             {
-                _output.AppendLine($"    {elementType} {resultName} = {arrayValue}[{indexValue}];");
+                _output.AppendLine($"    {GetCVariableDeclaration(indexAccess.ElementType, resultName)};");
+                EmitLoad("    ");
             }
         }
     }
@@ -9179,9 +9276,7 @@ public partial class CCodeGenerator
             if (constant.Type is IrFloatType floatType)
             {
                 var floatValue = Convert.ToDouble(constant.Value);
-                return floatType.BitWidth == 32
-                    ? floatValue.ToString("G9", System.Globalization.CultureInfo.InvariantCulture) + "f"
-                    : floatValue.ToString("G17", System.Globalization.CultureInfo.InvariantCulture);
+                return FormatFloatLiteral(floatValue, floatType.BitWidth);
             }
             return constant.Value.ToString() ?? "0";
         }
@@ -9818,8 +9913,9 @@ public partial class CCodeGenerator
             if (!intType.IsSigned)
             {
                 var unsignedValue = unchecked((ulong)constantValue);
-                return $"{unsignedValue}U";
+                return intType.BitWidth == 64 ? $"{unsignedValue}ULL" : $"{unsignedValue}U";
             }
+            if (intType.BitWidth == 64) return $"{constantValue}LL";
         }
 
         // For signed types or unknown types, emit as-is
@@ -10059,9 +10155,14 @@ public partial class CCodeGenerator
         if (floatType == null)
             throw new InvalidOperationException("FloatConstant must have IrFloatType");
 
-        return floatType.BitWidth == 32
-            ? $"{floatConst.Value:G9}f"  // G9 preserves precision for float
-            : $"{floatConst.Value:G17}"; // G17 preserves precision for double
+        return FormatFloatLiteral(floatConst.Value, floatType.BitWidth);
+    }
+
+    private static string FormatFloatLiteral(double value, int bitWidth)
+    {
+        return bitWidth == 32
+            ? $"__novus_f32_from_bits(0x{BitConverter.SingleToUInt32Bits((float)value):X8}U)"
+            : $"__novus_f64_from_bits(0x{BitConverter.DoubleToUInt64Bits(value):X16}ULL)";
     }
 
     internal string EmitFixedConstant(IrFixedConstant fixedConst)
@@ -10135,6 +10236,23 @@ public partial class CCodeGenerator
 
         // Recursively emit the inner value (handles nested casts)
         var innerValue = EmitValue(castValue.Value);
+
+        if (castValue.Value.Type is IrFixedType sourceFixed)
+        {
+            var scale = 1L << (sourceFixed.BitWidth / 2);
+            if (castValue.Type is IrIntType)
+                return $"({targetType})({innerValue} / {scale})";
+            if (castValue.Type is IrFloatType)
+                return $"({targetType}){innerValue} / ({targetType}){scale}";
+        }
+        if (castValue.Type is IrFixedType targetFixed)
+        {
+            var scale = 1L << (targetFixed.BitWidth / 2);
+            if (castValue.Value.Type is IrIntType)
+                return $"({targetType})((int64_t){innerValue} * {scale})";
+            if (castValue.Value.Type is IrFloatType)
+                return $"({targetType})({innerValue} * {scale})";
+        }
 
         // If inner value starts with a negative sign or contains operators, wrap in parentheses
         // This ensures (uint8_t*)-1 becomes (uint8_t*)(-1) and not (uint8_t*)-1 which can confuse the parser
@@ -10386,9 +10504,9 @@ public partial class CCodeGenerator
             case IrArrayType arrayType:
             {
                 // Arrays must be declared with proper C array syntax: T name[N]
-                // GetCType returns T* for arrays, but for variable declarations we need T name[N]
-                var elementType = GetCType(arrayType.ElementType);
-                return $"{elementType} {declarator}[{arrayType.Length}]";
+                // Recurse so nested arrays become T name[outer][inner], not T* name[outer].
+                return GetCDeclaratorForType(arrayType.ElementType,
+                    $"{declarator}[{arrayType.Length}]");
             }
 
             default:

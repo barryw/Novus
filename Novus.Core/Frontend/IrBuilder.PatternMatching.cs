@@ -240,7 +240,11 @@ public partial class IrBuilder
             {
                 // Wildcard always matches, jump directly
                 _currentBlock!.AddInstruction(new IrBranch(armLabels[i]));
-                break;
+                if (expandedArm.OriginalArm.KW_IF() == null)
+                {
+                    break;
+                }
+                continue;
             }
 
             // Handle patterns based on match type
@@ -382,6 +386,15 @@ public partial class IrBuilder
                         var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
                         _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
                     }
+                    else
+                    {
+                        // An identifier that is not a constant binds the matched value.
+                        _currentBlock!.AddInstruction(new IrBranch(armLabels[i]));
+                        if (expandedArm.OriginalArm.KW_IF() == null)
+                        {
+                            break;
+                        }
+                    }
                 }
                 else
                 {
@@ -407,6 +420,23 @@ public partial class IrBuilder
             // Track pattern-bound variable names with Drop types for this arm
             // We need this to detect when a variable is moved (used as match result) vs. dropped
             var patternBoundDropVars = new HashSet<string>();
+
+            // Integer identifier patterns bind the matched value for guards and arm bodies.
+            if (isIntegerMatch && pattern is NovusParser.IdentifierPatternContext integerBindingPattern)
+            {
+                var bindingName = integerBindingPattern.IDENTIFIER().GetText();
+                if (_symbols.LookupConstant(bindingName) == null)
+                {
+                    var uniqueBindingName = _localVariables.ContainsKey(bindingName)
+                        ? $"{bindingName}_{_tempCounter++}"
+                        : bindingName;
+                    var localVar = new IrLocalVariable(uniqueBindingName, matchValue.Type, false);
+                    _currentFunction!.LocalVariables.Add(localVar);
+                    _localVariables[uniqueBindingName] = localVar;
+                    _localVariables[bindingName] = localVar;
+                    _currentBlock.AddInstruction(new IrLocalDecl(uniqueBindingName, matchValue.Type, false, matchValue));
+                }
+            }
 
             // Extract associated data for variant patterns (enum matches only)
             if (isEnumMatch && pattern is NovusParser.VariantPatternContext variantPattern)
@@ -499,9 +529,9 @@ public partial class IrBuilder
                 if (guardValue != null)
                 {
                     // If guard is true, execute this arm. If false, jump to next case
-                    var executeLabel = $"%match_{matchId}_arm_{i}_execute";
-                    var skipLabel = $"%match_{matchId}_arm_{i}_skip";
-                    _currentBlock!.AddInstruction(new IrConditionalBranch(guardValue, executeLabel, skipLabel));
+                    var executeLabel = $"match_{matchId}_arm_{i}_execute";
+                    var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
+                    _currentBlock!.AddInstruction(new IrConditionalBranch(guardValue, executeLabel, nextLabel));
 
                     // Create the execute block for this arm
                     var executeBlock = _currentFunction!.CreateBasicBlock(executeLabel);

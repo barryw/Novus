@@ -824,6 +824,136 @@ fn identity(x: i32) -> i32 {
         Assert.Matches(@"__novus_cmp", code);  // wrapper function should be used
     }
 
+    [Fact]
+    public void CCodeGen_VbccWorkaround_DoesNotReuseStaleComparisonAfterCall()
+    {
+        var source = @"
+static var calls: i32 = 0
+
+fn mark_call() -> bool {
+    calls++
+    return true
+}
+
+pub fn short_circuit() -> bool {
+    let was_zero = calls == 0
+    let evaluated = true && mark_call()
+    return evaluated
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        Assert.Matches(@"mark_call\(\);\s+if \(__novus_cmp_ne_i32\(\(int32_t\)_slot_bool_\d+, 0\)\)", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ExtractTagFromEnumLiteral_UsesKnownTag()
+    {
+        var module = BuildIR("""
+            enum Maybe { Some(i32), None }
+            pub fn probe() -> bool {
+                return Maybe::Some(7) matches Maybe::Some(_)
+            }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("Maybe_Some", code);
+        Assert.DoesNotContain("}.tag", code);
+    }
+
+    [Fact]
+    public void CCodeGen_DropParameter_IsNotRedeclared()
+    {
+        var module = BuildIR("""
+            trait Drop { fn drop(&var self) }
+            struct Token { id: i32 }
+            impl Drop for Token { fn drop(&var self) {} }
+            pub fn consume(token: Token) -> i32 { return token.id }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("consume(Token token)", code);
+        Assert.DoesNotContain("Token token;", code);
+    }
+
+    [Fact]
+    public void BuildIr_LocalVariableShadowsConstant()
+    {
+        var module = BuildIR("""
+            const value: u32 = 0
+            enum Flag { On, Off }
+            pub fn probe() {
+                let value = Flag::On
+                match value {
+                    Flag::On => {},
+                    Flag::Off => {},
+                }
+            }
+            """);
+        var function = Assert.Single(module.Functions, f => f.Name == "probe");
+
+        Assert.Contains(function.BasicBlocks.SelectMany(b => b.Instructions), i => i is IrExtractTag);
+    }
+
+    [Fact]
+    public void CCodeGen_IntegerMatchGuards_BindAndUseValidLabels()
+    {
+        var module = BuildIR("""
+            pub fn classify(value: i32) -> i32 {
+                return match value {
+                    candidate if candidate < 0 => -1,
+                    candidate if candidate == 0 => 0,
+                    _ => 1,
+                }
+            }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("int32_t candidate", code);
+        Assert.Contains("match_0_arm_0_execute", code);
+        Assert.DoesNotContain("goto %", code);
+        Assert.DoesNotContain("arm_0_skip", code);
+    }
+
+    [Fact]
+    public void CCodeGen_FloatsWideComparisonsAndPointerLoads_UseTypedSafeCode()
+    {
+        var module = BuildIR("""
+            pub fn probe(pointer: *i32) -> bool {
+                let whole = 2.0f32
+                let float_equal = whole == 3.0f32
+                let wide: u64 = 6000000000u64
+                let wide_equal = wide == 6000000001u64
+                let ignored = *pointer
+                return float_equal || wide_equal
+            }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("__novus_f32_from_bits(0x40000000U)", code);
+        Assert.Contains("__novus_cmp_eq_f32", code);
+        Assert.Contains("__novus_cmp_eq_u64", code);
+        Assert.Contains("__novus_null_pointer_error", code);
+        Assert.Contains("if (__novus_is_null(pointer))", code);
+    }
+
+    [Fact]
+    public void CCodeGen_NestedArrays_UseNestedDeclaratorsAndCopyIndexedArrays()
+    {
+        var module = BuildIR("""
+            pub fn probe() -> i32 {
+                let nested = [[1, 2], [3, 4]]
+                return nested[0][1] + nested[1][0]
+            }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("int32_t nested[2][2]", code);
+        Assert.Contains("__novus_memcpy", code);
+        Assert.DoesNotContain("int32_t* nested[2]", code);
+    }
+
     /// <summary>
     /// Test that small simple structs use field-by-field copy instead of memcpy.
     /// This is an optimization that avoids function call overhead for small structs.

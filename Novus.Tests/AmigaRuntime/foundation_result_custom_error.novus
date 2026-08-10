@@ -1,0 +1,22 @@
+// Regression probe: Result<T, E> must retain a user-defined enum error type.
+
+from std::core import Result
+from std::test::test import expect
+
+enum TinyError {
+    Bad,
+}
+
+fn custom_result(ok: bool) -> Result<i32, TinyError> {
+    if ok { return Result::Ok(42) }
+    return Result::Err(TinyError::Bad)
+}
+
+@test("Result supports a user-defined enum error")
+pub fn foundation_result_custom_error() {
+    let success: Result<i32, TinyError> = custom_result(true)
+    match success {
+        Result::Ok(value) => expect(value == 42, "custom Result payload"),
+        Result::Err(_) => expect(false, "unexpected custom error"),
+    }
+}

@@ -279,6 +279,18 @@ public partial class IrBuilder
         _currentBlock!.AddInstruction(new IrDefer(deferBlock));
     }
 
+    private void InjectParameterDrops()
+    {
+        foreach (var parameter in _currentFunction!.Parameters)
+        {
+            if (parameter.Type is not IrReferenceType and not IrMutReferenceType &&
+                EnsureDropMethodInstantiated(parameter.Type))
+            {
+                InjectAutomaticDrop(parameter.Name, parameter.Type);
+            }
+        }
+    }
+
     /// <summary>
     /// Inject drop code for an enum type. This generates a switch on the enum's tag
     /// and drops the payload for each variant that has a droppable payload.
@@ -649,6 +661,14 @@ public partial class IrBuilder
                         _currentBlock.Instructions.Remove(deferInst);
                     }
                 }
+            }
+
+            // The scope lookup above may remove the deferred block before the
+            // function-level lookup sees it. Always remove its activation marker too.
+            foreach (var block in _currentFunction.BasicBlocks)
+            {
+                block.Instructions.RemoveAll(instruction =>
+                    instruction is IrDefer defer && defer.DeferredBlock.Label.StartsWith(labelPrefix));
             }
         }
     }

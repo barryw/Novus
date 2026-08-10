@@ -23,6 +23,9 @@ public class TestOptions
     [Option("release", Required = false, HelpText = "Build test runner in release mode (default: debug)")]
     public bool Release { get; set; }
 
+    [Option('O', "optimize", Required = false, HelpText = "Optimization level (0-3; default: 0 for debug, 1 for release)")]
+    public int? OptimizationLevel { get; set; }
+
     [Option("cpu", Required = false, Default = "68020", HelpText = "Target CPU (68000, 68020, 68040, 68060)")]
     public string Cpu { get; set; } = "68020";
 
@@ -52,4 +55,11 @@ public class TestOptions
 
     [Option("ndk-path", Required = false, HelpText = "Path to your Amiga NDK 3.9 (default: $NDK, then 'novus config set ndk-path')")]
     public string NdkPath { get; set; } = UserConfig.ResolveNdkPath() ?? "";
+
+    public int GetOptimizationLevel()
+    {
+        var level = OptimizationLevel ?? (Release ? 1 : 0);
+        CompilerOptions.ValidateOptimizationLevel(level);
+        return level;
+    }
 }

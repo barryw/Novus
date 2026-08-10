@@ -1,0 +1,55 @@
+// Target-executed conformance tests for literals, Str, String, and interpolation.
+
+from std::strings::core import Str, String
+from std::test::test import expect, expect_true
+
+fn takes_str(value: Str) -> u32 {
+    return value.len
+}
+
+@test("string literals expose stable bytes and lengths")
+pub fn foundation_string_literals() {
+    let value: Str = "Novus"
+    expect(value.len == 5u32, "literal length")
+    expect(value.ptr[0] == 'N', "first byte")
+    expect(value.ptr[4] == 's', "last byte")
+}
+
+@test("string literals coerce into Str parameters")
+pub fn foundation_string_coercion() {
+    expect(takes_str("Amiga") == 5u32, "literal coercion")
+}
+
+@test("Str slicing and comparison")
+pub fn foundation_str_operations() {
+    let value: Str = "foundation"
+    match value.slice(0u32, 4u32) {
+        Ok(prefix) => expect_true(prefix.equals("foun"), "slice"),
+        Err(_) => expect(false, "slice should succeed"),
+    }
+    expect_true(value.starts_with("found"), "starts_with")
+    expect_true(value.ends_with("tion"), "ends_with")
+}
+
+@test("owned String appends and preserves contents")
+pub fn foundation_owned_string() {
+    match String::new_from_str("Novus") {
+        Ok(string) => {
+            var value = string
+            match value.push_str(" 68k") {
+                Ok(_) => expect(true, "append succeeds"),
+                Err(_) => expect(false, "append should succeed"),
+            }
+            expect_true(value.as_str().equals("Novus 68k"), "appended contents")
+        },
+        Err(_) => expect(false, "String allocation should succeed"),
+    }
+}
+
+@test("f-string interpolation composes Display values")
+pub fn foundation_fstrings() {
+    let language: Str = "Novus"
+    let cpu: i32 = 68020
+    let message = f"{language} {cpu}"
+    expect_true(message.equals("Novus 68020"), "interpolated contents")
+}

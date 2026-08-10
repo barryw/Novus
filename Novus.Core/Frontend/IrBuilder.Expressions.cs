@@ -4568,7 +4568,6 @@ public partial class IrBuilder
     public override object? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.identifier().GetText();
-
         // Check if this is a qualified enum constructor or associated function (e.g., Result::Ok, Vec::new)
         if (name.Contains("::"))
         {
@@ -4645,6 +4644,18 @@ public partial class IrBuilder
             }
         }
 
+        // Local bindings and parameters shadow module-level symbols.
+        if (_localVariables.TryGetValue(name, out var localVar))
+        {
+            return new IrVariable(localVar.Name, localVar.Type);
+        }
+
+        var parameter = _currentFunction?.Parameters.FirstOrDefault(p => p.Name == name);
+        if (parameter != null)
+        {
+            return new IrVariable(name, parameter.Type);
+        }
+
         // Check if it's a constant - inline the value
         var constantSymbol = _symbols.LookupConstant(name);
         if (constantSymbol != null)
@@ -4710,26 +4721,6 @@ public partial class IrBuilder
                 _module.ExternalVariables.Add(new IrExternalVariable(name, globalVar.Type));
             }
             return new IrGlobalVariable(name, globalVar.Type);
-        }
-
-        // Check if it's a local variable
-        if (_localVariables.ContainsKey(name))
-        {
-            var localVar = _localVariables[name];
-            // Use localVar.Name (the actual IR variable name) rather than the source name.
-            // This handles cases where variables have been renamed to avoid type conflicts
-            // (e.g., 'val' in different match arms with different types becomes 'val_123').
-            return new IrVariable(localVar.Name, localVar.Type);
-        }
-
-        // Check if it's a parameter
-        if (_currentFunction != null)
-        {
-            var param = _currentFunction.Parameters.FirstOrDefault(p => p.Name == name);
-            if (param != null)
-            {
-                return new IrVariable(name, param.Type);
-            }
         }
 
         // Check if it's a known system global variable (CPU, FPU, Chipset)

@@ -711,7 +711,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         foreach (var symbolName in symbolNames)
         {
             // Parse the module to get the symbols
-            string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+            string modulePath = ModuleImportHelper.ResolveModulePath(
+                moduleNamespace, _stdLibPath, Path.GetDirectoryName(Path.GetFullPath(_filePath)));
             var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
             if (moduleContext == null || syntaxErrors > 0)
@@ -779,7 +780,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Convert namespace path to file path
-        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+        string modulePath = ModuleImportHelper.ResolveModulePath(
+            moduleNamespace, _stdLibPath, Path.GetDirectoryName(Path.GetFullPath(_filePath)));
 
         // Load and parse the module
         var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
@@ -9763,24 +9765,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     private IrType? GetInterpolatedStringType(ParserRuleContext context)
     {
-        // Interpolated strings return String struct instances from std::strings
-        var stringType = _symbols.LookupStruct("String");
-        if (stringType == null)
+        // The IR builder uses StackFormatter::as_str(), so f-strings borrow its
+        // stack buffer as Str rather than allocating an owned String.
+        var strType = _symbols.LookupStruct("Str");
+        if (strType == null)
         {
-            // When String type is not available, fall back to *u8 (C-style string pointer)
+            // When Str is not available, fall back to *u8 (C-style string pointer)
             // This allows interpolated strings to work in minimal contexts without full std lib
             return new IrPointerType(IrIntType.U8);
         }
 
-        // Check for Formatter type (used internally)
-        var formatterType = _symbols.LookupStruct("Formatter");
-        if (formatterType == null)
-        {
-            // Formatter not available, fall back to *u8
-            return new IrPointerType(IrIntType.U8);
-        }
-
-        return stringType;
+        return strType;
     }
 
     public override IrType? VisitInterpolatedStringLiteral([NotNull] NovusParser.InterpolatedStringLiteralContext context)
@@ -10200,6 +10195,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }.Where(h => h != null).ToList()
             );
             return null;
+        }
+
+        // Local bindings shadow module-level symbols.
+        if (_variables.TryGetValue(name, out var localVariable))
+        {
+            return localVariable.Type;
         }
 
         // If it's a constant, return its type
@@ -11474,6 +11475,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         return _typeInterner.GetArrayType(valueType, arraySize);
+    }
+
+    public override IrType? VisitTupleLiteral([NotNull] NovusParser.TupleLiteralContext context)
+    {
+        var elementTypes = context.expression().Select(Visit).ToList();
+        return elementTypes.Any(type => type == null)
+            ? null
+            : _typeInterner.GetTupleType(elementTypes.Cast<IrType>().ToList());
     }
 
     public override IrType? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)

@@ -86,6 +86,7 @@ public partial class IrBuilder
 
         // Create entry block
         _currentBlock = function.CreateBasicBlock("entry");
+        InjectParameterDrops();
 
         // Set expected type for implicit returns (so match expressions know their result type)
         var savedExpectedType = _expectedType;
@@ -3124,6 +3125,8 @@ public partial class IrBuilder
     // Handle: using expression { statements }
     public override object? VisitUsingStatement([NotNull] NovusParser.UsingStatementContext context)
     {
+        PushDeferScope();
+
         // Evaluate the expression to get the resource
         var resourceValue = (IrValue)Visit(context.expression())!;
         var resourceType = resourceValue.Type;
@@ -3148,6 +3151,8 @@ public partial class IrBuilder
         {
             Visit(statement);
         }
+
+        PopDeferScope();
 
         return null;
     }
@@ -3827,6 +3832,19 @@ public partial class IrBuilder
             // Enum variant pattern: let Some(value) = expr else { ... }
             // Generate: if expr.tag == variant_tag then bind data else diverge
 
+            // Materialize expressions once. Besides preserving side effects, this avoids
+            // asking the C backend to access fields on VBCC-incompatible compound literals.
+            IrValue matchedValue = exprIr;
+            if (exprIr is not IrVariable)
+            {
+                var valueName = $"__let_else_value_{_tempCounter++}";
+                var localVar = new IrLocalVariable(valueName, exprIr.Type, false);
+                _currentFunction!.LocalVariables.Add(localVar);
+                _localVariables[valueName] = localVar;
+                Emit(new IrLocalDecl(valueName, exprIr.Type, false, exprIr));
+                matchedValue = new IrVariable(valueName, exprIr.Type);
+            }
+
             var variantName = variantPattern.variantName().GetText();
             var variantNameOnly = variantName.Contains("::") ? variantName.Split("::").Last() : variantName;
 
@@ -3839,7 +3857,7 @@ public partial class IrBuilder
                 {
                     // Check if the enum value matches this variant
                     var tagResultName = $"_tag_{_tempCounter++}";
-                    Emit(new IrExtractTag(tagResultName, exprIr));
+                    Emit(new IrExtractTag(tagResultName, matchedValue));
                     var tagValue = new IrVariable(tagResultName, IrIntType.I32);
 
                     var tagConstant = new IrConstant(variant.Tag, IrIntType.I32);
@@ -3864,7 +3882,7 @@ public partial class IrBuilder
                         for (int i = 0; i < subPatterns.Length && i < variant.AssociatedData.Count; i++)
                         {
                             var dataType = variant.AssociatedData[i];
-                            BindPatternData(subPatterns[i], exprIr, variantNameOnly, i, dataType);
+                            BindPatternData(subPatterns[i], matchedValue, variantNameOnly, i, dataType);
                         }
                     }
 

@@ -41,6 +41,33 @@ VBCC=vendor/vbcc vendor/vbcc/bin/vc +aos68k -c99 -cpu=68020 -O=1 -o wrun wrun.c
 
 ## Running a suite
 
+For Novus conformance tests, use the MCP runner. It builds locally, boots one
+A4000, uploads each executable through the exchange, and records structured
+Guru/CPU-exception diagnostics without screenshots:
+
+```sh
+python3 tools/amiga/run_runtime_suite.py --layer foundation
+python3 tools/amiga/run_runtime_suite.py --profile debug --profile release-o1 --profile release-o3 --layer foundation
+python3 tools/amiga/run_runtime_suite.py --suite foundation-primitives
+python3 tools/amiga/run_runtime_suite.py --suite foundation-aggregates --filter foundation_nested_arrays
+```
+
+The default endpoint is `http://localhost:6800/mcp`; results are written to
+`.novus-cache/amiga-runtime-suite/report.json`. The foundation layer compiles
+its 74 main tests into one executable per profile so unchanged reruns hit the
+compiler's build stamp and stdlib is compiled once. Three existing const-fn,
+intrinsics, and fixed32 probes remain standalone; named suites remain available
+for isolating crashes. Coverage includes primitives and numerics, control flow,
+functions, aggregates, modules, generics/traits, errors/patterns, ownership/Drop,
+strings, intrinsics, const functions, fixed point, and inline assembly. NDK,
+Exec/DOS, GUI, ports, tasks, and other Amiga integrations remain separate.
+
+The runner deliberately refuses to take over an already-running machine. A
+failed command is reset or restarted; if the service retains an uncollected
+command, the report records recovery failure instead of hiding it.
+
+## Manual suites
+
 There is no custom batch runner and none is needed — an AmigaDOS script plus one
 `Execute` call covers it. Whole suite, one round trip:
 

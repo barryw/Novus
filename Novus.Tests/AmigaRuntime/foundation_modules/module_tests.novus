@@ -1,0 +1,33 @@
+from module_values import MODULE_CONST, ModuleValue, module_add
+from std::test::test import expect
+
+type Transform = fn(i32) -> i32
+
+fn times_two(value: i32) -> i32 {
+    return value * 2
+}
+
+@test("imports resolve functions constants and types")
+pub fn foundation_module_imports() {
+    let value = ModuleValue::new(MODULE_CONST)
+    expect(value.get() == 40, "imported type and constant")
+    expect(module_add(value.get(), 2) == 42, "imported function")
+}
+
+@test("transparent type aliases preserve callable ABI")
+pub fn foundation_type_aliases() {
+    let transform: Transform = times_two
+    expect(transform(21) == 42, "function type alias")
+}
+
+@test("preprocessor selects exactly one build mode")
+pub fn foundation_preprocessor() {
+    var selected = 0
+    #if DEBUG
+        selected = selected + 1
+    #endif
+    #if RELEASE
+        selected = selected + 2
+    #endif
+    expect(selected == 1 || selected == 2, "DEBUG or RELEASE selected")
+}

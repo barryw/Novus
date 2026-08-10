@@ -345,44 +345,6 @@ public static class StdlibBuildCommand
     }
 
     /// <summary>
-    /// Compute SHA256 hash of the compiler DLL itself.
-    /// This ensures ANY change to the compiler (not just codegen version) invalidates caches.
-    /// </summary>
-    public static string ComputeCompilerHash()
-    {
-        // For single-file deployments, Assembly.Location returns empty string
-        // Use AppContext.BaseDirectory to find the executable
-        var compilerDir = AppContext.BaseDirectory;
-
-        // Try to find the Novus.dll in the compiler directory
-        var novusDllPath = Path.Combine(compilerDir, "Novus.dll");
-        if (File.Exists(novusDllPath))
-        {
-            return ComputeFileHash(novusDllPath);
-        }
-
-        // Try to find the executable itself (single-file deployment)
-        var exeName = Environment.ProcessPath;
-        if (!string.IsNullOrEmpty(exeName) && File.Exists(exeName))
-        {
-            return ComputeFileHash(exeName);
-        }
-
-        // Fallback: use assembly version + timestamp of compiler directory
-        var version = typeof(StdlibBuildCommand).Assembly.GetName().Version;
-        try
-        {
-            var compilerDirInfo = new DirectoryInfo(compilerDir);
-            var timestamp = compilerDirInfo.LastWriteTimeUtc.Ticks;
-            return $"version-{version}-{timestamp}";
-        }
-        catch
-        {
-            return $"version-{version}";
-        }
-    }
-
-    /// <summary>
     /// Get the path to the project source tree stdlib directory (if in dev build)
     /// Returns null if not in a dev build
     /// </summary>
@@ -539,15 +501,6 @@ public static class StdlibBuildCommand
                 return true;
             }
 
-            // CRITICAL: Check compiler DLL hash
-            // This catches ANY compiler change, not just codegen version bumps
-            var currentCompilerHash = ComputeCompilerHash();
-            if (!string.IsNullOrEmpty(manifest.CompilerHash) && manifest.CompilerHash != currentCompilerHash)
-            {
-                reason = "compiler binary changed (DLL hash mismatch)";
-                return true;
-            }
-
             // Check if source files have changed
             var stdlibSourceDir = Path.Combine(compilerDir, "std");
             if (!Directory.Exists(stdlibSourceDir))
@@ -628,7 +581,7 @@ public static class StdlibBuildCommand
             BuildMode = buildModeStr,
             Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             CodegenVersion = codegenVersion,
-            CompilerHash = ComputeCompilerHash(),  // Track compiler binary for cache invalidation
+            CompilerHash = "", // CodegenVersion is the generated-object compatibility contract.
             Modules = new Dictionary<string, StdlibModuleInfo>()
         };
 
@@ -718,7 +671,7 @@ public class StdlibManifest
     public string BuildMode { get; set; } = "";
     public long Timestamp { get; set; }
     public int CodegenVersion { get; set; }  // Compiler codegen version - invalidates cache on breaking changes
-    public string CompilerHash { get; set; } = "";  // SHA256 of compiler DLL - invalidates on ANY compiler change
+    public string CompilerHash { get; set; } = "";  // Retained for old manifest compatibility.
     public Dictionary<string, StdlibModuleInfo> Modules { get; set; } = new();
 }
 

@@ -1,0 +1,123 @@
+// Target-executed conformance tests for branches, loops, and postfix control flow.
+
+from std::test::test import expect, expect_true
+
+fn classify(value: i32) -> i32 {
+    return -1 if value < 0
+    return 0 if value == 0
+    return 1 if value <= 10
+    return 2
+}
+
+fn unless_value(value: i32) -> i32 {
+    return 7 unless value > 10
+    return 9
+}
+
+@test("if else works as statements and expressions")
+pub fn foundation_if_else() {
+    let yes = if true { 11 } else { 22 }
+    let no = if false { 11 } else { 22 }
+    expect(yes == 11, "true expression")
+    expect(no == 22, "false expression")
+
+    var branch = 0
+    if yes > no {
+        branch = 1
+    } else if yes == no {
+        branch = 2
+    } else {
+        branch = 3
+    }
+    expect(branch == 3, "else-if chain")
+}
+
+@test("while forever break and continue")
+pub fn foundation_basic_loops() {
+    var i = 0
+    var sum = 0
+    while i < 10 {
+        i++
+        continue if i == 5
+        sum = sum + i
+        break if i == 8
+    }
+    expect(sum == 31, "while with break and continue")
+
+    var once = 0
+    forever {
+        once++
+        break
+    }
+    expect(once == 1, "forever loop")
+}
+
+@test("exclusive and inclusive ranges")
+pub fn foundation_range_loops() {
+    var exclusive = 0
+    for i in 0..5 {
+        exclusive = exclusive + i
+    }
+    var inclusive = 0
+    for i in 1..=5 {
+        inclusive = inclusive + i
+    }
+    expect(exclusive == 10, "exclusive range")
+    expect(inclusive == 15, "inclusive range")
+}
+
+@test("nested and labeled loops")
+pub fn foundation_labeled_loops() {
+    var count = 0
+    outer: for i in 0..10 {
+        for j in 0..10 {
+            count++
+            break outer if count == 13
+        }
+    }
+    expect(count == 13, "labeled break")
+
+    var visits = 0
+    var row = 0
+    rows: while row < 4 {
+        row++
+        var column = 0
+        while column < 3 {
+            column++
+            continue rows if row == 2 && column == 1
+            visits++
+        }
+    }
+    expect(visits == 9, "labeled continue")
+}
+
+@test("postfix if and unless")
+pub fn foundation_postfix_conditionals() {
+    expect(classify(-4) == -1, "negative")
+    expect(classify(0) == 0, "zero")
+    expect(classify(8) == 1, "small positive")
+    expect(classify(20) == 2, "large positive")
+    expect(unless_value(5) == 7, "unless true path")
+    expect(unless_value(20) == 9, "unless false path")
+}
+
+@test("early return preserves selected path")
+pub fn foundation_early_return() {
+    expect_true(classify(-1) == -1, "first return")
+    expect_true(classify(99) == 2, "fallthrough return")
+}
+
+@test("C-style for and implicit while variables")
+pub fn foundation_loop_forms() {
+    var for_sum = 0
+    for var i = 0; i < 5; i++ {
+        for_sum += i
+    }
+    var while_sum = 0
+    while var i: i32 < 5 {
+        while_sum += i
+        i++
+    }
+    expect(for_sum == 10, "C-style for")
+    expect(while_sum == 10, "while var")
+}

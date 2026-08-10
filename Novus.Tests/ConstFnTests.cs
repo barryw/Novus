@@ -311,6 +311,43 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void ConstFnConstant_IsResolvedBeforeOrdinaryFunctionBody()
+    {
+        var projectRoot = Directory.GetCurrentDirectory();
+        while (!File.Exists(Path.Combine(projectRoot, "Novus.sln")))
+            projectRoot = Directory.GetParent(projectRoot)!.FullName;
+        var path = Path.Combine(projectRoot, "Novus.Tests", "Examples", "test_const_fn.novus");
+        var stdPath = Path.Combine(projectRoot, "Novus", "std");
+        var source = File.ReadAllText(path);
+
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+        var analyzer = new SemanticAnalyzer(path, source, stdPath);
+        Assert.True(analyzer.Analyze(tree));
+
+        var builder = new IrBuilder(analyzer.GetResult());
+        builder.SetStdLibPath(stdPath);
+        builder.SetInputFilePath(path);
+        var module = builder.BuildModule(tree);
+
+        Assert.Equal(640, module.Constants["DOUBLED_WIDTH"].Value);
+        Assert.Equal(520, module.Constants["BUFFER_SIZE"].Value);
+        Assert.Equal(21, module.Constants["FIB_8"].Value);
+        Assert.Equal(100, module.Constants["CLAMPED_VALUE"].Value);
+
+        var actualValues = module.GetFunction("test_compile_time_constants")!.BasicBlocks
+            .SelectMany(block => block.Instructions)
+            .OfType<IrCall>()
+            .Where(call => call.FunctionName == "expect_eq_i32")
+            .Select(call => Assert.IsType<IrConstant>(call.Arguments[0]).Value)
+            .ToArray();
+        Assert.Equal(new long[] { 320, 200, 640, 520, 21, 100 }, actualValues);
+    }
+
+    [Fact]
     public void ConstFnValidation_ValidConstFn_NoErrors()
     {
         var source = @"

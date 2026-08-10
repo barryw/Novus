@@ -26,7 +26,10 @@ public partial class IrBuilder
     private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames)
     {
         // Parse the module ONCE (not per-symbol)
-        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+        string modulePath = ModuleImportHelper.ResolveModulePath(
+            moduleNamespace,
+            _stdLibPath,
+            _inputFilePath == null ? null : Path.GetDirectoryName(Path.GetFullPath(_inputFilePath)));
         var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
 
         if (moduleContext == null || syntaxErrors > 0)
@@ -170,7 +173,10 @@ public partial class IrBuilder
     private void ImportModule(string moduleNamespace, bool importAll, NovusParser.ImportListContext? importList = null)
     {
         // Convert namespace path to file path
-        string modulePath = ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+        string modulePath = ModuleImportHelper.ResolveModulePath(
+            moduleNamespace,
+            _stdLibPath,
+            _inputFilePath == null ? null : Path.GetDirectoryName(Path.GetFullPath(_inputFilePath)));
 
         // Load and parse the module first to check if it needs compilation
         var (moduleContext, syntaxErrors) = ModuleImportHelper.ParseModuleFile(modulePath, _preprocessorConstants);
@@ -1116,6 +1122,7 @@ public partial class IrBuilder
             var entryBlock = new IrBasicBlock("entry");
             function.BasicBlocks.Add(entryBlock);
             _currentBlock = entryBlock;
+            InjectParameterDrops();
 
             // Visit the function body with type substitutions active
             if (funcDecl.block() != null)
@@ -1303,6 +1310,7 @@ public partial class IrBuilder
             var entryBlock = new IrBasicBlock("entry");
             function.BasicBlocks.Add(entryBlock);
             _currentBlock = entryBlock;
+            InjectParameterDrops();
 
             // Add parameters to local variables scope
             foreach (var param in function.Parameters)
@@ -1469,6 +1477,7 @@ public partial class IrBuilder
             var entryBlock = new IrBasicBlock("entry");
             function.BasicBlocks.Add(entryBlock);
             _currentBlock = entryBlock;
+            InjectParameterDrops();
 
             // Visit the function body with type substitutions active
             if (funcDecl.block() != null)

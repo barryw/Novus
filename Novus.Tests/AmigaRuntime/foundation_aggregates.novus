@@ -1,0 +1,139 @@
+// Target-executed conformance tests for structs, arrays, tuples, and enums.
+
+from std::memory::slice import Slice
+from std::test::test import expect, expect_true, expect_false
+
+struct Point {
+    x: i32,
+    y: i32,
+    z: i32,
+}
+
+impl Point {
+    fn sum(&self) -> i32 {
+        return self.x + self.y + self.z
+    }
+
+    fn translate(&var self, delta: i32) {
+        self.x = self.x + delta
+        self.y = self.y + delta
+        self.z = self.z + delta
+    }
+}
+
+enum Command {
+    Quit,
+    Move(i32, i32),
+    Color(i32, i32, i32),
+}
+
+enum MaybeValue {
+    Some(i32),
+    None,
+}
+
+fn command_value(command: Command) -> i32 {
+    match command {
+        Command::Quit => return 0,
+        Command::Move(x, y) => return x + y,
+        Command::Color(r, g, b) => return r + g + b,
+    }
+}
+
+fn tuple_value() -> (i32, i32, i32) {
+    return (10, 20, 30)
+}
+
+fn slice_length(values: Slice<i32>) -> u32 {
+    return values.len
+}
+
+@test("struct literals methods and mutable receivers")
+pub fn foundation_structs() {
+    var point = Point { x: 1, y: 2, z: 3 }
+    expect(point.sum() == 6, "method call")
+    point.translate(4)
+    expect(point.x == 5 && point.y == 6 && point.z == 7, "mutable receiver")
+}
+
+@test("struct update syntax copies remaining fields")
+pub fn foundation_struct_update() {
+    let base = Point { x: 10, y: 20, z: 30 }
+    let changed = Point { x: 99, ..base }
+    expect(changed.x == 99, "updated field")
+    expect(changed.y == 20 && changed.z == 30, "copied fields")
+}
+
+@test("array literals indexing and mutation")
+pub fn foundation_arrays() {
+    var values = [10, 20, 30, 40]
+    expect(values[0] == 10 && values[3] == 40, "array read")
+    values[1] = 99
+    expect(values[1] == 99, "array write")
+}
+
+@test("arrays of structs preserve field layout")
+pub fn foundation_struct_arrays() {
+    let points = [
+        Point { x: 1, y: 2, z: 3 },
+        Point { x: 4, y: 5, z: 6 },
+    ]
+    expect(points[0].y == 2, "first struct")
+    expect(points[1].z == 6, "second struct")
+}
+
+@test("array references coerce to slices")
+pub fn foundation_array_slice_coercion() {
+    let values = [1, 2, 3, 4, 5]
+    expect(slice_length(&values) == 5u32, "slice length")
+}
+
+@test("tuples return index and destructure")
+pub fn foundation_tuples() {
+    let (a, b, c) = tuple_value()
+    expect(a + b + c == 60, "tuple destructuring")
+}
+
+@test("enum variants carry and destructure payloads")
+pub fn foundation_enums() {
+    expect(command_value(Command::Quit) == 0, "unit variant")
+    expect(command_value(Command::Move(10, 20)) == 30, "two-field variant")
+    expect(command_value(Command::Color(1, 2, 3)) == 6, "three-field variant")
+}
+
+@test("if-let let-else matches and pattern alternatives")
+pub fn foundation_patterns() {
+    let MaybeValue::Some(value) = MaybeValue::Some(42) else {
+        expect(false, "let-else should match")
+        return
+    }
+    expect(value == 42, "let-else binding")
+
+    let pointer: *u8 = (*u8)123
+    if let bound = pointer {
+        expect((u32)bound == 123u32, "if-let binding")
+    } else {
+        expect(false, "if-let should match")
+    }
+
+    expect_true(matches!(MaybeValue::Some(7), MaybeValue::Some(_)), "matches positive")
+    expect_false(matches!(MaybeValue::None, MaybeValue::Some(_)), "matches negative")
+}
+
+@test("repeat arrays preserve every element")
+pub fn foundation_repeat_arrays() {
+    let repeated = [7; 4]
+    expect(repeated[0] + repeated[3] == 14, "repeat array")
+}
+
+@test("nested arrays preserve dimensions and indexing")
+pub fn foundation_nested_arrays() {
+    let nested = [[1, 2], [3, 4]]
+    expect(nested[0][1] + nested[1][0] == 5, "nested array")
+}
+
+@test("matches expressions accept multi-payload variants")
+pub fn foundation_matches_expression() {
+    let command = Command::Move(20, 22)
+    expect(matches!(command, Command::Move(_, _)), "matches expression")
+}

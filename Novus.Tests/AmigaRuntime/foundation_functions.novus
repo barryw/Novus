@@ -1,0 +1,86 @@
+// Target-executed conformance tests for calls, references, overloads, and closures.
+
+from std::test::test import expect
+
+fn fibonacci(n: i32) -> i32 {
+    if n <= 1 { return n }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+fn read_ref(value: &i32) -> i32 {
+    return *value
+}
+
+fn increment_ref(value: &var i32) {
+    *value = *value + 1
+}
+
+fn overloaded(value: i32) -> i32 {
+    return value + 100
+}
+
+fn overloaded(value: i16) -> i16 {
+    return value + 10i16
+}
+
+fn add(a: i32, b: i32) -> i32 { return a + b }
+fn subtract(a: i32, b: i32) -> i32 { return a - b }
+
+fn apply(a: i32, b: i32, operation: fn(i32, i32) -> i32) -> i32 {
+    return operation(a, b)
+}
+
+fn identity<T>(value: T) -> T {
+    return value
+}
+
+@inline
+fn inline_add_one(value: i32) -> i32 {
+    return value + 1
+}
+
+@test("direct calls recursion and early returns")
+pub fn foundation_direct_calls() {
+    expect(add(20, 22) == 42, "direct call")
+    expect(fibonacci(10) == 55, "recursive call")
+    expect(inline_add_one(41) == 42, "inline function")
+}
+
+@test("immutable and mutable references")
+pub fn foundation_references() {
+    var value = 41
+    expect(read_ref(&value) == 41, "immutable reference")
+    increment_ref(&var value)
+    expect(value == 42, "mutable reference")
+}
+
+@test("function overload resolution")
+pub fn foundation_overloads() {
+    let wide: i32 = overloaded(5i32)
+    let narrow: i16 = overloaded(5i16)
+    expect(wide == 105, "i32 overload")
+    expect(narrow == 15i16, "i16 overload")
+}
+
+@test("function pointers and indirect calls")
+pub fn foundation_function_pointers() {
+    expect(apply(10, 5, add) == 15, "add pointer")
+    expect(apply(10, 5, subtract) == 5, "subtract pointer")
+}
+
+@test("closures capture values")
+pub fn foundation_closures() {
+    let captured = 10
+    let add_captured = |value: i32| -> i32 { value + captured }
+    expect(add_captured(5) == 15, "capturing closure")
+}
+
+@test("generic functions monomorphize independently")
+pub fn foundation_generic_functions() {
+    let a: i32 = identity(42i32)
+    let b: u8 = identity(7u8)
+    let c: bool = identity(true)
+    expect(a == 42, "generic i32")
+    expect(b == 7u8, "generic u8")
+    expect(c, "generic bool")
+}

@@ -36,6 +36,17 @@ public class ModuleImportHelperTests
     }
 
     [Fact]
+    public void ResolveModulePath_UserModule_UsesSourceDirectoryWhenProvided()
+    {
+        var result = ModuleImportHelper.ResolveModulePath(
+            "helpers", "/test/std", Path.Combine("project", "src"));
+
+        Assert.Equal(
+            Path.Combine("project", "src", "helpers.novus"),
+            result);
+    }
+
+    [Fact]
     public void ResolveModulePath_EmptyNamespace_ThrowsException()
     {
         Assert.Throws<ArgumentException>(() => ModuleImportHelper.ResolveModulePath("", "/test/std"));

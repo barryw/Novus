@@ -1,0 +1,150 @@
+// Target-executed conformance tests for primitive values and operators.
+
+from std::test::test import expect, expect_true, expect_false
+
+const CONST_BASE: i32 = 40
+static STATIC_VALUE: i32 = 2
+static var mutable_static: i32 = 0
+static var boolean_calls: i32 = 0
+
+fn mark_boolean_call() -> bool {
+    boolean_calls++
+    return true
+}
+
+@test("signed and unsigned integer arithmetic")
+pub fn foundation_integer_arithmetic() {
+    let a: i32 = -21
+    let b: i32 = 4
+    expect(a + b == -17, "signed addition")
+    expect(a - b == -25, "signed subtraction")
+    expect(a * b == -84, "signed multiplication")
+    expect(a / b == -5, "signed division truncates toward zero")
+    expect(a % b == -1, "signed remainder")
+
+    let x: u32 = 100u32
+    let y: u32 = 9u32
+    expect(x + y == 109u32, "unsigned addition")
+    expect(x - y == 91u32, "unsigned subtraction")
+    expect(x * y == 900u32, "unsigned multiplication")
+    expect(x / y == 11u32, "unsigned division")
+    expect(x % y == 1u32, "unsigned remainder")
+}
+
+@test("integer widths preserve values and signs")
+pub fn foundation_integer_widths() {
+    let a: i8 = -12i8
+    let b: i16 = -1234i16
+    let c: i64 = -123456i64
+    let d: u8 = 250u8
+    let e: u16 = 60000u16
+    let f: u64 = 123456u64
+    expect(a == -12i8, "i8")
+    expect(b == -1234i16, "i16")
+    expect(c == -123456i64, "i64")
+    expect(d == 250u8, "u8")
+    expect(e == 60000u16, "u16")
+    expect(f == 123456u64, "u64")
+}
+
+@test("bitwise and shift operators")
+pub fn foundation_bitwise_operators() {
+    let value: u32 = $A5A5000Fu32
+    expect((value & $000000FFu32) == $0Fu32, "and")
+    expect((value | $000000F0u32) == $A5A500FFu32, "or")
+    expect((value ^ $FFFF0000u32) == $5A5A000Fu32, "xor")
+    expect((1u32 << 12) == 4096u32, "left shift")
+    expect(($80000000u32 >> 31) == 1u32, "logical right shift")
+}
+
+@test("comparison and boolean operators")
+pub fn foundation_boolean_operators() {
+    expect_true(7 > 3, "greater than")
+    expect_true(7 >= 7, "greater or equal")
+    expect_true(3 < 7, "less than")
+    expect_true(3 <= 3, "less or equal")
+    expect_true(7 != 3, "not equal")
+    expect_true((true && true) || false, "logical operators")
+    expect_false(!true, "logical not")
+}
+
+@test("boolean operators short circuit")
+pub fn foundation_short_circuit() {
+    boolean_calls = 0
+    let skipped_and = false && mark_boolean_call()
+    let skipped_or = true || mark_boolean_call()
+    expect(boolean_calls == 0, "short-circuited calls skipped")
+    let evaluated = true && mark_boolean_call()
+    expect(evaluated, "required call returns true")
+    expect(boolean_calls == 1, "required call evaluated once")
+}
+
+@test("casts sign extend and truncate predictably")
+pub fn foundation_casts() {
+    let negative: i8 = -1i8
+    let widened: i32 = (i32)negative
+    let narrowed: u8 = (u8)300u32
+    let bits: u32 = (u32)widened
+    expect(widened == -1, "sign extension")
+    expect(narrowed == 44u8, "narrowing")
+    expect(bits == $FFFFFFFFu32, "signed to unsigned preserves bits")
+}
+
+@test("character and escape literals")
+pub fn foundation_character_literals() {
+    expect('A' == 65u8, "ASCII literal")
+    expect('\n' == 10u8, "newline")
+    expect('\t' == 9u8, "tab")
+    expect('\0' == 0u8, "nul")
+    expect('\x41' == 'A', "hex escape")
+}
+
+@test("constants statics and mutable variables")
+pub fn foundation_bindings() {
+    var value: i32 = CONST_BASE + STATIC_VALUE
+    value++
+    value--
+    value = value + 8
+    mutable_static = value
+    expect(value == 50, "mutable local")
+    expect(mutable_static == 50, "mutable static")
+}
+
+@test("sizeof reports target layouts")
+pub fn foundation_sizeof() {
+    expect(@sizeof(u8) == 1u32, "u8 size")
+    expect(@sizeof(u16) == 2u32, "u16 size")
+    expect(@sizeof(u32) == 4u32, "u32 size")
+    expect(@sizeof(*u8) == 4u32, "pointer size")
+}
+
+@test("unsafe raw pointers read and write stack values")
+pub fn foundation_raw_pointers() {
+    var value: i32 = 41
+    let pointer: *i32 = (*i32)&value
+    unsafe {
+        expect(*pointer == 41, "raw pointer read")
+        *pointer = 42
+    }
+    expect(value == 42, "raw pointer write")
+}
+
+@test("compound assignments and prefix/postfix mutation")
+pub fn foundation_assignment_operators() {
+    var value = 5
+    ++value
+    value++
+    --value
+    value--
+    value += 7
+    value -= 2
+    value *= 3
+    value /= 5
+    value %= 4
+    value |= 8
+    value &= 11
+    value ^= 3
+    value <<= 2
+    value >>= 1
+    expect(value == 18, "assignment operators")
+}

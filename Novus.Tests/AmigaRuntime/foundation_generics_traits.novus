@@ -1,0 +1,128 @@
+// Target-executed conformance tests for generics, traits, derives, and operators.
+
+from std::test::test import expect, expect_true
+
+struct Pair<T> {
+    first: T,
+    second: T,
+}
+
+impl<T> Pair<T> {
+    fn new(first: T, second: T) -> Pair<T> {
+        return Pair { first: first, second: second }
+    }
+}
+
+struct Buffer<const N: u32> {
+    len: u32,
+}
+
+impl<const N: u32> Buffer<N> {
+    fn new() -> Buffer<N> {
+        return Buffer { len: 0 }
+    }
+
+    fn capacity(&self) -> u32 {
+        return N
+    }
+}
+
+enum Maybe<T> {
+    Just(T),
+    Nothing,
+}
+
+impl<T> Maybe<T> {
+    fn get_or(self, fallback: T) -> T {
+        match self {
+            Maybe::Just(value) => return value,
+            Maybe::Nothing => return fallback,
+        }
+    }
+}
+
+trait Scale {
+    fn scale(&self, factor: i32) -> i32
+}
+
+struct Scalar {
+    value: i32,
+}
+
+impl Scale for Scalar {
+    fn scale(&self, factor: i32) -> i32 {
+        return self.value * factor
+    }
+}
+
+struct Vector {
+    x: i32,
+    y: i32,
+}
+
+impl Add for Vector {
+    fn add(&self, other: &Vector) -> Vector {
+        return Vector { x: self.x + other.x, y: self.y + other.y }
+    }
+}
+
+impl Eq for Vector {
+    fn eq(&self, other: &Vector) -> bool {
+        return self.x == other.x && self.y == other.y
+    }
+}
+
+#[derive(Eq, Hash)]
+struct DerivedPoint {
+    x: i32,
+    y: i32,
+}
+
+@test("generic structs monomorphize for distinct types")
+pub fn foundation_generic_structs() {
+    let numbers = Pair::<i32>::new(10, 20)
+    let flags = Pair::<bool>::new(true, false)
+    expect(numbers.first + numbers.second == 30, "i32 pair")
+    expect(flags.first && !flags.second, "bool pair")
+}
+
+@test("const generics create distinct capacities")
+pub fn foundation_const_generics() {
+    let small = Buffer::<8>::new()
+    let large = Buffer::<64>::new()
+    expect(small.capacity() == 8u32, "small buffer")
+    expect(large.capacity() == 64u32, "large buffer")
+}
+
+@test("generic enums carry values and fallbacks")
+pub fn foundation_generic_enums() {
+    let present: Maybe<i32> = Maybe::Just(42)
+    let absent: Maybe<i32> = Maybe::Nothing
+    expect(present.get_or(0) == 42, "generic payload")
+    expect(absent.get_or(7) == 7, "generic fallback")
+}
+
+@test("custom trait dispatch")
+pub fn foundation_traits() {
+    let value = Scalar { value: 14 }
+    expect(value.scale(3) == 42, "trait method")
+}
+
+@test("operator overloads dispatch through traits")
+pub fn foundation_operator_overloads() {
+    let left = Vector { x: 1, y: 2 }
+    let right = Vector { x: 3, y: 4 }
+    let sum = left + right
+    expect(sum.x == 4 && sum.y == 6, "Add overload")
+    expect_true(sum == Vector { x: 4, y: 6 }, "Eq overload")
+}
+
+@test("derive generates Eq and Hash implementations")
+pub fn foundation_derive() {
+    let a = DerivedPoint { x: 10, y: 20 }
+    let b = DerivedPoint { x: 10, y: 20 }
+    let c = DerivedPoint { x: 10, y: 30 }
+    expect_true(a.eq(&b), "derived equality")
+    expect(a.hash() == b.hash(), "equal values hash equally")
+    expect(a.hash() != c.hash(), "different values hash differently")
+}

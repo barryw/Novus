@@ -127,6 +127,16 @@ uint32_t strlen(const char* str);
 int32_t __novus_is_null(void* ptr);     // Returns 1 if ptr is NULL
 int32_t __novus_cmp_eq_i32(int32_t a, int32_t b);  // Returns 1 if a == b
 int32_t __novus_cmp_ne_i32(int32_t a, int32_t b);  // Returns 1 if a != b
+int32_t __novus_cmp_eq_i64(int64_t a, int64_t b);
+int32_t __novus_cmp_ne_i64(int64_t a, int64_t b);
+int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b);
+int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b);
+int32_t __novus_cmp_eq_f32(float a, float b);
+int32_t __novus_cmp_ne_f32(float a, float b);
+int32_t __novus_cmp_eq_f64(double a, double b);
+int32_t __novus_cmp_ne_f64(double a, double b);
+float __novus_f32_from_bits(uint32_t bits);
+double __novus_f64_from_bits(uint64_t bits);
 
 // Raw memory allocation (bypasses tracking)
 // Use for stdlib internals where tracking would interfere

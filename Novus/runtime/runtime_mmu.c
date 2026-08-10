@@ -736,6 +736,12 @@ void __novus_disable_null_page_protection(void)
  */
 void __novus_null_pointer_error(const char* file, int32_t line)
 {
+    if (__novus_test_mode) {
+        __novus_test_panic_occurred = 1;
+        __novus_test_panic_message = "Null pointer dereference";
+        return;
+    }
+
     char line_str[12];
     char* ptr = error_buffer;
 

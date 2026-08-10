@@ -120,6 +120,11 @@ int32_t __novus_cmp_ne_i32(int32_t a, int32_t b)
     return a != b ? 1 : 0;
 }
 
+int32_t __novus_cmp_eq_i64(int64_t a, int64_t b) { return a == b ? 1 : 0; }
+int32_t __novus_cmp_ne_i64(int64_t a, int64_t b) { return a != b ? 1 : 0; }
+int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b) { return a == b ? 1 : 0; }
+int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b) { return a != b ? 1 : 0; }
+
 // Simple integer to string helper
 void int_to_str(char* buf, int32_t num) {
     char temp[12];

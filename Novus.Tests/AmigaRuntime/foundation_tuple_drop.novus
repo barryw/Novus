@@ -1,0 +1,28 @@
+// Regression probe: tuple destructuring must preserve Drop-bearing bindings.
+
+from std::test::test import expect
+
+static var tuple_drop_trace: i32 = 0
+
+struct TupleDropToken {
+    id: i32,
+}
+
+impl Drop for TupleDropToken {
+    fn drop(&var self) {
+        tuple_drop_trace = tuple_drop_trace * 10 + self.id
+    }
+}
+
+fn tuple_scope() {
+    let pair = (TupleDropToken { id: 5 }, TupleDropToken { id: 6 })
+    let (first, second) = pair
+    expect(first.id == 5 && second.id == 6, "destructured values")
+}
+
+@test("tuple destructuring drops each field once")
+pub fn foundation_tuple_drop() {
+    tuple_drop_trace = 0
+    tuple_scope()
+    expect(tuple_drop_trace == 65, "each tuple field dropped once")
+}

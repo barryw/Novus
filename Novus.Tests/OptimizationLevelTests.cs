@@ -52,4 +52,26 @@ public class OptimizationLevelTests
         Assert.Equal(1, options.OptimizationLevel);
         Assert.InRange(options.OptimizationLevel, 0, CompilerOptions.MaxOptimizationLevel);
     }
+
+    [Fact]
+    public void TestCommandDefaultsMatchBuildMode()
+    {
+        Assert.Equal(0, new TestOptions().GetOptimizationLevel());
+        Assert.Equal(1, new TestOptions { Release = true }.GetOptimizationLevel());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void TestCommandHonorsExplicitOptimizationLevel(int level)
+    {
+        Assert.Equal(level, new TestOptions { Release = true, OptimizationLevel = level }.GetOptimizationLevel());
+    }
+
+    [Fact]
+    public void TestCommandRejectsInvalidOptimizationLevel()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new TestOptions { OptimizationLevel = 4 }.GetOptimizationLevel());
+    }
 }

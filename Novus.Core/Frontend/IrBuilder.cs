@@ -374,7 +374,9 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         // Constants management
         public void RestoreConstantsFromTuples(Dictionary<string, (IrType Type, object Value)> constants)
         {
+            var currentConstants = _builder.GetConstantsAsTuples();
             _builder.RestoreConstantsFromTuples(constants);
+            _builder.RestoreConstantsFromTuples(currentConstants);
         }
 
         // Statement state save/restore for generic instantiation
@@ -1282,16 +1284,19 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             _currentSelfType = null;
         }
 
-        // Pass 5: Build function bodies
-        foreach (var funcContext in context.functionDeclaration())
+        // Pass 5: Build const function bodies first so deferred constants are resolved
+        // before ordinary function bodies inline their values.
+        foreach (var buildConstFunctions in new[] { true, false })
         {
-            var funcName = funcContext.IDENTIFIER().GetText();
+            foreach (var funcContext in context.functionDeclaration())
+            {
+                var funcName = funcContext.IDENTIFIER().GetText();
 
             // Skip generic function templates - they'll be instantiated on-demand
-            if (_genericInstantiator.HasFunctionTemplate(funcName))
-            {
-                continue;
-            }
+                if (_genericInstantiator.HasFunctionTemplate(funcName))
+                {
+                    continue;
+                }
 
             // CRITICAL: For overloaded functions, we need to look up by mangled name
             // Parse parameters to compute the mangled name (same logic as Pass 4)
@@ -1308,17 +1313,22 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             var lookupParamTypes = lookupParams.Select(p => p.Type).ToList();
             var lookupName = GetMangledFunctionName(funcName, lookupParamTypes);
 
-            _currentFunction = _module.GetFunction(lookupName);
-            if (_currentFunction == null)
-            {
-                var errorLocation = GetLocation(funcContext);
-                _diagnostics.ReportError(
-                    ErrorCodes.FunctionNotFound,
-                    $"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.",
-                    errorLocation
-                );
-                continue;
-            }
+                _currentFunction = _module.GetFunction(lookupName);
+                if (_currentFunction == null)
+                {
+                    var errorLocation = GetLocation(funcContext);
+                    _diagnostics.ReportError(
+                        ErrorCodes.FunctionNotFound,
+                        $"Function '{funcName}' not found in module. This indicates a compiler bug in an earlier pass.",
+                        errorLocation
+                    );
+                    continue;
+                }
+
+                if (_currentFunction.IsConstFn != buildConstFunctions)
+                {
+                    continue;
+                }
 
             // Skip extern functions - they have no body
             if (_currentFunction.IsExtern || funcContext.block() == null)
@@ -1328,12 +1338,20 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
             _currentBlock = _currentFunction.CreateBasicBlock("entry");
             _localVariables.Clear(); // Clear local variables for new function
+            InjectParameterDrops();
 
             // Visit function body and get the last expression value
             var lastValue = Visit(funcContext.block()) as IrValue;
 
             // Add implicit return if block doesn't already have a terminator
-            AddImplicitReturn(lastValue);
+                AddImplicitReturn(lastValue);
+            }
+
+            if (buildConstFunctions)
+            {
+                ValidateConstFnPurity();
+                EvaluateDeferredConstants();
+            }
         }
 
         // Pass 6: Build impl method bodies (only for non-generic impl blocks)
@@ -1418,6 +1436,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
                 _currentBlock = _currentFunction.CreateBasicBlock("entry");
                 _localVariables.Clear();
+                InjectParameterDrops();
 
                 // Add self parameter to local variables if present
                 if (_currentFunction.Parameters.Any(p => p.Name == "self"))
@@ -1453,14 +1472,6 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Clear Self type after processing impl block
             _currentSelfType = null;
         }
-
-        // Pass 6.5: Validate const fn purity
-        // Now that all function bodies are built, we can validate that const fn functions are pure
-        ValidateConstFnPurity();
-
-        // Pass 6.6: Evaluate deferred constants that contain const fn calls
-        // Now that all function bodies are built and validated, we can evaluate const fn calls
-        EvaluateDeferredConstants();
 
         return _module;
     }

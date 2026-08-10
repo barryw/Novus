@@ -1726,5 +1726,38 @@ pub fn test() -> i32 {
         Assert.False(diagnostics.HasErrors);
     }
 
+    [Fact]
+    public void Analyze_LocalVariableShadowsConstant()
+    {
+        var diagnostics = Analyze("""
+            const value: u32 = 0
+            enum Flag { On, Off }
+            fn test() {
+                let value = Flag::On
+                match value {
+                    Flag::On => {},
+                    Flag::Off => {},
+                }
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_TupleLiteralCanBeDestructured()
+    {
+        var diagnostics = Analyze("""
+            struct Item { value: i32 }
+            fn test() {
+                let pair = (Item { value: 1 }, Item { value: 2 })
+                let (first, second) = pair
+                let sum = first.value + second.value
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors);
+    }
+
     #endregion
 }

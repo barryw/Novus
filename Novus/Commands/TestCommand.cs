@@ -59,8 +59,6 @@ public static class TestCommand
 
             // Find the compiler's std lib path
             var compilerDir = AppContext.BaseDirectory;
-            var stdLibPath = Path.Combine(compilerDir, "std");
-
             // Check for stale stdlib source copies and auto-refresh if needed
             var staleFiles = StdlibBuildCommand.FindStaleSourceCopies(compilerDir);
             if (staleFiles.Count > 0)
@@ -109,19 +107,46 @@ public static class TestCommand
                 return 0;
             }
 
+            sourceFiles.Sort(StringComparer.Ordinal);
+            var outputDir = Path.GetFullPath(options.OutputDir ?? Directory.GetCurrentDirectory());
+            var testRunnerPath = Path.Combine(outputDir, "_test_runner.novus");
+            var testConfigPath = testRunnerPath + ".config";
+            var testConfig = string.Join('|', options.Filter, options.Benchmark, options.Release,
+                string.Join(';', sourceFiles));
+
+            if (!options.ListOnly && !options.RunWithVamos &&
+                File.Exists(Path.Combine(outputDir, "tests")) &&
+                File.Exists(testRunnerPath) && File.Exists(testConfigPath) &&
+                File.ReadAllText(testConfigPath) == testConfig &&
+                sourceFiles.All(source =>
+                {
+                    var copy = Path.Combine(outputDir, Path.GetFileName(source));
+                    return File.Exists(copy) && File.ReadAllBytes(source).AsSpan()
+                        .SequenceEqual(File.ReadAllBytes(copy));
+                }))
+            {
+                var fastPathOriginalDir = Directory.GetCurrentDirectory();
+                try
+                {
+                    Directory.SetCurrentDirectory(outputDir);
+                    return await Program.RunCompiler(CreateCompilerOptions(options));
+                }
+                finally
+                {
+                    Directory.SetCurrentDirectory(fastPathOriginalDir);
+                }
+            }
+
             Console.WriteLine($"Scanning {sourceFiles.Count} file(s) for tests...");
 
             // Discover tests from all source files
             var allTests = new List<TestInfo>();
-            var sourceFilesWithTests = new List<string>();
-
             foreach (var sourceFile in sourceFiles)
             {
-                var tests = await DiscoverTests(sourceFile, stdLibPath, options.Verbose);
+                var tests = await DiscoverTests(sourceFile, options);
                 if (tests.Count > 0)
                 {
                     allTests.AddRange(tests);
-                    sourceFilesWithTests.Add(sourceFile);
                 }
             }
 
@@ -169,12 +194,10 @@ public static class TestCommand
 
             // Output to current directory by default (like a normal tool)
             // User can specify --output-dir if they want a different location
-            var outputDir = options.OutputDir ?? Directory.GetCurrentDirectory();
             Directory.CreateDirectory(outputDir);
 
             // Generate test runner source (pass all tests - generator handles skipped ones)
-            var testRunnerPath = Path.Combine(outputDir, "_test_runner.novus");
-            GenerateTestRunner(testRunnerPath, sourceFilesWithTests, allTests, options);
+            GenerateTestRunner(testRunnerPath, sourceFiles, allTests, options);
 
             Console.WriteLine($"\nGenerated test runner: {testRunnerPath}");
 
@@ -191,23 +214,7 @@ public static class TestCommand
                 // This ensures that local imports (e.g., "from test_file import ...") work
                 Directory.SetCurrentDirectory(outputDir);
 
-                var compilerOptions = new CompilerOptions
-                {
-                    InputFile = Path.GetFileName(testRunnerPath), // Use relative path
-                    OutputFile = "tests", // Output in current directory
-                    Cpu = options.Cpu,
-                    Fpu = options.Fpu,
-                    Release = options.Release,
-                    BuildMode = options.Release ? BuildMode.Release : BuildMode.Debug,
-                    VbccPath = options.VbccPath,
-                    NdkPath = options.NdkPath,
-                    Verbose = options.Verbose,
-                    OptimizationLevel = options.Release ? 2 : 0,
-                    SafetyLevelOption = options.SafetyLevel,
-                    UseStdlibCache = true
-                };
-
-                var result = await Program.RunCompiler(compilerOptions);
+                var result = await Program.RunCompiler(CreateCompilerOptions(options));
 
                 // Update outputExe to absolute path for reporting
                 outputExe = Path.Combine(outputDir, "tests");
@@ -216,6 +223,8 @@ public static class TestCommand
                 {
                     return result;
                 }
+
+                File.WriteAllText(testConfigPath, testConfig);
 
                 Console.WriteLine($"\n===================================");
                 Console.WriteLine($"Test runner built successfully!");
@@ -282,10 +291,26 @@ public static class TestCommand
         }
     }
 
+    private static CompilerOptions CreateCompilerOptions(TestOptions options) => new()
+    {
+        InputFile = "_test_runner.novus",
+        OutputFile = "tests",
+        Cpu = options.Cpu,
+        Fpu = options.Fpu,
+        Release = options.Release,
+        BuildMode = options.Release ? BuildMode.Release : BuildMode.Debug,
+        VbccPath = options.VbccPath,
+        NdkPath = options.NdkPath,
+        Verbose = options.Verbose,
+        OptimizationLevel = options.GetOptimizationLevel(),
+        SafetyLevelOption = options.SafetyLevel,
+        UseStdlibCache = true
+    };
+
     /// <summary>
     /// Discover all @test functions in a source file
     /// </summary>
-    private static async Task<List<TestInfo>> DiscoverTests(string sourceFile, string stdLibPath, bool verbose)
+    private static async Task<List<TestInfo>> DiscoverTests(string sourceFile, TestOptions options)
     {
         var tests = new List<TestInfo>();
 
@@ -293,8 +318,25 @@ public static class TestCommand
         {
             var source = await File.ReadAllTextAsync(sourceFile);
 
-            // Parse the file
             var diagnostics = new DiagnosticBag();
+            var preprocessingOptions = new CompilerOptions
+            {
+                Cpu = options.Cpu,
+                Fpu = options.Fpu,
+                Release = options.Release,
+                BuildMode = options.Release ? BuildMode.Release : BuildMode.Debug,
+            };
+            var preprocessor = new Preprocessing.Preprocessor(
+                Program.GetPreprocessorConstants(preprocessingOptions), diagnostics, sourceFile);
+            source = preprocessor.Process(source);
+            if (diagnostics.HasErrors)
+            {
+                Console.WriteLine($"  Preprocessor errors in {Path.GetFileName(sourceFile)}:");
+                Console.WriteLine(diagnostics.FormatDiagnostics());
+                throw new InvalidOperationException($"Cannot discover tests in {sourceFile}");
+            }
+
+            // Parse the file
             var parser = NovusParserFactory.CreateParser(
                 source,
                 diagnostics,
@@ -306,58 +348,47 @@ public static class TestCommand
 
             if (diagnostics.HasErrors)
             {
-                if (verbose)
+                Console.WriteLine($"  Parse errors in {sourceFile}:");
+                Console.WriteLine(diagnostics.FormatDiagnostics());
+                throw new InvalidOperationException($"Cannot discover tests in {sourceFile}");
+            }
+
+            foreach (var function in compilationUnit.functionDeclaration())
+            {
+                var testAttr = function.attribute()
+                    .FirstOrDefault(attribute => attribute.IDENTIFIER().GetText() == KnownAttributes.Test);
+                if (testAttr == null)
+                    continue;
+
+                var positional = new List<string>();
+                var named = new Dictionary<string, string>();
+                foreach (var argument in testAttr.attributeArgList()?.attributeArg() ?? [])
                 {
-                    Console.WriteLine($"  Parse errors in {sourceFile}:");
-                    Console.WriteLine(diagnostics.FormatDiagnostics());
+                    var value = ParseAttributeValue(argument.expression().GetText());
+                    if (argument.IDENTIFIER() == null)
+                        positional.Add(value);
+                    else
+                        named[argument.IDENTIFIER().GetText()] = value;
                 }
-                return tests;
-            }
-
-            // Perform semantic analysis to build IR
-            var analyzer = new SemanticAnalyzer(sourceFile, source, stdLibPath);
-            var analysisSucceeded = analyzer.Analyze(compilationUnit);
-
-            if (!analysisSucceeded)
-            {
-                // Always show analysis errors when discovering tests
-                Console.WriteLine($"  Analysis errors in {Path.GetFileName(sourceFile)}:");
-                Console.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-                return tests;
-            }
-
-            // Build IR to get function attributes
-            var irBuilder = new IrBuilder();
-            irBuilder.SetStdLibPath(stdLibPath);
-            irBuilder.SetInputFilePath(sourceFile);
-            var module = irBuilder.BuildModule(compilationUnit);
-
-            // Find all @test functions
-            var testFunctions = module.GetTestFunctions();
-
-            foreach (var func in testFunctions)
-            {
-                // Get test attribute
-                var testAttr = func.Attributes?.Get(KnownAttributes.Test);
 
                 // Check for skip parameter: @test(skip) or @test(skip = "reason")
-                var skipReason = testAttr?.GetString("skip");
-                var isSkipped = skipReason != null || testAttr?.HasFlag("skip") == true;
+                named.TryGetValue("skip", out var skipReason);
+                var isSkipped = skipReason != null || positional.Contains("skip");
 
                 // Check for should_panic parameter: @test(should_panic) or @test(should_panic = "expected message")
-                var expectedPanicMessage = testAttr?.GetString("should_panic");
-                var shouldPanic = expectedPanicMessage != null || testAttr?.HasFlag("should_panic") == true;
+                named.TryGetValue("should_panic", out var expectedPanicMessage);
+                var shouldPanic = expectedPanicMessage != null || positional.Contains("should_panic");
 
                 // Get description from @test attribute if provided
                 // Can be positional: @test("description") or named: @test(description = "...")
                 // But don't treat flag identifiers as descriptions
-                var positionalDesc = testAttr?.GetPositionalArg<string>(0);
+                var positionalDesc = positional.FirstOrDefault();
                 if (positionalDesc == "should_panic" || positionalDesc == "skip")
                     positionalDesc = null;
-                var description = testAttr?.GetString("description") ?? positionalDesc;
+                var description = named.GetValueOrDefault("description") ?? positionalDesc;
 
                 tests.Add(new TestInfo(
-                    FunctionName: func.Name,
+                    FunctionName: function.IDENTIFIER().GetText(),
                     ModulePath: sourceFile,
                     Description: description,
                     IsSkipped: isSkipped,
@@ -367,21 +398,28 @@ public static class TestCommand
                 ));
             }
 
-            if (verbose && tests.Count > 0)
+            if (options.Verbose && tests.Count > 0)
             {
                 Console.WriteLine($"  Found {tests.Count} test(s) in {Path.GetFileName(sourceFile)}");
             }
         }
         catch (Exception ex)
         {
-            if (verbose)
+            if (options.Verbose)
             {
                 Console.WriteLine($"  Error scanning {sourceFile}: {ex.Message}");
             }
+            throw;
         }
 
         return tests;
     }
+
+    private static string ParseAttributeValue(string value) =>
+        value.StartsWith('"') && value.EndsWith('"')
+            ? value[1..^1].Replace("\\n", "\n").Replace("\\t", "\t")
+                .Replace("\\\"", "\"").Replace("\\\\", "\\")
+            : value;
 
     /// <summary>
     /// Generate the test runner Novus source file
@@ -397,7 +435,6 @@ public static class TestCommand
 
         sb.AppendLine("// Auto-generated test runner");
         sb.AppendLine("// Generated by: novus test");
-        sb.AppendLine($"// Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         if (options.Benchmark)
         {
             sb.AppendLine("// Benchmark mode: enabled");
@@ -432,17 +469,23 @@ public static class TestCommand
         var activeTests = tests.Where(t => !t.IsSkipped).ToList();
         var testsByFile = activeTests.GroupBy(t => t.ModulePath).ToList();
 
+        // Local imports must remain available when a directory suite is built into a
+        // separate output directory, even when the imported module has no tests itself.
+        foreach (var sourceFile in sourceFiles)
+        {
+            var destPath = Path.Combine(outputDir, Path.GetFileName(sourceFile));
+            if (!Path.GetFullPath(sourceFile).Equals(Path.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(destPath) ||
+                    !File.ReadAllBytes(sourceFile).AsSpan().SequenceEqual(File.ReadAllBytes(destPath)))
+                {
+                    File.Copy(sourceFile, destPath, overwrite: true);
+                }
+            }
+        }
+
         foreach (var group in testsByFile)
         {
-            // Copy source file to output directory for compilation
-            // We need to copy because the test runner is compiled from the output directory
-            var sourceFileName = Path.GetFileName(group.Key);
-            var destPath = Path.Combine(outputDir, sourceFileName);
-            if (!Path.GetFullPath(group.Key).Equals(Path.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase))
-            {
-                File.Copy(group.Key, destPath, overwrite: true);
-            }
-
             // Get the module name from file path (just the filename without extension)
             var moduleName = Path.GetFileNameWithoutExtension(group.Key);
 
@@ -635,6 +678,10 @@ public static class TestCommand
         sb.AppendLine("    return 0");
         sb.AppendLine("}");
 
-        File.WriteAllText(outputPath, sb.ToString());
+        var content = sb.ToString();
+        if (!File.Exists(outputPath) || File.ReadAllText(outputPath) != content)
+        {
+            File.WriteAllText(outputPath, content);
+        }
     }
 }

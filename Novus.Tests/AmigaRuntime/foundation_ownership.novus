@@ -1,0 +1,87 @@
+// Target-executed conformance tests for ownership, Drop, defer, and using.
+
+from std::test::test import expect, expect_true, expect_false
+
+static var drop_trace: i32 = 0
+static var defer_trace: i32 = 0
+
+struct Token {
+    id: i32,
+    active: bool,
+}
+
+impl Drop for Token {
+    fn drop(&var self) {
+        drop_trace = drop_trace * 10 + self.id
+        self.active = false
+    }
+}
+
+fn make_token(id: i32) -> Token {
+    return Token { id: id, active: true }
+}
+
+fn consume(token: Token) -> i32 {
+    return token.id
+}
+
+fn scoped_tokens() {
+    let first = make_token(1)
+    let second = make_token(2)
+    expect(first.active && second.active, "tokens live in scope")
+}
+
+fn note_defer(value: i32) {
+    defer_trace = defer_trace * 10 + value
+}
+
+fn run_defers(early: bool) -> i32 {
+    defer { note_defer(1) }
+    defer { note_defer(2) }
+    if early { return 7 }
+    return 9
+}
+
+@test("Drop runs once in reverse declaration order")
+pub fn foundation_drop_order() {
+    drop_trace = 0
+    scoped_tokens()
+    expect(drop_trace == 21, "reverse drop order")
+}
+
+@test("moving a value transfers its single drop")
+pub fn foundation_move() {
+    drop_trace = 0
+    let token = make_token(3)
+    let value = consume(token)
+    expect(value == 3, "moved value reached callee")
+    expect(drop_trace == 3, "moved value dropped once")
+}
+
+@test("defer runs LIFO on early and normal returns")
+pub fn foundation_defer() {
+    defer_trace = 0
+    expect(run_defers(true) == 7, "early return value")
+    expect(defer_trace == 21, "early return LIFO")
+    defer_trace = 0
+    expect(run_defers(false) == 9, "normal return value")
+    expect(defer_trace == 21, "normal return LIFO")
+}
+
+@test("using drops its resource at block exit")
+pub fn foundation_using() {
+    drop_trace = 0
+    using make_token(4) {
+        expect(drop_trace == 0, "resource still live")
+    }
+    expect(drop_trace == 4, "resource dropped")
+}
+
+@test("drop_in_place invokes Drop and mutates value")
+pub fn foundation_drop_in_place() {
+    drop_trace = 0
+    var token = make_token(7)
+    @drop_in_place(&var token)
+    expect(drop_trace == 7, "explicit drop")
+    expect_false(token.active, "Drop mutation visible")
+}

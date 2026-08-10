@@ -1,0 +1,142 @@
+// Target-executed conformance tests for Option, Result, propagation, and panics.
+
+from std::core import Option, Result
+from std::test::test import expect, expect_true, expect_false
+
+enum Color {
+    Red,
+    Green,
+    Blue,
+    Cyan,
+}
+
+fn step(ok: bool) -> Result<i32, i32> {
+    if ok { return Result::Ok(41) }
+    return Result::Err(-1)
+}
+
+fn propagated(ok: bool) -> Result<i32, i32> {
+    let value = step(ok)?
+    return Result::Ok(value + 1)
+}
+
+fn successful_result() -> Result<i32, i32> {
+    return Result::Ok(42)
+}
+
+fn failed_result() -> Result<i32, i32> {
+    return Result::Err(-1)
+}
+
+fn guarded_value(value: i32) -> i32 {
+    return match value {
+        candidate if candidate < 0 => -1,
+        candidate if candidate == 0 => 0,
+        _ => 1,
+    }
+}
+
+@test("Option Some and None patterns")
+pub fn foundation_option() {
+    let present: Option<i32> = Option::Some(42)
+    let absent: Option<i32> = Option::None
+    match present {
+        Option::Some(value) => expect(value == 42, "Some payload"),
+        Option::None => expect(false, "unexpected None"),
+    }
+    expect_true(absent.is_none(), "None state")
+}
+
+@test("Result Ok and Err patterns")
+pub fn foundation_result() {
+    match successful_result() {
+        Result::Ok(value) => expect(value == 42, "Ok state"),
+        Result::Err(_) => expect(false, "unexpected Err"),
+    }
+    match failed_result() {
+        Result::Ok(_) => expect(false, "unexpected Ok"),
+        Result::Err(_) => expect(true, "Err state"),
+    }
+}
+
+@test("question-mark operator unwraps and propagates")
+pub fn foundation_try_operator() {
+    match propagated(true) {
+        Result::Ok(value) => expect(value == 42, "unwrapped value"),
+        Result::Err(_) => expect(false, "unexpected propagation"),
+    }
+    match propagated(false) {
+        Result::Ok(_) => expect(false, "missing propagation"),
+        Result::Err(_) => expect(true, "error propagated"),
+    }
+}
+
+@test("Option ok_or converts both variants")
+pub fn foundation_ok_or() {
+    let present: Option<i32> = Option::Some(42)
+    let absent: Option<i32> = Option::None
+    expect_true(present.ok_or(-1).is_ok(), "Some to Ok")
+    expect_true(absent.ok_or(-1).is_err(), "None to Err")
+}
+
+@test("pattern alternatives select expected variants")
+pub fn foundation_pattern_alternatives() {
+    let primary = Color::Green
+    let secondary = Color::Cyan
+    let first = match primary {
+        Color::Red | Color::Green | Color::Blue => true,
+        Color::Cyan => false,
+    }
+    let second = match secondary {
+        Color::Red | Color::Green | Color::Blue => true,
+        Color::Cyan => false,
+    }
+    expect_true(first, "alternative matched")
+    expect_false(second, "fallback matched")
+}
+
+@test("match guards select the first satisfied arm")
+pub fn foundation_match_guards() {
+    expect(guarded_value(-10) == -1, "negative guard")
+    expect(guarded_value(0) == 0, "zero guard")
+    expect(guarded_value(10) == 1, "fallback arm")
+}
+
+@test(should_panic)
+pub fn foundation_bounds_failure() {
+    let values = [1, 2, 3]
+    let ignored = values[9]
+}
+
+@test(should_panic)
+pub fn foundation_division_by_zero() {
+    var zero = 0
+    let ignored = 42 / zero
+}
+
+#if DEBUG
+@test(should_panic)
+pub fn foundation_null_pointer_failure() {
+    let pointer: *i32 = null
+    unsafe {
+        let ignored = *pointer
+    }
+}
+#endif
+
+@test(should_panic)
+pub fn foundation_panic() {
+    panic!("intentional conformance panic")
+}
+
+#if DEBUG
+@test(should_panic)
+pub fn foundation_assertion_failure() {
+    assert!(false, "intentional assertion failure")
+}
+#endif
+
+@test(should_panic)
+pub fn foundation_unreachable_failure() {
+    unreachable!()
+}

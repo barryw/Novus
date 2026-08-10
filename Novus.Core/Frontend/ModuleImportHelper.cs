@@ -17,7 +17,8 @@ public static class ModuleImportHelper
     /// std::dos → std/dos.novus
     /// std::ffi::exec → std/ffi/exec.novus
     /// </summary>
-    public static string ResolveModulePath(string moduleNamespace, string stdLibPath)
+    public static string ResolveModulePath(
+        string moduleNamespace, string stdLibPath, string? userModuleBasePath = null)
     {
         var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
 
@@ -37,7 +38,7 @@ public static class ModuleImportHelper
         {
             // User module (future: will use package resolution)
             var relativePath = string.Join(Path.DirectorySeparatorChar.ToString(), pathParts);
-            return relativePath + ".novus";
+            return Path.Combine(userModuleBasePath ?? "", relativePath + ".novus");
         }
     }
 

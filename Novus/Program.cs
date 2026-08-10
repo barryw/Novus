@@ -80,8 +80,8 @@ public class Program
     // Codegen format version - increment to invalidate all cached object files
     // when making breaking changes to code generation or compilation process.
     // This is the "nuclear option" - prefer targeted invalidation when possible.
-    // v4: Added debug label injection via assembly post-processing in debug builds
-    private const int CODEGEN_VERSION = 4;
+    // v10: Emit real nested-array declarators and preserve indexed array values.
+    private const int CODEGEN_VERSION = 10;
 
     internal static string ComputeCompilationConfigHash(CompilerOptions options)
     {
@@ -115,7 +115,7 @@ public class Program
                     dir, "*", SearchOption.AllDirectories)))
             .OrderBy(path => path, StringComparer.Ordinal);
         var parts = files.Select(path => $"{Path.GetFullPath(path)}:{HashFile(path)}")
-            .Prepend(Commands.StdlibBuildCommand.ComputeCompilerHash())
+            .Prepend($"codegen:{CODEGEN_VERSION}")
             .Prepend(configHash);
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts))));
@@ -125,7 +125,7 @@ public class Program
     /// Build preprocessor constants dictionary based on compiler options.
     /// Used for conditional compilation with #if/#elif/#else/#endif directives.
     /// </summary>
-    private static Dictionary<string, bool> GetPreprocessorConstants(CompilerOptions options)
+    internal static Dictionary<string, bool> GetPreprocessorConstants(CompilerOptions options)
     {
         // Determine effective CPU for "auto" mode
         var cpu = options.Cpu == "auto" ? "68020" : options.Cpu;
@@ -280,6 +280,12 @@ public class Program
             .OrderBy(metadata => metadata.ModuleName, StringComparer.Ordinal)
             .ToList();
     }
+
+    private static bool UsesNativeFloat(IEnumerable<ModuleIR> modules) =>
+        modules.SelectMany(module => module.IrModule.Functions)
+            .Any(function => function.ReturnType is IrFloatType ||
+                             function.Parameters.Any(parameter => parameter.Type is IrFloatType) ||
+                             function.LocalVariables.Any(local => local.Type is IrFloatType));
 
     static int RunGenerateStubs(GenerateStubsOptions options)
     {
@@ -1026,7 +1032,19 @@ public class Program
                 Console.WriteLine($"  ✓ Compiled {allModulesIR.Count + 1} module{(allModulesIR.Count > 0 ? "s" : "")}");
             }
 
-            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values);
+            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values).ToList();
+            var usesNativeFloat = UsesNativeFloat(allModulesIR.Values.Prepend(mainIR));
+            if (options.Fpu is "none" or "soft" && usesNativeFloat)
+            {
+                foreach (var moduleName in new[] { "mathieeesingbas", "mathieeedoubbas" })
+                {
+                    var metadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "ffi", $"{moduleName}.novus"));
+                    if (metadata != null && requiredFfiModules.All(item => item.ModuleName != moduleName))
+                    {
+                        requiredFfiModules.Add(metadata);
+                    }
+                }
+            }
 
             if (options.Verbose && moduleCache.Count > 0)
             {
@@ -1535,7 +1553,7 @@ public class Program
             // The linker can eliminate entire unused .o files, so splitting the runtime
             // into logical groups allows programs that don't use (e.g.) MMU protection
             // to avoid linking that code entirely.
-            var runtimeFiles = new[]
+            var runtimeFiles = new List<string>
             {
                 "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
                 "runtime_core.c",      // Core: memset, memcpy, strlen, error display
@@ -1546,6 +1564,7 @@ public class Program
                 "runtime_mmu.c",       // MMU detection and null page protection
                 "runtime_memtrack.c",  // Memory tracking for debugging
             };
+            if (usesNativeFloat) runtimeFiles.Add("runtime_float.c");
 
             foreach (var runtimeFile in runtimeFiles)
             {
@@ -1558,7 +1577,7 @@ public class Program
                 }
                 cFiles.Add(runtimeCFile);
             }
-            Console.WriteLine($"  → {runtimeFiles.Length} runtime modules (split for DCE)");
+            Console.WriteLine($"  → {runtimeFiles.Count} runtime modules (split for DCE)");
 
             // Handle emit-only mode (just generate C files and stop)
             if (options.EmitAsmOnly)

@@ -263,7 +263,7 @@ public class VbccToolchain
             args.Add("-lmsoft");  // Soft-float library
             args.Add("-lm881");   // Hardware FPU library
         }
-        else if (fpuMode == "soft")
+        else if (fpuMode == "soft" || fpuMode == "none")
         {
             // Software floating point only
             args.Add("-lmsoft");
