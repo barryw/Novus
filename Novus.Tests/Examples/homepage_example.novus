@@ -7,10 +7,17 @@ from std::ffi::dos import Delay
 from std::ffi::graphics import SetAPen, RectFill
 
 pub fn main() -> i32 {
+    // Generated startup code opens only the Amiga libraries this program uses
+    // and closes them at exit, so there are no library bases to manage here.
+
+    // lores detects PAL/NTSC, chooses 320x256 or 320x200, and builds the tags.
     let result = ScreenHandle::lores("Demo Screen", 5)
 
+    // Result makes screen-open failure explicit without null checks or gotos.
     match result {
         Result::Ok(screen) => {
+            // ScreenHandle owns the screen. Drop calls CloseScreen on every exit,
+            // and this borrowed RastPort cannot outlive it.
             let rp = screen.rastport()
             SetAPen(rp, 2)
             RectFill(rp, 10, 20, 100, 80)
