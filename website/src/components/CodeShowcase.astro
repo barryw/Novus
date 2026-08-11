@@ -107,8 +107,8 @@ jsr     -414(a6)`,
       </h2>
       <p class="mt-5 text-lg leading-8 text-novus-gray-300">
         Both programs detect PAL or NTSC, open the same 5-bitplane custom screen,
-        draw the same rectangle, wait, and clean up. Novus makes the failure and
-        lifetime paths explicit in the type system instead of scattering them through the program.
+        draw the same rectangle, wait, and clean up. Novus's standard lores wrapper
+        owns the display geometry and Intuition tags; Result and ScreenHandle own failure and cleanup.
       </p>
     </div>
 
