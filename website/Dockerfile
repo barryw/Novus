@@ -12,6 +12,7 @@ RUN npm ci
 # Copy source
 COPY website/ ./
 COPY Novus.Tests/Examples/homepage_example.c Novus.Tests/Examples/homepage_example.novus /app/Novus.Tests/Examples/
+COPY vscode-novus/syntaxes/novus.tmLanguage.json /app/vscode-novus/syntaxes/
 
 # Build the site
 RUN npm run build

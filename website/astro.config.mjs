@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import novusGrammar from '../vscode-novus/syntaxes/novus.tmLanguage.json' with { type: 'json' };
 
 import tailwindcss from '@tailwindcss/vite';
 
@@ -13,6 +14,7 @@ export default defineConfig({
           tagline: 'New code for classic machines',
           expressiveCode: {
             themes: ['github-dark'],
+            shiki: { langs: [{ ...novusGrammar, name: 'novus' }] },
           },
           logo: {
             light: './src/assets/logo-light.svg',
