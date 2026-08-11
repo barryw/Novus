@@ -13,8 +13,10 @@ template: release-static-site
 data:
   site: novuslang
   k8s_namespace: novus
+  # The homepage imports its canonical C/Novus examples from Novus.Tests.
+  website_context: .
   # Defaults cover the rest:
   #   image_name / deployment_name = "novuslang-website"
-  #   website_context = website/ ; dockerfile = website/Dockerfile
+  #   dockerfile = website/Dockerfile
   #   container = "website" ; deploy_path = "deploy/"
   #   cloudflare_zone secret = "cloudflare_zone_id" (set to the novuslang.com zone)

@@ -1,0 +1,10 @@
+**
+!website/
+!website/**
+website/.astro/
+website/dist/
+website/node_modules/
+!Novus.Tests/
+!Novus.Tests/Examples/
+!Novus.Tests/Examples/homepage_example.c
+!Novus.Tests/Examples/homepage_example.novus

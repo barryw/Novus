@@ -12,8 +12,7 @@
 ### 1. Build and push the image
 
 ```bash
-cd website
-docker build -t ghcr.io/barryw/novuslang-website:latest .
+docker build -f website/Dockerfile -t ghcr.io/barryw/novuslang-website:latest .
 docker push ghcr.io/barryw/novuslang-website:latest
 ```
 
