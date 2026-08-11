@@ -5,7 +5,7 @@
 // These provide safe, ergonomic wrappers around raw sockaddr structures.
 
 from std::ffi::bsdsocket import inet_addr, in_addr, sockaddr_in, AF_INET, INADDR_NONE
-from std::core import Option, Result
+from std::core import Option, Result, Error
 from std::strings::format import Formatter, Display
 from std::strings::core import Str, strcmp
 from std::net::socket import ensure_initialized
@@ -16,6 +16,21 @@ pub enum AddrParseError {
     InvalidAddress,
     /// No TCP/IP stack is installed
     NoTcpStack,
+}
+
+impl AddrParseError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            AddrParseError::InvalidAddress => "Invalid IPv4 address",
+            AddrParseError::NoTcpStack => "No TCP/IP stack is installed",
+        }
+    }
+}
+
+impl Error for AddrParseError {
+    fn message(&self) -> *u8 {
+        return AddrParseError::message(self)
+    }
 }
 
 // Inline byte swap functions for Amiga (68k)

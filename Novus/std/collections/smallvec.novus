@@ -50,10 +50,10 @@ impl<T, const N: u32> SmallVec<T, N> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = N * element_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let (raw_ptr, _size) = block.into_raw()
                 let ptr: *T = (*T)raw_ptr
                 return Result::Ok(SmallVec {
@@ -62,7 +62,7 @@ impl<T, const N: u32> SmallVec<T, N> {
                     capacity: N,
                 })
             },
-            Option::None => {
+            Result::Err(_) => {
                 return Result::Err(ExecError::NoMem)
             }
         }
@@ -156,10 +156,10 @@ impl<T, const N: u32> SmallVec<T, N> {
         let bytes_needed: u32 = new_capacity * element_size
 
         // Allocate new heap storage
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let (new_ptr, _size) = block.into_raw()
                 let typed_ptr: *T = (*T)new_ptr
 
@@ -179,7 +179,7 @@ impl<T, const N: u32> SmallVec<T, N> {
                 self.capacity = new_capacity
                 return Result::Ok(())
             },
-            Option::None => {
+            Result::Err(_) => {
                 return Result::Err(ExecError::NoMem)
             }
         }

@@ -100,7 +100,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         let bytes_needed: u32 = capacity * entry_size
 
         match MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR) {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
@@ -128,9 +128,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                     resize_threshold: threshold,
                 })
             },
-            Option::None => {
-                return Result::Err(ExecError::NoMem)
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -451,7 +449,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         let bytes_needed: u32 = new_capacity * self.entry_size
 
         match MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC) {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let new_entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Take ownership of memory before block goes out of scope
@@ -512,9 +510,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
                 return Result::Ok(())
             },
-            Option::None => {
-                return Result::Err(ExecError::NoMem)
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 

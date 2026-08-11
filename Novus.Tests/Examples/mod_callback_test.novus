@@ -18,8 +18,8 @@ pub fn main() -> i32 {
     write("MOD Player Test\n")
     write("===============\n\n")
 
-    var player = ModPlayer::new(is_pal)?
-    player.init_asset(&music, 0)?
+    var player = ModPlayer::new(is_pal).unwrap()
+    player.init_asset(&music, 0).unwrap()
 
     write("Playing: GSLINGER.MOD\n")
     write("Press Ctrl-C to stop...\n\n")
@@ -27,7 +27,7 @@ pub fn main() -> i32 {
     player.set_single_play(true)
     player.play()
 
-    var timer = AsyncTimer::new()?
+    var timer = AsyncTimer::new().unwrap()
     var seconds: u32 = 0
     var user_stopped = false
 

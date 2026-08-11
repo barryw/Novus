@@ -36,8 +36,8 @@ fn bounded_responder_task() -> i32 {
     // Complete the handoff - takes over port and signals parent we're ready
     // PortOwnership tracks the signal bit and frees it on drop
     let ownership = match complete_handoff(handoff) {
-        Option::Some(o) => o,
-        Option::None => return 1
+        Result::Ok(o) => o,
+        Result::Err(_) => return 1
     }
 
     // Wait for a channel message
@@ -76,7 +76,7 @@ pub fn test_unbounded_creation() {
 pub fn test_unbounded_send_recv() {
     let (tx, rx) = channel::<i32>().unwrap()
 
-    tx.send(42)
+    let _ = tx.send(42)
 
     match rx.try_recv() {
         Option::None => fail("try_recv returned None after send"),
@@ -89,10 +89,10 @@ pub fn test_unbounded_fifo_ordering() {
     let (tx, rx) = channel::<i32>().unwrap()
 
     // Send multiple values in order
-    tx.send(10)
-    tx.send(20)
-    tx.send(30)
-    tx.send(40)
+    let _ = tx.send(10)
+    let _ = tx.send(20)
+    let _ = tx.send(30)
+    let _ = tx.send(40)
 
     // Receive and verify FIFO order
     match rx.try_recv() {
@@ -144,9 +144,9 @@ pub fn test_unbounded_signal_mask() {
 pub fn test_unbounded_drain() {
     let (tx, rx) = channel::<i32>().unwrap()
 
-    tx.send(100)
-    tx.send(200)
-    tx.send(300)
+    let _ = tx.send(100)
+    let _ = tx.send(200)
+    let _ = tx.send(300)
 
     // Drain them manually (lambdas need to capture context which is complex)
     var sum: i32 = 0
@@ -171,8 +171,8 @@ pub fn test_unbounded_sender_clone() {
 
     let tx2 = tx.clone()
 
-    tx.send(111)
-    tx2.send(222)
+    let _ = tx.send(111)
+    let _ = tx2.send(222)
 
     // Both should be received
     var got_first = false
@@ -200,7 +200,7 @@ pub fn test_unbounded_sender_clone() {
 pub fn test_unbounded_multiple_recv_on_empty() {
     let (tx, rx) = channel::<i32>().unwrap()
 
-    tx.send(999)
+    let _ = tx.send(999)
 
     // Receive it
     match rx.try_recv() {
@@ -250,7 +250,7 @@ pub fn test_bounded_send_recv() {
 
     // Use try_send to avoid blocking in single-process test
     let sent = tx.try_send(55)
-    expect_true(sent, "try_send returned true")
+    expect_true(sent.is_ok(), "try_send succeeded")
 
     match rx.try_recv() {
         Option::None => fail("try_recv returned None"),
@@ -263,9 +263,9 @@ pub fn test_bounded_fifo_ordering() {
     let (tx, rx) = bounded_channel::<i32>().unwrap()
 
     // Use try_send to avoid blocking in single-process test
-    tx.try_send(1)
-    tx.try_send(2)
-    tx.try_send(3)
+    let _ = tx.try_send(1)
+    let _ = tx.try_send(2)
+    let _ = tx.try_send(3)
 
     // Receive in order
     let v1 = rx.try_recv()
@@ -316,7 +316,13 @@ pub fn test_bounded_blocking_send() {
     var (tx, rx) = bounded_channel::<i32>().unwrap()
 
     // Create handoff structure - this handles the race-free port transfer
-    var handoff = PortHandoff::new(rx.port())
+    var handoff = match PortHandoff::new(rx.port()) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            fail("Failed to create port handoff")
+            return
+        }
+    }
 
     // Detach the port from rx - child will own it now
     // This prevents rx.drop() from calling DeleteMsgPort on a port
@@ -333,11 +339,14 @@ pub fn test_bounded_blocking_send() {
         Result::Ok(handle) => {
             // Wait for child to complete the handoff (take over port and signal us)
             // This is race-free - no arbitrary delays needed!
-            handoff.wait_for_ready()
+            if handoff.wait_for_ready().is_err() {
+                fail("Failed while waiting for port handoff")
+                return
+            }
 
             // Now send - this will block until the task replies
             let sent = tx.send(999)
-            expect_true(sent, "blocking send succeeded")
+            expect_true(sent.is_ok(), "blocking send succeeded")
         }
     }
 }
@@ -363,11 +372,14 @@ pub fn test_oneshot_send_recv() {
     let (tx, rx) = oneshot::<i32>().unwrap()
 
     let sent = tx.send(777)
-    expect_true(sent, "send returned true")
+    expect_true(sent.is_ok(), "send succeeded")
 
     match rx.try_recv() {
-        Option::None => fail("try_recv returned None"),
-        Option::Some(value) => expect_eq(value, 777, "received value")
+        Result::Err(_) => fail("try_recv failed"),
+        Result::Ok(value) => match value {
+            Option::None => fail("try_recv returned None"),
+            Option::Some(item) => expect_eq(item, 777, "received value")
+        }
     }
 }
 
@@ -378,27 +390,30 @@ pub fn test_oneshot_single_send_only() {
     let first = tx.send(888)
     let second = tx.send(999)
 
-    expect_true(first, "first send succeeded")
-    expect_false(second, "second send failed")
+    expect_true(first.is_ok(), "first send succeeded")
+    expect_true(second.is_err(), "second send failed")
 }
 
 @test("Oneshot: can only receive once")
 pub fn test_oneshot_single_recv_only() {
     let (tx, rx) = oneshot::<i32>().unwrap()
 
-    tx.send(123)
+    let _ = tx.send(123)
 
     let first = rx.try_recv()
     let second = rx.try_recv()
 
     match first {
-        Option::Some(v) => expect_eq(v, 123, "first recv got value"),
-        Option::None => fail("first recv failed")
+        Result::Err(_) => fail("first recv failed"),
+        Result::Ok(value) => match value {
+            Option::Some(v) => expect_eq(v, 123, "first recv got value"),
+            Option::None => fail("first recv had no value")
+        }
     }
 
     match second {
-        Option::None => {}, // Expected
-        Option::Some(_) => fail("second recv got value")
+        Result::Err(_) => {}, // Already received is an explicit error
+        Result::Ok(_) => fail("second recv unexpectedly succeeded")
     }
 }
 
@@ -407,8 +422,11 @@ pub fn test_oneshot_empty_channel() {
     let (tx, rx) = oneshot::<i32>().unwrap()
 
     match rx.try_recv() {
-        Option::None => {}, // Expected
-        Option::Some(_) => fail("Got value without send")
+        Result::Err(_) => fail("try_recv failed"),
+        Result::Ok(value) => match value {
+            Option::None => {}, // Expected
+            Option::Some(_) => fail("Got value without send")
+        }
     }
 }
 
@@ -417,7 +435,7 @@ pub fn test_oneshot_is_sent() {
     let (tx, rx) = oneshot::<i32>().unwrap()
 
     let before = tx.is_sent()
-    tx.send(456)
+    let _ = tx.send(456)
     let after = tx.is_sent()
 
     expect_false(before, "is_sent false before send")
@@ -429,9 +447,9 @@ pub fn test_oneshot_is_complete() {
     let (tx, rx) = oneshot::<i32>().unwrap()
 
     let before = rx.is_complete()
-    tx.send(654)
+    let _ = tx.send(654)
     let middle = rx.is_complete()
-    rx.try_recv()
+    let _ = rx.try_recv()
     let after = rx.is_complete()
 
     expect_false(before, "is_complete false before recv")

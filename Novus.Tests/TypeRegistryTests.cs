@@ -112,6 +112,30 @@ pub fn make_ok(x: i32) -> Result {
     }
 
     [Fact]
+    public void TypeRegistry_PreservesAndOrdersNestedGenericEnums()
+    {
+        var result = new IrEnumType("Result", [
+            new IrEnumVariant("Ok", 0, [new IrTupleType([])]),
+            new IrEnumVariant("Err", 1, [IrIntType.I32]),
+        ], cacheKey: "Result<(), i32>", typeArguments: [new IrTupleType([]), IrIntType.I32]);
+        var poll = new IrEnumType("Poll", [
+            new IrEnumVariant("Ready", 0, [result]),
+            new IrEnumVariant("Pending", 1),
+        ], cacheKey: "Poll<Result<(), i32>>", typeArguments: [result]);
+        var module = new IrModule();
+        module.AddEnum(result);
+        module.AddEnum(poll);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(module);
+
+        Assert.Equal(2, registry.EnumTypes.Count());
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+        Assert.True(header.IndexOf("// Enum: Result<(), i32>", StringComparison.Ordinal) <
+                    header.IndexOf("// Enum: Poll<Result<(), i32>>", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void TypeRegistry_MultipleStructs_RegistersAll()
     {
         var source = @"

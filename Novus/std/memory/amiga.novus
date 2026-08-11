@@ -1,7 +1,8 @@
 // Amiga memory management utilities with RAII safety
 // Provides safe wrappers for chip/fast memory allocation
 
-from std::core import Option
+from std::core import Result
+from std::error::errors import ExecError
 from std::ffi::exec import AllocVec, FreeVec
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC, MEMF_ANY
 
@@ -38,31 +39,34 @@ pub struct MemHandle {
 
 impl MemHandle {
     /// Allocate chip memory (required for DMA - graphics, audio, etc.)
-    /// Returns Option to handle allocation failure
+    /// Returns an error when Exec cannot allocate chip memory.
     @inline
-    pub fn new_chip(size: u32) -> Option<MemHandle> {
+    pub fn new_chip(size: u32) -> Result<MemHandle, ExecError> {
         return MemHandle::new_with_flags(size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
     }
 
     /// Allocate fast memory (for CPU-only data, faster access)
-    /// Returns Option to handle allocation failure
+    /// Returns an error when Exec cannot allocate fast memory.
     @inline
-    pub fn new_fast(size: u32) -> Option<MemHandle> {
+    pub fn new_fast(size: u32) -> Result<MemHandle, ExecError> {
         return MemHandle::new_with_flags(size, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
     }
 
     /// Allocate any available memory (chip or fast, whichever is available)
-    /// Returns Option to handle allocation failure
+    /// Returns an error when Exec cannot allocate memory.
     @inline
-    pub fn new_any(size: u32) -> Option<MemHandle> {
+    pub fn new_any(size: u32) -> Result<MemHandle, ExecError> {
         return MemHandle::new_with_flags(size, MEMF_ANY | MEMF_CLEAR | MEMF_PUBLIC)
     }
 
     /// Allocate with custom memory flags
-    /// Returns Option to handle allocation failure
-    pub fn new_with_flags(size: u32, flags: u32) -> Option<MemHandle> {
+    /// Returns an error for a zero size or failed allocation.
+    pub fn new_with_flags(size: u32, flags: u32) -> Result<MemHandle, ExecError> {
+        if size == 0 {
+            return Result::Err(ExecError::InvalidAddress)
+        }
         let ptr: *u8 = AllocVec(size, flags)
-        return if ptr { Option::Some(MemHandle { ptr: ptr, size: size }) } else { Option::None }
+        return if ptr { Result::Ok(MemHandle { ptr: ptr, size: size }) } else { Result::Err(ExecError::NoMem) }
     }
 
     /// Get raw pointer (for FFI calls)
@@ -92,4 +96,3 @@ impl Drop for MemHandle {
         }
     }
 }
-

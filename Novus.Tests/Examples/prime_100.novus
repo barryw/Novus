@@ -14,13 +14,13 @@ pub fn main() -> i32 {
     // Initialize with all true
     var i: u32 = 0
     while i <= 100 {
-        sieve.push(true)
+        sieve.push(true).unwrap()
         i++
     }
 
     // Mark 0 and 1 as not prime
-    sieve.set(0, false)
-    sieve.set(1, false)
+    sieve.set(0, false).unwrap()
+    sieve.set(1, false).unwrap()
 
     // Sieve of Eratosthenes
     var p: u32 = 2
@@ -31,7 +31,7 @@ pub fn main() -> i32 {
         if check != 0 {
             var m: u32 = p * p
             while m <= 100 {
-                sieve.set(m, false)
+                sieve.set(m, false).unwrap()
                 m = m + p
             }
         }

@@ -20,7 +20,7 @@ from std::test::test import expect_true, expect_false, expect_eq, expect_eq, fai
 
 @test("new() creates valid semaphore")
 pub fn test_new_creates_semaphore() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             expect_true(true, "new() should succeed")
         },
@@ -32,11 +32,11 @@ pub fn test_new_creates_semaphore() {
 
 @test("new() can be called multiple times")
 pub fn test_new_multiple_semaphores() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem1) => {
-            match SemaphoreHandle::new() {
+            match SemaphoreHandle::new().ok() {
                 Option::Some(sem2) => {
-                    match SemaphoreHandle::new() {
+                    match SemaphoreHandle::new().ok() {
                         Option::Some(sem3) => {
                             expect_true(true, "multiple new() calls should succeed")
                         },
@@ -56,7 +56,7 @@ pub fn test_new_multiple_semaphores() {
 
 @test("lock() obtains exclusive access")
 pub fn test_lock_obtains_access() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let guard = sem.lock()
             expect_true(true, "lock() should succeed")
@@ -67,7 +67,7 @@ pub fn test_lock_obtains_access() {
 
 @test("lock() can be called multiple times (nested)")
 pub fn test_lock_nested() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let guard1 = sem.lock()
             let guard2 = sem.lock()
@@ -80,7 +80,7 @@ pub fn test_lock_nested() {
 
 @test("lock() guard releases on drop")
 pub fn test_lock_guard_releases() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             // First lock in inner scope
             {
@@ -97,9 +97,9 @@ pub fn test_lock_guard_releases() {
 
 @test("lock() works on multiple different semaphores")
 pub fn test_lock_different_semaphores() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem1) => {
-            match SemaphoreHandle::new() {
+            match SemaphoreHandle::new().ok() {
                 Option::Some(sem2) => {
                     let guard1 = sem1.lock()
                     let guard2 = sem2.lock()
@@ -118,7 +118,7 @@ pub fn test_lock_different_semaphores() {
 
 @test("try_lock() succeeds on available semaphore")
 pub fn test_try_lock_succeeds_when_available() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             match sem.try_lock() {
                 Option::Some(guard) => {
@@ -133,7 +133,7 @@ pub fn test_try_lock_succeeds_when_available() {
 
 @test("try_lock() succeeds multiple times (nested, same task)")
 pub fn test_try_lock_nested_same_task() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             match sem.try_lock() {
                 Option::Some(guard1) => {
@@ -154,7 +154,7 @@ pub fn test_try_lock_nested_same_task() {
 
 @test("try_lock() guard releases on drop")
 pub fn test_try_lock_guard_releases() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             {
                 match sem.try_lock() {
@@ -180,7 +180,7 @@ pub fn test_try_lock_guard_releases() {
 
 @test("lock_shared() obtains shared access")
 pub fn test_lock_shared_obtains_access() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let guard: SharedSemaphoreGuard = sem.lock_shared()
             expect_true(true, "lock_shared() should succeed")
@@ -194,9 +194,9 @@ pub fn test_lock_shared_different_semaphores() {
     // Note: AmigaOS ObtainSemaphoreShared is NOT nestable from the same task!
     // Multiple readers means multiple DIFFERENT tasks, not multiple calls from one task.
     // This test verifies shared locks work on different semaphores.
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem1) => {
-            match SemaphoreHandle::new() {
+            match SemaphoreHandle::new().ok() {
                 Option::Some(sem2) => {
                     let guard1: SharedSemaphoreGuard = sem1.lock_shared()
                     let guard2: SharedSemaphoreGuard = sem2.lock_shared()
@@ -211,7 +211,7 @@ pub fn test_lock_shared_different_semaphores() {
 
 @test("lock_shared() guard releases on drop")
 pub fn test_lock_shared_guard_releases() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             {
                 let guard: SharedSemaphoreGuard = sem.lock_shared()
@@ -230,7 +230,7 @@ pub fn test_lock_shared_guard_releases() {
 
 @test("try_lock_shared() succeeds on available semaphore")
 pub fn test_try_lock_shared_succeeds() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             match sem.try_lock_shared() {
                 Option::Some(guard) => {
@@ -246,9 +246,9 @@ pub fn test_try_lock_shared_succeeds() {
 @test("try_lock_shared() works on different semaphores")
 pub fn test_try_lock_shared_different_sems() {
     // Note: AmigaOS shared locks are NOT nestable from the same task
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem1) => {
-            match SemaphoreHandle::new() {
+            match SemaphoreHandle::new().ok() {
                 Option::Some(sem2) => {
                     match sem1.try_lock_shared() {
                         Option::Some(guard1) => {
@@ -275,7 +275,7 @@ pub fn test_try_lock_shared_different_sems() {
 
 @test("lock after lock_shared released")
 pub fn test_lock_after_shared_released() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             {
                 let shared: SharedSemaphoreGuard = sem.lock_shared()
@@ -289,7 +289,7 @@ pub fn test_lock_after_shared_released() {
 
 @test("lock_shared after lock released")
 pub fn test_shared_after_lock_released() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             {
                 let exclusive = sem.lock()
@@ -307,7 +307,7 @@ pub fn test_shared_after_lock_released() {
 
 @test("new_public() creates named semaphore")
 pub fn test_new_public_creates_semaphore() {
-    match SemaphoreHandle::new_public("TestSem1", 0) {
+    match SemaphoreHandle::new_public("TestSem1", 0).ok() {
         Option::Some(sem) => {
             expect_true(true, "new_public() should succeed")
         },
@@ -317,7 +317,7 @@ pub fn test_new_public_creates_semaphore() {
 
 @test("new_public() with positive priority")
 pub fn test_new_public_positive_priority() {
-    match SemaphoreHandle::new_public("TestSem2", 10) {
+    match SemaphoreHandle::new_public("TestSem2", 10).ok() {
         Option::Some(sem) => {
             expect_true(true, "new_public() with priority 10 should succeed")
         },
@@ -327,7 +327,7 @@ pub fn test_new_public_positive_priority() {
 
 @test("new_public() with negative priority")
 pub fn test_new_public_negative_priority() {
-    match SemaphoreHandle::new_public("TestSem3", -5) {
+    match SemaphoreHandle::new_public("TestSem3", -5).ok() {
         Option::Some(sem) => {
             expect_true(true, "new_public() with priority -5 should succeed")
         },
@@ -337,7 +337,7 @@ pub fn test_new_public_negative_priority() {
 
 @test("find() locates existing public semaphore")
 pub fn test_find_locates_semaphore() {
-    match SemaphoreHandle::new_public("FindMe", 0) {
+    match SemaphoreHandle::new_public("FindMe", 0).ok() {
         Option::Some(owner) => {
             match SemaphoreHandle::find("FindMe") {
                 Option::Some(found) => {
@@ -364,7 +364,7 @@ pub fn test_find_nonexistent() {
 
 @test("found semaphore can be locked")
 pub fn test_found_semaphore_can_lock() {
-    match SemaphoreHandle::new_public("LockMe", 0) {
+    match SemaphoreHandle::new_public("LockMe", 0).ok() {
         Option::Some(owner) => {
             match SemaphoreHandle::find("LockMe") {
                 Option::Some(found) => {
@@ -380,7 +380,7 @@ pub fn test_found_semaphore_can_lock() {
 
 @test("found semaphore can be locked shared")
 pub fn test_found_semaphore_can_lock_shared() {
-    match SemaphoreHandle::new_public("ShareMe", 0) {
+    match SemaphoreHandle::new_public("ShareMe", 0).ok() {
         Option::Some(owner) => {
             match SemaphoreHandle::find("ShareMe") {
                 Option::Some(found) => {
@@ -398,7 +398,7 @@ pub fn test_found_semaphore_can_lock_shared() {
 pub fn test_public_semaphore_removed_on_drop() {
     // Create and drop a public semaphore
     {
-        match SemaphoreHandle::new_public("DropTest", 0) {
+        match SemaphoreHandle::new_public("DropTest", 0).ok() {
             Option::Some(sem) => { },
             Option::None => fail("new_public() failed")
         }
@@ -417,11 +417,11 @@ pub fn test_public_semaphore_removed_on_drop() {
 
 @test("multiple public semaphores with different names")
 pub fn test_multiple_public_semaphores() {
-    match SemaphoreHandle::new_public("Multi1", 0) {
+    match SemaphoreHandle::new_public("Multi1", 0).ok() {
         Option::Some(sem1) => {
-            match SemaphoreHandle::new_public("Multi2", 0) {
+            match SemaphoreHandle::new_public("Multi2", 0).ok() {
                 Option::Some(sem2) => {
-                    match SemaphoreHandle::new_public("Multi3", 0) {
+                    match SemaphoreHandle::new_public("Multi3", 0).ok() {
                         Option::Some(sem3) => {
                             // All should be findable
                             match SemaphoreHandle::find("Multi1") {
@@ -457,7 +457,7 @@ pub fn test_multiple_public_semaphores() {
 
 @test("ScopedData::new() creates protected data with u32")
 pub fn test_scoped_data_new_u32() {
-    match ScopedData::<u32>::new(42u32) {
+    match ScopedData::<u32>::new(42u32).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with u32 should succeed")
         },
@@ -467,7 +467,7 @@ pub fn test_scoped_data_new_u32() {
 
 @test("ScopedData::new() creates protected data with i32")
 pub fn test_scoped_data_new_i32() {
-    match ScopedData::<i32>::new(-100) {
+    match ScopedData::<i32>::new(-100).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with i32 should succeed")
         },
@@ -477,7 +477,7 @@ pub fn test_scoped_data_new_i32() {
 
 @test("ScopedData::new() creates protected data with zero")
 pub fn test_scoped_data_new_zero() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with 0 should succeed")
         },
@@ -487,7 +487,7 @@ pub fn test_scoped_data_new_zero() {
 
 @test("ScopedData::new() creates protected data with max value")
 pub fn test_scoped_data_new_max() {
-    match ScopedData::<u32>::new(0xFFFFFFFFu32) {
+    match ScopedData::<u32>::new(0xFFFFFFFFu32).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with max u32 should succeed")
         },
@@ -501,7 +501,7 @@ pub fn test_scoped_data_new_max() {
 
 @test("ScopedData lock() and get() returns initial value")
 pub fn test_scoped_data_get_initial() {
-    match ScopedData::<u32>::new(123u32) {
+    match ScopedData::<u32>::new(123u32).ok() {
         Option::Some(var data) => {
             let guard = data.lock()
             let value = guard.get()
@@ -513,7 +513,7 @@ pub fn test_scoped_data_get_initial() {
 
 @test("ScopedData lock() and get() returns zero")
 pub fn test_scoped_data_get_zero() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var data) => {
             let guard = data.lock()
             let value = guard.get()
@@ -525,7 +525,7 @@ pub fn test_scoped_data_get_zero() {
 
 @test("ScopedData get() with i32 negative value")
 pub fn test_scoped_data_get_negative() {
-    match ScopedData::<i32>::new(-42) {
+    match ScopedData::<i32>::new(-42).ok() {
         Option::Some(var data) => {
             let guard = data.lock()
             let value = guard.get()
@@ -541,7 +541,7 @@ pub fn test_scoped_data_get_negative() {
 
 @test("ScopedData set() modifies value")
 pub fn test_scoped_data_set() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
@@ -556,7 +556,7 @@ pub fn test_scoped_data_set() {
 
 @test("ScopedData set() to zero")
 pub fn test_scoped_data_set_zero() {
-    match ScopedData::<u32>::new(12345u32) {
+    match ScopedData::<u32>::new(12345u32).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
@@ -571,7 +571,7 @@ pub fn test_scoped_data_set_zero() {
 
 @test("ScopedData set() multiple times")
 pub fn test_scoped_data_set_multiple() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
@@ -588,7 +588,7 @@ pub fn test_scoped_data_set_multiple() {
 
 @test("ScopedData set() across multiple lock/unlock cycles")
 pub fn test_scoped_data_set_across_locks() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var data) => {
             {
                 var guard1 = data.lock()
@@ -617,7 +617,7 @@ pub fn test_scoped_data_set_across_locks() {
 
 @test("ScopedData lock_shared() provides read access")
 pub fn test_scoped_data_lock_shared() {
-    match ScopedData::<u32>::new(456u32) {
+    match ScopedData::<u32>::new(456u32).ok() {
         Option::Some(var data) => {
             let guard: SharedScopedDataGuard<u32> = data.lock_shared()
             expect_eq(guard.get(), 456u32, "lock_shared() should provide read access")
@@ -630,7 +630,7 @@ pub fn test_scoped_data_lock_shared() {
 pub fn test_scoped_data_lock_shared_cycles() {
     // Note: AmigaOS shared locks are NOT nestable from the same task
     // This test verifies shared lock works across multiple lock/unlock cycles
-    match ScopedData::<u32>::new(789u32) {
+    match ScopedData::<u32>::new(789u32).ok() {
         Option::Some(var data) => {
             {
                 let guard1: SharedScopedDataGuard<u32> = data.lock_shared()
@@ -655,7 +655,7 @@ pub fn test_scoped_data_lock_shared_cycles() {
 
 @test("ScopedData try_lock() succeeds when available")
 pub fn test_scoped_data_try_lock() {
-    match ScopedData::<u32>::new(111u32) {
+    match ScopedData::<u32>::new(111u32).ok() {
         Option::Some(var data) => {
             match data.try_lock() {
                 Option::Some(guard) => {
@@ -670,7 +670,7 @@ pub fn test_scoped_data_try_lock() {
 
 @test("ScopedData try_lock_shared() succeeds when available")
 pub fn test_scoped_data_try_lock_shared() {
-    match ScopedData::<u32>::new(222u32) {
+    match ScopedData::<u32>::new(222u32).ok() {
         Option::Some(var data) => {
             match data.try_lock_shared() {
                 Option::Some(guard) => {
@@ -689,7 +689,7 @@ pub fn test_scoped_data_try_lock_shared() {
 
 @test("ScopedData exclusive guard releases on drop")
 pub fn test_scoped_data_guard_drop() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
@@ -705,7 +705,7 @@ pub fn test_scoped_data_guard_drop() {
 
 @test("ScopedData shared guard releases on drop")
 pub fn test_scoped_data_shared_guard_drop() {
-    match ScopedData::<u32>::new(50u32) {
+    match ScopedData::<u32>::new(50u32).ok() {
         Option::Some(var data) => {
             {
                 let guard: SharedScopedDataGuard<u32> = data.lock_shared()
@@ -725,7 +725,7 @@ pub fn test_scoped_data_shared_guard_drop() {
 
 @test("obtain() is alias for lock()")
 pub fn test_obtain_alias() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let guard = sem.obtain()
             expect_true(true, "obtain() should work")
@@ -736,7 +736,7 @@ pub fn test_obtain_alias() {
 
 @test("try_obtain() is alias for try_lock()")
 pub fn test_try_obtain_alias() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             match sem.try_obtain() {
                 Option::Some(guard) => {
@@ -751,7 +751,7 @@ pub fn test_try_obtain_alias() {
 
 @test("obtain_shared() is alias for lock_shared()")
 pub fn test_obtain_shared_alias() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let guard: SharedSemaphoreGuard = sem.obtain_shared()
             expect_true(true, "obtain_shared() should work")
@@ -762,7 +762,7 @@ pub fn test_obtain_shared_alias() {
 
 @test("try_obtain_shared() is alias for try_lock_shared()")
 pub fn test_try_obtain_shared_alias() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             match sem.try_obtain_shared() {
                 Option::Some(guard) => {
@@ -781,7 +781,7 @@ pub fn test_try_obtain_shared_alias() {
 
 @test("deeply nested locks work")
 pub fn test_deeply_nested_locks() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             let g1 = sem.lock()
             let g2 = sem.lock()
@@ -796,7 +796,7 @@ pub fn test_deeply_nested_locks() {
 
 @test("guard drop order doesn't matter")
 pub fn test_guard_drop_order() {
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(sem) => {
             // Guards drop in reverse order (LIFO) but should still work
             let g1 = sem.lock()
@@ -812,19 +812,19 @@ pub fn test_guard_drop_order() {
 pub fn test_many_semaphores() {
     var count: u32 = 0u32
     // Create 10 semaphores
-    match SemaphoreHandle::new() {
+    match SemaphoreHandle::new().ok() {
         Option::Some(s1) => {
             count = count + 1u32
-            match SemaphoreHandle::new() {
+            match SemaphoreHandle::new().ok() {
                 Option::Some(s2) => {
                     count = count + 1u32
-                    match SemaphoreHandle::new() {
+                    match SemaphoreHandle::new().ok() {
                         Option::Some(s3) => {
                             count = count + 1u32
-                            match SemaphoreHandle::new() {
+                            match SemaphoreHandle::new().ok() {
                                 Option::Some(s4) => {
                                     count = count + 1u32
-                                    match SemaphoreHandle::new() {
+                                    match SemaphoreHandle::new().ok() {
                                         Option::Some(s5) => {
                                             count = count + 1u32
                                             expect_eq(count, 5u32, "should create 5 semaphores")
@@ -847,7 +847,7 @@ pub fn test_many_semaphores() {
 
 @test("ScopedData counter increment pattern")
 pub fn test_scoped_data_counter() {
-    match ScopedData::<u32>::new(0u32) {
+    match ScopedData::<u32>::new(0u32).ok() {
         Option::Some(var counter) => {
             // Simulate increment pattern
             var i: u32 = 0u32
@@ -866,7 +866,7 @@ pub fn test_scoped_data_counter() {
 
 @test("public semaphore with long name")
 pub fn test_public_semaphore_long_name() {
-    match SemaphoreHandle::new_public("ThisIsAVeryLongSemaphoreName", 0) {
+    match SemaphoreHandle::new_public("ThisIsAVeryLongSemaphoreName", 0).ok() {
         Option::Some(sem) => {
             match SemaphoreHandle::find("ThisIsAVeryLongSemaphoreName") {
                 Option::Some(found) => {

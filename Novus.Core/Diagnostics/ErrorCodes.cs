@@ -55,6 +55,8 @@ public static class ErrorCodes
     public const string ReturnTypeMismatch = "E2301";
     public const string MissingReturnValue = "E2302";
     public const string SelfOutsideImpl = "E2303";
+    public const string UnusedResult = "E2304";
+    public const string InvalidMainResult = "E2305";
 
     // ========================================================================
     // E24XX: Match Expression Errors

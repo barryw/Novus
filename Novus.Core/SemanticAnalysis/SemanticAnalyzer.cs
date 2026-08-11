@@ -3087,6 +3087,31 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // First, analyze the function body with full semantic analysis (visits all expressions)
+        if (name == "main" && ResultUsagePolicy.TryGetTypes(_currentFunction.ReturnType, out var mainOkType, out var mainErrorType))
+        {
+            if (!ResultUsagePolicy.IsUnit(mainOkType))
+            {
+                var location = SourceLocationHelper.FromToken(token, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    ErrorCodes.InvalidMainResult,
+                    "main Result success type must be ()",
+                    location,
+                    helpTexts: new List<string> { "use `fn main() -> Result<(), YourError>`" }
+                );
+            }
+
+            if (mainErrorType != null && !TypeImplementsTrait(mainErrorType, "Error", new List<IrType>()))
+            {
+                var location = SourceLocationHelper.FromToken(token, _filePath, _sourceLines);
+                _diagnostics.ReportError(
+                    ErrorCodes.TraitNotImplemented,
+                    $"main error type '{TypeToString(mainErrorType)}' must implement Error",
+                    location,
+                    helpTexts: new List<string> { $"add `impl Error for {TypeToString(mainErrorType)}`" }
+                );
+            }
+        }
+
         AnalyzeBlock(context.block());
 
         // Then check if all paths return
@@ -5035,8 +5060,66 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        if (_currentFunction?.ReturnType is not IrEnumType functionResult ||
+            functionResult.EnumName != "Result")
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                ErrorCodes.TryOperatorInvalidContext,
+                $"? operator requires the enclosing function to return Result<T, E>, got {TypeToString(_currentFunction?.ReturnType ?? IrVoidType.Instance)}",
+                location,
+                helpTexts: new List<string> { "change the function return type to Result<T, E> or handle the error with match" }
+            );
+            return null;
+        }
+
+        var sourceErrorType = enumType.Variants.First(variant => variant.Name == "Err").AssociatedData.FirstOrDefault();
+        var targetErrorType = functionResult.Variants.FirstOrDefault(variant => variant.Name == "Err")?.AssociatedData.FirstOrDefault();
+        if (sourceErrorType != null && targetErrorType != null &&
+            !TypesEqual(sourceErrorType, targetErrorType) &&
+            !TypeImplementsTrait(targetErrorType, "From", new List<IrType> { sourceErrorType }))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                ErrorCodes.FromNotImplemented,
+                $"cannot propagate {TypeToString(sourceErrorType)} as {TypeToString(targetErrorType)}",
+                location,
+                helpTexts: new List<string> { $"implement From<{TypeToString(sourceErrorType)}> for {TypeToString(targetErrorType)}" }
+            );
+            return null;
+        }
+
         // The ? operator evaluates to the Ok payload type
         return okVariant.AssociatedData[0];
+    }
+
+    public override IrType? VisitExpressionStatement([NotNull] NovusParser.ExpressionStatementContext context)
+    {
+        var expressionType = Visit(context.expression());
+
+        if (context.postfixCondition() != null)
+        {
+            Visit(context.postfixCondition().expression());
+        }
+
+        if (ResultUsagePolicy.IsResult(expressionType) &&
+            !ResultUsagePolicy.IsConsumed(context, _currentFunction?.ReturnType))
+        {
+            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                ErrorCodes.UnusedResult,
+                "unused Result must be handled",
+                location,
+                helpTexts: new List<string>
+                {
+                    "propagate the error with `?`",
+                    "handle both variants with `match`",
+                    "or explicitly discard it with `let _ = expression`"
+                }
+            );
+        }
+
+        return expressionType;
     }
 
     // Override VisitStatement to prevent double traversal via VisitChildren
@@ -6478,6 +6561,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 {
                     "match is used for pattern matching on enum variants or integer literals"
                 }
+            );
+            return null;
+        }
+
+        if (matchValueType is IrPointerType or IrReferenceType or IrMutReferenceType &&
+            enumTypeForValidation != null && EnumPayloadNeedsDrop(enumTypeForValidation, new HashSet<string>()))
+        {
+            var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Matching a borrowed enum with owned payloads is not supported; match the owned value instead",
+                location
             );
             return null;
         }
@@ -13247,6 +13342,20 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private bool TypeImplementsTrait(IrType type, string traitName, List<IrType> traitTypeArgs)
         => _traitResolver.TypeImplementsTrait(type, traitName, traitTypeArgs);
+
+    private bool EnumPayloadNeedsDrop(IrType type, HashSet<string> visited)
+    {
+        if (!visited.Add(type.Name))
+            return false;
+        if (TypeImplementsTrait(type, "Drop", new List<IrType>()))
+            return true;
+        if (type is IrTupleType tuple)
+            return tuple.ElementTypes.Any(element => EnumPayloadNeedsDrop(element, visited));
+        if (type is IrEnumType enumType)
+            return enumType.Variants.SelectMany(variant => variant.AssociatedData)
+                .Any(payload => EnumPayloadNeedsDrop(payload, visited));
+        return false;
+    }
 
     /// <summary>
     /// Extract the base type name from an IR type

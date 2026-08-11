@@ -1,0 +1,50 @@
+// Deterministic target-executed checks for stdlib Result failure contracts.
+
+from std::core import Result
+from std::error::errors import ExecError
+from std::memory::amiga import MemHandle
+from std::memory::chip import ChipCacheError
+from std::memory::chip_pool import ChipPool
+from std::collections::ringbuffer import RingBuffer
+from std::os::dos import open_file
+from std::ffi::dos import MODE_OLDFILE
+from std::test::test import expect, expect_true
+
+@test("MemHandle rejects zero-sized allocations")
+pub fn mem_handle_zero_size_error() {
+    match MemHandle::new_chip(0) {
+        Result::Err(ExecError::InvalidAddress) => expect_true(true, "typed invalid-size error"),
+        _ => expect(false, "zero-sized MemHandle must fail"),
+    }
+}
+
+@test("ChipPool rejects zero-sized allocations")
+pub fn chip_pool_zero_size_error() {
+    match ChipPool::alloc(0) {
+        Result::Err(ChipCacheError::InvalidSize) => expect_true(true, "typed chip-size error"),
+        _ => expect(false, "zero-sized ChipPool allocation must fail"),
+    }
+}
+
+@test("RingBuffer reports invalid capacity and overflow")
+pub fn ring_buffer_failure_contracts() {
+    match RingBuffer::<i32>::with_capacity(0) {
+        Result::Err(ExecError::InvalidAddress) => expect_true(true, "invalid capacity"),
+        _ => expect(false, "zero-capacity ring buffer must fail"),
+    }
+
+    var ring = RingBuffer::<i32>::with_capacity(1).unwrap()
+    let _ = ring.push_back(1)
+    match ring.push_back(2) {
+        Result::Err(ExecError::CapacityExceeded) => expect_true(true, "capacity exceeded"),
+        _ => expect(false, "full ring buffer must fail"),
+    }
+}
+
+@test("DOS open preserves failure")
+pub fn dos_open_failure_contract() {
+    match open_file("RAM:novus-file-that-does-not-exist", MODE_OLDFILE) {
+        Result::Err(_) => expect_true(true, "DOS error preserved"),
+        Result::Ok(_) => expect(false, "missing file must not open"),
+    }
+}

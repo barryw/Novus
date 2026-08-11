@@ -211,7 +211,7 @@ pub fn main() -> i32 {
                         var px: i16 = 10
                         while px < 50 {
                             if (px + py) % 3 == 0 {
-                                ctx.pixel(px, py)
+                                ctx.pixel(px, py).unwrap()
                             }
                             px = px + 1
                         }

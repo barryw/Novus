@@ -63,10 +63,10 @@ impl<T> VecDeque<T> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = capacity * element_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let (raw_ptr, _size) = block.into_raw()
                 let ptr: *T = (*T)raw_ptr
                 return Result::Ok(VecDeque {
@@ -76,7 +76,7 @@ impl<T> VecDeque<T> {
                     capacity: capacity,
                 })
             },
-            Option::None => return Result::Err(ExecError::NoMem),
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -316,10 +316,10 @@ impl<T> VecDeque<T> {
         let element_size: u32 = @sizeof(T)
         let new_bytes: u32 = new_capacity * element_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let (raw_ptr, _size) = block.into_raw()
                 let new_ptr: *T = (*T)raw_ptr
 
@@ -346,7 +346,7 @@ impl<T> VecDeque<T> {
                 self.capacity = new_capacity
                 return Result::Ok(())
             },
-            Option::None => return Result::Err(ExecError::NoMem),
+            Result::Err(error) => return Result::Err(error),
         }
     }
 }

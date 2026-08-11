@@ -15,7 +15,7 @@ pub fn main() -> i32 {
     let block_opt = MemoryBlock::alloc(100, MEMF_PUBLIC)
 
     match block_opt {
-        Some(block) => {
+        Result::Ok(block) => {
             // Allocation succeeded
             // Use the memory (size is tracked automatically)
             let ptr: *u8 = block.ptr()
@@ -28,7 +28,7 @@ pub fn main() -> i32 {
             // Success
             return 42
         },
-        None => {
+        Result::Err(_) => {
             // Allocation failed
             return 1
         }

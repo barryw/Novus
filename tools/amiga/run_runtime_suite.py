@@ -53,6 +53,9 @@ AMIGA_SUITES = {
     "prefs": "Novus/std/tests/test_prefs.novus",
     "window": "Novus/std/tests/test_window.novus",
     "drawing": "Novus/std/tests/test_drawing.novus",
+    "async-sleep": "Novus.Tests/AmigaRuntime/async_sleep_failures.novus",
+    "result-contracts": "Novus.Tests/AmigaRuntime/result_contract_failures.novus",
+    "channel": "Novus.Tests/Examples/channel_comprehensive_test.novus",
 }
 ALL_SUITES = FOUNDATION_ALL | FOUNDATION_SUITES | AMIGA_SUITES
 PROFILES = {

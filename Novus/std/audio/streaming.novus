@@ -439,14 +439,14 @@ impl AudioStreamer {
         unsafe {
             let buf0_opt = ChipPool::alloc(size)
             let buf0 = match buf0_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => return Result::Err(AudioError::AllocationFailed)
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => return Result::Err(AudioError::AllocationFailed)
             }
 
             let buf1_opt = ChipPool::alloc(size)
             let buf1 = match buf1_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => {
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => {
                     let _ = ChipPool::free(buf0)
                     return Result::Err(AudioError::AllocationFailed)
                 }
@@ -454,8 +454,8 @@ impl AudioStreamer {
 
             let buf2_opt = ChipPool::alloc(size)
             let buf2 = match buf2_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => {
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => {
                     let _ = ChipPool::free(buf1)
                     let _ = ChipPool::free(buf0)
                     return Result::Err(AudioError::AllocationFailed)
@@ -853,8 +853,8 @@ impl AudioStreamer {
         unsafe {
             let buf0_opt = ChipPool::alloc(actual_size)
             let buf0: *u8 = match buf0_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => {
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => {
                     // Close device and cleanup
                     io0.ioa_Request.io_Command = ADCMD_FREE
                     let cleanup_req_addr = &io0.ioa_Request
@@ -870,8 +870,8 @@ impl AudioStreamer {
 
             let buf1_opt = ChipPool::alloc(actual_size)
             let buf1: *u8 = match buf1_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => {
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => {
                     let _ = ChipPool::free(buf0)
                     io0.ioa_Request.io_Command = ADCMD_FREE
                     let cleanup_req_addr2 = &io0.ioa_Request
@@ -887,8 +887,8 @@ impl AudioStreamer {
 
             let buf2_opt = ChipPool::alloc(actual_size)
             let buf2: *u8 = match buf2_opt {
-                Option::Some(ptr) => ptr,
-                Option::None => {
+                Result::Ok(ptr) => ptr,
+                Result::Err(_) => {
                     let _ = ChipPool::free(buf1)
                     let _ = ChipPool::free(buf0)
                     io0.ioa_Request.io_Command = ADCMD_FREE

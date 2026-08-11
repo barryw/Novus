@@ -167,8 +167,8 @@ pub fn main() -> i32 {
     // Test 8: Clear all unpinned
     write("\n--- Test 8: Clear all unpinned assets ---\n")
     // First re-cache the small and large assets
-    ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset")
-    ChipCache::get(3, large_ptr, 12288, Priority::High, "large_asset")
+    let _ = ChipCache::get(1, small_ptr, 2048, Priority::Low, "small_asset")
+    let _ = ChipCache::get(3, large_ptr, 12288, Priority::High, "large_asset")
     write("Re-cached small and large assets.\n")
 
     // Pin the medium one

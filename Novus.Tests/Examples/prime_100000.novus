@@ -22,7 +22,7 @@ pub fn main() -> i32 {
     write("Initializing sieve...\n")
     var i: u32 = 0
     while i <= max {
-        sieve.push(true)
+        sieve.push(true).unwrap()
         i++
     }
 
@@ -31,8 +31,8 @@ pub fn main() -> i32 {
     write("This will take a while on the A4000...\n\n")
 
     // 0 and 1 are not prime
-    sieve.set(0, false)
-    sieve.set(1, false)
+    sieve.set(0, false).unwrap()
+    sieve.set(1, false).unwrap()
 
     // Sieve of Eratosthenes main algorithm
     var p: u32 = 2
@@ -47,7 +47,7 @@ pub fn main() -> i32 {
             // p is prime - mark all multiples as composite
             var multiple: u32 = p * p
             while multiple <= max {
-                sieve.set(multiple, false)
+                sieve.set(multiple, false).unwrap()
                 multiple = multiple + p
                 sieve_ops++
             }

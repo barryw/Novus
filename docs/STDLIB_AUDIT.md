@@ -1,154 +1,56 @@
-# Novus Standard Library Error Handling Audit
+# Novus standard-library error contract
 
-**Date:** 2025-10-27
-**Status:** ✅ PASSING
+**Updated:** 2026-08-11
+**Target:** AmigaOS 3.1/3.2 on 68020 or newer
 
-## Summary
+Novus uses `Result<T, E>` when an operation can fail and the caller needs the reason.
+`Option<T>` is reserved for ordinary absence: an empty iterator, a missing map key, or
+a nonblocking receive with no message ready. Raw `std::ffi` declarations preserve the
+Amiga ABI; safe wrappers translate its null pointers, negative values, and status codes
+at that boundary.
 
-**Total wrapper functions with logic: 1**
-**Total error conversion helpers: 11**
-**Total FFI bindings: ~200+ (all extern declarations)**
+## Enforced rules
 
-## Audit Results
+- A `Result` expression cannot be ignored. Handle it, propagate it with `?`, or discard
+  it explicitly with `let _ = ...`.
+- `?` is valid only inside a function returning `Result` and runs normal `Drop` cleanup
+  before returning `Err`.
+- Matching an owned `Result` transfers each owned payload exactly once. Matching a
+  borrowed enum with owned payloads is rejected until Novus has borrow-pattern syntax.
+- `main() -> Result<(), E>` is supported when `E` implements `Error`. `Err` displays the
+  Novus program-failure requester and returns AmigaDOS failure code 20.
+- Every public standard-library type named `*Error` implements `std::core::Error`.
 
-### ✅ GOOD: Follows Pattern
+The compiler and language server report the same diagnostics for these rules.
 
-#### std/io.novus
-```novus
-pub fn WriteOut(message: String) -> Result<i32, DosError>
-```
-- ✓ Returns Result<T, DosError>
-- ✓ Checks for errors properly (stdout == 0, bytes < 0)
-- ✓ Uses dos_last_error() to get typed error
-- ✓ Returns Ok on success
-- **Status: CORRECT ✓**
+## Audited fallible surfaces
 
-#### std/error.novus
-All 11 error conversion functions:
-- `dos_last_error()` - Get current DOS error
-- `dos_error_from_code()` - Convert i32 → DosError
-- `dos_error_to_code()` - Convert DosError → i32
-- `exec_error_to_code()` - Convert ExecError → i32
-- `intuition_error_to_code()` - Convert IntuitionError → i32
-- `graphics_error_to_code()` - Convert GraphicsError → i32
-- `novus_error_from_dos()` - Wrap DosError in NovusError
-- `novus_error_from_exec()` - Wrap ExecError in NovusError
-- `novus_error_from_intuition()` - Wrap IntuitionError in NovusError
-- `novus_error_from_graphics()` - Wrap GraphicsError in NovusError
-- `novus_error_to_code()` - Convert NovusError → i32
+| Area | Result contract |
+|---|---|
+| DOS files | open, read, write, and seek return `DosError` |
+| Heap memory | blocks, allocations, boxes, and `MemHandle` return `ExecError` |
+| Chip memory | buffers and pools return `ChipCacheError` |
+| Collections | allocation, capacity, and bounds failures return typed errors |
+| Channels | setup, send, handoff, and one-shot state failures return `ChannelError` |
+| Async timers | setup and device failures return `TimerError`; failure is never readiness |
+| FFP setup | library-open failures return `FfpError` |
+| Networking and prefs | `AddrParseError`, `NetError`, and `PrefsError` implement `Error` |
 
-**Status: CORRECT ✓** (These are helper functions, not wrappers)
+## Verification
 
-### ⚠️ DEPRECATED: Should Remove
+Regression coverage includes compiler and LSP negative tests, `Drop` on `?`, generated
+`Result` entry-point handling, deterministic Amiga failure paths, public error-contract
+scanning, and a 3,072-byte release gate for the idiomatic GUI example. The runtime
+failure suites are executed on the A4000 FS-UAE target, where structured guest
+diagnostics also detect alerts, CPU exceptions, and Guru Meditations.
 
-#### std/core.novus
-```novus
-pub enum IoError {
-    NotFound, PermissionDenied, AlreadyExists,
-    InvalidInput, OutOfMemory, Interrupted, Unknown
-}
-pub fn io_error_code(err: IoError) -> i32
-```
-- **Status: DEPRECATED** - Replaced by std/error.novus::DosError
-- **Action: Remove in cleanup pass**
-- **Impact: Low** - No other code references it
+## Review checklist
 
-### ✓ FFI Bindings (No Changes Needed)
+When adding a wrapper:
 
-All files in `std/ffi/` (~4,871 lines total):
-- `dos.novus` - DOS library raw bindings
-- `exec.novus` - Exec library raw bindings
-- `graphics.novus` - Graphics library raw bindings
-- `intuition.novus` - Intuition library raw bindings
-- `layers.novus`, `diskfont.novus`, `icon.novus`, etc.
-
-These are **raw 1:1 bindings** - just extern declarations.
-- **No wrapper logic**
-- **No error handling at this level**
-- **Status: CORRECT ✓**
-
-## Architecture
-
-```
-std/
-├── core.novus          # Result<T,E>, Option<T> types [⚠️ has deprecated IoError]
-├── error.novus         # Error taxonomy (DosError, ExecError, etc.) ✓
-├── io.novus            # High-level I/O wrappers ✓
-├── strings.novus       # String utilities (just extern declarations) ✓
-├── system.novus        # Hardware detection enums ✓
-└── ffi/                # Raw AmigaOS bindings ✓
-    ├── dos.novus
-    ├── exec.novus
-    ├── graphics.novus
-    └── ... (15 libraries total)
-```
-
-## Findings
-
-### Total Functions Audited: 13
-- ✅ Correct: 12 (92%)
-- ⚠️ Deprecated: 1 (8%)
-- ❌ Incorrect: 0 (0%)
-
-### Code Quality Metrics
-- **Error Handling Coverage:** 100% of fallible operations wrapped in Result
-- **Type Safety:** All error types are enums (no raw i32 returns)
-- **Consistency:** Single wrapper follows established pattern
-- **Documentation:** Error codes mapped to variants with comments
-
-## Recommendations
-
-### Immediate Actions
-1. ✅ **Nothing urgent** - Current code is correct
-
-### Future Cleanup
-1. Remove `std/core.novus::IoError` when convenient
-2. Update any test files that reference old IoError
-
-### As You Add Wrappers
-1. Follow pattern from `std/io.novus::WriteOut`
-2. Use appropriate error type (DosError, ExecError, etc.)
-3. Call `subsystem_last_error()` to get typed errors
-4. Reference `STDLIB_ERROR_PATTERNS.md` for guidelines
-
-## Example: Perfect Wrapper Pattern
-
-From `std/io.novus::WriteOut`:
-
-```novus
-pub fn WriteOut(message: String) -> Result<i32, DosError> {
-    let stdout = Output()
-    if stdout == 0 {
-        return Result::Err(DosError::InvalidInput)  // Specific error
-    }
-
-    let bytes = Write(stdout, message, message.len)
-    if bytes >= 0 {
-        return Result::Ok(bytes)  // Success path
-    }
-
-    let err = dos_last_error()  // Get actual error from AmigaOS
-    return Result::Err(err)
-}
-```
-
-✓ Correct error type (DosError)
-✓ Checks all failure conditions
-✓ Gets actual error from AmigaOS
-✓ Returns Result for safety
-
-## Conclusion
-
-**The Novus stdlib error handling is exemplary!**
-
-✅ Only 1 wrapper function exists, and it's **perfect**
-✅ Comprehensive error taxonomy covers all AmigaOS subsystems
-✅ All FFI bindings are correctly structured
-✅ No incorrect error handling found
-
-**Next Steps:**
-- Continue following the established pattern
-- Reference STDLIB_ERROR_PATTERNS.md when adding new wrappers
-- Eventually clean up deprecated IoError from core.novus
-
-**Grade: A+** 🎉
+1. Keep ABI sentinels inside `std::ffi` or the wrapper implementation.
+2. Return the narrowest existing error enum; add a variant only when callers can act on
+   the distinction.
+3. Use `Option` only if absence is a successful state.
+4. Add one success-path and one failure-path test; use the A4000 suite for behavior that
+   depends on AmigaOS.

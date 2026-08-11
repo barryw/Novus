@@ -156,7 +156,7 @@ pub fn test_read_basic() {
     // Now read it back
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -178,7 +178,7 @@ pub fn test_read_basic() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -199,7 +199,7 @@ pub fn test_read_eof() {
 
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -218,7 +218,7 @@ pub fn test_read_eof() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -243,7 +243,7 @@ pub fn test_seek_beginning() {
 
     let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -267,7 +267,7 @@ pub fn test_seek_beginning() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -288,7 +288,7 @@ pub fn test_seek_current() {
 
     let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -306,7 +306,7 @@ pub fn test_seek_current() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -327,7 +327,7 @@ pub fn test_seek_end() {
 
     let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -346,7 +346,7 @@ pub fn test_seek_end() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -419,7 +419,7 @@ pub fn test_rename_file() {
     // Verify path2 exists and has content
     let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let buffer = b.ptr()
 
@@ -434,7 +434,7 @@ pub fn test_rename_file() {
 
             b.free()
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     // Clean up
@@ -518,7 +518,7 @@ pub fn test_examine_file() {
     // Allocate FileInfoBlock
     let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let fib = b.ptr() as *FileInfoBlock
 
@@ -541,7 +541,7 @@ pub fn test_examine_file() {
 
             b.free()
         },
-        None => expect(false, "FileInfoBlock allocation should succeed")
+        Result::Err(_) => expect(false, "FileInfoBlock allocation should succeed")
     }
 
     DeleteFile(path)
@@ -553,7 +553,7 @@ pub fn test_examine_directory() {
 
     let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let fib = b.ptr() as *FileInfoBlock
 
@@ -572,7 +572,7 @@ pub fn test_examine_directory() {
 
             b.free()
         },
-        None => expect(false, "FileInfoBlock allocation should succeed")
+        Result::Err(_) => expect(false, "FileInfoBlock allocation should succeed")
     }
 }
 
@@ -586,7 +586,7 @@ pub fn test_info_volume() {
 
     let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
-        Some(block) => {
+        Result::Ok(block) => {
             var b = block
             let info = b.ptr() as *InfoData
 
@@ -606,7 +606,7 @@ pub fn test_info_volume() {
 
             b.free()
         },
-        None => expect(false, "InfoData allocation should succeed")
+        Result::Err(_) => expect(false, "InfoData allocation should succeed")
     }
 }
 
@@ -635,7 +635,7 @@ pub fn test_createdir() {
         // Verify it's a directory
         let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
         match opt {
-            Some(block) => {
+            Result::Ok(block) => {
                 var b = block
                 let fib = b.ptr() as *FileInfoBlock
 
@@ -648,7 +648,7 @@ pub fn test_createdir() {
 
                 b.free()
             },
-            None => ()
+            Result::Err(_) => ()
         }
 
         // Clean up
@@ -686,7 +686,7 @@ pub fn test_write_read_roundtrip() {
     // Test data: various byte values - write phase
     let write_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
     match write_opt {
-        Some(write_block) => {
+        Result::Ok(write_block) => {
             var write_buf = write_block
             let write_ptr = write_buf.ptr()
 
@@ -711,7 +711,7 @@ pub fn test_write_read_roundtrip() {
             // Read back and verify - inside the same branch to avoid scope issue
             let read_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC | MEMF_CLEAR)
             match read_opt {
-                Some(read_block) => {
+                Result::Ok(read_block) => {
                     var read_buf = read_block
                     let read_ptr = read_buf.ptr()
 
@@ -737,10 +737,10 @@ pub fn test_write_read_roundtrip() {
 
                     read_buf.free()
                 },
-                None => expect(false, "read buffer allocation should succeed")
+                Result::Err(_) => expect(false, "read buffer allocation should succeed")
             }
         },
-        None => expect(false, "write buffer allocation should succeed")
+        Result::Err(_) => expect(false, "write buffer allocation should succeed")
     }
 
     DeleteFile(path)
@@ -755,7 +755,7 @@ pub fn test_large_file() {
 
     let buf_opt = MemoryBlock::alloc(size, MEMF_PUBLIC)
     match buf_opt {
-        Some(write_block) => {
+        Result::Ok(write_block) => {
             var buf = write_block
             let ptr = buf.ptr()
 
@@ -778,7 +778,7 @@ pub fn test_large_file() {
             // Verify file size via Examine - nested to avoid scope issue
             let fib_opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
             match fib_opt {
-                Some(fib_block) => {
+                Result::Ok(fib_block) => {
                     var b = fib_block
                     let fib = b.ptr() as *FileInfoBlock
 
@@ -791,10 +791,10 @@ pub fn test_large_file() {
 
                     b.free()
                 },
-                None => ()
+                Result::Err(_) => ()
             }
         },
-        None => expect(false, "buffer allocation should succeed")
+        Result::Err(_) => expect(false, "buffer allocation should succeed")
     }
 
     DeleteFile(path)

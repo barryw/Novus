@@ -64,7 +64,7 @@ pub fn main() -> i32 {
     let ch_result = AudioChannel::acquire(0)
     match ch_result {
         Result::Ok(var channel) => {
-            channel.set_volume(64)
+            channel.set_volume(64).unwrap()
 
             // Get the correct period for the current system
             let period = if is_pal { beep_chip.period_pal } else { beep_chip.period_ntsc }
@@ -100,7 +100,7 @@ pub fn main() -> i32 {
     let ch2_result = AudioChannel::acquire(0)
     match ch2_result {
         Result::Ok(var channel) => {
-            channel.set_volume(64)
+            channel.set_volume(64).unwrap()
 
             // Use play_asset_native - handles chip RAM automatically!
             // No manual FreeMem needed - cleaned up when channel is dropped

@@ -128,6 +128,33 @@ public partial class IrBuilder
         }
 
         IrEnumType? enumType = enumTypeForValidation;
+        var matchesBorrowedEnum = matchValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType;
+        var ownedEnumNeedsDrop = isEnumMatch && !matchesBorrowedEnum && _module.EnumNeedsDrop(enumType!);
+
+        if (matchesBorrowedEnum && _module.EnumNeedsDrop(enumType!))
+        {
+            errorLocation = GetLocation(context);
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "Matching a borrowed enum with owned payloads is not supported; match the owned value instead",
+                errorLocation
+            );
+            return null;
+        }
+
+        // An owned enum match moves its payload. Materialize temporary values so
+        // successful arms can invalidate the source tag after taking ownership.
+        if (ownedEnumNeedsDrop && matchValue is not IrVariable)
+        {
+            var valueName = $"__match_value_{_tempCounter++}";
+            var localVar = new IrLocalVariable(valueName, actualMatchType, false);
+            _currentFunction!.LocalVariables.Add(localVar);
+            _localVariables[valueName] = localVar;
+            _currentBlock!.AddInstruction(new IrLocalDecl(valueName, actualMatchType, false, matchValue));
+            EnsureDropMethodInstantiated(actualMatchType);
+            InjectAutomaticDrop(valueName, actualMatchType);
+            matchValue = new IrVariable(valueName, actualMatchType);
+        }
 
         // Expand match arms - flatten pipe patterns into separate arms
         var expandedArms = ExpandMatchArms(context.matchArm());
@@ -462,6 +489,7 @@ public partial class IrBuilder
             // Track pattern-bound variable names with Drop types for this arm
             // We need this to detect when a variable is moved (used as match result) vs. dropped
             var patternBoundDropVars = new HashSet<string>();
+            var unboundDropPayloads = new List<(string Variant, int Index, IrType Type)>();
 
             // Integer identifier patterns bind the matched value for guards and arm bodies.
             if (isIntegerMatch && pattern is NovusParser.IdentifierPatternContext integerBindingPattern)
@@ -488,38 +516,37 @@ public partial class IrBuilder
                 var variantName = identifiers[identifiers.Length - 1].GetText();
                 var variant = enumType!.GetVariant(variantName);
 
-                // Extract associated data and bind to pattern variables
-                if (variantPattern.patternList() != null)
+                // Extract associated data and bind to pattern variables. Payloads
+                // ignored with `_` still need an owner so they are dropped once.
+                var bindingPatterns = variantPattern.patternList()?.pattern() ?? [];
+                for (int dataIdx = 0; dataIdx < variant!.AssociatedData.Count; dataIdx++)
                 {
-                    var bindingPatterns = variantPattern.patternList().pattern();
-                    for (int dataIdx = 0; dataIdx < bindingPatterns.Length; dataIdx++)
+                    var bindingPattern = dataIdx < bindingPatterns.Length ? bindingPatterns[dataIdx] : null;
+
+                    // Extract binding name and mutability from pattern
+                    string? bindingName = null;
+                    bool isMutable = false;
+
+                    if (bindingPattern is NovusParser.IdentifierPatternContext idPattern)
                     {
-                        var bindingPattern = bindingPatterns[dataIdx];
+                        bindingName = idPattern.IDENTIFIER().GetText();
+                        isMutable = false;
 
-                        // Extract binding name and mutability from pattern
-                        string? bindingName = null;
-                        bool isMutable = false;
-
-                        if (bindingPattern is NovusParser.IdentifierPatternContext idPattern)
+                        // Constants constrain associated data; they are not bindings.
+                        if (_symbols.LookupConstant(bindingName) != null)
                         {
-                            bindingName = idPattern.IDENTIFIER().GetText();
-                            isMutable = false;
-
-                            // Constants constrain associated data; they are not bindings.
-                            if (_symbols.LookupConstant(bindingName) != null)
-                            {
-                                bindingName = null;
-                            }
+                            bindingName = null;
                         }
-                        else if (bindingPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
-                        {
-                            bindingName = mutIdPattern.IDENTIFIER().GetText();
-                            isMutable = true;
-                        }
+                    }
+                    else if (bindingPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
+                    {
+                        bindingName = mutIdPattern.IDENTIFIER().GetText();
+                        isMutable = true;
+                    }
 
-                        if (bindingName != null)
-                        {
-                            var dataType = variant!.AssociatedData[dataIdx];
+                    var dataType = variant.AssociatedData[dataIdx];
+                    if (bindingName != null)
+                    {
 
                             // Extract the data - use enumValueForExtract which has the proper enum type
                             // (dereferenced if matchValue was a pointer/reference)
@@ -553,15 +580,16 @@ public partial class IrBuilder
                             var extractedValue = new IrVariable(extractName, dataType);
                             _currentBlock!.AddInstruction(new IrLocalDecl(uniqueBindingName, dataType, isMutable, extractedValue));
 
-                            // Automatic defer for types with drop() method (RAII-style cleanup)
-                            // This ensures pattern-bound variables in match arms are properly cleaned up
-                            if (EnsureDropMethodInstantiated(dataType))
-                            {
-                                InjectAutomaticDrop(uniqueBindingName, dataType);
-                                // Track this variable so we can detect moves later
-                                patternBoundDropVars.Add(uniqueBindingName);
-                            }
+                        if (EnsureDropMethodInstantiated(dataType))
+                        {
+                            // Activate cleanup only after a guard succeeds. Before
+                            // then this binding is a non-owning view of the payload.
+                            patternBoundDropVars.Add(uniqueBindingName);
                         }
+                    }
+                    else if (EnsureDropMethodInstantiated(dataType))
+                    {
+                        unboundDropPayloads.Add((variantName, dataIdx, dataType));
                     }
                 }
             }
@@ -586,6 +614,48 @@ public partial class IrBuilder
                     _currentBlock = executeBlock;
                 }
                 valueExprIndex = 1;
+            }
+
+            // The arm is now committed (including a successful guard). Transfer
+            // every owned payload out of the source enum, then invalidate its tag
+            // so the source defer cannot drop the same payload a second time.
+            foreach (var dropVar in patternBoundDropVars)
+            {
+                InjectAutomaticDrop(dropVar, _localVariables[dropVar].Type);
+            }
+
+            foreach (var (variantName, dataIndex, dataType) in unboundDropPayloads)
+            {
+                var extractName = $"%t{_tempCounter++}";
+                _currentBlock!.AddInstruction(new IrExtractVariantData(
+                    extractName, enumValueForExtract!, variantName, dataIndex, dataType));
+                var ownerName = $"__match_drop_{_tempCounter++}";
+                var owner = new IrLocalVariable(ownerName, dataType, false);
+                _currentFunction!.LocalVariables.Add(owner);
+                _localVariables[ownerName] = owner;
+                _currentBlock.AddInstruction(new IrLocalDecl(
+                    ownerName, dataType, false, new IrVariable(extractName, dataType)));
+                InjectAutomaticDrop(ownerName, dataType);
+            }
+
+            var transfersVariantPayload = pattern is NovusParser.VariantPatternContext &&
+                                          (patternBoundDropVars.Count != 0 || unboundDropPayloads.Count != 0);
+            var transfersWildcardValue = pattern is NovusParser.WildcardPatternContext && ownedEnumNeedsDrop;
+            if (transfersWildcardValue)
+            {
+                var ownerName = $"__match_drop_{_tempCounter++}";
+                var owner = new IrLocalVariable(ownerName, actualMatchType, false);
+                _currentFunction!.LocalVariables.Add(owner);
+                _localVariables[ownerName] = owner;
+                _currentBlock!.AddInstruction(new IrLocalDecl(ownerName, actualMatchType, false, enumValueForExtract!));
+                EnsureDropMethodInstantiated(actualMatchType);
+                InjectAutomaticDrop(ownerName, actualMatchType);
+            }
+
+            if (ownedEnumNeedsDrop && (transfersVariantPayload || transfersWildcardValue))
+            {
+                _currentBlock!.AddInstruction(new IrMemberStore(
+                    enumValueForExtract!, "tag", 0, new IrConstant(-1, IrIntType.I32)));
             }
 
             // Visit the arm body and capture result if it's an expression

@@ -130,12 +130,12 @@ pub fn main() -> i32 {
                     // Checkerboard pattern
                     let checker_opt = FillPattern::checkerboard()
                     match checker_opt {
-                        Option::Some(checker) => {
+                        Result::Ok(checker) => {
                             checker.apply(rp)
                             ctx.pen(1)
                             ctx.fill_rect(20, 120, 100, 180)
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("Failed to create checkerboard pattern\n")
                         }
                     }
@@ -143,11 +143,11 @@ pub fn main() -> i32 {
                     // Horizontal lines pattern
                     let hlines_opt = FillPattern::horizontal_lines()
                     match hlines_opt {
-                        Option::Some(hlines) => {
+                        Result::Ok(hlines) => {
                             hlines.apply(rp)
                             ctx.fill_rect(120, 120, 200, 180)
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("Failed to create horizontal lines pattern\n")
                         }
                     }
@@ -155,11 +155,11 @@ pub fn main() -> i32 {
                     // Vertical lines pattern
                     let vlines_opt = FillPattern::vertical_lines()
                     match vlines_opt {
-                        Option::Some(vlines) => {
+                        Result::Ok(vlines) => {
                             vlines.apply(rp)
                             ctx.fill_rect(220, 120, 300, 180)
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("Failed to create vertical lines pattern\n")
                         }
                     }
@@ -172,11 +172,11 @@ pub fn main() -> i32 {
                     // Custom 2-word pattern (diagonal stripes)
                     let diag_opt = FillPattern::new_2($8888, $4444)
                     match diag_opt {
-                        Option::Some(diag) => {
+                        Result::Ok(diag) => {
                             diag.apply(rp)
                             ctx.fill_rect(320, 120, 400, 180)
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("Failed to create diagonal pattern\n")
                         }
                     }
@@ -184,11 +184,11 @@ pub fn main() -> i32 {
                     // Custom 4-word pattern (brick-like)
                     let brick_opt = FillPattern::new_4($FFFF, $8080, $FFFF, $0808)
                     match brick_opt {
-                        Option::Some(brick) => {
+                        Result::Ok(brick) => {
                             brick.apply(rp)
                             ctx.fill_rect(420, 120, 500, 180)
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("Failed to create brick pattern\n")
                         }
                     }
@@ -223,13 +223,13 @@ pub fn main() -> i32 {
 
                     let test_pattern_opt = FillPattern::new_2($AAAA, $5555)
                     match test_pattern_opt {
-                        Option::Some(test_pattern) => {
+                        Result::Ok(test_pattern) => {
                             // Get pattern metadata
                             let ptr = test_pattern.ptr()
                             let height_pow = test_pattern.height_power()
                             write("Pattern height power: {height_pow}\n")
                         },
-                        Option::None => {}
+                        Result::Err(_) => {}
                     }
 
                     // ========================================================
@@ -243,7 +243,7 @@ pub fn main() -> i32 {
 
                     let combo_checker_opt = FillPattern::checkerboard()
                     match combo_checker_opt {
-                        Option::Some(combo_checker) => {
+                        Result::Ok(combo_checker) => {
                             combo_checker.apply(rp)
                             ctx.pen(3)
 
@@ -254,7 +254,7 @@ pub fn main() -> i32 {
                             ctx.pen(1)
                             ctx.rect_outline(&Rect::new(20, 220, 100, 280))
                         },
-                        Option::None => {}
+                        Result::Err(_) => {}
                     }
 
                     // Reset all patterns

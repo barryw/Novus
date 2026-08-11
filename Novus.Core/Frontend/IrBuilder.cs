@@ -1484,6 +1484,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
         EvaluateDeferredStaticInitializers();
         ClearImportedConstFunctionBodies();
+        LowerResultReturningMain();
 
         return _module;
     }

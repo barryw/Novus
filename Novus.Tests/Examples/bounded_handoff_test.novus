@@ -25,8 +25,8 @@ fn responder_task() -> i32 {
 
     // Complete the handoff - takes over port and signals parent we're ready
     let ownership = match complete_handoff(handoff) {
-        Option::Some(o) => o,
-        Option::None => {
+        Result::Ok(o) => o,
+        Result::Err(_) => {
             VPrintf("Child: complete_handoff failed!\n", (*u8)0)
             return 1
         }
@@ -66,7 +66,13 @@ pub fn main() -> i32 {
     VPrintf("Main: channel created\n", (*u8)0)
 
     // Create handoff structure
-    var handoff = PortHandoff::new(rx.port())
+    var handoff = match PortHandoff::new(rx.port()) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            VPrintf("Main: failed to create handoff\n", (*u8)0)
+            return 1
+        }
+    }
     VPrintf("Main: handoff created\n", (*u8)0)
 
     // Detach the port from rx - child will own it
@@ -84,13 +90,16 @@ pub fn main() -> i32 {
 
     // Wait for child to complete handoff
     VPrintf("Main: waiting for child ready\n", (*u8)0)
-    handoff.wait_for_ready()
+    if handoff.wait_for_ready().is_err() {
+        VPrintf("Main: handoff wait failed\n", (*u8)0)
+        return 1
+    }
     VPrintf("Main: child is ready\n", (*u8)0)
 
     // Now send
     VPrintf("Main: sending 999\n", (*u8)0)
     let sent = tx.send(999)
-    if sent {
+    if sent.is_ok() {
         VPrintf("Main: send succeeded\n", (*u8)0)
     } else {
         VPrintf("Main: send failed\n", (*u8)0)

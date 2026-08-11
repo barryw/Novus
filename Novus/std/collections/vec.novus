@@ -65,10 +65,10 @@ impl<T> Vec<T> {
         let bytes_needed: u32 = capacity * element_size
 
         // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Some(var block) => {
+            Result::Ok(var block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
                 let (raw_ptr, _size) = block.into_raw()
                 // Explicit pointer cast from *u8 to *T
@@ -79,7 +79,7 @@ impl<T> Vec<T> {
                     capacity: capacity,
                 })
             },
-            None => {
+            Result::Err(_) => {
                 // Allocation failed
                 return Result::Err(ExecError::NoMem)
             }
@@ -130,10 +130,10 @@ impl<T> Vec<T> {
             let new_bytes: u32 = new_capacity * element_size
 
             // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-            let new_block_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+            let new_block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
             match new_block_opt {
-                Some(var new_block) => {
+                Result::Ok(var new_block) => {
                     // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
                     let (raw_ptr, _size) = new_block.into_raw()
                     // Explicit pointer cast from *u8 to *T
@@ -159,7 +159,7 @@ impl<T> Vec<T> {
                     self.capacity = new_capacity
                     return Result::Ok(())
                 },
-                None => {
+                Result::Err(_) => {
                     // Allocation failed
                     return Result::Err(ExecError::NoMem)
                 }
@@ -367,10 +367,10 @@ impl<T> Vec<T> {
         let element_size: u32 = @sizeof(T)
         let new_bytes: u32 = self.len * element_size
 
-        let new_block_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let new_block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match new_block_opt {
-            Some(var new_block) => {
+            Result::Ok(var new_block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
                 let (raw_ptr, _size) = new_block.into_raw()
                 let new_ptr: *T = (*T)raw_ptr
@@ -393,7 +393,7 @@ impl<T> Vec<T> {
                 self.capacity = self.len
                 return Result::Ok(())
             },
-            None => {
+            Result::Err(_) => {
                 // Allocation failed - keep the old allocation
                 return Result::Err(ExecError::NoMem)
             }

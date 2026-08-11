@@ -8,6 +8,7 @@ from std::core import Result, Option, Drop
 from std::ffi::exec import CreatePool, DeletePool, AllocPooled, FreePooled, AvailMem
 from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST
 from std::sync::critical import CriticalSection
+from std::memory::chip import ChipCacheError
 
 // ============================================================================
 // Pool Size Classes
@@ -85,24 +86,24 @@ impl SizePool {
         }
     }
 
-    fn init(&var self, block_size: u32, puddle_size: u32) -> bool {
+    fn init(&var self, block_size: u32, puddle_size: u32) -> Result<(), ChipCacheError> {
         self.block_size = block_size
         self.pool_header = CreatePool(MEMF_CHIP, puddle_size, THRESHOLD)
-        return self.pool_header != null
+        return if self.pool_header { Result::Ok(()) } else { Result::Err(ChipCacheError::OutOfMemory) }
     }
 
-    fn alloc(&var self) -> Option<*u8> {
+    fn alloc(&var self) -> Result<*u8, ChipCacheError> {
         if !self.pool_header {
-            return Option::None
+            return Result::Err(ChipCacheError::NotInitialized)
         }
 
         if self.alloc_count >= MAX_ALLOCS_PER_CLASS {
-            return Option::None  // Tracking array full
+            return Result::Err(ChipCacheError::OutOfMemory)
         }
 
         let ptr = AllocPooled(self.pool_header, self.block_size)
         if !ptr {
-            return Option::None
+            return Result::Err(ChipCacheError::OutOfMemory)
         }
 
         // Track the allocation
@@ -110,12 +111,12 @@ impl SizePool {
         self.alloc_count++
         self.total_allocated = self.total_allocated + self.block_size
 
-        return Option::Some(ptr)
+        return Result::Ok(ptr)
     }
 
-    fn free(&var self, ptr: *u8) -> bool {
+    fn free(&var self, ptr: *u8) -> Result<(), ChipCacheError> {
         if !self.pool_header || !ptr {
-            return false
+            return Result::Err(ChipCacheError::InvalidPointer)
         }
 
         // Find and remove the allocation from tracking
@@ -137,12 +138,12 @@ impl SizePool {
                 self.alloc_count--
                 self.total_allocated = self.total_allocated - size
 
-                return true
+                return Result::Ok(())
             }
             i++
         }
 
-        return false  // Not found in this pool
+        return Result::Err(ChipCacheError::InvalidPointer)
     }
 
     fn shutdown(&var self) {
@@ -226,34 +227,34 @@ impl ChipPool {
     ///
     /// Creates Exec pools for each size class. Call this once at startup.
     /// Pools will auto-initialize on first use if not called explicitly.
-    pub fn init() -> bool {
+    pub fn init() -> Result<(), ChipCacheError> {
         unsafe {
             if g_chip_pool.initialized {
-                return true
+                return Result::Ok(())
             }
 
             // Initialize each size class pool
-            if !g_chip_pool.small_pool.init(POOL_SMALL_SIZE, SMALL_PUDDLE) {
-                return false
+            if g_chip_pool.small_pool.init(POOL_SMALL_SIZE, SMALL_PUDDLE).is_err() {
+                return Result::Err(ChipCacheError::OutOfMemory)
             }
-            if !g_chip_pool.medium_pool.init(POOL_MEDIUM_SIZE, MEDIUM_PUDDLE) {
+            if g_chip_pool.medium_pool.init(POOL_MEDIUM_SIZE, MEDIUM_PUDDLE).is_err() {
                 g_chip_pool.small_pool.shutdown()
-                return false
+                return Result::Err(ChipCacheError::OutOfMemory)
             }
-            if !g_chip_pool.large_pool.init(POOL_LARGE_SIZE, LARGE_PUDDLE) {
+            if g_chip_pool.large_pool.init(POOL_LARGE_SIZE, LARGE_PUDDLE).is_err() {
                 g_chip_pool.small_pool.shutdown()
                 g_chip_pool.medium_pool.shutdown()
-                return false
+                return Result::Err(ChipCacheError::OutOfMemory)
             }
-            if !g_chip_pool.huge_pool.init(POOL_HUGE_SIZE, HUGE_PUDDLE) {
+            if g_chip_pool.huge_pool.init(POOL_HUGE_SIZE, HUGE_PUDDLE).is_err() {
                 g_chip_pool.small_pool.shutdown()
                 g_chip_pool.medium_pool.shutdown()
                 g_chip_pool.large_pool.shutdown()
-                return false
+                return Result::Err(ChipCacheError::OutOfMemory)
             }
 
             g_chip_pool.initialized = true
-            return true
+            return Result::Ok(())
         }
     }
 
@@ -291,22 +292,20 @@ impl ChipPool {
     ///
     /// Returns a pointer to chip RAM that can hold at least `size` bytes.
     /// The actual allocated size may be larger (rounded up to size class).
-    /// For sizes > 32KB, returns None (use direct AllocMem instead).
+    /// For sizes > 32KB, returns `AssetTooLarge` (use direct AllocMem instead).
     ///
     /// Note: Uses CriticalSection for safe task-switching protection.
     /// Nested critical sections are safe (reference counted by Exec).
-    pub fn alloc(size: u32) -> Option<*u8> {
+    pub fn alloc(size: u32) -> Result<*u8, ChipCacheError> {
         if size == 0 {
-            return Option::None
+            return Result::Err(ChipCacheError::InvalidSize)
         }
 
         unsafe {
             let _guard = CriticalSection::enter()
 
             if !g_chip_pool.initialized {
-                if !ChipPool::init() {
-                    return Option::None
-                }
+                ChipPool::init()?
             }
 
             // Determine size class and allocate from appropriate pool
@@ -323,44 +322,43 @@ impl ChipPool {
                 return g_chip_pool.huge_pool.alloc()
             }
 
-            return Option::None
+            return Result::Err(ChipCacheError::AssetTooLarge)
         }
     }
 
     /// Free chip RAM back to the pool
     ///
-    /// Returns true if the pointer was found and freed.
-    /// Returns false if the pointer wasn't from this pool.
+    /// Returns an error if the pointer wasn't allocated by this pool.
     ///
     /// Note: Uses CriticalSection for safe task-switching protection.
     /// Nested critical sections are safe (reference counted by Exec).
-    pub fn free(ptr: *u8) -> bool {
+    pub fn free(ptr: *u8) -> Result<(), ChipCacheError> {
         if !ptr {
-            return false
+            return Result::Err(ChipCacheError::InvalidPointer)
         }
 
         unsafe {
             let _guard = CriticalSection::enter()
 
             if !g_chip_pool.initialized {
-                return false
+                return Result::Err(ChipCacheError::NotInitialized)
             }
 
             // Try each pool - order doesn't matter for correctness
-            if g_chip_pool.small_pool.free(ptr) {
-                return true
+            if g_chip_pool.small_pool.free(ptr).is_ok() {
+                return Result::Ok(())
             }
-            if g_chip_pool.medium_pool.free(ptr) {
-                return true
+            if g_chip_pool.medium_pool.free(ptr).is_ok() {
+                return Result::Ok(())
             }
-            if g_chip_pool.large_pool.free(ptr) {
-                return true
+            if g_chip_pool.large_pool.free(ptr).is_ok() {
+                return Result::Ok(())
             }
-            if g_chip_pool.huge_pool.free(ptr) {
-                return true
+            if g_chip_pool.huge_pool.free(ptr).is_ok() {
+                return Result::Ok(())
             }
 
-            return false
+            return Result::Err(ChipCacheError::InvalidPointer)
         }
     }
 

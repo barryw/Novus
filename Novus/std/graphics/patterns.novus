@@ -12,7 +12,8 @@
 //   - Pattern is tiled across the filled area.
 //   - Set via RastPort.AreaPtrn and AreaPtSz fields.
 
-from std::core import Option
+from std::core import Result
+from std::error::errors import ExecError
 from std::memory::amiga import MemHandle
 from std::ffi::amiga_structs import RastPort
 
@@ -205,12 +206,8 @@ pub struct FillPattern {
 
 impl FillPattern {
     /// Create a 2-word fill pattern.
-    pub fn new_2(row0: u16, row1: u16) -> Option<FillPattern> {
-        let handle_opt: Option<MemHandle> = MemHandle::new_chip(4)
-        if handle_opt.is_none() {
-            return Option::None
-        }
-        let handle: MemHandle = handle_opt.unwrap()
+    pub fn new_2(row0: u16, row1: u16) -> Result<FillPattern, ExecError> {
+        let handle = MemHandle::new_chip(4)?
         unsafe {
             let base: u32 = (u32)handle.ptr()
             let ptr0: *u16 = (*u16)base
@@ -218,16 +215,12 @@ impl FillPattern {
             *ptr0 = row0
             *ptr1 = row1
         }
-        return Option::Some(FillPattern { data: handle, height_power: 1 })
+        return Result::Ok(FillPattern { data: handle, height_power: 1 })
     }
 
     /// Create a 4-word fill pattern.
-    pub fn new_4(row0: u16, row1: u16, row2: u16, row3: u16) -> Option<FillPattern> {
-        let handle_opt: Option<MemHandle> = MemHandle::new_chip(8)
-        if handle_opt.is_none() {
-            return Option::None
-        }
-        let handle: MemHandle = handle_opt.unwrap()
+    pub fn new_4(row0: u16, row1: u16, row2: u16, row3: u16) -> Result<FillPattern, ExecError> {
+        let handle = MemHandle::new_chip(8)?
         unsafe {
             let base: u32 = (u32)handle.ptr()
             let ptr0: *u16 = (*u16)base
@@ -239,7 +232,7 @@ impl FillPattern {
             *ptr2 = row2
             *ptr3 = row3
         }
-        return Option::Some(FillPattern { data: handle, height_power: 2 })
+        return Result::Ok(FillPattern { data: handle, height_power: 2 })
     }
 
     /// Get the pattern data pointer.
@@ -258,17 +251,17 @@ impl FillPattern {
     }
 
     /// Create a checkerboard pattern (50% gray).
-    pub fn checkerboard() -> Option<FillPattern> {
+    pub fn checkerboard() -> Result<FillPattern, ExecError> {
         return FillPattern::new_2(CHECKERBOARD_ROW0, CHECKERBOARD_ROW1)
     }
 
     /// Create a horizontal lines pattern.
-    pub fn horizontal_lines() -> Option<FillPattern> {
+    pub fn horizontal_lines() -> Result<FillPattern, ExecError> {
         return FillPattern::new_2(HLINES_ROW0, HLINES_ROW1)
     }
 
     /// Create a vertical lines pattern.
-    pub fn vertical_lines() -> Option<FillPattern> {
+    pub fn vertical_lines() -> Result<FillPattern, ExecError> {
         return FillPattern::new_2(VLINES_ROW0, VLINES_ROW1)
     }
 }
@@ -300,8 +293,8 @@ pub fn rotate_line_pattern_right(pattern: u16, n: u8) -> u16 {
 
 /// Allocate chip memory for a pattern.
 /// Use this when you need pattern data in chip RAM (required for some operations).
-/// Returns None if allocation fails.
-pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Option<MemHandle> {
+/// Returns an error if allocation fails.
+pub fn allocate_pattern(depth: u32, width: u32, height: u32) -> Result<MemHandle, ExecError> {
     let size: u32 = width * height * depth
     return MemHandle::new_chip(size)
 }

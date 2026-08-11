@@ -98,10 +98,10 @@ struct Slot<T> {
 /// ## Example
 /// ```novus
 /// match SlotMap::<Entity>::new() {
-///     Option::Some(var entities) => {
+///     Result::Ok(var entities) => {
 ///         // Insert an entity and get a handle
 ///         match entities.insert(player_entity) {
-///             Option::Some(player_key) => {
+///             Result::Ok(player_key) => {
 ///                 // Access via handle - returns None if key is stale
 ///                 match entities.get(player_key) {
 ///                     Option::Some(entity) => { /* use entity */ },
@@ -114,10 +114,10 @@ struct Slot<T> {
 ///                 // Old key is now invalid
 ///                 // entities.get(player_key) returns None
 ///             },
-///             Option::None => { /* allocation failed */ }
+///             Result::Err(_) => { /* allocation failed */ }
 ///         }
 ///     },
-///     Option::None => { /* allocation failed */ }
+///     Result::Err(_) => { /* allocation failed */ }
 /// }
 /// ```
 pub struct SlotMap<T> {
@@ -132,14 +132,14 @@ pub struct SlotMap<T> {
 
 impl<T> SlotMap<T> {
     /// Create a new empty SlotMap with default capacity (16)
-    pub fn new() -> Option<SlotMap<T>> {
+    pub fn new() -> Result<SlotMap<T>, ExecError> {
         return SlotMap::<T>::with_capacity(16u32)
     }
 
     /// Create a new SlotMap with specified initial capacity
-    pub fn with_capacity(capacity: u32) -> Option<SlotMap<T>> {
+    pub fn with_capacity(capacity: u32) -> Result<SlotMap<T>, ExecError> {
         if capacity == 0u32 {
-            return Option::None
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         let value_size: u32 = @sizeof(T)
@@ -151,16 +151,16 @@ impl<T> SlotMap<T> {
         let slot_bytes: u32 = capacity * slot_size
 
         // Allocate values array
-        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let value_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
         match value_opt {
-            Option::Some(var value_block) => {
+            Result::Ok(var value_block) => {
                 let values: *u8 = value_block.ptr()
                 value_block.into_raw()
 
                 // Allocate slots array
-                let slot_opt: Option<MemoryBlock> = MemoryBlock::alloc(slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                let slot_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                 match slot_opt {
-                    Option::Some(var slot_block) => {
+                    Result::Ok(var slot_block) => {
                         let slots: *Slot<T> = (*Slot<T>)slot_block.ptr()
                         slot_block.into_raw()
 
@@ -177,7 +177,7 @@ impl<T> SlotMap<T> {
                         slots[capacity - 1u32].generation = 0u32
                         slots[capacity - 1u32].next_free = 0xFFFFFFFFu32
 
-                        return Option::Some(SlotMap {
+                        return Result::Ok(SlotMap {
                             values: values,
                             slots: slots,
                             capacity: capacity,
@@ -187,41 +187,30 @@ impl<T> SlotMap<T> {
                             slot_size: slot_size,
                         })
                     },
-                    Option::None => {
+                    Result::Err(error) => {
                         unsafe {
                             FreeMem(values, value_bytes)
                         }
-                        return Option::None
+                        return Result::Err(error)
                     }
                 }
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
     /// Create a new SlotMap, returning a Result for detailed error handling
     pub fn try_with_capacity(capacity: u32) -> Result<SlotMap<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
-        }
-
-        match SlotMap::<T>::with_capacity(capacity) {
-            Option::Some(map) => Result::Ok(map),
-            Option::None => Result::Err(ExecError::NoMem)
-        }
+        return SlotMap::<T>::with_capacity(capacity)
     }
 
     /// Insert a value and return its key
     ///
-    /// Returns None if allocation fails during growth.
-    pub fn insert(&var self, value: T) -> Option<SlotKey> {
+    /// Returns the allocation error if growth fails.
+    pub fn insert(&var self, value: T) -> Result<SlotKey, ExecError> {
         // Check if we need to grow
         if self.free_head == 0xFFFFFFFFu32 {
-            if !self.grow() {
-                return Option::None
-            }
+            self.grow()?
         }
 
         // Pop from free list
@@ -238,29 +227,29 @@ impl<T> SlotMap<T> {
         self.slots[index].occupied = true
         self.len = self.len + 1u32
 
-        return Option::Some(SlotKey {
+        return Result::Ok(SlotKey {
             index: index,
             generation: self.slots[index].generation,
         })
     }
 
     /// Grow the SlotMap by doubling capacity
-    fn grow(&var self) -> bool {
+    fn grow(&var self) -> Result<(), ExecError> {
         let new_capacity: u32 = self.capacity << 1  // Double
         let new_value_bytes: u32 = new_capacity * self.value_size
         let new_slot_bytes: u32 = new_capacity * self.slot_size
 
         // Allocate new values array
-        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let value_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
         match value_opt {
-            Option::Some(var value_block) => {
+            Result::Ok(var value_block) => {
                 let new_values: *u8 = value_block.ptr()
                 value_block.into_raw()
 
                 // Allocate new slots array
-                let slot_opt: Option<MemoryBlock> = MemoryBlock::alloc(new_slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                let slot_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_slot_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                 match slot_opt {
-                    Option::Some(var slot_block) => {
+                    Result::Ok(var slot_block) => {
                         let new_slots: *Slot<T> = (*Slot<T>)slot_block.ptr()
                         slot_block.into_raw()
 
@@ -303,19 +292,17 @@ impl<T> SlotMap<T> {
                         self.slots = new_slots
                         self.free_head = self.capacity  // First new slot
                         self.capacity = new_capacity
-                        return true
+                        return Result::Ok(())
                     },
-                    Option::None => {
+                    Result::Err(error) => {
                         unsafe {
                             FreeMem(new_values, new_value_bytes)
                         }
-                        return false
+                        return Result::Err(error)
                     }
                 }
             },
-            Option::None => {
-                return false
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -581,9 +568,9 @@ pub struct SlotMapFixed<T> {
 
 impl<T> SlotMapFixed<T> {
     /// Create a new fixed-capacity SlotMap
-    pub fn with_capacity(capacity: u32) -> Option<SlotMapFixed<T>> {
+    pub fn with_capacity(capacity: u32) -> Result<SlotMapFixed<T>, ExecError> {
         if capacity == 0u32 {
-            return Option::None
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         let value_size: u32 = @sizeof(T)
@@ -594,30 +581,30 @@ impl<T> SlotMapFixed<T> {
         let occ_bytes: u32 = capacity             // bool occupied
 
         // Allocate values array
-        let value_opt: Option<MemoryBlock> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let value_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(value_bytes, MEMF_PUBLIC | MEMF_CLEAR)
         match value_opt {
-            Option::Some(var value_block) => {
+            Result::Ok(var value_block) => {
                 let values: *u8 = value_block.ptr()
                 value_block.into_raw()
 
                 // Allocate generations array
-                let gen_opt: Option<MemoryBlock> = MemoryBlock::alloc(gen_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                let gen_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(gen_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                 match gen_opt {
-                    Option::Some(var gen_block) => {
+                    Result::Ok(var gen_block) => {
                         let generations: *u32 = (*u32)gen_block.ptr()
                         gen_block.into_raw()
 
                         // Allocate next_free array
-                        let free_opt: Option<MemoryBlock> = MemoryBlock::alloc(free_bytes, MEMF_PUBLIC)
+                        let free_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(free_bytes, MEMF_PUBLIC)
                         match free_opt {
-                            Option::Some(var free_block) => {
+                            Result::Ok(var free_block) => {
                                 let next_free: *u32 = (*u32)free_block.ptr()
                                 free_block.into_raw()
 
                                 // Allocate occupied array
-                                let occ_opt: Option<MemoryBlock> = MemoryBlock::alloc(occ_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                                let occ_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(occ_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                                 match occ_opt {
-                                    Option::Some(var occ_block) => {
+                                    Result::Ok(var occ_block) => {
                                         let occupied: *bool = (*bool)occ_block.ptr()
                                         occ_block.into_raw()
 
@@ -629,7 +616,7 @@ impl<T> SlotMapFixed<T> {
                                         }
                                         next_free[capacity - 1u32] = 0xFFFFFFFFu32
 
-                                        return Option::Some(SlotMapFixed {
+                                        return Result::Ok(SlotMapFixed {
                                             values: values,
                                             generations: generations,
                                             next_free: next_free,
@@ -640,57 +627,48 @@ impl<T> SlotMapFixed<T> {
                                             value_size: aligned_value_size,
                                         })
                                     },
-                                    Option::None => {
+                                    Result::Err(error) => {
                                         unsafe {
                                             FreeMem(values, value_bytes)
                                             FreeMem((*u8)generations, gen_bytes)
                                             FreeMem((*u8)next_free, free_bytes)
                                         }
-                                        return Option::None
+                                        return Result::Err(error)
                                     }
                                 }
                             },
-                            Option::None => {
+                            Result::Err(error) => {
                                 unsafe {
                                     FreeMem(values, value_bytes)
                                     FreeMem((*u8)generations, gen_bytes)
                                 }
-                                return Option::None
+                                return Result::Err(error)
                             }
                         }
                     },
-                    Option::None => {
+                    Result::Err(error) => {
                         unsafe {
                             FreeMem(values, value_bytes)
                         }
-                        return Option::None
+                        return Result::Err(error)
                     }
                 }
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
     /// Create a new SlotMapFixed, returning a Result for detailed error handling
     pub fn try_with_capacity(capacity: u32) -> Result<SlotMapFixed<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
-        }
-
-        match SlotMapFixed::<T>::with_capacity(capacity) {
-            Option::Some(map) => Result::Ok(map),
-            Option::None => Result::Err(ExecError::NoMem)
-        }
+        return SlotMapFixed::<T>::with_capacity(capacity)
     }
 
     /// Insert a value and return its key
     ///
-    /// Returns None if the map is full.
-    pub fn insert(&var self, value: T) -> Option<SlotKey> {
+    /// Returns a capacity error if the map is full.
+    pub fn insert(&var self, value: T) -> Result<SlotKey, ExecError> {
         if self.free_head == 0xFFFFFFFFu32 {
-            return Option::None  // Full
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         // Pop from free list
@@ -706,7 +684,7 @@ impl<T> SlotMapFixed<T> {
         self.occupied[index] = true
         self.len = self.len + 1u32
 
-        return Option::Some(SlotKey {
+        return Result::Ok(SlotKey {
             index: index,
             generation: self.generations[index],
         })

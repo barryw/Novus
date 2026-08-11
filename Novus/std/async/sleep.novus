@@ -33,6 +33,7 @@ from std::ffi::amiga_consts import UNIT_MICROHZ, TR_ADDREQUEST
 /// ```
 pub struct Sleep {
     duration: Duration,
+    unit: u32,
     timereq: *timerequest,
     port: *MsgPort,
     state: SleepState,
@@ -43,8 +44,12 @@ enum SleepState {
     Init,
     /// Timer request sent, waiting for completion
     Waiting,
-    /// Completed (or failed to start)
+    /// Completed successfully
     Done,
+    /// Resource allocation failed
+    FailedNoMemory,
+    /// timer.device could not be opened
+    FailedOpen,
 }
 
 impl Sleep {
@@ -52,8 +57,15 @@ impl Sleep {
     ///
     /// The timer doesn't start until the future is first polled.
     pub fn new(duration: Duration) -> Sleep {
+        return Sleep::with_unit(duration, UNIT_MICROHZ)
+    }
+
+    /// Create a sleep using a specific timer.device unit.
+    /// Most applications should use `new`; this supports alternate timer units.
+    pub fn with_unit(duration: Duration, unit: u32) -> Sleep {
         return Sleep {
             duration: duration,
+            unit: unit,
             timereq: null,
             port: null,
             state: SleepState::Init,
@@ -61,12 +73,12 @@ impl Sleep {
     }
 
     /// Initialize timer resources (called on first poll)
-    fn init_timer(&var self) -> bool {
+    fn init_timer(&var self) -> Result<(), TimerError> {
         // Create message port
         let port = CreateMsgPort()
         if (u32)port == 0 {
-            self.state = SleepState::Done
-            return false
+            self.state = SleepState::FailedNoMemory
+            return Result::Err(TimerError::NoMemory)
         }
         self.port = port
 
@@ -75,8 +87,8 @@ impl Sleep {
         if (u32)req == 0 {
             DeleteMsgPort(port)
             self.port = null
-            self.state = SleepState::Done
-            return false
+            self.state = SleepState::FailedNoMemory
+            return Result::Err(TimerError::NoMemory)
         }
         self.timereq = (*timerequest)req
 
@@ -84,18 +96,18 @@ impl Sleep {
         unsafe {
             let ioreq_ptr = &self.timereq.tr_node
             let ioreq = (*IORequest)ioreq_ptr
-            let error = OpenDevice("timer.device", UNIT_MICROHZ, ioreq, 0)
+            let error = OpenDevice("timer.device", self.unit, ioreq, 0)
             if error != 0 {
                 DeleteIORequest((*u8)self.timereq)
                 DeleteMsgPort(self.port)
                 self.timereq = null
                 self.port = null
-                self.state = SleepState::Done
-                return false
+                self.state = SleepState::FailedOpen
+                return Result::Err(TimerError::OpenFailed)
             }
         }
 
-        return true
+        return Result::Ok(())
     }
 
     /// Start the async timer request
@@ -121,10 +133,6 @@ impl Sleep {
 
     /// Check if the timer has completed
     fn check_done(&var self) -> bool {
-        if (u32)self.timereq == 0 {
-            return true  // Failed to init, consider "done"
-        }
-
         let ioreq_ptr = &self.timereq.tr_node
         let ioreq = (*IORequest)ioreq_ptr
         if (u32)CheckIO(ioreq) != 0 {
@@ -165,11 +173,11 @@ impl Sleep {
     }
 
     /// Poll helper for Init state
-    fn poll_init(&var self, ctx: &var Context) -> Poll<()> {
+    fn poll_init(&var self, ctx: &var Context) -> Poll<Result<(), TimerError>> {
         // First poll - initialize and start
-        if !self.init_timer() {
-            // Failed to init, complete immediately (with implicit error)
-            return Poll::Ready(())
+        match self.init_timer() {
+            Result::Err(error) => return Poll::Ready(Result::Err(error)),
+            Result::Ok(_) => {},
         }
         // Wire up our port to signal the waker
         // The MsgPort has mp_SigTask and mp_SigBit we can set
@@ -183,33 +191,38 @@ impl Sleep {
     }
 
     /// Poll helper for Waiting state
-    fn poll_waiting(&var self) -> Poll<()> {
+    fn poll_waiting(&var self) -> Poll<Result<(), TimerError>> {
         // Check if timer completed
         if self.check_done() {
-            return Poll::Ready(())
+            return Poll::Ready(Result::Ok(()))
         }
         return Poll::Pending
     }
 
     /// Poll the sleep future to check if the timer has elapsed.
     ///
-    /// Returns `Poll::Ready(())` when the sleep is complete.
+    /// Returns `Poll::Ready(Result::Ok(()))` when the sleep is complete.
+    /// Returns `Poll::Ready(Result::Err(error))` when timer setup fails.
     /// Returns `Poll::Pending` if still waiting.
-    pub fn poll(&var self, ctx: &var Context) -> Poll<()> {
+    pub fn poll(&var self, ctx: &var Context) -> Poll<Result<(), TimerError>> {
         match self.state {
             SleepState::Init => return self.poll_init(ctx),
             SleepState::Waiting => return self.poll_waiting(),
-            SleepState::Done => return Poll::Ready(()),
+            SleepState::Done => return Poll::Ready(Result::Ok(())),
+            SleepState::FailedNoMemory => return Poll::Ready(Result::Err(TimerError::NoMemory)),
+            SleepState::FailedOpen => return Poll::Ready(Result::Err(TimerError::OpenFailed)),
         }
     }
 }
 
-impl Future<()> for Sleep {
-    fn poll(&var self, ctx: &var Context) -> Poll<()> {
+impl Future<Result<(), TimerError>> for Sleep {
+    fn poll(&var self, ctx: &var Context) -> Poll<Result<(), TimerError>> {
         match self.state {
             SleepState::Init => return self.poll_init(ctx),
             SleepState::Waiting => return self.poll_waiting(),
-            SleepState::Done => return Poll::Ready(()),
+            SleepState::Done => return Poll::Ready(Result::Ok(())),
+            SleepState::FailedNoMemory => return Poll::Ready(Result::Err(TimerError::NoMemory)),
+            SleepState::FailedOpen => return Poll::Ready(Result::Err(TimerError::OpenFailed)),
         }
     }
 }

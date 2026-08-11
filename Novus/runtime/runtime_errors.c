@@ -128,6 +128,18 @@ NOVUS_RUNTIME_SECTION(__novus_try_failed) void __novus_try_failed(const char* ty
     }
 }
 
+/** Display a handled Result error returned by the Novus program entry point. */
+NOVUS_RUNTIME_SECTION(__novus_program_failed) void __novus_program_failed(const char* message)
+{
+    char* ptr = error_buffer;
+
+    ptr = strcpy_helper(ptr, "Program failed:\n\n");
+    ptr = strcpy_helper(ptr, message != NULL ? message : "Unknown error");
+    *ptr = '\0';
+
+    display_error_requester(AO_ProgramFailure);
+}
+
 /**
  * Panic handler - displays error using EasyRequest and halts execution
  * This is for unrecoverable runtime errors (never elided, even in release)

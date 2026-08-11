@@ -457,6 +457,26 @@ public class OptimizerTests
     }
 
     [Fact]
+    public void CommonSubexpressionElimination_DoesNotCrossVariableMutation()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrIntType.I32);
+        module.AddFunction(function);
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrBinaryOp("%first", IrBinaryOp.OpKind.Add,
+            new IrVariable("count", IrIntType.I32), new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+        block.AddInstruction(new IrStore("count", new IrVariable("%first", IrIntType.I32)));
+        block.AddInstruction(new IrBinaryOp("%second", IrBinaryOp.OpKind.Add,
+            new IrVariable("count", IrIntType.I32), new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+        block.AddInstruction(new IrReturn(new IrVariable("%second", IrIntType.I32)));
+
+        Assert.False(new CommonSubexpressionEliminationPass().Run(module));
+        Assert.Equal(4, block.Instructions.Count);
+    }
+
+    [Fact]
     public void CommonSubexpressionElimination_ReusesScalarMemberLoadUntilMemoryChanges()
     {
         var module = new IrModule();

@@ -5,7 +5,8 @@
 // Many AmigaOS functions use variable-length tag lists to pass parameters.
 // This module provides helpers to make working with tags more ergonomic.
 
-from std::core import Option
+from std::core import Result
+from std::error::errors import ExecError
 from std::collections::vec import Vec
 from std::ffi::amiga_structs import TagItem
 from std::ffi::amiga_consts import TAG_DONE
@@ -34,30 +35,24 @@ from std::ffi::amiga_consts import TAG_DONE
 /// // Returns a Vec with your 3 tags + TAG_DONE at the end
 /// ```
 ///
-/// Returns `Option::None` if memory allocation fails.
-pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Option<Vec<TagItem>> {
+/// Returns an allocation error if the tag list cannot grow.
+pub fn make_tags(tags_ptr: *TagItem, count: u32) -> Result<Vec<TagItem>, ExecError> {
     var result: Vec<TagItem> = Vec::<TagItem>::new()
 
     // Add all user-provided tags
     while var i < count {
         let tag = tags_ptr[i]
-        match result.push(tag) {
-            Result::Ok(_) => {},
-            Result::Err(_) => return Option::None,
-        }
+        result.push(tag)?
         i++
     }
 
     // Always append TAG_DONE
-    match result.push(TagItem {
+    result.push(TagItem {
         ti_Tag: TAG_DONE,
         ti_Data: 0
-    }) {
-        Result::Ok(_) => {},
-        Result::Err(_) => return Option::None,
-    }
+    })?
 
-    return Option::Some(result)
+    return Result::Ok(result)
 }
 
 // ============================================================================

@@ -7,6 +7,7 @@
 from std::ffi::bsdsocket import ECONNREFUSED, ECONNRESET, ETIMEDOUT, EADDRINUSE, EADDRNOTAVAIL, ENETDOWN, ENETUNREACH, ECONNABORTED, ENOTCONN, EISCONN, EWOULDBLOCK, EAGAIN, EINPROGRESS, EINVAL, EACCES, EPERM, ENOTSOCK, EDESTADDRREQ, EMSGSIZE, EPROTONOSUPPORT, ESOCKTNOSUPPORT, EOPNOTSUPP, EAFNOSUPPORT, ENOBUFS, ESHUTDOWN, EHOSTDOWN, EHOSTUNREACH, EIO, EINTR, ENOMEM, EBADF, HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
 from std::strings::format import Formatter, Display
 from std::strings::core import Str
+from std::core import Error
 
 // Import the task-local errno storage from socket module
 // This variable is defined in socket.novus and set up via SetErrnoPtr
@@ -230,6 +231,12 @@ impl NetError {
             NetError::Other(code) => return code,
             _ => return 0,
         }
+    }
+}
+
+impl Error for NetError {
+    fn message(&self) -> *u8 {
+        return (*self).message()
     }
 }
 

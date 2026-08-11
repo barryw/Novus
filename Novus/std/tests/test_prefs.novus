@@ -75,7 +75,7 @@ pub fn test_try_get_str_some() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "value")
+            prefs.set_str("key", "value").unwrap()
             match prefs.try_get_str("key") {
                 Option::Some(v) => {
                     expect_true(v.equals("value"), "try_get_str returns correct value")
@@ -96,7 +96,7 @@ pub fn test_set_and_get_u32() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_u32("count", 42)
+            prefs.set_u32("count", 42).unwrap()
             let value = prefs.get_u32("count", 0)
             expect_eq(value, 42, "get_u32 returns set value")
         },
@@ -109,7 +109,7 @@ pub fn test_set_and_get_i32_negative() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_i32("temp", -25)
+            prefs.set_i32("temp", -25).unwrap()
             let value = prefs.get_i32("temp", 0)
             expect_eq(value, -25, "get_i32 returns negative value")
         },
@@ -122,7 +122,7 @@ pub fn test_get_u32_invalid() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "not_a_number")
+            prefs.set_str("key", "not_a_number").unwrap()
             let value = prefs.get_u32("key", 999)
             expect_eq(value, 999, "get_u32 returns default for invalid value")
         },
@@ -151,7 +151,7 @@ pub fn test_set_and_get_bool_true() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_bool("enabled", true)
+            prefs.set_bool("enabled", true).unwrap()
             let value = prefs.get_bool("enabled", false)
             expect_true(value, "get_bool returns true")
         },
@@ -164,7 +164,7 @@ pub fn test_set_and_get_bool_false() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_bool("disabled", false)
+            prefs.set_bool("disabled", false).unwrap()
             let value = prefs.get_bool("disabled", true)
             expect_false(value, "get_bool returns false")
         },
@@ -177,7 +177,7 @@ pub fn test_get_bool_parses_1() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("flag", "1")
+            prefs.set_str("flag", "1").unwrap()
             let value = prefs.get_bool("flag", false)
             expect_true(value, "get_bool parses '1' as true")
         },
@@ -190,7 +190,7 @@ pub fn test_get_bool_parses_0() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("flag", "0")
+            prefs.set_str("flag", "0").unwrap()
             let value = prefs.get_bool("flag", true)
             expect_false(value, "get_bool parses '0' as false")
         },
@@ -203,7 +203,7 @@ pub fn test_get_bool_invalid() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("flag", "maybe")
+            prefs.set_str("flag", "maybe").unwrap()
             let value = prefs.get_bool("flag", true)
             expect_true(value, "get_bool returns default for invalid")
         },
@@ -231,7 +231,7 @@ pub fn test_contains_existing() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "value")
+            prefs.set_str("key", "value").unwrap()
             expect_true(prefs.contains("key"), "contains returns true")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
@@ -243,7 +243,7 @@ pub fn test_remove_existing() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "value")
+            prefs.set_str("key", "value").unwrap()
             let removed = prefs.remove("key")
             expect_true(removed, "remove returns true for existing key")
             expect_false(prefs.contains("key"), "key is gone after remove")
@@ -269,9 +269,9 @@ pub fn test_clear() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("a", "1")
-            prefs.set_str("b", "2")
-            prefs.set_str("c", "3")
+            prefs.set_str("a", "1").unwrap()
+            prefs.set_str("b", "2").unwrap()
+            prefs.set_str("c", "3").unwrap()
             expect_eq(prefs.len(), 3, "has 3 entries before clear")
 
             prefs.clear()
@@ -325,9 +325,9 @@ pub fn test_dotted_key_names() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("window.width", "640")
-            prefs.set_str("window.height", "480")
-            prefs.set_str("ui.theme.name", "dark")
+            prefs.set_str("window.width", "640").unwrap()
+            prefs.set_str("window.height", "480").unwrap()
+            prefs.set_str("ui.theme.name", "dark").unwrap()
 
             let width = prefs.get_u32("window.width", 0)
             let height = prefs.get_u32("window.height", 0)
@@ -350,8 +350,8 @@ pub fn test_update_existing_key() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "first")
-            prefs.set_str("key", "second")
+            prefs.set_str("key", "first").unwrap()
+            prefs.set_str("key", "second").unwrap()
 
             let value = prefs.get_str("key", "")
             expect_true(value.equals("second"), "value is updated")
@@ -377,11 +377,11 @@ pub fn test_save_and_load_roundtrip() {
     let create_result = Prefs::new("test_prefs_app", 1)
     match create_result {
         Result::Ok(var prefs) => {
-            prefs.set_str("name", "Test App")
-            prefs.set_u32("window.width", 800)
-            prefs.set_u32("window.height", 600)
-            prefs.set_bool("fullscreen", false)
-            prefs.set_i32("volume", -5)
+            prefs.set_str("name", "Test App").unwrap()
+            prefs.set_u32("window.width", 800).unwrap()
+            prefs.set_u32("window.height", 600).unwrap()
+            prefs.set_bool("fullscreen", false).unwrap()
+            prefs.set_i32("volume", -5).unwrap()
 
             // We'll test the internal write_to_file directly since
             // save() writes to ENV:/ENVARC: which may not exist in test
@@ -447,7 +447,7 @@ pub fn test_dirty_flag() {
         Result::Ok(var prefs) => {
             expect_false(prefs.is_dirty(), "not dirty initially")
 
-            prefs.set_str("key", "value")
+            prefs.set_str("key", "value").unwrap()
             expect_true(prefs.is_dirty(), "dirty after set")
         },
         Result::Err(_) => expect(false, "Prefs::new should succeed")
@@ -459,13 +459,13 @@ pub fn test_dirty_after_remove() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("key", "value")
+            prefs.set_str("key", "value").unwrap()
 
             // Reset dirty by creating fresh prefs with same data
             let result2 = Prefs::new("test_app2", 1)
             match result2 {
                 Result::Ok(var prefs2) => {
-                    prefs2.set_str("key", "value")
+                    prefs2.set_str("key", "value").unwrap()
                     // Pretend we just loaded it
                     // Actually we can't reset dirty from outside...
 
@@ -489,11 +489,11 @@ pub fn test_multiple_entries() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("a", "1")
-            prefs.set_str("b", "2")
-            prefs.set_str("c", "3")
-            prefs.set_str("d", "4")
-            prefs.set_str("e", "5")
+            prefs.set_str("a", "1").unwrap()
+            prefs.set_str("b", "2").unwrap()
+            prefs.set_str("c", "3").unwrap()
+            prefs.set_str("d", "4").unwrap()
+            prefs.set_str("e", "5").unwrap()
 
             expect_eq(prefs.len(), 5, "has 5 entries")
 
@@ -516,7 +516,7 @@ pub fn test_whitespace_in_value() {
     let result = Prefs::new("test_app", 1)
     match result {
         Result::Ok(var prefs) => {
-            prefs.set_str("path", "C:/Program Files/My App")
+            prefs.set_str("path", "C:/Program Files/My App").unwrap()
 
             let value = prefs.get_str("path", "")
             expect_true(value.equals("C:/Program Files/My App"), "whitespace preserved")

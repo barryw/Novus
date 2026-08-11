@@ -42,19 +42,19 @@ from std::error::errors import ExecError
 /// ```novus
 /// // Create a pool of 128 sprites
 /// match ObjectPool::<Sprite>::with_capacity(128) {
-///     Option::Some(var pool) => {
+///     Result::Ok(var pool) => {
 ///         // Allocate a sprite
 ///         match pool.alloc() {
-///             Option::Some(sprite_ptr) => {
+///             Result::Ok(sprite_ptr) => {
 ///                 sprite_ptr.x = 100
 ///                 sprite_ptr.y = 50
 ///                 // ... use sprite ...
-///                 pool.free(sprite_ptr)  // Return to pool
+///                 pool.free(sprite_ptr)?  // Return to pool
 ///             },
-///             Option::None => { /* pool exhausted */ }
+///             Result::Err(_) => { /* pool exhausted */ }
 ///         }
 ///     },
-///     Option::None => { /* allocation failed */ }
+///     Result::Err(_) => { /* allocation failed */ }
 /// }
 /// ```
 ///
@@ -84,11 +84,11 @@ struct FreeNode {
 impl<T> ObjectPool<T> {
     /// Create a new ObjectPool with the specified capacity
     ///
-    /// Returns None if memory allocation fails.
+    /// Returns a typed error if allocation fails.
     /// All slots are zero-initialized for safety.
-    pub fn with_capacity(capacity: u32) -> Option<ObjectPool<T>> {
+    pub fn with_capacity(capacity: u32) -> Result<ObjectPool<T>, ExecError> {
         if capacity == 0u32 {
-            return Option::None
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         // Slot size must be at least pointer size (for free list linkage)
@@ -103,10 +103,10 @@ impl<T> ObjectPool<T> {
         let total_bytes: u32 = capacity * aligned_slot_size
 
         // Allocate with MEMF_CLEAR for safety
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let data: *u8 = block.ptr()
                 block.into_raw()  // Take ownership
 
@@ -126,7 +126,7 @@ impl<T> ObjectPool<T> {
                 // Free list head is the first slot
                 let free_head: *FreeNode = (*FreeNode)data
 
-                return Option::Some(ObjectPool {
+                return Result::Ok(ObjectPool {
                     data: data,
                     capacity: capacity,
                     free_head: free_head,
@@ -134,9 +134,7 @@ impl<T> ObjectPool<T> {
                     slot_size: aligned_slot_size,
                 })
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -152,10 +150,10 @@ impl<T> ObjectPool<T> {
         let aligned_slot_size: u32 = (slot_size + 3u32) & 0xFFFFFFFCu32
         let total_bytes: u32 = capacity * aligned_slot_size
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let data: *u8 = block.ptr()
                 block.into_raw()
 
@@ -180,7 +178,7 @@ impl<T> ObjectPool<T> {
                     slot_size: aligned_slot_size,
                 })
             },
-            Option::None => {
+            Result::Err(_) => {
                 return Result::Err(ExecError::NoMem)
             }
         }
@@ -190,10 +188,10 @@ impl<T> ObjectPool<T> {
     ///
     /// Returns a pointer to UNINITIALIZED memory of size T.
     /// The caller MUST initialize all fields before use.
-    /// Returns None if the pool is exhausted.
-    pub fn alloc(&var self) -> Option<*T> {
+    /// Returns `CapacityExceeded` if the pool is exhausted.
+    pub fn alloc(&var self) -> Result<*T, ExecError> {
         if self.free_head == null {
-            return Option::None  // Pool exhausted
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         // Pop the head of the free list
@@ -201,16 +199,16 @@ impl<T> ObjectPool<T> {
         self.free_head = node.next
         self.allocated = self.allocated + 1u32
 
-        return Option::Some((*T)node)
+        return Result::Ok((*T)node)
     }
 
     /// Allocate a zero-initialized object from the pool
     ///
     /// Returns a pointer to zero-initialized memory of size T.
-    /// Returns None if the pool is exhausted.
-    pub fn alloc_zeroed(&var self) -> Option<*T> {
+    /// Returns `CapacityExceeded` if the pool is exhausted.
+    pub fn alloc_zeroed(&var self) -> Result<*T, ExecError> {
         match self.alloc() {
-            Option::Some(ptr) => {
+            Result::Ok(ptr) => {
                 // Zero out the memory
                 let bytes: *u8 = (*u8)ptr
                 var i: u32 = 0u32
@@ -218,11 +216,9 @@ impl<T> ObjectPool<T> {
                     bytes[i] = 0u8
                     i = i + 1u32
                 }
-                return Option::Some(ptr)
+                return Result::Ok(ptr)
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -234,10 +230,10 @@ impl<T> ObjectPool<T> {
     ///
     /// WARNING: Double-free and freeing objects not from this pool
     /// will corrupt the pool!
-    pub fn free(&var self, ptr: *T) -> bool {
+    pub fn free(&var self, ptr: *T) -> Result<(), ExecError> {
         // Guard against underflow (indicates double-free or corruption)
         if self.allocated == 0u32 {
-            return false
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         // Push onto the free list head
@@ -245,7 +241,7 @@ impl<T> ObjectPool<T> {
         node.next = self.free_head
         self.free_head = node
         self.allocated = self.allocated - 1u32
-        return true
+        return Result::Ok(())
     }
 
     /// Get the total capacity of the pool
@@ -351,13 +347,13 @@ impl<T> Drop for ObjectPool<T> {
 /// ## Example
 /// ```novus
 /// match ObjectPoolFixed::<Bullet>::with_capacity(32) {
-///     Option::Some(var pool) => {
+///     Result::Ok(var pool) => {
 ///         match pool.alloc() {
-///             Option::Some(bullet) => { /* use bullet */ },
-///             Option::None => { /* pool full */ }
+///             Result::Ok(bullet) => { /* use bullet */ },
+///             Result::Err(_) => { /* pool full */ }
 ///         }
 ///     },
-///     Option::None => { /* allocation failed */ }
+///     Result::Err(_) => { /* allocation failed */ }
 /// }
 /// ```
 pub struct ObjectPoolFixed<T> {
@@ -373,9 +369,9 @@ impl<T> ObjectPoolFixed<T> {
     /// Create a new fixed-capacity pool
     ///
     /// All slots are initially free and zero-initialized.
-    pub fn with_capacity(capacity: u32) -> Option<ObjectPoolFixed<T>> {
+    pub fn with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, ExecError> {
         if capacity == 0u32 {
-            return Option::None
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         let element_size: u32 = @sizeof(T)
@@ -386,23 +382,23 @@ impl<T> ObjectPoolFixed<T> {
         let flags_bytes: u32 = capacity          // bool per slot
 
         // Allocate data array
-        let data_opt: Option<MemoryBlock> = MemoryBlock::alloc(data_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let data_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(data_bytes, MEMF_PUBLIC | MEMF_CLEAR)
         match data_opt {
-            Option::Some(var data_block) => {
+            Result::Ok(var data_block) => {
                 let data: *u8 = data_block.ptr()
                 data_block.into_raw()
 
                 // Allocate index stack
-                let index_opt: Option<MemoryBlock> = MemoryBlock::alloc(index_bytes, MEMF_PUBLIC)
+                let index_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(index_bytes, MEMF_PUBLIC)
                 match index_opt {
-                    Option::Some(var index_block) => {
+                    Result::Ok(var index_block) => {
                         let free_indices: *u32 = (*u32)index_block.ptr()
                         index_block.into_raw()
 
                         // Allocate flags array
-                        let flags_opt: Option<MemoryBlock> = MemoryBlock::alloc(flags_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                        let flags_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(flags_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                         match flags_opt {
-                            Option::Some(var flags_block) => {
+                            Result::Ok(var flags_block) => {
                                 let allocated_flags: *bool = (*bool)flags_block.ptr()
                                 flags_block.into_raw()
 
@@ -413,7 +409,7 @@ impl<T> ObjectPoolFixed<T> {
                                     i = i + 1u32
                                 }
 
-                                return Option::Some(ObjectPoolFixed {
+                                return Result::Ok(ObjectPoolFixed {
                                     data: data,
                                     free_indices: free_indices,
                                     allocated_flags: allocated_flags,
@@ -422,49 +418,38 @@ impl<T> ObjectPoolFixed<T> {
                                     element_size: aligned_size,
                                 })
                             },
-                            Option::None => {
+                            Result::Err(error) => {
                                 unsafe {
                                     FreeMem(data, data_bytes)
                                     FreeMem((*u8)free_indices, index_bytes)
                                 }
-                                return Option::None
+                                return Result::Err(error)
                             }
                         }
                     },
-                    Option::None => {
+                    Result::Err(error) => {
                         unsafe {
                             FreeMem(data, data_bytes)
                         }
-                        return Option::None
+                        return Result::Err(error)
                     }
                 }
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
     /// Create a new pool, returning a Result for detailed error handling
     pub fn try_with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, ExecError> {
-        match ObjectPoolFixed::<T>::with_capacity(capacity) {
-            Option::Some(pool) => Result::Ok(pool),
-            Option::None => {
-                if capacity == 0u32 {
-                    Result::Err(ExecError::InvalidAddress)
-                } else {
-                    Result::Err(ExecError::NoMem)
-                }
-            }
-        }
+        return ObjectPoolFixed::<T>::with_capacity(capacity)
     }
 
     /// Allocate an object, returns pointer to the slot
     ///
     /// Memory is uninitialized; caller must initialize before use.
-    pub fn alloc(&var self) -> Option<*T> {
+    pub fn alloc(&var self) -> Result<*T, ExecError> {
         if self.free_top == 0u32 {
-            return Option::None  // Pool exhausted
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         self.free_top = self.free_top - 1u32
@@ -472,24 +457,22 @@ impl<T> ObjectPoolFixed<T> {
         self.allocated_flags[idx] = true
 
         let ptr: *T = (*T)(self.data + idx * self.element_size)
-        return Option::Some(ptr)
+        return Result::Ok(ptr)
     }
 
     /// Allocate a zero-initialized object
-    pub fn alloc_zeroed(&var self) -> Option<*T> {
+    pub fn alloc_zeroed(&var self) -> Result<*T, ExecError> {
         match self.alloc() {
-            Option::Some(ptr) => {
+            Result::Ok(ptr) => {
                 let bytes: *u8 = (*u8)ptr
                 var i: u32 = 0u32
                 while i < self.element_size {
                     bytes[i] = 0u8
                     i = i + 1u32
                 }
-                return Option::Some(ptr)
+                return Result::Ok(ptr)
             },
-            Option::None => {
-                return Option::None
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
@@ -497,26 +480,26 @@ impl<T> ObjectPoolFixed<T> {
     ///
     /// The pointer must point into this pool's data array.
     /// Returns true if successful, false if invalid or already free.
-    pub fn free(&var self, ptr: *T) -> bool {
+    pub fn free(&var self, ptr: *T) -> Result<(), ExecError> {
         // Calculate index from pointer
         let base: u32 = (u32)self.data
         let addr: u32 = (u32)ptr
 
         // Bounds check
         if addr < base {
-            return false
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         let offset: u32 = addr - base
         let idx: u32 = offset / self.element_size
 
         if idx >= self.capacity {
-            return false
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         // Check if actually allocated
         if !self.allocated_flags[idx] {
-            return false  // Already free or never allocated
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         // Call Drop on the element if it implements Drop
@@ -526,20 +509,20 @@ impl<T> ObjectPoolFixed<T> {
         self.allocated_flags[idx] = false
         self.free_indices[self.free_top] = idx
         self.free_top = self.free_top + 1u32
-        return true
+        return Result::Ok(())
     }
 
     /// Free an object by index
     ///
     /// Returns true if successful, false if invalid or already free.
     /// Calls Drop on the element if T implements Drop.
-    pub fn free_index(&var self, idx: u32) -> bool {
+    pub fn free_index(&var self, idx: u32) -> Result<(), ExecError> {
         if idx >= self.capacity {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         if !self.allocated_flags[idx] {
-            return false
+            return Result::Err(ExecError::InvalidAddress)
         }
 
         // Call Drop on the element
@@ -549,7 +532,7 @@ impl<T> ObjectPoolFixed<T> {
         self.allocated_flags[idx] = false
         self.free_indices[self.free_top] = idx
         self.free_top = self.free_top + 1u32
-        return true
+        return Result::Ok(())
     }
 
     /// Get the total capacity

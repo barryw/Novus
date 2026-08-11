@@ -95,7 +95,7 @@ pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
 
 /// Allocate a signal bit
 ///
-/// Returns Some(signal_num) with a signal bit number (0-31), or None if no signals available.
+/// Returns a signal bit number (0-31), or `BadSignal` if none are available.
 /// Pass -1 to allocate any available signal.
 ///
 /// Example:
@@ -103,21 +103,21 @@ pub fn set_task_priority(task: *Task, priority: i32) -> i8 {
 /// from std::exec import allocate_signal, free_signal
 ///
 /// match allocate_signal(-1) {
-///     Some(sig) => {
+///     Result::Ok(sig) => {
 ///         defer {
 ///             free_signal(sig)
 ///         }
 ///         // Use signal bit
 ///         let signal_mask = 1 << sig
 ///     },
-///     None => {
+///     Result::Err(_) => {
 ///         // No signals available
 ///     }
 /// }
 /// ```
-pub fn allocate_signal(signal_num: i32) -> Option<i32> {
+pub fn allocate_signal(signal_num: i32) -> Result<i32, ExecError> {
     var result = AllocSignal(signal_num)
-    return if result == -1 { Option::None } else { Option::Some(result) }
+    return if result == -1 { Result::Err(ExecError::BadSignal) } else { Result::Ok(result) }
 }
 
 /// Free a previously allocated signal
@@ -507,12 +507,12 @@ impl Drop for MsgPortHandle {
 ///
 /// fn use_shared_resource() {
 ///     match SemaphoreHandle::new() {
-///         Some(sem) => {
+///         Result::Ok(sem) => {
 ///             let guard = sem.lock()  // Blocks until semaphore is available
 ///             // Critical section - exclusive access to shared resource
 ///             // ...
 ///         }  // Semaphore automatically released here
-///         None => {
+///         Result::Err(_) => {
 ///             // Failed to allocate semaphore
 ///         }
 ///     }
@@ -527,16 +527,16 @@ pub struct SemaphoreHandle {
 impl SemaphoreHandle {
     /// Create a new private semaphore
     ///
-    /// Returns Some(handle) on success, None if allocation fails.
+    /// Returns an allocation error if the semaphore cannot be created.
     /// The semaphore starts in the "available" state.
-    pub fn new() -> Option<SemaphoreHandle> {
+    pub fn new() -> Result<SemaphoreHandle, ExecError> {
         // Allocate zeroed memory for the semaphore
         let sem_size: u32 = @sizeof(SignalSemaphore)
         let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
 
         // Check allocation
         if (u32)sem_mem == 0 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
         // Initialize the semaphore
@@ -544,7 +544,7 @@ impl SemaphoreHandle {
             __novus_init_semaphore(sem_mem)
         }
 
-        return Option::Some(SemaphoreHandle { sem: sem_mem, is_public: false, owns_memory: true })
+        return Result::Ok(SemaphoreHandle { sem: sem_mem, is_public: false, owns_memory: true })
     }
 
     /// Create a new public (named) semaphore
@@ -553,7 +553,7 @@ impl SemaphoreHandle {
     /// found by other tasks using `find()`. The name must remain valid for
     /// the lifetime of the semaphore.
     ///
-    /// Returns Some(handle) on success, None if allocation fails.
+    /// Returns an allocation error if the semaphore cannot be created.
     ///
     /// ## Example
     /// ```novus
@@ -565,14 +565,14 @@ impl SemaphoreHandle {
     /// let guard = sem.lock()
     /// // Critical section...
     /// ```
-    pub fn new_public(name: *u8, priority: i8) -> Option<SemaphoreHandle> {
+    pub fn new_public(name: *u8, priority: i8) -> Result<SemaphoreHandle, ExecError> {
         // Allocate zeroed memory for the semaphore
         let sem_size: u32 = @sizeof(SignalSemaphore)
         let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
 
         // Check allocation
         if (u32)sem_mem == 0 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
         // Initialize the semaphore
@@ -593,7 +593,7 @@ impl SemaphoreHandle {
             __novus_add_semaphore(sem_mem)
         }
 
-        return Option::Some(SemaphoreHandle { sem: sem_mem, is_public: true, owns_memory: true })
+        return Result::Ok(SemaphoreHandle { sem: sem_mem, is_public: true, owns_memory: true })
     }
 
     /// Find an existing public semaphore by name
@@ -793,15 +793,15 @@ pub struct ScopedData<T> {
 impl<T> ScopedData<T> {
     /// Create new semaphore-protected data
     ///
-    /// Returns Some(scoped_data) on success, None if semaphore allocation fails.
-    pub fn new(initial_value: T) -> Option<ScopedData<T>> {
+    /// Returns an allocation error if the semaphore cannot be created.
+    pub fn new(initial_value: T) -> Result<ScopedData<T>, ExecError> {
         // Allocate zeroed memory for the semaphore
         let sem_size: u32 = @sizeof(SignalSemaphore)
         let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
 
         // Check allocation
         if (u32)sem_mem == 0 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
         // Initialize the semaphore
@@ -809,7 +809,7 @@ impl<T> ScopedData<T> {
             __novus_init_semaphore(sem_mem)
         }
 
-        return Option::Some(ScopedData { sem: sem_mem, data: initial_value })
+        return Result::Ok(ScopedData { sem: sem_mem, data: initial_value })
     }
 
     /// Lock for exclusive access

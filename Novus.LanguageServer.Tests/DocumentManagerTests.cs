@@ -1,5 +1,6 @@
 using Xunit;
 using Novus.LanguageServer;
+using Novus.Diagnostics;
 
 namespace Novus.LanguageServer.Tests;
 
@@ -124,6 +125,72 @@ pub fn main() -> i32 {
         Assert.NotNull(state);
         Assert.NotNull(state.Diagnostics);
         Assert.True(state.Diagnostics.HasErrors, "Expected type error for i32 + String");
+    }
+
+    [Fact]
+    public void Open_DocumentWithIgnoredResult_ReportsCompilerDiagnostic()
+    {
+        var manager = new DocumentManager(TestStdLibPath);
+        var uri = "file:///ignored-result.novus";
+        var text = """
+            from std::core import Result
+
+            fn fallible() -> Result<(), i32> {
+                Result::Err(1)
+            }
+
+            pub fn main() -> i32 {
+                fallible()
+                return 0
+            }
+            """;
+
+        manager.Open(uri, text, 1);
+
+        var state = Assert.IsType<DocumentState>(manager.Get(uri));
+        Assert.Contains(
+            Assert.IsType<DiagnosticBag>(state.Diagnostics).Diagnostics,
+            diagnostic => diagnostic.Code == ErrorCodes.UnusedResult);
+    }
+
+    [Fact]
+    public void Open_ResultMainWithNonErrorType_ReportsCompilerDiagnostic()
+    {
+        var manager = new DocumentManager(TestStdLibPath);
+        var uri = "file:///invalid-result-main.novus";
+        var text = """
+            from std::core import Result
+
+            fn main() -> Result<(), i32> {
+                Result::Err(1)
+            }
+            """;
+
+        manager.Open(uri, text, 1);
+
+        Assert.Contains(manager.Get(uri)!.Diagnostics!.Diagnostics,
+            diagnostic => diagnostic.Code == ErrorCodes.TraitNotImplemented);
+    }
+
+    [Fact]
+    public void Open_TryOperatorInI32Main_ReportsCompilerDiagnostic()
+    {
+        var manager = new DocumentManager(TestStdLibPath);
+        var uri = "file:///invalid-main-try.novus";
+        var text = """
+            from std::core import Result
+
+            fn fail() -> Result<(), i32> { Result::Err(1) }
+            fn main() -> i32 {
+                fail()?
+                0
+            }
+            """;
+
+        manager.Open(uri, text, 1);
+
+        Assert.Contains(manager.Get(uri)!.Diagnostics!.Diagnostics,
+            diagnostic => diagnostic.Code == ErrorCodes.TryOperatorInvalidContext);
     }
 
     [Fact]

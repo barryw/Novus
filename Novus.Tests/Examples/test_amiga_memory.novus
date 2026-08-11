@@ -1,17 +1,17 @@
 // Test Amiga memory allocation with RAII
 
-from std::core import Option
+from std::core import Result
 from std::memory::amiga import MemHandle
 
 fn test_chip_memory() -> i32 {
     // Allocate chip memory
-    let mem_opt: Option<MemHandle> = MemHandle::new_chip(1024)
+    let mem_opt = MemHandle::new_chip(1024)
 
     match mem_opt {
-        Option::None => {
+        Result::Err(_) => {
             return 1  // Allocation failed
         },
-        Option::Some(mem) => {
+        Result::Ok(mem) => {
             // Verify allocation
             if !mem.is_valid() {
                 return 2
@@ -30,13 +30,13 @@ fn test_chip_memory() -> i32 {
 
 fn test_fast_memory() -> i32 {
     // Allocate fast memory
-    let mem_opt: Option<MemHandle> = MemHandle::new_fast(2048)
+    let mem_opt = MemHandle::new_fast(2048)
 
     match mem_opt {
-        Option::None => {
+        Result::Err(_) => {
             return 1  // Allocation failed
         },
-        Option::Some(mem) => {
+        Result::Ok(mem) => {
             // Verify allocation
             if !mem.is_valid() {
                 return 2
@@ -55,13 +55,13 @@ fn test_fast_memory() -> i32 {
 
 fn test_any_memory() -> i32 {
     // Allocate any available memory
-    let mem_opt: Option<MemHandle> = MemHandle::new_any(512)
+    let mem_opt = MemHandle::new_any(512)
 
     match mem_opt {
-        Option::None => {
+        Result::Err(_) => {
             return 1  // Allocation failed
         },
-        Option::Some(mem) => {
+        Result::Ok(mem) => {
             // Verify allocation
             if !mem.is_valid() {
                 return 2

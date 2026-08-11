@@ -9,6 +9,25 @@ namespace Novus.Tests.IR;
 public class ConstantPropagationTests
 {
     [Fact]
+    public void Propagate_MutableVariable_DoesNotReuseInitialConstant()
+    {
+        var function = new IrFunction("test", IrIntType.I32);
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrLocalDecl("count", IrIntType.I32, true,
+            new IrConstant(0, IrIntType.I32)));
+        block.AddInstruction(new IrStore("count", new IrConstant(1, IrIntType.I32)));
+        block.AddInstruction(new IrBinaryOp("next", IrBinaryOp.OpKind.Add,
+            new IrVariable("count", IrIntType.I32), new IrConstant(1, IrIntType.I32),
+            IrIntType.I32));
+        block.AddInstruction(new IrReturn(new IrVariable("next", IrIntType.I32)));
+
+        new ConstantPropagation(function).Propagate();
+
+        var add = Assert.IsType<IrBinaryOp>(block.Instructions[2]);
+        Assert.IsType<IrVariable>(add.Left);
+    }
+
+    [Fact]
     public void Propagate_SimpleConstant_ReplacesUses()
     {
         // Test: x = 5; return x;

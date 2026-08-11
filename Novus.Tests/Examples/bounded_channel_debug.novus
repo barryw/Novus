@@ -106,7 +106,7 @@ pub fn main() -> i32 {
     VPrintf("Main: calling tx.send(999)\n", null)
     let sent = tx.send(999)
 
-    if sent {
+    if sent.is_ok() {
         VPrintf("Main: send returned true\n", null)
     } else {
         VPrintf("Main: send returned false\n", null)

@@ -7,7 +7,7 @@
 from std::core import Option, Result, Drop
 from std::strings::core import Str
 from std::ffi::amiga_structs import *
-from std::error::errors import DosError
+from std::error::errors import DosError, dos_last_error
 from std::os::tags import make_tags
 from std::ffi::dos import SystemTagList, CreateNewProc, AllocDosObject, FreeDosObject
 from std::ffi::dos import NewLoadSeg, UnLoadSeg
@@ -40,14 +40,14 @@ extern fn __novus_free_raw(ptr: *u8, size: u32)
 /// ```
 pub fn execute_command(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
     match make_tags(tags_ptr, count) {
-        Option::Some(tag_list) => {
+        Result::Ok(tag_list) => {
             let result = SystemTagList(command.as_cstr(), (*TagItem)tag_list.as_ptr())
 
             // SystemTagList returns -1 on error
-            return if result == -1 { Result::Err(DosError::Unknown) } else { Result::Ok(result) }
+            return if result == -1 { Result::Err(dos_last_error()) } else { Result::Ok(result) }
         },
-        Option::None => {
-            return Result::Err(DosError::Unknown)
+        Result::Err(_) => {
+            return Result::Err(DosError::NoFreeStore)
         }
     }
 }
@@ -73,7 +73,7 @@ pub fn execute_command(command: Str, tags_ptr: *TagItem, count: u32) -> Result<i
 /// ```
 pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosError> {
     match make_tags(tags_ptr, count) {
-        Option::Some(tag_list) => {
+        Result::Ok(tag_list) => {
             let process = CreateNewProc((*TagItem)tag_list.as_ptr())
 
             // Check if process creation succeeded - CreateNewProc returns NULL on failure
@@ -81,10 +81,10 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosErro
                 return Result::Ok((*Process)process)
             }
 
-            return Result::Err(DosError::Unknown)
+            return Result::Err(dos_last_error())
         },
-        Option::None => {
-            return Result::Err(DosError::Unknown)
+        Result::Err(_) => {
+            return Result::Err(DosError::NoFreeStore)
         }
     }
 }
@@ -112,7 +112,7 @@ pub fn CreateProcess(tags_ptr: *TagItem, count: u32) -> Result<*Process, DosErro
 /// ```
 pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, DosError> {
     match make_tags(tags_ptr, count) {
-        Option::Some(tag_list) => {
+        Result::Ok(tag_list) => {
             let obj = AllocDosObject(obj_type, (*TagItem)tag_list.as_ptr())
 
             // Check if allocation succeeded (null check)
@@ -120,10 +120,10 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, Do
                 return Result::Ok(o)
             }
 
-            return Result::Err(DosError::Unknown)
+            return Result::Err(DosError::NoFreeStore)
         },
-        Option::None => {
-            return Result::Err(DosError::Unknown)
+        Result::Err(_) => {
+            return Result::Err(DosError::NoFreeStore)
         }
     }
 }
@@ -143,24 +143,21 @@ pub fn AllocDos(obj_type: u32, tags_ptr: *TagItem, count: u32) -> Result<*u8, Do
 /// ```
 pub fn load_segment(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, DosError> {
     match make_tags(tags_ptr, count) {
-        Option::Some(tag_list) => {
+        Result::Ok(tag_list) => {
             let seglist = NewLoadSeg(file.as_cstr(), (*TagItem)tag_list.as_ptr())
 
             // NewLoadSeg returns 0 on failure
-            return if seglist == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(seglist) }
+            return if seglist == 0 { Result::Err(dos_last_error()) } else { Result::Ok(seglist) }
         },
-        Option::None => {
-            return Result::Err(DosError::Unknown)
+        Result::Err(_) => {
+            return Result::Err(DosError::NoFreeStore)
         }
     }
 }
 
 // ============================================================================
-// File I/O (Legacy Functions)
+// File I/O
 // ============================================================================
-// Note: These wrappers use the low-level FFI functions. For proper error handling,
-// check IoErr() after operations. Future enhancement: wrap with proper Result types.
-//
 // File handles are i32 values returned by Open()
 
 /// Open a file for reading or writing
@@ -169,8 +166,7 @@ pub fn load_segment(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, Do
 /// - MODE_OLDFILE (1005): Open existing file read/write
 /// - MODE_READWRITE (1004): Open with shared lock
 ///
-/// Returns Some(handle) on success, None on failure.
-/// Use IoErr() to get error details on failure.
+/// Returns the raw handle on success or a typed DOS error.
 ///
 /// Example:
 /// ```novus
@@ -178,20 +174,20 @@ pub fn load_segment(file: Str, tags_ptr: *TagItem, count: u32) -> Result<i32, Do
 /// from std::ffi::dos import MODE_OLDFILE
 ///
 /// match open_file("S:Startup-Sequence", MODE_OLDFILE) {
-///     Some(fh) => {
+///     Result::Ok(fh) => {
 ///         defer {
 ///             close_file(fh)
 ///         }
 ///         // Read/write operations
 ///     },
-///     None => {
-///         // Handle error
+///     Result::Err(error) => {
+///         report(error)
 ///     }
 /// }
 /// ```
-pub fn open_file(path: Str, mode: i32) -> Option<i32> {
+pub fn open_file(path: Str, mode: i32) -> Result<i32, DosError> {
     let fh = Open(path.as_cstr(), mode)
-    return if fh == 0 { Option::None } else { Option::Some(fh) }
+    return if fh == 0 { Result::Err(dos_last_error()) } else { Result::Ok(fh) }
 }
 
 /// Close a file handle
@@ -205,8 +201,7 @@ pub fn close_file(fh: i32) {
 
 /// Read bytes from file into buffer
 ///
-/// Returns number of bytes actually read (may be less than requested).
-/// Returns 0 on end-of-file or error (check IoErr() to distinguish).
+/// Returns number of bytes actually read (zero means EOF) or a typed error.
 ///
 /// Example:
 /// ```novus
@@ -214,17 +209,14 @@ pub fn close_file(fh: i32) {
 /// let bytes_read = read_file(fh, &buffer, 1024)
 /// ```
 @suppress("W0002", "AmigaOS dos.library Read() requires i32, but length is naturally u32. Safe: max file I/O is 2GB on classic Amiga")
-pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
-    var result: i32 = 0
-    result = Read(fh, buffer, (i32)length)
-
-    return result
+pub fn read_file(fh: i32, buffer: *u8, length: u32) -> Result<u32, DosError> {
+    let result = Read(fh, buffer, (i32)length)
+    return if result < 0 { Result::Err(dos_last_error()) } else { Result::Ok((u32)result) }
 }
 
 /// Write bytes from buffer to file
 ///
-/// Returns number of bytes actually written.
-/// Returns -1 on error (check IoErr() for details).
+/// Returns number of bytes actually written or a typed error.
 ///
 /// Example:
 /// ```novus
@@ -232,11 +224,9 @@ pub fn read_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// let bytes_written = write_file(fh, data.ptr, 14)
 /// ```
 @suppress("W0002", "AmigaOS dos.library Write() requires i32 parameter per FFI conventions. Safe for files <2GB")
-pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
-    var result: i32 = 0
-    result = Write(fh, buffer, (i32)length)
-
-    return result
+pub fn write_file(fh: i32, buffer: *u8, length: u32) -> Result<u32, DosError> {
+    let result = Write(fh, buffer, (i32)length)
+    return if result < 0 { Result::Err(dos_last_error()) } else { Result::Ok((u32)result) }
 }
 
 /// Seek to a position in the file
@@ -244,7 +234,7 @@ pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// offset: position relative to mode
 /// mode: one of OFFSET_BEGINNING (seek from start), OFFSET_CURRENT (from current pos), OFFSET_END (from end)
 ///
-/// Returns old position, or -1 on error.
+/// Returns the old position or a typed error.
 ///
 /// Example:
 /// ```novus
@@ -257,11 +247,9 @@ pub fn write_file(fh: i32, buffer: *u8, length: u32) -> i32 {
 /// // Seek to end
 /// let file_size = seek_file(fh, 0, OFFSET_END)
 /// ```
-pub fn seek_file(fh: i32, position: i32, offset: i32) -> i32 {
-    var result: i32 = 0
-    result = Seek(fh, position, offset)
-
-    return result
+pub fn seek_file(fh: i32, position: i32, offset: i32) -> Result<i32, DosError> {
+    let result = Seek(fh, position, offset)
+    return if result == -1 { Result::Err(dos_last_error()) } else { Result::Ok(result) }
 }
 
 // ============================================================================
@@ -313,7 +301,7 @@ impl OwnedFileHandle {
     /// Returns Err on failure (use IoErr() for details).
     pub fn open(path: Str, mode: i32) -> Result<OwnedFileHandle, DosError> {
         let fh = Open(path.as_cstr(), mode)
-        return if fh == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(OwnedFileHandle { fh: fh }) }
+        return if fh == 0 { Result::Err(dos_last_error()) } else { Result::Ok(OwnedFileHandle { fh: fh }) }
     }
 
     /// Get the raw BPTR handle for FFI calls
@@ -344,27 +332,28 @@ impl OwnedFileHandle {
 
     /// Read bytes from file into buffer
     ///
-    /// Returns number of bytes actually read.
-    /// Returns 0 on EOF or error (check IoErr()).
+    /// Returns number of bytes actually read (zero means EOF) or a typed error.
     @suppress("W0002", "AmigaOS dos.library Read() requires i32 parameter per FFI conventions. Safe for files <2GB")
-    pub fn read(&self, buffer: *u8, length: u32) -> i32 {
-        return Read(self.fh, buffer, (i32)length)
+    pub fn read(&self, buffer: *u8, length: u32) -> Result<u32, DosError> {
+        let result = Read(self.fh, buffer, (i32)length)
+        return if result < 0 { Result::Err(dos_last_error()) } else { Result::Ok((u32)result) }
     }
 
     /// Write bytes from buffer to file
     ///
-    /// Returns number of bytes written.
-    /// Returns -1 on error (check IoErr()).
+    /// Returns number of bytes written or a typed error.
     @suppress("W0002", "AmigaOS dos.library Write() requires i32 parameter per FFI conventions. Safe for files <2GB")
-    pub fn write(&self, buffer: *u8, length: u32) -> i32 {
-        return Write(self.fh, buffer, (i32)length)
+    pub fn write(&self, buffer: *u8, length: u32) -> Result<u32, DosError> {
+        let result = Write(self.fh, buffer, (i32)length)
+        return if result < 0 { Result::Err(dos_last_error()) } else { Result::Ok((u32)result) }
     }
 
     /// Seek to a position in the file
     ///
-    /// Returns old position, or -1 on error.
-    pub fn seek(&self, position: i32, offset: i32) -> i32 {
-        return Seek(self.fh, position, offset)
+    /// Returns the old position or a typed error.
+    pub fn seek(&self, position: i32, offset: i32) -> Result<i32, DosError> {
+        let result = Seek(self.fh, position, offset)
+        return if result == -1 { Result::Err(dos_last_error()) } else { Result::Ok(result) }
     }
 
     /// Write all bytes from buffer to file
@@ -380,11 +369,11 @@ impl OwnedFileHandle {
             let remaining = length - written
             let result = Write(self.fh, buffer + written, (i32)remaining)
             if result < 0 {
-                return Result::Err(DosError::Unknown)
+                return Result::Err(dos_last_error())
             }
             if result == 0 {
                 // No progress - treat as error
-                return Result::Err(DosError::Unknown)
+                return Result::Err(DosError::InvalidInput)
             }
             written = written + (u32)result
         }
@@ -402,7 +391,7 @@ impl OwnedFileHandle {
             let remaining = length - total_read
             let result = Read(self.fh, buffer + total_read, (i32)remaining)
             if result < 0 {
-                return Result::Err(DosError::Unknown)
+                return Result::Err(dos_last_error())
             }
             if result == 0 {
                 // EOF reached
@@ -427,7 +416,7 @@ impl OwnedFileHandle {
             // Could be EOF or error - check IoErr
             let err = IoErr()
             if err != 0 {
-                return Result::Err(DosError::Unknown)
+                return Result::Err(dos_last_error())
             }
             // EOF - return 0 bytes read
             return Result::Ok(0u32)
@@ -481,7 +470,7 @@ impl DirLockHandle {
     /// Returns Err on failure (use IoErr() for details).
     pub fn lock(path: Str, lock_type: i32) -> Result<DirLockHandle, DosError> {
         let lock = Lock(path.as_cstr(), lock_type)
-        return if lock == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(DirLockHandle { lock: lock }) }
+        return if lock == 0 { Result::Err(dos_last_error()) } else { Result::Ok(DirLockHandle { lock: lock }) }
     }
 
     /// Get the raw BPTR lock for FFI calls
@@ -563,7 +552,7 @@ pub fn file_exists(path: Str) -> bool {
 /// ```
 pub fn delete_file(path: Str) -> Result<(), DosError> {
     let result = DeleteFile(path.as_cstr())
-    return if result == 0 { Result::Err(DosError::Unknown) } else { Result::Ok(()) }
+    return if result == 0 { Result::Err(dos_last_error()) } else { Result::Ok(()) }
 }
 
 /// Create a directory
@@ -582,7 +571,7 @@ pub fn create_dir(path: Str) -> Result<(), DosError> {
     // Call DOS CreateDir
     let lock = CreateDir(path.as_cstr())
     if lock == 0 {
-        return Result::Err(DosError::Unknown)
+        return Result::Err(dos_last_error())
     }
     // CreateDir returns a lock to the new directory - we must unlock it
     UnLock(lock)
@@ -608,7 +597,7 @@ pub fn create_dir(path: Str) -> Result<(), DosError> {
 pub fn file_info(path: Str) -> Result<FileInfo, DosError> {
     let lock = Lock(path.as_cstr(), ACCESS_READ)
     if lock == 0 {
-        return Result::Err(DosError::Unknown)
+        return Result::Err(dos_last_error())
     }
 
     // FileInfoBlock: 260 bytes, MUST be longword (4-byte) aligned!
@@ -617,7 +606,7 @@ pub fn file_info(path: Str) -> Result<FileInfo, DosError> {
     let fib_ptr = __novus_alloc_raw(260u32, MEMF_PUBLIC | MEMF_CLEAR)
     if (u32)fib_ptr == 0u32 {
         UnLock(lock)
-        return Result::Err(DosError::Unknown)
+        return Result::Err(DosError::NoFreeStore)
     }
 
     let result = Examine(lock, (*FileInfoBlock)fib_ptr)
@@ -625,7 +614,7 @@ pub fn file_info(path: Str) -> Result<FileInfo, DosError> {
 
     if result == 0 {
         __novus_free_raw(fib_ptr, 260u32)
-        return Result::Err(DosError::Unknown)
+        return Result::Err(dos_last_error())
     }
 
     // Read fields using pointer arithmetic

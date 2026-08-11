@@ -90,10 +90,10 @@ impl SpriteData {
         let chip_mem_opt = MemHandle::new_chip(size_bytes)
 
         match chip_mem_opt {
-            Option::None => {
+            Result::Err(_) => {
                 return Result::Err(GraphicsError::BitMapAllocFailed)
             },
-            Option::Some(chip_mem) => {
+            Result::Ok(chip_mem) => {
                 // Copy data to CHIP RAM
                 unsafe {
                     let dest = (*u16)chip_mem.ptr()
@@ -724,11 +724,11 @@ impl AttachedSpriteData {
         let plane23_opt = MemHandle::new_chip(plane23_size)
 
         match plane01_opt {
-            Option::None => return Result::Err(GraphicsError::BitMapAllocFailed),
-            Option::Some(plane01_chip_mem) => {
+            Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+            Result::Ok(plane01_chip_mem) => {
                 match plane23_opt {
-                    Option::None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                    Option::Some(plane23_chip_mem) => {
+                    Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+                    Result::Ok(plane23_chip_mem) => {
                         // Deinterleave the 4-plane data into two 2-plane structures
                         unsafe {
                             let src = data

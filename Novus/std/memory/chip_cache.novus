@@ -156,7 +156,7 @@ impl ChipCache {
             g_chip_cache.initialized = true
 
             // Initialize the pool
-            ChipPool::init()
+            let _ = ChipPool::init()
         }
     }
 
@@ -390,8 +390,8 @@ impl ChipCache {
             // First try pool allocation
             if size <= POOL_HUGE_SIZE {
                 match ChipPool::alloc(size) {
-                    Option::Some(ptr) => return Result::Ok(ptr),
-                    Option::None => {}  // Fall through to eviction
+                    Result::Ok(ptr) => return Result::Ok(ptr),
+                    Result::Err(_) => {}  // Fall through to eviction
                 }
             }
 
@@ -410,8 +410,8 @@ impl ChipCache {
                     // Try allocation again
                     if size <= POOL_HUGE_SIZE {
                         match ChipPool::alloc(size) {
-                            Option::Some(ptr) => return Result::Ok(ptr),
-                            Option::None => {}
+                            Result::Ok(ptr) => return Result::Ok(ptr),
+                            Result::Err(_) => {}
                         }
                     }
                     let ptr2 = (*u8)AllocMem(size, MEMF_CHIP)
@@ -518,7 +518,7 @@ impl ChipCache {
                 WaitBlit()
 
                 if entry.pooled {
-                    ChipPool::free(entry.chip_ptr)
+                    let _ = ChipPool::free(entry.chip_ptr)
                 } else {
                     FreeMem(entry.chip_ptr, entry.size)
                 }

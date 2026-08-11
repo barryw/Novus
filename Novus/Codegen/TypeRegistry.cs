@@ -414,12 +414,7 @@ public class TypeRegistry
 
     private string GetEnumName(IrEnumType enumType)
     {
-        // Handle both regular enums and generic types like Result[T,E]
-        if (enumType.GenericParameters.Count > 0)
-        {
-            return enumType.Name; // Use base name for comparison
-        }
-        return enumType.EnumName ?? enumType.Name;
+        return enumType.CacheKey ?? enumType.EnumName;
     }
 
     /// <summary>

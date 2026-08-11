@@ -23,7 +23,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 /// ```novus
 /// let block = MemoryBlock::alloc(1024, MEMF_FAST)
 /// match block {
-///     Some(var b) => {
+///     Result::Ok(var b) => {
 ///         defer {
 ///             b.free()
 ///         }
@@ -31,7 +31,7 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 ///         let ptr: *u8 = b.ptr()
 ///         ptr[0] = 42
 ///     },
-///     None => {
+///     Result::Err(_) => {
 ///         // Allocation failed
 ///     }
 /// }
@@ -43,25 +43,25 @@ pub struct MemoryBlock {
 
 impl MemoryBlock {
     /// Allocate raw memory of specified size
-    /// Returns None if allocation fails
+    /// Returns an error if allocation fails.
     ///
     /// Example:
     /// ```novus
     /// let mem = MemoryBlock::alloc(1024, MEMF_FAST)
     /// match mem {
-    ///     Some(var block) => {
+    ///     Result::Ok(var block) => {
     ///         defer {
     ///             block.free()
     ///         }
     ///         // Use block
     ///     },
-    ///     None => { /* failed */ }
+    ///     Result::Err(_) => { /* failed */ }
     /// }
     /// ```
-    pub fn alloc(size: u32, flags: u32) -> Option<MemoryBlock> {
+    pub fn alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
         if size == 0 {
             // Zero-size allocation returns valid empty block
-            return Option::Some(MemoryBlock { ptr: null, size: 0 })
+            return Result::Ok(MemoryBlock { ptr: null, size: 0 })
         }
 
         var ptr: *u8 = null
@@ -71,10 +71,10 @@ impl MemoryBlock {
 
         // Check if allocation failed (returns null pointer)
         if (u32)ptr == 0 {
-            return Option::None
+            return Result::Err(ExecError::NoMem)
         }
 
-        return Option::Some(MemoryBlock { ptr: ptr, size: size })
+        return Result::Ok(MemoryBlock { ptr: ptr, size: size })
     }
 
     /// Allocate and return Result with typed error
@@ -87,10 +87,7 @@ impl MemoryBlock {
     /// }
     /// ```
     pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
-        match MemoryBlock::alloc(size, flags) {
-            Some(block) => return Result::Ok(block),
-            None => return Result::Err(ExecError::NoMem)
-        }
+        return MemoryBlock::alloc(size, flags)
     }
 
     /// Get pointer to allocated memory
@@ -146,16 +143,16 @@ impl MemoryBlock {
     }
 
     /// Resize the memory block (realloc equivalent)
-    /// Returns true on success, false if reallocation fails
+    /// Returns Ok on success or the allocation error.
     /// On failure, original block is unchanged
-    pub fn resize(&var self, new_size: u32, flags: u32) -> bool {
+    pub fn resize(&var self, new_size: u32, flags: u32) -> Result<(), ExecError> {
         if new_size == self.size {
-            return true
+            return Result::Ok(())
         }
 
         let new_block_opt = MemoryBlock::alloc(new_size, flags)
         match new_block_opt {
-            Some(var new_block) => {
+            Result::Ok(var new_block) => {
                 // Copy old data to new block
                 var copy_size: u32 = self.size
                 if new_size < self.size {
@@ -175,11 +172,9 @@ impl MemoryBlock {
                 self.ptr = ptr
                 self.size = size
 
-                return true
+                return Result::Ok(())
             },
-            None => {
-                return false
-            }
+            Result::Err(error) => return Result::Err(error),
         }
     }
 }
@@ -205,7 +200,7 @@ impl Drop for MemoryBlock {
 /// ```novus
 /// let buffer = Allocation::new(1024, MEMF_CHIP)
 /// match buffer {
-///     Some(var alloc) => {
+///     Result::Ok(var alloc) => {
 ///         defer {
 ///             alloc.free()
 ///         }
@@ -213,7 +208,7 @@ impl Drop for MemoryBlock {
 ///         let ptr: *u8 = alloc.as_mut_ptr()
 ///         ptr[0] = 42
 ///     },
-///     None => { /* failed */ }
+///     Result::Err(_) => { /* failed */ }
 /// }
 /// ```
 pub struct Allocation<T> {
@@ -223,10 +218,10 @@ pub struct Allocation<T> {
 
 impl<T> Allocation<T> {
     /// Allocate memory for `count` elements of type T
-    /// Returns None if allocation fails
-    pub fn new(count: u32, flags: u32) -> Option<Allocation<T>> {
+    /// Returns an error if allocation fails.
+    pub fn new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
         if count == 0 {
-            return Option::Some(Allocation {
+            return Result::Ok(Allocation {
                 block: MemoryBlock { ptr: null, size: 0 },
                 count: 0,
             })
@@ -236,51 +231,25 @@ impl<T> Allocation<T> {
 
         // Check for overflow: count * element_size
         if element_size > ($FFFFFFFFu32 / count) {
-            return Option::None  // Would overflow
+            return Result::Err(ExecError::NoMem)  // Would overflow
         }
 
         let total_bytes: u32 = count * element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
-            Some(block) => {
-                return Option::Some(Allocation {
+            Result::Ok(block) => {
+                return Result::Ok(Allocation {
                     block: block,
                     count: count,
                 })
             },
-            None => return Option::None
+            Result::Err(error) => return Result::Err(error)
         }
     }
 
     /// Allocate and return Result with typed error
     pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
-        if count == 0 {
-            let empty_alloc = Allocation {
-                block: MemoryBlock { ptr: null, size: 0 },
-                count: 0,
-            }
-            return Result::Ok(empty_alloc)
-        }
-
-        let element_size: u32 = @sizeof(T)
-
-        // Check for overflow: count * element_size
-        if element_size > ($FFFFFFFFu32 / count) {
-            return Result::Err(ExecError::NoMem)  // Treat overflow as allocation failure
-        }
-
-        let total_bytes: u32 = count * element_size
-
-        match MemoryBlock::alloc(total_bytes, flags) {
-            Some(block) => {
-                let alloc = Allocation {
-                    block: block,
-                    count: count,
-                }
-                return Result::Ok(alloc)
-            },
-            None => return Result::Err(ExecError::NoMem)
-        }
+        return Allocation::<T>::new(count, flags)
     }
 
     /// Get number of elements
@@ -316,21 +285,19 @@ impl<T> Allocation<T> {
     }
 
     /// Resize allocation to new element count
-    pub fn resize(&var self, new_count: u32, flags: u32) -> bool {
+    pub fn resize(&var self, new_count: u32, flags: u32) -> Result<(), ExecError> {
         let element_size: u32 = @sizeof(T)
 
         // Check for overflow: new_count * element_size
         if new_count > 0 && element_size > ($FFFFFFFFu32 / new_count) {
-            return false  // Would overflow
+            return Result::Err(ExecError::NoMem)  // Would overflow
         }
 
         let new_bytes: u32 = new_count * element_size
 
-        if self.block.resize(new_bytes, flags) {
-            self.count = new_count
-            return true
-        }
-        return false
+        self.block.resize(new_bytes, flags)?
+        self.count = new_count
+        return Result::Ok(())
     }
 }
 
@@ -377,40 +344,37 @@ pub struct Box<T> {
 impl<T> Box<T> {
     /// Allocate and initialize a Box with the given value
     /// Uses MEMF_PUBLIC by default
-    pub fn new(value: T) -> Option<Box<T>> {
+    pub fn new(value: T) -> Result<Box<T>, ExecError> {
         return Box::new_in(value, MEMF_PUBLIC)
     }
 
     /// Allocate with specific memory flags
-    pub fn new_in(value: T, flags: u32) -> Option<Box<T>> {
+    pub fn new_in(value: T, flags: u32) -> Result<Box<T>, ExecError> {
         let element_size: u32 = @sizeof(T)
         let total_bytes: u32 = element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
-            Some(block) => {
+            Result::Ok(block) => {
                 var alloc = Allocation {
                     block: block,
                     count: 1,
                 }
                 let ptr: *T = alloc.as_mut_ptr()
                 *ptr = value
-                return Option::Some(Box { alloc: alloc })
+                return Result::Ok(Box { alloc: alloc })
             },
-            None => return Option::None
+            Result::Err(error) => return Result::Err(error)
         }
     }
 
     /// Try allocate with Result
     pub fn try_new(value: T) -> Result<Box<T>, ExecError> {
-        return Box::try_new_in(value, MEMF_PUBLIC)
+        return Box::new(value)
     }
 
     /// Try allocate with specific flags
     pub fn try_new_in(value: T, flags: u32) -> Result<Box<T>, ExecError> {
-        match Box::new_in(value, flags) {
-            Some(box) => return Result::Ok(box),
-            None => return Result::Err(ExecError::NoMem)
-        }
+        return Box::new_in(value, flags)
     }
 
     /// Get immutable reference

@@ -204,32 +204,32 @@ impl AreaContext {
         // Allocate AreaInfo struct in chip memory (24 bytes per NDK)
         // AreaInfo: 4 ptrs (16 bytes) + 4 WORD fields (8 bytes) = 24 bytes
         let area_info_mem: MemHandle = match MemHandle::new_chip(24) {
-            Option::Some(mem) => mem,
-            Option::None => {
+            Result::Ok(mem) => mem,
+            Result::Err(_) => {
                 return Result::Err(GraphicsError::BitMapAllocFailed)
             }
         }
 
         // Allocate TmpRas struct in chip memory (8 bytes)
         let tmp_ras_mem: MemHandle = match MemHandle::new_chip(8) {
-            Option::Some(mem) => mem,
-            Option::None => {
+            Result::Ok(mem) => mem,
+            Result::Err(_) => {
                 return Result::Err(GraphicsError::BitMapAllocFailed)
             }
         }
 
         // Allocate vector buffer in chip memory
         let vector_buffer: MemHandle = match MemHandle::new_chip(vector_size) {
-            Option::Some(mem) => mem,
-            Option::None => {
+            Result::Ok(mem) => mem,
+            Result::Err(_) => {
                 return Result::Err(GraphicsError::BitMapAllocFailed)
             }
         }
 
         // Allocate temp raster buffer in chip memory
         let ras_buffer: MemHandle = match MemHandle::new_chip(temp_ras_size) {
-            Option::Some(mem) => mem,
-            Option::None => {
+            Result::Ok(mem) => mem,
+            Result::Err(_) => {
                 return Result::Err(GraphicsError::BitMapAllocFailed)
             }
         }

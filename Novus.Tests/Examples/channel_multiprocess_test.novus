@@ -92,7 +92,7 @@ fn worker_entry() -> i32 {
             let timer_result = TimerHandle::microhz()
             match timer_result {
                 Result::Ok(t) => {
-                    t.delay(Duration::millis(10))
+                    let _ = t.delay(Duration::millis(10))
                 },
                 Result::Err(_) => {}
             }
@@ -120,7 +120,7 @@ fn worker_entry() -> i32 {
                 write("Worker: Sending progress %ld\n", progress)
                 send_progress(port, progress, progress >= 100)
 
-                timer.delay(Duration::millis(200))
+                let _ = timer.delay(Duration::millis(200))
                 progress = progress + 10
             }
         }

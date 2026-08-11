@@ -165,8 +165,8 @@ impl StreamBufferSet {
         while i < count {
             let ptr_opt = ChipPool::alloc(actual_size)
             let ptr: *u8 = match ptr_opt {
-                Option::Some(p) => p,
-                Option::None => {
+                Result::Ok(p) => p,
+                Result::Err(_) => {
                     // Allocation failed - free any already allocated
                     self.free()
                     return Result::Err(ChipCacheError::OutOfMemory)

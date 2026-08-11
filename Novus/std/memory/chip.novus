@@ -73,18 +73,18 @@ pub struct ChipBuffer {
 
 impl ChipBuffer {
     /// Allocate a block of chip RAM
-    pub fn alloc(size: u32) -> Option<ChipBuffer> {
+    pub fn alloc(size: u32) -> Result<ChipBuffer, ChipCacheError> {
         if size == 0 {
-            return Option::None
+            return Result::Err(ChipCacheError::InvalidSize)
         }
 
         unsafe {
             let ptr = (*u8)AllocMem(size, MEMF_CHIP | MEMF_CLEAR)
             if !ptr {
-                return Option::None
+                return Result::Err(ChipCacheError::OutOfMemory)
             }
 
-            return Option::Some(ChipBuffer {
+            return Result::Ok(ChipBuffer {
                 ptr: ptr,
                 size: size,
             })
@@ -95,15 +95,16 @@ impl ChipBuffer {
     ///
     /// Flushes the CPU data cache after copying to ensure DMA hardware
     /// sees the correct data on 68040/68060 systems.
-    pub fn copy_from(&var self, src: *u8, len: u32) {
+    pub fn copy_from(&var self, src: *u8, len: u32) -> Result<(), ChipCacheError> {
         if len > self.size {
-            return
+            return Result::Err(ChipCacheError::AssetTooLarge)
         }
         unsafe {
             CopyMem(src, self.ptr, len)
             // Flush data cache - critical for 68040/68060 DMA operations
             CacheClearE(self.ptr, len, CACRF_ClearD)
         }
+        return Result::Ok(())
     }
 
     /// Get the raw pointer for DMA operations
@@ -149,10 +150,14 @@ pub fn is_chip_ram(ptr: *u8) -> bool {
 // ============================================================================
 
 pub enum ChipCacheError {
+    /// A zero-sized allocation was requested
+    InvalidSize,
     /// Cache not initialized - call ChipCache::init() first
     NotInitialized,
     /// Cache already initialized
     AlreadyInitialized,
+    /// Pointer does not belong to the chip pool
+    InvalidPointer,
     /// Not enough chip RAM even after eviction
     OutOfMemory,
     /// Asset too large for cache budget
@@ -164,8 +169,10 @@ pub enum ChipCacheError {
 impl ChipCacheError {
     pub fn message(&self) -> *u8 {
         match *self {
+            ChipCacheError::InvalidSize => return "Chip allocation size must be greater than zero",
             ChipCacheError::NotInitialized => return "Cache not initialized",
             ChipCacheError::AlreadyInitialized => return "Cache already initialized",
+            ChipCacheError::InvalidPointer => return "Pointer does not belong to the chip pool",
             ChipCacheError::OutOfMemory => return "Out of chip RAM",
             ChipCacheError::AssetTooLarge => return "Asset too large for cache",
             ChipCacheError::AllAssetsPinned => return "All cached assets are pinned",

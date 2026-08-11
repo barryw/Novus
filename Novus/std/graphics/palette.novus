@@ -233,8 +233,8 @@ pub fn load_palette(vp: *ViewPort, colors: *Color, color_count: u32) -> Result<(
             let table_size: u32 = (color_count * 2u32) + 2u32
             let table_opt = MemoryBlock::alloc(table_size, $00000001)  // MEMF_PUBLIC
             match table_opt {
-                None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(table) => {
+                Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Result::Ok(table) => {
                     defer {
                         table.free()
                     }
@@ -277,8 +277,8 @@ pub fn load_palette(vp: *ViewPort, colors: *Color, color_count: u32) -> Result<(
 
             let table_opt = MemoryBlock::alloc(table_bytes, $00000001)  // MEMF_PUBLIC
             match table_opt {
-                None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(table) => {
+                Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Result::Ok(table) => {
                     defer {
                         table.free()
                     }
@@ -377,8 +377,8 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
             // Allocate buffer for GetRGB32() - needs 3 u32s (12 bytes)
             let table_opt = MemoryBlock::alloc(12u32, $00000001)  // MEMF_PUBLIC
             match table_opt {
-                None => return Result::Err(GraphicsError::BitMapAllocFailed),
-                Some(table) => {
+                Result::Err(_) => return Result::Err(GraphicsError::BitMapAllocFailed),
+                Result::Ok(table) => {
                     defer {
                         table.free()
                     }

@@ -3,6 +3,7 @@
 // A compact bit storage for boolean flags
 
 from std::core import Option, Result, Drop
+from std::error::errors import ExecError
 from std::memory::block import MemoryBlock
 from std::ffi::exec import FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -26,10 +27,10 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 /// ## Example
 /// ```novus
 /// var flags = BitSet::with_capacity(64)?  // 64 bits = 8 bytes
-/// flags.set(5)
-/// flags.set(10)
+/// flags.set(5)?
+/// flags.set(10)?
 ///
-/// if flags.get(5) {
+/// if flags.get(5)? {
 ///     // bit 5 is set
 /// }
 ///
@@ -50,38 +51,37 @@ impl BitSet {
     /// Create a BitSet with capacity for num_bits
     ///
     /// All bits are initially cleared (false).
-    /// Returns None if memory allocation fails.
-    pub fn with_capacity(num_bits: u32) -> Option<BitSet> {
+    /// Returns a typed allocation error on failure.
+    pub fn with_capacity(num_bits: u32) -> Result<BitSet, ExecError> {
         if num_bits == 0u32 {
-            return Option::Some(@zeroed(BitSet))
+            return Result::Ok(@zeroed(BitSet))
         }
 
         // Calculate number of u32 words needed (round up)
         let num_words: u32 = (num_bits + 31u32) / 32u32
         let bytes_needed: u32 = num_words * 4u32
 
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
-            Option::Some(var block) => {
+            Result::Ok(var block) => {
                 let (raw_ptr, _size) = block.into_raw()
                 let data: *u32 = (*u32)raw_ptr
-                return Option::Some(BitSet {
+                return Result::Ok(BitSet {
                     data: data,
                     num_bits: num_bits,
                     num_words: num_words,
                 })
             },
-            Option::None => return Option::None,
+            Result::Err(error) => return Result::Err(error),
         }
     }
 
     /// Set bit at index to true
     ///
-    /// Returns true if successful, false if index is out of bounds.
-    pub fn set(&var self, index: u32) -> bool {
+    pub fn set(&var self, index: u32) -> Result<(), ExecError> {
         if index >= self.num_bits {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         let word_index: u32 = index / 32u32
@@ -89,15 +89,14 @@ impl BitSet {
         let mask: u32 = 1u32 << bit_index
 
         self.data[word_index] = self.data[word_index] | mask
-        return true
+        return Result::Ok(())
     }
 
     /// Clear bit at index to false
     ///
-    /// Returns true if successful, false if index is out of bounds.
-    pub fn clear(&var self, index: u32) -> bool {
+    pub fn clear(&var self, index: u32) -> Result<(), ExecError> {
         if index >= self.num_bits {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         let word_index: u32 = index / 32u32
@@ -105,13 +104,12 @@ impl BitSet {
         let mask: u32 = 1u32 << bit_index
 
         self.data[word_index] = self.data[word_index] & (~mask)
-        return true
+        return Result::Ok(())
     }
 
     /// Set bit at index to the given value
     ///
-    /// Returns true if successful, false if index is out of bounds.
-    pub fn set_value(&var self, index: u32, value: bool) -> bool {
+    pub fn set_value(&var self, index: u32, value: bool) -> Result<(), ExecError> {
         if value {
             return self.set(index)
         } else {
@@ -121,25 +119,23 @@ impl BitSet {
 
     /// Get bit at index
     ///
-    /// Returns false if index is out of bounds.
-    pub fn get(&self, index: u32) -> bool {
+    pub fn get(&self, index: u32) -> Result<bool, ExecError> {
         if index >= self.num_bits {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         let word_index: u32 = index / 32u32
         let bit_index: u32 = index % 32u32
         let mask: u32 = 1u32 << bit_index
 
-        return (self.data[word_index] & mask) != 0u32
+        return Result::Ok((self.data[word_index] & mask) != 0u32)
     }
 
     /// Toggle bit at index (flip true<->false)
     ///
-    /// Returns true if successful, false if index is out of bounds.
-    pub fn toggle(&var self, index: u32) -> bool {
+    pub fn toggle(&var self, index: u32) -> Result<(), ExecError> {
         if index >= self.num_bits {
-            return false
+            return Result::Err(ExecError::IndexOutOfBounds)
         }
 
         let word_index: u32 = index / 32u32
@@ -147,7 +143,7 @@ impl BitSet {
         let mask: u32 = 1u32 << bit_index
 
         self.data[word_index] = self.data[word_index] ^ mask
-        return true
+        return Result::Ok(())
     }
 
     /// Set all bits to true
@@ -247,10 +243,10 @@ impl BitSet {
 
     /// Bitwise AND with another bitset (self &= other)
     ///
-    /// Sets require same size. Returns false if sizes don't match.
-    pub fn and(&var self, other: &BitSet) -> bool {
+    /// Sets require the same size.
+    pub fn and(&var self, other: &BitSet) -> Result<(), ExecError> {
         if self.num_bits != other.num_bits {
-            return false
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         var i: u32 = 0u32
@@ -259,15 +255,15 @@ impl BitSet {
             i = i + 1u32
         }
 
-        return true
+        return Result::Ok(())
     }
 
     /// Bitwise OR with another bitset (self |= other)
     ///
-    /// Sets require same size. Returns false if sizes don't match.
-    pub fn or(&var self, other: &BitSet) -> bool {
+    /// Sets require the same size.
+    pub fn or(&var self, other: &BitSet) -> Result<(), ExecError> {
         if self.num_bits != other.num_bits {
-            return false
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         var i: u32 = 0u32
@@ -276,15 +272,15 @@ impl BitSet {
             i = i + 1u32
         }
 
-        return true
+        return Result::Ok(())
     }
 
     /// Bitwise XOR with another bitset (self ^= other)
     ///
-    /// Sets require same size. Returns false if sizes don't match.
-    pub fn xor(&var self, other: &BitSet) -> bool {
+    /// Sets require the same size.
+    pub fn xor(&var self, other: &BitSet) -> Result<(), ExecError> {
         if self.num_bits != other.num_bits {
-            return false
+            return Result::Err(ExecError::CapacityExceeded)
         }
 
         var i: u32 = 0u32
@@ -293,7 +289,7 @@ impl BitSet {
             i = i + 1u32
         }
 
-        return true
+        return Result::Ok(())
     }
 
     /// Bitwise NOT (complement all bits)

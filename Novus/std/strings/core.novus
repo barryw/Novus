@@ -886,10 +886,10 @@ impl BStr {
 
         // Allocate length byte + string data
         let total_bytes: u32 = 1u32 + s.len()
-        let block_opt: Option<MemoryBlock> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
+        let block_opt = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC)
 
         match block_opt {
-            Some(var block) => {
+            Result::Ok(var block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
                 let (ptr, _size) = block.into_raw()
 
@@ -908,7 +908,7 @@ impl BStr {
 
                 return Result::Ok(BStr { bptr: bptr })
             },
-            None => {
+            Result::Err(_) => {
                 return Result::Err(StringError::AllocationFailed)
             }
         }

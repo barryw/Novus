@@ -3266,25 +3266,23 @@ public partial class IrBuilder
             return null;
         }
 
-        // Check if function returns Result<T, E> or i32 (for main-style functions)
+        // The enclosing function must return Result<T, E>.
         bool isResultReturn = _currentFunction.ReturnType is IrEnumType funcResultType && funcResultType.EnumName == "Result";
-        bool isI32Return = _currentFunction.ReturnType is IrIntType retIntType && retIntType.BitWidth == 32 && retIntType.IsSigned;
 
-        if (!isResultReturn && !isI32Return)
+        if (!isResultReturn)
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.TryOperatorInvalidContext,
-                $"? operator requires function to return Result<T, E> or i32, got {_currentFunction.ReturnType}",
+                $"? operator requires function to return Result<T, E>, got {_currentFunction.ReturnType}",
                 errorLocation
             );
             return null;
         }
 
-        IrType? targetErrorType = null;
-        IrEnumVariant? funcErrVariant = null;
+        IrType? targetErrorType;
+        IrEnumVariant? funcErrVariant;
 
-        if (isResultReturn)
         {
             var resultReturnType = (IrEnumType)_currentFunction.ReturnType;
             funcErrVariant = resultReturnType.Variants.FirstOrDefault(v => v.Name == "Err");
@@ -3379,48 +3377,8 @@ public partial class IrBuilder
         errBlock.AddInstruction(new IrExtractVariantData(errValueTemp, resultVar, "Err", 0, sourceErrorType));
         var errVar = new IrVariable(errValueTemp, sourceErrorType);
 
-        if (isI32Return)
+        // Convert the error if needed and return Err.
         {
-            // For i32-returning functions (like main), print error and return 1
-            // Generate: __novus_try_failed("ErrorType", tag, "Variant1,Variant2,..."); return 1;
-            var errorTypeName = GetTypeName(sourceErrorType);
-
-            // Extract the tag to get the variant name at runtime
-            var errTagTemp = $"%try_err_tag_{_tempCounter++}";
-            errBlock.AddInstruction(new IrExtractTag(errTagTemp, errVar));
-
-            // Create string literals for type name and variant names
-            var typeNameLabel = $"_str{_stringCounter++}";
-            var typeNameLiteral = new IrStringLiteral(errorTypeName, typeNameLabel);
-            StringLiterals.Add(typeNameLiteral);
-
-            string variantNames;
-            if (sourceErrorType is IrEnumType sourceEnumType)
-            {
-                variantNames = string.Join(",", sourceEnumType.Variants.Select(v => v.Name));
-            }
-            else
-            {
-                variantNames = "Unknown";
-            }
-            var variantNamesLabel = $"_str{_stringCounter++}";
-            var variantNamesLiteral = new IrStringLiteral(variantNames, variantNamesLabel);
-            StringLiterals.Add(variantNamesLiteral);
-
-            // Call runtime helper: __novus_try_failed(error_type_name, tag, variant_names)
-            var callTemp = $"%try_print_{_tempCounter++}";
-            var printCall = new IrCall("__novus_try_failed", IrVoidType.Instance, callTemp);
-            printCall.Arguments.Add(typeNameLiteral);
-            printCall.Arguments.Add(new IrVariable(errTagTemp, IrIntType.I32));
-            printCall.Arguments.Add(variantNamesLiteral);
-
-            errBlock.AddInstruction(printCall);
-            // Use RETURN_FAIL (20) - the standard DOS error code for failures
-            errBlock.AddInstruction(new IrReturn(new IrConstant(20, IrIntType.I32)));
-        }
-        else
-        {
-            // For Result-returning functions, convert error if needed and return Err
             IrValue finalError;
             if (!TypesEqual(sourceErrorType, targetErrorType!))
             {

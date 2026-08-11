@@ -14,7 +14,7 @@
 //   ENV:<app_name>.prefs      - Volatile (RAM)
 //   ENVARC:<app_name>.prefs   - Persistent (disk)
 
-from std::core import Option, Result, Drop
+from std::core import Option, Result, Drop, Error, From
 from std::collections::vec import Vec
 from std::strings::core import Str, String, PathString
 from std::error::errors import DosError
@@ -55,6 +55,18 @@ impl PrefsError {
             PrefsError::InvalidKey => return "Invalid key name",
             PrefsError::AllocationFailed => return "Memory allocation failed",
         }
+    }
+}
+
+impl From<DosError> for PrefsError {
+    fn convert(error: DosError) -> PrefsError {
+        return PrefsError::IoError(error)
+    }
+}
+
+impl Error for PrefsError {
+    fn message(&self) -> *u8 {
+        return PrefsError::message(self)
     }
 }
 
@@ -822,8 +834,8 @@ impl Prefs {
         match self.find_entry(key) {
             Option::None => return false,
             Option::Some(idx) => {
-                // The discarded Option<PrefsEntry> is automatically dropped by the compiler
-                self.entries.remove(idx)
+                // find_entry proved the index is valid.
+                self.entries.remove(idx).unwrap()
                 self.dirty = true
                 return true
             }

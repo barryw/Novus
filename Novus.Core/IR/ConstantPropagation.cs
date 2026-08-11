@@ -46,6 +46,7 @@ public class ConstantPropagation
     /// Map from variable SSA name to its constant value (if known)
     /// </summary>
     private Dictionary<string, IrConstant> _constantValues = new();
+    private readonly Dictionary<string, int> _definitionCounts = new();
 
     /// <summary>
     /// Cache of const fn call results: (functionName, args) -> result
@@ -89,6 +90,7 @@ public class ConstantPropagation
         {
             _madeChanges = false;
             _constantValues.Clear();
+            CountDefinitions();
 
             // Pass 1: Identify constant definitions
             IdentifyConstants();
@@ -113,19 +115,19 @@ public class ConstantPropagation
             {
                 switch (instruction)
                 {
-                    case IrLocalDecl decl when decl.InitialValue is IrConstant constant:
+                    case IrLocalDecl decl when decl.InitialValue is IrConstant constant && IsSingleDefinition(decl.Name):
                         _constantValues[decl.Name] = constant;
                         break;
 
-                    case IrStore store when store.Value is IrConstant constant:
+                    case IrStore store when store.Value is IrConstant constant && IsSingleDefinition(store.VariableName):
                         _constantValues[store.VariableName] = constant;
                         break;
 
-                    case IrBinaryOp binOp when CanFoldBinaryOp(binOp, out var folded):
+                    case IrBinaryOp binOp when IsSingleDefinition(binOp.ResultName) && CanFoldBinaryOp(binOp, out var folded):
                         _constantValues[binOp.ResultName] = folded!;
                         break;
 
-                    case IrCall call when call.ResultName != null:
+                    case IrCall call when call.ResultName != null && IsSingleDefinition(call.ResultName):
                         // Check if this is a const fn call with all constant arguments
                         if (TryEvaluateConstFnCall(call, out var constResult))
                         {
@@ -136,6 +138,32 @@ public class ConstantPropagation
             }
         }
     }
+
+    private void CountDefinitions()
+    {
+        _definitionCounts.Clear();
+        foreach (var instruction in _function.BasicBlocks.SelectMany(block => block.Instructions))
+        {
+            var name = instruction switch
+            {
+                IrLocalDecl decl => decl.Name,
+                IrStore store => store.VariableName,
+                IrBinaryOp binary => binary.ResultName,
+                IrCall call => call.ResultName,
+                IrIndexAccess access => access.ResultName,
+                IrMemberAccess access => access.ResultName,
+                IrExtractTag extract => extract.ResultName,
+                IrExtractVariantData extract => extract.ResultName,
+                IrCreateClosure closure => closure.ResultName,
+                IrLoadCapture capture => capture.ResultName,
+                _ => null
+            };
+            if (name != null)
+                _definitionCounts[name] = _definitionCounts.GetValueOrDefault(name) + 1;
+        }
+    }
+
+    private bool IsSingleDefinition(string name) => _definitionCounts.GetValueOrDefault(name) == 1;
 
     /// <summary>
     /// Propagate constants throughout the function

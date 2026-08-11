@@ -42,6 +42,7 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
                 or IrIndexStore or IrIndexedFieldStore or IrDereferenceStore
                 or IrStoreCapture or IrDropInPlace)
             {
+                _expressions.Clear();
                 _memberLoads.Clear();
             }
             return rewritten;

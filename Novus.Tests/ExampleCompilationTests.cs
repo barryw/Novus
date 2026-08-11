@@ -186,6 +186,51 @@ public class ExampleAsmTests : ExampleCompilationTestBase
 [Collection("SequentialCompilation")]
 public class ExampleFullCompilationTests : ExampleCompilationTestBase
 {
+    [Fact]
+    [Trait("Category", "FullCompilation")]
+    public async Task IdiomaticGui_ReleaseBinaryFits3072ByteBudget()
+    {
+        var root = GetProjectRoot();
+        var compiler = Path.Combine(root, "Novus", "bin", "Debug", "net10.0", "Novus.dll");
+        var source = Path.Combine(root, "Novus.Tests", "Examples", "idiomatic_gui.novus");
+        var output = Path.Combine(Path.GetTempPath(), $"novus_gui_size_{Guid.NewGuid():N}");
+
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in new[]
+        {
+            compiler, "compile", source, "-o", output, "--cpu", "68020",
+            "-O", "3", "--release", "--safety-level", "1",
+        })
+            startInfo.ArgumentList.Add(argument);
+
+        try
+        {
+            using var process = Process.Start(startInfo);
+            Assert.NotNull(process);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            Assert.True(process.WaitForExit(TimeSpan.FromSeconds(300)), "GUI size build timed out");
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            Assert.True(process.ExitCode == 0 && File.Exists(output),
+                $"GUI size build failed.\n{stdout}\n{stderr}");
+            Assert.True(new FileInfo(output).Length <= 3072,
+                $"Idiomatic GUI grew to {new FileInfo(output).Length} bytes (budget: 3072)");
+        }
+        finally
+        {
+            if (File.Exists(output))
+                File.Delete(output);
+        }
+    }
+
     /// <summary>
     /// Gets representative examples for full VBCC compilation tests (slower)
     /// </summary>

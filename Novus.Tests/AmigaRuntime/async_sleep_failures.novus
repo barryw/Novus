@@ -1,0 +1,35 @@
+// Target-executed failure-path tests for timer-backed async sleep.
+
+from std::core import Result
+from std::async::future import Poll, Context, Waker
+from std::async::sleep import Sleep
+from std::async::executor import ExecutorError, poll_sleep_once
+from std::os::timer import Duration, TimerError
+from std::ffi::exec import FindTask, AllocSignal, FreeSignal
+from std::test::test import expect, expect_true
+
+@test("Sleep reports invalid timer unit")
+pub fn async_sleep_invalid_unit() {
+    let signal_bit = AllocSignal(-1)
+    expect_true(signal_bit >= 0, "signal allocation")
+
+    let waker = Waker::new(FindTask(null), signal_bit)
+    var context = Context::new(waker)
+    var future = Sleep::with_unit(Duration::zero(), 255)
+
+    match future.poll(&var context) {
+        Poll::Ready(Result::Err(TimerError::OpenFailed)) => expect_true(true, "open failure surfaced"),
+        _ => expect(false, "invalid unit must fail"),
+    }
+
+    FreeSignal(signal_bit)
+}
+
+@test("poll_sleep_once preserves timer errors")
+pub fn async_sleep_poll_once_error() {
+    var future = Sleep::with_unit(Duration::zero(), 255)
+    match poll_sleep_once(&var future) {
+        Result::Err(ExecutorError::Timer(TimerError::OpenFailed)) => expect_true(true, "timer error wrapped"),
+        _ => expect(false, "poll helper must preserve failure"),
+    }
+}

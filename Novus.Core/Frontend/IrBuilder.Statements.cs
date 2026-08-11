@@ -4,6 +4,7 @@ using Antlr4.Runtime.Tree;
 using Novus.Diagnostics;
 using Novus.IR;
 using Novus.Parser;
+using Novus.SemanticAnalysis;
 
 namespace Novus.Frontend;
 
@@ -1747,6 +1748,23 @@ public partial class IrBuilder
         if (result is IrValue irValue && _module.TypeImplementsDrop(irValue.Type))
         {
             InjectDropForTemporary(irValue);
+        }
+
+        if (result is IrValue resultValue &&
+            ResultUsagePolicy.IsResult(resultValue.Type) &&
+            !ResultUsagePolicy.IsConsumed(context, _currentFunction?.ReturnType))
+        {
+            _diagnostics.ReportError(
+                ErrorCodes.UnusedResult,
+                "unused Result must be handled",
+                GetLocation(context),
+                helpTexts: new List<string>
+                {
+                    "propagate the error with `?`",
+                    "handle both variants with `match`",
+                    "or explicitly discard it with `let _ = expression`"
+                }
+            );
         }
 
         return result;

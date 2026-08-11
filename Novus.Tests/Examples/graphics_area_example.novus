@@ -15,8 +15,9 @@ from std::graphics::area import AreaContext, ras_size, vector_buffer_size
 from std::graphics::area import fill_triangle, fill_quad, fill_ellipse, fill_circle
 from std::io::file import write
 from std::memory::amiga import MemHandle
+from std::error::errors import NovusError
 
-pub fn main() -> i32 {
+pub fn main() -> Result<(), NovusError> {
     let result = WindowHandle::simple("Graphics Area Fill Demo", 640, 400)
 
     match result {
@@ -47,30 +48,30 @@ pub fn main() -> i32 {
                     write("Testing basic chip memory allocation...\n")
                     let test_alloc = MemHandle::new_chip(24)
                     match test_alloc {
-                        Option::Some(mem) => {
+                        Result::Ok(mem) => {
                             write("  24 bytes: OK\n")
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("  24 bytes: FAILED\n")
                         }
                     }
 
                     let test_alloc2 = MemHandle::new_chip(100)
                     match test_alloc2 {
-                        Option::Some(mem) => {
+                        Result::Ok(mem) => {
                             write("  100 bytes: OK\n")
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("  100 bytes: FAILED\n")
                         }
                     }
 
                     let test_alloc3 = MemHandle::new_chip(32000)
                     match test_alloc3 {
-                        Option::Some(mem) => {
+                        Result::Ok(mem) => {
                             write("  32000 bytes: OK\n")
                         },
-                        Option::None => {
+                        Result::Err(_) => {
                             write("  32000 bytes: FAILED\n")
                         }
                     }
@@ -234,7 +235,7 @@ pub fn main() -> i32 {
                         },
                         Result::Err(e) => {
                             write("Failed to create AreaContext\n")
-                            return 20
+                            return Result::Err(NovusError::Graphics(e))
                         }
                     }
 
@@ -291,17 +292,17 @@ pub fn main() -> i32 {
                         }
                     }
 
-                    return 0
+                    return Result::Ok(())
                 },
-                Result::Err(_) => {
+                Result::Err(err) => {
                     write("Failed to create DrawContext\n")
-                    return 20
+                    return Result::Err(NovusError::Graphics(err))
                 }
             }
         },
-        Result::Err(_) => {
+        Result::Err(err) => {
             write("Failed to open window\n")
-            return 20
+            return Result::Err(NovusError::Intuition(err))
         }
     }
 }

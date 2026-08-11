@@ -27,7 +27,7 @@ fn main() -> i32 {
             write("PASS: Channel created successfully\n")
 
             // Test sending a value
-            tx.send(42)
+            let _ = tx.send(42)
             write("Sent value 42\n")
 
             // Test try_recv - should get the value we just sent

@@ -29,7 +29,7 @@
 // let (tx, rx) = channel::<i32>()?
 //
 // // Send a value
-// tx.send(42)
+// tx.send(42)?
 //
 // // Receive it (blocks if no message)
 // let value = rx.recv()
@@ -54,9 +54,9 @@
 //     spawn_task_fn("Worker", || {
 //         for i in 0..100 {
 //             do_work()
-//             tx.send(ProgressUpdate { percent: i, done: false })
+//             let _ = tx.send(ProgressUpdate { percent: i, done: false })
 //         }
-//         tx.send(ProgressUpdate { percent: 100, done: true })
+//         let _ = tx.send(ProgressUpdate { percent: 100, done: true })
 //         return 0
 //     })
 //
@@ -83,12 +83,37 @@
 // }
 // ```
 
-from std::core import Option, Result, Drop
-from std::error::errors import DosError
+from std::core import Option, Result, Drop, Error
 from std::ffi::amiga_structs import MsgPort, Message, Node, Task
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, ReplyMsg, Wait, Signal
 from std::ffi::exec import AllocMem, FreeMem, FindTask, AllocSignal, FreeSignal
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_FAST
+
+pub enum ChannelError {
+    NoMemory,
+    NoSignal,
+    AlreadySent,
+    AlreadyReceived,
+    MissingReply,
+}
+
+impl ChannelError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            ChannelError::NoMemory => "Channel message allocation failed",
+            ChannelError::NoSignal => "No Exec signal is available",
+            ChannelError::AlreadySent => "One-shot value was already sent",
+            ChannelError::AlreadyReceived => "One-shot value was already received",
+            ChannelError::MissingReply => "Bounded channel reply was not received",
+        }
+    }
+}
+
+impl Error for ChannelError {
+    fn message(&self) -> *u8 {
+        return ChannelError::message(self)
+    }
+}
 
 // ============================================================================
 // Cross-Process Port Helpers
@@ -127,14 +152,14 @@ from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_FAST
 ///     // ...
 /// }
 /// ```
-pub fn take_over_port(port: *MsgPort) -> u32 {
+pub fn take_over_port(port: *MsgPort) -> Result<u32, ChannelError> {
     // Get our own task pointer
     let my_task = FindTask(null)
 
     // Allocate our own signal bit (-1 means any available)
     let my_signal = AllocSignal(-1)
     if my_signal == -1 {
-        return 0  // Failed to allocate signal
+        return Result::Err(ChannelError::NoSignal)
     }
 
     // Take over the port - point it to us with our signal
@@ -142,7 +167,7 @@ pub fn take_over_port(port: *MsgPort) -> u32 {
     port.mp_SigBit = (u8)my_signal
 
     // Return the signal mask for Wait()
-    return (u32)1 << (u32)my_signal
+    return Result::Ok((u32)1 << (u32)my_signal)
 }
 
 // ============================================================================
@@ -176,7 +201,7 @@ pub fn take_over_port(port: *MsgPort) -> u32 {
 /// handoff.wait_for_ready()
 ///
 /// // Now safe to send
-/// tx.send(42)
+/// tx.send(42)?
 /// ```
 ///
 /// # Example - Child Side
@@ -210,17 +235,21 @@ impl PortHandoff {
     ///
     /// Call this in the parent process before spawning the child.
     /// The parent must keep this structure alive until `wait_for_ready()` returns.
-    pub fn new(port: *MsgPort) -> PortHandoff {
+    pub fn new(port: *MsgPort) -> Result<PortHandoff, ChannelError> {
         let parent = (*Task)FindTask(null)
 
         // Allocate a signal bit for the child to use to notify us
         let sig_bit = AllocSignal(-1)
 
-        return PortHandoff {
+        if sig_bit == -1 {
+            return Result::Err(ChannelError::NoSignal)
+        }
+
+        return Result::Ok(PortHandoff {
             port: port,
             parent_task: parent,
             ready_signal_bit: sig_bit,
-        }
+        })
     }
 
     /// Wait for the child process to signal that it has taken over the port.
@@ -229,9 +258,9 @@ impl PortHandoff {
     /// function returns, it is safe to send messages through the channel.
     ///
     /// Returns true if handoff succeeded, false if signal allocation failed.
-    pub fn wait_for_ready(&var self) -> bool {
+    pub fn wait_for_ready(&var self) -> Result<(), ChannelError> {
         if self.ready_signal_bit == -1 {
-            return false  // Signal allocation failed in new()
+            return Result::Err(ChannelError::NoSignal)
         }
 
         let signal_mask = (u32)1 << (u32)self.ready_signal_bit
@@ -241,7 +270,7 @@ impl PortHandoff {
         FreeSignal(self.ready_signal_bit)
         self.ready_signal_bit = -1  // Mark as freed
 
-        return true
+        return Result::Ok(())
     }
 
     /// Get the port pointer (for passing to channel operations after handoff)
@@ -266,9 +295,8 @@ impl Drop for PortHandoff {
 /// and ensures proper cleanup when the child process is done.
 ///
 /// When dropped, this struct:
-/// 1. Frees the signal bit we allocated
-/// 2. Frees the MsgPort memory (without calling DeleteMsgPort, which would
-///    try to free a signal bit that doesn't belong to the original task)
+/// 1. Deletes the transferred port
+/// 2. Frees the child-owned signal bit through DeleteMsgPort
 pub struct PortOwnership {
     /// The port we took over
     port: *MsgPort,
@@ -293,18 +321,12 @@ impl PortOwnership {
 impl Drop for PortOwnership {
     /// Clean up the port and signal bit
     fn drop(&var self) {
-        // First, free our signal bit
-        if self.signal_bit != -1 {
-            FreeSignal(self.signal_bit)
-            self.signal_bit = -1
-        }
-
-        // Free the port memory directly - do NOT use DeleteMsgPort()
-        // because it would try to FreeSignal() on mp_SigBit which we
-        // already freed above (and it was allocated by a different task anyway)
+        // complete_handoff changed mp_SigTask/mp_SigBit to this task, so the
+        // matching Exec cleanup now owns both the port allocation and signal.
         if (u32)self.port != 0 {
-            unsafe { FreeMem((*u8)self.port, @sizeof(MsgPort)) }
+            DeleteMsgPort(self.port)
             self.port = null
+            self.signal_bit = -1
         }
     }
 }
@@ -342,7 +364,7 @@ impl Drop for PortOwnership {
 ///     // Signal bit is freed here when ownership is dropped
 /// }
 /// ```
-pub fn complete_handoff(handoff: *PortHandoff) -> Option<PortOwnership> {
+pub fn complete_handoff(handoff: *PortHandoff) -> Result<PortOwnership, ChannelError> {
     let port = handoff.port
 
     // Get our own task pointer
@@ -351,7 +373,7 @@ pub fn complete_handoff(handoff: *PortHandoff) -> Option<PortOwnership> {
     // Allocate our own signal bit (-1 means any available)
     let my_signal = AllocSignal(-1)
     if my_signal == -1 {
-        return Option::None
+        return Result::Err(ChannelError::NoSignal)
     }
 
     // Take over the port - point it to us with our signal
@@ -366,7 +388,7 @@ pub fn complete_handoff(handoff: *PortHandoff) -> Option<PortOwnership> {
         Signal(handoff.parent_task, parent_signal_mask)
     }
 
-    return Option::Some(PortOwnership {
+    return Result::Ok(PortOwnership {
         port: port,
         signal_bit: my_signal,
         signal_mask: signal_mask,
@@ -429,13 +451,13 @@ impl<T> Sender<T> {
     /// This is non-blocking - it returns immediately after queuing the message.
     /// The receiver will be signaled automatically.
     ///
-    /// Returns true if sent successfully, false if allocation failed.
-    pub fn send(&self, value: T) -> bool {
+    /// Returns Ok when queued or the allocation error.
+    pub fn send(&self, value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = Sender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
-            return false
+            return Result::Err(ChannelError::NoMemory)
         }
 
         let msg = (*Message)msg_mem
@@ -451,7 +473,7 @@ impl<T> Sender<T> {
 
         // Send it - receiver will be signaled
         PutMsg(self.port, msg)
-        return true
+        return Result::Ok(())
     }
 
     /// Clone this sender to create another sender to the same channel.
@@ -631,14 +653,14 @@ impl<T> Drop for Receiver<T> {
 /// Example:
 /// ```novus
 /// let (tx, rx) = channel::<i32>()?
-/// tx.send(42)
+/// tx.send(42)?
 /// let value = rx.recv()  // value == 42
 /// ```
-pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>), DosError> {
+pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>), ChannelError> {
     // Create the message port
     let port = CreateMsgPort()
     if (u32)port == 0 {
-        return Result::Err(DosError::NoFreeStore)
+        return Result::Err(ChannelError::NoMemory)
     }
 
     // Compute signal mask from port's signal bit
@@ -689,13 +711,13 @@ impl<T> BoundedSender<T> {
     /// This blocks until the receiver has processed the message,
     /// providing backpressure when the receiver is slow.
     ///
-    /// Returns true if sent successfully, false if channel closed.
-    pub fn send(&self, value: T) -> bool {
+    /// Returns Ok when the receiver acknowledges the message.
+    pub fn send(&self, value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
-            return false
+            return Result::Err(ChannelError::NoMemory)
         }
 
         let msg = (*Message)msg_mem
@@ -720,10 +742,10 @@ impl<T> BoundedSender<T> {
         if (u32)replied != 0 {
             // Free the message memory
             unsafe { FreeMem((*u8)replied, size) }
-            return true
+            return Result::Ok(())
         }
 
-        return false
+        return Result::Err(ChannelError::MissingReply)
     }
 
     /// Try to send a value without blocking.
@@ -733,20 +755,21 @@ impl<T> BoundedSender<T> {
     ///
     /// Note: The receiver still needs to call recv() or try_recv() to process it.
     ///
-    /// Returns true if sent successfully, false if allocation failed.
-    pub fn try_send(&self, value: T) -> bool {
+    /// Returns Ok when queued or the allocation error.
+    pub fn try_send(&self, value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
-            return false
+            return Result::Err(ChannelError::NoMemory)
         }
 
         let msg = (*Message)msg_mem
 
-        // Initialize message header - set reply port for acknowledgment later
+        // Non-blocking sends do not request an acknowledgment. The receiver
+        // owns and frees this message after copying the value.
         msg.mn_Node.ln_Type = 5  // NT_MESSAGE
-        msg.mn_ReplyPort = self.reply_port  // Request reply (but we won't wait)
+        msg.mn_ReplyPort = null
         msg.mn_Length = (u16)size
 
         // Copy payload data
@@ -756,7 +779,7 @@ impl<T> BoundedSender<T> {
         // Send it without waiting
         PutMsg(self.port, msg)
 
-        return true
+        return Result::Ok(())
     }
 
     /// Check if the channel is still valid.
@@ -793,7 +816,6 @@ impl<T> Drop for BoundedSender<T> {
 pub struct BoundedReceiver<T> {
     port: *MsgPort,      // Our message port (owned)
     signal_mask: u32,    // Precomputed signal mask for Wait()
-    pending_msg: *Message,  // Current message awaiting ack
 }
 
 impl<T> BoundedReceiver<T> {
@@ -811,15 +833,9 @@ impl<T> BoundedReceiver<T> {
 
     /// Receive a message, blocking if none available.
     ///
-    /// This also acknowledges the previous message (if any),
-    /// unblocking the sender that sent it.
+    /// This acknowledges the message after copying its value, unblocking the
+    /// sender before returning.
     pub fn recv(&var self) -> T {
-        // Acknowledge previous message if any
-        if (u32)self.pending_msg != 0 {
-            ReplyMsg(self.pending_msg)
-            self.pending_msg = null
-        }
-
         // Wait for a message
         forever {
             let msg = GetMsg(self.port)
@@ -828,9 +844,9 @@ impl<T> BoundedReceiver<T> {
                 let data_ptr = BoundedReceiver::<T>::msg_data(msg)
                 let value = *data_ptr
 
-                // If sender wants a reply, save message for later ack
+                // A blocking sender owns the message after acknowledgment.
                 if (u32)msg.mn_ReplyPort != 0 {
-                    self.pending_msg = msg
+                    ReplyMsg(msg)
                 } else {
                     // No reply needed, free immediately
                     let size = BoundedReceiver::<T>::msg_size()
@@ -846,14 +862,8 @@ impl<T> BoundedReceiver<T> {
 
     /// Try to receive without blocking.
     ///
-    /// Also acknowledges the previous message if any.
+    /// Acknowledges this message after copying its value.
     pub fn try_recv(&var self) -> Option<T> {
-        // Acknowledge previous message if any
-        if (u32)self.pending_msg != 0 {
-            ReplyMsg(self.pending_msg)
-            self.pending_msg = null
-        }
-
         let msg = GetMsg(self.port)
         if (u32)msg == 0 {
             return Option::None
@@ -863,7 +873,7 @@ impl<T> BoundedReceiver<T> {
         let value = *data_ptr
 
         if (u32)msg.mn_ReplyPort != 0 {
-            self.pending_msg = msg
+            ReplyMsg(msg)
         } else {
             let size = BoundedReceiver::<T>::msg_size()
             unsafe { FreeMem((*u8)msg, size) }
@@ -906,7 +916,7 @@ impl<T> BoundedReceiver<T> {
     /// rx.detach()  // Don't delete port when rx is dropped
     /// spawn_task_fn_with_ptr("Worker", worker, (*u8)&handoff, 8192)?
     /// handoff.wait_for_ready()
-    /// tx.send(42)
+    /// tx.send(42)?
     /// ```
     pub fn detach(&var self) -> *MsgPort {
         let p = self.port
@@ -931,12 +941,6 @@ impl<T> Drop for BoundedReceiver<T> {
         // If port was detached (transferred to child), nothing to clean up
         if (u32)self.port == 0 {
             return
-        }
-
-        // Reply to pending message if any
-        if (u32)self.pending_msg != 0 {
-            ReplyMsg(self.pending_msg)
-            self.pending_msg = null
         }
 
         // Drain remaining messages
@@ -978,24 +982,24 @@ impl<T> Drop for BoundedReceiver<T> {
 /// let (tx, rx) = bounded_channel::<WorkItem>()?
 ///
 /// // Sender blocks until receiver processes each item
-/// tx.send(work1)  // Blocks until recv() called
-/// tx.send(work2)  // Blocks until recv() called
+/// tx.send(work1)?  // Blocks until recv() called
+/// tx.send(work2)?  // Blocks until recv() called
 ///
 /// // Receiver processes at its own pace
 /// let item = rx.recv()  // Unblocks sender
 /// ```
-pub fn bounded_channel<T>() -> Result<(BoundedSender<T>, BoundedReceiver<T>), DosError> {
+pub fn bounded_channel<T>() -> Result<(BoundedSender<T>, BoundedReceiver<T>), ChannelError> {
     // Create receiver's port
     let recv_port = CreateMsgPort()
     if (u32)recv_port == 0 {
-        return Result::Err(DosError::NoFreeStore)
+        return Result::Err(ChannelError::NoMemory)
     }
 
     // Create sender's reply port
     let reply_port = CreateMsgPort()
     if (u32)reply_port == 0 {
         DeleteMsgPort(recv_port)
-        return Result::Err(DosError::NoFreeStore)
+        return Result::Err(ChannelError::NoMemory)
     }
 
     let recv_signal = (u32)1 << (u32)recv_port.mp_SigBit
@@ -1010,7 +1014,6 @@ pub fn bounded_channel<T>() -> Result<(BoundedSender<T>, BoundedReceiver<T>), Do
     let receiver = BoundedReceiver {
         port: recv_port,
         signal_mask: recv_signal,
-        pending_msg: null,
     }
 
     return Result::Ok((sender, receiver))
@@ -1044,17 +1047,16 @@ impl<T> OneshotSender<T> {
 
     /// Send the value, consuming the sender.
     ///
-    /// This can only be called once. Returns false if already sent
-    /// or if allocation fails.
-    pub fn send(&var self, value: T) -> bool {
+    /// This can only be called once.
+    pub fn send(&var self, value: T) -> Result<(), ChannelError> {
         if self.sent {
-            return false
+            return Result::Err(ChannelError::AlreadySent)
         }
 
         let size = OneshotSender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
         if (u32)msg_mem == 0 {
-            return false
+            return Result::Err(ChannelError::NoMemory)
         }
 
         let msg = (*Message)msg_mem
@@ -1067,7 +1069,7 @@ impl<T> OneshotSender<T> {
 
         PutMsg(self.port, msg)
         self.sent = true
-        return true
+        return Result::Ok(())
     }
 
     /// Check if already sent.
@@ -1102,10 +1104,10 @@ impl<T> OneshotReceiver<T> {
 
     /// Receive the value, blocking until it arrives.
     ///
-    /// Can only be called once - returns None on subsequent calls.
-    pub fn recv(&var self) -> Option<T> {
+    /// Can only be called once.
+    pub fn recv(&var self) -> Result<T, ChannelError> {
         if self.received {
-            return Option::None
+            return Result::Err(ChannelError::AlreadyReceived)
         }
 
         forever {
@@ -1116,7 +1118,7 @@ impl<T> OneshotReceiver<T> {
                 let size = OneshotReceiver::<T>::msg_size()
                 unsafe { FreeMem((*u8)msg, size) }
                 self.received = true
-                return Option::Some(value)
+                return Result::Ok(value)
             }
 
             Wait(self.signal_mask)
@@ -1124,14 +1126,14 @@ impl<T> OneshotReceiver<T> {
     }
 
     /// Try to receive without blocking.
-    pub fn try_recv(&var self) -> Option<T> {
+    pub fn try_recv(&var self) -> Result<Option<T>, ChannelError> {
         if self.received {
-            return Option::None
+            return Result::Err(ChannelError::AlreadyReceived)
         }
 
         let msg = GetMsg(self.port)
         if (u32)msg == 0 {
-            return Option::None
+            return Result::Ok(Option::None)
         }
 
         let data_ptr = OneshotReceiver::<T>::msg_data(msg)
@@ -1139,7 +1141,7 @@ impl<T> OneshotReceiver<T> {
         let size = OneshotReceiver::<T>::msg_size()
         unsafe { FreeMem((*u8)msg, size) }
         self.received = true
-        return Option::Some(value)
+        return Result::Ok(Option::Some(value))
     }
 
     /// Get the signal mask for this channel.
@@ -1185,17 +1187,17 @@ impl<T> Drop for OneshotReceiver<T> {
 /// // Spawn task that computes a result
 /// spawn_task_fn("Compute", || {
 ///     let result = expensive_computation()
-///     tx.send(result)
+///     let _ = tx.send(result)
 ///     return 0
 /// })
 ///
 /// // Wait for result
 /// let value = rx.recv()
 /// ```
-pub fn oneshot<T>() -> Result<(OneshotSender<T>, OneshotReceiver<T>), DosError> {
+pub fn oneshot<T>() -> Result<(OneshotSender<T>, OneshotReceiver<T>), ChannelError> {
     let port = CreateMsgPort()
     if (u32)port == 0 {
-        return Result::Err(DosError::NoFreeStore)
+        return Result::Err(ChannelError::NoMemory)
     }
 
     let signal_mask = (u32)1 << (u32)port.mp_SigBit

@@ -59,13 +59,10 @@ injected close event, and exited with code 0. Guest diagnostics remained healthy
 Novus dependency graph contains only `exec.library`, `dos.library`,
 `intuition.library`, and `gadtools.library`; no ReAction class libraries are linked.
 
-The default release binary is currently **6,228 bytes**, down from 13,264 bytes for
-the original dynamic-builder version; the direct C reference is 2,444 bytes. This is
-still above the 3,072-byte acceptance gate. The remaining dominant block is generic
-compiler work: specialize immutable static arguments across module boundaries, fold
-their enum matches and bounded loops, and share RAII cleanup epilogues instead of
-emitting flattened copies. The dynamic builder will not be removed or weakened to
-meet the static-program size target.
+The optimized 68020 release binary is currently **2,976 bytes**, down from 13,264 bytes
+for the original dynamic-builder version; the direct C reference is 2,444 bytes. A
+full-compilation regression test enforces the 3,072-byte acceptance gate. The dynamic
+builder remains available for interfaces assembled at runtime.
 
 ## Capability matrix
 

@@ -19,7 +19,7 @@
 
 from std::ffi::exec import OpenLibrary, CloseLibrary
 from std::ffi::amiga_structs import Library
-from std::core import Result
+from std::core import Result, Error
 from std::math::fixed import Fixed32
 
 // ============================================================================
@@ -141,15 +141,35 @@ extern fn SPLog10(parm: u32) -> u32
 // Library Initialization
 // ============================================================================
 
+pub enum FfpError {
+    MathFfpLibraryNotFound,
+    MathTransLibraryNotFound,
+}
+
+impl FfpError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            FfpError::MathFfpLibraryNotFound => "mathffp.library could not be opened",
+            FfpError::MathTransLibraryNotFound => "mathtrans.library could not be opened",
+        }
+    }
+}
+
+impl Error for FfpError {
+    fn message(&self) -> *u8 {
+        return FfpError::message(self)
+    }
+}
+
 /// Open the FFP math libraries
 /// Must be called before using any FFP functions
 /// Returns Err if libraries cannot be opened
-pub fn open_ffp_libraries() -> Result<(), i32> {
+pub fn open_ffp_libraries() -> Result<(), FfpError> {
     unsafe {
         if mathffp_base == null {
             mathffp_base = OpenLibrary("mathffp.library", 33u32)
             if mathffp_base == null {
-                return Result::Err(-1)
+                return Result::Err(FfpError::MathFfpLibraryNotFound)
             }
         }
 
@@ -158,7 +178,7 @@ pub fn open_ffp_libraries() -> Result<(), i32> {
             if mathtrans_base == null {
                 CloseLibrary(mathffp_base)
                 mathffp_base = (*Library)null
-                return Result::Err(-2)
+                return Result::Err(FfpError::MathTransLibraryNotFound)
             }
         }
     }

@@ -16,7 +16,7 @@ fn main() -> i32 {
         },
         Result::Ok(pair) => {
             let (tx, rx) = pair
-            tx.send(42)
+            let _ = tx.send(42)
 
             match rx.try_recv() {
                 Option::Some(val) => {

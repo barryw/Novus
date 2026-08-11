@@ -303,6 +303,22 @@ public class IrValidatorTests
     }
 
     [Fact]
+    public void Validate_StaticVariableLoadAndStore_AreValid()
+    {
+        var module = new IrModule();
+        module.StaticVariables.Add(new IrStaticVariable(
+            "counter", IrIntType.I32, Visibility.Private, false,
+            new IrConstant(0, IrIntType.I32)));
+        var function = new IrFunction("test", IrIntType.I32);
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrStore("counter", new IrConstant(42, IrIntType.I32)));
+        block.AddInstruction(new IrReturn(new IrVariable("counter", IrIntType.I32)));
+        module.AddFunction(function);
+
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
     public void Validate_InlineAsmResult_DeclaresResultVariable()
     {
         var module = new IrModule();

@@ -162,6 +162,17 @@ public class IrModule
         return _functionLookup.TryGetValue(name, out var func) ? func : null;
     }
 
+    public void RenameFunction(IrFunction function, string newName)
+    {
+        if (_functionLookup.TryGetValue(function.Name, out var registered) && ReferenceEquals(registered, function))
+        {
+            _functionLookup.Remove(function.Name);
+        }
+
+        function.Name = newName;
+        _functionLookup[newName] = function;
+    }
+
     /// <summary>
     /// Check if a function with the given name exists (O(1) lookup).
     /// </summary>

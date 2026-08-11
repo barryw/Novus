@@ -481,7 +481,9 @@ public class IrValidator
             AddError("Store instruction has empty variable name");
         }
 
-        if (!_declaredVariables.Contains(store.VariableName))
+        if (!_declaredVariables.Contains(store.VariableName) &&
+            !_staticVariables.Contains(store.VariableName) &&
+            !_externalVariables.Contains(store.VariableName))
         {
             AddError($"Store to undeclared variable: {store.VariableName}");
         }
@@ -691,7 +693,9 @@ public class IrValidator
                 {
                     AddError("Variable has empty name");
                 }
-                else if (!_declaredVariables.Contains(variable.Name))
+                else if (!_declaredVariables.Contains(variable.Name) &&
+                         !_staticVariables.Contains(variable.Name) &&
+                         !_externalVariables.Contains(variable.Name))
                 {
                     AddError($"Use of undeclared variable: {variable.Name}");
                 }
