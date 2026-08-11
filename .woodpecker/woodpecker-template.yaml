@@ -15,6 +15,7 @@ data:
   k8s_namespace: novus
   # The homepage imports its canonical C/Novus examples from Novus.Tests.
   website_context: .
+  website_extra_path: Novus.Tests/Examples/homepage_example.*
   # Defaults cover the rest:
   #   image_name / deployment_name = "novuslang-website"
   #   dockerfile = website/Dockerfile
