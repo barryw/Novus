@@ -467,10 +467,10 @@ let x = 1;";
     {
         var source = @"
 #if PLATFORM_AMIGA
-    #if CPU_68000
-        let cpu = ""68000"";
-    #elif CPU_68020
+    #if CPU_68020
         let cpu = ""68020"";
+    #elif CPU_68040
+        let cpu = ""68040"";
     #else
         let cpu = ""68040"";
     #endif
@@ -480,15 +480,14 @@ let x = 1;";
         var constants = new Dictionary<string, bool>
         {
             ["PLATFORM_AMIGA"] = true,
-            ["CPU_68000"] = false,
-            ["CPU_68020"] = true
+            ["CPU_68020"] = false,
+            ["CPU_68040"] = true
         };
         var (result, diagnostics) = Preprocess(source, constants);
 
         Assert.Empty(GetErrors(diagnostics));
-        Assert.Contains("let cpu = \"68020\";", result);
-        Assert.DoesNotContain("let cpu = \"68000\";", result);
-        Assert.DoesNotContain("let cpu = \"68040\";", result);
+        Assert.Contains("let cpu = \"68040\";", result);
+        Assert.DoesNotContain("let cpu = \"68020\";", result);
         Assert.DoesNotContain("let cpu = \"x86\";", result);
     }
 

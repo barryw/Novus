@@ -333,6 +333,16 @@ public class SfdParser
         // Build the type from everything except the last token
         var type = string.Join(" ", tokens.Take(tokens.Length - 1));
 
+        // SFD declarations commonly attach pointer stars to the parameter name
+        // (for example, "struct Gadget **glistptr"). Keep those stars in the
+        // type so generated bindings preserve the actual ABI.
+        var pointerName = Regex.Match(name2, @"^(\*+)([A-Za-z_][A-Za-z0-9_]*)$");
+        if (pointerName.Success)
+        {
+            type = $"{type} {pointerName.Groups[1].Value}";
+            name2 = pointerName.Groups[2].Value;
+        }
+
         // If there's no type, then the name is actually the type
         if (string.IsNullOrWhiteSpace(type))
         {

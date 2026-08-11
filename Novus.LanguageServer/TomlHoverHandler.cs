@@ -67,7 +67,7 @@ public class TomlHoverHandler : IHoverHandler
             "Target Motorola 68k CPU architecture.",
             "string",
             "68020",
-            new[] { "68000", "68020", "68040", "68060", "auto" }
+            new[] { "68020", "68030", "68040", "68060", "68080", "auto" }
         ),
         ["build.fpu"] = new TomlKeyInfo(
             "Floating Point Unit",

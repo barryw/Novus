@@ -292,6 +292,7 @@ public class CodeGenerationPhase : ICompilationPhase
         {
             "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
             "runtime_core.c",      // Core: memset, memcpy, strlen, error display
+            "runtime_compare.c",   // VBCC-safe comparison sequence points
             "runtime_errors.c",    // Assert, panic, bounds check, div check
             "runtime_hwdetect.c",  // CPU, FPU, chipset detection
             "runtime_fmt.c",       // Integer to string conversions

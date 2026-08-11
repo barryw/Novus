@@ -175,6 +175,11 @@ public static class KnownAttributes
     public const string LibExpunge = "libexpunge";
     public const string LibInit = "libinit";
 
+    // Resident resources
+    public const string Resource = "resource";
+    public const string ResourceFunc = "resourcefunc";
+    public const string ResourceInit = "resourceinit";
+
     // Device attributes
     public const string Device = "device";
     public const string DeviceCmd = "devicecmd";    // Mark function as device command handler
@@ -233,7 +238,8 @@ public static class KnownAttributes
     public const string Cpu = "cpu";               // Override target CPU: #[cpu("68020")] - emits warning if overriding project/CLI settings
 
     // Interrupt handling attributes
-    public const string Interrupt = "interrupt";           // Mark function as interrupt handler
+    public const string Interrupt = "interrupt";           // Amiga Exec interrupt server (RTS, D0 condition codes)
+    public const string InterruptVector = "interrupt_vector"; // Raw CPU exception vector (RTE)
     public const string InterruptSafe = "interrupt_safe";  // Mark function as safe to call from interrupts
 
     // Synchronization attributes
@@ -254,6 +260,7 @@ public static class KnownAttributes
     public static readonly HashSet<string> All = new()
     {
         Library, LibFunc, LibOpen, LibClose, LibExpunge, LibInit,
+        Resource, ResourceFunc, ResourceInit,
         Device, DeviceCmd, DeviceOpen, DeviceClose, DeviceExpunge, DeviceInit, BeginIO, AbortIO,
         Inline, NoInline, Packed, Align,
         Test, Bench, Benchmark,
@@ -267,7 +274,7 @@ public static class KnownAttributes
         Embed,
         ChipRam,
         StackSize, Cpu,
-        Interrupt, InterruptSafe,
+        Interrupt, InterruptVector, InterruptSafe,
         Atomic, NoInterrupts,
         Derive,
         Chain

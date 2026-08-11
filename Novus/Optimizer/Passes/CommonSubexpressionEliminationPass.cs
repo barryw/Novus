@@ -30,9 +30,22 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
 
         // Map from expression signature to the variable that holds the result
         private readonly Dictionary<string, string> _expressions = new();
+        private readonly Dictionary<string, string> _memberLoads = new();
 
         // Track replacements from old variable names to new variable references
         private readonly Dictionary<string, IrValue> _replacements = new();
+
+        public override IrInstruction? RewriteInstruction(IrInstruction instruction)
+        {
+            var rewritten = base.RewriteInstruction(instruction);
+            if (instruction is IrCall or IrIndirectCall or IrStore or IrMemberStore
+                or IrIndexStore or IrIndexedFieldStore or IrDereferenceStore
+                or IrStoreCapture or IrDropInPlace)
+            {
+                _memberLoads.Clear();
+            }
+            return rewritten;
+        }
 
         public override IrInstruction? RewriteBinaryOp(IrBinaryOp binaryOp)
         {
@@ -70,6 +83,40 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
             }
             return variable;
         }
+
+        public override IrInstruction? RewriteMemberAccess(IrMemberAccess memberAccess)
+        {
+            memberAccess.Struct = RewriteValue(memberAccess.Struct);
+            var source = GetStableValueKey(memberAccess.Struct);
+            if (!IsScalar(memberAccess.FieldType) || source == null)
+                return memberAccess;
+
+            var signature = $"{source}.{memberAccess.FieldName}";
+            if (_memberLoads.TryGetValue(signature, out var previousResult))
+            {
+                _replacements[memberAccess.ResultName] = new IrVariable(previousResult, memberAccess.FieldType);
+                Changed = true;
+                return null;
+            }
+
+            _memberLoads[signature] = memberAccess.ResultName;
+            return memberAccess;
+        }
+
+        private static bool IsScalar(IrType type) => type is IrBoolType or IrIntType
+            or IrFloatType or IrFixedType or IrPointerType or IrReferenceType or IrMutReferenceType;
+
+        private static string? GetStableValueKey(IrValue value) => value switch
+        {
+            IrVariable variable => variable.Name,
+            IrDereferenceValue { IsVolatile: false } dereference =>
+                GetStableValueKey(dereference.PointerValue) is { } inner ? $"*{inner}" : null,
+            IrBorrowValue borrow =>
+                GetStableValueKey(borrow.BorrowedValue) is { } inner ? $"&{inner}" : null,
+            IrCastValue cast =>
+                GetStableValueKey(cast.Value) is { } inner ? $"({cast.Type.Name}){inner}" : null,
+            _ => null
+        };
 
         /// <summary>
         /// Generate a signature for a binary operation that can be used for CSE

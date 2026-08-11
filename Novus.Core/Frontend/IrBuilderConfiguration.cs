@@ -185,15 +185,12 @@ public class IrBuilderConfiguration
             ["RELEASE"] = false,
 
             // CPU-specific constants - default to 68020 as recommended target
-            ["M68000"] = false,
-            ["M68010"] = false,
             ["M68020"] = true,
             ["M68030"] = false,
             ["M68040"] = false,
             ["M68060"] = false,
 
             // CPU hierarchy constants - 68020+ is default
-            ["M68010_PLUS"] = true,
             ["M68020_PLUS"] = true,
             ["M68030_PLUS"] = false,
             ["M68040_PLUS"] = false,
@@ -206,10 +203,13 @@ public class IrBuilderConfiguration
     /// Creates preprocessor constants for a specific target CPU.
     /// Sets the appropriate CPU-specific and hierarchy constants.
     /// </summary>
-    /// <param name="targetCpu">CPU target: "68000", "68010", "68020", "68030", "68040", "68060", "68080", or "auto"</param>
+    /// <param name="targetCpu">CPU target: "68020", "68030", "68040", "68060", "68080", or "auto"</param>
     /// <returns>Dictionary of preprocessor constants configured for the target CPU</returns>
     public static Dictionary<string, bool> GetPreprocessorConstantsForCpu(string? targetCpu)
     {
+        if (targetCpu is not (null or "auto" or "68020" or "68030" or "68040" or "68060" or "68080"))
+            throw new ArgumentException($"Unsupported CPU '{targetCpu}'; Novus requires 68020 or newer.", nameof(targetCpu));
+
         var constants = new Dictionary<string, bool>
         {
             // Build mode - default to debug
@@ -217,8 +217,6 @@ public class IrBuilderConfiguration
             ["RELEASE"] = false,
 
             // Initialize all CPU flags to false
-            ["M68000"] = false,
-            ["M68010"] = false,
             ["M68020"] = false,
             ["M68030"] = false,
             ["M68040"] = false,
@@ -226,7 +224,6 @@ public class IrBuilderConfiguration
             ["M68080"] = false,
 
             // Hierarchy constants
-            ["M68010_PLUS"] = false,
             ["M68020_PLUS"] = false,
             ["M68030_PLUS"] = false,
             ["M68040_PLUS"] = false,
@@ -236,33 +233,21 @@ public class IrBuilderConfiguration
         // Set CPU-specific and hierarchy flags based on target
         switch (targetCpu)
         {
-            case "68000":
-                constants["M68000"] = true;
-                break;
-
-            case "68010":
-                constants["M68010"] = true;
-                constants["M68010_PLUS"] = true;
-                break;
-
             case "68020":
             case "auto":  // Default to 68020
             case null:    // No CPU specified - use default
                 constants["M68020"] = true;
-                constants["M68010_PLUS"] = true;
                 constants["M68020_PLUS"] = true;
                 break;
 
             case "68030":
                 constants["M68030"] = true;
-                constants["M68010_PLUS"] = true;
                 constants["M68020_PLUS"] = true;
                 constants["M68030_PLUS"] = true;
                 break;
 
             case "68040":
                 constants["M68040"] = true;
-                constants["M68010_PLUS"] = true;
                 constants["M68020_PLUS"] = true;
                 constants["M68030_PLUS"] = true;
                 constants["M68040_PLUS"] = true;
@@ -270,7 +255,6 @@ public class IrBuilderConfiguration
 
             case "68060":
                 constants["M68060"] = true;
-                constants["M68010_PLUS"] = true;
                 constants["M68020_PLUS"] = true;
                 constants["M68030_PLUS"] = true;
                 constants["M68040_PLUS"] = true;
@@ -280,7 +264,6 @@ public class IrBuilderConfiguration
             case "68080":
                 constants["M68080"] = true;
                 // 68080 (Apollo Vampire) is 68060-compatible plus AMMX
-                constants["M68010_PLUS"] = true;
                 constants["M68020_PLUS"] = true;
                 constants["M68030_PLUS"] = true;
                 constants["M68040_PLUS"] = true;

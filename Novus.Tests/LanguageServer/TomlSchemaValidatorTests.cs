@@ -129,7 +129,6 @@ type = ""invalid-type""
     }
 
     [Theory]
-    [InlineData("68000")]
     [InlineData("68020")]
     [InlineData("68030")]
     [InlineData("68040")]
@@ -169,7 +168,6 @@ target_cpu = ""6502""
 
         var error = Assert.Single(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.Contains("Invalid target_cpu '6502'", error.Message);
-        Assert.Contains("68000", error.Message);
         Assert.Contains("68020", error.Message);
     }
 

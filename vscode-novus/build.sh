@@ -23,6 +23,8 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 LSP_PROJECT="$PROJECT_ROOT/Novus.LanguageServer"
 EXTENSION_DIR="$SCRIPT_DIR"
+BUNDLE_DIR="$EXTENSION_DIR/server"
+TARGET_FRAMEWORK="net10.0"
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  Novus VS Code Extension Build${NC}"
@@ -77,6 +79,11 @@ clean() {
         echo "  ✓ Removed $EXTENSION_DIR/out"
     fi
 
+    if [ -d "$BUNDLE_DIR" ]; then
+        rm -rf "$BUNDLE_DIR"
+        echo "  ✓ Removed $BUNDLE_DIR"
+    fi
+
     if [ -f "$EXTENSION_DIR/novus-language-support-0.1.0.vsix" ]; then
         rm "$EXTENSION_DIR/novus-language-support-0.1.0.vsix"
         echo "  ✓ Removed novus-language-support-0.1.0.vsix"
@@ -97,12 +104,12 @@ cd "$PROJECT_ROOT"
 
 if ! command -v dotnet &> /dev/null; then
     echo -e "${RED}ERROR: dotnet not found${NC}"
-    echo "Please install .NET 9.0 SDK: https://dotnet.microsoft.com/download"
+    echo "Please install .NET 10.0 SDK: https://dotnet.microsoft.com/download"
     exit 1
 fi
 
-echo "  Running: dotnet build $LSP_PROJECT/Novus.LanguageServer.csproj"
-if dotnet build "$LSP_PROJECT/Novus.LanguageServer.csproj" --nologo --verbosity quiet; then
+echo "  Running: dotnet build -c Release $LSP_PROJECT/Novus.LanguageServer.csproj"
+if dotnet build -c Release "$LSP_PROJECT/Novus.LanguageServer.csproj" --nologo --verbosity quiet; then
     echo -e "${GREEN}  ✓ Language server built successfully${NC}"
 else
     echo -e "${RED}  ✗ Language server build failed${NC}"
@@ -110,13 +117,22 @@ else
 fi
 
 # Verify binary exists
-LSP_BINARY="$LSP_PROJECT/bin/Debug/net9.0/Novus.LanguageServer"
+LSP_BINARY="$LSP_PROJECT/bin/Release/$TARGET_FRAMEWORK/Novus.LanguageServer"
 if [ ! -f "$LSP_BINARY" ]; then
     echo -e "${RED}  ✗ Language server binary not found at $LSP_BINARY${NC}"
     exit 1
 fi
 
 echo "  ✓ Binary: $LSP_BINARY"
+
+# Bundle the matching server, dependencies, and standard library. Letting an
+# installed extension discover an arbitrary old development build makes valid
+# current syntax look broken in the editor.
+rm -rf "$BUNDLE_DIR"
+mkdir -p "$BUNDLE_DIR"
+cp -R "$LSP_PROJECT/bin/Release/$TARGET_FRAMEWORK/." "$BUNDLE_DIR/"
+cp -R "$PROJECT_ROOT/Novus/std" "$BUNDLE_DIR/std"
+echo "  ✓ Bundled server and stdlib: $BUNDLE_DIR"
 echo ""
 
 # Step 2: Install npm dependencies

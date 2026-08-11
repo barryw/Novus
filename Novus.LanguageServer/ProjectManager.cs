@@ -229,7 +229,7 @@ public class TomlProjectState
 
     /// <summary>
     /// Gets or sets the target CPU extracted from the [build] section.
-    /// Valid values: "68000", "68010", "68020", "68030", "68040", "68060", "68080", "auto"
+    /// Valid values: "68020", "68030", "68040", "68060", "68080", "auto"
     /// Null if not specified.
     /// </summary>
     public string? TargetCpu { get; set; }

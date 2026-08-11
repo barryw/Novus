@@ -223,6 +223,51 @@ pub fn increment() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_StaticAggregate_EmitsInitializerStringsInStaticsFile()
+    {
+        var module = new IrModule();
+        var newMenu = new IrStructType("NewMenu", new List<IrStructField>
+        {
+            new("nm_Label", IrPointerType.U8Ptr),
+        });
+        var label = new IrStringLiteral("File", "_str0");
+        var entry = new IrStructLiteral(newMenu, new Dictionary<string, IrValue> { ["nm_Label"] = label });
+        var entries = new IrArrayLiteral(new IrArrayType(newMenu, 1));
+        entries.Elements.Add(entry);
+        module.StaticVariables.Add(new IrStaticVariable("MENU", entries.Type, Visibility.Private, false, entries));
+
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral> { label }, "68020", "soft",
+            useSharedTypesHeader: true);
+        var code = generator.GenerateStaticsFile();
+
+        Assert.Contains("static const char _str0[] = \"File\";", code);
+        Assert.Contains("const NewMenu MENU[1] = { { .nm_Label = (uint8_t*)_str0 } };", code);
+        Assert.DoesNotContain("struct NewMenu {", code);
+    }
+
+    [Fact]
+    public void CCodeGen_StaticEnumArray_OmitsCompoundLiteralCasts()
+    {
+        var module = new IrModule();
+        var descriptor = new IrEnumType("Descriptor", new List<IrEnumVariant>
+        {
+            new("Label", 0, new List<IrType> { IrPointerType.U8Ptr }),
+        });
+        var label = new IrStringLiteral("Quit", "_str0");
+        var value = new IrEnumValue(descriptor, "Label", 0, new List<IrValue> { label });
+        var values = new IrArrayLiteral(new IrArrayType(descriptor, 1));
+        values.Elements.Add(value);
+        module.StaticVariables.Add(new IrStaticVariable("ITEMS", values.Type, Visibility.Private, false, values));
+
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral> { label }, "68020", "soft",
+            useSharedTypesHeader: true);
+        var code = generator.GenerateStaticsFile();
+
+        Assert.Contains("{ .tag = Descriptor_Label, .data = { .Label = { ._0 = (uint8_t*)_str0 } } }", code);
+        Assert.DoesNotContain("(Descriptor){", code);
+    }
+
+    [Fact]
     public void CCodeGen_ConstVariable_GeneratesConstDecl()
     {
         var source = @"
@@ -295,7 +340,8 @@ pub fn get_nested(o: Outer) -> i32 {
         // Should generate nested field access
         Assert.Contains("Inner", code);
         Assert.Contains("Outer", code);
-        Assert.Contains("value", code);
+        Assert.Contains("o.inner.value", code);
+        Assert.DoesNotContain("sizeof(Inner)", code);
     }
 
     [Fact]
@@ -549,8 +595,8 @@ pub fn pi() -> f32 {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        // Float literals should be preserved
-        Assert.Contains("3.14", code);
+        // Decimal parsing must survive C emission without host formatting changes.
+        Assert.Contains("__novus_f32_from_bits(", code);
         Assert.Contains("float", code);
     }
 
@@ -565,8 +611,7 @@ pub fn e() -> f64 {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        // Double literals should be preserved
-        Assert.Contains("2.718", code);
+        Assert.Contains("__novus_f64_from_bits(", code);
         Assert.Contains("double", code);
     }
 

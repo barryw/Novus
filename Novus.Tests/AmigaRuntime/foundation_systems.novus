@@ -1,0 +1,49 @@
+from std::test::test import expect
+
+pub union RegisterValue {
+    raw: u32,
+    words: [u16; 2],
+}
+
+amiga fn register_add(left: i32 in d0, right: i32 in d1) -> i32 in d0 {
+    return left + right
+}
+
+type RegisterAdd = amiga fn(i32 in d0, i32 in d1) -> i32 in d0
+
+@interrupt
+fn interrupt_probe() -> u32 {
+    return 1
+}
+
+@test("unions overlay storage with Amiga byte order")
+pub fn foundation_unions() {
+    let value = RegisterValue { raw: $12345678 }
+    unsafe {
+        expect(value.words[0] == $1234, "union high word")
+        expect(value.words[1] == $5678, "union low word")
+    }
+}
+
+@test("volatile reads writes and fences preserve memory")
+pub fn foundation_volatile_memory() {
+    var value: u32 = 0
+    let expected: u32 = $40decafe
+    unsafe {
+        write_volatile((*u32)&var value, expected)
+        memory_fence()
+        expect(read_volatile((*u32)&value) == expected, "volatile round trip")
+    }
+}
+
+@test("Amiga register ABI function pointers call correctly")
+pub fn foundation_amiga_abi() {
+    let callback: RegisterAdd = register_add
+    expect(callback(19, 23) == 42, "register callback")
+}
+
+@test("Exec interrupt servers use an RTS-compatible entry")
+pub fn foundation_interrupt_entry() {
+    expect(interrupt_probe() == 1, "interrupt return value")
+}
+// Semantic phase profiling seed.

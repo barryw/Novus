@@ -131,7 +131,7 @@ Each project has its own `project.toml` with settings for:
 
 - **Type**: `library`, `cli`, `workbench`, or `device`
 - **Optimization**: Level 0-2
-- **CPU Target**: 68000, 68020, 68030, 68040, 68060
+- **CPU Target**: 68020, 68030, 68040, 68060, 68080
 - **FPU**: `auto`, `soft`, `68881`, `68882`, `68040`, `68060`
 - **Features**: Project-specific feature flags
 

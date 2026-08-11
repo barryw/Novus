@@ -19,6 +19,7 @@ public class CacheMetadata
 {
     public long FileSize { get; set; }
     public string FileHash { get; set; } = string.Empty;
+    public long LastWriteTimeUtcTicks { get; set; }
     public DateTime CachedAt { get; set; }
 }
 
@@ -69,6 +70,11 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 /// </summary>
 public class Program
 {
+    internal static string GetStartupStub(string projectType) =>
+        projectType.Equals("handler", StringComparison.OrdinalIgnoreCase)
+            ? "novus_handler_startup"
+            : "novus_startup";
+
     // WHI Toolchain CLI Conventions (docs/toolchain-cli-conventions.md §3) exit-code floor:
     //   0 = success, 1 = usage/environment error (couldn't start),
     //   2 = compilation error (source was processed and diagnostics were emitted).
@@ -80,8 +86,23 @@ public class Program
     // Codegen format version - increment to invalidate all cached object files
     // when making breaking changes to code generation or compilation process.
     // This is the "nuclear option" - prefer targeted invalidation when possible.
-    // v10: Emit real nested-array declarators and preserve indexed array values.
-    private const int CODEGEN_VERSION = 10;
+    // v28: Release builds compile all C translation units with VBCC whole-program optimization.
+    private const int CODEGEN_VERSION = 34;
+
+    internal static string ComputeWholeProgramCacheKey(
+        IEnumerable<(string Path, string ContentHash)> inputs,
+        string typesHeaderHash,
+        string cpu,
+        string fpu,
+        int optimizationLevel)
+    {
+        var parts = inputs
+            .OrderBy(input => input.Path, StringComparer.Ordinal)
+            .Select(input => $"{Path.GetFullPath(input.Path)}|{input.ContentHash}")
+            .Prepend($"whole-v1|v{CODEGEN_VERSION}|{typesHeaderHash}|{cpu}|{fpu}|O{optimizationLevel}");
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts)))).ToLowerInvariant();
+    }
 
     internal static string ComputeCompilationConfigHash(CompilerOptions options)
     {
@@ -130,15 +151,14 @@ public class Program
         // Determine effective CPU for "auto" mode
         var cpu = options.Cpu == "auto" ? "68020" : options.Cpu;
 
-        // CPU hierarchy: 68000 < 68010 < 68020 < 68030 < 68040 < 68060
+        // CPU hierarchy: Novus supports 68020 and newer.
         var cpuLevel = cpu switch
         {
-            "68000" => 0,
-            "68010" => 1,
             "68020" => 2,
             "68030" => 3,
             "68040" => 4,
             "68060" => 5,
+            "68080" => 6,
             _ => 2 // default to 68020
         };
 
@@ -148,21 +168,19 @@ public class Program
             ["RELEASE"] = options.BuildMode == BuildMode.Release,
 
             // Exact CPU target constants
-            ["M68000"] = cpu == "68000",
-            ["M68010"] = cpu == "68010",
             ["M68020"] = cpu == "68020",
             ["M68030"] = cpu == "68030",
             ["M68040"] = cpu == "68040",
             ["M68060"] = cpu == "68060",
+            ["M68080"] = cpu == "68080",
 
             // "At least" CPU constants - true if target CPU is this level or higher
             // Useful for: #if M68020_PLUS to use 68020+ instructions like BFFFO, MULS.L
-            ["M68000_PLUS"] = cpuLevel >= 0, // Always true (all targets are at least 68000)
-            ["M68010_PLUS"] = cpuLevel >= 1, // 68010, 68020, 68030, 68040, 68060
-            ["M68020_PLUS"] = cpuLevel >= 2, // 68020, 68030, 68040, 68060
-            ["M68030_PLUS"] = cpuLevel >= 3, // 68030, 68040, 68060
-            ["M68040_PLUS"] = cpuLevel >= 4, // 68040, 68060
-            ["M68060_PLUS"] = cpuLevel >= 5, // 68060 only
+            ["M68020_PLUS"] = cpuLevel >= 2,
+            ["M68030_PLUS"] = cpuLevel >= 3,
+            ["M68040_PLUS"] = cpuLevel >= 4,
+            ["M68060_PLUS"] = cpuLevel >= 5,
+            ["M68080_PLUS"] = cpuLevel >= 6,
 
             // FPU target constants
             ["FPU_NONE"] = options.Fpu == "none" || options.Fpu == "soft",
@@ -275,7 +293,18 @@ public class Program
             .Select(module => (Module: module, Metadata: FfiModuleMetadata.TryRead(module.ModulePath)))
             .Where(item => item.Metadata != null &&
                            item.Module.IrModule.Functions.Any(f => f.IsExtern && calledFunctions.Contains(f.Name)))
-            .Select(item => item.Metadata!)
+            .Select(item => item.Metadata! with
+            {
+                MinimumVersion = Math.Max(
+                    item.Metadata!.MinimumVersion,
+                    item.Module.IrModule.Functions
+                        .Where(function => function.IsExtern && calledFunctions.Contains(function.Name))
+                        .Select(function => Math.Max(
+                            function.Attributes?.Get(KnownAttributes.Since)?.GetPositionalArg<int>(0) ?? 0,
+                            item.Metadata.FunctionVersions.TryGetValue(function.Name, out var version) ? version : 0))
+                        .DefaultIfEmpty()
+                        .Max())
+            })
             .DistinctBy(metadata => metadata.ModuleName)
             .OrderBy(metadata => metadata.ModuleName, StringComparer.Ordinal)
             .ToList();
@@ -413,8 +442,17 @@ public class Program
                         cachedModule,
                         cachedStringLiterals,
                         cachedImports,
-                        cachedHasMain);
+                        cachedHasMain,
+                        FromCache: true);
                 }
+            }
+
+            var compilePhaseTimer = System.Diagnostics.Stopwatch.StartNew();
+            void ReportModulePhase(string phase)
+            {
+                if (options.Verbose)
+                    Console.WriteLine($"    [Module timing] {Path.GetFileName(inputFile)} {phase}: {compilePhaseTimer.Elapsed.TotalMilliseconds:F0} ms");
+                compilePhaseTimer.Restart();
             }
 
             var source = await File.ReadAllTextAsync(inputFile);
@@ -481,9 +519,12 @@ public class Program
                 moduleCache.Add(inputFile, compilationUnit);
             }
 
+            ReportModulePhase("read + preprocess + parse");
+
             // Perform semantic analysis
             var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
             var analysisSucceeded = analyzer.Analyze(compilationUnit);
+            ReportModulePhase("semantic analysis");
 
             // Always print diagnostics (warnings and errors)
             if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
@@ -502,6 +543,7 @@ public class Program
             irBuilder.SetStdLibPath(stdLibPath);
             irBuilder.SetInputFilePath(inputFile);
             var module = irBuilder.BuildModule(compilationUnit);
+            ReportModulePhase("IR construction");
 
             // Always print diagnostics (warnings and errors) from IR building
             if (irBuilder.Diagnostics.HasErrors || irBuilder.Diagnostics.HasWarnings)
@@ -517,6 +559,13 @@ public class Program
 
             var moduleName = Path.GetFileNameWithoutExtension(inputFile);
             var hasMain = module.Functions.Any(f => f.Name == "main" && !f.IsExtern);
+            var importedModules = irBuilder.GetImportedModules();
+            var semanticImports = importedModules.ToList();
+            if (Path.GetFullPath(inputFile) == Path.GetFullPath(options.InputFile))
+            {
+                importedModules.AddRange(options.AdditionalSourceFiles.Select(Path.GetFullPath));
+                importedModules = importedModules.Distinct(StringComparer.Ordinal).ToList();
+            }
 
             // Cache the successful compilation result
             if (compilationCache != null)
@@ -528,9 +577,11 @@ public class Program
                     compilationUnit,
                     module,
                     irBuilder.StringLiterals,
-                    irBuilder.GetImportedModules(),
+                    importedModules,
                     configHash,
-                    hadErrors: false);
+                    hadErrors: false,
+                    dependencyModules: semanticImports);
+                ReportModulePhase("cache snapshot");
             }
 
             return new ModuleIR(
@@ -538,7 +589,7 @@ public class Program
                 moduleName,
                 module,
                 irBuilder.StringLiterals,
-                irBuilder.GetImportedModules(),
+                importedModules,
                 hasMain);
         }
         finally
@@ -805,6 +856,7 @@ public class Program
 
         try
         {
+            CompilerOptions.ValidateCpu(options.Cpu);
             CompilerOptions.ValidateOptimizationLevel(options.OptimizationLevel);
         }
         catch (ArgumentException ex)
@@ -902,6 +954,7 @@ public class Program
             {
                 var projectRoot = Path.GetDirectoryName(Path.GetFullPath(options.InputFile)) ?? ".";
                 compilationCache = new CompilationCache(projectRoot, CODEGEN_VERSION);
+                compilationCache.BeginBuild();
             }
 
             string? buildStampPath = null;
@@ -913,13 +966,22 @@ public class Program
                 buildSignature = ComputeBuildSignature(options, configHash);
                 if (File.Exists(options.OutputFile) && File.Exists(buildStampPath) &&
                     await File.ReadAllTextAsync(buildStampPath) == buildSignature &&
-                    !compilationCache.NeedsRecompilation(options.InputFile, configHash))
+                    !compilationCache.NeedsRecompilation(options.InputFile, configHash) &&
+                    options.AdditionalSourceFiles.All(path => !compilationCache.NeedsRecompilation(path, configHash)))
                 {
                     Console.WriteLine($"✓ Up to date: {Path.GetFileName(options.OutputFile)}");
                     return 0;
                 }
 
                 File.Delete(buildStampPath);
+            }
+
+            var phaseTimer = System.Diagnostics.Stopwatch.StartNew();
+            void ReportPhase(string name)
+            {
+                if (options.Verbose)
+                    Console.WriteLine($"  [Timing] {name}: {phaseTimer.Elapsed.TotalMilliseconds:F0} ms");
+                phaseTimer.Restart();
             }
 
             // Create diagnostic bag and circular import detector
@@ -936,7 +998,10 @@ public class Program
             // ============================================================================
 
             // Compile the main file to IR
+            var moduleTimer = System.Diagnostics.Stopwatch.StartNew();
             var mainIR = await CompileModuleToIR(options.InputFile, stdLibPath, options, moduleCache, circularImportDetector, compilationCache);
+            if (options.Verbose)
+                Console.WriteLine($"  [Timing] {Path.GetFileName(options.InputFile)}: {moduleTimer.Elapsed.TotalMilliseconds:F0} ms");
             if (mainIR == null)
             {
                 if (diagnostics.HasErrors)
@@ -983,46 +1048,55 @@ public class Program
 
             while (toProcess.Count > 0)
             {
-                var modulePath = toProcess.Dequeue();
-                if (processed.Contains(modulePath))
-                    continue;
-
-                processed.Add(modulePath);
-
-                // Show which module is being compiled
-                var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-                var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
-                var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
-                Console.WriteLine($"  → {displayName}");
-
-                var moduleIR = await CompileModuleToIR(modulePath, stdLibPath, options, moduleCache, circularImportDetector, compilationCache);
-                if (moduleIR == null)
+                var batch = new List<string>();
+                while (toProcess.Count > 0)
                 {
-                    if (diagnostics.HasErrors)
+                    var modulePath = toProcess.Dequeue();
+                    if (processed.Add(modulePath))
                     {
-                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                        batch.Add(modulePath);
+                        var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+                        var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
+                        var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
+                        Console.WriteLine($"  → {displayName}");
                     }
-                    else
-                    {
-                        Console.Error.WriteLine($"error: failed to compile dependency: {modulePath}");
-                    }
-                    return EXIT_COMPILE_ERROR;
                 }
 
-                allModulesIR[modulePath] = moduleIR;
-
-                // Add transitive dependencies
-                foreach (var import in moduleIR.ImportedModules)
+                // Cache hits are synchronous through deserialization, so start each
+                // frontier member on the pool instead of serializing them during Select().
+                var compiledBatch = await Task.WhenAll(batch.Select(modulePath => Task.Run(async () =>
                 {
-                    if (!circularImportDetector.RecordDependency(modulePath, import))
+                    var timer = System.Diagnostics.Stopwatch.StartNew();
+                    var moduleIR = await CompileModuleToIR(
+                        modulePath, stdLibPath, options, moduleCache, null, compilationCache);
+                    return (modulePath, moduleIR, elapsedMs: timer.Elapsed.TotalMilliseconds);
+                })));
+
+                foreach (var (modulePath, moduleIR, elapsedMs) in compiledBatch)
+                {
+                    if (options.Verbose)
+                        Console.WriteLine($"  [Timing] {Path.GetFileName(modulePath)}: {elapsedMs:F0} ms");
+                    if (moduleIR == null)
                     {
-                        Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                        Console.Error.WriteLine(diagnostics.HasErrors
+                            ? diagnostics.FormatDiagnostics()
+                            : $"error: failed to compile dependency: {modulePath}");
                         return EXIT_COMPILE_ERROR;
                     }
 
-                    if (!processed.Contains(import))
+                    allModulesIR[modulePath] = moduleIR;
+                    foreach (var import in moduleIR.ImportedModules)
                     {
-                        toProcess.Enqueue(import);
+                        if (!circularImportDetector.RecordDependency(modulePath, import))
+                        {
+                            Console.Error.WriteLine(diagnostics.FormatDiagnostics());
+                            return EXIT_COMPILE_ERROR;
+                        }
+
+                        if (!processed.Contains(import))
+                        {
+                            toProcess.Enqueue(import);
+                        }
                     }
                 }
             }
@@ -1033,6 +1107,9 @@ public class Program
             }
 
             var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values).ToList();
+            var dosMetadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "ffi", "dos.novus"));
+            if (dosMetadata != null && requiredFfiModules.All(item => item.ModuleName != "dos"))
+                requiredFfiModules.Add(dosMetadata);
             var usesNativeFloat = UsesNativeFloat(allModulesIR.Values.Prepend(mainIR));
             if (options.Fpu is "none" or "soft" && usesNativeFloat)
             {
@@ -1049,6 +1126,15 @@ public class Program
             if (options.Verbose && moduleCache.Count > 0)
             {
                 Console.WriteLine($"  Module cache: {moduleCache.Count} modules cached");
+            }
+
+            ReportPhase("IR load/build");
+            if (options.Verbose && compilationCache != null)
+            {
+                var cachePerformance = compilationCache.GetPerformanceStats();
+                Console.WriteLine($"  [Timing] cache validation CPU: {cachePerformance.ValidationCpuTime.TotalMilliseconds:F0} ms");
+                Console.WriteLine($"  [Timing] IR deserialize CPU: {cachePerformance.DeserializationCpuTime.TotalMilliseconds:F0} ms " +
+                                  $"({cachePerformance.IrBytesLoaded / 1024.0 / 1024.0:F1} MiB)");
             }
 
             // ============================================================================
@@ -1131,6 +1217,8 @@ public class Program
             }
 #endif
 
+            ReportPhase("IR validation");
+
             // ============================================================================
             // PHASE 1.5: Run HIR lowering passes on all modules
             // These convert high-level DSLs (copper/blitter) to standard IR
@@ -1147,6 +1235,18 @@ public class Program
             {
                 loweringPipeline.Run(moduleIR.IrModule);
             }
+
+            if (options.OptimizationLevel == 1)
+            {
+                foreach (var module in allModulesIR.Values.Select(item => item.IrModule).Prepend(mainIR.IrModule))
+                {
+                    Novus.Optimizer.OptimizationPipeline
+                        .CreatePipeline(options.OptimizationLevel, options.Verbose)
+                        .Run(module);
+                }
+            }
+
+            ReportPhase("lowering");
 
             // Optionally emit IR
             if (options.EmitIr)
@@ -1191,6 +1291,9 @@ public class Program
                 var ndkTypesPath = Path.Combine(ffiDirectory, "ndk_types.h");
                 var ndkTypes = File.Exists(ndkTypesPath)
                     ? string.Join(Environment.NewLine, File.ReadLines(ndkTypesPath)
+                        // These typedef names collide with the required Amiga library-base globals.
+                        .Where(line => line is not "typedef struct GfxBase GfxBase;"
+                            and not "typedef struct IntuitionBase IntuitionBase;")
                         .Where(line => !sharedTypesHeader.Contains(line, StringComparison.Ordinal)))
                     : "";
                 sharedTypesHeader = string.Join(Environment.NewLine, ffiHeaders) + Environment.NewLine +
@@ -1207,15 +1310,9 @@ public class Program
             string outputDir;
             if (string.IsNullOrEmpty(outputFileDir) || outputFileDir == Directory.GetCurrentDirectory())
             {
-                // CRITICAL: Clean up stale novus-build directories from previous compilations
-                // These can cause linker to pick up old object files with different static data
-                CleanupStaleBuildDirectories();
-
-                // Output is in current directory - use /tmp/novus-build-{pid}-{guid} for intermediate files
-                // Include GUID to prevent race conditions when multiple compilations run in parallel
-                // within the same process (e.g., parallel test execution)
-                var uniqueId = Guid.NewGuid().ToString("N")[..8];
-                outputDir = Path.Combine(Path.GetTempPath(), $"novus-build-{Environment.ProcessId}-{uniqueId}");
+                // Keep intermediates out of the source directory, but keep them stable so
+                // per-function object caching survives the next compiler invocation.
+                outputDir = Path.Combine(Directory.GetCurrentDirectory(), ".novus-cache", "build", baseName);
                 Directory.CreateDirectory(outputDir);
             }
             else
@@ -1240,6 +1337,41 @@ public class Program
                 var bytes = System.Text.Encoding.UTF8.GetBytes(content);
                 var hashBytes = sha256.ComputeHash(bytes);
                 return Convert.ToHexString(hashBytes).ToLowerInvariant();
+            }
+
+            var generatedManifestDir = Path.Combine(outputDir, ".novus-cfiles");
+
+            string GetGeneratedManifestPath(string modulePath) =>
+                Path.Combine(generatedManifestDir, $"{ComputeStringHash(Path.GetFullPath(modulePath))[..16]}.txt");
+
+            List<string>? LoadGeneratedFiles(ModuleIR module)
+            {
+                if (!module.FromCache || safetyLevel >= SafetyLevel.Paranoid)
+                    return null;
+
+                try
+                {
+                    var lines = File.ReadAllLines(GetGeneratedManifestPath(module.ModulePath));
+                    if (lines.Length == 0 || lines[0] != $"v{CODEGEN_VERSION}")
+                        return null;
+
+                    var files = lines.Skip(1)
+                        .Where(name => !string.IsNullOrWhiteSpace(name) && name == Path.GetFileName(name))
+                        .Select(name => Path.Combine(outputDir, name))
+                        .ToList();
+                    return files.Count == lines.Length - 1 && files.All(File.Exists) ? files : null;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            async Task SaveGeneratedFiles(string modulePath, IEnumerable<string> files)
+            {
+                Directory.CreateDirectory(generatedManifestDir);
+                var contents = string.Join('\n', files.Select(Path.GetFileName).Prepend($"v{CODEGEN_VERSION}"));
+                await AtomicCacheWriter.WriteFileAtomicallyAsync(GetGeneratedManifestPath(modulePath), contents);
             }
 
             // CRITICAL: Compute hash of types header BEFORE writing to avoid race conditions
@@ -1278,7 +1410,8 @@ public class Program
                     safetyLevel: safetyLevel,
                     explicitEntryPoints: null,
                     useSharedTypesHeader: true,
-                    projectVersion: options.PackageVersion);
+                    projectVersion: options.PackageVersion,
+                    preservePublicFunctions: options.ProjectType == "library");
                 allCodeGenerators.Add(mainCodegen);
 
                 // Generate one C file per function
@@ -1434,12 +1567,33 @@ public class Program
                     Console.WriteLine("  [WARNING] Device project has no @device attribute on any struct");
                 }
             }
+            else if (projectType == "resource")
+            {
+                var resourceGen = new LibraryGenerator(mainIR.IrModule, options.PackageVersion);
+                if (!resourceGen.IsResource)
+                    throw new InvalidOperationException("Resource projects require a struct annotated with @resource(name = \"name.resource\")");
+
+                var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
+                await File.WriteAllTextAsync(wrapperAsmFile, resourceGen.GenerateA6Wrappers());
+                await File.WriteAllTextAsync(Path.Combine(outputDir, $"{baseName}.h"), resourceGen.GenerateCHeader());
+                await File.WriteAllTextAsync(Path.Combine(outputDir, $"{baseName}.novus"), resourceGen.GenerateNovusFFI());
+                await File.WriteAllTextAsync(Path.Combine(outputDir, $"{baseName}_lib.fd"), resourceGen.GenerateFDFile());
+                var supportFile = Path.Combine(outputDir, $"{baseName}_resource.c");
+                await File.WriteAllTextAsync(supportFile,
+                    resourceGen.GenerateLibraryBaseStruct() + "\n" +
+                    resourceGen.GenerateROMTag() + "\n" +
+                    resourceGen.GenerateDefaultLifecycleFunctions());
+                cFiles.Add(supportFile);
+                Console.WriteLine($"  → {Path.GetFileName(wrapperAsmFile)} (resource vectors)");
+            }
 
             // Library modules: generate one C file per function
             foreach (var (modulePath, moduleIR) in allModulesIR)
             {
                 var moduleName = moduleIR.ModuleName;
                 var isStdModule = modulePath.Contains("/std/");
+                var cachedGeneratedFiles = LoadGeneratedFiles(moduleIR);
+                var moduleCFiles = new List<string>();
 
                 // Get all non-extern functions with implementations
                 var functions = moduleIR.IrModule.Functions
@@ -1494,27 +1648,38 @@ public class Program
                         generatedMonomorphizedFunctions[mangledName] = (moduleName, function, moduleCodegen);
                     }
 
-                    var functionCCode = moduleCodegen.GenerateFunctionFile(function);
-                    // Always write the C file (even if it's a stub that panics)
-                    // This ensures linking succeeds even if the function isn't called
-                    // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
-                    var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("()", "unit").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_").Replace("(", "").Replace(")", "");
-                    var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
-                    await File.WriteAllTextAsync(functionCFile, functionCCode);
-                    cFiles.Add(functionCFile);
+                    if (cachedGeneratedFiles == null)
+                    {
+                        var functionCCode = moduleCodegen.GenerateFunctionFile(function);
+                        // Always write the C file (even if it's a stub that panics)
+                        // This ensures linking succeeds even if the function isn't called
+                        // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
+                        var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("()", "unit").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_").Replace("(", "").Replace(")", "");
+                        var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
+                        await File.WriteAllTextAsync(functionCFile, functionCCode);
+                        moduleCFiles.Add(functionCFile);
+                    }
                 }
 
                 // Generate statics file if module has static variables
-                var staticsCCode = moduleCodegen.GenerateStaticsFile();
-                if (!string.IsNullOrEmpty(staticsCCode))
+                if (cachedGeneratedFiles == null)
                 {
-                    var staticsCFile = Path.Combine(outputDir, $"{moduleName}_statics.c");
-                    await File.WriteAllTextAsync(staticsCFile, staticsCCode);
-                    cFiles.Add(staticsCFile);
+                    var staticsCCode = moduleCodegen.GenerateStaticsFile();
+                    if (!string.IsNullOrEmpty(staticsCCode))
+                    {
+                        var staticsCFile = Path.Combine(outputDir, $"{moduleName}_statics.c");
+                        await File.WriteAllTextAsync(staticsCFile, staticsCCode);
+                        moduleCFiles.Add(staticsCFile);
+                    }
+
+                    await SaveGeneratedFiles(modulePath, moduleCFiles);
                 }
 
+                cFiles.AddRange(cachedGeneratedFiles ?? moduleCFiles);
+
                 var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
-                Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
+                var cacheLabel = cachedGeneratedFiles != null ? ", cached C" : "";
+                Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")}{cacheLabel})");
             }
 
             // Always generate debug_symbols.c - it provides __novus_init_debug_symbols()
@@ -1557,6 +1722,7 @@ public class Program
             {
                 "runtime_alloc.c",     // Minimal: raw AllocMem/FreeMem wrappers (no deps)
                 "runtime_core.c",      // Core: memset, memcpy, strlen, error display
+                "runtime_compare.c",   // VBCC-safe comparison sequence points
                 "runtime_errors.c",    // Assert, panic, bounds check, div check
                 "runtime_hwdetect.c",  // CPU, FPU, chipset detection
                 "runtime_fmt.c",       // Integer to string conversions
@@ -1590,9 +1756,28 @@ public class Program
                 return 0;
             }
 
+            ReportPhase("C generation");
+
             // Compile C code with VBCC
             Console.WriteLine("Compiling with VBCC...");
             var toolchain = new VbccToolchain(options.VbccPath, options.NdkPath);
+
+            async Task<bool> AssembleCached(string sourceFile, string objectFile, string cpu, bool withFpu)
+            {
+                var signature = $"v{CODEGEN_VERSION}|{cpu}|{withFpu}|{ComputeFileHash(sourceFile)}";
+                var signatureFile = objectFile + ".novus-asm";
+                if (File.Exists(objectFile) && File.Exists(signatureFile) &&
+                    await File.ReadAllTextAsync(signatureFile) == signature)
+                {
+                    return true;
+                }
+
+                if (!await toolchain.Assemble(sourceFile, objectFile, cpu, withFpu))
+                    return false;
+
+                await AtomicCacheWriter.WriteFileAtomicallyAsync(signatureFile, signature);
+                return true;
+            }
 
             // Link assembly stubs for AmigaOS library calls
             // Our assembly stubs use i32 signatures, avoiding VBCC's type system (BPTR, CONST_STRPTR, etc.)
@@ -1606,12 +1791,18 @@ public class Program
             var enableFpu = options.Fpu == "auto" || options.Fpu == "68881" || options.Fpu == "68882" ||
                            options.Fpu == "68040" || options.Fpu == "68060";
 
+            var isLibrary = options.ProjectType.Equals("library", StringComparison.OrdinalIgnoreCase);
+            var isDevice = options.ProjectType.Equals("device", StringComparison.OrdinalIgnoreCase);
+            var isResource = options.ProjectType.Equals("resource", StringComparison.OrdinalIgnoreCase);
+            var isExecutable = !isLibrary && !isDevice && !isResource;
+
             // Every target gets one exact FFI lifecycle object. For programs it is
             // called by startup; libraries/devices call it from their generated lifecycle.
             var ffiRuntimeSource = Path.Combine(outputDir, "novus_ffi_runtime.s");
-            await File.WriteAllTextAsync(ffiRuntimeSource, FfiRuntimeGenerator.Generate(requiredFfiModules));
+            await File.WriteAllTextAsync(ffiRuntimeSource,
+                FfiRuntimeGenerator.Generate(requiredFfiModules, includeWorkbenchStartup: isExecutable));
             var ffiRuntimeObj = Path.Combine(outputDir, "novus_ffi_runtime.o");
-            if (!await toolchain.Assemble(ffiRuntimeSource, ffiRuntimeObj, assemblyCpu, false))
+            if (!await AssembleCached(ffiRuntimeSource, ffiRuntimeObj, assemblyCpu, false))
             {
                 Console.WriteLine("Failed to assemble FFI lifecycle");
                 return 1;
@@ -1623,15 +1814,15 @@ public class Program
             // It is appended after the core files below.
 
             // Assemble core Novus runtime files (only for executables, not libraries)
-            var isLibrary = options.ProjectType.ToLowerInvariant() == "library";
-            var isDevice = options.ProjectType.ToLowerInvariant() == "device";
-
-            if (!isLibrary && !isDevice)
+            if (isExecutable)
             {
                 // Only executables need startup code and library initialization
-                // NOTE: bsdsocket_bases and amissl_bases are included to support optional networking/TLS
-                // They just provide BSS storage for library bases (one longword each)
-                var coreFiles = new[] { "novus_startup", "library_bases", "bsdsocket_bases", "amissl_bases", "dos_init", "mui_init", "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
+                var startup = GetStartupStub(options.ProjectType);
+                var coreFiles = new List<string> { startup, "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
+                if (options.ProjectType.Equals("handler", StringComparison.OrdinalIgnoreCase))
+                    coreFiles.Add("dos_init");
+                if (requiredFfiModules.Any(module => module.BaseSymbol == "_MUIMasterBase"))
+                    coreFiles.Add("mui_init");
                 // Files that require FPU instructions (68881+)
                 var fpuRequiredFiles = new HashSet<string> { "math_sqrt" };
                 foreach (var coreFile in coreFiles)
@@ -1641,7 +1832,7 @@ public class Program
                     {
                         var coreObj = Path.Combine(outputDir, $"{coreFile}.o");
                         var needsFpu = fpuRequiredFiles.Contains(coreFile);
-                        if (!await toolchain.Assemble(coreSource, coreObj, assemblyCpu, needsFpu))
+                        if (!await AssembleCached(coreSource, coreObj, assemblyCpu, needsFpu))
                         {
                             Console.WriteLine($"Failed to assemble {coreFile}");
                             return 1;
@@ -1673,7 +1864,7 @@ ___stack:
                 await File.WriteAllTextAsync(stackConfigSource, stackConfigAsm);
 
                 var stackConfigObj = Path.Combine(outputDir, "stack_config.o");
-                if (!await toolchain.Assemble(stackConfigSource, stackConfigObj, assemblyCpu, false))
+                if (!await AssembleCached(stackConfigSource, stackConfigObj, assemblyCpu, false))
                 {
                     Console.WriteLine("Failed to assemble stack_config");
                     return 1;
@@ -1686,7 +1877,7 @@ ___stack:
             objectFiles.Add(ffiRuntimeObj);
 
             // Assemble runtime library assembly files (needed for all project types)
-            var runtimeAsmFiles = new[] { "novus_io" };
+            var runtimeAsmFiles = new[] { "novus_io", "runtime_mem", "runtime_library_error" };
             foreach (var runtimeFile in runtimeAsmFiles)
             {
                 var runtimeSource = PathUtility.FindRuntimeFile($"{runtimeFile}.s");
@@ -1701,7 +1892,7 @@ ___stack:
                 }
 
                 var runtimeObj = Path.Combine(outputDir, $"{runtimeFile}.o");
-                if (!await toolchain.Assemble(runtimeSource, runtimeObj, assemblyCpu, false))
+                if (!await AssembleCached(runtimeSource, runtimeObj, assemblyCpu, false))
                 {
                     Console.WriteLine($"Failed to assemble {runtimeFile}");
                     return 1;
@@ -1712,13 +1903,13 @@ ___stack:
             // For libraries, assemble the A6 wrapper file and library stub
             // BUT DON'T ADD TO objectFiles YET - wrappers must come AFTER C code
             string? wrapperObj = null;
-            if (isLibrary || isDevice)
+            if (isLibrary || isDevice || isResource)
             {
                 var wrapperAsmFile = Path.Combine(outputDir, $"{baseName}_wrappers.s");
                 if (File.Exists(wrapperAsmFile))
                 {
                     wrapperObj = Path.Combine(outputDir, $"{baseName}_wrappers.o");
-                    if (!await toolchain.Assemble(wrapperAsmFile, wrapperObj, assemblyCpu, false))
+                    if (!await AssembleCached(wrapperAsmFile, wrapperObj, assemblyCpu, false))
                     {
                         Console.WriteLine("Failed to assemble A6 wrappers");
                         return 1;
@@ -1732,7 +1923,7 @@ ___stack:
                 if (File.Exists(stubAsmFile))
                 {
                     var stubObj = Path.Combine(outputDir, $"{baseName}_lib.o");
-                    if (!await toolchain.Assemble(stubAsmFile, stubObj, assemblyCpu, false))
+                    if (!await AssembleCached(stubAsmFile, stubObj, assemblyCpu, false))
                     {
                         Console.WriteLine("Failed to assemble library stub");
                         return 1;
@@ -1741,25 +1932,6 @@ ___stack:
                     Console.WriteLine($"  ✓ Assembled library stub: {baseName}_lib.o");
                 }
 
-                // Libraries and devices use the same base storage as executables.
-                // Their lifecycle code initializes the bases they actually use.
-                {
-                    var libraryBases = new[] { "library_bases" };
-                    foreach (var baseFile in libraryBases)
-                    {
-                        var baseSource = Path.Combine(compilerDir, "stubs", $"{baseFile}.s");
-                        if (File.Exists(baseSource))
-                        {
-                            var baseObj = Path.Combine(outputDir, $"{baseFile}.o");
-                            if (!await toolchain.Assemble(baseSource, baseObj, assemblyCpu, false))
-                            {
-                                Console.WriteLine($"Failed to assemble {baseFile}");
-                                return 1;
-                            }
-                            objectFiles.Add(baseObj);
-                        }
-                    }
-                }
             }
 
             // Add any additional C files from the project (e.g., library wrappers)
@@ -1787,7 +1959,7 @@ ___stack:
                     var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(asmFile) + ".o");
 
                     Console.WriteLine($"  → {asmFileName}");
-                    if (!await toolchain.Assemble(asmFile, objFile, assemblyCpu, false))
+                    if (!await AssembleCached(asmFile, objFile, assemblyCpu, false))
                     {
                         Console.Error.WriteLine($"\n✗ Failed to assemble {asmFileName}");
                         return EXIT_COMPILE_ERROR;
@@ -1910,6 +2082,13 @@ ___stack:
                 }
             }
 
+            // Runtime, generated support, and additional C files are just as cacheable
+            // as Novus-generated function files when their content is unchanged.
+            foreach (var cFile in cFiles.Where(File.Exists))
+            {
+                cFileToSource.TryAdd(cFile, (cFile, ComputeFileHash(cFile)));
+            }
+
             // Separate stdlib C files from user C files
             var stdlibCFiles = new List<string>();
             var userCFiles = new List<string>();
@@ -1933,6 +2112,89 @@ ___stack:
                     // No source mapping (e.g., runtime files) - treat as user code
                     userCFiles.Add(cFile);
                 }
+            }
+
+            // Release builds let VBCC see every generated/runtime C translation unit at
+            // once. -sec-per-obj keeps linker DCE effective; the content signature avoids
+            // repeating the expensive combined compile when its inputs are unchanged.
+            var wholeProgramRelease = options.BuildMode == BuildMode.Release &&
+                                      options.OptimizationLevel == 3 && cFiles.Count > 0;
+            if (wholeProgramRelease)
+            {
+                var wholeProgramCFiles = cFiles
+                    .Where(File.Exists)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(path => path, StringComparer.Ordinal)
+                    .ToList();
+                var wholeProgramObj = Path.Combine(outputDir, $"{baseName}_whole_program.o");
+                var signatureFile = wholeProgramObj + ".novus-whole";
+                var metadataFile = wholeProgramObj + ".meta";
+                var signature = ComputeWholeProgramCacheKey(
+                    wholeProgramCFiles.Select(path => (path, cFileToSource[path].hash)),
+                    typesHeaderHash,
+                    assemblyCpu,
+                    options.Fpu,
+                    options.OptimizationLevel);
+
+                var cached = false;
+                if (!options.NoCache && File.Exists(wholeProgramObj) && File.Exists(signatureFile) && File.Exists(metadataFile) &&
+                    await File.ReadAllTextAsync(signatureFile) == signature)
+                {
+                    try
+                    {
+                        var metadata = System.Text.Json.JsonSerializer.Deserialize(
+                            await File.ReadAllTextAsync(metadataFile),
+                            CacheMetadataJsonContext.Default.CacheMetadata);
+                        var info = new FileInfo(wholeProgramObj);
+                        cached = metadata != null && metadata.FileSize == info.Length &&
+                                 (metadata.LastWriteTimeUtcTicks == info.LastWriteTimeUtc.Ticks ||
+                                  metadata.FileHash == ComputeFileHash(wholeProgramObj));
+                    }
+                    catch
+                    {
+                        cached = false;
+                    }
+                }
+
+                if (cached)
+                {
+                    Console.WriteLine($"\n  ✓ Using cached whole-program object ({wholeProgramCFiles.Count} C files)");
+                }
+                else
+                {
+                    File.Delete(signatureFile);
+                    Console.WriteLine($"\nCompiling whole program ({wholeProgramCFiles.Count} C files)...");
+                    if (!await toolchain.CompileWholeProgramToObject(
+                            wholeProgramCFiles,
+                            wholeProgramObj,
+                            assemblyCpu,
+                            options.OptimizationLevel,
+                            new[] { outputDir },
+                            enableFpu))
+                    {
+                        Console.Error.WriteLine("\n✗ Whole-program C compilation failed");
+                        return EXIT_COMPILE_ERROR;
+                    }
+
+                    if (!options.NoCache)
+                    {
+                        var info = new FileInfo(wholeProgramObj);
+                        var metadata = new CacheMetadata
+                        {
+                            FileSize = info.Length,
+                            FileHash = ComputeFileHash(wholeProgramObj),
+                            LastWriteTimeUtcTicks = info.LastWriteTimeUtc.Ticks,
+                            CachedAt = DateTime.UtcNow
+                        };
+                        await AtomicCacheWriter.WriteFileAtomicallyAsync(metadataFile,
+                            System.Text.Json.JsonSerializer.Serialize(metadata, CacheMetadataJsonContext.Default.CacheMetadata));
+                        await AtomicCacheWriter.WriteFileAtomicallyAsync(signatureFile, signature);
+                    }
+                }
+
+                objectFiles.Add(wholeProgramObj);
+                stdlibCFiles.Clear();
+                userCFiles.Clear();
             }
 
             // Step 1: Link pre-compiled stdlib .o files (if available) or compile stdlib from scratch
@@ -2057,9 +2319,18 @@ ___stack:
                 }
                 else
                 {
+                    var existingStdlibObjects = Directory.Exists(stdlibPrecompiledDir)
+                        ? Directory.GetFiles(stdlibPrecompiledDir, "*.o").ToList()
+                        : new List<string>();
+
                     // Use atomic cache writer to ensure all-or-nothing cache updates
                     await AtomicCacheWriter.WriteAtomicallyAsync(stdlibPrecompiledDir, async tempDir =>
                     {
+                        foreach (var obj in existingStdlibObjects)
+                        {
+                            File.Copy(obj, Path.Combine(tempDir, Path.GetFileName(obj)), overwrite: true);
+                        }
+
                         // Copy all object files to temp directory
                         foreach (var (source, obj) in stdlibOFilesToCache)
                         {
@@ -2109,7 +2380,7 @@ ___stack:
                 if (File.Exists(stubSource))
                 {
                     var stubObj = Path.Combine(outputDir, $"{stub}_stubs.o");
-                    if (!await toolchain.Assemble(stubSource, stubObj, assemblyCpu, false))
+                    if (!await AssembleCached(stubSource, stubObj, assemblyCpu, false))
                     {
                         Console.WriteLine($"Failed to assemble {stub} stubs");
                         return 1;
@@ -2137,9 +2408,8 @@ ___stack:
                 var objFile = Path.Combine(outputDir, cFileName + ".o");
 
                 // Check if we have a cached .o file
-                // Note: _statics.c files are NEVER cached - they must be compiled fresh
                 var cached = false;
-                if (!cFileName.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
+                if (cFileToSource.TryGetValue(cFile, out var sourceInfo))
                 {
                     var (sourcePath, cFileHash) = sourceInfo;
                     // Cache key must match the format used when caching: codegen version + C file hash + header + CPU + FPU + buildmode + optlevel
@@ -2162,14 +2432,19 @@ ___stack:
                             if (meta != null)
                             {
                                 var objInfo = new FileInfo(cachedObjFile);
-                                var objHash = ComputeFileHash(cachedObjFile);
-
-                                if (meta.FileSize == objInfo.Length && meta.FileHash == objHash)
+                                var unchanged = meta.FileSize == objInfo.Length &&
+                                                meta.LastWriteTimeUtcTicks == objInfo.LastWriteTimeUtc.Ticks;
+                                if (unchanged || meta.FileSize == objInfo.Length && meta.FileHash == ComputeFileHash(cachedObjFile))
                                 {
                                     // Cache is valid - use it
-                                    File.Copy(cachedObjFile, objFile, overwrite: true);
-                                    objectFiles.Add(objFile);
+                                    objectFiles.Add(cachedObjFile);
                                     cached = true;
+                                    if (!unchanged)
+                                    {
+                                        meta.LastWriteTimeUtcTicks = objInfo.LastWriteTimeUtc.Ticks;
+                                        var updatedJson = System.Text.Json.JsonSerializer.Serialize(meta, CacheMetadataJsonContext.Default.CacheMetadata);
+                                        File.WriteAllText(cachedMetaFile, updatedJson);
+                                    }
                                 }
                                 else
                                 {
@@ -2224,10 +2499,9 @@ ___stack:
                         }
 
                         // Prepare cache info (but don't copy yet - wait until all succeed)
-                        // Note: _statics.c files are NEVER cached - skip them
                         var cacheInfo = ("", "");
                         var cFileNameNoExt = Path.GetFileNameWithoutExtension(cFile);
-                        if (!cFileNameNoExt.EndsWith("_statics") && cFileToSource.TryGetValue(cFile, out var sourceInfo))
+                        if (cFileToSource.TryGetValue(cFile, out var sourceInfo))
                         {
                             var (sourcePath, cFileHash) = sourceInfo;
                             // Cache key includes: codegen version + C file hash + types header hash + CPU + FPU + buildmode + optimization level
@@ -2272,12 +2546,13 @@ ___stack:
                         File.Copy(objFile, cachedObjFile, overwrite: true);
 
                         // Write metadata for integrity validation
-                        var objInfo = new FileInfo(objFile);
+                        var objInfo = new FileInfo(cachedObjFile);
                         var objHash = ComputeFileHash(objFile);
                         var metadata = new CacheMetadata
                         {
                             FileSize = objInfo.Length,
                             FileHash = objHash,
+                            LastWriteTimeUtcTicks = objInfo.LastWriteTimeUtc.Ticks,
                             CachedAt = DateTime.UtcNow
                         };
 
@@ -2423,20 +2698,41 @@ ___stack:
             // Use the full output filename (with extension) for the final binary
             var exeFile = options.OutputFile;
             Console.WriteLine("\nLinking with dead code elimination...");
+            ReportPhase("assembly + object cache");
             Console.WriteLine($"  → {objectFiles.Count} object files");
             if (options.AdditionalLibraries.Count > 0)
             {
                 Console.WriteLine($"  → {options.AdditionalLibraries.Count} dependency libraries");
             }
 
-            var success = await toolchain.Link(
-                objectFiles.ToArray(),
-                exeFile,
-                options.Fpu,
-                includeStartup: false,  // startup already in objectFiles
-                isLibrary: isLibrary || isDevice,  // libraries and devices need relocations
-                buildMode: options.BuildMode
-            );
+            var linkSignatureFile = Path.GetFullPath(exeFile) + ".novus-link";
+            var linkInputs = objectFiles.Select(path =>
+            {
+                var info = new FileInfo(path);
+                return $"{Path.GetFullPath(path)}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+            });
+            var linkSignature = ComputeStringHash(string.Join('\n', linkInputs.Prepend(
+                $"v{CODEGEN_VERSION}|{options.Fpu}|{options.BuildMode}|{isLibrary}|{isDevice}|{isResource}")));
+            var success = File.Exists(exeFile) && File.Exists(linkSignatureFile) &&
+                          await File.ReadAllTextAsync(linkSignatureFile) == linkSignature;
+            if (success)
+            {
+                Console.WriteLine("  ✓ Link inputs unchanged");
+            }
+            else
+            {
+                success = await toolchain.Link(
+                    objectFiles.ToArray(),
+                    exeFile,
+                    options.Fpu,
+                    includeStartup: false,  // startup already in objectFiles
+                    isLibrary: isLibrary || isDevice || isResource,  // resident modules need relocations
+                    buildMode: options.BuildMode
+                );
+                if (success)
+                    await AtomicCacheWriter.WriteFileAtomicallyAsync(linkSignatureFile, linkSignature);
+            }
+            ReportPhase("link");
 
             if (success)
             {
@@ -2484,80 +2780,6 @@ ___stack:
             Console.Error.WriteLine($"\nError: {ex.Message}");
             Console.Error.WriteLine(ex.StackTrace);
             return EXIT_COMPILE_ERROR;
-        }
-    }
-
-    /// <summary>
-    /// Clean up stale novus-build directories from previous compilations.
-    /// This prevents the linker from accidentally picking up old object files
-    /// with different static data (e.g., embedded MOD files from other builds).
-    /// </summary>
-    private static void CleanupStaleBuildDirectories()
-    {
-        try
-        {
-            var tempPath = Path.GetTempPath();
-            var currentPid = Environment.ProcessId;
-
-            // Find all novus-build-* directories
-            var buildDirs = Directory.GetDirectories(tempPath, "novus-build-*");
-            var deletedCount = 0;
-
-            foreach (var dir in buildDirs)
-            {
-                var dirName = Path.GetFileName(dir);
-
-                // Extract PID from directory name (format: novus-build-{pid} or novus-build-{pid}-{guid})
-                if (dirName.StartsWith("novus-build-"))
-                {
-                    var remainder = dirName.Substring("novus-build-".Length);
-                    // Handle both old format (pid only) and new format (pid-guid)
-                    var pidPart = remainder.Contains('-') ? remainder.Split('-')[0] : remainder;
-
-                    if (int.TryParse(pidPart, out var pid))
-                    {
-                        // Don't delete directories from our own process
-                        if (pid == currentPid)
-                            continue;
-
-                        // Check if the process is still running
-                        bool processRunning = false;
-                        try
-                        {
-                            var process = System.Diagnostics.Process.GetProcessById(pid);
-                            processRunning = !process.HasExited;
-                        }
-                        catch
-                        {
-                            // Process doesn't exist - safe to delete
-                            processRunning = false;
-                        }
-
-                        if (!processRunning)
-                        {
-                            try
-                            {
-                                Directory.Delete(dir, recursive: true);
-                                deletedCount++;
-                            }
-                            catch
-                            {
-                                // Best effort - might be locked by another process
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Only print if we actually cleaned something
-            if (deletedCount > 0)
-            {
-                Console.WriteLine($"  ✓ Cleaned {deletedCount} stale build director{(deletedCount == 1 ? "y" : "ies")}");
-            }
-        }
-        catch
-        {
-            // Best effort cleanup - don't fail the build if cleanup fails
         }
     }
 

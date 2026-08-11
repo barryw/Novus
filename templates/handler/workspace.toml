@@ -1,0 +1,10 @@
+[workspace]
+name = "{{PROJECT_NAME}}"
+description = "AmigaDOS filesystem handler"
+version = "1.0.0"
+members = ["handler"]
+
+[workspace.build]
+target_cpu = "68020"
+fpu = "soft"
+optimization_level = 1

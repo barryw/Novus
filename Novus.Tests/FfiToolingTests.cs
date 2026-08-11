@@ -55,16 +55,21 @@ public class FfiToolingTests
             var fields = example.Fields;
 
             Assert.Equal(
-                ["left", "right", "first", "second", "red", "green", "callback", "handler", "handlers", "after", "named", "buffers", "languages", "cylinders"],
+                ["left", "right", "first", "second", "red", "green", "callback", "handler", "handlers", "choice", "after", "named", "buffers", "languages", "cylinders"],
                 fields.Select(field => field.Name));
             Assert.Equal("struct Interrupt", fields[2].Type);
             Assert.Equal("UBYTE *", fields[5].Type);
             Assert.Equal("WORD (*handler)(struct Example *)", fields[7].Type);
             Assert.True(fields[8].IsArray);
             Assert.Equal("16", fields[8].ArraySize);
-            Assert.Equal("ULONG *", fields[11].Type);
-            Assert.Equal("10][30", fields[12].ArraySize);
+            Assert.Equal("Example_choice", fields[9].Type);
+            Assert.Equal("ULONG *", fields[12].Type);
+            Assert.Equal("10][30", fields[13].ArraySize);
             Assert.True(example.HasUnion);
+            var nestedUnion = Assert.Single(structs, value => value.Name == "Example_choice");
+            Assert.True(nestedUnion.IsUnion);
+            Assert.True(nestedUnion.IsSynthetic);
+            Assert.Equal(["value", "bytes"], nestedUnion.Fields.Select(field => field.Name));
             Assert.Equal(["x", "y"], Assert.Single(structs, value => value.Name == "Point").Fields.Select(field => field.Name));
             Assert.Empty(Assert.Single(structs, value => value.Name == "tPoint").Fields);
             Assert.Equal("4", Assert.Single(header.Constants, value => value.Name == "RESULT_OK").Value);
@@ -98,20 +103,59 @@ public class FfiToolingTests
             var window = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(path));
             var timer = new FfiModuleMetadata(path, "timer_device", "timer.device", "timer.device", "_TimerBase", FfiModuleKind.Device, 0);
             var resource = new FfiModuleMetadata(path, "battmem_resource", "battmem.resource", "battmem.resource", "_BattMemBase", FfiModuleKind.Resource, 0);
+            var dos = new FfiModuleMetadata(path, "dos", "dos.library", "dos.library", "_DOSBase", FfiModuleKind.Library, 0);
 
             Assert.Equal("window.class", window.OpenName);
             Assert.Equal(44, window.MinimumVersion);
 
-            var assembly = FfiRuntimeGenerator.Generate([window, window, timer, resource]);
+            var assembly = FfiRuntimeGenerator.Generate([window, window, timer, resource, dos]);
             Assert.Equal(1, Count(assembly, "__novus_window_name:"));
+            Assert.Equal(1, Count(assembly, "_WindowBase:\tds.l\t1"));
+            Assert.Equal(1, Count(assembly, "_DOSBase:\tds.l\t1"));
+            Assert.DoesNotContain("_GadToolsBase:\tds.l\t1", assembly);
+            Assert.Contains("_SysBase:\tds.l\t1", assembly);
+            Assert.Contains("_WBStartupMsg:\tds.l\t1", assembly);
             Assert.Contains("jsr\t-444(a6)\t; OpenDevice", assembly);
             Assert.Contains("jsr\t-498(a6)\t; OpenResource", assembly);
             Assert.Contains("dc.b\t'window.class',0", assembly);
             Assert.DoesNotContain(".__novus_battmem_resource_closed:", assembly);
+            Assert.True(assembly.IndexOf("__novus_dos_name:", StringComparison.Ordinal) <
+                        assembly.IndexOf("__novus_window_name:", StringComparison.Ordinal));
+            Assert.Contains("jsr\t___novus_library_not_found", assembly);
+            Assert.Contains("moveq\t#0,d1", assembly);
+            Assert.DoesNotContain("move.l\td0,_DOSBase\n\ttst.l\t_DOSBase", assembly);
+            Assert.DoesNotContain("_WBStartupMsg", FfiRuntimeGenerator.Generate([dos], includeWorkbenchStartup: false));
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FfiRuntime_UsesCompactTableForLibraryOnlyPrograms()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var bindings = new[]
+            {
+                new FfiModuleMetadata(path, "dos", "dos.library", "dos.library", "_DOSBase", FfiModuleKind.Library, 37),
+                new FfiModuleMetadata(path, "intuition", "intuition.library", "intuition.library", "_IntuitionBase", FfiModuleKind.Library, 39),
+                new FfiModuleMetadata(path, "gadtools", "gadtools.library", "gadtools.library", "_GadToolsBase", FfiModuleKind.Library, 37)
+            };
+
+            var assembly = FfiRuntimeGenerator.Generate(bindings);
+
+            Assert.Contains("__novus_ffi_table:", assembly);
+            Assert.Contains("\tdc.l\t_IntuitionBase", assembly);
+            Assert.Contains("\tmove.w\t(a4)+,d0", assembly);
+            Assert.Contains("\tdbra\td4,.__novus_ffi_close_next", assembly);
+            Assert.DoesNotContain(".__novus_intuition_ready:", assembly);
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 
@@ -144,8 +188,28 @@ public class FfiToolingTests
                 #define BROKEN_ALIAS BROKEN
                 struct PointerData {
                     UBYTE words[POINTERSIZE];
+                    union {
+                        ULONG value;
+                        UBYTE bytes[4];
+                    } choice;
                     APTR blitter;
                     char languages[10][30];
+                };
+                struct Hook {
+                    struct MinNode h_MinNode;
+                    ULONG (*h_Entry)();
+                    ULONG (*h_SubEntry)();
+                    APTR h_Data;
+                };
+                struct Interrupt {
+                    struct Node is_Node;
+                    APTR is_Data;
+                    VOID (*is_Code)();
+                };
+                struct IntVector {
+                    APTR iv_Data;
+                    VOID (*iv_Code)();
+                    struct Node *iv_Node;
                 };
                 """);
             File.WriteAllText(Path.Combine(sfdDirectory, "test_lib.sfd"), """
@@ -155,6 +219,8 @@ public class FfiToolingTests
                 ==include <test.h>
                 DOUBLE AddDouble(DOUBLE left, DOUBLE right)(d0-d1,d2-d3)
                 struct Missing * FindMissing(void)()
+                struct PointerData * CreateContext(struct PointerData **glistptr)(a0)
+                ==version 39
                 ULONG OpenTagList(ULONG object, const struct TagItem * tags)(a0,a1)
                 ==varargs
                 ULONG OpenTags(ULONG object, Tag first, ...)(a0,a1)
@@ -188,6 +254,9 @@ public class FfiToolingTests
             var constants = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_consts.novus"));
             var structs = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_structs.novus"));
             Assert.Contains("hook: fn(*u8, *u8) -> u32", binding);
+            Assert.Contains("CreateContext(glistptr: **PointerData) -> *PointerData", binding);
+            Assert.Equal(39, Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(
+                Path.Combine(output, "std", "ffi", "test.novus"))).FunctionVersions["OpenTagList"]);
             Assert.Contains("extern pub fn OpenTags(object: u32, first: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgs(object: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgsAlias(object: u32, args: *u8) -> u32", binding);
@@ -221,8 +290,14 @@ public class FfiToolingTests
             Assert.Contains("from std::ffi::amiga_consts import *", structs);
             Assert.Contains("#[extern_type]\npub struct PointerData", structs);
             Assert.Contains("words: [u8; ((1 + 16 + 1) * 2)]", structs);
+            Assert.Contains("pub union PointerData_choice", structs);
+            Assert.Contains("choice: PointerData_choice", structs);
             Assert.Contains("_blitter: *u8", structs);
             Assert.Contains("languages: [[i8; 30]; 10]", structs);
+            Assert.Contains("h_Entry: amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0", structs);
+            Assert.Contains("h_SubEntry: amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0", structs);
+            Assert.Contains("is_Code: amiga fn(*u8 in a1) -> u32 in d0", structs);
+            Assert.Contains("iv_Code: amiga fn(*u8 in a1) -> u32 in d0", structs);
             Assert.Contains("pub struct Missing", structs);
             Assert.Contains("test|test.h", File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_headers.txt")));
             var ndkTypes = File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_types.h"));

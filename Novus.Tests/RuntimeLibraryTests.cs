@@ -174,8 +174,11 @@ pub fn main() -> i32 {
 
     [Theory]
     [InlineData("novus_io.s")]
+    [InlineData("runtime_mem.s")]
     [InlineData("runtime_core.c")]
+    [InlineData("runtime_compare.c")]
     [InlineData("runtime_errors.c")]
+    [InlineData("runtime_library_error.s")]
     [InlineData("runtime_mmu.c")]
     public void RuntimeFile_IsCopiedToBuildOutput(string fileName)
     {
@@ -217,7 +220,43 @@ pub fn main() -> i32 {
     }
 
     [Fact]
-    public void StartupStub_InitializesDOSBase()
+    public void ReleaseRuntime_FunctionsHaveIndependentLinkerSections()
+    {
+        var runtimeDir = Path.Combine(
+            Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
+            "runtime"
+        );
+
+        Assert.Contains("\tsection\t__novus_memcpy,code",
+            File.ReadAllText(Path.Combine(runtimeDir, "runtime_mem.s")));
+        var libraryReporter = File.ReadAllText(Path.Combine(runtimeDir, "runtime_library_error.s"));
+        Assert.Contains("\tsection\t__novus_library_not_found,code", libraryReporter);
+        Assert.DoesNotContain("_IntuitionBase", libraryReporter);
+        Assert.Contains("'NOVUS_RUNTIME_ERROR',10,'Library: '", libraryReporter);
+        Assert.Contains("%ld+", libraryReporter);
+        Assert.Contains("LIBS:", libraryReporter);
+        Assert.Equal(2, libraryReporter.Split("jsr\t-48(a6)", StringSplitOptions.None).Length - 1);
+        Assert.Contains("NOVUS_RUNTIME_SECTION(__novus_panic)",
+            File.ReadAllText(Path.Combine(runtimeDir, "runtime_errors.c")));
+    }
+
+    [Fact]
+    public void VbccRuntime_UsesInlineAmigaLibraryVectors()
+    {
+        var runtimeHeader = Path.Combine(
+            Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
+            "runtime",
+            "novus_runtime.h"
+        );
+        var content = File.ReadAllText(runtimeHeader);
+
+        Assert.Contains("#include <inline/exec_protos.h>", content);
+        Assert.Contains("#include <inline/dos_protos.h>", content);
+        Assert.Contains("#include <inline/intuition_protos.h>", content);
+    }
+
+    [Fact]
+    public void StartupStub_UsesExactFfiLifecycleForDOS()
     {
         // Verify novus_startup.s exists and contains DOS initialization
         var startupFile = Path.Combine(
@@ -229,8 +268,24 @@ pub fn main() -> i32 {
         if (File.Exists(startupFile))
         {
             var content = File.ReadAllText(startupFile);
-            Assert.Contains("___dos_init", content);
-            Assert.Contains("___dos_cleanup", content);
+            Assert.Contains("___novus_ffi_init", content);
+            Assert.DoesNotContain("___dos_init", content);
+            Assert.DoesNotContain("___dos_cleanup", content);
         }
+    }
+
+    [Fact]
+    public void StartupStub_DelegatesExactLibraryCleanupToFfiLifecycle()
+    {
+        var startupFile = Path.Combine(
+            Path.GetDirectoryName(typeof(RuntimeLibraryTests).Assembly.Location)!,
+            "stubs",
+            "novus_startup.s"
+        );
+        var content = File.ReadAllText(startupFile);
+
+        Assert.Contains("jsr\t___novus_ffi_cleanup", content);
+        Assert.DoesNotContain("movea.l\t_GadToolsBase,a1", content);
+        Assert.DoesNotContain("movea.l\t_IntuitionBase,a1", content);
     }
 }

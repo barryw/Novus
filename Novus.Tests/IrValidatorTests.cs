@@ -97,6 +97,25 @@ public class IrValidatorTests
     }
 
     [Fact]
+    public void Validate_DeferredBlockLabels_AreInFunctionControlFlow()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrVoidType.Instance);
+        function.CreateBasicBlock("entry").AddInstruction(new IrReturn());
+
+        var deferred = new IrBasicBlock("deferred");
+        deferred.AddInstruction(new IrConditionalBranch(new IrBoolConstant(true), "drop", "skip"));
+        deferred.AddInstruction(new IrLabel("drop"));
+        deferred.AddInstruction(new IrBranch("end"));
+        deferred.AddInstruction(new IrLabel("skip"));
+        deferred.AddInstruction(new IrLabel("end"));
+        function.DeferredBlocks.Add(deferred);
+        module.AddFunction(function);
+
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
     public void Validate_ConditionalBranchToUndefinedLabel_ReportsError()
     {
         var module = new IrModule();
@@ -281,6 +300,23 @@ public class IrValidatorTests
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Contains("Store to undeclared variable: x"));
+    }
+
+    [Fact]
+    public void Validate_InlineAsmResult_DeclaresResultVariable()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrIntType.I32);
+        function.Parameters.Add(new IrParameter("x", IrIntType.I32));
+        var block = function.CreateBasicBlock("entry");
+        var inlineAsm = new IrInlineAsm { ResultName = "%asm" };
+        inlineAsm.Inputs.Add(new IrAsmInput("value", new IrVariable("x", IrIntType.I32), IrIntType.I32));
+        inlineAsm.Outputs.Add(new IrAsmOutput(IrIntType.I32, M68kRegister.D0));
+        block.AddInstruction(inlineAsm);
+        block.AddInstruction(new IrReturn(new IrVariable("%asm", IrIntType.I32)));
+        module.AddFunction(function);
+
+        Assert.True(new IrValidator().Validate(module).IsValid);
     }
 
     [Fact]

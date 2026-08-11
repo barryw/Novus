@@ -19,6 +19,8 @@ public sealed record FfiModuleMetadata(
     int MinimumVersion)
 {
     public IReadOnlyList<string> Headers { get; init; } = [];
+    public IReadOnlyDictionary<string, int> FunctionVersions { get; init; } =
+        new Dictionary<string, int>(StringComparer.Ordinal);
 
     private static readonly Dictionary<string, string> ClassOpenNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -89,6 +91,19 @@ public sealed record FfiModuleMetadata(
                 headers.AddRange(entry[prefix.Length..].Split(',', StringSplitOptions.RemoveEmptyEntries));
         }
 
+        var functionVersions = new Dictionary<string, int>(StringComparer.Ordinal);
+        var versionMapPath = Path.Combine(Path.GetDirectoryName(modulePath)!, "ndk_versions.txt");
+        if (File.Exists(versionMapPath))
+        {
+            var prefix = moduleName + "|";
+            foreach (var line in File.ReadLines(versionMapPath).Where(line => line.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                var parts = line.Split('|');
+                if (parts.Length == 3 && int.TryParse(parts[2], out var version))
+                    functionVersions[parts[1]] = version;
+            }
+        }
+
         return new FfiModuleMetadata(
             modulePath,
             moduleName,
@@ -98,7 +113,8 @@ public sealed record FfiModuleMetadata(
             kind,
             isClass ? 44 : 0)
         {
-            Headers = headers
+            Headers = headers,
+            FunctionVersions = functionVersions
         };
     }
 }

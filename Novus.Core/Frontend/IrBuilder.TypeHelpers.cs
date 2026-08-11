@@ -384,7 +384,27 @@ public partial class IrBuilder
                 }
             }
 
-            parameters.Add(new IrParameter(paramName, paramType));
+            string? register = null;
+            if (paramCtx.parameterRegisterBinding() != null)
+            {
+                IrAmigaAbi.TryNormalizeRegister(
+                    paramCtx.parameterRegisterBinding().IDENTIFIER().GetText(), out register);
+            }
+
+            parameters.Add(new IrParameter(paramName, paramType, register: register));
+        }
+    }
+
+    private static void ApplyFunctionAbi(IrFunction function, NovusParser.FunctionDeclarationContext context)
+    {
+        function.CallingConvention = context.KW_AMIGA() != null
+            ? IrCallingConvention.Amiga
+            : IrCallingConvention.Novus;
+
+        if (context.abiRegisterBinding() != null &&
+            IrAmigaAbi.TryNormalizeRegister(context.abiRegisterBinding().IDENTIFIER().GetText(), out var returnRegister))
+        {
+            function.ReturnRegister = returnRegister;
         }
     }
 

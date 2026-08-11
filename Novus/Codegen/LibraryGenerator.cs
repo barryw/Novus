@@ -28,6 +28,11 @@ public class LibraryGenerator
     private readonly int _versionMajor;
     private readonly int _versionMinor;
     private readonly int _versionPatch;
+    private readonly bool _isResource;
+    private IrFunction? _initHook;
+    private IrFunction? _openHook;
+    private IrFunction? _closeHook;
+    private IrFunction? _expungeHook;
 
     /// <summary>
     /// Represents a library function with its metadata.
@@ -102,10 +107,13 @@ public class LibraryGenerator
         // Find the struct with @library attribute
         foreach (var structType in module.Structs)
         {
-            if (structType.Attributes?.Has(KnownAttributes.Library) == true)
+            if (structType.Attributes?.Has(KnownAttributes.Library) == true ||
+                structType.Attributes?.Has(KnownAttributes.Resource) == true)
             {
                 _libraryStruct = structType;
-                _libraryAttribute = structType.Attributes.Get(KnownAttributes.Library);
+                _isResource = structType.Attributes.Has(KnownAttributes.Resource);
+                _libraryAttribute = structType.Attributes.Get(
+                    _isResource ? KnownAttributes.Resource : KnownAttributes.Library);
                 break;
             }
         }
@@ -120,6 +128,7 @@ public class LibraryGenerator
     /// Returns true if this module is a library (has @library attribute).
     /// </summary>
     public bool IsLibrary => _libraryStruct != null;
+    public bool IsResource => _isResource;
 
     /// <summary>
     /// Get the library name from the @library attribute.
@@ -133,8 +142,9 @@ public class LibraryGenerator
         if (name == null)
             throw new InvalidOperationException("@library attribute requires 'name' parameter");
 
-        if (!name.EndsWith(".library"))
-            throw new InvalidOperationException("Library name must end with '.library'");
+        var suffix = _isResource ? ".resource" : ".library";
+        if (!name.EndsWith(suffix))
+            throw new InvalidOperationException($"{(_isResource ? "Resource" : "Library")} name must end with '{suffix}'");
 
         return name;
     }
@@ -203,7 +213,7 @@ public class LibraryGenerator
         // Vector offset -36: Second user function
         // etc.
 
-        int nextOffset = -30; // User functions start at -30
+        int nextOffset = _isResource ? -6 : -30;
 
         foreach (var function in _module.Functions)
         {
@@ -217,6 +227,20 @@ public class LibraryGenerator
             if (!function.IsPublic)
                 continue;
 
+            if (function.Attributes?.Has(_isResource ? KnownAttributes.ResourceInit : KnownAttributes.LibInit) == true) { _initHook = function; continue; }
+            if (_isResource && function.Attributes?.Has(KnownAttributes.ResourceFunc) != true)
+                continue;
+            if (function.Attributes?.Has(KnownAttributes.LibOpen) == true) { _openHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.LibClose) == true) { _closeHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.LibExpunge) == true) { _expungeHook = function; continue; }
+
+            if (_isResource && (function.Parameters.Count == 0 ||
+                function.Parameters[0].Type is not IrPointerType pointer ||
+                pointer.PointeeType is not IrStructType state ||
+                state.StructName != _libraryStruct.StructName))
+                throw new InvalidOperationException(
+                    $"@resourcefunc '{function.Name}' must take state: *{_libraryStruct.StructName} as its first parameter");
+
             var libFunc = new LibraryFunction
             {
                 Name = function.Name,
@@ -224,36 +248,9 @@ public class LibraryGenerator
                 Function = function
             };
 
-            // Check if it's a lifecycle function by exact name match
-            // Standard AmigaOS lifecycle functions: Open, Close, Expunge, Reserved
-            var funcName = function.Name;
-            if (funcName == "Open" || funcName == $"{_libraryStruct.StructName}::Open")
-            {
-                libFunc.VectorOffset = -6;
-                libFunc.IsLifecycleFunction = true;
-            }
-            else if (funcName == "Close" || funcName == $"{_libraryStruct.StructName}::Close")
-            {
-                libFunc.VectorOffset = -12;
-                libFunc.IsLifecycleFunction = true;
-            }
-            else if (funcName == "Expunge" || funcName == $"{_libraryStruct.StructName}::Expunge")
-            {
-                libFunc.VectorOffset = -18;
-                libFunc.IsLifecycleFunction = true;
-            }
-            else if (funcName == "Reserved" || funcName == $"{_libraryStruct.StructName}::Reserved")
-            {
-                libFunc.VectorOffset = -24;
-                libFunc.IsLifecycleFunction = true;
-            }
-            else
-            {
-                // User function - assign next offset
-                libFunc.VectorOffset = nextOffset;
-                libFunc.IsLifecycleFunction = false;
-                nextOffset -= 6; // Next function
-            }
+            libFunc.VectorOffset = nextOffset;
+            libFunc.IsLifecycleFunction = false;
+            nextOffset -= 6;
 
             _libraryFunctions.Add(libFunc);
         }
@@ -270,6 +267,8 @@ public class LibraryGenerator
     {
         if (!IsLibrary)
             return "";
+        if (_isResource)
+            return GenerateResourceROMTag();
 
         var sb = new StringBuilder();
         var libName = GetLibraryName();
@@ -365,7 +364,7 @@ public class LibraryGenerator
             nextOffset += 6;
         }
 
-        sb.AppendLine("    (APTR)-1");
+        sb.AppendLine("    (APTR)0xFFFFFFFFUL");
         sb.AppendLine("};");
         sb.AppendLine();
 
@@ -382,7 +381,7 @@ public class LibraryGenerator
         // ROMTag structure
         sb.AppendLine("// ROMTag structure (non-const so relocations are applied correctly)");
         sb.AppendLine("// VBCC automatically aligns struct Resident to LONG (4-byte) boundary");
-        sb.AppendLine("struct Resident RomTag = {");
+        sb.AppendLine("__entry struct Resident RomTag = {");
         sb.AppendLine("    RTC_MATCHWORD,       // Magic word");
         sb.AppendLine("    &RomTag,             // Pointer to itself");
         sb.AppendLine("    (APTR)((UBYTE*)&RomTag + sizeof(struct Resident)),  // End marker");
@@ -440,11 +439,13 @@ public class LibraryGenerator
     {
         return type switch
         {
+            IrVoidType => "void",
             IrIntType intType => intType.IsSigned
                 ? $"int{intType.SizeInBytes * 8}_t"
                 : $"uint{intType.SizeInBytes * 8}_t",
             IrBoolType => "bool",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
+            IrStructType structType => structType.StructName,
             _ => throw new InvalidOperationException($"Cannot generate C type for unsupported IR type: {type.GetType().Name}")
         };
     }
@@ -457,6 +458,8 @@ public class LibraryGenerator
     {
         if (!IsLibrary || _libraryStruct == null)
             return "";
+        if (_isResource)
+            return GenerateResourceBaseStruct();
 
         var sb = new StringBuilder();
         var libName = GetLibraryName();
@@ -468,6 +471,7 @@ public class LibraryGenerator
         sb.AppendLine();
 
         // Include headers needed for struct Library
+        sb.AppendLine("#include \"novus_types.h\"");
         sb.AppendLine("#include <exec/types.h>");
         sb.AppendLine("#include <exec/nodes.h>");
         sb.AppendLine("#include <exec/libraries.h>");
@@ -489,15 +493,7 @@ public class LibraryGenerator
         sb.AppendLine("    ULONG __total_closes;  // Auto-generated: lifetime Closes");
         sb.AppendLine("    UWORD __max_opens;     // Auto-generated: peak Opens seen");
 
-        // Add custom fields from the @library struct (skip call_count if user defined it)
-        foreach (var field in _libraryStruct.Fields)
-        {
-            if (field.Name == "call_count")
-                continue;  // Skip - we provide it automatically as __call_count
-
-            var cType = GetCType(field.Type);
-            sb.AppendLine($"    {cType} {field.Name};");
-        }
+        sb.AppendLine($"    {_libraryStruct.StructName} state;");
 
         sb.AppendLine("};");
         sb.AppendLine();
@@ -515,17 +511,11 @@ public class LibraryGenerator
             Console.WriteLine($"DEBUG: GenerateDefaultLifecycleFunctions - IsLibrary={IsLibrary}, _libraryStruct={_libraryStruct != null}");
             return "";
         }
+        if (_isResource)
+            return GenerateResourceLifecycleFunctions();
 
         var sb = new StringBuilder();
         var structName = $"{_libraryStruct.StructName}Base";
-
-        // Check which lifecycle functions are missing
-        bool hasOpen = _libraryFunctions.Any(f => f.VectorOffset == -6);
-        bool hasClose = _libraryFunctions.Any(f => f.VectorOffset == -12);
-        bool hasExpunge = _libraryFunctions.Any(f => f.VectorOffset == -18);
-        bool hasReserved = _libraryFunctions.Any(f => f.VectorOffset == -24);
-
-        Console.WriteLine($"DEBUG: Generating lifecycle functions - hasOpen={hasOpen}, hasClose={hasClose}, hasExpunge={hasExpunge}, hasReserved={hasReserved}");
 
         // Add necessary includes
         sb.AppendLine("#include <exec/types.h>");
@@ -552,6 +542,7 @@ public class LibraryGenerator
         sb.AppendLine("extern struct ExecBase* SysBase;");
         sb.AppendLine("extern int __novus_ffi_init(void);");
         sb.AppendLine("extern void __novus_ffi_cleanup(void);");
+        sb.AppendLine($"__entry BPTR LibExpunge(struct {structName}* base);");
         sb.AppendLine();
 
         sb.AppendLine("// ============================================================================");
@@ -561,7 +552,7 @@ public class LibraryGenerator
 
         // LibInit - always generate this as it's required
         // AutoInit calls with: D0=base, A0=segList, A6=SysBase
-        sb.AppendLine($"struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
+        sb.AppendLine($"__entry struct Library* LibInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
         sb.AppendLine("    SysBase = sysBase;");
         sb.AppendLine("    if (!__novus_ffi_init()) return NULL;");
         sb.AppendLine("    // Initialize library base fields");
@@ -598,18 +589,18 @@ public class LibraryGenerator
                 if (field.Name == "call_count")
                     continue;  // Skip - we use __call_count instead
 
-                sb.AppendLine($"    base->{field.Name} = 0;  // Initialize to zero");
+                sb.AppendLine($"    base->state.{field.Name} = 0;");
             }
             sb.AppendLine();
         }
 
+        if (_initHook != null)
+            sb.AppendLine($"    if (!{MangleName(_initHook.Name)}(&base->state)) {{ __novus_ffi_cleanup(); return NULL; }}");
         sb.AppendLine("    return &base->lib;");
         sb.AppendLine("}");
         sb.AppendLine();
 
-        if (!hasOpen)
-        {
-            sb.AppendLine($"struct Library* LibOpen(struct {structName}* base) {{");
+        sb.AppendLine($"__entry struct Library* LibOpen(struct {structName}* base) {{");
             sb.AppendLine("    base->lib.lib_OpenCnt++;");
             sb.AppendLine("    base->lib.lib_Flags &= ~LIBF_DELEXP;");
             sb.AppendLine();
@@ -619,27 +610,25 @@ public class LibraryGenerator
             sb.AppendLine("        base->__max_opens = base->lib.lib_OpenCnt;");
             sb.AppendLine("    }");
             sb.AppendLine();
-            sb.AppendLine("    return &base->lib;");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
+        if (_openHook != null)
+            sb.AppendLine($"    if (!{MangleName(_openHook.Name)}(&base->state)) {{ base->lib.lib_OpenCnt--; return NULL; }}");
+        sb.AppendLine("    return &base->lib;");
+        sb.AppendLine("}");
+        sb.AppendLine();
 
-        if (!hasClose)
-        {
-            sb.AppendLine($"BPTR LibClose(struct {structName}* base) {{");
+        sb.AppendLine($"__entry BPTR LibClose(struct {structName}* base) {{");
             sb.AppendLine("    base->__total_closes++;");
             sb.AppendLine("    base->lib.lib_OpenCnt--;");
-            sb.AppendLine("    if (base->lib.lib_OpenCnt == 0 && (base->lib.lib_Flags & LIBF_DELEXP)) {");
+        if (_closeHook != null)
+            sb.AppendLine($"    {MangleName(_closeHook.Name)}(&base->state);");
+        sb.AppendLine("    if (base->lib.lib_OpenCnt == 0 && (base->lib.lib_Flags & LIBF_DELEXP)) {");
             sb.AppendLine("        return LibExpunge(base);");
             sb.AppendLine("    }");
             sb.AppendLine("    return 0;");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
+        sb.AppendLine("}");
+        sb.AppendLine();
 
-        if (!hasExpunge)
-        {
-            sb.AppendLine($"BPTR LibExpunge(struct {structName}* base) {{");
+        sb.AppendLine($"__entry BPTR LibExpunge(struct {structName}* base) {{");
             sb.AppendLine("    if (base->lib.lib_OpenCnt > 0) {");
             sb.AppendLine("        base->lib.lib_Flags |= LIBF_DELEXP;");
             sb.AppendLine("        return 0;");
@@ -647,7 +636,9 @@ public class LibraryGenerator
             sb.AppendLine();
             sb.AppendLine("    // Save segList before freeing base");
             sb.AppendLine("    BPTR segList = base->lib_SegList;");
-            sb.AppendLine("    __novus_ffi_cleanup();");
+        if (_expungeHook != null)
+            sb.AppendLine($"    {MangleName(_expungeHook.Name)}(&base->state);");
+        sb.AppendLine("    __novus_ffi_cleanup();");
             sb.AppendLine();
             sb.AppendLine("    // Remove library from system list");
             sb.AppendLine("    Remove((struct Node*)&base->lib);");
@@ -661,33 +652,23 @@ public class LibraryGenerator
             sb.AppendLine();
             sb.AppendLine("    // Return segment list for DOS to unload");
             sb.AppendLine("    return segList;");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
+        sb.AppendLine("}");
+        sb.AppendLine();
 
-        if (!hasReserved)
-        {
-            sb.AppendLine("LONG LibReserved(void) {");
-            sb.AppendLine("    return 0;");
-            sb.AppendLine("}");
-            sb.AppendLine();
-        }
+        sb.AppendLine("__entry LONG LibReserved(void) {");
+        sb.AppendLine("    return 0;");
+        sb.AppendLine("}");
+        sb.AppendLine();
 
         // Auto-generate GetLibraryVersion function for all libraries
         sb.AppendLine("// ============================================================================");
         sb.AppendLine("// Auto-Generated Version Function");
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
-        sb.AppendLine("// LibraryVersion struct (matches std::core::LibraryVersion)");
-        sb.AppendLine("struct LibraryVersion {");
-        sb.AppendLine("    UWORD major;");
-        sb.AppendLine("    UWORD minor;");
-        sb.AppendLine("    UWORD patch;");
-        sb.AppendLine("};");
-        sb.AppendLine();
+        sb.AppendLine("struct __NovusLibraryVersionResult { UWORD major, minor, patch; };");
         sb.AppendLine($"// Auto-generated function to get library version from {structName}");
         sb.AppendLine($"// Uses pointer parameter to avoid VBCC struct return hidden pointer issues");
-        sb.AppendLine($"void {_libraryStruct.StructName}_GetLibraryVersion(struct {structName}* base, struct LibraryVersion* result) {{");
+        sb.AppendLine($"__entry void {_libraryStruct.StructName}_GetLibraryVersion(struct {structName}* base, struct __NovusLibraryVersionResult* result) {{");
         sb.AppendLine("    result->major = base->lib.lib_Version;");
         sb.AppendLine("    result->minor = base->lib.lib_Revision;");
         sb.AppendLine("    result->patch = base->lib_Patch;");
@@ -700,14 +681,14 @@ public class LibraryGenerator
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
         sb.AppendLine($"// Internal function to increment call counter");
-        sb.AppendLine($"void {_libraryStruct.StructName}_IncrementCallCount(struct {structName}* base) {{");
+        sb.AppendLine($"__entry void {_libraryStruct.StructName}_IncrementCallCount(struct {structName}* base) {{");
         sb.AppendLine("    if (base) {");
         sb.AppendLine("        base->__call_count++;");
         sb.AppendLine("    }");
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get total library function calls");
-        sb.AppendLine($"ULONG {_libraryStruct.StructName}_GetCallCount(struct {structName}* base) {{");
+        sb.AppendLine($"__entry ULONG {_libraryStruct.StructName}_GetCallCount(struct {structName}* base) {{");
         sb.AppendLine("    if (!base) return 0;");
         sb.AppendLine("    return base->__call_count;");
         sb.AppendLine("}");
@@ -719,7 +700,7 @@ public class LibraryGenerator
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get library name");
-        sb.AppendLine($"const char* {_libraryStruct.StructName}_GetLibraryName(struct {structName}* base) {{");
+        sb.AppendLine($"__entry const char* {_libraryStruct.StructName}_GetLibraryName(struct {structName}* base) {{");
         sb.AppendLine("    return LibName;");
         sb.AppendLine("}");
         sb.AppendLine();
@@ -729,18 +710,12 @@ public class LibraryGenerator
         sb.AppendLine("// Auto-Generated Debug Info Function");
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
-        sb.AppendLine("// LibraryDebugInfo struct (matches std::core::LibraryDebugInfo)");
-        sb.AppendLine("struct LibraryDebugInfo {");
-        sb.AppendLine("    UWORD open_count;");
-        sb.AppendLine("    UWORD max_opens;");
-        sb.AppendLine("    ULONG total_opens;");
-        sb.AppendLine("    ULONG total_closes;");
-        sb.AppendLine("    ULONG flags;");
-        sb.AppendLine("    ULONG call_count;");
+        sb.AppendLine("struct __NovusLibraryDebugInfoResult {");
+        sb.AppendLine("    UWORD open_count, max_opens;");
+        sb.AppendLine("    ULONG total_opens, total_closes, flags, call_count;");
         sb.AppendLine("};");
-        sb.AppendLine();
         sb.AppendLine($"// Auto-generated function to get debug info from {structName}");
-        sb.AppendLine($"void {_libraryStruct.StructName}_GetDebugInfo(struct {structName}* base, struct LibraryDebugInfo* result) {{");
+        sb.AppendLine($"__entry void {_libraryStruct.StructName}_GetDebugInfo(struct {structName}* base, struct __NovusLibraryDebugInfoResult* result) {{");
         sb.AppendLine("    if (result == NULL) return;");
         sb.AppendLine("    result->open_count = base->lib.lib_OpenCnt;");
         sb.AppendLine("    result->max_opens = base->__max_opens;");
@@ -762,10 +737,10 @@ public class LibraryGenerator
         sb.AppendLine($"//   Bit 1: Has 68020+");
         sb.AppendLine($"//   Bit 2: Has 68040+");
         sb.AppendLine($"//   Bit 3: Has RTG");
-        sb.AppendLine($"ULONG {_libraryStruct.StructName}_GetFeatureFlags(struct {structName}* base) {{");
+        sb.AppendLine($"__entry ULONG {_libraryStruct.StructName}_GetFeatureFlags(struct {structName}* base) {{");
         sb.AppendLine("    // Feature flags can be populated from project.toml settings");
         sb.AppendLine("    // or detected at runtime via Exec ReadVBR, etc.");
-        sb.AppendLine("    return 0;  // Base configuration: 68000, no FPU, no RTG");
+        sb.AppendLine("    return 0;  // Base configuration: 68020, no FPU, no RTG");
         sb.AppendLine("}");
         sb.AppendLine();
 
@@ -804,6 +779,8 @@ public class LibraryGenerator
     {
         if (!IsLibrary || _libraryStruct == null)
             return "";
+        if (_isResource)
+            return GenerateResourceA6Wrappers();
 
         var sb = new StringBuilder();
         var structName = $"{_libraryStruct.StructName}Base";
@@ -1120,7 +1097,8 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var returnType = GetCType(func.Function.ReturnType);
-                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
+                var parameters = _isResource ? func.Function.Parameters.Skip(1) : func.Function.Parameters;
+                var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
 
                 if (string.IsNullOrEmpty(paramList))
@@ -1139,7 +1117,8 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var returnType = GetCType(func.Function.ReturnType);
-                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
+                var parameters = _isResource ? func.Function.Parameters.Skip(1) : func.Function.Parameters;
+                var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
 
                 if (string.IsNullOrEmpty(paramList))
@@ -1164,6 +1143,8 @@ public class LibraryGenerator
     {
         if (!IsLibrary || _libraryStruct == null)
             return "";
+        if (_isResource)
+            return GenerateResourceNovusFFI();
 
         var sb = new StringBuilder();
         var libName = GetLibraryName();
@@ -1291,7 +1272,7 @@ public class LibraryGenerator
         var baseName = $"_{_libraryStruct.StructName}Base";
 
         sb.AppendLine($"##base {baseName}");
-        sb.AppendLine("##bias 30");
+        sb.AppendLine($"##bias {(_isResource ? 6 : 30)}");
         sb.AppendLine("##public");
 
         // Generate FD entries for each user function
@@ -1300,7 +1281,7 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var funcName = func.CName;
-                var parameters = func.Function.Parameters;
+                var parameters = _isResource ? func.Function.Parameters.Skip(1).ToList() : func.Function.Parameters;
 
                 // Build parameter list
                 var paramNames = string.Join(",", parameters.Select(p => p.Name));
@@ -1337,7 +1318,8 @@ public class LibraryGenerator
 
         // Add auto-generated GetLibraryVersion function
         // This function takes a pointer parameter for the result (avoids struct return issues)
-        sb.AppendLine($"{_libraryStruct.StructName}_GetLibraryVersion(result)(a0)");
+        if (!_isResource)
+            sb.AppendLine($"{_libraryStruct.StructName}_GetLibraryVersion(result)(a0)");
 
         sb.AppendLine("##end");
 
@@ -1568,6 +1550,169 @@ public class LibraryGenerator
         sb.AppendLine();
         sb.AppendLine("        END");
 
+        return sb.ToString();
+    }
+
+    private string GenerateResourceBaseStruct()
+    {
+        var structName = $"{_libraryStruct!.StructName}Base";
+        return $@"#include ""novus_types.h""
+#include <exec/types.h>
+#include <exec/nodes.h>
+#include <exec/libraries.h>
+#include <proto/exec.h>
+
+struct {structName} {{
+    struct Library lib;
+    {_libraryStruct.StructName} state;
+}};
+";
+    }
+
+    private string GenerateResourceROMTag()
+    {
+        var sb = new StringBuilder();
+        var name = GetLibraryName();
+        var structName = $"{_libraryStruct!.StructName}Base";
+        sb.AppendLine("LONG _start(void) { return -1; }");
+        sb.AppendLine("#include <exec/resident.h>");
+        sb.AppendLine($"static const char ResourceName[] = \"{name}\";");
+        sb.AppendLine($"static const char ResourceId[] = \"{name} {GetLibraryVersion()}.{GetLibraryRevision()}\";");
+        sb.AppendLine($"__entry struct Library* ResourceInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase);");
+        foreach (var function in _libraryFunctions)
+            sb.AppendLine($"extern void {function.CName}_Wrapper(void);");
+        sb.AppendLine("static APTR ResourceFunctions[] = {");
+        foreach (var function in _libraryFunctions)
+            sb.AppendLine($"    (APTR){function.CName}_Wrapper,");
+        sb.AppendLine("    (APTR)0xFFFFFFFFUL");
+        sb.AppendLine("};");
+        sb.AppendLine("static struct { ULONG size; APTR functions; APTR data; APTR init; } ResourceInitTable = {");
+        sb.AppendLine($"    sizeof(struct {structName}), (APTR)ResourceFunctions, NULL, (APTR)ResourceInit");
+        sb.AppendLine("};");
+        sb.AppendLine("__entry struct Resident RomTag = {");
+        sb.AppendLine("    RTC_MATCHWORD, &RomTag,");
+        sb.AppendLine("    (APTR)((UBYTE*)&RomTag + sizeof(struct Resident)),");
+        sb.AppendLine($"    RTF_AUTOINIT, {GetLibraryVersion()}, NT_RESOURCE, 0,");
+        sb.AppendLine("    (char*)ResourceName, (char*)ResourceId, (APTR)&ResourceInitTable");
+        sb.AppendLine("};");
+        return sb.ToString();
+    }
+
+    private string GenerateResourceLifecycleFunctions()
+    {
+        var sb = new StringBuilder();
+        var structName = $"{_libraryStruct!.StructName}Base";
+        sb.AppendLine("extern struct ExecBase* SysBase;");
+        sb.AppendLine("extern int __novus_ffi_init(void);");
+        if (_initHook != null)
+            sb.AppendLine($"extern {GetCType(_initHook.ReturnType)} {MangleName(_initHook.Name)}({GetCType(_initHook.Parameters[0].Type)} state);");
+        foreach (var function in _libraryFunctions)
+        {
+            var parameters = function.Function.Parameters.Skip(1).ToList();
+            var declaration = string.Join(", ", parameters.Select(parameter =>
+                $"{GetCType(parameter.Type)} {parameter.Name}"));
+            if (declaration.Length > 0)
+                declaration = ", " + declaration;
+            var arguments = string.Concat(parameters.Select(parameter => $", {parameter.Name}"));
+            var returnType = GetCType(function.Function.ReturnType);
+            var originalDeclaration = string.Join(", ", function.Function.Parameters.Select(parameter =>
+                $"{GetCType(parameter.Type)} {parameter.Name}"));
+            sb.AppendLine($"extern {returnType} {function.CName}({originalDeclaration});");
+            sb.AppendLine($"__entry {returnType} {function.CName}_ResourceThunk(struct {structName}* base{declaration}) {{");
+            sb.Append("    ");
+            if (function.Function.ReturnType is not IrVoidType)
+                sb.Append("return ");
+            sb.AppendLine($"{function.CName}(&base->state{arguments});");
+            sb.AppendLine("}");
+        }
+        sb.AppendLine($"__entry struct Library* ResourceInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
+        sb.AppendLine("    SysBase = sysBase;");
+        sb.AppendLine("    if (!__novus_ffi_init()) return NULL;");
+        sb.AppendLine("    base->lib.lib_Node.ln_Type = NT_RESOURCE;");
+        sb.AppendLine("    base->lib.lib_Node.ln_Pri = 0;");
+        sb.AppendLine("    base->lib.lib_Node.ln_Name = (char*)ResourceName;");
+        sb.AppendLine($"    base->lib.lib_Version = {GetLibraryVersion()};");
+        sb.AppendLine($"    base->lib.lib_Revision = {GetLibraryRevision()};");
+        sb.AppendLine("    base->lib.lib_IdString = (char*)ResourceId;");
+        if (_initHook != null)
+            sb.AppendLine($"    if (!{MangleName(_initHook.Name)}(&base->state)) return NULL;");
+        sb.AppendLine("    return &base->lib;");
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    private string GenerateResourceA6Wrappers()
+    {
+        var sb = new StringBuilder("        SECTION CODE\n\n");
+        foreach (var function in _libraryFunctions)
+        {
+            var parameters = function.Function.Parameters.Skip(1).ToList();
+            var registers = new List<string>();
+            var data = 0;
+            var address = 0;
+            foreach (var parameter in parameters)
+                registers.Add(IsPointerType(parameter.Type) ? $"a{address++}" : $"d{data++}");
+            if (data > 4 || address > 4)
+                throw new InvalidOperationException($"@resourcefunc '{function.Name}' exceeds the four data/four address register ABI limit");
+
+            sb.AppendLine($"        XDEF    _{function.CName}_Wrapper");
+            sb.AppendLine($"        XREF    _{function.CName}_ResourceThunk");
+            sb.AppendLine($"_{function.CName}_Wrapper:");
+            for (var index = parameters.Count - 1; index >= 0; index--)
+                sb.AppendLine($"        move.l  {registers[index]},-(sp)");
+            sb.AppendLine("        move.l  a6,-(sp)");
+            sb.AppendLine($"        jsr     _{function.CName}_ResourceThunk");
+            var cleanup = (parameters.Count + 1) * 4;
+            sb.AppendLine(cleanup <= 8
+                ? $"        addq.l  #{cleanup},sp"
+                : $"        add.l   #{cleanup},sp");
+            sb.AppendLine("        rts");
+            sb.AppendLine();
+        }
+        sb.AppendLine("        END");
+        return sb.ToString();
+    }
+
+    private string GenerateResourceNovusFFI()
+    {
+        var sb = new StringBuilder();
+        var name = GetLibraryName();
+        var baseName = $"{_libraryStruct!.StructName}Base";
+        var moduleName = _libraryStruct.StructName.ToLowerInvariant();
+        sb.AppendLine("// Generated Novus resource binding");
+        sb.AppendLine($"// Library: {name}");
+        sb.AppendLine($"// Base: _{_libraryStruct.StructName}Base");
+        sb.AppendLine("from std::ffi::exec import Library, OpenResource");
+        sb.AppendLine($"pub struct {baseName} {{ lib: Library }}");
+        sb.AppendLine($"static mut {_libraryStruct.StructName}_BASE: *{baseName} = 0 as *{baseName};");
+        sb.AppendLine($"pub fn open_{moduleName}() -> bool {{");
+        sb.AppendLine("    unsafe {");
+        sb.AppendLine($"        {_libraryStruct.StructName}_BASE = OpenResource(\"{name}\") as *{baseName};");
+        sb.AppendLine($"        return {_libraryStruct.StructName}_BASE != 0 as *{baseName};");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        foreach (var function in _libraryFunctions)
+        {
+            var parameters = function.Function.Parameters.Skip(1).ToList();
+            var declaration = string.Concat(parameters.Select(parameter =>
+                $", {parameter.Name}: {GetNovusType(parameter.Type)}"));
+            var returns = function.Function.ReturnType is IrVoidType
+                ? ""
+                : $" -> {GetNovusType(function.Function.ReturnType)}";
+            sb.AppendLine($"#[link_name = \"@{Math.Abs(function.VectorOffset)}\"]");
+            sb.AppendLine($"extern fn {function.CName}_ffi(base: *{baseName}{declaration}){returns};");
+            sb.Append($"pub fn {function.CName}(");
+            sb.Append(string.Join(", ", parameters.Select(parameter => $"{parameter.Name}: {GetNovusType(parameter.Type)}")));
+            sb.AppendLine($"){returns} {{");
+            sb.AppendLine("    unsafe {");
+            var arguments = string.Concat(parameters.Select(parameter => $", {parameter.Name}"));
+            sb.Append("        ");
+            if (function.Function.ReturnType is not IrVoidType)
+                sb.Append("return ");
+            sb.AppendLine($"{function.CName}_ffi({_libraryStruct.StructName}_BASE{arguments});");
+            sb.AppendLine("    }");
+            sb.AppendLine("}");
+        }
         return sb.ToString();
     }
 

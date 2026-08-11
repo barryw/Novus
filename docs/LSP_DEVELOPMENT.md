@@ -11,7 +11,7 @@ Novus/
 │   ├── SemanticAnalysis/          # Type checker, symbol resolution
 │   ├── Diagnostics/               # Error/warning collection
 │   └── ...
-├── Novus.LanguageServer/          # LSP server (C# / .NET 9.0)
+├── Novus.LanguageServer/          # LSP server (C# / .NET 10.0)
 │   ├── Program.cs                 # Entry point, DI setup
 │   ├── DocumentManager.cs         # Document state tracking
 │   ├── TextDocumentHandler.cs     # LSP event handlers
@@ -30,7 +30,7 @@ Novus/
 
 ### Required Tools
 
-1. **.NET 9.0 SDK**
+1. **.NET 10.0 SDK**
    ```bash
    dotnet --version  # Should be 9.0.x
    ```
@@ -65,11 +65,11 @@ cd /Users/barry/RiderProjects/Novus
 dotnet build Novus.LanguageServer/Novus.LanguageServer.csproj
 ```
 
-**Output**: `Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer`
+**Output**: `Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer`
 
 **Verify**:
 ```bash
-ls -la Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer
+ls -la Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer
 # Should show executable file
 ```
 
@@ -334,7 +334,7 @@ End-to-end tests that:
 2. Look for "Language Server not found" message
 3. Verify server binary exists:
    ```bash
-   ls -la /Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer
+   ls -la /Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer
    ```
 
 **Fix**:

@@ -172,7 +172,7 @@ var p2 = add(p)  // p is copied
 ## The Threshold: 16 Bytes
 
 **Why 16 bytes?**
-- Fits in 4 registers on 68000 (d0-d3 or a0-a3)
+- Fits in four 68k registers (d0-d3 or a0-a3)
 - Small enough that copying is negligible
 - Covers most common cases (Point, Color, small enums)
 

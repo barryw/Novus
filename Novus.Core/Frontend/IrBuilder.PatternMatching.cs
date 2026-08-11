@@ -290,9 +290,51 @@ public partial class IrBuilder
                     _currentBlock!.AddInstruction(new IrBinaryOp(cmpName, IrBinaryOp.OpKind.Eq, tagVar!, tagConst, IrBoolType.Instance));
                     var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
 
-                    // Branch: if match, go to arm, otherwise continue to next check
                     var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
-                    _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                    var constantPayloads = pattern is NovusParser.VariantPatternContext payloadPattern &&
+                                           payloadPattern.patternList() != null
+                        ? payloadPattern.patternList().pattern()
+                            .Select((payload, index) => (payload, index))
+                            .Where(item => item.payload is NovusParser.IdentifierPatternContext identifier &&
+                                           _symbols.LookupConstant(identifier.IDENTIFIER().GetText()) is { Type: IrIntType })
+                            .ToList()
+                        : [];
+
+                    if (constantPayloads.Count == 0)
+                    {
+                        _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
+                    }
+                    else
+                    {
+                        var payloadCheckLabel = $"match_{matchId}_arm_{i}_payload_0";
+                        _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, payloadCheckLabel, nextLabel));
+
+                        for (var payloadIndex = 0; payloadIndex < constantPayloads.Count; payloadIndex++)
+                        {
+                            var (payload, dataIndex) = constantPayloads[payloadIndex];
+                            var identifier = (NovusParser.IdentifierPatternContext)payload;
+                            var constant = _symbols.LookupConstant(identifier.IDENTIFIER().GetText())!;
+                            var dataType = variant.AssociatedData[dataIndex];
+                            var extractName = $"%t{_tempCounter++}";
+                            var payloadCmpName = $"%t{_tempCounter++}";
+
+                            _currentBlock!.AddInstruction(new IrLabel($"match_{matchId}_arm_{i}_payload_{payloadIndex}"));
+                            _currentBlock.AddInstruction(new IrExtractVariantData(
+                                extractName, enumValueForExtract!, variantName, dataIndex, dataType));
+                            _currentBlock.AddInstruction(new IrBinaryOp(
+                                payloadCmpName,
+                                IrBinaryOp.OpKind.Eq,
+                                new IrVariable(extractName, dataType),
+                                new IrConstant(Convert.ToInt64(constant.Value), dataType),
+                                IrBoolType.Instance));
+
+                            var matchedLabel = payloadIndex == constantPayloads.Count - 1
+                                ? armLabels[i]
+                                : $"match_{matchId}_arm_{i}_payload_{payloadIndex + 1}";
+                            _currentBlock.AddInstruction(new IrConditionalBranch(
+                                new IrVariable(payloadCmpName, IrBoolType.Instance), matchedLabel, nextLabel));
+                        }
+                    }
                 }
             }
             else if (isIntegerMatch)
@@ -462,6 +504,12 @@ public partial class IrBuilder
                         {
                             bindingName = idPattern.IDENTIFIER().GetText();
                             isMutable = false;
+
+                            // Constants constrain associated data; they are not bindings.
+                            if (_symbols.LookupConstant(bindingName) != null)
+                            {
+                                bindingName = null;
+                            }
                         }
                         else if (bindingPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
                         {

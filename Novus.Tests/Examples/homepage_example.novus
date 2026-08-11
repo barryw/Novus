@@ -1,7 +1,6 @@
-// Homepage showcase example - this code is displayed on novuslang.com
-// DO NOT modify without updating website/src/components/CodeShowcase.astro
-//
-// Compile: novus compile homepage_example.novus -o homepage_example
+// Homepage showcase example - novuslang.com imports this source directly.
+// Keep its behavior equivalent to homepage_example.c when changing the comparison.
+// Compile: novus compile homepage_example.novus -o homepage_example --release -O3
 
 from std::ui::screen import ScreenHandle
 from std::ffi::dos import Delay

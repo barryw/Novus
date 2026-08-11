@@ -62,40 +62,6 @@ public class M68kPeepholeOptimizationTests
     }
 
     [Fact]
-    public void Optimize_ShiftLeftByOne_OnM68000_ConvertedToAdd()
-    {
-        // x << 1 on 68000 should become x + x (faster)
-        var function = new IrFunction("test", IrIntType.I32);
-        var block = new IrBasicBlock("entry");
-
-        block.Instructions.Add(new IrLabel("entry"));
-        block.Instructions.Add(new IrBinaryOp("result", IrBinaryOp.OpKind.Shl,
-            new IrVariable("x", IrIntType.I32),
-            new IrConstant(1, IrIntType.I32),
-            IrIntType.I32));
-        block.Instructions.Add(new IrReturn(new IrVariable("result", IrIntType.I32)));
-
-        function.BasicBlocks.Add(block);
-
-        var peephole = new M68kPeepholeOptimization(function, M68kCpuTarget.M68000);
-        int count = peephole.Optimize();
-
-        Assert.True(count > 0);
-
-        // Should be converted to addition: x + x
-        var binOp = block.Instructions[1] as IrBinaryOp;
-        Assert.NotNull(binOp);
-        Assert.Equal(IrBinaryOp.OpKind.Add, binOp!.Operation);
-
-        // Both operands should be the same variable
-        var leftVar = binOp.Left as IrVariable;
-        var rightVar = binOp.Right as IrVariable;
-        Assert.NotNull(leftVar);
-        Assert.NotNull(rightVar);
-        Assert.Equal(leftVar!.Name, rightVar!.Name);
-    }
-
-    [Fact]
     public void Optimize_ShiftLeftByOne_OnM68020_NotConverted()
     {
         // x << 1 on 68020 should NOT be converted (shift is fine)

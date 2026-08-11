@@ -169,7 +169,7 @@ impl Str {
     /// Compare two strings for equality
     ///
     /// On 68020+, uses optimized inline assembly with cmpm.l for ~4x speedup on long strings.
-    /// Falls back to byte-by-byte on 68000/68010 or for short strings.
+    /// Falls back to byte-by-byte on the 68020 baseline or for short strings.
     pub fn equals(&self, other: Str) -> bool {
         if self.len != other.len {
             return false
@@ -239,7 +239,7 @@ impl Str {
         }
 #endif
 
-        // Fallback: byte-by-byte comparison (for 68000/68010 or short strings)
+        // Fallback: byte-by-byte comparison (baseline CPU or short strings)
         while var i < self.len {
             if self.ptr[i] != other.ptr[i] {
                 return false

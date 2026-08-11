@@ -148,6 +148,9 @@ public class TypeChecker
 
     private static bool FunctionPointerTypesAreEqual(IrFunctionPointerType a, IrFunctionPointerType b)
     {
+        if (a.CallingConvention != b.CallingConvention || a.ReturnRegister != b.ReturnRegister)
+            return false;
+
         if (!TypesAreEqual(a.ReturnType, b.ReturnType))
             return false;
 
@@ -156,6 +159,8 @@ public class TypeChecker
 
         for (int i = 0; i < a.ParameterTypes.Count; i++)
         {
+            if (a.ParameterRegisters[i] != b.ParameterRegisters[i])
+                return false;
             if (!TypesAreEqual(a.ParameterTypes[i], b.ParameterTypes[i]))
                 return false;
         }

@@ -519,18 +519,24 @@ paula::play_sample(0, sample.data(), sample.length(), 428, 64)
 
 **Result:** Plays IFF 8SVX audio samples on Paula hardware.
 
-### 9.4 Modern GUI
+### 9.4 AmigaOS 3.1 GUI
 
-**mui_window.novus** (80 lines)
+**idiomatic_gui.novus**
 ```novus
-// MUI (Magic User Interface) application
-let app = MuiApplication::new("MyApp")?
-let window = app.create_window("Hello MUI")?
-window.add_button("Click Me", on_click)?
-app.run()
+from std::ui::gadtools import GadToolsBuilder, GadgetBounds
+
+var ui = GadToolsBuilder::workbench()?
+ui.add_button(1, "Quit", GadgetBounds::new(124, 88, 70, 18))?
+
+var menus = ui.menu_builder()
+var file = menus.add_menu("File")
+file.add_item("Quit").with_command_key('Q')
+let menu_strip = menus.build()?
+let window = ui.build("My App", GadgetBounds::new(40, 30, 230, 135), menu_strip)?
 ```
 
-**Result:** Native AmigaOS 3.x GUI application with ReAction widgets.
+**Result:** Native AmigaOS 3.1/3.2 GUI using the V36 Intuition/GadTools surface;
+no ReAction or MUI dependency.
 
 ### 9.5 System Programming
 

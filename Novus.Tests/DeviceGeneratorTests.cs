@@ -44,7 +44,7 @@ pub struct TestDevice {
         var romTag = generator.GenerateROMTag();
 
         // Verify ROMTag structure
-        Assert.Contains("struct Resident RomTag", romTag);
+        Assert.Contains("__entry struct Resident RomTag", romTag);
         Assert.Contains("RTC_MATCHWORD", romTag);
         Assert.Contains("test.device", romTag);
         Assert.Contains("NT_DEVICE", romTag);  // Should be device, not library
@@ -179,6 +179,8 @@ pub struct TestDevice {
         Assert.Contains("DevReserved", lifecycle);
         Assert.Contains("DevBeginIO", lifecycle);
         Assert.Contains("DevAbortIO", lifecycle);
+        Assert.Contains("__entry struct Device* DevInit", lifecycle);
+        Assert.Contains("__entry void DevBeginIO", lifecycle);
     }
 
     [Fact]
@@ -344,7 +346,7 @@ pub struct TestDevice {
     }
 
     [Fact]
-    public void DeviceGenerator_AbortIO_HandlesAbort()
+    public void DeviceGenerator_AbortIO_DoesNotTouchUnownedQueues()
     {
         var source = @"
 @device(name = ""test.device"")
@@ -357,10 +359,42 @@ pub struct TestDevice {
         var generator = new DeviceGenerator(module);
         var lifecycle = generator.GenerateLifecycleFunctions();
 
-        // Should have abort handling
         Assert.Contains("DevAbortIO", lifecycle);
+        Assert.Contains("No pending request was claimed", lifecycle);
+        Assert.DoesNotContain("Remove((struct Node*)ioReq)", lifecycle);
+    }
+
+    [Fact]
+    public void DeviceGenerator_DeferredCommandsAndHooksPreserveRequestOwnership()
+    {
+        var source = @"
+@device(name = ""test.device"")
+pub struct TestDevice { data: u32 }
+
+@deviceinit
+pub fn loaded(state: *TestDevice) -> bool { return true }
+@deviceopen
+pub fn opening(req: *u8, state: *TestDevice, unit: u32, flags: u32) -> bool { return true }
+@deviceclose
+pub fn closing(req: *u8, state: *TestDevice) {}
+@deviceexpunge
+pub fn unloading(state: *TestDevice) {}
+@abortio
+pub fn abort_pending(req: *u8, state: *TestDevice) -> bool { return true }
+@devicecmd(cmd = 9, deferred = true)
+pub fn start(req: *u8, state: *TestDevice) -> i8 { return 0 }
+";
+
+        var lifecycle = new DeviceGenerator(BuildIR(source)).GenerateLifecycleFunctions();
+
+        Assert.Contains("loaded(&base->state)", lifecycle);
+        Assert.Contains("opening(ioReq, &base->state, unitNum, flags)", lifecycle);
+        Assert.Contains("closing(ioReq, &base->state)", lifecycle);
+        Assert.Contains("unloading(&base->state)", lifecycle);
+        Assert.Contains("completed = FALSE", lifecycle);
+        Assert.Contains("abort_pending(ioReq, &base->state)", lifecycle);
         Assert.Contains("IOERR_ABORTED", lifecycle);
-        Assert.Contains("NT_MESSAGE", lifecycle);  // Check message state
+        Assert.Contains("ReplyMsg(&ioReq->io_Message)", lifecycle);
     }
 
     [Fact]

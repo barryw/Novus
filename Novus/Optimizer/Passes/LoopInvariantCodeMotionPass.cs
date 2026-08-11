@@ -5,7 +5,7 @@ namespace Novus.Optimizer.Passes;
 /// <summary>
 /// Loop-Invariant Code Motion (LICM) optimization pass.
 /// Moves loop-invariant computations out of loops to reduce redundant work.
-/// Critical for 68000 performance where loops are expensive.
+/// Important for 68020+ performance where repeated memory work is expensive.
 /// </summary>
 public class LoopInvariantCodeMotionPass : FunctionPassBase
 {

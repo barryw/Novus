@@ -1,10 +1,7 @@
-using MediatR;
 using OmniSharp.Extensions.LanguageServer.Protocol;
-using OmniSharp.Extensions.LanguageServer.Protocol.Client.Capabilities;
 using OmniSharp.Extensions.LanguageServer.Protocol.Document;
 using OmniSharp.Extensions.LanguageServer.Protocol.Models;
 using OmniSharp.Extensions.LanguageServer.Protocol.Server;
-using OmniSharp.Extensions.LanguageServer.Protocol.Server.Capabilities;
 using Tomlyn;
 
 namespace Novus.LanguageServer;
@@ -13,7 +10,7 @@ namespace Novus.LanguageServer;
 /// Handles TOML text document synchronization (open, change, save, close) and publishes diagnostics.
 /// Registers for *.toml file pattern and provides syntax validation.
 /// </summary>
-public class TomlDocumentHandler : TextDocumentSyncHandlerBase
+public class TomlDocumentHandler
 {
     private readonly ProjectManager _projectManager;
     private readonly ILanguageServerFacade _languageServer;
@@ -24,33 +21,8 @@ public class TomlDocumentHandler : TextDocumentSyncHandlerBase
         _languageServer = languageServer;
     }
 
-    public override TextDocumentAttributes GetTextDocumentAttributes(DocumentUri uri)
+    public void Open(string uri, string text, int version)
     {
-        return new TextDocumentAttributes(uri, "toml");
-    }
-
-    protected override TextDocumentSyncRegistrationOptions CreateRegistrationOptions(
-        TextSynchronizationCapability capability, ClientCapabilities clientCapabilities)
-    {
-        return new TextDocumentSyncRegistrationOptions
-        {
-            DocumentSelector = new TextDocumentSelector(
-                new TextDocumentFilter
-                {
-                    Pattern = "**/*.toml"
-                }
-            ),
-            Change = TextDocumentSyncKind.Full,
-            Save = new SaveOptions { IncludeText = true }
-        };
-    }
-
-    public override Task<Unit> Handle(DidOpenTextDocumentParams request, CancellationToken cancellationToken)
-    {
-        var uri = request.TextDocument.Uri.ToString();
-        var text = request.TextDocument.Text;
-        var version = request.TextDocument.Version ?? 0;
-
         Console.Error.WriteLine($"[LSP] TOML document opened: {uri}");
 
         // Register as a project if it's a project.toml file
@@ -62,48 +34,25 @@ public class TomlDocumentHandler : TextDocumentSyncHandlerBase
         // Publish diagnostics for syntax errors
         PublishTomlDiagnostics(uri, text);
 
-        return Unit.Task;
     }
 
-    public override Task<Unit> Handle(DidChangeTextDocumentParams request, CancellationToken cancellationToken)
+    public void Update(string uri, string text, int version)
     {
-        var uri = request.TextDocument.Uri.ToString();
-        var version = request.TextDocument.Version ?? 0;
-
-        if (request.ContentChanges.Count() > 0)
+        if (IsProjectToml(uri))
         {
-            var text = request.ContentChanges.First().Text;
-
-            // Update project if it's a project.toml
-            if (IsProjectToml(uri))
-            {
-                _projectManager.UpdateProject(uri, text, version);
-            }
-
-            // Re-publish diagnostics
-            PublishTomlDiagnostics(uri, text);
+            _projectManager.UpdateProject(uri, text, version);
         }
 
-        return Unit.Task;
+        PublishTomlDiagnostics(uri, text);
     }
 
-    public override Task<Unit> Handle(DidSaveTextDocumentParams request, CancellationToken cancellationToken)
+    public void Save(string uri, string text)
     {
-        var uri = request.TextDocument.Uri.ToString();
-
-        if (request.Text != null)
-        {
-            // Re-validate on save
-            PublishTomlDiagnostics(uri, request.Text);
-        }
-
-        return Unit.Task;
+        PublishTomlDiagnostics(uri, text);
     }
 
-    public override Task<Unit> Handle(DidCloseTextDocumentParams request, CancellationToken cancellationToken)
+    public void Close(string uri)
     {
-        var uri = request.TextDocument.Uri.ToString();
-
         // Unregister project if it's a project.toml
         if (IsProjectToml(uri))
         {
@@ -113,12 +62,13 @@ public class TomlDocumentHandler : TextDocumentSyncHandlerBase
         // Clear diagnostics
         _languageServer.TextDocument.PublishDiagnostics(new PublishDiagnosticsParams
         {
-            Uri = request.TextDocument.Uri,
+            Uri = DocumentUri.From(uri),
             Diagnostics = new Container<Diagnostic>()
         });
-
-        return Unit.Task;
     }
+
+    internal static bool HandlesDocument(string uri) =>
+        Path.GetExtension(new Uri(uri).LocalPath).Equals(".toml", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Parses TOML content and publishes diagnostics for syntax errors.

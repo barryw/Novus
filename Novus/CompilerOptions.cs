@@ -13,7 +13,7 @@ public class CompilerOptions
     [Option('o', "output", Required = false, HelpText = "Output file name (default: a.out)")]
     public string OutputFile { get; set; } = "a.out";
 
-    [Option("cpu", Required = false, Default = "auto", HelpText = "Target CPU: auto (fat binary with runtime detection), 68020, 68030, 68040, 68060")]
+    [Option("cpu", Required = false, Default = "auto", HelpText = "Target CPU (68020 minimum): auto, 68020, 68030, 68040, 68060, 68080")]
     public string Cpu { get; set; } = "auto";
 
     [Option("fpu", Required = false, Default = "auto", HelpText = "FPU mode: auto (fat binary with runtime detection), soft (software only), 68881 (68881/68882), 68040 (built-in FPU)")]
@@ -76,6 +76,14 @@ public class CompilerOptions
     /// A vbcc from elsewhere on PATH would still carry the bug.
     /// </summary>
     public const int MaxOptimizationLevel = 3;
+    public static readonly string[] ValidCpuValues = { "68020", "68030", "68040", "68060", "68080", "auto" };
+
+    public static void ValidateCpu(string? cpu)
+    {
+        if (cpu != null && !ValidCpuValues.Contains(cpu))
+            throw new ArgumentException(
+                $"Invalid CPU target '{cpu}'. Novus requires 68020 or newer; valid values are: {string.Join(", ", ValidCpuValues)}.");
+    }
 
     /// <summary>
     /// Validate an optimization level.
@@ -144,6 +152,12 @@ public class CompilerOptions
     /// Additional assembly files to assemble and link (e.g., library wrappers)
     /// </summary>
     public List<string> AdditionalAsmFiles { get; set; } = new();
+
+    /// <summary>
+    /// Additional Novus modules compiled into the target without importing their symbols.
+    /// Used by generated test runners to avoid re-analyzing every test module.
+    /// </summary>
+    public List<string> AdditionalSourceFiles { get; set; } = new();
 
     /// <summary>
     /// Project name from project.toml. Injected as PKG_NAME compile-time constant.

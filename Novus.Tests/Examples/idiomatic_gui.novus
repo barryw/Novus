@@ -1,0 +1,49 @@
+// Idiomatic Novus using the same V36 Intuition/GadTools APIs as the C reference.
+// No FFI imports, raw pointers, unsafe blocks, C, or assembly.
+
+from std::error::errors import IntuitionError
+from std::ui::gadtools import GadgetBounds, GadToolsEvent, StaticGadget, StaticGadToolsUi, StaticMenuEntry
+
+const QUIT_BUTTON: u16 = 1
+
+static GADGETS: [StaticGadget] = [
+    StaticGadget::checkbox(2, "Enable feature", 24, 34, 170, 14, true),
+    StaticGadget::integer(3, "Value", 24, 58, 170, 18, 42, 3),
+    StaticGadget::button(QUIT_BUTTON, "Quit", 124, 88, 70, 18),
+]
+
+static MENUS: [StaticMenuEntry] = [
+    StaticMenuEntry::title("File"),
+    StaticMenuEntry::item("Quit", "Q"),
+    StaticMenuEntry::end(),
+]
+
+static UI: StaticGadToolsUi = StaticGadToolsUi {
+    title: "Idiomatic GUI",
+    bounds: GadgetBounds { x: 40, y: 30, width: 230, height: 135 },
+    gadgets: GADGETS,
+    gadget_count: 3,
+    menus: MENUS,
+}
+
+fn run() -> Result<(), IntuitionError> {
+    let window = UI.open()?
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close => { break },
+            GadToolsEvent::GadgetUp(QUIT_BUTTON) => { break },
+            GadToolsEvent::MenuPick(0, 0) => { break },
+            _ => {},
+        }
+    }
+
+    return Result::Ok(())
+}
+
+pub fn main() -> i32 {
+    match run() {
+        Result::Ok(_) => return 0,
+        Result::Err(_) => return 20,
+    }
+}

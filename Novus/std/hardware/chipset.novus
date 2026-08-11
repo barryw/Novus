@@ -7,9 +7,7 @@ from std::strings::core import Str
 
 // CPU types detected via ExecBase->AttnFlags
 pub enum SystemCPU {
-    M68000,    // 68000 (7.14 MHz on A500/A1000/A2000)
-    M68010,    // 68010 (rare)
-    M68020,    // 68020 (14 MHz on A1200/A3000)
+    M68020,    // Minimum supported CPU
     M68030,    // 68030 (25-50 MHz on accelerators)
     M68040,    // 68040 (25-40 MHz on A4000/accelerators)
     M68060,    // 68060 (50-75 MHz on accelerators)
@@ -83,8 +81,6 @@ pub fn CHIP_RAM() -> MemoryInfo {
 impl Display for SystemCPU {
     fn fmt(&self, f: &var Formatter) -> bool {
         return match *self {
-            SystemCPU::M68000 => f.write_str("68000"),
-            SystemCPU::M68010 => f.write_str("68010"),
             SystemCPU::M68020 => f.write_str("68020"),
             SystemCPU::M68030 => f.write_str("68030"),
             SystemCPU::M68040 => f.write_str("68040"),

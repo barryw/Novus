@@ -155,7 +155,7 @@ Use preprocessor directives to optimize for specific hardware:
 #elif M68020
     // Code for 68020
 #else
-    // Fallback for 68000
+    // Portable 68020+ fallback
 #endif
 ```
 

@@ -10,7 +10,7 @@ namespace Novus.Tests;
 
 /// <summary>
 /// Tests for compile-time validation of packed struct field alignment.
-/// Packed structs on 68000 can cause bus errors if fields are misaligned.
+/// Packed structs can cause bus errors if fields are misaligned.
 /// </summary>
 public class PackedStructValidationTests
 {

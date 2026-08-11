@@ -24,6 +24,7 @@ obj/
 # OS files
 .DS_Store
 Thumbs.db
+__pycache__/
 
 # Test outputs
 TestResults/
@@ -34,6 +35,8 @@ TestResults/
 !runtime/**/*.c
 !Novus/runtime/**/*.c
 !vendor/vbcc/**/*.c
+!Novus.Tests/Examples/idiomatic_gui.c
+!Novus.Tests/Examples/homepage_example.c
 # Amiga-side tools are hand-written C sources, not generated build artifacts
 !tools/amiga/*.c
 *.out

@@ -60,6 +60,31 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void BuildIr_MatchEnumVariant_WithConstantData_ComparesInsteadOfBinding()
+    {
+        var source = @"
+const QUIT_BUTTON: u16 = 1
+enum Event {
+    GadgetUp(u16),
+    Close
+}
+pub fn main() -> i32 {
+    let event = Event::GadgetUp(2)
+    match event {
+        Event::GadgetUp(QUIT_BUTTON) => return 1,
+        _ => return 0,
+    }
+}";
+        var module = BuildIr(source);
+        var instructions = module.Functions.Single(f => f.Name == "main")
+            .BasicBlocks.SelectMany(block => block.Instructions).ToList();
+
+        Assert.Contains(instructions, instruction => instruction is IrExtractVariantData);
+        Assert.Equal(2, instructions.OfType<IrBinaryOp>().Count(op => op.Operation == IrBinaryOp.OpKind.Eq));
+        Assert.DoesNotContain(instructions.OfType<IrLocalDecl>(), declaration => declaration.Name == "QUIT_BUTTON");
+    }
+
+    [Fact]
     public void BuildIr_MatchNestedEnum_Compiles()
     {
         var source = @"

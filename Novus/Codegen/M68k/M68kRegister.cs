@@ -1,7 +1,7 @@
 namespace Novus.Codegen.M68k;
 
 /// <summary>
-/// Motorola 68000 registers following Amiga ABI conventions
+/// Motorola 68k registers following Amiga ABI conventions
 /// </summary>
 public enum M68kRegister
 {

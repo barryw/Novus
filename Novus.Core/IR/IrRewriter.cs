@@ -142,6 +142,8 @@ public abstract class IrRewriter
             IrDereferenceValue derefValue => RewriteDereferenceValue(derefValue),
             IrBorrowValue borrowValue => RewriteBorrowValue(borrowValue),
             IrFieldReference fieldRef => RewriteFieldReference(fieldRef),
+            IrIndexedFieldAccess indexedField => RewriteIndexedFieldAccess(indexedField),
+            IrTupleElementAccess tupleElement => RewriteTupleElementAccess(tupleElement),
             IrCastValue castValue => RewriteCastValue(castValue),
             IrFunctionAddress funcAddr => RewriteFunctionAddress(funcAddr),
             IrEnumValue enumValue => RewriteEnumValue(enumValue),
@@ -533,6 +535,19 @@ public abstract class IrRewriter
     {
         fieldRef.Struct = RewriteValue(fieldRef.Struct);
         return fieldRef;
+    }
+
+    public virtual IrValue RewriteIndexedFieldAccess(IrIndexedFieldAccess indexedField)
+    {
+        indexedField.Array = RewriteValue(indexedField.Array);
+        indexedField.Index = RewriteValue(indexedField.Index);
+        return indexedField;
+    }
+
+    public virtual IrValue RewriteTupleElementAccess(IrTupleElementAccess tupleElement)
+    {
+        tupleElement.Tuple = RewriteValue(tupleElement.Tuple);
+        return tupleElement;
     }
 
     /// <summary>

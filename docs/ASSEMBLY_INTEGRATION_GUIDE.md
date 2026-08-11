@@ -325,7 +325,7 @@ cpu = "68020"              # Uses 020+ instructions
 
 [[build.asm]]
 file = "src/copper.s"
-cpu = "68000"              # Compatible with all CPUs
+cpu = "68020"              # Minimum supported CPU
 
 [[build.asm]]
 file = "src/ammx_blend.s"
@@ -632,7 +632,7 @@ my_function:
 
 ### Stack Alignment
 
-**Problem:** Misaligned stack causes crashes on 68000
+**Problem:** Misaligned stack violates the Amiga 68k ABI
 
 **Solution:** Keep stack word-aligned
 
@@ -652,7 +652,7 @@ my_function:
 
 ### CPU Profile Awareness
 
-**Problem:** Using 68020+ instructions on 68000
+**Problem:** Using instructions newer than the configured 68020+ target
 
 **Solution:** Mark assembly files with minimum CPU
 
@@ -668,7 +668,7 @@ Or use conditional assembly:
         .ifdef  CPU_68020
         muls.l  d1,d0           ; Fast on 020+
         .else
-        jsr     _mul32_helper   ; Software multiply for 68000
+        muls.l  d1,d0           ; Native on the Novus 68020 baseline
         .endif
 ```
 

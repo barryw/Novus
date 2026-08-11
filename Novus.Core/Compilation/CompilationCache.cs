@@ -23,6 +23,8 @@ public partial class CompilationCache
     private readonly ConcurrentDictionary<string, FileState> _fileStates = new();
     private readonly ConcurrentDictionary<string, CachedParseResult> _parseTrees = new();
     private readonly ConcurrentDictionary<string, CachedIrModule> _compiledModules = new();
+    private readonly ConcurrentDictionary<(string Path, string ConfigHash), bool> _recompilationMemo = new();
+    private bool _memoizeRecompilationChecks;
     private readonly List<Task> _pendingSaves = new();
     private readonly object _pendingSavesLock = new();
 
@@ -31,6 +33,9 @@ public partial class CompilationCache
     private int _parseMisses = 0;
     private int _irHits = 0;
     private int _irMisses = 0;
+    private long _validationTicks;
+    private long _deserializationTicks;
+    private long _irBytesLoaded;
 
     /// <summary>
     /// Represents a cached parse tree with metadata
@@ -95,6 +100,25 @@ public partial class CompilationCache
     public bool NeedsRecompilation(string filePath, string configHash)
     {
         var fullPath = Path.GetFullPath(filePath);
+        if (!_memoizeRecompilationChecks)
+            return NeedsRecompilationCore(fullPath, configHash);
+
+        return _recompilationMemo.GetOrAdd((fullPath, configHash), key =>
+            NeedsRecompilationCore(key.Path, key.ConfigHash));
+    }
+
+    /// <summary>
+    /// Reuse dependency validation results for one compiler invocation.
+    /// Source files are treated as an immutable build snapshot after this call.
+    /// </summary>
+    public void BeginBuild()
+    {
+        _recompilationMemo.Clear();
+        _memoizeRecompilationChecks = true;
+    }
+
+    private bool NeedsRecompilationCore(string fullPath, string configHash)
+    {
 
         // File doesn't exist -> can't compile
         if (!File.Exists(fullPath))
@@ -184,7 +208,10 @@ public partial class CompilationCache
     {
         var fullPath = Path.GetFullPath(filePath);
 
-        if (NeedsRecompilation(fullPath, configHash))
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        var needsRecompilation = NeedsRecompilation(fullPath, configHash);
+        Interlocked.Add(ref _validationTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
+        if (needsRecompilation)
         {
             _irMisses++;
             return (null, null, null);
@@ -194,6 +221,30 @@ public partial class CompilationCache
         {
             _irHits++;
             return (cached.Module, cached.StringLiterals, cached.ImportedModules);
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(GetIrFilePath(fullPath));
+            Interlocked.Add(ref _irBytesLoaded, stream.Length);
+            started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var persisted = IrCacheSerializer.Deserialize(stream);
+            Interlocked.Add(ref _deserializationTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
+            cached = new CachedIrModule
+            {
+                Module = persisted.Module,
+                StringLiterals = persisted.StringLiterals,
+                ImportedModules = persisted.ImportedModules,
+                FileState = _fileStates[fullPath]
+            };
+            _compiledModules[fullPath] = cached;
+            _irHits++;
+            return (cached.Module, cached.StringLiterals, cached.ImportedModules);
+        }
+        catch
+        {
+            // Missing, stale, or corrupt IR is a normal cache miss.
+            TryDelete(GetIrFilePath(fullPath));
         }
 
         _irMisses++;
@@ -210,7 +261,8 @@ public partial class CompilationCache
         List<IrStringLiteral> stringLiterals,
         List<string> importedModules,
         string configHash,
-        bool hadErrors = false)
+        bool hadErrors = false,
+        IEnumerable<string>? dependencyModules = null)
     {
         var fullPath = Path.GetFullPath(filePath);
         var lastModified = File.GetLastWriteTimeUtc(fullPath);
@@ -219,7 +271,7 @@ public partial class CompilationCache
 
         // Normalize dependency paths
         var dependencies = new HashSet<string>();
-        foreach (var import in importedModules)
+        foreach (var import in dependencyModules ?? importedModules)
         {
             try
             {
@@ -260,9 +312,40 @@ public partial class CompilationCache
             ImportedModules = importedModules,
             FileState = fileState
         };
+        foreach (var key in _recompilationMemo.Keys.Where(key => key.Path == fullPath))
+        {
+            _recompilationMemo.TryRemove(key, out _);
+        }
 
-        // Persist to disk (asynchronously to avoid blocking compilation)
-        var saveTask = Task.Run(() => SaveFileState(fullPath, fileState));
+        // Snapshot synchronously: lowering mutates the module after this method returns.
+        byte[]? persistedIr = null;
+        try
+        {
+            persistedIr = IrCacheSerializer.Serialize(new PersistedIrModule
+            {
+                Module = module,
+                StringLiterals = stringLiterals,
+                ImportedModules = importedModules
+            });
+        }
+        catch
+        {
+            // Unsupported IR remains usable in memory and will compile normally next time.
+        }
+
+        // Disk I/O stays asynchronous.
+        var saveTask = Task.Run(() =>
+        {
+            if (persistedIr != null)
+            {
+                SaveIr(fullPath, persistedIr);
+            }
+            else
+            {
+                TryDelete(GetIrFilePath(fullPath));
+            }
+            SaveFileState(fullPath, fileState);
+        });
         lock (_pendingSavesLock)
         {
             // Remove completed tasks to prevent unbounded growth
@@ -313,6 +396,7 @@ public partial class CompilationCache
         _fileStates.TryRemove(fullPath, out _);
         _parseTrees.TryRemove(fullPath, out _);
         _compiledModules.TryRemove(fullPath, out _);
+        _recompilationMemo.Clear();
 
         // Find and invalidate all files that depend on this file
         var dependents = _fileStates
@@ -326,18 +410,8 @@ public partial class CompilationCache
         }
 
         // Delete from disk
-        var stateFilePath = GetStateFilePath(fullPath);
-        if (File.Exists(stateFilePath))
-        {
-            try
-            {
-                File.Delete(stateFilePath);
-            }
-            catch
-            {
-                // Best effort
-            }
-        }
+        TryDelete(GetStateFilePath(fullPath));
+        TryDelete(GetIrFilePath(fullPath));
     }
 
     /// <summary>
@@ -348,6 +422,11 @@ public partial class CompilationCache
         return (_parseHits, _parseMisses, _irHits, _irMisses, _fileStates.Count);
     }
 
+    public (TimeSpan ValidationCpuTime, TimeSpan DeserializationCpuTime, long IrBytesLoaded) GetPerformanceStats() =>
+        (TimeSpan.FromSeconds((double)Interlocked.Read(ref _validationTicks) / System.Diagnostics.Stopwatch.Frequency),
+         TimeSpan.FromSeconds((double)Interlocked.Read(ref _deserializationTicks) / System.Diagnostics.Stopwatch.Frequency),
+         Interlocked.Read(ref _irBytesLoaded));
+
     /// <summary>
     /// Clear all caches
     /// </summary>
@@ -356,6 +435,7 @@ public partial class CompilationCache
         _fileStates.Clear();
         _parseTrees.Clear();
         _compiledModules.Clear();
+        _recompilationMemo.Clear();
 
         // Delete cache directory
         if (Directory.Exists(_cacheDirectory))
@@ -392,6 +472,9 @@ public partial class CompilationCache
         var pathHash = ComputePathHash(filePath);
         return Path.Combine(_cacheDirectory, $"{pathHash}.state.json");
     }
+
+    private string GetIrFilePath(string filePath) =>
+        Path.Combine(_cacheDirectory, $"{ComputePathHash(filePath)}.ir.bin");
 
     /// <summary>
     /// Compute a short hash of a file path for cache file naming
@@ -461,6 +544,30 @@ public partial class CompilationCache
         catch
         {
             // Best effort - don't fail compilation if cache write fails
+        }
+    }
+
+    private void SaveIr(string filePath, byte[] data)
+    {
+        try
+        {
+            File.WriteAllBytes(GetIrFilePath(filePath), data);
+        }
+        catch
+        {
+            // Best effort - don't fail compilation if cache write fails
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch
+        {
+            // Best effort
         }
     }
 }

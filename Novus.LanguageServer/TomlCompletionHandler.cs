@@ -172,7 +172,7 @@ public class TomlCompletionHandler : ICompletionHandler
             Documentation = new MarkupContent
             {
                 Kind = MarkupKind.Markdown,
-                Value = "Target CPU: 68000, 68020, 68040, 68060, or auto"
+                Value = "Target CPU: 68020, 68030, 68040, 68060, 68080, or auto"
             },
             InsertText = "target_cpu = \"$1\"",
             InsertTextFormat = InsertTextFormat.Snippet
@@ -427,17 +427,6 @@ public class TomlCompletionHandler : ICompletionHandler
     // CPU target values
     private static readonly CompletionItem[] CpuTargetValues = new[]
     {
-        new CompletionItem
-        {
-            Label = "\"68000\"",
-            Kind = CompletionItemKind.Value,
-            Detail = "68000/68010",
-            Documentation = new MarkupContent
-            {
-                Kind = MarkupKind.Markdown,
-                Value = "Motorola 68000 or 68010 CPU (strict subset)"
-            }
-        },
         new CompletionItem
         {
             Label = "\"68020\"",

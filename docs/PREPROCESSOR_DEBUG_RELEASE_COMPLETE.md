@@ -85,8 +85,8 @@ novusc build --release      # Release mode
 
 ```novus
 #if DEBUG
-    #if TARGET_CPU_68000
-        println("Debug on 68000")
+    #if M68020
+        println("Debug on the 68020 baseline")
     #else
         println("Debug on other CPU")
     #endif
@@ -493,8 +493,8 @@ MAX_SIZE = 1024
 ### Phase 3: Target Constants
 
 ```novus
-#if TARGET_CPU_68000
-    // 68000-specific code
+#if M68020
+    // 68020 baseline code
 #endif
 
 #if TARGET_CPU_68040

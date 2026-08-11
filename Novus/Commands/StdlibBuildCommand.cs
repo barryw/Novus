@@ -21,7 +21,7 @@ public static class StdlibBuildCommand
     /// <summary>
     /// Valid CPU targets for pre-compilation
     /// </summary>
-    private static readonly string[] ValidCpuTargets = { "68020", "68030", "68040", "68060" };
+    private static readonly string[] ValidCpuTargets = { "68020", "68030", "68040", "68060", "68080" };
 
     /// <summary>
     /// Valid build modes

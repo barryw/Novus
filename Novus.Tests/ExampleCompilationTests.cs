@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Novus.Compilation;
 using Xunit;
 
 namespace Novus.Tests;
@@ -123,6 +124,57 @@ public class ExampleAsmTests : ExampleCompilationTestBase
         Assert.True(success,
             $"Example '{exampleName}' failed to generate C code.\n" +
             $"Errors:\n{errorMessage}");
+    }
+
+    [Fact]
+    public void IdiomaticGuiSurfaces_DoNotUseApplicationLevelInterop()
+    {
+        var root = GetProjectRoot();
+        foreach (var path in new[]
+        {
+            Path.Combine(root, "Novus.Tests", "Examples", "idiomatic_gui.novus"),
+            Path.Combine(root, "templates", "gui", "modern", "src", "main.novus")
+        })
+        {
+            var source = string.Join('\n', File.ReadLines(path)
+                .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+            foreach (var forbidden in new[] { "std::ffi", "std::ui::reaction", "ReAction", "unsafe", "extern", "asm!", "*u8", "*u16", "*u32" })
+                Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void IdiomaticGui_UsesOnlyV36IntuitionAndGadToolsCalls()
+    {
+        var root = GetProjectRoot();
+        var ffi = Path.Combine(root, "Novus", "std", "ffi");
+        var gadtools = FfiModuleMetadata.TryRead(Path.Combine(ffi, "gadtools.novus"))!;
+        var intuition = FfiModuleMetadata.TryRead(Path.Combine(ffi, "intuition.novus"))!;
+        var surfaces = new[]
+        {
+            Path.Combine(root, "Novus", "std", "ui", "gadtools.novus"),
+            Path.Combine(root, "Novus", "std", "ui", "menu.novus")
+        };
+
+        foreach (var (module, metadata) in new[]
+        {
+            ("gadtools", gadtools),
+            ("intuition", intuition)
+        })
+        {
+            var prefix = $"from std::ffi::{module} import ";
+            var functions = surfaces.SelectMany(path => File.ReadLines(path))
+                .Select(line => line.Trim())
+                .Where(line => line.StartsWith(prefix, StringComparison.Ordinal))
+                .SelectMany(line => line[prefix.Length..].Split(',', StringSplitOptions.TrimEntries))
+                .ToArray();
+
+            Assert.NotEmpty(functions);
+            foreach (var function in functions)
+                Assert.True(metadata.FunctionVersions.GetValueOrDefault(function) <= 36,
+                    $"{module}.{function} requires V{metadata.FunctionVersions.GetValueOrDefault(function)}");
+        }
     }
 }
 

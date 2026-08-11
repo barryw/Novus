@@ -45,10 +45,10 @@ public class IrEnumType : IrType
                 {
                     int fieldSize = dataType.SizeInBytes;
 
-                    // 68000 alignment rules (same as struct fields):
+                    // Amiga 68k ABI alignment rules (same as struct fields):
                     // - 1-byte fields: no alignment needed
                     // - 2+ byte fields: must be word-aligned (even address)
-                    // This prevents Address Error (Guru Meditation 80000004) on 68000.
+                    // This keeps enum payloads word-aligned across the supported targets.
                     int alignment = fieldSize switch
                     {
                         1 => 1,  // byte-aligned (any address OK)

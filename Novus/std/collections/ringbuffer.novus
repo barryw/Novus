@@ -19,7 +19,7 @@
 // - Multiple consumers (same issue)
 // - Shared read/write access from same context
 //
-// On 68000, pointer reads/writes are atomic. On 68020+, ensure caches
+// Pointer reads/writes are atomic on supported 68020+ targets. Ensure caches
 // are properly managed for memory shared between interrupt handlers and tasks.
 
 from std::core import Option, Drop
@@ -313,7 +313,7 @@ impl<T> Drop for RingBuffer<T> {
 ///
 /// Capacity is automatically rounded up to the next power of 2.
 ///
-/// ## Performance (68000)
+/// ## Performance (68020 baseline)
 /// - RingBuffer::push_back: ~150 cycles (modulo)
 /// - RingBufferPow2::push_back: ~25 cycles (bitmask)
 ///

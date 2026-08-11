@@ -8,6 +8,7 @@
 
 from std::io::file import println, print
 from std::ffi::exec import OpenDevice, CloseDevice, DoIO
+from std::ffi::exec import SendIO, CheckIO, WaitIO, AbortIO
 from std::ffi::exec import CreateMsgPort, DeleteMsgPort
 from std::ffi::exec import CreateIORequest, DeleteIORequest
 from std::ffi::amiga_structs import IORequest, IOStdReq, MsgPort
@@ -122,3 +123,20 @@ pub fn main() -> i32 {
     println("Example completed successfully!")
     return 0
 }
+
+// For a deferred command, use the same request asynchronously:
+//
+// unsafe {
+//     (*ioReq).io_Command = 11
+//     SendIO(baseReq)
+// }
+//
+// // Do unrelated work here. CheckIO never waits.
+// if (u32)CheckIO(baseReq) == 0 {
+//     println("command is still pending")
+// }
+//
+// // Every SendIO must eventually be collected, even after AbortIO.
+// // let error = WaitIO(baseReq)
+// // unsafe { AbortIO(baseReq) }
+// // let aborted = WaitIO(baseReq)

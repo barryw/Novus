@@ -507,5 +507,5 @@ fn create_buffer_rastport(bitmap: *BitMap) -> Result<*RastPort, GraphicsError> {
 //
 // BltBitMapRastPort() uses the Blitter, which runs asynchronously.
 // WaitBlit() ensures completion before modifying source/dest bitmaps.
-// The Blitter is ~4× faster than CPU on 68000, ~2× on 68040/060.
+// The Blitter remains useful on the 68020 baseline and for parallel drawing.
 //

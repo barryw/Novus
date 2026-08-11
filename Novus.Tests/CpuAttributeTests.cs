@@ -40,37 +40,16 @@ fn main() -> i32 {
         Assert.Null(builder.Module.CpuOverride);
     }
 
-    [Fact]
-    public void CpuAttribute_Sets68000()
+    [Theory]
+    [InlineData("68000")]
+    [InlineData("68010")]
+    public void CpuAttribute_RejectsUnsupportedCpu(string cpu)
     {
-        var code = @"
-#[cpu(""68000"")]
-
-fn main() -> i32 {
-    return 0
-}
-";
+        var code = $"#[cpu(\"{cpu}\")]\nfn main() -> i32 {{ return 0 }}";
         var builder = BuildModule(code);
-        Assert.False(builder.Diagnostics.HasErrors);
-        Assert.Equal("68000", builder.Module.CpuOverride);
-        // Should emit a warning
+        Assert.True(builder.Diagnostics.HasErrors);
         Assert.Contains(builder.Diagnostics.Diagnostics,
-            d => d.Severity == DiagnosticSeverity.Warning && d.Message.Contains("overrides"));
-    }
-
-    [Fact]
-    public void CpuAttribute_Sets68010()
-    {
-        var code = @"
-#[cpu(""68010"")]
-
-fn main() -> i32 {
-    return 0
-}
-";
-        var builder = BuildModule(code);
-        Assert.False(builder.Diagnostics.HasErrors);
-        Assert.Equal("68010", builder.Module.CpuOverride);
+            d => d.Message.Contains("68020 or newer"));
     }
 
     [Fact]
@@ -203,7 +182,7 @@ fn main() -> i32 {
     public void MultipleCpuAttributes_LastOneWins()
     {
         var code = @"
-#[cpu(""68000"")]
+#[cpu(""68020"")]
 #[cpu(""68060"")]
 
 fn main() -> i32 {
@@ -238,28 +217,14 @@ fn main() -> i32 {
 /// </summary>
 public class CpuPreprocessorConstantsTests
 {
-    [Fact]
-    public void GetPreprocessorConstantsForCpu_68000_SetsOnlyM68000()
+    [Theory]
+    [InlineData("68000")]
+    [InlineData("68010")]
+    public void GetPreprocessorConstantsForCpu_RejectsUnsupportedCpu(string cpu)
     {
-        var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68000");
-
-        Assert.True(constants["M68000"]);
-        Assert.False(constants["M68010"]);
-        Assert.False(constants["M68020"]);
-        Assert.False(constants["M68010_PLUS"]);
-        Assert.False(constants["M68020_PLUS"]);
-    }
-
-    [Fact]
-    public void GetPreprocessorConstantsForCpu_68010_SetsHierarchy()
-    {
-        var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68010");
-
-        Assert.False(constants["M68000"]);
-        Assert.True(constants["M68010"]);
-        Assert.False(constants["M68020"]);
-        Assert.True(constants["M68010_PLUS"]);
-        Assert.False(constants["M68020_PLUS"]);
+        var error = Assert.Throws<ArgumentException>(() =>
+            IrBuilderConfiguration.GetPreprocessorConstantsForCpu(cpu));
+        Assert.Contains("68020 or newer", error.Message);
     }
 
     [Fact]
@@ -268,7 +233,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68020");
 
         Assert.True(constants["M68020"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
         Assert.False(constants["M68030_PLUS"]);
     }
@@ -279,7 +243,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68040");
 
         Assert.True(constants["M68040"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
         Assert.True(constants["M68030_PLUS"]);
         Assert.True(constants["M68040_PLUS"]);
@@ -292,7 +255,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68060");
 
         Assert.True(constants["M68060"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
         Assert.True(constants["M68030_PLUS"]);
         Assert.True(constants["M68040_PLUS"]);
@@ -305,7 +267,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("68080");
 
         Assert.True(constants["M68080"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
         Assert.True(constants["M68030_PLUS"]);
         Assert.True(constants["M68040_PLUS"]);
@@ -318,7 +279,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu("auto");
 
         Assert.True(constants["M68020"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
         Assert.False(constants["M68030_PLUS"]);
     }
@@ -329,7 +289,6 @@ public class CpuPreprocessorConstantsTests
         var constants = IrBuilderConfiguration.GetPreprocessorConstantsForCpu(null);
 
         Assert.True(constants["M68020"]);
-        Assert.True(constants["M68010_PLUS"]);
         Assert.True(constants["M68020_PLUS"]);
     }
 }

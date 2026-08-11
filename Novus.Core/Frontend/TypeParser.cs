@@ -33,7 +33,12 @@ public interface ITypeParsingContext
     IrType GetMutReferenceType(IrType pointeeType);
     IrType GetPointerType(IrType pointeeType);
     IrType GetArrayType(IrType elementType, long length);
-    IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType);
+    IrType GetFunctionPointerType(
+        List<IrType> paramTypes,
+        IrType returnType,
+        IrCallingConvention callingConvention = IrCallingConvention.Novus,
+        List<string?>? parameterRegisters = null,
+        string? returnRegister = null);
     IrType GetTupleType(List<IrType> elementTypes);
     IrType GetClosureType(List<IrType> paramTypes, IrType returnType);
 
@@ -155,6 +160,7 @@ public class TypeParser : ITypeSubstitutionEngine
                 NovusParser.UnitTypeContext _ => IrTupleType.Unit,
                 NovusParser.TupleTypeContext tupleCtx => ParseTupleType(tupleCtx),
                 NovusParser.FunctionPointerTypeContext fpCtx => ParseFunctionPointerType(fpCtx),
+                NovusParser.AmigaFunctionPointerTypeExpressionContext amigaFpCtx => ParseAmigaFunctionPointerType(amigaFpCtx),
                 NovusParser.ClosureTypeContext closureCtx => ParseClosureType(closureCtx),
                 NovusParser.SelfTypeContext selfCtx => ResolveSelfType(),
                 NovusParser.PrimitiveTypeContext primCtx => ParsePrimitiveType(primCtx),
@@ -756,6 +762,43 @@ public class TypeParser : ITypeSubstitutionEngine
         var returnType = context.type() != null ? ParseType(context.type()) : IrVoidType.Instance;
 
         return _context.GetFunctionPointerType(paramTypes, returnType);
+    }
+
+    private IrType ParseAmigaFunctionPointerType(NovusParser.AmigaFunctionPointerTypeExpressionContext context)
+    {
+        var declaration = context.amigaFunctionPointerType();
+        var paramTypes = new List<IrType>();
+        var paramRegisters = new List<string?>();
+
+        if (declaration.amigaFunctionPointerParameterList() != null)
+        {
+            foreach (var parameter in declaration.amigaFunctionPointerParameterList().amigaFunctionPointerParameter())
+            {
+                paramTypes.Add(ParseType(parameter.type()));
+                paramRegisters.Add(ParseAmigaRegister(parameter.IDENTIFIER().GetText()));
+            }
+        }
+
+        var returnType = declaration.type() != null ? ParseType(declaration.type()) : IrVoidType.Instance;
+        var returnRegister = declaration.abiRegisterBinding() == null
+            ? null
+            : ParseAmigaRegister(declaration.abiRegisterBinding().IDENTIFIER().GetText());
+
+        return _context.GetFunctionPointerType(
+            paramTypes,
+            returnType,
+            IrCallingConvention.Amiga,
+            paramRegisters,
+            returnRegister);
+    }
+
+    private static string ParseAmigaRegister(string value)
+    {
+        if (IrAmigaAbi.TryNormalizeRegister(value, out var register))
+            return register;
+
+        throw new TypeParseException(
+            $"invalid Amiga register '{value}'; expected d0-d7, a0-a6, or fp0-fp7");
     }
 
     /// <summary>

@@ -203,9 +203,9 @@ pub fn not_test(a: bool) -> bool {
         var module = BuildIR(source);
         var code = GenerateCCode(module);
 
-        // Boolean NOT is lowered to XOR with 1 in IR: (a XOR 1)
-        Assert.Contains("^", code); // XOR operator
-        Assert.Contains("1", code); // XOR with 1
+        // Logical NOT is a direct equality with false, not a two-step XOR sequence.
+        Assert.Contains("__novus_cmp_eq_i32", code);
+        Assert.Contains(", false)", code);
     }
 
     [Fact]
@@ -1034,4 +1034,5 @@ pub fn copy_nested(src: Outer) -> Outer {
         // Struct with nested struct should use memcpy
         Assert.Contains("__novus_memcpy", code);
     }
+
 }

@@ -34,6 +34,23 @@ public class IrBuilderTests
     }
 
     [Fact]
+    public void BuildIr_IfLetTempIsRegisteredAsLocal()
+    {
+        var module = BuildIr("""
+            fn probe(value: i32) -> i32 {
+                if let present = value {
+                    return present
+                }
+                return 0
+            }
+            """);
+
+        var function = Assert.Single(module.Functions);
+        Assert.Contains(function.LocalVariables, local => local.Name.StartsWith("%if_let_"));
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
     public void BuildIr_SimpleReturn_CreatesFunction()
     {
         var source = @"

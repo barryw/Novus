@@ -1,4 +1,6 @@
 using Novus;
+using Novus.Commands;
+using Novus.Toolchain;
 using Xunit;
 
 namespace Novus.Tests;
@@ -51,6 +53,38 @@ public class OptimizationLevelTests
         var options = new CompilerOptions();
         Assert.Equal(1, options.OptimizationLevel);
         Assert.InRange(options.OptimizationLevel, 0, CompilerOptions.MaxOptimizationLevel);
+    }
+
+    [Fact]
+    public void ReleaseBuildDefaultsToWholeProgramOptimizationLevel()
+    {
+        Assert.Equal(3, BuildCommand.ReleaseOptimizationLevel);
+    }
+
+    [Fact]
+    public void WholeProgramCompileUsesFinalSizeOptimizationAndKeepsEveryInput()
+    {
+        var args = VbccToolchain.BuildWholeProgramCompileArguments(
+            new[] { "/tmp/a.c", "/tmp/b.c" }, "/tmp/all.o", "68020", 3,
+            "/ndk/include", new[] { "/tmp" }, enableFpu: false);
+
+        Assert.Contains("-final", args);
+        Assert.Contains("-size", args);
+        Assert.Contains("-sec-per-obj", args);
+        Assert.Contains("-O3", args);
+        Assert.Equal(new[] { "/tmp/a.c", "/tmp/b.c" }, args.TakeLast(2));
+    }
+
+    [Fact]
+    public void WholeProgramCacheKeyCoversEveryInputAndBuildSetting()
+    {
+        var inputs = new[] { ("/tmp/a.c", "aaa"), ("/tmp/b.c", "bbb") };
+        var key = Program.ComputeWholeProgramCacheKey(inputs, "types", "68020", "soft", 3);
+
+        Assert.Equal(key, Program.ComputeWholeProgramCacheKey(inputs.Reverse(), "types", "68020", "soft", 3));
+        Assert.NotEqual(key, Program.ComputeWholeProgramCacheKey(
+            new[] { ("/tmp/a.c", "changed"), ("/tmp/b.c", "bbb") }, "types", "68020", "soft", 3));
+        Assert.NotEqual(key, Program.ComputeWholeProgramCacheKey(inputs, "types", "68040", "soft", 3));
     }
 
     [Fact]

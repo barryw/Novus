@@ -23,7 +23,7 @@ public class BenchOptions
     [Option("release", Required = false, Default = true, HelpText = "Build benchmark runner in release mode (default: true for accurate timing)")]
     public bool Release { get; set; } = true;
 
-    [Option("cpu", Required = false, Default = "68020", HelpText = "Target CPU (68000, 68020, 68040, 68060)")]
+    [Option("cpu", Required = false, Default = "68020", HelpText = "Target CPU (68020, 68030, 68040, 68060, 68080)")]
     public string Cpu { get; set; } = "68020";
 
     [Option("fpu", Required = false, Default = "none", HelpText = "FPU mode (none, 68881, 68882, 68040, 68060)")]

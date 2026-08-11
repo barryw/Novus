@@ -48,6 +48,43 @@ public class SemanticAnalyzerTests
     }
 
     [Fact]
+    public void Analyze_SelectivePrimitiveFunctionImport_SkipsOnlyUnneededDependencies()
+    {
+        var stdLibPath = Path.Combine(Path.GetTempPath(), $"novus-import-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(stdLibPath);
+            File.WriteAllText(Path.Combine(stdLibPath, "core.novus"), "");
+            var helperPath = Path.Combine(stdLibPath, "helper.novus");
+            File.WriteAllText(helperPath, "from std::missing import Missing\npub fn ping(value: u32) -> u32 { return value }\n");
+
+            const string source = "from std::helper import ping\nfn main() {}\n";
+            var inputStream = new AntlrInputStream(source);
+            var lexer = new NovusLexer(inputStream);
+            var tokenStream = new AngleBracketTokenStream(lexer);
+            var parser = new NovusParser(tokenStream);
+            var tree = parser.compilationUnit();
+            var analyzer = new SemanticAnalyzer("test.novus", source, stdLibPath);
+            Assert.True(analyzer.Analyze(tree));
+
+            var irBuilder = new IrBuilder(analyzer.GetResult());
+            irBuilder.SetStdLibPath(stdLibPath);
+            irBuilder.SetInputFilePath("test.novus");
+            irBuilder.BuildModule(tree);
+            Assert.DoesNotContain(irBuilder.Diagnostics.Diagnostics, diagnostic => diagnostic.Code == "E0026");
+            Assert.Contains(Path.GetFullPath(helperPath), irBuilder.GetImportedModules());
+
+            File.WriteAllText(helperPath, "from std::missing import Missing\npub fn ping(value: Missing) -> Missing { return value }\n");
+            var namedDiagnostics = Analyze("from std::helper import ping\nfn main() {}\n", stdLibPath);
+            Assert.Contains(namedDiagnostics.Diagnostics, diagnostic => diagnostic.Code == "E0026");
+        }
+        finally
+        {
+            Directory.Delete(stdLibPath, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Analyze_ValidProgram_NoErrors()
     {
         var source = @"
@@ -58,6 +95,19 @@ fn main() -> u32 {
 
         Assert.False(diagnostics.HasErrors);
         Assert.Equal(0, diagnostics.ErrorCount);
+    }
+
+    [Fact]
+    public void Analyze_NullReassignment_UsesPointerTargetType()
+    {
+        var diagnostics = Analyze("""
+            fn clear() {
+                var pointer: *u32 = null
+                pointer = null
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors);
     }
 
     [Fact]

@@ -178,12 +178,36 @@ public class CCodeGeneratorHelperTests
     }
 
     [Fact]
+    public void AmigaLibraryBases_UseNativeTagsAndVbccInlineVectors()
+    {
+        var gen = CreateGenerator();
+        var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());
+
+        Assert.Equal("struct IntuitionBase*", gen.GetCType(
+            new IrPointerType(new IrStructType("IntuitionBase", []))));
+        Assert.Contains("#include <inline/intuition_protos.h>", header);
+        Assert.Contains("extern struct IntuitionBase *IntuitionBase;", header);
+    }
+
+    [Fact]
     public void GetCType_Enum_ReturnsEnumName()
     {
         var gen = CreateGenerator();
         var enumType = new IrEnumType("Color", new List<IrEnumVariant>());
 
         Assert.Equal("Color", gen.GetCType(enumType));
+    }
+
+    [Fact]
+    public void EmitFieldReference_ParenthesizesPointerCast()
+    {
+        var gen = CreateGenerator();
+        var structType = new IrStructType("Point", new List<IrStructField>());
+        var pointerType = new IrPointerType(structType);
+        var rawPointer = new IrVariable("raw", new IrPointerType(IrIntType.U8));
+        var cast = new IrCastValue(rawPointer, rawPointer.Type, pointerType);
+
+        Assert.Equal("((Point*)raw)->x", gen.EmitFieldReference(new IrFieldReference(cast, "x", IrIntType.I32)));
     }
 
     #endregion
@@ -471,23 +495,23 @@ public class CCodeGeneratorHelperTests
     #region EmitFloatConstant Tests
 
     [Fact]
-    public void EmitFloatConstant_F32_AddsFloatSuffix()
+    public void EmitFloatConstant_F32_PreservesExactBits()
     {
         var gen = CreateGenerator();
         var constant = new IrFloatConstant(3.14, new IrFloatType(32));
 
         var result = gen.EmitFloatConstant(constant);
-        Assert.EndsWith("f", result);
+        Assert.Equal("__novus_f32_from_bits(0x4048F5C3U)", result);
     }
 
     [Fact]
-    public void EmitFloatConstant_F64_NoSuffix()
+    public void EmitFloatConstant_F64_PreservesExactBits()
     {
         var gen = CreateGenerator();
         var constant = new IrFloatConstant(3.14, new IrFloatType(64));
 
         var result = gen.EmitFloatConstant(constant);
-        Assert.DoesNotContain("f", result);
+        Assert.Equal("__novus_f64_from_bits(0x40091EB851EB851FULL)", result);
     }
 
     #endregion

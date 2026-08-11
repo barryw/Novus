@@ -425,6 +425,8 @@ public class ConstFnEvaluator
             case IrBoolConstant b: return b.Value;
             case IrFloatConstant f: return f.Value;
             case IrFixedConstant fx: return fx.Value;
+            case IrStringLiteral or IrGlobalVariable or IrFunctionAddress:
+                return value;
             case IrVariable v:
                 if (_variables.TryGetValue(v.Name, out var val))
                     return val;
@@ -432,9 +434,77 @@ public class ConstFnEvaluator
                 // Return null and let caller handle the error
                 return null;
             case IrSizeOf sz: return sz.TargetType.SizeInBytes;
+            case IrCastValue cast:
+            {
+                var inner = MaterializeValue(EvaluateValue(cast.Value), cast.SourceType);
+                return inner == null ? null : new IrCastValue(inner, cast.SourceType, cast.Type);
+            }
+            case IrStructLiteral structure:
+            {
+                var fields = new Dictionary<string, IrValue>();
+                foreach (var (name, field) in structure.FieldValues)
+                {
+                    var evaluated = MaterializeValue(EvaluateValue(field), field.Type);
+                    if (evaluated == null) return null;
+                    fields[name] = evaluated;
+                }
+                return new IrStructLiteral((IrStructType)structure.Type, fields);
+            }
+            case IrTupleLiteral tuple:
+            {
+                var elements = new List<IrValue>();
+                foreach (var element in tuple.Elements)
+                {
+                    var evaluated = MaterializeValue(EvaluateValue(element), element.Type);
+                    if (evaluated == null) return null;
+                    elements.Add(evaluated);
+                }
+                return new IrTupleLiteral((IrTupleType)tuple.Type, elements);
+            }
+            case IrArrayLiteral array:
+            {
+                var result = new IrArrayLiteral((IrArrayType)array.Type);
+                foreach (var element in array.Elements)
+                {
+                    var evaluated = MaterializeValue(EvaluateValue(element), element.Type);
+                    if (evaluated == null) return null;
+                    result.Elements.Add(evaluated);
+                }
+                return result;
+            }
+            case IrEnumValue enumValue:
+            {
+                var values = new List<IrValue>();
+                foreach (var associated in enumValue.AssociatedValues)
+                {
+                    var evaluated = MaterializeValue(EvaluateValue(associated), associated.Type);
+                    if (evaluated == null) return null;
+                    values.Add(evaluated);
+                }
+                return new IrEnumValue((IrEnumType)enumValue.Type, enumValue.VariantName,
+                    enumValue.VariantTag, values);
+            }
             // null pointer is represented as IrConstant(0) with pointer type
             default: return null;
         }
+    }
+
+    private static IrValue? MaterializeValue(object? value, IrType type)
+    {
+        if (value is IrValue irValue)
+            return irValue;
+
+        return type switch
+        {
+            IrBoolType when value is bool boolean => new IrBoolConstant(boolean),
+            IrFloatType floatType when value is IConvertible =>
+                new IrFloatConstant(Convert.ToDouble(value), floatType),
+            IrFixedType fixedType when value is IConvertible =>
+                new IrFixedConstant(Convert.ToDouble(value), fixedType),
+            IrIntType when value is IConvertible => new IrConstant(Convert.ToInt64(value), type),
+            IrPointerType when value is IConvertible => new IrConstant(Convert.ToInt64(value), type),
+            _ => null
+        };
     }
 
     private object? EvaluateBinaryOp(IrBinaryOp.OpKind op, object? left, object? right, IrType resultType)

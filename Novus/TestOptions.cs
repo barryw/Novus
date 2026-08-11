@@ -26,7 +26,7 @@ public class TestOptions
     [Option('O', "optimize", Required = false, HelpText = "Optimization level (0-3; default: 0 for debug, 1 for release)")]
     public int? OptimizationLevel { get; set; }
 
-    [Option("cpu", Required = false, Default = "68020", HelpText = "Target CPU (68000, 68020, 68040, 68060)")]
+    [Option("cpu", Required = false, Default = "68020", HelpText = "Target CPU (68020, 68030, 68040, 68060, 68080)")]
     public string Cpu { get; set; } = "68020";
 
     [Option("fpu", Required = false, Default = "none", HelpText = "FPU mode (none, 68881, 68882, 68040, 68060)")]

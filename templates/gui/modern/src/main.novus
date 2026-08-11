@@ -1,36 +1,48 @@
-// ReAction application using Novus's owning builder API.
+// AmigaOS 3.1+ GUI using Novus's static, owning GadTools API.
 
-from std::ui::reaction import ReActionBuilder, ReActionEvent, LayoutOrientation
-from std::ffi::intuition import LockPubScreen, UnlockPubScreen
+from std::error::errors import IntuitionError
+from std::ui::gadtools import GadgetBounds, GadToolsEvent, StaticGadget, StaticGadToolsUi, StaticMenuEntry
+
+const QUIT_BUTTON: u16 = 1
+
+static GADGETS: [StaticGadget] = [
+    StaticGadget::checkbox(2, "Enable feature", 24, 34, 170, 14, true),
+    StaticGadget::integer(3, "Value", 24, 58, 170, 18, 42, 3),
+    StaticGadget::button(QUIT_BUTTON, "Quit", 124, 88, 70, 18),
+]
+
+static MENUS: [StaticMenuEntry] = [
+    StaticMenuEntry::title("File"),
+    StaticMenuEntry::item("Quit", "Q"),
+    StaticMenuEntry::end(),
+]
+
+static UI: StaticGadToolsUi = StaticGadToolsUi {
+    title: "{{PROJECT_NAME}}",
+    bounds: GadgetBounds { x: 40, y: 30, width: 230, height: 135 },
+    gadgets: GADGETS,
+    gadget_count: 3,
+    menus: MENUS,
+}
+
+fn run() -> Result<(), IntuitionError> {
+    let window = UI.open()?
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close => { break },
+            GadToolsEvent::GadgetUp(QUIT_BUTTON) => { break },
+            GadToolsEvent::MenuPick(0, 0) => { break },
+            _ => {},
+        }
+    }
+
+    return Result::Ok(())
+}
 
 pub fn main() -> i32 {
-    let screen = LockPubScreen(null)
-    if !screen {
-        return 20
+    match run() {
+        Result::Ok(_) => return 0,
+        Result::Err(_) => return 20,
     }
-
-    var builder = ReActionBuilder::new(screen)
-    var root = builder.layout(LayoutOrientation::Vertical)
-    root.space_outer()
-    root.add_button(1, "Close")
-
-    match builder.build("{{PROJECT_NAME}}") {
-        Result::Ok(window) => {
-            var running = true
-            while running {
-                match window.wait_event() {
-                    ReActionEvent::Close => { running = false },
-                    ReActionEvent::GadgetUp(1) => { running = false },
-                    _ => {},
-                }
-            }
-        },
-        Result::Err(_) => {
-            UnlockPubScreen(null, screen)
-            return 20
-        },
-    }
-
-    UnlockPubScreen(null, screen)
-    return 0
 }

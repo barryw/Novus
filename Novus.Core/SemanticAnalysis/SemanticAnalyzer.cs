@@ -926,48 +926,53 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return; // Don't reprocess the entire module
         }
 
-        // Mark this module as imported
-        _importedModules.Add(modulePath);
+        // Primitive function signatures are self-contained. Their implementation dependencies
+        // are compiled separately and do not need to populate this module's symbol table.
+        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+        var needsDependencies = !ModuleImportHelper.CanImportWithoutDependencies(moduleContext, namesToImport, importAll);
 
-        // Process the module's imports to make types available for analyzing its declarations
-        // This is safe because _importedModules prevents circular dependencies
-        // When we import a module, we need to process its imports so that types used in
-        // function signatures, struct fields, etc. are available
-        foreach (var importDecl in moduleContext.importDeclaration())
+        if (needsDependencies)
         {
-            ProcessImport(importDecl);
-        }
+            // Mark before recursion so circular imports terminate.
+            _importedModules.Add(modulePath);
 
-        // CRITICAL: Process pub use reexports, before parsing any function signatures
-        // Function signatures may reference reexported types, so those types must be in scope
-        foreach (var reexportDecl in moduleContext.reexportDeclaration())
-        {
-            var reexportPath = reexportDecl.modulePath().GetText();
-            bool reexportAll = reexportDecl.STAR() != null;
-
-            if (reexportAll)
+            // Process the module's imports to make types available for analyzing its declarations
+            // This is safe because _importedModules prevents circular dependencies
+            // When we import a module, we need to process its imports so that types used in
+            // function signatures, struct fields, etc. are available
+            foreach (var importDecl in moduleContext.importDeclaration())
             {
-                // pub use std::error::* - import all symbols
-                ImportModule(reexportPath, importAll: true, importList: null, location);
+                ProcessImport(importDecl);
             }
-            else
+
+            // CRITICAL: Process pub use reexports, before parsing any function signatures
+            // Function signatures may reference reexported types, so those types must be in scope
+            foreach (var reexportDecl in moduleContext.reexportDeclaration())
             {
-                // pub use std::error::DosError - import specific symbols
-                var reexportList = reexportDecl.reexportList();
-                if (reexportList != null)
+                var reexportPath = reexportDecl.modulePath().GetText();
+                bool reexportAll = reexportDecl.STAR() != null;
+
+                if (reexportAll)
                 {
-                    var symbolNames = new List<string>();
-                    foreach (var id in reexportList.IDENTIFIER())
+                    // pub use std::error::* - import all symbols
+                    ImportModule(reexportPath, importAll: true, importList: null, location);
+                }
+                else
+                {
+                    // pub use std::error::DosError - import specific symbols
+                    var reexportList = reexportDecl.reexportList();
+                    if (reexportList != null)
                     {
-                        symbolNames.Add(id.GetText());
+                        var symbolNames = new List<string>();
+                        foreach (var id in reexportList.IDENTIFIER())
+                        {
+                            symbolNames.Add(id.GetText());
+                        }
+                        ImportModuleSpecificSymbols(reexportPath, symbolNames, location);
                     }
-                    ImportModuleSpecificSymbols(reexportPath, symbolNames, location);
                 }
             }
         }
-
-        // Build the list of names to import
-        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
         // Handle import aliases (import Printf as MyPrintf)
         if (!importAll && importList != null)
@@ -1802,6 +1807,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Check if function is extern by looking for 'extern' keyword
         var isExtern = context.KW_EXTERN() != null;
+        var callingConvention = context.KW_AMIGA() != null
+            ? IrCallingConvention.Amiga
+            : IrCallingConvention.Novus;
 
         // Check if function is a const fn
         var isConstFn = Frontend.AstModifierHelper.IsConstFn(context);
@@ -1864,11 +1872,28 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var paramType = ParseType(paramCtx.type());
                 var paramLocation = SourceLocationHelper.FromToken(paramCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
                 var isConsuming = paramCtx.KW_CONSUMING() != null;
+                string? register = null;
+                if (paramCtx.parameterRegisterBinding() != null)
+                {
+                    var requestedRegister = paramCtx.parameterRegisterBinding().IDENTIFIER().GetText();
+                    if (callingConvention != IrCallingConvention.Amiga)
+                    {
+                        _diagnostics.ReportError("E0130",
+                            "register bindings are only valid on amiga functions", paramLocation);
+                    }
+                    else if (!IrAmigaAbi.TryNormalizeRegister(requestedRegister, out register))
+                    {
+                        _diagnostics.ReportError("E0131",
+                            $"invalid Amiga register '{requestedRegister}'; expected d0-d7, a0-a6, or fp0-fp7",
+                            paramLocation);
+                    }
+                }
 
                 // Validate parameter name is not a reserved keyword
                 ValidateNotReservedKeyword(paramName, paramLocation, "parameter");
 
-                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation, IsConsuming: isConsuming));
+                parameters.Add(new ParameterSymbol(paramName, paramType, paramLocation,
+                    IsConsuming: isConsuming, Register: register));
             }
 
             // Add variadic parameter if present
@@ -1894,7 +1919,34 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _parsingExternFunction = false;
         }
 
-        var funcSymbol = new FunctionSymbol(name, returnType, parameters, location, isExtern, genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, null, whereClause, isConstFn);
+        string? returnRegister = null;
+        if (context.abiRegisterBinding() != null)
+        {
+            var requestedRegister = context.abiRegisterBinding().IDENTIFIER().GetText();
+            if (callingConvention != IrCallingConvention.Amiga)
+            {
+                _diagnostics.ReportError("E0130",
+                    "return register bindings are only valid on amiga functions", location);
+            }
+            else if (!IrAmigaAbi.TryNormalizeRegister(requestedRegister, out returnRegister))
+            {
+                _diagnostics.ReportError("E0131",
+                    $"invalid Amiga return register '{requestedRegister}'; expected d0-d7, a0-a6, or fp0-fp7",
+                    location);
+            }
+        }
+
+        var duplicateRegister = parameters.Where(p => p.Register != null)
+            .GroupBy(p => p.Register).FirstOrDefault(group => group.Count() > 1);
+        if (duplicateRegister != null)
+        {
+            _diagnostics.ReportError("E0132",
+                $"Amiga register '{duplicateRegister.Key}' is bound to more than one parameter", location);
+        }
+
+        var funcSymbol = new FunctionSymbol(name, returnType, parameters, location, isExtern,
+            genericParams.Count > 0 ? genericParams : null, attributes, hasVariadic, null,
+            whereClause, isConstFn, callingConvention, returnRegister);
 
         // Use appropriate registration method based on whether this is an import
         if (forImport)
@@ -2306,7 +2358,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var whereClause = ParseWhereClause(context.whereClause());
 
         // Register placeholder struct type - fields will be filled in by FillStructFields
-        var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause);
+        var placeholderStruct = new IrStructType(name, new List<IrStructField>(),
+            genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause,
+            isUnion: context.KW_UNION() != null);
         _symbols.RegisterStruct(name, placeholderStruct, location);
     }
 
@@ -4404,7 +4458,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
 
             // Check type compatibility of the assigned value
+            var previousExpectedType = _expectedType;
+            if (op == "=") _expectedType = targetType;
             var exprType = Visit(context.expression());
+            _expectedType = previousExpectedType;
             if (exprType != null && !TypesCompatible(targetType, exprType))
             {
                 _diagnostics.ReportError(
@@ -4443,7 +4500,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
 
             // Check type compatibility
+            var previousExpectedType = _expectedType;
+            if (op == "=") _expectedType = variable.Type;
             var exprType = Visit(context.expression());
+            _expectedType = previousExpectedType;
 
             // Handle compound operators
             if (op != "=")
@@ -8192,6 +8252,52 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var functionName = identifierExpr.identifier().GetText();
         var argCount = context.argumentList()?.expression().Length ?? 0;
 
+        if (functionName is "read_volatile" or "write_volatile" or "memory_fence")
+        {
+            var arguments = context.argumentList()?.expression() ?? [];
+            var expectedCount = functionName switch
+            {
+                "read_volatile" => 1,
+                "write_volatile" => 2,
+                _ => 0
+            };
+            if (arguments.Length != expectedCount)
+            {
+                _diagnostics.ReportError(
+                    "E0014",
+                    $"{functionName} expects {expectedCount} argument(s), but {arguments.Length} were provided",
+                    SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+                return functionName == "read_volatile" ? null : IrVoidType.Instance;
+            }
+
+            if (functionName == "memory_fence")
+                return IrVoidType.Instance;
+
+            RequireUnsafe(context, functionName + "()", "volatile memory access bypasses normal compiler memory semantics");
+            var pointerType = Visit(arguments[0]);
+            if (pointerType is not IrPointerType pointer)
+            {
+                _diagnostics.ReportError(
+                    "E0015",
+                    $"{functionName} requires a raw pointer as its first argument",
+                    SourceLocationHelper.FromContext(arguments[0], _filePath, _sourceLines));
+                return functionName == "read_volatile" ? null : IrVoidType.Instance;
+            }
+
+            if (functionName == "read_volatile")
+                return pointer.PointeeType;
+
+            var valueType = Visit(arguments[1]);
+            if (valueType != null && !TypesCompatible(pointer.PointeeType, valueType))
+            {
+                _diagnostics.ReportError(
+                    "E0015",
+                    $"write_volatile value must have type {pointer.PointeeType.Name}, got {valueType.Name}",
+                    SourceLocationHelper.FromContext(arguments[1], _filePath, _sourceLines));
+            }
+            return IrVoidType.Instance;
+        }
+
         // Check if this is a qualified enum constructor (e.g., Result::Ok)
         if (functionName.Contains("::"))
         {
@@ -10217,7 +10323,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Create a function pointer type
             var funcPtrType = _typeInterner.GetFunctionPointerType(
                 func.Parameters.Select(p => p.Type).ToList(),
-                func.ReturnType
+                func.ReturnType,
+                func.CallingConvention,
+                func.Parameters.Select(p => p.Register).ToList(),
+                func.ReturnRegister
             );
             return funcPtrType;
         }
@@ -10282,6 +10391,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     "member access is only valid on struct types"
                 }
             );
+            return null;
+        }
+
+        if (structType.IsUnion && _unsafeDepth == 0)
+        {
+            var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            _diagnostics.ReportError("E0135",
+                $"reading or writing union field '{memberName}' requires an unsafe block", location,
+                helpTexts: new List<string>
+                {
+                    "the active field of a union is not tracked by the type system",
+                    $"use unsafe {{ value.{memberName} }} only when that field is active"
+                });
             return null;
         }
 
@@ -10446,7 +10568,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             if (function != null)
             {
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-                return _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
+                return _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType,
+                    function.CallingConvention, function.Parameters.Select(p => p.Register).ToList(),
+                    function.ReturnRegister);
             }
         }
 
@@ -11588,6 +11712,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         IrType? spreadType = null;
         if (spreadExpr != null)
         {
+            if (structType.IsUnion)
+            {
+                var location = SourceLocationHelper.FromContext(spreadExpr, _filePath, _sourceLines);
+                _diagnostics.ReportError("E0133", "union values cannot use update syntax", location);
+            }
+
             // There's a spread expression (..base)
             spreadType = Visit(spreadExpr);
 
@@ -11607,7 +11737,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Check that all fields are initialized (either explicitly or via spread)
-        if (spreadType == null)
+        if (structType.IsUnion)
+        {
+            if (initializedFields.Count != 1)
+            {
+                var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+                _diagnostics.ReportError("E0134",
+                    $"union '{structName}' must initialize exactly one field", location,
+                    helpTexts: new List<string> { "choose the field that is active initially" });
+            }
+        }
+        else if (spreadType == null)
         {
             // No spread - all fields must be explicitly initialized
             foreach (var field in structType.Fields)
@@ -12184,10 +12324,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Function pointer types - compare signatures
         if (a is IrFunctionPointerType fpA && b is IrFunctionPointerType fpB)
         {
+            if (fpA.CallingConvention != fpB.CallingConvention ||
+                fpA.ReturnRegister != fpB.ReturnRegister)
+                return false;
             if (fpA.ParameterTypes.Count != fpB.ParameterTypes.Count)
                 return false;
             for (int i = 0; i < fpA.ParameterTypes.Count; i++)
             {
+                if (fpA.ParameterRegisters[i] != fpB.ParameterRegisters[i])
+                    return false;
                 if (!TypesEqual(fpA.ParameterTypes[i], fpB.ParameterTypes[i]))
                     return false;
             }
@@ -12286,14 +12431,26 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                    TypesCompatible(expectedArray.ElementType, actualArray.ElementType);
         }
 
+        if (expected is IrTupleType expectedTuple && actual is IrTupleType actualTuple)
+        {
+            return expectedTuple.ElementTypes.Count == actualTuple.ElementTypes.Count &&
+                   expectedTuple.ElementTypes.Zip(actualTuple.ElementTypes)
+                       .All(pair => TypesCompatible(pair.First, pair.Second));
+        }
+
         // Function pointer types - must have same parameter types and return type
         if (expected is IrFunctionPointerType expectedFp && actual is IrFunctionPointerType actualFp)
         {
+            if (expectedFp.CallingConvention != actualFp.CallingConvention ||
+                expectedFp.ReturnRegister != actualFp.ReturnRegister)
+                return false;
             if (expectedFp.ParameterTypes.Count != actualFp.ParameterTypes.Count)
                 return false;
 
             for (int i = 0; i < expectedFp.ParameterTypes.Count; i++)
             {
+                if (expectedFp.ParameterRegisters[i] != actualFp.ParameterRegisters[i])
+                    return false;
                 if (!TypesCompatible(expectedFp.ParameterTypes[i], actualFp.ParameterTypes[i]))
                     return false;
             }
@@ -12966,6 +13123,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             return $"[{arrayType.Length}]{TypeToString(arrayType.ElementType)}";
         }
+        if (type is IrTupleType tupleType)
+        {
+            return $"({string.Join(", ", tupleType.ElementTypes.Select(TypeToString))})";
+        }
         if (type is IrIntType intType)
         {
             var sign = intType.IsSigned ? "i" : "u";
@@ -13245,9 +13406,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return _analyzer._typeInterner.GetArrayType(elementType, (int)length);
         }
 
-        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType)
+        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType,
+            IrCallingConvention callingConvention = IrCallingConvention.Novus,
+            List<string?>? parameterRegisters = null, string? returnRegister = null)
         {
-            return _analyzer._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+            return _analyzer._typeInterner.GetFunctionPointerType(paramTypes, returnType, callingConvention, parameterRegisters, returnRegister);
         }
 
         public IrType GetTupleType(List<IrType> elementTypes)
@@ -13646,9 +13809,12 @@ public record FunctionSymbol(
     bool IsVariadic = false,  // true if function accepts variable number of arguments (...)
     List<string>? MethodGenericParameters = null,  // Method-level generic parameters (e.g., ["E"] for fn ok_or<E>)
     IrWhereClause? WhereClause = null,  // Generic type constraints (e.g., where T: Sortable)
-    bool IsConstFn = false  // true if function is declared with 'const fn'
+    bool IsConstFn = false,  // true if function is declared with 'const fn'
+    IrCallingConvention CallingConvention = IrCallingConvention.Novus,
+    string? ReturnRegister = null
 );
-public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false, bool IsConsuming = false) : IParameterInfo
+public record ParameterSymbol(string Name, IrType Type, SourceLocation Location, bool IsVariadic = false,
+    bool IsConsuming = false, string? Register = null) : IParameterInfo
 {
     string IParameterInfo.ParameterName => Name;
     IrType IParameterInfo.ParameterType => Type;

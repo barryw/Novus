@@ -300,9 +300,6 @@ public class OptimizationOptions
 /// </summary>
 public enum M68kCpuTarget
 {
-    /// <summary>68000/68010 - no 32-bit multiply/divide</summary>
-    M68000,
-
     /// <summary>68020/68030 - has 32-bit multiply/divide</summary>
     M68020,
 

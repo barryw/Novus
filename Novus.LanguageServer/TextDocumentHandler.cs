@@ -14,17 +14,23 @@ namespace Novus.LanguageServer;
 public class TextDocumentHandler : TextDocumentSyncHandlerBase
 {
     private readonly DocumentManager _documentManager;
+    private readonly TomlDocumentHandler _tomlDocuments;
     private readonly ILanguageServerFacade _languageServer;
 
-    public TextDocumentHandler(DocumentManager documentManager, ILanguageServerFacade languageServer)
+    public TextDocumentHandler(
+        DocumentManager documentManager,
+        TomlDocumentHandler tomlDocuments,
+        ILanguageServerFacade languageServer)
     {
         _documentManager = documentManager;
+        _tomlDocuments = tomlDocuments;
         _languageServer = languageServer;
     }
 
     public override TextDocumentAttributes GetTextDocumentAttributes(DocumentUri uri)
     {
-        return new TextDocumentAttributes(uri, "novus");
+        return new TextDocumentAttributes(uri,
+            TomlDocumentHandler.HandlesDocument(uri.ToString()) ? "toml" : "novus");
     }
 
     protected override TextDocumentSyncRegistrationOptions CreateRegistrationOptions(
@@ -33,10 +39,8 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
         return new TextDocumentSyncRegistrationOptions
         {
             DocumentSelector = new TextDocumentSelector(
-                new TextDocumentFilter
-                {
-                    Pattern = "**/*.novus"
-                }
+                new TextDocumentFilter { Pattern = "**/*.novus" },
+                new TextDocumentFilter { Pattern = "**/*.toml" }
             ),
             Change = TextDocumentSyncKind.Full, // Send full document on every change
             Save = new SaveOptions { IncludeText = true }
@@ -46,6 +50,13 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
     public override Task<Unit> Handle(DidOpenTextDocumentParams request, CancellationToken cancellationToken)
     {
         var uri = request.TextDocument.Uri.ToString();
+        if (TomlDocumentHandler.HandlesDocument(uri))
+        {
+            _tomlDocuments.Open(uri, request.TextDocument.Text, request.TextDocument.Version ?? 0);
+            return Unit.Task;
+        }
+        if (!HandlesDocument(uri))
+            return Unit.Task;
         var text = request.TextDocument.Text;
         var version = request.TextDocument.Version ?? 0;
 
@@ -61,6 +72,15 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
     public override Task<Unit> Handle(DidChangeTextDocumentParams request, CancellationToken cancellationToken)
     {
         var uri = request.TextDocument.Uri.ToString();
+        if (TomlDocumentHandler.HandlesDocument(uri))
+        {
+            if (request.ContentChanges.Any())
+                _tomlDocuments.Update(uri, request.ContentChanges.First().Text,
+                    request.TextDocument.Version ?? 0);
+            return Unit.Task;
+        }
+        if (!HandlesDocument(uri))
+            return Unit.Task;
         var version = request.TextDocument.Version ?? 0;
 
         // Full document sync - get the text from the change
@@ -78,6 +98,14 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
     {
         // Re-parse on save to ensure diagnostics are fresh
         var uri = request.TextDocument.Uri.ToString();
+        if (TomlDocumentHandler.HandlesDocument(uri))
+        {
+            if (request.Text != null)
+                _tomlDocuments.Save(uri, request.Text);
+            return Unit.Task;
+        }
+        if (!HandlesDocument(uri))
+            return Unit.Task;
         if (request.Text != null && _documentManager.Get(uri) is DocumentState state)
         {
             _documentManager.Update(uri, request.Text, state.Version);
@@ -90,6 +118,13 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
     public override Task<Unit> Handle(DidCloseTextDocumentParams request, CancellationToken cancellationToken)
     {
         var uri = request.TextDocument.Uri.ToString();
+        if (TomlDocumentHandler.HandlesDocument(uri))
+        {
+            _tomlDocuments.Close(uri);
+            return Unit.Task;
+        }
+        if (!HandlesDocument(uri))
+            return Unit.Task;
         _documentManager.Close(uri);
 
         // Clear diagnostics for closed document
@@ -101,6 +136,9 @@ public class TextDocumentHandler : TextDocumentSyncHandlerBase
 
         return Unit.Task;
     }
+
+    internal static bool HandlesDocument(string uri) =>
+        Path.GetExtension(new Uri(uri).LocalPath).Equals(".novus", StringComparison.OrdinalIgnoreCase);
 
     private void PublishDiagnostics(string uri)
     {

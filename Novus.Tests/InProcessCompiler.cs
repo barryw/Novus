@@ -32,15 +32,14 @@ public class InProcessCompiler
         // Determine effective CPU for "auto" mode
         cpu = cpu == "auto" ? "68020" : cpu;
 
-        // CPU hierarchy: 68000 < 68010 < 68020 < 68030 < 68040 < 68060
+        // CPU hierarchy starts at the Novus 68020 minimum.
         var cpuLevel = cpu switch
         {
-            "68000" => 0,
-            "68010" => 1,
             "68020" => 2,
             "68030" => 3,
             "68040" => 4,
             "68060" => 5,
+            "68080" => 6,
             _ => 2 // default to 68020
         };
 
@@ -50,20 +49,18 @@ public class InProcessCompiler
             ["RELEASE"] = buildMode == BuildMode.Release,
 
             // Exact CPU target constants
-            ["M68000"] = cpu == "68000",
-            ["M68010"] = cpu == "68010",
             ["M68020"] = cpu == "68020",
             ["M68030"] = cpu == "68030",
             ["M68040"] = cpu == "68040",
             ["M68060"] = cpu == "68060",
+            ["M68080"] = cpu == "68080",
 
             // "At least" CPU constants
-            ["M68000_PLUS"] = cpuLevel >= 0,
-            ["M68010_PLUS"] = cpuLevel >= 1,
             ["M68020_PLUS"] = cpuLevel >= 2,
             ["M68030_PLUS"] = cpuLevel >= 3,
             ["M68040_PLUS"] = cpuLevel >= 4,
             ["M68060_PLUS"] = cpuLevel >= 5,
+            ["M68080_PLUS"] = cpuLevel >= 6,
 
             // FPU target constants
             ["FPU_NONE"] = fpu == "none" || fpu == "soft",

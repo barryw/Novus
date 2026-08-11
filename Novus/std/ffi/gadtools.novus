@@ -267,7 +267,7 @@ extern pub fn GT_PostFilterIMsg(imsg: *IntuiMessage) -> *IntuiMessage
 /// # Returns
 /// gad - pointer to context gadget, or NULL if failure.
 @library("gadtools.library")
-extern pub fn CreateContext(glistptr: *Gadget) -> *Gadget
+extern pub fn CreateContext(glistptr: **Gadget) -> *Gadget
 /// Draw a bevelled box. (V36)
 ///
 /// This function renders a bevelled box of specified dimensions and type into

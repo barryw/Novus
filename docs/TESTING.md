@@ -101,11 +101,11 @@ public void BuildIr_Addition_CreatesBinaryOp()
 
 **Coverage:**
 - Proper vasm syntax (section, xdef)
-- CPU target headers (68000, 68020, etc.)
+- CPU target headers (68020, 68040, etc.)
 - Return value in d0 (Amiga ABI compliance)
 - moveq optimization for small constants
 - Signed vs unsigned instructions (muls vs mulu)
-- 68000 vs 68020+ instruction selection
+- 68020 baseline vs newer instruction selection
 - Comment generation for debugging
 - Multiple functions
 - Arithmetic operations
@@ -149,7 +149,7 @@ public void Generate_UnsignedMultiply_UsesMulu()
 **Example Tests:**
 ```csharp
 [Theory]
-[InlineData("68000")]
+[InlineData("68020")]
 [InlineData("68020")]
 [InlineData("68060")]
 public void Compile_AllCPUTargets_Success(string cpuTarget)
@@ -217,7 +217,7 @@ Tests verify that:
 
 ### 2. CPU Target Awareness
 Tests validate:
-- 68000: Falls back to 16-bit operations for 32-bit math
+- 68020: Uses native 32-bit operations
 - 68020+: Uses native 32-bit multiply/divide
 - Target-specific header generation
 

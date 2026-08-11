@@ -21,13 +21,7 @@
 	xref	_main			; User's main() function
 	xref	_SysBase		; From library_bases.s
 	xref	_DOSBase		; From library_bases.s
-	xref	_IntuitionBase		; From library_bases.s
-	xref	_GadToolsBase		; From library_bases.s
-	xref	_GfxBase		; From library_bases.s
-	xref	_DiskfontBase		; From library_bases.s
 	xref	_WBStartupMsg		; From library_bases.s (WBStartup message)
-	xref	___dos_init		; From dos_init.s
-	xref	___dos_cleanup		; From dos_init.s
 	xref	___novus_ffi_init	; Generated exact FFI dependencies
 	xref	___novus_ffi_cleanup
 
@@ -63,30 +57,19 @@ _start:
 	; Workbench startup - get WBStartup message
 	; The message is at our Process's message port (pr_MsgPort at offset 92)
 	lea	92(a4),a0		; a0 = &pr_MsgPort
-	movea.l	_SysBase,a6		; Get exec.library base
 	jsr	-384(a6)		; WaitPort() - LVO -384
 
 	lea	92(a4),a0		; a0 = &pr_MsgPort again
-	movea.l	_SysBase,a6		; Get exec.library base
 	jsr	-372(a6)		; GetMsg() - LVO -372
 
 	move.l	d0,_WBStartupMsg	; Save WBStartup message pointer
 	beq.w	.exit_no_msg		; If NULL, something went wrong
 
-	; Set current directory to first WBArg's lock (the program icon's directory)
-	move.l	d0,a2			; a2 = WBStartup message
-	move.l	36(a2),a3		; a3 = ArgList pointer
-	move.l	(a3),d1			; d1 = first WBArg's wa_Lock
-	beq.s	.no_lock		; If lock is NULL, skip CurrentDir
-
-	; Actually, we need DOS first. Do it below.
-
-.no_lock:
 .cli_startup:
-	; Initialize DOS library (needed by runtime I/O functions)
-	jsr	___dos_init
+	; Open the exact libraries proven reachable in IR, plus DOS for startup.
+	jsr	___novus_ffi_init
 	tst.l	d0
-	beq.w	.exit_no_dos		; Exit if DOS library couldn't open
+	beq.s	.ffi_init_failed
 
 	; If Workbench startup and we have a lock, set current directory
 	tst.l	_WBStartupMsg
@@ -102,11 +85,6 @@ _start:
 	jsr	-126(a6)		; CurrentDir() - LVO -126
 
 .skip_currentdir:
-	; Open only the libraries/resources/devices proven reachable in IR.
-	jsr	___novus_ffi_init
-	tst.l	d0
-	beq.s	.ffi_init_failed
-
 	; Call main()
 	jsr	_main
 
@@ -119,45 +97,7 @@ _start:
 	moveq	#20,d0			; RETURN_FAIL
 	move.l	d0,-(sp)
 
-	; Clean up libraries that were lazily initialized
-	; Note: We check if the base is non-NULL before closing
-
 .cleanup_core:
-	; Close GadTools if it was opened
-	tst.l	_GadToolsBase
-	beq.s	.no_gadtools
-	movea.l	_SysBase,a6		; Get exec.library base
-	movea.l	_GadToolsBase,a1	; Library to close
-	jsr	-414(a6)		; CloseLibrary()
-
-.no_gadtools:
-	; Close Intuition if it was opened
-	tst.l	_IntuitionBase
-	beq.s	.no_intuition
-	movea.l	_SysBase,a6		; Get exec.library base
-	movea.l	_IntuitionBase,a1	; Library to close
-	jsr	-414(a6)		; CloseLibrary()
-
-.no_intuition:
-	; Close Diskfont if it was opened
-	tst.l	_DiskfontBase
-	beq.s	.no_diskfont
-	movea.l	_SysBase,a6		; Get exec.library base
-	movea.l	_DiskfontBase,a1	; Library to close
-	jsr	-414(a6)		; CloseLibrary()
-
-.no_diskfont:
-	; Close Graphics if it was opened
-	tst.l	_GfxBase
-	beq.s	.no_graphics
-	movea.l	_SysBase,a6		; Get exec.library base
-	movea.l	_GfxBase,a1		; Library to close
-	jsr	-414(a6)		; CloseLibrary()
-
-.no_graphics:
-	; Clean up DOS library
-	jsr	___dos_cleanup
-
 	; Restore return code
 	move.l	(sp)+,d0
 
@@ -170,7 +110,6 @@ _start:
 	jsr	-378(a6)		; ReplyMsg() - LVO -378
 
 .no_wb_reply:
-.exit_no_dos:
 .exit_no_msg:
 	; Exit with return code from main (already in d0)
 	rts				; Return to CLI/Workbench

@@ -29,6 +29,7 @@ FOUNDATION_SUITES = {
     "foundation-tuple-drop": "Novus.Tests/AmigaRuntime/foundation_tuple_drop.novus",
     "foundation-strings": "Novus.Tests/AmigaRuntime/foundation_strings.novus",
     "foundation-inline-asm": "Novus.Tests/AmigaRuntime/foundation_inline_asm.novus",
+    "foundation-systems": "Novus.Tests/AmigaRuntime/foundation_systems.novus",
     "foundation-modules": "Novus.Tests/AmigaRuntime/foundation_modules",
     "const-fn": "Novus.Tests/Examples/test_const_fn.novus",
     "intrinsics": "Novus.Tests/Examples/test_intrinsics.novus",

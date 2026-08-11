@@ -22,6 +22,45 @@ public partial class IrBuilder
 
     public override object? VisitCallExpr([NotNull] NovusParser.CallExprContext context)
     {
+        if (context.expression() is NovusParser.PrimaryExprContext builtinPrimary &&
+            builtinPrimary.primaryExpression() is NovusParser.IdentifierExprContext builtinIdentifier)
+        {
+            var builtinName = builtinIdentifier.identifier().GetText();
+            var builtinArguments = context.argumentList()?.expression() ?? [];
+            if (builtinName == "read_volatile" && builtinArguments.Length == 1)
+            {
+                var pointer = (IrValue?)Visit(builtinArguments[0]);
+                if (pointer?.Type is IrPointerType pointerType)
+                    return new IrDereferenceValue(pointer, pointerType.PointeeType, isVolatile: true);
+                return null;
+            }
+            if (builtinName == "write_volatile" && builtinArguments.Length == 2)
+            {
+                var pointer = (IrValue?)Visit(builtinArguments[0]);
+                var value = (IrValue?)Visit(builtinArguments[1]);
+                if (pointer != null && value != null)
+                {
+                    var store = new IrDereferenceStore(pointer, value, isVolatile: true)
+                    {
+                        Location = GetLocation(context)
+                    };
+                    Emit(store);
+                }
+                return new IrTupleLiteral(IrTupleType.Unit, []);
+            }
+            if (builtinName == "memory_fence" && builtinArguments.Length == 0)
+            {
+                Emit(new IrInlineAsm
+                {
+                    IsVolatile = true,
+                    ClobbersMemory = true,
+                    Instructions = { "nop" },
+                    Location = GetLocation(context)
+                });
+                return new IrTupleLiteral(IrTupleType.Unit, []);
+            }
+        }
+
         // Handle method calls (e.g., v.len())
         // Method calls desugar to: Type::method(receiver, args...)
         if (context.expression() is NovusParser.MemberAccessExprContext memberAccessCtx)
@@ -2272,7 +2311,9 @@ public partial class IrBuilder
             {
                 // Create function pointer type from function signature
                 var paramTypes = function.Parameters.Select(p => p.Type).ToList();
-                var fpType = _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType);
+                var fpType = _typeInterner.GetFunctionPointerType(paramTypes, function.ReturnType,
+                    function.CallingConvention, function.Parameters.Select(p => p.Register).ToList(),
+                    function.ReturnRegister);
                 return new IrFunctionAddress(name, fpType);
             }
         }
@@ -3047,24 +3088,14 @@ public partial class IrBuilder
 
         if (op == "!")
         {
-            // Logical NOT: false becomes true, true becomes false
-            // For pointers, first convert to bool (ptr != 0), then negate
-            IrValue boolOperand = operandValue;
-
-            if (operandValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-            {
-                // Convert pointer to bool: ptr != 0
-                var ptrToBoolTemp = $"%t{_tempCounter++}";
-                var zeroValue = new IrConstant(0, IrIntType.U32);
-                var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, operandValue, zeroValue, IrBoolType.Instance);
-                _currentBlock!.AddInstruction(comparison);
-                boolOperand = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-            }
-
-            // Implemented as: result = (operand XOR 1)
-            // This flips the boolean bit: 0 XOR 1 = 1, 1 XOR 1 = 0
+            // Lower logical NOT directly to equality with false/null. Besides being
+            // simpler IR, this keeps the comparison adjacent to a consuming branch,
+            // which lets the C backend avoid materializing a boolean temporary.
             var tempName = $"%t{_tempCounter++}";
-            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Xor, boolOperand, new IrConstant(1, new IrIntType(32, false)), IrBoolType.Instance);
+            IrValue falseValue = operandValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType
+                ? new IrConstant(0, operandValue.Type)
+                : new IrBoolConstant(false);
+            var binOp = new IrBinaryOp(tempName, IrBinaryOp.OpKind.Eq, operandValue, falseValue, IrBoolType.Instance);
             _currentBlock!.AddInstruction(binOp);
             return new IrVariable(tempName, IrBoolType.Instance);
         }
@@ -3285,26 +3316,28 @@ public partial class IrBuilder
         // 3. Generate match expression to unwrap Result
         // This is similar to VisitMatchExpr, but we generate the match structure in IR directly
 
-        // Create temporary variable to hold the result expression
-        var resultTemp = $"%try_result_{_tempCounter++}";
-        var resultLocal = new IrLocalVariable(resultTemp, innerExpr.Type, false);
-        _currentFunction.LocalVariables.Add(resultLocal);
-        _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, innerExpr.Type, false, innerExpr));
-        var resultVar = new IrVariable(resultTemp, innerExpr.Type);
+        // Calls and other lowered expressions already produce a stable IR variable.
+        // Only materialize non-variable values; copying every Result here otherwise
+        // creates a redundant whole-enum move before the tag is inspected.
+        IrVariable resultVar;
+        if (innerExpr is IrVariable innerVariable)
+        {
+            resultVar = innerVariable;
+        }
+        else
+        {
+            var resultTemp = $"%try_result_{_tempCounter++}";
+            var resultLocal = new IrLocalVariable(resultTemp, innerExpr.Type, false);
+            _currentFunction.LocalVariables.Add(resultLocal);
+            _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, innerExpr.Type, false, innerExpr));
+            resultVar = new IrVariable(resultTemp, innerExpr.Type);
+        }
 
         // Create a variable to hold the unwrapped Ok value (declared before branching)
         var okValueTemp = $"%try_ok_val_{_tempCounter++}";
         var okValueLocal = new IrLocalVariable(okValueTemp, okPayloadType, true);
         _currentFunction.LocalVariables.Add(okValueLocal);
         _localVariables[okValueTemp] = okValueLocal;
-
-        // Initialize with a default value (will be overwritten in Ok branch)
-        IrValue defaultValue = okPayloadType is IrIntType intType
-            ? new IrConstant(0, intType)
-            : okPayloadType is IrBoolType
-                ? new IrBoolConstant(false)
-                : new IrConstant(0, okPayloadType);
-        _currentBlock.AddInstruction(new IrLocalDecl(okValueTemp, okPayloadType, true, defaultValue));
 
         // Create blocks for Ok and Err branches
         var tryCounter = _tempCounter++;
@@ -3314,7 +3347,7 @@ public partial class IrBuilder
 
         // Test which variant we have
         var tagTemp = $"%try_tag_{_tempCounter++}";
-        _currentBlock.AddInstruction(new IrExtractTag(tagTemp, resultVar));
+        _currentBlock!.AddInstruction(new IrExtractTag(tagTemp, resultVar));
         var tagVar = new IrVariable(tagTemp, IrIntType.I32);
 
         // Branch on tag: compare with Ok tag
@@ -3336,9 +3369,7 @@ public partial class IrBuilder
         // Ok branch: extract value, store it, and continue
         _currentBlock = okBlock;
         // NOTE: Don't add IrLabel here - the block's label is emitted by EmitBasicBlock
-        var extractedTemp = $"%try_extracted_{_tempCounter++}";
-        okBlock.AddInstruction(new IrExtractVariantData(extractedTemp, resultVar, "Ok", 0, okPayloadType));
-        okBlock.AddInstruction(new IrStore(okValueTemp, new IrVariable(extractedTemp, okPayloadType)));
+        okBlock.AddInstruction(new IrExtractVariantData(okValueTemp, resultVar, "Ok", 0, okPayloadType));
         okBlock.AddInstruction(new IrBranch(continueBlock.Label));
 
         // Err branch: extract error and handle based on function return type
@@ -4234,6 +4265,8 @@ public partial class IrBuilder
         var isNegative = context.GetText().StartsWith("-");
         var text = context.FLOAT_LITERAL().GetText();
         var (value, type) = ParseFloatLiteral(text);
+        var hasExplicitSuffix = text.EndsWith("f32") || text.EndsWith("f64") ||
+                                text.EndsWith("fixed16") || text.EndsWith("fixed32");
 
         if (isNegative)
         {
@@ -4245,6 +4278,11 @@ public partial class IrBuilder
         if (_expectedType is IrFixedType expectedFixed && type is IrFloatType)
         {
             return new IrFixedConstant(value, expectedFixed);
+        }
+
+        if (!hasExplicitSuffix && _expectedType is IrFloatType expectedFloat)
+        {
+            type = expectedFloat;
         }
 
         // Return appropriate constant type based on whether it's float or fixed
@@ -5082,7 +5120,8 @@ public partial class IrBuilder
 
                         // Create new struct type with concrete types
                         // IMPORTANT: Pass typeArgs so InstantiateGenericMethod can build type substitutions
-                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey, null, null, typeArgs);
+                        structType = new IrStructType(baseStructType.StructName, monomorphizedFields, null, cacheKey, null, null, typeArgs,
+                            isUnion: baseStructType.IsUnion);
 
                         // Force calculation of field offsets only if fully monomorphized
                         if (fullyMonomorphized)
@@ -5132,8 +5171,9 @@ public partial class IrBuilder
             }
         }
 
-        // Fill in missing fields from spread expression, or report error if no spread
-        foreach (var field in structType.Fields)
+        // A union literal initializes only its active field. Structs still require every
+        // field, either explicitly or through update syntax.
+        foreach (var field in structType.IsUnion ? Enumerable.Empty<IrStructField>() : structType.Fields)
         {
             if (!fieldValues.ContainsKey(field.Name))
             {

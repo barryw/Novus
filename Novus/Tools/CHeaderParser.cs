@@ -28,6 +28,8 @@ public class CHeaderParser
         public bool HasUnion { get; set; }
         public bool IsUnion { get; set; }
         public bool IsTypedef { get; set; }
+        public bool IsSynthetic { get; set; }
+        public List<CStruct> NestedTypes { get; set; } = new();
     }
 
     public class CField
@@ -104,7 +106,7 @@ public class CHeaderParser
                 var structDef = ParseStruct(preprocessed, ref i);
                 if (structDef != null)
                 {
-                    header.Structs.Add(structDef);
+                    AddStructAndNestedTypes(header.Structs, structDef);
                     if (!string.IsNullOrWhiteSpace(structDef.TagName) &&
                         structDef.TagName != structDef.Name)
                     {
@@ -170,6 +172,13 @@ public class CHeaderParser
         }
 
         return header;
+    }
+
+    private static void AddStructAndNestedTypes(List<CStruct> structs, CStruct value)
+    {
+        foreach (var nested in value.NestedTypes)
+            AddStructAndNestedTypes(structs, nested);
+        structs.Add(value);
     }
 
     private static List<string> PreprocessLines(string[] lines)
@@ -331,12 +340,15 @@ public class CHeaderParser
             if (fieldLine.StartsWith("}"))
                 break;
 
-            if (fieldLine.StartsWith("union") &&
+            if ((fieldLine.StartsWith("union") || fieldLine.StartsWith("struct")) &&
                 (fieldLine.Contains('{') ||
                  (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("{"))))
             {
-                structDef.HasUnion = true;
-                SkipBracedBlock(lines, ref index);
+                var nested = ParseNestedAggregate(lines, ref index, structDef.Name,
+                    structDef.NestedTypes.Count, out var fieldName);
+                structDef.HasUnion |= nested.IsUnion;
+                structDef.NestedTypes.Add(nested);
+                structDef.Fields.Add(new CField { Name = fieldName, Type = nested.Name });
                 index++;
                 continue;
             }
@@ -350,6 +362,58 @@ public class CHeaderParser
         if (isTypedef)
             structDef.Name = GetTypedefName(lines[index]) ?? structDef.Name;
         return string.IsNullOrWhiteSpace(structDef.Name) ? null : structDef;
+    }
+
+    private static CStruct ParseNestedAggregate(
+        List<string> lines,
+        ref int index,
+        string parentName,
+        int ordinal,
+        out string fieldName)
+    {
+        var declaration = lines[index].Trim();
+        var isUnion = declaration.StartsWith("union", StringComparison.Ordinal);
+        var aggregate = new CStruct
+        {
+            Name = $"{parentName}_{(isUnion ? "union" : "struct")}{ordinal}",
+            IsUnion = isUnion,
+            IsSynthetic = true
+        };
+
+        if (!declaration.Contains('{'))
+            index++;
+        index++;
+
+        while (index < lines.Count)
+        {
+            var line = lines[index].Trim();
+            if (line.StartsWith("}"))
+            {
+                var match = Regex.Match(line, @"}\s*([A-Za-z_][A-Za-z0-9_]*)\s*;");
+                fieldName = match.Success ? match.Groups[1].Value : $"_anonymous{ordinal}";
+                aggregate.Name = $"{parentName}_{fieldName}";
+                return aggregate;
+            }
+
+            if ((line.StartsWith("union") || line.StartsWith("struct")) &&
+                (line.Contains('{') ||
+                 (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("{"))))
+            {
+                var nested = ParseNestedAggregate(lines, ref index, aggregate.Name,
+                    aggregate.NestedTypes.Count, out var nestedFieldName);
+                aggregate.HasUnion |= nested.IsUnion;
+                aggregate.NestedTypes.Add(nested);
+                aggregate.Fields.Add(new CField { Name = nestedFieldName, Type = nested.Name });
+                index++;
+                continue;
+            }
+
+            aggregate.Fields.AddRange(ParseFields(line));
+            index++;
+        }
+
+        fieldName = $"_anonymous{ordinal}";
+        return aggregate;
     }
 
     private static string? GetTypedefName(string closingLine)

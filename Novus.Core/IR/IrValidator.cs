@@ -134,7 +134,7 @@ public class IrValidator
         }
 
         // First pass: collect all labels
-        foreach (var block in function.BasicBlocks)
+        foreach (var block in function.BasicBlocks.Concat(function.DeferredBlocks))
         {
             if (string.IsNullOrEmpty(block.Label))
             {
@@ -326,9 +326,13 @@ public class IrValidator
                 }
                 break;
 
-            case IrInlineAsm:
-                // Inline assembly is always valid at IR level
-                // (correctness is checked at assembly time)
+            case IrInlineAsm inlineAsm:
+                foreach (var input in inlineAsm.Inputs)
+                    ValidateValue(input.Value);
+                if (inlineAsm.ResultName != null)
+                    _declaredVariables.Add(inlineAsm.ResultName);
+                if (inlineAsm.MultiResultNames != null)
+                    _declaredVariables.UnionWith(inlineAsm.MultiResultNames);
                 break;
 
             case IrDropInPlace dropInPlace:
@@ -721,6 +725,10 @@ public class IrValidator
                 {
                     ValidateValue(assocValue);
                 }
+                break;
+
+            case IrEnumPayloadAccess payloadAccess:
+                ValidateValue(payloadAccess.EnumValue);
                 break;
 
             case IrBorrowValue borrowValue:

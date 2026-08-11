@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { workspace, ExtensionContext } from 'vscode';
+import { workspace, ExtensionContext, window } from 'vscode';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -13,15 +13,11 @@ export function activate(context: ExtensionContext) {
     console.log('Novus extension activating...');
 
     // Path to the language server executable
-    const serverPath = findServerPath();
+    const serverPath = findServerPath(context.extensionPath);
 
     if (!serverPath) {
         console.error('Novus Language Server not found!');
-        console.error('Searched paths:', [
-            path.join(__dirname, '../../Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer'),
-            path.join(__dirname, '../../Novus.LanguageServer/bin/Release/net9.0/Novus.LanguageServer'),
-            path.join(__dirname, '../server/Novus.LanguageServer'),
-        ]);
+        window.showErrorMessage('Novus Language Server is missing. Reinstall the Novus extension.');
         return;
     }
 
@@ -60,26 +56,22 @@ export function deactivate(): Thenable<void> | undefined {
     return client.stop();
 }
 
-function findServerPath(): string | null {
-    // Try to find the language server executable
-    // Look in the extension's directory structure
+function findServerPath(extensionPath: string): string | null {
+    // The bundled server and stdlib are built from the same source revision. A
+    // development checkout may use its current net10 build before packaging.
     const possiblePaths = [
-        // Absolute path to development server
-        '/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer',
-        '/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Release/net9.0/Novus.LanguageServer',
-        // Development - when extension is in the Novus repo
-        path.join(__dirname, '../../Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer'),
-        path.join(__dirname, '../../Novus.LanguageServer/bin/Release/net9.0/Novus.LanguageServer'),
-        // Installed extension - bundled server
-        path.join(__dirname, '../server/Novus.LanguageServer'),
+        path.join(extensionPath, 'server', 'Novus.LanguageServer'),
+        path.join(extensionPath, '..', 'Novus.LanguageServer', 'bin', 'Debug', 'net10.0', 'Novus.LanguageServer'),
+        path.join(extensionPath, '..', 'Novus.LanguageServer', 'bin', 'Release', 'net10.0', 'Novus.LanguageServer'),
     ];
 
     for (const serverPath of possiblePaths) {
         try {
             const fs = require('fs');
-            if (fs.existsSync(serverPath) || fs.existsSync(serverPath + '.exe')) {
-                console.log(`Found Novus Language Server at: ${serverPath}`);
-                return serverPath;
+            const executable = fs.existsSync(serverPath) ? serverPath : serverPath + '.exe';
+            if (fs.existsSync(executable)) {
+                console.log(`Found Novus Language Server at: ${executable}`);
+                return executable;
             }
         } catch (e) {
             // Continue searching

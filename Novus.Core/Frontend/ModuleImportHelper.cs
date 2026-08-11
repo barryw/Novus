@@ -1,5 +1,8 @@
 using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using Novus.Diagnostics;
 using Novus.Parser;
 using Novus.Preprocessing;
@@ -12,6 +15,9 @@ namespace Novus.Frontend;
 /// </summary>
 public static class ModuleImportHelper
 {
+    private sealed record CachedModule(string ContentHash, NovusParser.CompilationUnitContext Context, int SyntaxErrors);
+    private static readonly ConcurrentDictionary<string, CachedModule> ParseCache = new();
+
     /// <summary>
     /// Resolve a module namespace to a file path
     /// std::dos → std/dos.novus
@@ -73,6 +79,13 @@ public static class ModuleImportHelper
             }
         }
 
+        var fullPath = Path.GetFullPath(modulePath);
+        var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(moduleSource)));
+        if (ParseCache.TryGetValue(fullPath, out var cached) && cached.ContentHash == contentHash)
+        {
+            return (cached.Context, cached.SyntaxErrors);
+        }
+
         var parser = NovusParserFactory.CreateParser(
             moduleSource,
             diagnostics,
@@ -80,6 +93,7 @@ public static class ModuleImportHelper
             NovusParserFactory.ParseMode.Compilation
         );
         var moduleContext = parser.compilationUnit();
+        ParseCache[fullPath] = new CachedModule(contentHash, moduleContext, diagnostics.ErrorCount);
 
         return (moduleContext, diagnostics.ErrorCount);
     }
@@ -410,6 +424,91 @@ public static class ModuleImportHelper
             }
         }
 
+        AddConstantDependencies(context, namesToImport);
         return namesToImport;
+    }
+
+    private static void AddConstantDependencies(
+        NovusParser.CompilationUnitContext module,
+        HashSet<string> names)
+    {
+        var constants = module.constDeclaration()
+            .ToDictionary(declaration => declaration.IDENTIFIER().GetText());
+        var pending = new Queue<string>(names.Where(constants.ContainsKey));
+
+        while (pending.TryDequeue(out var name))
+        {
+            var identifiers = new HashSet<string>();
+            CollectIdentifiers(constants[name].expression(), identifiers);
+            foreach (var dependency in identifiers.Where(constants.ContainsKey))
+            {
+                if (names.Add(dependency))
+                    pending.Enqueue(dependency);
+            }
+        }
+    }
+
+    private static void CollectIdentifiers(IParseTree tree, HashSet<string> identifiers)
+    {
+        if (tree is ITerminalNode { Symbol.Type: NovusParser.IDENTIFIER } terminal)
+        {
+            identifiers.Add(terminal.GetText());
+            return;
+        }
+
+        for (var index = 0; index < tree.ChildCount; index++)
+            CollectIdentifiers(tree.GetChild(index), identifiers);
+    }
+
+    internal static bool CanImportWithoutDependencies(
+        NovusParser.CompilationUnitContext module,
+        HashSet<string> namesToImport,
+        bool importAll)
+    {
+        if (importAll || namesToImport.Count == 0 ||
+            module.structDeclaration().Length > 0 ||
+            module.enumDeclaration().Length > 0 ||
+            module.typeAliasDeclaration().Length > 0 ||
+            module.implDeclaration().Length > 0)
+        {
+            return false;
+        }
+
+        var matchedNames = new HashSet<string>();
+        foreach (var function in module.functionDeclaration())
+        {
+            var name = function.IDENTIFIER().GetText();
+            if (!namesToImport.Contains(name))
+                continue;
+
+            matchedNames.Add(name);
+            if (function.attribute().Length > 0 ||
+                function.genericParams() != null || function.whereClause() != null ||
+                ContainsIdentifier(function.type()) ||
+                function.parameterList()?.parameter().Any(parameter =>
+                    parameter.type() == null || ContainsIdentifier(parameter.type())) == true)
+            {
+                return false;
+            }
+        }
+
+        return matchedNames.SetEquals(namesToImport);
+    }
+
+    private static bool ContainsIdentifier(IParseTree? tree)
+    {
+        if (tree is ITerminalNode terminal)
+            return terminal.Symbol.Type == NovusParser.IDENTIFIER;
+
+        if (tree == null)
+            return false;
+
+        for (var index = 0; index < tree.ChildCount; index++)
+        {
+            if (ContainsIdentifier(tree.GetChild(index)))
+                return true;
+        }
+
+        return false;
     }
 }

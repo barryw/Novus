@@ -585,6 +585,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         }
 
         if (context.KW_EXTERN() != null) Write("extern ");
+        if (context.KW_AMIGA() != null) Write("amiga ");
         if (context.KW_PUB() != null) Write("pub ");
         if (context.KW_INTERNAL() != null) Write("internal ");
 
@@ -607,6 +608,11 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         {
             Write(" -> ");
             Visit(context.type());
+            if (context.abiRegisterBinding() != null)
+            {
+                Write(" in ");
+                Write(context.abiRegisterBinding().IDENTIFIER().GetText());
+            }
         }
 
         if (context.whereClause() != null)
@@ -700,6 +706,11 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         Write(context.IDENTIFIER().GetText());
         Write(": ");
         Visit(context.type());
+        if (context.parameterRegisterBinding() != null)
+        {
+            Write(" in ");
+            Write(context.parameterRegisterBinding().IDENTIFIER().GetText());
+        }
         return null;
     }
 
@@ -762,7 +773,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         if (context.KW_PUB() != null) Write("pub ");
         if (context.KW_INTERNAL() != null) Write("internal ");
 
-        Write("struct ");
+        Write(context.KW_UNION() != null ? "union " : "struct ");
         Write(context.IDENTIFIER().GetText());
 
         if (context.genericParams() != null)
@@ -1122,6 +1133,32 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         {
             Write(" -> ");
             Visit(context.type());
+        }
+        return null;
+    }
+
+    public override object? VisitAmigaFunctionPointerTypeExpression(NovusParser.AmigaFunctionPointerTypeExpressionContext context)
+    {
+        var declaration = context.amigaFunctionPointerType();
+        Write("amiga fn(");
+        var parameters = declaration.amigaFunctionPointerParameterList()?.amigaFunctionPointerParameter() ?? [];
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            if (i > 0) Write(", ");
+            Visit(parameters[i].type());
+            Write(" in ");
+            Write(parameters[i].IDENTIFIER().GetText());
+        }
+        Write(")");
+        if (declaration.type() != null)
+        {
+            Write(" -> ");
+            Visit(declaration.type());
+            if (declaration.abiRegisterBinding() != null)
+            {
+                Write(" in ");
+                Write(declaration.abiRegisterBinding().IDENTIFIER().GetText());
+            }
         }
         return null;
     }

@@ -7,7 +7,7 @@ namespace Novus.IR;
 /// Validates interrupt safety constraints at compile time.
 ///
 /// On the Amiga (and similar systems), interrupt handlers run in a restricted context:
-/// - No access to certain system calls (anything that might Wait() or Signal())
+/// - No access to system calls that may block or allocate
 /// - No dynamic memory allocation (AllocMem/FreeMem can't be called)
 /// - No DOS functions (they use message passing which requires Wait())
 /// - Must be reentrant (no global state mutation without protection)
@@ -28,7 +28,7 @@ namespace Novus.IR;
 ///
 /// 3. Certain function names are known-unsafe:
 ///    - AllocMem, FreeMem (memory allocation)
-///    - Wait, Signal (task synchronization)
+///    - Wait (task synchronization)
 ///    - OpenLibrary, CloseLibrary (library management)
 ///    - Printf, Write, Read (DOS I/O)
 /// </summary>
@@ -53,10 +53,11 @@ public class InterruptSafetyValidator
         "AllocAbs", "AllocPooled", "FreePooled", "CreatePool", "DeletePool",
 
         // exec.library - task/process management
-        "Wait", "Signal", "SetSignal", "AllocSignal", "FreeSignal",
-        "CreateTask", "DeleteTask", "FindTask", "RemTask",
+        "Wait", "SetSignal", "AllocSignal", "FreeSignal",
+        "CreateTask", "DeleteTask", "RemTask",
+        "Forbid", "Permit", "SetIntVector", "AddIntServer", "RemIntServer",
         "CreateMsgPort", "DeleteMsgPort", "CreateIORequest", "DeleteIORequest",
-        "PutMsg", "GetMsg", "ReplyMsg", "WaitPort",
+        "WaitPort",
 
         // exec.library - library management
         "OpenLibrary", "CloseLibrary", "OpenDevice", "CloseDevice",
@@ -93,11 +94,9 @@ public class InterruptSafetyValidator
     private static readonly HashSet<string> KnownSafeFunctions = new()
     {
         // exec.library - interrupt-safe functions
-        "Disable", "Enable",  // Actually required for some interrupt operations
-        "Forbid", "Permit",   // Task switching control
-        "SetIntVector",       // Safe if you know what you're doing
-        "AddIntServer", "RemIntServer",
+        "Disable", "Enable",
         "Cause",              // Trigger software interrupt (safe to call)
+        "Signal", "GetMsg", "PutMsg", "ReplyMsg", "FindPort", "FindTask",
 
         // graphics.library - direct hardware access (safe from VBL)
         "LoadRGB4", "LoadRGB32",

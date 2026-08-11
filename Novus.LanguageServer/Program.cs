@@ -9,7 +9,7 @@ class Program
     static async Task Main(string[] args)
     {
         // Find standard library path
-        // The LSP server is in Novus.LanguageServer/bin/Debug/net9.0/
+        // The LSP server is in Novus.LanguageServer/bin/Debug/net10.0/
         // The std library is in Novus/std/
         // So we need to go up to the solution root and then into Novus/std
         var compilerDir = AppContext.BaseDirectory;
@@ -47,6 +47,7 @@ class Program
                     services.AddSingleton(docManager);
                     services.AddSingleton(stdlibIndexer);
                     services.AddSingleton(projectManager);
+                    services.AddSingleton<TomlDocumentHandler>();
                     services.AddSingleton(stdLibPath);  // Make stdLibPath available for injection
                 })
                 .WithHandler<TextDocumentHandler>()
@@ -58,7 +59,6 @@ class Program
                 .WithHandler<ReferencesHandler>()
                 .WithHandler<RenameHandler>()
                 // TOML support handlers
-                .WithHandler<TomlDocumentHandler>()
                 .WithHandler<TomlHoverHandler>()
                 .WithHandler<TomlCompletionHandler>()
                 .OnInitialize((server, request, cancellationToken) =>

@@ -751,6 +751,28 @@ fn main() -> i32 {
 
         var main = module.Functions.Find(f => f.Name == "main");
         Assert.NotNull(main);
+        var logicalNot = Assert.Single(main.BasicBlocks
+            .SelectMany(block => block.Instructions)
+            .OfType<IrBinaryOp>());
+        Assert.Equal(IrBinaryOp.OpKind.Eq, logicalNot.Operation);
+        Assert.IsType<IrBoolConstant>(logicalNot.Right);
+    }
+
+    [Fact]
+    public void BuildIr_LogicalNot_WithPointer_UsesSingleNullComparison()
+    {
+        var source = @"
+fn is_null(value: *u8) -> bool {
+    return !value
+}";
+        var module = BuildIr(source);
+
+        var function = module.Functions.Find(f => f.Name == "is_null");
+        Assert.NotNull(function);
+        var instructions = function.BasicBlocks.SelectMany(block => block.Instructions).ToArray();
+        var logicalNot = Assert.Single(instructions.OfType<IrBinaryOp>());
+        Assert.Equal(IrBinaryOp.OpKind.Eq, logicalNot.Operation);
+        Assert.IsType<IrPointerType>(logicalNot.Right.Type);
     }
 
     #endregion

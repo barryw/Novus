@@ -34,7 +34,7 @@ public class BuildOptions
     [Option('v', "verbose", Required = false, HelpText = "Verbose output")]
     public bool Verbose { get; set; }
 
-    [Option("release", Required = false, HelpText = "Build in release mode (optimization level 2, no debug symbols)")]
+    [Option("release", Required = false, HelpText = "Build in release mode (whole-program optimization, no debug symbols)")]
     public bool Release { get; set; }
 
     [Option("debug", Required = false, HelpText = "Build in debug mode (no optimization, debug symbols, bounds checking) - this is the default")]

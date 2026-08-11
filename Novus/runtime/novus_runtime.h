@@ -39,16 +39,29 @@
 #define NOVUS_RUNTIME_H
 
 #include <exec/types.h>
+#include <exec/execbase.h>
 #include <exec/libraries.h>
 #include <exec/alerts.h>
 #include <exec/memory.h>
 #include <exec/semaphores.h>
 #include <intuition/intuition.h>
 #include <graphics/gfxbase.h>
-#include <proto/exec.h>
-#include <proto/intuition.h>
+#include <clib/exec_protos.h>
+#include <clib/dos_protos.h>
+#include <clib/intuition_protos.h>
+
+#ifdef __VBCC__
+#include <inline/exec_protos.h>
+#include <inline/dos_protos.h>
+#include <inline/intuition_protos.h>
+#define NOVUS_RUNTIME_SECTION(name) __section(#name)
+#else
+#define NOVUS_RUNTIME_SECTION(name)
+#endif
 
 extern struct ExecBase *SysBase;
+extern struct DosLibrary *DOSBase;
+extern struct IntuitionBase *IntuitionBase;
 
 // Integer types - fallback definitions if stdint.h not included
 // VBCC's exec/types.h includes <stdint.h> which defines __STDINT_H
@@ -96,11 +109,11 @@ typedef unsigned long long uint64_t;
 
 // Check if currently in interrupt/exception context
 // Returns non-zero if it's unsafe to call Intuition functions
-int32_t __novus_in_interrupt_context(void);
+NOVUS_RUNTIME_SECTION(__novus_in_interrupt_context) int32_t __novus_in_interrupt_context(void);
 
 // Safe error display that works in any context
 // Uses Alert() in interrupt context, EasyRequest() otherwise
-void display_error_safe(uint32_t alert_code);
+NOVUS_RUNTIME_SECTION(display_error_safe) void display_error_safe(uint32_t alert_code);
 
 // ============================================================================
 // Core Memory Functions
@@ -116,21 +129,21 @@ void display_error_safe(uint32_t alert_code);
 // ensures the generated code is safe with -fstrict-aliasing optimizations.
 // ============================================================================
 
-void __novus_memset(void* dest, int value, uint32_t n);
-void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n);
-uint32_t strlen(const char* str);
+NOVUS_RUNTIME_SECTION(__novus_memset) void __novus_memset(void* dest, int value, uint32_t n);
+NOVUS_RUNTIME_SECTION(__novus_memcpy) void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n);
+NOVUS_RUNTIME_SECTION(strlen) uint32_t strlen(const char* str);
 
 // VBCC WORKAROUND: Comparison functions that force sequence points.
 // VBCC's optimizer can move stack cleanup between a comparison and its branch,
 // clobbering condition flags. Using function calls creates sequence points
 // that prevent this reordering.
-int32_t __novus_is_null(void* ptr);     // Returns 1 if ptr is NULL
-int32_t __novus_cmp_eq_i32(int32_t a, int32_t b);  // Returns 1 if a == b
-int32_t __novus_cmp_ne_i32(int32_t a, int32_t b);  // Returns 1 if a != b
-int32_t __novus_cmp_eq_i64(int64_t a, int64_t b);
-int32_t __novus_cmp_ne_i64(int64_t a, int64_t b);
-int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b);
-int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b);
+NOVUS_RUNTIME_SECTION(__novus_is_null) int32_t __novus_is_null(void* ptr);     // Returns 1 if ptr is NULL
+NOVUS_RUNTIME_SECTION(__novus_cmp_eq_i32) int32_t __novus_cmp_eq_i32(int32_t a, int32_t b);  // Returns 1 if a == b
+NOVUS_RUNTIME_SECTION(__novus_cmp_ne_i32) int32_t __novus_cmp_ne_i32(int32_t a, int32_t b);  // Returns 1 if a != b
+NOVUS_RUNTIME_SECTION(__novus_cmp_eq_i64) int32_t __novus_cmp_eq_i64(int64_t a, int64_t b);
+NOVUS_RUNTIME_SECTION(__novus_cmp_ne_i64) int32_t __novus_cmp_ne_i64(int64_t a, int64_t b);
+NOVUS_RUNTIME_SECTION(__novus_cmp_eq_u64) int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b);
+NOVUS_RUNTIME_SECTION(__novus_cmp_ne_u64) int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b);
 int32_t __novus_cmp_eq_f32(float a, float b);
 int32_t __novus_cmp_ne_f32(float a, float b);
 int32_t __novus_cmp_eq_f64(double a, double b);
@@ -145,13 +158,13 @@ void __novus_free_raw(void* ptr, uint32_t size);
 
 // Error display (shared by error handlers)
 extern char error_buffer[512];
-char* strcpy_helper(char* dest, const char* src);
-void int_to_str(char* buf, int32_t num);
-void display_error_requester(uint32_t alert_code);
+NOVUS_RUNTIME_SECTION(strcpy_helper) char* strcpy_helper(char* dest, const char* src);
+NOVUS_RUNTIME_SECTION(int_to_str) void int_to_str(char* buf, int32_t num);
+NOVUS_RUNTIME_SECTION(display_error_requester) void display_error_requester(uint32_t alert_code);
 
 // Library-not-found error handler - displays helpful message and exits
 // Called from assembly stubs when OpenLibrary returns NULL
-void __novus_library_not_found(const char* library_name, int32_t version);
+NOVUS_RUNTIME_SECTION(__novus_library_not_found) void __novus_library_not_found(const char* library_name, int32_t version);
 
 // Test mode support for should_panic tests
 // When test mode is enabled, __novus_panic() sets flags instead of showing dialog
@@ -160,10 +173,10 @@ extern int32_t __novus_test_panic_occurred;
 extern const char* __novus_test_panic_message;
 
 // Test mode control functions (called from Novus test code)
-void __novus_test_set_mode(int32_t enabled);
-void __novus_test_reset_panic(void);
-int32_t __novus_test_did_panic(void);
-const char* __novus_test_get_panic_message(void);
+NOVUS_RUNTIME_SECTION(__novus_test_set_mode) void __novus_test_set_mode(int32_t enabled);
+NOVUS_RUNTIME_SECTION(__novus_test_reset_panic) void __novus_test_reset_panic(void);
+NOVUS_RUNTIME_SECTION(__novus_test_did_panic) int32_t __novus_test_did_panic(void);
+NOVUS_RUNTIME_SECTION(__novus_test_get_panic_message) const char* __novus_test_get_panic_message(void);
 
 // ============================================================================
 // Stack Overflow Detection (Debug Builds Only)
@@ -184,11 +197,11 @@ const char* __novus_test_get_panic_message(void);
 // ============================================================================
 
 // Initialize stack bounds (called at program startup)
-void __novus_init_stack_bounds(void);
+NOVUS_RUNTIME_SECTION(__novus_init_stack_bounds) void __novus_init_stack_bounds(void);
 
 // Check if stack has enough space for 'required_bytes' more
 // If not, displays error and aborts
-void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line);
+NOVUS_RUNTIME_SECTION(__novus_check_stack) void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line);
 
 // Stack bound tracking (set during initialization)
 extern uint32_t __novus_stack_base;   // Top of stack (highest address)
@@ -204,10 +217,10 @@ extern uint32_t __novus_stack_guard;  // Guard zone size (default 256 bytes)
 // the original expression value after calling the debug function.
 // ============================================================================
 
-void __novus_dbg_i32(const char* location, const char* expr, int32_t value);
-void __novus_dbg_u32(const char* location, const char* expr, uint32_t value);
-void __novus_dbg_bool(const char* location, const char* expr, int32_t value);
-void __novus_dbg_ptr(const char* location, const char* expr, void* value);
-void __novus_dbg_str(const char* location, const char* expr, const char* value);
+NOVUS_RUNTIME_SECTION(__novus_dbg_i32) void __novus_dbg_i32(const char* location, const char* expr, int32_t value);
+NOVUS_RUNTIME_SECTION(__novus_dbg_u32) void __novus_dbg_u32(const char* location, const char* expr, uint32_t value);
+NOVUS_RUNTIME_SECTION(__novus_dbg_bool) void __novus_dbg_bool(const char* location, const char* expr, int32_t value);
+NOVUS_RUNTIME_SECTION(__novus_dbg_ptr) void __novus_dbg_ptr(const char* location, const char* expr, void* value);
+NOVUS_RUNTIME_SECTION(__novus_dbg_str) void __novus_dbg_str(const char* location, const char* expr, const char* value);
 
 #endif // NOVUS_RUNTIME_H

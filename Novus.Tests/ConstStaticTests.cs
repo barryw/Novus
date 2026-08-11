@@ -116,6 +116,31 @@ pub fn main() -> i32 {
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
+        Assert.DoesNotContain(module.ExternalVariables, variable => variable.Name == "COUNTER");
+    }
+
+    [Fact]
+    public void BuildIr_StaticArrayFromAggregateConstFn_MaterializesCompileTimeData()
+    {
+        var source = @"
+pub struct Pair {
+    left: i32
+    right: i32
+}
+
+pub const fn pair(left: i32, right: i32) -> Pair {
+    return Pair { left: left, right: right }
+}
+
+static PAIRS: [Pair] = [pair(1, 2), pair(3, 4)]
+";
+
+        var module = BuildIr(source);
+        var pairs = Assert.IsType<IrArrayLiteral>(Assert.Single(module.StaticVariables).InitialValue);
+        var second = Assert.IsType<IrStructLiteral>(pairs.Elements[1]);
+
+        Assert.Equal(3, Assert.IsType<IrConstant>(second.FieldValues["left"]).Value);
+        Assert.Equal(4, Assert.IsType<IrConstant>(second.FieldValues["right"]).Value);
     }
 
     [Fact]

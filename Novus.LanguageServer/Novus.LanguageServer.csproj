@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Novus.Core\Novus.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Novus.LanguageServer.Tests" />
+  </ItemGroup>
+
 </Project>

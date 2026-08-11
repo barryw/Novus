@@ -9,11 +9,7 @@ namespace Novus.Commands;
 /// </summary>
 public static class BuildCommand
 {
-    /// <summary>
-    /// Valid CPU values that VBCC/VASM accept
-    /// </summary>
-    private static readonly string[] ValidCpuValues = { "68000", "68010", "68020", "68030", "68040", "68060", "68080", "auto" };
-
+    internal const int ReleaseOptimizationLevel = 3;
     /// <summary>
     /// Valid FPU values
     /// </summary>
@@ -24,12 +20,8 @@ public static class BuildCommand
     /// </summary>
     private static string? ValidateCpu(string? cpu)
     {
-        if (cpu == null) return null;
-        if (!ValidCpuValues.Contains(cpu))
-        {
-            return $"Invalid CPU value '{cpu}'. Valid values are: {string.Join(", ", ValidCpuValues)}";
-        }
-        return null;
+        try { CompilerOptions.ValidateCpu(cpu); return null; }
+        catch (ArgumentException ex) { return ex.Message; }
     }
 
     /// <summary>
@@ -597,9 +589,7 @@ public static class BuildCommand
         }
         else if (buildMode == BuildMode.Release)
         {
-            // Measured on the cli template: -O=1 13196 bytes, -O=2 15984, -O=0 14332.
-            // -O=2 turns on IR inlining that costs more size than it saves on 68k.
-            optimizationLevel = 1;  // Release default
+            optimizationLevel = ReleaseOptimizationLevel;
         }
         else
         {
@@ -720,6 +710,7 @@ public static class BuildCommand
         {
             "library" => $"{project.Package.Name}.library",
             "device" => $"{project.Package.Name}.device",
+            "resource" => $"{project.Package.Name}.resource",
             "handler" => $"{project.Package.Name}.handler",
             _ => project.Package.Name  // CLI and other executables use name as-is
         };
@@ -746,6 +737,8 @@ public static class BuildCommand
             // Forward safety level flags from BuildOptions (critical fix - was missing!)
             SafetyLevelOption = buildOptions.SafetyLevel,
             UnsafeMode = buildOptions.UnsafeMode,
+            NoCache = buildOptions.NoCache,
+            CacheStats = buildOptions.CacheStats,
             UseStdlibCache = buildOptions.UseStdlibCache,
             RebuildStdlibCache = buildOptions.RebuildStdlibCache
         };

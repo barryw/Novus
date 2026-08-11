@@ -57,7 +57,7 @@ static void report_error_to_console(void)
  *
  * @return Non-zero if in interrupt context, 0 if safe to use Intuition
  */
-int32_t __novus_in_interrupt_context(void)
+NOVUS_RUNTIME_SECTION(__novus_in_interrupt_context) int32_t __novus_in_interrupt_context(void)
 {
     struct ExecBase* SysBase = *(struct ExecBase**)4L;
 
@@ -90,7 +90,7 @@ int32_t __novus_in_interrupt_context(void)
 }
 
 // Simple string copy helper - returns pointer to end of copied string
-char* strcpy_helper(char* dest, const char* src) {
+NOVUS_RUNTIME_SECTION(strcpy_helper) char* strcpy_helper(char* dest, const char* src) {
     while (*src) {
         *dest++ = *src++;
     }
@@ -98,35 +98,8 @@ char* strcpy_helper(char* dest, const char* src) {
     return dest;
 }
 
-/**
- * VBCC WORKAROUND: Comparison functions that force sequence points.
- *
- * VBCC's optimizer can move stack cleanup (addq.w #4,sp) between a comparison
- * and its branch instruction, clobbering the CPU condition flags. Using
- * function calls creates sequence points that prevent this reordering.
- */
-int32_t __novus_is_null(void* ptr)
-{
-    return ptr == NULL ? 1 : 0;
-}
-
-int32_t __novus_cmp_eq_i32(int32_t a, int32_t b)
-{
-    return a == b ? 1 : 0;
-}
-
-int32_t __novus_cmp_ne_i32(int32_t a, int32_t b)
-{
-    return a != b ? 1 : 0;
-}
-
-int32_t __novus_cmp_eq_i64(int64_t a, int64_t b) { return a == b ? 1 : 0; }
-int32_t __novus_cmp_ne_i64(int64_t a, int64_t b) { return a != b ? 1 : 0; }
-int32_t __novus_cmp_eq_u64(uint64_t a, uint64_t b) { return a == b ? 1 : 0; }
-int32_t __novus_cmp_ne_u64(uint64_t a, uint64_t b) { return a != b ? 1 : 0; }
-
 // Simple integer to string helper
-void int_to_str(char* buf, int32_t num) {
+NOVUS_RUNTIME_SECTION(int_to_str) void int_to_str(char* buf, int32_t num) {
     char temp[12];
     int i = 0;
     int is_negative = 0;
@@ -189,7 +162,7 @@ static void display_error_alert(uint32_t alert_code)
  *
  * @param alert_code Alert code to use if IntuitionBase is not available
  */
-void display_error_requester(uint32_t alert_code)
+NOVUS_RUNTIME_SECTION(display_error_requester) void display_error_requester(uint32_t alert_code)
 {
     struct Library *IntuitionBase;
     struct EasyStruct es;
@@ -234,32 +207,15 @@ void display_error_requester(uint32_t alert_code)
  *
  * @param alert_code Alert code specifying the error type
  */
-void display_error_safe(uint32_t alert_code)
+NOVUS_RUNTIME_SECTION(display_error_safe) void display_error_safe(uint32_t alert_code)
 {
     // Delegate to display_error_requester which now handles interrupt safety
     display_error_requester(alert_code);
 }
 
-// Memory set helper
-// Simple byte-by-byte set (no stdlib dependency)
-void __novus_memset(void* dest, int value, uint32_t n) {
-    uint8_t* d = (uint8_t*)dest;
-    while (n--) {
-        *d++ = (uint8_t)value;
-    }
-}
-
-// Memory copy helper for StackFormatter
-// Simple byte-by-byte copy (no stdlib dependency)
-void __novus_memcpy(uint8_t* dest, const uint8_t* src, uint32_t n) {
-    while (n--) {
-        *dest++ = *src++;
-    }
-}
-
 // String length - no stdlib dependency
 // Used by Str::from_cstr and other string functions
-uint32_t strlen(const char* str) {
+NOVUS_RUNTIME_SECTION(strlen) uint32_t strlen(const char* str) {
     uint32_t len = 0;
     while (*str++) {
         len++;

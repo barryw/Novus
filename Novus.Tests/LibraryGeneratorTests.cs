@@ -28,6 +28,48 @@ public class LibraryGeneratorTests
     }
 
     [Fact]
+    public void ResourceGenerator_UsesPermanentResourceLifecycleAndInjectedState()
+    {
+        var module = BuildIR("""
+            @resource(name = "probe.resource")
+            pub struct Probe { value: u32 }
+
+            @resourceinit
+            pub fn initialize(state: *Probe) -> bool { return true }
+
+            @resourcefunc
+            pub fn read(state: *Probe, index: u32) -> u32 { return index }
+            """);
+
+        var generator = new LibraryGenerator(module, "2.1.0");
+
+        Assert.True(generator.IsResource);
+        Assert.Contains("NT_RESOURCE", generator.GenerateROMTag());
+        Assert.Contains("__entry struct Resident RomTag", generator.GenerateROMTag());
+        Assert.DoesNotContain("LibClose", generator.GenerateROMTag());
+        Assert.Contains("__entry uint32_t read_ResourceThunk", generator.GenerateDefaultLifecycleFunctions());
+        Assert.Contains("move.l  a6,-(sp)", generator.GenerateA6Wrappers());
+        Assert.Contains("#[link_name = \"@6\"]", generator.GenerateNovusFFI());
+        Assert.Contains("pub fn read(index: u32) -> u32", generator.GenerateNovusFFI());
+        Assert.DoesNotContain("CloseResource", generator.GenerateNovusFFI());
+    }
+
+    [Fact]
+    public void ResourceGenerator_RequiresStateAsFirstVectorParameter()
+    {
+        var module = BuildIR("""
+            @resource(name = "probe.resource")
+            pub struct Probe { value: u32 }
+
+            @resourcefunc
+            pub fn read(index: u32) -> u32 { return index }
+            """);
+
+        var error = Assert.Throws<InvalidOperationException>(() => new LibraryGenerator(module));
+        Assert.Contains("state: *Probe", error.Message);
+    }
+
+    [Fact]
     public void LibraryGenerator_SimpleLibrary_GeneratesROMTag()
     {
         var source = @"
@@ -46,7 +88,7 @@ pub fn test_func() -> i32 {
         var romTag = generator.GenerateROMTag();
 
         // Verify ROMTag structure
-        Assert.Contains("struct Resident RomTag", romTag);
+        Assert.Contains("__entry struct Resident RomTag", romTag);
         Assert.Contains("RTC_MATCHWORD", romTag);
         Assert.Contains("test.library", romTag);
         Assert.Contains("RTF_AUTOINIT", romTag);
@@ -130,9 +172,43 @@ pub struct TestLibrary {
         Assert.Contains("LibClose", lifecycle);
         Assert.Contains("LibExpunge", lifecycle);
         Assert.Contains("LibReserved", lifecycle);
+        Assert.Contains("__entry struct Library* LibOpen", lifecycle);
+        Assert.Contains("__entry void TestLibrary_IncrementCallCount", lifecycle);
         Assert.Contains("ULONG TestLibrary_GetCallCount", lifecycle);
         Assert.Contains("UWORD open_count", lifecycle);
         Assert.DoesNotContain("uint32_t TestLibrary_GetCallCount", lifecycle);
+    }
+
+    [Fact]
+    public void LibraryGenerator_LifecycleHooksKeepGeneratedExecBookkeeping()
+    {
+        var source = @"
+@library(name = ""test.library"")
+pub struct TestLibrary { counter: u32 }
+
+impl TestLibrary {
+    @libinit
+    pub fn loaded(state: *TestLibrary) -> bool { return true }
+    @libopen
+    pub fn opening(state: *TestLibrary) -> bool { return true }
+    @libclose
+    pub fn closing(state: *TestLibrary) {}
+    @libexpunge
+    pub fn unloading(state: *TestLibrary) {}
+}";
+
+        var generator = new LibraryGenerator(BuildIR(source));
+        var baseStruct = generator.GenerateLibraryBaseStruct();
+        var lifecycle = generator.GenerateDefaultLifecycleFunctions();
+        var romTag = generator.GenerateROMTag();
+
+        Assert.Contains("TestLibrary state;", baseStruct);
+        Assert.Contains("TestLibrary_loaded(&base->state)", lifecycle);
+        Assert.Contains("TestLibrary_opening(&base->state)", lifecycle);
+        Assert.Contains("TestLibrary_closing(&base->state)", lifecycle);
+        Assert.Contains("TestLibrary_unloading(&base->state)", lifecycle);
+        Assert.Contains("base->lib.lib_OpenCnt++", lifecycle);
+        Assert.DoesNotContain("loaded_Wrapper", romTag);
     }
 
     [Fact]

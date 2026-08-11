@@ -1373,9 +1373,8 @@ Based on industry PGO implementations (GCC, LLVM, MSVC), we expect:
 | **Cache Misses** | 20-40% reduction (hot/cold splitting) |
 | **Function Call Overhead** | 30-50% reduction (hot path inlining) |
 
-**68k-Specific Benefits:**
-- **68000/010:** Minimal benefit (no cache, no branch prediction)
-- **68020/030:** Moderate benefit (instruction cache, some branch prediction)
+**Supported-processor benefits:**
+- **68020/030:** Moderate benefit from instruction-cache-aware layout
 - **68040/060:** Significant benefit (split I/D cache, better branch prediction)
 
 ---

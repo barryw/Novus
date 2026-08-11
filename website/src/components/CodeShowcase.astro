@@ -1,137 +1,164 @@
 ---
-// Code showcase component showing Novus code and generated assembly
-// IMPORTANT: The Novus code displayed here must match Novus.Tests/Examples/homepage_example.novus
-// This ensures the code shown on the homepage is always verified to compile
+import novusSource from '../../../Novus.Tests/Examples/homepage_example.novus?raw';
+import cSource from '../../../Novus.Tests/Examples/homepage_example.c?raw';
+
+// Binary sizes and assembly excerpts measured from 68020 VBCC release builds on 2026-08-10.
+
+const fromFirstLine = (source: string, firstLine: string) =>
+  source.slice(source.indexOf(firstLine)).trim();
+
+const examples = [
+  {
+    language: 'Novus',
+    filename: 'homepage_example.novus',
+    size: '1,820 bytes',
+    note: 'Result-based errors + automatic screen cleanup',
+    source: fromFirstLine(novusSource, 'from '),
+    assembly: `move.l  (-16,a5),d0
+beq     l3788
+moveq   #1,d1
+cmp.l   d0,d1
+beq     l3804
+bra     l3813
+l3788
+move.l  (-12,a5),(-32,a5)
+move.l  #0,(-12,a5)
+move.l  (-32,a5),(-20,a5)
+lea     (-20,a5),a0
+move.l  a0,-(a7)
+jsr     _ScreenHandle_rastport
+move.l  d0,a2
+move.l  _GfxBase,a6
+move.l  a2,a1
+moveq   #2,d0
+jsr     -342(a6)
+move.l  _GfxBase,a6
+move.l  a2,a1
+moveq   #10,d0
+moveq   #20,d1
+moveq   #100,d2
+moveq   #80,d3
+jsr     -306(a6)
+move.l  _DOSBase,a6
+move.l  #150,d1
+jsr     -198(a6)
+lea     (-20,a5),a0
+move.l  a0,-(a7)
+jsr     _ScreenHandle_Drop_drop
+moveq   #0,d0`,
+  },
+  {
+    language: 'C',
+    filename: 'homepage_example.c',
+    size: '1,620 bytes',
+    note: 'Manual error paths + manual library/screen cleanup',
+    source: fromFirstLine(cSource, '#include '),
+    assembly: `move.l  d0,d4
+add.w   #52,a7
+beq     l8
+move.l  d4,a2
+add.l   #84,a2
+move.l  _GfxBase,a6
+move.l  a2,a1
+moveq   #2,d0
+jsr     -342(a6)
+move.l  _GfxBase,a6
+move.l  a2,a1
+moveq   #10,d0
+moveq   #20,d1
+moveq   #100,d2
+moveq   #80,d3
+jsr     -306(a6)
+move.l  _DOSBase,a6
+move.l  #150,d1
+jsr     -198(a6)
+moveq   #0,d5
+l8
+tst.l   d4
+beq     l19
+move.l  _IntuitionBase,a6
+move.l  d4,a0
+jsr     -66(a6)
+l19
+tst.l   _IntuitionBase
+beq     l21
+move.l  _IntuitionBase,a1
+move.l  _SysBase,a6
+jsr     -414(a6)`,
+  },
+].map((example) => ({
+  ...example,
+  lines: example.source.split('\n').length,
+}));
 ---
 
-<section class="bg-novus-gray-900 py-24 sm:py-32">
+<section class="bg-novus-gray-900 py-24 sm:py-32" aria-labelledby="screen-comparison-title">
   <div class="mx-auto max-w-7xl px-6 lg:px-8">
-    <div class="mx-auto max-w-2xl text-center">
-      <h2 class="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-        Modern code. Efficient assembly.
+    <div class="mx-auto max-w-3xl text-center">
+      <p class="text-sm font-semibold uppercase tracking-[0.2em] text-novus-red-400">
+        Measured on AmigaOS
+      </p>
+      <h2 id="screen-comparison-title" class="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+        Same screen. Just 200 bytes apart.
       </h2>
-      <p class="mt-4 text-lg text-white">
-        Write clean, safe code that compiles to optimal 68k assembly
+      <p class="mt-5 text-lg leading-8 text-novus-gray-300">
+        Both programs detect PAL or NTSC, open the same 5-bitplane custom screen,
+        draw the same rectangle, wait, and clean up. Novus makes the failure and
+        lifetime paths explicit in the type system instead of scattering them through the program.
       </p>
     </div>
 
-    <div class="mt-16 grid grid-cols-1 gap-8 lg:grid-cols-2">
-      <!-- Novus Code -->
-      <div class="group relative overflow-hidden rounded-lg border border-novus-gray-700 bg-novus-gray-800 shadow-xl">
-        <!-- Terminal Chrome -->
-        <div class="flex items-center gap-2 border-b border-novus-gray-700 bg-novus-gray-800 px-4 py-3">
-          <div class="flex gap-1.5">
-            <div class="h-3 w-3 rounded-full bg-novus-red-500"></div>
-            <div class="h-3 w-3 rounded-full bg-yellow-500"></div>
-            <div class="h-3 w-3 rounded-full bg-green-500"></div>
-          </div>
-          <div class="ml-2 text-sm text-white font-mono">screen.novus</div>
-        </div>
-
-        <!-- Code Content - matches Novus.Tests/Examples/homepage_example.novus -->
-        <div class="overflow-x-auto bg-novus-gray-900 p-6">
-          <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">// Open a screen with safe error handling</span>
-<span class="text-purple-400">from</span> <span class="text-green-400">std::ui::screen</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">ScreenHandle</span>
-<span class="text-purple-400">from</span> <span class="text-green-400">std::ffi::graphics</span> <span class="text-purple-400">import</span> <span class="text-yellow-400">SetAPen</span><span class="text-white">,</span> <span class="text-yellow-400">RectFill</span>
-
-<span class="text-novus-red-400">pub fn</span> <span class="text-yellow-400">main</span><span class="text-white">()</span> <span class="text-white">-></span> <span class="text-green-400">i32</span> <span class="text-white">{'{'}</span>
-    <span class="text-purple-400">let</span> <span class="text-novus-gray-200">result</span> <span class="text-white">=</span> <span class="text-yellow-400">ScreenHandle</span><span class="text-white">::</span><span class="text-yellow-400">lores</span><span class="text-white">(</span><span class="text-amber-300">"Demo Screen"</span><span class="text-white">,</span> <span class="text-blue-400">5</span><span class="text-white">)</span>
-
-    <span class="text-purple-400">match</span> <span class="text-novus-gray-200">result</span> <span class="text-white">{'{'}</span>
-        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Ok</span><span class="text-white">(</span><span class="text-novus-gray-200">screen</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{'{'}</span>
-            <span class="text-purple-400">let</span> <span class="text-novus-gray-200">rp</span> <span class="text-white">=</span> <span class="text-novus-gray-200">screen</span><span class="text-white">.</span><span class="text-yellow-400">rastport</span><span class="text-white">()</span>
-            <span class="text-yellow-400">SetAPen</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">2</span><span class="text-white">)</span>
-            <span class="text-yellow-400">RectFill</span><span class="text-white">(</span><span class="text-novus-gray-200">rp</span><span class="text-white">,</span> <span class="text-blue-400">10</span><span class="text-white">,</span> <span class="text-blue-400">20</span><span class="text-white">,</span> <span class="text-blue-400">100</span><span class="text-white">,</span> <span class="text-blue-400">80</span><span class="text-white">)</span>
-            <span class="text-purple-400">return</span> <span class="text-blue-400">0</span>
-        <span class="text-white">{'}'},</span>
-        <span class="text-green-400">Result</span><span class="text-white">::</span><span class="text-yellow-400">Err</span><span class="text-white">(</span><span class="text-novus-gray-200">_</span><span class="text-white">)</span> <span class="text-white">=></span> <span class="text-white">{'{'}</span>
-            <span class="text-purple-400">return</span> <span class="text-blue-400">1</span>
-        <span class="text-white">{'}'}</span>
-    <span class="text-white">{'}'}</span>
-<span class="text-white">{'}'}</span></code></pre>
-        </div>
+    <dl class="mx-auto mt-10 grid max-w-3xl grid-cols-1 overflow-hidden rounded-xl border border-novus-gray-700 bg-novus-gray-800 text-center sm:grid-cols-3">
+      <div class="p-5">
+        <dt class="text-sm text-novus-gray-300">C executable</dt>
+        <dd class="mt-1 font-mono text-2xl font-bold text-white">1,620 B</dd>
       </div>
-
-      <!-- Generated Assembly -->
-      <div class="group relative overflow-hidden rounded-lg border border-novus-gray-700 bg-novus-gray-800 shadow-xl">
-        <!-- Terminal Chrome -->
-        <div class="flex items-center gap-2 border-b border-novus-gray-700 bg-novus-gray-800 px-4 py-3">
-          <div class="flex gap-1.5">
-            <div class="h-3 w-3 rounded-full bg-novus-red-500"></div>
-            <div class="h-3 w-3 rounded-full bg-yellow-500"></div>
-            <div class="h-3 w-3 rounded-full bg-green-500"></div>
-          </div>
-          <div class="ml-2 text-sm text-white font-mono">screen.s (68020)</div>
-        </div>
-
-        <!-- Assembly Content - actual VBCC output (annotated) -->
-        <div class="overflow-x-auto bg-novus-gray-900 p-6">
-          <pre class="text-sm leading-relaxed"><code><span class="text-novus-gray-500">; VBCC 68k output (annotated)</span>
-<span class="text-yellow-400">_main</span>
-    <span class="text-green-400">sub.w</span>     <span class="text-purple-400">#56</span><span class="text-white">,</span><span class="text-blue-400">a7</span>           <span class="text-novus-gray-500">; stack frame</span>
-    <span class="text-green-400">movem.l</span>   <span class="text-yellow-400">regs</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>       <span class="text-novus-gray-500">; save regs</span>
-
-    <span class="text-novus-gray-500">; ScreenHandle::lores("Demo Screen", 5)</span>
-    <span class="text-green-400">move.l</span>    <span class="text-purple-400">#5</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">pea</span>       <span class="text-yellow-400">str</span>
-    <span class="text-green-400">pea</span>       <span class="text-white">(</span><span class="text-purple-400">result</span><span class="text-white">,</span><span class="text-blue-400">a7</span><span class="text-white">)</span>       <span class="text-novus-gray-500">; Result* out</span>
-    <span class="text-green-400">jsr</span>       <span class="text-yellow-400">_ScreenHandle_lores</span>
-    <span class="text-green-400">lea</span>       <span class="text-white">(</span><span class="text-purple-400">12</span><span class="text-white">,</span><span class="text-blue-400">a7</span><span class="text-white">),</span><span class="text-blue-400">a7</span>
-
-    <span class="text-novus-gray-500">; match result {'{'} Ok(screen) => ...</span>
-    <span class="text-green-400">tst.l</span>     <span class="text-white">(</span><span class="text-purple-400">result</span><span class="text-white">,</span><span class="text-blue-400">a7</span><span class="text-white">)</span>       <span class="text-novus-gray-500">; check tag</span>
-    <span class="text-green-400">bne</span>       <span class="text-yellow-400">.err</span>
-
-    <span class="text-novus-gray-500">; screen.rastport()</span>
-    <span class="text-green-400">pea</span>       <span class="text-white">(</span><span class="text-purple-400">screen</span><span class="text-white">,</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">jsr</span>       <span class="text-yellow-400">_ScreenHandle_rastport</span>
-    <span class="text-green-400">move.l</span>    <span class="text-blue-400">d0</span><span class="text-white">,</span><span class="text-blue-400">a3</span>           <span class="text-novus-gray-500">; rp in a3</span>
-
-    <span class="text-novus-gray-500">; SetAPen(rp, 2)</span>
-    <span class="text-green-400">move.l</span>    <span class="text-purple-400">#2</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">move.l</span>    <span class="text-blue-400">a3</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">jsr</span>       <span class="text-yellow-400">_SetAPen</span>
-
-    <span class="text-novus-gray-500">; RectFill(rp, 10, 20, 100, 80)</span>
-    <span class="text-green-400">movem.l</span>   <span class="text-yellow-400">rect</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">move.l</span>    <span class="text-blue-400">a3</span><span class="text-white">,-(</span><span class="text-blue-400">a7</span><span class="text-white">)</span>
-    <span class="text-green-400">jsr</span>       <span class="text-yellow-400">_RectFill</span>
-
-    <span class="text-green-400">moveq</span>     <span class="text-purple-400">#0</span><span class="text-white">,</span><span class="text-blue-400">d0</span>
-    <span class="text-green-400">bra.s</span>     <span class="text-yellow-400">.exit</span>
-<span class="text-yellow-400">.err</span>
-    <span class="text-green-400">moveq</span>     <span class="text-purple-400">#1</span><span class="text-white">,</span><span class="text-blue-400">d0</span>
-<span class="text-yellow-400">.exit</span>
-    <span class="text-green-400">movem.l</span>   <span class="text-white">(</span><span class="text-blue-400">a7</span><span class="text-white">)+,</span><span class="text-yellow-400">regs</span>
-    <span class="text-green-400">add.w</span>     <span class="text-purple-400">#56</span><span class="text-white">,</span><span class="text-blue-400">a7</span>
-    <span class="text-green-400">rts</span>
-
-<span class="text-yellow-400">regs</span>  <span class="text-green-400">reg</span>   <span class="text-blue-400">a2/a3/d2-d7</span>
-<span class="text-yellow-400">str</span>   <span class="text-green-400">dc.b</span>  <span class="text-amber-300">"Demo Screen"</span><span class="text-white">,</span><span class="text-purple-400">0</span></code></pre>
-        </div>
+      <div class="border-y border-novus-gray-700 p-5 sm:border-x sm:border-y-0">
+        <dt class="text-sm text-novus-gray-300">Safety premium</dt>
+        <dd class="mt-1 font-mono text-2xl font-bold text-novus-red-400">+200 B</dd>
       </div>
+      <div class="p-5">
+        <dt class="text-sm text-novus-gray-300">Novus executable</dt>
+        <dd class="mt-1 font-mono text-2xl font-bold text-white">1,820 B</dd>
+      </div>
+    </dl>
+
+    <p class="mt-4 text-center text-sm text-novus-gray-400">
+      Release builds for 68020, optimized for size with VBCC. Both passed on an A4000/040 test machine.
+    </p>
+
+    <div class="mt-12 grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+      {examples.map((example) => (
+        <article class="min-w-0 overflow-hidden rounded-xl border border-novus-gray-700 bg-novus-gray-800 shadow-xl">
+          <header class="flex flex-wrap items-center justify-between gap-3 border-b border-novus-gray-700 px-5 py-4">
+            <div>
+              <p class="font-mono text-sm text-white">{example.filename}</p>
+              <p class="mt-1 text-xs text-novus-gray-400">{example.lines} lines · {example.note}</p>
+            </div>
+            <span class="rounded-full bg-novus-red-500/15 px-3 py-1 font-mono text-sm font-semibold text-novus-red-300">
+              {example.size}
+            </span>
+          </header>
+
+          <pre class="overflow-auto bg-novus-gray-900 p-5 font-mono text-[0.8rem] leading-relaxed text-novus-gray-200 lg:h-[36rem]" tabindex="0" aria-label={`${example.language} source code`}><code>{example.source}</code></pre>
+
+          <details class="border-t border-novus-gray-700">
+            <summary class="cursor-pointer px-5 py-4 font-medium text-white hover:bg-novus-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-novus-red-400">
+              Generated 68020 assembly excerpt
+            </summary>
+            <pre class="max-h-96 overflow-auto border-t border-novus-gray-700 bg-black/30 p-5 font-mono text-[0.78rem] leading-relaxed text-novus-gray-300" tabindex="0" aria-label={`${example.language} generated assembly`}><code>{example.assembly}</code></pre>
+          </details>
+        </article>
+      ))}
     </div>
 
-    <!-- Feature callouts -->
-    <div class="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-3">
-      <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
-        <h3 class="text-lg font-semibold text-white">Type Safety</h3>
-        <p class="mt-2 text-sm text-white">
-          Result types ensure errors are handled. No null pointer crashes.
-        </p>
-      </div>
-      <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
-        <h3 class="text-lg font-semibold text-white">Efficient Code</h3>
-        <p class="mt-2 text-sm text-white">
-          Compiles to clean, readable 68k assembly with proper calling conventions.
-        </p>
-      </div>
-      <div class="rounded-lg border border-novus-gray-700 bg-novus-gray-800 p-6">
-        <h3 class="text-lg font-semibold text-white">AmigaOS Ready</h3>
-        <p class="mt-2 text-sm text-white">
-          Direct library calls with safe wrappers. Full HUNK format support.
-        </p>
-      </div>
+    <div class="mt-12 text-center">
+      <p class="text-base text-novus-gray-300">
+        The C version spends its clarity budget on bookkeeping. Novus spends 200 bytes on making that bookkeeping reliable.
+      </p>
+      <a href="/getting-started/introduction" class="mt-6 inline-flex rounded-lg bg-novus-red-600 px-5 py-3 font-semibold text-white transition-colors hover:bg-novus-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+        Build your first Novus program
+      </a>
     </div>
   </div>
 </section>

@@ -188,7 +188,7 @@ public class M68kCodeGeneratorTests
         module.AddFunction(function);
 
         // Test different CPU targets
-        var targets = new[] { "68000", "68020", "68040", "68060" };
+        var targets = new[] { "68020", "68030", "68040", "68060", "68080" };
 
         foreach (var target in targets)
         {
@@ -267,7 +267,7 @@ public class M68kCodeGeneratorTests
 
     /// <summary>
     /// Test that 64-bit arithmetic operations generate soft-math runtime calls.
-    /// The 68000 family doesn't have native 64-bit arithmetic, so we use
+    /// The 68k family doesn't have native 64-bit arithmetic, so we use
     /// runtime library functions (__adddi3, __subdi3, etc.) for 64-bit ops.
     /// </summary>
     [Fact]
@@ -295,7 +295,7 @@ public class M68kCodeGeneratorTests
         module.AddFunction(function);
 
         // Generate M68k assembly - should use soft-math library
-        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68000");
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
         var asm = codegen.Generate();
 
         // Should contain a call to the 64-bit addition runtime function
@@ -332,7 +332,7 @@ public class M68kCodeGeneratorTests
         module.AddFunction(function);
 
         // This should NOT throw - 32-bit is fine
-        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68000");
+        var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), "68020");
         var asm = codegen.Generate();
 
         // Verify it generated something reasonable

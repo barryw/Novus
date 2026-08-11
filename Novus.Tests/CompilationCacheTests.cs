@@ -61,7 +61,7 @@ public class CompilationCacheTests : IDisposable
     public void ConfigHash_ShouldBeDifferentForDifferentSettings()
     {
         var hash1 = CompilationCache.ComputeConfigHash("68020", "auto", 2, "debug");
-        var hash2 = CompilationCache.ComputeConfigHash("68000", "auto", 2, "debug");
+        var hash2 = CompilationCache.ComputeConfigHash("68040", "auto", 2, "debug");
         var hash3 = CompilationCache.ComputeConfigHash("68020", "soft", 2, "debug");
         var hash4 = CompilationCache.ComputeConfigHash("68020", "auto", 3, "debug");
         var hash5 = CompilationCache.ComputeConfigHash("68020", "auto", 2, "release");
@@ -144,6 +144,9 @@ public class CompilationCacheTests : IDisposable
             configHash,
             hadErrors: false);
 
+        // A cache hit must not hide a later source edit outside an active build snapshot.
+        Assert.NotNull(_cache.GetCachedIrModule(testFile, configHash).Module);
+
         // Modify the file
         System.Threading.Thread.Sleep(100); // Ensure timestamp changes
         File.WriteAllText(testFile, "fn main() { let x = 42; }");
@@ -158,7 +161,7 @@ public class CompilationCacheTests : IDisposable
     {
         var testFile = CreateTestFile("fn main() { }");
         var configHash1 = CompilationCache.ComputeConfigHash("68020", "auto", 2, "debug");
-        var configHash2 = CompilationCache.ComputeConfigHash("68000", "auto", 2, "debug");
+        var configHash2 = CompilationCache.ComputeConfigHash("68040", "auto", 2, "debug");
 
         // Cache compilation with config1
         var parseTree = CreateMockParseTree();
@@ -251,6 +254,31 @@ public class CompilationCacheTests : IDisposable
     }
 
     [Fact]
+    public void TraversalOnlyModule_ShouldNotInvalidateCachedIr()
+    {
+        var linkedModule = CreateTestFile("pub fn linked() { }", "linked.novus");
+        var mainFile = CreateTestFile("extern fn linked()", "runner.novus");
+        var configHash = CompilationCache.ComputeConfigHash("68020", "auto", 2, "debug");
+
+        _cache.CacheCompilationResult(
+            mainFile,
+            CreateMockParseTree(),
+            new IrModule(),
+            new System.Collections.Generic.List<IrStringLiteral>(),
+            new System.Collections.Generic.List<string> { linkedModule },
+            configHash,
+            dependencyModules: []);
+        _cache.Flush();
+
+        File.WriteAllText(linkedModule, "pub fn linked() { let changed = true; }");
+        var cache2 = new CompilationCache(_testCacheDir, TestCompilerVersion);
+        var cached = cache2.GetCachedIrModule(mainFile, configHash);
+
+        Assert.NotNull(cached.Module);
+        Assert.Equal(linkedModule, Assert.Single(cached.ImportedModules!));
+    }
+
+    [Fact]
     public void Invalidate_ShouldRemoveFileFromCache()
     {
         var testFile = CreateTestFile("fn main() { }");
@@ -327,7 +355,13 @@ public class CompilationCacheTests : IDisposable
         // Cache with first instance
         var parseTree = CreateMockParseTree();
         var irModule = new IrModule();
-        var stringLiterals = new System.Collections.Generic.List<IrStringLiteral>();
+        var function = new IrFunction("main", IrIntType.I32);
+        function.CreateBasicBlock("entry").AddInstruction(new IrReturn(new IrConstant(42, IrIntType.I32)));
+        irModule.AddFunction(function);
+        var stringLiterals = new System.Collections.Generic.List<IrStringLiteral>
+        {
+            new("persisted", ".str0")
+        };
         var importedModules = new System.Collections.Generic.List<string>();
 
         _cache.CacheCompilationResult(
@@ -345,9 +379,36 @@ public class CompilationCacheTests : IDisposable
         // Create new cache instance (simulates new compiler invocation)
         var cache2 = new CompilationCache(_testCacheDir, TestCompilerVersion);
 
-        // Verify file still needs no recompilation
-        var needsRecompilation = cache2.NeedsRecompilation(testFile, configHash);
-        Assert.False(needsRecompilation);
+        var (cachedModule, cachedStrings, cachedImports) = cache2.GetCachedIrModule(testFile, configHash);
+
+        Assert.NotNull(cachedModule);
+        Assert.Same(IrIntType.I32, cachedModule.GetFunction("main")!.ReturnType);
+        var returnInstruction = Assert.IsType<IrReturn>(cachedModule.Functions[0].BasicBlocks[0].Instructions[0]);
+        Assert.Equal(42, Assert.IsType<IrConstant>(returnInstruction.Value).Value);
+        Assert.Equal("persisted", Assert.Single(cachedStrings!).Value);
+        Assert.Empty(cachedImports!);
+    }
+
+    [Fact]
+    public void CorruptPersistedIr_ShouldFallBackToCacheMiss()
+    {
+        var testFile = CreateTestFile("fn main() { }");
+        var configHash = CompilationCache.ComputeConfigHash("68020", "auto", 2, "debug");
+        _cache.CacheCompilationResult(
+            testFile,
+            CreateMockParseTree(),
+            new IrModule(),
+            new System.Collections.Generic.List<IrStringLiteral>(),
+            new System.Collections.Generic.List<string>(),
+            configHash);
+        _cache.Flush();
+
+        var irFile = Assert.Single(Directory.GetFiles(Path.Combine(_testCacheDir, ".novus-cache"), "*.ir.bin"));
+        File.WriteAllBytes(irFile, [0, 1, 2, 3]);
+
+        var cache2 = new CompilationCache(_testCacheDir, TestCompilerVersion);
+        Assert.Null(cache2.GetCachedIrModule(testFile, configHash).Module);
+        Assert.False(File.Exists(irFile));
     }
 
     // Helper methods

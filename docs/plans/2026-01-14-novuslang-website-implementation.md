@@ -872,7 +872,7 @@ Novus is in active development. The compiler produces working Amiga executables 
 - Core language features (variables, functions, control flow)
 - Strong typing with type inference
 - Result and Option types for error handling
-- CPU-target aware code generation (68000–68060)
+- CPU-target aware code generation (68020–68080)
 - AmigaOS library integration
 
 See the [GitHub repository](https://github.com/barryw/novus) for the latest development status.
@@ -963,7 +963,7 @@ You should see the Novus version information.
 
 To run compiled programs, you'll need:
 
-- A real Amiga (any model with 68000 or higher)
+- A real Amiga with a 68020 or newer CPU
 - An Amiga emulator (WinUAE, FS-UAE, vAmiga)
 
 Transfer your compiled executables to the Amiga via:
@@ -1025,7 +1025,7 @@ Common options:
 | Option | Description |
 |--------|-------------|
 | `-o <file>` | Output file name |
-| `--cpu <target>` | Target CPU: 68000, 68020, 68030, 68040, 68060 |
+| `--cpu <target>` | Target CPU: 68020, 68030, 68040, 68060, 68080 |
 | `--emit-asm` | Output assembly instead of linking |
 | `-O <level>` | Optimization level (0-3) |
 | `-v` | Verbose output |
@@ -1709,8 +1709,7 @@ novus build
 
 | Target | Description |
 |--------|-------------|
-| `68000` | Base 68000 (default) |
-| `68010` | 68010 |
+| `68020` | Minimum supported CPU (default) |
 | `68020` | 68020 (32-bit multiply/divide) |
 | `68030` | 68030 |
 | `68040` | 68040 (FPU) |
@@ -2177,7 +2176,7 @@ Novus is in active development. The compiler currently supports:
 - Strong typing with type inference
 - Result and Option types
 - Pattern matching
-- CPU-target aware code generation (68000–68060)
+- CPU-target aware code generation (68020–68080)
 - AmigaOS library integration
 
 It produces working Amiga executables that run on real hardware and emulators.

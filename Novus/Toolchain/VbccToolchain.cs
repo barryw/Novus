@@ -138,7 +138,7 @@ public class VbccToolchain
         var args = new List<string>
         {
             "-Fhunk",           // Amiga HUNK format
-            $"-m{cpu}",         // CPU target (68000, 68020, etc.)
+            $"-m{cpu}",         // Novus CPU target (68020 minimum)
             "-quiet",           // Suppress unnecessary output
             "-nowarn=62",       // Suppress "imported symbol not referenced" warnings
             "-o", objFile,      // Output file
@@ -391,6 +391,7 @@ public class VbccToolchain
             $"-cpu={cpu}",      // CPU target
             $"-O={optLevel}",   // Optimization level
             "-use-framepointer", // CRITICAL: Force frame pointer (A6) for all functions to fix stack offset bugs
+            "-notmpfile",       // Pipe compiler output to assembler; avoids slow/flaky temp files
             "-c",               // Compile only, don't link
             "-o", objFile,      // Output object file
         };
@@ -399,6 +400,58 @@ public class VbccToolchain
 
         // Don't print here - caller will show progress
         return await RunTool(vcPath, args);
+    }
+
+    /// <summary>
+    /// Compile all release C translation units together so VBCC can optimize across
+    /// module boundaries while still emitting independently discardable sections.
+    /// </summary>
+    public async Task<bool> CompileWholeProgramToObject(
+        IReadOnlyList<string> cFiles,
+        string objFile,
+        string cpu = "68020",
+        int optimization = 3,
+        IEnumerable<string>? extraIncludePaths = null,
+        bool enableFpu = false)
+    {
+        if (cFiles.Count == 0)
+            throw new ArgumentException("Whole-program compilation requires at least one C file.", nameof(cFiles));
+
+        var vcPath = Path.Combine(_vbccPath, "bin", "vc");
+        return await RunTool(vcPath, BuildWholeProgramCompileArguments(
+            cFiles, objFile, cpu, optimization, UserConfig.IncludeDir(_ndkPath), extraIncludePaths, enableFpu));
+    }
+
+    internal static List<string> BuildWholeProgramCompileArguments(
+        IReadOnlyList<string> cFiles,
+        string objFile,
+        string cpu,
+        int optimization,
+        string ndkIncludePath,
+        IEnumerable<string>? extraIncludePaths,
+        bool enableFpu)
+    {
+        var args = new List<string>
+        {
+            enableFpu ? "+aos68k_fpu" : "+aos68k",
+            "-c99",
+            $"-cpu={cpu}",
+            $"-O{optimization}",
+            "-final",
+            "-size",
+            "-sec-per-obj",
+            "-use-framepointer",
+            "-notmpfile",
+            "-c",
+            "-o", objFile,
+            $"-I{ndkIncludePath}"
+        };
+
+        if (extraIncludePaths != null)
+            args.AddRange(extraIncludePaths.Distinct(StringComparer.Ordinal).Select(path => $"-I{path}"));
+
+        args.AddRange(cFiles);
+        return args;
     }
 
     /// <summary>
@@ -659,7 +712,7 @@ public class VbccToolchain
         await File.WriteAllTextAsync(asmFile, asmSource);
 
         // For fat binaries (cpu="auto"), use 68020 for assembly since it contains CPU-specific code
-        // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
+        // Novus code is always 68020-compatible; higher targets use CPU-specific sections.
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
         var compilerDir = AppContext.BaseDirectory;
 
@@ -837,7 +890,7 @@ public class VbccToolchain
         string fpuMode = "auto")
     {
         // For fat binaries (cpu="auto"), use 68020 for assembly since it contains CPU-specific code
-        // The code generator ensures base code is 68000-compatible, with 68020+ code only in CPU-specific sections
+        // Novus code is always 68020-compatible; higher targets use CPU-specific sections.
         var assemblyCpu = cpu == "auto" ? "68020" : cpu;
         var objFiles = new List<string>();
         var compilerDir = AppContext.BaseDirectory;

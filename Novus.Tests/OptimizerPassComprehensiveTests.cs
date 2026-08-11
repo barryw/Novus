@@ -696,6 +696,7 @@ public class OptimizerPassComprehensiveTests
 
     #region CopyPropagationPass Tests
 
+
     [Fact]
     public void CopyPropagation_SimpleCopy_Propagates()
     {

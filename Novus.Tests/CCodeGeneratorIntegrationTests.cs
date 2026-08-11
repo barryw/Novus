@@ -169,6 +169,142 @@ pub fn caller(y: i32) -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_AggregateCallImmediatelyMovedToLocal_WritesLocalDirectly()
+    {
+        var module = BuildIR("""
+            enum Packet {
+                Empty,
+                Data(u32),
+            }
+
+            fn make_packet(value: u32) -> Packet {
+                return Packet::Data(value)
+            }
+
+            pub fn forward(value: u32) -> Packet {
+                let packet = make_packet(value)
+                return packet
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "forward");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("make_packet(&packet, value);", code);
+        Assert.DoesNotContain("__novus_memcpy((uint8_t*)&packet", code);
+    }
+
+    [Fact]
+    public void CCodeGen_NonOwningAggregateBuiltForReturn_WritesReturnBufferDirectly()
+    {
+        var module = BuildIR("""
+            enum Packet {
+                Empty,
+                Data(u32),
+            }
+
+            pub fn make_packet(value: u32) -> Packet {
+                return match value {
+                    0 => Packet::Empty,
+                    _ => Packet::Data(value),
+                }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "make_packet");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("(*__out).tag =", code);
+        Assert.DoesNotContain("__novus_memcpy((uint8_t*)__out", code);
+    }
+
+    [Fact]
+    public void CCodeGen_AggregateEarlyReturnsShareOneDeferEpilogue()
+    {
+        var module = BuildIR("""
+            struct Pair { left: i32, right: i32 }
+
+            pub fn choose(first: bool) -> Pair {
+                var cleaned = 0
+                defer cleaned = 1
+                if first { return Pair { left: 1, right: 2 } }
+                return Pair { left: 3, right: 4 }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "choose");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Equal(1, code.Split("__novus_return:;", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, code.Split("goto __novus_return;", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void CCodeGen_ReturnMoveSkipsSourceClearAfterDropDeactivation()
+    {
+        var module = BuildIR("""
+            struct Handles { a: *u8, b: *u8, c: *u8, d: *u8, e: *u8 }
+            enum Outcome { Ok(Handles), Err(u32) }
+            impl Drop for Handles { fn drop(&var self) {} }
+
+            pub fn make() -> Outcome {
+                let handles = Handles { a: null, b: null, c: null, d: null, e: null }
+                return Outcome::Ok(handles)
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "make");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("(__out->data.Ok._0).e = (handles).e;", code);
+        Assert.Contains("_defer_1_active = false;", code);
+        Assert.DoesNotContain("(handles).e = 0;", code);
+        Assert.DoesNotContain("__novus_memcpy", code);
+        Assert.DoesNotContain("__novus_memset", code);
+    }
+
+    [Fact]
+    public void CCodeGen_UnitEnumVariantDoesNotWriteDummyPayload()
+    {
+        var module = BuildIR("""
+            enum Outcome { Ok, Err(u32) }
+            pub fn succeed() -> Outcome { return Outcome::Ok }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "succeed");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("__out->tag = Outcome_Ok;", code);
+        Assert.DoesNotContain("._dummy = 0", code);
+    }
+
+    [Fact]
+    public void CCodeGen_SharedReturnEpilogueKeepsCleanupForEarlierErrorPath()
+    {
+        var module = BuildIR("""
+            struct Handle { ptr: *u8 }
+            enum Outcome { Ok(Handle), Err(u32) }
+            impl Drop for Handle { fn drop(&var self) {} }
+
+            pub fn maybe(code: u32) -> Outcome {
+                let handle = Handle { ptr: null }
+                if code == 0 { return Outcome::Err(1) }
+                if code == 1 { return Outcome::Err(2) }
+                return Outcome::Ok(handle)
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "maybe");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("_defer_1_active = false;", code);
+        Assert.Contains("if (_defer_1_active)", code);
+        Assert.Contains("Handle_Drop_drop(&handle);", code);
+        Assert.Equal(1, code.Split("__out->tag = Outcome_Err;", StringSplitOptions.None).Length - 1);
+        Assert.Equal(2, code.Split("goto __novus_return_Err;", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
     public void CCodeGen_FunctionWithMultipleReturns_HandlesAllPaths()
     {
         var source = @"
@@ -230,6 +366,48 @@ pub fn make_some(x: i32) -> Option {
         var code = GenerateCCode(module);
 
         Assert.Contains("Option", code);
+    }
+
+    [Fact]
+    public void CCodeGen_EnumPayloadDereferencesPointerConvertedParameter()
+    {
+        var source = @"
+struct Owned {
+    ptr: *u8
+}
+
+enum MaybeOwned {
+    Some(Owned),
+    None
+}
+
+struct Holder {
+    item: MaybeOwned
+}
+
+pub fn wrap(value: Owned) -> MaybeOwned {
+    return MaybeOwned::Some(value)
+}
+
+pub fn assign(value: Owned) -> MaybeOwned {
+    var result = MaybeOwned::None
+    result = MaybeOwned::Some(value)
+    return result
+}
+
+pub fn put(holder: &var Holder, value: Owned) {
+    holder.item = MaybeOwned::Some(value)
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("Owned* value", code);
+        Assert.Contains("._0 = *value", code);
+        Assert.DoesNotContain("._0 = value", code);
+        Assert.Contains("(uint8_t*)value, sizeof(Owned)", code);
+        Assert.DoesNotContain("(uint8_t*)&value, sizeof(Owned)", code);
+        Assert.Contains("(uint8_t*)&*value, sizeof(Owned)", code);
     }
 
     [Fact]

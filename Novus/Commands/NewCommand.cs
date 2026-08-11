@@ -131,6 +131,8 @@ public static class NewCommand
             Console.WriteLine("  - dual");
             Console.WriteLine("  - library");
             Console.WriteLine("  - device");
+            Console.WriteLine("  - resource");
+            Console.WriteLine("  - handler");
             Console.WriteLine("  - gui");
             return 1;
         }
@@ -248,7 +250,7 @@ public static class NewCommand
         string projectType = options.ProjectType ?? "cli";
 
         // Validate project type
-        var validTypes = new[] { "cli", "workbench", "dual", "library", "device" };
+        var validTypes = new[] { "cli", "workbench", "dual", "library", "device", "resource", "handler" };
         if (!validTypes.Contains(projectType.ToLower()))
         {
             Console.WriteLine($"Error: Invalid project type '{projectType}'");
@@ -372,6 +374,7 @@ public static class NewCommand
             "dual" => ("main.novus", LoadBundledSource("cli", "cli", "main.novus", projectName)),
             "library" => ("lib.novus", LoadBundledSource("library", "library", "lib.novus", projectName)),
             "device" => ("dev.novus", LoadBundledSource("device", "device", "dev.novus", projectName)),
+            "resource" => ("resource.novus", LoadBundledSource("resource", "resource", "resource.novus", projectName)),
             _ => ("main.novus", LoadBundledSource("cli", "cli", "main.novus", projectName))
         };
     }

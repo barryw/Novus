@@ -295,57 +295,17 @@ impl GadToolsMenuBuilder {
         }
     }
 
-    /// Build the menu strip (allocates NewMenu array and creates menus)
+    /// Build the menu strip from the builder's NewMenu array.
     pub fn build(&var self) -> Result<GadToolsMenuStrip, IntuitionError> {
         // Add terminator entry
         unsafe {
             self.push_entry_fields((u8)NM_END, null, null, 0, 0, null)
         }
 
-        // Calculate size for NewMenu array
-        let count = self.entry_count
-        let sizeof_newmenu: u32 = @sizeof(NewMenu)
-        let size = count * sizeof_newmenu
-
         unsafe {
-            // Allocate memory for NewMenu array
-            let mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
-            let menu_array = (*NewMenu)mem
-            if !menu_array {
-                return Result::Err(IntuitionError::MenuCreateFailed)
-            }
-
-            // Copy all entries field-by-field to the NewMenu array
-            // Don't copy byte-by-byte because NewMenu and NewMenu might have different layouts in C
-            // Manually copy each field to avoid compiler issues with struct access
-            var i: u32 = 0
-            forever {
-                if i >= count {
-                    break
-                }
-                // Read each field from NewMenu
-                let e_type = self.entries[i].nm_Type
-                let e_label = self.entries[i].nm_Label
-                let e_commkey = self.entries[i].nm_CommKey
-                let e_flags = self.entries[i].nm_Flags
-                let e_mutual = self.entries[i].nm_MutualExclude
-                let e_userdata = self.entries[i].nm_UserData
-
-                // Write each field to NewMenu
-                menu_array[i].nm_Type = e_type
-                menu_array[i].nm_Label = e_label
-                menu_array[i].nm_CommKey = e_commkey
-                menu_array[i].nm_Flags = e_flags
-                menu_array[i].nm_MutualExclude = e_mutual
-                menu_array[i].nm_UserData = e_userdata
-                i++
-            }
-
-            // Create menus from NewMenu array
+            let menu_array = self.entries
             let menu = CreateMenusA(menu_array, null)
             if !menu {
-                let mem_to_free = (*u8)menu_array
-                FreeVec(mem_to_free)
                 return Result::Err(IntuitionError::MenuCreateFailed)
             }
 
@@ -353,8 +313,6 @@ impl GadToolsMenuBuilder {
             let vi = GetVisualInfoA(self.screen, null)
             if !vi {
                 FreeMenus(menu)
-                let mem_to_free = (*u8)menu_array
-                FreeVec(mem_to_free)
                 return Result::Err(IntuitionError::MenuCreateFailed)
             }
 
@@ -363,8 +321,6 @@ impl GadToolsMenuBuilder {
             if result == 0 {
                 FreeVisualInfo(vi)
                 FreeMenus(menu)
-                let mem_to_free = (*u8)menu_array
-                FreeVec(mem_to_free)
                 return Result::Err(IntuitionError::MenuCreateFailed)
             }
 
@@ -378,15 +334,10 @@ impl GadToolsMenuBuilder {
             self.label_count = 0
             self.label_capacity = 0
 
-            // Free the builder's entries array since we've copied to menu_array
-            // This prevents a leak when the builder goes out of scope
-            if self.entries {
-                let entries_mem = (*u8)self.entries
-                FreeVec(entries_mem)
-                self.entries = null
-                self.entry_count = 0
-                self.entry_capacity = 0
-            }
+            // Keep the template alive with the menu strip and transfer ownership.
+            self.entries = null
+            self.entry_count = 0
+            self.entry_capacity = 0
 
             return Result::Ok(GadToolsMenuStrip {
                 menu: menu,
@@ -574,6 +525,11 @@ pub struct GadToolsMenuStrip {
 }
 
 impl GadToolsMenuStrip {
+    /// Borrow the native menu for integration with other safe UI wrappers.
+    pub fn raw_menu(&self) -> *Menu {
+        return self.menu
+    }
+
     /// Attach this menu strip to a window
     pub fn attach(&self, window: *Window) -> Result<(), IntuitionError> {
         unsafe {
@@ -670,6 +626,11 @@ impl MenuSelection {
             sub: sub,
             encoded: code
         }
+    }
+
+    /// Match a normal menu item by its zero-based menu and item positions.
+    pub fn matches(&self, menu: u16, item: u16) -> bool {
+        return self.menu == menu && self.item == item && self.sub == NOSUB
     }
 
     /// Check if this is a menu title (no item)

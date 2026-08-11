@@ -4,7 +4,7 @@ This directory contains a prototype direct 68k assembly code generator that bypa
 
 ## Overview
 
-The M68k backend generates vasm-compatible Motorola 68000 assembly directly from Novus IR, providing:
+The M68k backend generates vasm-compatible Motorola 68020+ assembly directly from Novus IR, providing:
 - Better optimization control
 - Path toward self-hosting
 - Elimination of C toolchain dependency (VBCC)

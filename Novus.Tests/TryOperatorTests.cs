@@ -211,6 +211,13 @@ pub fn main() -> i32 {
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
+
+        var function = Assert.Single(module.Functions, f => f.Name == "use_point");
+        var instructions = function.BasicBlocks.SelectMany(block => block.Instructions).ToList();
+        Assert.DoesNotContain(instructions.OfType<IrLocalDecl>(), decl => decl.Name.StartsWith("%try_result_"));
+        Assert.DoesNotContain(instructions.OfType<IrStore>(), store => store.VariableName.StartsWith("%try_ok_val_"));
+        Assert.Contains(instructions.OfType<IrExtractVariantData>(), extract => extract.ResultName == "p");
+        Assert.Contains(instructions.OfType<IrLocalDecl>(), decl => decl.Name == "p" && decl.InitialValue == null);
     }
 
     [Fact]

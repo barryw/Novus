@@ -6,7 +6,8 @@
 **Meaning:** Latin for “new”; symbolizing rebirth and innovation.
 **Summary:** Novus is a modern systems programming language for the Amiga ecosystem. It blends the clarity and ergonomics of modern languages with the direct hardware access and efficiency required on 68k systems.
 **Philosophy:** Simplicity, precision, and authenticity — a rebirth of Amiga development with modern design principles.
-**Status:** Early design phase.
+**Status:** Implemented language with explicitly marked design proposals. The executable
+templates and `docs/AMIGA_LANGUAGE_AUDIT.md` are the current Amiga integration baseline.
 
 ---
 
@@ -53,7 +54,7 @@
 
 ## 5. High-Level Features
 
-* **C-like syntax** with modern ergonomics.
+* **Novus-native systems syntax** with modern ergonomics.
 * **Strong typing** with optional type inference.
 * **Structs, enums, constants, and inline assembly** supported.
 * **Modules & imports** for code organization.
@@ -86,8 +87,11 @@
 ### 6.2 Hardware Register Access
 
 ```novus
-COLOR00 := RGB(0, 255, 0)
-BLTCON0 := $09F0
+unsafe {
+    write_volatile(color00, $0F0u16)
+    memory_fence()
+    let current = read_volatile(color00)
+}
 ```
 
 ### 6.3 Exec & Intuition Integration
@@ -99,15 +103,12 @@ window := intuition.OpenWindow(title: "Novus Demo", width: 320, height: 200)
 
 ### 6.4 Fixed-Point Math
 
-> ⚠️ **Status: 🚧 Partial** — Lexer tokens (`fixed16`, `fixed32`) exist but semantic analysis and codegen are not yet implemented. Use `i32` with manual scaling for now.
+`fixed16` uses 8.8 scaling and `fixed32` uses 16.16 scaling. Literals, arithmetic,
+comparisons, and numeric conversions are implemented.
 
 ```novus
-// Future syntax (not yet implemented):
-// angle: fixed16 = 45.0
-// sin_val = sin(angle)
-
-// Current workaround - manual 16.16 fixed-point:
-let angle: i32 = 45 << 16  // 45.0 in 16.16 format
+let angle: fixed16 = 45.0fixed16
+let doubled = angle * 2.0fixed16
 ```
 
 ---
@@ -197,149 +198,102 @@ hello
 
 ---
 
-## 13. Building Libraries, Devices, Handlers & Interrupts (Draft)
+## 13. Building Libraries, Devices, Resources, Handlers & Interrupts
 
-> **Implementation Status:**
-> - ✅ `@packed`, `@align(N)` — Implemented
-> - 🚧 `@resident`, `@autoinit` — Parser support only
-> - 🚧 `@libvec`, `@devicevec` — Parser support only (ROMTag/vector generation not implemented)
-> - 🚧 `@interrupt(level)` — Parser support only
+Novus generates resident tags, autoinit data, vector tables, A6 thunks, and lifecycle
+bookkeeping from ordinary Novus declarations. Use `novus new library`, `device`,
+`resource`, or `handler` for complete buildable examples.
 
-> Goal: make Novus a first‑class way to build AmigaOS shared libraries, Exec devices, DOS handlers, and interrupt servers with minimal boilerplate and a sane, Result‑based API surface.
-
-### 13.1 ABI & Attributes
-
-* `extern "amiga"` calling convention (D0 return; register args where applicable).
-* Declarative attributes the compiler understands and materializes:
-
-  * `@resident(name, version, pri, type)` — emits ROMTag.
-  * `@autoinit(func_table, data_size, data_init, init_fn)` — classic AutoInit block.
-  * `@libvec` / `@devicevec` — marks entries in the vector table (order enforced).
-  * `@interrupt(level)` — generates ISR prologue/epilogue and preserves clobbers.
-  * `@packed`, `@align(N)` — exact struct layout for FFI records.
-
-### 13.2 Project kinds & outputs
-
-* `novusc --kind library`  → `LIBS:*.library`
-* `novusc --kind device`   → `DEVS:*.device`
-* `novusc --kind handler`  → DOS handler process (mountlist driven)
-* `novusc --kind resource` → `L:*.resource` style components (optional)
-* `novusc --kind interrupt`→ ISR object you can install via Exec
-
-Each kind scaffolds vector tables, ROMTag/AutoInit, and starter code using `Result`/`Option`.
-
-### 13.3 Shared library example (LIBS:mydemo.library)
+### 13.1 Amiga register ABI
 
 ```novus
-module mydemo
-
-@packed
-struct MyDemoBase {
-  lib: LibraryHeader,  // std/ffi/exec defines this
-  counter: u32,
+amiga fn hook(hook: *Hook in a0, object: *u8 in a2,
+              message: *u8 in a1) -> u32 in d0 {
+    return 0
 }
 
-@libvec fn LibOpen(base: *MyDemoBase) -> u32 { base.counter += 1; return 1 }
-@libvec fn LibClose(base: *MyDemoBase) -> u32 { return 0 }
-@libvec fn LibExpunge(base: *MyDemoBase) -> u32 { return 0 }
-@libvec fn LibExtFunc() -> u32 { return 0 }
-
-@libvec pub extern "amiga" fn Add(base: *MyDemoBase, a: i32, b: i32) -> i32 {
-  return a + b
-}
-
-fn Init(base: *MyDemoBase, seglist: u32, sys: *ExecBase) -> *MyDemoBase {
-  base.counter = 0
-  return base
-}
-
-@resident(name="mydemo.library", version=1, pri=0, type="NT_LIBRARY")
-@autoinit(func_table=&__FuncTable, data_size=sizeof(MyDemoBase), data_init=null, init_fn=Init)
-const _ROMTAG: u32 = 0
+type HookFn = amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0
 ```
 
-### 13.4 Exec device example (DEVS:mydev.device)
+Register bindings are part of the function type, so incompatible callback signatures
+are rejected before code generation.
+
+### 13.2 Libraries
 
 ```novus
-module mydev
-
-@packed
-struct MyDevBase { lib: LibraryHeader, port: *MsgPort }
-
-@devicevec fn BeginIO(base: *MyDevBase, io: *IORequest) {
-  // inspect io.io_Command; set io_Error/io_Actual; ReplyMsg
+@library(name = "mydemo.library")
+pub struct MyDemo {
+    opens: u32,
 }
 
-@devicevec fn AbortIO(base: *MyDevBase, io: *IORequest) { }
+impl MyDemo {
+    pub fn add(left: i32, right: i32) -> i32 { return left + right }
 
-@libvec fn DevOpen(base: *MyDevBase) -> u32 { return 1 }
-@libvec fn DevClose(base: *MyDevBase) -> u32 { return 0 }
-@libvec fn DevExpunge(base: *MyDevBase) -> u32 { return 0 }
-@libvec fn DevExtFunc() -> u32 { return 0 }
-
-fn Init(base: *MyDevBase, seg: u32, sys: *ExecBase) -> *MyDevBase {
-  base.port = exec.CreateMsgPort()?  // Result-based; returns Err on failure
-  return base
-}
-
-@resident(name="mydev.device", version=1, pri=0, type="NT_DEVICE")
-@autoinit(func_table=&__FuncTable, data_size=sizeof(MyDevBase), data_init=null, init_fn=Init)
-const _ROMTAG: u32 = 0
-```
-
-### 13.5 DOS handler skeleton (packet loop)
-
-```novus
-module myhandler
-
-fn HandlerMain() -> u32 {
-  let port = dos.CreatePort("MYHANDLER", 0)?
-  loop {
-    let pkt = dos.WaitForPacket(port)?
-    match pkt.action {
-      ACTION_DIE      => { dos.ReplyOK(pkt); break }
-      ACTION_INFO     => { dos.Reply(pkt, handle_info(pkt)) }
-      ACTION_EXAMINE  => { dos.Reply(pkt, handle_examine(pkt)) }
-      _               => dos.ReplyErr(pkt, Error.Unsupported)
+    @libinit
+    pub fn loaded(state: *MyDemo) -> bool {
+        unsafe { (*state).opens = 0 }
+        return true
     }
-  }
-  return 0
+}
+```
+
+Optional `@libopen`, `@libclose`, and `@libexpunge` hooks receive persistent state;
+generated code owns open counts and delayed expunge.
+
+### 13.3 Devices and deferred I/O
+
+`@devicecmd(cmd = ..., quick = true)` completes in BeginIO. A handler marked
+`deferred = true` owns the request and must reply later. `@abortio` atomically recovers
+that ownership and reports whether generated code should reply `IOERR_ABORTED`.
+
+```novus
+@devicecmd(cmd = 11, deferred = true)
+pub fn begin_async(request: *IORequest, state: *DeviceState) -> i8 {
+    // Queue request for a task or interrupt server.
+    return 0
 }
 
-@resident(name="MyHandler", version=1, pri=0, type="NT_HANDLER")
-fn StartHandler() -> u32 { exec.CreateProcess(entry: HandlerMain, stack: 8192)?; return 0 }
+@abortio
+pub fn abort_async(request: *IORequest, state: *DeviceState) -> bool {
+    return false
+}
 ```
+
+Lifecycle hooks are `@deviceinit`, `@deviceopen`, `@deviceclose`, and
+`@deviceexpunge`.
+
+### 13.4 Permanent Exec resources
+
+```novus
+@resource(name = "counter.resource")
+pub struct CounterState { value: u32 }
+
+@resourcefunc
+pub fn read(state: *CounterState) -> u32 {
+    unsafe { return (*state).value }
+}
+```
+
+The first parameter is generated persistent state and is hidden from callers.
+`@resourceinit` optionally initializes it.
+
+### 13.5 DOS handlers
+
+Handler programs use `std::os::handler::Packet`. `Packet::wait()` takes ownership,
+`reply()` replies once, and `Drop` returns `ERROR_ACTION_NOT_KNOWN` if a branch forgets.
+The handler template includes ACTION_STARTUP and ACTION_DIE handling.
 
 ### 13.6 Interrupts
 
-* Mark ISR with `@interrupt(level)`; body must be tiny and non-blocking.
-* Preferred pattern: set a signal or post a message to a port, then return.
+`@interrupt` generates an Exec-compatible interrupt-server entry that returns with RTS.
+`@interrupt_vector` is the explicit raw-vector form that returns with RTE. Interrupt
+safety validation rejects allocation, blocking, async, and other unsafe calls.
 
-```novus
-@interrupt(level=3)
-fn CopperISR(ctx: *ISave) {
-  Signal(task: main_task, mask: SIG_COPPER)
-}
-```
+### 13.7 Layout and shared memory
 
-### 13.7 Error model conventions (mandatory)
-
-* All public APIs are `Result`-based; use `Option` for benign absence.
-* Map DOS `IoErr()` codes via `std/os/error.error_from_dos(code)`.
-* For APIs without explicit errors, use conservative defaults (`OOM`, `Unsupported`) and refine as knowledge grows.
-
-### 13.8 Tooling & verification
-
-* `novusc --inspect-resident` dumps ROMTag, vectors, sizes, versions.
-* `novusc --emit-map` emits a link map to verify vector order and symbol addresses.
-* Harnesses for `--kind device` issue synthetic IORequests under emulation for CI.
-
-### 13.9 Install & testing tips
-
-* Libraries → copy to `LIBS:`; Devices → `DEVS:`; Handlers → `L:` plus a mountlist.
-* Provide tiny sample clients in `examples/` that open your lib/device and exercise basic calls.
-
----
+Use native `union` for overlaid ABI storage; reading a union field requires `unsafe`.
+Use `read_volatile`, `write_volatile`, and `memory_fence` for device registers or memory
+shared with hardware.
 
 ---
 
@@ -383,7 +337,7 @@ fn CopperISR(ctx: *ISave) {
 | Copper/Blitter DSL                   | 📅 Planned v1.5  | Parser rules exist, codegen not implemented |
 | Async `sleep`, `vblank`, `input`     | ✅ Implemented    | Backed by timer & input devices          |
 | Compile-time constants (`const fn`)  | 🚧 Partial       | Basic const evaluation                   |
-| Library/Device attributes            | 🚧 Partial       | `@packed`, `@align` work; `@libvec` incomplete |
+| Libraries, devices, resources        | ✅ Implemented    | Native project attributes and generated residents |
 
 ### 🧠 v1.5 (Expressiveness & Ergonomics)
 
@@ -398,8 +352,8 @@ fn CopperISR(ctx: *ISave) {
 | Workspaces & multi-project builds     | ✅ Implemented    | `novus.toml` based builds                |
 | Copper/Blitter DSL                    | 📅 Planned       | Hardware script DSLs                     |
 | Graphics Assets DSL (sprites/BOBs)    | 📅 Planned       | Compile-time asset packing               |
-| Fat binaries (multi-CPU dispatch)     | 📅 Planned       | `--cpu fat:000,020,060`                  |
-| Closures                              | 📅 Planned       | Capture analysis, upvalue management     |
+| Fat binaries (multi-CPU dispatch)     | 📅 Planned       | 68020+ variants only                     |
+| Closures                              | ✅ Implemented    | Capture analysis and owning environments |
 | Compile-time reflection               | 📅 Planned       | For auto-docs & serialization            |
 | String interpolation                  | 📅 Planned       | `"Hello {name}"` syntax                  |
 | Built-in doc generator                | 📅 Planned       | Similar to Rustdoc                       |
@@ -503,7 +457,7 @@ Features:
 
 ### 🧱 19.5 CPU Compatibility
 
-**Pain:** Multiple builds for 68000–060.
+**Pain:** Multiple builds across the supported 68020–68080 range.
 **Fix:**
 
 ```bash
@@ -1409,17 +1363,16 @@ All uploads ensure **chipmem** placement and return handles with depth/stride me
 ## 26. Target Profiles & Fat Binaries (CPU · Chipset)
 
 > **Implementation Status:**
-> - ✅ CPU target selection (`--cpu 68000/68020/68040/68060`) — Implemented
+> - ✅ CPU target selection (`--cpu 68020/68030/68040/68060/68080`) — Implemented
 > - 📅 Chipset profiles (`--chipset OCS|ECS|AGA`) — Not yet implemented
-> - 📅 Fat binaries (`--cpu fat:000,020,060`) — Not yet implemented
+> - 📅 68020+ fat binaries — Not yet implemented
 > - 📅 `@multiversion` attribute — Not yet implemented
 
-> **Purpose:** Let developers choose how far back to support (A1000 → 68080) without forking code. Profiles guarantee the compiler never emits unsupported instructions for the chosen target, with optional multi-version dispatch.
+> **Purpose:** Let developers tune 68020+ programs without forking code. Profiles guarantee the compiler never emits instructions newer than the chosen target.
 
 ### 26.1 CPU ISA Profiles
 
-* **`m68k-000`** (68000/010): strict subset; no bitfield ops; limited addressing; slow 32×32 multiply/divide.
-* **`m68k-020`** (68020/030): richer addressing, bitfields, 32×32 mul/div, PC-relative forms. **Recommended default.**
+* **`m68k-020`** (68020/030): minimum profile; bitfields, 32×32 mul/div, and PC-relative forms. **Default.**
 * **`m68k-040`** (68040): caches/pipeline; certain ops trap (emulated by OS); we avoid trappy ops unless gated.
 * **`m68k-060`** (68060): even stricter on trappy ops; we prefer core integer ops by default.
 * **`apx-080`** (68080/Apollo): optional profile; future intrinsics (e.g., AMMX) via `std/intrin/ammx`.
@@ -1428,7 +1381,6 @@ All uploads ensure **chipmem** placement and return handles with depth/stride me
 
 ```bash
 novusc --cpu 68020            # single target
-novusc --cpu 68000            # strict legacy
 novusc --cpu 68060            # accelerated
 ```
 
@@ -1468,18 +1420,18 @@ Build multiple ISA versions of hot functions and auto-dispatch at runtime.
 **CLI:**
 
 ```bash
-novusc --cpu fat:000,020,060
+novusc --cpu fat:020,040,060
 ```
 
 **Source (two ways):**
 
 ```novus
 // Let compiler clone & specialize automatically
-@multiversion(cpu=[000,020,060])
+@multiversion(cpu=[020,040,060])
 fn memcpy(dst: []mut u8, src: []u8, n: u32) { /* generic body; compiler specializes */ }
 
 // Or write explicit versions
-fn memcpy(dst:[]mut u8, src:[]u8, n:u32) { /* baseline (000) */ }
+fn memcpy(dst:[]mut u8, src:[]u8, n:u32) { /* 020 baseline */ }
 @impl(cpu=020) fn memcpy(...) { /* 020+ using bitfields/addressing */ }
 @impl(cpu=060) fn memcpy(...) { /* 060-tuned */ }
 ```
@@ -1498,9 +1450,9 @@ fn memcpy(dst:[]mut u8, src:[]u8, n:u32) { /* baseline (000) */ }
 ### 26.6 Recommended Defaults
 
 * **Project default:** `--cpu 68020 --chipset auto` (best balance for A1200/A4000/accelerated machines).
-* **Legacy-compat build:** `--cpu 68000 --chipset OCS`.
+* **Minimum build:** `--cpu 68020 --chipset OCS`.
 * **Accelerated build:** `--cpu 68060 --chipset AGA`.
-* **One binary to rule them all:** `--cpu fat:000,020,060 --chipset auto`.
+* **One binary to rule them all:** a future 68020+ fat target.
 
 ### 26.7 Interaction with DSLs & Stdlib
 
@@ -1557,22 +1509,19 @@ rts
 
 * Linear-scan per block with live-range splitting; coalescing for copy elimination.
 * Preference: address calc in `a*`, arithmetic in `d*`.
-* CPU-profile-aware addressing: e.g., `020+` uses scaled index and PC-relative forms; `000` falls back to simpler modes.
+* CPU-profile-aware addressing uses forms supported by the selected 68020+ target.
 
 ### 27.4 IR Op → Instruction Mapping (Core)
 
-| IR              | 68000                         | 68020+                                 |
-| --------------- | ----------------------------- | -------------------------------------- |
-| `add i16`       | `add.w src,dN`                | same                                   |
-| `add i32`       | `add.l`                       | same                                   |
-| `sub`           | `sub.*`                       | same                                   |
-| `mul i16`       | `muls.w`                      | same                                   |
-| `mul i32`       | helper (software)             | `muls.l` (020+)                        |
-| `div i32`       | helper                        | `divs.l` (020+)                        |
-| `and/or/xor`    | `and/or/eor.*`                | same                                   |
-| `shl/shr`       | `lsl/lsr/asl/asr`             | same                                   |
-| `cmp.*`         | `cmp.*`, set via branches     | `cmp.*` + `scc` when profitable        |
-| `load`          | `move.* (addr),dN/aN`         | same + complex addr modes              |
+| IR              | 68020+ lowering                         |
+| --------------- | --------------------------------------- |
+| `add/sub`       | `add.*` / `sub.*`                       |
+| `mul i32`       | `muls.l` / `mulu.l`                     |
+| `div i32`       | `divs.l` / `divu.l`                     |
+| `and/or/xor`    | `and/or/eor.*`                          |
+| `shl/shr`       | `lsl/lsr/asl/asr`                       |
+| `cmp.*`         | `cmp.*` + `scc` when profitable         |
+| `load`          | `move.*` with target-valid address mode |
 | `store`         | `move.* dN/aN,(addr)`         | same                                   |
 | `lea`           | `lea`                         | `lea` / PC-relative forms              |
 | `memcpy/memset` | small inline loop             | larger: `movem`/unroll (profile-tuned) |
@@ -1675,7 +1624,7 @@ Lmax: ret %max
 Lret: ret %0
 ```
 
-**68000 ASM (sketch):**
+**68020 baseline ASM (sketch):**
 
 ```asm
 ; a=i16 in d0, b=i16 in d1, max in d2, ret in d0
@@ -1853,7 +1802,7 @@ cpu = "68020"              # requires 020+ instructions
 
 [[build.asm]]
 file = "src/copper_routines.s"
-cpu = "68000"              # compatible with all CPUs
+cpu = "68020"              # minimum supported CPU
 ```
 
 **Build process:**
@@ -2093,7 +2042,7 @@ The Novus SDK provides:
 
 ## 29. Floating‑Point & Numeric Modes
 
-> **Purpose:** Provide portable and fast floating‑point across 68000→68080 by defaulting to **soft‑float** semantics and optionally using hardware FPUs when available. Maintain deterministic behavior across profiles unless the developer opts into fast approximations.
+> **Purpose:** Provide portable and fast floating‑point across 68020→68080 by defaulting to **soft‑float** semantics and optionally using hardware FPUs when available. Maintain deterministic behavior across profiles unless the developer opts into fast approximations.
 
 ### 29.1 Build/Profile Flags
 
@@ -2156,4 +2105,3 @@ The Novus SDK provides:
 * Use **float** for tools, offline prep, or accelerated machines; remains portable via soft‑float.
 
 ---
-

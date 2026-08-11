@@ -10,9 +10,9 @@ Host-side tools live in `tools/`. These run *on the Amiga*, under FS-UAE.
 | `.library` / `.device` | FS-UAE | vamos has no library to open |
 | Anything that opens a window | FS-UAE, via `wrun` | needs real Intuition |
 
-`vamos` must be given `-C 68020`. It defaults to 68000 and dies at an odd PC on
-our binaries, which looks alarmingly like a codegen bug and is not one. Novus
-targets 68020+; `--cpu 68000` is not supported and fails during assembly.
+`vamos` must be given `-C 68020`. Its default CPU is below Novus's minimum and
+dies at an odd PC on our binaries, which looks alarmingly like a codegen bug and
+is not one. Novus targets 68020 and newer.
 
 ## wrun
 
@@ -54,12 +54,13 @@ python3 tools/amiga/run_runtime_suite.py --suite foundation-aggregates --filter 
 
 The default endpoint is `http://localhost:6800/mcp`; results are written to
 `.novus-cache/amiga-runtime-suite/report.json`. The foundation layer compiles
-its 74 main tests into one executable per profile so unchanged reruns hit the
+its foundational tests into one executable per profile so unchanged reruns hit the
 compiler's build stamp and stdlib is compiled once. Three existing const-fn,
 intrinsics, and fixed32 probes remain standalone; named suites remain available
 for isolating crashes. Coverage includes primitives and numerics, control flow,
 functions, aggregates, modules, generics/traits, errors/patterns, ownership/Drop,
-strings, intrinsics, const functions, fixed point, and inline assembly. NDK,
+strings, intrinsics, const functions, fixed point, inline assembly, native
+unions, volatile memory, Amiga register callbacks, and interrupt entries. NDK,
 Exec/DOS, GUI, ports, tasks, and other Amiga integrations remain separate.
 
 The runner deliberately refuses to take over an already-running machine. A

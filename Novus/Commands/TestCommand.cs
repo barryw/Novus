@@ -22,6 +22,8 @@ namespace Novus.Commands;
 /// </summary>
 public static class TestCommand
 {
+    private const int TestRunnerVersion = 2;
+
     /// <summary>
     /// Information about a discovered test function
     /// </summary>
@@ -111,7 +113,7 @@ public static class TestCommand
             var outputDir = Path.GetFullPath(options.OutputDir ?? Directory.GetCurrentDirectory());
             var testRunnerPath = Path.Combine(outputDir, "_test_runner.novus");
             var testConfigPath = testRunnerPath + ".config";
-            var testConfig = string.Join('|', options.Filter, options.Benchmark, options.Release,
+            var testConfig = string.Join('|', TestRunnerVersion, options.Filter, options.Benchmark, options.Release,
                 string.Join(';', sourceFiles));
 
             if (!options.ListOnly && !options.RunWithVamos &&
@@ -129,7 +131,7 @@ public static class TestCommand
                 try
                 {
                     Directory.SetCurrentDirectory(outputDir);
-                    return await Program.RunCompiler(CreateCompilerOptions(options));
+                    return await Program.RunCompiler(CreateCompilerOptions(options, sourceFiles, outputDir));
                 }
                 finally
                 {
@@ -214,7 +216,7 @@ public static class TestCommand
                 // This ensures that local imports (e.g., "from test_file import ...") work
                 Directory.SetCurrentDirectory(outputDir);
 
-                var result = await Program.RunCompiler(CreateCompilerOptions(options));
+                var result = await Program.RunCompiler(CreateCompilerOptions(options, sourceFiles, outputDir));
 
                 // Update outputExe to absolute path for reporting
                 outputExe = Path.Combine(outputDir, "tests");
@@ -291,7 +293,8 @@ public static class TestCommand
         }
     }
 
-    private static CompilerOptions CreateCompilerOptions(TestOptions options) => new()
+    private static CompilerOptions CreateCompilerOptions(
+        TestOptions options, IEnumerable<string> sourceFiles, string outputDir) => new()
     {
         InputFile = "_test_runner.novus",
         OutputFile = "tests",
@@ -304,7 +307,10 @@ public static class TestCommand
         Verbose = options.Verbose,
         OptimizationLevel = options.GetOptimizationLevel(),
         SafetyLevelOption = options.SafetyLevel,
-        UseStdlibCache = true
+        UseStdlibCache = true,
+        AdditionalSourceFiles = sourceFiles
+            .Select(source => Path.Combine(outputDir, Path.GetFileName(source)))
+            .ToList()
     };
 
     /// <summary>
@@ -462,12 +468,8 @@ public static class TestCommand
         }
         sb.AppendLine();
 
-        // Import all test source files
-        // Group tests by source file for proper imports
-        // We copy the source files to the output directory so imports work correctly
-        // Only import active (non-skipped) test functions since skipped tests aren't called
+        // Test modules are compiled separately; the runner only needs their entry-point signatures.
         var activeTests = tests.Where(t => !t.IsSkipped).ToList();
-        var testsByFile = activeTests.GroupBy(t => t.ModulePath).ToList();
 
         // Local imports must remain available when a directory suite is built into a
         // separate output directory, even when the imported module has no tests itself.
@@ -484,15 +486,9 @@ public static class TestCommand
             }
         }
 
-        foreach (var group in testsByFile)
+        foreach (var test in activeTests)
         {
-            // Get the module name from file path (just the filename without extension)
-            var moduleName = Path.GetFileNameWithoutExtension(group.Key);
-
-            // Import test functions from this module using module name (file must be in same directory)
-            var funcNames = string.Join(", ", group.Select(t => t.FunctionName));
-
-            sb.AppendLine($"from {moduleName} import {funcNames}");
+            sb.AppendLine($"extern fn {test.FunctionName}()");
         }
         sb.AppendLine();
 

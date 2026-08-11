@@ -114,6 +114,7 @@ public class OptimizationPipeline
                 // Basic optimizations - fast compile time
                 pipeline.AddPass(new Passes.ConstantFoldingPass());
                 pipeline.AddPass(new Passes.AlgebraicSimplificationPass());
+                pipeline.AddPass(new Passes.CommonSubexpressionEliminationPass());
                 pipeline.AddPass(new Passes.DeadCodeEliminationPass());
                 break;
 
@@ -124,6 +125,7 @@ public class OptimizationPipeline
                 pipeline.AddPass(new Passes.ConstantPropagationPass());
                 pipeline.AddPass(new Passes.ResultOptimizationPass());  // Optimize Result/Option before DCE
                 pipeline.AddPass(new Passes.CFGDeadCodeEliminationPass());
+                pipeline.AddPass(new Passes.CommonSubexpressionEliminationPass());
                 pipeline.AddPass(new Passes.CopyPropagationPass());
                 break;
 

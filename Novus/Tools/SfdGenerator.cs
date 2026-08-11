@@ -64,6 +64,7 @@ public class SfdGenerator
             allFunctions.SelectMany(function => function.Parameters.Select(parameter => parameter.Type)
                 .Append(function.ReturnType)));
         GenerateHeaderMap(allLibraries);
+        GenerateVersionMap(allLibraries);
 
         // Second pass: generate bindings
         Console.WriteLine("\nGenerating FFI bindings...");
@@ -96,6 +97,18 @@ public class SfdGenerator
             .OrderBy(line => line, StringComparer.Ordinal);
         var outputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_headers.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
+        File.WriteAllLines(outputFile, lines);
+    }
+
+    private void GenerateVersionMap(IEnumerable<SfdParser.SfdLibrary> libraries)
+    {
+        var lines = libraries
+            .SelectMany(library => library.Functions
+                .Where(function => !function.IsReserved && function.Version > 0)
+                .Select(function =>
+                    $"{library.LibraryName.Replace(".library", "").Replace(".", "_")}|{function.Name}|{function.Version}"))
+            .OrderBy(line => line, StringComparer.Ordinal);
+        var outputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_versions.txt");
         File.WriteAllLines(outputFile, lines);
     }
 
@@ -228,7 +241,7 @@ public class SfdGenerator
         sb.AppendLine($"\txdef\t_{func.Name}");
         sb.AppendLine($"_{func.Name}:");
 
-        // For 68000, parameters come on stack at 4(sp), 8(sp), etc.
+        // Novus C ABI parameters arrive on the stack at 4(sp), 8(sp), etc.
         // We need to move them to registers according to the SFD
 
         var usedRegisters = func.Registers
@@ -457,7 +470,7 @@ public class SfdGenerator
         ndkTypes.AppendLine("/* Generated NDK tag/typedef bridge for Novus C output. */");
         foreach (var structDef in sortedStructs.OrderBy(value => value.Name, StringComparer.Ordinal))
         {
-            if (functionNames.Contains(structDef.Name) || structDef.IsTypedef)
+            if (functionNames.Contains(structDef.Name) || structDef.IsTypedef || structDef.IsSynthetic)
                 continue;
             var tagName = string.IsNullOrWhiteSpace(structDef.TagName) ? structDef.Name : structDef.TagName;
             ndkTypes.AppendLine($"typedef {(structDef.IsUnion ? "union" : "struct")} {tagName} {structDef.Name};");
@@ -566,19 +579,16 @@ public class SfdGenerator
         IEnumerable<string> knownStructs,
         IReadOnlyDictionary<string, CHeaderParser.CConstant> constants)
     {
-        sb.AppendLine("#[extern_type]");
-        sb.AppendLine($"pub struct {structDef.Name} {{");
-
-        if (structDef.HasUnion)
-        {
-            sb.AppendLine("    // Anonymous union fields are supplied by the NDK header");
-        }
+        if (!structDef.IsSynthetic)
+            sb.AppendLine("#[extern_type]");
+        sb.AppendLine($"pub {(structDef.IsUnion ? "union" : "struct")} {structDef.Name} {{");
 
         foreach (var field in structDef.Fields)
         {
-            var fieldType = knownStructs.Contains(field.Type)
-                ? field.Type
-                : SfdParser.MapAmigaTypeToNovus(field.Type);
+            var fieldType = GetAmigaCallbackType(structDef.Name, field.Name) ??
+                (knownStructs.Contains(field.Type)
+                    ? field.Type
+                    : SfdParser.MapAmigaTypeToNovus(field.Type));
 
             if (field.IsArray)
             {
@@ -597,6 +607,15 @@ public class SfdGenerator
         sb.AppendLine("}");
         sb.AppendLine();
     }
+
+    private static string? GetAmigaCallbackType(string owner, string field) => (owner, field) switch
+    {
+        ("Hook", "h_Entry" or "h_SubEntry") =>
+            "amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0",
+        ("Interrupt", "is_Code") or ("IntVector", "iv_Code") =>
+            "amiga fn(*u8 in a1) -> u32 in d0",
+        _ => null
+    };
 
     private static string ResolveArraySize(
         string expression,
@@ -747,7 +766,7 @@ public class SfdGenerator
         var sanitized = name.Replace("[", "").Replace("]", "").Replace("*", "");
 
         // If the name is a Novus keyword, prefix with underscore
-        var keywords = new HashSet<string> { "fn", "let", "const", "if", "else", "while", "for", "match", "return", "struct", "enum", "impl", "type", "blitter" };
+        var keywords = new HashSet<string> { "fn", "let", "const", "if", "else", "while", "for", "match", "return", "struct", "union", "enum", "impl", "type", "blitter" };
         if (keywords.Contains(sanitized))
             return "_" + sanitized;
 

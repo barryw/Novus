@@ -18,7 +18,7 @@ var sum = add(a, b)  // a and b are copied to the stack
 
 ### Small Types (passed by value)
 
-Primitives and pointers are passed directly on the stack (4 bytes each on 68000):
+Primitives and pointers are passed directly on the stack (4-byte ABI slots on 68020+):
 
 ```novus
 fn process(

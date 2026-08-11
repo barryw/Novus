@@ -41,9 +41,14 @@ pub struct MemHeader {
     mh_Free: u32,
 }
 
+pub union MemEntry_me_Un {
+    meu_Reqs: u32,
+    meu_Addr: *u8,
+}
+
 #[extern_type]
 pub struct MemEntry {
-    // Anonymous union fields are supplied by the NDK header
+    me_Un: MemEntry_me_Un,
     me_Length: u32,
 }
 
@@ -313,8 +318,8 @@ pub struct RxsLib {
 #[extern_type]
 pub struct Hook {
     h_MinNode: MinNode,
-    h_Entry: fn() -> u32,
-    h_SubEntry: fn() -> u32,
+    h_Entry: amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0,
+    h_SubEntry: amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0,
     h_Data: *u8,
 }
 
@@ -869,10 +874,30 @@ pub struct ColorMap {
     Bp_1_base: u16,
 }
 
+pub union CopIns_union0_struct0_u1 {
+    VWaitPos: i16,
+    DestAddr: i16,
+}
+
+pub union CopIns_union0_struct0_u2 {
+    HWaitPos: i16,
+    DestData: i16,
+}
+
+pub struct CopIns_union0_u4 {
+    u1: CopIns_union0_struct0_u1,
+    u2: CopIns_union0_struct0_u2,
+}
+
+pub union CopIns_u3 {
+    nxtlist: *CopList,
+    u4: CopIns_union0_u4,
+}
+
 #[extern_type]
 pub struct CopIns {
-    // Anonymous union fields are supplied by the NDK header
     OpCode: i16,
+    u3: CopIns_u3,
 }
 
 #[extern_type]
@@ -972,6 +997,30 @@ pub struct IBox {
     Height: i16,
 }
 
+pub struct GadgetInfo_gi_Pens {
+    DetailPen: u8,
+    BlockPen: u8,
+}
+
+pub struct DrawInfo_dri_Resolution {
+    X: u16,
+    Y: u16,
+}
+
+#[extern_type]
+pub struct DrawInfo {
+    dri_Version: u16,
+    dri_NumPens: u16,
+    dri_Pens: *u16,
+    dri_Font: *TextFont,
+    dri_Depth: u16,
+    dri_Resolution: DrawInfo_dri_Resolution,
+    dri_Flags: u32,
+    dri_CheckMark: *Image,
+    dri_AmigaKey: *Image,
+    dri_Reserved: [u32; 5],
+}
+
 #[extern_type]
 pub struct GadgetInfo {
     gi_Screen: *Screen,
@@ -980,8 +1029,9 @@ pub struct GadgetInfo {
     gi_RastPort: *RastPort,
     gi_Layer: *Layer,
     gi_Domain: IBox,
-    DetailPen: u8,
-    BlockPen: u8,
+    gi_Pens: GadgetInfo_gi_Pens,
+    gi_DrInfo: *DrawInfo,
+    gi_Reserved: [u32; 6],
 }
 
 #[extern_type]
@@ -1224,6 +1274,22 @@ pub struct VecInfo {
     reserved: [u32; 2],
 }
 
+pub struct Custom__anonymous0 {
+    ac_ptr: *u16,
+    ac_len: u16,
+    ac_per: u16,
+    ac_vol: u16,
+    ac_dat: u16,
+    ac_pad: [u16; 2],
+}
+
+pub struct Custom__anonymous1 {
+    pos: u16,
+    ctl: u16,
+    dataa: u16,
+    datab: u16,
+}
+
 #[extern_type]
 pub struct Custom {
     bltddat: u16,
@@ -1295,20 +1361,41 @@ pub struct Custom {
     intena: u16,
     intreq: u16,
     adkcon: u16,
-    ac_ptr: *u16,
-    ac_len: u16,
-    ac_per: u16,
-    ac_vol: u16,
-    ac_dat: u16,
-    ac_pad: [u16; 2],
-}
-
-#[extern_type]
-pub struct SpriteDef {
-    pos: u16,
-    ctl: u16,
-    dataa: u16,
-    datab: u16,
+    _anonymous0: Custom__anonymous0,
+    bplpt: [*u8; 8],
+    bplcon0: u16,
+    bplcon1: u16,
+    bplcon2: u16,
+    bplcon3: u16,
+    bpl1mod: u16,
+    bpl2mod: u16,
+    bplcon4: u16,
+    clxcon2: u16,
+    bpldat: [u16; 8],
+    sprpt: [*u8; 8],
+    _anonymous1: Custom__anonymous1,
+    color: [u16; 32],
+    htotal: u16,
+    hsstop: u16,
+    hbstrt: u16,
+    hbstop: u16,
+    vtotal: u16,
+    vsstop: u16,
+    vbstrt: u16,
+    vbstop: u16,
+    sprhstrt: u16,
+    sprhstop: u16,
+    bplhstrt: u16,
+    bplhstop: u16,
+    hhposw: u16,
+    hhposr: u16,
+    beamcon0: u16,
+    hsstrt: u16,
+    vsstrt: u16,
+    hcenter: u16,
+    diwhigh: u16,
+    padf3: [u16; 11],
+    fmode: u16,
 }
 
 #[extern_type]
@@ -1451,17 +1538,32 @@ pub struct timerequest {
     tr_time: timeval,
 }
 
-#[extern_type]
-pub struct IEPointerPixel {
-    iepp_Screen: *Screen,
+pub struct IEPointerPixel_iepp_Position {
     X: i16,
     Y: i16,
 }
 
 #[extern_type]
-pub struct IEPointerTablet {
+pub struct IEPointerPixel {
+    iepp_Screen: *Screen,
+    iepp_Position: IEPointerPixel_iepp_Position,
+}
+
+pub struct IEPointerTablet_iept_Range {
     X: u16,
     Y: u16,
+}
+
+pub struct IEPointerTablet_iept_Value {
+    X: u16,
+    Y: u16,
+}
+
+#[extern_type]
+pub struct IEPointerTablet {
+    iept_Range: IEPointerTablet_iept_Range,
+    iept_Value: IEPointerTablet_iept_Value,
+    iept_Pressure: i16,
 }
 
 #[extern_type]
@@ -1478,14 +1580,32 @@ pub struct IENewTablet {
     ient_TagList: *TagItem,
 }
 
+pub struct InputEvent_union0_ie_xy {
+    ie_x: i16,
+    ie_y: i16,
+}
+
+pub struct InputEvent_union0_ie_dead {
+    ie_prev1DownCode: u8,
+    ie_prev1DownQual: u8,
+    ie_prev2DownCode: u8,
+    ie_prev2DownQual: u8,
+}
+
+pub union InputEvent_ie_position {
+    ie_xy: InputEvent_union0_ie_xy,
+    ie_addr: *u8,
+    ie_dead: InputEvent_union0_ie_dead,
+}
+
 #[extern_type]
 pub struct InputEvent {
-    // Anonymous union fields are supplied by the NDK header
     ie_NextEvent: *InputEvent,
     ie_Class: u8,
     ie_SubClass: u8,
     ie_Code: u16,
     ie_Qualifier: u16,
+    ie_position: InputEvent_ie_position,
     ie_TimeStamp: timeval,
 }
 
@@ -1638,17 +1758,6 @@ pub struct ExtNewWindow {
 }
 
 #[extern_type]
-pub struct DrawInfo {
-    dri_Version: u16,
-    dri_NumPens: u16,
-    dri_Pens: *u16,
-    dri_Font: *TextFont,
-    dri_Depth: u16,
-    X: u16,
-    Y: u16,
-}
-
-#[extern_type]
 pub struct NewScreen {
     LeftEdge: i16,
     TopEdge: i16,
@@ -1791,12 +1900,16 @@ pub struct TabletHookData {
     thd_ScreenChanged: i32,
 }
 
+pub struct gpHitTest_gpht_Mouse {
+    X: i16,
+    Y: i16,
+}
+
 #[extern_type]
 pub struct gpHitTest {
     MethodID: u32,
     gpht_GInfo: *GadgetInfo,
-    X: i16,
-    Y: i16,
+    gpht_Mouse: gpHitTest_gpht_Mouse,
 }
 
 #[extern_type]
@@ -1807,14 +1920,19 @@ pub struct gpRender {
     gpr_Redraw: i32,
 }
 
+pub struct gpInput_gpi_Mouse {
+    X: i16,
+    Y: i16,
+}
+
 #[extern_type]
 pub struct gpInput {
     MethodID: u32,
     gpi_GInfo: *GadgetInfo,
     gpi_IEvent: *InputEvent,
     gpi_Termination: *i32,
-    X: i16,
-    Y: i16,
+    gpi_Mouse: gpInput_gpi_Mouse,
+    gpi_TabletData: *TabletData,
 }
 
 #[extern_type]
@@ -1873,27 +1991,59 @@ pub struct impFrameBox {
     imp_FrameFlags: u32,
 }
 
+pub struct impDraw_imp_Offset {
+    X: i16,
+    Y: i16,
+}
+
+pub struct impDraw_imp_Dimensions {
+    Width: i16,
+    Height: i16,
+}
+
 #[extern_type]
 pub struct impDraw {
     MethodID: u32,
     imp_RPort: *RastPort,
+    imp_Offset: impDraw_imp_Offset,
+    imp_State: u32,
+    imp_DrInfo: *DrawInfo,
+    imp_Dimensions: impDraw_imp_Dimensions,
+}
+
+pub struct impErase_imp_Offset {
     X: i16,
     Y: i16,
+}
+
+pub struct impErase_imp_Dimensions {
+    Width: i16,
+    Height: i16,
 }
 
 #[extern_type]
 pub struct impErase {
     MethodID: u32,
     imp_RPort: *RastPort,
+    imp_Offset: impErase_imp_Offset,
+    imp_Dimensions: impErase_imp_Dimensions,
+}
+
+pub struct impHitTest_imp_Point {
     X: i16,
     Y: i16,
+}
+
+pub struct impHitTest_imp_Dimensions {
+    Width: i16,
+    Height: i16,
 }
 
 #[extern_type]
 pub struct impHitTest {
     MethodID: u32,
-    X: i16,
-    Y: i16,
+    imp_Point: impHitTest_imp_Point,
+    imp_Dimensions: impHitTest_imp_Dimensions,
 }
 
 #[extern_type]
@@ -2005,12 +2155,23 @@ pub struct LBDrawMsg {
     lbdm_State: u32,
 }
 
+pub union LBSortMsg_lbsm_DataA {
+    Integer: i32,
+    Text: *u8,
+}
+
+pub union LBSortMsg_lbsm_DataB {
+    Integer: i32,
+    Text: *u8,
+}
+
 #[extern_type]
 pub struct LBSortMsg {
-    // Anonymous union fields are supplied by the NDK header
     lbsm_TypeA: u32,
+    lbsm_DataA: LBSortMsg_lbsm_DataA,
     lbsm_UserDataA: *u8,
     lbsm_TypeB: u32,
+    lbsm_DataB: LBSortMsg_lbsm_DataB,
     lbsm_UserDataB: *u8,
 }
 
@@ -2379,13 +2540,13 @@ pub struct Resident {
 pub struct Interrupt {
     is_Node: Node,
     is_Data: *u8,
-    is_Code: fn(),
+    is_Code: amiga fn(*u8 in a1) -> u32 in d0,
 }
 
 #[extern_type]
 pub struct IntVector {
     iv_Data: *u8,
-    iv_Code: fn(),
+    iv_Code: amiga fn(*u8 in a1) -> u32 in d0,
     iv_Node: *Node,
 }
 
@@ -2956,20 +3117,46 @@ pub struct DevInfo {
     dvi_Name: i32,
 }
 
-#[extern_type]
-pub struct DosList {
-    // Anonymous union fields are supplied by the NDK header
-    dol_Next: i32,
-    dol_Type: i32,
-    dol_Task: *MsgPort,
-    dol_Lock: i32,
-    dol_Name: i32,
+pub struct DosList_union0_dol_handler {
+    dol_Handler: i32,
+    dol_StackSize: i32,
+    dol_Priority: i32,
+    dol_Startup: u32,
+    dol_SegList: i32,
+    dol_GlobVec: i32,
+}
+
+pub struct DosList_union0_dol_volume {
+    dol_VolumeDate: DateStamp,
+    dol_LockList: i32,
+    dol_DiskType: i32,
 }
 
 #[extern_type]
 pub struct AssignList {
     al_Next: *AssignList,
     al_Lock: i32,
+}
+
+pub struct DosList_union0_dol_assign {
+    dol_AssignName: *u8,
+    dol_List: *AssignList,
+}
+
+pub union DosList_dol_misc {
+    dol_handler: DosList_union0_dol_handler,
+    dol_volume: DosList_union0_dol_volume,
+    dol_assign: DosList_union0_dol_assign,
+}
+
+#[extern_type]
+pub struct DosList {
+    dol_Next: i32,
+    dol_Type: i32,
+    dol_Task: *MsgPort,
+    dol_Lock: i32,
+    dol_misc: DosList_dol_misc,
+    dol_Name: i32,
 }
 
 #[extern_type]
@@ -2997,6 +3184,16 @@ pub struct DeviceData {
     dd_CmdVectors: *u8,
     dd_CmdBytes: *u8,
     dd_NumCommands: u16,
+}
+
+pub union PrinterData_pd_ior0 {
+    pd_p0: IOExtPar,
+    pd_s0: IOExtSer,
+}
+
+pub union PrinterData_pd_ior1 {
+    pd_p1: IOExtPar,
+    pd_s1: IOExtSer,
 }
 
 #[extern_type]
@@ -3042,7 +3239,6 @@ pub struct PrinterUnit {
 
 #[extern_type]
 pub struct PrinterData {
-    // Anonymous union fields are supplied by the NDK header
     pd_Device: DeviceData,
     pd_Unit: MsgPort,
     pd_PrinterSegment: i32,
@@ -3051,6 +3247,8 @@ pub struct PrinterData {
     pd_PrintBuf: *u8,
     pd_PWrite: fn() -> i32,
     pd_PBothReady: fn() -> i32,
+    pd_ior0: PrinterData_pd_ior0,
+    pd_ior1: PrinterData_pd_ior1,
     pd_TIOR: timerequest,
     pd_IORPort: MsgPort,
     pd_TC: Task,
@@ -3100,6 +3298,12 @@ pub struct DTMethod {
     dtm_Method: u32,
 }
 
+pub struct FrameInfo_fri_Dimensions {
+    Width: u32,
+    Height: u32,
+    Depth: u32,
+}
+
 #[extern_type]
 pub struct FrameInfo {
     fri_PropertyFlags: u32,
@@ -3107,9 +3311,10 @@ pub struct FrameInfo {
     fri_RedBits: u8,
     fri_GreenBits: u8,
     fri_BlueBits: u8,
-    Width: u32,
-    Height: u32,
-    Depth: u32,
+    fri_Dimensions: FrameInfo_fri_Dimensions,
+    fri_Screen: *Screen,
+    fri_ColorMap: *ColorMap,
+    fri_Flags: u32,
 }
 
 #[extern_type]
@@ -3152,7 +3357,7 @@ pub struct dtTrigger {
 }
 
 #[extern_type]
-pub struct printerIO {
+pub union printerIO {
     ios: IOStdReq,
     iodrp: IODRPReq,
     iopc: IOPrtCmdReq,
@@ -3301,13 +3506,28 @@ pub struct LocalVar {
     lv_Len: u32,
 }
 
+pub struct NotifyRequest_union0_nr_Msg {
+    nr_Port: *MsgPort,
+}
+
+pub struct NotifyRequest_union0_nr_Signal {
+    nr_Task: *Task,
+    nr_SignalNum: u8,
+    nr_pad: [u8; 3],
+}
+
+pub union NotifyRequest_nr_stuff {
+    nr_Msg: NotifyRequest_union0_nr_Msg,
+    nr_Signal: NotifyRequest_union0_nr_Signal,
+}
+
 #[extern_type]
 pub struct NotifyRequest {
-    // Anonymous union fields are supplied by the NDK header
     nr_Name: *u8,
     nr_FullName: *u8,
     nr_UserData: u32,
     nr_Flags: u32,
+    nr_stuff: NotifyRequest_nr_stuff,
     nr_Reserved: [u32; 4],
     nr_MsgCount: u32,
     nr_Handler: *MsgPort,
@@ -4079,7 +4299,7 @@ pub struct RMSF {
 }
 
 #[extern_type]
-pub struct LSNMSF {
+pub union LSNMSF {
     MSF: RMSF,
     LSN: u32,
 }
@@ -4109,7 +4329,7 @@ pub struct TOCEntry {
 }
 
 #[extern_type]
-pub struct CDTOC {
+pub union CDTOC {
     Summary: TOCSummary,
     Entry: TOCEntry,
 }
@@ -4321,7 +4541,7 @@ pub struct mouth_rb {
 }
 
 #[extern_type]
-pub struct colorEntry {
+pub union colorEntry {
     colorLong: u32,
     colorByte: [u8; 4],
     colorSByte: [i8; 4],
@@ -4775,6 +4995,17 @@ pub struct rw_return {
     success: u16,
     failed_word: u16,
     block_written: u16,
+}
+
+pub union bootblock_bb_Data {
+    bd_RDB: RigidDiskBlock,
+    bd_PB: PartitionBlock,
+    bd_FHB: FileSysHeaderBlock,
+    bd_LSB: LoadSegBlock,
+    bd_BB: BadBlockBlock,
+    bd_Bytes: [u8; 512],
+    bd_Words: [u16; 256],
+    bd_Longs: [u32; 128],
 }
 
 #[extern_type]

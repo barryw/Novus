@@ -42,6 +42,7 @@ public partial class IrBuilder
         var functionName = GetMangledFunctionName(baseName, paramTypes);
 
         var function = new IrFunction(functionName, returnType, visibility, isExtern);
+        ApplyFunctionAbi(function, context);
         // Store the original unmangled name for display/debugging purposes
         if (functionName != baseName)
         {
@@ -295,11 +296,32 @@ public partial class IrBuilder
         _localVariables[uniqueName] = localVar;
         _localVariables[name] = localVar;  // Overwrite so references find the new variable
 
-        // If initializing from a variable with Drop, deactivate its defer to prevent double-free
-        DeactivateVariableDeferIfMove(value);
+        // A try expression's Ok payload is a compiler temporary used only to initialize
+        // this binding. Extract directly into the binding instead of moving the owned
+        // value through another whole-struct copy.
+        var coalescedTryValue = false;
+        if (value is IrVariable tryValue && tryValue.Name.StartsWith("%try_ok_val_", StringComparison.Ordinal))
+        {
+            var extract = _currentFunction.BasicBlocks
+                .SelectMany(block => block.Instructions)
+                .OfType<IrExtractVariantData>()
+                .FirstOrDefault(instruction => instruction.ResultName == tryValue.Name);
+            if (extract != null)
+            {
+                extract.ResultName = uniqueName;
+                _currentFunction.LocalVariables.RemoveAll(variable => variable.Name == tryValue.Name);
+                _localVariables.Remove(tryValue.Name);
+                Emit(new IrLocalDecl(uniqueName, type, isMutable, null));
+                coalescedTryValue = true;
+            }
+        }
 
-        // Generate IR for the declaration with initial value
-        Emit(new IrLocalDecl(uniqueName, type, isMutable, value));
+        if (!coalescedTryValue)
+        {
+            // If initializing from a variable with Drop, deactivate its defer to prevent double-free
+            DeactivateVariableDeferIfMove(value);
+            Emit(new IrLocalDecl(uniqueName, type, isMutable, value));
+        }
 
         // Automatic defer for types with drop() method (RAII-style cleanup)
         // For generic types, eagerly instantiate the drop() method if it exists as a template
@@ -1742,6 +1764,13 @@ public partial class IrBuilder
 
         var hasElse = context.GetChild(4) != null; // Check if 'else' keyword exists
         var falseTarget = hasElse ? elseLabel : endLabel;
+        var parentStatement = context.Parent as NovusParser.StatementContext;
+        var parentBlock = parentStatement?.Parent as NovusParser.BlockContext;
+        var captureTailValue = hasElse && parentStatement != null &&
+                               ReferenceEquals(parentBlock?.statement().LastOrDefault(), parentStatement) &&
+                               _expectedType is not IrVoidType;
+        string? resultTemp = null;
+        IrType? resultType = null;
 
         // Visit condition - this will emit the condition check and conditional branch
         // Pass labels to the condition visitor via a tuple
@@ -1767,10 +1796,18 @@ public partial class IrBuilder
             _pendingIfLetVariable = null;
         }
 
-        Visit(context.block(0));
+        var thenValue = Visit(context.block(0)) as IrValue;
 
         // Track whether the then block terminates
         bool thenBranchTerminates = CurrentBlockHasTerminator();
+
+        if (captureTailValue && !thenBranchTerminates && thenValue != null && thenValue.Type is not IrVoidType)
+        {
+            resultTemp = $"%t{_tempCounter++}";
+            resultType = thenValue!.Type;
+            _currentFunction!.LocalVariables.Add(new IrLocalVariable(resultTemp, resultType, false));
+            _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, thenValue));
+        }
 
         // Jump to end if there's an else clause (but only if block doesn't already end with return/branch)
         if (hasElse)
@@ -1784,22 +1821,33 @@ public partial class IrBuilder
             _currentBlock!.AddInstruction(new IrLabel(elseLabel));
 
             // Check if it's 'else if' or 'else' block
+            IrValue? elseValue = null;
             if (context.ifStatement() != null)
             {
-                Visit(context.ifStatement());
+                elseValue = Visit(context.ifStatement()) as IrValue;
             }
             else if (context.block().Length > 1)
             {
-                Visit(context.block(1));
+                elseValue = Visit(context.block(1)) as IrValue;
             }
 
             // Track whether the else block terminates
             bool elseBranchTerminates = CurrentBlockHasTerminator();
 
+            if (resultTemp != null && resultType != null && !elseBranchTerminates && elseValue != null)
+            {
+                _currentBlock!.AddInstruction(new IrLocalDecl(resultTemp, resultType, false, elseValue));
+            }
+
             // Only emit the end label if at least one branch can reach it
             if (!thenBranchTerminates || !elseBranchTerminates)
             {
                 _currentBlock!.AddInstruction(new IrLabel(endLabel));
+            }
+
+            if (resultTemp != null && resultType != null && elseValue != null)
+            {
+                return new IrVariable(resultTemp, resultType);
             }
         }
         else
@@ -1884,6 +1932,9 @@ public partial class IrBuilder
 
         // Store expression in a temp
         var tempName = $"%if_let_{_labelCounter++}";
+        var tempLocal = new IrLocalVariable(tempName, expression.Type, true);
+        _currentFunction!.LocalVariables.Add(tempLocal);
+        _localVariables[tempName] = tempLocal;
         _currentBlock!.AddInstruction(new IrLocalDecl(tempName, expression.Type, true, expression));
 
         // Check if non-zero
@@ -1947,6 +1998,9 @@ public partial class IrBuilder
 
         // Store expression in a temp
         var tempName = $"%if_var_{_labelCounter++}";
+        var tempLocal = new IrLocalVariable(tempName, expression.Type, true);
+        _currentFunction!.LocalVariables.Add(tempLocal);
+        _localVariables[tempName] = tempLocal;
         _currentBlock!.AddInstruction(new IrLocalDecl(tempName, expression.Type, true, expression));
 
         // Check if non-zero

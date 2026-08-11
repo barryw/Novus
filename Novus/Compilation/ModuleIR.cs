@@ -12,4 +12,5 @@ public record ModuleIR(
     IrModule IrModule,
     List<IrStringLiteral> StringLiterals,
     List<string> ImportedModules,
-    bool HasMain);
+    bool HasMain,
+    bool FromCache = false);

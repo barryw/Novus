@@ -532,7 +532,7 @@ public class MoveChecker
 
 4. **Limited control over layout**
    - C struct layout may not match Novus expectations
-   - Alignment issues on 68000 (word alignment required)
+   - Amiga 68k ABI word-alignment requirements
    - No control over field order (matters for chip RAM structs)
 
 ### The Alternative: Direct 68k Generation

@@ -493,7 +493,6 @@ Novus validates that assembly instructions are compatible with the target CPU pr
 
 | Profile | Supported Instructions |
 |---------|------------------------|
-| `68000` | Basic instruction set (no 32-bit multiply/divide) |
 | `68020` | 32-bit operations, bitfields, PC-relative |
 | `68030` | Same as 68020 (identical instruction set) |
 | `68040` | Cache instructions, move16 |
@@ -513,9 +512,8 @@ fn fixed_mul(a: i32, b: i32) -> i32 {
 }
 ```
 
-**Compiler behavior:**
-- If compiling with `--cpu 68000`, emit error: "Instruction `muls.l` requires 68020+"
-- If compiling with `--cpu 68020` or higher, accept the function
+**Compiler behavior:** the function is accepted on every supported target because
+68020 is the language minimum.
 
 ### Instruction Set Validation
 
@@ -530,36 +528,8 @@ fn extract_bitfield(value: u32, offset: u32) -> u32 {
 }
 ```
 
-**Compile with `--cpu 68000`:**
-```
-Error: Instruction 'bfextu' is not available on CPU profile 68000
-  --> src/main.novus:42:9
-   |
-42 |         "bfextu d0{0:d1},d0"
-   |         ^^^^^^^^^^^^^^^^^^^^ requires 68020 or later
-```
-
-### Fat Binary Support
-
-For fat binaries, each CPU variant is validated separately:
-
-```novus
-@multiversion(cpu = [M68000, M68020, M68060])
-fn optimized_func(x: u32) -> u32 {
-    #if CPU_68020
-        unsafe asm(x) -> u32 {
-            "muls.l #42,d0"  // Fast multiply on 020+
-        }
-    #else
-        return x * 42  // Compiler uses software multiply on 68000
-    #endif
-}
-```
-
-**Compiler behavior:**
-1. Validates 68000 version (no muls.l check)
-2. Validates 68020 version (muls.l allowed)
-3. Generates dispatcher based on CPU detection
+Instructions introduced after 68020 are rejected when the configured target is
+too old for them. For example, `move16` requires a 68040 target.
 
 ---
 
@@ -1022,7 +992,7 @@ The compiler uses a simple instruction parser to validate CPU compatibility:
 2. Look up in CPU instruction table:
    ```csharp
    static readonly Dictionary<string, CpuProfile> Instructions = new() {
-       ["move"] = CpuProfile.M68000,
+       ["move"] = CpuProfile.M68020,
        ["muls.l"] = CpuProfile.M68020,
        ["bfextu"] = CpuProfile.M68020,
        ["move16"] = CpuProfile.M68040,

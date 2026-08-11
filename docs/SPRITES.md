@@ -1030,7 +1030,7 @@ pub fn main() -> i32 {
 
 ## Performance Characteristics
 
-### Operation Costs (68000 CPU)
+### Operation Costs (68020 baseline)
 
 | Operation | CPU Cycles | Notes |
 |-----------|-----------|-------|

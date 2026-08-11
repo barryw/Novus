@@ -45,7 +45,7 @@ version = "1.0.0"
 type = "device"
 
 [build]
-target_cpu = "68020"  # Options: 68000, 68020, 68030, 68040, 68060
+target_cpu = "68020"  # Novus minimum; also 68030, 68040, 68060, 68080
 fpu = "auto"          # Options: auto, soft, 68881, 68882, 68040, 68060
 optimization_level = 0  # Options: 0, 1, 2
 ```
@@ -82,6 +82,11 @@ pub fn cmd_read(ioReq: *IORequest, base: *MyDevice) -> i8 {
 Parameters:
 - `cmd` - Command name (string) or number (int)
 - `quick` - If true, command can complete without blocking
+- `deferred` - If true, the handler owns the request and replies asynchronously
+
+Deferred handlers must eventually call `ReplyMsg()` or return ownership through an
+`@abortio` hook. Clients must collect every `SendIO()` with `WaitIO()`, including
+after `AbortIO()`.
 
 ### Generated Functions
 

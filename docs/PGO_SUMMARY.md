@@ -24,9 +24,8 @@ Profile-Guided Optimization (PGO) is a two-phase compilation technique that uses
 - No guidance on loop unrolling decisions
 - Cannot identify cold code for size optimization
 
-**Impact on Amiga 68k:**
-- **68000/010:** No cache, no branch prediction → minimal impact
-- **68020/030:** Instruction cache, some prediction → moderate benefit (10-15% speedup)
+**Impact on supported Amiga processors:**
+- **68020/030:** Instruction cache behavior makes profile-guided layout useful
 - **68040/060:** Split I/D cache, good prediction → significant benefit (15-25% speedup)
 
 ### PGO Benefits
@@ -315,7 +314,6 @@ Based on GCC/LLVM PGO implementations, adapted for 68k:
 
 | CPU | Code Size | Speed | Cache Misses | Notes |
 |-----|-----------|-------|--------------|-------|
-| **68000** | -5% | +0-2% | N/A | No cache, minimal benefit |
 | **68020** | -10% | +8-12% | -20% | I-cache, moderate benefit |
 | **68030** | -12% | +10-15% | -25% | Better cache |
 | **68040** | -15% | +15-20% | -30% | Split cache, strong benefit |

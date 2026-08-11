@@ -12,10 +12,7 @@ fn main() -> i32 {
     // The code in false branches is completely removed from the compiled binary
 
     // CPU-specific code paths
-    #if M68000
-        // Code for 68000 - no 32-bit mul/div, no bitfields
-        write("Compiled for 68000 (software 32-bit math)\n")
-    #elif M68020
+    #if M68020
         // Code for 68020 - has 32-bit mul/div, bitfields, PC-relative addressing
         write("Compiled for 68020 (hardware 32-bit math)\n")
     #elif M68030
@@ -70,7 +67,6 @@ fn main() -> i32 {
 
     // Can also use match for conditional logic:
     match CPU() {
-        SystemCPU::M68000 => write("  (Base 68000 - no 32-bit multiply)\n"),
         SystemCPU::M68020 => write("  (Has 32-bit multiply and bitfields)\n"),
         SystemCPU::M68040 => write("  (Integrated FPU, cache-aware)\n"),
         SystemCPU::M68060 => write("  (Fastest, avoid MULU.L)\n"),
@@ -89,8 +85,7 @@ fn main() -> i32 {
         // Use general 32-bit algorithm for 68020/030
         write("\nUsing 32-bit optimized algorithm (68020)\n")
     #else
-        // Use 16-bit algorithm for 68000
-        write("\nUsing 16-bit algorithm (68000)\n")
+        write("\nUsing general 32-bit algorithm (68020+)\n")
     #endif
 
     // Runtime: warn if running on slower CPU than compiled for

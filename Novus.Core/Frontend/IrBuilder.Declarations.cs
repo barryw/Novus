@@ -285,8 +285,13 @@ public partial class IrBuilder
 
         // For now, we'll create a temporary function context to evaluate the expression
         // In the future, we should allow const expressions only
-        _currentFunction = new IrFunction("__static_init", IrVoidType.Instance);
-        _currentBlock = _currentFunction.CreateBasicBlock("entry");
+        var initializer = new IrFunction($"__static_init_{name}", IrVoidType.Instance)
+        {
+            IsConstFn = true
+        };
+        _currentFunction = initializer;
+        _currentBlock = initializer.CreateBasicBlock("entry");
+        _localVariables.Clear();
 
         var savedExpectedType = _expectedType;
         _expectedType = explicitType;
@@ -341,7 +346,67 @@ public partial class IrBuilder
 
             var staticVar = new IrStaticVariable(name, type, visibility, isMutable, initialValue, section);
             _module.StaticVariables.Add(staticVar);
+            _module.ExternalVariables.RemoveAll(variable => variable.Name == name);
+
+            if (initializer.BasicBlocks.Any(block => block.Instructions.Count > 0))
+            {
+                initializer.ReturnType = type;
+                initializer.BasicBlocks[0].AddInstruction(new IrReturn(initialValue));
+                _deferredStaticInitializers.Add((staticVar, initializer, GetLocation(context)));
+            }
         }
+    }
+
+    private void EvaluateDeferredStaticInitializers()
+    {
+        if (_deferredStaticInitializers is [])
+            return;
+
+        var evaluator = new ConstFnEvaluator(_module);
+        foreach (var (staticVar, initializer, location) in _deferredStaticInitializers)
+        {
+            var result = evaluator.Evaluate(initializer, []);
+            if (!result.Success || !TryCreateStaticValue(result.Value, staticVar.Type, out var value))
+            {
+                _diagnostics.ReportError(
+                    "E0032",
+                    result.Error ?? $"could not evaluate static '{staticVar.Name}' at compile time",
+                    location,
+                    helpTexts:
+                    [
+                        "static initializers may only call const fn functions",
+                        "ensure every value returned by the initializer is compile-time data"
+                    ]
+                );
+                continue;
+            }
+
+            staticVar.InitialValue = value;
+        }
+
+        _deferredStaticInitializers.Clear();
+    }
+
+    private static bool TryCreateStaticValue(object? evaluated, IrType type, out IrValue value)
+    {
+        if (evaluated is IrValue irValue)
+        {
+            value = irValue;
+            return true;
+        }
+
+        value = type switch
+        {
+            IrBoolType when evaluated is bool boolean => new IrBoolConstant(boolean),
+            IrFloatType floatType when evaluated is IConvertible =>
+                new IrFloatConstant(Convert.ToDouble(evaluated), floatType),
+            IrFixedType fixedType when evaluated is IConvertible =>
+                new IrFixedConstant(Convert.ToDouble(evaluated), fixedType),
+            IrIntType when evaluated is IConvertible => new IrConstant(Convert.ToInt64(evaluated), type),
+            IrPointerType when evaluated is IConvertible => new IrConstant(Convert.ToInt64(evaluated), type),
+            _ => null!
+        };
+        return value != null;
     }
     /// <summary>
     /// Create a static ModAsset struct that references MOD data.
@@ -1014,7 +1079,8 @@ public partial class IrBuilder
         // (but only if not already registered as a stub in Pass 2a.5)
         if (existingStruct == null)
         {
-            var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams, null, attributes);
+            var placeholderStruct = new IrStructType(name, new List<IrStructField>(), genericParams,
+                null, attributes, isUnion: context.KW_UNION() != null);
             _symbols.RegisterStruct(name, placeholderStruct);
             existingStruct = placeholderStruct;
         }
@@ -1077,8 +1143,7 @@ public partial class IrBuilder
     }
 
     /// <summary>
-    /// Validates that packed struct fields won't cause address errors on 68000.
-    /// On 68000, accessing a 16-bit or 32-bit value at an odd address causes a bus error.
+    /// Validates that packed fields preserve the Amiga 68k ABI's word alignment.
     /// When structs are marked with #[packed], fields may be placed at misaligned offsets.
     /// </summary>
     private void ValidatePackedStructAlignment(IrStructType structType, NovusParser.StructDeclarationContext context)
@@ -1103,7 +1168,7 @@ public partial class IrBuilder
             var elementSize = typeToCheck.SizeInBytes;
 
             // Fields larger than 1 byte (i16, i32, u16, u32, pointers, references, structs with alignment > 1)
-            // must be aligned to even addresses on 68000
+            // must remain word-aligned for the Amiga 68k ABI
             if (elementSize > 1 && field.Offset % 2 != 0)
             {
                 var fieldCtx = context.structField()
@@ -1112,7 +1177,7 @@ public partial class IrBuilder
                 _diagnostics.ReportError(
                     ErrorCodes.PackedStructMisalignedField,
                     $"Packed struct '{structType.StructName}' has misaligned field '{field.Name}' " +
-                    $"at offset {field.Offset}. This will cause an address error (bus error) on 68000. " +
+                    $"at offset {field.Offset}. This violates the Amiga 68k ABI alignment contract. " +
                     $"Fields with size > 1 byte must be at even offsets in packed structs.",
                     fieldCtx != null ? GetLocation(fieldCtx) : GetLocation(context)
                 );
@@ -1284,7 +1349,7 @@ public partial class IrBuilder
                         // Remove quotes if present
                         var cpuValue = exprText.Trim('"', '\'');
 
-                        var validCpus = new HashSet<string> { "68000", "68010", "68020", "68030", "68040", "68060", "68080" };
+                        var validCpus = new HashSet<string> { "68020", "68030", "68040", "68060", "68080" };
                         if (validCpus.Contains(cpuValue))
                         {
                             _module.CpuOverride = cpuValue;
@@ -1293,7 +1358,7 @@ public partial class IrBuilder
                         }
                         else
                         {
-                            _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"Invalid CPU target '{cpuValue}'. Valid values are: 68000, 68010, 68020, 68030, 68040, 68060, 68080", errorLocation);
+                            _diagnostics.ReportError(ErrorCodes.InvalidAttribute, $"Invalid CPU target '{cpuValue}'. Novus requires 68020 or newer; valid values are: 68020, 68030, 68040, 68060, 68080", errorLocation);
                         }
                     }
                     else

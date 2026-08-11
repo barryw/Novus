@@ -49,6 +49,7 @@ modulePath
 // Module path components can be identifiers or certain keywords that are also valid module names
 modulePathComponent
     : IDENTIFIER
+    | KW_AMIGA       // std::memory::amiga
     | KW_COPPER      // std::graphics::copper
     | KW_BLITTER     // std::graphics::blitter
     ;
@@ -93,7 +94,7 @@ globalVariableDeclaration
     ;
 
 functionDeclaration
-    : attribute* KW_EXTERN? (KW_PUB | KW_INTERNAL)? KW_CONST? KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type)? whereClause? (block | SEMI)? NEWLINE*
+    : attribute* KW_EXTERN? KW_AMIGA? (KW_PUB | KW_INTERNAL)? KW_CONST? KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type abiRegisterBinding?)? whereClause? (block | SEMI)? NEWLINE*
     ;
 
 parameterList
@@ -103,8 +104,12 @@ parameterList
     ;
 
 parameter
-    : NEWLINE* KW_CONSUMING? IDENTIFIER COLON type NEWLINE*
-    | NEWLINE* KW_CONSUMING? IDENTIFIER NEWLINE*
+    : NEWLINE* KW_CONSUMING? name=IDENTIFIER COLON type parameterRegisterBinding? NEWLINE*
+    | NEWLINE* KW_CONSUMING? name=IDENTIFIER NEWLINE*
+    ;
+
+parameterRegisterBinding
+    : KW_IN IDENTIFIER
     ;
 
 variadicParameter
@@ -117,7 +122,7 @@ selfParameter
     ;
 
 structDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_STRUCT IDENTIFIER genericParams? whereClause? LBRACE NEWLINE* structField* RBRACE NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? (KW_STRUCT | KW_UNION) IDENTIFIER genericParams? whereClause? LBRACE NEWLINE* structField* RBRACE NEWLINE*
     ;
 
 structField
@@ -204,6 +209,7 @@ type
     | LPAREN RPAREN                                                 # UnitType
     | LPAREN NEWLINE* type (COMMA NEWLINE* type)+ NEWLINE* RPAREN   # TupleType
     | KW_FN LPAREN NEWLINE* typeList? NEWLINE* RPAREN (ARROW type)? # FunctionPointerType
+    | amigaFunctionPointerType                                      # AmigaFunctionPointerTypeExpression
     | KW_CLOSURE LPAREN NEWLINE* typeList? NEWLINE* RPAREN (ARROW type)?  # ClosureType
     | KW_SELF_TYPE                                                  # SelfType
     | KW_U8                                                         # PrimitiveType
@@ -222,6 +228,23 @@ type
     | typeName genericTypeArgs?                                     # NamedType
     | INTEGER_LITERAL                                               # ConstIntType
     | HEX_LITERAL                                                   # ConstHexType
+    ;
+
+amigaFunctionPointerType
+    : KW_AMIGA KW_FN LPAREN NEWLINE* amigaFunctionPointerParameterList? NEWLINE* RPAREN
+      (ARROW type abiRegisterBinding?)?
+    ;
+
+amigaFunctionPointerParameterList
+    : amigaFunctionPointerParameter (COMMA NEWLINE* amigaFunctionPointerParameter)*
+    ;
+
+amigaFunctionPointerParameter
+    : type KW_IN IDENTIFIER
+    ;
+
+abiRegisterBinding
+    : KW_IN IDENTIFIER
     ;
 
 typeName

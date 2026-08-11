@@ -1,12 +1,12 @@
 /**
- * Novus Runtime - 64-bit Software Math Library for 68000 Targets
+ * Novus Runtime - 64-bit Software Math Library for 68020+ Targets
  *
- * The 68000 family lacks native 64-bit arithmetic instructions.
+ * The supported 68k processors lack native 64-bit arithmetic instructions.
  * This library provides software implementations compatible with
  * GCC's libgcc naming conventions for easy integration.
  *
  * CPU Support:
- * - 68000/68010: Full software implementation
+ * - 68020+: Full software implementation
  * - 68020+: Uses 32x32->64 MULU.L where available
  *
  * All functions use the standard Amiga/GCC calling convention:
@@ -95,7 +95,7 @@ uint64_pair __negdi2(ULONG a_hi, ULONG a_lo)
 
 /**
  * 32x32->64 unsigned multiply helper
- * Breaks down into four 16x16->32 multiplies for 68000 compatibility.
+ * Breaks down into four 16x16->32 multiplies for portable 68k code generation.
  *
  * a = (a_hi << 16) + a_lo
  * b = (b_hi << 16) + b_lo

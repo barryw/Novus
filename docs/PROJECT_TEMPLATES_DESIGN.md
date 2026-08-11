@@ -96,7 +96,7 @@ license = "MIT"
 entry = "src/main.novus"  # Entry point (optional, inferred from type)
 
 [build]
-target_cpu = "68020"      # 68000, 68020, 68040, 68060
+target_cpu = "68020"      # Minimum; also 68030, 68040, 68060, 68080
 fpu = "auto"              # soft, 68881, 68040, auto
 output = "build"
 optimization_level = 0    # 0-3

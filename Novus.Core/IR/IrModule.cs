@@ -130,9 +130,7 @@ public class IrModule
     ///
     /// <para><b>Valid values:</b></para>
     /// <list type="bullet">
-    ///   <item>68000 - Base 68000 (strictest compatibility)</item>
-    ///   <item>68010 - 68010 with minor improvements</item>
-    ///   <item>68020 - 68020+ (recommended default, 32-bit ops)</item>
+    ///   <item>68020 - minimum supported CPU (recommended default)</item>
     ///   <item>68030 - 68030 (cache-aware)</item>
     ///   <item>68040 - 68040 (avoids trappy ops)</item>
     ///   <item>68060 - 68060 (strict op selection)</item>
@@ -492,6 +490,8 @@ public class IrFunction
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     public SourceLocation? Location { get; set; }  // Source location of function definition (for debug info)
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Function attributes (@inline, @noinline, @export, etc.)
+    public IrCallingConvention CallingConvention { get; set; } = IrCallingConvention.Novus;
+    public string? ReturnRegister { get; set; }
 
     /// <summary>
     /// Indicates this function is a monomorphized instance of a generic function.
@@ -550,7 +550,11 @@ public class IrFunction
     /// Returns true if this function is marked as an interrupt handler (@interrupt).
     /// Interrupt handlers have special constraints: they cannot call non-interrupt-safe functions.
     /// </summary>
-    public bool IsInterruptHandler => Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Interrupt) ?? false;
+    public bool IsInterruptHandler =>
+        Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.Interrupt) == true || IsInterruptVector;
+
+    public bool IsInterruptVector =>
+        Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.InterruptVector) ?? false;
 
     /// <summary>
     /// Returns true if this function is marked as interrupt-safe (@interrupt_safe).
@@ -598,16 +602,18 @@ public class IrParameter : Novus.SemanticAnalysis.IParameterInfo
     public string Name { get; set; }
     public IrType Type { get; set; }
     public bool IsVariadic { get; set; }  // true if this is a variadic parameter (...)
+    public string? Register { get; set; }
 
     // IParameterInfo implementation
     string Novus.SemanticAnalysis.IParameterInfo.ParameterName => Name;
     IrType Novus.SemanticAnalysis.IParameterInfo.ParameterType => Type;
 
-    public IrParameter(string name, IrType type, bool isVariadic = false)
+    public IrParameter(string name, IrType type, bool isVariadic = false, string? register = null)
     {
         Name = name;
         Type = type;
         IsVariadic = isVariadic;
+        Register = register;
     }
 }
 
@@ -960,11 +966,13 @@ public class IrDereferenceStore : IrInstruction
 {
     public IrValue Pointer { get; set; }
     public IrValue Value { get; set; }
+    public bool IsVolatile { get; set; }
 
-    public IrDereferenceStore(IrValue pointer, IrValue value)
+    public IrDereferenceStore(IrValue pointer, IrValue value, bool isVolatile = false)
     {
         Pointer = pointer;
         Value = value;
+        IsVolatile = isVolatile;
     }
 }
 
@@ -1341,17 +1349,56 @@ public class IrMutReferenceType : IrType
 }
 
 /// <summary>
-/// Function pointer type
+/// Calling convention carried by function declarations and function pointer types.
+/// </summary>
+public enum IrCallingConvention
+{
+    Novus,
+    Amiga
+}
+
+public static class IrAmigaAbi
+{
+    public static bool TryNormalizeRegister(string? value, out string register)
+    {
+        register = value?.ToLowerInvariant() ?? "";
+        if (register.Length == 2 && register[1] is >= '0' and <= '7')
+        {
+            if (register[0] == 'd' || (register[0] == 'a' && register[1] != '7'))
+                return true;
+        }
+
+        return register.Length == 3 && register.StartsWith("fp", StringComparison.Ordinal) &&
+               register[2] is >= '0' and <= '7';
+    }
+}
+
+/// <summary>
+/// Function pointer type.
 /// </summary>
 public class IrFunctionPointerType : IrType
 {
     public List<IrType> ParameterTypes { get; }
     public IrType ReturnType { get; }
+    public IrCallingConvention CallingConvention { get; }
+    public List<string?> ParameterRegisters { get; }
+    public string? ReturnRegister { get; }
 
-    public IrFunctionPointerType(List<IrType> parameterTypes, IrType returnType)
+    public IrFunctionPointerType(
+        List<IrType> parameterTypes,
+        IrType returnType,
+        IrCallingConvention callingConvention = IrCallingConvention.Novus,
+        List<string?>? parameterRegisters = null,
+        string? returnRegister = null)
     {
         ParameterTypes = parameterTypes;
         ReturnType = returnType;
+        CallingConvention = callingConvention;
+        ParameterRegisters = parameterRegisters ?? Enumerable.Repeat<string?>(null, parameterTypes.Count).ToList();
+        ReturnRegister = returnRegister;
+
+        if (ParameterRegisters.Count != ParameterTypes.Count)
+            throw new ArgumentException("A function pointer needs one register binding per parameter.", nameof(parameterRegisters));
     }
 
     public override int SizeInBytes => 4; // Function pointers are 32-bit addresses on 68k
@@ -1360,10 +1407,14 @@ public class IrFunctionPointerType : IrType
         get
         {
             var paramStr = ParameterTypes.Count > 0
-                ? string.Join(", ", ParameterTypes.Select(p => p.Name))
+                ? string.Join(", ", ParameterTypes.Select((p, i) =>
+                    ParameterRegisters[i] == null ? p.Name : $"{p.Name} in {ParameterRegisters[i]}"))
                 : "";
-            var retStr = ReturnType is IrVoidType ? "" : $" -> {ReturnType.Name}";
-            return $"fn({paramStr}){retStr}";
+            var retStr = ReturnType is IrVoidType
+                ? ""
+                : $" -> {ReturnType.Name}{(ReturnRegister == null ? "" : $" in {ReturnRegister}")}";
+            var prefix = CallingConvention == IrCallingConvention.Amiga ? "amiga " : "";
+            return $"{prefix}fn({paramStr}){retStr}";
         }
     }
 }
@@ -1568,12 +1619,13 @@ public class IrStructType : IrType
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Struct attributes (@library, @packed, etc.)
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
     public bool ImplementsDrop { get; set; }  // True if this type implements the Drop trait
+    public bool IsUnion { get; }
 
     // Thread-safe cached size. Uses volatile read/write semantics.
     // -1 means not computed yet, any other value is the computed size.
     private volatile int _cachedSize = -1;
 
-    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null, Dictionary<string, IrType>? constGenericParams = null)
+    public IrStructType(string structName, List<IrStructField> fields, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null, Dictionary<string, IrType>? constGenericParams = null, bool isUnion = false)
     {
         StructName = structName;
         Fields = fields;
@@ -1583,6 +1635,7 @@ public class IrStructType : IrType
         CacheKey = cacheKey;
         Attributes = attributes;
         WhereClause = whereClause;
+        IsUnion = isUnion;
     }
 
     public override int SizeInBytes
@@ -1616,23 +1669,29 @@ public class IrStructType : IrType
                 // Check if struct is packed (no automatic alignment padding)
                 bool isPacked = Attributes?.Has("packed") ?? false;
 
-                // Calculate total size with 68000-compatible alignment.
-                // 68000 requires word alignment (2 bytes) for word and long accesses.
+                // Calculate total size with Amiga 68k ABI word alignment.
                 // Byte accesses can be at any address.
                 int size = 0;
                 foreach (var structField in Fields)
                 {
                     int fieldSize = structField.Type.SizeInBytes;
 
+                    if (IsUnion)
+                    {
+                        structField.Offset = 0;
+                        size = Math.Max(size, fieldSize);
+                        continue;
+                    }
+
                     // For packed structs, fields are placed sequentially without padding
                     if (!isPacked)
                     {
-                        // 68000 alignment rules:
+                        // Amiga 68k ABI alignment rules:
                         // - 1-byte fields: no alignment needed
                         // - 2-byte fields (word): must be word-aligned (even address)
                         // - 4+ byte fields (long, pointers, structs): must be word-aligned (even address)
                         // Note: 68020+ can handle misaligned access but with performance penalty,
-                        // 68000 will bus error on misaligned word/long access.
+                        // Keep word/long fields ABI-compatible and efficiently aligned.
                         int alignment = fieldSize switch
                         {
                             1 => 1,  // byte-aligned (any address OK)
@@ -1650,7 +1709,7 @@ public class IrStructType : IrType
 
                 // Pad final struct size to word boundary so arrays of structs are properly aligned
                 // (skip for packed structs)
-                if (!isPacked && size % 2 != 0)
+                if (!isPacked && !IsUnion && size % 2 != 0)
                     size++;
 
                 // Store computed size. Multiple threads may race here but they'll all
@@ -1724,7 +1783,8 @@ public class IrStructType : IrType
         var cacheKey = $"{genericStruct.StructName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
 
         // IMPORTANT: Pass typeArgs as typeArguments so InstantiateGenericMethod can use them
-        return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey, null, null, typeArgs);
+        return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey,
+            genericStruct.Attributes, genericStruct.WhereClause, typeArgs, isUnion: genericStruct.IsUnion);
     }
 
     private static IrType SubstituteType(IrType type, Dictionary<string, IrType> substitutions)
@@ -1967,10 +2027,12 @@ public class IrBorrowValue : IrValue
 public class IrDereferenceValue : IrValue
 {
     public IrValue PointerValue { get; set; }
+    public bool IsVolatile { get; set; }
 
-    public IrDereferenceValue(IrValue pointerValue, IrType pointeeType) : base(pointeeType)
+    public IrDereferenceValue(IrValue pointerValue, IrType pointeeType, bool isVolatile = false) : base(pointeeType)
     {
         PointerValue = pointerValue;
+        IsVolatile = isVolatile;
     }
 }
 

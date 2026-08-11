@@ -247,7 +247,6 @@ BltBitMapRastPort() uses the Blitter for fast bitmap copies:
 
 | CPU     | Blitter Speedup | Notes                          |
 |---------|-----------------|--------------------------------|
-| 68000   | ~4×             | Blitter runs parallel to CPU   |
 | 68020   | ~3×             | Faster CPU, same Blitter       |
 | 68040   | ~2×             | Fast CPU, Blitter still wins   |
 | 68060   | ~2×             | Fast CPU, Blitter still useful |

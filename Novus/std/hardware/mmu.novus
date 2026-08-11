@@ -9,7 +9,7 @@ from std::strings::format import Display, Formatter
 /// Identifies the type of MMU available on the system.
 /// Note: 68020 does NOT have an integrated MMU - requires external 68851 PMMU.
 pub enum SystemMMU {
-    /// No MMU present (68000/010/020 without PMMU, or 040/060 with MMU disabled)
+    /// No MMU present (68020/030 without PMMU, or 040/060 with MMU disabled)
     None,
     /// External 68851 PMMU (coprocessor for 68020)
     M68851,

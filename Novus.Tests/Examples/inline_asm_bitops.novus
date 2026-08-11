@@ -2,7 +2,7 @@
 // Tests: bit instructions, shifts, rotates, bit fields
 
 // Count leading zeros (68020+)
-// Note: On 68000, this would need a software implementation
+// Novus targets 68020+, where these bitfield instructions are available.
 pub fn count_leading_zeros_020(x: u32) -> u32 {
     return unsafe asm(x in d0) -> u32 clobbers(d1) {
         moveq #32,d1

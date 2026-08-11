@@ -34,6 +34,11 @@ public class DeviceGenerator
     private readonly int _versionMajor;
     private readonly int _versionMinor;
     private readonly int _versionPatch;
+    private IrFunction? _initHook;
+    private IrFunction? _openHook;
+    private IrFunction? _closeHook;
+    private IrFunction? _expungeHook;
+    private IrFunction? _abortHook;
 
     /// <summary>
     /// Represents a device command handler.
@@ -45,6 +50,7 @@ public class DeviceGenerator
         public IrFunction Function { get; set; } = null!;
         public int CommandNumber { get; set; }
         public bool IsQuickIO { get; set; }  // Can complete immediately without waiting
+        public bool IsDeferred { get; set; } // Handler owns the request and replies later
     }
 
     // Standard Exec device commands (CMD_*)
@@ -169,6 +175,12 @@ public class DeviceGenerator
             if (function.IsExtern || !function.IsPublic)
                 continue;
 
+            if (function.Attributes?.Has(KnownAttributes.DeviceInit) == true) { _initHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.DeviceOpen) == true) { _openHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.DeviceClose) == true) { _closeHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.DeviceExpunge) == true) { _expungeHook = function; continue; }
+            if (function.Attributes?.Has(KnownAttributes.AbortIO) == true) { _abortHook = function; continue; }
+
             // Check for @devicecmd attribute
             var deviceCmdAttr = function.Attributes?.Get(KnownAttributes.DeviceCmd);
             if (deviceCmdAttr != null)
@@ -178,8 +190,12 @@ public class DeviceGenerator
                     Name = function.Name,
                     CName = MangleName(function.Name),
                     Function = function,
-                    IsQuickIO = deviceCmdAttr.HasFlag("quick")
+                    IsQuickIO = deviceCmdAttr.HasFlag("quick") || deviceCmdAttr.GetBool("quick") == true,
+                    IsDeferred = deviceCmdAttr.GetBool("deferred") == true
                 };
+
+                if (cmd.IsQuickIO && cmd.IsDeferred)
+                    throw new InvalidOperationException($"Device command '{function.Name}' cannot be both quick and deferred");
 
                 // Check if it's a standard command
                 var cmdName = deviceCmdAttr.GetString("cmd");
@@ -335,7 +351,7 @@ public class DeviceGenerator
         sb.AppendLine("    (APTR)DevReserved_Wrapper,  // -24: Reserved");
         sb.AppendLine("    (APTR)DevBeginIO_Wrapper,   // -30: BeginIO");
         sb.AppendLine("    (APTR)DevAbortIO_Wrapper,   // -36: AbortIO");
-        sb.AppendLine("    (APTR)-1");
+        sb.AppendLine("    (APTR)0xFFFFFFFFUL");
         sb.AppendLine("};");
         sb.AppendLine();
 
@@ -349,7 +365,7 @@ public class DeviceGenerator
         sb.AppendLine();
 
         // ROMTag structure
-        sb.AppendLine("struct Resident RomTag = {");
+        sb.AppendLine("__entry struct Resident RomTag = {");
         sb.AppendLine("    RTC_MATCHWORD,");
         sb.AppendLine("    &RomTag,");
         sb.AppendLine("    (APTR)((UBYTE*)&RomTag + sizeof(struct Resident)),");
@@ -393,6 +409,7 @@ public class DeviceGenerator
         sb.AppendLine("extern struct ExecBase* SysBase;");
         sb.AppendLine("extern int __novus_ffi_init(void);");
         sb.AppendLine("extern void __novus_ffi_cleanup(void);");
+        sb.AppendLine($"__entry BPTR DevExpunge(__reg(\"a6\") struct {structName}* base);");
         sb.AppendLine();
 
         sb.AppendLine("// ============================================================================");
@@ -401,7 +418,7 @@ public class DeviceGenerator
         sb.AppendLine();
 
         // DevInit
-        sb.AppendLine($"struct Device* DevInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
+        sb.AppendLine($"__entry struct Device* DevInit(__reg(\"d0\") struct {structName}* base, __reg(\"a0\") BPTR segList, __reg(\"a6\") struct ExecBase* sysBase) {{");
         sb.AppendLine("    SysBase = sysBase;");
         sb.AppendLine("    if (!__novus_ffi_init()) return NULL;");
         sb.AppendLine("    // Initialize device node fields");
@@ -440,12 +457,14 @@ public class DeviceGenerator
             sb.AppendLine();
         }
 
+        if (_initHook != null)
+            sb.AppendLine($"    if (!{MangleName(_initHook.Name)}(&base->state)) {{ __novus_ffi_cleanup(); return NULL; }}");
         sb.AppendLine("    return &base->dev;");
         sb.AppendLine("}");
         sb.AppendLine();
 
         // DevOpen - handles per-unit opening
-        sb.AppendLine($"LONG DevOpen(__reg(\"a1\") struct IORequest* ioReq, __reg(\"d0\") ULONG unitNum, __reg(\"d1\") ULONG flags, __reg(\"a6\") struct {structName}* base) {{");
+        sb.AppendLine($"__entry LONG DevOpen(__reg(\"a1\") struct IORequest* ioReq, __reg(\"d0\") ULONG unitNum, __reg(\"d1\") ULONG flags, __reg(\"a6\") struct {structName}* base) {{");
         sb.AppendLine($"    if (unitNum >= {maxUnits}) {{");
         sb.AppendLine("        ioReq->io_Error = IOERR_OPENFAIL;");
         sb.AppendLine("        ioReq->io_Device = NULL;");
@@ -486,12 +505,24 @@ public class DeviceGenerator
         sb.AppendLine("    ioReq->io_Device = &base->dev;");
         sb.AppendLine("    ioReq->io_Unit = (struct Unit*)unit;");
         sb.AppendLine();
+        if (_openHook != null)
+        {
+            sb.AppendLine($"    if (!{MangleName(_openHook.Name)}(ioReq, &base->state, unitNum, flags)) {{");
+            sb.AppendLine("        unit->unit_OpenCnt--;");
+            sb.AppendLine("        base->dev.dd_Library.lib_OpenCnt--;");
+            sb.AppendLine("        ioReq->io_Error = IOERR_OPENFAIL;");
+            sb.AppendLine("        ioReq->io_Device = NULL;");
+            sb.AppendLine("        ioReq->io_Unit = NULL;");
+            sb.AppendLine("        return IOERR_OPENFAIL;");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+        }
         sb.AppendLine("    return 0;");
         sb.AppendLine("}");
         sb.AppendLine();
 
         // DevClose
-        sb.AppendLine($"BPTR DevClose(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
+        sb.AppendLine($"__entry BPTR DevClose(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
         sb.AppendLine($"    struct {unitStructName}* unit = (struct {unitStructName}*)ioReq->io_Unit;");
         sb.AppendLine();
         sb.AppendLine("    // Decrement unit open count");
@@ -502,6 +533,11 @@ public class DeviceGenerator
         sb.AppendLine("    // Update statistics");
         sb.AppendLine("    base->dev_TotalCloses++;");
         sb.AppendLine();
+        if (_closeHook != null)
+        {
+            sb.AppendLine($"    {MangleName(_closeHook.Name)}(ioReq, &base->state);");
+            sb.AppendLine();
+        }
         sb.AppendLine("    // Clear IORequest device/unit pointers");
         sb.AppendLine("    ioReq->io_Device = NULL;");
         sb.AppendLine("    ioReq->io_Unit = NULL;");
@@ -519,13 +555,15 @@ public class DeviceGenerator
         sb.AppendLine();
 
         // DevExpunge
-        sb.AppendLine($"BPTR DevExpunge(__reg(\"a6\") struct {structName}* base) {{");
+        sb.AppendLine($"__entry BPTR DevExpunge(__reg(\"a6\") struct {structName}* base) {{");
         sb.AppendLine("    if (base->dev.dd_Library.lib_OpenCnt > 0) {");
         sb.AppendLine("        base->dev.dd_Library.lib_Flags |= LIBF_DELEXP;");
         sb.AppendLine("        return 0;");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    BPTR segList = base->dev_SegList;");
+        if (_expungeHook != null)
+            sb.AppendLine($"    {MangleName(_expungeHook.Name)}(&base->state);");
         sb.AppendLine("    __novus_ffi_cleanup();");
         sb.AppendLine();
         sb.AppendLine("    // Free all unit structures");
@@ -549,7 +587,7 @@ public class DeviceGenerator
         sb.AppendLine();
 
         // DevReserved
-        sb.AppendLine("LONG DevReserved(void) {");
+        sb.AppendLine("__entry LONG DevReserved(void) {");
         sb.AppendLine("    return 0;");
         sb.AppendLine("}");
         sb.AppendLine();
@@ -584,10 +622,11 @@ public class DeviceGenerator
         }
         sb.AppendLine();
 
-        sb.AppendLine($"void DevBeginIO(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
+        sb.AppendLine($"__entry void DevBeginIO(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
         sb.AppendLine("    // Clear error and mark as not quick (unless handler says otherwise)");
         sb.AppendLine("    ioReq->io_Error = 0;");
         sb.AppendLine("    ioReq->io_Flags &= ~IOF_QUICK;");
+        sb.AppendLine("    BOOL completed = TRUE;");
         sb.AppendLine();
         sb.AppendLine("    // Update statistics");
         sb.AppendLine("    base->dev_TotalCommands++;");
@@ -603,6 +642,10 @@ public class DeviceGenerator
             {
                 sb.AppendLine("            ioReq->io_Flags |= IOF_QUICK;  // Can complete immediately");
             }
+            if (cmd.IsDeferred)
+            {
+                sb.AppendLine("            completed = FALSE;  // Handler owns request and must ReplyMsg later");
+            }
             sb.AppendLine($"            ioReq->io_Error = {cmd.CName}(ioReq, &base->state);");
             sb.AppendLine("            break;");
         }
@@ -614,7 +657,7 @@ public class DeviceGenerator
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine("    // If not quick I/O, reply to the message");
-        sb.AppendLine("    if (!(ioReq->io_Flags & IOF_QUICK)) {");
+        sb.AppendLine("    if (completed && !(ioReq->io_Flags & IOF_QUICK)) {");
         sb.AppendLine("        ReplyMsg(&ioReq->io_Message);");
         sb.AppendLine("    }");
         sb.AppendLine("}");
@@ -630,21 +673,16 @@ public class DeviceGenerator
         sb.AppendLine("// AbortIO - Abort Pending I/O");
         sb.AppendLine("// ============================================================================");
         sb.AppendLine();
-        sb.AppendLine($"LONG DevAbortIO(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
-        sb.AppendLine("    // Check if request is still pending");
-        sb.AppendLine("    if (ioReq->io_Message.mn_Node.ln_Type == NT_MESSAGE) {");
-        sb.AppendLine("        // Request is queued - remove it");
-        sb.AppendLine("        Disable();");
-        sb.AppendLine("        Remove((struct Node*)ioReq);");
-        sb.AppendLine("        Enable();");
-        sb.AppendLine();
-        sb.AppendLine("        ioReq->io_Error = IOERR_ABORTED;");
-        sb.AppendLine("        ReplyMsg(&ioReq->io_Message);");
-        sb.AppendLine("        return 0;");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine("    // Already completed or not abortable");
-        sb.AppendLine("    return IOERR_NOCMD;");
+        sb.AppendLine($"__entry LONG DevAbortIO(__reg(\"a1\") struct IORequest* ioReq, __reg(\"a6\") struct {structName}* base) {{");
+        if (_abortHook != null)
+        {
+            sb.AppendLine($"    if ({MangleName(_abortHook.Name)}(ioReq, &base->state)) {{");
+            sb.AppendLine("        ioReq->io_Error = IOERR_ABORTED;");
+            sb.AppendLine("        ReplyMsg(&ioReq->io_Message);");
+            sb.AppendLine("        return 0;");
+            sb.AppendLine("    }");
+        }
+        sb.AppendLine("    return IOERR_NOCMD;  // No pending request was claimed");
         sb.AppendLine("}");
         sb.AppendLine();
     }

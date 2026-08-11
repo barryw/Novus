@@ -7,7 +7,7 @@ namespace Novus.Codegen.M68k;
 /// Direct 68k assembly code generator for Novus.
 /// Generates vasm-compatible assembly from Novus IR.
 ///
-/// Target: Motorola 68000 family (68000, 68020, 68030, 68040, 68060)
+/// Target: Motorola 68020 and newer (68020, 68030, 68040, 68060, 68080)
 /// Assembler: vasm (Motorola syntax)
 /// Linker: vlink
 /// Output: Amiga executable (HUNK format)
@@ -140,12 +140,11 @@ public class M68kCodeGenerator
         // CPU target directive
         string cpuDirective = _cpuTarget switch
         {
-            "68000" or "000" => "68000",
-            "68010" or "010" => "68010",
             "68020" or "020" => "68020",
             "68030" or "030" => "68030",
             "68040" or "040" => "68040",
             "68060" or "060" => "68060",
+            "68080" or "080" => "68080",
             _ => "68020" // Default to 68020
         };
 

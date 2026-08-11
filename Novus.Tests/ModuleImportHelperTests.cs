@@ -62,6 +62,31 @@ public class ModuleImportHelperTests
     }
 
     [Fact]
+    public void ParseModuleFile_ReusesUnchangedParseAndInvalidatesChangedSource()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"novus-import-{Guid.NewGuid():N}.novus");
+        try
+        {
+            File.WriteAllText(path, "pub fn value() -> i32 { return 1 }");
+            var (first, firstErrors) = ModuleImportHelper.ParseModuleFile(path);
+            var (second, secondErrors) = ModuleImportHelper.ParseModuleFile(path);
+
+            Assert.Same(first, second);
+            Assert.Equal(0, firstErrors);
+            Assert.Equal(0, secondErrors);
+
+            File.WriteAllText(path, "pub fn value() -> i32 { return 2 }");
+            var (changed, changedErrors) = ModuleImportHelper.ParseModuleFile(path);
+            Assert.NotSame(first, changed);
+            Assert.Equal(0, changedErrors);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void IsPub_FunctionWithPubKeyword_ReturnsTrue()
     {
         var source = "pub fn test() -> i32 { return 0 }";
@@ -159,6 +184,20 @@ public class ModuleImportHelperTests
         var result = ModuleImportHelper.CheckHasImplementation(tree);
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public void BuildImportNameSet_IncludesDependenciesOfWildcardConstants()
+    {
+        var module = CreateParser("pub const TAG_USER: u32 = 1 << 31\npub const WA_Dummy: u32 = TAG_USER + 99\n")
+            .compilationUnit();
+        var request = CreateParser("from std::ffi::amiga_consts import WA_*\n")
+            .compilationUnit().importDeclaration()[0];
+
+        var names = ModuleImportHelper.BuildImportNameSet(module, false, request.importList());
+
+        Assert.Contains("WA_Dummy", names);
+        Assert.Contains("TAG_USER", names);
     }
 
     private NovusParser CreateParser(string source)

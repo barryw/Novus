@@ -433,9 +433,9 @@ Now all projects default to 68040+FPU unless they explicitly override it.
 
 **Override Example:**
 ```toml
-# One project needs to run on 68000
+# One project uses the minimum supported CPU
 [build]
-target_cpu = "68000"
+target_cpu = "68020"
 fpu = "none"
 ```
 

@@ -196,7 +196,7 @@ pub fn copy_to_chip(dst: *u8, src: *u8, size: u32) {
         CopyMem(src, dst, size)
         // Flush data cache for this memory range - critical for 68040/68060
         // CacheClearE() is more efficient than CacheClearU() (flushes only the range)
-        // Safe to call on 68000/020/030 (just returns)
+        // Safe to call on 68020/030 (just returns)
         CacheClearE(dst, size, CACRF_ClearD)
     }
 }
@@ -245,7 +245,7 @@ pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, C
 /// address that may be different from the virtual address on systems with
 /// MMU-based virtual memory.
 ///
-/// On 68000/020/030, this is a no-op that returns the input pointer.
+/// On 68020/030, this is a no-op that returns the input pointer.
 ///
 /// Example (Blitter copy):
 ///   let src_dma = prepare_for_dma_read(source_ptr, blit_size)
@@ -269,7 +269,7 @@ pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
 /// On 68040/68060, this performs any necessary cache management after
 /// the DMA transfer (typically nothing for read operations).
 ///
-/// On 68000/020/030, this is a no-op.
+/// On 68020/030, this is a no-op.
 pub fn complete_dma_read(ptr: *u8, size: u32) {
     unsafe {
         var actual_size: u32 = size
@@ -285,7 +285,7 @@ pub fn complete_dma_read(ptr: *u8, size: u32) {
 /// On 68040/68060, this invalidates the data cache for the region so the
 /// CPU doesn't have stale cached copies of the data that DMA will overwrite.
 ///
-/// On 68000/020/030, this is a no-op that returns the input pointer.
+/// On 68020/030, this is a no-op that returns the input pointer.
 ///
 /// Example (Blitter fill):
 ///   let dst_dma = prepare_for_dma_write(dest_ptr, fill_size)
@@ -308,7 +308,7 @@ pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
 /// On 68040/68060, this invalidates any cached copies of the memory region
 /// so the CPU will read fresh data written by DMA.
 ///
-/// On 68000/020/030, this is a no-op.
+/// On 68020/030, this is a no-op.
 pub fn complete_dma_write(ptr: *u8, size: u32) {
     unsafe {
         var actual_size: u32 = size

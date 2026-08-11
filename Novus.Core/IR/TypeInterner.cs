@@ -80,13 +80,19 @@ public class TypeInterner
     /// <summary>
     /// Get or create a function pointer type with the given signature
     /// </summary>
-    public IrFunctionPointerType GetFunctionPointerType(List<IrType> parameterTypes, IrType returnType)
+    public IrFunctionPointerType GetFunctionPointerType(
+        List<IrType> parameterTypes,
+        IrType returnType,
+        IrCallingConvention callingConvention = IrCallingConvention.Novus,
+        List<string?>? parameterRegisters = null,
+        string? returnRegister = null)
     {
-        var signature = new FunctionSignature(parameterTypes, returnType);
+        parameterRegisters ??= Enumerable.Repeat<string?>(null, parameterTypes.Count).ToList();
+        var signature = new FunctionSignature(parameterTypes, returnType, callingConvention, parameterRegisters, returnRegister);
         if (_functionPointerTypes.TryGetValue(signature, out var cached))
             return cached;
 
-        var newType = new IrFunctionPointerType(parameterTypes, returnType);
+        var newType = new IrFunctionPointerType(parameterTypes, returnType, callingConvention, parameterRegisters, returnRegister);
         _functionPointerTypes[signature] = newType;
         return newType;
     }
@@ -207,16 +213,26 @@ public class TypeInterner
     {
         public List<IrType> ParameterTypes { get; }
         public IrType ReturnType { get; }
+        public IrCallingConvention CallingConvention { get; }
+        public List<string?> ParameterRegisters { get; }
+        public string? ReturnRegister { get; }
 
-        public FunctionSignature(List<IrType> parameterTypes, IrType returnType)
+        public FunctionSignature(List<IrType> parameterTypes, IrType returnType,
+            IrCallingConvention callingConvention, List<string?> parameterRegisters, string? returnRegister)
         {
             ParameterTypes = parameterTypes;
             ReturnType = returnType;
+            CallingConvention = callingConvention;
+            ParameterRegisters = parameterRegisters;
+            ReturnRegister = returnRegister;
         }
 
         public bool Equals(FunctionSignature other)
         {
             if (!ReferenceEquals(ReturnType, other.ReturnType))
+                return false;
+
+            if (CallingConvention != other.CallingConvention || ReturnRegister != other.ReturnRegister)
                 return false;
 
             if (ParameterTypes.Count != other.ParameterTypes.Count)
@@ -225,6 +241,8 @@ public class TypeInterner
             for (int i = 0; i < ParameterTypes.Count; i++)
             {
                 if (!ReferenceEquals(ParameterTypes[i], other.ParameterTypes[i]))
+                    return false;
+                if (ParameterRegisters[i] != other.ParameterRegisters[i])
                     return false;
             }
 
@@ -240,9 +258,15 @@ public class TypeInterner
         {
             var hash = new HashCode();
             hash.Add(ReturnType);
+            hash.Add(CallingConvention);
+            hash.Add(ReturnRegister);
             foreach (var param in ParameterTypes)
             {
                 hash.Add(param);
+            }
+            foreach (var register in ParameterRegisters)
+            {
+                hash.Add(register);
             }
             return hash.ToHashCode();
         }

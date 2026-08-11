@@ -1,0 +1,27 @@
+// {{PROJECT_NAME}} - permanent Exec resource
+//
+// The compiler owns the resident tag, base allocation, resource-list entry,
+// and A6 vector wrappers. OpenResource has no matching close operation.
+
+@resource(name = "{{PROJECT_NAME}}.resource")
+pub struct ResourceState {
+    value: u32,
+}
+
+@resourceinit
+pub fn initialize(state: *ResourceState) -> bool {
+    unsafe { (*state).value = 0 }
+    return true
+}
+
+// The first parameter is persistent resource state injected by the generated
+// A6 wrapper. Callers only see the remaining parameters.
+@resourcefunc
+pub fn read_value(state: *ResourceState) -> u32 {
+    unsafe { return (*state).value }
+}
+
+@resourcefunc
+pub fn write_value(state: *ResourceState, value: u32) {
+    unsafe { (*state).value = value }
+}

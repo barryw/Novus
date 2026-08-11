@@ -23,20 +23,17 @@ namespace Novus.IR;
 /// Examples:
 ///   x = 0 → use CLR instead of MOVE #0
 ///   x = y + 1; if x == 0 → use ADDQ and test flags, avoid separate CMP
-///   x << 1 → use ADD x,x (faster on 68000)
 ///   x * -1 → use NEG x
 ///
 /// </summary>
 public class M68kPeepholeOptimization
 {
     private readonly IrFunction _function;
-    private readonly M68kCpuTarget _cpuTarget;
     private bool _madeChanges = false;
 
     public M68kPeepholeOptimization(IrFunction function, M68kCpuTarget cpuTarget = M68kCpuTarget.M68020)
     {
         _function = function;
-        _cpuTarget = cpuTarget;
     }
 
     /// <summary>
@@ -142,19 +139,6 @@ public class M68kPeepholeOptimization
                     return new IrBinaryOp(binOp.ResultName, IrBinaryOp.OpKind.Sub,
                         new IrConstant(0, binOp.Type),
                         binOp.Right,
-                        binOp.Type);
-                }
-            }
-
-            // x << 1 → x + x (on 68000, ADD is faster than shift by 1)
-            if (binOp.Operation == IrBinaryOp.OpKind.Shl && _cpuTarget == M68kCpuTarget.M68000)
-            {
-                if (binOp.Right is IrConstant shiftConst && shiftConst.Value == 1)
-                {
-                    // Replace with addition
-                    return new IrBinaryOp(binOp.ResultName, IrBinaryOp.OpKind.Add,
-                        binOp.Left,
-                        binOp.Left,
                         binOp.Type);
                 }
             }

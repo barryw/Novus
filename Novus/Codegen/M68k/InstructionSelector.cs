@@ -14,7 +14,7 @@ public class M68k64BitNotSupportedException : NotSupportedException
 
     public M68k64BitNotSupportedException(string cpuTarget, string operation, string typeName)
         : base($"64-bit {operation} for type '{typeName}' is not supported on {cpuTarget}. " +
-               $"The 68000/68010/68020/68030/68040/68060 processors do not have native 64-bit arithmetic. " +
+               $"The supported 68020+ processors do not have native 64-bit arithmetic. " +
                $"Consider using i32/u32 types or implementing software 64-bit routines.")
     {
         CpuTarget = cpuTarget;
@@ -29,8 +29,7 @@ public class M68k64BitNotSupportedException : NotSupportedException
 ///
 /// 64-bit Type Support:
 /// ====================
-/// The 68000 family does NOT have native 64-bit arithmetic instructions.
-/// - 68000/68010: Only 16x16->32 multiply, 32/16->16 divide
+/// The 68k family does not have native 64-bit arithmetic instructions.
 /// - 68020+: 32x32->64 multiply, 64/32->32 divide (partial support)
 ///
 /// For full 64-bit arithmetic (i64/u64), software routines from runtime_softmath64.c are used:
@@ -214,7 +213,7 @@ public class InstructionSelector
 
     private void EmitMulOp(IrValue right, string suffix, IrType type)
     {
-        // 68000 only has 16x16->32 multiply (MULS/MULU)
+        // Decompose 64-bit multiplication into smaller native operations.
         // For 32-bit multiply, we need library routine or inline expansion
         bool isSigned = type is IrIntType intType && intType.IsSigned;
 
@@ -238,7 +237,7 @@ public class InstructionSelector
 
     private void EmitDivOp(IrValue right, string suffix, IrType type)
     {
-        // 68000 only has 32/16->16 divide (DIVS/DIVU)
+        // Decompose 64-bit division into smaller native operations.
         bool isSigned = type is IrIntType intType && intType.IsSigned;
 
         if (type.SizeInBytes <= 2)

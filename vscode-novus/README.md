@@ -63,16 +63,14 @@ Once published:
 
 This extension requires the Novus Language Server to function. The language server provides the intelligence (diagnostics, completion, etc.).
 
-**Development Setup**: The language server is automatically discovered if you have the Novus compiler installed.
+The packaged extension includes the matching language server and standard library.
+Development checkouts fall back to the current .NET 10 build in this repository.
 
 The extension searches for the language server in these locations (in order):
 
-1. `/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer` (Development)
-2. `/Users/barry/RiderProjects/Novus/Novus.LanguageServer/bin/Release/net9.0/Novus.LanguageServer` (Development Release)
-3. `../Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer` (Relative path)
-4. `../server/Novus.LanguageServer` (Bundled with extension)
-
-**Production Setup** (Future): The language server will be bundled with the extension.
+1. `server/Novus.LanguageServer` inside the installed extension
+2. `../Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer` in a development checkout
+3. `../Novus.LanguageServer/bin/Release/net10.0/Novus.LanguageServer` in a development checkout
 
 ### Standard Library
 
@@ -80,9 +78,8 @@ The language server requires access to the Novus standard library for import res
 
 The standard library is searched in:
 
-1. Same directory as language server (`bin/Debug/net9.0/std`)
-2. Relative to language server (`../../../../Novus/std`)
-3. Absolute development path (`/Users/barry/RiderProjects/Novus/Novus/std`)
+1. Beside the bundled language server (`server/std`)
+2. The repository's `Novus/std` directory during development
 
 ## Usage
 
@@ -214,7 +211,7 @@ The language server logs diagnostic information to stderr, which appears in the 
    ```
 2. Verify the binary exists:
    ```bash
-   ls -la Novus.LanguageServer/bin/Debug/net9.0/Novus.LanguageServer
+   ls -la Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer
    ```
 3. Reload VS Code window
 

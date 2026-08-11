@@ -800,18 +800,18 @@ struct DiskBlock {
 ### 10. **Drop the Fat Binaries Feature (For Now)**
 
 ```bash
-novusc --cpu fat:000,020,060
+novusc --cpu fat:020,040,060  # proposed; not implemented
 ```
 
 **Why skip this:**
 - **Huge complexity** - Multi-version dispatch, size overhead
-- **Questionable ROI** - How many people need 68000/68060 in one binary?
+- **Questionable ROI** - How many people need baseline/68060 code in one binary?
 - **Alternative** - Just build separate binaries
 
 **Better approach:**
 ```bash
-# Build for 68000
-novusc --cpu 68000 --output myapp.000
+# Build for the minimum CPU
+novusc --cpu 68020 --output myapp.020
 
 # Build for 68020
 novusc --cpu 68020 --output myapp.020

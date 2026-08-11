@@ -472,7 +472,7 @@ extern fn __novus_ptplayer_get_song_length() -> u8
 extern fn __novus_call_u8_callback(func_addr: u32, arg: u8)
 
 // Get the CPU's Vector Base Register (VBR)
-// On 68000 this returns 0, on 68010+ it returns the actual VBR value.
+// All supported CPUs expose the actual VBR value.
 // ptplayer needs this for proper interrupt vector handling.
 extern fn __novus_get_vbr() -> *u8
 
@@ -624,7 +624,7 @@ impl ModPlayer {
         let pal_flag: u8 = if pal { 1 } else { 0 }
 
         // Get the CPU's Vector Base Register
-        // On 68000 this is 0, on 68010+ it may be relocated
+        // On supported CPUs the VBR may be relocated.
         let vbr = __novus_get_vbr()
 
         unsafe {

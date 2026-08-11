@@ -22,7 +22,7 @@ The Novus Language Server provides IDE intelligence for the Novus programming la
                   │ (JSON-RPC messages)
 ┌─────────────────▼───────────────────────────────────────────┐
 │              Novus.LanguageServer                           │
-│  (C# / .NET 9.0 / OmniSharp.Extensions.LanguageServer)     │
+│  (C# / .NET 10.0 / OmniSharp.Extensions.LanguageServer)    │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  Program.cs                                          │  │
@@ -115,7 +115,7 @@ The `NovusParserFactory` supports two parsing modes:
 
 The language server searches multiple locations for the standard library:
 
-1. Same directory as LSP binary (`bin/Debug/net9.0/std`)
+1. Same directory as LSP binary (`bin/Debug/net10.0/std`)
 2. Relative path from LSP to compiler (`../../../Novus/std`)
 3. Absolute development path (`/Users/barry/RiderProjects/Novus/Novus/std`)
 

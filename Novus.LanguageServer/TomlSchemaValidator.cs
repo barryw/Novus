@@ -10,7 +10,7 @@ namespace Novus.LanguageServer;
 public class TomlSchemaValidator
 {
     private static readonly string[] ValidPackageTypes = { "cli", "workbench", "dual", "library", "device", "handler", "resource" };
-    private static readonly string[] ValidTargetCpus = { "68000", "68010", "68020", "68030", "68040", "68060", "68080", "auto" };
+    private static readonly string[] ValidTargetCpus = { "68020", "68030", "68040", "68060", "68080", "auto" };
     private static readonly string[] ValidFpuModes = { "soft", "none", "68881", "68882", "68040", "68060", "auto" };
     private static readonly string[] ValidChipsets = { "OCS", "ECS", "AGA", "auto" };
 

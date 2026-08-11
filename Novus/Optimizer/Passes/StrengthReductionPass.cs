@@ -81,7 +81,7 @@ public class StrengthReductionPass : BasicBlockPassBase
         }
 
         // For non-power-of-2, try shift-add sequences
-        // This is beneficial on 68000 where multiply is very expensive
+        // This remains beneficial on the 68020 baseline.
         var sequence = FindBestShiftAddSequence(multiplier);
         if (sequence != null && sequence.Cost <= 4) // Only if cheaper than multiply
         {

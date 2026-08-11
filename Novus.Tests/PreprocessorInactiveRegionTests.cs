@@ -155,15 +155,15 @@ fn outer() {
     {
         var constants = new Dictionary<string, bool>
         {
-            ["M68000"] = false,
+            ["M68030"] = false,
             ["M68020"] = true,
             ["M68040"] = false
         };
         var preprocessor = CreatePreprocessor(constants);
 
         var result = preprocessor.Process(@"
-#if M68000
-fn base_68000() {}
+#if M68030
+fn for_68030() {}
 #elif M68020
 fn for_68020() {}
 #elif M68040
@@ -171,13 +171,13 @@ fn for_68040() {}
 #endif
 ");
 
-        // The M68000 branch (lines 3) and M68040 branch (line 7) should be inactive
+        // The M68030 branch (line 3) and M68040 branch (line 7) should be inactive
         Assert.Equal(2, preprocessor.InactiveRegions.Count);
 
         var region1 = preprocessor.InactiveRegions[0];
         Assert.Equal(3, region1.StartLine);
         Assert.Equal(3, region1.EndLine);
-        Assert.Equal("M68000", region1.Reason);
+        Assert.Equal("M68030", region1.Reason);
 
         var region2 = preprocessor.InactiveRegions[1];
         Assert.Equal(7, region2.StartLine);

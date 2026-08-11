@@ -99,6 +99,11 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     // These are evaluated in a later pass after function bodies are built
     private readonly List<(NovusParser.ConstDeclarationContext Context, Visibility Visibility)> _deferredConstants = new();
 
+    // Static initializers that emit IR (for example const fn calls) are evaluated
+    // after const function bodies have been built.
+    private readonly List<(IrStaticVariable Static, IrFunction Initializer, SourceLocation Location)> _deferredStaticInitializers = new();
+    private readonly List<(IrFunction Function, NovusParser.FunctionDeclarationContext Declaration, IrType? SelfType)> _importedConstFunctionBodies = new();
+
     // Track active type substitutions during generic method instantiation
     // Key: generic param name (e.g., "T"), Value: concrete type (e.g., i32)
     private Dictionary<string, IrType>? _currentTypeSubstitutions = null;
@@ -239,7 +244,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         public IrType GetMutReferenceType(IrType pointeeType) => _builder._typeInterner.GetMutReferenceType(pointeeType);
         public IrType GetPointerType(IrType pointeeType) => _builder._typeInterner.GetPointerType(pointeeType);
         public IrType GetArrayType(IrType elementType, long length) => _builder._typeInterner.GetArrayType(elementType, (int)length);
-        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetFunctionPointerType(paramTypes, returnType);
+        public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType,
+            IrCallingConvention callingConvention = IrCallingConvention.Novus,
+            List<string?>? parameterRegisters = null, string? returnRegister = null) =>
+            _builder._typeInterner.GetFunctionPointerType(paramTypes, returnType, callingConvention, parameterRegisters, returnRegister);
         public IrType GetTupleType(List<IrType> elementTypes) => _builder._typeInterner.GetTupleType(elementTypes);
         public IrType GetClosureType(List<IrType> paramTypes, IrType returnType) => _builder._typeInterner.GetClosureType(paramTypes, returnType);
 
@@ -1006,7 +1014,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Register a placeholder struct with empty fields
             // Parse generic parameters for stub so type checking works correctly
             var genericParams = ParseGenericParameters(structContext.genericParams());
-            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null);
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(),
+                genericParams.Count > 0 ? genericParams : null, isUnion: structContext.KW_UNION() != null);
             _symbols.RegisterStruct(structName, placeholderStruct);
         }
 
@@ -1028,13 +1037,6 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         foreach (var structContext in context.structDeclaration())
         {
             RegisterStruct(structContext);
-        }
-
-        // Pass 3.1: Register all static variables (after struct types are registered)
-        // Static initializers may contain struct literals that require type resolution
-        foreach (var staticContext in context.staticDeclaration())
-        {
-            RegisterStatic(staticContext);
         }
 
         // Pass 3.25: Register all trait types
@@ -1085,12 +1087,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             var tempParams = new List<IrParameter>();
             if (funcContext.parameterList() != null)
             {
-                foreach (var paramCtx in funcContext.parameterList().parameter())
-                {
-                    var paramName = paramCtx.IDENTIFIER().GetText();
-                    var paramType = ParseType(paramCtx.type());
-                    tempParams.Add(new IrParameter(paramName, paramType));
-                }
+                ParseRegularParameters(funcContext.parameterList(), tempParams);
             }
 
             // Compute mangled name if this function is overloaded
@@ -1098,6 +1095,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             var mangledName = GetMangledFunctionName(name, paramTypes);
 
             var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+            ApplyFunctionAbi(function, funcContext);
             function.IsConstFn = isConstFn;  // Mark as const fn if 'const' keyword is present
             function.Location = GetLocation(funcContext);  // Store source location for debug info
 
@@ -1215,6 +1213,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
 
                 var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+                ApplyFunctionAbi(function, funcDecl);
                 function.IsConstFn = isConstFn;  // Mark as const fn if 'const' keyword is present
                 function.Location = GetLocation(funcDecl);  // Store source location for debug info
 
@@ -1283,6 +1282,15 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             _symbols.ClearGenericParameters();
             _currentSelfType = null;
         }
+
+        // Pass 4.75: Register static variables after every function and method signature.
+        // This lets static initializers call const functions while still making the
+        // completed static types available to every function body.
+        foreach (var staticContext in context.staticDeclaration())
+        {
+            RegisterStatic(staticContext);
+        }
+        BuildImportedConstFunctionBodies();
 
         // Pass 5: Build const function bodies first so deferred constants are resolved
         // before ordinary function bodies inline their values.
@@ -1472,6 +1480,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             // Clear Self type after processing impl block
             _currentSelfType = null;
         }
+
+
+        EvaluateDeferredStaticInitializers();
+        ClearImportedConstFunctionBodies();
 
         return _module;
     }

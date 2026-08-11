@@ -11,6 +11,45 @@ namespace Novus.Frontend;
 /// </summary>
 public partial class IrBuilder
 {
+    private void BuildImportedConstFunctionBodies()
+    {
+        if (_deferredStaticInitializers is [] || _importedConstFunctionBodies is [])
+            return;
+
+        foreach (var (function, declaration, selfType) in _importedConstFunctionBodies)
+        {
+            if (function.BasicBlocks.Count > 0 || declaration.block() == null)
+                continue;
+
+            var savedSelfType = _currentSelfType;
+            var savedExpectedType = _expectedType;
+            _currentSelfType = selfType;
+            try
+            {
+                using var scope = new FunctionBodyScope(this, function);
+                _currentBlock = function.CreateBasicBlock("entry");
+                foreach (var parameter in function.Parameters)
+                    _localVariables[parameter.Name] = new IrLocalVariable(parameter.Name, parameter.Type, false);
+
+                _expectedType = function.ReturnType is IrVoidType ? null : function.ReturnType;
+                var lastValue = Visit(declaration.block()) as IrValue;
+                AddImplicitReturn(lastValue);
+            }
+            finally
+            {
+                _currentSelfType = savedSelfType;
+                _expectedType = savedExpectedType;
+            }
+        }
+    }
+
+    private void ClearImportedConstFunctionBodies()
+    {
+        foreach (var (function, _, _) in _importedConstFunctionBodies)
+            function.BasicBlocks.Clear();
+        _importedConstFunctionBodies.Clear();
+    }
+
     private void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
         // Get the module path (e.g., "std::dos" or "std::ffi::exec")
@@ -302,6 +341,8 @@ public partial class IrBuilder
                         returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                        var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+                        function.IsConstFn = isConstFn;
 
                         // Parse and store function attributes (for #[chain], @test, @export, etc.)
                         var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
@@ -326,6 +367,8 @@ public partial class IrBuilder
                         }
 
                         _module.AddFunction(function);
+                        if (isConstFn)
+                            _importedConstFunctionBodies.Add((function, funcDecl, implementingType));
                     }
 
                     // Clear generic params and Self type
@@ -443,6 +486,8 @@ public partial class IrBuilder
                             }
 
                             _module.AddFunction(function);
+                            if (isConstFn)
+                                _importedConstFunctionBodies.Add((function, funcDecl, null));
                         }
                     }
                 }
@@ -537,6 +582,8 @@ public partial class IrBuilder
                         returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
                         var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                        var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+                        function.IsConstFn = isConstFn;
 
                         // Parse and store function attributes (for #[chain], @test, @export, etc.)
                         var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
@@ -561,6 +608,8 @@ public partial class IrBuilder
                         }
 
                         _module.AddFunction(function);
+                        if (isConstFn)
+                            _importedConstFunctionBodies.Add((function, funcDecl, implementingType));
                     }
 
                     // Clear generic params and Self type
@@ -572,16 +621,19 @@ public partial class IrBuilder
             return; // Don't reprocess the entire module
         }
 
-        // Check for circular imports before processing a new module
-        // Use the absolute file path for reliable cycle detection
-        if (!_circularImportDetector.EnterModule(modulePath))
+        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
+        var needsDependencies = !ModuleImportHelper.CanImportWithoutDependencies(
+            moduleContext, namesToImport, importAll);
+
+        // Check for circular imports before processing a dependency graph.
+        if (needsDependencies && !_circularImportDetector.EnterModule(modulePath))
         {
             // Circular dependency detected - error already reported by detector
             return;
         }
 
-        // Mark this module as being processed (for efficiency - avoid redundant re-processing)
-        _processedModules.Add(moduleNamespace);
+        if (needsDependencies)
+            _processedModules.Add(moduleNamespace);
 
         // Check if this module has any pub (non-extern) functions that need compilation
         // FFI modules (only extern functions) don't need to be compiled separately
@@ -596,45 +648,45 @@ public partial class IrBuilder
             _importedModulePaths.Add(modulePath);
         }
 
-        // Process the module's imports to make constants available for generic templates
-        // CircularImportDetector tracks the import chain and will catch any cycles
-        foreach (var importDecl in moduleContext.importDeclaration())
+        if (needsDependencies)
         {
-            ProcessImport(importDecl);
-        }
-
-        // CRITICAL: Process pub use reexports, before parsing any function signatures
-        // Function signatures may reference reexported types, so those types must be in scope
-        foreach (var reexportDecl in moduleContext.reexportDeclaration())
-        {
-            var reexportPath = reexportDecl.modulePath().GetText();
-            bool reexportAll = reexportDecl.STAR() != null;
-
-            if (reexportAll)
+            // Process the module's imports to make constants available for generic templates
+            // CircularImportDetector tracks the import chain and will catch any cycles
+            foreach (var importDecl in moduleContext.importDeclaration())
             {
-                // pub use std::error::* - import all symbols
-                ImportModule(reexportPath, importAll: true, importList: null);
+                ProcessImport(importDecl);
             }
-            else
+
+            // CRITICAL: Process pub use reexports, before parsing any function signatures
+            // Function signatures may reference reexported types, so those types must be in scope
+            foreach (var reexportDecl in moduleContext.reexportDeclaration())
             {
-                // pub use std::error::DosError - import specific symbols
-                var reexportList = reexportDecl.reexportList();
-                if (reexportList != null)
+                var reexportPath = reexportDecl.modulePath().GetText();
+                bool reexportAll = reexportDecl.STAR() != null;
+
+                if (reexportAll)
                 {
-                    var symbolNames = new List<string>();
-                    foreach (var id in reexportList.IDENTIFIER())
+                    // pub use std::error::* - import all symbols
+                    ImportModule(reexportPath, importAll: true, importList: null);
+                }
+                else
+                {
+                    // pub use std::error::DosError - import specific symbols
+                    var reexportList = reexportDecl.reexportList();
+                    if (reexportList != null)
                     {
-                        symbolNames.Add(id.GetText());
+                        var symbolNames = new List<string>();
+                        foreach (var id in reexportList.IDENTIFIER())
+                        {
+                            symbolNames.Add(id.GetText());
+                        }
+                        // Create a fake import list context with these names
+                        // We need to import these symbols so they're available when parsing function signatures
+                        ImportModuleSpecificSymbols(reexportPath, symbolNames);
                     }
-                    // Create a fake import list context with these names
-                    // We need to import these symbols so they're available when parsing function signatures
-                    ImportModuleSpecificSymbols(reexportPath, symbolNames);
                 }
             }
         }
-
-        // Build the list of names to import
-        var namesToImport = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
 
 
         // CRITICAL PHASE 1: Register ALL type stubs BEFORE parsing any signatures
@@ -788,6 +840,8 @@ public partial class IrBuilder
                 // Methods are registered with mangled names
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
                 var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+                function.IsConstFn = isConstFn;
 
                 // Parse and store function attributes (for #[chain], @test, @export, etc.)
                 var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
@@ -816,6 +870,8 @@ public partial class IrBuilder
                 }
 
                 _module.AddFunction(function);
+                if (isConstFn)
+                    _importedConstFunctionBodies.Add((function, funcDecl, implementingType));
             }
 
             // Register trait implementation if this is a trait impl
@@ -911,7 +967,8 @@ public partial class IrBuilder
         }
 
         // Exit the module from the import chain now that processing is complete
-        _circularImportDetector.ExitModule();
+        if (needsDependencies)
+            _circularImportDetector.ExitModule();
     }
 
     /// <summary>
@@ -1913,6 +1970,8 @@ public partial class IrBuilder
             }
 
             var function = new IrFunction(mangledName, returnType, visibility, isExtern);
+            var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
+            function.IsConstFn = isConstFn;
 
             // Store original name if mangled
             if (mangledName != funcName)
@@ -1936,6 +1995,8 @@ public partial class IrBuilder
             }
 
             _module.AddFunction(function);
+            if (isConstFn)
+                _importedConstFunctionBodies.Add((function, funcDecl, null));
         }
     }
 

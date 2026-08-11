@@ -10,7 +10,7 @@
 // - Supported by all Amigas without FPU
 //
 // Note: Most Amiga development uses fixed-point math instead of FFP
-// because it's faster on 68000. FFP is useful when you need:
+// because it is compact and native to classic Amiga software. FFP is useful when you need:
 // - Very large or very small numbers (beyond fixed-point range)
 // - Scientific calculations with dynamic range
 // - Compatibility with existing FFP-based code

@@ -7,7 +7,7 @@ namespace Novus;
 [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
 public class StdlibBuildOptions
 {
-    [Option("cpu", Required = false, HelpText = "Build for specific CPU (68000, 68020, 68040, 68060) or 'all' for all targets (default: all)")]
+    [Option("cpu", Required = false, HelpText = "Build for specific CPU (68020, 68030, 68040, 68060) or 'all' for all targets (default: all)")]
     public string? Cpu { get; set; } = "all";
 
     [Option("mode", Required = false, HelpText = "Build mode (debug, release, or 'both' for both modes) (default: both)")]

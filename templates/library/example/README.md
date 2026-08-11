@@ -65,7 +65,7 @@ optimization_level = 2  # 0=none, 1=basic, 2=full
 
 ```toml
 [build]
-target_cpu = "68000"  # Options: 68000, 68020, 68030, 68040, 68060
+target_cpu = "68020"  # Minimum; also 68030, 68040, 68060, 68080
 ```
 
 ## Using the Library

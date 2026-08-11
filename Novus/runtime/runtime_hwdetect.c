@@ -4,9 +4,6 @@
 #include "novus_runtime.h"
 
 // AttnFlags bits from exec/execbase.h - only define if not already defined
-#ifndef AFF_68010
-#define AFF_68010     (1<<0)   // 68010 or better
-#endif
 #ifndef AFF_68020
 #define AFF_68020     (1<<1)   // 68020 or better
 #endif
@@ -31,12 +28,10 @@
 
 // SystemCPU enum values (must match std::system::SystemCPU)
 typedef enum {
-    SystemCPU_M68000 = 0,
-    SystemCPU_M68010 = 1,
-    SystemCPU_M68020 = 2,
-    SystemCPU_M68030 = 3,
-    SystemCPU_M68040 = 4,
-    SystemCPU_M68060 = 5
+    SystemCPU_M68020 = 0,
+    SystemCPU_M68030 = 1,
+    SystemCPU_M68040 = 2,
+    SystemCPU_M68060 = 3
 } SystemCPU;
 
 // SystemFPU enum values (must match std::system::SystemFPU)
@@ -72,9 +67,7 @@ SystemCPU __detect_cpu(void)
     if (attn_flags & AFF_68060) return SystemCPU_M68060;
     if (attn_flags & AFF_68040) return SystemCPU_M68040;
     if (attn_flags & AFF_68030) return SystemCPU_M68030;
-    if (attn_flags & AFF_68020) return SystemCPU_M68020;
-    if (attn_flags & AFF_68010) return SystemCPU_M68010;
-    return SystemCPU_M68000;
+    return SystemCPU_M68020;
 }
 
 /**

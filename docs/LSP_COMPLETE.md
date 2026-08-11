@@ -12,7 +12,7 @@ We've successfully built a **fully functional Language Server Protocol (LSP) imp
 
 ### What We Built
 
-1. **Novus.LanguageServer** - C#/.NET 9.0 LSP server
+1. **Novus.LanguageServer** - C#/.NET 10.0 LSP server
 2. **vscode-novus** - VS Code extension with syntax highlighting
 3. **Comprehensive documentation** - Architecture, development workflow, user guides
 4. **Automated build system** - One-command build and install

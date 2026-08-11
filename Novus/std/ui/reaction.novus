@@ -18,6 +18,7 @@ from std::core import Option, Result, Vec
 from std::error::errors import IntuitionError
 from std::ffi::amiga_structs import Screen
 from std::ffi::amiga_structs import Window
+from std::ffi::amiga_structs import Menu
 from std::ffi::amiga_structs import DrawInfo
 from std::ffi::amiga_structs import TagItem
 from std::ffi::amiga_structs import Node
@@ -56,6 +57,7 @@ from std::ffi::exec import ReplyMsg
 from std::ffi::exec import NewList
 from std::ffi::exec import AddTail
 from std::strings::core import Str
+from std::ui::menu import GadToolsMenuBuilder, GadToolsMenuStrip
 
 // ============================================================================
 // External: DoMethodA from amiga.lib
@@ -120,6 +122,7 @@ struct GadgetEntry {
 pub struct ReActionBuilder {
     screen: *Screen
     draw_info: *DrawInfo
+    owns_screen: bool
     // Gadget/layout entries
     entries: *GadgetEntry
     entry_count: u32
@@ -187,6 +190,7 @@ impl ReActionBuilder {
             return ReActionBuilder {
                 screen: screen,
                 draw_info: draw_info,
+                owns_screen: false,
                 entries: (*GadgetEntry)entry_mem,
                 entry_count: 0,
                 entry_capacity: entry_capacity,
@@ -201,6 +205,23 @@ impl ReActionBuilder {
                 radio_list_capacity: radio_capacity,
             }
         }
+    }
+
+    /// Create a builder on the Workbench screen and own its lock.
+    pub fn workbench() -> Result<ReActionBuilder, IntuitionError> {
+        let screen = LockPubScreen(null)
+        if !screen {
+            return Result::Err(IntuitionError::InvalidScreen)
+        }
+
+        var builder = ReActionBuilder::new(screen)
+        builder.owns_screen = true
+        return Result::Ok(builder)
+    }
+
+    /// Create a menu builder for this window's screen.
+    pub fn menu_builder(&self) -> GadToolsMenuBuilder {
+        return GadToolsMenuBuilder::new(self.screen)
     }
 
     /// Create the root layout and return a handle
@@ -225,6 +246,16 @@ impl ReActionBuilder {
 
     /// Build the window with all gadgets
     pub fn build(&var self, title: Str) -> Result<ReActionWindow, IntuitionError> {
+        return self.build_window(title, null, Option::None)
+    }
+
+    /// Build a window that owns its menu strip.
+    pub fn build_with_menu(&var self, title: Str, consuming menu_strip: GadToolsMenuStrip) -> Result<ReActionWindow, IntuitionError> {
+        let menu = menu_strip.raw_menu()
+        return self.build_window(title, menu, Option::Some(menu_strip))
+    }
+
+    fn build_window(&var self, title: Str, menu: *Menu, consuming menu_strip: Option<GadToolsMenuStrip>) -> Result<ReActionWindow, IntuitionError> {
         // Allocate title string
         let title_ptr = self.alloc_label(title)
 
@@ -331,6 +362,7 @@ impl ReActionBuilder {
                 TagItem { ti_Tag: WA_SizeGadget, ti_Data: 1 },
                 TagItem { ti_Tag: WA_Activate, ti_Data: 1 },
                 TagItem { ti_Tag: WA_CustomScreen, ti_Data: (u32)self.screen },
+                TagItem { ti_Tag: WINDOW_MenuStrip, ti_Data: (u32)menu },
                 TagItem { ti_Tag: WINDOW_Layout, ti_Data: (u32)root_layout },
                 TagItem { ti_Tag: WINDOW_Position, ti_Data: WPOS_CENTERSCREEN },
                 TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
@@ -364,6 +396,8 @@ impl ReActionBuilder {
             let radio_node_count = self.radio_node_count
             let radio_lists = self.radio_lists
             let radio_list_count = self.radio_list_count
+            let draw_info = self.draw_info
+            let owns_screen = self.owns_screen
 
             // Clear builder ownership
             self.labels = null
@@ -372,13 +406,17 @@ impl ReActionBuilder {
             self.radio_node_count = 0
             self.radio_lists = null
             self.radio_list_count = 0
+            self.draw_info = null
+            self.owns_screen = false
 
             return Result::Ok(ReActionWindow {
                 window_obj: window_obj,
                 window: (*Window)window_ptr,
                 sig_mask: sig_mask,
                 screen: self.screen,
-                draw_info: self.draw_info,
+                draw_info: draw_info,
+                owns_screen: owns_screen,
+                menu_strip: menu_strip,
                 labels: labels,
                 label_count: label_count,
                 radio_nodes: radio_nodes,
@@ -717,6 +755,9 @@ impl Drop for ReActionBuilder {
             if self.draw_info {
                 FreeScreenDrawInfo(self.screen, self.draw_info)
             }
+            if self.owns_screen {
+                UnlockPubScreen(null, self.screen)
+            }
         }
     }
 }
@@ -998,7 +1039,7 @@ pub enum ReActionEvent {
     Active,
     Inactive,
     NewSize,
-    MenuPick(u32),          // Menu selection code
+    MenuPick(u16),          // Menu selection code
     Iconify,
     Uniconify,
     Unknown(u32),
@@ -1014,6 +1055,8 @@ pub struct ReActionWindow {
     sig_mask: u32           // Signal mask for waiting
     screen: *Screen
     draw_info: *DrawInfo
+    owns_screen: bool
+    menu_strip: Option<GadToolsMenuStrip>
     labels: **u8
     label_count: u32
     radio_nodes: **Node
@@ -1090,7 +1133,7 @@ impl ReActionWindow {
             WMHI_INACTIVE => ReActionEvent::Inactive,
             WMHI_NEWSIZE => ReActionEvent::NewSize,
             WMHI_MENUPICK => {
-                let menu_code = result & WMHI_MENUMASK
+                let menu_code = (u16)(result & WMHI_MENUMASK)
                 ReActionEvent::MenuPick(menu_code)
             },
             WMHI_ICONIFY => ReActionEvent::Iconify,
@@ -1186,6 +1229,9 @@ impl Drop for ReActionWindow {
             // Free draw info
             if self.draw_info {
                 FreeScreenDrawInfo(self.screen, self.draw_info)
+            }
+            if self.owns_screen {
+                UnlockPubScreen(null, self.screen)
             }
         }
     }

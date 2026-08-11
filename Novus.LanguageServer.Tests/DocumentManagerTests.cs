@@ -34,6 +34,34 @@ public class DocumentManagerTests
     private static readonly string TestStdLibPath = GetTestStdLibPath();
 
     [Fact]
+    public void DocumentHandlers_OnlyAcceptTheirOwnFileType()
+    {
+        const string novus = "file:///workspace/main.novus";
+        const string toml = "file:///workspace/project.toml";
+
+        Assert.True(TextDocumentHandler.HandlesDocument(novus));
+        Assert.False(TextDocumentHandler.HandlesDocument(toml));
+        Assert.True(TomlDocumentHandler.HandlesDocument(toml));
+        Assert.False(TomlDocumentHandler.HandlesDocument(novus));
+    }
+
+    [Fact]
+    public void Open_CompilerValidGuiExample_HasNoErrors()
+    {
+        var path = Path.GetFullPath(Path.Combine(
+            TestStdLibPath, "..", "..", "Novus.Tests", "Examples", "idiomatic_gui.novus"));
+        var manager = new DocumentManager(TestStdLibPath);
+
+        manager.Open(new Uri(path).AbsoluteUri, File.ReadAllText(path), 1);
+
+        var state = Assert.IsType<DocumentState>(manager.Get(new Uri(path).AbsoluteUri));
+        var errors = Assert.IsType<Novus.Diagnostics.DiagnosticBag>(state.Diagnostics)
+            .Diagnostics.Where(diagnostic => diagnostic.IsError).ToList();
+        Assert.True(errors.Count == 0, string.Join(Environment.NewLine,
+            errors.Select(error => $"{error.Code}: {error.Message}")));
+    }
+
+    [Fact]
     public void Open_ValidDocument_CreatesDocumentState()
     {
         // Arrange

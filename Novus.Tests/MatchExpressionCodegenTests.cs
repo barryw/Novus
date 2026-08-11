@@ -108,4 +108,34 @@ pub fn get_status_value(status: Status) -> i32 {
         Assert.NotEmpty(cCode);
         Assert.Contains("get_status_value", cCode);
     }
+
+    [Fact]
+    public void MatchExpression_BlockTailIfStoresBothBranchValues()
+    {
+        var source = @"
+enum Choice {
+    A(u16),
+    B(u16)
+}
+
+pub fn choose(kind: u16, flag: bool) -> Choice {
+    return match kind {
+        0 => {
+            if flag {
+                Choice::A(kind)
+            } else {
+                Choice::B(kind)
+            }
+        },
+        _ => Choice::A(kind)
+    }
+}
+";
+
+        var cCode = GenerateCCode(source);
+
+        Assert.Contains(".tag = Choice_A;", cCode);
+        Assert.Contains(".tag = Choice_B;", cCode);
+        Assert.DoesNotContain("__novus_memcpy((uint8_t*)&(*__out)", cCode);
+    }
 }

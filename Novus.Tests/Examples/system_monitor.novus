@@ -135,8 +135,6 @@ fn draw_system_info(ctx: &DrawContext, snapshot: &SystemSnapshot) {
 
     // Draw CPU type
     match snapshot.cpu {
-        SystemCPU::M68000 => draw_text_at(rp, 52, y + 10, "68000", 5),
-        SystemCPU::M68010 => draw_text_at(rp, 52, y + 10, "68010", 5),
         SystemCPU::M68020 => draw_text_at(rp, 52, y + 10, "68020", 5),
         SystemCPU::M68030 => draw_text_at(rp, 52, y + 10, "68030", 5),
         SystemCPU::M68040 => draw_text_at(rp, 52, y + 10, "68040", 5),

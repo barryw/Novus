@@ -88,6 +88,29 @@ public class TemplateScaffoldingTests : IDisposable
         }
     }
 
+    [Fact]
+    public void ModernGuiTemplateUsesStaticUi()
+    {
+        var templates = FindTemplatesDirectory();
+        if (templates == null) return;
+
+        var source = File.ReadAllText(Path.Combine(templates, "gui", "modern", "src", "main.novus"));
+        Assert.Contains("StaticGadToolsUi", source);
+        Assert.DoesNotContain("GadToolsBuilder", source);
+    }
+
+    [Fact]
+    public void HandlerUsesPacketStartupAndShipsTemplate()
+    {
+        Assert.Equal("novus_handler_startup", Novus.Program.GetStartupStub("handler"));
+        Assert.Equal("novus_startup", Novus.Program.GetStartupStub("cli"));
+
+        var templates = FindTemplatesDirectory();
+        if (templates == null) return;
+        Assert.True(File.Exists(Path.Combine(templates, "handler", "handler", "src", "main.novus")));
+        Assert.True(File.Exists(Path.Combine(templates, "resource", "resource", "src", "resource.novus")));
+    }
+
     private static string? FindTemplatesDirectory()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

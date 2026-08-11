@@ -9,20 +9,20 @@ int32_t __novus_test_panic_occurred = 0;
 const char* __novus_test_panic_message = NULL;
 
 // Test mode control functions
-void __novus_test_set_mode(int32_t enabled) {
+NOVUS_RUNTIME_SECTION(__novus_test_set_mode) void __novus_test_set_mode(int32_t enabled) {
     __novus_test_mode = enabled;
 }
 
-void __novus_test_reset_panic(void) {
+NOVUS_RUNTIME_SECTION(__novus_test_reset_panic) void __novus_test_reset_panic(void) {
     __novus_test_panic_occurred = 0;
     __novus_test_panic_message = NULL;
 }
 
-int32_t __novus_test_did_panic(void) {
+NOVUS_RUNTIME_SECTION(__novus_test_did_panic) int32_t __novus_test_did_panic(void) {
     return __novus_test_panic_occurred;
 }
 
-const char* __novus_test_get_panic_message(void) {
+NOVUS_RUNTIME_SECTION(__novus_test_get_panic_message) const char* __novus_test_get_panic_message(void) {
     return __novus_test_panic_message;
 }
 
@@ -42,7 +42,7 @@ int32_t __dos_write(__reg("a6") void* dosBase, __reg("d1") int32_t file, __reg("
  * @param col Column number
  * @param message Optional error message (can be NULL)
  */
-void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message)
+NOVUS_RUNTIME_SECTION(__novus_assert_failed) void __novus_assert_failed(const char* file, int32_t line, int32_t col, const char* message)
 {
     // In test mode, record the panic and return without showing dialog
     if (__novus_test_mode) {
@@ -84,7 +84,7 @@ void __novus_assert_failed(const char* file, int32_t line, int32_t col, const ch
  * @param tag The enum variant tag (0, 1, 2, ...)
  * @param variant_names Comma-separated variant names (e.g., "Ok,Err,Other")
  */
-void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_names)
+NOVUS_RUNTIME_SECTION(__novus_try_failed) void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_names)
 {
     struct Library *dosBase;
     char msg[128];
@@ -139,7 +139,7 @@ void __novus_try_failed(const char* type_name, int32_t tag, const char* variant_
  * @param line Line number
  * @param col Column number
  */
-void __novus_panic(const char* message, const char* file, int32_t line, int32_t col)
+NOVUS_RUNTIME_SECTION(__novus_panic) void __novus_panic(const char* message, const char* file, int32_t line, int32_t col)
 {
     // In test mode, record the panic and return without showing dialog
     if (__novus_test_mode) {
@@ -183,7 +183,7 @@ void __novus_panic(const char* message, const char* file, int32_t line, int32_t 
  * @param file Source file where access occurred
  * @param line Line number
  */
-void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file, int32_t line)
+NOVUS_RUNTIME_SECTION(__novus_bounds_check_failed) void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file, int32_t line)
 {
     // In test mode, record the panic and return without showing dialog
     if (__novus_test_mode) {
@@ -229,7 +229,7 @@ void __novus_bounds_check_failed(int32_t index, int32_t length, const char* file
  * @param file Source file where division occurred
  * @param line Line number
  */
-void __novus_div_check(int32_t divisor, const char* file, int32_t line)
+NOVUS_RUNTIME_SECTION(__novus_div_check) void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 {
     if (divisor == 0) {
         // In test mode, record the panic and return without showing dialog
@@ -257,58 +257,6 @@ void __novus_div_check(int32_t divisor, const char* file, int32_t line)
 }
 
 // ============================================================================
-// Library-Not-Found Handler
-// ============================================================================
-// Called from assembly stubs when OpenLibrary returns NULL.
-// Displays a helpful error message and exits gracefully.
-
-/**
- * Library-not-found error handler
- * Called by assembly stubs when a required library cannot be opened.
- * Shows a helpful dialog explaining what's missing.
- *
- * @param library_name Name of the library that couldn't be loaded
- * @param version Minimum version that was requested (0 = any version)
- */
-void __novus_library_not_found(const char* library_name, int32_t version)
-{
-    char version_str[12];
-    char* ptr = error_buffer;
-
-    if (version > 0) {
-        int_to_str(version_str, version);
-    }
-
-    // Build the error message
-    ptr = strcpy_helper(ptr, "Required library not found!\n\n");
-    ptr = strcpy_helper(ptr, "Library: ");
-    ptr = strcpy_helper(ptr, library_name);
-
-    if (version > 0) {
-        ptr = strcpy_helper(ptr, "\nVersion: ");
-        ptr = strcpy_helper(ptr, version_str);
-        ptr = strcpy_helper(ptr, " or higher");
-    }
-
-    ptr = strcpy_helper(ptr, "\n\nPlease install this library in\n");
-    ptr = strcpy_helper(ptr, "LIBS: and try again.");
-
-    display_error_requester(AO_LibraryNotFound);
-
-    // Exit the program with an error code
-    // We can't continue if a required library is missing
-    {
-        struct Library* dosBase;
-        dosBase = OpenLibrary("dos.library", 0L);
-        if (dosBase != NULL) {
-            // Return to DOS with error code 20 (FAIL)
-            CloseLibrary(dosBase);
-        }
-    }
-    // Note: The stub will exit after we return
-}
-
-// ============================================================================
 // Stack Overflow Detection
 // ============================================================================
 
@@ -325,7 +273,7 @@ uint32_t __novus_stack_guard = 256; // Guard zone (256 bytes default)
  * Initialize stack bounds from AmigaOS task structure.
  * Called once at program startup.
  */
-void __novus_init_stack_bounds(void)
+NOVUS_RUNTIME_SECTION(__novus_init_stack_bounds) void __novus_init_stack_bounds(void)
 {
     struct Task* task;
     struct Library* SysBase = *(struct Library**)4L;
@@ -354,7 +302,7 @@ void __novus_init_stack_bounds(void)
  * @param func_name Name of the function being entered
  * @param line Line number of function definition
  */
-void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line)
+NOVUS_RUNTIME_SECTION(__novus_check_stack) void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t line)
 {
     uint32_t current_sp;
     uint32_t safe_limit;
@@ -430,7 +378,7 @@ void __novus_check_stack(uint32_t required_bytes, const char* func_name, int32_t
  * Debug print for i32 values
  * Prints: [file:line] expr = value\n
  */
-void __novus_dbg_i32(const char* location, const char* expr, int32_t value)
+NOVUS_RUNTIME_SECTION(__novus_dbg_i32) void __novus_dbg_i32(const char* location, const char* expr, int32_t value)
 {
     struct Library *dosBase;
     char msg[256];
@@ -465,7 +413,7 @@ void __novus_dbg_i32(const char* location, const char* expr, int32_t value)
 /**
  * Debug print for u32 values
  */
-void __novus_dbg_u32(const char* location, const char* expr, uint32_t value)
+NOVUS_RUNTIME_SECTION(__novus_dbg_u32) void __novus_dbg_u32(const char* location, const char* expr, uint32_t value)
 {
     // For now, just cast to i32 and print (works for values < 2^31)
     __novus_dbg_i32(location, expr, (int32_t)value);
@@ -474,7 +422,7 @@ void __novus_dbg_u32(const char* location, const char* expr, uint32_t value)
 /**
  * Debug print for bool values
  */
-void __novus_dbg_bool(const char* location, const char* expr, int32_t value)
+NOVUS_RUNTIME_SECTION(__novus_dbg_bool) void __novus_dbg_bool(const char* location, const char* expr, int32_t value)
 {
     struct Library *dosBase;
     char msg[256];
@@ -506,7 +454,7 @@ void __novus_dbg_bool(const char* location, const char* expr, int32_t value)
 /**
  * Debug print for pointer values (prints as hex)
  */
-void __novus_dbg_ptr(const char* location, const char* expr, void* value)
+NOVUS_RUNTIME_SECTION(__novus_dbg_ptr) void __novus_dbg_ptr(const char* location, const char* expr, void* value)
 {
     struct Library *dosBase;
     char msg[256];
@@ -550,7 +498,7 @@ void __novus_dbg_ptr(const char* location, const char* expr, void* value)
 /**
  * Debug print for string values (*u8)
  */
-void __novus_dbg_str(const char* location, const char* expr, const char* value)
+NOVUS_RUNTIME_SECTION(__novus_dbg_str) void __novus_dbg_str(const char* location, const char* expr, const char* value)
 {
     struct Library *dosBase;
     char msg[512];

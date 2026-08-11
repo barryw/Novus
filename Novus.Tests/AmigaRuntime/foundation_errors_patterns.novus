@@ -10,6 +10,19 @@ enum Color {
     Cyan,
 }
 
+const TARGET_GADGET: u16 = 1
+
+enum PayloadEvent {
+    GadgetUp(u16),
+}
+
+fn is_target_gadget(event: PayloadEvent) -> bool {
+    return match event {
+        PayloadEvent::GadgetUp(TARGET_GADGET) => true,
+        _ => false,
+    }
+}
+
 fn step(ok: bool) -> Result<i32, i32> {
     if ok { return Result::Ok(41) }
     return Result::Err(-1)
@@ -100,6 +113,12 @@ pub fn foundation_match_guards() {
     expect(guarded_value(-10) == -1, "negative guard")
     expect(guarded_value(0) == 0, "zero guard")
     expect(guarded_value(10) == 1, "fallback arm")
+}
+
+@test("constants in enum payload patterns compare instead of bind")
+pub fn foundation_enum_payload_constant() {
+    expect_true(is_target_gadget(PayloadEvent::GadgetUp(1)), "target payload")
+    expect_false(is_target_gadget(PayloadEvent::GadgetUp(2)), "non-target payload")
 }
 
 @test(should_panic)
