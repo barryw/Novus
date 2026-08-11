@@ -45,7 +45,7 @@ steps:
       # Install build tools if needed (Linux Docker image).
       # Native AOT publish on linux needs clang + zlib1g-dev in addition to
       # make/gcc (the latter also build the vendored VBCC toolchain target).
-      - apt-get update && apt-get install -y make gcc clang zlib1g-dev 2>/dev/null || true
+      - apt-get update && apt-get install -y make gcc clang zlib1g-dev file 2>/dev/null || true
       # macOS: prefer system dotnet over Homebrew (Homebrew ilc 10.0.2 crashes)
       - export PATH="/usr/local/share/dotnet:$PATH"
       # macOS: use shared NuGet cache (isolated HOME can cause ilc issues)
