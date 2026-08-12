@@ -1,6 +1,7 @@
 from std::core import Result
 from std::test::test import expect_true
 from format import prepare_node
+from fsload import load_file_system
 from rdb import DOS_TYPE_FFS_INTL, RdbFileSystem, RdbModel
 
 const EMBEDDED_DOS_TYPE: u32 = $4E565303
@@ -43,6 +44,16 @@ pub fn test_standard_format_handler() {
     expect_true(node.has_handler(), "DOS node has a handler")
     expect_true(node.dos_type() == DOS_TYPE_FFS_INTL, "DOS node preserves its type")
     expect_true(!node.is_embedded(), "standard handler is not marked embedded")
+}
+
+#[stack_size(32768)]
+@test("stock filesystem handler loads from its DOS path")
+pub fn test_stock_filesystem_handler_load() {
+    let Result::Ok(file_system) = load_file_system("L:FastFileSystem") else {
+        expect_true(false, "L:FastFileSystem opens as an Amiga hunk file")
+        return
+    }
+    expect_true(file_system.image().len() > 0u32, "filesystem image is retained")
 }
 
 #[stack_size(32768)]

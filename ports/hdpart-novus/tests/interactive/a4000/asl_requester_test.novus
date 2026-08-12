@@ -1,5 +1,9 @@
+from std::core import Option, Result
 from std::ffi::asl import AllocFileRequest, FreeFileRequest, RequestFile
+from std::io::file import write
 from std::test::test import expect_true
+from std::ui::asl import FileRequesterHandle
+from fsload import load_file_system
 
 @test("legacy ASL file requester opens and cancels safely")
 pub fn test_legacy_asl_requester() {
@@ -11,4 +15,23 @@ pub fn test_legacy_asl_requester() {
     let accepted = RequestFile(requester)
     FreeFileRequest(requester)
     expect_true(accepted == 0, "Cancel returns FALSE without a Guru")
+}
+
+#[stack_size(32768)]
+@test("selected ASL path opens as a filesystem handler")
+pub fn test_selected_asl_path_opens() {
+    let Result::Ok(requester) = FileRequesterHandle::new() else {
+        expect_true(false, "ASL allocated a file requester")
+        return
+    }
+    let Result::Ok(selected) = requester.choose(null, "Select handler", "L:", "FastFileSystem", false) else {
+        expect_true(false, "ASL returned a selected path")
+        return
+    }
+    let Option::Some(path) = selected else {
+        expect_true(false, "ASL selection was accepted")
+        return
+    }
+    write("Selected path: %s\n", path.as_str().as_cstr())
+    expect_true(load_file_system(path.as_str()).is_ok(), "selected filesystem handler opens")
 }
