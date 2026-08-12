@@ -348,7 +348,8 @@ public static class OverloadResolution
 
         // Handle array types
         if (a is IrArrayType arrA && b is IrArrayType arrB)
-            return arrA.Length == arrB.Length && TypesEqual(arrA.ElementType, arrB.ElementType);
+            return arrA.Length == arrB.Length && arrA.LengthParameter == arrB.LengthParameter &&
+                   TypesEqual(arrA.ElementType, arrB.ElementType);
 
         // Handle struct types
         if (a is IrStructType structA && b is IrStructType structB)
@@ -430,7 +431,7 @@ public static class OverloadResolution
             IrPointerType ptrType => $"*{GetTypeKey(ptrType.PointeeType)}",
             IrReferenceType refType => $"&{GetTypeKey(refType.PointeeType)}",
             IrMutReferenceType mutRefType => $"&mut {GetTypeKey(mutRefType.PointeeType)}",
-            IrArrayType arrType => $"[{GetTypeKey(arrType.ElementType)};{arrType.Length}]",
+            IrArrayType arrType => $"[{GetTypeKey(arrType.ElementType)};{arrType.LengthParameter ?? arrType.Length.ToString()}]",
             IrTupleType tupleType => $"({string.Join(",", tupleType.ElementTypes.Select(GetTypeKey))})",
             IrStructType structType => structType.CacheKey ?? structType.StructName,
             IrEnumType enumType => enumType.CacheKey ?? enumType.EnumName,
@@ -479,7 +480,7 @@ public static class OverloadResolution
             IrPointerType ptrType => $"ptr_{MangleTypeForSuffix(ptrType.PointeeType)}",
             IrReferenceType refType => $"ref_{MangleTypeForSuffix(refType.PointeeType)}",
             IrMutReferenceType mutRefType => $"mutref_{MangleTypeForSuffix(mutRefType.PointeeType)}",
-            IrArrayType arrType => $"arr{arrType.Length}_{MangleTypeForSuffix(arrType.ElementType)}",
+            IrArrayType arrType => $"arr{arrType.LengthParameter ?? arrType.Length.ToString()}_{MangleTypeForSuffix(arrType.ElementType)}",
             IrTupleType tupleType => $"tuple_{string.Join("_", tupleType.ElementTypes.Select(MangleTypeForSuffix))}",
             IrStructType structType => (structType.CacheKey ?? structType.StructName)
                 .Replace("::", "_").Replace("<", "_").Replace(">", "").Replace(",", "_").Replace(" ", ""),

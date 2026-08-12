@@ -63,7 +63,9 @@ impl ScreenHandle {
     /// This transfers ownership to the caller. The caller is responsible
     /// for closing the screen manually.
     pub fn into_raw(consuming self) -> *Screen {
-        return self.screen
+        let screen = self.screen
+        self.screen = null
+        return screen
     }
 
     /// Get the raw Screen pointer for FFI calls
@@ -157,7 +159,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: WA_MinHeight, ti_Data: 20 },
             TagItem { ti_Tag: WA_MaxWidth, ti_Data: (u32)self.width() },
             TagItem { ti_Tag: WA_MaxHeight, ti_Data: (u32)self.height() },
-            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: WA_CustomScreen, ti_Data: (u32)self.screen },
             TagItem { ti_Tag: WA_Flags, ti_Data: flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: idcmp },
@@ -241,7 +243,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
             TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
@@ -278,7 +280,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
             TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
@@ -304,7 +306,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: (u32)width },
             TagItem { ti_Tag: SA_Height, ti_Data: (u32)height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
@@ -341,7 +343,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: 320 },
             TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
@@ -378,7 +380,7 @@ impl ScreenHandle {
             TagItem { ti_Tag: SA_Width, ti_Data: 640 },
             TagItem { ti_Tag: SA_Height, ti_Data: height },
             TagItem { ti_Tag: SA_Depth, ti_Data: (u32)depth },
-            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
         ]
@@ -454,26 +456,26 @@ impl ScreenBuilder {
     ///
     /// NOTE: The title string must remain valid for the lifetime of the screen.
     /// Use string literals or long-lived String allocations.
-    pub fn title(self, t: Str) -> ScreenBuilder {
+    pub fn title(consuming self, t: Str) -> ScreenBuilder {
         self.title_ptr = t.ptr
         return self
     }
 
     /// Set screen dimensions
-    pub fn size(self, w: i16, h: i16) -> ScreenBuilder {
+    pub fn size(consuming self, w: i16, h: i16) -> ScreenBuilder {
         self.width = w
         self.height = h
         return self
     }
 
     /// Set screen width
-    pub fn width(self, w: i16) -> ScreenBuilder {
+    pub fn width(consuming self, w: i16) -> ScreenBuilder {
         self.width = w
         return self
     }
 
     /// Set screen height
-    pub fn height(self, h: i16) -> ScreenBuilder {
+    pub fn height(consuming self, h: i16) -> ScreenBuilder {
         self.height = h
         return self
     }
@@ -488,37 +490,37 @@ impl ScreenBuilder {
     /// - 5: 32 colors (OCS/ECS max for lores)
     /// - 6: 64 colors (AGA only, or EHB mode)
     /// - 8: 256 colors (AGA only)
-    pub fn depth(self, d: i16) -> ScreenBuilder {
+    pub fn depth(consuming self, d: i16) -> ScreenBuilder {
         self.depth = d
         return self
     }
 
     /// Open screen behind other screens
-    pub fn behind(self, b: bool) -> ScreenBuilder {
+    pub fn behind(consuming self, b: bool) -> ScreenBuilder {
         self.behind = b
         return self
     }
 
     /// Quiet mode - Intuition won't render into the screen
-    pub fn quiet(self, q: bool) -> ScreenBuilder {
+    pub fn quiet(consuming self, q: bool) -> ScreenBuilder {
         self.quiet = q
         return self
     }
 
     /// Show or hide the title bar
-    pub fn show_title(self, show: bool) -> ScreenBuilder {
+    pub fn show_title(consuming self, show: bool) -> ScreenBuilder {
         self.show_title = show
         return self
     }
 
     /// Enable autoscroll for screens larger than display
-    pub fn autoscroll(self, enabled: bool) -> ScreenBuilder {
+    pub fn autoscroll(consuming self, enabled: bool) -> ScreenBuilder {
         self.autoscroll = enabled
         return self
     }
 
     /// Set display mode ID (for specific monitor modes)
-    pub fn display_id(self, id: u32) -> ScreenBuilder {
+    pub fn display_id(consuming self, id: u32) -> ScreenBuilder {
         self.display_id = id
         return self
     }
@@ -526,7 +528,7 @@ impl ScreenBuilder {
     /// Set overscan type
     ///
     /// Use OSCAN_TEXT, OSCAN_STANDARD, OSCAN_MAX, or OSCAN_VIDEO
-    pub fn overscan(self, oscan: u32) -> ScreenBuilder {
+    pub fn overscan(consuming self, oscan: u32) -> ScreenBuilder {
         self.overscan = oscan
         return self
     }
@@ -535,7 +537,7 @@ impl ScreenBuilder {
     ///
     /// Returns Err if screen fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
-    pub fn build(self) -> Result<ScreenHandle, IntuitionError> {
+    pub fn build(consuming self) -> Result<ScreenHandle, IntuitionError> {
         // Auto-detect PAL/NTSC at runtime if no display_id explicitly set
         let display_type = DISPLAY()
         let default_monitor = match display_type {

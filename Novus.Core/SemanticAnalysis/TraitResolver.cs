@@ -355,6 +355,8 @@ public class TraitResolver
             IrStructType structType => structType.StructName,
             IrEnumType enumType => enumType.EnumName,
             IrPointerType ptrType => GetBaseTypeName(ptrType.PointeeType),
+            IrReferenceType referenceType => GetBaseTypeName(referenceType.PointeeType),
+            IrMutReferenceType referenceType => GetBaseTypeName(referenceType.PointeeType),
             IrArrayType arrayType => GetBaseTypeName(arrayType.ElementType),
             IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
             IrBoolType => "bool",

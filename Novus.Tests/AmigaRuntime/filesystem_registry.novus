@@ -1,0 +1,53 @@
+from std::core import Option, Result
+from std::ffi::exec import FindTask
+from std::os::filesystem import FileSystemRegistry, MountedFileSystem
+from std::test::test import expect
+
+@test("FileSystem.resource entries are copied safely")
+pub fn filesystem_registry() {
+    let initial_nest = task_nest_count()
+    let registry = match FileSystemRegistry::open() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "FileSystem.resource opens")
+            return
+        },
+    }
+    expect(registry.entry_count() > 0u32, "registry contains handlers")
+    expect(task_nest_count() == initial_nest, "entry count restores scheduler nesting")
+    expect(dos_handler_available(&registry), "registry exposes a DOS-family handler")
+    expect(task_nest_count() == initial_nest, "handler copy restores scheduler nesting")
+    expect(registry.find($FFFFFFFFu32).is_none(), "missing handler returns None")
+    expect(task_nest_count() == initial_nest, "handler queries restore scheduler nesting")
+    expect(mounted_filesystem_resolves(), "mounted filesystem owns its resolved process")
+    expect(mounted_filesystem_resolves(), "resolved process cleanup permits reacquisition")
+    expect(invalid_mount_name_rejected(), "mounted filesystem requires a device colon")
+}
+
+fn dos_handler_available(registry: &FileSystemRegistry) -> bool {
+    return match registry.find($444F5300u32) {
+        Option::Some(handler) => handler.segment().is_addressable(),
+        Option::None => false,
+    }
+}
+
+fn mounted_filesystem_resolves() -> bool {
+    let filesystem = match MountedFileSystem::open("SYS:") {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    return filesystem.name().equals("SYS:") && filesystem.handle().port() != null
+}
+
+fn invalid_mount_name_rejected() -> bool {
+    return match MountedFileSystem::open("SYS") {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }
+}
+
+fn task_nest_count() -> i8 {
+    let task = FindTask(null)
+    if task == null { return -128 }
+    return unsafe { (*task).tc_TDNestCnt }
+}

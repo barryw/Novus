@@ -86,7 +86,8 @@ public partial class IrBuilder
         }
         // else: self by value - keep as implementingType
 
-        function.Parameters.Add(new IrParameter("self", selfType));
+        function.Parameters.Add(new IrParameter("self", selfType,
+            isConsuming: selfParam.KW_CONSUMING() != null));
     }
 
     private void RegisterConstant(NovusParser.ConstDeclarationContext context)
@@ -965,8 +966,15 @@ public partial class IrBuilder
             }
         }
 
-        var externVar = new IrExternalVariable(name, type, address);
-        _module.ExternalVariables.Add(externVar);
+        var existing = _module.ExternalVariables.FirstOrDefault(variable => variable.Name == name);
+        if (existing != null)
+        {
+            existing.Type = type;
+            existing.Address = address;
+            return;
+        }
+
+        _module.ExternalVariables.Add(new IrExternalVariable(name, type, address));
     }
 
     private void RegisterEnum(NovusParser.EnumDeclarationContext context)
@@ -1236,7 +1244,8 @@ public partial class IrBuilder
                             selfType = IrVoidType.Instance; // Placeholder
                         }
 
-                        parameters.Add(new IrParameter("self", selfType));
+                        parameters.Add(new IrParameter("self", selfType,
+                            isConsuming: selfParam.KW_CONSUMING() != null));
                     }
 
                     // Regular parameters
@@ -1298,7 +1307,7 @@ public partial class IrBuilder
 
         foreach (var attrCtx in attributeContexts)
         {
-            var attrName = attrCtx.IDENTIFIER().GetText();
+            var attrName = attrCtx.attributeName().GetText();
             var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath ?? "<unknown>", attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
 
             if (attrName == Novus.SemanticAnalysis.KnownAttributes.StackSize)
@@ -1383,7 +1392,7 @@ public partial class IrBuilder
                     foreach (var argCtx in attrCtx.attributeArgList().attributeArg())
                     {
                         var expr = argCtx.expression();
-                        var exprText = expr.GetText();
+                        var exprText = argCtx.KW_STATIC() != null ? "static" : expr.GetText();
 
                         // Simple value extraction
                         object? value = null;
@@ -1440,7 +1449,7 @@ public partial class IrBuilder
 
         foreach (var attrCtx in attributeContexts)
         {
-            var attrName = attrCtx.IDENTIFIER().GetText();
+            var attrName = attrCtx.attributeName().GetText();
             // Simple location - just use line/column from token
             var errorLocation = new Novus.Diagnostics.SourceLocation(_inputFilePath ?? "<unknown>", attrCtx.Start.Line, attrCtx.Start.Column, 0, "");
             var attr = new Novus.SemanticAnalysis.AttributeInfo(attrName, errorLocation);
@@ -1451,7 +1460,7 @@ public partial class IrBuilder
                 foreach (var argCtx in attrCtx.attributeArgList().attributeArg())
                 {
                     var expr = argCtx.expression();
-                    var exprText = expr.GetText();
+                    var exprText = argCtx.KW_STATIC() != null ? "static" : expr.GetText();
 
                     // Simple value extraction
                     object? value = null;

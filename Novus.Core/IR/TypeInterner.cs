@@ -14,6 +14,7 @@ public class TypeInterner
 {
     // Caches for different type kinds
     private readonly Dictionary<(IrType, int), IrArrayType> _arrayTypes = new();
+    private readonly Dictionary<(IrType, string), IrArrayType> _symbolicArrayTypes = new();
     private readonly Dictionary<IrType, IrPointerType> _pointerTypes = new();
     private readonly Dictionary<IrType, IrReferenceType> _referenceTypes = new();
     private readonly Dictionary<IrType, IrMutReferenceType> _mutReferenceTypes = new();
@@ -35,6 +36,17 @@ public class TypeInterner
 
         var newType = new IrArrayType(elementType, length);
         _arrayTypes[key] = newType;
+        return newType;
+    }
+
+    public IrArrayType GetArrayType(IrType elementType, string lengthParameter)
+    {
+        var key = (elementType, lengthParameter);
+        if (_symbolicArrayTypes.TryGetValue(key, out var cached))
+            return cached;
+
+        var newType = new IrArrayType(elementType, lengthParameter);
+        _symbolicArrayTypes[key] = newType;
         return newType;
     }
 

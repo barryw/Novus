@@ -1,0 +1,13 @@
+from std::core import Result
+from std::os::device import DriverLoadError, load_device_driver
+from std::test::test import expect_true
+
+// A missing file must fail before any Resident initialization is attempted.
+@test("missing drivers fail before Resident initialization")
+pub fn test_missing_driver_is_safe() {
+    let failed_safely = match load_device_driver("T:novus-no-such-driver.device") {
+        Result::Err(DriverLoadError::LoadFailed) => true,
+        _ => false,
+    }
+    expect_true(failed_safely, "missing driver returns LoadFailed")
+}

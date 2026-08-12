@@ -45,6 +45,11 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
                 _expressions.Clear();
                 _memberLoads.Clear();
             }
+            if (instruction is IrBranch or IrConditionalBranch or IrReturn or IrLabel)
+            {
+                _expressions.Clear();
+                _memberLoads.Clear();
+            }
             return rewritten;
         }
 

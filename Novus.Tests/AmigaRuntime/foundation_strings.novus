@@ -1,6 +1,6 @@
 // Target-executed conformance tests for literals, Str, String, and interpolation.
 
-from std::strings::core import Str, String
+from std::strings::core import FixedCString, FixedString, Str, String, StringError
 from std::test::test import expect, expect_true
 
 fn takes_str(value: Str) -> u32 {
@@ -11,8 +11,8 @@ fn takes_str(value: Str) -> u32 {
 pub fn foundation_string_literals() {
     let value: Str = "Novus"
     expect(value.len == 5u32, "literal length")
-    expect(value.ptr[0] == 'N', "first byte")
-    expect(value.ptr[4] == 's', "last byte")
+    expect(value.as_ptr()[0] == 'N', "first byte")
+    expect(value.as_ptr()[4] == 's', "last byte")
 }
 
 @test("string literals coerce into Str parameters")
@@ -46,10 +46,43 @@ pub fn foundation_owned_string() {
     }
 }
 
+@test("const-sized strings enforce capacity and C termination")
+pub fn foundation_fixed_strings() {
+    match FixedString::<5>::new_from_str("Novus") {
+        Ok(value) => expect_true(value.as_str().equals("Novus"), "fixed contents"),
+        Err(_) => expect(false, "fixed string should fit"),
+    }
+
+    match FixedCString::<4>::new_from_str("SYS:") {
+        Ok(value) => {
+            expect_true(value.as_str().equals("SYS:"), "C string contents")
+            expect(value.as_cstr()[4] == 0u8, "full C string remains terminated")
+        },
+        Err(_) => expect(false, "C string should fit exactly"),
+    }
+
+    match FixedCString::<3>::new_from_str("four") {
+        Err(StringError::TooLong(4)) => expect(true, "overflow rejected"),
+        _ => expect(false, "overlong C string must fail"),
+    }
+}
+
 @test("f-string interpolation composes Display values")
 pub fn foundation_fstrings() {
     let language: Str = "Novus"
     let cpu: i32 = 68020
     let message = f"{language} {cpu}"
     expect_true(message.equals("Novus 68020"), "interpolated contents")
+}
+
+@test("for-in advances stateful Iterator values")
+pub fn foundation_iterator_for_in() {
+    var count = 0u32
+    var total = 0u32
+    for part in "a,bb,ccc".split(',') {
+        count++
+        total = total + part.len()
+    }
+    expect(count == 3u32, "iterator item count")
+    expect(total == 6u32, "iterator yielded values")
 }

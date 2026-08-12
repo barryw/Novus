@@ -4,12 +4,11 @@
 	section	__novus_library_not_found,code
 	xdef	___novus_library_not_found
 	xref	_SysBase
-	xref	_DOSBase
 
 ___novus_library_not_found:
-	movem.l	d4-d7/a2-a4/a6,-(sp)
-	movea.l	36(sp),a4		; library name
-	move.l	40(sp),d6		; minimum version
+	movem.l	d6-d7/a2-a4/a6,-(sp)
+	movea.l	28(sp),a4		; library name
+	move.l	32(sp),d6		; minimum version
 	movea.l	4.w,a0
 	tst.b	294(a0)		; ExecBase.IDNestCnt
 	bge	.alert
@@ -17,29 +16,6 @@ ___novus_library_not_found:
 	bge	.alert
 	tst.l	276(a0)		; ExecBase.ThisTask
 	beq	.alert
-
-	move.l	_DOSBase,d0
-	beq.s	.try_requester
-	movea.l	d0,a6
-	jsr	-60(a6)		; Output()
-	move.l	d0,d5
-	beq.s	.try_requester
-	moveq	#0,d4
-.name_length:
-	tst.b	(a4,d4.l)
-	beq.s	.write_report
-	addq.l	#1,d4
-	bra.s	.name_length
-.write_report:
-	move.l	d5,d1
-	lea	.report_prefix,a0
-	move.l	a0,d2
-	moveq	#29,d3
-	jsr	-48(a6)		; Write()
-	move.l	d5,d1
-	move.l	a4,d2
-	move.l	d4,d3
-	jsr	-48(a6)
 
 .try_requester:
 	movea.l	_SysBase,a6
@@ -70,7 +46,7 @@ ___novus_library_not_found:
 	jsr	-108(a6)		; Alert()
 
 .done:
-	movem.l	(sp)+,d4-d7/a2-a4/a6
+	movem.l	(sp)+,d6-d7/a2-a4/a6
 	rts
 
 	cnop	0,4
@@ -78,8 +54,6 @@ ___novus_library_not_found:
 	dc.l	20,0,.title,.text,.ok
 .intuition_name:
 	dc.b	'intuition.library',0
-.report_prefix:
-	dc.b	'NOVUS_RUNTIME_ERROR',10,'Library: ',0
 .title:
 	dc.b	'Novus failure',0
 .text:

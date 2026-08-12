@@ -85,7 +85,7 @@ fn test_option_helpers() -> bool {
 
     // Test Option::contains
     let opt: Option<i32> = Option::Some(42)
-    if !opt.contains(42) {
+    if !opt.contains(&42) {
         write("FAIL: Option::contains returned false for matching value\n")
         return false
     }

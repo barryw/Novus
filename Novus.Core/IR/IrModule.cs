@@ -312,6 +312,22 @@ public class IrModule
         return null;
     }
 
+    public string? FindTraitMethod(string typeName, string traitName, string methodName)
+    {
+        var trait = GetTrait(traitName);
+        if (trait?.GetMethod(methodName) == null)
+            return null;
+
+        foreach (var traitImpl in GetTraitImplsForType(typeName))
+        {
+            var baseTraitName = traitImpl.TraitName.Split('<', 2)[0];
+            if (baseTraitName == traitName)
+                return traitImpl.GetMangledMethodName(methodName);
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Find trait implementation for a parameterized generic trait
     /// Returns the mangled convert method name if found
@@ -389,25 +405,8 @@ public class IrModule
     {
         if (type is IrStructType structType)
         {
-            // For monomorphized types (e.g., Vec<bool>), check both:
-            // 1. Exact match using CacheKey (e.g., "Vec<bool>")
-            // 2. Generic base type match (e.g., "Vec" with generic impl)
-
-            // First try exact match
-            var typeName = structType.CacheKey ?? structType.StructName;
-            if (TypeImplementsDrop(typeName))
-            {
-                return true;
-            }
-
-            // If that fails and this is a monomorphized type, check if the base generic type has a Drop impl
-            if (structType.CacheKey != null)
-            {
-                // Check base struct name (e.g., "Vec" for "Vec<bool>")
-                return TypeImplementsDrop(structType.StructName);
-            }
-
-            return false;
+            return StructImplementsDrop(structType) ||
+                   structType.Fields.Any(field => TypeImplementsDrop(field.Type));
         }
 
         // Tuples need Drop if ANY of their elements implement Drop
@@ -422,8 +421,28 @@ public class IrModule
             return EnumNeedsDrop(enumType);
         }
 
+        if (type is IrArrayType arrayType)
+        {
+            return TypeImplementsDrop(arrayType.ElementType);
+        }
+
         // Primitives, pointers, etc. don't need cleanup
         return false;
+    }
+
+    /// <summary>
+    /// Check whether a struct declares Drop itself, excluding structural field cleanup.
+    /// </summary>
+    public bool StructImplementsDrop(IrStructType structType)
+    {
+        if (structType.ImplementsDrop)
+            return true;
+
+        var typeName = structType.CacheKey ?? structType.StructName;
+        if (TypeImplementsDrop(typeName))
+            return true;
+
+        return structType.CacheKey != null && TypeImplementsDrop(structType.StructName);
     }
 
     /// <summary>
@@ -613,17 +632,20 @@ public class IrParameter : Novus.SemanticAnalysis.IParameterInfo
     public string Name { get; set; }
     public IrType Type { get; set; }
     public bool IsVariadic { get; set; }  // true if this is a variadic parameter (...)
+    public bool IsConsuming { get; set; } // true if ownership is transferred to the callee
     public string? Register { get; set; }
 
     // IParameterInfo implementation
     string Novus.SemanticAnalysis.IParameterInfo.ParameterName => Name;
     IrType Novus.SemanticAnalysis.IParameterInfo.ParameterType => Type;
 
-    public IrParameter(string name, IrType type, bool isVariadic = false, string? register = null)
+    public IrParameter(string name, IrType type, bool isVariadic = false, string? register = null,
+        bool isConsuming = false)
     {
         Name = name;
         Type = type;
         IsVariadic = isVariadic;
+        IsConsuming = isConsuming;
         Register = register;
     }
 }
@@ -1294,6 +1316,8 @@ public class IrArrayType : IrType
 {
     public IrType ElementType { get; }
     public int Length { get; }
+    public string? LengthParameter { get; }
+    public bool HasSymbolicLength => LengthParameter != null;
 
     public IrArrayType(IrType elementType, int length)
     {
@@ -1301,8 +1325,17 @@ public class IrArrayType : IrType
         Length = length;
     }
 
-    public override int SizeInBytes => ElementType.SizeInBytes * Length;
-    public override string Name => $"[{Length}]{ElementType.Name}";
+    public IrArrayType(IrType elementType, string lengthParameter)
+    {
+        ElementType = elementType;
+        Length = -2;
+        LengthParameter = lengthParameter;
+    }
+
+    public override int SizeInBytes => HasSymbolicLength
+        ? throw new InvalidOperationException("Const-generic array lengths must be monomorphized before layout")
+        : ElementType.SizeInBytes * Length;
+    public override string Name => $"[{LengthParameter ?? Length.ToString()}]{ElementType.Name}";
 }
 
 /// <summary>
@@ -1791,7 +1824,8 @@ public class IrStructType : IrType
         }
 
         // Build cache key (e.g., "Vec<i32>")
-        var cacheKey = $"{genericStruct.StructName}<{string.Join(",", typeArgs.Select(t => t.Name))}>";
+        var cacheKey = $"{genericStruct.StructName}<{string.Join(",", typeArgs.Select(t =>
+            t is IrConstGenericParam constParam ? constParam.ParameterName : t.Name))}>";
 
         // IMPORTANT: Pass typeArgs as typeArguments so InstantiateGenericMethod can use them
         return new IrStructType(genericStruct.StructName, monomorphizedFields, new List<string>(), cacheKey,
@@ -1856,9 +1890,17 @@ public class IrStructType : IrType
         if (type is IrArrayType arrayType)
         {
             var substitutedElement = SubstituteType(arrayType.ElementType, substitutions);
+            if (arrayType.LengthParameter != null &&
+                substitutions.TryGetValue(arrayType.LengthParameter, out var lengthType) &&
+                lengthType is IrConstGenericValue lengthValue)
+            {
+                return new IrArrayType(substitutedElement, checked((int)lengthValue.AsU32()));
+            }
             if (substitutedElement != arrayType.ElementType)
             {
-                return new IrArrayType(substitutedElement, arrayType.Length);
+                return arrayType.LengthParameter == null
+                    ? new IrArrayType(substitutedElement, arrayType.Length)
+                    : new IrArrayType(substitutedElement, arrayType.LengthParameter);
             }
             return type;
         }

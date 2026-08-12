@@ -32,7 +32,7 @@ fn run() -> Result<(), IntuitionError> {
     forever {
         match window.wait_event() {
             GadToolsEvent::Close => { break },
-            GadToolsEvent::GadgetUp(QUIT_BUTTON) => { break },
+            GadToolsEvent::GadgetUp(QUIT_BUTTON, _) => { break },
             GadToolsEvent::MenuPick(0, 0) => { break },
             _ => {},
         }

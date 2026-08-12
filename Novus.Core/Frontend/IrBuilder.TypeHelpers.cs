@@ -78,7 +78,8 @@ public partial class IrBuilder
         }
         if (type is IrArrayType arrayType)
         {
-            return TypeContainsGeneric(arrayType.ElementType, genericParamName);
+            return arrayType.LengthParameter == genericParamName ||
+                   TypeContainsGeneric(arrayType.ElementType, genericParamName);
         }
         if (type is IrStructType structType)
         {
@@ -193,7 +194,7 @@ public partial class IrBuilder
         text = text.Replace("_", "");
 
         // Extract type suffix and numeric part
-        var (numericPart, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
+        var (numericPart, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
 
         // Parse the numeric part
         return (long.Parse(numericPart), type);
@@ -233,7 +234,7 @@ public partial class IrBuilder
         text = text[1..].Replace("_", "");
 
         // Extract type suffix and binary part
-        var (binaryText, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
+        var (binaryText, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
 
         // Parse binary string to long
         var value = Convert.ToInt64(binaryText, 2);
@@ -254,7 +255,7 @@ public partial class IrBuilder
         }
 
         // Extract type suffix and hex part
-        var (hexText, type) = ExtractIntegerTypeSuffix(text, IrIntType.I32);
+        var (hexText, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
 
         // Parse hex string to long
         var value = Convert.ToInt64(hexText, 16);
@@ -391,7 +392,8 @@ public partial class IrBuilder
                     paramCtx.parameterRegisterBinding().IDENTIFIER().GetText(), out register);
             }
 
-            parameters.Add(new IrParameter(paramName, paramType, register: register));
+            parameters.Add(new IrParameter(paramName, paramType, register: register,
+                isConsuming: paramCtx.KW_CONSUMING() != null));
         }
     }
 

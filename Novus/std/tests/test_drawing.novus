@@ -18,7 +18,7 @@ pub fn test_draw_context_from_window() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     expect(true, "DrawContext created successfully")
@@ -34,7 +34,7 @@ pub fn test_draw_context_from_window() {
 
 @test("DrawContext::from_rastport rejects null pointer")
 pub fn test_draw_context_null_rastport() {
-    let ctx_result = DrawContext::from_rastport((*RastPort)0)
+    let ctx_result = unsafe { DrawContext::borrow_raw((*RastPort)0) }
     match ctx_result {
         Result::Ok(_) => expect(false, "should reject null RastPort"),
         Result::Err(err) => {
@@ -54,7 +54,7 @@ pub fn test_draw_pen_get_set() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     // Set pen to color 1
@@ -80,7 +80,7 @@ pub fn test_draw_bg_pen_get_set() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.bg_pen(2)
@@ -100,7 +100,7 @@ pub fn test_draw_mode_get_set() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.mode(DrawMode::Jam2)
@@ -127,7 +127,7 @@ pub fn test_draw_pixel_readback() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     // Clear to color 0
@@ -158,7 +158,7 @@ pub fn test_draw_pixel_at() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -187,7 +187,7 @@ pub fn test_draw_line_horizontal() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -217,7 +217,7 @@ pub fn test_draw_line_vertical() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -248,7 +248,7 @@ pub fn test_draw_rect_fill() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -284,7 +284,7 @@ pub fn test_draw_fill_rect() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -313,7 +313,7 @@ pub fn test_draw_clear() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     // Clear to color 1
@@ -341,7 +341,7 @@ pub fn test_draw_rect_erase() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     // Fill with color 1
@@ -375,7 +375,7 @@ pub fn test_draw_move_line_to() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)
@@ -445,7 +445,7 @@ pub fn test_draw_mode_complement() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_window(w.handle())
+            let ctx_result = DrawContext::from_rastport(w.rastport())
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.clear(0)

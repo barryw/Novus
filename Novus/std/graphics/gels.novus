@@ -1036,7 +1036,7 @@ impl SequenceHandle {
 
         unsafe {
             let sequences = (*builder_ptr).sequences
-            let seq = &sequences[seq_idx]
+            let seq = &var sequences[seq_idx]
             let frame_count = seq.frame_count
             let frame_capacity = seq.frame_capacity
 
@@ -1052,7 +1052,7 @@ impl SequenceHandle {
 
             // Add frame with defaults
             let frames = seq.frames
-            let frame = &frames[frame_count]
+            let frame = &var frames[frame_count]
             *frame.width_pixels = width_pixels
             *frame.height = height
             *frame.depth = depth
@@ -1066,7 +1066,7 @@ impl SequenceHandle {
             *frame.hit_mask = 0
 
             // Increment frame count
-            let seq_mut = &sequences[seq_idx]
+            let seq_mut = &var sequences[seq_idx]
             *seq_mut.frame_count = frame_count + 1u32
 
             return FrameHandle {
@@ -1084,7 +1084,7 @@ impl SequenceHandle {
         let seq_idx = self.sequence_idx
         unsafe {
             let sequences = (*builder_ptr).sequences
-            let seq = &sequences[seq_idx]
+            let seq = &var sequences[seq_idx]
             *seq.is_looping = true
         }
     }
@@ -1096,7 +1096,7 @@ impl SequenceHandle {
         let seq_idx = self.sequence_idx
         unsafe {
             let sequences = (*builder_ptr).sequences
-            let seq = &sequences[seq_idx]
+            let seq = &var sequences[seq_idx]
             *seq.chain_to = (i32)target_sequence
         }
     }
@@ -1120,7 +1120,7 @@ impl FrameHandle {
             let sequences = (*builder_ptr).sequences
             let seq = &sequences[seq_idx]
             let frames = seq.frames
-            let frame = &frames[frm_idx]
+            let frame = &var frames[frm_idx]
             *frame.duration = ticks
         }
     }
@@ -1135,7 +1135,7 @@ impl FrameHandle {
             let sequences = (*builder_ptr).sequences
             let seq = &sequences[seq_idx]
             let frames = seq.frames
-            let frame = &frames[frm_idx]
+            let frame = &var frames[frm_idx]
             *frame.x_trans = x_trans
             *frame.y_trans = y_trans
         }
@@ -1151,7 +1151,7 @@ impl FrameHandle {
             let sequences = (*builder_ptr).sequences
             let seq = &sequences[seq_idx]
             let frames = seq.frames
-            let frame = &frames[frm_idx]
+            let frame = &var frames[frm_idx]
             *frame.c_routine = routine
         }
     }
@@ -1166,7 +1166,7 @@ impl FrameHandle {
             let sequences = (*builder_ptr).sequences
             let seq = &sequences[seq_idx]
             let frames = seq.frames
-            let frame = &frames[frm_idx]
+            let frame = &var frames[frm_idx]
             *frame.me_mask = me_mask
             *frame.hit_mask = hit_mask
         }
@@ -1240,7 +1240,7 @@ impl AnimObBuilder {
 
         unsafe {
             let sequences = self.sequences
-            let seq = &sequences[seq_idx]
+            let seq = &var sequences[seq_idx]
             *seq.frames = (*FrameData)frame_ptr
             *seq.frame_count = 0
             *seq.frame_capacity = MAX_FRAMES_PER_SEQUENCE
@@ -1467,7 +1467,7 @@ impl AnimObBuilder {
 
                 // Track for cleanup
                 unsafe {
-                    let owned_entry = &owned_data[comp_idx]
+                    let owned_entry = &var owned_data[comp_idx]
                     *owned_entry.comp = comp
                     *owned_entry.bob = bob
                     *owned_entry.vsprite = vsprite
@@ -1613,20 +1613,17 @@ impl AnimObHandle {
                     let next = (*ob).NextOb
 
                     if prev != null {
-                        let prev_deref = *prev
-                        *prev_deref.NextOb = next
+                        *prev.NextOb = next
                     } else {
                         // We were the head
                         gels.anim_key = next
                     }
                     if next != null {
-                        let next_deref = *next
-                        *next_deref.PrevOb = prev
+                        *next.PrevOb = prev
                     }
 
-                    let ob_deref = *ob
-                    *ob_deref.PrevOb = null
-                    *ob_deref.NextOb = null
+                    *ob.PrevOb = null
+                    *ob.NextOb = null
                 }
 
                 gels.dec_active()

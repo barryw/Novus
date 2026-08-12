@@ -1,0 +1,78 @@
+from std::core import Option, Result
+from std::os::bptr import BPtr, BPtrError
+from std::os::doslist import DeviceProcess, DosDeviceList
+from std::strings::core import FixedCString
+from std::test::test import expect
+
+pub enum ProbeError {
+    Expected,
+    LockFailed,
+}
+
+fn leave_locked_scope_on_error() -> Result<(), ProbeError> {
+    let devices = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Result::Err(ProbeError::LockFailed),
+    }
+    var entries = devices.iter()
+    let _first = entries.next()
+    return Result::Err(ProbeError::Expected)
+}
+
+@test("BPTR conversion and DOS device iteration are safe")
+pub fn dos_device_list() {
+    match BPtr::<u8>::from_raw(0i32) {
+        Result::Ok(value) => expect(value.is_null(), "zero BPTR is null"),
+        Result::Err(_) => expect(false, "zero BPTR accepted"),
+    }
+    match BPtr::<u8>::from_raw_u32($40000000u32) {
+        Result::Err(BPtrError::OutOfRange) => {},
+        _ => expect(false, "overflowing BPTR rejected"),
+    }
+
+    match leave_locked_scope_on_error() {
+        Result::Err(ProbeError::Expected) => {},
+        _ => expect(false, "early Result error returned"),
+    }
+
+    // Reacquiring proves the first guard unlocked while propagating Err.
+    let sys_name = match FixedCString::<4>::new_from_str("SYS:") {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "SYS: fits its fixed C string")
+            return
+        },
+    }
+    let boot_process = match DeviceProcess::resolve(sys_name.as_cstr_view()) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "SYS: resolves to its DOS process")
+            return
+        },
+    }
+
+    match DosDeviceList::lock() {
+        Result::Ok(devices) => {
+            var entries = devices.iter()
+            var count = 0u32
+            var boot_entry_found = false
+            forever {
+                match entries.next() {
+                    Option::Some(entry) => {
+                        match entry.name() {
+                            Option::Some(name) => expect(name.len() > 0u32, "device name is bounded"),
+                            Option::None => expect(false, "device has a name"),
+                        }
+                        if entry.is_handled_by(&boot_process) { boot_entry_found = true }
+                        let _startup = entry.startup()
+                        count++
+                    },
+                    Option::None => { break },
+                }
+            }
+            expect(count > 0u32, "DOS device list is not empty")
+            expect(boot_entry_found, "SYS: handler belongs to a DOS device entry")
+        },
+        Result::Err(_) => expect(false, "DOS device list lock reacquired"),
+    }
+}

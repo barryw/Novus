@@ -62,6 +62,23 @@ fn calc() -> u32 {
     }
 
     [Fact]
+    public void Parse_NewlineAfterInfixOperator_ContinuesExpression()
+    {
+        var source = @"
+fn test(a: u32, b: u32) -> bool {
+    return a +
+        1 == b &&
+        b >
+        0
+}";
+        var parser = CreateParser(source);
+        var tree = parser.compilationUnit();
+
+        Assert.Equal(0, parser.NumberOfSyntaxErrors);
+        Assert.Single(tree.functionDeclaration());
+    }
+
+    [Fact]
     public void Parse_IntegerLiteralWithSuffix_Success()
     {
         var source = @"

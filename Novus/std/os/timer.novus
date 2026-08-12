@@ -212,7 +212,7 @@ impl Duration {
 /// Example:
 /// ```novus
 /// // Create timer and delay
-/// let timer = TimerHandle::microhz()?
+/// var timer = TimerHandle::microhz()?
 /// timer.delay(Duration::millis(100))?
 ///
 /// // Get current time
@@ -281,7 +281,7 @@ impl TimerHandle {
     }
 
     /// Get the current system time
-    pub fn get_time(&self) -> Result<Duration, TimerError> {
+    pub fn get_time(&var self) -> Result<Duration, TimerError> {
         self.timereq.tr_node.io_Command = TR_GETSYSTIME
 
         let ioreq_ptr = &self.timereq.tr_node
@@ -296,7 +296,7 @@ impl TimerHandle {
 
     /// Get the current system time as raw microseconds
     /// Returns 0 on error - useful for benchmarking where error handling would add overhead
-    pub fn get_micros(&self) -> u32 {
+    pub fn get_micros(&var self) -> u32 {
         self.timereq.tr_node.io_Command = TR_GETSYSTIME
 
         let ioreq_ptr = &self.timereq.tr_node
@@ -316,10 +316,10 @@ impl TimerHandle {
     ///
     /// Example:
     /// ```novus
-    /// let timer = TimerHandle::microhz()?
+    /// var timer = TimerHandle::microhz()?
     /// timer.delay(Duration::millis(500))?  // Wait 500ms
     /// ```
-    pub fn delay(&self, duration: Duration) -> Result<(), TimerError> {
+    pub fn delay(&var self, duration: Duration) -> Result<(), TimerError> {
         self.timereq.tr_node.io_Command = TR_ADDREQUEST
         self.timereq.tr_time = duration.to_timeval()
 
@@ -339,12 +339,12 @@ impl TimerHandle {
     ///
     /// Example:
     /// ```novus
-    /// let timer = TimerHandle::microhz()?
+    /// var timer = TimerHandle::microhz()?
     /// let now = timer.get_time()?
     /// let target = now.add(Duration::secs(5))
     /// timer.wait_until(target)?  // Wait until 5 seconds from now
     /// ```
-    pub fn wait_until(&self, time: Duration) -> Result<(), TimerError> {
+    pub fn wait_until(&var self, time: Duration) -> Result<(), TimerError> {
         // Get current time
         let current_time = self.get_time()?
 
@@ -366,10 +366,10 @@ impl TimerHandle {
     ///
     /// Example:
     /// ```novus
-    /// let timer = TimerHandle::vblank()?
+    /// var timer = TimerHandle::vblank()?
     /// timer.wait_frames(60)?  // Wait ~1 second (PAL) or ~1 second (NTSC)
     /// ```
-    pub fn wait_frames(&self, count: u32) -> Result<(), TimerError> {
+    pub fn wait_frames(&var self, count: u32) -> Result<(), TimerError> {
         // Each VBlank is one frame
         // We delay for 'count' seconds worth of VBlanks
         // Since UNIT_VBLANK counts in VBlanks, secs=count gives us count VBlanks
@@ -432,7 +432,7 @@ impl Drop for TimerHandle {
 /// delay(Duration::millis(500))?  // Wait 500ms
 /// ```
 pub fn delay(duration: Duration) -> Result<(), TimerError> {
-    let timer = TimerHandle::microhz()?
+    var timer = TimerHandle::microhz()?
     return timer.delay(duration)
 }
 
@@ -447,7 +447,7 @@ pub fn delay(duration: Duration) -> Result<(), TimerError> {
 /// let current_time = now()?
 /// ```
 pub fn now() -> Result<Duration, TimerError> {
-    let timer = TimerHandle::microhz()?
+    var timer = TimerHandle::microhz()?
     return timer.get_time()
 }
 
@@ -502,7 +502,7 @@ impl Interval {
     /// The interval fires the first time `tick()` is called after `duration`
     /// has elapsed since creation.
     pub fn new(interval: Duration) -> Result<Interval, TimerError> {
-        let timer = TimerHandle::microhz()?
+        var timer = TimerHandle::microhz()?
         let start = timer.get_time()?
         return Result::Ok(Interval {
             timer: timer,
@@ -537,7 +537,7 @@ impl Interval {
     }
 
     /// Get the time elapsed since the last tick
-    pub fn elapsed(&self) -> Result<Duration, TimerError> {
+    pub fn elapsed(&var self) -> Result<Duration, TimerError> {
         let current = self.timer.get_time()?
         return Result::Ok(current.sub(self.last_tick))
     }

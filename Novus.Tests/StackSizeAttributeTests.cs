@@ -21,6 +21,7 @@ public class StackSizeAttributeTests
         );
         var tree = parser.compilationUnit();
         var builder = new IrBuilder(skipAutoImports: true);
+        builder.SetInputFilePath("test.novus");
         builder.BuildModule(tree);
         return builder;
     }
@@ -148,5 +149,20 @@ fn main() -> i32 {
         Assert.False(builder.Diagnostics.HasErrors);
         // Last one wins
         Assert.Equal(131072, builder.Module.StackSize);
+    }
+
+    [Fact]
+    public void StackSizeAttribute_WarnsWhenOneFrameConsumesMostOfStack()
+    {
+        var builder = BuildModule("""
+            #[stack_size(8192)]
+            fn main() -> i32 {
+                let buffer = [0u8; 5000]
+                return (i32)buffer[0]
+            }
+            """);
+
+        Assert.Contains(builder.Diagnostics.Diagnostics,
+            diagnostic => diagnostic.Code == ErrorCodes.UnsafeStackBudget);
     }
 }

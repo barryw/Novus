@@ -30,6 +30,8 @@ pub fn test_memblock_alloc_zero() {
         Result::Ok(var block) => {
             expect_eq(block.size(), 0u32, "zero size allocation")
             expect_true(block.is_empty(), "zero block is empty")
+            expect_eq(block.as_bytes().len(), 0u32, "zero block has an empty byte view")
+            expect_eq(block.as_mut_bytes().len(), 0u32, "zero block has an empty mutable byte view")
             // Drop will free automatically
         },
         Result::Err(_) => expect(false, "zero allocation should succeed")

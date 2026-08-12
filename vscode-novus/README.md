@@ -66,7 +66,8 @@ This extension requires the Novus Language Server to function. The language serv
 The packaged extension includes the matching language server and standard library.
 Development checkouts fall back to the current .NET 10 build in this repository.
 
-The extension searches for the language server in these locations (in order):
+The extension searches these locations and uses the newest available server, so a
+development build cannot be shadowed by an older bundled copy:
 
 1. `server/Novus.LanguageServer` inside the installed extension
 2. `../Novus.LanguageServer/bin/Debug/net10.0/Novus.LanguageServer` in a development checkout

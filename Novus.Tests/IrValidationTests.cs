@@ -1,6 +1,7 @@
 using Antlr4.Runtime;
 using Novus.Frontend;
 using Novus.IR;
+using Novus.IR.Analysis;
 using Novus.Parser;
 using Xunit;
 
@@ -325,5 +326,20 @@ pub fn with_branches(x: i32) -> i32 {
 
         Assert.Equal("variable", store.VariableName);
         Assert.Equal(value, store.Value);
+    }
+
+    [Fact]
+    public void DefUseAnalysis_FindsVariablesNestedInTupleValues()
+    {
+        var tupleType = new IrTupleType([IrIntType.I32, IrIntType.I32]);
+        var function = new IrFunction("pair", tupleType);
+        var block = new IrBasicBlock("entry");
+        block.Instructions.Add(new IrBinaryOp("%sum", IrBinaryOp.OpKind.Add,
+            new IrConstant(1, IrIntType.I32), new IrConstant(2, IrIntType.I32), IrIntType.I32));
+        block.Instructions.Add(new IrReturn(new IrTupleLiteral(tupleType,
+            [new IrVariable("%sum", IrIntType.I32), new IrConstant(4, IrIntType.I32)])));
+        function.BasicBlocks.Add(block);
+
+        Assert.True(DefUseAnalysis.Analyze(function).IsUsed("%sum"));
     }
 }

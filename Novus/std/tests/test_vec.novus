@@ -142,21 +142,18 @@ pub fn test_vec_get() {
     let _ = v.push(20)
     let _ = v.push(30)
 
-    let g0 = v.get(0u32)
-    match g0 {
-        Some(val) => expect_eq(val, 10, "element 0 is 10"),
+    match v.get(0u32) {
+        Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         None => expect(false, "should have returned value")
     }
 
-    let g1 = v.get(1u32)
-    match g1 {
-        Some(val) => expect_eq(val, 20, "element 1 is 20"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 20, "element 1 is 20"),
         None => expect(false, "should have returned value")
     }
 
-    let g2 = v.get(2u32)
-    match g2 {
-        Some(val) => expect_eq(val, 30, "element 2 is 30"),
+    match v.get(2u32) {
+        Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         None => expect(false, "should have returned value")
     }
 
@@ -169,14 +166,12 @@ pub fn test_vec_get_oob() {
     let _ = v.push(10)
     let _ = v.push(20)
 
-    let g2 = v.get(2u32)
-    match g2 {
+    match v.get(2u32) {
         Some(_) => expect(false, "should return None for index 2"),
         None => expect(true, "correctly returned None")
     }
 
-    let g100 = v.get(100u32)
-    match g100 {
+    match v.get(100u32) {
         Some(_) => expect(false, "should return None for index 100"),
         None => expect(true, "correctly returned None")
     }
@@ -188,8 +183,7 @@ pub fn test_vec_get_oob() {
 pub fn test_vec_get_empty() {
     let v = Vec::<i32>::new()
 
-    let g = v.get(0u32)
-    match g {
+    match v.get(0u32) {
         Some(_) => expect(false, "should return None for empty vec"),
         None => expect(true, "correctly returned None")
     }
@@ -212,9 +206,8 @@ pub fn test_vec_set() {
         Err(_) => expect(false, "set should succeed")
     }
 
-    let g = v.get(1u32)
-    match g {
-        Some(val) => expect_eq(val, 200, "element 1 is now 200"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 200, "element 1 is now 200"),
         None => expect(false, "should have returned value")
     }
 
@@ -235,6 +228,23 @@ pub fn test_vec_set_oob() {
     v.drop()
 }
 
+@test("Vec::get_mut updates in place")
+pub fn test_vec_get_mut() {
+    var v = Vec::<i32>::new()
+    let _ = v.push(10)
+    let _ = v.push(20)
+
+    match v.get_mut(1u32) {
+        Some(value) => { *value = 42 },
+        None => expect(false, "element 1 should exist")
+    }
+
+    match v.get(1u32) {
+        Some(value) => expect_eq(*value, 42, "mutable borrow updates element"),
+        None => expect(false, "element 1 should exist")
+    }
+}
+
 // ============================================================================
 // Insert Tests
 // ============================================================================
@@ -252,21 +262,18 @@ pub fn test_vec_insert_beginning() {
     }
     expect_eq(v.len(), 3u32, "len is 3 after insert")
 
-    let g0 = v.get(0u32)
-    match g0 {
-        Some(val) => expect_eq(val, 10, "element 0 is 10"),
+    match v.get(0u32) {
+        Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         None => expect(false, "should have element 0")
     }
 
-    let g1 = v.get(1u32)
-    match g1 {
-        Some(val) => expect_eq(val, 20, "element 1 is 20"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 20, "element 1 is 20"),
         None => expect(false, "should have element 1")
     }
 
-    let g2 = v.get(2u32)
-    match g2 {
-        Some(val) => expect_eq(val, 30, "element 2 is 30"),
+    match v.get(2u32) {
+        Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         None => expect(false, "should have element 2")
     }
 
@@ -286,21 +293,18 @@ pub fn test_vec_insert_middle() {
     }
     expect_eq(v.len(), 3u32, "len is 3 after insert")
 
-    let g0 = v.get(0u32)
-    match g0 {
-        Some(val) => expect_eq(val, 10, "element 0 is 10"),
+    match v.get(0u32) {
+        Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         None => expect(false, "should have element 0")
     }
 
-    let g1 = v.get(1u32)
-    match g1 {
-        Some(val) => expect_eq(val, 20, "element 1 is 20"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 20, "element 1 is 20"),
         None => expect(false, "should have element 1")
     }
 
-    let g2 = v.get(2u32)
-    match g2 {
-        Some(val) => expect_eq(val, 30, "element 2 is 30"),
+    match v.get(2u32) {
+        Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         None => expect(false, "should have element 2")
     }
 
@@ -320,9 +324,8 @@ pub fn test_vec_insert_end() {
     }
     expect_eq(v.len(), 3u32, "len is 3 after insert")
 
-    let g = v.get(2u32)
-    match g {
-        Some(val) => expect_eq(val, 30, "element 2 is 30"),
+    match v.get(2u32) {
+        Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         None => expect(false, "should have element 2")
     }
 
@@ -363,15 +366,13 @@ pub fn test_vec_remove_beginning() {
 
     expect_eq(v.len(), 2u32, "len is 2 after remove")
 
-    let g0 = v.get(0u32)
-    match g0 {
-        Some(val) => expect_eq(val, 20, "element 0 is now 20"),
+    match v.get(0u32) {
+        Some(val) => expect_eq(*val, 20, "element 0 is now 20"),
         None => expect(false, "should have element 0")
     }
 
-    let g1 = v.get(1u32)
-    match g1 {
-        Some(val) => expect_eq(val, 30, "element 1 is now 30"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 30, "element 1 is now 30"),
         None => expect(false, "should have element 1")
     }
 
@@ -393,15 +394,13 @@ pub fn test_vec_remove_middle() {
 
     expect_eq(v.len(), 2u32, "len is 2 after remove")
 
-    let g0 = v.get(0u32)
-    match g0 {
-        Some(val) => expect_eq(val, 10, "element 0 is 10"),
+    match v.get(0u32) {
+        Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         None => expect(false, "should have element 0")
     }
 
-    let g1 = v.get(1u32)
-    match g1 {
-        Some(val) => expect_eq(val, 30, "element 1 is now 30"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 30, "element 1 is now 30"),
         None => expect(false, "should have element 1")
     }
 
@@ -476,14 +475,12 @@ pub fn test_vec_truncate() {
 
     expect_eq(v.len(), 3u32, "len is 3 after truncate")
 
-    let g2 = v.get(2u32)
-    match g2 {
-        Some(val) => expect_eq(val, 30, "element 2 is still 30"),
+    match v.get(2u32) {
+        Some(val) => expect_eq(*val, 30, "element 2 is still 30"),
         None => expect(false, "should have element 2")
     }
 
-    let g3 = v.get(3u32)
-    match g3 {
+    match v.get(3u32) {
         Some(_) => expect(false, "should not have element 3"),
         None => expect(true, "correctly no element 3")
     }
@@ -654,9 +651,8 @@ pub fn test_vec_with_capacity_push() {
             expect_eq(v.len(), 3u32, "len is 3")
             expect_true(v.capacity() >= 5u32, "capacity is at least 5")
 
-            let g = v.get(1u32)
-            match g {
-                Some(val) => expect_eq(val, 20, "element 1 is 20"),
+            match v.get(1u32) {
+                Some(val) => expect_eq(*val, 20, "element 1 is 20"),
                 None => expect(false, "should have element 1")
             }
 
@@ -680,9 +676,8 @@ pub fn test_vec_u32() {
 
     expect_eq(v.len(), 3u32, "len is 3")
 
-    let g = v.get(1u32)
-    match g {
-        Some(val) => expect_eq(val, 200u32, "element 1 is 200"),
+    match v.get(1u32) {
+        Some(val) => expect_eq(*val, 200u32, "element 1 is 200"),
         None => expect(false, "should have element 1")
     }
 
@@ -718,9 +713,8 @@ pub fn test_vec_bool() {
 
     expect_eq(v.len(), 3u32, "len is 3")
 
-    let g = v.get(1u32)
-    match g {
-        Some(val) => expect_false(val, "element 1 is false"),
+    match v.get(1u32) {
+        Some(val) => expect_false(*val, "element 1 is false"),
         None => expect(false, "should have element 1")
     }
 

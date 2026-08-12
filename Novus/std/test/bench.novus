@@ -120,12 +120,12 @@ pub struct BenchRunner {
 impl BenchRunner {
     /// Create a new benchmark runner
     pub fn new() -> Result<BenchRunner, TimerError> {
-        let timer = TimerHandle::microhz()?
+        var timer = TimerHandle::microhz()?
         return Result::Ok(BenchRunner { timer: timer })
     }
 
     /// Get current time in microseconds
-    fn now_us(&self) -> u32 {
+    fn now_us(&var self) -> u32 {
         match self.timer.get_time() {
             Result::Ok(d) => {
                 let micros = d.as_micros()
@@ -146,7 +146,7 @@ impl BenchRunner {
     /// Run a benchmark with automatic iteration count
     /// Runs until we have stable measurements (at least 100ms total or 100 iterations)
     @suppress("W0001", "Integer comparisons are safe")
-    pub fn run_auto(&self, func: fn()) -> BenchStats {
+    pub fn run_auto(&var self, func: fn()) -> BenchStats {
         // Warmup: run a few times to warm caches
         while var i < 3 {
             func()
@@ -179,7 +179,7 @@ impl BenchRunner {
     /// Times all iterations together to avoid microsecond-level granularity issues
     /// on fast operations.
     @suppress("W0001", "Integer comparisons are safe")
-    pub fn run_fixed(&self, func: fn(), iterations: u32) -> BenchStats {
+    pub fn run_fixed(&var self, func: fn(), iterations: u32) -> BenchStats {
         // Warmup
         while var i < 3 {
             func()

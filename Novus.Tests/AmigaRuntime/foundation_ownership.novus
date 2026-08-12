@@ -21,7 +21,7 @@ fn make_token(id: i32) -> Token {
     return Token { id: id, active: true }
 }
 
-fn consume(token: Token) -> i32 {
+fn consume(consuming token: Token) -> i32 {
     return token.id
 }
 

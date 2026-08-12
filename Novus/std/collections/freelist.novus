@@ -590,7 +590,7 @@ impl<T> ObjectPoolFixed<T> {
     /// Get reference to object at index (for iteration)
     ///
     /// Returns None if index is out of bounds or slot is not allocated.
-    pub fn get(&self, idx: u32) -> Option<*T> {
+    pub fn get(&self, idx: u32) -> Option<&T> {
         if idx >= self.capacity {
             return Option::None
         }
@@ -598,13 +598,13 @@ impl<T> ObjectPoolFixed<T> {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + idx * self.element_size)
-        return Option::Some(ptr)
+        return Option::Some(unsafe { &*ptr })
     }
 
-    /// Get mutable pointer to object at index
+    /// Get a mutable reference to the object at index
     ///
     /// Returns None if index is out of bounds or slot is not allocated.
-    pub fn get_mut(&var self, idx: u32) -> Option<*T> {
+    pub fn get_mut(&var self, idx: u32) -> Option<&var T> {
         if idx >= self.capacity {
             return Option::None
         }
@@ -612,7 +612,7 @@ impl<T> ObjectPoolFixed<T> {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + idx * self.element_size)
-        return Option::Some(ptr)
+        return Option::Some(unsafe { &var *ptr })
     }
 }
 

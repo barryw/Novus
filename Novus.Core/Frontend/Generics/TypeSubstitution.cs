@@ -69,8 +69,16 @@ public static class TypeSubstitutionHelper
                 break;
 
             case IrArrayType baseArrayType when monomorphizedType is IrArrayType monoArrayType:
+                if (baseArrayType.LengthParameter != null &&
+                    !monoArrayType.HasSymbolicLength &&
+                    !substitutions.ContainsKey(baseArrayType.LengthParameter))
+                {
+                    substitutions[baseArrayType.LengthParameter] =
+                        new IrConstGenericValue(IrIntType.U32, (uint)monoArrayType.Length);
+                }
                 // Recurse into array element types
-                if (baseArrayType.Length == monoArrayType.Length)
+                if ((baseArrayType.LengthParameter != null && !monoArrayType.HasSymbolicLength) ||
+                    baseArrayType.Length == monoArrayType.Length)
                 {
                     ExtractGenericTypeMappingInternal(baseArrayType.ElementType, monoArrayType.ElementType, substitutions, visited);
                 }

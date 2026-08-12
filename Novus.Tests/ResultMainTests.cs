@@ -135,7 +135,7 @@ public class ResultMainTests
 
         Assert.False(builder.Diagnostics.HasErrors);
         Assert.Contains(function!.DeferredBlocks.SelectMany(block => block.Instructions),
-            instruction => instruction is IrCall { FunctionName: "Guard_Drop_drop" });
+            instruction => instruction is IrDropInPlace { ElementType: IrStructType { StructName: "Guard" } });
         Assert.Contains(function.BasicBlocks.Where(block => block.Label.StartsWith("try_err_"))
                 .SelectMany(block => block.Instructions),
             instruction => instruction is IrReturn);
@@ -173,7 +173,7 @@ public class ResultMainTests
     }
 
     [Fact]
-    public void ResultMatch_BorrowedOwnedPayload_IsRejectedConsistently()
+    public void ResultMatch_BorrowedOwnedPayloadWildcard_DoesNotMovePayload()
     {
         var source = """
             from std::core import Result, Drop
@@ -191,9 +191,8 @@ public class ResultMainTests
             }
             """;
 
-        Assert.Contains(Analyze(source).Diagnostics,
-            diagnostic => diagnostic.Code == ErrorCodes.InvalidExpressionType);
-        Assert.Contains(Build(source).Builder.Diagnostics.Diagnostics,
-            diagnostic => diagnostic.Code == ErrorCodes.InvalidExpressionType);
+        Assert.DoesNotContain(Analyze(source).Diagnostics,
+            diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.False(Build(source).Builder.Diagnostics.HasErrors);
     }
 }

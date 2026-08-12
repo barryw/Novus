@@ -1181,7 +1181,7 @@ impl StringBuilder {
     pub fn push_i32(&mut self, value: i32) -> bool {
         var buffer: [u8; 12]  // Max: "-2147483648" = 11 chars + null
         let len = format_i32(value, &buffer)
-        let s = Str::from_raw(&buffer, len)
+        let s = Str::borrow_raw(&buffer, len)
         return self.push_str(s)
     }
 }

@@ -26,6 +26,7 @@ public class IrValidator
         _functions.Clear();
         _staticVariables.Clear();
         _externalVariables.Clear();
+        _currentFunction = null;
 
         // Collect all static variables
         foreach (var staticVar in module.StaticVariables)

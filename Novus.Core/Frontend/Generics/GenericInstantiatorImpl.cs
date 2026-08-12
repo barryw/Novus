@@ -191,7 +191,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                     // Substitute generic types recursively
                     paramType = _context.SubstitutionEngine.SubstituteGenericTypes(paramType, typeSubstitutions);
 
-                    function.Parameters.Add(new IrParameter(paramName, paramType));
+                    function.Parameters.Add(new IrParameter(paramName, paramType,
+                        isConsuming: paramCtx.KW_CONSUMING() != null));
                 }
 
                 // Add variadic parameter if present
@@ -340,7 +341,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                     {
                         var paramName = paramCtx.IDENTIFIER().GetText();
                         var paramType = _context.ParseType(paramCtx.type());
-                        templateParams.Add(new IrParameter(paramName, paramType));
+                        templateParams.Add(new IrParameter(paramName, paramType,
+                            isConsuming: paramCtx.KW_CONSUMING() != null));
                     }
                 }
 
@@ -464,7 +466,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                     var paramName = paramCtx.IDENTIFIER().GetText();
                     var paramType = _context.ParseType(paramCtx.type());
                     paramType = _context.SubstitutionEngine.SubstituteGenericTypes(paramType, typeSubstitutions);
-                    function.Parameters.Add(new IrParameter(paramName, paramType));
+                    function.Parameters.Add(new IrParameter(paramName, paramType,
+                        isConsuming: paramCtx.KW_CONSUMING() != null));
                 }
 
                 // Add variadic parameter if present
@@ -605,7 +608,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                     // Substitute generic types recursively
                     paramType = _context.SubstitutionEngine.SubstituteGenericTypes(paramType, typeSubstitutions);
 
-                    function.Parameters.Add(new IrParameter(paramName, paramType));
+                    function.Parameters.Add(new IrParameter(paramName, paramType,
+                        isConsuming: paramCtx.KW_CONSUMING() != null));
                 }
 
                 // Add variadic parameter if present
@@ -858,7 +862,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
                     {
                         var paramName = paramCtx.IDENTIFIER().GetText();
                         var paramType = _context.ParseType(paramCtx.type());
-                        templateParams.Add(new IrParameter(paramName, paramType));
+                        templateParams.Add(new IrParameter(paramName, paramType,
+                            isConsuming: paramCtx.KW_CONSUMING() != null));
                     }
                 }
                 finally

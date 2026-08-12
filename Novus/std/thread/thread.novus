@@ -277,13 +277,15 @@ pub fn spawn_thread(name: Str, entry: fn() -> i32, stack_size: u32) -> Result<Th
     // CRITICAL: Initialize tc_MemEntry as an empty List
     // This is an embedded List structure, not a pointer
     // An empty List has: Head -> &Tail, Tail = NULL, TailPred -> &Head
-    let mem_list = &task_ref.tc_MemEntry
-    let tail_addr = (*u8)&mem_list.lh_Tail
-    let head_addr = (*u8)&mem_list.lh_Head
-    mem_list.lh_Head = (*Node)tail_addr
-    mem_list.lh_Tail = null
-    mem_list.lh_TailPred = (*Node)head_addr
-    mem_list.lh_Type = 0
+    {
+        let mem_list = &var task_ref.tc_MemEntry
+        let tail_addr = (*u8)&mem_list.lh_Tail
+        let head_addr = (*u8)&mem_list.lh_Head
+        mem_list.lh_Head = (*Node)tail_addr
+        mem_list.lh_Tail = null
+        mem_list.lh_TailPred = (*Node)head_addr
+        mem_list.lh_Type = 0
+    }
 
     // Set up stack pointers
     // Stack grows downward on 68k
@@ -422,4 +424,3 @@ pub fn clear_break_signals() {
 pub fn break_signal_mask() -> u32 {
     return SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_D
 }
-

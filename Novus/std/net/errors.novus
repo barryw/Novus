@@ -246,7 +246,7 @@ impl Display for NetError {
         let err = *self
         let msg = err.message()
         // from_cstr returns Option<Str>, so we need to handle that
-        match Str::from_cstr(msg) {
+        match unsafe { Str::from_cstr(msg) } {
             Option::Some(s) => return f.write_str(s),
             Option::None => return false,
         }

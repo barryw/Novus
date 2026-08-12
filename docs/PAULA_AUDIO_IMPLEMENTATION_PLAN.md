@@ -803,7 +803,7 @@ impl Drop for AudioChannel {
 // from std::audio::device import AudioDeviceHandle
 //
 // // Request any available channel with medium priority
-// let audio = AudioDeviceHandle::open_any(0)?
+// var audio = AudioDeviceHandle::open_any(0)?
 //
 // // Play a sound
 // audio.play(&sample, 322, 64, 1)?  // period, volume, cycles

@@ -1,0 +1,20 @@
+from std::core import Result
+from std::test::test import expect_true
+from format import FormatError, environment_for
+from rdb import DOS_TYPE_FFS_INTL, RdbModel
+
+fn format_environment_is_correct() -> bool {
+    var model = RdbModel::new(996u32, 16u32, 63u32)
+    let Result::Ok(_) = model.add_partition("DH0", 200u32, DOS_TYPE_FFS_INTL) else { return false }
+    let Result::Ok(environment) = environment_for(&model, 0u32) else { return false }
+    return false unless environment.block_bytes() == 512u32 && environment.surfaces() == 16u32 && environment.blocks_per_track() == 63u32
+    return false unless environment.low_cylinder() == 2u32 && environment.high_cylinder() == 408u32 && environment.buffers() == 30u32
+    return false unless environment.max_transfer() == $7FFFFFFFu32 && environment.mask() == $7FFFFFFEu32
+    return false unless environment.boot_priority() == 0 && environment.dos_type() == DOS_TYPE_FFS_INTL
+    return matches!(environment_for(&model, 1u32), Result::Err(FormatError::MissingPartition))
+}
+
+@test("partition geometry produces a valid DOS environment")
+pub fn test_format_environment() {
+    expect_true(format_environment_is_correct(), "DOS environment matches the RDB partition")
+}

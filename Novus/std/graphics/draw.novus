@@ -73,20 +73,29 @@ impl DrawMode {
 /// Most operations cannot fail (SetAPen, Move, Draw just write to RastPort).
 /// Operations that can fail (WritePixel for clipped regions) return Result.
 pub struct DrawContext {
-    rp: *RastPort,
+    // AmigaOS RastPorts are interior-mutable handles; the reference protects
+    // lifetime while graphics.library serializes the actual state changes.
+    rp: &RastPort,
 }
 
 impl DrawContext {
+    /// Explicit raw-pointer boundary for low-level/FFI callers.
+    @unsafe
+    @borrows(rp)
+    pub fn borrow_raw(rp: *RastPort) -> Result<DrawContext, GraphicsError> {
+        if !rp {
+            return Result::Err(GraphicsError::InvalidRastPort)
+        }
+        return Result::Ok(DrawContext { rp: &*rp })
+    }
+
     /// Create a DrawContext from a RastPort pointer.
     ///
     /// The caller must ensure the RastPort remains valid for the lifetime
     /// of this DrawContext. The DrawContext does NOT own the RastPort.
     ///
     /// Returns Err(GraphicsError::InvalidRastPort) if the pointer is null.
-    pub fn from_rastport(rp: *RastPort) -> Result<DrawContext, GraphicsError> {
-        if !rp {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn from_rastport(rp: &RastPort) -> Result<DrawContext, GraphicsError> {
         return Result::Ok(DrawContext { rp: rp })
     }
 
@@ -97,22 +106,19 @@ impl DrawContext {
     ///
     /// Returns Err(GraphicsError::InvalidRastPort) if the window or its
     /// RastPort pointer is null.
-    pub fn from_window(window: *Window) -> Result<DrawContext, GraphicsError> {
-        if !window {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn from_window(window: &Window) -> Result<DrawContext, GraphicsError> {
         unsafe {
             let rp: *RastPort = (*window).RPort
             if !rp {
                 return Result::Err(GraphicsError::InvalidRastPort)
             }
-            return Result::Ok(DrawContext { rp: rp })
+            return Result::Ok(DrawContext { rp: &*rp })
         }
     }
 
     /// Get the underlying RastPort pointer.
     pub fn handle(&self) -> *RastPort {
-        return self.rp
+        return unsafe { (*RastPort)self.rp }
     }
 
     // ========================================================================

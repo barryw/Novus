@@ -90,4 +90,56 @@ public class LifetimeInferenceTests
         Assert.True(result.Success);
         Assert.Null(result.SourceParameterIndex);  // No lifetime needed
     }
+
+    [Fact]
+    public void InferReturnLifetime_BorrowsAttribute_SelectsNamedParameter()
+    {
+        var attributes = new AttributeCollection();
+        var borrows = new AttributeInfo(KnownAttributes.Borrows, Loc);
+        borrows.PositionalArgs.Add("right");
+        attributes.Add(borrows);
+        var parameters = new[]
+        {
+            new IrParameter("left", new IrReferenceType(IrIntType.I32)),
+            new IrParameter("right", new IrReferenceType(IrIntType.I32))
+        };
+
+        var result = new LifetimeInference().InferReturnLifetime(
+            parameters, new IrReferenceType(IrIntType.I32), attributes);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, result.SourceParameterIndex);
+    }
+
+    [Fact]
+    public void InferReturnLifetime_BorrowsStatic_HasNoRuntimeSource()
+    {
+        var attributes = new AttributeCollection();
+        var borrows = new AttributeInfo(KnownAttributes.Borrows, Loc);
+        borrows.PositionalArgs.Add("static");
+        attributes.Add(borrows);
+
+        var result = new LifetimeInference().InferReturnLifetime(
+            Array.Empty<IrParameter>(), new IrReferenceType(IrIntType.I32), attributes);
+
+        Assert.True(result.Success);
+        Assert.True(result.IsStatic);
+        Assert.Null(result.SourceParameterIndex);
+    }
+
+    [Fact]
+    public void InferReturnLifetime_RawBorrowRequiresUnsafeBoundary()
+    {
+        var attributes = new AttributeCollection();
+        var borrows = new AttributeInfo(KnownAttributes.Borrows, Loc);
+        borrows.PositionalArgs.Add("ptr");
+        attributes.Add(borrows);
+
+        var result = new LifetimeInference().InferReturnLifetime(
+            new[] { new IrParameter("ptr", new IrPointerType(IrIntType.I32)) },
+            new IrReferenceType(IrIntType.I32), attributes);
+
+        Assert.False(result.Success);
+        Assert.Contains("requires @unsafe", result.ErrorMessage);
+    }
 }

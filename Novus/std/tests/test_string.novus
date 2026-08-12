@@ -1,8 +1,17 @@
 // Test suite for std::strings::core String type (owned, heap-allocated string)
 // Tests the owned String type methods
 
-from std::strings::core import String, Str, StringError
+from std::strings::core import PathString, String, Str, StringError
 from std::test::test import expect, expect_true, expect_false, expect_eq
+
+@test("PathString::push_str appends and preserves total length")
+pub fn test_path_string_push_str_appends() {
+    var path = PathString::new()
+    expect_true(path.push_str("L:").is_ok(), "drawer append succeeds")
+    expect_true(path.push_str("FastFileSystem").is_ok(), "filename append succeeds")
+    expect_eq(path.len(), 16u32, "path length includes both appends")
+    expect_true(path.as_str().equals("L:FastFileSystem"), "path contains both appends")
+}
 
 // =============================================================================
 // String::new tests
@@ -53,6 +62,13 @@ pub fn test_string_with_capacity_zero() {
 // String::new_from_str tests
 // =============================================================================
 
+@test("Str::from_bytes borrows a complete byte slice")
+pub fn test_str_from_bytes() {
+    let bytes = [72u8, 105u8]
+    let text = Str::from_bytes(&bytes)
+    expect_true(text.equals("Hi"), "byte slice becomes owner-tied Str")
+}
+
 @test("String::new_from_str copies string content")
 pub fn test_string_new_from_str() {
     let original: Str = "Hello, World!"
@@ -61,8 +77,10 @@ pub fn test_string_new_from_str() {
         Ok(s) => {
             var owned = s
             expect_eq(owned.len(), 13u32, "copied string has correct len")
-            let converted = owned.as_str()
-            expect_true(converted.equals(original), "content matches original")
+            {
+                let converted = owned.as_str()
+                expect_true(converted.equals(original), "content matches original")
+            }
             owned.drop()
         },
         Err(_) => expect(false, "new_from_str should succeed")
@@ -105,9 +123,11 @@ pub fn test_string_push_str() {
     }
     expect_eq(s.len(), 13u32, "len after second push")
 
-    let content = s.as_str()
-    let expected: Str = "Hello, World!"
-    expect_true(content.equals(expected), "content matches expected")
+    {
+        let content = s.as_str()
+        let expected: Str = "Hello, World!"
+        expect_true(content.equals(expected), "content matches expected")
+    }
     s.drop()
 }
 
@@ -137,9 +157,11 @@ pub fn test_string_push_byte() {
     let _ = s.push_byte(105u8) // 'i'
 
     expect_eq(s.len(), 2u32, "len is 2 after two pushes")
-    let content = s.as_str()
-    let expected: Str = "Hi"
-    expect_true(content.equals(expected), "content is 'Hi'")
+    {
+        let content = s.as_str()
+        let expected: Str = "Hi"
+        expect_true(content.equals(expected), "content is 'Hi'")
+    }
     s.drop()
 }
 
@@ -195,20 +217,24 @@ pub fn test_string_as_str() {
     var s = String::new()
     let _ = s.push_str("Test content")
 
-    let slice = s.as_str()
-    expect_eq(slice.len(), 12u32, "slice has correct len")
+    {
+        let slice = s.as_str()
+        expect_eq(slice.len(), 12u32, "slice has correct len")
 
-    let expected: Str = "Test content"
-    expect_true(slice.equals(expected), "slice content matches")
+        let expected: Str = "Test content"
+        expect_true(slice.equals(expected), "slice content matches")
+    }
     s.drop()
 }
 
 @test("String::as_str on empty string")
 pub fn test_string_as_str_empty() {
     var s = String::new()
-    let slice = s.as_str()
-    expect_eq(slice.len(), 0u32, "empty string slice has len 0")
-    expect_true(slice.is_empty(), "empty string slice is empty")
+    {
+        let slice = s.as_str()
+        expect_eq(slice.len(), 0u32, "empty string slice has len 0")
+        expect_true(slice.is_empty(), "empty string slice is empty")
+    }
     s.drop()
 }
 

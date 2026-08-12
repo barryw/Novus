@@ -250,6 +250,17 @@ fn test() -> u8 {
     }
 
     [Fact]
+    public void Analyze_UnsignedToWiderSignedCast_DoesNotWarn()
+    {
+        var diagnostics = Analyze(@"
+fn test(value: u16) -> i32 {
+    return (i32)value
+}");
+
+        Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "W0002");
+    }
+
+    [Fact]
     public void Analyze_BinaryLiteralOutOfRange_ReportsError()
     {
         var source = @"
@@ -935,6 +946,36 @@ fn test(x: i32) -> u32 {
         var warning = diagnostics.Diagnostics.FirstOrDefault(d => d.Code == "W0003");
         Assert.Null(warning);
         Assert.False(diagnostics.HasWarnings);
+    }
+
+    [Fact]
+    public void Analyze_CodeAfterPostfixConditionalReturn_NoWarning()
+    {
+        var source = @"
+fn test(value: i32) -> i32 {
+    return 1 unless value == 0
+    return 0
+}";
+        var diagnostics = Analyze(source);
+
+        Assert.DoesNotContain(diagnostics.Diagnostics, d => d.Code == "W0003");
+    }
+
+    [Fact]
+    public void Analyze_LetElseMayBreakFromLoop()
+    {
+        var source = @"
+enum Maybe { Some(i32), None }
+
+fn test(value: Maybe) {
+    forever {
+        let Maybe::Some(number) = value else { break }
+        return
+    }
+}";
+        var diagnostics = Analyze(source);
+
+        Assert.DoesNotContain(diagnostics.Diagnostics, d => d.Code == "E0021");
     }
 
     // ===== Struct Tests =====

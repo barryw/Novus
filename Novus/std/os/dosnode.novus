@@ -1,0 +1,304 @@
+// Owned construction and explicit OS transfer for AmigaDOS device nodes.
+
+from std::core import Error, Result
+from std::ffi::amiga_consts import ADNF_STARTPROC, MEMF_CLEAR, MEMF_PUBLIC
+from std::ffi::amiga_structs import DeviceNode, DosEnvec, FileSysStartupMsg
+from std::ffi::expansion import AddDosNode
+from std::memory::block import MemoryBlock
+from std::os::bptr import BPtr
+from std::os::filesystem import FileSystemHandler
+from std::os::segment import LoadedSegment
+from std::strings::core import BStr, Str
+
+pub enum DosNodeError {
+    InvalidName,
+    InvalidEnvironment,
+    AllocationFailed,
+    MissingHandler,
+    InvalidHandler,
+    RegistrationFailed,
+}
+
+impl DosNodeError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            DosNodeError::InvalidName => "Invalid DOS node name",
+            DosNodeError::InvalidEnvironment => "Invalid DOS environment",
+            DosNodeError::AllocationFailed => "DOS node allocation failed",
+            DosNodeError::MissingHandler => "DOS node has no filesystem handler",
+            DosNodeError::InvalidHandler => "Invalid filesystem handler",
+            DosNodeError::RegistrationFailed => "DOS node registration failed",
+        }
+    }
+}
+
+impl Error for DosNodeError {
+    fn message(&self) -> *u8 { return DosNodeError::message(self) }
+}
+
+/// Typed form of the standard 17-longword partition environment.
+pub struct DosEnvironment {
+    block_bytes: u32
+    surfaces: u32
+    blocks_per_track: u32
+    reserved_blocks: u32
+    low_cylinder: u32
+    high_cylinder: u32
+    buffers: u32
+    buffer_memory: u32
+    max_transfer: u32
+    mask: u32
+    boot_priority: i32
+    dos_type: u32
+}
+
+impl DosEnvironment {
+    pub fn partition(
+        block_bytes: u32,
+        surfaces: u32,
+        blocks_per_track: u32,
+        low_cylinder: u32,
+        high_cylinder: u32,
+        dos_type: u32
+    ) -> Result<DosEnvironment, DosNodeError> {
+        if block_bytes == 0u32 || block_bytes % 4u32 != 0u32 {
+            return Result::Err(DosNodeError::InvalidEnvironment)
+        }
+        if surfaces == 0u32 || blocks_per_track == 0u32 || low_cylinder > high_cylinder {
+            return Result::Err(DosNodeError::InvalidEnvironment)
+        }
+        return Result::Ok(DosEnvironment {
+            block_bytes: block_bytes,
+            surfaces: surfaces,
+            blocks_per_track: blocks_per_track,
+            reserved_blocks: 2u32,
+            low_cylinder: low_cylinder,
+            high_cylinder: high_cylinder,
+            buffers: 30u32,
+            buffer_memory: 0u32,
+            max_transfer: $7FFFFFFFu32,
+            mask: $FFFFFFFEu32,
+            boot_priority: 0,
+            dos_type: dos_type,
+        })
+    }
+
+    pub fn set_buffers(&var self, count: u32, memory_type: u32) -> Result<(), DosNodeError> {
+        if count == 0u32 { return Result::Err(DosNodeError::InvalidEnvironment) }
+        self.buffers = count
+        self.buffer_memory = memory_type
+        return Result::Ok(())
+    }
+
+    pub fn set_transfer(&var self, maximum: u32, mask: u32) -> Result<(), DosNodeError> {
+        if maximum == 0u32 || mask == 0u32 {
+            return Result::Err(DosNodeError::InvalidEnvironment)
+        }
+        self.max_transfer = maximum
+        self.mask = mask
+        return Result::Ok(())
+    }
+
+    pub fn set_reserved_blocks(&var self, count: u32) { self.reserved_blocks = count }
+    pub fn set_boot_priority(&var self, priority: i32) { self.boot_priority = priority }
+
+    pub fn block_bytes(&self) -> u32 { return self.block_bytes }
+    pub fn surfaces(&self) -> u32 { return self.surfaces }
+    pub fn blocks_per_track(&self) -> u32 { return self.blocks_per_track }
+    pub fn low_cylinder(&self) -> u32 { return self.low_cylinder }
+    pub fn high_cylinder(&self) -> u32 { return self.high_cylinder }
+    pub fn dos_type(&self) -> u32 { return self.dos_type }
+    pub fn buffers(&self) -> u32 { return self.buffers }
+    pub fn max_transfer(&self) -> u32 { return self.max_transfer }
+    pub fn mask(&self) -> u32 { return self.mask }
+    pub fn boot_priority(&self) -> i32 { return self.boot_priority }
+
+    @unsafe
+    fn write_to(&self, target: *DosEnvec) {
+        (*target).de_TableSize = 16u32
+        (*target).de_SizeBlock = self.block_bytes / 4u32
+        (*target).de_SecOrg = 0u32
+        (*target).de_Surfaces = self.surfaces
+        (*target).de_SectorPerBlock = 1u32
+        (*target).de_BlocksPerTrack = self.blocks_per_track
+        (*target).de_Reserved = self.reserved_blocks
+        (*target).de_PreAlloc = 0u32
+        (*target).de_Interleave = 0u32
+        (*target).de_LowCyl = self.low_cylinder
+        (*target).de_HighCyl = self.high_cylinder
+        (*target).de_NumBuffers = self.buffers
+        (*target).de_BufMemType = self.buffer_memory
+        (*target).de_MaxTransfer = self.max_transfer
+        (*target).de_Mask = self.mask
+        (*target).de_BootPri = self.boot_priority
+        (*target).de_DosType = self.dos_type
+    }
+}
+
+/// Owns every allocation referenced by a DeviceNode until registration succeeds.
+pub struct DosNodeDraft {
+    storage: MemoryBlock
+    name: BStr
+    driver: BStr
+}
+
+impl DosNodeDraft {
+    @suppress("W0002", "Validated aligned allocations are encoded as Amiga BPTRs")
+    pub fn new(
+        name: Str,
+        driver: Str,
+        unit: u32,
+        open_flags: u32,
+        environment: &DosEnvironment
+    ) -> Result<DosNodeDraft, DosNodeError> {
+        if !valid_component(name) || !valid_component(driver) {
+            return Result::Err(DosNodeError::InvalidName)
+        }
+        let owned_name = match BStr::new_from_str(name) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosNodeError::AllocationFailed),
+        }
+        let owned_driver = match BStr::new_from_str(driver) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosNodeError::AllocationFailed),
+        }
+        let storage_size = @sizeof(DeviceNode) + @sizeof(FileSysStartupMsg) + @sizeof(DosEnvec)
+        let storage = match MemoryBlock::alloc(storage_size, MEMF_PUBLIC | MEMF_CLEAR) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosNodeError::AllocationFailed),
+        }
+        let node = (*DeviceNode)storage.ptr()
+        let startup = (*FileSysStartupMsg)(storage.ptr() + @sizeof(DeviceNode))
+        let envec = (*DosEnvec)(storage.ptr() + @sizeof(DeviceNode) + @sizeof(FileSysStartupMsg))
+        let startup_bptr = match BPtr::<FileSysStartupMsg>::from_ptr(startup) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosNodeError::AllocationFailed),
+        }
+        let envec_bptr = match BPtr::<DosEnvec>::from_ptr(envec) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosNodeError::AllocationFailed),
+        }
+
+        unsafe {
+            environment.write_to(envec)
+            (*startup).fssm_Unit = unit
+            (*startup).fssm_Device = (i32)owned_driver.as_bptr()
+            (*startup).fssm_Environ = (i32)envec_bptr.raw()
+            (*startup).fssm_Flags = open_flags
+
+            (*node).dn_Type = 0u32
+            (*node).dn_StackSize = 4096u32
+            (*node).dn_Priority = 10
+            (*node).dn_Startup = (i32)startup_bptr.raw()
+            (*node).dn_GlobalVec = -1
+            (*node).dn_Name = (i32)owned_name.as_bptr()
+        }
+        return Result::Ok(DosNodeDraft {
+            storage: storage,
+            name: owned_name,
+            driver: owned_driver,
+        })
+    }
+
+    pub fn name(&self) -> Str { return self.name.as_str() }
+    pub fn driver(&self) -> Str { return self.driver.as_str() }
+    pub fn unit(&self) -> u32 { return unsafe { (*self.startup()).fssm_Unit } }
+    pub fn open_flags(&self) -> u32 { return unsafe { (*self.startup()).fssm_Flags } }
+    pub fn dos_type(&self) -> u32 { return unsafe { (*self.envec()).de_DosType } }
+    pub fn block_bytes(&self) -> u32 { return unsafe { (*self.envec()).de_SizeBlock * 4u32 } }
+
+    @suppress("W0002", "Validated filesystem metadata is copied into NDK ABI fields")
+    pub fn bind_registered(&var self, handler: &FileSystemHandler) -> Result<(), DosNodeError> {
+        if !handler.segment().is_addressable() {
+            return Result::Err(DosNodeError::InvalidHandler)
+        }
+        let stack = if handler.stack_size() > 0u32 { handler.stack_size() } else { 4096u32 }
+        let priority = if handler.priority() != 0 { handler.priority() } else { 10 }
+        unsafe {
+            let node = self.handle()
+            (*node).dn_SegList = (i32)handler.segment().raw()
+            (*node).dn_GlobalVec = handler.global_vec()
+            (*node).dn_StackSize = stack
+            (*node).dn_Priority = priority
+        }
+        return Result::Ok(())
+    }
+
+    pub fn has_handler(&self) -> bool {
+        return unsafe { (*self.handle()).dn_SegList != 0 }
+    }
+
+    /// Register the node. Success permanently transfers all backing storage to DOS.
+    pub fn register(consuming self, boot_priority: i32, start_process: bool) -> Result<RegisteredDosNode, DosNodeError> {
+        if !self.has_handler() { return Result::Err(DosNodeError::MissingHandler) }
+        let node = self.handle()
+        let flags = if start_process { ADNF_STARTPROC } else { 0u32 }
+        if AddDosNode(boot_priority, flags, node) == 0 {
+            return Result::Err(DosNodeError::RegistrationFailed)
+        }
+
+        let _name = self.name.into_raw()
+        let _driver = self.driver.into_raw()
+        let _storage = self.storage.into_raw()
+        return Result::Ok(RegisteredDosNode { node: node })
+    }
+
+    /// Bind an owned embedded handler and transfer it only if DOS accepts the node.
+    @suppress("W0002", "A validated loaded-segment BPTR is copied into the NDK node field")
+    pub fn register_loaded(consuming self,
+        consuming segment: LoadedSegment,
+        global_vec: i32,
+        stack_size: u32,
+        priority: i32,
+        boot_priority: i32,
+        start_process: bool
+    ) -> Result<RegisteredDosNode, DosNodeError> {
+        if !segment.segment().is_addressable() {
+            return Result::Err(DosNodeError::InvalidHandler)
+        }
+        unsafe {
+            let node = self.handle()
+            (*node).dn_SegList = (i32)segment.segment().raw()
+            (*node).dn_GlobalVec = global_vec
+            (*node).dn_StackSize = if stack_size > 0u32 { stack_size } else { 4096u32 }
+            (*node).dn_Priority = if priority != 0 { priority } else { 10 }
+        }
+        return match self.register(boot_priority, start_process) {
+            Result::Ok(node) => {
+                let _transferred = segment.into_raw()
+                Result::Ok(node)
+            },
+            Result::Err(error) => Result::Err(error),
+        }
+    }
+
+    /// Explicit lower-layer escape hatch. The draft retains ownership.
+    pub fn handle(&self) -> *DeviceNode { return (*DeviceNode)self.storage.ptr() }
+
+    fn startup(&self) -> *FileSysStartupMsg {
+        return (*FileSysStartupMsg)(self.storage.ptr() + @sizeof(DeviceNode))
+    }
+
+    fn envec(&self) -> *DosEnvec {
+        return (*DosEnvec)(self.storage.ptr() + @sizeof(DeviceNode) + @sizeof(FileSysStartupMsg))
+    }
+}
+
+/// Non-owning proof that DOS accepted and now retains a device node.
+pub struct RegisteredDosNode {
+    node: *DeviceNode
+}
+
+impl RegisteredDosNode {
+    pub fn handle(&self) -> *DeviceNode { return self.node }
+}
+
+fn valid_component(value: Str) -> bool {
+    if value.is_empty() || value.len() > 255u32 { return false }
+    while var i < value.len() {
+        let byte = value.as_ptr()[i]
+        if byte == 0u8 || byte == $3Au8 { return false }
+        i++
+    }
+    return true
+}

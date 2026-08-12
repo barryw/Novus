@@ -1,12 +1,42 @@
 # Amiga application language audit
 
-**Updated:** 2026-08-10
+**Updated:** 2026-08-11
 **Target:** AmigaOS 3.1/3.2 on 68020 or newer
 
 Novus can express the language and ABI mechanisms needed to build Amiga applications,
 libraries, devices, resources, handlers, callback-driven APIs, and interrupt code. The
 compiler generates platform boilerplate from Novus declarations instead of exposing a
 second C-shaped language inside Novus.
+
+## Cohesive layering contract
+
+Novus exposes Amiga functionality through three interoperable layers:
+
+1. Application APIs use owned values, `Result`/`Option`, iterators, events, and
+   ordinary domain concepts. This is the default path.
+2. Systems APIs expose typed handles, buffers, requests, and explicit ownership for
+   advanced Novus code.
+3. `std::ffi`, `unsafe`, inline assembly, and hardware DSLs preserve unrestricted
+   access to the ABI and machine.
+
+The layers are not separate toolkits. Each high-level owner must allow borrowed access
+to its next lower-layer object so a special operation can be performed without
+rewriting the rest of the application. Native owners follow the existing conventions:
+`handle()` borrows a raw handle, `into_raw(consuming self)` transfers ownership, and
+`from_raw(...)` adopts owned state. Composite wrappers return a named raw-state value
+rather than losing required cleanup metadata. Existing APIs with older names gain
+compatibility aliases and a migration path; layer interoperability must not itself
+force an application rewrite.
+
+New APIs extend existing Novus forms: `Drop`, move-only handles, `consuming self`,
+`Slice`, standard iterators, `From`/`Into`/`AsRef`/`AsMut`, static descriptions, and
+fluent builders. Common functionality belongs in reusable modules. New syntax is
+appropriate only for a general capability that normal Novus libraries cannot express;
+an individual Amiga API is not sufficient justification for a one-off construct.
+
+The [HDPart porting case study](../ports/hdpart-novus/README.md) applies this contract to
+a real partition editor and records where today's libraries still force applications
+down to raw C-shaped mechanisms.
 
 ## Matched GUI comparison
 
@@ -79,8 +109,9 @@ builder remains available for interfaces assembled at runtime.
 | Deferred I/O | `@devicecmd(... deferred = true)` transfers request ownership until reply or abort | generator tests and documented template path |
 | Resources | `@resource`, `@resourcefunc`, `@resourceinit` | generator tests and real resource link |
 | DOS handlers | normal `main` plus owning `Packet` wrapper | handler template build; exactly-once reply behavior |
+| DOS filesystem nodes | typed environment, owning pre-registration node graph, live/resource/embedded handler selection, and explicit DOS transfer | A4000 128-draft, 64-segment, and shared/embedded format-plan tests |
 | Concurrency | async functions, futures, tasks, ports, messages, signals, channels | host tests and foundational A4000 aggregate |
-| Core language | integers, fixed point, arrays, tuples, enums, patterns, generics, traits, closures, ownership, Drop, errors, modules | foundational A4000 aggregate in debug/O1/O3 |
+| Core language | contextual literals, multiline infix expressions, arrays, tuples, enums, patterns, generics, traits, stateful iterators, closures, ownership, Drop, errors, modules | host compiler regressions and foundational 68020 runtime suites |
 | Hardware escape hatch | typed registers, volatile memory, inline assembly and external assembly | host tests and A4000 inline-assembly cases |
 
 ## Native syntax examples

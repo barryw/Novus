@@ -12,6 +12,22 @@ fn mark_boolean_call() -> bool {
     return true
 }
 
+fn accepts_u32(value: u32) -> bool {
+    return $FFFFFFFF == value
+}
+
+@test("integer and array literals inherit their expected types")
+pub fn foundation_contextual_integer_literals() {
+    let bytes: [u8] = [0, $1F, $FF]
+    let repeated: [u16] = [7; 3]
+    let maximum: u32 = $FFFFFFFF
+    expect(bytes[0] == 0 &&
+        255 == bytes[2], "u8 array elements")
+    expect(repeated[2] == 7, "repeated u16 array element")
+    expect(maximum == $FFFFFFFF, "u32 comparison literal")
+    expect(accepts_u32($FFFFFFFF), "u32 argument literal")
+}
+
 @test("signed and unsigned integer arithmetic")
 pub fn foundation_integer_arithmetic() {
     let a: i32 = -21

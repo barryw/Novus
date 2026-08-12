@@ -82,13 +82,13 @@ Use `Result` when the operation can fail due to:
 
 ```novus
 // Allocation can fail
-pub fn push(&var self, value: T) -> Result<(), ExecError>
+pub fn push(&var self, consuming value: T) -> Result<(), ExecError>
 
 // Growth can fail
 pub fn reserve(&var self, additional: u32) -> Result<(), ExecError>
 
 // Insertion can fail (allocation or validation)
-pub fn insert(&var self, key: K, value: V) -> Result<Option<V>, ExecError>
+pub fn insert(&var self, consuming key: K, consuming value: V) -> Result<Option<V>, ExecError>
 ```
 
 ### When to Use `Option<T>`
@@ -97,7 +97,7 @@ Use `Option` when the operation might not find a value (not an error):
 
 ```novus
 // Element might not exist
-pub fn get(&self, index: u32) -> Option<T>
+pub fn get(&self, index: u32) -> Option<&T>
 
 // Collection might be empty
 pub fn pop(&var self) -> Option<T>
@@ -114,13 +114,13 @@ pub fn next(&var self) -> Option<T>
 Old pattern (avoid):
 ```novus
 // BAD - no error information
-pub fn push(&var self, value: T) -> bool
+pub fn push(&var self, consuming value: T) -> bool
 ```
 
 New pattern (use):
 ```novus
 // GOOD - explicit error type
-pub fn push(&var self, value: T) -> Result<(), ExecError>
+pub fn push(&var self, consuming value: T) -> Result<(), ExecError>
 ```
 
 ---
@@ -134,8 +134,8 @@ pub fn push(&var self, value: T) -> Result<(), ExecError>
 - Use `get` and `get_mut` pair for accessor variants
 
 ```novus
-pub fn get(&self, index: u32) -> Option<T>      // Immutable access
-pub fn get_mut(&var self, index: u32) -> Option<*T>  // Mutable access
+pub fn get(&self, index: u32) -> Option<&T>          // Immutable borrow
+pub fn get_mut(&var self, index: u32) -> Option<&var T>  // Exclusive borrow
 ```
 
 ### Consuming Methods
@@ -145,6 +145,10 @@ Methods that consume `self` use `consuming self`:
 ```novus
 pub fn finish(consuming self) -> String  // Consumes builder, returns String
 pub fn into_vec(consuming self) -> Vec<T>  // Consumes, returns underlying Vec
+
+// Fluent builder steps also consume and return the builder, preventing reuse
+// of stale pre-step values.
+pub fn title(consuming self, title: Str) -> WindowBuilder
 ```
 
 ### Conversion Methods
@@ -157,11 +161,42 @@ pub fn into_vec(consuming self) -> Vec<T>  // Consumes, returns underlying Vec
 | `from_*` | Static constructor from another type |
 
 ```novus
-pub fn as_str(&self) -> Str           // View into String
+pub fn as_slice(&self) -> Slice<T>    // Owner-tied view into a collection
 pub fn to_vec(&self) -> Result<Vec<T>, ExecError>  // Allocating copy
 pub fn into_vec(consuming self) -> Vec<T>  // Consuming conversion
 pub fn from_slice(s: Str) -> Result<String, StringError>  // Constructor
 ```
+
+Owning raw-handle wrappers use one vocabulary: `handle()` borrows,
+`into_raw(consuming self)` transfers ownership after disarming `Drop`, and
+`from_raw(...)` adopts ownership. Non-owning raw views use `borrow_raw(...)`.
+Raw pointers stay at FFI and explicitly raw escape hatches; safe collection
+views and iterators store `&T` or `&var T` so the compiler can tie them to
+their owner.
+
+### Borrowed Views
+
+Reference fields make the whole aggregate owner-tied. This applies recursively
+through `Option`, `Result`, tuples, arrays, and generic containers.
+
+```novus
+pub struct View<T> { value: &T }
+
+// Inferred from &self.
+pub fn as_str(&self) -> Str
+
+// Select one source when elision would be ambiguous.
+@borrows(right)
+pub fn suffix(left: Str, right: Str) -> Str
+
+// Permanent literals and static storage have no runtime owner.
+@borrows(static)
+pub fn reset_code() -> Str { return "\x9b0m" }
+```
+
+Do not hide a borrow in `*T`. A constructor that asserts a raw pointer or span
+is valid must be `@unsafe`; callers then opt into that boundary explicitly.
+Safe APIs should accept `&T`, `&var T`, `Slice<T>`, or `MutSlice<T>`.
 
 ---
 
@@ -220,18 +255,18 @@ Every collection should implement:
 | `capacity()` | `-> u32` | Allocated capacity |
 | `is_empty()` | `-> bool` | Check if empty |
 | `clear()` | `(&var self)` | Remove all elements |
-| `drop()` | `(consuming self)` | Free resources |
+| `drop()` | `(&var self)` | Free resources during scope cleanup |
 
 ### Sequence Collections (Vec, VecDeque, etc.)
 
 | Method | Signature |
 |--------|-----------|
-| `push(value)` | `-> Result<(), ExecError>` |
+| `push(consuming value)` | `-> Result<(), ExecError>` |
 | `pop()` | `-> Option<T>` |
-| `get(index)` | `-> Option<T>` |
-| `get_mut(index)` | `-> Option<*T>` |
-| `set(index, value)` | `-> Result<(), ExecError>` |
-| `insert(index, value)` | `-> Result<(), ExecError>` |
+| `get(index)` | `-> Option<&T>` |
+| `get_mut(index)` | `-> Option<&var T>` |
+| `set(index, consuming value)` | `-> Result<(), ExecError>` |
+| `insert(index, consuming value)` | `-> Result<(), ExecError>` |
 | `remove(index)` | `-> Result<T, ExecError>` |
 | `reserve(additional)` | `-> Result<(), ExecError>` |
 
@@ -239,9 +274,9 @@ Every collection should implement:
 
 | Method | Signature |
 |--------|-----------|
-| `insert(key, value)` | `-> Result<Option<V>, ExecError>` |
+| `insert(consuming key, consuming value)` | `-> Result<Option<V>, ExecError>` |
 | `get(&key)` | `-> Option<&V>` |
-| `get_mut(&key)` | `-> Option<*V>` |
+| `get_mut(&key)` | `-> Option<&var V>` |
 | `remove(&key)` | `-> Option<V>` |
 | `contains_key(&key)` | `-> bool` |
 
@@ -259,6 +294,10 @@ Iterators implement:
 pub fn next(&var self) -> Option<T>
 ```
 
+Collection iterators instantiate `T` with an owner-tied reference or an
+aggregate containing references; iterators that generate independent values
+may return those values directly.
+
 ---
 
 ## RAII and Resource Management
@@ -275,12 +314,13 @@ impl Drop for MyType {
 }
 ```
 
-### Consuming Drop
+### Explicit Cleanup
 
-For explicit cleanup with consuming semantics:
+Explicit cleanup uses a mutable borrow and must leave the value disarmed so
+the later automatic `Drop` is harmless:
 
 ```novus
-pub fn drop(consuming self) {
+pub fn drop(&var self) {
     // Resources freed when self goes out of scope
 }
 ```
@@ -333,6 +373,10 @@ When adding new types to the stdlib:
 - [ ] Use `Option<T>` for "not found" scenarios
 - [ ] Follow naming: `new`, `with_capacity`, `as_*`, `to_*`, `into_*`, `from_*`
 - [ ] Implement `Drop` if type owns resources
+- [ ] Take ownership with `consuming`; otherwise use `&T` or `&var T`
+- [ ] Return owner-tied `&T`/`&var T` views instead of raw pointers
+- [ ] Use `@borrows(name)` only when return-source elision is ambiguous
+- [ ] Mark raw pointer/span assertions `@unsafe`; keep safe alternatives available
 - [ ] Provide `iter()` if collection is iterable
 - [ ] Use subsystem-specific error types
 - [ ] Document all public APIs with `///` comments

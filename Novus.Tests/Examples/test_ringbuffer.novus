@@ -177,6 +177,11 @@ pub fn test_wrap_around() {
             let _ = buffer.push_back(5)
             let _ = buffer.push_back(6)
 
+            match buffer.get_mut(2) {
+                Option::Some(value) => { *value = 50 },
+                Option::None => fail("wrapped logical index should exist")
+            }
+
             // Should get: 3, 4, 5, 6
             match buffer.pop_front() {
                 Option::Some(val) => expect_eq(val, 3, "should be 3"),
@@ -187,7 +192,7 @@ pub fn test_wrap_around() {
                 Option::None => fail("should not be empty")
             }
             match buffer.pop_front() {
-                Option::Some(val) => expect_eq(val, 5, "should be 5"),
+                Option::Some(val) => expect_eq(val, 50, "mutable borrow should update wrapped value"),
                 Option::None => fail("should not be empty")
             }
             match buffer.pop_front() {
@@ -254,6 +259,28 @@ pub fn test_skip() {
     }
 }
 
+@test("get_mut updates logical element")
+pub fn test_get_mut() {
+    match RingBuffer::<u32>::with_capacity(4) {
+        Result::Ok(var buffer) => {
+            let _ = buffer.push_back(10)
+            let _ = buffer.push_back(20)
+            let _ = buffer.pop_front()
+            let _ = buffer.push_back(30)
+
+            match buffer.get_mut(1) {
+                Option::Some(value) => { *value = 42 },
+                Option::None => fail("logical index 1 should exist")
+            }
+            match buffer.get(1) {
+                Option::Some(value) => expect_eq(*value, 42, "mutable borrow updates wrapped element"),
+                Option::None => fail("logical index 1 should exist")
+            }
+        },
+        Result::Err(_) => fail("allocation should succeed")
+    }
+}
+
 // ============================================================================
 // RingBufferPow2 Tests (optimized for power-of-2)
 // ============================================================================
@@ -309,6 +336,11 @@ pub fn test_pow2_wrap() {
             let _ = buffer.push_back(5)
             let _ = buffer.push_back(6)
 
+            match buffer.get_mut(2) {
+                Option::Some(value) => { *value = 50 },
+                Option::None => fail("wrapped logical index should exist")
+            }
+
             // Verify order
             match buffer.pop_front() {
                 Option::Some(val) => expect_eq(val, 3, "should be 3"),
@@ -319,7 +351,7 @@ pub fn test_pow2_wrap() {
                 Option::None => fail("should not be empty")
             }
             match buffer.pop_front() {
-                Option::Some(val) => expect_eq(val, 5, "should be 5"),
+                Option::Some(val) => expect_eq(val, 50, "mutable borrow should update wrapped value"),
                 Option::None => fail("should not be empty")
             }
             match buffer.pop_front() {

@@ -125,6 +125,14 @@ fi
 
 echo "  ✓ Binary: $LSP_BINARY"
 
+echo "  Running language server regression tests..."
+if dotnet test -c Release "$PROJECT_ROOT/Novus.LanguageServer.Tests/Novus.LanguageServer.Tests.csproj" --nologo --verbosity quiet; then
+    echo -e "${GREEN}  ✓ Language server tests passed${NC}"
+else
+    echo -e "${RED}  ✗ Language server tests failed${NC}"
+    exit 1
+fi
+
 # Bundle the matching server, dependencies, and standard library. Letting an
 # installed extension discover an arbitrary old development build makes valid
 # current syntax look broken in the editor.

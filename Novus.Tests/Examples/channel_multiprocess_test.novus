@@ -91,7 +91,7 @@ fn worker_entry() -> i32 {
             // Small delay before retry
             let timer_result = TimerHandle::microhz()
             match timer_result {
-                Result::Ok(t) => {
+                Result::Ok(var t) => {
                     let _ = t.delay(Duration::millis(10))
                 },
                 Result::Err(_) => {}
@@ -114,7 +114,7 @@ fn worker_entry() -> i32 {
             write("Worker: Failed to open timer\n")
             return 1
         },
-        Result::Ok(timer) => {
+        Result::Ok(var timer) => {
             var progress: i32 = 0
             while progress <= 100 {
                 write("Worker: Sending progress %ld\n", progress)

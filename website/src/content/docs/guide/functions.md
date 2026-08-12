@@ -60,9 +60,10 @@ fn display_message(count: u32, message: str) {
 
 Each parameter must have an explicit type - no type inference for function parameters.
 
-### Passing by Value
+### Passing Values Without Ownership Transfer
 
-By default, parameters are passed by value (copied):
+An ordinary parameter does not take ownership. Use this form for primitive,
+`Copy`, and small view values:
 
 ```novus
 fn increment(x: i32) -> i32 {
@@ -77,6 +78,23 @@ fn main() -> i32 {
     return 0
 }
 ```
+
+Use `consuming` when the function takes ownership of a non-`Copy` value:
+
+```novus
+fn enqueue(consuming job: Job) {
+    // job is owned here and cleaned up unless ownership moves again
+}
+
+fn main() {
+    let job = Job::new()
+    enqueue(job)
+    // job cannot be used here
+}
+```
+
+Use `&T` rather than an ordinary value parameter to inspect an owning resource.
+The compiler rejects forwarding a non-consuming owner into a consuming call.
 
 ### Passing by Reference
 
@@ -95,7 +113,7 @@ fn increment_in_place(x: &var i32) {
 
 fn main() -> i32 {
     var value = 10
-    increment_in_place(&value)
+    increment_in_place(&var value)
     // value is now 11
     return 0
 }
@@ -278,7 +296,7 @@ pub fn main() -> i32 {
     var point = Point { x: 10, y: 20 }
 
     let dist = distance_from_origin(&point)
-    move_point(&point, 5, -3)
+    move_point(&var point, 5, -3)
     // point is now (15, 17)
 
     return 0
@@ -413,7 +431,7 @@ pub fn main() -> i32 {
 Novus supports generic functions that work with multiple types:
 
 ```novus
-fn max<T>(a: T, b: T) -> T where T: Ord {
+fn max<T>(consuming a: T, consuming b: T) -> T where T: Ord {
     if a > b {
         return a
     } else {
@@ -438,7 +456,7 @@ Generics allow writing code once that works with many types. We'll cover this in
 4. **Avoid side effects**: Pure functions are easier to test and reason about
 5. **Document complex functions**: Add comments explaining what the function does
 6. **Return early for error cases**: Handle edge cases at the start of the function
-7. **Use references for large data**: Avoid copying large structs by passing references
+7. **Make ownership visible**: Borrow with `&T`/`&var T`; transfer with `consuming`
 
 ## Common Patterns
 
@@ -504,7 +522,8 @@ Key differences from C:
 | `int add(int a, int b)` | `fn add(a: i32, b: i32) -> i32` |
 | `void foo(void)` | `fn foo()` |
 | `int* ptr` parameter | `ptr: *i32` parameter |
-| Pass by pointer: `func(&x)` | Pass by reference: `func(&x)` |
+| Pass by pointer: `func(&x)` | Shared borrow: `func(&x)` |
+| Ownership implied by convention | Ownership transfer: `fn take(consuming value: T)` |
 | `return;` (void function) | `return` or no return |
 | Function pointers | Function pointers (similar syntax) |
 
@@ -514,3 +533,5 @@ Key points:
 - Return type comes after arrow: `-> i32`
 - No `void` keyword - just omit return type
 - References (`&T`) are safer than C pointers
+- `&var T` is the only mutable borrow; call it with `&var value`
+- `consuming` makes ownership transfer explicit in the signature

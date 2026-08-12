@@ -671,6 +671,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             RegisterImpl(implDecl);
         }
 
+        ValidateCopyImplementations(context.implDeclaration());
+
         // Eighth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
         {
@@ -2096,6 +2098,58 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         ClearImplGenericParams(info.GenericParams);
     }
 
+    private void ValidateCopyImplementations(
+        IEnumerable<NovusParser.ImplDeclarationContext> declarations)
+    {
+        foreach (var declaration in declarations)
+        {
+            var info = ParseImplBlockInfo(declaration);
+            ClearImplGenericParams(info.GenericParams);
+            if (info.ParseError || !info.IsTraitImpl || info.TraitName != "Copy")
+                continue;
+
+            var target = (IrType?)_symbols.LookupStruct(info.ImplTypeName) ??
+                         _symbols.LookupEnum(info.ImplTypeName);
+            if (target == null)
+                continue;
+
+            var hasDrop = _traitResolver.HasTraitImpl(info.ImplTypeName, "Drop");
+            var fieldsAreCopy = target switch
+            {
+                IrStructType value => value.Fields.All(field => IsCopySafeField(field.Type)),
+                IrEnumType value => value.Variants.SelectMany(variant => variant.AssociatedData)
+                    .All(IsCopySafeField),
+                _ => false
+            };
+            if (!hasDrop && fieldsAreCopy)
+                continue;
+
+            var location = SourceLocationHelper.FromToken(
+                declaration.KW_IMPL().Symbol, _filePath, _sourceLines);
+            _diagnostics.ReportError(
+                "E0204",
+                $"type `{info.ImplTypeName}` cannot implement Copy because it owns resources or contains non-Copy data",
+                location,
+                helpTexts: new List<string>
+                {
+                    "remove the Copy implementation and let assignments move the value",
+                    "only resource-free values with Copy fields may implement Copy"
+                });
+        }
+    }
+
+    private bool IsCopySafeField(IrType type) => type switch
+    {
+        IrIntType or IrBoolType or IrFloatType or IrFixedType or
+            IrPointerType or IrFunctionPointerType or IrReferenceType => true,
+        IrMutReferenceType => false,
+        IrArrayType value => IsCopySafeField(value.ElementType),
+        IrTupleType value => value.ElementTypes.All(IsCopySafeField),
+        IrStructType value => _traitResolver.HasTraitImpl(value.StructName, "Copy"),
+        IrEnumType value => _traitResolver.HasTraitImpl(value.EnumName, "Copy"),
+        _ => false
+    };
+
     private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null, List<IrType>? traitTypeArgs = null)
     {
         var methodName = context.IDENTIFIER().GetText();
@@ -2390,8 +2444,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return; // Should never happen if HasStruct returned true
         }
 
-        // Handle generic parameters if present - add to scope for field parsing
-        AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
+        // Handle generic parameters if present - add to scope for field parsing.
+        var fieldGenericParams = AstParsingHelpers.ParseGenericParametersEx(context.genericParams(), ParseType);
+        foreach (var paramName in fieldGenericParams.TypeParameters)
+            _genericParams[paramName] = new IrGenericType(paramName);
+        foreach (var (paramName, constType) in fieldGenericParams.ConstParameters)
+            _constGenericParams[paramName] = new IrConstGenericParam(paramName, constType);
 
         // Parse struct fields and add them to the EXISTING placeholder
         // (now all struct names are known, including those defined later)
@@ -2408,7 +2466,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Clear generic params from scope after struct registration
-        AstParsingHelpers.ClearGenericParameters(context.genericParams(), _genericParams);
+        foreach (var paramName in fieldGenericParams.TypeParameters)
+            _genericParams.Remove(paramName);
+        foreach (var paramName in fieldGenericParams.ConstParameters.Keys)
+            _constGenericParams.Remove(paramName);
 
         // Force offset calculation by accessing SizeInBytes (only for non-generic structs)
         // The placeholder already has its GenericParameters set from RegisterStructPlaceholder
@@ -2426,26 +2487,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private void ValidateStructFieldType(string structName, string fieldName, IrType fieldType, SourceLocation location)
     {
-        if (fieldType is IrReferenceType or IrMutReferenceType)
-        {
-            var pointeeType = fieldType is IrReferenceType rt ? rt.PointeeType :
-                             ((IrMutReferenceType)fieldType).PointeeType;
-
-            _diagnostics.Add(new Diagnostic(
-                DiagnosticSeverity.Error,
-                "E0106",
-                $"struct `{structName}` cannot contain reference field `{fieldName}`",
-                location,
-                helpTexts: new List<string>
-                {
-                    "references have lifetimes that cannot be expressed in struct fields yet",
-                    "consider these alternatives:",
-                    $"  - use a raw pointer: `{fieldName}: *{pointeeType.Name}`",
-                    $"  - use an owned type instead of a reference",
-                    $"  - pass the reference as a function parameter instead of storing it"
-                }
-            ));
-        }
+        // Reference fields make the containing value an owner-tied view. Lifetime
+        // inference and the borrow graph enforce the same rules as direct references.
     }
 
     /// <summary>
@@ -2773,7 +2816,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         // Validate parameter name is not a reserved keyword
                         ValidateNotReservedKeyword(paramName, paramLocation, "parameter");
 
-                        parameters.Add(new IrParameter(paramName, paramType));
+                        parameters.Add(new IrParameter(paramName, paramType,
+                            isConsuming: paramCtx.KW_CONSUMING() != null));
                     }
 
                     // Handle variadic parameter if present
@@ -2920,6 +2964,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         _currentFunctionWhereClause = _currentFunction.WhereClause; // Track method-level where clause
         _variables.Clear();
         _borrowChecker.Reset(); // Reset move tracking for new method
+        _scopeDepth = 0;
 
         // Parse @suppress attributes to track which warnings to suppress
         _currentFunctionSuppressedWarnings.Clear();
@@ -2958,7 +3003,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Add parameters to symbol table (including self if present)
         foreach (var param in _currentFunction.Parameters)
         {
-            _variables[param.Name] = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
+            var parameter = new VariableSymbol(param.Name, param.Type, false, param.Location, Id: _nextVariableId++);
+            _variables[param.Name] = parameter;
+            _borrowChecker.BorrowGraph.RegisterVariable(
+                parameter.Id, parameter.Name, _scopeDepth, parameter.Location);
         }
 
         // Analyze function body with unreachable code detection
@@ -3061,12 +3109,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _borrowChecker.BorrowGraph.RegisterVariable(paramVarSymbol.Id, param.Name, _scopeDepth, param.Location);
         }
 
-        // Validate lifetime elision rules for functions returning references
-        if (_currentFunction.ReturnType is IrReferenceType or IrMutReferenceType)
+        // Validate lifetime elision rules for references and owner-tied aggregate views.
+        if (LifetimeInference.RequiresLifetime(_currentFunction.ReturnType))
         {
             var inferenceResult = _lifetimeInference.InferReturnLifetime(
                 _currentFunction.Parameters,
-                _currentFunction.ReturnType
+                _currentFunction.ReturnType,
+                _currentFunction.Attributes
             );
 
             if (!inferenceResult.Success)
@@ -3079,8 +3128,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     location,
                     helpTexts: new List<string>
                     {
-                        "add an `&self` parameter to clarify which input lifetime the return ties to",
-                        "or reduce to a single reference parameter"
+                        "use @borrows(parameter) when more than one input could supply the view",
+                        "use @borrows(static) only when the returned storage is permanent"
                     }
                 ));
             }
@@ -3314,6 +3363,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private void AnalyzeBlock(NovusParser.BlockContext block)
     {
+        // Lexical blocks may introduce names, but those names must not leak into
+        // the containing scope. Restoring the snapshot also makes shadowing safe.
+        var variablesBeforeBlock = new Dictionary<string, VariableSymbol>(_variables);
+
         // Push a new drop scope for this block
         var scopeLocation = SourceLocationHelper.FromContext(block, _filePath, _sourceLines);
         _dropScopes.Push(new ScopeDropInfo());
@@ -3375,6 +3428,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             ));
         }
 
+        _borrowChecker.BorrowGraph.ExitScope(_scopeDepth);
+
+        _variables.Clear();
+        foreach (var variable in variablesBeforeBlock)
+            _variables.Add(variable.Key, variable.Value);
+
         // Exit the lifetime scope
         _scopeDepth--;
 
@@ -3384,6 +3443,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var scopeInfo = _dropScopes.Pop();
             EmitDropCallsForScope(scopeInfo);
         }
+    }
+
+    public override IrType? VisitBlock([NotNull] NovusParser.BlockContext context)
+    {
+        AnalyzeBlock(context);
+        return null;
     }
 
     /// <summary>
@@ -3462,9 +3527,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private bool StatementAlwaysReturns(NovusParser.StatementContext stmt)
     {
-        // Return statement always returns
-        if (stmt.returnStatement() != null)
-            return true;
+        // A postfix-conditional return leaves a fallthrough path.
+        if (stmt.returnStatement() is { } returnStatement)
+            return returnStatement.postfixCondition() == null;
 
         // Panic statement always diverges (never returns)
         if (stmt.panicStatement() != null)
@@ -3618,17 +3683,129 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return null;
     }
 
+    private void ReportBorrowConflict(BorrowConflict? conflict, SourceLocation location)
+    {
+        if (conflict == null)
+            return;
+
+        var bothMutable = conflict.RequestedMutable && conflict.ExistingBorrow.IsMutable;
+        _diagnostics.Add(new Diagnostic(
+            DiagnosticSeverity.Error,
+            bothMutable ? "E0499" : "E0502",
+            bothMutable
+                ? $"cannot borrow `{conflict.SourceLifetime.VariableName}` as mutable more than once at a time"
+                : $"cannot borrow `{conflict.SourceLifetime.VariableName}` because it is already borrowed with incompatible mutability",
+            location,
+            helpTexts: new List<string>
+            {
+                $"the existing borrow starts at {conflict.ExistingBorrow.BorrowLocation}",
+                "many immutable borrows or one mutable borrow may be active at a time"
+            }));
+    }
+
+    private int _nextTemporaryBorrowId = -1;
+
+    private void TrackTemporaryBorrow(ParserRuleContext argument, List<int> temporaryBorrowers)
+    {
+        if (argument is not NovusParser.BorrowExprContext borrowExpr)
+            return;
+
+        var sourceName = ExtractVariableName(borrowExpr.expression());
+        if (sourceName == null || !_variables.TryGetValue(sourceName, out var source))
+            return;
+
+        var borrowerId = _nextTemporaryBorrowId--;
+        var location = SourceLocationHelper.FromContext(borrowExpr, _filePath, _sourceLines);
+        var conflict = _borrowChecker.BorrowGraph.AddBorrow(
+            borrowerId, source.Id, location, borrowExpr.KW_VAR() != null);
+        ReportBorrowConflict(conflict, location);
+        if (conflict == null)
+            temporaryBorrowers.Add(borrowerId);
+    }
+
+    private void ReleaseTemporaryBorrows(List<int> temporaryBorrowers)
+    {
+        foreach (var borrowerId in temporaryBorrowers)
+            _borrowChecker.BorrowGraph.RemoveBorrower(borrowerId);
+    }
+
+    private static IEnumerable<NovusParser.BorrowExprContext> FindBorrowExpressions(IParseTree node)
+    {
+        if (node is NovusParser.BorrowExprContext borrow)
+            yield return borrow;
+
+        for (var index = 0; index < node.ChildCount; index++)
+        {
+            foreach (var nested in FindBorrowExpressions(node.GetChild(index)))
+                yield return nested;
+        }
+    }
+
+    private void ValidateExplicitReturnBorrowSource(
+        NovusParser.ExpressionContext expression,
+        SourceLocation location)
+    {
+        var currentFunction = _currentFunction;
+        if (currentFunction == null)
+            return;
+
+        var borrowAttribute = currentFunction.Attributes?.Get(KnownAttributes.Borrows);
+        var declaredSource = borrowAttribute?.GetPositionalArg<string>(0);
+        if (string.IsNullOrWhiteSpace(declaredSource))
+            return;
+
+        var borrowedParameters = currentFunction.Parameters
+            .Where(parameter => LifetimeInference.RequiresLifetime(parameter.Type))
+            .Select(parameter => parameter.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var conflictingSource = FindIdentifierExpressions(expression)
+            .Select(ExtractVariableName)
+            .FirstOrDefault(name => name != null && borrowedParameters.Contains(name) &&
+                (declaredSource == "static" || name != declaredSource));
+
+        if (conflictingSource == null)
+            return;
+
+        _diagnostics.ReportError(
+            "E0106",
+            $"returned view borrows `{conflictingSource}`, but @borrows declares `{declaredSource}`",
+            location,
+            helpTexts: new List<string>
+            {
+                $"return a view derived only from `{declaredSource}`",
+                "or correct the @borrows source"
+            });
+    }
+
+    private static IEnumerable<NovusParser.IdentifierExprContext> FindIdentifierExpressions(IParseTree node)
+    {
+        if (node is NovusParser.IdentifierExprContext identifier)
+            yield return identifier;
+
+        for (var index = 0; index < node.ChildCount; index++)
+        {
+            foreach (var nested in FindIdentifierExpressions(node.GetChild(index)))
+                yield return nested;
+        }
+    }
+
     /// <summary>
     /// Checks if a statement always causes control flow to exit the current block
     /// </summary>
     private bool IsTerminalStatement(NovusParser.StatementContext stmt)
     {
-        // Return statement is always terminal
-        if (stmt.returnStatement() != null)
-            return true;
+        // Postfix conditionals leave a fallthrough path.
+        if (stmt.returnStatement() is { } returnStatement)
+            return returnStatement.postfixCondition() == null;
 
-        // Break statement is terminal in loop context
-        if (stmt.breakStatement() != null)
+        if (stmt.breakStatement() is { } breakStatement)
+            return breakStatement.postfixCondition() == null;
+
+        if (stmt.continueStatement() is { } continueStatement)
+            return continueStatement.postfixCondition() == null;
+
+        if (stmt.panicStatement() != null)
             return true;
 
         // If statement is terminal only if both branches are terminal
@@ -3758,11 +3935,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
 
-            // Check if returning a reference to a local variable (E0515)
-            if (exprType is IrReferenceType or IrMutReferenceType && exprContext != null && _currentFunction != null)
+            // Check if returning a reference/view tied to a local variable (E0515).
+            if (exprType != null && LifetimeInference.RequiresLifetime(exprType) &&
+                exprContext != null && _currentFunction != null)
             {
-                // Check if this is a borrow expression
-                if (exprContext is NovusParser.BorrowExprContext borrowExpr)
+                foreach (var borrowExpr in FindBorrowExpressions(exprContext))
                 {
                     var borrowedExpr = borrowExpr.expression();
                     var borrowedVarName = ExtractVariableName(borrowedExpr);
@@ -3789,6 +3966,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         }
                     }
                 }
+
+                ValidateExplicitReturnBorrowSource(exprContext, location);
             }
 
             // Check return type compatibility
@@ -3866,9 +4045,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
 
         // Skip duplicate check for throwaway bindings
-        if (!isThrowaway && _variables.ContainsKey(name))
+        if (!isThrowaway && _variables.TryGetValue(name, out var existingVariable) &&
+            ((_borrowChecker.BorrowGraph.GetLifetime(existingVariable.Id)?.ScopeDepth ?? _scopeDepth) == _scopeDepth ||
+             _currentFunction?.Parameters.Any(parameter => parameter.Name == name) == true))
         {
-            var originalLocation = _variables[name].Location;
+            var originalLocation = existingVariable.Location;
             _diagnostics.ReportError(
                 "E0016",
                 $"variable '{name}' is already defined in this scope",
@@ -4014,7 +4195,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             _borrowChecker.BorrowGraph.RegisterVariable(variableSymbol.Id, name, _scopeDepth, location);
 
             // Track borrow relationships if the variable is a reference type
-            if (varType is IrReferenceType or IrMutReferenceType)
+            if (LifetimeInference.RequiresLifetime(varType))
             {
                 // Check if the initializer is a borrow expression (&x or &var x)
                 if (context.expression() is NovusParser.BorrowExprContext borrowExpr)
@@ -4027,15 +4208,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         // Record the borrow: variableSymbol borrows from borrowedVar
                         bool isMutableBorrow = borrowExpr.KW_VAR() != null;
                         var borrowLocation = SourceLocationHelper.FromContext(borrowExpr, _filePath, _sourceLines);
-                        _borrowChecker.BorrowGraph.AddBorrow(variableSymbol.Id, borrowedVar.Id, borrowLocation, isMutableBorrow);
+                        ReportBorrowConflict(_borrowChecker.BorrowGraph.AddBorrow(
+                            variableSymbol.Id, borrowedVar.Id, borrowLocation, isMutableBorrow), borrowLocation);
                     }
                 }
                 // Check if there's a pending borrow from a method call
                 else if (_pendingBorrowSource.HasValue && _pendingBorrowLocation != null)
                 {
                     // Record the borrow: this variable borrows from the method's source
-                    bool isMutableBorrow = varType is IrMutReferenceType;
-                    _borrowChecker.BorrowGraph.AddBorrow(variableSymbol.Id, _pendingBorrowSource.Value, _pendingBorrowLocation, isMutableBorrow);
+                    bool isMutableBorrow = LifetimeInference.ContainsMutableReference(varType);
+                    ReportBorrowConflict(_borrowChecker.BorrowGraph.AddBorrow(
+                        variableSymbol.Id, _pendingBorrowSource.Value, _pendingBorrowLocation, isMutableBorrow),
+                        _pendingBorrowLocation);
 
                     // Clear pending borrow
                     _pendingBorrowSource = null;
@@ -4352,8 +4536,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             var incDecVariable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
 
-            // Only check mutability if it's a simple variable (no member/index access)
-            // For member/index access (e.g., self.len++), we're modifying the field, not the variable
+            if (ReportMutationBorrowConflict(incDecVariable, location))
+                return null;
+
             if (lvalueSuffixes is [])
             {
                 // Simple variable increment/decrement: check if variable is mutable
@@ -4382,7 +4567,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     );
                 }
             }
-            // For member/index access, the type checking is already done in VisitPostIncrementExpr/VisitPostDecrementExpr
+            else if (!CanMutateThrough(incDecVariable, name))
+            {
+                ReportImmutableLvalue(name, incDecVariable, location);
+                return null;
+            }
 
             return null;
         }
@@ -4405,6 +4594,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         "consider declaring it with 'let' or 'var'"
                     }
                 );
+                return null;
+            }
+
+            var baseVariable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
+            if (ReportMutationBorrowConflict(baseVariable, location))
+                return null;
+            if (!CanMutateThrough(baseVariable, name))
+            {
+                ReportImmutableLvalue(name, baseVariable, location);
                 return null;
             }
             // Lvalue suffix chain validation is complex and requires handling:
@@ -4435,6 +4633,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         var variable = _variables.ContainsKey(name) ? _variables[name] : _globalVariables[name];
+
+        if (derefCount == 0 && ReportMutationBorrowConflict(variable, location))
+            return null;
 
         if (derefCount > 0)
         {
@@ -4620,10 +4821,77 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return null;
     }
 
+    private bool CanMutateThrough(VariableSymbol variable, string name) =>
+        variable.IsMutable ||
+        variable.Type is IrMutReferenceType or IrPointerType ||
+        _currentFunction?.Parameters.Any(parameter =>
+            parameter.Name == name && parameter.IsConsuming) == true;
+
+    private bool ReportMutationBorrowConflict(VariableSymbol variable, SourceLocation location)
+    {
+        var conflict = _borrowChecker.BorrowGraph.FindConflict(variable.Id, mutable: true);
+        ReportBorrowConflict(conflict, location);
+        return conflict != null;
+    }
+
+    private void ReportImmutableLvalue(string name, VariableSymbol variable, SourceLocation location)
+    {
+        _diagnostics.ReportError(
+            "E0019",
+            $"cannot mutate through immutable variable '{name}'",
+            location,
+            helpTexts: new List<string>
+            {
+                "use 'var' for an owned value or '&var' for a mutable borrow"
+            },
+            relatedLocations: new List<(SourceLocation, string)>
+            {
+                (variable.Location, $"'{name}' was declared here")
+            });
+    }
+
+    private IrType? VisitWithExpectedType(NovusParser.ExpressionContext expression, IrType? expectedType)
+    {
+        var previousExpectedType = _expectedType;
+        _expectedType = expectedType;
+        var type = Visit(expression);
+        _expectedType = previousExpectedType;
+        return type;
+    }
+
+    private (IrType? Left, IrType? Right) VisitBinaryOperands(
+        NovusParser.ExpressionContext leftExpression,
+        NovusParser.ExpressionContext rightExpression)
+    {
+        if (IsUnsuffixedIntegerLiteral(leftExpression))
+        {
+            var right = Visit(rightExpression);
+            return (VisitWithExpectedType(leftExpression, right), right);
+        }
+
+        var left = Visit(leftExpression);
+        return (left, VisitWithExpectedType(rightExpression, left));
+    }
+
+    private static bool IsUnsuffixedIntegerLiteral(NovusParser.ExpressionContext expression)
+    {
+        if (expression is not NovusParser.PrimaryExprContext primary)
+            return false;
+        var text = primary.primaryExpression() switch
+        {
+            NovusParser.IntegerLiteralContext literal => literal.INTEGER_LITERAL().GetText(),
+            NovusParser.BinaryLiteralContext literal => literal.BINARY_LITERAL().GetText(),
+            NovusParser.HexLiteralContext literal => literal.HEX_LITERAL().GetText(),
+            _ => null
+        };
+        return text != null && !(text.EndsWith("u8") || text.EndsWith("u16") ||
+            text.EndsWith("u32") || text.EndsWith("u64") || text.EndsWith("i8") ||
+            text.EndsWith("i16") || text.EndsWith("i32") || text.EndsWith("i64"));
+    }
+
     public override IrType? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4718,8 +4986,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4741,8 +5008,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4764,8 +5030,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4787,8 +5052,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4810,8 +5074,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return null;
@@ -4907,7 +5170,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitCastExpr([NotNull] NovusParser.CastExprContext context)
     {
         var targetType = ParseType(context.type());
+        var previousExpectedType = _expectedType;
+        _expectedType = null;
         var exprType = Visit(context.expression());
+        _expectedType = previousExpectedType;
 
         if (exprType == null)
             return targetType;
@@ -4964,7 +5230,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
     {
+        var previousExpectedType = _expectedType;
+        _expectedType = null;
         var exprType = Visit(context.expression());
+        _expectedType = previousExpectedType;
         var targetType = ParseType(context.type());
 
         if (exprType == null)
@@ -5150,7 +5419,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             var (varName, varType, isMutable) = _pendingIfLetVariable.Value;
             var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _variables[varName] = new VariableSymbol(varName, varType, isMutable, location);
+            _variables[varName] = new VariableSymbol(varName, varType, isMutable, location, Id: _nextVariableId++);
             _pendingIfLetVariable = null;
         }
 
@@ -5474,15 +5743,29 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
             else
             {
-                // For collections, validate that the type implements Iterable<T> and extract T
+                // Indexable collections borrow each element through Iterable<T>.
                 var elementType = GetIterableElementType(collectionType);
                 if (elementType != null)
                 {
-                    itemType = elementType;
+                    itemType = IsCopyType(elementType)
+                        ? elementType
+                        : _typeInterner.GetReferenceType(elementType);
+                }
+                // Stateful iterators yield owned values through next().
+                else if (_traitResolver.TryGetIteratorItemType(collectionType, out var iteratorItemType) && iteratorItemType != null)
+                {
+                    if (collectionType is IrReferenceType)
+                    {
+                        _diagnostics.ReportError(
+                            "E0050",
+                            "A stateful iterator cannot advance through an immutable reference",
+                            location,
+                            helpTexts: new List<string> { "Iterate the value directly or borrow it with '&var'" });
+                    }
+                    itemType = iteratorItemType;
                 }
                 else
                 {
-                    // Type doesn't implement Iterable<T> - report error
                     var typeName = GetBaseTypeName(collectionType);
                     _diagnostics.ReportError(
                         "E0050",
@@ -5490,15 +5773,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         location,
                         helpTexts: new List<string>
                         {
-                            $"For-in loops require the collection type to implement Iterable<T>",
-                            $"Implement 'impl<T> Iterable<T> for {typeName}' with get() and len() methods"
+                            "For-in loops require Iterable<T> or Iterator<T>",
+                            $"Implement Iterable<T> with get()/len(), or Iterator<T> with next(), for {typeName}"
                         }
                     );
                 }
             }
         }
 
-        var itemSymbol = new VariableSymbol(itemName, itemType, isMutable, location!);
+        var itemSymbol = new VariableSymbol(itemName, itemType, isMutable, location!, Id: _nextVariableId++);
         _variables[itemName] = itemSymbol;
 
         // Enter loop context
@@ -5518,6 +5801,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private IrType? GetIterableElementType(IrType collectionType)
     {
+        var valueType = collectionType switch
+        {
+            IrReferenceType reference => reference.PointeeType,
+            IrMutReferenceType reference => reference.PointeeType,
+            IrPointerType pointer => pointer.PointeeType,
+            _ => collectionType
+        };
         string typeName = GetBaseTypeName(collectionType);
 
         // Search through all trait impls to find Iterable<T> for this type
@@ -5538,23 +5828,24 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             {
                 var elementType = implInfo.TraitTypeArgs[0];
 
-                // If the element type is still a generic parameter, try to substitute from the collection type's CacheKey
-                if (elementType is IrGenericType genericElement && collectionType is IrStructType structType)
+                // Substitute the collection's concrete type argument for Iterable<T>.
+                if (valueType is IrStructType structType)
                 {
-                    // Find the index of this generic parameter in the impl's generic params
-                    var paramIndex = implInfo.ImplGenericParams.IndexOf(genericElement.ParameterName);
+                    var genericName = elementType is IrGenericType genericElement
+                        ? genericElement.ParameterName
+                        : elementType.Name;
+                    var paramIndex = implInfo.ImplGenericParams.IndexOf(genericName);
+                    if (paramIndex >= 0 && structType.TypeArguments is { } concreteArgs && paramIndex < concreteArgs.Count)
+                        return concreteArgs[paramIndex];
+
                     if (paramIndex >= 0 && structType.CacheKey != null)
                     {
-                        // Parse type arguments from CacheKey like "Vec<i32>" -> ["i32"]
                         var typeArgs = ParseTypeArgsFromCacheKey(structType.CacheKey);
                         if (paramIndex < typeArgs.Count)
                         {
-                            // Resolve the type argument name to an actual type
                             var resolvedType = ResolveTypeByName(typeArgs[paramIndex]);
                             if (resolvedType != null)
-                            {
                                 return resolvedType;
-                            }
                         }
                     }
                 }
@@ -5567,7 +5858,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Also check for array types - arrays are implicitly iterable
-        if (collectionType is IrArrayType arrayType)
+        if (valueType is IrArrayType arrayType)
         {
             return arrayType.ElementType;
         }
@@ -5786,14 +6077,32 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // For now, we support simple patterns that introduce bindings
         // The bindings will be available after the let...else statement
-        AnalyzeLetElsePattern(pattern, exprType, location);
+        var borrowedEnumType = exprType switch
+        {
+            IrPointerType pointer => pointer.PointeeType as IrEnumType,
+            IrReferenceType reference => reference.PointeeType as IrEnumType,
+            IrMutReferenceType reference => reference.PointeeType as IrEnumType,
+            _ => null
+        };
+        if (borrowedEnumType != null && PatternMovesOwnedPayload(pattern, borrowedEnumType))
+        {
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                "cannot move owned payload out of a borrowed enum; bind it with '&value' instead",
+                location
+            );
+        }
+
+        AnalyzeLetElsePattern(pattern, exprType, location,
+            canBorrow: borrowedEnumType != null,
+            canBorrowMutably: exprType is IrMutReferenceType);
 
         // Visit the else block - it must diverge
         Visit(context.block());
 
         // Verify that the else block actually diverges
         var elseBlock = context.block();
-        if (!AnalyzeBlockReturns(elseBlock))
+        if (!BlockIsTerminal(elseBlock))
         {
             var elseLocation = SourceLocationHelper.FromContext(elseBlock, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -5809,7 +6118,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// <summary>
     /// Analyze a pattern in let...else and register any bindings it introduces.
     /// </summary>
-    private void AnalyzeLetElsePattern(NovusParser.PatternContext pattern, IrType exprType, SourceLocation location)
+    private void AnalyzeLetElsePattern(NovusParser.PatternContext pattern, IrType exprType, SourceLocation location,
+        bool canBorrow = false, bool canBorrowMutably = false)
     {
         // Handle different pattern types
         if (pattern is NovusParser.IdentifierPatternContext idPattern)
@@ -5818,7 +6128,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var name = idPattern.IDENTIFIER().GetText();
             if (!_variables.ContainsKey(name))
             {
-                _variables[name] = new VariableSymbol(name, exprType, false, location);
+                _variables[name] = new VariableSymbol(name, exprType, false, location, Id: _nextVariableId++);
             }
         }
         else if (pattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
@@ -5827,8 +6137,44 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var name = mutIdPattern.IDENTIFIER().GetText();
             if (!_variables.ContainsKey(name))
             {
-                _variables[name] = new VariableSymbol(name, exprType, true, location);
+                _variables[name] = new VariableSymbol(name, exprType, true, location, Id: _nextVariableId++);
             }
+        }
+        else if (pattern is NovusParser.ReferencePatternContext referencePattern)
+        {
+            if (!canBorrow)
+            {
+                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                    "reference payload patterns require a borrowed enum", location);
+                return;
+            }
+
+            var innerPattern = referencePattern.pattern();
+            var mutable = innerPattern is NovusParser.VarIdentifierPatternContext;
+            if (mutable && !canBorrowMutably)
+            {
+                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                    "cannot create a mutable payload reference from an immutable enum reference", location);
+                return;
+            }
+
+            var name = innerPattern switch
+            {
+                NovusParser.IdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                NovusParser.VarIdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                _ => null
+            };
+            if (name == null)
+            {
+                _diagnostics.ReportError("E0044", "reference patterns must bind an identifier", location);
+                return;
+            }
+
+            IrType referenceType = mutable
+                ? _typeInterner.GetMutReferenceType(exprType)
+                : _typeInterner.GetReferenceType(exprType);
+            if (!_variables.ContainsKey(name))
+                _variables[name] = new VariableSymbol(name, referenceType, false, location, Id: _nextVariableId++);
         }
         else if (pattern is NovusParser.VariantPatternContext variantPattern)
         {
@@ -5838,13 +6184,20 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             if (patternList != null)
             {
                 // Get the inner types from the enum variant
-                var innerTypes = GetVariantInnerTypes(exprType, variantPattern.variantName());
+                var matchedType = exprType switch
+                {
+                    IrPointerType pointer => pointer.PointeeType,
+                    IrReferenceType reference => reference.PointeeType,
+                    IrMutReferenceType reference => reference.PointeeType,
+                    _ => exprType
+                };
+                var innerTypes = GetVariantInnerTypes(matchedType, variantPattern.variantName());
 
                 var subPatterns = patternList.pattern();
                 for (int i = 0; i < subPatterns.Length; i++)
                 {
                     var innerType = i < innerTypes.Count ? innerTypes[i] : exprType;
-                    AnalyzeLetElsePattern(subPatterns[i], innerType, location);
+                    AnalyzeLetElsePattern(subPatterns[i], innerType, location, canBorrow, canBorrowMutably);
                 }
             }
         }
@@ -6363,8 +6716,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         foreach (var attrCtx in attributeContexts)
         {
-            var attrName = attrCtx.IDENTIFIER().GetText();
-            var location = SourceLocationHelper.FromToken(attrCtx.IDENTIFIER().Symbol, _filePath, _sourceLines);
+            var attrName = attrCtx.attributeName().GetText();
+            var location = SourceLocationHelper.FromToken(attrCtx.attributeName().Start, _filePath, _sourceLines);
 
             var attr = new AttributeInfo(attrName, location);
 
@@ -6383,7 +6736,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     // Positional argument: value
                     else
                     {
-                        var value = EvaluateConstantExpression(argCtx.expression());
+                        var value = argCtx.KW_STATIC() != null
+                            ? "static"
+                            : EvaluateConstantExpression(argCtx.expression());
                         attr.PositionalArgs.Add(value ?? "null");
                     }
                 }
@@ -6566,12 +6921,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         if (matchValueType is IrPointerType or IrReferenceType or IrMutReferenceType &&
-            enumTypeForValidation != null && EnumPayloadNeedsDrop(enumTypeForValidation, new HashSet<string>()))
+            enumTypeForValidation != null && context.matchArm().Any(arm =>
+                PatternMovesOwnedPayload(arm.pattern(), enumTypeForValidation)))
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                "Matching a borrowed enum with owned payloads is not supported; match the owned value instead",
+                "cannot move owned payload out of a borrowed enum; bind it with '&value' instead",
                 location
             );
             return null;
@@ -6602,7 +6958,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Analyze pattern and bind variables
             if (isEnumMatch)
             {
-                AnalyzePatternAndBind(pattern, enumTypeForValidation!, coveredVariants, ref hasWildcard);
+                AnalyzePatternAndBind(pattern, enumTypeForValidation!, matchValueType,
+                    coveredVariants, ref hasWildcard);
             }
             else if (actualMatchType is IrIntType intType)
             {
@@ -6793,6 +7150,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     }
 
     private void AnalyzePatternAndBind(NovusParser.PatternContext pattern, IrEnumType enumType,
+        IrType matchValueType,
         HashSet<string> coveredVariants, ref bool hasWildcard)
     {
         switch (pattern)
@@ -6804,8 +7162,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             case NovusParser.PipePatternContext pipePattern:
             {
                 // Recursively analyze both sides of the pipe
-                AnalyzePatternAndBind(pipePattern.pattern(0), enumType, coveredVariants, ref hasWildcard);
-                AnalyzePatternAndBind(pipePattern.pattern(1), enumType, coveredVariants, ref hasWildcard);
+                AnalyzePatternAndBind(pipePattern.pattern(0), enumType, matchValueType, coveredVariants, ref hasWildcard);
+                AnalyzePatternAndBind(pipePattern.pattern(1), enumType, matchValueType, coveredVariants, ref hasWildcard);
                 break;
             }
 
@@ -6863,7 +7221,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                             var location = SourceLocationHelper.FromToken(idPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
                             // Register this variable as immutable
-                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, false, location);
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, false, location,
+                                Id: _nextVariableId++);
                         }
                         // Handle mut identifier patterns (e.g., Some(mut x) binds x as mutable)
                         else if (subPattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
@@ -6873,7 +7232,46 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                             var location = SourceLocationHelper.FromToken(mutIdPattern.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
                             // Register this variable as mutable
-                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, true, location);
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType!, true, location,
+                                Id: _nextVariableId++);
+                        }
+                        else if (subPattern is NovusParser.ReferencePatternContext referencePattern)
+                        {
+                            var innerPattern = referencePattern.pattern();
+                            var mutable = innerPattern is NovusParser.VarIdentifierPatternContext;
+                            var location = SourceLocationHelper.FromToken(referencePattern.Start, _filePath, _sourceLines);
+
+                            if (matchValueType is not (IrPointerType or IrReferenceType or IrMutReferenceType))
+                            {
+                                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                                    "reference payload patterns require a borrowed enum", location);
+                                continue;
+                            }
+                            if (mutable && matchValueType is not IrMutReferenceType)
+                            {
+                                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                                    "cannot create a mutable payload reference from an immutable enum reference", location);
+                                continue;
+                            }
+
+                            var bindingName = innerPattern switch
+                            {
+                                NovusParser.IdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                                NovusParser.VarIdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                                _ => null
+                            };
+                            if (bindingName == null)
+                            {
+                                _diagnostics.ReportError("E0044", "reference patterns must bind an identifier", location);
+                                continue;
+                            }
+
+                            var payloadType = variant.AssociatedData[i]!;
+                            IrType bindingType = mutable
+                                ? _typeInterner.GetMutReferenceType(payloadType)
+                                : _typeInterner.GetReferenceType(payloadType);
+                            _variables[bindingName] = new VariableSymbol(bindingName, bindingType, false, location,
+                                Id: _nextVariableId++);
                         }
                     }
                 }
@@ -7160,7 +7558,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     // This is a binding pattern (e.g., `n if n > 0`)
                     // Bind the identifier to the matched value
                     var location = SourceLocationHelper.FromToken(identPattern.Start, _filePath, _sourceLines);
-                    _variables[identName] = new VariableSymbol(identName, intType, false, location);
+                    _variables[identName] = new VariableSymbol(identName, intType, false, location,
+                        Id: _nextVariableId++);
                     // Binding patterns don't contribute to exhaustiveness checking
                     // They match any value (like wildcards) but bind it to a name
                 }
@@ -8822,6 +9221,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Check if this function requires unsafe context
         CheckUnsafeFunctionCall(context, functionName);
+        if (function.Attributes?.Has(KnownAttributes.Unsafe) == true)
+            RequireUnsafe(context, functionName + "()", "the function is marked @unsafe");
 
         // Check if this is a generic function that needs monomorphization
         if (function.GenericParameters != null && function.GenericParameters.Count > 0)
@@ -8933,6 +9334,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (context.argumentList() != null)
         {
             var arguments = context.argumentList().expression();
+            var temporaryBorrowers = new List<int>();
 
             for (int i = 0; i < arguments.Length; i++)
             {
@@ -8940,6 +9342,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 if (function.IsVariadic && i >= nonVariadicParamCount)
                 {
                     Visit(arguments[i]); // Still visit, just don't type check
+                    TrackTemporaryBorrow(arguments[i], temporaryBorrowers);
                     continue; // Extra args for variadic function - no type checking needed
                 }
 
@@ -8951,6 +9354,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 _expectedType = paramType;
 
                 var argType = Visit(arguments[i]);
+                TrackTemporaryBorrow(arguments[i], temporaryBorrowers);
 
                 // Restore previous expected type
                 _expectedType = savedExpectedType;
@@ -9095,6 +9499,33 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                                 $"consider using a cast: ({TypeToString(paramType)}){arguments[i].GetText()}"
                             }
                         );
+                    }
+                }
+            }
+
+            ReleaseTemporaryBorrows(temporaryBorrowers);
+        }
+
+        if (LifetimeInference.RequiresLifetime(function.ReturnType))
+        {
+            var inference = _lifetimeInference.InferReturnLifetime(
+                function.Parameters, function.ReturnType, function.Attributes);
+            if (inference.Success && inference.SourceParameterIndex.HasValue &&
+                context.argumentList() != null)
+            {
+                var arguments = context.argumentList().expression();
+                var sourceIndex = inference.SourceParameterIndex.Value;
+                if (sourceIndex < arguments.Length)
+                {
+                    var sourceArgument = arguments[sourceIndex];
+                    var sourceName = sourceArgument is NovusParser.BorrowExprContext borrow
+                        ? ExtractVariableName(borrow.expression())
+                        : ExtractVariableName(sourceArgument);
+                    if (sourceName != null && _variables.TryGetValue(sourceName, out var source))
+                    {
+                        _pendingBorrowSource = source.Id;
+                        _pendingBorrowLocation = SourceLocationHelper.FromContext(
+                            arguments[sourceIndex], _filePath, _sourceLines);
                     }
                 }
             }
@@ -9298,6 +9729,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             mangledMethodName = traitMethodName!;
         }
 
+        if (method.Attributes?.Has(KnownAttributes.Unsafe) == true)
+            RequireUnsafe(callCtx, methodName + "()", "the method is marked @unsafe");
+
         // Build type substitution map for generic methods
         var typeSubstitutions = new Dictionary<string, IrType>();
         var concreteReceiverType = receiverType switch
@@ -9409,6 +9843,25 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Check if method has a self parameter
         bool hasSelfParam = method.Parameters.Count > 0 && method.Parameters[0].Name == "self";
+        int? temporaryReceiverBorrower = null;
+
+        if (hasSelfParam && method.Parameters[0].Type is IrReferenceType or IrMutReferenceType)
+        {
+            var receiverVarName = ExtractVariableName(receiverExpr);
+            if (receiverVarName != null && _variables.TryGetValue(receiverVarName, out var receiverVar))
+            {
+                var borrowerId = _nextTemporaryBorrowId--;
+                var location = SourceLocationHelper.FromContext(memberAccessCtx, _filePath, _sourceLines);
+                var conflict = _borrowChecker.BorrowGraph.AddBorrow(
+                    borrowerId,
+                    receiverVar.Id,
+                    location,
+                    method.Parameters[0].Type is IrMutReferenceType);
+                ReportBorrowConflict(conflict, location);
+                if (conflict == null)
+                    temporaryReceiverBorrower = borrowerId;
+            }
+        }
 
         // Count the arguments (excluding self, which we'll add)
         var providedArgCount = callCtx.argumentList()?.expression().Length ?? 0;
@@ -9448,6 +9901,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             var arguments = callCtx.argumentList().expression();
             var paramStartIndex = hasSelfParam ? 1 : 0;
+            var temporaryBorrowers = new List<int>();
 
             for (int i = 0; i < arguments.Length; i++)
             {
@@ -9455,6 +9909,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 var savedExpectedType = _expectedType;
                 _expectedType = paramType;
                 var argType = Visit(arguments[i]);
+                TrackTemporaryBorrow(arguments[i], temporaryBorrowers);
                 _expectedType = savedExpectedType;
                 var param = method.Parameters[paramStartIndex + i];
 
@@ -9566,16 +10021,22 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     }
                 }
             }
+
+            ReleaseTemporaryBorrows(temporaryBorrowers);
         }
+
+        if (temporaryReceiverBorrower.HasValue)
+            _borrowChecker.BorrowGraph.RemoveBorrower(temporaryReceiverBorrower.Value);
 
         // Apply type substitutions to the return type
         // Use SubstituteGenericTypes to handle all cases including nested generics like *T, Vec<T>, etc.
         var returnType = _typeParser.SubstituteGenericTypes(method.ReturnType, typeSubstitutions);
 
         // Track lifetime for method returns that are references
-        if (returnType is IrReferenceType or IrMutReferenceType)
+        if (LifetimeInference.RequiresLifetime(returnType))
         {
-            var inferenceResult = _lifetimeInference.InferReturnLifetime(method.Parameters, method.ReturnType);
+            var inferenceResult = _lifetimeInference.InferReturnLifetime(
+                method.Parameters, method.ReturnType, method.Attributes);
             if (inferenceResult.Success && inferenceResult.SourceParameterIndex.HasValue)
             {
                 // Find which variable the return borrows from
@@ -9601,7 +10062,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         var arguments = callCtx.argumentList().expression();
                         if (argIndex < arguments.Length)
                         {
-                            var argVarName = ExtractVariableName(arguments[argIndex]);
+                            var sourceArgument = arguments[argIndex];
+                            var argVarName = sourceArgument is NovusParser.BorrowExprContext borrow
+                                ? ExtractVariableName(borrow.expression())
+                                : ExtractVariableName(sourceArgument);
                             if (argVarName != null && _variables.TryGetValue(argVarName, out var argVar))
                             {
                                 _pendingBorrowSource = argVar.Id;
@@ -9952,7 +10416,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // String literals create Str struct instances from std::strings
-        // Str { ptr: *u8, len: u32 }
+        // Str is an owner-tied view; literal storage itself has static lifetime.
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
@@ -10706,8 +11170,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
     {
-        var leftType = Visit(context.expression(0));
-        var rightType = Visit(context.expression(1));
+        var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         if (leftType == null || rightType == null)
             return IrBoolType.Instance;
@@ -11628,28 +12091,36 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        var previousExpectedType = _expectedType;
+        var expectedElementType = (_expectedType as IrArrayType)?.ElementType;
+        _expectedType = expectedElementType;
         var firstType = Visit(expressions[0]);
+        _expectedType = previousExpectedType;
         if (firstType == null)
         {
             return null;
         }
 
+        var elementType = expectedElementType ?? firstType;
+
         int index = 1;
         foreach (var expr in expressions.Skip(1))
         {
+            _expectedType = elementType;
             var exprType = Visit(expr);
-            if (exprType != null && !TypesCompatible(firstType, exprType))
+            _expectedType = previousExpectedType;
+            if (exprType != null && !TypesCompatible(elementType, exprType))
             {
                 _diagnostics.ReportError(
                     "E0029",
-                    $"array element type mismatch: expected '{TypeToString(firstType)}' (from first element), found '{TypeToString(exprType!)}'  at index {index}",
+                    $"array element type mismatch: expected '{TypeToString(elementType)}', found '{TypeToString(exprType!)}' at index {index}",
                     SourceLocationHelper.FromContext(expr, _filePath, _sourceLines)
                 );
             }
             index++;
         }
 
-        return _typeInterner.GetArrayType(firstType, expressions.Length);
+        return _typeInterner.GetArrayType(elementType, expressions.Length);
     }
 
     public override IrType? VisitArrayRepeatLiteral([NotNull] NovusParser.ArrayRepeatLiteralContext context)
@@ -11663,8 +12134,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        // Let generic values such as Option::None inherit the array's element type.
+        var previousExpectedType = _expectedType;
+        if (_expectedType is IrArrayType expectedArray)
+            _expectedType = expectedArray.ElementType;
+
         // First expression is the value
         var valueType = Visit(expressions[0]);
+        _expectedType = previousExpectedType;
         if (valueType == null)
         {
             return null;
@@ -11686,10 +12163,20 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Try to evaluate the count expression if it's a compile-time constant
-        if (!TryEvaluateIntegerLiteral(expressions[1], out int arraySize) || arraySize < 0)
+        if (!TryEvaluateIntegerLiteral(expressions[1], out int arraySize))
         {
+            var countName = expressions[1].GetText();
+            if (_constGenericParams.ContainsKey(countName))
+                return _typeInterner.GetArrayType(valueType, countName);
+
             var loc = SourceLocationHelper.FromContext(expressions[1], _filePath, _sourceLines);
             _diagnostics.ReportError("E0999", "array repeat count must be a compile-time constant integer literal (non-negative)", loc);
+            return null;
+        }
+        if (arraySize < 0)
+        {
+            var loc = SourceLocationHelper.FromContext(expressions[1], _filePath, _sourceLines);
+            _diagnostics.ReportError("E0999", "array repeat count must be non-negative", loc);
             return null;
         }
 
@@ -11952,7 +12439,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
         else
         {
-            type = IrIntType.I32;
+            type = _expectedType as IrIntType ?? IrIntType.I32;
             numberText = text;
         }
 
@@ -12043,7 +12530,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (text.EndsWith("i16")) return (IrIntType.I16, text[..^3]);
         if (text.EndsWith("i32")) return (IrIntType.I32, text[..^3]);
         if (text.EndsWith("i64")) return (IrIntType.I64, text[..^3]);
-        return (IrIntType.I32, text);
+        return (_expectedType as IrIntType ?? IrIntType.I32, text);
     }
 
     private void ValidateLiteralRange(ParserRuleContext context, long value, IrType type)
@@ -12361,14 +12848,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // Both have cache keys - compare them (for monomorphized types like Vec<i32>)
             if (structA.CacheKey != null && structB.CacheKey != null)
-                return structA.CacheKey == structB.CacheKey;
+                return NormalizeGenericCacheKey(structA.CacheKey) == NormalizeGenericCacheKey(structB.CacheKey);
 
             // Non-generic structs with same name are equal
-            if (structA.GenericParameters is [] && structB.GenericParameters is [])
+            if (structA.GenericParameters is [] && structB.GenericParameters is [] &&
+                (structA.ConstGenericParameters?.Count ?? 0) == 0 &&
+                (structB.ConstGenericParameters?.Count ?? 0) == 0)
                 return true;
 
             // Both generic templates - compare parameter counts
-            return structA.GenericParameters.Count == structB.GenericParameters.Count;
+            return structA.GenericParameters.Count == structB.GenericParameters.Count &&
+                   (structA.ConstGenericParameters?.Count ?? 0) ==
+                   (structB.ConstGenericParameters?.Count ?? 0);
         }
 
         // Enum types - compare by name and cache key
@@ -12414,7 +12905,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Array types - compare element types and lengths
         if (a is IrArrayType arrA && b is IrArrayType arrB)
-            return arrA.Length == arrB.Length && TypesEqual(arrA.ElementType, arrB.ElementType);
+            return arrA.Length == arrB.Length && arrA.LengthParameter == arrB.LengthParameter &&
+                   TypesEqual(arrA.ElementType, arrB.ElementType);
 
         // Function pointer types - compare signatures
         if (a is IrFunctionPointerType fpA && b is IrFunctionPointerType fpB)
@@ -12523,6 +13015,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (expected is IrArrayType expectedArray && actual is IrArrayType actualArray)
         {
             return expectedArray.Length == actualArray.Length &&
+                   expectedArray.LengthParameter == actualArray.LengthParameter &&
                    TypesCompatible(expectedArray.ElementType, actualArray.ElementType);
         }
 
@@ -12658,7 +13151,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // monomorphized type (e.g., Vec<u8>) won't be reference-equal, but should be considered compatible
             if (expectedStruct.CacheKey != null && actualStruct.CacheKey != null)
             {
-                return expectedStruct.CacheKey == actualStruct.CacheKey;
+                return NormalizeGenericCacheKey(expectedStruct.CacheKey) ==
+                       NormalizeGenericCacheKey(actualStruct.CacheKey);
             }
 
             // Debug: Check if one has CacheKey and the other doesn't
@@ -12669,8 +13163,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 // and one has a cache key while the other doesn't, consider them compatible.
                 // This handles the case where Allocation<T> in one context has a cache key
                 // but in another context doesn't, but they're the same generic template.
-                if (expectedStruct.GenericParameters.Count > 0 &&
-                    expectedStruct.GenericParameters.Count == actualStruct.GenericParameters.Count)
+                var expectedGenericCount = expectedStruct.GenericParameters.Count +
+                                           (expectedStruct.ConstGenericParameters?.Count ?? 0);
+                var actualGenericCount = actualStruct.GenericParameters.Count +
+                                         (actualStruct.ConstGenericParameters?.Count ?? 0);
+                if (expectedGenericCount > 0 && expectedGenericCount == actualGenericCount)
                 {
                     return true;
                 }
@@ -12678,7 +13175,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // If actual type is generic (has generic parameters), allow matching with concrete expected type
             // This handles the case where Vec::new() returns Vec<T>, but we expect Vec<i32>
-            if (actualStruct.GenericParameters.Count > 0 && expectedStruct.GenericParameters is [])
+            var actualIsGeneric = actualStruct.GenericParameters.Count > 0 ||
+                                  (actualStruct.ConstGenericParameters?.Count ?? 0) > 0;
+            var expectedIsGeneric = expectedStruct.GenericParameters.Count > 0 ||
+                                    (expectedStruct.ConstGenericParameters?.Count ?? 0) > 0;
+            if (actualIsGeneric && !expectedIsGeneric)
             {
                 // Actual is generic (Vec<T>), expected is concrete (Vec<i32>) - compatible!
                 return true;
@@ -12686,7 +13187,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // If expected type is generic and actual is concrete, also allow
             // This handles the reverse case (less common but possible)
-            if (expectedStruct.GenericParameters.Count > 0 && actualStruct.GenericParameters is [])
+            if (expectedIsGeneric && !actualIsGeneric)
             {
                 // Expected is generic (Vec<T>), actual is concrete (Vec<i32>) - compatible!
                 return true;
@@ -12726,6 +13227,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return false;
     }
 
+    private static string NormalizeGenericCacheKey(string key) => key.Replace("const ", "");
+
     /// <summary>
     /// Check if we can automatically coerce Str to *u8
     /// This is safe because Str has ptr: *u8 as its first field
@@ -12750,19 +13253,34 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private bool CanCoerceArrayToSlice(IrType expectedType, IrType actualType)
     {
-        // Check if expected is Slice<T> and actual is &[T; N]
+        // Check if expected is Slice<T>/MutSlice<T> and actual is a compatible
+        // borrow of [T; N]. Mutable slices require a mutable borrow.
         if (expectedType is IrStructType sliceStruct &&
-            sliceStruct.StructName == "Slice" &&
-            actualType is IrReferenceType refType &&
-            refType.PointeeType is IrArrayType arrayType)
+            (sliceStruct.StructName == "Slice" || sliceStruct.StructName == "MutSlice") &&
+            actualType is IrType borrowType)
         {
+            var arrayType = borrowType switch
+            {
+                IrReferenceType reference => reference.PointeeType as IrArrayType,
+                IrMutReferenceType reference => reference.PointeeType as IrArrayType,
+                _ => null
+            };
+            if (arrayType == null ||
+                (sliceStruct.StructName == "MutSlice" && borrowType is not IrMutReferenceType))
+                return false;
+
             // Get the 'ptr' field to extract the element type T from Slice<T>
             var ptrField = sliceStruct.GetField("ptr");
-            if (ptrField?.Type is IrPointerType slicePtrType)
+            var elementType = ptrField?.Type switch
             {
-                // Verify array element type matches Slice element type
-                return TypesCompatible(slicePtrType.PointeeType, arrayType.ElementType);
-            }
+                IrPointerType pointer => pointer.PointeeType,
+                IrReferenceType reference => reference.PointeeType,
+                IrMutReferenceType reference => reference.PointeeType,
+                _ => null
+            };
+
+            if (elementType != null)
+                return TypesCompatible(elementType, arrayType.ElementType);
         }
 
         return false;
@@ -13052,7 +13570,52 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     // Control flow tracking methods for move analysis - delegate to BorrowChecker
     private void EnterBranch(ControlFlowKind kind) => _borrowChecker.EnterBranch(kind);
     private Dictionary<int, MoveInfo> ExitBranch() => _borrowChecker.ExitBranch();
-    private void RecordMove(int variableId, MoveInfo moveInfo) => _borrowChecker.RecordMove(variableId, moveInfo);
+    private void RecordMove(int variableId, MoveInfo moveInfo)
+    {
+        var variable = _variables.Values.FirstOrDefault(candidate => candidate.Id == variableId);
+        if (variable != null && IsNonConsumingParameter(variable) &&
+            TypeRequiresDrop(variable.Type, new HashSet<string>()))
+        {
+            _diagnostics.ReportError(
+                "E0507",
+                $"cannot move out of non-consuming parameter `{variable.Name}`",
+                moveInfo.MoveLocation,
+                helpTexts: new List<string>
+                {
+                    $"declare `consuming {variable.Name}` when this function takes ownership",
+                    "or accept a reference when it only needs to borrow the value"
+                });
+            return;
+        }
+
+        var conflict = _borrowChecker.BorrowGraph.FindConflict(variableId, mutable: true);
+        ReportBorrowConflict(conflict, moveInfo.MoveLocation);
+        if (conflict == null)
+            _borrowChecker.RecordMove(variableId, moveInfo);
+    }
+
+    private bool IsNonConsumingParameter(VariableSymbol variable) =>
+        _currentFunction?.Parameters.Any(parameter =>
+            parameter.Name == variable.Name && !parameter.IsConsuming) == true;
+
+    private bool TypeRequiresDrop(IrType type, HashSet<string> visited)
+    {
+        if (!visited.Add(type.Name))
+            return false;
+        if (TypeImplementsTrait(type, "Drop", new List<IrType>()))
+            return true;
+
+        return type switch
+        {
+            IrGenericType => true,
+            IrStructType value => value.Fields.Any(field => TypeRequiresDrop(field.Type, visited)),
+            IrEnumType value => value.Variants.SelectMany(variant => variant.AssociatedData)
+                .Any(item => TypeRequiresDrop(item, visited)),
+            IrTupleType value => value.ElementTypes.Any(item => TypeRequiresDrop(item, visited)),
+            IrArrayType value => TypeRequiresDrop(value.ElementType, visited),
+            _ => false
+        };
+    }
 
     /// <summary>
     /// Records that a specific field of a struct has been moved.
@@ -13060,7 +13623,26 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// </summary>
     private void RecordFieldMove(int variableId, string variableName, string fieldName,
                                  SourceLocation moveLocation, string reason)
-        => _borrowChecker.RecordFieldMove(variableId, variableName, fieldName, moveLocation, reason);
+    {
+        var variable = _variables.Values.FirstOrDefault(candidate => candidate.Id == variableId);
+        var fieldType = (variable?.Type as IrStructType)?.GetField(fieldName)?.Type;
+        if (variable != null && fieldType != null && IsNonConsumingParameter(variable) &&
+            TypeRequiresDrop(fieldType, new HashSet<string>()))
+        {
+            _diagnostics.ReportError(
+                "E0507",
+                $"cannot move owned field `{fieldName}` out of non-consuming parameter `{variableName}`",
+                moveLocation,
+                helpTexts: new List<string>
+                {
+                    $"declare `consuming {variableName}` when this function takes ownership",
+                    "or borrow the field instead"
+                });
+            return;
+        }
+
+        _borrowChecker.RecordFieldMove(variableId, variableName, fieldName, moveLocation, reason);
+    }
 
     private void MergeBranchMoves(params Dictionary<int, MoveInfo>?[] branchMoves)
         => _borrowChecker.MergeBranchMoves(branchMoves);
@@ -13132,13 +13714,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         if (from is IrIntType fromInt && to is IrIntType toInt)
         {
-            // Casting to a smaller type is potentially lossy
-            if (toInt.BitWidth < fromInt.BitWidth)
-                return true;
+            if (fromInt.IsSigned == toInt.IsSigned)
+                return toInt.BitWidth < fromInt.BitWidth;
 
-            // Casting signed to unsigned or vice versa can be lossy
-            if (fromInt.IsSigned != toInt.IsSigned)
-                return true;
+            // Signed values may be negative. Unsigned values only fit a signed
+            // destination when it has one additional value bit.
+            return fromInt.IsSigned || toInt.BitWidth <= fromInt.BitWidth;
         }
         return false;
     }
@@ -13216,7 +13797,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
         if (type is IrArrayType arrayType)
         {
-            return $"[{arrayType.Length}]{TypeToString(arrayType.ElementType)}";
+            return $"[{arrayType.LengthParameter ?? arrayType.Length.ToString()}]{TypeToString(arrayType.ElementType)}";
         }
         if (type is IrTupleType tupleType)
         {
@@ -13354,6 +13935,31 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (type is IrEnumType enumType)
             return enumType.Variants.SelectMany(variant => variant.AssociatedData)
                 .Any(payload => EnumPayloadNeedsDrop(payload, visited));
+        if (type is IrArrayType arrayType)
+            return EnumPayloadNeedsDrop(arrayType.ElementType, visited);
+        return false;
+    }
+
+    private bool PatternMovesOwnedPayload(NovusParser.PatternContext pattern, IrEnumType enumType)
+    {
+        if (pattern is NovusParser.PipePatternContext pipe)
+            return PatternMovesOwnedPayload(pipe.pattern(0), enumType) ||
+                   PatternMovesOwnedPayload(pipe.pattern(1), enumType);
+        if (pattern is not NovusParser.VariantPatternContext variantPattern)
+            return false;
+
+        var variantName = variantPattern.variantName().IDENTIFIER().Last().GetText();
+        var variant = enumType.GetVariant(variantName);
+        var bindings = variantPattern.patternList()?.pattern() ?? [];
+        if (variant == null)
+            return false;
+
+        for (var index = 0; index < Math.Min(bindings.Length, variant.AssociatedData.Count); index++)
+        {
+            if (EnumPayloadNeedsDrop(variant.AssociatedData[index], new HashSet<string>()) &&
+                bindings[index] is not (NovusParser.ReferencePatternContext or NovusParser.WildcardPatternContext))
+                return true;
+        }
         return false;
     }
 
@@ -13368,6 +13974,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             IrStructType structType => structType.StructName,
             IrEnumType enumType => enumType.EnumName,
             IrPointerType ptrType => GetBaseTypeName(ptrType.PointeeType),
+            IrReferenceType referenceType => GetBaseTypeName(referenceType.PointeeType),
+            IrMutReferenceType referenceType => GetBaseTypeName(referenceType.PointeeType),
             IrArrayType arrayType => GetBaseTypeName(arrayType.ElementType),
             IrIntType intType => intType.IsSigned ? $"i{intType.BitWidth}" : $"u{intType.BitWidth}",
             IrBoolType => "bool",
@@ -13444,7 +14052,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         public IrConstGenericParam? LookupConstGenericParameter(string name)
         {
-            return _analyzer._symbols.LookupConstGenericParameter(name);
+            return _analyzer._constGenericParams.TryGetValue(name, out var parameter)
+                ? parameter
+                : _analyzer._symbols.LookupConstGenericParameter(name);
         }
 
         public IrType? LookupTypeAlias(string name)
@@ -13513,6 +14123,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         public IrType GetArrayType(IrType elementType, long length)
         {
             return _analyzer._typeInterner.GetArrayType(elementType, (int)length);
+        }
+
+        public IrType GetArrayType(IrType elementType, string lengthParameter)
+        {
+            return _analyzer._typeInterner.GetArrayType(elementType, lengthParameter);
         }
 
         public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType,

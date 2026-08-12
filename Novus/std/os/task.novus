@@ -402,7 +402,7 @@ pub fn run_timer_loop(interval: Duration, state: *u8, tick_fn: fn(*u8) -> bool) 
         Err(_) => {
             return 1  // Failed to open timer
         },
-        Ok(timer) => {
+        Ok(var timer) => {
             // Main event loop
             forever {
                 // Wait for timer interval

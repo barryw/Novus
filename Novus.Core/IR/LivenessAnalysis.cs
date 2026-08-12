@@ -429,6 +429,13 @@ public class LivenessAnalysis(IrFunction function)
                 }
                 break;
 
+            case IrEnumValue enumValue:
+                foreach (var associatedValue in enumValue.AssociatedValues)
+                {
+                    RecordValueUses(associatedValue);
+                }
+                break;
+
             case IrTupleLiteral tupleLit:
                 foreach (var element in tupleLit.Elements)
                 {
@@ -564,7 +571,7 @@ public class LivenessAnalysis(IrFunction function)
             IrStructType structType => structType.CacheKey ?? structType.StructName,
             IrEnumType enumType => enumType.CacheKey ?? enumType.EnumName,
             IrTupleType tupleType => $"tuple_{string.Join("_", tupleType.ElementTypes.Select(GetTypeKey))}",
-            IrArrayType arrayType => $"array_{arrayType.Length}_{GetTypeKey(arrayType.ElementType)}",
+            IrArrayType arrayType => $"array_{arrayType.LengthParameter ?? arrayType.Length.ToString()}_{GetTypeKey(arrayType.ElementType)}",
             IrVoidType => "void",
             _ => type.Name
         };

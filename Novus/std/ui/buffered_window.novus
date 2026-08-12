@@ -162,7 +162,7 @@ impl BufferedWindow {
     /// window.present()?
     /// ```
     pub fn draw_context(&self) -> Result<DrawContext, GraphicsError> {
-        return DrawContext::from_rastport(self.buffer_rp)
+        return DrawContext::from_rastport(&*self.buffer_rp)
     }
 
     /// Get current buffer dimensions.

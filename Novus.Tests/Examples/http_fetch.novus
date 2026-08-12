@@ -81,7 +81,7 @@ fn main() -> i32 {
     write("Connecting to %s:80...\n", (*u8)&ip_buf[0])
 
     // Connect TCP
-    let addr = SocketAddrV4::new(ip, 80)
+    let addr = SocketAddrV4::new(*ip, 80)
     var tcp_stream = match TcpStream::connect(addr) {
         Result::Ok(s) => s,
         Result::Err(e) => {

@@ -33,7 +33,7 @@ fn main() -> i32 {
         },
         Result::Ok(_) => {}
     }
-    let timer = timer_result.unwrap()
+    var timer = timer_result.unwrap()
     let start = timer.get_time().unwrap()
 
     // Allocate a signal for the executor

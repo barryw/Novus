@@ -136,16 +136,11 @@ public class IrTraitImpl
     /// </summary>
     public string GetMangledMethodName(string methodName)
     {
-        // If TraitName already contains generic parameters (e.g., "From<DosError>"),
-        // don't append TraitTypeArgs again, since they're already in TraitName.
-        // This prevents double-mangling like "NovusError_From<DosError>_DosError_convert"
-        var traitArgs = "";
-        if (TraitTypeArgs.Count > 0 && !TraitName.Contains("<"))
-        {
-            // Only append type args if they're not already in the trait name
-            traitArgs = "_" + string.Join("_", TraitTypeArgs.Select(t => t.Name.Replace("<", "_").Replace(">", "_").Replace("::", "_")));
-        }
-        return $"{TypeName}_{TraitName}{traitArgs}_{methodName}";
+        var baseTraitName = TraitName.Split('<', 2)[0];
+        var traitArgs = TraitTypeArgs.Count > 0
+            ? "_" + string.Join("_", TraitTypeArgs.Select(t => t.Name.Replace("::", "_")))
+            : "";
+        return $"{TypeName}_{baseTraitName}{traitArgs}_{methodName}";
     }
 
     public string FullName

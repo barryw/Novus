@@ -35,7 +35,7 @@ pub enum ExecutorError {
 }
 
 impl From<TimerError> for ExecutorError {
-    fn convert(error: TimerError) -> ExecutorError {
+    fn convert(consuming error: TimerError) -> ExecutorError {
         return ExecutorError::Timer(error)
     }
 }
@@ -84,7 +84,7 @@ impl Error for ExecutorError {
 /// }
 /// ```
 @suppress("W0002", "Safe: signal operations use valid signal bits")
-pub fn block_on_sleep(sleep_future: Sleep) -> Result<(), ExecutorError> {
+pub fn block_on_sleep(consuming sleep_future: Sleep) -> Result<(), ExecutorError> {
     // Allocate a signal for this executor
     let signal_bit = AllocSignal(-1)
     if signal_bit == -1 {
@@ -139,7 +139,7 @@ pub fn block_on_sleep(sleep_future: Sleep) -> Result<(), ExecutorError> {
 /// Be careful - the only way to stop is for the future to complete
 /// or the program to be killed.
 @suppress("W0002", "Safe: signal operations use valid signal bits")
-pub fn block_on_sleep_uninterruptible(sleep_future: Sleep) -> Result<(), ExecutorError> {
+pub fn block_on_sleep_uninterruptible(consuming sleep_future: Sleep) -> Result<(), ExecutorError> {
     // Allocate a signal for this executor
     let signal_bit = AllocSignal(-1)
     if signal_bit == -1 {

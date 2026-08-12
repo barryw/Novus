@@ -95,7 +95,10 @@ pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display 
         write("  FAIL: ")
         // Write message character by character since it's a Str
         while var i < message.len {
-            let c = message.ptr[i]
+            let c = match message.get(i) {
+                Option::Some(byte) => byte,
+                Option::None => 0u8,
+            }
             write("%c", (c as i32))
             i = i + 1u32
         }

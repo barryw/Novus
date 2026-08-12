@@ -98,6 +98,7 @@ pub fn main() -> i32 {
 ## Documentation
 
 - **[novuslang.com](https://novuslang.com)** — Official website with guides and examples
+- **[Ownership and Memory Safety](website/src/content/docs/guide/memory.md)** — Canonical rules for moves, borrows, views, and raw access
 - **[Language Design Doc](LanguageDesignDoc.md)** — Complete language specification
 - **[Programmer's Guide](guide/)** — Comprehensive reference (PDF)
 

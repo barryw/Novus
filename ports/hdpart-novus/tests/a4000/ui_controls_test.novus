@@ -1,0 +1,114 @@
+// HDPart UI-01 control creation without raw GadTools pointers or tag lists.
+
+from std::core import Option, Result
+from std::error::errors import IntuitionError
+from std::test::test import expect_true
+from std::ui::gadtools import GadgetBounds, GadToolsBuilder
+
+const DRIVER: u16 = 1
+const PARTITIONS: u16 = 2
+const NAME: u16 = 3
+const STATUS: u16 = 4
+const QUIT: u16 = 5
+const BOOTABLE: u16 = 6
+
+fn run_ui_controls() -> Result<(), IntuitionError> {
+    var ui = GadToolsBuilder::workbench()?
+    let drivers = ["scsi.device", "uaehf.device"]
+    let partitions = ["DH0  DOS3  0-511", "DH1  DOS3  512-1023"]
+    let rescanned_drivers = ["scsi.device", "uaehf.device", "trackdisk.device"]
+    let rescanned_partitions = ["DH0  DOS3  0-255", "DH1  DOS3  256-767", "DH2  DOS3  768-1023"]
+
+    ui.add_cycle(DRIVER, "Driver", GadgetBounds::new(64, 18, 220, 14), &drivers, 0u16)?
+    ui.add_list_view(PARTITIONS, GadgetBounds::new(12, 40, 272, 50), &partitions, Option::None)?
+    ui.add_string(NAME, "Name", GadgetBounds::new(64, 96, 100, 14), "DH0", 31u16)?
+    ui.add_text(STATUS, GadgetBounds::new(12, 122, 180, 12), "Status: RDB OK")?
+    ui.add_checkbox(BOOTABLE, "Bootable", GadgetBounds::new(82, 140, 26, 11), false)?
+    ui.add_button(QUIT, "Quit", GadgetBounds::new(214, 120, 70, 14))?
+
+    var menus = ui.menu_builder()
+    var project = menus.add_menu("Project")
+    project.add_item("Quit")
+    let menu = menus.build()?
+    var window = ui.build("HDPart controls", GadgetBounds::new(40, 30, 304, 162), menu)?
+
+    // Invalid updates leave the current model installed.
+    match window.replace_cycle(DRIVER, &drivers, 2u16) {
+        Result::Err(_) => {},
+        Result::Ok(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+    match window.replace_list(DRIVER, &partitions, Option::None) {
+        Result::Err(_) => {},
+        Result::Ok(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+
+    // HDPart replaces both models after scans and every partition edit. Reuse
+    // the same two owner slots enough times to expose leaks or stale pointers.
+    var generation = 0u32
+    while generation < 256u32 {
+        if (generation & 1u32) == 0u32 {
+            window.replace_cycle(DRIVER, &rescanned_drivers, 2u16)?
+            window.replace_list(PARTITIONS, &rescanned_partitions, Option::Some(2u32))?
+        } else {
+            window.replace_cycle(DRIVER, &drivers, 1u16)?
+            window.replace_list(PARTITIONS, &partitions, Option::Some(1u32))?
+        }
+        generation++
+    }
+
+    match window.cycle(DRIVER) {
+        Option::Some(control) => {
+            control.set_active(1u16)
+        },
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+    match window.list_view(PARTITIONS) {
+        Option::Some(control) => {
+            control.set_selected(Option::Some(1u16))
+        },
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+    match window.string(NAME) {
+        Option::Some(control) => {
+            match control.set_value("DH1") {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+            }
+            match control.value() {
+                Option::Some(value) => {
+                    if !value.equals("DH1") {
+                        return Result::Err(IntuitionError::GadgetCreateFailed)
+                    }
+                },
+                Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+            }
+        },
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+    match window.text(STATUS) {
+        Option::Some(control) => {
+            match control.set_text("Status: state OK") {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+            }
+        },
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+    if window.string(DRIVER).is_some() {
+        return Result::Err(IntuitionError::GadgetCreateFailed)
+    }
+    match window.checkbox(BOOTABLE) {
+        Option::Some(control) => {
+            control.set_checked(true)
+            if !control.checked() { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        },
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+
+    return Result::Ok(())
+}
+
+@test("HDPart controls survive repeated model replacement")
+pub fn test_ui_controls() {
+    expect_true(run_ui_controls().is_ok(), "controls open, update, and close safely")
+}

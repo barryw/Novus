@@ -7,6 +7,20 @@ namespace Novus.Tests;
 /// </summary>
 public class ObjectCacheTests
 {
+    [Fact]
+    public void GeneratedFileOrigin_UsesLongestModulePrefix()
+    {
+        var source = Program.ResolveGeneratedSourcePath(
+            "block_device_read_block_device_read",
+            new[]
+            {
+                (Prefix: "block_device", SourcePath: "/std/os/block_device.novus"),
+                (Prefix: "block_device_read", SourcePath: "/tests/block_device_read.novus"),
+            });
+
+        Assert.Equal("/tests/block_device_read.novus", source);
+    }
+
     private string CreateTempDir()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "novus_test_" + Guid.NewGuid().ToString());

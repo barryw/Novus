@@ -1,0 +1,77 @@
+from std::collections::arrayvec import ArrayVec
+from std::core import Clone, Option, Result
+from rdb import RdbError, RdbFileSystem, RdbModel
+
+pub fn file_system_preset(dos_type: u32) -> u16 {
+    return 0u16 if dos_type == $444F5300u32
+    return 1u16 if dos_type == $444F5301u32
+    return 2u16 if dos_type == $444F5302u32
+    return 3u16 if dos_type == $444F5303u32
+    return 4u16 if dos_type == $444F5304u32
+    return 5u16 if dos_type == $444F5305u32
+    return 6u16 if dos_type == $50465303u32
+    return 7u16 if dos_type == $50445303u32
+    return 8u16 if dos_type == $53465300u32
+    return 9u16 if dos_type == $53465302u32
+    return 10u16
+}
+
+pub fn preset_dos_type(index: u16, current: u32) -> u32 {
+    return $444F5300u32 if index == 0u16
+    return $444F5301u32 if index == 1u16
+    return $444F5302u32 if index == 2u16
+    return $444F5303u32 if index == 3u16
+    return $444F5304u32 if index == 4u16
+    return $444F5305u32 if index == 5u16
+    return $50465303u32 if index == 6u16
+    return $50445303u32 if index == 7u16
+    return $53465300u32 if index == 8u16
+    return $53465302u32 if index == 9u16
+    return current
+}
+
+pub struct FileSystemPool {
+    entries: ArrayVec<RdbFileSystem, 8>
+}
+
+impl FileSystemPool {
+    pub fn new() -> FileSystemPool {
+        return FileSystemPool { entries: ArrayVec::<RdbFileSystem, 8>::new() }
+    }
+
+    pub fn len(&self) -> u32 { return self.entries.len() }
+    pub fn is_empty(&self) -> bool { return self.entries.is_empty() }
+    pub fn entries(&self) -> &ArrayVec<RdbFileSystem, 8> { return &self.entries }
+    pub fn get(&self, index: u32) -> Option<&RdbFileSystem> { return self.entries.get(index) }
+
+    pub fn add(&var self, consuming file_system: RdbFileSystem) -> Result<u32, RdbError> {
+        for index in 0u32..self.entries.len() {
+            let Option::Some(current) = self.entries.get(index) else { continue }
+            return Result::Ok(index) if current.dos_type() == file_system.dos_type()
+        }
+        let index = self.entries.len()
+        self.entries.push(file_system)?
+        return Result::Ok(index)
+    }
+
+    pub fn merge(&var self, model: &RdbModel) -> Result<(), RdbError> {
+        for index in 0u32..model.file_system_count() {
+            let file_system = model.file_system(index).ok_or(RdbError::InvalidRange)?
+            let copy = file_system.clone().ok_or(RdbError::AllocationFailed)?
+            let _ = self.add(copy)?
+        }
+        return Result::Ok(())
+    }
+
+    pub fn set_dos_type(&var self, index: u32, dos_type: u32) -> Result<(), RdbError> {
+        let file_system = self.entries.get_mut(index).ok_or(RdbError::InvalidRange)?
+        file_system.set_dos_type(dos_type)
+        return Result::Ok(())
+    }
+
+    pub fn remove(&var self, index: u32) -> Result<(), RdbError> {
+        let removed = self.entries.remove(index)
+        return Result::Err(RdbError::InvalidRange) if removed.is_none()
+        return Result::Ok(())
+    }
+}

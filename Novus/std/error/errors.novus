@@ -387,28 +387,28 @@ pub enum NovusError {
 
 // From<DosError> for NovusError
 impl From<DosError> for NovusError {
-    fn convert(err: DosError) -> NovusError {
+    fn convert(consuming err: DosError) -> NovusError {
         return NovusError::Dos(err)
     }
 }
 
 // From<ExecError> for NovusError
 impl From<ExecError> for NovusError {
-    fn convert(err: ExecError) -> NovusError {
+    fn convert(consuming err: ExecError) -> NovusError {
         return NovusError::Exec(err)
     }
 }
 
 // From<IntuitionError> for NovusError
 impl From<IntuitionError> for NovusError {
-    fn convert(err: IntuitionError) -> NovusError {
+    fn convert(consuming err: IntuitionError) -> NovusError {
         return NovusError::Intuition(err)
     }
 }
 
 // From<GraphicsError> for NovusError
 impl From<GraphicsError> for NovusError {
-    fn convert(err: GraphicsError) -> NovusError {
+    fn convert(consuming err: GraphicsError) -> NovusError {
         return NovusError::Graphics(err)
     }
 }
@@ -601,4 +601,3 @@ impl Error for NovusError {
         return NovusError::message(self)
     }
 }
-

@@ -290,7 +290,9 @@ impl SignalHandle {
     /// Use this when passing ownership to another task or storing
     /// the signal beyond the current scope.
     pub fn into_raw(consuming self) -> i8 {
-        return self.sigbit
+        let sigbit = self.sigbit
+        self.sigbit = -1
+        return sigbit
     }
 
     /// Get the signal mask (1 << bit)
@@ -394,7 +396,9 @@ impl MsgPortHandle {
     /// Use this when passing ownership to another task or storing
     /// the port beyond the current scope.
     pub fn into_raw(consuming self) -> *MsgPort {
-        return self.port
+        let port = self.port
+        self.port = null
+        return port
     }
 
     /// Get a message from the port (non-blocking)
@@ -627,7 +631,7 @@ impl SemaphoreHandle {
         unsafe {
             __novus_obtain_semaphore(self.sem)
         }
-        return SemaphoreGuard { sem: self.sem }
+        return SemaphoreGuard { sem: self.sem, owner: self }
     }
 
     /// Try to obtain exclusive access without blocking
@@ -636,7 +640,7 @@ impl SemaphoreHandle {
     pub fn try_lock(&self) -> Option<SemaphoreGuard> {
         let result = unsafe { __novus_attempt_semaphore(self.sem) }
         if result != 0 {
-            return Option::Some(SemaphoreGuard { sem: self.sem })
+            return Option::Some(SemaphoreGuard { sem: self.sem, owner: self })
         }
         return Option::None
     }
@@ -653,7 +657,7 @@ impl SemaphoreHandle {
         unsafe {
             __novus_obtain_semaphore_shared(self.sem)
         }
-        return SharedSemaphoreGuard { sem: self.sem }
+        return SharedSemaphoreGuard { sem: self.sem, owner: self }
     }
 
     /// Try to obtain shared (read) access without blocking
@@ -666,7 +670,7 @@ impl SemaphoreHandle {
     pub fn try_lock_shared(&self) -> Option<SharedSemaphoreGuard> {
         let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
         if result != 0 {
-            return Option::Some(SharedSemaphoreGuard { sem: self.sem })
+            return Option::Some(SharedSemaphoreGuard { sem: self.sem, owner: self })
         }
         return Option::None
     }
@@ -720,6 +724,7 @@ impl Drop for SemaphoreHandle {
 /// This ensures you can't forget to release the semaphore.
 pub struct SemaphoreGuard {
     sem: *u8,  // Pointer to semaphore (non-owning, void* to avoid FFI type in header)
+    owner: &SemaphoreHandle,
 }
 
 // Automatic release for SemaphoreGuard (RAII)
@@ -743,6 +748,7 @@ impl Drop for SemaphoreGuard {
 /// accidentally treat shared access as exclusive access.
 pub struct SharedSemaphoreGuard {
     sem: *u8,  // Pointer to semaphore (non-owning)
+    owner: &SemaphoreHandle,
 }
 
 // Automatic release for SharedSemaphoreGuard (RAII)
@@ -774,14 +780,14 @@ impl Drop for SharedSemaphoreGuard {
 /// // In task 1:
 /// {
 ///     var guard = counter.lock()
-///     let value = guard.get()
+///     let value = *guard.get()
 ///     guard.set(value + 1)
 /// }  // Lock automatically released
 ///
 /// // In task 2 (read-only access):
 /// {
 ///     let guard = counter.lock_shared()
-///     let value = guard.get()
+///     let value = *guard.get()
 ///     // Can read but not modify
 /// }
 /// ```
@@ -794,7 +800,7 @@ impl<T> ScopedData<T> {
     /// Create new semaphore-protected data
     ///
     /// Returns an allocation error if the semaphore cannot be created.
-    pub fn new(initial_value: T) -> Result<ScopedData<T>, ExecError> {
+    pub fn new(consuming initial_value: T) -> Result<ScopedData<T>, ExecError> {
         // Allocate zeroed memory for the semaphore
         let sem_size: u32 = @sizeof(SignalSemaphore)
         let sem_mem = unsafe { AllocMem(sem_size, MEMF_PUBLIC | MEMF_CLEAR) }
@@ -820,7 +826,7 @@ impl<T> ScopedData<T> {
         unsafe {
             __novus_obtain_semaphore(self.sem)
         }
-        let data_ptr: *T = &var self.data
+        let data_ptr: &var T = &var self.data
         return ScopedDataGuard { sem: self.sem, data: data_ptr }
     }
 
@@ -830,7 +836,7 @@ impl<T> ScopedData<T> {
     pub fn try_lock(&var self) -> Option<ScopedDataGuard<T>> {
         let result = unsafe { __novus_attempt_semaphore(self.sem) }
         if result != 0 {
-            let data_ptr: *T = &var self.data
+            let data_ptr: &var T = &var self.data
             return Option::Some(ScopedDataGuard { sem: self.sem, data: data_ptr })
         }
         return Option::None
@@ -844,7 +850,7 @@ impl<T> ScopedData<T> {
         unsafe {
             __novus_obtain_semaphore_shared(self.sem)
         }
-        let data_ptr: *T = &self.data
+        let data_ptr: &T = &self.data
         return SharedScopedDataGuard { sem: self.sem, data: data_ptr }
     }
 
@@ -854,7 +860,7 @@ impl<T> ScopedData<T> {
     pub fn try_lock_shared(&self) -> Option<SharedScopedDataGuard<T>> {
         let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
         if result != 0 {
-            let data_ptr: *T = &self.data
+            let data_ptr: &T = &self.data
             return Option::Some(SharedScopedDataGuard { sem: self.sem, data: data_ptr })
         }
         return Option::None
@@ -863,6 +869,7 @@ impl<T> ScopedData<T> {
 
 impl<T> Drop for ScopedData<T> {
     fn drop(&var self) {
+        @drop_in_place(&var self.data)
         if (u32)self.sem != 0 {
             let sem_size: u32 = @sizeof(SignalSemaphore)
             unsafe {
@@ -876,18 +883,19 @@ impl<T> Drop for ScopedData<T> {
 /// Guard for exclusive access to ScopedData
 pub struct ScopedDataGuard<T> {
     sem: *u8,
-    data: *T,  // Use raw pointer to avoid codegen issues with &var T assignment
+    data: &var T,
 }
 
 impl<T> ScopedDataGuard<T> {
-    /// Get the current value (copies the value)
-    pub fn get(&self) -> T {
-        return self.data[0]
+    /// Borrow the current value.
+    pub fn get(&self) -> &T {
+        return self.data
     }
 
     /// Set a new value
-    pub fn set(&var self, value: T) {
-        self.data[0] = value
+    pub fn set(&var self, consuming value: T) {
+        @drop_in_place(self.data)
+        *self.data = value
     }
 }
 
@@ -905,13 +913,13 @@ impl<T> Drop for ScopedDataGuard<T> {
 /// Guard for shared (read-only) access to ScopedData
 pub struct SharedScopedDataGuard<T> {
     sem: *u8,
-    data: *T,  // Use raw pointer for consistency
+    data: &T,
 }
 
 impl<T> SharedScopedDataGuard<T> {
     /// Get the current value
-    pub fn get(&self) -> T {
-        return self.data[0]
+    pub fn get(&self) -> &T {
+        return self.data
     }
 }
 
@@ -940,8 +948,8 @@ impl<T> Drop for SharedScopedDataGuard<T> {
 /// fn use_graphics_library() -> Result<(), ExecError> {
 ///     let gfx = LibraryHandle::open("graphics.library", 39)?
 ///
-///     // Use gfx.base() to get the library base pointer for FFI calls
-///     let base = gfx.base()
+///     // Borrow the library base pointer for FFI calls
+///     let base = gfx.handle()
 ///
 ///     // Library automatically closed when gfx goes out of scope!
 ///     return Result::Ok(())
@@ -982,7 +990,7 @@ impl LibraryHandle {
     ///
     /// This is the value typically passed to library functions that
     /// need the library base (e.g., IntuitionBase, GfxBase).
-    pub fn base(&self) -> *Library {
+    pub fn handle(&self) -> *Library {
         return self.base
     }
 
@@ -1007,7 +1015,9 @@ impl LibraryHandle {
     /// This transfers ownership to the caller. The caller is responsible
     /// for closing the library manually with CloseLibrary().
     pub fn into_raw(consuming self) -> *Library {
-        return self.base
+        let base = self.base
+        self.base = null
+        return base
     }
 }
 

@@ -72,7 +72,7 @@ pub fn main() -> i32 {
     // Test 4: Using Timer handle for multiple operations
     write("\nTest 4: Timer handle for efficient repeated use\n")
     match TimerHandle::microhz() {
-        Result::Ok(timer) => {
+        Result::Ok(var timer) => {
             // Get time
             match timer.get_time() {
                 Result::Ok(t1) => {

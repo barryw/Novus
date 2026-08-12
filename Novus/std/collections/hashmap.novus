@@ -160,7 +160,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// If the key already exists, the value is updated and the old value is returned as Some(old_value).
     /// Returns Ok(None) if this is a new key.
     /// Returns Err(ExecError) on allocation failure during resize (map unchanged).
-    pub fn insert(&var self, key: K, value: V) -> Result<Option<V>, ExecError> {
+    pub fn insert(&var self, consuming key: K, consuming value: V) -> Result<Option<V>, ExecError> {
         // Check if we need to resize using pre-computed threshold
         if self.len + self.tombstones + 1u32 > self.resize_threshold {
             let resize_result: Result<(), ExecError> = self.resize(self.capacity << 1)  // Shift instead of multiply
@@ -537,8 +537,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Returns references to keys and values, not copies.
     pub fn iter(&self) -> HashMapIter<K, V> {
         return HashMapIter {
-            entries: self.entries,
-            capacity: self.capacity,
+            map: self,
             current: 0u32,
         }
     }
@@ -573,15 +572,14 @@ impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
 /// Iterator over HashMap entries
 /// Returns references to avoid copying keys/values
 pub struct HashMapIter<K, V> {
-    entries: *HashMapEntry<K, V>,
-    capacity: u32,
+    map: &HashMap<K, V>,
     current: u32,
 }
 
 /// Key-value reference pair returned by iterator
 pub struct KeyValueRef<K, V> {
-    key: *K,
-    value: *V,
+    key: &K,
+    value: &V,
 }
 
 impl<K, V> HashMapIter<K, V> {
@@ -590,20 +588,15 @@ impl<K, V> HashMapIter<K, V> {
     /// Returns Some(KeyValueRef) if there are more entries, None when done.
     /// References are valid as long as the HashMap is not modified.
     pub fn next(&var self) -> Option<KeyValueRef<K, V>> {
-        while self.current < self.capacity {
+        while self.current < self.map.capacity {
             let idx: u32 = self.current
             self.current = self.current + 1
 
-            match self.entries[idx].state {
+            match self.map.entries[idx].state {
                 EntryState::Occupied => {
-                    // SAFETY: Creating raw pointers to fields - valid as long as HashMap isn't modified
-                    // We use address arithmetic since we can't store references in structs (v1 limitation)
-                    let entry_addr: u32 = (self.entries as u32) + (idx * 20u32)  // 20 = sizeof(HashMapEntry<K,V>)
-                    let key_ptr: *K = (entry_addr + 4u32) as *K  // key offset = 4 (after state:u32)
-                    let value_ptr: *V = (entry_addr + 8u32) as *V  // value offset = 8 (after state+key)
                     return Option::Some(KeyValueRef {
-                        key: key_ptr,
-                        value: value_ptr,
+                        key: &self.map.entries[idx].key,
+                        value: &self.map.entries[idx].value,
                     })
                 },
                 _ => {
@@ -627,15 +620,14 @@ impl<K, V> HashMapIter<K, V> {
 
 /// Mutable iterator over HashMap entries
 pub struct HashMapIterMut<K, V> {
-    entries: *HashMapEntry<K, V>,
-    capacity: u32,
+    map: &var HashMap<K, V>,
     current: u32,
 }
 
 /// Key-value reference pair with mutable value
 pub struct KeyValueMut<K, V> {
-    key: *K,
-    value: *V,
+    key: &K,
+    value: &var V,
 }
 
 impl<K, V> HashMap<K, V> where K: Hash + Eq {
@@ -644,8 +636,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Allows modifying values in-place during iteration.
     pub fn iter_mut(&var self) -> HashMapIterMut<K, V> {
         return HashMapIterMut {
-            entries: self.entries,
-            capacity: self.capacity,
+            map: self,
             current: 0u32,
         }
     }
@@ -654,20 +645,15 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 impl<K, V> HashMapIterMut<K, V> {
     /// Get the next key-value pair with mutable value reference
     pub fn next(&var self) -> Option<KeyValueMut<K, V>> {
-        while self.current < self.capacity {
+        while self.current < self.map.capacity {
             let idx: u32 = self.current
             self.current = self.current + 1
 
-            match self.entries[idx].state {
+            match self.map.entries[idx].state {
                 EntryState::Occupied => {
-                    // SAFETY: Creating raw pointers to fields - valid as long as HashMap isn't modified
-                    // We use address arithmetic since we can't store references in structs (v1 limitation)
-                    let entry_addr: u32 = (self.entries as u32) + (idx * 20u32)  // 20 = sizeof(HashMapEntry<K,V>)
-                    let key_ptr: *K = (entry_addr + 4u32) as *K  // key offset = 4 (after state:u32)
-                    let value_ptr: *V = (entry_addr + 8u32) as *V  // value offset = 8 (after state+key)
                     return Option::Some(KeyValueMut {
-                        key: key_ptr,
-                        value: value_ptr,
+                        key: &self.map.entries[idx].key,
+                        value: &var self.map.entries[idx].value,
                     })
                 },
                 _ => {

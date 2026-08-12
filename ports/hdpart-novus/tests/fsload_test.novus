@@ -1,0 +1,29 @@
+from fsload import detect_dos_type, is_hunk_file, parse_version
+from std::test::test import expect_eq, expect_true
+
+@test("filesystem image metadata is detected")
+pub fn test_filesystem_image_metadata() {
+    var image = [0u8; 64]
+    image[2] = 3u8
+    image[3] = $F3u8
+    image[8] = (u8)'$'
+    image[9] = (u8)'V'
+    image[10] = (u8)'E'
+    image[11] = (u8)'R'
+    image[12] = (u8)':'
+    image[14] = (u8)'1'
+    image[15] = (u8)'9'
+    image[16] = (u8)'.'
+    image[17] = (u8)'2'
+    image[24] = (u8)'P'
+    image[25] = (u8)'F'
+    image[26] = (u8)'S'
+    image[27] = 3u8
+    image[32] = (u8)'P'
+    image[33] = (u8)'F'
+    image[34] = (u8)'S'
+    image[35] = 3u8
+    expect_true(is_hunk_file(&image), "valid Amiga hunk is accepted")
+    expect_eq(parse_version(&image), (19u32 << 16u32) | 2u32, "version is parsed")
+    expect_eq(detect_dos_type(&image), $50465303u32, "DOS type is detected")
+}

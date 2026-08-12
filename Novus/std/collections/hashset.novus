@@ -66,7 +66,7 @@ impl<T> HashSet<T> where T: Hash + Eq {
     ///
     /// Returns Ok(true) if the value was newly inserted, Ok(false) if already present.
     /// Returns Err(ExecError) if allocation fails during resize.
-    pub fn insert(&var self, value: T) -> Result<bool, ExecError> {
+    pub fn insert(&var self, consuming value: T) -> Result<bool, ExecError> {
         // HashMap.insert returns Result<Option<V>, ExecError>
         // The Option indicates whether a previous value existed
         match self.map.insert(value, ()) {
@@ -226,8 +226,7 @@ impl<T> HashSetIter<T> {
     /// The reference is valid as long as the HashSet is not modified.
     pub fn next(&var self) -> Option<&T> {
         match self.map_iter.next() {
-            // kv.key is now *T (pointer), dereference to get value then take reference
-            Option::Some(kv) => return Option::Some(unsafe { &*kv.key }),
+            Option::Some(kv) => return Option::Some(kv.key),
             Option::None => return Option::None,
         }
     }

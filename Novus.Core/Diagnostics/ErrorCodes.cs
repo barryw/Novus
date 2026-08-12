@@ -159,6 +159,7 @@ public static class ErrorCodes
     public const string AttributeOverride = "W3502";  // Warning: attribute overrides project/CLI settings
     public const string UnknownDeriveTrait = "E3503";  // Unknown trait in #[derive(...)]
     public const string AssetWarning = "W3504";  // Warning: asset-related warnings (e.g., high sample rate)
+    public const string UnsafeStackBudget = "W3505"; // Function locals leave too little stack for nested calls
 
     // ========================================================================
     // E36XX: File/Resource Errors

@@ -65,18 +65,11 @@ function findServerPath(extensionPath: string): string | null {
         path.join(extensionPath, '..', 'Novus.LanguageServer', 'bin', 'Release', 'net10.0', 'Novus.LanguageServer'),
     ];
 
-    for (const serverPath of possiblePaths) {
-        try {
-            const fs = require('fs');
-            const executable = fs.existsSync(serverPath) ? serverPath : serverPath + '.exe';
-            if (fs.existsSync(executable)) {
-                console.log(`Found Novus Language Server at: ${executable}`);
-                return executable;
-            }
-        } catch (e) {
-            // Continue searching
-        }
-    }
+    const fs = require('fs');
+    const candidates = possiblePaths
+        .map(serverPath => fs.existsSync(serverPath) ? serverPath : serverPath + '.exe')
+        .filter(serverPath => fs.existsSync(serverPath))
+        .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
 
-    return null;
+    return candidates[0] ?? null;
 }

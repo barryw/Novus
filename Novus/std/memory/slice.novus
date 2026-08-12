@@ -1,32 +1,45 @@
-/// Generic slice type - a fat pointer (pointer + length) to an array
+from std::core import Iterable, Option, Result
+from std::error::errors import ExecError
+
+/// Generic slice type - an owner-tied reference plus an array length
 ///
 /// This allows passing arrays to functions without losing size information.
 /// Unlike raw pointers (*T), slices carry their length.
 ///
 /// Example:
 /// ```novus
-/// fn sum(numbers: &Slice<i32>) -> i32 {
+/// fn sum(numbers: Slice<i32>) -> i32 {
 ///     var total = 0
 ///     var i = 0u32
 ///     while i < numbers.len {
-///         total = total + numbers.ptr[i]
+///         total = total + *numbers.get(i).unwrap()
 ///         i = i + 1u32
 ///     }
 ///     return total
 /// }
 ///
 /// let arr = [1, 2, 3, 4, 5]
-/// let slice = Slice::from_array(&arr)
-/// let result = sum(&slice)  // No need to pass count!
+/// let result = sum(&arr)  // Array coerces to an owner-tied slice
 /// ```
 pub struct Slice<T> {
-    ptr: *T,
+    ptr: &T,
     len: u32,
 }
 
+impl<T> Iterable<T> for Slice<T> {
+    fn len(&self) -> u32 { return self.len }
+
+    fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len { return Option::None }
+        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    }
+}
+
 impl<T> Slice<T> {
-    /// Create a slice from a pointer and length
-    pub fn new(ptr: *T, len: u32) -> Slice<T> {
+    /// Create a view from raw contiguous parts.
+    /// SAFETY: `ptr` must cover at least `len` consecutive elements.
+    @unsafe
+    pub fn new(ptr: &T, len: u32) -> Slice<T> {
         return Slice { ptr: ptr, len: len }
     }
 
@@ -41,15 +54,97 @@ impl<T> Slice<T> {
     }
 
     /// Get element at index (unsafe - no bounds checking)
-    pub fn get_unchecked(&self, index: u32) -> T {
-        return self.ptr[index]
+    pub fn get_unchecked(&self, index: u32) -> &T {
+        unsafe { return &((*T)self.ptr)[index] }
     }
 
     /// Get element at index with bounds checking
-    pub fn get(&self, index: u32) -> Option<T> {
+    pub fn get(&self, index: u32) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
-        return Option::Some(self.ptr[index])
+        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    }
+
+    /// Borrow the first `count` elements without exposing raw slice parts.
+    pub fn take(&self, count: u32) -> Option<Slice<T>> {
+        if count > self.len { return Option::None }
+        return Option::Some(Slice { ptr: self.ptr, len: count })
+    }
+}
+
+impl<T> Iterable<T> for MutSlice<T> {
+    fn len(&self) -> u32 { return self.len }
+
+    fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len { return Option::None }
+        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    }
+}
+
+/// Mutable owner-tied slice. While this view is live, the source cannot be
+/// borrowed through any other mutable or immutable reference.
+pub struct MutSlice<T> {
+    ptr: &var T,
+    len: u32,
+}
+
+impl<T> MutSlice<T> {
+    /// SAFETY: `ptr` must exclusively cover at least `len` elements.
+    @unsafe
+    pub fn new(ptr: &var T, len: u32) -> MutSlice<T> {
+        return MutSlice { ptr: ptr, len: len }
+    }
+
+    pub fn len(&self) -> u32 {
+        return self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.len == 0u32
+    }
+
+    pub fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len {
+            return Option::None
+        }
+        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    }
+
+    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+        if index >= self.len {
+            return Option::None
+        }
+        unsafe { return Option::Some(&var ((*T)self.ptr)[index]) }
+    }
+
+    /// Get an element without checking the index.
+    /// SAFETY: `index` must be less than `len()`.
+    @unsafe
+    pub fn get_unchecked(&self, index: u32) -> &T {
+        unsafe { return &((*T)self.ptr)[index] }
+    }
+
+    /// Replace an element without checking the index.
+    /// SAFETY: `index` must be less than `len()`.
+    @unsafe
+    pub fn set_unchecked(&var self, index: u32, consuming value: T) {
+        unsafe {
+            let raw: *T = (*T)self.ptr
+            @drop_in_place(&var raw[index])
+            raw[index] = value
+        }
+    }
+
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
+        if index >= self.len {
+            return Result::Err(ExecError::IndexOutOfBounds)
+        }
+        unsafe {
+            let raw: *T = (*T)self.ptr
+            @drop_in_place(&var raw[index])
+            raw[index] = value
+        }
+        return Result::Ok(())
     }
 }

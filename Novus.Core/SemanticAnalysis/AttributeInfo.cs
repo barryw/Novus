@@ -208,6 +208,7 @@ public static class KnownAttributes
 
     // Safety attributes
     public const string Unsafe = "unsafe";
+    public const string Borrows = "borrows";
     public const string ThreadSafe = "threadsafe";
     public const string SingleThreaded = "singlethreaded";
 
@@ -265,7 +266,7 @@ public static class KnownAttributes
         Inline, NoInline, Packed, Align,
         Test, Bench, Benchmark,
         Deprecated, Since, Experimental,
-        Unsafe, ThreadSafe, SingleThreaded,
+        Unsafe, Borrows, ThreadSafe, SingleThreaded,
         Cold, Hot, Const,
         Target, Cfg,
         Export,

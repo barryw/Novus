@@ -54,3 +54,7 @@ When adding a wrapper:
 3. Use `Option` only if absence is a successful state.
 4. Add one success-path and one failure-path test; use the A4000 suite for behavior that
    depends on AmigaOS.
+5. Reuse the existing ownership shape: `handle()` borrows, `into_raw(consuming self)`
+   transfers, and `from_raw(...)` adopts. Do not invent synonymous methods.
+6. Expose a borrowed path to the next lower API layer when advanced operations are
+   plausible, and test that callers can return to the high-level API afterward.

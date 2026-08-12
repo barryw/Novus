@@ -108,6 +108,35 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    public void BuildIr_NestedEnumVariantPatterns_CheckInnerTags()
+    {
+        var source = @"
+enum Inner {
+    First,
+    Second,
+    Third
+}
+enum Outer<T> {
+    Value(T),
+    Empty
+}
+pub fn classify(value: Outer<Inner>) -> i32 {
+    return match value {
+        Outer::Value(Inner::First) => 1,
+        Outer::Value(Inner::Second) => 2,
+        Outer::Value(Inner::Third) => 3,
+        Outer::Empty => 0,
+    }
+}";
+        var module = BuildIr(source);
+        var instructions = module.Functions.Single(f => f.Name == "classify")
+            .BasicBlocks.SelectMany(block => block.Instructions).ToList();
+
+        Assert.Equal(4, instructions.OfType<IrExtractTag>().Count());
+        Assert.Equal(7, instructions.OfType<IrBinaryOp>().Count(op => op.Operation == IrBinaryOp.OpKind.Eq));
+    }
+
+    [Fact]
     public void BuildIr_MatchMultipleBindings_Compiles()
     {
         var source = @"

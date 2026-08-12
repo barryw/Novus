@@ -78,6 +78,28 @@ pub fn test() -> i32 {
 
     #endregion
 
+    #region Contextual Integer Literal Tests
+
+    [Fact]
+    public void Analyze_IntegerAndArrayLiteralsUseExpectedTypes_NoErrors()
+    {
+        var source = @"
+fn accepts_u32(value: u32) -> bool {
+    return $FFFFFFFF == value
+}
+
+pub fn test() -> bool {
+    let bytes: [u8] = [0, $1F, $FF]
+    let repeated: [u16] = [7; 3]
+    return accepts_u32($FFFFFFFF) && 255 == bytes[2] && repeated[0] == 7
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics.Diagnostics));
+        Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "W0001");
+    }
+
+    #endregion
+
     #region Panic Statement Tests
 
     [Fact]
@@ -193,6 +215,32 @@ pub fn test() -> i32 {
 }";
         var diagnostics = Analyze(source);
         Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void Analyze_ForInLoopOverIterator_NoErrors()
+    {
+        var source = @"
+from std::core import Iterator, Option
+
+struct Counter { value: u32 }
+
+impl Iterator<u32> for Counter {
+    fn next(&var self) -> Option<u32> {
+        return Option::None if self.value == 3u32
+        let value = self.value
+        self.value++
+        return Option::Some(value)
+    }
+}
+
+pub fn test() -> u32 {
+    var sum = 0u32
+    for value in Counter { value: 0u32 } { sum = sum + value }
+    return sum
+}";
+        var diagnostics = Analyze(source);
+        Assert.False(diagnostics.HasErrors, string.Join(Environment.NewLine, diagnostics.Diagnostics));
     }
 
     [Fact]

@@ -54,6 +54,10 @@ namespace Novus.Codegen;
 /// </remarks>
 public partial class CCodeGenerator
 {
+    private static bool RequiresOutputParameter(IrType type) =>
+        type is IrStructType or IrEnumType or IrArrayType ||
+        type is IrTupleType { ElementTypes.Count: > 0 };
+
     private readonly IrModule _module;
     private readonly List<IrStringLiteral> _stringLiterals;
     private readonly string _cpuTarget;
@@ -248,9 +252,9 @@ public partial class CCodeGenerator
             return;
         }
 
-        // For small arrays, emit element-by-element assignment
-        // This avoids compound literal alignment issues on 68k
-        if (size <= MaxElementByElementArraySize)
+        // Runtime values cannot initialize the static temporary used below.
+        // Emit them element-by-element regardless of array size.
+        if (size <= MaxElementByElementArraySize || !IsCompileTimeConstantArray(arrayLiteral))
         {
             for (int i = 0; i < arrayLiteral.Elements.Count; i++)
             {
@@ -270,6 +274,10 @@ public partial class CCodeGenerator
                 {
                     EmitSafeArrayCopy($"{destExpr}[{i}]", nestedArray, nestedType);
                 }
+                else if (elem is IrEnumValue enumValue && arrayType.ElementType is IrEnumType enumType)
+                {
+                    EmitNestedEnumFieldByField($"{destExpr}[{i}]", enumValue, enumType);
+                }
                 else
                 {
                     var elemValue = EmitValue(elem);
@@ -285,7 +293,7 @@ public partial class CCodeGenerator
         var initValue = EmitArrayLiteralForInitializer(arrayLiteral);
         _output.AppendLine($"    {{");
         _output.AppendLine($"        static const {GetCVariableDeclaration(arrayType, "__init", $"= {initValue}")};");
-        _output.AppendLine($"        __novus_memcpy((uint8_t*){destExpr}, (const uint8_t*)__init, sizeof({destExpr}));");
+        _output.AppendLine($"        __novus_memcpy((uint8_t*){destExpr}, (const uint8_t*)__init, {GetSizeofExpression(arrayType)});");
         _output.AppendLine($"    }}");
     }
 
@@ -296,13 +304,16 @@ public partial class CCodeGenerator
     /// </summary>
     /// <param name="destExpr">Destination expression (e.g., "varName.data.Err._0")</param>
     /// <param name="nestedEnumValue">The nested enum value to emit</param>
-    private void EmitNestedEnumFieldByField(string destExpr, IrEnumValue nestedEnumValue)
+    private void EmitNestedEnumFieldByField(
+        string destExpr,
+        IrEnumValue nestedEnumValue,
+        IrEnumType? concreteType = null)
     {
-        var nestedEnumType = nestedEnumValue.Type as IrEnumType;
+        var nestedEnumType = concreteType ?? nestedEnumValue.Type as IrEnumType;
         if (nestedEnumType == null)
             throw new InvalidOperationException("EnumValue must have IrEnumType");
 
-        var nestedEnumName = MangleName(nestedEnumType);
+        var nestedEnumName = GetCType(nestedEnumType);
         bool nestedHasAnyData = nestedEnumType.Variants.Any(v => v.HasAssociatedData);
 
         if (nestedHasAnyData)
@@ -610,11 +621,15 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <exec/tasks.h>");
         sb.AppendLine("#include <exec/devices.h>");
         sb.AppendLine("#include <exec/semaphores.h>");
+        sb.AppendLine("#include <devices/trackdisk.h>");
         sb.AppendLine("#include <intuition/intuition.h>");
         sb.AppendLine("#include <graphics/gfx.h>");
         sb.AppendLine("#include <graphics/text.h>");
         sb.AppendLine("#include <utility/tagitem.h>");
         sb.AppendLine("#include <dos/dos.h>");
+        sb.AppendLine("#include <dos/dosextens.h>");
+        sb.AppendLine("#include <dos/filehandler.h>");
+        sb.AppendLine("#include <resources/filesysres.h>");
         // Workbench headers for Workbench startup support
         sb.AppendLine("#include <workbench/startup.h>");
         // Rexx headers for ARexx support
@@ -732,6 +747,8 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct Process Process;");
         sb.AppendLine("typedef struct FileInfoBlock FileInfoBlock;");
         sb.AppendLine("typedef struct InfoData InfoData;");
+        sb.AppendLine("typedef struct FileSysResource FileSysResource;");
+        sb.AppendLine("typedef struct FileSysEntry FileSysEntry;");
         // BOOPSI/Intuition types for ReAction GUI
         sb.AppendLine("typedef struct DrawInfo DrawInfo;");
         sb.AppendLine("typedef struct IClass IClass;");
@@ -1379,6 +1396,34 @@ public partial class CCodeGenerator
 
             Console.WriteLine($"WARNING: Skipping function '{function.Name}' - references un-monomorphized generic types");
             Console.WriteLine($"         {string.Join("; ", messages)}");
+            var genericLocals = function.LocalVariables
+                .Where(local => local.Type is IrEnumType enumType && !IsConcreteEnum(enumType))
+                .Select(local => $"{local.Name}: {local.Type}")
+                .ToList();
+            if (genericLocals.Count > 0)
+            {
+                Console.WriteLine($"         locals: {string.Join(", ", genericLocals)}");
+                foreach (var local in function.LocalVariables.Where(local => local.Type is IrEnumType enumType && !IsConcreteEnum(enumType)))
+                {
+                    foreach (var block in function.BasicBlocks)
+                    {
+                        foreach (var instruction in block.Instructions)
+                        {
+                            var resultProperty = instruction.GetType().GetProperty("ResultName");
+                            if (resultProperty?.GetValue(instruction) as string == local.Name)
+                                Console.WriteLine($"         defined by {instruction.GetType().Name} in {block.Label} at {instruction.Location}");
+                            if (instruction is IrLocalDecl declaration && declaration.Name == local.Name)
+                            {
+                                Console.WriteLine($"         declared in {block.Label} at {instruction.Location}, initial {declaration.InitialValue?.GetType().Name}");
+                                if (declaration.InitialValue is IrEnumValue enumValue)
+                                    Console.WriteLine($"         enum {enumValue.VariantName} payloads: {string.Join(", ", enumValue.AssociatedValues.Select(value => value.Type.Name))}");
+                                if (declaration.InitialValue is IrVariable variable)
+                                    Console.WriteLine($"         copied from {variable.Name}: {variable.Type.Name}");
+                            }
+                        }
+                    }
+                }
+            }
             Console.WriteLine($"         This is an IR bug - the function should only reference concrete types.");
 
             // Generate a stub that calls panic so if it's accidentally called, we get an error
@@ -1555,7 +1600,7 @@ public partial class CCodeGenerator
             sb.AppendLine("// External function declarations");
             foreach (var (funcName, returnType, arguments) in externalFunctions)
             {
-                var funcObj = _module.Functions.FirstOrDefault(f => f.Name == funcName);
+                var funcObj = FindFunction(funcName);
                 if (funcObj != null)
                 {
                     // Handle extern functions
@@ -1636,7 +1681,7 @@ public partial class CCodeGenerator
 
                     // VBCC FIX: Use output parameter for struct/enum returns EXCEPT for extern functions
                     // Extern functions use their actual C signatures (e.g., runtime functions return enums directly)
-                    var isStructOrEnumReturn = funcObj.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+                    var isStructOrEnumReturn = RequiresOutputParameter(funcObj.ReturnType);
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr2 = AddRegisterBinding(
                         shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType), funcObj.ReturnRegister);
@@ -1693,7 +1738,7 @@ public partial class CCodeGenerator
                     }
 
                     // Apply VBCC out-parameter workaround for struct/enum returns
-                    var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+                    var isStructOrEnumReturn = RequiresOutputParameter(returnType);
                     var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(returnType);
                     var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
 
@@ -1790,7 +1835,7 @@ public partial class CCodeGenerator
 
         // VBCC FIX: For struct/enum/tuple/array returns on 68k, use output parameter pattern
         // VBCC can't reliably return structs/arrays by value on 68k
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+        var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -1835,11 +1880,12 @@ public partial class CCodeGenerator
             // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType || slotType is IrArrayType)
-                ? GetCVariableDeclaration(slotType, slotName, "= {0}")
-                : GetCVariableDeclaration(slotType, slotName, "= 0");
-
+            var aggregate = slotType is IrEnumType or IrStructType or IrTupleType or IrArrayType;
+            var runtimeZero = aggregate && CalculateTypeSize(slotType) >= 256;
+            var decl = GetCVariableDeclaration(slotType, slotName, runtimeZero ? null : aggregate ? "= {0}" : "= 0");
             targetBuilder.AppendLine($"    {decl};");
+            if (runtimeZero)
+                targetBuilder.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({slotName}));");
             _declaredVariables.Add(slotName);
         }
 
@@ -1972,11 +2018,12 @@ public partial class CCodeGenerator
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
                 // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
-                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
-                    ? GetCVariableDeclaration(varType, varName, "= {0}")
-                    : GetCVariableDeclaration(varType, varName);
-
+                var aggregate = varType is IrEnumType or IrStructType or IrTupleType;
+                var runtimeZero = aggregate && CalculateTypeSize(varType) >= 256;
+                var decl = GetCVariableDeclaration(varType, varName, aggregate && !runtimeZero ? "= {0}" : null);
                 targetBuilder.AppendLine($"    {decl};");
+                if (runtimeZero)
+                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({varName}));");
             }
             _declaredVariables.Add(varName);
         }
@@ -1989,11 +2036,12 @@ public partial class CCodeGenerator
             {
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
-                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
-                    ? GetCVariableDeclaration(varType, varName, "= {0}")
-                    : GetCVariableDeclaration(varType, varName);
-
+                var aggregate = varType is IrEnumType or IrStructType or IrTupleType;
+                var runtimeZero = aggregate && CalculateTypeSize(varType) >= 256;
+                var decl = GetCVariableDeclaration(varType, varName, aggregate && !runtimeZero ? "= {0}" : null);
                 targetBuilder.AppendLine($"    {decl};");
+                if (runtimeZero)
+                    targetBuilder.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({varName}));");
                 _declaredVariables.Add(varName);
             }
         }
@@ -2147,7 +2195,10 @@ public partial class CCodeGenerator
         {
             var variant = variants[index];
             builder.AppendLine($"__novus_return_{SanitizeVariableName(variant)}:;");
-            builder.AppendLine($"    __out->tag = {MangleName(enumType)}_{variant};");
+            if (enumType.Variants.Any(candidate => candidate.HasAssociatedData))
+                builder.AppendLine($"    __out->tag = {MangleName(enumType)}_{variant};");
+            else
+                builder.AppendLine($"    *__out = {MangleName(enumType)}_{variant};");
             if (index + 1 < variants.Count)
                 builder.AppendLine("    goto __novus_return;");
         }
@@ -2883,7 +2934,7 @@ public partial class CCodeGenerator
         "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",
         "DosList", "AssignList", "DevProc", "FileLock", "RecordLock", "AChain",
         "AnchorPath", "LocalVar", "NotifyRequest", "NotifyMessage", "DateTime",
-        "ExAllData", "ExAllControl", "Process",
+        "ExAllData", "ExAllControl", "Process", "FileSysResource", "FileSysEntry",
         // Input types
         "IEPointerPixel", "IEPointerTablet", "InputEvent",
         // Intuition extended types
@@ -3541,6 +3592,12 @@ public partial class CCodeGenerator
                         ScanValueForFuncAddrs(arg);
                     }
                 }
+                else if (instruction is IrDropInPlace dropInPlace)
+                {
+                    foreach (var (dropFunction, dropType) in GetDropInPlaceFunctions(dropInPlace.ElementType))
+                        called.TryAdd(dropFunction, (IrVoidType.Instance,
+                            new List<IrValue> { new IrVariable("", new IrPointerType(dropType)) }));
+                }
                 else if (instruction is IrIndirectCall indirectCall)
                 {
                     // Extract function name from function pointer
@@ -3594,6 +3651,12 @@ public partial class CCodeGenerator
                         called[call.FunctionName] = (call.ReturnType, call.Arguments);
                     }
                 }
+                else if (instruction is IrDropInPlace dropInPlace)
+                {
+                    foreach (var (dropFunction, dropType) in GetDropInPlaceFunctions(dropInPlace.ElementType))
+                        called.TryAdd(dropFunction, (IrVoidType.Instance,
+                            new List<IrValue> { new IrVariable("", new IrPointerType(dropType)) }));
+                }
                 else if (instruction is IrIndirectCall indirectCall)
                 {
                     if (indirectCall.FunctionPointer is IrFunctionAddress funcAddr)
@@ -3624,6 +3687,11 @@ public partial class CCodeGenerator
                 if (instruction is IrCall call)
                 {
                     called.Add(call.FunctionName);
+                }
+                else if (instruction is IrDropInPlace dropInPlace)
+                {
+                    foreach (var (dropFunction, _) in GetDropInPlaceFunctions(dropInPlace.ElementType))
+                        called.Add(dropFunction);
                 }
             }
         }
@@ -3963,7 +4031,7 @@ public partial class CCodeGenerator
         while (worklist.Count > 0)
         {
             var currentName = worklist.Dequeue();
-            var currentFunc = _module.Functions.FirstOrDefault(f => f.Name == currentName);
+            var currentFunc = FindFunction(currentName);
             if (currentFunc == null)
                 continue;
 
@@ -3984,7 +4052,9 @@ public partial class CCodeGenerator
                             reachable.Add(call.FunctionName);
 
                             // If it's a function in this module (not extern), add to worklist
-                            var calledFunc = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName && !f.IsExtern);
+                            var calledFunc = FindFunction(call.FunctionName);
+                            if (calledFunc?.IsExtern == true)
+                                calledFunc = null;
                             if (calledFunc != null)
                             {
                                 worklist.Enqueue(call.FunctionName);
@@ -3995,6 +4065,20 @@ public partial class CCodeGenerator
                         foreach (var arg in call.Arguments)
                         {
                             ScanValueForFunctionReferences(arg, reachable, worklist);
+                        }
+                    }
+
+                    if (instruction is IrDropInPlace dropInPlace)
+                    {
+                        foreach (var (dropFunction, _) in GetDropInPlaceFunctions(dropInPlace.ElementType))
+                        {
+                            if (!reachable.Add(dropFunction))
+                                continue;
+                            var calledFunc = FindFunction(dropFunction);
+                            if (calledFunc?.IsExtern == true)
+                                calledFunc = null;
+                            if (calledFunc != null)
+                                worklist.Enqueue(dropFunction);
                         }
                     }
 
@@ -4771,7 +4855,7 @@ public partial class CCodeGenerator
             foreach (var (funcName, (returnType, paramTypes)) in crossModuleCalls)
             {
                 // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
-                var isStructOrEnumReturn = returnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+                var isStructOrEnumReturn = RequiresOutputParameter(returnType);
                 var cReturnType = isStructOrEnumReturn ? "void" : GetCType(returnType);
 
                 // Build parameter list with __out if needed
@@ -4808,7 +4892,7 @@ public partial class CCodeGenerator
         foreach (var function in implementedFunctions)
         {
             // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
-            var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+            var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
             var shouldUseOutParam = isStructOrEnumReturn;
             var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
             var parameters = GetParameterList(function, shouldUseOutParam);
@@ -5109,7 +5193,7 @@ public partial class CCodeGenerator
 
         // VBCC FIX: For struct/enum/tuple/array returns on 68k, use output parameter pattern
         // VBCC can't reliably return structs/arrays by value on 68k
-        var isStructOrEnumReturn = function.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+        var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
         var shouldUseOutParam = isStructOrEnumReturn;
         var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
@@ -5198,11 +5282,12 @@ public partial class CCodeGenerator
             // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
             // 2. Primitives should also be zero-initialized as defense against liveness analysis bugs
             // This prevents UB from uninitialized variable access if control flow analysis is incorrect.
-            var decl = (slotType is IrEnumType || slotType is IrStructType || slotType is IrTupleType || slotType is IrArrayType)
-                ? GetCVariableDeclaration(slotType, slotName, "= {0}")
-                : GetCVariableDeclaration(slotType, slotName, "= 0");
-
+            var aggregate = slotType is IrEnumType or IrStructType or IrTupleType or IrArrayType;
+            var runtimeZero = aggregate && CalculateTypeSize(slotType) >= 256;
+            var decl = GetCVariableDeclaration(slotType, slotName, runtimeZero ? null : aggregate ? "= {0}" : "= 0");
             _output.AppendLine($"    {decl};");
+            if (runtimeZero)
+                _output.AppendLine($"    __novus_memset(&{slotName}, 0, sizeof({slotName}));");
             _declaredVariables.Add(slotName);
         }
 
@@ -5314,11 +5399,12 @@ public partial class CCodeGenerator
             {
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
-                var decl = (varType is IrEnumType || varType is IrStructType || varType is IrTupleType)
-                    ? GetCVariableDeclaration(varType, varName, "= {0}")
-                    : GetCVariableDeclaration(varType, varName);
-
+                var aggregate = varType is IrEnumType or IrStructType or IrTupleType;
+                var runtimeZero = aggregate && CalculateTypeSize(varType) >= 256;
+                var decl = GetCVariableDeclaration(varType, varName, aggregate && !runtimeZero ? "= {0}" : null);
                 _output.AppendLine($"    {decl};");
+                if (runtimeZero)
+                    _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({varName}));");
                 _declaredVariables.Add(varName);
             }
         }
@@ -5460,11 +5546,12 @@ public partial class CCodeGenerator
                 {
                     // CRITICAL FIX FOR 68K ALIGNMENT:
                     // Aggregates use {0} to preserve deterministic Amiga ABI layout.
-                    var decl = (varType2 is IrEnumType || varType2 is IrStructType || varType2 is IrTupleType)
-                        ? GetCVariableDeclaration(varType2, varName, "= {0}")
-                        : GetCVariableDeclaration(varType2, varName);
-
+                    var aggregate = varType2 is IrEnumType or IrStructType or IrTupleType;
+                    var runtimeZero = aggregate && CalculateTypeSize(varType2) >= 256;
+                    var decl = GetCVariableDeclaration(varType2, varName, aggregate && !runtimeZero ? "= {0}" : null);
                     _output.AppendLine($"        {decl};");
+                    if (runtimeZero)
+                        _output.AppendLine($"        __novus_memset(&{varName}, 0, sizeof({varName}));");
                     _declaredVariables.Add(varName);
                 }
             }
@@ -6034,10 +6121,12 @@ public partial class CCodeGenerator
                 return;
             if (!_declaredVariables.Contains(varName))
             {
-                var decl = (localDecl.Type is IrEnumType or IrStructType or IrTupleType)
-                    ? GetCVariableDeclaration(localDecl.Type, varName, "= {0}")
-                    : GetCVariableDeclaration(localDecl.Type, varName);
+                var aggregate = localDecl.Type is IrEnumType or IrStructType or IrTupleType;
+                var runtimeZero = aggregate && CalculateTypeSize(localDecl.Type) >= 256;
+                var decl = GetCVariableDeclaration(localDecl.Type, varName, aggregate && !runtimeZero ? "= {0}" : null);
                 _output.AppendLine($"    {decl};");
+                if (runtimeZero)
+                    _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({varName}));");
                 _declaredVariables.Add(varName);
             }
             return;
@@ -6094,7 +6183,9 @@ public partial class CCodeGenerator
             // VBCC FIX: For enum literals with associated data, emit field-by-field assignment
             else if (localDecl.InitialValue is IrEnumValue enumValueAssign)
             {
-                var enumType = enumValueAssign.Type as IrEnumType;
+                // The literal keeps the generic definition for payload-free variants
+                // such as Option::None. The destination carries the concrete type.
+                var enumType = localDecl.Type as IrEnumType ?? enumValueAssign.Type as IrEnumType;
                 var enumName = MangleName(enumType!);
                 bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
@@ -6331,7 +6422,7 @@ public partial class CCodeGenerator
             // VBCC FIX: For enum literals with associated data, declare variable then assign tag and data
             else if (isEnumLiteral && localDecl.InitialValue is IrEnumValue enumValueDecl)
             {
-                var enumType = enumValueDecl.Type as IrEnumType;
+                var enumType = localDecl.Type as IrEnumType ?? enumValueDecl.Type as IrEnumType;
                 var enumName = MangleName(enumType!);
                 bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
@@ -6478,6 +6569,28 @@ public partial class CCodeGenerator
         }
     }
 
+    private IrType? ResolveStoredVariableType(string variableName)
+    {
+        if (_variableToSlot != null && _slotTypes != null &&
+            _variableToSlot.TryGetValue(variableName, out var slotName) &&
+            _slotTypes.TryGetValue(slotName, out var slotType))
+            return slotType;
+
+        var sanitized = variableName.StartsWith("%") ? "_" + variableName.Substring(1) : variableName;
+        if (_currentLocalDeclVars != null &&
+            _currentLocalDeclVars.TryGetValue(sanitized, out var local))
+            return local.Type;
+        var functionLocal = _currentEmittingFunction?.LocalVariables.FirstOrDefault(local =>
+            local.Name == variableName ||
+            (local.Name.StartsWith("%") ? "_" + local.Name.Substring(1) : local.Name) == sanitized);
+        if (functionLocal != null)
+            return functionLocal.Type;
+        if (_currentStoredVars != null &&
+            _currentStoredVars.TryGetValue(sanitized, out var stored))
+            return stored;
+        return null;
+    }
+
     private void EmitStore(IrStore store)
     {
         // Skip void/unit type stores - they have no runtime representation
@@ -6515,7 +6628,8 @@ public partial class CCodeGenerator
         // VBCC FIX: For enum literals with associated data, emit field-by-field assignment
         if (store.Value is IrEnumValue enumValue)
         {
-            var enumType = enumValue.Type as IrEnumType;
+            var destinationType = ResolveStoredVariableType(store.VariableName);
+            var enumType = destinationType as IrEnumType ?? enumValue.Type as IrEnumType;
             var enumName = MangleName(enumType!);
             bool hasAnyData = enumType!.Variants.Any(v => v.HasAssociatedData);
 
@@ -6870,12 +6984,12 @@ public partial class CCodeGenerator
         }
 
         // For FFI calls, we need to cast pointer arguments to int32_t
-        var function = _module.Functions.FirstOrDefault(f => f.Name == call.FunctionName);
+        var function = FindFunction(call.FunctionName);
         var args = new List<string>();
 
-        // Track local variables passed by value (moved) so we can zero them after the call
-        // to implement move semantics and prevent double-free
-        var movedVariables = new List<(string varName, IrType varType)>();
+        // Track arguments explicitly transferred to consuming parameters so the
+        // caller's deferred Drop cannot release ownership retained by the callee.
+        var movedArguments = new List<IrValue>();
 
         for (int i = 0; i < call.Arguments.Count; i++)
         {
@@ -6887,6 +7001,9 @@ public partial class CCodeGenerator
             if (function != null && i < function.Parameters.Count)
             {
                 var paramType = function.Parameters[i].Type;
+
+                if (function.Parameters[i].IsConsuming)
+                    movedArguments.Add(arg);
 
                 // BUG FIX: If argument is a pointer to a primitive type, but parameter expects a value, dereference
                 // This happens when calling helper functions from Display::fmt methods where self is int8_t*
@@ -6934,15 +7051,6 @@ public partial class CCodeGenerator
                         else
                         {
                             argValue = $"&{argValue}";
-
-                            // MOVE SEMANTICS FIX: Track local variables that are being moved into the call.
-                            // After the call completes, we must zero these to prevent their deferred Drop
-                            // from double-freeing the data that was moved into the callee.
-                            // This implements move semantics for pass-by-value struct parameters.
-                            if (arg is IrVariable movedVar && !_pointerConvertedParameters.Contains(movedVar.Name))
-                            {
-                                movedVariables.Add((SanitizeVariableName(movedVar.Name), argStructType));
-                            }
                         }
                     }
                 }
@@ -6992,7 +7100,7 @@ public partial class CCodeGenerator
 
         // VBCC FIX: For struct/enum/array returns on 68k, use output parameter pattern to avoid vbcc bugs
         // BUT: Extern functions use their actual C signatures and return values directly
-        var isStructOrEnumReturn = call.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType;
+        var isStructOrEnumReturn = RequiresOutputParameter(call.ReturnType);
         var shouldUseOutParam = isStructOrEnumReturn && (function == null || !function.IsExtern);
 
         // WORKAROUND: Strip type suffixes from cross-module function calls BEFORE mangling
@@ -7063,7 +7171,11 @@ public partial class CCodeGenerator
             }
 
             // Call function with output parameter
-            var allArgs = new List<string> { $"&{resultName}" };
+            // Array locals already decay to the destination element pointer expected by
+            // the hidden output parameter. Taking their address produces T (*)[N], which
+            // VBCC accepts with a warning but the callee then receives the wrong ABI type.
+            var outputArgument = call.ReturnType is IrArrayType ? resultName : $"&{resultName}";
+            var allArgs = new List<string> { outputArgument };
             allArgs.AddRange(args);
             var callExpr = $"{callFuncName}({string.Join(", ", allArgs)})";
             _output.AppendLine($"    {callExpr};");
@@ -7098,16 +7210,9 @@ public partial class CCodeGenerator
             }
         }
 
-        // MOVE SEMANTICS FIX: Zero moved variables after the call to prevent double-free.
-        // When a struct with heap data is passed by value, the callee takes ownership.
-        // We must zero the caller's copy so its deferred Drop becomes a no-op.
-        // This applies to both output-parameter and normal return value paths.
-        foreach (var (varName, varType) in movedVariables)
-        {
-            var cType = GetCType(varType);
-            _output.AppendLine($"    /* Move semantics: zero source after move to callee */");
-            _output.AppendLine($"    __novus_memset(&{varName}, 0, sizeof({cType}));");
-        }
+        // Invalidate every owned source transferred to a consuming parameter.
+        foreach (var movedArgument in movedArguments)
+            EmitMovedSourceZero(movedArgument);
     }
 
     private void EmitIndirectCall(IrIndirectCall call)
@@ -7360,7 +7465,7 @@ public partial class CCodeGenerator
         {
             // VBCC FIX: For struct/enum/array returns, write to output parameter instead of returning directly
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType);
+                                      RequiresOutputParameter(_currentEmittingFunction.ReturnType);
             var shouldUseOutParam = isStructOrEnumReturn;
 
             if (shouldUseOutParam && !_promotedAggregateReturns.Contains(returnInst))
@@ -7382,8 +7487,10 @@ public partial class CCodeGenerator
                             // Handle array fields with proper element-by-element assignment
                             if (kvp.Value is IrArrayLiteral arrayLit && kvp.Value.Type is IrArrayType arrayType)
                             {
+                                var concreteArrayType = (_currentEmittingFunction?.ReturnType as IrStructType)
+                                    ?.GetField(kvp.Key)?.Type as IrArrayType ?? arrayType;
                                 // Emit element-by-element assignment for non-constant arrays
-                                EmitSafeArrayCopy($"__out->{kvp.Key}", arrayLit, arrayType);
+                                EmitSafeArrayCopy($"__out->{kvp.Key}", arrayLit, concreteArrayType);
                                 continue;
                             }
                             // Skip other array types (already zeroed by memset)
@@ -7440,6 +7547,11 @@ public partial class CCodeGenerator
                             }
                         }
                     }
+                }
+                else if (returnInst.Value is IrArrayLiteral arrayLiteral &&
+                         returnInst.Value.Type is IrArrayType arrayType)
+                {
+                    EmitSafeArrayCopy("__out", arrayLiteral, arrayType);
                 }
                 else if (returnInst.Value is IrEnumValue enumValue)
                 {
@@ -7737,11 +7849,12 @@ public partial class CCodeGenerator
         if (returnInst.Value != null)
         {
             var isStructOrEnumReturn = _currentEmittingFunction != null &&
-                                      (_currentEmittingFunction.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType);
+                                      RequiresOutputParameter(_currentEmittingFunction.ReturnType);
+            var isUnitReturn = _currentEmittingFunction?.ReturnType is IrTupleType { ElementTypes.Count: 0 };
 
-            if (isStructOrEnumReturn)
+            if (isStructOrEnumReturn || isUnitReturn)
             {
-                // Struct/enum/array was already copied to __out above
+                // Aggregates were copied to __out above; unit has no value representation.
                 EmitAnchored("    return;");
             }
             else
@@ -7760,7 +7873,7 @@ public partial class CCodeGenerator
             {
                 EmitAnchored("    return;");
             }
-            else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType or IrTupleType)
+            else if (_currentEmittingFunction?.ReturnType is IrStructType or IrEnumType or IrTupleType or IrArrayType)
             {
                 // For struct/enum returns (which use __out parameter), just return;
                 EmitAnchored("    return;");
@@ -7799,7 +7912,7 @@ public partial class CCodeGenerator
             // Void function: just return
             _output.AppendLine($"{indent}return;");
         }
-        else if (returnType is IrStructType or IrEnumType or IrTupleType)
+        else if (returnType is IrStructType or IrEnumType or IrTupleType or IrArrayType)
         {
             // Struct/enum/tuple returns use __out parameter, so C function is void
             // Just return without a value (error has already been reported)
@@ -9424,6 +9537,8 @@ public partial class CCodeGenerator
         {
             _output.AppendLine($"    {arrayValue}[{indexValue}] = {actualStoreValue};");
         }
+
+        EmitMovedSourceZero(indexStore.Value);
     }
 
     private void EmitIndexedFieldStore(IrIndexedFieldStore indexedFieldStore)
@@ -9435,6 +9550,7 @@ public partial class CCodeGenerator
         // Emit direct assignment to array[index].field
         // This is the whole point of this instruction - avoid creating a temporary copy
         _output.AppendLine($"    {arrayValue}[{indexValue}].{indexedFieldStore.FieldName} = {storeValue};");
+        EmitMovedSourceZero(indexedFieldStore.Value);
     }
 
     private void EmitMemberStore(IrMemberStore memberStore)
@@ -9564,12 +9680,16 @@ public partial class CCodeGenerator
         }
 
         _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
+        EmitMovedSourceZero(memberStore.Value);
     }
 
     private void EmitDereferenceStore(IrDereferenceStore derefStore)
     {
         var pointerValue = EmitValue(derefStore.Pointer);
         var storeValue = EmitValue(derefStore.Value);
+        var actualStoreValue = _pointerConvertedParameters.Contains(storeValue)
+            ? $"*{storeValue}"
+            : storeValue;
 
         // Emit null pointer check if enabled (safety level >= 2)
         // OPTIMIZATION: Skip if this pointer is already known non-null from a previous check
@@ -9597,10 +9717,15 @@ public partial class CCodeGenerator
             _knownNonNullPointers.Add(pointerValue);
         }
 
-        if (derefStore.IsVolatile)
-            _output.AppendLine($"    (*(volatile {GetCType(derefStore.Value.Type)}*)({pointerValue})) = {storeValue};");
+        if (derefStore.Value.Type is IrStructType valueStructType &&
+            TypeContainsHeapData(valueStructType))
+            _output.AppendLine($"    __novus_memcpy((uint8_t*){pointerValue}, (uint8_t*)&{actualStoreValue}, sizeof({GetCType(valueStructType)}));");
+        else if (derefStore.IsVolatile)
+            _output.AppendLine($"    (*(volatile {GetCType(derefStore.Value.Type)}*)({pointerValue})) = {actualStoreValue};");
         else
-            _output.AppendLine($"    (*{pointerValue}) = {storeValue};");
+            _output.AppendLine($"    (*{pointerValue}) = {actualStoreValue};");
+
+        EmitMovedSourceZero(derefStore.Value);
     }
 
     internal string EmitBorrowValue(IrBorrowValue borrowValue)
@@ -10474,8 +10599,7 @@ public partial class CCodeGenerator
         string dropMethodName;
         if (elementType is IrStructType st)
         {
-            var typeName = st.CacheKey ?? st.StructName;
-            dropMethodName = $"{typeName}_Drop_drop";
+            dropMethodName = $"{MangleName(st.CacheKey ?? st.StructName)}_Drop_drop";
         }
         else if (elementType is IrEnumType et)
         {
@@ -10501,6 +10625,36 @@ public partial class CCodeGenerator
         return $"{dropMethodName}({ptrExpr})";
     }
 
+    private IEnumerable<(string Name, IrType Type)> GetDropInPlaceFunctions(IrType type)
+    {
+        if (!_module.TypeImplementsDrop(type))
+            yield break;
+        if (type is IrStructType structType)
+        {
+            if (_module.StructImplementsDrop(structType))
+            {
+                yield return ($"{MangleName(structType.CacheKey ?? structType.StructName)}_Drop_drop", structType);
+                yield break;
+            }
+
+            foreach (var field in structType.Fields)
+                foreach (var function in GetDropInPlaceFunctions(field.Type))
+                    yield return function;
+            yield break;
+        }
+
+        IEnumerable<IrType> children = type switch
+        {
+            IrEnumType enumType => enumType.Variants.SelectMany(variant => variant.AssociatedData),
+            IrTupleType tupleType => tupleType.ElementTypes,
+            IrArrayType arrayType => [arrayType.ElementType],
+            _ => []
+        };
+        foreach (var child in children)
+            foreach (var function in GetDropInPlaceFunctions(child))
+                yield return function;
+    }
+
     /// <summary>
     /// Emit a drop_in_place instruction as a statement with source location info.
     /// </summary>
@@ -10513,11 +10667,73 @@ public partial class CCodeGenerator
             _output.AppendLine($"#line {loc.Line} \"{EscapeCString(DebugSourcePath(loc.FilePath))}\"");
         }
 
-        // Get the drop call expression
-        var dropExpr = EmitDropInPlace(dropInPlace);
+        EmitDropInPlaceForType(dropInPlace.ElementType, EmitValue(dropInPlace.Pointer), "    ");
+    }
 
-        // Emit as a statement
-        _output.AppendLine($"    {dropExpr};");
+    private void EmitDropInPlaceForType(IrType type, string pointer, string indent)
+    {
+        if (!_module.TypeImplementsDrop(type))
+        {
+            _output.AppendLine($"{indent}((void)0);");
+            return;
+        }
+
+        if (type is IrStructType structType)
+        {
+            if (_module.StructImplementsDrop(structType))
+            {
+                _output.AppendLine($"{indent}{MangleName(structType.CacheKey ?? structType.StructName)}_Drop_drop({pointer});");
+                return;
+            }
+
+            for (var index = structType.Fields.Count - 1; index >= 0; index--)
+            {
+                var field = structType.Fields[index];
+                if (_module.TypeImplementsDrop(field.Type))
+                    EmitDropInPlaceForType(field.Type, $"&(({pointer})->{field.Name})", indent);
+            }
+            return;
+        }
+
+        if (type is IrEnumType enumType)
+        {
+            var enumName = MangleName(enumType);
+            _output.AppendLine($"{indent}switch (({pointer})->tag) {{");
+            foreach (var variant in enumType.Variants)
+            {
+                var droppable = variant.AssociatedData
+                    .Select((payload, index) => (payload, index))
+                    .Where(item => _module.TypeImplementsDrop(item.payload))
+                    .ToList();
+                if (droppable.Count == 0)
+                    continue;
+                _output.AppendLine($"{indent}case {enumName}_{variant.Name}:");
+                foreach (var (payload, index) in droppable)
+                    EmitDropInPlaceForType(payload,
+                        $"&(({pointer})->data.{variant.Name}._{index})", indent + "    ");
+                _output.AppendLine($"{indent}    break;");
+            }
+            _output.AppendLine($"{indent}default: break;");
+            _output.AppendLine($"{indent}}}");
+            return;
+        }
+
+        if (type is IrTupleType tupleType)
+        {
+            for (var index = tupleType.ElementTypes.Count - 1; index >= 0; index--)
+                EmitDropInPlaceForType(tupleType.ElementTypes[index],
+                    $"&(({pointer})->__{index})", indent);
+            return;
+        }
+
+        if (type is IrArrayType arrayType)
+        {
+            var index = $"_drop_index_{_tempCounter++}";
+            _output.AppendLine($"{indent}for (uint32_t {index} = {arrayType.Length}; {index} > 0; --{index}) {{");
+            EmitDropInPlaceForType(arrayType.ElementType,
+                $"&((*({pointer}))[{index} - 1])", indent + "    ");
+            _output.AppendLine($"{indent}}}");
+        }
     }
 
     /// <summary>
@@ -10969,6 +11185,11 @@ public partial class CCodeGenerator
                 return $"{AddRegisterBinding(returnType, fpType.ReturnRegister)} (*{declarator})({paramTypes})";
             }
 
+            case IrPointerType { PointeeType: IrArrayType } ptrType:
+            {
+                return GetCDeclaratorForType(ptrType.PointeeType, $"(*{declarator})");
+            }
+
             case IrPointerType ptrType when ContainsFunctionPointer(ptrType.PointeeType):
             {
                 // Pointer to something containing a function pointer
@@ -10976,10 +11197,20 @@ public partial class CCodeGenerator
                 return GetCDeclaratorForType(ptrType.PointeeType, $"*{declarator}");
             }
 
+            case IrReferenceType { PointeeType: IrArrayType } refType:
+            {
+                return GetCDeclaratorForType(refType.PointeeType, $"(*{declarator})");
+            }
+
             case IrReferenceType refType when ContainsFunctionPointer(refType.PointeeType):
             {
                 // Reference to something containing a function pointer
                 return GetCDeclaratorForType(refType.PointeeType, $"*{declarator}");
+            }
+
+            case IrMutReferenceType { PointeeType: IrArrayType } mutRefType:
+            {
+                return GetCDeclaratorForType(mutRefType.PointeeType, $"(*{declarator})");
             }
 
             case IrMutReferenceType mutRefType when ContainsFunctionPointer(mutRefType.PointeeType):
@@ -11261,6 +11492,73 @@ public partial class CCodeGenerator
         _output.AppendLine($"    __novus_memset({target}, 0, {GetSizeofExpression(type)});");
     }
 
+    private void EmitMovedSourceZero(IrValue value)
+    {
+        var variables = new List<IrVariable>();
+        CollectMovedVariableValues(value, variables);
+        foreach (var variable in variables)
+        {
+            var isConsumingParameter = _currentEmittingFunction?.Parameters.Any(parameter =>
+                parameter.IsConsuming && SanitizeVariableName(parameter.Name) == SanitizeVariableName(variable.Name)) == true;
+            if (!isConsumingParameter && !TypeContainsDroppableContent(variable.Type))
+                continue;
+            if (DeactivateMovedVariableDrop(variable.Name))
+                continue;
+
+            var variableName = SanitizeVariableName(variable.Name);
+            var isFieldAccess = _fieldAccessChainInfo.ContainsKey(variableName);
+            var valueExpr = isFieldAccess
+                ? ReconstructFieldAccessChain(variable.Name)
+                : EmitValue(variable);
+            _output.AppendLine("    /* Move semantics: zero source to prevent double-free */");
+            EmitMovedValueZero(
+                valueExpr,
+                variable.Type,
+                !isFieldAccess && _pointerConvertedParameters.Contains(variable.Name));
+        }
+    }
+
+    private static void CollectMovedVariableValues(IrValue value, List<IrVariable> variables)
+    {
+        switch (value)
+        {
+            case IrVariable variable:
+                variables.Add(variable);
+                break;
+            case IrStructLiteral structLiteral:
+                foreach (var field in structLiteral.FieldValues.Values)
+                    CollectMovedVariableValues(field, variables);
+                break;
+            case IrEnumValue enumValue:
+                foreach (var payload in enumValue.AssociatedValues)
+                    CollectMovedVariableValues(payload, variables);
+                break;
+            case IrTupleLiteral tupleLiteral:
+                foreach (var element in tupleLiteral.Elements)
+                    CollectMovedVariableValues(element, variables);
+                break;
+        }
+    }
+
+    private bool DeactivateMovedVariableDrop(string variableName)
+    {
+        if (_currentEmittingFunction == null)
+            return false;
+        for (var index = 0; index < _currentEmittingFunction.DeferredBlocks.Count; index++)
+        {
+            var label = _currentEmittingFunction.DeferredBlocks[index].Label;
+            if (!label.StartsWith("autoclean_", StringComparison.Ordinal))
+                continue;
+            var remainder = label["autoclean_".Length..];
+            var separator = remainder.LastIndexOf('_');
+            if (separator <= 0 || remainder[..separator] != variableName)
+                continue;
+            _output.AppendLine($"    _defer_{index + 1}_active = false;");
+            return true;
+        }
+        return false;
+    }
+
     private bool NeedsMovedSourceZero(IrValue value) =>
         value is not IrVariable variable || !_returnSourcesWithDeactivatedDrop.Contains(variable.Name);
 
@@ -11327,7 +11625,7 @@ public partial class CCodeGenerator
         }
 
         // For all other types, use normal syntax
-        return AddRegisterBinding($"{GetCType(type)} {name}", register);
+        return AddRegisterBinding(GetCVariableDeclaration(type, name), register);
     }
 
     private static string AddRegisterBinding(string declaration, string? register) =>
@@ -11351,6 +11649,10 @@ public partial class CCodeGenerator
                    .Replace(")", "")
                    .Replace(" ", "");
     }
+
+    private IrFunction? FindFunction(string name) =>
+        _module.Functions.FirstOrDefault(function => function.Name == name) ??
+        _module.Functions.FirstOrDefault(function => MangleName(function) == name);
 
     /// <summary>
     /// Mangle a function name, including type parameters for generic functions.

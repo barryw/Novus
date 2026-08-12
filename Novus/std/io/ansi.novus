@@ -94,46 +94,55 @@ pub struct ConsoleSize {
 // ============================================================================
 
 /// Reset all text attributes to default
+@borrows(static)
 pub fn reset() -> Str {
     return "\x9b0m"
 }
 
 /// Enable bold/bright text
+@borrows(static)
 pub fn bold() -> Str {
     return "\x9b1m"
 }
 
 /// Enable underlined text
+@borrows(static)
 pub fn underline() -> Str {
     return "\x9b4m"
 }
 
 /// Enable reverse video (swap foreground/background)
+@borrows(static)
 pub fn reverse() -> Str {
     return "\x9b7m"
 }
 
 /// Move cursor to home position (top-left, 1,1)
+@borrows(static)
 pub fn home() -> Str {
     return "\x9bH"
 }
 
 /// Clear entire screen
+@borrows(static)
 pub fn clear_screen() -> Str {
     return "\x9b2J"
 }
 
 /// Clear entire current line
+@borrows(static)
 pub fn clear_line() -> Str {
     return "\x9b2K"
 }
 
 /// Clear from cursor to end of line
+@borrows(static)
 pub fn clear_to_eol() -> Str {
     return "\x9bK"
 }
 
 /// Clear from cursor to end of screen
+@borrows(static)
 pub fn clear_to_eos() -> Str {
     return "\x9bJ"
 }

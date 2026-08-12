@@ -6,7 +6,7 @@ from std::core import Result
 
 extern fn write(format: *u8, ...args) -> i32
 
-fn test_formatter(f: Formatter) -> i32 {
+fn test_formatter(consuming f: Formatter) -> i32 {
     write("  Created formatter\n")
     write("  About to call finish...\n")
     let result = f.finish()

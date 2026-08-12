@@ -1,0 +1,97 @@
+// Fixed-capacity vector with inline storage and no allocation.
+
+from std::core import Drop, Error, Iterable, Option, Result
+
+/// Returned by `ArrayVec::push` when the inline capacity is exhausted.
+pub enum ArrayVecError {
+    Full,
+}
+
+impl Error for ArrayVecError {
+    fn message(&self) -> *u8 { return "ArrayVec is full" }
+}
+
+pub struct ArrayVec<T, const N: u32> {
+    items: [Option<T>; N],
+    len: u32,
+}
+
+impl<T, const N: u32> ArrayVec<T, N> {
+    pub fn new() -> ArrayVec<T, N> {
+        return ArrayVec { items: [Option::None; N], len: 0u32 }
+    }
+
+    @inline
+    pub fn len(&self) -> u32 { return self.len }
+
+    @inline
+    pub fn capacity(&self) -> u32 { return N }
+
+    @inline
+    pub fn is_empty(&self) -> bool { return self.len == 0u32 }
+
+    @inline
+    pub fn is_full(&self) -> bool { return self.len == N }
+
+    /// Append a value. A value rejected because the vector is full is consumed
+    /// and dropped normally before this call returns.
+    pub fn push(&var self, consuming value: T) -> Result<(), ArrayVecError> {
+        if self.len == N {
+            return Result::Err(ArrayVecError::Full)
+        }
+        self.items[self.len] = Option::Some(value)
+        self.len++
+        return Result::Ok(())
+    }
+
+    pub fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len { return Option::None }
+        return match &self.items[index] {
+            Option::Some(&value) => Option::Some(value),
+            Option::None => Option::None,
+        }
+    }
+
+    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+        if index >= self.len { return Option::None }
+        return match &var self.items[index] {
+            Option::Some(&var value) => Option::Some(value),
+            Option::None => Option::None,
+        }
+    }
+
+    /// Remove one value while preserving order. Ownership transfers to the
+    /// caller; every shifted slot is cleared so Drop still runs exactly once.
+    pub fn remove(&var self, index: u32) -> Option<T> {
+        if index >= self.len { return Option::None }
+        let removed: Option<T> = self.items[index]
+        var current = index
+        while current + 1u32 < self.len {
+            self.items[current] = self.items[current + 1u32]
+            current++
+        }
+        self.len--
+        return removed
+    }
+}
+
+impl<T, const N: u32> Iterable<T> for ArrayVec<T, N> {
+    fn len(&self) -> u32 { return self.len }
+
+    fn get(&self, index: u32) -> Option<&T> {
+        if index >= self.len { return Option::None }
+        return match &self.items[index] {
+            Option::Some(&value) => Option::Some(value),
+            Option::None => Option::None,
+        }
+    }
+}
+
+impl<T, const N: u32> Drop for ArrayVec<T, N> {
+    fn drop(&var self) {
+        while self.len > 0u32 {
+            self.len--
+            @drop_in_place(&var self.items[self.len])
+        }
+    }
+}

@@ -56,7 +56,7 @@ from std::ffi::amiga_consts import BMA_WIDTH, BMA_HEIGHT
 /// Do NOT destroy the RastPort while an AreaContext is attached to it.
 /// Drop the AreaContext first.
 pub struct AreaContext {
-    rp: *RastPort,
+    rp: &RastPort,
     area_info_mem: MemHandle,
     tmp_ras_mem: MemHandle,
     vector_buffer: MemHandle,
@@ -80,10 +80,7 @@ impl AreaContext {
     ///   - window has no RastPort
     ///   - Memory allocation fails (chip memory required)
     @suppress("W0001", "Memory calculations are safe")
-    pub fn from_window(window: *Window, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
-        if !window {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn from_window(window: &Window, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
         if max_vertices < 3 {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -103,7 +100,8 @@ impl AreaContext {
             let temp_ras_size: u32 = words_per_row * 2 * height
 
             let vector_size: u32 = (u32)max_vertices * 5
-            return AreaContext::create_internal(rp, max_vertices, vector_size, temp_ras_size)
+            return AreaContext::create_internal(
+                &*rp, max_vertices, vector_size, temp_ras_size)
         }
     }
 
@@ -121,10 +119,7 @@ impl AreaContext {
     ///   - rp has no bitmap
     ///   - Memory allocation fails (chip memory required)
     @suppress("W0001", "Memory calculations are safe")
-    pub fn from_bitmap(rp: *RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
-        if !rp {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn from_bitmap(rp: &RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
         if max_vertices < 3 {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -165,10 +160,7 @@ impl AreaContext {
     ///   - rp is null
     ///   - Memory allocation fails (chip memory required)
     @suppress("W0001", "Memory calculations are safe")
-    pub fn new(rp: *RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
-        if !rp {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn new(rp: &RastPort, max_vertices: i16) -> Result<AreaContext, GraphicsError> {
         if max_vertices < 3 {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -184,10 +176,7 @@ impl AreaContext {
 
     /// Create an AreaContext with a specific temp raster size.
     @suppress("W0001", "Memory calculations are safe")
-    pub fn with_ras_size(rp: *RastPort, max_vertices: i16, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
-        if !rp {
-            return Result::Err(GraphicsError::InvalidRastPort)
-        }
+    pub fn with_ras_size(rp: &RastPort, max_vertices: i16, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
         if max_vertices < 3 {
             return Result::Err(GraphicsError::InvalidRastPort)
         }
@@ -200,7 +189,7 @@ impl AreaContext {
     /// Uses match expressions instead of is_none()/unwrap() to avoid struct-by-value
     /// function calls which can cause issues with VBCC on 68k.
     @suppress("W0001", "Memory operations are safe")
-    fn create_internal(rp: *RastPort, max_vertices: i16, vector_size: u32, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
+    fn create_internal(rp: &RastPort, max_vertices: i16, vector_size: u32, temp_ras_size: u32) -> Result<AreaContext, GraphicsError> {
         // Allocate AreaInfo struct in chip memory (24 bytes per NDK)
         // AreaInfo: 4 ptrs (16 bytes) + 4 WORD fields (8 bytes) = 24 bytes
         let area_info_mem: MemHandle = match MemHandle::new_chip(24) {
@@ -243,9 +232,9 @@ impl AreaContext {
 
         // Attach to RastPort
         unsafe {
-            let rp_ref = rp
-            rp_ref.AreaInfo = area_info_mem.ptr()
-            rp_ref.TmpRas = tmp_ras_mem.ptr()
+            let raw_rp = (*RastPort)rp
+            raw_rp.AreaInfo = area_info_mem.ptr()
+            raw_rp.TmpRas = tmp_ras_mem.ptr()
         }
 
         return Result::Ok(AreaContext {
@@ -372,11 +361,8 @@ impl AreaContext {
         if !self.attached {
             return
         }
-        if !self.rp {
-            return
-        }
         unsafe {
-            let rp_ref = self.rp
+            let rp_ref = (*RastPort)self.rp
             rp_ref.AreaInfo = null
             rp_ref.TmpRas = null
         }
@@ -411,7 +397,7 @@ pub fn vector_buffer_size(max_vertices: i16) -> u32 {
 // ============================================================================
 
 /// Draw a filled triangle.
-pub fn fill_triangle(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16) -> Result<(), GraphicsError> {
+pub fn fill_triangle(rp: &RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16) -> Result<(), GraphicsError> {
     var area = AreaContext::new(rp, 4)?
     area.begin(x1, y1)?
     area.vertex(x2, y2)?
@@ -421,7 +407,7 @@ pub fn fill_triangle(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16,
 }
 
 /// Draw a filled quad (4-sided polygon).
-pub fn fill_quad(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16, x4: i16, y4: i16) -> Result<(), GraphicsError> {
+pub fn fill_quad(rp: &RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3: i16, x4: i16, y4: i16) -> Result<(), GraphicsError> {
     var area = AreaContext::new(rp, 5)?
     area.begin(x1, y1)?
     area.vertex(x2, y2)?
@@ -432,13 +418,13 @@ pub fn fill_quad(rp: *RastPort, x1: i16, y1: i16, x2: i16, y2: i16, x3: i16, y3:
 }
 
 /// Draw a simple filled ellipse.
-pub fn fill_ellipse(rp: *RastPort, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
+pub fn fill_ellipse(rp: &RastPort, cx: i16, cy: i16, rx: i16, ry: i16) -> Result<(), GraphicsError> {
     var area = AreaContext::new(rp, 4)?
     area.ellipse_fill(cx, cy, rx, ry)?
     return Result::Ok(())
 }
 
 /// Draw a simple filled circle.
-pub fn fill_circle(rp: *RastPort, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
+pub fn fill_circle(rp: &RastPort, cx: i16, cy: i16, radius: i16) -> Result<(), GraphicsError> {
     return fill_ellipse(rp, cx, cy, radius, radius)
 }

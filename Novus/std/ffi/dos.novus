@@ -12,6 +12,9 @@ from std::ffi::amiga_structs import DosPacket, RecordLock, TagItem, ExAllData, E
 from std::ffi::amiga_structs import CommandLineInterface, Process, DevProc, DosList, Segment
 from std::ffi::amiga_structs import RDArgs, CSource, AnchorPath, NotifyRequest, LocalVar, DateTime
 
+/// Callback convention used by InternalUnLoadSeg to release each loaded hunk.
+pub type InternalLoadSegFree = amiga fn(*u8 in a1, u32 in d0)
+
 // ============================================================================
 // Library Functions
 // ============================================================================
@@ -1799,7 +1802,7 @@ extern pub fn InternalLoadSeg(fh: i32, table: i32, funcarray: *u8, stack: *u8) -
 ///
 /// See also: LoadSeg(), UnLoadSeg(), InternalLoadSeg(), NewUnLoadSeg(), Close()
 @library("dos.library")
-extern pub fn InternalUnLoadSeg(seglist: i32, freefunc: fn()) -> i16
+extern pub fn InternalUnLoadSeg(seglist: i32, freefunc: InternalLoadSegFree) -> i16
 /// Improved version of LoadSeg for stacksizes (V36)
 ///
 /// Does a LoadSeg on a file, and takes additional actions based on the tags

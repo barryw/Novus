@@ -65,6 +65,174 @@ public partial class IrBuilder
         return expandedArms;
     }
 
+    private bool PatternNeedsRuntimeCheck(NovusParser.PatternContext pattern)
+    {
+        if (pattern is NovusParser.ReferencePatternContext reference)
+            return PatternNeedsRuntimeCheck(reference.pattern());
+
+        if (pattern is NovusParser.IdentifierPatternContext identifier)
+            return _symbols.LookupConstant(identifier.IDENTIFIER().GetText()) is
+                { Type: IrIntType or IrBoolType };
+
+        return pattern is NovusParser.VariantPatternContext or
+               NovusParser.SimpleVariantPatternContext or
+               NovusParser.LiteralPatternContext or
+               NovusParser.BoolLiteralPatternContext or
+               NovusParser.NullLiteralPatternContext;
+    }
+
+    /// <summary>
+    /// Emit the checks for a pattern nested inside an enum payload. Bindings and
+    /// wildcards need no comparison; enum patterns recurse through their payloads.
+    /// </summary>
+    private bool EmitNestedPatternCheck(
+        NovusParser.PatternContext pattern,
+        IrValue value,
+        IrType valueType,
+        string matchedLabel,
+        string failedLabel,
+        string labelPrefix)
+    {
+        if (pattern is NovusParser.ReferencePatternContext reference)
+            return EmitNestedPatternCheck(reference.pattern(), value, valueType, matchedLabel, failedLabel, labelPrefix);
+
+        if (pattern is NovusParser.IdentifierPatternContext identifierPattern)
+        {
+            var constant = _symbols.LookupConstant(identifierPattern.IDENTIFIER().GetText());
+            if (constant?.Type is not (IrIntType or IrBoolType))
+            {
+                _currentBlock!.AddInstruction(new IrBranch(matchedLabel));
+                return true;
+            }
+
+            var cmpName = $"%t{_tempCounter++}";
+            IrValue constantValue = constant.Type is IrBoolType && constant.Value is bool boolValue
+                ? new IrBoolConstant(boolValue)
+                : new IrConstant(Convert.ToInt64(constant.Value), valueType);
+            _currentBlock!.AddInstruction(new IrBinaryOp(
+                cmpName, IrBinaryOp.OpKind.Eq, value,
+                constantValue, IrBoolType.Instance));
+            _currentBlock.AddInstruction(new IrConditionalBranch(
+                new IrVariable(cmpName, IrBoolType.Instance), matchedLabel, failedLabel));
+            return true;
+        }
+
+        if (pattern is NovusParser.LiteralPatternContext literalPattern && valueType is IrIntType)
+        {
+            long literalValue;
+            if (literalPattern.INTEGER_LITERAL() != null)
+                (literalValue, _) = ParseIntegerLiteral(literalPattern.INTEGER_LITERAL().GetText());
+            else if (literalPattern.HEX_LITERAL() != null)
+                (literalValue, _) = ParseHexLiteral(literalPattern.HEX_LITERAL().GetText());
+            else if (literalPattern.BINARY_LITERAL() != null)
+                (literalValue, _) = ParseBinaryLiteral(literalPattern.BINARY_LITERAL().GetText());
+            else if (literalPattern.CHAR_LITERAL() != null)
+                literalValue = ParseCharLiteralValue(literalPattern.CHAR_LITERAL().GetText());
+            else
+                return false;
+
+            var cmpName = $"%t{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrBinaryOp(
+                cmpName, IrBinaryOp.OpKind.Eq, value,
+                new IrConstant(literalValue, valueType), IrBoolType.Instance));
+            _currentBlock.AddInstruction(new IrConditionalBranch(
+                new IrVariable(cmpName, IrBoolType.Instance), matchedLabel, failedLabel));
+            return true;
+        }
+
+        if (pattern is NovusParser.BoolLiteralPatternContext boolPattern && valueType is IrBoolType)
+        {
+            var cmpName = $"%t{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrBinaryOp(
+                cmpName, IrBinaryOp.OpKind.Eq, value,
+                new IrBoolConstant(boolPattern.KW_TRUE() != null), IrBoolType.Instance));
+            _currentBlock.AddInstruction(new IrConditionalBranch(
+                new IrVariable(cmpName, IrBoolType.Instance), matchedLabel, failedLabel));
+            return true;
+        }
+
+        if (pattern is NovusParser.NullLiteralPatternContext && valueType is IrPointerType)
+        {
+            var cmpName = $"%t{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrBinaryOp(
+                cmpName, IrBinaryOp.OpKind.Eq, value,
+                new IrConstant(0, valueType), IrBoolType.Instance));
+            _currentBlock.AddInstruction(new IrConditionalBranch(
+                new IrVariable(cmpName, IrBoolType.Instance), matchedLabel, failedLabel));
+            return true;
+        }
+
+        if (valueType is IrEnumType nestedEnum &&
+            pattern is NovusParser.VariantPatternContext or NovusParser.SimpleVariantPatternContext)
+        {
+            string variantName;
+            NovusParser.PatternContext[] payloadPatterns;
+            if (pattern is NovusParser.VariantPatternContext variantPattern)
+            {
+                var identifiers = variantPattern.variantName().IDENTIFIER();
+                variantName = identifiers[^1].GetText();
+                payloadPatterns = variantPattern.patternList()?.pattern() ?? [];
+            }
+            else
+            {
+                var simple = (NovusParser.SimpleVariantPatternContext)pattern;
+                var identifiers = simple.IDENTIFIER();
+                variantName = identifiers[^1].GetText();
+                payloadPatterns = [];
+            }
+
+            var variant = nestedEnum.GetVariant(variantName);
+            if (variant == null)
+                return false;
+
+            var tagName = $"%t{_tempCounter++}";
+            var cmpName = $"%t{_tempCounter++}";
+            _currentBlock!.AddInstruction(new IrExtractTag(tagName, value));
+            _currentBlock.AddInstruction(new IrBinaryOp(
+                cmpName, IrBinaryOp.OpKind.Eq,
+                new IrVariable(tagName, IrIntType.I32),
+                new IrConstant(variant.Tag, IrIntType.I32), IrBoolType.Instance));
+
+            var checkedPayloads = payloadPatterns
+                .Select((payload, index) => (payload, index))
+                .Where(item => PatternNeedsRuntimeCheck(item.payload))
+                .ToList();
+            if (checkedPayloads.Count == 0)
+            {
+                _currentBlock.AddInstruction(new IrConditionalBranch(
+                    new IrVariable(cmpName, IrBoolType.Instance), matchedLabel, failedLabel));
+                return true;
+            }
+
+            var firstPayloadLabel = $"{labelPrefix}_0";
+            _currentBlock.AddInstruction(new IrConditionalBranch(
+                new IrVariable(cmpName, IrBoolType.Instance), firstPayloadLabel, failedLabel));
+            for (var i = 0; i < checkedPayloads.Count; i++)
+            {
+                var (payload, dataIndex) = checkedPayloads[i];
+                if (dataIndex >= variant.AssociatedData.Count)
+                    return false;
+
+                var payloadType = variant.AssociatedData[dataIndex];
+                var extractName = $"%t{_tempCounter++}";
+                var nextMatchedLabel = i == checkedPayloads.Count - 1
+                    ? matchedLabel
+                    : $"{labelPrefix}_{i + 1}";
+                _currentBlock.AddInstruction(new IrLabel($"{labelPrefix}_{i}"));
+                _currentBlock.AddInstruction(new IrExtractVariantData(
+                    extractName, value, variantName, dataIndex, payloadType));
+                if (!EmitNestedPatternCheck(
+                        payload, new IrVariable(extractName, payloadType), payloadType,
+                        nextMatchedLabel, failedLabel, $"{labelPrefix}_{i}_nested"))
+                    return false;
+            }
+            return true;
+        }
+
+        _currentBlock!.AddInstruction(new IrBranch(matchedLabel));
+        return true;
+    }
+
     public override object? VisitMatchExpr([NotNull] NovusParser.MatchExprContext context)
     {
         SourceLocation errorLocation;
@@ -131,12 +299,13 @@ public partial class IrBuilder
         var matchesBorrowedEnum = matchValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType;
         var ownedEnumNeedsDrop = isEnumMatch && !matchesBorrowedEnum && _module.EnumNeedsDrop(enumType!);
 
-        if (matchesBorrowedEnum && _module.EnumNeedsDrop(enumType!))
+        if (matchesBorrowedEnum && context.matchArm().Any(arm =>
+                PatternMovesOwnedPayload(arm.pattern(), enumType!)))
         {
             errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                "Matching a borrowed enum with owned payloads is not supported; match the owned value instead",
+                "cannot move owned payload out of a borrowed enum; bind it with '&value' instead",
                 errorLocation
             );
             return null;
@@ -318,16 +487,15 @@ public partial class IrBuilder
                     var cmpVar = new IrVariable(cmpName, IrBoolType.Instance);
 
                     var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
-                    var constantPayloads = pattern is NovusParser.VariantPatternContext payloadPattern &&
-                                           payloadPattern.patternList() != null
+                    var checkedPayloads = pattern is NovusParser.VariantPatternContext payloadPattern &&
+                                          payloadPattern.patternList() != null
                         ? payloadPattern.patternList().pattern()
                             .Select((payload, index) => (payload, index))
-                            .Where(item => item.payload is NovusParser.IdentifierPatternContext identifier &&
-                                           _symbols.LookupConstant(identifier.IDENTIFIER().GetText()) is { Type: IrIntType })
+                            .Where(item => PatternNeedsRuntimeCheck(item.payload))
                             .ToList()
                         : [];
 
-                    if (constantPayloads.Count == 0)
+                    if (checkedPayloads.Count == 0)
                     {
                         _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, armLabels[i], nextLabel));
                     }
@@ -336,30 +504,31 @@ public partial class IrBuilder
                         var payloadCheckLabel = $"match_{matchId}_arm_{i}_payload_0";
                         _currentBlock!.AddInstruction(new IrConditionalBranch(cmpVar, payloadCheckLabel, nextLabel));
 
-                        for (var payloadIndex = 0; payloadIndex < constantPayloads.Count; payloadIndex++)
+                        for (var payloadIndex = 0; payloadIndex < checkedPayloads.Count; payloadIndex++)
                         {
-                            var (payload, dataIndex) = constantPayloads[payloadIndex];
-                            var identifier = (NovusParser.IdentifierPatternContext)payload;
-                            var constant = _symbols.LookupConstant(identifier.IDENTIFIER().GetText())!;
+                            var (payload, dataIndex) = checkedPayloads[payloadIndex];
                             var dataType = variant.AssociatedData[dataIndex];
                             var extractName = $"%t{_tempCounter++}";
-                            var payloadCmpName = $"%t{_tempCounter++}";
 
                             _currentBlock!.AddInstruction(new IrLabel($"match_{matchId}_arm_{i}_payload_{payloadIndex}"));
                             _currentBlock.AddInstruction(new IrExtractVariantData(
                                 extractName, enumValueForExtract!, variantName, dataIndex, dataType));
-                            _currentBlock.AddInstruction(new IrBinaryOp(
-                                payloadCmpName,
-                                IrBinaryOp.OpKind.Eq,
-                                new IrVariable(extractName, dataType),
-                                new IrConstant(Convert.ToInt64(constant.Value), dataType),
-                                IrBoolType.Instance));
 
-                            var matchedLabel = payloadIndex == constantPayloads.Count - 1
+                            var matchedLabel = payloadIndex == checkedPayloads.Count - 1
                                 ? armLabels[i]
                                 : $"match_{matchId}_arm_{i}_payload_{payloadIndex + 1}";
-                            _currentBlock.AddInstruction(new IrConditionalBranch(
-                                new IrVariable(payloadCmpName, IrBoolType.Instance), matchedLabel, nextLabel));
+                            if (!EmitNestedPatternCheck(
+                                    payload, new IrVariable(extractName, dataType), dataType,
+                                    matchedLabel, nextLabel,
+                                    $"match_{matchId}_arm_{i}_payload_{payloadIndex}_nested"))
+                            {
+                                errorLocation = GetLocation(payload);
+                                _diagnostics.ReportError(
+                                    ErrorCodes.InvalidExpressionType,
+                                    $"Unsupported nested pattern for '{dataType.Name}'",
+                                    errorLocation);
+                                return null;
+                            }
                         }
                     }
                 }
@@ -485,6 +654,7 @@ public partial class IrBuilder
             // Push a new defer scope for this match arm
             // Variables declared in this arm will have their cleanup emitted before jumping to match_end
             PushDeferScope();
+            var armDeferScopePopped = false;
 
             // Track pattern-bound variable names with Drop types for this arm
             // We need this to detect when a variable is moved (used as match result) vs. dropped
@@ -497,9 +667,7 @@ public partial class IrBuilder
                 var bindingName = integerBindingPattern.IDENTIFIER().GetText();
                 if (_symbols.LookupConstant(bindingName) == null)
                 {
-                    var uniqueBindingName = _localVariables.ContainsKey(bindingName)
-                        ? $"{bindingName}_{_tempCounter++}"
-                        : bindingName;
+                    var uniqueBindingName = UniqueLocalName(bindingName);
                     var localVar = new IrLocalVariable(uniqueBindingName, matchValue.Type, false);
                     _currentFunction!.LocalVariables.Add(localVar);
                     _localVariables[uniqueBindingName] = localVar;
@@ -544,32 +712,54 @@ public partial class IrBuilder
                         isMutable = true;
                     }
 
+                    var referencePattern = bindingPattern as NovusParser.ReferencePatternContext;
+                    var referenceInner = referencePattern?.pattern();
+                    var bindsReference = referenceInner is NovusParser.IdentifierPatternContext or
+                        NovusParser.VarIdentifierPatternContext;
+                    var bindsMutableReference = referenceInner is NovusParser.VarIdentifierPatternContext;
+                    if (bindsReference)
+                    {
+                        bindingName = referenceInner switch
+                        {
+                            NovusParser.IdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                            NovusParser.VarIdentifierPatternContext identifier => identifier.IDENTIFIER().GetText(),
+                            _ => null
+                        };
+                        isMutable = false;
+                    }
+
                     var dataType = variant.AssociatedData[dataIdx];
                     if (bindingName != null)
                     {
-
-                            // Extract the data - use enumValueForExtract which has the proper enum type
-                            // (dereferenced if matchValue was a pointer/reference)
-                            var extractName = $"%t{_tempCounter++}";
-                            _currentBlock!.AddInstruction(new IrExtractVariantData(extractName, enumValueForExtract!, variantName, dataIdx, dataType));
-
-                            // CRITICAL FIX: Generate unique names for pattern-bound variables
-                            // Different match arms can bind the same name (e.g., 'val') with different types.
-                            // In C, we can't have multiple variables with the same name but different types
-                            // at function scope. So we generate unique names like "val_1", "val_2", etc.
-                            // We check if a variable with the same name but DIFFERENT type already exists.
-                            var uniqueBindingName = bindingName;
-                            if (_localVariables.TryGetValue(bindingName, out var existingVar))
+                            IrType bindingType = dataType;
+                            IrValue extractedValue;
+                            if (bindsReference)
                             {
-                                // Check if types differ - if so, we need a unique name
-                                if (!_typeParser.TypesAreEqual(existingVar.Type, dataType))
-                                {
-                                    uniqueBindingName = $"{bindingName}_{_tempCounter++}";
-                                }
+                                bindingType = bindsMutableReference
+                                    ? _typeInterner.GetMutReferenceType(dataType)
+                                    : _typeInterner.GetReferenceType(dataType);
+                                var payload = new IrEnumPayloadAccess(
+                                    enumValueForExtract!, enumType, variantName, dataIdx, dataType);
+                                extractedValue = new IrBorrowValue(payload, bindingType, bindsMutableReference);
+                            }
+                            else
+                            {
+                                // Extract the data - use enumValueForExtract which has the proper enum type
+                                // (dereferenced if matchValue was a pointer/reference)
+                                var extractName = $"%t{_tempCounter++}";
+                                _currentBlock!.AddInstruction(new IrExtractVariantData(
+                                    extractName, enumValueForExtract!, variantName, dataIdx, dataType));
+                                extractedValue = new IrVariable(extractName, dataType);
                             }
 
+                            // C locals are function-scoped in generated code, so every
+                            // later pattern binding needs its own IR/C name. Reusing the
+                            // source name can alias an earlier binding even when the
+                            // current symbol-table entry already has a suffixed name.
+                            var uniqueBindingName = UniqueLocalName(bindingName);
+
                             // Store in a local variable
-                            var localVar = new IrLocalVariable(uniqueBindingName, dataType, isMutable);
+                            var localVar = new IrLocalVariable(uniqueBindingName, bindingType, isMutable);
                             _currentFunction!.LocalVariables.Add(localVar);
                             // Map BOTH the unique name and original name to this variable.
                             // The unique name is needed for C code generation (avoids type conflicts).
@@ -577,17 +767,17 @@ public partial class IrBuilder
                             _localVariables[uniqueBindingName] = localVar;
                             _localVariables[bindingName] = localVar;  // Overwrite so *val finds val_901's variable
 
-                            var extractedValue = new IrVariable(extractName, dataType);
-                            _currentBlock!.AddInstruction(new IrLocalDecl(uniqueBindingName, dataType, isMutable, extractedValue));
+                            _currentBlock!.AddInstruction(new IrLocalDecl(
+                                uniqueBindingName, bindingType, isMutable, extractedValue));
 
-                        if (EnsureDropMethodInstantiated(dataType))
+                        if (!bindsReference && EnsureDropMethodInstantiated(dataType))
                         {
                             // Activate cleanup only after a guard succeeds. Before
                             // then this binding is a non-owning view of the payload.
                             patternBoundDropVars.Add(uniqueBindingName);
                         }
                     }
-                    else if (EnsureDropMethodInstantiated(dataType))
+                    else if (!matchesBorrowedEnum && EnsureDropMethodInstantiated(dataType))
                     {
                         unboundDropPayloads.Add((variantName, dataIdx, dataType));
                     }
@@ -761,11 +951,15 @@ public partial class IrBuilder
                 //
                 // The defer blocks are already registered at the function level via DeferredBlocks,
                 // so EmitReturn will process them correctly.
-                if (_scopeDeferStack.Count > 0)
+                // A postfix return can fall through, so its arm scope must stay
+                // active until the normal arm cleanup below. Treating it as an
+                // unconditional return pops the enclosing scope a second time.
+                if (armCtx.returnStatement().postfixCondition() == null && _scopeDeferStack.Count > 0)
                 {
                     // Just pop the scope without emitting the defer blocks inline
                     // The defer blocks remain in _currentFunction.DeferredBlocks for EmitReturn to handle
                     _scopeDeferStack.Pop();
+                    armDeferScopePopped = true;
                 }
 
                 Visit(armCtx.returnStatement());
@@ -804,7 +998,7 @@ public partial class IrBuilder
             // Pop defer scope and emit cleanup BEFORE jumping to match_end
             // This ensures variables declared in this match arm are cleaned up before leaving the scope
             // Note: Skip this if we already popped the scope (e.g., for return statements)
-            if (!CurrentBlockHasTerminator())
+            if (!armDeferScopePopped && !CurrentBlockHasTerminator())
             {
                 PopDeferScope();
             }
@@ -860,6 +1054,29 @@ public partial class IrBuilder
         }
 
         return null;
+    }
+
+    private bool PatternMovesOwnedPayload(NovusParser.PatternContext pattern, IrEnumType enumType)
+    {
+        if (pattern is NovusParser.PipePatternContext pipe)
+            return PatternMovesOwnedPayload(pipe.pattern(0), enumType) ||
+                   PatternMovesOwnedPayload(pipe.pattern(1), enumType);
+        if (pattern is not NovusParser.VariantPatternContext variantPattern)
+            return false;
+
+        var variantName = variantPattern.variantName().IDENTIFIER().Last().GetText();
+        var variant = enumType.GetVariant(variantName);
+        var bindings = variantPattern.patternList()?.pattern() ?? [];
+        if (variant == null)
+            return false;
+
+        for (var index = 0; index < Math.Min(bindings.Length, variant.AssociatedData.Count); index++)
+        {
+            if (_module.TypeImplementsDrop(variant.AssociatedData[index]) &&
+                bindings[index] is not (NovusParser.ReferencePatternContext or NovusParser.WildcardPatternContext))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>

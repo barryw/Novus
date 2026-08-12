@@ -5,6 +5,7 @@
 from std::core import Option, Result, Drop, Clone, AsRef, Iterator, Write, Ord, Error
 from std::collections::vec import Vec
 from std::memory::block import MemoryBlock
+from std::memory::slice import Slice
 from std::ffi::exec import FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 
@@ -67,32 +68,50 @@ impl Error for StringError {
 /// fn greet(name: Str) {
 ///     // name is just a view, no allocation
 /// }
-/// let s: Str = Str::from_cstr("Hello")
+/// let s: Str = "Hello"
 /// greet(s)  // Zero-cost pass
 /// ```
 pub struct Str {
-    ptr: *u8,
+    ptr: &u8,
     len: u32,
 }
 
 impl Str {
-    /// Create a Str from a raw pointer and length
-    ///
-    /// SAFETY: Caller must ensure ptr points to valid memory of at least len bytes
-    pub fn from_raw(ptr: *u8, len: u32) -> Str {
+    /// Create a checked-lifetime string view over a whole byte slice.
+    pub fn from_bytes(bytes: Slice<u8>) -> Str {
+        match bytes.get(0) {
+            Option::Some(first) => return Str { ptr: first, len: bytes.len() },
+            Option::None => return "",
+        }
+    }
+
+    /// Create an owner-tied string view from contiguous parts.
+    /// SAFETY: `ptr` must cover at least `len` bytes.
+    @unsafe
+    pub fn new(ptr: &u8, len: u32) -> Str {
         return Str { ptr: ptr, len: len }
+    }
+
+    /// Adopt a raw pointer as a borrowed string view.
+    /// SAFETY: `ptr` must remain valid for every use of the returned Str.
+    @unsafe
+    @borrows(ptr)
+    pub fn borrow_raw(ptr: *u8, len: u32) -> Str {
+        return Str { ptr: &*ptr, len: len }
     }
 
     /// Create a Str from a null-terminated C string
     /// Scans for null terminator to determine length
     ///
     /// Returns None if ptr is null
+    @unsafe
+    @borrows(ptr)
     pub fn from_cstr(ptr: *u8) -> Option<Str> {
         // Check for null pointer before calling strlen
         if (u32)ptr == 0 {
             return Option::None
         }
-        return Option::Some(Str { ptr: ptr, len: strlen(ptr) })
+        return Option::Some(Str { ptr: &*ptr, len: strlen(ptr) })
     }
 
     /// Get the length of the string in bytes
@@ -107,16 +126,34 @@ impl Str {
         return self.len == 0u32
     }
 
+    /// Borrow the string storage as bytes.
+    pub fn as_bytes(&self) -> Slice<u8> {
+        unsafe { return Slice::<u8>::new(self.ptr, self.len) }
+    }
+
     /// Get a pointer to the string data
     @inline
     pub fn as_ptr(&self) -> *u8 {
-        return self.ptr
+        unsafe { return (*u8)self.ptr }
     }
 
     /// Get the byte at the given index
     /// Returns None if index is out of bounds
     pub fn get(&self, index: u32) -> Option<u8> {
-        return if index >= self.len { Option::None } else { Option::Some(self.ptr[index]) }
+        return if index >= self.len { Option::None } else { Option::Some(self.get_unchecked(index)) }
+    }
+
+    @inline
+    fn get_unchecked(&self, index: u32) -> u8 {
+        unsafe { return ((*u8)self.ptr)[index] }
+    }
+
+    @inline
+    fn view_unchecked(&self, start: u32, len: u32) -> Str {
+        unsafe {
+            let ptr: *u8 = (*u8)self.ptr + start
+            return Str { ptr: &*ptr, len: len }
+        }
     }
 
     /// Create a substring slice
@@ -124,7 +161,7 @@ impl Str {
     ///
     /// Example:
     /// ```novus
-    /// let s = Str::from_cstr("Hello, World!")
+    /// let s: Str = "Hello, World!"
     /// let hello_result = s.slice(0, 5)
     /// match hello_result {
     ///     Ok(hello) => // use hello
@@ -140,9 +177,10 @@ impl Str {
         }
 
         let new_len: u32 = end - start
-        let new_ptr: *u8 = self.ptr + start
-
-        return Result::Ok(Str { ptr: new_ptr, len: new_len })
+        unsafe {
+            let new_ptr: *u8 = (*u8)self.ptr + start
+            return Result::Ok(Str { ptr: &*new_ptr, len: new_len })
+        }
     }
 
     /// Create a slice from start to end of string
@@ -152,9 +190,10 @@ impl Str {
         }
 
         let new_len: u32 = self.len - start
-        let new_ptr: *u8 = self.ptr + start
-
-        return Result::Ok(Str { ptr: new_ptr, len: new_len })
+        unsafe {
+            let new_ptr: *u8 = (*u8)self.ptr + start
+            return Result::Ok(Str { ptr: &*new_ptr, len: new_len })
+        }
     }
 
     /// Create a slice from beginning to end
@@ -183,8 +222,8 @@ impl Str {
         // For strings >= 8 bytes, use optimized 32-bit comparison loop
         if len >= 8 {
             let word_count: u32 = len / 4
-            let self_ptr: *u8 = self.ptr
-            let other_ptr: *u8 = other.ptr
+            let self_ptr: *u8 = unsafe { (*u8)self.ptr }
+            let other_ptr: *u8 = unsafe { (*u8)other.ptr }
 
             // Compare 32-bit words using cmpm.l (a0)+,(a1)+
             // Returns 1 if equal, 0 if not equal
@@ -212,8 +251,8 @@ impl Str {
             if remaining > 0 {
                 // a0 and a1 are already advanced past the compared longs
                 // We need fresh pointers offset to the remaining bytes
-                let rem_self: *u8 = (*u8)((u32)self.ptr + word_count * 4)
-                let rem_other: *u8 = (*u8)((u32)other.ptr + word_count * 4)
+                let rem_self: *u8 = unsafe { (*u8)((u32)(*u8)self.ptr + word_count * 4) }
+                let rem_other: *u8 = unsafe { (*u8)((u32)(*u8)other.ptr + word_count * 4) }
 
                 let bytes_equal: u32 = unsafe asm(rem_self in a0, rem_other in a1, remaining in d1) -> u32 in d0 clobbers(d1) {
                     subq.l  #1,d1           ; Convert count to dbra format
@@ -241,7 +280,7 @@ impl Str {
 
         // Fallback: byte-by-byte comparison (baseline CPU or short strings)
         while var i < self.len {
-            if self.ptr[i] != other.ptr[i] {
+            if self.get_unchecked(i) != other.get_unchecked(i) {
                 return false
             }
             i = i + 1
@@ -260,8 +299,8 @@ impl Str {
         }
 
         while var i < min_len {
-            let a: u8 = self.ptr[i]
-            let b: u8 = other.ptr[i]
+            let a: u8 = self.get_unchecked(i)
+            let b: u8 = other.get_unchecked(i)
             if a != b {
                 return (i32)a - (i32)b
             }
@@ -291,8 +330,8 @@ impl Str {
         }
 
         for i in 0u32..self.len {
-            var ca = self.ptr[i]
-            var cb = other.ptr[i]
+            var ca = self.get_unchecked(i)
+            var cb = other.get_unchecked(i)
 
             // Convert lowercase ASCII to uppercase
             if ca >= $61 && ca <= $7A {
@@ -317,7 +356,7 @@ impl Str {
         }
 
         while var i < prefix.len {
-            if self.ptr[i] != prefix.ptr[i] {
+            if self.get_unchecked(i) != prefix.get_unchecked(i) {
                 return false
             }
             i++
@@ -334,7 +373,7 @@ impl Str {
 
         let offset: u32 = self.len - suffix.len
         while var i < suffix.len {
-            if self.ptr[offset + i] != suffix.ptr[i] {
+            if self.get_unchecked(offset + i) != suffix.get_unchecked(i) {
                 return false
             }
             i++
@@ -350,8 +389,8 @@ impl Str {
         }
 
         for i in 0u32..prefix.len {
-            var ca = self.ptr[i]
-            var cb = prefix.ptr[i]
+            var ca = self.get_unchecked(i)
+            var cb = prefix.get_unchecked(i)
 
             // Convert lowercase ASCII to uppercase
             if ca >= $61 && ca <= $7A {
@@ -389,7 +428,7 @@ impl Str {
             // Check if needle matches at position i
             var matches: bool = true
             while var j < needle.len {
-                if self.ptr[i + j] != needle.ptr[j] {
+                if self.get_unchecked(i + j) != needle.get_unchecked(j) {
                     matches = false
                     j = needle.len  // Break inner loop
                 }
@@ -408,7 +447,7 @@ impl Str {
     /// Find first occurrence of byte
     pub fn find_byte(&self, byte: u8) -> Option<u32> {
         while var i < self.len {
-            if self.ptr[i] == byte {
+            if self.get_unchecked(i) == byte {
                 return Option::Some(i)
             }
             i++
@@ -425,7 +464,7 @@ impl Str {
         var i: u32 = self.len - 1u32
         var found: bool = false
         while !found {
-            if self.ptr[i] == byte {
+            if self.get_unchecked(i) == byte {
                 return Option::Some(i)
             }
             if i == 0 {
@@ -445,12 +484,11 @@ impl Str {
     /// Trim whitespace from start
     pub fn trim_start(&self) -> Str {
         while var start < self.len {
-            let ch: u8 = self.ptr[start]
+            let ch: u8 = self.get_unchecked(start)
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
                 // Not space, tab, LF, or CR - stop trimming
                 let new_len: u32 = self.len - start
-                let new_ptr: *u8 = self.ptr + start
-                return Str { ptr: new_ptr, len: new_len }
+                return self.view_unchecked(start, new_len)
             }
             start++
         }
@@ -468,7 +506,7 @@ impl Str {
         var end: u32 = self.len
         var done: bool = false
         while !done {
-            let ch: u8 = self.ptr[end - 1u32]
+            let ch: u8 = self.get_unchecked(end - 1u32)
             if ch != $20 && ch != $09 && ch != $0A && ch != $0D {
                 // Not whitespace - we found the end
                 return Str { ptr: self.ptr, len: end }
@@ -513,8 +551,8 @@ impl Str {
 /// Example:
 /// ```novus
 /// var s = String::new()
-/// s.push_str(Str::from_cstr("Hello"))
-/// s.push_str(Str::from_cstr(", World!"))
+/// s.push_str("Hello")
+/// s.push_str(", World!")
 /// ```
 pub struct String {
     vec: Vec<u8>,
@@ -590,7 +628,7 @@ impl String {
     /// Get the string as a Str slice
     @inline
     pub fn as_str(&self) -> Str {
-        return Str::from_raw((*u8)self.vec.as_ptr(), self.vec.len)
+        unsafe { return Str { ptr: &*self.vec.as_ptr(), len: self.vec.len } }
     }
 
     /// Push a string slice onto the end
@@ -600,7 +638,7 @@ impl String {
     /// # Example
     /// ```novus
     /// var s = String::new()
-    /// s.push_str(Str::from_cstr("Hello")?)?
+    /// s.push_str("Hello")?
     /// ```
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if s.is_empty() {
@@ -684,6 +722,155 @@ impl Drop for String {
 // Fixed-Size String Types (Stack-Allocated)
 // ============================================================================
 
+/// Borrowed view of a NUL-terminated string for operating-system APIs.
+pub struct CStr {
+    ptr: &u8,
+}
+
+impl CStr {
+    /// Escape hatch for FFI. The pointer is valid only while the source string is borrowed.
+    pub fn as_ptr(&self) -> *u8 {
+        return unsafe { (*u8)self.ptr }
+    }
+}
+
+/// Stack-allocated string with exactly `N` bytes of capacity.
+pub struct FixedString<const N: u32> {
+    buf: [u8; N],
+    len: u32,
+}
+
+impl<const N: u32> FixedString<N> {
+    pub fn new() -> FixedString<N> {
+        return FixedString { buf: [0u8; N], len: 0u32 }
+    }
+
+    pub fn new_from_str(s: Str) -> Result<FixedString<N>, StringError> {
+        var value = FixedString::<N>::new()
+        match value.push_str(s) {
+            Result::Ok(_) => return Result::Ok(value),
+            Result::Err(error) => return Result::Err(error),
+        }
+    }
+
+    pub fn len(&self) -> u32 { return self.len }
+    pub fn is_empty(&self) -> bool { return self.len == 0u32 }
+    pub fn capacity(&self) -> u32 { return N }
+
+    pub fn as_str(&self) -> Str {
+        if self.len == 0u32 { return "" }
+        return unsafe { Str::new(&self.buf[0], self.len) }
+    }
+
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
+        let required = self.len + s.len()
+        if required > N { return Result::Err(StringError::TooLong(required)) }
+        while var i < s.len() {
+            self.buf[self.len + i] = s.as_ptr()[i]
+            i++
+        }
+        self.len = required
+        return Result::Ok(())
+    }
+
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        if self.len >= N { return Result::Err(StringError::TooLong(self.len + 1u32)) }
+        self.buf[self.len] = byte
+        self.len++
+        return Result::Ok(())
+    }
+
+    pub fn push_u32(&var self, value: u32) -> Result<(), StringError> {
+        if value == 0u32 { return self.push_byte((u8)'0') }
+        var digits = [0u8; 10]
+        var count = 0u32
+        var remaining = value
+        while remaining > 0u32 {
+            digits[count] = (u8)((remaining % 10u32) + (u32)(u8)'0')
+            count++
+            remaining = remaining / 10u32
+        }
+        while count > 0u32 {
+            count--
+            self.push_byte(digits[count])?
+        }
+        return Result::Ok(())
+    }
+
+    pub fn clear(&var self) { self.len = 0u32 }
+}
+
+/// Stack-allocated C string with `N` bytes of content capacity.
+/// A dedicated trailing byte keeps the pointer NUL-terminated even when full.
+pub struct FixedCString<const N: u32> {
+    buf: [u8; N],
+    terminator: u8,
+    len: u32,
+}
+
+impl<const N: u32> FixedCString<N> {
+    pub fn new() -> FixedCString<N> {
+        return FixedCString { buf: [0u8; N], terminator: 0u8, len: 0u32 }
+    }
+
+    pub fn new_from_str(s: Str) -> Result<FixedCString<N>, StringError> {
+        var value = FixedCString::<N>::new()
+        match value.push_str(s) {
+            Result::Ok(_) => return Result::Ok(value),
+            Result::Err(error) => return Result::Err(error),
+        }
+    }
+
+    pub fn len(&self) -> u32 { return self.len }
+    pub fn is_empty(&self) -> bool { return self.len == 0u32 }
+    pub fn capacity(&self) -> u32 { return N }
+
+    pub fn as_str(&self) -> Str {
+        if self.len == 0u32 { return "" }
+        return unsafe { Str::new(&self.buf[0], self.len) }
+    }
+
+    pub fn as_cstr(&self) -> *u8 {
+        if N == 0u32 { return (*u8)&self.terminator }
+        return (*u8)&self.buf[0]
+    }
+
+    pub fn as_cstr_view(&self) -> CStr {
+        if N == 0u32 { return CStr { ptr: &self.terminator } }
+        return CStr { ptr: &self.buf[0] }
+    }
+
+    pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
+        let required = self.len + s.len()
+        if required > N { return Result::Err(StringError::TooLong(required)) }
+        while var i < s.len() {
+            self.buf[self.len + i] = s.as_ptr()[i]
+            i++
+        }
+        self.len = required
+        self.terminate()
+        return Result::Ok(())
+    }
+
+    pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
+        if self.len >= N { return Result::Err(StringError::TooLong(self.len + 1u32)) }
+        self.buf[self.len] = byte
+        self.len++
+        self.terminate()
+        return Result::Ok(())
+    }
+
+    pub fn clear(&var self) {
+        self.len = 0u32
+        self.terminate()
+    }
+
+    fn terminate(&var self) {
+        self.terminator = 0u8
+        if self.len < N { self.buf[self.len] = 0u8 }
+    }
+}
+
 /// 32-byte fixed string for short names
 pub struct NameString {
     buf: [u8; 32],
@@ -708,7 +895,7 @@ impl NameString {
     }
 
     pub fn as_str(&self) -> Str {
-        return Str::from_raw((*u8)(&self.buf), self.len)
+        return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
     pub fn as_mut_ptr(&var self) -> *u8 {
@@ -768,7 +955,7 @@ impl GadgetString {
     }
 
     pub fn as_str(&self) -> Str {
-        return Str::from_raw((*u8)(&self.buf), self.len)
+        return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
     pub fn as_mut_ptr(&var self) -> *u8 {
@@ -828,7 +1015,7 @@ impl PathString {
     }
 
     pub fn as_str(&self) -> Str {
-        return Str::from_raw((*u8)(&self.buf), self.len)
+        return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
     pub fn as_mut_ptr(&var self) -> *u8 {
@@ -919,6 +1106,13 @@ impl BStr {
         return self.bptr
     }
 
+    /// Transfer the allocation to an OS object that retains this BSTR.
+    pub fn into_raw(consuming self) -> u32 {
+        let bptr = self.bptr
+        self.bptr = 0u32
+        return bptr
+    }
+
     /// Get the actual memory address
     pub fn as_ptr(&self) -> *u8 {
         let addr: u32 = self.bptr * 4u32
@@ -936,11 +1130,11 @@ impl BStr {
         let ptr: *u8 = self.as_ptr()
         let len: u32 = (u32)ptr[0]
         let data_ptr: *u8 = ptr + 1u32
-        return Str::from_raw(data_ptr, len)
+        unsafe { return Str { ptr: &*data_ptr, len: len } }
     }
 
     /// Free the BCPL string memory (deprecated - use Drop trait instead)
-    pub fn free(&self) {
+    pub fn free(&var self) {
         let ptr: *u8 = self.as_ptr()
         if (u32)ptr != 0 {
             let len: u32 = self.len()
@@ -948,6 +1142,7 @@ impl BStr {
             unsafe {
                 FreeMem(ptr, total_bytes)
             }
+            self.bptr = 0
         }
     }
 }
@@ -1033,7 +1228,7 @@ impl Str {
     ///
     /// Example:
     /// ```novus
-    /// let s = Str::from_cstr("-12345")
+    /// let s: Str = "-12345"
     /// let value = s.parse_i32()?  // Returns Ok(-12345)
     /// ```
     pub fn parse_i32(&self) -> Result<i32, ParseError> {
@@ -1045,7 +1240,7 @@ impl Str {
         var negative: bool = false
 
         // Check for sign
-        let first_char: u8 = self.ptr[0]
+        let first_char: u8 = self.get_unchecked(0)
         if first_char == $2D {  // '-'
             negative = true
             idx = 1
@@ -1063,7 +1258,7 @@ impl Str {
         let max_val: i32 = 2147483647
 
         while idx < self.len {
-            let ch: u8 = self.ptr[idx]
+            let ch: u8 = self.get_unchecked(idx)
 
             // Check for digit 0-9
             if ch < $30 || ch > $39 {
@@ -1099,7 +1294,7 @@ impl Str {
     ///
     /// Example:
     /// ```novus
-    /// let s = Str::from_cstr("42")
+    /// let s: Str = "42"
     /// let value = s.parse_u32()?  // Returns Ok(42)
     /// ```
     pub fn parse_u32(&self) -> Result<u32, ParseError> {
@@ -1113,7 +1308,7 @@ impl Str {
         var idx: u32 = 0
 
         while idx < self.len {
-            let ch: u8 = self.ptr[idx]
+            let ch: u8 = self.get_unchecked(idx)
 
             // Check for digit 0-9
             if ch < $30 || ch > $39 {
@@ -1138,8 +1333,8 @@ impl Str {
     ///
     /// Example:
     /// ```novus
-    /// let s1 = Str::from_cstr("0xFF00")
-    /// let s2 = Str::from_cstr("ff00")
+    /// let s1: Str = "0xFF00"
+    /// let s2: Str = "ff00"
     /// let v1 = s1.parse_hex()?  // Ok(0xFF00)
     /// let v2 = s2.parse_hex()?  // Ok(0xFF00)
     /// ```
@@ -1152,8 +1347,8 @@ impl Str {
 
         // Skip optional "0x" or "0X" prefix
         if self.len >= 2 {
-            let c0: u8 = self.ptr[0]
-            let c1: u8 = self.ptr[1]
+            let c0: u8 = self.get_unchecked(0)
+            let c1: u8 = self.get_unchecked(1)
             if c0 == $30 && (c1 == $78 || c1 == $58) {  // '0x' or '0X'
                 idx = 2
             }
@@ -1168,7 +1363,7 @@ impl Str {
         let max_before_shift: u32 = 268435455  // 0x0FFFFFFF - max value before << 4
 
         while idx < self.len {
-            let ch: u8 = self.ptr[idx]
+            let ch: u8 = self.get_unchecked(idx)
             var digit: u32 = 0
 
             // Convert hex digit to value
@@ -1198,7 +1393,7 @@ impl Str {
     pub fn parse_bool(&self) -> Result<bool, ParseError> {
         if self.len == 1 {
             // Check for "1" or "0"
-            let c: u8 = self.ptr[0]
+            let c: u8 = self.get_unchecked(0)
             if c == $31 {  // '1' = 0x31
                 return Result::Ok(true)
             } else if c == $30 {  // '0' = 0x30
@@ -1206,10 +1401,10 @@ impl Str {
             }
         } else if self.len == 4 {
             // Check for "true" (case-insensitive)
-            let c0: u8 = self.ptr[0]
-            let c1: u8 = self.ptr[1]
-            let c2: u8 = self.ptr[2]
-            let c3: u8 = self.ptr[3]
+            let c0: u8 = self.get_unchecked(0)
+            let c1: u8 = self.get_unchecked(1)
+            let c2: u8 = self.get_unchecked(2)
+            let c3: u8 = self.get_unchecked(3)
 
             // Convert to lowercase for comparison
             let l0: u8 = c0 | $20
@@ -1222,11 +1417,11 @@ impl Str {
             }
         } else if self.len == 5 {
             // Check for "false" (case-insensitive)
-            let c0: u8 = self.ptr[0]
-            let c1: u8 = self.ptr[1]
-            let c2: u8 = self.ptr[2]
-            let c3: u8 = self.ptr[3]
-            let c4: u8 = self.ptr[4]
+            let c0: u8 = self.get_unchecked(0)
+            let c1: u8 = self.get_unchecked(1)
+            let c2: u8 = self.get_unchecked(2)
+            let c3: u8 = self.get_unchecked(3)
+            let c4: u8 = self.get_unchecked(4)
 
             // Convert to lowercase for comparison
             let l0: u8 = c0 | $20
@@ -1252,7 +1447,7 @@ impl Str {
 ///
 /// Example:
 /// ```novus
-/// let path = Str::from_cstr("SYS:C/Dir")
+/// let path: Str = "SYS:C/Dir"
 /// var split = path.split($2F)  // '/' = 0x2F
 /// while let Some(part) = split.next() {
 ///     // part is Str for each segment
@@ -1284,7 +1479,7 @@ impl SplitIter {
         var idx: u32 = 0
         var found: bool = false
         while idx < self.remaining.len && !found {
-            if self.remaining.ptr[idx] == self.delimiter {
+            if self.remaining.get_unchecked(idx) == self.delimiter {
                 found = true
             } else {
                 idx++
@@ -1295,10 +1490,8 @@ impl SplitIter {
             // Return substring up to delimiter, advance past delimiter
             let result = Str { ptr: self.remaining.ptr, len: idx }
             if idx + 1 < self.remaining.len {
-                self.remaining = Str {
-                    ptr: self.remaining.ptr + idx + 1,
-                    len: self.remaining.len - idx - 1,
-                }
+                self.remaining = self.remaining.view_unchecked(
+                    idx + 1, self.remaining.len - idx - 1)
             } else {
                 // Delimiter at end - remaining is empty, but need one more iteration
                 self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
@@ -1344,13 +1537,13 @@ impl LinesIter {
         var skip: u32 = 1  // How many bytes to skip (1 for LF/CR, 2 for CRLF)
 
         while idx < self.remaining.len && !found {
-            let ch: u8 = self.remaining.ptr[idx]
+            let ch: u8 = self.remaining.get_unchecked(idx)
             if ch == $0A {  // LF
                 found = true
             } else if ch == $0D {  // CR
                 found = true
                 // Check for CRLF
-                if idx + 1 < self.remaining.len && self.remaining.ptr[idx + 1] == $0A {
+                if idx + 1 < self.remaining.len && self.remaining.get_unchecked(idx + 1) == $0A {
                     skip = 2
                 }
             } else {
@@ -1363,10 +1556,8 @@ impl LinesIter {
             let result = Str { ptr: self.remaining.ptr, len: idx }
             let new_start: u32 = idx + skip
             if new_start < self.remaining.len {
-                self.remaining = Str {
-                    ptr: self.remaining.ptr + new_start,
-                    len: self.remaining.len - new_start,
-                }
+                self.remaining = self.remaining.view_unchecked(
+                    new_start, self.remaining.len - new_start)
             } else {
                 self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
             }
@@ -1406,7 +1597,7 @@ impl Str {
 
         var idx: u32 = 0
         while idx < self.len {
-            var ch: u8 = self.ptr[idx]
+            var ch: u8 = self.get_unchecked(idx)
             // Convert lowercase a-z to uppercase A-Z
             if ch >= $61 && ch <= $7A {
                 ch = ch - $20
@@ -1435,7 +1626,7 @@ impl Str {
 
         var idx: u32 = 0
         while idx < self.len {
-            var ch: u8 = self.ptr[idx]
+            var ch: u8 = self.get_unchecked(idx)
             // Convert uppercase A-Z to lowercase a-z
             if ch >= $41 && ch <= $5A {
                 ch = ch + $20
@@ -1458,7 +1649,7 @@ impl Str {
     ///
     /// Example:
     /// ```novus
-    /// let s = Str::from_cstr("foo bar foo")
+    /// let s: Str = "foo bar foo"
     /// let result = s.replace("foo", "baz")?
     /// // result is "baz bar baz"
     /// ```
@@ -1477,7 +1668,7 @@ impl Str {
             if pos + pattern.len <= self.len {
                 var j: u32 = 0
                 while j < pattern.len && matches {
-                    if self.ptr[pos + j] != pattern.ptr[j] {
+                    if self.get_unchecked(pos + j) != pattern.get_unchecked(j) {
                         matches = false
                     }
                     j++
@@ -1492,7 +1683,7 @@ impl Str {
                 pos = pos + pattern.len
             } else {
                 // Append current character
-                result.push_byte(self.ptr[pos])?
+                result.push_byte(self.get_unchecked(pos))?
                 pos++
             }
         }
@@ -1551,7 +1742,7 @@ impl StringBuilder {
     /// # Example
     /// ```novus
     /// var builder = StringBuilder::new()?
-    /// builder.push_str(Str::from_cstr("Hello")?)?
+    /// builder.push_str("Hello")?
     /// ```
     pub fn new() -> Result<StringBuilder, StringError> {
         match String::with_capacity(256) {
@@ -1630,7 +1821,7 @@ impl StringBuilder {
                 buffer[1] = $2D   // '-'
                 idx = 1
 
-                let s = Str::from_raw((*u8)&buffer + idx, 12 - idx)
+                let s = unsafe { Str::new(&buffer[idx], 12 - idx) }
                 return self.string.push_str(s)
             }
             val = -val
@@ -1651,7 +1842,7 @@ impl StringBuilder {
         }
 
         // Push the formatted string
-        let s = Str::from_raw((*u8)&buffer + idx + 1, 11 - idx)
+        let s = unsafe { Str::new(&buffer[idx + 1], 11 - idx) }
         return self.string.push_str(s)
     }
 
@@ -1678,7 +1869,7 @@ impl StringBuilder {
         }
 
         // Push the formatted string
-        let s = Str::from_raw((*u8)&buffer + idx + 1, 10 - idx)
+        let s = unsafe { Str::new(&buffer[idx + 1], 10 - idx) }
         return self.string.push_str(s)
     }
 
@@ -1709,7 +1900,7 @@ impl StringBuilder {
         }
 
         // Push the formatted string
-        let s = Str::from_raw((*u8)&buffer + idx + 1, 7 - idx)
+        let s = unsafe { Str::new(&buffer[idx + 1], 7 - idx) }
         return self.string.push_str(s)
     }
 
@@ -1740,7 +1931,7 @@ impl StringBuilder {
         }
 
         // Push the formatted string
-        let s = Str::from_raw((*u8)&buffer + idx + 1, 7 - idx)
+        let s = unsafe { Str::new(&buffer[idx + 1], 7 - idx) }
         return self.string.push_str(s)
     }
 
@@ -1748,7 +1939,7 @@ impl StringBuilder {
     ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
     pub fn push_bool(&var self, value: bool) -> Result<(), StringError> {
-        let s = Str::from_raw(if value { "true" } else { "false" }, if value { 4u32 } else { 5u32 })
+        let s: Str = if value { "true" } else { "false" }
         return self.string.push_str(s)
     }
 
@@ -1792,7 +1983,7 @@ impl StringBuilder {
 ///
 /// Example:
 /// ```novus
-/// let path = Str::from_cstr("Work:Projects/Novus/main.novus")
+/// let path: Str = "Work:Projects/Novus/main.novus"
 /// let parts = path_split(path)?
 /// // parts.volume = Some("Work:")
 /// // parts.directory = Some("Projects/Novus")
@@ -1832,7 +2023,7 @@ pub fn path_split(path: Str) -> PathComponents {
         var idx: u32 = path.len - 1
         var searching: bool = true
         while searching {
-            if path.ptr[idx] == $2F {  // '/'
+            if path.get_unchecked(idx) == $2F {  // '/'
                 if idx >= start {
                     last_slash = Option::Some(idx)
                 }
@@ -1848,17 +2039,18 @@ pub fn path_split(path: Str) -> PathComponents {
             Some(slash_idx) => {
                 // Directory is from start to slash
                 if slash_idx > start {
-                    directory = Option::Some(Str { ptr: path.ptr + start, len: slash_idx - start })
+                    directory = Option::Some(path.view_unchecked(start, slash_idx - start))
                 }
                 // Filename is after slash
                 if slash_idx + 1 < path.len {
-                    filename = Option::Some(Str { ptr: path.ptr + slash_idx + 1, len: path.len - slash_idx - 1 })
+                    filename = Option::Some(path.view_unchecked(
+                        slash_idx + 1, path.len - slash_idx - 1))
                 }
             },
             None => {
                 // No slash - everything after volume is filename
                 if start < path.len {
-                    filename = Option::Some(Str { ptr: path.ptr + start, len: path.len - start })
+                    filename = Option::Some(path.view_unchecked(start, path.len - start))
                 }
             }
         }
@@ -1886,7 +2078,7 @@ pub fn path_dirname(path: Str) -> Option<Str> {
     var searching: bool = true
 
     while searching {
-        let ch: u8 = path.ptr[idx]
+        let ch: u8 = path.get_unchecked(idx)
         if ch == $2F || ch == $3A {  // '/' or ':'
             last_sep = idx
             found = true
@@ -1900,7 +2092,7 @@ pub fn path_dirname(path: Str) -> Option<Str> {
 
     if found {
         // Include the separator for volume: (e.g., "SYS:")
-        let len: u32 = if path.ptr[last_sep] == $3A { last_sep + 1 } else { last_sep }
+        let len: u32 = if path.get_unchecked(last_sep) == $3A { last_sep + 1 } else { last_sep }
         if len > 0 {
             return Option::Some(Str { ptr: path.ptr, len: len })
         }
@@ -1932,7 +2124,7 @@ pub fn path_join(base: Str, component: Str) -> Result<String, StringError> {
     result.push_str(base)?
 
     // Check if we need a separator
-    let last_char: u8 = base.ptr[base.len - 1]
+    let last_char: u8 = base.get_unchecked(base.len - 1)
     if last_char != $3A && last_char != $2F {  // Not ':' or '/'
         result.push_byte($2F)?  // Add '/'
     }
@@ -2011,7 +2203,7 @@ impl Iterator<Str> for SplitIter {
         var idx: u32 = 0
         var found: bool = false
         while idx < self.remaining.len && !found {
-            if self.remaining.ptr[idx] == self.delimiter {
+            if self.remaining.get_unchecked(idx) == self.delimiter {
                 found = true
             } else {
                 idx++
@@ -2022,10 +2214,8 @@ impl Iterator<Str> for SplitIter {
             // Return substring up to delimiter, advance past delimiter
             let result = Str { ptr: self.remaining.ptr, len: idx }
             if idx + 1 < self.remaining.len {
-                self.remaining = Str {
-                    ptr: self.remaining.ptr + idx + 1,
-                    len: self.remaining.len - idx - 1,
-                }
+                self.remaining = self.remaining.view_unchecked(
+                    idx + 1, self.remaining.len - idx - 1)
             } else {
                 // Delimiter at end - remaining is empty, but need one more iteration
                 self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
@@ -2057,13 +2247,13 @@ impl Iterator<Str> for LinesIter {
         var skip: u32 = 1  // How many bytes to skip (1 for LF/CR, 2 for CRLF)
 
         while idx < self.remaining.len && !found {
-            let ch: u8 = self.remaining.ptr[idx]
+            let ch: u8 = self.remaining.get_unchecked(idx)
             if ch == $0A {  // LF
                 found = true
             } else if ch == $0D {  // CR
                 found = true
                 // Check for CRLF
-                if idx + 1 < self.remaining.len && self.remaining.ptr[idx + 1] == $0A {
+                if idx + 1 < self.remaining.len && self.remaining.get_unchecked(idx + 1) == $0A {
                     skip = 2
                 }
             } else {
@@ -2076,10 +2266,8 @@ impl Iterator<Str> for LinesIter {
             let result = Str { ptr: self.remaining.ptr, len: idx }
             let new_start: u32 = idx + skip
             if new_start < self.remaining.len {
-                self.remaining = Str {
-                    ptr: self.remaining.ptr + new_start,
-                    len: self.remaining.len - new_start,
-                }
+                self.remaining = self.remaining.view_unchecked(
+                    new_start, self.remaining.len - new_start)
             } else {
                 self.remaining = Str { ptr: self.remaining.ptr, len: 0 }
             }
@@ -2095,7 +2283,7 @@ impl Iterator<Str> for LinesIter {
 // Write for String - unified output interface
 impl Write for String {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
-        let s = Str::from_raw(ptr, len)
+        let s = unsafe { Str::borrow_raw(ptr, len) }
         match self.push_str(s) {
             Result::Ok(_) => return true,
             Result::Err(_) => return false,
@@ -2113,7 +2301,7 @@ impl Write for String {
 // Write for StringBuilder - unified output interface
 impl Write for StringBuilder {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
-        let s = Str::from_raw(ptr, len)
+        let s = unsafe { Str::borrow_raw(ptr, len) }
         match self.push_str(s) {
             Result::Ok(_) => return true,
             Result::Err(_) => return false,
@@ -2131,7 +2319,7 @@ impl Write for StringBuilder {
 // Write for PathString - unified output interface
 impl Write for PathString {
     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
-        let s = Str::from_raw(ptr, len)
+        let s = unsafe { Str::borrow_raw(ptr, len) }
         match self.push_str(s) {
             Result::Ok(_) => return true,
             Result::Err(_) => return false,
@@ -2152,8 +2340,8 @@ impl Ord for Str {
         // Compare byte-by-byte up to the shorter length
         let min_len: u32 = if self.len < other.len { self.len } else { other.len }
         while var i < min_len {
-            let a: u8 = self.ptr[i]
-            let b: u8 = other.ptr[i]
+            let a: u8 = self.get_unchecked(i)
+            let b: u8 = other.get_unchecked(i)
             if a < b {
                 return -1
             }

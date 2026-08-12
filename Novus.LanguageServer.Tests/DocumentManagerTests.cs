@@ -63,6 +63,23 @@ public class DocumentManagerTests
     }
 
     [Fact]
+    public void Open_HdPartApplication_HasNoDiagnostics()
+    {
+        var path = Path.GetFullPath(Path.Combine(
+            TestStdLibPath, "..", "..", "ports", "hdpart-novus", "src", "application.novus"));
+        var manager = new DocumentManager(TestStdLibPath);
+        var uri = new Uri(path).AbsoluteUri;
+
+        manager.Open(uri, File.ReadAllText(path), 1);
+
+        var reported = manager.Get(uri)!.Diagnostics!.Diagnostics
+            .Select(diagnostic => $"{diagnostic.Location.Line}: {diagnostic.Code}: {diagnostic.Message}")
+            .ToList();
+
+        Assert.True(reported.Count == 0, string.Join(Environment.NewLine, reported));
+    }
+
+    [Fact]
     public void Open_ValidDocument_CreatesDocumentState()
     {
         // Arrange

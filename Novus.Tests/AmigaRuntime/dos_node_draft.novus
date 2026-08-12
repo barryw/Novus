@@ -1,0 +1,57 @@
+from std::core import Result
+from std::ffi::amiga_consts import MEMF_ANY
+from std::ffi::exec import AvailMem
+from std::os::dosnode import DosEnvironment, DosNodeDraft
+from std::test::test import expect
+
+const DOS_FFS_INTL: u32 = $444F5303u32
+
+@test("DOS node drafts own and release their backing structures")
+pub fn dos_node_draft() {
+    expect(invalid_environment_rejected(), "invalid geometry is rejected")
+
+    // Warm compiler/runtime paths before taking the memory baseline.
+    expect(make_and_drop(), "draft layout is valid")
+    let before = unsafe { AvailMem(MEMF_ANY) }
+    var ok = true
+    while var i < 128u32 {
+        if !make_and_drop() { ok = false }
+        i++
+    }
+    let after = unsafe { AvailMem(MEMF_ANY) }
+    expect(ok, "repeated draft layouts are valid")
+    expect(after == before, "draft Drop releases every allocation")
+}
+
+fn invalid_environment_rejected() -> bool {
+    return match DosEnvironment::partition(513u32, 1u32, 32u32, 0u32, 10u32, DOS_FFS_INTL) {
+        Result::Ok(_) => false,
+        Result::Err(_) => true,
+    }
+}
+
+fn make_and_drop() -> bool {
+    var environment = match DosEnvironment::partition(
+        512u32, 16u32, 63u32, 2u32, 100u32, DOS_FFS_INTL
+    ) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    match environment.set_buffers(50u32, MEMF_ANY) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    match environment.set_transfer($1FE00u32, $7FFFFFFEu32) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    let draft = match DosNodeDraft::new("HDP0", "scsi.device", 2u32, 0u32, &environment) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    if !draft.name().equals("HDP0") { return false }
+    if !draft.driver().equals("scsi.device") { return false }
+    if draft.unit() != 2u32 || draft.open_flags() != 0u32 { return false }
+    if draft.dos_type() != DOS_FFS_INTL || draft.block_bytes() != 512u32 { return false }
+    return !draft.has_handler()
+}

@@ -1,0 +1,1645 @@
+from std::collections::arrayvec import ArrayVec
+from std::core import Clone, Option, Result
+from std::error::errors import IntuitionError
+from std::args::args import command_line
+from std::io::file import print_str
+from std::memory::slice import Slice
+from std::os::block_device import BlockDevice
+from std::os::device import device_is_resident, load_device_driver
+from std::strings::core import FixedCString, FixedString, Str
+from std::ui::asl import FileRequesterHandle
+from std::ui::dialog import alert_on, choice_on, confirm_on
+from std::ui::gadtools import GadgetBounds, GadToolsBuilder, GadToolsEvent, GadToolsWindow
+from fsload import load_file_system
+from filesystem_pool import FileSystemPool, file_system_preset, preset_dos_type
+from format import format_partition
+from rdb import DOS_TYPE_FFS_INTL, PartitionSettings, RdbModel, cylinders_to_mb, mb_to_cylinders
+from rdb_io import load_rdb, write_rdb
+from discovery import DiscoveredDevice, discover_mounted_devices
+from safety import DeviceIdentity, DeviceLiveness, classify_live_device, mounted_partition_name
+
+const DEVICE: u16 = 1u16
+const PARTITIONS: u16 = 2u16
+const NAME: u16 = 3u16
+const SIZE: u16 = 4u16
+const NEW: u16 = 5u16
+const EDIT: u16 = 6u16
+const DELETE: u16 = 7u16
+const INIT: u16 = 8u16
+const SAVE: u16 = 9u16
+const REFRESH: u16 = 10u16
+const SPLIT: u16 = 11u16
+const RESIZE: u16 = 12u16
+const FORMAT: u16 = 13u16
+const FILE_SYSTEMS: u16 = 14u16
+const STATUS: u16 = 15u16
+const QUIT: u16 = 16u16
+const FILE_SYSTEM: u16 = 17u16
+const INTERNATIONAL: u16 = 18u16
+const DIR_CACHE: u16 = 19u16
+const BOOTABLE: u16 = 20u16
+const BOOT_PRIORITY: u16 = 21u16
+const MAX_TRANSFER: u16 = 22u16
+const MASK: u16 = 23u16
+const RESIZE_ANCHOR: u16 = 24u16
+const LOAD_DRIVER: u16 = 26u16
+const UNIT: u16 = 27u16
+const SCAN: u16 = 28u16
+
+const FS_LIST: u16 = 101u16
+const FS_DOS_TYPE: u16 = 102u16
+const FS_PRESET: u16 = 103u16
+const FS_SOURCE_DRIVER: u16 = 104u16
+const FS_ADD: u16 = 105u16
+const FS_COPY: u16 = 106u16
+const FS_REMOVE: u16 = 107u16
+const FS_APPLY: u16 = 108u16
+const FS_DONE: u16 = 109u16
+const FS_SOURCE_UNIT: u16 = 110u16
+
+const TEXT_DIALOG_INPUT: u16 = 301u16
+const TEXT_DIALOG_OK: u16 = 302u16
+const TEXT_DIALOG_CANCEL: u16 = 303u16
+
+const EDIT_MAX_TRANSFER_PRESET: u16 = 201u16
+const EDIT_MAX_TRANSFER_HELP: u16 = 202u16
+const EDIT_MASK_PRESET: u16 = 203u16
+const EDIT_MASK_HELP: u16 = 204u16
+const EDIT_SIZE_HELP: u16 = 205u16
+const EDIT_OK: u16 = 206u16
+const EDIT_CANCEL: u16 = 207u16
+const RESIZE_MAX_HELP: u16 = 208u16
+const RESIZE_RANGE_HELP: u16 = 209u16
+const RESIZE_OK: u16 = 210u16
+const RESIZE_CANCEL: u16 = 211u16
+const SPLIT_LESS: u16 = 212u16
+const SPLIT_COUNT: u16 = 213u16
+const SPLIT_MORE: u16 = 214u16
+const SPLIT_PREVIEW: u16 = 215u16
+const SPLIT_OK: u16 = 216u16
+const SPLIT_CANCEL: u16 = 217u16
+
+const MENU_PROJECT: u16 = 0u16
+const MENU_DISK: u16 = 1u16
+const MENU_PARTITION: u16 = 2u16
+
+const PROJECT_ABOUT: u16 = 0u16
+const PROJECT_SAVE: u16 = 2u16
+const PROJECT_QUIT: u16 = 4u16
+const DISK_SCAN: u16 = 0u16
+const DISK_LOAD_DRIVER: u16 = 1u16
+const DISK_REFRESH: u16 = 3u16
+const DISK_INIT: u16 = 4u16
+const DISK_FILE_SYSTEMS: u16 = 5u16
+const PART_NEW: u16 = 0u16
+const PART_EDIT: u16 = 1u16
+const PART_DELETE: u16 = 2u16
+const PART_SPLIT: u16 = 4u16
+const PART_RESIZE: u16 = 5u16
+const PART_FORMAT: u16 = 6u16
+
+struct DiskEntry {
+    driver: FixedCString<60>,
+    unit: u32,
+    block_bytes: u32,
+    total_blocks: u32,
+    cylinders: u32,
+    heads: u32,
+    sectors: u32,
+}
+
+struct ResizePlan {
+    low: u32,
+    high: u32,
+}
+
+impl DiskEntry {
+    fn model(&self) -> RdbModel {
+        var heads = self.heads
+        var sectors = self.sectors
+        if heads == 0u32 { heads = 16u32 }
+        if sectors == 0u32 { sectors = 63u32 }
+        var cylinders = self.cylinders
+        if cylinders == 0u32 { cylinders = self.total_blocks / (heads * sectors) }
+        return RdbModel::new(cylinders, heads, sectors)
+    }
+}
+
+@suppress("W0002", "A decimal digit is provably in the ASCII 0-9 range")
+fn append_u32(out: &var FixedString<80>, value: u32) -> bool {
+    return out.push_u32(value).is_ok()
+}
+
+fn append(out: &var FixedString<80>, value: Str) -> bool {
+    return out.push_str(value).is_ok()
+}
+
+@suppress("W0002", "GadTools indices come from fixed collections capped below 65536 entries")
+fn gadget_index(value: u32) -> u16 { return (u16)value }
+
+fn prefix(rows: Slice<Str>, count: u32) -> Option<Slice<Str>> {
+    return rows.take(count)
+}
+
+fn probe_disk(driver: Str, unit: u32, disks: &var ArrayVec<DiskEntry, 32>) {
+    for index in 0u32..disks.len() {
+        let Option::Some(disk) = disks.get(index) else { continue }
+        return if disk.unit == unit && disk.driver.as_str().eq_ignore_case(driver)
+    }
+    let Result::Ok(device) = BlockDevice::open(driver, unit) else { return }
+    let geometry = device.geometry()
+    let Result::Ok(owned) = FixedCString::<60>::new_from_str(driver) else { return }
+    let _ = disks.push(DiskEntry {
+        driver: owned,
+        unit: unit,
+        block_bytes: geometry.block_bytes(),
+        total_blocks: geometry.total_blocks(),
+        cylinders: geometry.cylinders(),
+        heads: geometry.heads(),
+        sectors: geometry.blocks_per_track(),
+    })
+}
+
+fn known_drivers() -> ArrayVec<FixedCString<60>, 16> {
+    let names = [
+        "scsi.device", "2nd.scsi.device", "uaehf.device", "lide.device",
+        "ide.device", "oktagon.device", "gvpscsi.device", "omniscsi.device",
+        "a4091.device", "a3000scsi.device", "z3scsi.device",
+    ]
+    var drivers = ArrayVec::<FixedCString<60>, 16>::new()
+    let _ = drivers.push(FixedCString::<60>::new())
+    for index in 0u32..11u32 {
+        continue unless device_is_resident(names[index])
+        let Result::Ok(name) = FixedCString::<60>::new_from_str(names[index]) else { continue }
+        let _ = drivers.push(name)
+    }
+    return drivers
+}
+
+fn add_driver(drivers: &var ArrayVec<FixedCString<60>, 16>, consuming name: FixedCString<60>) -> u32 {
+    for index in 0u32..drivers.len() {
+        let Option::Some(current) = drivers.get(index) else { continue }
+        return index if current.as_str().equals(name.as_str())
+    }
+    let index = drivers.len()
+    let _ = drivers.push(name)
+    return index
+}
+
+fn scan_driver(driver: Str) -> ArrayVec<DiskEntry, 32> {
+    var disks = ArrayVec::<DiskEntry, 32>::new()
+    for unit in 0u32..8u32 { probe_disk(driver, unit, &var disks) }
+    return disks
+}
+
+fn scan_all_drivers(
+    drivers: &ArrayVec<FixedCString<60>, 16>,
+    mounted: &ArrayVec<DiscoveredDevice, 32>
+) -> ArrayVec<DiskEntry, 32> {
+    var disks = ArrayVec::<DiskEntry, 32>::new()
+    for device in mounted { probe_disk(device.driver(), device.unit(), &var disks) }
+    for driver in drivers {
+        continue if driver.is_empty()
+        for unit in 0u32..8u32 { probe_disk(driver.as_str(), unit, &var disks) }
+    }
+    return disks
+}
+
+fn scan_line(
+    disk: &DiskEntry,
+    mounted: &ArrayVec<DiscoveredDevice, 32>
+) -> FixedString<160> {
+    var status = "blank"
+    var label = ""
+    for device in mounted {
+        if device.unit() == disk.unit && device.driver().eq_ignore_case(disk.driver.as_str()) {
+            status = "mounted"
+            label = device.name()
+        }
+    }
+    if status.equals("blank") {
+        match BlockDevice::open(disk.driver.as_str(), disk.unit) {
+            Result::Ok(var device) => {
+                if load_rdb(&var device).is_ok() { status = "RDB" }
+            },
+            Result::Err(_) => { status = "no-media" },
+        }
+    }
+
+    var line = FixedString::<160>::new()
+    let _ = line.push_str(disk.driver.as_str())
+    let _ = line.push_str(" unit ")
+    let _ = line.push_u32(disk.unit)
+    let _ = line.push_str("  ")
+    let _ = line.push_u32(disk.total_blocks / 2048u32)
+    let _ = line.push_str(" MB  [")
+    let _ = line.push_str(status)
+    let _ = line.push_byte((u8)']')
+    if !label.is_empty() {
+        let _ = line.push_str("  ")
+        let _ = line.push_str(label)
+    }
+    let _ = line.push_byte((u8)'\n')
+    return line
+}
+
+fn run_scan() -> i32 {
+    return 20 if print_str("HDPart device scan\n------------------\n").is_err()
+    let drivers = known_drivers()
+    let mounted = match discover_mounted_devices() {
+        Result::Ok(value) => value,
+        Result::Err(_) => ArrayVec::<DiscoveredDevice, 32>::new(),
+    }
+    let disks = scan_all_drivers(&drivers, &mounted)
+    if disks.is_empty() {
+        return if print_str("(no block devices found)\n").is_ok() { 0 } else { 20 }
+    }
+    for disk in &disks {
+        let line = scan_line(disk, &mounted)
+        return 20 if print_str(line.as_str()).is_err()
+    }
+    return 0
+}
+
+fn set_status(window: &GadToolsWindow, value: Str) {
+    let Option::Some(control) = window.text(STATUS) else { return }
+    match control.set_text(value) {
+        Result::Ok(_) => {},
+        Result::Err(_) => {},
+    }
+}
+
+fn refresh_driver_choices(window: &var GadToolsWindow, drivers: &ArrayVec<FixedCString<60>, 16>, active: u16) -> Result<(), IntuitionError> {
+    var views = [""; 16]
+    for index in 0u32..drivers.len() {
+        let Option::Some(driver) = drivers.get(index) else { continue }
+        views[index] = if driver.is_empty() { "Select or load a driver" } else { driver.as_str() }
+    }
+    let Option::Some(used) = prefix(&views, drivers.len()) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    return window.replace_cycle(DEVICE, used, active)
+}
+
+fn refresh_unit_choices(window: &var GadToolsWindow, disks: &ArrayVec<DiskEntry, 32>) -> Result<(), IntuitionError> {
+    if disks.is_empty() {
+        let empty = ["Press Scan"]
+        window.replace_cycle(UNIT, &empty, 0u16)?
+        set_control_enabled(window, UNIT, false)
+        return Result::Ok(())
+    }
+    var storage = [FixedString::<80>::new(); 32]
+    var views = [""; 32]
+    for index in 0u32..disks.len() {
+        let Option::Some(disk) = disks.get(index) else { continue }
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "unit ")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], disk.unit)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  ")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], disk.total_blocks / 2048u32)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], " MB")
+        views[index] = storage[index].as_str()
+    }
+    let Option::Some(used) = prefix(&views, disks.len()) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    window.replace_cycle(UNIT, used, 0u16)?
+    set_control_enabled(window, UNIT, true)
+    return Result::Ok(())
+}
+
+fn refresh_partitions(window: &var GadToolsWindow, model: &RdbModel, selected: Option<u32>) -> Result<(), IntuitionError> {
+    if model.partition_count() == 0u32 {
+        let empty = ["No partitions on this disk"]
+        window.replace_list(PARTITIONS, &empty, Option::None)?
+        draw_disk_map(window, model, Option::None)
+        return Result::Ok(())
+    }
+    var storage = [FixedString::<80>::new(); 32]
+    var views = [""; 32]
+    for index in 0u32..model.partition_count() {
+        let Option::Some(partition) = model.partition(index) else { continue }
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], partition.name())
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  DOS\\")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], partition.dos_type() & $FFu32)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  cyl ")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], partition.low_cylinder())
+        return Result::Err(IntuitionError::GadgetCreateFailed) if storage[index].push_byte((u8)'-').is_err()
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], partition.high_cylinder())
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  ")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], cylinders_to_mb(
+            partition.high_cylinder() - partition.low_cylinder() + 1u32,
+            model.cylinder_blocks(),
+            model.block_bytes()
+        ))
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], " MB")
+        views[index] = storage[index].as_str()
+    }
+    let Option::Some(used) = prefix(&views, model.partition_count()) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    window.replace_list(PARTITIONS, used, selected)?
+    draw_disk_map(window, model, selected)
+    return Result::Ok(())
+}
+
+fn clear_partitions(window: &var GadToolsWindow) -> Result<(), IntuitionError> {
+    let empty = ["No RDB on this disk"]
+    window.replace_list(PARTITIONS, &empty, Option::None)?
+    clear_disk_map(window)
+    return Result::Ok(())
+}
+
+fn map_x(cylinder: u32, cylinders: u32, width: u32) -> u32 {
+    return 0u32 if cylinders == 0u32
+    return (cylinder / cylinders) * width + ((cylinder % cylinders) * width) / cylinders
+}
+
+@suppress("W0002", "The disk-map coordinates are bounded by the 630-pixel window")
+fn clear_disk_map(window: &GadToolsWindow) {
+    window.fill_rect(1u8, 18, 82, 611, 97)
+    window.outline_rect(2u8, 18, 82, 611, 97)
+}
+
+@suppress("W0002", "The disk-map coordinates are bounded by the 630-pixel window")
+fn draw_disk_map(window: &GadToolsWindow, model: &RdbModel, selected: Option<u32>) {
+    clear_disk_map(window)
+    return if model.cylinders() == 0u32
+    for index in 0u32..model.partition_count() {
+        let Option::Some(partition) = model.partition(index) else { continue }
+        var left = 18u32 + map_x(partition.low_cylinder(), model.cylinders(), 594u32)
+        var right = 18u32 + map_x(partition.high_cylinder() + 1u32, model.cylinders(), 594u32)
+        if right <= left { right = left + 1u32 }
+        if right > 612u32 { right = 612u32 }
+        window.fill_rect(if (index & 1u32) == 0u32 { 3u8 } else { 2u8 }, (i16)left, 83, (i16)(right - 1u32), 96)
+        match selected {
+            Option::Some(value) => {
+                if value == index {
+                    window.outline_rect(1u8, (i16)left, 83, (i16)(right - 1u32), 96)
+                }
+            },
+            Option::None => {},
+        }
+    }
+}
+
+@suppress("W0002", "Bounds checks prove the mouse coordinate and partition index fit their target types")
+fn partition_at(model: &RdbModel, x: i16, y: i16) -> Option<u32> {
+    return Option::None unless x >= 18 && x < 612 && y >= 82 && y < 98 && model.cylinders() > 0u32
+    let position = (u32)(x - 18)
+    for index in 0u32..model.partition_count() {
+        let Option::Some(partition) = model.partition(index) else { continue }
+        let left = map_x(partition.low_cylinder(), model.cylinders(), 594u32)
+        var right = map_x(partition.high_cylinder() + 1u32, model.cylinders(), 594u32)
+        if right <= left { right = left + 1u32 }
+        return Option::Some(index) if position >= left && position < right
+    }
+    return Option::None
+}
+
+@suppress("W0002", "RDB supports at most 32 partitions")
+fn partition_event_code(index: u32) -> u16 { return (u16)index }
+
+fn select_partition(window: &GadToolsWindow, model: &RdbModel, index: u32) {
+    let Option::Some(partition) = model.partition(index) else { return }
+    match window.string(NAME) {
+        Option::Some(control) => { let _ = control.set_value(partition.name()) },
+        Option::None => {},
+    }
+    match window.integer(SIZE) {
+        Option::Some(control) => control.set_u32_saturating(cylinders_to_mb(
+            partition.high_cylinder() - partition.low_cylinder() + 1u32,
+            model.cylinder_blocks(),
+            model.block_bytes()
+        )),
+        Option::None => {},
+    }
+}
+
+fn current_name(window: &GadToolsWindow) -> Option<Str> {
+    let Option::Some(control) = window.string(NAME) else { return Option::None }
+    return control.value()
+}
+
+fn current_size(window: &GadToolsWindow) -> Option<u32> {
+    let Option::Some(control) = window.integer(SIZE) else { return Option::None }
+    let Option::Some(value) = control.u32_value() else { return Option::None }
+    return Option::None if value == 0
+    return Option::Some(value)
+}
+
+fn hex_string(value: u32) -> FixedString<12> {
+    let digits = "0123456789ABCDEF"
+    var result = FixedString::<12>::new()
+    let _ = result.push_str("0x")
+    for shift in 0u32..8u32 {
+        let nibble = (value >> ((7u32 - shift) * 4u32)) & 15u32
+        let Option::Some(byte) = digits.get(nibble) else { continue }
+        let _ = result.push_byte(byte)
+    }
+    return result
+}
+
+fn is_rom_dos_type(dos_type: u32) -> bool {
+    return (dos_type & $FFFFFF00u32) == $444F5300u32 && (dos_type & $FFu32) <= 7u32
+}
+
+fn selected_dos_type(choice: u16, current: u32, window: &GadToolsWindow, pool: &FileSystemPool) -> u32 {
+    if choice <= 1u16 {
+        var value = if choice == 0u16 { $444F5301u32 } else { $444F5300u32 }
+        let Option::Some(international) = window.checkbox(INTERNATIONAL) else { return value }
+        let Option::Some(cache) = window.checkbox(DIR_CACHE) else { return value }
+        if international.checked() { value = value | 2u32 }
+        if cache.checked() { value = value | 4u32 }
+        return value
+    }
+    let pool_index = (u32)choice - 2u32
+    match pool.get(pool_index) {
+        Option::Some(file_system) => return file_system.dos_type(),
+        Option::None => {},
+    }
+    return current
+}
+
+fn refresh_partition_file_systems(window: &var GadToolsWindow, pool: &FileSystemPool, current: u32) -> Result<u16, IntuitionError> {
+    var storage = [FixedString::<12>::new(); 11]
+    var views = [""; 11]
+    let _ = storage[0].push_str("FFS")
+    let _ = storage[1].push_str("OFS")
+    views[0] = storage[0].as_str()
+    views[1] = storage[1].as_str()
+    var active = 0u16
+    var matched = false
+    for index in 0u32..pool.len() {
+        let Option::Some(file_system) = pool.get(index) else { continue }
+        let label = hex_string(file_system.dos_type())
+        let _ = storage[index + 2u32].push_str(label.as_str())
+        views[index + 2u32] = storage[index + 2u32].as_str()
+        if file_system.dos_type() == current {
+            active = gadget_index(index + 2u32)
+            matched = true
+        }
+    }
+    var count = pool.len() + 2u32
+    if !matched {
+        if is_rom_dos_type(current) {
+            active = if (current & 1u32) != 0u32 { 0u16 } else { 1u16 }
+        } else {
+            let keep = count
+            let label = hex_string(current)
+            let _ = storage[keep].push_str(label.as_str())
+            views[keep] = storage[keep].as_str()
+            active = gadget_index(keep)
+            count++
+        }
+    }
+    let Option::Some(used) = prefix(&views, count) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    window.replace_cycle(FILE_SYSTEM, used, active)?
+    return Result::Ok(active)
+}
+
+fn set_partition_controls(window: &var GadToolsWindow, model: &RdbModel, index: u32, pool: &FileSystemPool) -> u16 {
+    let Option::Some(partition) = model.partition(index) else { return 0u16 }
+    match window.string(NAME) {
+        Option::Some(control) => { let _ = control.set_value(partition.name()) },
+        Option::None => {},
+    }
+    match window.integer(SIZE) {
+        Option::Some(control) => control.set_u32_saturating(cylinders_to_mb(
+            partition.high_cylinder() - partition.low_cylinder() + 1u32,
+            model.cylinder_blocks(),
+            model.block_bytes()
+        )),
+        Option::None => {},
+    }
+    match window.checkbox(BOOTABLE) {
+        Option::Some(control) => control.set_checked(partition.bootable()),
+        Option::None => {},
+    }
+    match window.integer(BOOT_PRIORITY) {
+        Option::Some(control) => control.set_value(partition.boot_priority()),
+        Option::None => {},
+    }
+    let max_transfer = hex_string(partition.max_transfer())
+    let mask = hex_string(partition.mask())
+    match window.string(MAX_TRANSFER) {
+        Option::Some(control) => { let _ = control.set_value(max_transfer.as_str()) },
+        Option::None => {},
+    }
+    match window.string(MASK) {
+        Option::Some(control) => { let _ = control.set_value(mask.as_str()) },
+        Option::None => {},
+    }
+    let choice = refresh_partition_file_systems(window, pool, partition.dos_type()).unwrap_or(0u16)
+    match window.checkbox(INTERNATIONAL) {
+        Option::Some(control) => control.set_checked((partition.dos_type() & 2u32) != 0u32),
+        Option::None => {},
+    }
+    match window.checkbox(DIR_CACHE) {
+        Option::Some(control) => control.set_checked((partition.dos_type() & 4u32) != 0u32),
+        Option::None => {},
+    }
+    return choice
+}
+
+fn edit_partition(window: &GadToolsWindow, model: &var RdbModel, index: u32, file_system_choice: u16, pool: &FileSystemPool) -> bool {
+    let Option::Some(previous) = model.partition(index) else { return false }
+    let Option::Some(name) = current_name(window) else { return false }
+    let Option::Some(size) = current_size(window) else { return false }
+    let Option::Some(bootable) = window.checkbox(BOOTABLE) else { return false }
+    let Option::Some(priority) = window.integer(BOOT_PRIORITY) else { return false }
+    let Option::Some(max_transfer) = window.string(MAX_TRANSFER) else { return false }
+    let Option::Some(mask) = window.string(MASK) else { return false }
+    let Result::Ok(max_transfer_value) = max_transfer.value().unwrap_or("").parse_hex() else { return false }
+    let Result::Ok(mask_value) = mask.value().unwrap_or("").parse_hex() else { return false }
+    let Result::Ok(settings) = PartitionSettings::new(
+        name,
+        size,
+        selected_dos_type(file_system_choice, previous.dos_type(), window, pool),
+        bootable.checked(),
+        priority.value().unwrap_or(0),
+        max_transfer_value,
+        mask_value
+    ) else { return false }
+    return model.update_partition_settings(index, settings).is_ok()
+}
+
+fn max_transfer_preset(value: u32) -> u16 {
+    return 0u16 if value == $0001FE00u32
+    return 1u16 if value == $00FFFFFFu32
+    return 2u16 if value == $7FFFFFFFu32
+    return 3u16
+}
+
+fn mask_preset(value: u32) -> u16 {
+    return 0u16 if value == $7FFFFFFEu32
+    return 1u16 if value == $00FFFFFFu32
+    return 2u16 if value == $FFFFFFFCu32
+    return 3u16 if value == $FFFFFFFFu32
+    return 4u16
+}
+
+fn max_transfer_preset_value(index: u16) -> Option<u32> {
+    return Option::Some($0001FE00u32) if index == 0u16
+    return Option::Some($00FFFFFFu32) if index == 1u16
+    return Option::Some($7FFFFFFFu32) if index == 2u16
+    return Option::None
+}
+
+fn mask_preset_value(index: u16) -> Option<u32> {
+    return Option::Some($7FFFFFFEu32) if index == 0u16
+    return Option::Some($00FFFFFFu32) if index == 1u16
+    return Option::Some($FFFFFFFCu32) if index == 2u16
+    return Option::Some($FFFFFFFFu32) if index == 3u16
+    return Option::None
+}
+
+@borrows(static)
+fn max_transfer_guidance(index: u16) -> Str {
+    return "0x1FE00: onboard IDE - required!" if index == 0u16
+    return "0xFFFFFF: SCSI controllers" if index == 1u16
+    return "0x7FFFFFFF: IDEfix/PFS3-AiO/PCMCIA" if index == 2u16
+    return "Advanced - enter a hex value"
+}
+
+@borrows(static)
+fn mask_guidance(index: u16) -> Str {
+    return "DMA mask; OK as-is for plain IDE" if index == 0u16
+    return "Zorro II DMA controller (24-bit)" if index == 1u16
+    return "A1200/A4000 internal IDE" if index == 2u16
+    return "No masking (Zorro III / no DMA)" if index == 3u16
+    return "Advanced - enter a hex value"
+}
+
+fn apply_hex_preset(window: &GadToolsWindow, field: u16, help: u16, value: Option<u32>, guidance: Str) {
+    set_control_enabled(window, field, value.is_none())
+    match value {
+        Option::Some(number) => {
+            let text = hex_string(number)
+            match window.string(field) {
+                Option::Some(control) => { let _ = control.set_value(text.as_str()) },
+                Option::None => {},
+            }
+        },
+        Option::None => {},
+    }
+    match window.text(help) {
+        Option::Some(control) => { let _ = control.set_text(guidance) },
+        Option::None => {},
+    }
+}
+
+@suppress("W0002", "GadTools integer fields and classic Amiga partition sizes are signed 32-bit")
+fn partition_size_input(value: u32) -> i32 { return (i32)value }
+
+fn partition_editor(
+    parent: &GadToolsWindow,
+    model: &var RdbModel,
+    index: u32,
+    pool: &FileSystemPool
+) -> Result<bool, IntuitionError> {
+    let Option::Some(partition) = model.partition(index) else { return Result::Ok(false) }
+    let size = cylinders_to_mb(
+        partition.high_cylinder() - partition.low_cylinder() + 1u32,
+        model.cylinder_blocks(),
+        model.block_bytes()
+    )
+    let maximum_end = model.gap_end_after(index).unwrap_or(partition.high_cylinder())
+    let maximum_size = cylinders_to_mb(
+        maximum_end - partition.low_cylinder() + 1u32,
+        model.cylinder_blocks(),
+        model.block_bytes()
+    )
+    var size_help = FixedString::<32>::new()
+    let _ = size_help.push_str("max ")
+    let _ = size_help.push_u32(maximum_size)
+    let _ = size_help.push_str(" MB")
+    let max_transfer_text = hex_string(partition.max_transfer())
+    let mask_text = hex_string(partition.mask())
+    let max_transfer_choice = max_transfer_preset(partition.max_transfer())
+    let mask_choice = mask_preset(partition.mask())
+
+    var ui = parent.child_builder()?
+    ui.add_string(NAME, "Name", GadgetBounds::new(110, 18, 200, 14), partition.name(), 31u16)?
+    ui.add_integer(SIZE, "Size (MB)", GadgetBounds::new(110, 40, 90, 14), partition_size_input(size), 7u16)?
+    ui.add_text(EDIT_SIZE_HELP, GadgetBounds::new(220, 40, 130, 14), size_help.as_str())?
+    let base_file_systems = ["FFS", "OFS"]
+    ui.add_cycle(FILE_SYSTEM, "Filesystem", GadgetBounds::new(110, 62, 130, 14), &base_file_systems, 0u16)?
+    ui.add_checkbox(INTERNATIONAL, "International", GadgetBounds::new(300, 64, 26, 11), (partition.dos_type() & 2u32) != 0u32)?
+    ui.add_checkbox(DIR_CACHE, "Dir cache", GadgetBounds::new(410, 64, 26, 11), (partition.dos_type() & 4u32) != 0u32)?
+    ui.add_checkbox(BOOTABLE, "Bootable", GadgetBounds::new(110, 88, 26, 11), partition.bootable())?
+    ui.add_integer(BOOT_PRIORITY, "Boot priority", GadgetBounds::new(270, 86, 70, 14), partition.boot_priority(), 6u16)?
+    let max_transfer_choices = ["IDE", "SCSI", "No limit", "Custom"]
+    ui.add_cycle(EDIT_MAX_TRANSFER_PRESET, "MaxTransfer", GadgetBounds::new(110, 112, 130, 14), &max_transfer_choices, max_transfer_choice)?
+    ui.add_string(MAX_TRANSFER, "", GadgetBounds::new(270, 112, 120, 14), max_transfer_text.as_str(), 10u16)?
+    ui.add_text(EDIT_MAX_TRANSFER_HELP, GadgetBounds::new(18, 134, 470, 14), max_transfer_guidance(max_transfer_choice))?
+    let mask_choices = ["Default", "Zorro II DMA", "A1200/A4000 IDE", "No mask", "Custom"]
+    ui.add_cycle(EDIT_MASK_PRESET, "Mask", GadgetBounds::new(110, 158, 160, 14), &mask_choices, mask_choice)?
+    ui.add_string(MASK, "", GadgetBounds::new(300, 158, 120, 14), mask_text.as_str(), 10u16)?
+    ui.add_text(EDIT_MASK_HELP, GadgetBounds::new(18, 180, 470, 14), mask_guidance(mask_choice))?
+    ui.add_button(EDIT_OK, "OK", GadgetBounds::new(18, 212, 90, 16))?
+    ui.add_button(EDIT_CANCEL, "Cancel", GadgetBounds::new(400, 212, 90, 16))?
+    var menus = ui.menu_builder()
+    var window_menu = menus.add_menu("Window")
+    window_menu.add_item("Cancel").with_command_key((u8)'Q')
+    let menu = menus.build()?
+    var window = ui.build("Edit Partition", GadgetBounds::new(60, 32, 510, 264), menu)?
+
+    var file_system_choice = refresh_partition_file_systems(&var window, pool, partition.dos_type())?
+    let rom_file_system = file_system_choice <= 1u16
+    set_control_enabled(&window, INTERNATIONAL, rom_file_system)
+    set_control_enabled(&window, DIR_CACHE, rom_file_system)
+    apply_hex_preset(&window, MAX_TRANSFER, EDIT_MAX_TRANSFER_HELP, max_transfer_preset_value(max_transfer_choice), max_transfer_guidance(max_transfer_choice))
+    apply_hex_preset(&window, MASK, EDIT_MASK_HELP, mask_preset_value(mask_choice), mask_guidance(mask_choice))
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close | GadToolsEvent::MenuPick(0u16, 0u16) | GadToolsEvent::GadgetUp(EDIT_CANCEL, _) => {
+                return Result::Ok(false)
+            },
+            GadToolsEvent::Refresh => window.refresh(),
+            GadToolsEvent::GadgetUp(FILE_SYSTEM, value) => {
+                file_system_choice = value
+                let rom = value <= 1u16
+                set_control_enabled(&window, INTERNATIONAL, rom)
+                set_control_enabled(&window, DIR_CACHE, rom)
+            },
+            GadToolsEvent::GadgetUp(EDIT_MAX_TRANSFER_PRESET, value) => {
+                apply_hex_preset(&window, MAX_TRANSFER, EDIT_MAX_TRANSFER_HELP, max_transfer_preset_value(value), max_transfer_guidance(value))
+            },
+            GadToolsEvent::GadgetUp(EDIT_MASK_PRESET, value) => {
+                apply_hex_preset(&window, MASK, EDIT_MASK_HELP, mask_preset_value(value), mask_guidance(value))
+            },
+            GadToolsEvent::GadgetUp(EDIT_OK, _) => {
+                if edit_partition(&window, model, index, file_system_choice, pool) {
+                    return Result::Ok(true)
+                }
+                alert_on(window.handle(), "Edit Partition", "Check the name, size, MaxTransfer, Mask, and partition overlap.")
+            },
+            _ => {},
+        }
+    }
+}
+
+fn resize_plan(window: &GadToolsWindow, model: &RdbModel, index: u32, anchor: u16) -> Option<ResizePlan> {
+    let Option::Some(partition) = model.partition(index) else { return Option::None }
+    let Option::Some(requested_mb) = current_size(window) else { return Option::None }
+    let maximum_cylinders = if anchor == 0u16 {
+        model.gap_end_after(index).unwrap_or(partition.high_cylinder()) - partition.low_cylinder() + 1u32
+    } else {
+        partition.high_cylinder() - model.gap_start_before(index).unwrap_or(partition.low_cylinder()) + 1u32
+    }
+    var maximum_mb = cylinders_to_mb(maximum_cylinders, model.cylinder_blocks(), model.block_bytes())
+    if maximum_mb == 0u32 { maximum_mb = 1u32 }
+    var size_mb = requested_mb
+    if size_mb > maximum_mb {
+        size_mb = maximum_mb
+        match window.integer(SIZE) {
+            Option::Some(control) => control.set_u32_saturating(size_mb),
+            Option::None => {},
+        }
+    }
+    var cylinders = mb_to_cylinders(size_mb, model.cylinder_blocks(), model.block_bytes())
+    if cylinders > maximum_cylinders { cylinders = maximum_cylinders }
+    return if anchor == 0u16 {
+        Option::Some(ResizePlan {
+            low: partition.low_cylinder(),
+            high: partition.low_cylinder() + cylinders - 1u32,
+        })
+    } else {
+        Option::Some(ResizePlan {
+            low: partition.high_cylinder() - cylinders + 1u32,
+            high: partition.high_cylinder(),
+        })
+    }
+}
+
+fn refresh_resize_preview(window: &GadToolsWindow, model: &RdbModel, index: u32, anchor: u16) -> Option<ResizePlan> {
+    let Option::Some(partition) = model.partition(index) else { return Option::None }
+    let maximum_cylinders = if anchor == 0u16 {
+        model.gap_end_after(index).unwrap_or(partition.high_cylinder()) - partition.low_cylinder() + 1u32
+    } else {
+        partition.high_cylinder() - model.gap_start_before(index).unwrap_or(partition.low_cylinder()) + 1u32
+    }
+    var maximum_mb = cylinders_to_mb(maximum_cylinders, model.cylinder_blocks(), model.block_bytes())
+    if maximum_mb == 0u32 { maximum_mb = 1u32 }
+    var maximum_text = FixedString::<32>::new()
+    let _ = maximum_text.push_str("max ")
+    let _ = maximum_text.push_u32(maximum_mb)
+    let _ = maximum_text.push_str(" MB")
+    match window.text(RESIZE_MAX_HELP) {
+        Option::Some(control) => { let _ = control.set_text(maximum_text.as_str()) },
+        Option::None => {},
+    }
+    let Option::Some(plan) = resize_plan(window, model, index, anchor) else { return Option::None }
+    var range_text = FixedString::<64>::new()
+    let _ = range_text.push_str("-> cylinders ")
+    let _ = range_text.push_u32(plan.low)
+    let _ = range_text.push_str("..")
+    let _ = range_text.push_u32(plan.high)
+    match window.text(RESIZE_RANGE_HELP) {
+        Option::Some(control) => { let _ = control.set_text(range_text.as_str()) },
+        Option::None => {},
+    }
+    return Option::Some(plan)
+}
+
+fn resize_partition_dialog(parent: &GadToolsWindow, model: &var RdbModel, index: u32) -> Result<bool, IntuitionError> {
+    let Option::Some(partition) = model.partition(index) else { return Result::Ok(false) }
+    var size = cylinders_to_mb(
+        partition.high_cylinder() - partition.low_cylinder() + 1u32,
+        model.cylinder_blocks(),
+        model.block_bytes()
+    )
+    if size == 0u32 { size = 1u32 }
+    let anchors = ["Move: End edge", "Move: Start edge"]
+    var ui = parent.child_builder()?
+    ui.add_cycle(RESIZE_ANCHOR, "Anchor", GadgetBounds::new(100, 18, 230, 14), &anchors, 0u16)?
+    ui.add_integer(SIZE, "Size (MB)", GadgetBounds::new(100, 40, 90, 14), partition_size_input(size), 7u16)?
+    ui.add_text(RESIZE_MAX_HELP, GadgetBounds::new(210, 40, 130, 14), "")?
+    ui.add_text(RESIZE_RANGE_HELP, GadgetBounds::new(18, 62, 330, 14), "")?
+    ui.add_text(EDIT_SIZE_HELP, GadgetBounds::new(18, 82, 360, 14), "NOTE: Resizing partitions implies data loss.")?
+    ui.add_button(RESIZE_OK, "OK", GadgetBounds::new(18, 108, 80, 16))?
+    ui.add_button(RESIZE_CANCEL, "Cancel", GadgetBounds::new(300, 108, 80, 16))?
+    var menus = ui.menu_builder()
+    var window_menu = menus.add_menu("Window")
+    window_menu.add_item("Cancel").with_command_key((u8)'Q')
+    let menu = menus.build()?
+    let window = ui.build("Resize Partition", GadgetBounds::new(100, 70, 400, 160), menu)?
+    var anchor = 0u16
+    let _ = refresh_resize_preview(&window, model, index, anchor)
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close | GadToolsEvent::MenuPick(0u16, 0u16) | GadToolsEvent::GadgetUp(RESIZE_CANCEL, _) => {
+                return Result::Ok(false)
+            },
+            GadToolsEvent::Refresh => window.refresh(),
+            GadToolsEvent::GadgetUp(RESIZE_ANCHOR, value) => {
+                anchor = value
+                let _ = refresh_resize_preview(&window, model, index, anchor)
+            },
+            GadToolsEvent::GadgetUp(SIZE, _) => {
+                let _ = refresh_resize_preview(&window, model, index, anchor)
+            },
+            GadToolsEvent::GadgetUp(RESIZE_OK, _) => {
+                let Option::Some(plan) = refresh_resize_preview(&window, model, index, anchor) else { continue }
+                if plan.low == partition.low_cylinder() && plan.high == partition.high_cylinder() {
+                    return Result::Ok(false)
+                }
+                let destructive = plan.low != partition.low_cylinder() || plan.high < partition.high_cylinder()
+                if destructive && !confirm_on(window.handle(), "Resize Partition", "Resizing changes the partition extent.\nReformat afterward; existing data will be lost.\nProceed?") {
+                    continue
+                }
+                match model.resize_partition(index, plan.low, plan.high) {
+                    Result::Ok(_) => return Result::Ok(true),
+                    Result::Err(_) => alert_on(window.handle(), "Resize Partition", "The requested size overlaps another partition or exceeds the disk."),
+                }
+            },
+            _ => {},
+        }
+    }
+}
+
+fn refresh_split_preview(window: &GadToolsWindow, count: u32, span: u32, model: &RdbModel) {
+    var count_text = FixedString::<8>::new()
+    let _ = count_text.push_u32(count)
+    match window.text(SPLIT_COUNT) {
+        Option::Some(control) => { let _ = control.set_text(count_text.as_str()) },
+        Option::None => {},
+    }
+    var preview = FixedString::<48>::new()
+    let _ = preview.push_u32(count)
+    let _ = preview.push_str(" x ~")
+    let _ = preview.push_u32(cylinders_to_mb(span / count, model.cylinder_blocks(), model.block_bytes()))
+    let _ = preview.push_str(" MB each")
+    match window.text(SPLIT_PREVIEW) {
+        Option::Some(control) => { let _ = control.set_text(preview.as_str()) },
+        Option::None => {},
+    }
+}
+
+fn split_dialog(parent: &GadToolsWindow, model: &RdbModel) -> Result<Option<u32>, IntuitionError> {
+    let Option::Some(gap) = model.largest_free_gap() else {
+        alert_on(parent.handle(), "Split", "There is no free space on this disk.")
+        return Result::Ok(Option::None)
+    }
+    var maximum = gap.cylinders()
+    let slots = 32u32 - model.partition_count()
+    if maximum > slots { maximum = slots }
+    if maximum > 20u32 { maximum = 20u32 }
+    if maximum == 0u32 {
+        alert_on(parent.handle(), "Split", "There is no room for another partition.")
+        return Result::Ok(Option::None)
+    }
+    var count = if maximum < 4u32 { maximum } else { 4u32 }
+    var ui = parent.child_builder()?
+    ui.add_text(EDIT_SIZE_HELP, GadgetBounds::new(18, 18, 82, 14), "Partitions")?
+    ui.add_button(SPLIT_LESS, "<", GadgetBounds::new(110, 16, 30, 16))?
+    ui.add_text(SPLIT_COUNT, GadgetBounds::new(148, 18, 44, 14), "4")?
+    ui.add_button(SPLIT_MORE, ">", GadgetBounds::new(200, 16, 30, 16))?
+    ui.add_text(SPLIT_PREVIEW, GadgetBounds::new(18, 44, 270, 14), "")?
+    ui.add_button(SPLIT_OK, "OK", GadgetBounds::new(18, 72, 80, 16))?
+    ui.add_button(SPLIT_CANCEL, "Cancel", GadgetBounds::new(210, 72, 80, 16))?
+    var menus = ui.menu_builder()
+    var window_menu = menus.add_menu("Window")
+    window_menu.add_item("Cancel").with_command_key((u8)'Q')
+    let menu = menus.build()?
+    let window = ui.build("Split Remaining Free Space", GadgetBounds::new(140, 90, 310, 124), menu)?
+    refresh_split_preview(&window, count, gap.cylinders(), model)
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close | GadToolsEvent::MenuPick(0u16, 0u16) | GadToolsEvent::GadgetUp(SPLIT_CANCEL, _) => return Result::Ok(Option::None),
+            GadToolsEvent::Refresh => window.refresh(),
+            GadToolsEvent::GadgetUp(SPLIT_LESS, _) => {
+                if count > 1u32 { count-- }
+                refresh_split_preview(&window, count, gap.cylinders(), model)
+            },
+            GadToolsEvent::GadgetUp(SPLIT_MORE, _) => {
+                if count < maximum { count++ }
+                refresh_split_preview(&window, count, gap.cylinders(), model)
+            },
+            GadToolsEvent::GadgetUp(SPLIT_OK, _) => return Result::Ok(Option::Some(count)),
+            _ => {},
+        }
+    }
+}
+
+fn set_control_enabled(window: &GadToolsWindow, id: u16, enabled: bool) {
+    let Option::Some(control) = window.control(id) else { return }
+    control.set_enabled(enabled)
+}
+
+fn refresh_file_system_rows(window: &var GadToolsWindow, pool: &FileSystemPool, selected: Option<u32>) -> Result<(), IntuitionError> {
+    if pool.is_empty() {
+        let empty = ["No filesystem handlers in this session"]
+        return window.replace_list(FS_LIST, &empty, Option::None)
+    }
+    var storage = [FixedString::<80>::new(); 8]
+    var views = [""; 8]
+    for index in 0u32..pool.len() {
+        let Option::Some(file_system) = pool.get(index) else { continue }
+        let dos_type = hex_string(file_system.dos_type())
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], dos_type.as_str())
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  v")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], file_system.version() >> 16u32)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], ".")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], file_system.version() & $FFFFu32)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "  ")
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append_u32(&var storage[index], (file_system.image().len() + 1023u32) / 1024u32)
+        return Result::Err(IntuitionError::GadgetCreateFailed) unless append(&var storage[index], "K")
+        views[index] = storage[index].as_str()
+    }
+    let Option::Some(used) = prefix(&views, pool.len()) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    return window.replace_list(FS_LIST, used, selected)
+}
+
+fn set_file_system_editor(window: &GadToolsWindow, pool: &FileSystemPool, selected: Option<u32>) {
+    let enabled = selected.is_some()
+    set_control_enabled(window, FS_DOS_TYPE, enabled)
+    set_control_enabled(window, FS_PRESET, enabled)
+    set_control_enabled(window, FS_REMOVE, enabled)
+    set_control_enabled(window, FS_APPLY, enabled)
+    let Option::Some(index) = selected else { return }
+    let Option::Some(file_system) = pool.get(index) else { return }
+    let value = hex_string(file_system.dos_type())
+    match window.string(FS_DOS_TYPE) {
+        Option::Some(control) => { let _ = control.set_value(value.as_str()) },
+        Option::None => {},
+    }
+    match window.cycle(FS_PRESET) {
+        Option::Some(control) => control.set_active(file_system_preset(file_system.dos_type())),
+        Option::None => {},
+    }
+}
+
+fn text_dialog(
+    parent: &GadToolsWindow,
+    title: Str,
+    label: Str,
+    initial: Str,
+    max_chars: u16
+) -> Result<Option<FixedString<256>>, IntuitionError> {
+    var ui = parent.child_builder()?
+    ui.add_string(TEXT_DIALOG_INPUT, label, GadgetBounds::new(112, 18, 300, 14), initial, max_chars)?
+    ui.add_button(TEXT_DIALOG_OK, "OK", GadgetBounds::new(18, 48, 80, 16))?
+    ui.add_button(TEXT_DIALOG_CANCEL, "Cancel", GadgetBounds::new(332, 48, 80, 16))?
+    var menus = ui.menu_builder()
+    var window_menu = menus.add_menu("Window")
+    window_menu.add_item("Cancel").with_command_key((u8)'Q')
+    let menu = menus.build()?
+    let window = ui.build(title, GadgetBounds::new(80, 54, 430, 98), menu)?
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close | GadToolsEvent::MenuPick(0u16, 0u16) | GadToolsEvent::GadgetUp(TEXT_DIALOG_CANCEL, _) => {
+                return Result::Ok(Option::None)
+            },
+            GadToolsEvent::Refresh => window.refresh(),
+            GadToolsEvent::GadgetUp(TEXT_DIALOG_OK, _) | GadToolsEvent::GadgetUp(TEXT_DIALOG_INPUT, _) => {
+                let Option::Some(control) = window.string(TEXT_DIALOG_INPUT) else { continue }
+                let Option::Some(value) = control.value() else { continue }
+                let Result::Ok(copy) = FixedString::<256>::new_from_str(value) else { continue }
+                return Result::Ok(Option::Some(copy))
+            },
+            _ => {},
+        }
+    }
+}
+
+fn choose_file(
+    parent: &GadToolsWindow,
+    title: Str,
+    initial_drawer: Str
+) -> Result<Option<FixedString<256>>, IntuitionError> {
+    let requester = match FileRequesterHandle::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return text_dialog(parent, title, "Full path", initial_drawer, 255u16),
+    }
+    let selected = match requester.choose(parent.handle(), title, initial_drawer, "", false) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            alert_on(parent.handle(), title, "Could not read the selected path.")
+            return Result::Ok(Option::None)
+        },
+    }
+    return match selected {
+        Option::Some(path) => match FixedString::<256>::new_from_str(path.as_str()) {
+            Result::Ok(copy) => Result::Ok(Option::Some(copy)),
+            Result::Err(_) => {
+                alert_on(parent.handle(), title, "The selected path is too long.")
+                Result::Ok(Option::None)
+            },
+        },
+        Option::None => Result::Ok(Option::None),
+    }
+}
+
+fn file_system_in_use(model: &RdbModel, dos_type: u32) -> bool {
+    for index in 0u32..model.partition_count() {
+        let Option::Some(partition) = model.partition(index) else { continue }
+        return true if partition.dos_type() == dos_type
+    }
+    return false
+}
+
+fn manage_file_systems(parent: &GadToolsWindow, pool: &var FileSystemPool, drivers: &ArrayVec<FixedCString<60>, 16>, model: &RdbModel) -> Result<bool, IntuitionError> {
+    var ui = parent.child_builder()?
+    let initial_rows = ["No filesystem handlers in this session"]
+    ui.add_list_view(FS_LIST, GadgetBounds::new(18, 18, 594, 88), &initial_rows, Option::None)?
+    ui.add_string(FS_DOS_TYPE, "DosType", GadgetBounds::new(86, 120, 110, 14), "0x00000000", 10u16)?
+    let presets = ["DOS\\0", "DOS\\1", "DOS\\2", "DOS\\3", "DOS\\4", "DOS\\5", "PFS\\3", "PDS\\3", "SFS\\0", "SFS\\2", "Custom"]
+    ui.add_cycle(FS_PRESET, "Preset", GadgetBounds::new(276, 120, 126, 14), &presets, 10u16)?
+
+    var driver_views = [""; 16]
+    for index in 0u32..drivers.len() {
+        let Option::Some(driver) = drivers.get(index) else { continue }
+        driver_views[index] = if driver.is_empty() { "Select driver" } else { driver.as_str() }
+    }
+    let Option::Some(driver_choices) = prefix(&driver_views, drivers.len()) else { return Result::Err(IntuitionError::GadgetCreateFailed) }
+    let unit_choices = ["0", "1", "2", "3", "4", "5", "6", "7"]
+    ui.add_cycle(FS_SOURCE_DRIVER, "Copy driver", GadgetBounds::new(478, 120, 134, 14), driver_choices, 0u16)?
+    ui.add_cycle(FS_SOURCE_UNIT, "Unit", GadgetBounds::new(478, 142, 70, 14), &unit_choices, 0u16)?
+    ui.add_button(FS_ADD, "Add file...", GadgetBounds::new(18, 166, 100, 16))?
+    ui.add_button(FS_COPY, "Copy disk", GadgetBounds::new(124, 166, 92, 16))?
+    ui.add_button(FS_REMOVE, "Remove", GadgetBounds::new(222, 166, 82, 16))?
+    ui.add_button(FS_APPLY, "Apply", GadgetBounds::new(310, 166, 82, 16))?
+    ui.add_button(FS_DONE, "Done", GadgetBounds::new(530, 166, 82, 16))?
+    var menus = ui.menu_builder()
+    var window_menu = menus.add_menu("Window")
+    window_menu.add_item("Done").with_command_key((u8)'Q')
+    let menu = menus.build()?
+    var window = ui.build("Filesystems", GadgetBounds::new(0, 24, 630, 208), menu)?
+
+    var selected: Option<u32> = if pool.is_empty() { Option::None } else { Option::Some(0u32) }
+    var source_driver = 0u32
+    var source_unit = 0u32
+    var changed = false
+    refresh_file_system_rows(&var window, pool, selected)?
+    set_file_system_editor(&window, pool, selected)
+    set_control_enabled(&window, FS_COPY, drivers.len() > 1u32)
+
+    forever {
+        match window.wait_event() {
+            GadToolsEvent::Close => { break },
+            GadToolsEvent::MenuPick(0u16, 0u16) => { break },
+            GadToolsEvent::Refresh => window.refresh(),
+            GadToolsEvent::GadgetUp(FS_DONE, _) => { break },
+            GadToolsEvent::GadgetUp(FS_SOURCE_DRIVER, value) => { source_driver = (u32)value },
+            GadToolsEvent::GadgetUp(FS_SOURCE_UNIT, value) => { source_unit = (u32)value },
+            GadToolsEvent::GadgetUp(FS_LIST, value) => {
+                if (u32)value < pool.len() {
+                    selected = Option::Some((u32)value)
+                    refresh_file_system_rows(&var window, pool, selected)?
+                    set_file_system_editor(&window, pool, selected)
+                }
+            },
+            GadToolsEvent::GadgetUp(FS_PRESET, value) => {
+                let Option::Some(index) = selected else { continue }
+                let Option::Some(file_system) = pool.get(index) else { continue }
+                let dos_type = preset_dos_type(value, file_system.dos_type())
+                if value < 10u16 && pool.set_dos_type(index, dos_type).is_ok() {
+                    changed = true
+                    refresh_file_system_rows(&var window, pool, selected)?
+                    set_file_system_editor(&window, pool, selected)
+                }
+            },
+            GadToolsEvent::GadgetUp(FS_APPLY, _) | GadToolsEvent::GadgetUp(FS_DOS_TYPE, _) => {
+                let Option::Some(index) = selected else { continue }
+                let Option::Some(control) = window.string(FS_DOS_TYPE) else { continue }
+                let Result::Ok(dos_type) = control.value().unwrap_or("").parse_hex() else {
+                    alert_on(window.handle(), "Filesystems", "Enter a hexadecimal DosType such as 0x50465303.")
+                    continue
+                }
+                if pool.set_dos_type(index, dos_type).is_ok() {
+                    changed = true
+                    refresh_file_system_rows(&var window, pool, selected)?
+                    set_file_system_editor(&window, pool, selected)
+                }
+            },
+            GadToolsEvent::GadgetUp(FS_ADD, _) => {
+                let selected_path = choose_file(&window, "Select a filesystem handler", "L:")?
+                let Option::Some(path) = selected_path else { continue }
+                let file_system = match load_file_system(path.as_str()) {
+                    Result::Ok(value) => value,
+                    Result::Err(error) => {
+                        alert_on(window.handle(), "Filesystems", error.message())
+                        continue
+                    },
+                }
+                match pool.add(file_system) {
+                    Result::Ok(index) => {
+                        selected = Option::Some(index)
+                        changed = true
+                        refresh_file_system_rows(&var window, pool, selected)?
+                        set_file_system_editor(&window, pool, selected)
+                    },
+                    Result::Err(_) => alert_on(window.handle(), "Filesystems", "The filesystem pool is full."),
+                }
+            },
+            GadToolsEvent::GadgetUp(FS_COPY, _) => {
+                let Option::Some(driver) = drivers.get(source_driver) else { continue }
+                if driver.is_empty() {
+                    alert_on(window.handle(), "Filesystems", "Select a source driver and unit.")
+                    continue
+                }
+                var device = match BlockDevice::open(driver.as_str(), source_unit) {
+                    Result::Ok(value) => value,
+                    Result::Err(_) => {
+                        alert_on(window.handle(), "Filesystems", "Could not open the source disk.")
+                        continue
+                    },
+                }
+                let source = match load_rdb(&var device) {
+                    Result::Ok(value) => value,
+                    Result::Err(_) => {
+                        alert_on(window.handle(), "Filesystems", "The source disk has no valid RDB.")
+                        continue
+                    },
+                }
+                let Option::Some(file_system) = source.file_system(0u32) else {
+                    alert_on(window.handle(), "Filesystems", "The source disk has no embedded filesystem.")
+                    continue
+                }
+                let Option::Some(copy) = file_system.clone() else {
+                    alert_on(window.handle(), "Filesystems", "Not enough memory to copy the filesystem.")
+                    continue
+                }
+                match pool.add(copy) {
+                    Result::Ok(index) => {
+                        selected = Option::Some(index)
+                        changed = true
+                        refresh_file_system_rows(&var window, pool, selected)?
+                        set_file_system_editor(&window, pool, selected)
+                    },
+                    Result::Err(_) => alert_on(window.handle(), "Filesystems", "The filesystem pool is full."),
+                }
+            },
+            GadToolsEvent::GadgetUp(FS_REMOVE, _) => {
+                let Option::Some(index) = selected else { continue }
+                let Option::Some(file_system) = pool.get(index) else { continue }
+                if file_system_in_use(model, file_system.dos_type()) && !confirm_on(window.handle(), "Filesystems", "A partition uses this filesystem type. Remove it anyway?") {
+                    continue
+                }
+                if pool.remove(index).is_ok() {
+                    changed = true
+                    if pool.is_empty() {
+                        selected = Option::None
+                    } else if index < pool.len() {
+                        selected = Option::Some(index)
+                    } else {
+                        selected = Option::Some(pool.len() - 1u32)
+                    }
+                    refresh_file_system_rows(&var window, pool, selected)?
+                    set_file_system_editor(&window, pool, selected)
+                }
+            },
+            _ => {},
+        }
+    }
+    return Result::Ok(changed)
+}
+
+fn save_model(window: &GadToolsWindow, disks: &ArrayVec<DiskEntry, 32>, disk_index: u32, model: &var RdbModel, pool: &FileSystemPool) -> bool {
+    let Option::Some(disk) = disks.get(disk_index) else { return false }
+    let identity = DeviceIdentity { driver: disk.driver.as_str(), unit: disk.unit }
+    match classify_live_device(&identity) {
+        DeviceLiveness::Boot => {
+            return false unless confirm_on(window.handle(), "Save", "WARNING: this is the boot device. Writing its RDB can corrupt the running system. Write anyway?")
+        },
+        DeviceLiveness::Mounted => {
+            return false unless confirm_on(window.handle(), "Save", "This disk has mounted volumes. Writing its RDB can disturb them. Proceed?")
+        },
+        DeviceLiveness::Clear => {},
+    }
+    return false unless confirm_on(window.handle(), "Save", "Write and verify the partition table? This overwrites the disk RDB.")
+    var device = match BlockDevice::open(disk.driver.as_str(), disk.unit) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            alert_on(window.handle(), "Save", "Could not open the block device.")
+            return false
+        },
+    }
+    if model.replace_used_file_systems(pool.entries()).is_err() {
+        alert_on(window.handle(), "Save", "Could not prepare the referenced filesystem handlers.")
+        return false
+    }
+    match write_rdb(&var device, model) {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            alert_on(window.handle(), "Save", "Writing the RDB failed.")
+            return false
+        },
+    }
+    let verified = match load_rdb(&var device) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            alert_on(window.handle(), "Save", "The RDB was written but read-back verification failed.")
+            return false
+        },
+    }
+    if verified.partition_count() != model.partition_count() {
+        alert_on(window.handle(), "Save", "The RDB read-back did not match the partition table.")
+        return false
+    }
+    for index in 0u32..model.partition_count() {
+        let Option::Some(expected) = model.partition(index) else { return false }
+        let Option::Some(actual) = verified.partition(index) else { return false }
+        if expected.low_cylinder() != actual.low_cylinder() || expected.high_cylinder() != actual.high_cylinder() || !expected.name().equals(actual.name()) {
+            alert_on(window.handle(), "Save", "The RDB read-back did not match the partition table.")
+            return false
+        }
+    }
+    alert_on(window.handle(), "Save", "Saved and verified.")
+    return true
+}
+
+fn update_action_state(window: &GadToolsWindow, has_driver: bool, has_disk: bool, has_model: bool, has_selection: bool, dirty: bool) {
+    set_control_enabled(window, SCAN, has_driver)
+    set_control_enabled(window, REFRESH, has_disk)
+    set_control_enabled(window, INIT, has_disk)
+    set_control_enabled(window, SAVE, has_model && dirty)
+    set_control_enabled(window, NEW, has_model)
+    set_control_enabled(window, SPLIT, has_disk)
+    set_control_enabled(window, DELETE, has_selection)
+    set_control_enabled(window, EDIT, has_selection)
+    set_control_enabled(window, RESIZE, has_selection)
+    set_control_enabled(window, FORMAT, has_selection)
+    set_control_enabled(window, FILE_SYSTEMS, has_model)
+    window.set_menu_enabled(MENU_PROJECT, PROJECT_SAVE, has_model && dirty)
+    window.set_menu_enabled(MENU_DISK, DISK_SCAN, has_driver)
+    window.set_menu_enabled(MENU_DISK, DISK_REFRESH, has_disk)
+    window.set_menu_enabled(MENU_DISK, DISK_INIT, has_disk)
+    window.set_menu_enabled(MENU_DISK, DISK_FILE_SYSTEMS, has_model)
+    window.set_menu_enabled(MENU_PARTITION, PART_NEW, has_model)
+    window.set_menu_enabled(MENU_PARTITION, PART_EDIT, has_selection)
+    window.set_menu_enabled(MENU_PARTITION, PART_DELETE, has_selection)
+    window.set_menu_enabled(MENU_PARTITION, PART_SPLIT, has_disk)
+    window.set_menu_enabled(MENU_PARTITION, PART_RESIZE, has_selection)
+    window.set_menu_enabled(MENU_PARTITION, PART_FORMAT, has_selection)
+}
+
+fn build_window() -> Result<GadToolsWindow, IntuitionError> {
+    var ui = GadToolsBuilder::workbench_or_own()?
+    let no_drivers = ["Loading drivers..."]
+    let no_units = ["Press Scan"]
+    let no_partitions = ["Select a device"]
+    ui.add_cycle(DEVICE, "Driver", GadgetBounds::new(70, 18, 440, 14), &no_drivers, 0u16)?
+    ui.add_button(LOAD_DRIVER, "Load...", GadgetBounds::new(524, 18, 88, 14))?
+    ui.add_cycle(UNIT, "Unit", GadgetBounds::new(70, 40, 440, 14), &no_units, 0u16)?
+    ui.add_button(SCAN, "Scan", GadgetBounds::new(524, 40, 88, 14))?
+    ui.add_button(FILE_SYSTEMS, "Filesystems...", GadgetBounds::new(492, 62, 120, 14))?
+    ui.add_list_view(PARTITIONS, GadgetBounds::new(18, 112, 594, 74), &no_partitions, Option::None)?
+    ui.add_button(NEW, "New", GadgetBounds::new(18, 194, 62, 16))?
+    ui.add_button(EDIT, "Edit...", GadgetBounds::new(86, 194, 72, 16))?
+    ui.add_button(DELETE, "Delete", GadgetBounds::new(164, 194, 72, 16))?
+    ui.add_button(SPLIT, "Split...", GadgetBounds::new(242, 194, 74, 16))?
+    ui.add_button(RESIZE, "Resize...", GadgetBounds::new(322, 194, 88, 16))?
+    ui.add_button(FORMAT, "Format...", GadgetBounds::new(416, 194, 92, 16))?
+    ui.add_text(STATUS, GadgetBounds::new(18, 222, 390, 12), "Status: ready")?
+    ui.add_button(REFRESH, "Refresh", GadgetBounds::new(416, 220, 92, 16))?
+    ui.add_button(SAVE, "Save", GadgetBounds::new(514, 220, 98, 16))?
+
+    var menus = ui.menu_builder()
+    var project = menus.add_menu("Project")
+    project.add_item("About HDPart...")
+    project.add_separator()
+    project.add_item("Save").with_command_key((u8)'S')
+    project.add_separator()
+    project.add_item("Quit").with_command_key((u8)'Q')
+    var disk = menus.add_menu("Disk")
+    disk.add_item("Scan").with_command_key((u8)'K')
+    disk.add_item("Load Driver...").with_command_key((u8)'L')
+    disk.add_separator()
+    disk.add_item("Refresh").with_command_key((u8)'F')
+    disk.add_item("Init Disk...").with_command_key((u8)'I')
+    disk.add_item("Filesystems...").with_command_key((u8)'Y')
+    var partition = menus.add_menu("Partition")
+    partition.add_item("New").with_command_key((u8)'N')
+    partition.add_item("Edit...").with_command_key((u8)'E')
+    partition.add_item("Delete").with_command_key((u8)'D')
+    partition.add_separator()
+    partition.add_item("Split...").with_command_key((u8)'T')
+    partition.add_item("Resize...").with_command_key((u8)'R')
+    partition.add_item("Format...").with_command_key((u8)'O')
+    let menu = menus.build()?
+    return ui.build("HDPart 0.9.1 — Novus", GadgetBounds::new(0, 11, 630, 258), menu)
+}
+
+fn run() -> Result<(), IntuitionError> {
+    var window = build_window()?
+    var drivers = known_drivers()
+    var selected_driver = 0u32
+    var disks = ArrayVec::<DiskEntry, 32>::new()
+    refresh_driver_choices(&var window, &drivers, 0u16)?
+    refresh_unit_choices(&var window, &disks)?
+    var selected_disk = 0u32
+    var selected_partition: Option<u32> = Option::None
+    var model: Option<RdbModel> = Option::None
+    var file_system_pool = FileSystemPool::new()
+    var dirty = false
+
+    clear_partitions(&var window)?
+    set_status(&window, "Status: select a driver, then press Scan")
+
+    forever {
+        update_action_state(&window, selected_driver > 0u32, !disks.is_empty(), model.is_some(), selected_partition.is_some(), dirty)
+        let event = window.wait_event()
+        var action = 0u16
+        var code = 0u16
+        match event {
+            GadToolsEvent::Close => { action = QUIT },
+            GadToolsEvent::Refresh => {
+                window.refresh()
+                match &model {
+                    Option::Some(&current) => draw_disk_map(&window, current, selected_partition),
+                    Option::None => clear_disk_map(&window),
+                }
+            },
+            GadToolsEvent::MenuPick(MENU_PROJECT, PROJECT_QUIT) => { action = QUIT },
+            GadToolsEvent::MenuPick(MENU_PROJECT, PROJECT_ABOUT) => {
+                alert_on(window.handle(), "About HDPart", "HDPart 0.9.1\nA safe RDB partition editor written in Novus.")
+            },
+            GadToolsEvent::MenuPick(MENU_PROJECT, PROJECT_SAVE) => { action = SAVE },
+            GadToolsEvent::MenuPick(MENU_DISK, DISK_SCAN) => { action = SCAN },
+            GadToolsEvent::MenuPick(MENU_DISK, DISK_REFRESH) => { action = REFRESH },
+            GadToolsEvent::MenuPick(MENU_DISK, DISK_INIT) => { action = INIT },
+            GadToolsEvent::MenuPick(MENU_DISK, DISK_FILE_SYSTEMS) => { action = FILE_SYSTEMS },
+            GadToolsEvent::MenuPick(MENU_DISK, DISK_LOAD_DRIVER) => { action = LOAD_DRIVER },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_NEW) => { action = NEW },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_EDIT) => { action = EDIT },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_DELETE) => { action = DELETE },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_SPLIT) => { action = SPLIT },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_RESIZE) => { action = RESIZE },
+            GadToolsEvent::MenuPick(MENU_PARTITION, PART_FORMAT) => { action = FORMAT },
+            GadToolsEvent::MouseButton(x, y, true) => {
+                let Option::Some(&current) = &model else { continue }
+                match partition_at(current, x, y) {
+                    Option::Some(index) => {
+                        action = PARTITIONS
+                        code = partition_event_code(index)
+                    },
+                    Option::None => {},
+                }
+            },
+            GadToolsEvent::GadgetUp(id, value) => {
+                action = id
+                code = value
+            },
+            _ => {},
+        }
+
+        if action == QUIT {
+            if !dirty { break }
+            match choice_on(window.handle(), "Unsaved Changes", "Save the partition table before closing?", "Save|Discard|Cancel") {
+                1 => {
+                    let Option::Some(&var current) = &var model else { continue }
+                    continue unless save_model(&window, &disks, selected_disk, current, &file_system_pool)
+                    break
+                },
+                2 => { break },
+                _ => { continue },
+            }
+        }
+
+        let discards_model = action == SCAN || action == LOAD_DRIVER ||
+            (action == DEVICE && (u32)code != selected_driver) ||
+            (action == UNIT && (u32)code != selected_disk)
+        if dirty && discards_model && !confirm_on(window.handle(), "Unsaved Changes", "Discard unsaved changes and switch disks?") {
+            match window.cycle(if action == DEVICE { DEVICE } else { UNIT }) {
+                Option::Some(control) => control.set_active(gadget_index(if action == DEVICE { selected_driver } else { selected_disk })),
+                Option::None => {},
+            }
+            continue
+        }
+
+        if action == DEVICE {
+            selected_driver = (u32)code
+            disks = ArrayVec::<DiskEntry, 32>::new()
+            refresh_unit_choices(&var window, &disks)?
+            selected_disk = 0u32
+            selected_partition = Option::None
+            model = Option::None
+            dirty = false
+            clear_partitions(&var window)?
+            set_status(&window, if selected_driver == 0u32 { "Status: select a driver, then press Scan" } else { "Status: press Scan to query this driver" })
+        }
+
+        if action == REFRESH {
+            if dirty && !confirm_on(window.handle(), "Refresh", "Discard unsaved changes and reread this disk?") { continue }
+            action = UNIT
+            code = gadget_index(selected_disk)
+        }
+
+        if action == SCAN {
+            let Option::Some(driver) = drivers.get(selected_driver) else { continue }
+            continue if driver.is_empty()
+            disks = scan_driver(driver.as_str())
+            selected_disk = 0u32
+            selected_partition = Option::None
+            model = Option::None
+            dirty = false
+            refresh_unit_choices(&var window, &disks)?
+            if disks.is_empty() {
+                clear_partitions(&var window)?
+                set_status(&window, "Status: no units responded on this driver")
+            } else {
+                action = UNIT
+                code = 0u16
+            }
+        }
+
+        if action == UNIT {
+            selected_disk = (u32)code
+            selected_partition = Option::None
+            dirty = false
+            let Option::Some(disk) = disks.get(selected_disk) else { continue }
+            var device = match BlockDevice::open(disk.driver.as_str(), disk.unit) {
+                Result::Ok(value) => value,
+                Result::Err(_) => {
+                    clear_partitions(&var window)?
+                    set_status(&window, "Status: could not open device")
+                    model = Option::None
+                    continue
+                },
+            }
+            match load_rdb(&var device) {
+                Result::Ok(value) => {
+                    let _ = file_system_pool.merge(&value)
+                    refresh_partitions(&var window, &value, Option::None)?
+                    set_status(&window, "Status: RDB loaded")
+                    model = Option::Some(value)
+                },
+                Result::Err(_) => {
+                    let blank_model = disk.model()
+                    refresh_partitions(&var window, &blank_model, Option::None)?
+                    set_status(&window, "Status: blank disk; changes are not written until Save")
+                    model = Option::Some(blank_model)
+                },
+            }
+        }
+
+        if action == PARTITIONS {
+            selected_partition = Option::Some((u32)code)
+            let Option::Some(&current) = &model else { continue }
+            refresh_partitions(&var window, current, selected_partition)?
+        }
+
+        if action == INIT {
+            let Option::Some(disk) = disks.get(selected_disk) else { continue }
+            continue unless confirm_on(window.handle(), "Init Disk", "Replace the in-memory partition table with an empty one? Nothing is written until Save.")
+            model = Option::Some(disk.model())
+            selected_partition = Option::None
+            let Option::Some(&current) = &model else { continue }
+            refresh_partitions(&var window, current, Option::None)?
+            set_status(&window, "Status: new empty RDB")
+            dirty = true
+        }
+
+        if action == NEW {
+            let Option::Some(&var current) = &var model else { continue }
+            match current.largest_free_gap() {
+                Option::Some(gap) => {
+                    let name = current.next_partition_name()
+                    let previous_selection: Option<u32> = match &selected_partition {
+                        Option::Some(&value) => Option::Some(*value),
+                        Option::None => Option::None,
+                    }
+                    let previous_dirty = dirty
+                    match current.add_partition_cylinders(name.as_str(), gap.start(), gap.end(), DOS_TYPE_FFS_INTL) {
+                    Result::Ok(index) => {
+                        selected_partition = Option::Some(index)
+                        refresh_partitions(&var window, current, selected_partition)?
+                        if partition_editor(&window, current, index, &file_system_pool)? {
+                            refresh_partitions(&var window, current, selected_partition)?
+                            set_status(&window, "Status: partition added; Save to apply")
+                            dirty = true
+                        } else {
+                            let _ = current.delete_partition(index)
+                            selected_partition = previous_selection
+                            dirty = previous_dirty
+                            refresh_partitions(&var window, current, selected_partition)?
+                        }
+                    },
+                    Result::Err(_) => alert_on(window.handle(), "New Partition", "The partition does not fit or its name is invalid."),
+                    }
+                },
+                Option::None => alert_on(window.handle(), "New Partition", "There is no free space on this disk."),
+            }
+        }
+
+        if action == EDIT {
+            let Option::Some(index) = selected_partition else { continue }
+            let Option::Some(&var current) = &var model else { continue }
+            if partition_editor(&window, current, index, &file_system_pool)? {
+                refresh_partitions(&var window, current, selected_partition)?
+                set_status(&window, "Status: partition updated; Save to apply")
+                dirty = true
+            }
+        }
+
+        if action == DELETE {
+            let Option::Some(index) = selected_partition else { continue }
+            continue unless confirm_on(window.handle(), "Delete Partition", "Remove the selected partition from the in-memory table? Save applies the change.")
+            let Option::Some(&var current) = &var model else { continue }
+            match current.delete_partition((u32)index) {
+                Result::Ok(_) => {
+                    selected_partition = Option::None
+                    refresh_partitions(&var window, current, Option::None)?
+                    set_status(&window, "Status: partition removed; Save to apply")
+                    dirty = true
+                },
+                Result::Err(_) => {},
+            }
+        }
+
+        if action == RESIZE {
+            let Option::Some(index) = selected_partition else { continue }
+            let Option::Some(&var current) = &var model else { continue }
+            if resize_partition_dialog(&window, current, index)? {
+                refresh_partitions(&var window, current, selected_partition)?
+                set_status(&window, "Status: partition resized; Save to apply")
+                dirty = true
+            }
+        }
+
+        if action == SPLIT {
+            let Option::Some(&var current) = &var model else { continue }
+            let Option::Some(count) = split_dialog(&window, current)? else { continue }
+            match current.split_largest_gap(count, DOS_TYPE_FFS_INTL) {
+                Result::Ok(_) => {
+                    selected_partition = Option::None
+                    refresh_partitions(&var window, current, Option::None)?
+                    set_status(&window, "Status: free space split; Save to apply")
+                    dirty = true
+                },
+                Result::Err(_) => alert_on(window.handle(), "Split", "The free area cannot fit that many partitions."),
+            }
+        }
+        if action == FORMAT {
+            if dirty {
+                alert_on(window.handle(), "Format", "Save the partition table first, then format.")
+                continue
+            }
+            let Option::Some(index) = selected_partition else { continue }
+            let Option::Some(&current) = &model else { continue }
+            let Option::Some(partition) = current.partition(index) else { continue }
+            let Option::Some(disk) = disks.get(selected_disk) else { continue }
+            let identity = DeviceIdentity { driver: disk.driver.as_str(), unit: disk.unit }
+            if matches!(classify_live_device(&identity), DeviceLiveness::Boot) {
+                alert_on(window.handle(), "Format", "This is the boot device. Boot from another disk before formatting it.")
+                continue
+            }
+            var warning = FixedString::<256>::new()
+            let _ = warning.push_str("Format ")
+            let _ = warning.push_str(partition.name())
+            let _ = warning.push_str(" into an empty volume?")
+            match mounted_partition_name(&identity, partition.low_cylinder(), partition.high_cylinder()) {
+                Option::Some(name) => {
+                    let _ = warning.push_str("\nIt is mounted as ")
+                    let _ = warning.push_str(name.as_str())
+                    let _ = warning.push_str(": and will be reformatted.")
+                },
+                Option::None => {},
+            }
+            let _ = warning.push_str("\nAll data on it is lost. Proceed?")
+            continue unless confirm_on(window.handle(), "Format", warning.as_str())
+            let volume_result = text_dialog(&window, "Volume name", "Volume name", partition.name(), 31u16)?
+            match volume_result {
+                Option::Some(chosen_volume) => match format_partition(disk.driver.as_str(), disk.unit, current, index, chosen_volume.as_str()) {
+                    Result::Ok(_) => set_status(&window, "Status: partition formatted"),
+                    Result::Err(error) => alert_on(window.handle(), "Format", error.message()),
+                },
+                Option::None => {},
+            }
+        }
+        if action == FILE_SYSTEMS {
+            let Option::Some(&current) = &model else { continue }
+            match manage_file_systems(&window, &var file_system_pool, &drivers, current) {
+                Result::Ok(true) => {
+                    dirty = true
+                    set_status(&window, "Status: filesystem pool changed; Save to apply")
+                },
+                Result::Ok(false) => {},
+                Result::Err(_) => alert_on(window.handle(), "Filesystems", "Could not open the filesystem manager."),
+            }
+        }
+
+        if action == LOAD_DRIVER {
+            let selected = choose_file(&window, "Select a device driver", "DEVS:")?
+            let Option::Some(path) = selected else { continue }
+            let driver = match load_device_driver(path.as_str()) {
+                Result::Ok(value) => value,
+                Result::Err(error) => {
+                    alert_on(window.handle(), "Driver", error.message())
+                    continue
+                },
+            }
+            let Result::Ok(driver_name) = FixedCString::<60>::new_from_str(driver.as_str()) else {
+                alert_on(window.handle(), "Driver", "The loaded device name is too long.")
+                continue
+            }
+            selected_driver = add_driver(&var drivers, driver_name)
+            refresh_driver_choices(&var window, &drivers, gadget_index(selected_driver))?
+            disks = ArrayVec::<DiskEntry, 32>::new()
+            refresh_unit_choices(&var window, &disks)?
+            selected_disk = 0u32
+            selected_partition = Option::None
+            model = Option::None
+            dirty = false
+            clear_partitions(&var window)?
+            set_status(&window, "Status: driver loaded; press Scan")
+        }
+
+        if action == SAVE {
+            let Option::Some(&var current) = &var model else { continue }
+            if save_model(&window, &disks, selected_disk, current, &file_system_pool) {
+                dirty = false
+                set_status(&window, "Status: saved and verified")
+            }
+        }
+    }
+
+    return Result::Ok(())
+}
+
+pub fn main() -> i32 {
+    return run_scan() if command_line().trim().eq_ignore_case("scan")
+    return match run() {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 20,
+    }
+}

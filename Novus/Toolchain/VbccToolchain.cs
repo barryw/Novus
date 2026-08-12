@@ -12,15 +12,17 @@ public class VbccToolchain
 {
     private readonly string _vbccPath;
     private readonly string _ndkPath;
+    private readonly bool _verbose;
 
     // Infrastructure version - increment when making breaking changes to stubs/runtime
     // This is separate from CODEGEN_VERSION (which is for C code generation)
     private const int INFRASTRUCTURE_VERSION = 1;
 
-    public VbccToolchain(string vbccPath, string ndkPath)
+    public VbccToolchain(string vbccPath, string ndkPath, bool verbose = false)
     {
         _vbccPath = vbccPath;
         _ndkPath = ndkPath;
+        _verbose = verbose;
 
         if (!Directory.Exists(_vbccPath))
             throw new DirectoryNotFoundException($"VBCC path not found: {_vbccPath}");
@@ -179,6 +181,8 @@ public class VbccToolchain
         {
             // Release mode: strip symbols for smaller binaries
             args.Insert(1, "-s");   // Strip all symbols
+            if (_verbose)
+                args.Insert(1, "-M"); // Keep a size map when explicitly diagnosing a build
         }
 
         // CRITICAL: Set MEMF_CHIP flag on DATA_C section so AmigaOS loader
@@ -1312,7 +1316,7 @@ public class VbccToolchain
                 Console.WriteLine($"  → Map file saved: {Path.GetFileName(mapFilePath)}");
             }
 
-            if (error.Length > 0)
+            if (error.Length > 0 && (_verbose || exitCode != 0))
                 Console.Error.WriteLine(error.ToString());
 
             return exitCode == 0;
@@ -1387,10 +1391,10 @@ public class VbccToolchain
 
             var exitCode = process.ExitCode;
 
-            if (output.Length > 0)
+            if (output.Length > 0 && (_verbose || exitCode != 0))
                 Console.WriteLine(output.ToString());
 
-            if (error.Length > 0)
+            if (error.Length > 0 && (_verbose || exitCode != 0))
                 Console.Error.WriteLine(error.ToString());
 
             return exitCode == 0;

@@ -1,0 +1,45 @@
+// First HDPart UI-01 slice: static text, owner-tied state access, and event values.
+
+from std::core import Option, Result
+from std::error::errors import IntuitionError
+from std::test::test import expect_true
+from std::ui::gadtools import GadgetBounds, StaticGadget, StaticGadToolsUi, StaticMenuEntry
+
+const STATUS: u16 = 1
+const QUIT: u16 = 2
+
+static GADGETS: [StaticGadget] = [
+    StaticGadget::text(STATUS, "Status: no disk selected", 12, 28, 240, 12),
+    StaticGadget::button(QUIT, "Quit", 182, 48, 70, 16),
+]
+
+static MENUS: [StaticMenuEntry] = [
+    StaticMenuEntry::title("Project"),
+    StaticMenuEntry::item("Quit", "Q"),
+    StaticMenuEntry::end(),
+]
+
+static UI: StaticGadToolsUi = StaticGadToolsUi {
+    title: "HDPart UI state probe",
+    bounds: GadgetBounds { x: 40, y: 30, width: 270, height: 92 },
+    gadgets: GADGETS,
+    gadget_count: 2u32,
+    menus: MENUS,
+}
+
+fn run_static_ui() -> Result<(), IntuitionError> {
+    let window = UI.open()?
+
+    // Lookup is owner-tied: this handle cannot outlive `window`.
+    match window.control(QUIT) {
+        Option::Some(control) => control.set_enabled(true),
+        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+    }
+
+    return Result::Ok(())
+}
+
+@test("static HDPart UI opens and closes safely")
+pub fn test_static_ui_state() {
+    expect_true(run_static_ui().is_ok(), "static controls open and close safely")
+}

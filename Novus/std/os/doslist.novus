@@ -1,0 +1,204 @@
+// Safe, read-only traversal of AmigaDOS device entries.
+
+from std::core import Drop, Error, Iterator, Option, Result
+from std::strings::core import CStr, Str
+from std::os::bptr import BPtr, BPtrError
+from std::ffi::amiga_consts import LDF_DEVICES, LDF_READ
+from std::ffi::amiga_structs import DeviceNode, DevProc, DosEnvec, DosList, FileSysStartupMsg
+from std::ffi::dos import FreeDeviceProc, GetDeviceProc, LockDosList, NextDosEntry, UnLockDosList
+from std::ffi::exec import TypeOfMem
+
+pub enum DosListError {
+    LockFailed,
+    ResolveFailed,
+}
+
+impl DosListError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            DosListError::LockFailed => "Could not lock the AmigaDOS device list",
+            DosListError::ResolveFailed => "Could not resolve the AmigaDOS device process",
+        }
+    }
+}
+
+impl Error for DosListError {
+    fn message(&self) -> *u8 {
+        return DosListError::message(self)
+    }
+}
+
+/// Owns a read lock on the DOS device list.
+pub struct DosDeviceList {
+    head: *DosList,
+    flags: u32,
+}
+
+impl DosDeviceList {
+    pub fn lock() -> Result<DosDeviceList, DosListError> {
+        let flags = LDF_DEVICES | LDF_READ
+        let head = LockDosList(flags)
+        if head == null {
+            return Result::Err(DosListError::LockFailed)
+        }
+        return Result::Ok(DosDeviceList { head: head, flags: flags })
+    }
+
+    pub fn iter(&self) -> DosDeviceIter {
+        return DosDeviceIter { owner: self, cursor: self.head, visited: 0u32 }
+    }
+}
+
+impl Drop for DosDeviceList {
+    fn drop(&var self) {
+        if self.head != null {
+            UnLockDosList(self.flags)
+            self.head = null
+        }
+    }
+}
+
+pub struct DosDeviceIter {
+    owner: &DosDeviceList,
+    cursor: *DosList,
+    visited: u32,
+}
+
+pub struct DosDeviceEntry {
+    owner: &DosDeviceList,
+    entry: &DosList,
+}
+
+impl DosDeviceIter {
+    pub fn next(&var self) -> Option<DosDeviceEntry> {
+        // A corrupt list must not trap callers in an infinite traversal.
+        if self.visited >= 256u32 { return Option::None }
+        let next = NextDosEntry(self.cursor, LDF_DEVICES)
+        if next == null {
+            return Option::None
+        }
+        self.cursor = next
+        self.visited++
+        return Option::Some(DosDeviceEntry {
+            owner: self.owner,
+            entry: unsafe { &*next },
+        })
+    }
+}
+
+impl Iterator<DosDeviceEntry> for DosDeviceIter {
+    fn next(&var self) -> Option<DosDeviceEntry> {
+        return DosDeviceIter::next(self)
+    }
+}
+
+impl DosDeviceEntry {
+    pub fn is_handled_by(&self, process: &DeviceProcess) -> bool {
+        return self.entry.dol_Task != null && self.entry.dol_Task == process.process.dvp_Port
+    }
+
+    pub fn name(&self) -> Option<Str> {
+        let bptr = match BPtr::<u8>::from_raw(self.entry.dol_Name) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        if !bptr.is_addressable() {
+            return Option::None
+        }
+        let ptr = unsafe { bptr.as_ptr() }
+        let len = (u32)ptr[0]
+        if len > 0u32 && TypeOfMem(ptr + len) == 0u32 {
+            return Option::None
+        }
+        return Option::Some(unsafe { Str::new(&ptr[1], len) })
+    }
+
+    pub fn startup(&self) -> Option<FileSystemStartup> {
+        // A DLT_DEVICE DosList entry has the public DeviceNode layout.
+        let node = unsafe { &*((*DeviceNode)self.entry) }
+        let bptr = match BPtr::<FileSysStartupMsg>::from_raw(node.dn_Startup) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        match unsafe { bptr.borrow() } {
+            Option::Some(message) => return Option::Some(FileSystemStartup {
+                owner: self.owner,
+                message: message,
+            }),
+            Option::None => return Option::None,
+        }
+    }
+
+    /// Explicit lower-layer escape hatch; the DOS-list lock remains the owner.
+    pub fn handle(&self) -> &DeviceNode {
+        return unsafe { &*((*DeviceNode)self.entry) }
+    }
+}
+
+/// Owns the temporary DOS resources returned by GetDeviceProc().
+pub struct DeviceProcess {
+    process: *DevProc,
+}
+
+impl DeviceProcess {
+    pub fn resolve(name: CStr) -> Result<DeviceProcess, DosListError> {
+        let process = GetDeviceProc(name.as_ptr(), null)
+        if process == null {
+            return Result::Err(DosListError::ResolveFailed)
+        }
+        return Result::Ok(DeviceProcess { process: process })
+    }
+
+    /// Borrow the resolved handler port for lower-level packet operations.
+    pub fn port(&self) -> *MsgPort { return unsafe { (*self.process).dvp_Port } }
+}
+
+impl Drop for DeviceProcess {
+    fn drop(&var self) {
+        if self.process != null {
+            let process = self.process
+            self.process = null
+            FreeDeviceProc(process)
+        }
+    }
+}
+
+/// Borrowed, typed view of a DOS FileSysStartupMsg.
+pub struct FileSystemStartup {
+    owner: &DosDeviceList,
+    message: &FileSysStartupMsg,
+}
+
+impl FileSystemStartup {
+    pub fn unit(&self) -> u32 {
+        return self.message.fssm_Unit
+    }
+
+    pub fn flags(&self) -> u32 {
+        return self.message.fssm_Flags
+    }
+
+    pub fn device_name(&self) -> Option<Str> {
+        let bptr = match BPtr::<u8>::from_raw(self.message.fssm_Device) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        if !bptr.is_addressable() {
+            return Option::None
+        }
+        let ptr = unsafe { bptr.as_ptr() }
+        let len = (u32)ptr[0]
+        if len > 0u32 && TypeOfMem(ptr + len) == 0u32 {
+            return Option::None
+        }
+        return Option::Some(unsafe { Str::new(&ptr[1], len) })
+    }
+
+    pub fn environment(&self) -> Option<&DosEnvec> {
+        let bptr = match BPtr::<DosEnvec>::from_raw(self.message.fssm_Environ) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        return unsafe { bptr.borrow() }
+    }
+}

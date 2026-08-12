@@ -254,6 +254,26 @@ public class CompilationCacheTests : IDisposable
     }
 
     [Fact]
+    public void SourceGraphHash_ChangesWhenAnotherTargetRefreshesDependency()
+    {
+        var dependencyFile = CreateTestFile("pub fn value() -> i32 { 1 }", "shared.novus");
+        var mainFile = CreateTestFile("from shared import value", "app.novus");
+        var configHash = CompilationCache.ComputeConfigHash("68020", "auto", 1, "release");
+        var parseTree = CreateMockParseTree();
+
+        _cache.CacheCompilationResult(dependencyFile, parseTree, new IrModule(), [], [], configHash);
+        _cache.CacheCompilationResult(mainFile, parseTree, new IrModule(), [], [dependencyFile], configHash,
+            dependencyModules: [dependencyFile]);
+        var linkedGraph = _cache.ComputeSourceGraphHash([mainFile]);
+
+        File.WriteAllText(dependencyFile, "pub fn value() -> i32 { 2 }");
+        _cache.CacheCompilationResult(dependencyFile, parseTree, new IrModule(), [], [], configHash);
+
+        Assert.False(_cache.NeedsRecompilation(mainFile, configHash));
+        Assert.NotEqual(linkedGraph, _cache.ComputeSourceGraphHash([mainFile]));
+    }
+
+    [Fact]
     public void TraversalOnlyModule_ShouldNotInvalidateCachedIr()
     {
         var linkedModule = CreateTestFile("pub fn linked() { }", "linked.novus");

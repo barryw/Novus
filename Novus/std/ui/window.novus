@@ -39,20 +39,20 @@ from std::ffi::exec import GetMsg, ReplyMsg, WaitPort
 /// }
 /// ```
 pub struct RefreshGuard {
-    window: *Window,
+    window: &Window,
 }
 
 impl RefreshGuard {
     /// Create a new refresh guard and call BeginRefresh
     ///
     /// INTERNAL: This should only be called by parse_intui_message
-    fn new(win: *Window) -> RefreshGuard {
+    fn new(win: &Window) -> RefreshGuard {
         unsafe { BeginRefresh(win) }
         return RefreshGuard { window: win }
     }
 
     /// Get the window pointer for custom rendering
-    pub fn window(&self) -> *Window {
+    pub fn window(&self) -> &Window {
         return self.window
     }
 }
@@ -299,7 +299,9 @@ impl WindowHandle {
     /// This transfers ownership to the caller. The caller is responsible
     /// for draining messages and closing the window manually.
     pub fn into_raw(consuming self) -> *Window {
-        return self.window
+        let window = self.window
+        self.window = null
+        return window
     }
 
     /// Get the raw Window pointer for FFI calls
@@ -360,7 +362,7 @@ impl WindowHandle {
         unsafe {
             // Cast Message to IntuiMessage and extract event
             let imsg: *IntuiMessage = (*IntuiMessage)msg
-            let event = parse_intui_message(imsg)
+            let event = parse_intui_message(imsg, &*self.window)
 
             // CRITICAL: Reply BEFORE processing to avoid deadlocks
             ReplyMsg(msg)
@@ -385,7 +387,7 @@ impl WindowHandle {
         unsafe {
             // Cast Message to IntuiMessage and extract event
             let imsg: *IntuiMessage = (*IntuiMessage)msg
-            let event = parse_intui_message(imsg)
+            let event = parse_intui_message(imsg, &*self.window)
 
             // CRITICAL: Reply BEFORE processing to avoid deadlocks
             ReplyMsg(msg)
@@ -420,7 +422,7 @@ impl WindowHandle {
             TagItem { ti_Tag: WA_MinHeight, ti_Data: 100 },
             TagItem { ti_Tag: WA_MaxWidth, ti_Data: WA_SIZE_UNLIMITED },
             TagItem { ti_Tag: WA_MaxHeight, ti_Data: WA_SIZE_UNLIMITED },
-            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: WA_Flags, ti_Data: flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: idcmp },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
@@ -455,7 +457,7 @@ impl WindowHandle {
             TagItem { ti_Tag: WA_MinHeight, ti_Data: 100 },
             TagItem { ti_Tag: WA_MaxWidth, ti_Data: WA_SIZE_UNLIMITED },
             TagItem { ti_Tag: WA_MaxHeight, ti_Data: WA_SIZE_UNLIMITED },
-            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.ptr },
+            TagItem { ti_Tag: WA_Title, ti_Data: (u32)title.as_ptr() },
             TagItem { ti_Tag: WA_Flags, ti_Data: flags },
             TagItem { ti_Tag: WA_IDCMP, ti_Data: idcmp },
             TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
@@ -778,7 +780,7 @@ impl Drop for WindowHandle {
 ///
 /// OPTIMIZATION: Only extract fields that are needed for each event type.
 /// This avoids unnecessary memory reads on 68k where every access counts.
-fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
+fn parse_intui_message(msg: *IntuiMessage, owner: &Window) -> WindowEvent {
     // Always need the class to determine event type
     let class = unsafe { (*msg).Class }
 
@@ -795,12 +797,8 @@ fn parse_intui_message(msg: *IntuiMessage) -> WindowEvent {
             }
         },
         IDCMP_REFRESHWINDOW => {
-            // Only need IDCMPWindow for refresh guard
-            unsafe {
-                let win = (*msg).IDCMPWindow
-                let guard = RefreshGuard::new(win)
-                WindowEvent::Refresh(guard)
-            }
+            let guard = RefreshGuard::new(owner)
+            WindowEvent::Refresh(guard)
         },
         IDCMP_MOUSEMOVE => {
             // Only need mouse coordinates
@@ -933,34 +931,34 @@ impl WindowBuilder {
     ///
     /// NOTE: The title string must remain valid for the lifetime of the window.
     /// Use string literals or long-lived String allocations.
-    pub fn title(self, t: Str) -> WindowBuilder {
+    pub fn title(consuming self, t: Str) -> WindowBuilder {
         self.title_ptr = t.ptr
         return self
     }
 
     /// Set window position
-    pub fn position(self, x: i16, y: i16) -> WindowBuilder {
+    pub fn position(consuming self, x: i16, y: i16) -> WindowBuilder {
         self.left = x
         self.top = y
         return self
     }
 
     /// Set window size
-    pub fn size(self, w: i16, h: i16) -> WindowBuilder {
+    pub fn size(consuming self, w: i16, h: i16) -> WindowBuilder {
         self.width = w
         self.height = h
         return self
     }
 
     /// Set minimum window size
-    pub fn min_size(self, w: i16, h: i16) -> WindowBuilder {
+    pub fn min_size(consuming self, w: i16, h: i16) -> WindowBuilder {
         self.min_width = w
         self.min_height = h
         return self
     }
 
     /// Set maximum window size
-    pub fn max_size(self, w: i16, h: i16) -> WindowBuilder {
+    pub fn max_size(consuming self, w: i16, h: i16) -> WindowBuilder {
         self.max_width = w
         self.max_height = h
         return self
@@ -970,13 +968,13 @@ impl WindowBuilder {
     ///
     /// Pass a ScreenHandle's handle() method result to open on a custom screen.
     /// If not set, window opens on Workbench.
-    pub fn screen(self, s: *Screen) -> WindowBuilder {
+    pub fn screen(consuming self, s: *Screen) -> WindowBuilder {
         self.screen_ptr = s
         return self
     }
 
     /// Add close gadget (X button)
-    pub fn close_gadget(self, enabled: bool) -> WindowBuilder {
+    pub fn close_gadget(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.flags = self.flags | WFLG_CLOSEGADGET
         }
@@ -984,7 +982,7 @@ impl WindowBuilder {
     }
 
     /// Add drag bar for moving window
-    pub fn drag_bar(self, enabled: bool) -> WindowBuilder {
+    pub fn drag_bar(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.flags = self.flags | WFLG_DRAGBAR
         }
@@ -992,7 +990,7 @@ impl WindowBuilder {
     }
 
     /// Add depth gadget for screen-to-front/back
-    pub fn depth_gadget(self, enabled: bool) -> WindowBuilder {
+    pub fn depth_gadget(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.flags = self.flags | WFLG_DEPTHGADGET
         }
@@ -1000,7 +998,7 @@ impl WindowBuilder {
     }
 
     /// Add size gadget for resizing
-    pub fn size_gadget(self, enabled: bool) -> WindowBuilder {
+    pub fn size_gadget(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.flags = self.flags | WFLG_SIZEGADGET | WFLG_SIZEBRIGHT | WFLG_SIZEBBOTTOM
         }
@@ -1008,25 +1006,25 @@ impl WindowBuilder {
     }
 
     /// Make window borderless
-    pub fn borderless(self, enabled: bool) -> WindowBuilder {
+    pub fn borderless(consuming self, enabled: bool) -> WindowBuilder {
         self.borderless = enabled
         return self
     }
 
     /// Make window a backdrop (behind all other windows)
-    pub fn backdrop(self, enabled: bool) -> WindowBuilder {
+    pub fn backdrop(consuming self, enabled: bool) -> WindowBuilder {
         self.backdrop = enabled
         return self
     }
 
     /// Activate window on open
-    pub fn activate(self, enabled: bool) -> WindowBuilder {
+    pub fn activate(consuming self, enabled: bool) -> WindowBuilder {
         self.activate = enabled
         return self
     }
 
     /// Enable mouse move events
-    pub fn mouse_move(self, enabled: bool) -> WindowBuilder {
+    pub fn mouse_move(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_MOUSEMOVE
         }
@@ -1034,7 +1032,7 @@ impl WindowBuilder {
     }
 
     /// Enable mouse button events
-    pub fn mouse_buttons(self, enabled: bool) -> WindowBuilder {
+    pub fn mouse_buttons(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_MOUSEBUTTONS
         }
@@ -1042,7 +1040,7 @@ impl WindowBuilder {
     }
 
     /// Enable raw key events
-    pub fn raw_keys(self, enabled: bool) -> WindowBuilder {
+    pub fn raw_keys(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_RAWKEY
         }
@@ -1050,7 +1048,7 @@ impl WindowBuilder {
     }
 
     /// Enable vanilla key events (translated keypresses)
-    pub fn vanilla_keys(self, enabled: bool) -> WindowBuilder {
+    pub fn vanilla_keys(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_VANILLAKEY
         }
@@ -1058,7 +1056,7 @@ impl WindowBuilder {
     }
 
     /// Enable resize events
-    pub fn resize_events(self, enabled: bool) -> WindowBuilder {
+    pub fn resize_events(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_NEWSIZE
         }
@@ -1066,7 +1064,7 @@ impl WindowBuilder {
     }
 
     /// Enable refresh events (for GIMMEZEROZERO windows)
-    pub fn refresh_events(self, enabled: bool) -> WindowBuilder {
+    pub fn refresh_events(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_REFRESHWINDOW
         }
@@ -1074,7 +1072,7 @@ impl WindowBuilder {
     }
 
     /// Enable menu pick events
-    pub fn menu_events(self, enabled: bool) -> WindowBuilder {
+    pub fn menu_events(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_MENUPICK
         }
@@ -1082,7 +1080,7 @@ impl WindowBuilder {
     }
 
     /// Enable gadget events
-    pub fn gadget_events(self, enabled: bool) -> WindowBuilder {
+    pub fn gadget_events(consuming self, enabled: bool) -> WindowBuilder {
         if enabled {
             self.idcmp = self.idcmp | IDCMP_GADGETUP | IDCMP_GADGETDOWN
         }
@@ -1090,7 +1088,7 @@ impl WindowBuilder {
     }
 
     /// Set raw IDCMP flags directly
-    pub fn idcmp(self, flags: u32) -> WindowBuilder {
+    pub fn idcmp(consuming self, flags: u32) -> WindowBuilder {
         self.idcmp = flags
         return self
     }
@@ -1099,7 +1097,7 @@ impl WindowBuilder {
     ///
     /// Returns Err if window fails to open.
     @suppress("W0002", "Casting values to u32 for tags")
-    pub fn build(self) -> Result<WindowHandle, IntuitionError> {
+    pub fn build(consuming self) -> Result<WindowHandle, IntuitionError> {
         // Compute final flags
         var final_flags = self.flags
 

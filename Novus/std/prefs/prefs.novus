@@ -59,7 +59,7 @@ impl PrefsError {
 }
 
 impl From<DosError> for PrefsError {
-    fn convert(error: DosError) -> PrefsError {
+    fn convert(consuming error: DosError) -> PrefsError {
         return PrefsError::IoError(error)
     }
 }
@@ -215,7 +215,7 @@ impl Prefs {
         var file_result = OwnedFileHandle::open(env_path.as_str(), MODE_OLDFILE as i32)
         match file_result {
             Result::Ok(file) => {
-                return Prefs::parse_file(app_name, file)
+                return Prefs::parse_file(app_name, &file)
             },
             Result::Err(_) => {
                 // Try ENVARC: as fallback
@@ -236,7 +236,7 @@ impl Prefs {
                 var envarc_file_result = OwnedFileHandle::open(envarc_path.as_str(), MODE_OLDFILE as i32)
                 match envarc_file_result {
                     Result::Ok(file) => {
-                        return Prefs::parse_file(app_name, file)
+                        return Prefs::parse_file(app_name, &file)
                     },
                     Result::Err(_) => {
                         return Result::Err(PrefsError::NotFound)
@@ -247,7 +247,7 @@ impl Prefs {
     }
 
     /// Parse prefs from an open file handle
-    fn parse_file(app_name: Str, file: OwnedFileHandle) -> Result<(Prefs, u32), PrefsError> {
+    fn parse_file(app_name: Str, file: &OwnedFileHandle) -> Result<(Prefs, u32), PrefsError> {
         // Buffer for reading lines (max 1024 bytes per line)
         var buffer = [0u8; 1024]
         var line_num: u32 = 0
@@ -275,7 +275,7 @@ impl Prefs {
                                 line_num = line_num + 1u32
 
                                 // Create Str from buffer
-                                let line = Str::from_raw(&buffer[0], bytes_read)
+        let line = unsafe { Str::new(&buffer[0], bytes_read) }
                                 let trimmed = line.trim()
 
                                 // Process non-empty lines
@@ -802,7 +802,7 @@ impl Prefs {
     pub fn set_i32(&var self, key: Str, value: i32) -> Result<(), PrefsError> {
         var buf = [0u8; 16]
         let len = i32_to_str(value, &buf[0], 16)
-        let value_str = Str::from_raw(&buf[0], len)
+        let value_str = unsafe { Str::new(&buf[0], len) }
         return self.set_str(key, value_str)
     }
 
@@ -810,7 +810,7 @@ impl Prefs {
     pub fn set_u32(&var self, key: Str, value: u32) -> Result<(), PrefsError> {
         var buf = [0u8; 16]
         let len = u32_to_str(value, &buf[0], 16)
-        let value_str = Str::from_raw(&buf[0], len)
+        let value_str = unsafe { Str::new(&buf[0], len) }
         return self.set_str(key, value_str)
     }
 

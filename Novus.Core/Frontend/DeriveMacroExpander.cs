@@ -135,17 +135,20 @@ public class DeriveMacroExpander
                 // Load self.field
                 var selfVar = new IrVariable("self", selfPtrType);
                 var selfFieldVal = new IrVariable($"self_{field.Name}", field.Type);
+                function.LocalVariables.Add(new IrLocalVariable(selfFieldVal.Name, field.Type, false));
                 currentBlock.Instructions.Add(new IrMemberAccess(
                     selfFieldVal.Name, selfVar, field.Name, field.Type, field.Offset));
 
                 // Load other.field
                 var otherVar = new IrVariable("other", selfPtrType);
                 var otherFieldVal = new IrVariable($"other_{field.Name}", field.Type);
+                function.LocalVariables.Add(new IrLocalVariable(otherFieldVal.Name, field.Type, false));
                 currentBlock.Instructions.Add(new IrMemberAccess(
                     otherFieldVal.Name, otherVar, field.Name, field.Type, field.Offset));
 
                 // Compare fields
                 var cmpResult = new IrVariable($"cmp_{i}", boolType);
+                function.LocalVariables.Add(new IrLocalVariable(cmpResult.Name, boolType, false));
 
                 if (IsComparableType(field.Type))
                 {
@@ -226,6 +229,7 @@ public class DeriveMacroExpander
 
         // Initialize hash to FNV offset basis
         var hashVar = new IrVariable("hash", u32Type);
+        function.LocalVariables.Add(new IrLocalVariable(hashVar.Name, u32Type, true));
         entryBlock.Instructions.Add(new IrLocalDecl(hashVar.Name, u32Type, true,
             new IrConstant(unchecked((long)FnvOffsetBasis), u32Type)));
 
@@ -245,11 +249,13 @@ public class DeriveMacroExpander
                 // Load self.field
                 var selfVar = new IrVariable("self", selfPtrType);
                 var selfFieldVal = new IrVariable($"self_{field.Name}", field.Type);
+                function.LocalVariables.Add(new IrLocalVariable(selfFieldVal.Name, field.Type, false));
                 entryBlock.Instructions.Add(new IrMemberAccess(
                     selfFieldVal.Name, selfVar, field.Name, field.Type, field.Offset));
 
                 // Get field hash
                 var fieldHash = new IrVariable($"field_hash_{i}", u32Type);
+                function.LocalVariables.Add(new IrLocalVariable(fieldHash.Name, u32Type, false));
 
                 if (IsHashableType(field.Type))
                 {
@@ -275,10 +281,12 @@ public class DeriveMacroExpander
 
                 // FNV-1a: hash = hash XOR byte; hash = hash * prime
                 var xorResult = new IrVariable($"xor_{i}", u32Type);
+                function.LocalVariables.Add(new IrLocalVariable(xorResult.Name, u32Type, false));
                 entryBlock.Instructions.Add(new IrBinaryOp(
                     xorResult.Name, IrBinaryOp.OpKind.Xor, hashVar, fieldHash, u32Type));
 
                 var mulResult = new IrVariable($"mul_{i}", u32Type);
+                function.LocalVariables.Add(new IrLocalVariable(mulResult.Name, u32Type, false));
                 entryBlock.Instructions.Add(new IrBinaryOp(
                     mulResult.Name, IrBinaryOp.OpKind.Mul, xorResult, primeConst, u32Type));
 

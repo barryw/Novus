@@ -23,8 +23,8 @@ pub fn main() -> i32 {
     let result = WindowHandle::simple("Graphics Text Demo", 640, 400)
 
     match result {
-        Result::Ok(window) => {
-            let ctx_result = DrawContext::from_window(window.handle())
+        Result::Ok(var window) => {
+            let ctx_result = DrawContext::from_rastport(window.rastport())
 
             match ctx_result {
                 Result::Ok(ctx) => {

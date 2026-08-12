@@ -19,9 +19,9 @@ pub fn main() -> i32 {
     let result = WindowHandle::simple("Graphics Drawing Demo", 640, 400)
 
     match result {
-        Result::Ok(window) => {
+        Result::Ok(var window) => {
             // Create drawing context from window
-            let ctx_result = DrawContext::from_window(window.handle())
+            let ctx_result = DrawContext::from_rastport(window.rastport())
 
             match ctx_result {
                 Result::Ok(ctx) => {

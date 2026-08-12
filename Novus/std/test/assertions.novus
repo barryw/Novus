@@ -19,8 +19,8 @@
 //     let result = some_operation()
 //     expect_ok_i32(result, "operation should succeed")
 //
-//     let s = Str::from_cstr("hello").unwrap()
-//     expect_str_eq(s, Str::from_cstr("hello").unwrap(), "strings should match")
+//     let s: Str = "hello"
+//     expect_str_eq(s, "hello", "strings should match")
 // }
 // ```
 

@@ -1,0 +1,50 @@
+from std::core import Option, Result
+from std::memory::bytes import ByteReader
+from std::test::test import expect_true
+from rdb import DOS_TYPE_FFS_INTL, RdbError, RdbModel, RdbPartition, mb_to_cylinders, cylinders_to_mb
+
+fn rdb_model_is_correct() -> bool {
+    return false unless mb_to_cylinders(200, 1008, 512) == 407 && cylinders_to_mb(407, 1008, 512) == 200
+
+    var model = RdbModel::new(996, 16, 63)
+    return false unless model.cylinders() == 996 && model.low_cylinder() == 2 && model.high_cylinder() == 995 && model.rdb_blocks_high() == 2015
+
+    let Result::Ok(first) = model.add_partition("DH0", 200, DOS_TYPE_FFS_INTL) else { return false }
+    let Result::Ok(second) = model.add_partition("DH1", 200, DOS_TYPE_FFS_INTL) else { return false }
+    return false unless first == 0 && second == 1 && model.partition_count() == 2
+    return false unless model.next_partition_name().as_str().equals("DH2")
+
+    let Option::Some(partition) = model.partition(0) else { return false }
+    return false unless partition.name().equals("DH0") && partition.low_cylinder() == 2 && partition.high_cylinder() == 408
+    return false unless model.largest_free_gap().is_some()
+
+    var header = [0u8; 512]
+    return false if model.write_header(&var header).is_err()
+    {
+        let bytes = ByteReader::new(&header)
+        let Result::Ok(value) = bytes.read_be_u32(0u32) else { return false }
+        return false unless value == $5244534Bu32
+    }
+    let Result::Ok(parsed) = RdbModel::from_header(&header) else { return false }
+    return false unless parsed.cylinders() == 996 && parsed.heads() == 16 && parsed.sectors() == 63
+    return false unless parsed.low_cylinder() == 2 && parsed.high_cylinder() == 995
+
+    header[64]++
+    return false unless matches!(RdbModel::from_header(&header), Result::Err(RdbError::InvalidChecksum))
+
+    var part_block = [0u8; 512]
+    return false if partition.write_block(&model, $FFFFFFFFu32, &var part_block).is_err()
+    let Result::Ok(record) = RdbPartition::from_block(&part_block) else { return false }
+    let (parsed_partition, next) = record
+    return false unless parsed_partition.name().equals("DH0") && parsed_partition.low_cylinder() == 2 && parsed_partition.high_cylinder() == 408
+    return false unless parsed_partition.dos_type() == DOS_TYPE_FFS_INTL && next == $FFFFFFFFu32
+
+    part_block[128]++
+    return matches!(RdbPartition::from_block(&part_block), Result::Err(RdbError::InvalidChecksum))
+}
+
+#[stack_size(32768)]
+@test("RDB model reads and writes compatible blocks")
+pub fn test_rdb_model() {
+    expect_true(rdb_model_is_correct(), "RDB model remains internally consistent")
+}

@@ -578,22 +578,28 @@ public partial class IrBuilder
                     }
                 }
 
-                // Coercion 3: &[T; N] → Slice<T>
-                // When a pointer to an array is passed to a function expecting Slice<T>
+                // Coercion 3: &[T; N] → Slice<T>, &var [T; N] → MutSlice<T>
                 if (paramType is IrStructType sliceStruct &&
-                    sliceStruct.StructName == "Slice" &&
+                    (sliceStruct.StructName == "Slice" || sliceStruct.StructName == "MutSlice") &&
                     argValue.Type is IrPointerType ptrToArrayType &&
                     ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
                 {
                     // Get the 'ptr' field to extract the element type T from Slice<T>
                     var ptrField = sliceStruct.GetField("ptr");
-                    if (ptrField?.Type is IrPointerType slicePtrType)
+                    var sliceElementType = ptrField?.Type switch
+                    {
+                        IrPointerType pointer => pointer.PointeeType,
+                        IrReferenceType reference => reference.PointeeType,
+                        IrMutReferenceType reference => reference.PointeeType,
+                        _ => null
+                    };
+                    if (ptrField != null && sliceElementType != null)
                     {
                         // Verify array element type matches Slice element type
-                        if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                        if (sliceElementType.Equals(ptrArrayType.ElementType))
                         {
                             // Create pointer to array element (pointer to array decays to pointer to first element)
-                            var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+                            var arrayElemPtrType = ptrField.Type;
 
                             // Cast the pointer-to-array to a pointer-to-element
                             // *[T; N] → *T (decay to pointer to first element)
@@ -611,11 +617,7 @@ public partial class IrBuilder
 
                             var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
 
-                            // Slice structs containing pointers are passed by reference in C ABI
-                            // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
-                            // of the slice struct, not just the struct value itself
-                            var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
-                            arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                            arguments[i] = sliceValue;
                             continue;
                         }
                     }
@@ -647,8 +649,10 @@ public partial class IrBuilder
                         {
                             // Create Slice<T> from &[T; N]
                             // Get pointer to first element
-                            var elemPtrType = _typeInterner.GetPointerType(elementType);
-                            var ptrValue = new IrCastValue(argValue, argValue.Type, elemPtrType);
+                            var ptrField = monomorphizedSliceStruct.GetField("ptr");
+                            if (ptrField == null)
+                                continue;
+                            var ptrValue = new IrCastValue(argValue, argValue.Type, ptrField.Type);
 
                             // Create length constant
                             var lenValue = new IrConstant(actualArray.Length, IrIntType.U32);
@@ -1246,22 +1250,28 @@ public partial class IrBuilder
             var paramType = function.Parameters[i].Type;
             var argValue = arguments[i];
 
-            // Coerce &[T; N] → Slice<T>
-            // When a pointer to an array is passed to a function expecting Slice<T>
+            // Coerce &[T; N] → Slice<T>, &var [T; N] → MutSlice<T>
             if (paramType is IrStructType sliceStruct &&
-                sliceStruct.StructName == "Slice" &&
+                (sliceStruct.StructName == "Slice" || sliceStruct.StructName == "MutSlice") &&
                 argValue.Type is IrPointerType ptrToArrayType &&
                 ptrToArrayType.PointeeType is IrArrayType ptrArrayType)
             {
                 // Get the 'ptr' field to extract the element type T from Slice<T>
                 var ptrField = sliceStruct.GetField("ptr");
-                if (ptrField?.Type is IrPointerType slicePtrType)
+                var sliceElementType = ptrField?.Type switch
+                {
+                    IrPointerType pointer => pointer.PointeeType,
+                    IrReferenceType reference => reference.PointeeType,
+                    IrMutReferenceType reference => reference.PointeeType,
+                    _ => null
+                };
+                if (ptrField != null && sliceElementType != null)
                 {
                     // Verify array element type matches Slice element type
-                    if (slicePtrType.PointeeType.Equals(ptrArrayType.ElementType))
+                    if (sliceElementType.Equals(ptrArrayType.ElementType))
                     {
                         // Create pointer to array element (pointer to array decays to pointer to first element)
-                        var arrayElemPtrType = _typeInterner.GetPointerType(ptrArrayType.ElementType);
+                        var arrayElemPtrType = ptrField.Type;
 
                         // Cast the pointer-to-array to a pointer-to-element
                         // *[T; N] → *T (decay to pointer to first element)
@@ -1279,11 +1289,7 @@ public partial class IrBuilder
 
                         var sliceValue = new IrStructLiteral(sliceStruct, sliceFields);
 
-                        // Slice structs containing pointers are passed by reference in C ABI
-                        // (see CCodeGenerator.TypeContainsHeapData), so we need to create a borrow
-                        // of the slice struct, not just the struct value itself
-                        var sliceRefType = _typeInterner.GetReferenceType(sliceStruct);
-                        arguments[i] = new IrBorrowValue(sliceValue, sliceRefType, false);
+                        arguments[i] = sliceValue;
                         continue;
                     }
                 }
@@ -1510,8 +1516,7 @@ public partial class IrBuilder
             if (i < function.Parameters.Count)
             {
                 var param = function.Parameters[i];
-                // Only deactivate if parameter is NOT a reference (value parameters move ownership)
-                if (param.Type is not IrReferenceType && param.Type is not IrMutReferenceType)
+                if (param.IsConsuming)
                 {
                     DeactivateVariableDeferIfMove(arg);
                 }
@@ -2230,6 +2235,35 @@ public partial class IrBuilder
             }
         }
 
+        // Method arguments use the same array-borrow coercion as free functions.
+        for (int i = 1; i < arguments.Count && i < method.Parameters.Count; i++)
+        {
+            var paramType = method.Parameters[i].Type;
+            var argValue = arguments[i];
+            if (paramType is not IrStructType sliceStruct ||
+                (sliceStruct.StructName != "Slice" && sliceStruct.StructName != "MutSlice") ||
+                argValue.Type is not IrPointerType pointer ||
+                pointer.PointeeType is not IrArrayType arrayType)
+                continue;
+
+            var ptrField = sliceStruct.GetField("ptr");
+            var elementType = ptrField?.Type switch
+            {
+                IrPointerType ptr => ptr.PointeeType,
+                IrReferenceType reference => reference.PointeeType,
+                IrMutReferenceType reference => reference.PointeeType,
+                _ => null
+            };
+            if (ptrField == null || elementType == null || !elementType.Equals(arrayType.ElementType))
+                continue;
+
+            arguments[i] = new IrStructLiteral(sliceStruct, new Dictionary<string, IrValue>
+            {
+                { "ptr", new IrCastValue(argValue, argValue.Type, ptrField.Type) },
+                { "len", new IrConstant(arrayType.Length, IrIntType.U32) }
+            });
+        }
+
         // Validate argument count
         var nonVariadicCount = method.Parameters.Count(p => !p.IsVariadic);
         if (method.IsVariadic)
@@ -2482,8 +2516,11 @@ public partial class IrBuilder
             return null;
         }
 
-        // Visit the value expression
+        // Visit the value expression in the array's element-type context.
+        var savedExpectedType = _expectedType;
+        _expectedType = (_expectedType as IrArrayType)?.ElementType;
         var value = (IrValue)Visit(expressions[0])!;
+        _expectedType = savedExpectedType;
 
         // Visit the count expression - must be a constant
         var countExpr = (IrValue)Visit(expressions[1])!;
@@ -2765,10 +2802,48 @@ public partial class IrBuilder
     // Binary Expression Visitors
     // ========================================================================
 
+    private IrValue? VisitWithExpectedType(NovusParser.ExpressionContext expression, IrType? expectedType)
+    {
+        var savedExpectedType = _expectedType;
+        _expectedType = expectedType;
+        var value = Visit(expression) as IrValue;
+        _expectedType = savedExpectedType;
+        return value;
+    }
+
+    private (IrValue? Left, IrValue? Right) VisitBinaryOperands(
+        NovusParser.ExpressionContext leftExpression,
+        NovusParser.ExpressionContext rightExpression)
+    {
+        if (IsUnsuffixedIntegerLiteral(leftExpression))
+        {
+            var right = Visit(rightExpression) as IrValue;
+            return (VisitWithExpectedType(leftExpression, right?.Type), right);
+        }
+
+        var left = Visit(leftExpression) as IrValue;
+        return (left, VisitWithExpectedType(rightExpression, left?.Type));
+    }
+
+    private static bool IsUnsuffixedIntegerLiteral(NovusParser.ExpressionContext expression)
+    {
+        if (expression is not NovusParser.PrimaryExprContext primary)
+            return false;
+        var text = primary.primaryExpression() switch
+        {
+            NovusParser.IntegerLiteralContext literal => literal.INTEGER_LITERAL().GetText(),
+            NovusParser.BinaryLiteralContext literal => literal.BINARY_LITERAL().GetText(),
+            NovusParser.HexLiteralContext literal => literal.HEX_LITERAL().GetText(),
+            _ => null
+        };
+        return text != null && !(text.EndsWith("u8") || text.EndsWith("u16") ||
+            text.EndsWith("u32") || text.EndsWith("u64") || text.EndsWith("i8") ||
+            text.EndsWith("i16") || text.EndsWith("i32") || text.EndsWith("i64"));
+    }
+
     public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2796,8 +2871,7 @@ public partial class IrBuilder
 
     public override object? VisitShiftExpr([NotNull] NovusParser.ShiftExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2817,8 +2891,7 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseAndExpr([NotNull] NovusParser.BitwiseAndExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2835,8 +2908,7 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseXorExpr([NotNull] NovusParser.BitwiseXorExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2853,8 +2925,7 @@ public partial class IrBuilder
 
     public override object? VisitBitwiseOrExpr([NotNull] NovusParser.BitwiseOrExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2872,7 +2943,10 @@ public partial class IrBuilder
     public override object? VisitCastExpr([NotNull] NovusParser.CastExprContext context)
     {
         var targetType = ParseType(context.type());
+        var savedExpectedType = _expectedType;
+        _expectedType = null;
         var value = Visit(context.expression()) as IrValue;
+        _expectedType = savedExpectedType;
 
         // If child expression had an error, bail out
         if (value == null)
@@ -2915,7 +2989,10 @@ public partial class IrBuilder
 
     public override object? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
     {
+        var savedExpectedType = _expectedType;
+        _expectedType = null;
         var value = Visit(context.expression()) as IrValue;
+        _expectedType = savedExpectedType;
         var targetType = ParseType(context.type());
 
         // If child expression had an error, bail out
@@ -2958,8 +3035,7 @@ public partial class IrBuilder
 
     public override object? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -2993,8 +3069,7 @@ public partial class IrBuilder
 
     public override object? VisitComparisonExpr([NotNull] NovusParser.ComparisonExprContext context)
     {
-        var left = Visit(context.expression(0)) as IrValue;
-        var right = Visit(context.expression(1)) as IrValue;
+        var (left, right) = VisitBinaryOperands(context.expression(0), context.expression(1));
 
         // If either operand had an error, bail out
         if (left == null || right == null)
@@ -4415,7 +4490,8 @@ public partial class IrBuilder
         var stringLiteral = new IrStringLiteral(stringValue, label);
         StringLiterals.Add(stringLiteral);
 
-        // String literals now create Str struct instances: Str { ptr: *u8, len: u32 }
+        // String literals create static Str views. Their data lives in the program's
+        // read-only data section, so the reference is valid for the whole process.
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
@@ -4425,9 +4501,13 @@ public partial class IrBuilder
         }
 
         // Create struct literal with ptr and len fields
+        var ptrField = strType.GetField("ptr");
+        IrValue ptrValue = ptrField?.Type is IrReferenceType or IrMutReferenceType
+            ? new IrCastValue(stringLiteral, stringLiteral.Type, ptrField.Type)
+            : stringLiteral;
         var fieldValues = new Dictionary<string, IrValue>
         {
-            ["ptr"] = stringLiteral,  // IrStringLiteral is still *u8 pointer to data
+            ["ptr"] = ptrValue,
             ["len"] = new IrConstant(stringValue.Length, IrIntType.U32)  // Length without null terminator
         };
 

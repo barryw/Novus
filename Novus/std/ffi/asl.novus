@@ -24,7 +24,7 @@ extern pub fn FreeFileRequest(fileReq: *FileRequester)
 ///
 /// See also: AslRequest()
 @library("asl.library")
-extern pub fn RequestFile(fileReq: *FileRequester) -> i16
+extern pub fn RequestFile(fileReq: *FileRequester) -> i32
 /// Allocate an ASL requester. (V36)
 ///
 /// Allocates an ASL requester data structure of the specified type.
@@ -90,9 +90,9 @@ extern pub fn FreeAslRequest(requester: *u8)
 ///
 /// See also: AllocAslRequest(), FreeAslRequest()
 @library("asl.library")
-extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i16
+extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i32
 @library("asl.library")
-extern pub fn AslRequestTags(requester: *u8, tagList: u32, ...args) -> i16
+extern pub fn AslRequestTags(requester: *u8, tagList: u32, ...args) -> i32
 /// Attempt to abort an asl requester. (V44)
 ///
 /// The different types of asl requesters are modal (as of V44). Yet at times it

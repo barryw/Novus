@@ -190,6 +190,53 @@ public class CCodeGeneratorHelperTests
     }
 
     [Fact]
+    public void SharedTypesHeader_DefinesTrackdiskValueTypes()
+    {
+        var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());
+
+        Assert.Contains("#include <devices/trackdisk.h>", header);
+    }
+
+    [Fact]
+    public void SharedTypesHeader_DefinesDosValueTypes()
+    {
+        var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());
+
+        Assert.Contains("#include <dos/dosextens.h>", header);
+        Assert.Contains("#include <dos/filehandler.h>", header);
+        Assert.Contains("#include <resources/filesysres.h>", header);
+        Assert.Contains("typedef struct FileSysResource FileSysResource;", header);
+        Assert.Contains("typedef struct FileSysEntry FileSysEntry;", header);
+    }
+
+    [Fact]
+    public void Liveness_TracksStructFieldsNestedInEnumPayloads()
+    {
+        var payload = new IrStructType("Payload",
+        [
+            new IrStructField("first", IrIntType.U32),
+            new IrStructField("second", IrIntType.U32),
+        ]);
+        var result = new IrEnumType("Result", [new IrEnumVariant("Ok", 0, [payload])]);
+        var function = new IrFunction("snapshot", result);
+        var block = new IrBasicBlock("entry");
+        block.AddInstruction(new IrLocalDecl("%t0", IrIntType.U32, false, new IrConstant(1u, IrIntType.U32)));
+        block.AddInstruction(new IrLocalDecl("%t1", IrIntType.U32, false, new IrConstant(2u, IrIntType.U32)));
+        var fields = new Dictionary<string, IrValue>
+        {
+            ["first"] = new IrVariable("%t0", IrIntType.U32),
+            ["second"] = new IrVariable("%t1", IrIntType.U32),
+        };
+        block.AddInstruction(new IrReturn(new IrEnumValue(result, "Ok", 0,
+            [new IrStructLiteral(payload, fields)])));
+        function.BasicBlocks.Add(block);
+
+        var (slots, _) = new LivenessAnalysis(function).Analyze();
+
+        Assert.NotEqual(slots["%t0"], slots["%t1"]);
+    }
+
+    [Fact]
     public void GetCType_Enum_ReturnsEnumName()
     {
         var gen = CreateGenerator();

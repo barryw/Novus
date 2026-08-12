@@ -48,6 +48,12 @@ fn slice_length(values: Slice<i32>) -> u32 {
     return values.len
 }
 
+fn slice_sum(values: Slice<i32>) -> i32 {
+    var total = 0
+    for value in values { total += value }
+    return total
+}
+
 @test("struct literals methods and mutable receivers")
 pub fn foundation_structs() {
     var point = Point { x: 1, y: 2, z: 3 }
@@ -86,6 +92,7 @@ pub fn foundation_struct_arrays() {
 pub fn foundation_array_slice_coercion() {
     let values = [1, 2, 3, 4, 5]
     expect(slice_length(&values) == 5u32, "slice length")
+    expect(slice_sum(&values) == 15, "slice iteration")
 }
 
 @test("tuples return index and destructure")

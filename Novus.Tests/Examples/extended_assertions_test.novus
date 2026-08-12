@@ -23,9 +23,9 @@ from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC
 
 @test("String equality assertions")
 pub fn test_string_equality() {
-    let hello = Str::from_cstr("hello").unwrap()
-    let hello2 = Str::from_cstr("hello").unwrap()
-    let world = Str::from_cstr("world").unwrap()
+    let hello: Str = "hello"
+    let hello2: Str = "hello"
+    let world: Str = "world"
 
     expect_str_eq(hello, hello2, "identical strings should be equal")
     expect_str_ne(hello, world, "different strings should not be equal")
@@ -33,11 +33,11 @@ pub fn test_string_equality() {
 
 @test("String content assertions")
 pub fn test_string_content() {
-    let greeting = Str::from_cstr("Hello, World!").unwrap()
-    let hello = Str::from_cstr("Hello").unwrap()
-    let world = Str::from_cstr("World").unwrap()
-    let exclaim = Str::from_cstr("!").unwrap()
-    let missing = Str::from_cstr("xyz").unwrap()
+    let greeting: Str = "Hello, World!"
+    let hello: Str = "Hello"
+    let world: Str = "World"
+    let exclaim: Str = "!"
+    let missing: Str = "xyz"
 
     expect_str_contains(greeting, hello, "should contain 'Hello'")
     expect_str_contains(greeting, world, "should contain 'World'")
@@ -49,8 +49,8 @@ pub fn test_string_content() {
 
 @test("String length assertions")
 pub fn test_string_length() {
-    let empty = Str::from_raw(null, 0u32)
-    let hello = Str::from_cstr("hello").unwrap()
+    let empty: Str = ""
+    let hello: Str = "hello"
 
     expect_str_empty(empty, "empty string should be empty")
     expect_str_not_empty(hello, "hello should not be empty")

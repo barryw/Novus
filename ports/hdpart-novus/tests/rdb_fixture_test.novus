@@ -1,0 +1,294 @@
+// Golden RDB blocks emitted by HDPart's pinned C implementation at d71ced9.
+// This deliberately does not use ByteWriter to build the expected blocks.
+
+from std::core import Option, Result
+from std::memory::slice import MutSlice
+from std::test::test import expect_true
+from rdb import DOS_TYPE_FFS_INTL, RdbFileSystem, RdbModel, RdbPartition
+
+@suppress("W0002", "fixture helper intentionally selects individual bytes")
+fn put_be_u32(consuming bytes: MutSlice<u8>, offset: u32, value: u32) {
+    var data = bytes
+    let _b0 = data.set(offset, (u8)(value >> 24))
+    let _b1 = data.set(offset + 1u32, (u8)(value >> 16))
+    let _b2 = data.set(offset + 2u32, (u8)(value >> 8))
+    let _b3 = data.set(offset + 3u32, (u8)value)
+}
+
+fn blocks_equal(left: &[u8; 512], right: &[u8; 512]) -> bool {
+    var index = 0u32
+    while index < 512u32 {
+        if left[index] != right[index] { return false }
+        index++
+    }
+    return true
+}
+
+fn copy_block(consuming image: MutSlice<u8>, block_number: u32, block: &[u8; 512]) {
+    var target = image
+    var index = 0u32
+    while index < 512u32 {
+        let _ = target.set(block_number * 512u32 + index, block[index])
+        index++
+    }
+}
+
+fn upstream_header() -> [u8; 512] {
+    var block = [0u8; 512]
+    put_be_u32(&var block, 0u32, $5244534Bu32)
+    put_be_u32(&var block, 4u32, 64u32)
+    put_be_u32(&var block, 8u32, $ADBBA480u32)
+    put_be_u32(&var block, 12u32, 7u32)
+    put_be_u32(&var block, 16u32, 512u32)
+    put_be_u32(&var block, 24u32, $FFFFFFFFu32)
+    put_be_u32(&var block, 28u32, 1u32)
+    put_be_u32(&var block, 32u32, $FFFFFFFFu32)
+    put_be_u32(&var block, 36u32, $FFFFFFFFu32)
+    put_be_u32(&var block, 64u32, 64u32)
+    put_be_u32(&var block, 68u32, 32u32)
+    put_be_u32(&var block, 72u32, 4u32)
+    put_be_u32(&var block, 76u32, 1u32)
+    put_be_u32(&var block, 80u32, 64u32)
+    put_be_u32(&var block, 96u32, 64u32)
+    put_be_u32(&var block, 100u32, 64u32)
+    put_be_u32(&var block, 104u32, 3u32)
+    put_be_u32(&var block, 132u32, 1023u32)
+    put_be_u32(&var block, 136u32, 8u32)
+    put_be_u32(&var block, 140u32, 63u32)
+    put_be_u32(&var block, 144u32, 128u32)
+    put_be_u32(&var block, 152u32, 2u32)
+    return block
+}
+
+fn upstream_header_with_filesystem() -> [u8; 512] {
+    var block = upstream_header()
+    put_be_u32(&var block, 8u32, $ADBBA47Au32)
+    put_be_u32(&var block, 32u32, 3u32)
+    put_be_u32(&var block, 152u32, 4u32)
+    return block
+}
+
+fn minimal_hunk() -> [u8; 40] {
+    return [
+        0u8, 0u8, 3u8, $F3u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 1u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8,
+        0u8, 0u8, 3u8, $E9u8, 0u8, 0u8, 0u8, 1u8,
+        $4Eu8, $75u8, 0u8, 0u8, 0u8, 0u8, 3u8, $F2u8,
+    ]
+}
+
+fn upstream_filesystem_header() -> [u8; 512] {
+    var block = [0u8; 512]
+    put_be_u32(&var block, 0u32, $46534844u32)
+    put_be_u32(&var block, 4u32, 64u32)
+    put_be_u32(&var block, 8u32, $755C53E8u32)
+    put_be_u32(&var block, 12u32, 7u32)
+    put_be_u32(&var block, 16u32, $FFFFFFFFu32)
+    put_be_u32(&var block, 32u32, DOS_TYPE_FFS_INTL)
+    put_be_u32(&var block, 36u32, $00010000u32)
+    put_be_u32(&var block, 40u32, $80u32)
+    put_be_u32(&var block, 60u32, 4096u32)
+    put_be_u32(&var block, 64u32, 10u32)
+    put_be_u32(&var block, 72u32, 2u32)
+    put_be_u32(&var block, 76u32, $FFFFFFFFu32)
+    return block
+}
+
+fn upstream_chained_filesystem_header() -> [u8; 512] {
+    var block = upstream_filesystem_header()
+    put_be_u32(&var block, 8u32, $755C53E6u32)
+    put_be_u32(&var block, 72u32, 4u32)
+    return block
+}
+
+fn upstream_load_segment() -> [u8; 512] {
+    var block = [0u8; 512]
+    put_be_u32(&var block, 0u32, $4C534547u32)
+    put_be_u32(&var block, 4u32, 15u32)
+    put_be_u32(&var block, 8u32, $6537AED3u32)
+    put_be_u32(&var block, 12u32, 7u32)
+    put_be_u32(&var block, 16u32, $FFFFFFFFu32)
+    let image = minimal_hunk()
+    var index = 0u32
+    while index < 40u32 {
+        block[20u32 + index] = image[index]
+        index++
+    }
+    return block
+}
+
+fn upstream_partition(name_last: u8, checksum: u32, next: u32, low: u32, high: u32) -> [u8; 512] {
+    var block = [0u8; 512]
+    put_be_u32(&var block, 0u32, $50415254u32)
+    put_be_u32(&var block, 4u32, 64u32)
+    put_be_u32(&var block, 8u32, checksum)
+    put_be_u32(&var block, 12u32, 7u32)
+    put_be_u32(&var block, 16u32, next)
+    block[36] = 3u8
+    block[37] = 68u8
+    block[38] = 72u8
+    block[39] = name_last
+    put_be_u32(&var block, 128u32, 16u32)
+    put_be_u32(&var block, 132u32, 128u32)
+    put_be_u32(&var block, 140u32, 4u32)
+    put_be_u32(&var block, 144u32, 1u32)
+    put_be_u32(&var block, 148u32, 32u32)
+    put_be_u32(&var block, 152u32, 2u32)
+    put_be_u32(&var block, 164u32, low)
+    put_be_u32(&var block, 168u32, high)
+    put_be_u32(&var block, 172u32, 30u32)
+    put_be_u32(&var block, 180u32, $7FFFFFFFu32)
+    put_be_u32(&var block, 184u32, $7FFFFFFEu32)
+    put_be_u32(&var block, 192u32, DOS_TYPE_FFS_INTL)
+    return block
+}
+
+fn fixtures_are_compatible() -> bool {
+    let expected_header = upstream_header()
+    let expected_part0 = upstream_partition(48u8, $682B113Fu32, 2u32, 8u32, 23u32)
+    let expected_part1 = upstream_partition(49u8, $682B1121u32, $FFFFFFFFu32, 24u32, 39u32)
+
+    match RdbModel::from_header(&expected_header) {
+        Result::Ok(model) => {
+            if model.cylinders() != 64u32 || model.heads() != 4u32 || model.sectors() != 32u32 { return false }
+            if model.low_cylinder() != 8u32 || model.high_cylinder() != 63u32 { return false }
+        },
+        Result::Err(_) => return false,
+    }
+    match RdbPartition::from_block(&expected_part0) {
+        Result::Ok(record) => {
+            let (partition, next) = record
+            if !partition.name().equals("DH0") || partition.low_cylinder() != 8u32 { return false }
+            if partition.high_cylinder() != 23u32 || next != 2u32 { return false }
+        },
+        Result::Err(_) => return false,
+    }
+
+    var model = RdbModel::new(64u32, 4u32, 32u32)
+    match model.add_partition("DH0", 1u32, DOS_TYPE_FFS_INTL) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    match model.add_partition("DH1", 1u32, DOS_TYPE_FFS_INTL) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+
+    var actual_header = [0u8; 512]
+    match model.write_header(&var actual_header) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    if !blocks_equal(&actual_header, &expected_header) { return false }
+
+    var actual_part0 = [0u8; 512]
+    match model.partition(0u32) {
+        Option::Some(partition) => match partition.write_block(&model, 2u32, &var actual_part0) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return false,
+        },
+        Option::None => return false,
+    }
+    if !blocks_equal(&actual_part0, &expected_part0) { return false }
+
+    var actual_part1 = [0u8; 512]
+    match model.partition(1u32) {
+        Option::Some(partition) => match partition.write_block(&model, $FFFFFFFFu32, &var actual_part1) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return false,
+        },
+        Option::None => return false,
+    }
+    if !blocks_equal(&actual_part1, &expected_part1) { return false }
+    let image = minimal_hunk()
+    let file_system = match RdbFileSystem::embedded(
+        DOS_TYPE_FFS_INTL, $00010000u32, 0u32, 4096u32, 10, -1, &image
+    ) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    match model.add_file_system(file_system) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+
+    let expected_fs_header = upstream_filesystem_header()
+    let expected_chained_fs_header = upstream_chained_filesystem_header()
+    let expected_lseg = upstream_load_segment()
+    let expected_rdb_with_fs = upstream_header_with_filesystem()
+    var actual_rdb_with_fs = [0u8; 512]
+    match model.write_header(&var actual_rdb_with_fs) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    if !blocks_equal(&actual_rdb_with_fs, &expected_rdb_with_fs) { return false }
+
+    let stored = match model.file_system(0u32) {
+        Option::Some(value) => value,
+        Option::None => return false,
+    }
+    var actual_fs_header = [0u8; 512]
+    match stored.write_header($FFFFFFFFu32, 2u32, &var actual_fs_header) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    if !blocks_equal(&actual_fs_header, &expected_fs_header) { return false }
+
+    var actual_lseg = [0u8; 512]
+    match stored.write_lseg_block(0u32, $FFFFFFFFu32, &var actual_lseg) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return false,
+    }
+    if !blocks_equal(&actual_lseg, &expected_lseg) { return false }
+    var image_blocks = [0u8; 2560]
+    copy_block(&var image_blocks, 0u32, &expected_rdb_with_fs)
+    copy_block(&var image_blocks, 1u32, &expected_part0)
+    copy_block(&var image_blocks, 2u32, &expected_part1)
+    copy_block(&var image_blocks, 3u32, &expected_chained_fs_header)
+    copy_block(&var image_blocks, 4u32, &expected_lseg)
+    match RdbModel::from_image(&image_blocks) {
+        Result::Ok(loaded) => {
+            if loaded.partition_count() != 2u32 || loaded.file_system_count() != 1u32 { return false }
+            let loaded_handler = match loaded.file_system(0u32) {
+                Option::Some(value) => value,
+                Option::None => return false,
+            }
+            if loaded_handler.image().len() != 40u32 { return false }
+            if loaded_handler.dos_type() != DOS_TYPE_FFS_INTL { return false }
+        },
+        Result::Err(_) => return false,
+    }
+    let record = match RdbFileSystem::from_header(&expected_fs_header) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    let (parsed, next, first_lseg) = record
+    if next != $FFFFFFFFu32 || first_lseg != 2u32 { return false }
+    var reconstructed = parsed
+    match reconstructed.append_lseg_block(&expected_lseg) {
+        Result::Ok(next) => { if next != $FFFFFFFFu32 { return false } },
+        Result::Err(_) => return false,
+    }
+    var corrupt = expected_lseg
+    corrupt[20] = corrupt[20] + 1u8
+    match reconstructed.append_lseg_block(&corrupt) {
+        Result::Ok(_) => return false,
+        Result::Err(_) => {},
+    }
+    let reconstructed_image = reconstructed.image()
+    if reconstructed_image.len() != 40u32 { return false }
+    var byte = 0u32
+    while byte < 40u32 {
+        if *reconstructed_image.get_unchecked(byte) != image[byte] { return false }
+        byte++
+    }
+
+    return true
+}
+
+#[stack_size(32768)]
+@test("RDB blocks match pinned upstream fixtures")
+pub fn test_rdb_fixtures() {
+    expect_true(fixtures_are_compatible(), "RDSK, PART, FSHD, and LSEG bytes match")
+}

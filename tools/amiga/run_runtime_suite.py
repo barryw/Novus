@@ -28,6 +28,7 @@ FOUNDATION_SUITES = {
     "foundation-ownership": "Novus.Tests/AmigaRuntime/foundation_ownership.novus",
     "foundation-tuple-drop": "Novus.Tests/AmigaRuntime/foundation_tuple_drop.novus",
     "foundation-strings": "Novus.Tests/AmigaRuntime/foundation_strings.novus",
+    "foundation-bytes": "Novus.Tests/AmigaRuntime/foundation_bytes.novus",
     "foundation-inline-asm": "Novus.Tests/AmigaRuntime/foundation_inline_asm.novus",
     "foundation-systems": "Novus.Tests/AmigaRuntime/foundation_systems.novus",
     "foundation-modules": "Novus.Tests/AmigaRuntime/foundation_modules",
@@ -40,6 +41,11 @@ FOUNDATION_STANDALONE = {
     name: FOUNDATION_SUITES[name] for name in ("const-fn", "intrinsics", "fixed32")
 }
 AMIGA_SUITES = {
+    "block-device-read": "Novus.Tests/AmigaRuntime/block_device_read.novus",
+    "dos-device-list": "Novus.Tests/AmigaRuntime/dos_device_list.novus",
+    "dos-node-draft": "Novus.Tests/AmigaRuntime/dos_node_draft.novus",
+    "embedded-segment": "Novus.Tests/AmigaRuntime/embedded_segment.novus",
+    "filesystem-registry": "Novus.Tests/AmigaRuntime/filesystem_registry.novus",
     "memory": "Novus/std/tests/test_memory.novus",
     "str": "Novus/std/tests/test_str.novus",
     "string": "Novus/std/tests/test_string.novus",

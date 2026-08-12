@@ -13,13 +13,12 @@ namespace Novus.Transforms.Passes;
 /// 3. const fn functions are aggressively inlined (up to 50 instructions)
 /// 4. Small functions (&lt; 20 instructions) may be inlined heuristically
 /// 5. Recursive functions are never inlined
-/// 6. Functions with complex control flow (> 3 basic blocks) are not inlined
+/// 6. Only straight-line bodies the cloner can reproduce are inlined
 /// </summary>
 public class InlineExpansionPass : TransformPassBase
 {
     private const int MaxInlineInstructions = 20; // Don't inline functions larger than this
     private const int MaxConstFnInlineInstructions = 50; // Larger threshold for const fn
-    private const int MaxInlineDepth = 3; // Prevent excessive inlining
     private const int MaxForcedInlineInstructions = 100; // Max size for @inline functions
 
     public override string Name => "Inline Expansion";
@@ -91,17 +90,9 @@ public class InlineExpansionPass : TransformPassBase
             var tempName = $"%inline_{inlineCounter++}_{param.Name}";
             renameMap[param.Name] = tempName;
 
-            // Add assignment: temp = argument
-            if (arg is IrVariable || arg is IrConstant)
-            {
-                // Direct assignment
-                result.Add(new IrLocalDecl(tempName, param.Type, false, arg));
-            }
-            else
-            {
-                // Complex expression - just use it directly in the rename map
-                renameMap[param.Name] = ((IrVariable)arg).Name;
-            }
+            // Evaluate every argument once. IrValue includes borrows, field access,
+            // enum payloads, and other legal values; none are guaranteed variables.
+            result.Add(new IrLocalDecl(tempName, param.Type, false, arg));
         }
 
         // Copy and rename instructions from the inlined function
@@ -209,6 +200,20 @@ public class InlineExpansionPass : TransformPassBase
             return false;
         }
 
+        // The cloner currently supports only straight-line arithmetic. Refuse
+        // anything else instead of removing instructions it cannot reproduce.
+        if (function.BasicBlocks.Count != 1 ||
+            function.BasicBlocks[0].Instructions.Any(instruction => instruction switch
+            {
+                IrLocalDecl local => local.InitialValue != null && !IsSimpleValue(local.InitialValue),
+                IrBinaryOp binary => !IsSimpleValue(binary.Left) || !IsSimpleValue(binary.Right),
+                IrReturn returned => returned.Value != null && !IsSimpleValue(returned.Value),
+                _ => true,
+            }))
+        {
+            return false;
+        }
+
         // Don't inline exported functions (they may be called externally)
         // Exception: const fn can still be inlined at call sites within the module
         if ((function.IsExported || function.Visibility == Visibility.Public) && !isConstFn)
@@ -232,7 +237,6 @@ public class InlineExpansionPass : TransformPassBase
             {
                 return false;
             }
-            // @inline functions can have more complex control flow
             return true;
         }
 
@@ -240,11 +244,6 @@ public class InlineExpansionPass : TransformPassBase
         if (isConstFn)
         {
             if (instructionCount > MaxConstFnInlineInstructions)
-            {
-                return false;
-            }
-            // const fn can have slightly more complex control flow
-            if (function.BasicBlocks.Count > 5)
             {
                 return false;
             }
@@ -257,14 +256,10 @@ public class InlineExpansionPass : TransformPassBase
             return false;
         }
 
-        // Don't inline functions with complex control flow (for now)
-        if (function.BasicBlocks.Count > 3)
-        {
-            return false;
-        }
-
         return true;
     }
+
+    private static bool IsSimpleValue(IrValue value) => value is IrVariable or IrConstant;
 
     /// <summary>
     /// Check if a function is recursive (calls itself)

@@ -1,0 +1,25 @@
+from std::core import Result
+from std::os::block_device import BlockDevice, BlockDeviceError
+from std::os::device import DeviceError
+from std::test::test import expect_true
+from rdb import RdbError
+from rdb_io import RdbDeviceError, load_rdb
+
+fn probe() -> bool {
+    var disk = match BlockDevice::open("trackdisk.device", 0u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    return match load_rdb(&var disk) {
+        Result::Ok(model) => model.block_bytes() == 512u32,
+        Result::Err(RdbDeviceError::Device(BlockDeviceError::Device(DeviceError::CommandFailed(_)))) => true,
+        Result::Err(RdbDeviceError::Model(RdbError::MissingRigidDiskBlock)) => true,
+        Result::Err(_) => false,
+    }
+}
+
+#[stack_size(32768)]
+@test("RDB reads from a real block device without a Guru")
+pub fn test_rdb_device_read() {
+    expect_true(probe(), "trackdisk RDB read returns a modeled error or valid block")
+}

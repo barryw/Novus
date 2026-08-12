@@ -46,6 +46,17 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private readonly Dictionary<string, (string ExitLabel, string ContinueLabel)> _labeledLoops = new();
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
 
+    private string UniqueLocalName(string sourceName)
+    {
+        if (_currentFunction == null || _currentFunction.LocalVariables.All(local => local.Name != sourceName))
+            return sourceName;
+
+        string candidate;
+        do candidate = $"{sourceName}_{_tempCounter++}";
+        while (_currentFunction.LocalVariables.Any(local => local.Name == candidate));
+        return candidate;
+    }
+
     // Track which temporaries came from IrIndexAccess for optimized member access
     // Key: temp variable name (e.g., "%t59"), Value: (array, index, elementType)
     private readonly Dictionary<string, (IrValue Array, IrValue Index, IrType ElementType)> _indexAccessTemps = new();
@@ -244,6 +255,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         public IrType GetMutReferenceType(IrType pointeeType) => _builder._typeInterner.GetMutReferenceType(pointeeType);
         public IrType GetPointerType(IrType pointeeType) => _builder._typeInterner.GetPointerType(pointeeType);
         public IrType GetArrayType(IrType elementType, long length) => _builder._typeInterner.GetArrayType(elementType, (int)length);
+        public IrType GetArrayType(IrType elementType, string lengthParameter) => _builder._typeInterner.GetArrayType(elementType, lengthParameter);
         public IrType GetFunctionPointerType(List<IrType> paramTypes, IrType returnType,
             IrCallingConvention callingConvention = IrCallingConvention.Novus,
             List<string?>? parameterRegisters = null, string? returnRegister = null) =>
@@ -1485,8 +1497,37 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         EvaluateDeferredStaticInitializers();
         ClearImportedConstFunctionBodies();
         LowerResultReturningMain();
+        InjectMissingParameterDrops();
+        ValidateStackBudget();
 
         return _module;
+    }
+
+    private void ValidateStackBudget()
+    {
+        foreach (var function in _module.Functions.Where(candidate =>
+                     !candidate.IsExtern &&
+                     candidate.Location?.FilePath == _inputFilePath))
+        {
+            long localBytes;
+            try
+            {
+                localBytes = function.LocalVariables.Sum(local => (long)local.Type.SizeInBytes);
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
+            if (localBytes * 2 <= _module.StackSize)
+                continue;
+
+            var location = function.Location ?? new SourceLocation(_inputFilePath ?? "<unknown>", 1, 1, 0, "");
+            _diagnostics.ReportWarning(
+                ErrorCodes.UnsafeStackBudget,
+                $"Function '{function.Name}' has about {localBytes} bytes of locals, leaving too little of the {_module.StackSize}-byte stack for nested calls; increase #[stack_size] or move large values off the stack",
+                location);
+        }
     }
 
     /// <summary>
@@ -1554,8 +1595,15 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 break;
 
             case IrArrayType baseArrayType when monomorphizedType is IrArrayType monoArrayType:
+                if (baseArrayType.LengthParameter != null && !monoArrayType.HasSymbolicLength &&
+                    !substitutions.ContainsKey(baseArrayType.LengthParameter))
+                {
+                    substitutions[baseArrayType.LengthParameter] =
+                        new IrConstGenericValue(IrIntType.U32, (uint)monoArrayType.Length);
+                }
                 // Recurse into array element types
-                if (baseArrayType.Length == monoArrayType.Length)
+                if ((baseArrayType.LengthParameter != null && !monoArrayType.HasSymbolicLength) ||
+                    baseArrayType.Length == monoArrayType.Length)
                 {
                     ExtractGenericTypeMappingInternal(baseArrayType.ElementType, monoArrayType.ElementType, substitutions, visited);
                 }

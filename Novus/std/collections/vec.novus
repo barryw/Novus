@@ -5,6 +5,7 @@
 // Import core types and memory management
 from std::core import Option, Result, Iterable, From, Drop, Clone
 from std::memory::block import MemoryBlock
+from std::memory::slice import Slice, MutSlice
 from std::error::errors import ExecError
 from std::ffi::exec import CopyMem, FreeMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -178,7 +179,7 @@ impl<T> Vec<T> {
     /// var vec = Vec::<u32>::new()
     /// vec.push(42)?
     /// ```
-    pub fn push(&var self, value: T) -> Result<(), ExecError> {
+    pub fn push(&var self, consuming value: T) -> Result<(), ExecError> {
         // Ensure we have capacity
         if self.len >= self.capacity {
             self.reserve(1)?
@@ -211,27 +212,40 @@ impl<T> Vec<T> {
     /// vec.push(1)?
     /// vec.set(0, 42)?
     /// ```
-    pub fn set(&var self, index: u32, value: T) -> Result<(), ExecError> {
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
         if index >= self.len {
             return Result::Err(ExecError::IndexOutOfBounds)
         }
 
+        @drop_in_place(&var self.ptr[index])
         self.ptr[index] = value
         return Result::Ok(())
     }
 
     // Get element at index (returns Option)
-    pub fn get(&self, index: u32) -> Option<T> {
+    pub fn get(&self, index: u32) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
 
-        return Option::Some(self.ptr[index])
+        return Option::Some(&self.ptr[index])
+    }
+
+    /// Mutably borrow the element at index.
+    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+        if index >= self.len {
+            return Option::None
+        }
+
+        return Option::Some(&var self.ptr[index])
     }
 
     // Remove all elements (keeps capacity)
     pub fn clear(&var self) {
-        self.len = 0
+        while self.len > 0u32 {
+            self.len--
+            @drop_in_place(&var self.ptr[self.len])
+        }
     }
 
     // Get immutable pointer to the underlying buffer
@@ -242,6 +256,22 @@ impl<T> Vec<T> {
     // Get mutable pointer to the underlying buffer
     pub fn as_mut_ptr(&var self) -> *T {
         return self.ptr
+    }
+
+    pub fn as_slice(&self) -> Slice<T> {
+        if self.len == 0u32 {
+            // References are non-null; use the Vec object's aligned address as
+            // the never-dereferenced sentinel for an empty view.
+            unsafe { return Slice::<T>::new(&*((*T)self), 0u32) }
+        }
+        return unsafe { Slice::<T>::new(&self.ptr[0], self.len) }
+    }
+
+    pub fn as_mut_slice(&var self) -> MutSlice<T> {
+        if self.len == 0u32 {
+            unsafe { return MutSlice::<T>::new(&var *((*T)self), 0u32) }
+        }
+        return unsafe { MutSlice::<T>::new(&var self.ptr[0], self.len) }
     }
 
     /// Insert an element at the given index, shifting all elements after it to the right
@@ -256,7 +286,7 @@ impl<T> Vec<T> {
     /// vec.push(3)?
     /// vec.insert(1, 2)?  // vec is now [1, 2, 3]
     /// ```
-    pub fn insert(&var self, index: u32, value: T) -> Result<(), ExecError> {
+    pub fn insert(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
         // Check bounds - can insert at len (append position)
         if index > self.len {
             return Result::Err(ExecError::IndexOutOfBounds)
@@ -325,8 +355,9 @@ impl<T> Vec<T> {
     /// vec.truncate(1)  // vec is now [1]
     /// ```
     pub fn truncate(&var self, new_len: u32) {
-        if new_len < self.len {
-            self.len = new_len
+        while self.len > new_len {
+            self.len--
+            @drop_in_place(&var self.ptr[self.len])
         }
     }
 
@@ -403,6 +434,7 @@ impl<T> Vec<T> {
     // Free the vector's memory
     pub fn drop(&var self) {
         if self.capacity > 0 {
+            self.clear()
             let element_size: u32 = @sizeof(T)
             let bytes: u32 = self.capacity * element_size
             // Explicit pointer cast from *T to *u8
@@ -426,13 +458,12 @@ impl<T> Iterable<T> for Vec<T> {
     }
 
     // Get element at index (safe, returns Option)
-    fn get(&self, index: u32) -> Option<T> {
+    fn get(&self, index: u32) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
 
-        let value: T = self.ptr[index]
-        return Option::Some(value)
+        return Option::Some(&self.ptr[index])
     }
 }
 
@@ -441,6 +472,7 @@ impl<T> Iterable<T> for Vec<T> {
 impl<T> Drop for Vec<T> {
     fn drop(&var self) {
         if self.capacity > 0 {
+            self.clear()
             let element_size: u32 = @sizeof(T)
             let bytes: u32 = self.capacity * element_size
             let mem: *u8 = (*u8)(self.ptr)
@@ -453,7 +485,7 @@ impl<T> Drop for Vec<T> {
 }
 
 // Clone for Vec<T> - creates a deep copy
-impl<T> Clone for Vec<T> {
+impl<T> Clone for Vec<T> where T: Clone {
     fn clone(&self) -> Option<Vec<T>> {
         if self.len == 0 {
             return Option::Some(Vec::<T>::new())
@@ -464,9 +496,12 @@ impl<T> Clone for Vec<T> {
             Result::Ok(var new_vec) => {
                 // Copy elements
                 while var i < self.len {
-                    match new_vec.push(self.ptr[i]) {
-                        Result::Ok(_) => {},
-                        Result::Err(_) => return Option::None,
+                    match self.ptr[i].clone() {
+                        Option::Some(value) => match new_vec.push(value) {
+                            Result::Ok(_) => {},
+                            Result::Err(_) => return Option::None,
+                        },
+                        Option::None => return Option::None,
                     }
                     i++
                 }

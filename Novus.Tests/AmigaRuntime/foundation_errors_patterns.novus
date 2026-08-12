@@ -41,6 +41,16 @@ fn failed_result() -> Result<i32, i32> {
     return Result::Err(-1)
 }
 
+fn classify_nested_result(value: Result<i32, Color>) -> i32 {
+    return match value {
+        Result::Ok(_) => 0,
+        Result::Err(Color::Red) => 1,
+        Result::Err(Color::Green) => 2,
+        Result::Err(Color::Blue) => 3,
+        Result::Err(Color::Cyan) => 4,
+    }
+}
+
 fn guarded_value(value: i32) -> i32 {
     return match value {
         candidate if candidate < 0 => -1,
@@ -119,6 +129,14 @@ pub fn foundation_match_guards() {
 pub fn foundation_enum_payload_constant() {
     expect_true(is_target_gadget(PayloadEvent::GadgetUp(1)), "target payload")
     expect_false(is_target_gadget(PayloadEvent::GadgetUp(2)), "non-target payload")
+}
+
+@test("nested enum payload patterns check inner variants")
+pub fn foundation_nested_enum_payload() {
+    expect(classify_nested_result(Result::Err(Color::Red)) == 1, "nested red")
+    expect(classify_nested_result(Result::Err(Color::Green)) == 2, "nested green")
+    expect(classify_nested_result(Result::Err(Color::Blue)) == 3, "nested blue")
+    expect(classify_nested_result(Result::Err(Color::Cyan)) == 4, "nested cyan")
 }
 
 @test(should_panic)

@@ -303,7 +303,7 @@ public static class StdlibBuildCommand
 
             // Compile C to .o using VBCC
             // Enable FPU for stdlib since it may contain FPU-optimized code paths
-            var toolchain = new VbccToolchain(vbccPath, ndkPath);
+            var toolchain = new VbccToolchain(vbccPath, ndkPath, verbose);
             var optimizationLevel = buildMode == BuildMode.Release ? 2 : 0;
             var success = await toolchain.CompileToObject(
                 tempCFile,

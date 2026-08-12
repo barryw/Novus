@@ -22,8 +22,6 @@ namespace Novus.Commands;
 /// </summary>
 public static class TestCommand
 {
-    private const int TestRunnerVersion = 2;
-
     /// <summary>
     /// Information about a discovered test function
     /// </summary>
@@ -90,10 +88,17 @@ public static class TestCommand
             }
             else if (Directory.Exists(targetPath))
             {
+                var projectTests = Path.Combine(targetPath, "tests");
+                var isProject = File.Exists(Path.Combine(targetPath, "project.toml")) && Directory.Exists(projectTests);
+                var sourceRoot = isProject
+                    ? projectTests
+                    : targetPath;
+
                 // Directory - find all .novus files
                 // Exclude stdlib files EXCEPT for std/tests/ which contains stdlib unit tests
                 sourceFiles.AddRange(
-                    Directory.EnumerateFiles(targetPath, "*.novus", SearchOption.AllDirectories)
+                    Directory.EnumerateFiles(sourceRoot, "*.novus",
+                            isProject ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories)
                         .Where(f => !f.Contains("/std/") || f.Contains("/std/tests/"))
                 );
             }
@@ -111,33 +116,12 @@ public static class TestCommand
 
             sourceFiles.Sort(StringComparer.Ordinal);
             var outputDir = Path.GetFullPath(options.OutputDir ?? Directory.GetCurrentDirectory());
+            Directory.CreateDirectory(outputDir);
+            var projectDir = FindProjectDirectory(targetPath);
+            var supportFiles = projectDir == null
+                ? new List<string>()
+                : Directory.EnumerateFiles(Path.Combine(projectDir, "src"), "*.novus", SearchOption.AllDirectories).ToList();
             var testRunnerPath = Path.Combine(outputDir, "_test_runner.novus");
-            var testConfigPath = testRunnerPath + ".config";
-            var testConfig = string.Join('|', TestRunnerVersion, options.Filter, options.Benchmark, options.Release,
-                string.Join(';', sourceFiles));
-
-            if (!options.ListOnly && !options.RunWithVamos &&
-                File.Exists(Path.Combine(outputDir, "tests")) &&
-                File.Exists(testRunnerPath) && File.Exists(testConfigPath) &&
-                File.ReadAllText(testConfigPath) == testConfig &&
-                sourceFiles.All(source =>
-                {
-                    var copy = Path.Combine(outputDir, Path.GetFileName(source));
-                    return File.Exists(copy) && File.ReadAllBytes(source).AsSpan()
-                        .SequenceEqual(File.ReadAllBytes(copy));
-                }))
-            {
-                var fastPathOriginalDir = Directory.GetCurrentDirectory();
-                try
-                {
-                    Directory.SetCurrentDirectory(outputDir);
-                    return await Program.RunCompiler(CreateCompilerOptions(options, sourceFiles, outputDir));
-                }
-                finally
-                {
-                    Directory.SetCurrentDirectory(fastPathOriginalDir);
-                }
-            }
 
             Console.WriteLine($"Scanning {sourceFiles.Count} file(s) for tests...");
 
@@ -194,12 +178,14 @@ public static class TestCommand
                 return 0;
             }
 
-            // Output to current directory by default (like a normal tool)
-            // User can specify --output-dir if they want a different location
-            Directory.CreateDirectory(outputDir);
+            var selectedSourceFiles = allTests
+                .Select(test => test.ModulePath)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var compilationSourceFiles = StageSources(selectedSourceFiles, supportFiles, projectDir, outputDir);
 
             // Generate test runner source (pass all tests - generator handles skipped ones)
-            GenerateTestRunner(testRunnerPath, sourceFiles, allTests, options);
+            GenerateTestRunner(testRunnerPath, allTests, options);
 
             Console.WriteLine($"\nGenerated test runner: {testRunnerPath}");
 
@@ -216,7 +202,7 @@ public static class TestCommand
                 // This ensures that local imports (e.g., "from test_file import ...") work
                 Directory.SetCurrentDirectory(outputDir);
 
-                var result = await Program.RunCompiler(CreateCompilerOptions(options, sourceFiles, outputDir));
+                var result = await Program.RunCompiler(CreateCompilerOptions(options, compilationSourceFiles, outputDir));
 
                 // Update outputExe to absolute path for reporting
                 outputExe = Path.Combine(outputDir, "tests");
@@ -225,8 +211,6 @@ public static class TestCommand
                 {
                     return result;
                 }
-
-                File.WriteAllText(testConfigPath, testConfig);
 
                 Console.WriteLine($"\n===================================");
                 Console.WriteLine($"Test runner built successfully!");
@@ -296,8 +280,8 @@ public static class TestCommand
     private static CompilerOptions CreateCompilerOptions(
         TestOptions options, IEnumerable<string> sourceFiles, string outputDir) => new()
     {
-        InputFile = "_test_runner.novus",
-        OutputFile = "tests",
+        InputFile = Path.Combine(outputDir, "_test_runner.novus"),
+        OutputFile = Path.Combine(outputDir, "tests"),
         Cpu = options.Cpu,
         Fpu = options.Fpu,
         Release = options.Release,
@@ -308,10 +292,55 @@ public static class TestCommand
         OptimizationLevel = options.GetOptimizationLevel(),
         SafetyLevelOption = options.SafetyLevel,
         UseStdlibCache = true,
-        AdditionalSourceFiles = sourceFiles
-            .Select(source => Path.Combine(outputDir, Path.GetFileName(source)))
-            .ToList()
+        AdditionalSourceFiles = sourceFiles.Select(Path.GetFullPath).ToList()
     };
+
+    private static string? FindProjectDirectory(string targetPath)
+    {
+        var directory = File.Exists(targetPath) ? Path.GetDirectoryName(targetPath)! : targetPath;
+        for (var current = new DirectoryInfo(directory); current != null; current = current.Parent)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "project.toml")) &&
+                Directory.Exists(Path.Combine(current.FullName, "src")))
+                return current.FullName;
+        }
+
+        return null;
+    }
+
+    private static List<string> StageSources(
+        IEnumerable<string> testFiles,
+        IEnumerable<string> supportFiles,
+        string? projectDir,
+        string outputDir)
+    {
+        foreach (var source in supportFiles)
+        {
+            var relative = Path.GetRelativePath(Path.Combine(projectDir!, "src"), source);
+            StageSource(source, Path.Combine(outputDir, relative));
+        }
+
+        var stagedTests = new List<string>();
+        foreach (var source in testFiles)
+        {
+            var destination = Path.Combine(outputDir, Path.GetFileName(source));
+            StageSource(source, destination);
+            stagedTests.Add(destination);
+        }
+
+        return stagedTests;
+    }
+
+    private static void StageSource(string source, string destination)
+    {
+        if (Path.GetFullPath(source).Equals(Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        if (!File.Exists(destination) ||
+            !File.ReadAllBytes(source).AsSpan().SequenceEqual(File.ReadAllBytes(destination)))
+            File.Copy(source, destination, overwrite: true);
+    }
 
     /// <summary>
     /// Discover all @test functions in a source file
@@ -362,7 +391,7 @@ public static class TestCommand
             foreach (var function in compilationUnit.functionDeclaration())
             {
                 var testAttr = function.attribute()
-                    .FirstOrDefault(attribute => attribute.IDENTIFIER().GetText() == KnownAttributes.Test);
+                    .FirstOrDefault(attribute => attribute.attributeName().GetText() == KnownAttributes.Test);
                 if (testAttr == null)
                     continue;
 
@@ -370,7 +399,9 @@ public static class TestCommand
                 var named = new Dictionary<string, string>();
                 foreach (var argument in testAttr.attributeArgList()?.attributeArg() ?? [])
                 {
-                    var value = ParseAttributeValue(argument.expression().GetText());
+                    var value = argument.KW_STATIC() != null
+                        ? "static"
+                        : ParseAttributeValue(argument.expression().GetText());
                     if (argument.IDENTIFIER() == null)
                         positional.Add(value);
                     else
@@ -432,12 +463,10 @@ public static class TestCommand
     /// </summary>
     private static void GenerateTestRunner(
         string outputPath,
-        List<string> sourceFiles,
         List<TestInfo> tests,
         TestOptions options)
     {
         var sb = new StringBuilder();
-        var outputDir = Path.GetDirectoryName(outputPath)!;
 
         sb.AppendLine("// Auto-generated test runner");
         sb.AppendLine("// Generated by: novus test");
@@ -470,21 +499,6 @@ public static class TestCommand
 
         // Test modules are compiled separately; the runner only needs their entry-point signatures.
         var activeTests = tests.Where(t => !t.IsSkipped).ToList();
-
-        // Local imports must remain available when a directory suite is built into a
-        // separate output directory, even when the imported module has no tests itself.
-        foreach (var sourceFile in sourceFiles)
-        {
-            var destPath = Path.Combine(outputDir, Path.GetFileName(sourceFile));
-            if (!Path.GetFullPath(sourceFile).Equals(Path.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase))
-            {
-                if (!File.Exists(destPath) ||
-                    !File.ReadAllBytes(sourceFile).AsSpan().SequenceEqual(File.ReadAllBytes(destPath)))
-                {
-                    File.Copy(sourceFile, destPath, overwrite: true);
-                }
-            }
-        }
 
         foreach (var test in activeTests)
         {

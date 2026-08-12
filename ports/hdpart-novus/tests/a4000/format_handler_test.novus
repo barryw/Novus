@@ -1,0 +1,52 @@
+from std::core import Result
+from std::test::test import expect_true
+from format import prepare_node
+from rdb import DOS_TYPE_FFS_INTL, RdbFileSystem, RdbModel
+
+const EMBEDDED_DOS_TYPE: u32 = $4E565303
+
+fn minimal_embedded_hunk() -> [u8; 40] {
+    return [
+        0u8, 0u8, 3u8, $F3u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 1u8, 0u8, 0u8, 0u8, 0u8,
+        0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8,
+        0u8, 0u8, 3u8, $E9u8, 0u8, 0u8, 0u8, 1u8,
+        $4Eu8, $75u8, 0u8, 0u8, 0u8, 0u8, 3u8, $F2u8,
+    ]
+}
+
+fn embedded_handler_is_correct() -> bool {
+    var model = RdbModel::new(996u32, 16u32, 63u32)
+    let Result::Ok(_) = model.add_partition("NVS0", 200u32, EMBEDDED_DOS_TYPE) else { return false }
+    let image = minimal_embedded_hunk()
+    let Result::Ok(file_system) = RdbFileSystem::embedded(
+        EMBEDDED_DOS_TYPE, $00010000u32, 0u32, 4096u32, 10, -1, &image
+    ) else { return false }
+    let Result::Ok(_) = model.add_file_system(file_system) else { return false }
+    return match prepare_node("NVSTEST", "uaehf.device", 1u32, &model, 0u32) {
+        Result::Ok(node) => node.has_handler() && node.dos_type() == EMBEDDED_DOS_TYPE && node.is_embedded(),
+        Result::Err(_) => false,
+    }
+}
+
+@test("standard FFS handler prepares a DOS node")
+pub fn test_standard_format_handler() {
+    var model = RdbModel::new(996u32, 16u32, 63u32)
+    let Result::Ok(_) = model.add_partition("DH0", 200u32, DOS_TYPE_FFS_INTL) else {
+        expect_true(false, "partition is created")
+        return
+    }
+    let Result::Ok(node) = prepare_node("HDPTEST", "uaehf.device", 1u32, &model, 0u32) else {
+        expect_true(false, "DOS node is prepared")
+        return
+    }
+    expect_true(node.has_handler(), "DOS node has a handler")
+    expect_true(node.dos_type() == DOS_TYPE_FFS_INTL, "DOS node preserves its type")
+    expect_true(!node.is_embedded(), "standard handler is not marked embedded")
+}
+
+#[stack_size(32768)]
+@test("embedded filesystem handler prepares a DOS node")
+pub fn test_embedded_format_handler() {
+    expect_true(embedded_handler_is_correct(), "embedded handler and DOS node remain valid")
+}

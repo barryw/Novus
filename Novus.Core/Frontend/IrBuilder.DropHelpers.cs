@@ -11,6 +11,13 @@ public partial class IrBuilder
 {
     private bool EnsureDropMethodInstantiated(IrType type)
     {
+        if (type is IrStructType knownStruct)
+        {
+            var knownTypeName = knownStruct.CacheKey ?? knownStruct.StructName;
+            if (_module.GetFunction($"{knownTypeName}_Drop_drop") != null)
+                return true;
+        }
+
         // Check if this type implements the Drop trait
         if (!_module.TypeImplementsDrop(type))
         {
@@ -56,6 +63,16 @@ public partial class IrBuilder
             // Only structs, enums, and tuples can have Drop
             // (enums and tuples are handled above)
             return false;
+        }
+
+        if (!_module.StructImplementsDrop(st))
+        {
+            foreach (var field in st.Fields)
+            {
+                if (_module.TypeImplementsDrop(field.Type))
+                    EnsureDropMethodInstantiated(field.Type);
+            }
+            return true;
         }
 
         // Skip if this is a generic template (has unsubstituted generic parameters)
@@ -209,59 +226,9 @@ public partial class IrBuilder
         var savedBlock = _currentBlock;
         _currentBlock = deferBlock;
 
-        // Handle tuple types specially - they don't have a single Drop method,
-        // instead we drop each element that implements Drop (in reverse order for LIFO semantics)
-        if (type is IrTupleType tupleType)
-        {
-            InjectTupleElementDrops(deferBlock, varName, tupleType);
-        }
-        // Handle enum types - they need runtime dispatch based on the tag to drop payloads
-        else if (type is IrEnumType enumType)
-        {
-            InjectEnumDrop(deferBlock, varName, enumType);
-        }
-        else if (type is IrStructType structType)
-        {
-            // For monomorphized types, use CacheKey (e.g., "Vec<bool>")
-            // For non-generic types, use StructName
-            var typeName = structType.CacheKey ?? structType.StructName;
-
-            // The Drop trait implementation generates: Type_Drop_drop
-            var dropMethodName = $"{typeName}_Drop_drop";
-            var dropMethod = _module.GetFunction(dropMethodName);
-            if (dropMethod == null)
-            {
-                var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-                _diagnostics.ReportError(
-                    ErrorCodes.MethodNotFound,
-                    $"Drop method '{dropMethodName}' not found (this should have been instantiated already)",
-                    errorLocation
-                );
-                _currentBlock = savedBlock;
-                return;
-            }
-
-            // Load the variable and borrow it mutably for drop()
-            var varRef = new IrVariable(varName, type);
-            var mutBorrow = new IrBorrowValue(varRef, new IrMutReferenceType(type), isMutable: true);
-
-            // Create the drop() call (drop() returns void)
-            var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
-            dropCall.Arguments.Add(mutBorrow);
-            deferBlock.AddInstruction(dropCall);
-        }
-        else
-        {
-            // Use current statement location for error reporting (set by caller)
-            var errorLocation = _currentStatementLocation ?? new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Cannot generate drop call for type '{type.Name}'",
-                errorLocation
-            );
-            _currentBlock = savedBlock;
-            return;
-        }
+        var varRef = new IrVariable(varName, type);
+        var mutBorrow = new IrBorrowValue(varRef, new IrMutReferenceType(type), isMutable: true);
+        deferBlock.AddInstruction(new IrDropInPlace(mutBorrow, type));
 
         // Restore current block
         _currentBlock = savedBlock;
@@ -283,12 +250,49 @@ public partial class IrBuilder
     {
         foreach (var parameter in _currentFunction!.Parameters)
         {
-            if (parameter.Type is not IrReferenceType and not IrMutReferenceType &&
+            if (parameter.IsConsuming &&
+                parameter.Type is not IrReferenceType and not IrMutReferenceType &&
                 EnsureDropMethodInstantiated(parameter.Type))
             {
                 InjectAutomaticDrop(parameter.Name, parameter.Type);
             }
         }
+    }
+
+    private void InjectMissingParameterDrops()
+    {
+        var savedFunction = _currentFunction;
+        var savedBlock = _currentBlock;
+
+        foreach (var function in _module.Functions.ToList())
+        {
+            if (function.IsExtern || function.BasicBlocks is [])
+                continue;
+
+            _currentFunction = function;
+            _currentBlock = function.BasicBlocks[0];
+
+            foreach (var parameter in function.Parameters)
+            {
+                if (!parameter.IsConsuming ||
+                    parameter.Type is IrReferenceType or IrMutReferenceType ||
+                    function.DeferredBlocks.Any(block =>
+                        block.Label.StartsWith($"autoclean_{parameter.Name}_")) ||
+                    !EnsureDropMethodInstantiated(parameter.Type))
+                {
+                    continue;
+                }
+
+                var markerIndex = _currentBlock.Instructions.Count;
+                InjectAutomaticDrop(parameter.Name, parameter.Type);
+                var marker = _currentBlock.Instructions[markerIndex];
+                _currentBlock.Instructions.RemoveAt(markerIndex);
+                _currentBlock.Instructions.Insert(0, marker);
+            }
+        }
+
+        _currentFunction = savedFunction;
+        _currentBlock = savedBlock;
     }
 
     /// <summary>
@@ -586,12 +590,9 @@ public partial class IrBuilder
     /// <param name="value">The value being assigned (may be a variable or expression)</param>
     private void DeactivateVariableDeferIfMove(IrValue value)
     {
-        // Only deactivate if the value is a variable (not a temporary expression)
-        // and its type implements Drop
-        if (value is IrVariable sourceVar && _module.TypeImplementsDrop(sourceVar.Type))
-        {
-            DeactivateVariableDefer(sourceVar.Name);
-        }
+        // A move is path-sensitive. Keep the defer active and let code generation
+        // clear the moved-from value on the path where the move actually occurs.
+        // Removing the defer here leaks the value on sibling/early-return paths.
     }
 
     /// <summary>
@@ -691,37 +692,10 @@ public partial class IrBuilder
         _localVariables[tempName] = localVar;
         _currentBlock!.AddInstruction(new IrLocalDecl(tempName, type, isMutable: true, value));
 
-        // Now emit the drop call immediately (not deferred - we want it now)
-        if (type is IrTupleType tupleType)
-        {
-            // For tuples, drop each element that implements Drop
-            EmitImmediateTupleDrop(tempName, tupleType);
-        }
-        else if (type is IrEnumType enumType)
-        {
-            // For enums, emit tag-based drop dispatch
-            EmitImmediateEnumDrop(tempName, enumType);
-        }
-        else if (type is IrStructType structType)
-        {
-            // For structs, call the Drop method directly
-            var typeName = structType.CacheKey ?? structType.StructName;
-            var dropMethodName = $"{typeName}_Drop_drop";
-
-            // Ensure the drop method is instantiated
-            EnsureDropMethodInstantiated(type);
-
-            var dropMethod = _module.GetFunction(dropMethodName);
-            if (dropMethod != null)
-            {
-                var tempVar = new IrVariable(tempName, type);
-                var mutBorrow = new IrBorrowValue(tempVar, new IrMutReferenceType(type), isMutable: true);
-
-                var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
-                dropCall.Arguments.Add(mutBorrow);
-                _currentBlock!.AddInstruction(dropCall);
-            }
-        }
+        EnsureDropMethodInstantiated(type);
+        var tempVar = new IrVariable(tempName, type);
+        var mutBorrow = new IrBorrowValue(tempVar, new IrMutReferenceType(type), isMutable: true);
+        _currentBlock!.AddInstruction(new IrDropInPlace(mutBorrow, type));
     }
 
     /// <summary>

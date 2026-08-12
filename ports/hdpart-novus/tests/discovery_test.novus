@@ -1,0 +1,27 @@
+from std::core import Option
+from std::test::test import expect_true
+from discovery import blocks_to_mb, is_device_name, is_partitionable, parse_read_capacity_10, synthesize_geometry
+
+fn discovery_is_correct() -> bool {
+    return false unless blocks_to_mb(8192, 512) == 4 && blocks_to_mb(1000000, 512) == 488
+    return false unless is_device_name("scsi.device") && is_device_name("TRACKDISK.DEVICE") && is_device_name("ScSi.DeViCe")
+    return false if is_device_name("RAW") || is_partitionable("trackdisk.device", 1760)
+    return false unless is_partitionable("scsi.device", 100)
+
+    // PORT-GAP LANG-03: array literals do not contextually coerce integer elements.
+    let response: [u8] = [0, $1F, $FF, $FF, 0, 0, 2, 0]
+    let Option::Some(capacity) = parse_read_capacity_10(&response) else { return false }
+    return false unless capacity.block_bytes == 512 &&
+        capacity.total_blocks == 2097152
+
+    let short_response = [0u8; 7]
+    return false unless parse_read_capacity_10(&short_response).is_none()
+
+    let geometry = synthesize_geometry(2097152)
+    return geometry.cylinders == 2080 && geometry.heads == 16 && geometry.sectors == 63
+}
+
+@test("device discovery parsing and geometry")
+pub fn test_device_discovery() {
+    expect_true(discovery_is_correct(), "discovery rules remain consistent")
+}

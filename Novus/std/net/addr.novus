@@ -309,7 +309,7 @@ impl Display for Ipv4Addr {
     fn fmt(&self, f: &var Formatter) -> bool {
         var buf = [0u8; 16]
         let len = (*self).format((*u8)&buf[0])
-        return f.write_str(Str::from_raw((*u8)&buf[0], len as u32))
+        return f.write_str(unsafe { Str::new(&buf[0], len as u32) })
     }
 }
 
@@ -375,12 +375,12 @@ impl SocketAddrV4 {
     }
 
     /// Set the IP address
-    pub fn set_ip(&self, ip: Ipv4Addr) {
+    pub fn set_ip(&var self, ip: Ipv4Addr) {
         self.ip = ip
     }
 
     /// Set the port number
-    pub fn set_port(&self, port: u16) {
+    pub fn set_port(&var self, port: u16) {
         self.port = port
     }
 
@@ -419,7 +419,7 @@ impl Display for SocketAddrV4 {
         let port_len = write_u16_to_buf((*self).port, (*u8)&buf[0], port_pos as i32)
 
         let total_len = port_pos + port_len as u32
-        return f.write_str(Str::from_raw((*u8)&buf[0], total_len))
+        return f.write_str(unsafe { Str::new(&buf[0], total_len) })
     }
 }
 
@@ -595,7 +595,7 @@ impl Display for Cidr {
     fn fmt(&self, f: &var Formatter) -> bool {
         var buf = [0u8; 20]  // max IP (15) + '/' (1) + prefix (2) + null
         let len = (*self).format((*u8)&buf[0])
-        return f.write_str(Str::from_raw((*u8)&buf[0], len as u32))
+        return f.write_str(unsafe { Str::new(&buf[0], len as u32) })
     }
 }
 

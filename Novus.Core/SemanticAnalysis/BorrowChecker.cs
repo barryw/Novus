@@ -373,6 +373,13 @@ public class DanglingBorrow
     public VariableLifetime SourceLifetime { get; init; } = null!;
 }
 
+public class BorrowConflict
+{
+    public BorrowEdge ExistingBorrow { get; init; } = null!;
+    public bool RequestedMutable { get; init; }
+    public VariableLifetime SourceLifetime { get; init; } = null!;
+}
+
 /// <summary>
 /// Tracks borrow relationships between variables for lifetime analysis.
 /// Nodes are variables, edges are borrow relationships.
@@ -394,10 +401,14 @@ public class BorrowGraph
         _borrowsFrom[variableId] = new List<BorrowEdge>();
     }
 
-    public void AddBorrow(int borrowerId, int sourceId, SourceLocation location, bool mutable)
+    public BorrowConflict? AddBorrow(int borrowerId, int sourceId, SourceLocation location, bool mutable)
     {
         if (!_borrowsFrom.ContainsKey(borrowerId))
             _borrowsFrom[borrowerId] = new List<BorrowEdge>();
+
+        var conflict = FindConflict(sourceId, mutable);
+        if (conflict != null)
+            return conflict;
 
         _borrowsFrom[borrowerId].Add(new BorrowEdge
         {
@@ -406,6 +417,23 @@ public class BorrowGraph
             BorrowLocation = location,
             IsMutable = mutable
         });
+        return null;
+    }
+
+    public BorrowConflict? FindConflict(int sourceId, bool mutable)
+    {
+        var existing = _borrowsFrom.Values
+            .SelectMany(edges => edges)
+            .FirstOrDefault(edge => edge.SourceId == sourceId && (mutable || edge.IsMutable));
+
+        return existing != null && _lifetimes.TryGetValue(sourceId, out var sourceLifetime)
+            ? new BorrowConflict
+            {
+                ExistingBorrow = existing,
+                RequestedMutable = mutable,
+                SourceLifetime = sourceLifetime
+            }
+            : null;
     }
 
     /// <summary>
@@ -487,6 +515,28 @@ public class BorrowGraph
             lt.DropLocation = location;
     }
 
+    public void ExitScope(int scopeDepth)
+    {
+        var expiredIds = _lifetimes.Values
+            .Where(lifetime => lifetime.ScopeDepth == scopeDepth)
+            .Select(lifetime => lifetime.VariableId)
+            .ToHashSet();
+
+        foreach (var variableId in expiredIds)
+        {
+            _borrowsFrom.Remove(variableId);
+            _lifetimes.Remove(variableId);
+        }
+
+        foreach (var edges in _borrowsFrom.Values)
+            edges.RemoveAll(edge => expiredIds.Contains(edge.SourceId));
+    }
+
+    public void RemoveBorrower(int borrowerId)
+    {
+        _borrowsFrom.Remove(borrowerId);
+    }
+
     public void Clear()
     {
         _borrowsFrom.Clear();
@@ -501,12 +551,19 @@ public class LifetimeInferenceResult
 {
     public bool Success { get; init; }
     public int? SourceParameterIndex { get; init; }
+    public bool IsStatic { get; init; }
     public string? ErrorMessage { get; init; }
 
     public static LifetimeInferenceResult Ok(int? sourceIndex = null) => new()
     {
         Success = true,
         SourceParameterIndex = sourceIndex
+    };
+
+    public static LifetimeInferenceResult Static() => new()
+    {
+        Success = true,
+        IsStatic = true
     };
 
     public static LifetimeInferenceResult Error(string message) => new()
@@ -521,6 +578,50 @@ public class LifetimeInferenceResult
 /// </summary>
 public class LifetimeInference
 {
+    public static bool RequiresLifetime(IrType type) => RequiresLifetime(type, new HashSet<IrType>());
+
+    public static bool ContainsMutableReference(IrType type) =>
+        ContainsMutableReference(type, new HashSet<IrType>());
+
+    private static bool RequiresLifetime(IrType type, HashSet<IrType> seen)
+    {
+        if (!seen.Add(type)) return false;
+        return type switch
+        {
+            IrReferenceType or IrMutReferenceType => true,
+            IrStructType value =>
+                value.Fields.Any(field => RequiresLifetime(field.Type, seen)) ||
+                value.TypeArguments?.Any(item => RequiresLifetime(item, seen)) == true,
+            IrEnumType value =>
+                value.Variants.Any(variant =>
+                    variant.AssociatedData.Any(item => RequiresLifetime(item, seen))) ||
+                value.TypeArguments?.Any(item => RequiresLifetime(item, seen)) == true,
+            IrTupleType value => value.ElementTypes.Any(item => RequiresLifetime(item, seen)),
+            IrArrayType value => RequiresLifetime(value.ElementType, seen),
+            _ => false
+        };
+    }
+
+    private static bool ContainsMutableReference(IrType type, HashSet<IrType> seen)
+    {
+        if (!seen.Add(type)) return false;
+        return type switch
+        {
+            IrMutReferenceType => true,
+            IrReferenceType => false,
+            IrStructType value =>
+                value.Fields.Any(field => ContainsMutableReference(field.Type, seen)) ||
+                value.TypeArguments?.Any(item => ContainsMutableReference(item, seen)) == true,
+            IrEnumType value =>
+                value.Variants.Any(variant =>
+                    variant.AssociatedData.Any(item => ContainsMutableReference(item, seen))) ||
+                value.TypeArguments?.Any(item => ContainsMutableReference(item, seen)) == true,
+            IrTupleType value => value.ElementTypes.Any(item => ContainsMutableReference(item, seen)),
+            IrArrayType value => ContainsMutableReference(value.ElementType, seen),
+            _ => false
+        };
+    }
+
     /// <summary>
     /// Infers which parameter's lifetime the return reference should be tied to.
     /// Rules:
@@ -531,21 +632,51 @@ public class LifetimeInference
     /// </summary>
     public LifetimeInferenceResult InferReturnLifetime<T>(
         IEnumerable<T> parameters,
-        IrType returnType)
+        IrType returnType,
+        AttributeCollection? attributes = null)
         where T : IParameterInfo
     {
         // Not a reference return - no lifetime needed
-        if (returnType is not IrReferenceType and not IrMutReferenceType)
+        if (!RequiresLifetime(returnType))
         {
             return LifetimeInferenceResult.Ok(null);
         }
 
         var paramList = parameters.ToList();
 
-        // Build list of (index, parameter) for reference parameters
+        var explicitBorrow = attributes?.Get(KnownAttributes.Borrows);
+        if (explicitBorrow != null)
+        {
+            var sourceName = explicitBorrow.GetPositionalArg<string>(0);
+            if (string.IsNullOrWhiteSpace(sourceName))
+                return LifetimeInferenceResult.Error("@borrows requires a parameter name or `static`");
+
+            if (sourceName == "static")
+                return LifetimeInferenceResult.Static();
+
+            var sourceIndex = paramList.FindIndex(parameter =>
+                parameter.ParameterName == sourceName);
+            if (sourceIndex < 0)
+                return LifetimeInferenceResult.Error(
+                    $"@borrows names unknown parameter `{sourceName}`");
+
+            var sourceType = paramList[sourceIndex].ParameterType;
+            if (!RequiresLifetime(sourceType) && sourceType is not IrPointerType)
+                return LifetimeInferenceResult.Error(
+                    $"@borrows source `{sourceName}` must be a reference, borrowed view, or raw pointer");
+
+            if (sourceType is IrPointerType &&
+                attributes?.Has(KnownAttributes.Unsafe) != true)
+                return LifetimeInferenceResult.Error(
+                    $"@borrows from raw pointer `{sourceName}` requires @unsafe");
+
+            return LifetimeInferenceResult.Ok(sourceIndex);
+        }
+
+        // Owner-tied aggregate views participate exactly like direct references.
         var refParams = paramList
             .Select((p, idx) => (Index: idx, Param: p))
-            .Where(x => x.Param.ParameterType is IrReferenceType or IrMutReferenceType)
+            .Where(x => RequiresLifetime(x.Param.ParameterType))
             .ToList();
 
         // Rule 1: &self always wins

@@ -245,7 +245,8 @@ References are guaranteed to be non-null:
 ```novus
 let x = 42
 let r: &i32 = &x        // Immutable reference
-let m: &var i32 = &x    // Mutable reference (if x is var)
+var y = 42
+let m: &var i32 = &var y // Exclusive mutable reference
 ```
 
 References:

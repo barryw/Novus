@@ -50,19 +50,19 @@ fn main() -> i32 {
             while running {
                 // Check for incoming commands (non-blocking)
                 match p.get_command() {
-                    Option::Some(cmd) => {
+                    Option::Some(var cmd) => {
                         // Process the command
                         running = handle_command(&cmd)
 
                         // Reply with success
-                        p.reply_ok(&cmd)
+                        p.reply_ok(&var cmd)
                     },
                     Option::None => {
                         // No command waiting - could do other work here
                         // For this example, we'll just wait for a command
-                        let cmd = p.wait_command()
+                        var cmd = p.wait_command()
                         running = handle_command(&cmd)
-                        p.reply_ok(&cmd)
+                        p.reply_ok(&var cmd)
                     },
                 }
             }

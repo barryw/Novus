@@ -22,11 +22,11 @@ pub fn main() -> Result<(), NovusError> {
 
     match result {
         Result::Ok(window) => {
-            let ctx_result = DrawContext::from_window(window.handle())
+            let rp = window.rastport()
+            let ctx_result = DrawContext::from_rastport(rp)
 
             match ctx_result {
                 Result::Ok(ctx) => {
-                    let rp = ctx.handle()
                     ctx.clear(0)
 
                     // ========================================================
@@ -82,7 +82,7 @@ pub fn main() -> Result<(), NovusError> {
                     write("Creating AreaContext...\n")
 
                     // Use from_window() for dimension-aware allocation
-                    let area_result = AreaContext::from_window(window.handle(), 20)
+                    let area_result = AreaContext::new(rp, 20)
 
                     match area_result {
                         Result::Ok(area) => {

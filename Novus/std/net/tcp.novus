@@ -369,7 +369,7 @@ impl TcpStream {
 }
 
 impl Drop for TcpStream {
-    fn drop(&self) {
+    fn drop(&var self) {
         if self.fd >= 0 {
             unsafe { CloseSocket(self.fd) }
         }
@@ -499,7 +499,7 @@ impl TcpListener {
 }
 
 impl Drop for TcpListener {
-    fn drop(&self) {
+    fn drop(&var self) {
         if self.fd >= 0 {
             unsafe { CloseSocket(self.fd) }
         }

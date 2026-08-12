@@ -28,6 +28,10 @@ __pycache__/
 
 # Test outputs
 TestResults/
+/_test_runner.novus
+/tests
+/tests.novus-build
+/tests.novus-link
 
 # Compiled object files and C sources (build artifacts)
 *.o

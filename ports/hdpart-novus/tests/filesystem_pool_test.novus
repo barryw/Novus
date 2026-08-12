@@ -1,0 +1,47 @@
+from std::core import Result
+from std::test::test import expect_true
+from filesystem_pool import FileSystemPool, file_system_preset, preset_dos_type
+from rdb import RdbFileSystem, RdbModel
+
+fn filesystem_pool_is_correct() -> bool {
+    let image = [1u8, 2u8, 3u8, 4u8]
+    let Result::Ok(file_system) = RdbFileSystem::embedded($50465303u32, $00130002u32, 0u32, 4096u32, 0, -1, &image) else { return false }
+    var source = RdbModel::new(100u32, 16u32, 63u32)
+    return false if source.add_file_system(file_system).is_err()
+
+    var pool = FileSystemPool::new()
+    return false if pool.merge(&source).is_err()
+    return false unless pool.len() == 1u32
+    return false if pool.merge(&source).is_err()
+    return false unless pool.len() == 1u32
+
+    let Result::Ok(second_file_system) = RdbFileSystem::embedded($53465300u32, $00140001u32, 0u32, 4096u32, 0, -1, &image) else { return false }
+    var second_disk = RdbModel::new(200u32, 16u32, 63u32)
+    return false if second_disk.add_file_system(second_file_system).is_err()
+    return false if pool.merge(&second_disk).is_err()
+    return false unless pool.len() == 2u32
+    return false if pool.merge(&source).is_err()
+    return false unless pool.len() == 2u32
+
+    return false if pool.set_dos_type(0u32, $53465300u32).is_err()
+    return false unless pool.get(0u32).unwrap().dos_type() == $53465300u32
+    return false if pool.remove(0u32).is_err()
+    return pool.len() == 1u32 && pool.get(0u32).unwrap().dos_type() == $53465300u32
+}
+
+@test("filesystem pool merges, edits, and removes entries")
+pub fn test_filesystem_pool() {
+    expect_true(filesystem_pool_is_correct(), "filesystem pool remains consistent")
+}
+
+@test("filesystem presets cover native and embedded handlers")
+pub fn test_file_system_presets() {
+    let types = [$444F5300u32, $444F5301u32, $444F5302u32, $444F5303u32, $444F5304u32, $444F5305u32, $50465303u32, $50445303u32, $53465300u32, $53465302u32]
+    for index in 0u16..10u16 {
+        let dos_type = types[index as u32]
+        expect_true(file_system_preset(dos_type) == index, "preset index matches DosType")
+        expect_true(preset_dos_type(index, 0u32) == dos_type, "preset restores DosType")
+    }
+    expect_true(file_system_preset($41424344u32) == 10u16, "unknown DosType uses Custom")
+    expect_true(preset_dos_type(10u16, $41424344u32) == $41424344u32, "Custom preserves DosType")
+}

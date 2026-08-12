@@ -126,11 +126,15 @@ public abstract class IrVisitor<TResult, TContext>
             IrVariable variable => VisitVariable(variable, context),
             IrGlobalVariable globalVar => VisitGlobalVariable(globalVar, context),
             IrStructLiteral structLiteral => VisitStructLiteral(structLiteral, context),
+            IrTupleLiteral tupleLiteral => VisitTupleLiteral(tupleLiteral, context),
             IrArrayLiteral arrayLiteral => VisitArrayLiteral(arrayLiteral, context),
             IrDereferenceValue derefValue => VisitDereferenceValue(derefValue, context),
             IrBorrowValue borrowValue => VisitBorrowValue(borrowValue, context),
             IrFieldReference fieldRef => VisitFieldReference(fieldRef, context),
             IrIndexedFieldAccess indexedField => VisitIndexedFieldAccess(indexedField, context),
+            IrTupleElementAccess tupleElement => VisitTupleElementAccess(tupleElement, context),
+            IrEnumTagAccess enumTag => VisitEnumTagAccess(enumTag, context),
+            IrEnumPayloadAccess enumPayload => VisitEnumPayloadAccess(enumPayload, context),
             IrCastValue castValue => VisitCastValue(castValue, context),
             IrFunctionAddress funcAddr => VisitFunctionAddress(funcAddr, context),
             IrEnumValue enumValue => VisitEnumValue(enumValue, context),
@@ -491,6 +495,15 @@ public abstract class IrVisitor<TResult, TContext>
         return default!;
     }
 
+    public virtual TResult VisitTupleLiteral(IrTupleLiteral tupleLiteral, TContext context)
+    {
+        foreach (var element in tupleLiteral.Elements)
+        {
+            VisitValue(element, context);
+        }
+        return default!;
+    }
+
     /// <summary>
     /// Visit an array literal value
     /// </summary>
@@ -537,6 +550,24 @@ public abstract class IrVisitor<TResult, TContext>
     {
         VisitValue(indexedField.Array, context);
         VisitValue(indexedField.Index, context);
+        return default!;
+    }
+
+    public virtual TResult VisitTupleElementAccess(IrTupleElementAccess tupleElement, TContext context)
+    {
+        VisitValue(tupleElement.Tuple, context);
+        return default!;
+    }
+
+    public virtual TResult VisitEnumTagAccess(IrEnumTagAccess enumTag, TContext context)
+    {
+        VisitValue(enumTag.EnumValue, context);
+        return default!;
+    }
+
+    public virtual TResult VisitEnumPayloadAccess(IrEnumPayloadAccess enumPayload, TContext context)
+    {
+        VisitValue(enumPayload.EnumValue, context);
         return default!;
     }
 

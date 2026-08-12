@@ -693,7 +693,7 @@ pub struct AttachedSpriteData {
 impl AttachedSpriteData {
     // Create attached sprite data from two sprite data structures
     // Both must have the same height
-    pub fn from_sprites(plane01: SpriteData, plane23: SpriteData) -> Result<AttachedSpriteData, GraphicsError> {
+    pub fn from_sprites(consuming plane01: SpriteData, consuming plane23: SpriteData) -> Result<AttachedSpriteData, GraphicsError> {
         if plane01.height() != plane23.height() {
             return Result::Err(GraphicsError::InvalidSpriteData)
         }

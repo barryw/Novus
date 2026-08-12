@@ -89,7 +89,10 @@ impl BitMapHandle {
     /// Use this when passing ownership to another system or storing
     /// the bitmap beyond the current scope.
     pub fn into_raw(consuming self) -> *BitMap {
-        return self.bitmap
+        let bitmap = self.bitmap
+        self.bitmap = null
+        self.owns_blitter = false
+        return bitmap
     }
 
     /// Mark that a blitter operation is pending for this bitmap
@@ -167,7 +170,7 @@ impl CopperListHandle {
     ///
     /// memory: CHIP RAM containing copper list instructions
     /// active: Set to true if this list is currently active (installed via LoadView)
-    pub fn new(memory: MemoryBlock, active: bool) -> CopperListHandle {
+    pub fn new(consuming memory: MemoryBlock, active: bool) -> CopperListHandle {
         return CopperListHandle {
             memory: memory,
             active: active,
@@ -187,6 +190,7 @@ impl CopperListHandle {
     /// Use this when passing ownership to another system or storing
     /// the copper list beyond the current scope.
     pub fn into_memory(consuming self) -> MemoryBlock {
+        self.active = false
         return self.memory
     }
 

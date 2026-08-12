@@ -285,6 +285,32 @@ pub fn array_repeat() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_LargeRuntimeStructRepeat_DoesNotGenerateStaticInitializer()
+    {
+        var source = @"
+struct Point {
+    x: i32,
+    y: i32
+}
+
+fn make_point() -> Point {
+    return Point { x: 1, y: 2 }
+}
+
+pub fn array_repeat() -> i32 {
+    var point = make_point()
+    var points = [point; 32]
+    return points[31].x
+}";
+
+        var module = BuildIR(source);
+        var code = GenerateCCode(module);
+
+        Assert.DoesNotContain("static const Point", code);
+        Assert.Contains("[31] =", code);
+    }
+
+    [Fact]
     public void CCodeGen_DebugMode_IncludesAssertCode()
     {
         var source = @"

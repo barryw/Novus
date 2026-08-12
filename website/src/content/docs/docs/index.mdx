@@ -1,0 +1,21 @@
+---
+title: Novus Documentation
+description: Learn Novus and build safe Amiga applications
+---
+
+Start with [Introduction](/getting-started/introduction/) and
+[Your First Program](/getting-started/first-program/), then use the language
+guides as you build.
+
+## Essential guides
+
+- [Ownership and Memory Safety](/guide/memory/) — ownership, `consuming`,
+  shared and mutable borrows, views, `Result`, raw handles, and `unsafe`
+- [Functions](/guide/functions/) — signatures, parameters, and return values
+- [Variables and Types](/guide/variables-types/) — values, references, and raw pointers
+- [Error Handling](/guide/error-handling/) — `Result`, `Option`, and `?`
+- [Language Reference](/reference/language/) — complete syntax reference
+
+Novus is safe by default. Normal application code should borrow resources or
+use owning standard-library handles; raw pointers belong at explicit FFI and
+hardware boundaries.

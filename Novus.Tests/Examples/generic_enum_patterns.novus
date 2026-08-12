@@ -17,7 +17,7 @@ impl<T> Maybe<T> {
         }
     }
 
-    pub fn get_or(self, fallback_value: T) -> T {
+    pub fn get_or(self, consuming fallback_value: T) -> T {
         match self {
             Just(val) => return val,
             Nothing => return fallback_value

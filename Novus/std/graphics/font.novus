@@ -169,7 +169,9 @@ impl FontHandle {
     /// Transfers ownership to the caller. The caller is responsible
     /// for calling CloseFont() when done.
     pub fn into_raw(consuming self) -> *TextFont {
-        return self.font
+        let font = self.font
+        self.font = null
+        return font
     }
 
     /// Get the raw font pointer (borrow).

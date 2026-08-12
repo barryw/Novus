@@ -93,7 +93,9 @@ public class TypeChecker
             (IrPointerType pa, IrPointerType pb) => TypesAreEqual(pa.PointeeType, pb.PointeeType),
             (IrReferenceType ra, IrReferenceType rb) => TypesAreEqual(ra.PointeeType, rb.PointeeType),
             (IrMutReferenceType ma, IrMutReferenceType mb) => TypesAreEqual(ma.PointeeType, mb.PointeeType),
-            (IrArrayType aa, IrArrayType ab) => aa.Length == ab.Length && TypesAreEqual(aa.ElementType, ab.ElementType),
+            (IrArrayType aa, IrArrayType ab) => aa.Length == ab.Length &&
+                                                aa.LengthParameter == ab.LengthParameter &&
+                                                TypesAreEqual(aa.ElementType, ab.ElementType),
             (IrStructType sa, IrStructType sb) => StructTypesAreEqual(sa, sb),
             (IrEnumType ea, IrEnumType eb) => EnumTypesAreEqual(ea, eb),
             (IrTupleType ta, IrTupleType tb) => TupleTypesAreEqual(ta, tb),

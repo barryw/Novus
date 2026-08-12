@@ -1,0 +1,89 @@
+// Destructive: run only after rdb_write_test prepared the exact disposable HDF.
+
+from std::core import Option, Result
+from std::ffi::amiga_consts import ACCESS_READ
+from std::os::block_device import BlockDevice
+from std::os::dos import DirLockHandle
+from std::os::filesystem import MountedFileSystem
+from std::os::timer import Duration, delay
+from std::test::test import expect_eq
+from format import prepare_node
+from rdb import DOS_TYPE_FFS_INTL
+from rdb_io import load_rdb
+
+fn wait_for_mount() -> Option<MountedFileSystem> {
+    var attempt = 0u32
+    while attempt < 20u32 {
+        match MountedFileSystem::open("NVT0:") {
+            Result::Ok(value) => return Option::Some(value),
+            Result::Err(_) => {},
+        }
+        match delay(Duration::millis(100u32)) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Option::None,
+        }
+        attempt++
+    }
+    return Option::None
+}
+
+fn probe() -> i32 {
+    var disk = match BlockDevice::open("uaehf.device", 1u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 30,
+    }
+    if disk.geometry().total_blocks() != 131072u32 || disk.geometry().block_bytes() != 512u32 {
+        return 31
+    }
+    let model = match load_rdb(&var disk) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 32,
+    }
+    let partition = match model.partition(0u32) {
+        Option::Some(value) => value,
+        Option::None => return 33,
+    }
+    if model.partition_count() != 1u32 || !partition.name().equals("NVT0") {
+        return 34
+    }
+
+    let prepared = match prepare_node("NVT0", "uaehf.device", 1u32, &model, 0u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 35,
+    }
+    let _registered = match prepared.register(0, true) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 36,
+    }
+    let mounted = match wait_for_mount() {
+        Option::Some(value) => value,
+        Option::None => return 37,
+    }
+    var inhibited = match mounted.inhibit() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 38,
+    }
+    match inhibited.format("NovusTest", DOS_TYPE_FFS_INTL) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return 39,
+    }
+    match inhibited.release() {
+        Result::Ok(_) => {},
+        Result::Err(_) => return 40,
+    }
+
+    match delay(Duration::millis(250u32)) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return 41,
+    }
+    return match DirLockHandle::lock("NVT0:", ACCESS_READ) {
+        Result::Ok(_) => 0,
+        Result::Err(_) => 42,
+    }
+}
+
+#[stack_size(32768)]
+@test("format and remount a partition on the disposable HDF")
+pub fn test_disposable_rdb_lifecycle() {
+    expect_eq(probe(), 0, "partition formats and becomes readable")
+}

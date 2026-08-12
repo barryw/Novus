@@ -1195,7 +1195,7 @@ impl BlitterOps {
             var lwm: u16 = $FFFF
             if shift > 0 {
                 // Mask out the rightmost 'shift' bits that are overflow from previous word
-                lwm = $FFFF << shift
+                lwm = $FFFFu16 << shift
             }
 
             // Acquire blitter with RAII guard

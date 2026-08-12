@@ -24,8 +24,8 @@ from std::strings::core import Str, String
 from std::collections::vec import Vec
 from std::error::errors import DosError, dos_last_error
 from std::ffi::amiga_structs import RDArgs, WBStartup, WBArg, Process, MsgPort, Message
-from std::ffi::dos import ReadArgs, FreeArgs, FindArg, NameFromLock, IoErr
-from std::ffi::exec import FindTask, WaitPort, GetMsg, ReplyMsg
+from std::ffi::dos import ReadArgs, FreeArgs, FindArg, GetArgStr, NameFromLock, IoErr
+from std::ffi::exec import FindTask
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
 from std::ffi::exec import AllocMem, FreeMem
 
@@ -53,7 +53,7 @@ pub enum ArgsError {
 
 /// Convert DosError to ArgsError
 impl From<DosError> for ArgsError {
-    fn convert(err: DosError) -> ArgsError {
+    fn convert(consuming err: DosError) -> ArgsError {
         return ArgsError::Dos(err)
     }
 }
@@ -213,7 +213,7 @@ impl Args {
 
         // Value is a pointer to null-terminated string
         // from_cstr returns Option<Str>, so we return it directly
-        return Str::from_cstr((*u8)value)
+        return unsafe { Str::from_cstr((*u8)value) }
     }
 
     /// Get switch value (true if present, false if not)
@@ -313,7 +313,7 @@ impl Args {
 
         while var i < count {
             let str_ptr: *u8 = strings_ptr[i]
-            let str_opt = Str::from_cstr(str_ptr)
+            let str_opt = unsafe { Str::from_cstr(str_ptr) }
             match str_opt {
                 Some(s) => {
                     match result.push(s) {
@@ -480,7 +480,7 @@ impl ArgParser {
 
     /// Get the template string
     pub fn template(&self) -> Str {
-        return Str::from_raw((*u8)&self.template, self.len)
+        return unsafe { Str::new(&self.template[0], self.len) }
     }
 
     /// Parse arguments using built template
@@ -545,16 +545,27 @@ pub fn is_workbench() -> bool {
     return process.pr_CLI == 0
 }
 
+/// Borrow the command text supplied after the program name. Workbench launches
+/// return an empty string.
+@borrows(static)
+pub fn command_line() -> Str {
+    let raw = GetArgStr()
+    return "" if raw == null
+    return unsafe {
+        match Str::from_cstr(raw) {
+            Option::Some(value) => value,
+            Option::None => "",
+        }
+    }
+}
+
 /// Workbench startup message wrapper
 ///
 /// Provides safe access to WBStartup message fields.
 /// IMPORTANT: The startup message must NOT be replied until the program exits.
 /// This struct borrows the message, it does NOT own it.
 pub struct WorkbenchStartup {
-    // Raw WBStartup pointer (borrowed from system, do NOT free)
-    msg: *WBStartup,
-    // Whether we need to reply on drop
-    needs_reply: bool,
+    msg: &WBStartup,
 }
 
 impl WorkbenchStartup {
@@ -564,9 +575,6 @@ impl WorkbenchStartup {
     /// Indices 1..n are any files/icons that were selected when
     /// the program was double-clicked (shift-click multi-select).
     pub fn num_args(&self) -> u32 {
-        if (u32)self.msg == 0 {
-            return 0
-        }
         return (u32)self.msg.sm_NumArgs
     }
 
@@ -575,10 +583,6 @@ impl WorkbenchStartup {
     /// Returns WBArgument with lock and filename.
     /// Index 0 = program icon, 1..n = selected files.
     pub fn arg(&self, index: u32) -> Option<WBArgument> {
-        if (u32)self.msg == 0 {
-            return Option::None
-        }
-
         if index >= (u32)self.msg.sm_NumArgs {
             return Option::None
         }
@@ -588,9 +592,13 @@ impl WorkbenchStartup {
         let offset: u32 = (u32)args_base + index * 8
         let arg_ptr: *WBArg = (*WBArg)offset
 
+        var name: Option<Str> = Option::None
+        if arg_ptr.wa_Name != null {
+            name = unsafe { Str::from_cstr(arg_ptr.wa_Name) }
+        }
         return Option::Some(WBArgument {
             lock: arg_ptr.wa_Lock,
-            name_ptr: arg_ptr.wa_Name,
+            name: name,
         })
     }
 
@@ -599,36 +607,12 @@ impl WorkbenchStartup {
     /// If the program's icon has a TOOLWINDOW tooltype,
     /// this returns the window specification (e.g., "CON:0/0/640/200/Output").
     pub fn tool_window(&self) -> Option<Str> {
-        if (u32)self.msg == 0 {
-            return Option::None
-        }
-
         if (u32)self.msg.sm_ToolWindow == 0 {
             return Option::None
         }
 
         // from_cstr returns Option<Str> already
-        return Str::from_cstr(self.msg.sm_ToolWindow)
-    }
-
-    /// Mark that the message should NOT be replied on drop
-    ///
-    /// Use this if you're handling the reply manually or passing
-    /// ownership elsewhere.
-    pub fn suppress_reply(&var self) {
-        self.needs_reply = false
-    }
-}
-
-// IMPORTANT: Reply to Workbench startup message on drop
-// This is REQUIRED - the Workbench waits for this reply!
-impl Drop for WorkbenchStartup {
-    fn drop(&var self) {
-        if self.needs_reply && (u32)self.msg != 0 {
-            // Forbid/Permit not needed - ReplyMsg is atomic
-            ReplyMsg((*Message)self.msg)
-            self.msg = null
-        }
+        return unsafe { Str::from_cstr(self.msg.sm_ToolWindow) }
     }
 }
 
@@ -636,8 +620,8 @@ impl Drop for WorkbenchStartup {
 pub struct WBArgument {
     /// DOS lock on directory containing the file
     lock: i32,
-    /// Pointer to filename (not full path)
-    name_ptr: *u8,
+    /// Filename view tied to the startup message.
+    name: Option<Str>,
 }
 
 impl WBArgument {
@@ -654,10 +638,7 @@ impl WBArgument {
     /// Just the filename portion - combine with lock for full path.
     /// Returns None if no name is available.
     pub fn name(&self) -> Option<Str> {
-        if (u32)self.name_ptr == 0 {
-            return Option::None
-        }
-        return Str::from_cstr(self.name_ptr)
+        return self.name
     }
 
     /// Get full path by combining lock and name
@@ -694,13 +675,19 @@ impl WBArgument {
         }
 
         // Append filename
-        if (u32)self.name_ptr != 0 {
-            var i: u32 = 0
-            while self.name_ptr[i] != 0 && path_len < 510 {
-                path_buf[path_len] = self.name_ptr[i]
-                path_len++
-                i++
-            }
+        match self.name {
+            Option::Some(name) => {
+                var i: u32 = 0
+                while i < name.len() && path_len < 510 {
+                    match name.get(i) {
+                        Option::Some(byte) => { path_buf[path_len] = byte },
+                        Option::None => {},
+                    }
+                    path_len++
+                    i++
+                }
+            },
+            Option::None => {},
         }
         path_buf[path_len] = 0
 
@@ -746,6 +733,7 @@ impl WBArgument {
 // We use a stub function defined in C that simply returns the global's value
 extern fn __get_wb_startup_msg() -> *WBStartup
 
+@borrows(static)
 pub fn get_workbench_startup() -> Option<WorkbenchStartup> {
     // Get the message pointer (already retrieved by startup code)
     let wb_msg = __get_wb_startup_msg()
@@ -756,7 +744,6 @@ pub fn get_workbench_startup() -> Option<WorkbenchStartup> {
     // Return wrapper - but DO NOT reply on drop!
     // The runtime startup code handles replying when the program exits.
     return Option::Some(WorkbenchStartup {
-        msg: wb_msg,
-        needs_reply: false,  // Runtime handles reply, not us
+        msg: &*wb_msg,
     })
 }

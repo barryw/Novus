@@ -86,8 +86,19 @@ public class Program
     // Codegen format version - increment to invalidate all cached object files
     // when making breaking changes to code generation or compilation process.
     // This is the "nuclear option" - prefer targeted invalidation when possible.
-    // v28: Release builds compile all C translation units with VBCC whole-program optimization.
-    private const int CODEGEN_VERSION = 34;
+    // v57: shadowed locals and pattern bindings always receive distinct C storage.
+    private const int CODEGEN_VERSION = 57;
+
+    internal static string? ResolveGeneratedSourcePath(
+        string cFileName,
+        IEnumerable<(string Prefix, string SourcePath)> candidates)
+    {
+        return candidates
+            .Where(candidate => cFileName.StartsWith(candidate.Prefix + "_", StringComparison.Ordinal))
+            .OrderByDescending(candidate => candidate.Prefix.Length)
+            .Select(candidate => candidate.SourcePath)
+            .FirstOrDefault();
+    }
 
     internal static string ComputeWholeProgramCacheKey(
         IEnumerable<(string Path, string ContentHash)> inputs,
@@ -114,7 +125,7 @@ public class Program
             options.Cpu, options.Fpu, options.OptimizationLevel, codegen);
     }
 
-    private static string ComputeBuildSignature(CompilerOptions options, string configHash)
+    private static string ComputeBuildSignature(CompilerOptions options, string configHash, string sourceGraphHash)
     {
         static string HashFile(string path)
         {
@@ -137,6 +148,7 @@ public class Program
             .OrderBy(path => path, StringComparer.Ordinal);
         var parts = files.Select(path => $"{Path.GetFullPath(path)}:{HashFile(path)}")
             .Prepend($"codegen:{CODEGEN_VERSION}")
+            .Prepend(sourceGraphHash)
             .Prepend(configHash);
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts))));
@@ -386,6 +398,27 @@ public class Program
 
     // ModuleIR is now defined in Novus.Compilation.ModuleIR
 
+    private static void WriteModuleDiagnostics(
+        DiagnosticBag diagnostics,
+        string inputFile,
+        CompilerOptions options)
+    {
+        var inputPath = Path.GetFullPath(inputFile);
+        var showWarnings = options.Verbose ||
+            inputPath == Path.GetFullPath(options.InputFile) ||
+            options.AdditionalSourceFiles.Any(path => inputPath == Path.GetFullPath(path));
+        var visible = diagnostics.Diagnostics
+            .Where(diagnostic => diagnostic.IsError || showWarnings && diagnostic.IsWarning)
+            .ToList();
+        if (visible.Count == 0)
+            return;
+
+        var filtered = new DiagnosticBag();
+        foreach (var diagnostic in visible)
+            filtered.Add(diagnostic);
+        Console.Error.WriteLine(filtered.FormatDiagnostics());
+    }
+
     /// <summary>
     /// Compile a single Novus module to IR (without generating C code yet).
     /// This allows us to collect all modules first, then generate a shared types header.
@@ -526,11 +559,7 @@ public class Program
             var analysisSucceeded = analyzer.Analyze(compilationUnit);
             ReportModulePhase("semantic analysis");
 
-            // Always print diagnostics (warnings and errors)
-            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
-            {
-                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-            }
+            WriteModuleDiagnostics(analyzer.Diagnostics, inputFile, options);
 
             if (!analysisSucceeded)
             {
@@ -545,11 +574,7 @@ public class Program
             var module = irBuilder.BuildModule(compilationUnit);
             ReportModulePhase("IR construction");
 
-            // Always print diagnostics (warnings and errors) from IR building
-            if (irBuilder.Diagnostics.HasErrors || irBuilder.Diagnostics.HasWarnings)
-            {
-                Console.Error.WriteLine(irBuilder.Diagnostics.FormatDiagnostics());
-            }
+            WriteModuleDiagnostics(irBuilder.Diagnostics, inputFile, options);
 
             // Check for IR building errors
             if (irBuilder.Diagnostics.HasErrors)
@@ -700,11 +725,7 @@ public class Program
             var analyzer = new SemanticAnalyzer(inputFile, source, stdLibPath);
             var analysisSucceeded = analyzer.Analyze(compilationUnit);
 
-            // Always print diagnostics (warnings and errors)
-            if (analyzer.Diagnostics.HasErrors || analyzer.Diagnostics.HasWarnings)
-            {
-                Console.Error.WriteLine(analyzer.Diagnostics.FormatDiagnostics());
-            }
+            WriteModuleDiagnostics(analyzer.Diagnostics, inputFile, options);
 
             if (!analysisSucceeded)
             {
@@ -963,7 +984,9 @@ public class Program
             {
                 var configHash = ComputeCompilationConfigHash(options);
                 buildStampPath = Path.GetFullPath(options.OutputFile) + ".novus-build";
-                buildSignature = ComputeBuildSignature(options, configHash);
+                var sourceRoots = new[] { options.InputFile }.Concat(options.AdditionalSourceFiles);
+                buildSignature = ComputeBuildSignature(
+                    options, configHash, compilationCache.ComputeSourceGraphHash(sourceRoots));
                 if (File.Exists(options.OutputFile) && File.Exists(buildStampPath) &&
                     await File.ReadAllTextAsync(buildStampPath) == buildSignature &&
                     !compilationCache.NeedsRecompilation(options.InputFile, configHash) &&
@@ -1615,6 +1638,11 @@ public class Program
                     projectVersion: options.PackageVersion);
                 allCodeGenerators.Add(moduleCodegen);
 
+                // Monomorphized function ownership depends on this build's import
+                // graph, so a per-module C manifest cannot safely cache the winner.
+                if (functions.Any(moduleCodegen.IsMonomorphizedFunction))
+                    cachedGeneratedFiles = null;
+
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
                 var generableFunctions = functions
@@ -1760,7 +1788,7 @@ public class Program
 
             // Compile C code with VBCC
             Console.WriteLine("Compiling with VBCC...");
-            var toolchain = new VbccToolchain(options.VbccPath, options.NdkPath);
+            var toolchain = new VbccToolchain(options.VbccPath, options.NdkPath, options.Verbose);
 
             async Task<bool> AssembleCached(string sourceFile, string objectFile, string cpu, bool withFpu)
             {
@@ -2052,33 +2080,19 @@ ___stack:
             // because compiler changes can alter C codegen without changing the source
             var cFileToSource = new Dictionary<string, (string path, string hash)>();
 
-            // Map main module functions to source file
-            var mainSourcePath = options.InputFile;
+            // Resolve the longest module prefix so names such as `block_device_read`
+            // are not mistaken for files belonging to `block_device`.
+            var sourceCandidates = allModulesIR
+                .Select(item => (Prefix: item.Value.ModuleName, SourcePath: item.Key))
+                .Append((Prefix: baseName, SourcePath: options.InputFile))
+                .ToList();
             foreach (var cFile in cFiles)
             {
-                var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                if (cFileName.StartsWith(baseName + "_"))
+                var sourcePath = ResolveGeneratedSourcePath(
+                    Path.GetFileNameWithoutExtension(cFile), sourceCandidates);
+                if (sourcePath != null)
                 {
-                    // Hash the generated C file content (not the source)
-                    var cFileHash = ComputeFileHash(cFile);
-                    cFileToSource[cFile] = (mainSourcePath, cFileHash);
-                }
-            }
-
-            // Map imported module functions to their source files
-            foreach (var (modulePath, moduleIR) in allModulesIR)
-            {
-                var moduleName = moduleIR.ModuleName;
-
-                foreach (var cFile in cFiles)
-                {
-                    var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                    if (cFileName.StartsWith(moduleName + "_"))
-                    {
-                        // Hash the generated C file content (not the source)
-                        var cFileHash = ComputeFileHash(cFile);
-                        cFileToSource[cFile] = (modulePath, cFileHash);
-                    }
+                    cFileToSource[cFile] = (sourcePath, ComputeFileHash(cFile));
                 }
             }
 
@@ -2739,7 +2753,12 @@ ___stack:
                 if (compilationCache != null)
                     await compilationCache.FlushAsync();
                 if (buildStampPath != null && buildSignature != null)
+                {
+                    var sourceRoots = new[] { options.InputFile }.Concat(options.AdditionalSourceFiles);
+                    buildSignature = ComputeBuildSignature(options, ComputeCompilationConfigHash(options),
+                        compilationCache!.ComputeSourceGraphHash(sourceRoots));
                     await AtomicCacheWriter.WriteFileAtomicallyAsync(buildStampPath, buildSignature);
+                }
                 Console.WriteLine($"\n✓ Successfully created: {Path.GetFileName(exeFile)}");
 
                 // Display cache statistics if requested

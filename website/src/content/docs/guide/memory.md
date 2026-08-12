@@ -1,613 +1,300 @@
 ---
-title: Memory Management
-description: Learn about memory management in Novus including stack, heap, ownership, borrowing, and AmigaOS memory
+title: Ownership and Memory Safety
+description: The rules for ownership, consuming values, borrowing, views, and raw Amiga access in Novus
 ---
 
-Memory management in Novus is explicit and deterministic. There's no garbage collector - you control when memory is allocated and freed. This guide covers how memory works, ownership, borrowing, and AmigaOS-specific memory features.
+Novus makes resource ownership visible in function signatures and checks it at
+compile time. There is no garbage collector and no hidden reference counting.
+Files, windows, screens, memory, ports, and ordinary values all follow the same
+small set of rules.
 
-## Stack vs Heap
+## The model in one table
 
-### Stack Memory
+| Signature | Meaning | Caller may use the value afterward? |
+|---|---|---|
+| `value: T` | Pass without transferring ownership; use for `Copy` data and small views | Yes |
+| `consuming value: T` | Transfer ownership | No |
+| `value: &T` | Shared, read-only borrow | Yes, but not mutably while borrowed |
+| `value: &var T` | Exclusive, mutable borrow | Yes, after the borrow's scope ends |
+| `value: *T` | Unchecked raw address | The compiler cannot protect the pointee |
 
-The stack is fast, automatic memory with limited size:
+The practical rule is simple: borrow by default, consume when ownership really
+moves, and use raw pointers only at an FFI or hardware boundary.
+
+## Owned values
+
+Every non-`Copy` value has one owner. When that owner leaves scope, Novus runs
+its `Drop` implementation automatically, including on early return and error
+paths.
 
 ```novus
-pub fn main() -> i32 {
-    let x = 42           // Allocated on stack
-    let arr = [1, 2, 3]  // Array on stack
+fn show_demo() -> Result<(), IntuitionError> {
+    let screen = ScreenHandle::lores("Demo", 5)?
+    // screen owns the Intuition screen
+    return Result::Ok(())
+} // ScreenHandle closes it here
+```
 
-    // Automatically freed when function returns
-    return 0
+Primitive numbers, booleans, and types implementing `Copy` are copied instead
+of moved. The compiler permits `Copy` only for resource-free types whose fields
+are also safe to copy; resource handles, mutable views, and owning containers
+cannot opt out of move checking.
+
+## Consuming transfers ownership
+
+Use `consuming` only when the callee keeps, destroys, or returns ownership of a
+value.
+
+```novus
+fn queue(consuming job: Job) {
+    // this function now owns job
+}
+
+fn run() {
+    let job = Job::new()
+    queue(job)
+    // job is moved; using it here is a compile error
 }
 ```
 
-Stack characteristics:
-- **Fast**: Simple pointer adjustment
-- **Automatic**: Allocated/freed automatically
-- **Limited**: Small size (typically 4KB-8KB on Amiga)
-- **Lifetime**: Tied to function scope
-- **Order**: LIFO (Last In, First Out)
+The compiler invalidates the caller's value, clears the generated storage, and
+makes the callee responsible for cleanup. A moved value cannot be dropped
+twice. It is also an error to consume an owner while any view of it is live,
+or to forward an owning non-consuming parameter into a consuming call.
 
-### Heap Memory
-
-The heap is slower but larger and more flexible:
+Methods use the same spelling:
 
 ```novus
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
+pub fn finish(consuming self) -> String
+pub fn push(&var self, consuming value: T) -> Result<(), ExecError>
+```
 
-pub fn main() -> i32 {
-    // Allocate 1KB on heap
-    let ptr = AllocMem(1024, MEMF_ANY)
+`finish` consumes the builder. `push` mutates the collection and transfers the
+element into it.
 
-    if ptr == 0 {
-        return -1  // Allocation failed
-    }
+## Shared borrows: `&T`
 
-    // Use memory...
+A shared borrow provides read-only access without transferring ownership.
+Many shared borrows may exist at once.
 
-    // Must manually free
-    FreeMem(ptr, 1024)
+```novus
+fn area(rect: &Rectangle) -> i32 {
+    return rect.width * rect.height
+}
 
-    return 0
+fn measure() -> i32 {
+    let rect = Rectangle { width: 20, height: 10 }
+    let first = &rect
+    let second = &rect
+    return area(first) + area(second)
 }
 ```
 
-Heap characteristics:
-- **Slower**: Requires memory manager
-- **Manual**: Must explicitly free
-- **Large**: Limited only by available RAM
-- **Lifetime**: Until explicitly freed
-- **Flexible**: Allocate at runtime
+While a shared borrow is live, the owner cannot be changed, moved, consumed, or
+mutably borrowed. This prevents a pointer from silently becoming stale after a
+container resize or resource close.
 
-### When to Use Each
+## Exclusive borrows: `&var T`
 
-**Use the stack for:**
-- Local variables
-- Small arrays with known size
-- Short-lived data
-- Function parameters
-
-**Use the heap for:**
-- Large data structures
-- Variable-sized data
-- Data that outlives function scope
-- Data shared between functions
-
-## Ownership
-
-Ownership is Novus's core memory safety concept. Every value has a single owner:
+An exclusive borrow permits mutation. There may be exactly one exclusive
+borrow, and no shared borrows, for the same owner.
 
 ```novus
-struct Point {
-    x: i32,
-    y: i32,
+fn move_right(point: &var Point) {
+    point.x = point.x + 1
 }
 
-pub fn main() -> i32 {
-    let p1 = Point { x: 10, y: 20 }  // p1 owns the Point
-
-    // Transfer ownership (move)
-    let p2 = p1
-
-    // ERROR: p1 no longer valid!
-    // let x = p1.x
-
-    // p2 is the owner now
-    let y = p2.y  // OK
-
-    return 0
-}
-```
-
-Ownership rules:
-1. Each value has exactly one owner
-2. When the owner goes out of scope, the value is freed
-3. Values can be moved to a new owner
-4. After moving, the old variable is invalid
-
-### Ownership Transfer
-
-```novus
-fn takes_ownership(p: Point) {
-    // Function now owns p
-    // p is freed when function returns
-}
-
-pub fn main() -> i32 {
-    let point = Point { x: 5, y: 10 }
-
-    takes_ownership(point)
-    // point is no longer valid here
-
-    return 0
-}
-```
-
-### Returning Ownership
-
-```novus
-fn create_point() -> Point {
-    let p = Point { x: 0, y: 0 }
-    return p  // Ownership transferred to caller
-}
-
-pub fn main() -> i32 {
-    let point = create_point()  // Receives ownership
-    return 0
-}
-```
-
-## Borrowing
-
-Borrowing allows temporary access without transferring ownership:
-
-### Immutable Borrows (`&T`)
-
-```novus
-struct Point {
-    x: i32,
-    y: i32,
-}
-
-fn print_point(p: &Point) {
-    // Borrow p (read-only)
-    // p is still owned by caller
-}
-
-pub fn main() -> i32 {
-    let point = Point { x: 10, y: 20 }
-
-    print_point(&point)  // Borrow point
-    print_point(&point)  // Can borrow again
-
-    // point still valid
-    let x = point.x
-
-    return 0
-}
-```
-
-Immutable borrows:
-- Read-only access
-- Multiple immutable borrows allowed
-- Original owner cannot modify during borrow
-
-### Mutable Borrows (`&var T`)
-
-```novus
-fn move_point(p: &var Point, dx: i32, dy: i32) {
-    p.x = p.x + dx
-    p.y = p.y + dy
-}
-
-pub fn main() -> i32 {
+fn update() {
     var point = Point { x: 10, y: 20 }
-
-    move_point(&point, 5, 10)  // Mutable borrow
-
-    // point is now (15, 30)
-    return 0
+    move_right(&var point)
 }
 ```
 
-Mutable borrow rules:
-- Only one mutable borrow at a time
-- No other borrows (immutable or mutable) while mutably borrowed
-- Prevents data races at compile time
-
-### Borrow Checker Rules
+State-changing methods always use `&var self`; read-only methods use `&self`.
+Collection APIs therefore have predictable pairs:
 
 ```novus
-pub fn main() -> i32 {
-    var x = 42
-
-    let r1 = &x      // OK - immutable borrow
-    let r2 = &x      // OK - multiple immutable borrows
-    // let r3 = &x   // ERROR - cannot mutably borrow while immutably borrowed
-
-    let y = *r1 + *r2  // Use borrows
-
-    let r3 = &x      // OK - previous borrows ended
-    *r3 = 100        // Modify through mutable borrow
-
-    return 0
-}
+pub fn get(&self, index: u32) -> Option<&T>
+pub fn get_mut(&var self, index: u32) -> Option<&var T>
 ```
 
-## Defer: Automatic Cleanup
+The owner must be declared with `var` before it can be mutably borrowed.
 
-The `defer` statement ensures cleanup code runs when scope exits:
+## Borrow scope
+
+Borrows currently last to the end of their lexical block. Use a small block
+when a view should end before the surrounding function does.
 
 ```novus
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
+fn edit() -> Result<(), ExecError> {
+    var values = Vec<i32>::new()
+    values.push(10)?
 
-pub fn main() -> i32 {
-    let ptr = AllocMem(1024, MEMF_ANY)
-    if ptr == 0 {
-        return -1
-    }
+    {
+        let first = values.get(0)
+        // read first here
+    } // the shared borrow ends
 
-    // Schedule cleanup - runs at scope exit
-    defer {
-        FreeMem(ptr, 1024)
-    }
-
-    // Use memory...
-    // Even if we return early, defer executes
-
-    if some_condition {
-        return 0  // defer still runs!
-    }
-
-    return 0  // defer runs here too
+    values.push(20)? // mutation is legal again
+    return Result::Ok(())
 }
 ```
 
-Defer characteristics:
-- Executes in LIFO order (last defer first)
-- Runs even on early return
-- Runs **after** return value is computed
-- Perfect for resource cleanup
+This rule is intentionally visible and deterministic. Novus does not make the
+lifetime depend on an optimizer deciding where the last use occurred.
 
-### Multiple Defers
+## Views and iterators
+
+`Str`, `Slice<T>`, `MutSlice<T>`, collection iterators, drawing contexts, and
+guards are views. They do not own the underlying resource. Their fields use
+checked references, so the compiler keeps their owner alive and prevents
+incompatible mutation for as long as the view exists.
 
 ```novus
-fn open_resources() -> i32 {
-    let r1 = alloc_resource(1)
-    defer {
-        free_resource(r1)  // Runs third
-    }
-
-    let r2 = alloc_resource(2)
-    defer {
-        free_resource(r2)  // Runs second
-    }
-
-    let r3 = alloc_resource(3)
-    defer {
-        free_resource(r3)  // Runs first
-
-    }
-
-    // Use resources...
-
-    return 0
-    // Execution order:
-    // 1. Return value computed (0)
-    // 2. free_resource(r3)
-    // 3. free_resource(r2)
-    // 4. free_resource(r1)
-    // 5. Function returns
+fn inspect(values: &Vec<i32>) {
+    let slice = values.as_slice()
+    let first = slice.get(0)
+    // values cannot be moved or mutated while slice/first are live
 }
 ```
 
-## AmigaOS Memory
+This relationship is recursive. `Option<&T>`, `Result<Str, E>`, a struct
+containing a reference, and even `Vec<Str>` remain tied to their source.
 
-AmigaOS provides flexible memory allocation with different memory types:
+Use `Slice<T>` for a shared contiguous range and `MutSlice<T>` for an exclusive
+mutable range. Do not represent a safe view with a `*T` field; that erases the
+relationship the checker needs.
 
-### Memory Types
+## Returning borrowed data
+
+Novus normally infers the source of a returned view from `&self` or from the
+single borrowed parameter.
 
 ```novus
-from std::ffi::amiga_consts import MEMF_ANY, MEMF_CHIP, MEMF_FAST, MEMF_PUBLIC, MEMF_CLEAR
-from std::ffi::exec import AllocMem
-
-fn main() {
-    // Any available memory
-    let ptr1 = AllocMem(1024, MEMF_ANY)
-
-    // Chip memory (accessible by custom chips)
-    let ptr2 = AllocMem(1024, MEMF_CHIP)
-
-    // Fast memory (not accessible by custom chips, but faster)
-    let ptr3 = AllocMem(1024, MEMF_FAST)
-
-    // Public memory (can be shared across tasks)
-    let ptr4 = AllocMem(1024, MEMF_PUBLIC)
-
-    // Clear to zero
-    let ptr5 = AllocMem(1024, MEMF_CLEAR | MEMF_ANY)
+fn first(values: Slice<i32>) -> Option<&i32> {
+    return values.get(0)
 }
 ```
 
-Memory flags:
-- `MEMF_ANY` - Any available memory
-- `MEMF_CHIP` - Chip memory (for graphics, audio, blitter)
-- `MEMF_FAST` - Fast memory (for CPU-only data)
-- `MEMF_PUBLIC` - Public (task-sharable)
-- `MEMF_CLEAR` - Initialize to zero
-
-### Chip vs Fast Memory
-
-**Chip Memory:**
-- Accessible by custom chips (Blitter, Copper, Paula)
-- Required for graphics data, audio samples, sprite data
-- Limited (512KB-2MB depending on model)
-- Slower CPU access
-
-**Fast Memory:**
-- Only accessible by CPU
-- Not usable for hardware DMA
-- Can be much larger (up to 512MB on accelerated systems)
-- Faster CPU access
+If multiple inputs could supply the view, name the source with `@borrows`:
 
 ```novus
-// Graphics data must be in chip memory
-let screen = AllocMem(320 * 200, MEMF_CHIP | MEMF_CLEAR)
-
-// Application data can use fast memory
-let buffer = AllocMem(100000, MEMF_FAST)
+@borrows(right)
+fn choose(left: Str, right: Str) -> Str {
+    return right
+}
 ```
 
-### Safe AmigaOS Memory Allocation
+For literals or permanent program storage, use `@borrows(static)`:
 
 ```novus
-from std::core import Result
-from std::error::errors import ExecError
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
-
-fn allocate_buffer(size: u32) -> Result<*u8, ExecError> {
-    let ptr = AllocMem(size, MEMF_ANY)
-
-    if ptr == 0 {
-        return Result::Err(ExecError::NoMemory)
-    }
-
-    return Result::Ok((*u8)ptr)
-}
-
-pub fn main() -> i32 {
-    let result = allocate_buffer(1024)
-
-    match result {
-        Result::Ok(ptr) => {
-            defer {
-                FreeMem((u32)ptr, 1024)
-            }
-
-            // Use buffer...
-
-            return 0
-        },
-        Result::Err(_) => {
-            return -1
-        }
-    }
+@borrows(static)
+fn clear_sequence() -> Str {
+    return "\x9b0m"
 }
 ```
 
-## RAII: Resource Acquisition Is Initialization
+The compiler checks the function's return expressions against this declaration;
+`@borrows` is not permission to lie about a lifetime.
 
-RAII uses ownership to automatically manage resources:
+## `Result` for operations that can fail
+
+Allocation and AmigaOS operations can fail, so safe APIs return `Result<T, E>`
+instead of a null pointer or half-initialized object.
 
 ```novus
-struct Buffer {
-    ptr: *u8,
-    size: u32,
-}
-
-impl Drop for Buffer {
-    fn drop(self: &var Buffer) {
-        if self.ptr != 0 {
-            FreeMem((u32)self.ptr, self.size)
-        }
-    }
-}
-
-fn Buffer::new(size: u32) -> Result<Buffer, ExecError> {
-    let ptr = AllocMem(size, MEMF_ANY)
-
-    if ptr == 0 {
-        return Result::Err(ExecError::NoMemory)
-    }
-
-    return Result::Ok(Buffer {
-        ptr: (*u8)ptr,
-        size: size,
-    })
-}
-
-pub fn main() -> i32 {
-    let buffer = match Buffer::new(1024) {
-        Result::Ok(b) => b,
-        Result::Err(_) => return -1
-    }
-
-    // Use buffer...
-
-    // Automatically freed when buffer goes out of scope
-    return 0
+fn open_demo() -> Result<(), IntuitionError> {
+    let screen = ScreenHandle::lores("Demo", 5)?
+    return Result::Ok(())
 }
 ```
 
-The `Drop` trait automatically cleans up when the value goes out of scope.
+`?` returns the error while normal scope cleanup still runs. Use `Option<T>`
+only when absence is expected and needs no error detail.
 
-## Memory Safety Examples
+## Raw pointers and `unsafe`
 
-### Safe Array Access
+Raw pointers are necessary for NDK calls, custom-chip registers, DMA, and
+advanced data structures. They can be null, dangling, misaligned, or aliased;
+the compiler cannot prove otherwise.
 
 ```novus
-pub fn main() -> i32 {
-    let arr = [1, 2, 3, 4, 5]
-
-    // Safe - bounds checked in debug builds
-    let x = arr[2]  // x = 3
-
-    // Unsafe - will panic in debug builds
-    // let y = arr[10]  // Out of bounds!
-
-    return 0
+unsafe {
+    let custom = (*u16)$DFF000
+    let dmacon = custom[75]
 }
 ```
 
-### Preventing Use-After-Free
+Keep unsafe regions small. Convert to a checked owner or view immediately, then
+return to safe code. A public function that asserts a raw pointer's validity
+must be marked `@unsafe`, which forces callers to acknowledge the boundary.
+
+The standard library uses consistent raw names:
+
+| API | Contract |
+|---|---|
+| `handle()` / `as_ptr()` | Borrow a raw handle; ownership stays put |
+| `borrow_raw(...)` | Build a non-owning unsafe view |
+| `from_raw(...)` | Adopt ownership of a raw resource |
+| `into_raw(consuming self)` | Transfer ownership out and disable automatic cleanup |
+
+After `into_raw`, the caller must eventually pass the resource to another
+owner or release it manually. Calling `from_raw` twice for one resource creates
+two owners and is an unsafe programming error.
+
+## AmigaOS and hardware-retained pointers
+
+Some APIs keep a pointer after the call returns: message ports, asynchronous
+I/O, audio samples, sprites, Copper lists, and Blitter/DMA operations. A normal
+lexical borrow is not enough unless a safe wrapper owns the backing storage for
+the entire operation.
+
+Prefer a scoped library handle such as a request, guard, player, or channel.
+It should own every retained buffer, wait or abort before dropping it, and
+expose only checked methods. If no wrapper exists, raw pointers and `unsafe`
+are required, and the programmer must keep the memory alive until the OS or
+hardware is provably finished.
+
+## Reading an API signature
+
+You should be able to understand resource behavior without reading its body:
 
 ```novus
-fn dangerous() -> i32 {
-    var x = 42
-    let r = &x
-
-    // ERROR: x's lifetime ends here
-    return *r  // Compiler error - r outlives x
-}
+fn draw(context: &DrawContext)                 // reads a live context
+fn configure(context: &var DrawContext)        // mutates it exclusively
+fn install(consuming menu: MenuStrip)           // takes ownership
+fn rastport(&self) -> &RastPort                 // owner-tied view
+fn open(...) -> Result<WindowHandle, Error>     // new owned resource or error
+fn handle(&self) -> *Window                     // raw borrowed escape hatch
+fn into_raw(consuming self) -> *Window          // ownership leaves Novus
 ```
 
-The compiler prevents accessing memory after it's freed.
+If a library signature does not make ownership this clear, treat that as an API
+bug rather than tribal knowledge developers are expected to memorize.
 
-### Preventing Data Races
+## Library-author rules
 
-```novus
-fn no_data_races() {
-    var x = 42
+1. Return an owning handle for acquired resources and implement `Drop` with
+   `fn drop(&var self)`.
+2. Use `&self` for observation, `&var self` for mutation, and `consuming self`
+   for transformations or ownership transfer.
+3. Mark stored parameters `consuming`; borrow parameters used only during the
+   call.
+4. Return `Result` for failure and leave no partially owned resource on an
+   error path.
+5. Represent non-owning views with references, never hidden raw pointer fields.
+6. Keep raw constructors `@unsafe` and follow the raw naming table above.
+7. For OS/hardware-retained pointers, make the safe wrapper own the backing
+   memory and finish or cancel the operation before `Drop` releases it.
 
-    let r1 = &x      // Immutable borrow
-    let r2 = &x      // OK - multiple immutable borrows
+## What this prevents
 
-    // let r3 = &x   // ERROR - cannot mutably borrow while immutably borrowed
+Safe Novus code prevents use-after-move, double cleanup, returning references
+to locals, mutation while borrowed, competing mutable aliases, and unchecked
+failure represented as a null owner. Those protections remove several major
+sources of Guru Meditations.
 
-    // Use r1 and r2...
-
-    let r3 = &x      // OK - r1 and r2 are done
-    *r3 = 100        // Modify through mutable borrow
-}
-```
-
-## Best Practices
-
-1. **Prefer stack allocation**: Use stack for small, short-lived data
-2. **Use defer for cleanup**: Ensures resources are freed even on early return
-3. **Minimize heap allocations**: They're slow on 68k systems
-4. **Use RAII wrappers**: Automatic cleanup prevents leaks
-5. **Choose memory type carefully**: Use CHIP for hardware, FAST for CPU
-6. **Avoid raw pointers**: Use references when possible
-7. **Check allocation results**: Memory can fail on Amiga systems
-
-## Common Patterns
-
-### Temporary Buffer
-
-```novus
-fn process_data() -> Result<i32, ExecError> {
-    let buffer = AllocMem(4096, MEMF_FAST)
-    if buffer == 0 {
-        return Result::Err(ExecError::NoMemory)
-    }
-
-    defer {
-        FreeMem(buffer, 4096)
-    }
-
-    // Process with buffer...
-
-    return Result::Ok(0)
-}
-```
-
-### Resource Pool
-
-```novus
-struct Pool {
-    memory: *u8,
-    size: u32,
-    used: u32,
-}
-
-impl Pool {
-    fn allocate(&var self, size: u32) -> Option<*u8> {
-        if self.used + size > self.size {
-            return Option::None
-        }
-
-        let ptr = self.memory as u32 + self.used
-        self.used = self.used + size
-
-        return Option::Some(ptr as *u8)
-    }
-
-    fn reset(&var self) {
-        self.used = 0
-    }
-}
-```
-
-### Handle Pattern
-
-```novus
-struct ScreenHandle {
-    screen: *Screen,
-}
-
-impl Drop for ScreenHandle {
-    fn drop(&var self) {
-        if self.screen != null {
-            CloseScreen(self.screen)
-        }
-    }
-}
-
-fn open_screen_safe(width: u16, height: u16) -> Result<ScreenHandle, str> {
-    let screen = OpenScreen(width, height)
-
-    if screen == 0 {
-        return Result::Err("Failed to open screen")
-    }
-
-    return Result::Ok(ScreenHandle { screen: screen })
-}
-```
-
-## Memory Layout
-
-### Struct Memory Layout
-
-```novus
-struct Point {
-    x: i32,  // Offset 0, 4 bytes
-    y: i32,  // Offset 4, 4 bytes
-}
-// Total size: 8 bytes
-
-struct Color {
-    r: u8,  // Offset 0, 1 byte
-    g: u8,  // Offset 1, 1 byte
-    b: u8,  // Offset 2, 1 byte
-    a: u8,  // Offset 3, 1 byte
-}
-// Total size: 4 bytes
-```
-
-Structs are laid out sequentially in memory with natural alignment.
-
-### Array Memory Layout
-
-```novus
-let arr: [i32] = [10, 20, 30, 40]
-// Memory layout:
-// [10] [20] [30] [40]
-// Elements are contiguous
-```
-
-## Coming from C
-
-Key differences from C:
-
-| C | Novus |
-|---|-------|
-| `int x = malloc(10);` | `let x = AllocMem(10, MEMF_ANY)` |
-| `free(ptr);` | `FreeMem(ptr, size)` |
-| Manual memory management | Ownership + borrowing |
-| Pointer arithmetic | Safe references |
-| `NULL` pointers | `Option<*T>` |
-| Dangling pointers possible | Prevented by borrow checker |
-| Data races possible | Prevented by borrow checker |
-
-Key advantages:
-- **Memory safety**: Borrow checker prevents use-after-free
-- **No null pointer crashes**: Use `Option` for nullable pointers
-- **No data races**: Mutable borrowing rules prevent races
-- **RAII**: Automatic cleanup with `Drop` trait
-- **Explicit ownership**: Clear who owns what
-
-Novus gives you C-like control with Rust-like safety.
+`unsafe`, incorrect FFI declarations, out-of-spec hardware access, stack
+overflow, and AmigaOS bugs can still crash the machine. The goal is that normal
+application code never needs those powers; when it does, the dangerous region
+is explicit, small, and reviewable.

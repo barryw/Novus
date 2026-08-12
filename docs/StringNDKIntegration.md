@@ -280,7 +280,7 @@ extern fn GetVar(name: *u8, buffer: *u8, size: u32, flags: u32) -> i32
 // User must manually wrap:
 let mut buffer: [u8; 256]
 let len = GetVar("PATH", &buffer[0], 256, 0)
-let path = Str::from_raw(&buffer[0], (u32)len)  // ❌ Manual, error-prone
+let path = Str::borrow_raw(&buffer[0], (u32)len)  // ❌ Manual, error-prone
 ```
 
 **Problems with current approach:**
@@ -308,7 +308,7 @@ pub fn get_var(name: Str) -> Option<Str> {
     }
 
     // Safe: buffer is on stack, caller must copy if needed
-    return Option::Some(Str::from_raw(&buffer[0], (u32)len))
+    return Option::Some(Str::borrow_raw(&buffer[0], (u32)len))
 }
 
 // Usage:
@@ -336,7 +336,7 @@ pub fn file_part(path: Str) -> Option<Str> {
     let offset = (u32)result_ptr - (u32)path.as_ptr()
     let remaining_len = path.len() - offset
 
-    return Option::Some(Str::from_raw(result_ptr, remaining_len))
+    return Option::Some(Str::borrow_raw(result_ptr, remaining_len))
 }
 
 // Usage:
@@ -402,7 +402,7 @@ pub fn name_from_lock(lock: i32) -> Option<Str> {
 
     // Find null terminator
     let len = strlen(&buffer[0])
-    return Option::Some(Str::from_raw(&buffer[0], len))
+    return Option::Some(Str::borrow_raw(&buffer[0], len))
 }
 ```
 
@@ -465,10 +465,10 @@ pub fn bstr_to_str(bptr: BPTR) -> Option<Str> {
     let len: u32 = (u32)ptr[0]  // Length byte
 
     if len == 0 {
-        return Option::Some(Str::from_raw(ptr + 1, 0))
+        return Option::Some(Str::borrow_raw(ptr + 1, 0))
     }
 
-    return Option::Some(Str::from_raw(ptr + 1, len))
+    return Option::Some(Str::borrow_raw(ptr + 1, len))
 }
 ```
 
@@ -590,7 +590,7 @@ pub fn print_directory_name(path: Str) -> Result<(), DosError> {
 pub fn unsafe_example() -> Str {
     let mut buffer: [u8; 256]
     GetVar("PATH", &buffer[0], 256, 0)
-    return Str::from_raw(&buffer[0], 256)  // ❌ Dangling pointer!
+    return Str::borrow_raw(&buffer[0], 256)  // ❌ Dangling pointer!
 }
 
 // ✅ SAFE: Return owned String
@@ -614,7 +614,7 @@ pub fn wrap_ndk_string(ptr: *u8) -> Option<Str> {
     }
 
     let len = strlen(ptr)
-    return Option::Some(Str::from_raw(ptr, len))
+    return Option::Some(Str::borrow_raw(ptr, len))
 }
 ```
 
@@ -718,7 +718,7 @@ write("Value: %ld\n", str)    // ERROR: %ld doesn't accept Str
 
 ### Unsafe Cases
 1. ⚠️ `Str::slice()` → may not be null-terminated
-2. ⚠️ `Str::from_raw()` → caller responsibility
+2. ⚠️ `Str::borrow_raw()` → caller responsibility
 3. ⚠️ Manual pointer arithmetic → caller responsibility
 
 ### Mitigation

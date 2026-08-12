@@ -20,7 +20,7 @@
 // from std::audio::paula import SampleHandle
 //
 // // Request any available channel with default priority
-// let audio = AudioDeviceHandle::open_any(0)?
+// var audio = AudioDeviceHandle::open_any(0)?
 //
 // // Play a sound effect
 // audio.play(&sample, 322, 64, 1)?  // period, volume, 1 cycle
@@ -121,10 +121,10 @@ impl ChannelPreference {
 /// # Example
 /// ```novus
 /// // Request any channel at normal priority
-/// let audio = AudioDeviceHandle::open_any(0)?
+/// var audio = AudioDeviceHandle::open_any(0)?
 ///
 /// // Or request specific configuration
-/// let stereo = AudioDeviceHandle::open(ChannelPreference::Stereo, 10)?
+/// var stereo = AudioDeviceHandle::open(ChannelPreference::Stereo, 10)?
 ///
 /// // Play a sound
 /// audio.play(&sample, 322, 64, 1)?
@@ -154,7 +154,7 @@ impl AudioDeviceHandle {
     /// # Example
     /// ```novus
     /// // Request left channel with high priority
-    /// let audio = AudioDeviceHandle::open(ChannelPreference::Left, 50)?
+    /// var audio = AudioDeviceHandle::open(ChannelPreference::Left, 50)?
     /// ```
     pub fn open(preference: ChannelPreference, priority: i8) -> Result<AudioDeviceHandle, AudioError> {
         // Create message port for I/O replies
@@ -262,7 +262,7 @@ impl AudioDeviceHandle {
     /// * `Ok(())` - Playback completed
     /// * `Err(AudioError::DeviceIOError)` - I/O failed
     /// * `Err(AudioError::ChannelStolen)` - Channel was stolen
-    pub fn play(&self, sample: &SampleHandle, period: u16, volume: u16, cycles: u16) -> Result<(), AudioError> {
+    pub fn play(&var self, sample: &SampleHandle, period: u16, volume: u16, cycles: u16) -> Result<(), AudioError> {
         if !is_valid_period(period) {
             return Result::Err(AudioError::InvalidPeriod)
         }
@@ -302,7 +302,7 @@ impl AudioDeviceHandle {
     /// * `volume` - Volume (0-64)
     /// * `cycles` - Number of times to play (0 = infinite)
     /// * `pal` - True for PAL, false for NTSC
-    pub fn play_native(&self, sample: &SampleHandle, volume: u16, cycles: u16, pal: bool) -> Result<(), AudioError> {
+    pub fn play_native(&var self, sample: &SampleHandle, volume: u16, cycles: u16, pal: bool) -> Result<(), AudioError> {
         var period: u16 = sample.period_pal()
         if !pal {
             period = sample.period_ntsc()
@@ -317,7 +317,7 @@ impl AudioDeviceHandle {
     /// # Arguments
     /// * `period` - New period (124-65535)
     /// * `volume` - New volume (0-64)
-    pub fn set_period_volume(&self, period: u16, volume: u16) -> Result<(), AudioError> {
+    pub fn set_period_volume(&var self, period: u16, volume: u16) -> Result<(), AudioError> {
         if !is_valid_period(period) {
             return Result::Err(AudioError::InvalidPeriod)
         }
@@ -343,7 +343,7 @@ impl AudioDeviceHandle {
     /// Stop playback on our channel(s)
     ///
     /// Immediately stops any playing sound. The channel remains allocated.
-    pub fn stop(&self) -> Result<(), AudioError> {
+    pub fn stop(&var self) -> Result<(), AudioError> {
         self.io_audio.ioa_Request.io_Command = CMD_STOP
 
         let req_addr = &self.io_audio.ioa_Request
@@ -360,7 +360,7 @@ impl AudioDeviceHandle {
     /// Resume playback after stop
     ///
     /// Continues from where the sound was stopped.
-    pub fn start(&self) -> Result<(), AudioError> {
+    pub fn start(&var self) -> Result<(), AudioError> {
         self.io_audio.ioa_Request.io_Command = CMD_START
 
         let req_addr = &self.io_audio.ioa_Request

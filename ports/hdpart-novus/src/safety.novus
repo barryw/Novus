@@ -1,0 +1,136 @@
+// Pure safety rules ported from HDPart safety.c at d71ced9.
+
+from std::core import Option, Result
+from std::memory::slice import Slice
+from std::os::doslist import DeviceProcess, DosDeviceList
+from std::strings::core import FixedCString, FixedString, Str
+from discovery import is_device_name
+
+pub enum DeviceLiveness {
+    Clear,
+    Mounted,
+    Boot,
+}
+
+pub struct DeviceIdentity {
+    driver: Str,
+    unit: u32,
+}
+
+pub struct MountEntry {
+    device: DeviceIdentity,
+    name: Str,
+}
+
+pub struct MountedPartition {
+    device: DeviceIdentity,
+    low_cylinder: u32,
+    high_cylinder: u32,
+    name: Str,
+}
+
+fn same_device(left: &DeviceIdentity, right: &DeviceIdentity) -> bool {
+    return left.unit == right.unit && left.driver.eq_ignore_case(right.driver)
+}
+
+/// Fail-safe classification: an unknown boot device is never reported clear.
+pub fn classify_device(
+    target: &DeviceIdentity,
+    boot: Option<&DeviceIdentity>,
+    mounts: Slice<MountEntry>
+) -> DeviceLiveness {
+    match boot {
+        Option::Some(boot_device) => {
+            return DeviceLiveness::Boot if same_device(target, boot_device)
+        },
+        Option::None => {},
+    }
+
+    for mount in mounts {
+        return DeviceLiveness::Mounted if same_device(target, &mount.device)
+    }
+
+    return match boot {
+        Option::Some(_) => DeviceLiveness::Clear,
+        Option::None => DeviceLiveness::Mounted,
+    }
+}
+
+/// Classify a real Exec device without exposing DOS-list or handler pointers.
+/// Any failure to prove the boot device is known fails closed as Mounted.
+pub fn classify_live_device(target: &DeviceIdentity) -> DeviceLiveness {
+    let sys_name = match FixedCString::<4>::new_from_str("SYS:") {
+        Result::Ok(value) => value,
+        Result::Err(_) => return DeviceLiveness::Mounted,
+    }
+    let boot_process = match DeviceProcess::resolve(sys_name.as_cstr_view()) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return DeviceLiveness::Mounted,
+    }
+    let devices = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return DeviceLiveness::Mounted,
+    }
+
+    var entries = devices.iter()
+    var boot_known = false
+    var target_mounted = false
+    forever {
+        let Option::Some(entry) = entries.next() else { break }
+        let Option::Some(startup) = entry.startup() else { continue }
+        let Option::Some(driver) = startup.device_name() else { continue }
+        continue unless is_device_name(driver)
+
+        let entry_device = DeviceIdentity { driver: driver, unit: startup.unit() }
+        if entry.is_handled_by(&boot_process) {
+            boot_known = true
+            return DeviceLiveness::Boot if same_device(target, &entry_device)
+        }
+        target_mounted = true if same_device(target, &entry_device)
+    }
+
+    return DeviceLiveness::Mounted if target_mounted
+    return if boot_known { DeviceLiveness::Clear } else { DeviceLiveness::Mounted }
+}
+
+/// Return the DOS name only when a live mount overlaps this exact device range.
+pub fn mounted_partition_name(
+    target: &DeviceIdentity,
+    low_cylinder: u32,
+    high_cylinder: u32
+) -> Option<FixedString<32>> {
+    let devices = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Option::None,
+    }
+    var entries = devices.iter()
+    forever {
+        let Option::Some(entry) = entries.next() else { break }
+        let Option::Some(startup) = entry.startup() else { continue }
+        let Option::Some(driver) = startup.device_name() else { continue }
+        continue unless startup.unit() == target.unit && driver.eq_ignore_case(target.driver)
+        let Option::Some(environment) = startup.environment() else { continue }
+        continue unless low_cylinder <= environment.de_HighCyl && environment.de_LowCyl <= high_cylinder
+        let Option::Some(name) = entry.name() else { continue }
+        return match FixedString::<32>::new_from_str(name) {
+            Result::Ok(value) => Option::Some(value),
+            Result::Err(_) => Option::None,
+        }
+    }
+    return Option::None
+}
+
+/// Return the live DOS name of the first overlapping mounted partition.
+@borrows(partitions)
+pub fn partition_conflict(
+    target: &DeviceIdentity,
+    low_cylinder: u32,
+    high_cylinder: u32,
+    partitions: Slice<MountedPartition>
+) -> Option<Str> {
+    for partition in partitions {
+        continue unless same_device(target, &partition.device)
+        return Option::Some(partition.name) if low_cylinder <= partition.high_cylinder && partition.low_cylinder <= high_cylinder
+    }
+    return Option::None
+}

@@ -33,6 +33,7 @@ public interface ITypeParsingContext
     IrType GetMutReferenceType(IrType pointeeType);
     IrType GetPointerType(IrType pointeeType);
     IrType GetArrayType(IrType elementType, long length);
+    IrType GetArrayType(IrType elementType, string lengthParameter);
     IrType GetFunctionPointerType(
         List<IrType> paramTypes,
         IrType returnType,
@@ -684,6 +685,19 @@ public class TypeParser : ITypeSubstitutionEngine
     {
         // Evaluate the size expression as a compile-time constant
         var sizeExpr = context.expression();
+        var sizeName = sizeExpr.GetText();
+        var elementType = ParseType(context.type());
+
+        if (_context.CurrentTypeSubstitutions?.TryGetValue(sizeName, out var substitution) == true &&
+            substitution is IrConstGenericValue concreteLength)
+        {
+            return _context.GetArrayType(elementType, checked((int)concreteLength.AsU32()));
+        }
+
+        if (_context.LookupConstGenericParameter(sizeName) != null)
+        {
+            return _context.GetArrayType(elementType, sizeName);
+        }
 
         // Convert typed constants to untyped for ConstantExpressionEvaluator
         var constants = _context.GetConstantValues()
@@ -703,7 +717,6 @@ public class TypeParser : ITypeSubstitutionEngine
             sizeValue = 0; // fallback - error will be reported by semantic analyzer
         }
 
-        var elementType = ParseType(context.type());
         return _context.GetArrayType(elementType, sizeValue.Value);
     }
 
@@ -889,7 +902,7 @@ public class TypeParser : ITypeSubstitutionEngine
             IrPointerType ptrType => ContainsGenericTypesInternal(ptrType.PointeeType, visited),
             IrReferenceType refType => ContainsGenericTypesInternal(refType.PointeeType, visited),
             IrMutReferenceType mutRefType => ContainsGenericTypesInternal(mutRefType.PointeeType, visited),
-            IrArrayType arrayType => ContainsGenericTypesInternal(arrayType.ElementType, visited),
+            IrArrayType arrayType => arrayType.HasSymbolicLength || ContainsGenericTypesInternal(arrayType.ElementType, visited),
             IrStructType structType => structType.Fields.Any(f => ContainsGenericTypesInternal(f.Type, visited)),
             IrEnumType enumType => enumType.Variants.Any(v => v.AssociatedData.Any(d => ContainsGenericTypesInternal(d, visited))),
             _ => false
@@ -947,7 +960,8 @@ public class TypeParser : ITypeSubstitutionEngine
         // Array types: compare element type and length
         if (a is IrArrayType arrA && b is IrArrayType arrB)
         {
-            return arrA.Length == arrB.Length && TypesAreEqual(arrA.ElementType, arrB.ElementType);
+            return arrA.Length == arrB.Length && arrA.LengthParameter == arrB.LengthParameter &&
+                   TypesAreEqual(arrA.ElementType, arrB.ElementType);
         }
 
         // Struct types: compare by name and cache key
@@ -1067,9 +1081,17 @@ public class TypeParser : ITypeSubstitutionEngine
         if (type is IrArrayType arrayType)
         {
             var substitutedElement = SubstituteGenericTypesInternal(arrayType.ElementType, substitutions, visitedStructs);
+            if (arrayType.LengthParameter != null &&
+                substitutions.TryGetValue(arrayType.LengthParameter, out var lengthType) &&
+                lengthType is IrConstGenericValue lengthValue)
+            {
+                return _context.GetArrayType(substitutedElement, checked((int)lengthValue.AsU32()));
+            }
             if (substitutedElement != arrayType.ElementType)
             {
-                return _context.GetArrayType(substitutedElement, arrayType.Length);
+                return arrayType.LengthParameter == null
+                    ? _context.GetArrayType(substitutedElement, arrayType.Length)
+                    : _context.GetArrayType(substitutedElement, arrayType.LengthParameter);
             }
         }
 
@@ -1251,6 +1273,7 @@ public class TypeParser : ITypeSubstitutionEngine
                             structType.WhereClause,
                             newTypeArgs
                         );
+                        substitutedStruct.ImplementsDrop = structType.ImplementsDrop;
 
                         // Register and finalize
                         _context.RegisterMonomorphizedStruct(newCacheKey, substitutedStruct);
@@ -1364,6 +1387,7 @@ public class TypeParser : ITypeSubstitutionEngine
                     structType.WhereClause,
                     typeArguments  // Pass type arguments for monomorphized types
                 );
+                substitutedStruct.ImplementsDrop = structType.ImplementsDrop;
 
                 // Register and finalize the substituted struct if it's fully monomorphized
                 // This ensures it gets added to the module for code generation

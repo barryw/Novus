@@ -1,0 +1,51 @@
+// Destructive: run explicitly against the exact 64 MiB disposable MCP HDF.
+
+from std::core import Option, Result
+from std::os::block_device import BlockDevice
+from std::test::test import expect_eq
+from rdb import DOS_TYPE_FFS_INTL, RdbModel
+from rdb_io import load_rdb, write_rdb
+
+fn probe() -> i32 {
+    var disk = match BlockDevice::open("uaehf.device", 1u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 20,
+    }
+    let total_blocks = disk.geometry().total_blocks()
+    let block_bytes = disk.geometry().block_bytes()
+    let cylinders = disk.geometry().cylinders()
+    let heads = disk.geometry().heads()
+    let sectors = disk.geometry().blocks_per_track()
+    if total_blocks != 131072u32 || block_bytes != 512u32 {
+        return 21
+    }
+    if cylinders == 0u32 || heads == 0u32 || sectors == 0u32 {
+        return 21
+    }
+
+    var model = RdbModel::new(cylinders, heads, sectors)
+    match model.add_partition("NVT0", 32u32, DOS_TYPE_FFS_INTL) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return 22,
+    }
+    match write_rdb(&var disk, &model) {
+        Result::Ok(_) => {},
+        Result::Err(_) => return 23,
+    }
+
+    let loaded = match load_rdb(&var disk) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 24,
+    }
+    if loaded.partition_count() != 1u32 { return 25 }
+    return match loaded.partition(0u32) {
+        Option::Some(partition) => if partition.name().equals("NVT0") { 0 } else { 26 },
+        Option::None => 27,
+    }
+}
+
+#[stack_size(32768)]
+@test("write and reload an RDB on the disposable 64 MiB HDF")
+pub fn test_disposable_rdb_write() {
+    expect_eq(probe(), 0, "RDB round trip succeeds")
+}

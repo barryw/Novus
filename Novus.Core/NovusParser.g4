@@ -25,8 +25,14 @@ compilationUnit
     ;
 
 attribute
-    : AT_SIGN IDENTIFIER (LPAREN attributeArgList? RPAREN)? NEWLINE*
-    | HASH LBRACKET IDENTIFIER (LPAREN attributeArgList? RPAREN)? RBRACKET NEWLINE*
+    : AT_SIGN attributeName (LPAREN attributeArgList? RPAREN)? NEWLINE*
+    | HASH LBRACKET attributeName (LPAREN attributeArgList? RPAREN)? RBRACKET NEWLINE*
+    ;
+
+attributeName
+    : IDENTIFIER
+    | KW_CONST
+    | KW_UNSAFE
     ;
 
 attributeArgList
@@ -36,6 +42,7 @@ attributeArgList
 attributeArg
     : IDENTIFIER EQ expression
     | expression
+    | KW_STATIC
     ;
 
 importDeclaration
@@ -449,18 +456,18 @@ expression
     | PLUSPLUS expression                                  # PreIncrementExpr
     | MINUSMINUS expression                                # PreDecrementExpr
     | STAR expression                                      # DereferenceExpr
-    | expression (STAR | SLASH | PERCENT) expression       # MultiplicativeExpr
-    | expression (PLUS | MINUS) expression                 # AdditiveExpr
-    | expression LSHIFT expression                         # ShiftExpr
-    | expression RSHIFT expression                         # ShiftExpr
-    | expression AMPERSAND expression                      # BitwiseAndExpr
-    | expression CARET expression                          # BitwiseXorExpr
-    | expression PIPE expression                           # BitwiseOrExpr
-    | expression DOTDOT expression                         # RangeExpr
-    | expression DOTDOTEQ expression                       # RangeInclusiveExpr
-    | expression (EQEQ | NE | LESS | GREATER | LE | GE) expression  # ComparisonExpr
-    | expression ANDAND expression                         # LogicalAndExpr
-    | expression OROR expression                           # LogicalOrExpr
+    | expression (STAR | SLASH | PERCENT) NEWLINE* expression       # MultiplicativeExpr
+    | expression (PLUS | MINUS) NEWLINE* expression                 # AdditiveExpr
+    | expression LSHIFT NEWLINE* expression                         # ShiftExpr
+    | expression RSHIFT NEWLINE* expression                         # ShiftExpr
+    | expression AMPERSAND NEWLINE* expression                      # BitwiseAndExpr
+    | expression CARET NEWLINE* expression                          # BitwiseXorExpr
+    | expression PIPE NEWLINE* expression                           # BitwiseOrExpr
+    | expression DOTDOT NEWLINE* expression                         # RangeExpr
+    | expression DOTDOTEQ NEWLINE* expression                       # RangeInclusiveExpr
+    | expression (EQEQ | NE | LESS | GREATER | LE | GE) NEWLINE* expression  # ComparisonExpr
+    | expression ANDAND NEWLINE* expression                         # LogicalAndExpr
+    | expression OROR NEWLINE* expression                           # LogicalOrExpr
     ;
 
 argumentList

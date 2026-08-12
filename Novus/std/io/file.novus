@@ -1,7 +1,10 @@
 // io.novus - High-level I/O for Amiga DOS
 // Namespace: std::io
 
-from std::ffi::dos import VPrintf, Input, WaitForChar, Read
+from std::core import Result
+from std::error::errors import DosError, dos_last_error
+from std::strings::core import Str
+from std::ffi::dos import VPrintf, Input, Output, WaitForChar, Read, Write
 
 // Printf-style formatted output using AmigaOS VPrintf
 // Format string uses AmigaOS RawDoFmt syntax:
@@ -84,4 +87,18 @@ pub fn print(s: *u8) {
 pub fn println(s: *u8) {
     write(s)
     write("\n")
+}
+
+/// Write an ordinary Novus string to the current DOS output stream.
+@suppress("W0002", "AmigaDOS Write takes i32 lengths; Str is bounded to addressable memory")
+pub fn print_str(value: Str) -> Result<(), DosError> {
+    return Result::Ok(()) if value.is_empty()
+    let written = Write(Output(), value.as_ptr(), (i32)value.len())
+    return if written == (i32)value.len() { Result::Ok(()) } else { Result::Err(dos_last_error()) }
+}
+
+/// Write an ordinary Novus string followed by a newline.
+pub fn println_str(value: Str) -> Result<(), DosError> {
+    print_str(value)?
+    return print_str("\n")
 }

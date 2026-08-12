@@ -1,0 +1,14 @@
+from std::ffi::asl import AllocFileRequest, FreeFileRequest, RequestFile
+from std::test::test import expect_true
+
+@test("legacy ASL file requester opens and cancels safely")
+pub fn test_legacy_asl_requester() {
+    let requester = AllocFileRequest()
+    if requester == null {
+        expect_true(false, "ASL allocated a file requester")
+        return
+    }
+    let accepted = RequestFile(requester)
+    FreeFileRequest(requester)
+    expect_true(accepted == 0, "Cancel returns FALSE without a Guru")
+}

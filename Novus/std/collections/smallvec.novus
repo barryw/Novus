@@ -90,7 +90,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Push an element onto the end of the SmallVec
     /// Returns Err if allocation fails
-    pub fn push(&var self, value: T) -> Result<(), ExecError> {
+    pub fn push(&var self, consuming value: T) -> Result<(), ExecError> {
         if self.len >= self.capacity {
             // Need to grow - use N as initial capacity, then double
             let new_capacity = if self.capacity == 0 { N } else { self.capacity * 2 }
@@ -137,17 +137,21 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Set an element at the given index
     /// Returns Err(ExecError::IndexOutOfBounds) if index is out of bounds
-    pub fn set(&var self, index: u32, value: T) -> Result<(), ExecError> {
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
         if index >= self.len {
             return Result::Err(ExecError::IndexOutOfBounds)
         }
+        @drop_in_place(&var self.ptr[index])
         self.ptr[index] = value
         return Result::Ok(())
     }
 
     /// Clear all elements without deallocating
     pub fn clear(&var self) {
-        self.len = 0
+        while self.len > 0u32 {
+            self.len--
+            @drop_in_place(&var self.ptr[self.len])
+        }
     }
 
     /// Internal: grow the storage to at least new_capacity
@@ -189,6 +193,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 impl<T, const N: u32> Drop for SmallVec<T, N> {
     fn drop(&var self) {
         if self.ptr != null {
+            self.clear()
             let element_size: u32 = @sizeof(T)
             let bytes = self.capacity * element_size
             unsafe {

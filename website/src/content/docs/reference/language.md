@@ -252,20 +252,20 @@ let (x, y) = point
 Dynamic views into arrays or sequences:
 
 ```novus
-let numbers: [i32] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let slice: [i32] = numbers[2..5]  // [3, 4, 5]
-let full: [i32] = numbers[..]     // entire array
+let numbers = [1, 2, 3, 4, 5]
+let slice: Slice<i32> = &numbers
+let first = slice.get(0)
 ```
 
-**Slice bounds are checked in debug builds.**
+`Slice<T>.get` is bounds checked and returns `Option<&T>`.
 
 ### Pointers
 
 Raw pointers for low-level memory access:
 
 ```novus
-let ptr: *u8 = &value         // immutable pointer
-let mut_ptr: *var u8 = &var value  // mutable pointer
+let ptr: *u8 = unsafe { (*u8)&value }
+let mut_ptr: *u8 = unsafe { (*u8)&var value }
 ```
 
 **Pointer operations require `unsafe` blocks.**

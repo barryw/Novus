@@ -26,6 +26,17 @@ public class CCodeGeneratorIntegrationTests
         return builder.BuildModule(tree);
     }
 
+    private IrModule BuildIRWithStdlib(string source)
+    {
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+
+        return new IrBuilder(skipAutoImports: false).BuildModule(tree);
+    }
+
     private string GenerateCCode(IrModule module, BuildMode buildMode = BuildMode.Debug)
     {
         var codegen = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft", buildMode);
@@ -169,6 +180,26 @@ pub fn caller(y: i32) -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_AssigningPayloadFreeGenericVariant_UsesConcreteTag()
+    {
+        var module = BuildIRWithStdlib(@"
+from std::core import Option
+
+pub fn clear() -> i32 {
+    var value: Option<u16> = Option::Some(1u16)
+    value = Option::None
+    return 0
+}");
+
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "clear");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains(".tag = Option_u16_None", code);
+        Assert.DoesNotContain(".tag = Option_None", code);
+    }
+
+    [Fact]
     public void CCodeGen_AggregateCallImmediatelyMovedToLocal_WritesLocalDirectly()
     {
         var module = BuildIR("""
@@ -240,6 +271,299 @@ pub fn caller(y: i32) -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_SharedReturnEpilogueAssignsSimpleEnumValue()
+    {
+        var module = BuildIR("""
+            enum State { Clear, Mounted }
+
+            pub fn classify(mounted: bool) -> State {
+                var cleaned = 0
+                defer cleaned = 1
+                if mounted { return State::Mounted }
+                return State::Mounted
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "classify");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("*__out = State_Mounted;", code);
+        Assert.DoesNotContain("__out->tag = State_Mounted;", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ConstGenericArrayRepeatUsesConcreteEnumType()
+    {
+        var module = BuildIR("""
+            enum Maybe<T> { Some(T), None }
+            struct Slots<T, const N: u32> { items: [Maybe<T>; N] }
+
+            impl<T, const N: u32> Slots<T, N> {
+                fn new() -> Slots<T, N> {
+                    return Slots { items: [Maybe::None; N] }
+                }
+            }
+
+            pub fn make() -> Slots<u32, 4> { return Slots::<u32, 4>::new() }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate =>
+            candidate.Name.Contains("Slots") && candidate.Name.Contains("new"));
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("__out->items[0].tag = Maybe_u32_None;", code);
+        Assert.DoesNotContain("(Maybe){", code);
+    }
+
+    [Fact]
+    public void CCodeGen_EnumPayloadReferencePatternBorrowsPayloadInPlace()
+    {
+        var module = BuildIR("""
+            struct Owned { value: i32 }
+            enum Maybe { Some(Owned), None }
+
+            pub fn borrow(value: &Maybe) -> &Owned {
+                let Maybe::Some(&payload) = value else { panic!("missing") }
+                return payload
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "borrow");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("payload = &((*value)).data.Some._0;", code);
+    }
+
+    [Fact]
+    public void CCodeGen_LetElseOwnedPayloadIsDropped()
+    {
+        var module = BuildIR("""
+            struct Handle { value: i32 }
+            impl Drop for Handle { fn drop(&var self) {} }
+            enum Maybe { Some(Handle), None }
+
+            pub fn use_value(value: Maybe) {
+                let Maybe::Some(handle) = value else { return }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "use_value");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("Handle_Drop_drop(&handle);", code);
+    }
+
+    [Fact]
+    public void CCodeGen_DropInPlaceRecursesIntoEnumPayload()
+    {
+        var module = BuildIR("""
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+            enum Maybe { Some(Owned), None }
+
+            pub fn destroy(value: &var Maybe) { @drop_in_place(value) }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "destroy");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("switch ((value)->tag)", code);
+        Assert.Contains("Owned_Drop_drop(&((value)->data.Some._0));", code);
+    }
+
+    [Fact]
+    public void CCodeGen_AutomaticallyDropsOwnedStructFields()
+    {
+        var module = BuildIR("""
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+            struct Wrapper { first: Owned, second: Owned }
+
+            pub fn make_and_drop() {
+                let wrapper = Wrapper {
+                    first: Owned { value: 1 },
+                    second: Owned { value: 2 },
+                }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "make_and_drop");
+        var code = generator.GenerateFunctionFile(function);
+
+        var second = code.IndexOf("Owned_Drop_drop(&((&wrapper)->second));", StringComparison.Ordinal);
+        var first = code.IndexOf("Owned_Drop_drop(&((&wrapper)->first));", StringComparison.Ordinal);
+        Assert.True(second >= 0 && first > second, code);
+    }
+
+    [Fact]
+    public void CCodeGen_ManglesGenericStructuralDropNames()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::collections::vec import Vec
+
+            struct Wrapper { values: Vec<u8> }
+
+            pub fn make_and_drop() {
+                let wrapper = Wrapper { values: Vec::<u8>::new() }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "make_and_drop");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("extern void Vec_u8_Drop_drop(Vec_u8* self);", code);
+        Assert.Contains("Vec_u8_Drop_drop(&((&wrapper)->values));", code);
+        Assert.DoesNotContain("Vec<u8>_Drop_drop", code);
+    }
+
+    [Fact]
+    public void CCodeGen_LargeAggregateLocalsUseMemsetInsteadOfEmbeddedZeroTemplates()
+    {
+        var module = BuildIR("""
+            struct Big { values: [u32; 64] }
+
+            fn make() -> Big { return Big { values: [0u32; 64] } }
+
+            pub fn touch() -> u32 {
+                let value = make()
+                return value.values[0]
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = generator.GenerateFunctionFile(module.Functions.Single(candidate => candidate.Name == "touch"));
+
+        Assert.DoesNotContain("Big value = {0}", code);
+        Assert.Contains("__novus_memset(&value, 0, sizeof(value));", code);
+    }
+
+    [Fact]
+    public void CCodeGen_RepeatedPatternBindingsKeepUniqueLocalNames()
+    {
+        var module = BuildIR("""
+            enum Maybe<T> { Some(T), None }
+
+            pub fn choose(first: Maybe<u32>, left: Maybe<&u8>, right: Maybe<&u8>) -> u32 {
+                let a = match first { Maybe::Some(value) => value, Maybe::None => 0u32 }
+                let b = match left { Maybe::Some(value) => value, Maybe::None => return 0u32 }
+                let c = match right { Maybe::Some(value) => value, Maybe::None => return 0u32 }
+                return a + (u32)*b + (u32)*c
+            }
+            """);
+        var function = module.Functions.Single(candidate => candidate.Name == "choose");
+        var bindings = function.LocalVariables
+            .Where(variable => variable.Name == "value" || variable.Name.StartsWith("value_"))
+            .Select(variable => variable.Name)
+            .ToList();
+
+        Assert.Equal(3, bindings.Distinct().Count());
+    }
+
+    [Fact]
+    public void CCodeGen_PostfixReturnInMatchDoesNotDropEnclosingLocalOnFallthrough()
+    {
+        var module = BuildIR("""
+            struct Guard { value: u32 }
+            impl Drop for Guard { fn drop(&var self) {} }
+            enum Outcome<T> { Ok(T), Err }
+
+            fn acquire() -> Outcome<Guard> { return Outcome::Ok(Guard { value: 7u32 }) }
+            fn check() -> Outcome<u32> { return Outcome::Ok(0u32) }
+
+            pub fn inspect() -> u32 {
+                let guard = match acquire() {
+                    Outcome::Ok(value) => value,
+                    Outcome::Err => return 0u32,
+                }
+                match check() {
+                    Outcome::Ok(value) => return 1u32 unless value == 0u32,
+                    Outcome::Err => {},
+                }
+                return guard.value
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = generator.GenerateFunctionFile(module.Functions.Single(candidate => candidate.Name == "inspect"));
+        var postfixBranch = code.IndexOf("postfix_end_", StringComparison.Ordinal);
+        var postfixEnd = code.IndexOf("postfix_end_", postfixBranch + 1, StringComparison.Ordinal);
+        var matchEnd = code.IndexOf("match_end_", postfixEnd, StringComparison.Ordinal);
+
+        Assert.True(postfixEnd >= 0 && matchEnd > postfixEnd);
+        Assert.DoesNotContain("Guard_Drop_drop(&guard);", code[postfixEnd..matchEnd]);
+    }
+
+    [Fact]
+    public void CCodeGen_CompoundMemberAssignmentReadsThenWritesField()
+    {
+        var module = BuildIR("""
+            struct Counter { value: u32 }
+            impl Counter {
+                fn add(&var self, amount: u32) { self.value += amount }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = generator.GenerateFunctionFile(module.Functions.Single(candidate => candidate.Name == "Counter::add"));
+
+        Assert.Contains("self->value", code);
+        Assert.Contains(" + amount", code);
+        Assert.Contains("self->value =", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ShadowedPatternAndLocalBindingsKeepUniqueStorage()
+    {
+        var module = BuildIR("""
+            struct Wide { value: u32 }
+            enum Load { Ready(Wide), Blank }
+
+            pub fn choose(load: Load) -> u32 {
+                let value = 7u16
+                match load {
+                    Load::Ready(value) => { return value.value },
+                    Load::Blank => {
+                        let value = Wide { value: 9u32 }
+                        return value.value
+                    },
+                }
+            }
+
+            pub fn unwrap(load: Load) -> u32 {
+                let name = 7u16
+                let Load::Ready(name) = load else { return 0u32 }
+                return name.value
+            }
+            """);
+
+        foreach (var functionName in new[] { "choose", "unwrap" })
+        {
+            var names = module.Functions.Single(function => function.Name == functionName)
+                .LocalVariables.Select(local => local.Name).ToList();
+            Assert.Equal(names.Count, names.Distinct().Count());
+        }
+    }
+
+    [Fact]
+    public void CCodeGen_BorrowedEnumWildcardDoesNotDropPayload()
+    {
+        var module = BuildIR("""
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+            enum Maybe { Some(Owned), None }
+
+            pub fn present(value: &Maybe) -> bool {
+                return match value {
+                    Maybe::Some(_) => true,
+                    Maybe::None => false,
+                }
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "present");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.DoesNotContain("Owned_Drop_drop", code);
+    }
+
+    [Fact]
     public void CCodeGen_ReturnMoveSkipsSourceClearAfterDropDeactivation()
     {
         var module = BuildIR("""
@@ -261,6 +585,141 @@ pub fn caller(y: i32) -> i32 {
         Assert.DoesNotContain("(handles).e = 0;", code);
         Assert.DoesNotContain("__novus_memcpy", code);
         Assert.DoesNotContain("__novus_memset", code);
+    }
+
+    [Fact]
+    public void CCodeGen_NonConsumingValueParameterDoesNotMoveArgument()
+    {
+        var module = BuildIR("""
+            struct Handle { ptr: *u8 }
+            impl Drop for Handle { fn drop(&var self) {} }
+
+            fn inspect(value: Handle) {}
+
+            pub fn run() {
+                let handle = Handle { ptr: null }
+                inspect(handle)
+                let ptr = handle.ptr
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "run");
+        var code = generator.GenerateFunctionFile(function);
+        var inspectCode = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "inspect"));
+
+        Assert.False(module.Functions.Single(candidate => candidate.Name == "inspect").Parameters[0].IsConsuming);
+        Assert.DoesNotContain("zero source after move to callee", code);
+        Assert.Contains("Handle_Drop_drop(&handle);", code);
+        Assert.DoesNotContain("Handle_Drop_drop(&value);", inspectCode);
+    }
+
+    [Fact]
+    public void CCodeGen_ConsumingValueParameterMovesArgument()
+    {
+        var module = BuildIR("""
+            struct Handle { ptr: *u8 }
+            impl Drop for Handle { fn drop(&var self) {} }
+
+            fn take(consuming value: Handle) {}
+
+            pub fn run() {
+                let handle = Handle { ptr: null }
+                take(handle)
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "run");
+        var code = generator.GenerateFunctionFile(function);
+        var takeCode = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "take"));
+
+        Assert.True(module.Functions.Single(candidate => candidate.Name == "take").Parameters[0].IsConsuming);
+        Assert.Contains("_defer_1_active = false;", code);
+        Assert.Contains("Handle_Drop_drop(value);", takeCode);
+    }
+
+    [Fact]
+    public void CCodeGen_ConsumingCallsInvalidateSmallOwnedValuesAndTheirSourceFields()
+    {
+        var module = BuildIR("""
+            struct Handle { active: bool }
+            impl Drop for Handle { fn drop(&var self) {} }
+            impl Handle { fn release(consuming self) { self.active = false } }
+
+            struct Wrapper { handle: Handle }
+
+            pub fn release_value(consuming handle: Handle) { handle.release() }
+            pub fn release_field(consuming wrapper: Wrapper) { wrapper.handle.release() }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var valueCode = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "release_value"));
+        var fieldCode = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "release_field"));
+
+        Assert.Contains("_defer_1_active = false;", valueCode);
+        Assert.Contains(fieldCode.Split('\n'), line =>
+            line.Contains("wrapper") && line.Contains("handle") && line.Contains("active = 0;"));
+    }
+
+    [Fact]
+    public void CCodeGen_ImportedGenericConsumingParameterDropsOnErrorPaths()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::collections::vec import Vec
+            from std::strings::core import String
+
+            pub fn run() {
+                var values = Vec::<String>::new()
+                let value = String::new()
+                let _ = values.push(value)
+            }
+            """);
+        var push = module.Functions.Single(candidate =>
+            candidate.Name.Contains("push") &&
+            candidate.Parameters.Any(parameter =>
+                parameter.Name == "value" && parameter.Type.Name == "String"));
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = generator.GenerateFunctionFile(push);
+
+        Assert.True(push.Parameters.Single(parameter => parameter.Name == "value").IsConsuming);
+        Assert.Contains("String_Drop_drop(value);", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ConsumingStructStoredThroughPointerCopiesValueAndDeactivatesDrop()
+    {
+        var module = BuildIR("""
+            struct Handle { ptr: *u8 }
+            impl Drop for Handle { fn drop(&var self) {} }
+
+            pub fn store(destination: *Handle, consuming value: Handle) {
+                *destination = value
+            }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "store"));
+
+        Assert.Contains("__novus_memcpy((uint8_t*)destination, (uint8_t*)&*value, sizeof(Handle));", code);
+        Assert.Contains("_defer_1_active = false;", code);
+        Assert.DoesNotContain("(value)->ptr = 0;", code);
+    }
+
+    [Fact]
+    public void CCodeGen_UnitReturningCallDoesNotUseOutputParameter()
+    {
+        var module = BuildIR("""
+            fn consume(value: i32) -> () {}
+            pub fn run() { consume(42) }
+            """);
+        var generator = new CCodeGenerator(module, new List<IrStringLiteral>(), "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "run");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("consume", code);
+        Assert.DoesNotContain("void _slot_", code);
     }
 
     [Fact]
@@ -640,6 +1099,74 @@ pub fn set_element(arr: [i32; 5], index: u32, value: i32) -> [i32; 5] {
 
         Assert.Contains("set_element", code);
         Assert.Contains("int32_t", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ArrayReturnPassesDestinationBufferDirectly()
+    {
+        var source = @"
+fn make_array() -> [u8; 4] {
+    return [1u8, 2u8, 3u8, 4u8]
+}
+
+pub fn first() -> u8 {
+    let values = make_array()
+    return values[0]
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("void make_array(uint8_t* __out)", code);
+        Assert.Matches(@"make_array\([^&][^)]*\);", code);
+        Assert.DoesNotContain("make_array(&", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ArrayLiteralReturnUsesValidInitializerStorage()
+    {
+        var source = """
+            pub fn make_array() -> [u8; 20] {
+                return [1u8; 20]
+            }
+            """;
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("static const uint8_t __init[20]", code);
+        Assert.Contains("__novus_memcpy((uint8_t*)__out, (const uint8_t*)__init", code);
+        Assert.Contains("(sizeof(uint8_t) * 20)", code);
+        Assert.DoesNotContain("sizeof(__out)", code);
+        Assert.DoesNotContain("(uint8_t*)&{", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ArrayReferenceUsesPointerToArrayDeclarator()
+    {
+        var source = @"
+pub fn equal(left: &[u8; 4], right: &[u8; 4]) -> bool {
+    return left[0] == right[0]
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("uint8_t (*left)[4]", code);
+        Assert.Contains("uint8_t (*right)[4]", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ArrayReturnErrorPathReturnsVoid()
+    {
+        var source = @"
+pub fn set_at(index: u32) -> [u8; 4] {
+    var values = [0u8; 4]
+    values[index] = 1u8
+    return values
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("void set_at(uint8_t* __out", code);
+        Assert.DoesNotContain("return (uint8_t*)0", code);
     }
 
     #endregion

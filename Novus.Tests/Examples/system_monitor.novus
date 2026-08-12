@@ -242,7 +242,7 @@ pub fn main() -> i32 {
         Result::Err(_) => {
             return 1
         },
-        Result::Ok(window) => {
+        Result::Ok(var window) => {
             // Create drawing context from window's RastPort
             let ctx_result = DrawContext::from_rastport(window.rastport())
             match ctx_result {

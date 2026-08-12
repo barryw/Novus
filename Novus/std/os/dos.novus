@@ -5,7 +5,7 @@
 // For low-level FFI access, use std::ffi::dos
 
 from std::core import Option, Result, Drop
-from std::strings::core import Str
+from std::strings::core import FixedCString, Str
 from std::ffi::amiga_structs import *
 from std::error::errors import DosError, dos_last_error
 from std::os::tags import make_tags
@@ -300,7 +300,11 @@ impl OwnedFileHandle {
     ///
     /// Returns Err on failure (use IoErr() for details).
     pub fn open(path: Str, mode: i32) -> Result<OwnedFileHandle, DosError> {
-        let fh = Open(path.as_cstr(), mode)
+        let c_path = match FixedCString::<255>::new_from_str(path) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosError::BadStreamName),
+        }
+        let fh = Open(c_path.as_cstr(), mode)
         return if fh == 0 { Result::Err(dos_last_error()) } else { Result::Ok(OwnedFileHandle { fh: fh }) }
     }
 
@@ -327,7 +331,9 @@ impl OwnedFileHandle {
     /// Use this when passing ownership to another system or storing
     /// the handle beyond the current scope.
     pub fn into_raw(consuming self) -> i32 {
-        return self.fh
+        let fh = self.fh
+        self.fh = 0
+        return fh
     }
 
     /// Read bytes from file into buffer
@@ -494,7 +500,9 @@ impl DirLockHandle {
     /// Use this when passing ownership to another system or storing
     /// the lock beyond the current scope.
     pub fn into_raw(consuming self) -> i32 {
-        return self.lock
+        let lock = self.lock
+        self.lock = 0
+        return lock
     }
 }
 

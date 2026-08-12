@@ -1,0 +1,143 @@
+// Ported from HDPart at d71ced9cc601db4909f6350c8dcfa68639eec46a.
+// This file deliberately uses no FFI: it is the portion that Novus can express
+// cleanly today.
+
+from std::collections::arrayvec import ArrayVec, ArrayVecError
+from std::core import From, Option, Result
+from std::memory::bytes import ByteReader
+from std::memory::slice import Slice
+from std::os::doslist import DosDeviceList, DosListError
+from std::strings::core import FixedCString, FixedString, Str
+
+pub const MAX_DISCOVERED_DEVICES: u32 = 32u32
+
+pub enum DiscoveryError {
+    DosList(DosListError),
+    TooManyDevices,
+}
+
+impl From<ArrayVecError> for DiscoveryError {
+    fn convert(consuming _error: ArrayVecError) -> DiscoveryError {
+        return DiscoveryError::TooManyDevices
+    }
+}
+
+/// Owned device identity copied out while the DOS list is locked.
+pub struct DiscoveredDevice {
+    driver: FixedCString<60>,
+    name: FixedString<32>,
+    unit: u32,
+    flags: u32,
+}
+
+impl DiscoveredDevice {
+    pub fn driver(&self) -> Str { return self.driver.as_str() }
+    pub fn name(&self) -> Str { return self.name.as_str() }
+    pub fn unit(&self) -> u32 { return self.unit }
+    pub fn flags(&self) -> u32 { return self.flags }
+}
+
+pub struct Capacity {
+    block_bytes: u32
+    total_blocks: u32
+}
+
+pub struct Geometry {
+    cylinders: u32
+    heads: u32
+    sectors: u32
+}
+
+pub fn blocks_to_mb(total_blocks: u32, block_bytes: u32) -> u32 {
+    return 0 if block_bytes == 0
+    let blocks_per_mb = (1024u32 * 1024u32) / block_bytes
+    return 0 if blocks_per_mb == 0
+    return total_blocks / blocks_per_mb
+}
+
+pub fn is_device_name(name: Str) -> bool {
+    return false unless name.len() >= 8 && name.len() <= 60
+    for byte in name.as_bytes() {
+        return false unless byte >= $20 && byte <= $7E
+    }
+    return match name.slice_from(name.len() - 7u32) {
+        Result::Ok(suffix) => suffix.eq_ignore_case(".device"),
+        Result::Err(_) => false,
+    }
+}
+
+pub fn is_partitionable(driver: Str, total_blocks: u32) -> bool {
+    return total_blocks != 0 && !driver.equals("trackdisk.device")
+}
+
+fn contains_device(devices: &ArrayVec<DiscoveredDevice, 32>, driver: Str, unit: u32) -> bool {
+    for device in devices {
+        return true if device.unit() == unit && device.driver().eq_ignore_case(driver)
+    }
+    return false
+}
+
+/// Snapshot unique mounted Exec devices into bounded, owner-independent storage.
+pub fn discover_mounted_devices() -> Result<ArrayVec<DiscoveredDevice, 32>, DiscoveryError> {
+    let list = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(error) => return Result::Err(DiscoveryError::DosList(error)),
+    }
+    var devices = ArrayVec::<DiscoveredDevice, 32>::new()
+    var entries = list.iter()
+    forever {
+        let Option::Some(entry) = entries.next() else { break }
+        let Option::Some(startup) = entry.startup() else { continue }
+        let Option::Some(driver) = startup.device_name() else { continue }
+        if !is_device_name(driver) || contains_device(&devices, driver, startup.unit()) { continue }
+
+        let Result::Ok(owned_driver) = FixedCString::<60>::new_from_str(driver) else { continue }
+        var owned_name = FixedString::<32>::new()
+        match entry.name() {
+            Option::Some(name) => {
+                let _ = owned_name.push_str(name)
+            },
+            Option::None => {},
+        }
+        devices.push(DiscoveredDevice {
+            driver: owned_driver,
+            name: owned_name,
+            unit: startup.unit(),
+            flags: startup.flags(),
+        })?
+    }
+    return Result::Ok(devices)
+}
+
+pub fn parse_read_capacity_10(response: Slice<u8>) -> Option<Capacity> {
+    let bytes = ByteReader::new(response)
+    let last_lba = match bytes.read_be_u32(0u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Option::None,
+    }
+    if last_lba == $FFFFFFFFu32 {
+        return Option::None
+    }
+
+    var block_bytes = match bytes.read_be_u32(4u32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Option::None,
+    }
+    if block_bytes == 0 {
+        block_bytes = 512u32
+    }
+    return Option::Some(Capacity {
+        block_bytes: block_bytes,
+        total_blocks: last_lba + 1u32,
+    })
+}
+
+pub fn synthesize_geometry(total_blocks: u32) -> Geometry {
+    return Geometry { cylinders: 0, heads: 0, sectors: 0 } if total_blocks == 0
+    return Geometry { cylinders: total_blocks, heads: 1, sectors: 1 } if total_blocks < 1008
+    return Geometry {
+        cylinders: total_blocks / 1008u32,
+        heads: 16,
+        sectors: 63,
+    }
+}

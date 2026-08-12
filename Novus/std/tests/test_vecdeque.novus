@@ -95,7 +95,7 @@ pub fn test_vecdeque_push_front() {
 
     // Front should now be 30 (most recently pushed)
     match deque.front() {
-        Option::Some(val) => expect_eq(val, 30, "front is 30"),
+        Option::Some(val) => expect_eq(*val, 30, "front is 30"),
         Option::None => expect(false, "should have front")
     }
 }
@@ -164,7 +164,7 @@ pub fn test_vecdeque_front() {
     let _ = deque.push_back(30)
 
     match deque.front() {
-        Option::Some(val) => expect_eq(val, 10, "front is 10"),
+        Option::Some(val) => expect_eq(*val, 10, "front is 10"),
         Option::None => expect(false, "should have front")
     }
 
@@ -180,7 +180,7 @@ pub fn test_vecdeque_back() {
     let _ = deque.push_back(30)
 
     match deque.back() {
-        Option::Some(val) => expect_eq(val, 30, "back is 30"),
+        Option::Some(val) => expect_eq(*val, 30, "back is 30"),
         Option::None => expect(false, "should have back")
     }
 
@@ -215,17 +215,17 @@ pub fn test_vecdeque_get() {
     let _ = deque.push_back(30)
 
     match deque.get(0u32) {
-        Option::Some(val) => expect_eq(val, 10, "element 0 is 10"),
+        Option::Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         Option::None => expect(false, "should have element 0")
     }
 
     match deque.get(1u32) {
-        Option::Some(val) => expect_eq(val, 20, "element 1 is 20"),
+        Option::Some(val) => expect_eq(*val, 20, "element 1 is 20"),
         Option::None => expect(false, "should have element 1")
     }
 
     match deque.get(2u32) {
-        Option::Some(val) => expect_eq(val, 30, "element 2 is 30"),
+        Option::Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         Option::None => expect(false, "should have element 2")
     }
 }
@@ -254,7 +254,7 @@ pub fn test_vecdeque_set() {
     }
 
     match deque.get(1u32) {
-        Option::Some(val) => expect_eq(val, 200, "element 1 is now 200"),
+        Option::Some(val) => expect_eq(*val, 200, "element 1 is now 200"),
         Option::None => expect(false, "should have element 1")
     }
 }
@@ -276,6 +276,25 @@ pub fn test_vecdeque_clear() {
     expect_true(deque.is_empty(), "deque is empty")
 }
 
+@test("VecDeque::get_mut uses logical wrapped index")
+pub fn test_vecdeque_get_mut() {
+    var deque = VecDeque::<i32>::new()
+    let _ = deque.push_back(10)
+    let _ = deque.push_back(20)
+    let _ = deque.pop_front()
+    let _ = deque.push_back(30)
+
+    match deque.get_mut(1u32) {
+        Option::Some(value) => { *value = 42 },
+        Option::None => expect(false, "logical index 1 should exist")
+    }
+
+    match deque.get(1u32) {
+        Option::Some(value) => expect_eq(*value, 42, "mutable borrow updates wrapped element"),
+        Option::None => expect(false, "logical index 1 should exist")
+    }
+}
+
 // ============================================================================
 // Rotation Tests
 // ============================================================================
@@ -292,12 +311,12 @@ pub fn test_vecdeque_rotate_left() {
 
     // [1, 2, 3, 4] -> [2, 3, 4, 1]
     match deque.get(0u32) {
-        Option::Some(val) => expect_eq(val, 2, "front is now 2"),
+        Option::Some(val) => expect_eq(*val, 2, "front is now 2"),
         Option::None => expect(false, "should have element")
     }
 
     match deque.get(3u32) {
-        Option::Some(val) => expect_eq(val, 1, "back is now 1"),
+        Option::Some(val) => expect_eq(*val, 1, "back is now 1"),
         Option::None => expect(false, "should have element")
     }
 }
@@ -314,12 +333,12 @@ pub fn test_vecdeque_rotate_right() {
 
     // [1, 2, 3, 4] -> [4, 1, 2, 3]
     match deque.get(0u32) {
-        Option::Some(val) => expect_eq(val, 4, "front is now 4"),
+        Option::Some(val) => expect_eq(*val, 4, "front is now 4"),
         Option::None => expect(false, "should have element")
     }
 
     match deque.get(3u32) {
-        Option::Some(val) => expect_eq(val, 3, "back is now 3"),
+        Option::Some(val) => expect_eq(*val, 3, "back is now 3"),
         Option::None => expect(false, "should have element")
     }
 }
@@ -390,12 +409,12 @@ pub fn test_vecdeque_grows() {
 
     // Verify first and last elements
     match deque.front() {
-        Option::Some(val) => expect_eq(val, 0, "front is 0"),
+        Option::Some(val) => expect_eq(*val, 0, "front is 0"),
         Option::None => expect(false, "should have front")
     }
 
     match deque.back() {
-        Option::Some(val) => expect_eq(val, 19, "back is 19"),
+        Option::Some(val) => expect_eq(*val, 19, "back is 19"),
         Option::None => expect(false, "should have back")
     }
 }

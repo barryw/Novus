@@ -1114,9 +1114,10 @@ impl Drop for MUIApp {
 pub fn make_button(label: *u8) -> *u8 {
     unsafe {
         var tags = TagBuilder::new()
+        let centered = (*u8)"\033c".ptr
         tags.add(MUIA_Frame, (u32)MUIV_Frame_Button)
         tags.add(MUIA_Text_Contents, (u32)label)
-        tags.add(MUIA_Text_PreParse, (u32)"\033c".ptr)  // Center text
+        tags.add(MUIA_Text_PreParse, (u32)centered)
         tags.add(MUIA_InputMode, (u32)MUIV_InputMode_RelVerify)
         tags.add(MUIA_Background, (u32)MUII_ButtonBack)
 
@@ -1156,7 +1157,7 @@ pub fn set_attr(obj: *u8, attr: u32, value: u32) {
 /// Set a string attribute on an object (convenience for text content)
 pub fn set_text(obj: *u8, text: Str) {
     unsafe {
-        let msg: [u32] = [MUIM_Set, MUIA_Text_Contents, (u32)text.ptr]
+        let msg: [u32] = [MUIM_Set, MUIA_Text_Contents, (u32)text.as_ptr()]
         DoMethodA(obj, &msg[0])
     }
 }
@@ -1164,7 +1165,7 @@ pub fn set_text(obj: *u8, text: Str) {
 /// Set a string attribute on an object (any string attribute)
 pub fn set_str_attr(obj: *u8, attr: u32, text: Str) {
     unsafe {
-        let msg: [u32] = [MUIM_Set, attr, (u32)text.ptr]
+        let msg: [u32] = [MUIM_Set, attr, (u32)text.as_ptr()]
         DoMethodA(obj, &msg[0])
     }
 }
@@ -1323,7 +1324,7 @@ impl MenuItemBuilder {
     }
 
     /// Get the built menu object
-    pub fn build(self) -> *u8 {
+    pub fn build(&self) -> *u8 {
         // Note: labels are NOT freed here - they're owned by the menu items
         // They will be freed when the menustrip is disposed
         return self.menu_obj

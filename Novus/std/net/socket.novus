@@ -104,7 +104,7 @@ impl SocketLibrary {
     }
 
     /// Get the library base pointer (for advanced use)
-    pub fn base(&self) -> *Library {
+    pub fn handle(&self) -> *Library {
         return self.base
     }
 
@@ -115,7 +115,7 @@ impl SocketLibrary {
 }
 
 impl Drop for SocketLibrary {
-    fn drop(&self) {
+    fn drop(&var self) {
         if self.initialized && self.base as u32 != 0 {
             // Clear the global SocketBase
             unsafe {

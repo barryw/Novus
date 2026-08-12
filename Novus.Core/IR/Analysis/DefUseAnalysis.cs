@@ -308,6 +308,13 @@ public class DefUseAnalysis
                 }
                 break;
 
+            case IrTupleLiteral tupleLiteral:
+                for (int i = 0; i < tupleLiteral.Elements.Count; i++)
+                {
+                    tupleLiteral.Elements[i] = ReplaceInValue(tupleLiteral.Elements[i], oldName, newValue);
+                }
+                break;
+
             case IrArrayLiteral arrayLiteral:
                 for (int i = 0; i < arrayLiteral.Elements.Count; i++)
                 {
@@ -320,6 +327,27 @@ public class DefUseAnalysis
                 {
                     enumValue.AssociatedValues[i] = ReplaceInValue(enumValue.AssociatedValues[i], oldName, newValue);
                 }
+                break;
+
+            case IrFieldReference fieldReference:
+                fieldReference.Struct = ReplaceInValue(fieldReference.Struct, oldName, newValue);
+                break;
+
+            case IrIndexedFieldAccess indexedField:
+                indexedField.Array = ReplaceInValue(indexedField.Array, oldName, newValue);
+                indexedField.Index = ReplaceInValue(indexedField.Index, oldName, newValue);
+                break;
+
+            case IrTupleElementAccess tupleElement:
+                tupleElement.Tuple = ReplaceInValue(tupleElement.Tuple, oldName, newValue);
+                break;
+
+            case IrEnumTagAccess enumTag:
+                enumTag.EnumValue = ReplaceInValue(enumTag.EnumValue, oldName, newValue);
+                break;
+
+            case IrEnumPayloadAccess enumPayload:
+                enumPayload.EnumValue = ReplaceInValue(enumPayload.EnumValue, oldName, newValue);
                 break;
         }
 

@@ -210,7 +210,7 @@ impl TlsConfig {
     /// let tcp = TcpStream::connect(addr)?
     /// let tls_stream = config.connect(tcp, "www.example.com")?
     /// ```
-    pub fn connect(&self, tcp: TcpStream, hostname: *u8) -> Result<TlsStream, NetError> {
+    pub fn connect(&self, consuming tcp: TcpStream, hostname: *u8) -> Result<TlsStream, NetError> {
         if !self.is_client {
             return Result::Err(NetError::InvalidArg)
         }
@@ -271,7 +271,7 @@ impl TlsConfig {
     /// let (tcp, addr) = listener.accept()?
     /// let tls_stream = config.accept(tcp)?
     /// ```
-    pub fn accept(&self, tcp: TcpStream) -> Result<TlsStream, NetError> {
+    pub fn accept(&self, consuming tcp: TcpStream) -> Result<TlsStream, NetError> {
         if self.is_client {
             return Result::Err(NetError::InvalidArg)
         }
@@ -306,7 +306,7 @@ impl TlsConfig {
 }
 
 impl Drop for TlsConfig {
-    fn drop(&self) {
+    fn drop(&var self) {
         if self.ctx as u32 != 0 {
             unsafe { SSL_CTX_free(self.ctx) }
         }
@@ -437,7 +437,7 @@ impl TlsStream {
 }
 
 impl Drop for TlsStream {
-    fn drop(&self) {
+    fn drop(&var self) {
         if self.ssl as u32 != 0 {
             // Attempt clean TLS shutdown (send close_notify alert)
             // Ignore return value since we're cleaning up anyway

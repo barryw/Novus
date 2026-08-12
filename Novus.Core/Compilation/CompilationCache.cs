@@ -428,6 +428,41 @@ public partial class CompilationCache
          Interlocked.Read(ref _irBytesLoaded));
 
     /// <summary>
+    /// Identifies the cached source graph used to produce a linked artifact.
+    /// Unlike NeedsRecompilation, this changes when a dependency is refreshed by
+    /// another target, so that target cannot leave an older executable "up to date".
+    /// </summary>
+    public string ComputeSourceGraphHash(IEnumerable<string> roots)
+    {
+        var visited = new HashSet<string>();
+        var parts = new List<string>();
+
+        void Visit(string path)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (!visited.Add(fullPath))
+                return;
+
+            if (!_fileStates.TryGetValue(fullPath, out var state))
+            {
+                parts.Add($"{fullPath}|missing");
+                return;
+            }
+
+            parts.Add($"{fullPath}|{state.ContentHash}");
+            foreach (var dependency in state.Dependencies)
+                Visit(dependency);
+        }
+
+        foreach (var root in roots)
+            Visit(root);
+
+        parts.Sort(StringComparer.Ordinal);
+        return Convert.ToHexString(SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts))));
+    }
+
+    /// <summary>
     /// Clear all caches
     /// </summary>
     public void Clear()

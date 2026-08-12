@@ -932,7 +932,7 @@ impl LayoutHandle {
                     break
                 }
 
-                let option_label = options.ptr[i]
+                let option_label = *options.get(i).unwrap()
                 let label_ptr = (*self.builder).alloc_label(option_label)
 
                 // Create radio button node

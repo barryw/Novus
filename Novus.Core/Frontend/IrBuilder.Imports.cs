@@ -340,7 +340,7 @@ public partial class IrBuilder
                         // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
                         returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
-                        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                        var function = new IrFunction(mangledName, returnType, Visibility.Public, false);
                         var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
                         function.IsConstFn = isConstFn;
 
@@ -581,7 +581,7 @@ public partial class IrBuilder
                         // Substitute Self type in return type (e.g., Option<Self> -> Option<Point>)
                         returnType = _typeParser.SubstituteGenericTypes(returnType, new Dictionary<string, IrType>());
 
-                        var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                        var function = new IrFunction(mangledName, returnType, Visibility.Public, false);
                         var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
                         function.IsConstFn = isConstFn;
 
@@ -839,7 +839,7 @@ public partial class IrBuilder
 
                 // Methods are registered with mangled names
                 var mangledName = GenerateMethodMangledName(typeName!, methodName, isTraitImpl, traitName, traitTypeArgs);
-                var function = new IrFunction(mangledName, returnType, Visibility.Private, false);
+                var function = new IrFunction(mangledName, returnType, Visibility.Public, false);
                 var (_, _, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
                 function.IsConstFn = isConstFn;
 
@@ -1147,7 +1147,8 @@ public partial class IrBuilder
                 // Substitute generic types recursively
                 paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
 
-                function.Parameters.Add(new IrParameter(paramName, paramType));
+                function.Parameters.Add(new IrParameter(paramName, paramType,
+                    isConsuming: paramCtx.KW_CONSUMING() != null));
             }
 
             // Add variadic parameter if present
@@ -1224,7 +1225,8 @@ public partial class IrBuilder
                 using (var tempSubScope = new TypeSubstitutionScope(this, null))
                 {
                     var paramType = ParseType(paramCtx.type());
-                    templateParams.Add(new IrParameter(paramName, paramType));
+                    templateParams.Add(new IrParameter(paramName, paramType,
+                        isConsuming: paramCtx.KW_CONSUMING() != null));
                 }
             }
 
@@ -1334,7 +1336,8 @@ public partial class IrBuilder
                 var paramName = paramCtx.IDENTIFIER().GetText();
                 var paramType = ParseType(paramCtx.type());
                 paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
-                function.Parameters.Add(new IrParameter(paramName, paramType));
+                function.Parameters.Add(new IrParameter(paramName, paramType,
+                    isConsuming: paramCtx.KW_CONSUMING() != null));
             }
 
             // Add variadic parameter if present
@@ -1512,7 +1515,8 @@ public partial class IrBuilder
                 // Substitute generic types recursively
                 paramType = _typeParser.SubstituteGenericTypes(paramType, typeSubstitutions);
 
-                function.Parameters.Add(new IrParameter(paramName, paramType));
+                function.Parameters.Add(new IrParameter(paramName, paramType,
+                    isConsuming: paramCtx.KW_CONSUMING() != null));
             }
 
             // Add variadic parameter if present
@@ -1890,7 +1894,8 @@ public partial class IrBuilder
         {
             var paramName = paramCtx.IDENTIFIER().GetText();
             var paramType = ParseType(paramCtx.type());
-            function.Parameters.Add(new IrParameter(paramName, paramType));
+            function.Parameters.Add(new IrParameter(paramName, paramType,
+                isConsuming: paramCtx.KW_CONSUMING() != null));
         }
 
         // Add variadic parameter if present

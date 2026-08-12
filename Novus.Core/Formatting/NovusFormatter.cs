@@ -432,7 +432,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         if (context.GetChild(0).GetText() == "@")
         {
             Write("@");
-            Write(context.IDENTIFIER().GetText());
+            Write(context.attributeName().GetText());
             if (context.attributeArgList() != null)
             {
                 Write("(");
@@ -443,7 +443,7 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         else
         {
             Write("#[");
-            Write(context.IDENTIFIER().GetText());
+            Write(context.attributeName().GetText());
             if (context.attributeArgList() != null)
             {
                 Write("(");
@@ -469,6 +469,11 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
 
     public override object? VisitAttributeArg(NovusParser.AttributeArgContext context)
     {
+        if (context.KW_STATIC() != null)
+        {
+            Write("static");
+            return null;
+        }
         if (context.IDENTIFIER() != null)
         {
             Write(context.IDENTIFIER().GetText());

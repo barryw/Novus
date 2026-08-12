@@ -452,7 +452,7 @@ impl<T> Sender<T> {
     /// The receiver will be signaled automatically.
     ///
     /// Returns Ok when queued or the allocation error.
-    pub fn send(&self, value: T) -> Result<(), ChannelError> {
+    pub fn send(&self, consuming value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = Sender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
@@ -712,7 +712,7 @@ impl<T> BoundedSender<T> {
     /// providing backpressure when the receiver is slow.
     ///
     /// Returns Ok when the receiver acknowledges the message.
-    pub fn send(&self, value: T) -> Result<(), ChannelError> {
+    pub fn send(&self, consuming value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
@@ -756,7 +756,7 @@ impl<T> BoundedSender<T> {
     /// Note: The receiver still needs to call recv() or try_recv() to process it.
     ///
     /// Returns Ok when queued or the allocation error.
-    pub fn try_send(&self, value: T) -> Result<(), ChannelError> {
+    pub fn try_send(&self, consuming value: T) -> Result<(), ChannelError> {
         // Allocate message with space for payload
         let size = BoundedSender::<T>::msg_size()
         let msg_mem = unsafe { AllocMem(size, MEMF_FAST | MEMF_CLEAR) }
@@ -1048,7 +1048,7 @@ impl<T> OneshotSender<T> {
     /// Send the value, consuming the sender.
     ///
     /// This can only be called once.
-    pub fn send(&var self, value: T) -> Result<(), ChannelError> {
+    pub fn send(&var self, consuming value: T) -> Result<(), ChannelError> {
         if self.sent {
             return Result::Err(ChannelError::AlreadySent)
         }

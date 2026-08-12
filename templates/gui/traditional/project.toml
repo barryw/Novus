@@ -1,6 +1,7 @@
 [package]
 name = "{{PROJECT_NAME}}-traditional"
-type = "executable"
+version = "0.1.0"
+type = "workbench"
 entry = "src/main.novus"
 
 [build]

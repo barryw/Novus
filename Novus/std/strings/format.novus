@@ -58,7 +58,7 @@ impl StackFormatter {
     // IMPORTANT: The returned Str is only valid while this StackFormatter is in scope!
     pub fn as_str(&self) -> Str {
         Str {
-            ptr: (*u8)&self.buf[0],
+            ptr: &self.buf[0],
             len: self.len,
         }
     }

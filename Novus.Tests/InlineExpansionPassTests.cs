@@ -120,6 +120,60 @@ fn use_increment(y: i32) -> i32 {
     }
 
     [Fact]
+    public void InlineExpansionPass_BorrowArgument_IsBoundWithoutCasting()
+    {
+        var reference = new IrReferenceType(IrIntType.I32);
+        var identity = new IrFunction("identity", reference);
+        identity.Parameters.Add(new IrParameter("value", reference));
+        var identityBlock = new IrBasicBlock("entry");
+        identityBlock.Instructions.Add(new IrReturn(new IrVariable("value", reference)));
+        identity.BasicBlocks.Add(identityBlock);
+
+        var main = new IrFunction("main", IrIntType.I32);
+        var mainBlock = new IrBasicBlock("entry");
+        var call = new IrCall("identity", reference, "%result");
+        call.Arguments.Add(new IrBorrowValue(new IrVariable("source", IrIntType.I32), reference, false));
+        mainBlock.Instructions.Add(call);
+        mainBlock.Instructions.Add(new IrReturn(new IrConstant(0, IrIntType.I32)));
+        main.BasicBlocks.Add(mainBlock);
+
+        var module = new IrModule();
+        module.Functions.Add(identity);
+        module.Functions.Add(main);
+
+        Assert.True(new InlineExpansionPass().Transform(module));
+        Assert.DoesNotContain(mainBlock.Instructions, instruction => instruction is IrCall);
+        Assert.Contains(mainBlock.Instructions.OfType<IrLocalDecl>(), declaration =>
+            declaration.InitialValue is IrBorrowValue);
+    }
+
+    [Fact]
+    public void InlineExpansionPass_UnsupportedInstruction_LeavesCallIntact()
+    {
+        var target = new IrFunction("mutate", IrIntType.I32);
+        target.Parameters.Add(new IrParameter("value", IrIntType.I32));
+        var targetBlock = new IrBasicBlock("entry");
+        targetBlock.Instructions.Add(new IrStore("value", new IrConstant(1, IrIntType.I32)));
+        targetBlock.Instructions.Add(new IrReturn(new IrVariable("value", IrIntType.I32)));
+        target.BasicBlocks.Add(targetBlock);
+
+        var main = new IrFunction("main", IrIntType.I32);
+        var mainBlock = new IrBasicBlock("entry");
+        var call = new IrCall("mutate", IrIntType.I32, "%result");
+        call.Arguments.Add(new IrConstant(0, IrIntType.I32));
+        mainBlock.Instructions.Add(call);
+        mainBlock.Instructions.Add(new IrReturn(new IrVariable("%result", IrIntType.I32)));
+        main.BasicBlocks.Add(mainBlock);
+
+        var module = new IrModule();
+        module.Functions.Add(target);
+        module.Functions.Add(main);
+
+        Assert.False(new InlineExpansionPass().Transform(module));
+        Assert.Contains(call, mainBlock.Instructions);
+    }
+
+    [Fact]
     public void InlineExpansionPass_LargeFunction_NoChanges()
     {
         var source = @"
@@ -187,7 +241,7 @@ fn quadruple(x: i32) -> i32 {
     }
 
     [Fact]
-    public void InlineExpansionPass_MutualRecursion_Inlines()
+    public void InlineExpansionPass_MutualRecursion_IsNotCloned()
     {
         var source = @"
 fn is_even(n: i32) -> bool {
@@ -209,9 +263,7 @@ fn is_odd(n: i32) -> bool {
 
         var changed = pass.Transform(module);
 
-        // Simple recursion detection doesn't detect mutual recursion,
-        // so these functions will be inlined (which is fine for simple cases)
-        Assert.True(changed);
+        Assert.False(changed);
     }
 
     [Fact]
@@ -262,7 +314,7 @@ fn sum_to_n(n: i32) -> i32 {
     }
 
     [Fact]
-    public void InlineExpansionPass_StructReturn_Inlines()
+    public void InlineExpansionPass_StructReturn_IsNotCloned()
     {
         var source = @"
 pub struct Point {
@@ -283,12 +335,11 @@ fn use_point() -> Point {
 
         var changed = pass.Transform(module);
 
-        // make_point should be inlined into use_point
-        Assert.True(changed);
+        Assert.False(changed);
     }
 
     [Fact]
-    public void InlineExpansionPass_EnumReturn_Inlines()
+    public void InlineExpansionPass_EnumReturn_IsNotCloned()
     {
         var source = @"
 pub enum Status {
@@ -309,8 +360,7 @@ fn check_status() -> Status {
 
         var changed = pass.Transform(module);
 
-        // get_active should be inlined into check_status
-        Assert.True(changed);
+        Assert.False(changed);
     }
 
     [Fact]
@@ -409,7 +459,7 @@ fn large_function(x: i32) -> i32 {
     }
 
     [Fact]
-    public void IsInlinable_ComplexControlFlow_ReturnsTrue()
+    public void IsInlinable_ComplexControlFlow_ReturnsFalse()
     {
         var source = @"
 fn complex(x: i32, y: i32, z: i32) -> i32 {
@@ -430,12 +480,11 @@ fn complex(x: i32, y: i32, z: i32) -> i32 {
 
         var result = pass.IsInlinable(func);
 
-        // Actually has ≤ 3 blocks after optimization, so inlinable
-        Assert.True(result);
+        Assert.False(result);
     }
 
     [Fact]
-    public void IsInlinable_SimpleIf_ReturnsTrue()
+    public void IsInlinable_SimpleIf_ReturnsFalse()
     {
         var source = @"
 fn max(a: i32, b: i32) -> i32 {
@@ -450,8 +499,7 @@ fn max(a: i32, b: i32) -> i32 {
 
         var result = pass.IsInlinable(func);
 
-        // Should be true - simple control flow (≤ 3 blocks)
-        Assert.True(result);
+        Assert.False(result);
     }
 
     [Fact]
@@ -474,7 +522,7 @@ fn factorial(n: i32) -> i32 {
     }
 
     [Fact]
-    public void IsInlinable_FunctionWithLoop_ReturnsTrue()
+    public void IsInlinable_FunctionWithLoop_ReturnsFalse()
     {
         var source = @"
 fn sum_to_n(n: i32) -> i32 {
@@ -492,8 +540,7 @@ fn sum_to_n(n: i32) -> i32 {
 
         var result = pass.IsInlinable(func);
 
-        // Simple loops still have ≤ 3 blocks, so inlinable
-        Assert.True(result);
+        Assert.False(result);
     }
 
     #endregion

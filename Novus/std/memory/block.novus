@@ -6,6 +6,7 @@ from std::core import Option, Result, From, Drop
 from std::error::errors import ExecError
 from std::ffi::exec import AllocMem, FreeMem, CopyMem
 from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY
+from std::memory::slice import Slice, MutSlice
 
 /// MemoryBlock - Raw memory allocation with automatic size tracking
 ///
@@ -100,6 +101,22 @@ impl MemoryBlock {
         return self.size
     }
 
+    /// Borrow the allocation as bounded bytes without exposing its raw pointer.
+    pub fn as_bytes(&self) -> Slice<u8> {
+        if self.size == 0 {
+            return unsafe { Slice::<u8>::new(&*((*u8)self), 0u32) }
+        }
+        return unsafe { Slice::<u8>::new(&*self.ptr, self.size) }
+    }
+
+    /// Mutably borrow the allocation as bounded bytes.
+    pub fn as_mut_bytes(&var self) -> MutSlice<u8> {
+        if self.size == 0 {
+            return unsafe { MutSlice::<u8>::new(&var *((*u8)self), 0u32) }
+        }
+        return unsafe { MutSlice::<u8>::new(&var *self.ptr, self.size) }
+    }
+
     /// Check if this is an empty (zero-size) block
     pub fn is_empty(&self) -> bool {
         return self.size == 0
@@ -121,7 +138,7 @@ impl MemoryBlock {
     /// // block is now "empty" - Drop won't free anything
     /// // caller must manually: FreeMem(ptr, size)
     /// ```
-    pub fn into_raw(&var self) -> (*u8, u32) {
+    pub fn into_raw(consuming self) -> (*u8, u32) {
         let ptr = self.ptr
         let size = self.size
         // Clear our fields so Drop won't free
@@ -344,12 +361,12 @@ pub struct Box<T> {
 impl<T> Box<T> {
     /// Allocate and initialize a Box with the given value
     /// Uses MEMF_PUBLIC by default
-    pub fn new(value: T) -> Result<Box<T>, ExecError> {
+    pub fn new(consuming value: T) -> Result<Box<T>, ExecError> {
         return Box::new_in(value, MEMF_PUBLIC)
     }
 
     /// Allocate with specific memory flags
-    pub fn new_in(value: T, flags: u32) -> Result<Box<T>, ExecError> {
+    pub fn new_in(consuming value: T, flags: u32) -> Result<Box<T>, ExecError> {
         let element_size: u32 = @sizeof(T)
         let total_bytes: u32 = element_size
 
@@ -368,23 +385,23 @@ impl<T> Box<T> {
     }
 
     /// Try allocate with Result
-    pub fn try_new(value: T) -> Result<Box<T>, ExecError> {
+    pub fn try_new(consuming value: T) -> Result<Box<T>, ExecError> {
         return Box::new(value)
     }
 
     /// Try allocate with specific flags
-    pub fn try_new_in(value: T, flags: u32) -> Result<Box<T>, ExecError> {
+    pub fn try_new_in(consuming value: T, flags: u32) -> Result<Box<T>, ExecError> {
         return Box::new_in(value, flags)
     }
 
     /// Get immutable reference
-    pub fn get(&self) -> *T {
-        return self.alloc.as_ptr()
+    pub fn get(&self) -> &T {
+        return unsafe { &*self.alloc.as_ptr() }
     }
 
     /// Get mutable reference
-    pub fn get_mut(&var self) -> *T {
-        return self.alloc.as_mut_ptr()
+    pub fn get_mut(&var self) -> &var T {
+        return unsafe { &var *self.alloc.as_mut_ptr() }
     }
 
     /// Free the box

@@ -45,7 +45,7 @@ impl<T> Poll<T> {
     }
 
     /// Unwrap the ready value, panics if Pending
-    pub fn unwrap(self) -> T {
+pub fn unwrap(consuming self) -> T {
         match self {
             Poll::Ready(value) => return value,
             Poll::Pending => {
@@ -205,7 +205,7 @@ pub struct Ready<T> {
 }
 
 impl<T> Ready<T> {
-    pub fn new(value: T) -> Ready<T> {
+    pub fn new(consuming value: T) -> Ready<T> {
         return Ready { value: Option::Some(value), completed: false }
     }
 }
@@ -226,7 +226,7 @@ impl<T> Future<T> for Ready<T> {
 }
 
 /// Create a future that's immediately ready with the given value
-pub fn ready<T>(value: T) -> Ready<T> {
+pub fn ready<T>(consuming value: T) -> Ready<T> {
     return Ready::new(value)
 }
 

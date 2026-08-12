@@ -83,7 +83,7 @@ public class ReferenceLifetimeTests
     // ===== NEGATIVE TESTS: Should produce errors =====
 
     [Fact]
-    public void ReferenceInStruct_ProducesError()
+    public void ReferenceInStruct_CompilesAsOwnerTiedView()
     {
         var code = @"
 struct BadCache {
@@ -92,11 +92,11 @@ struct BadCache {
 
 fn main() {}
 ";
-        AssertHasError(code, "E0106", "cannot contain reference");
+        AssertCompiles(code);
     }
 
     [Fact]
-    public void MutableReferenceInStruct_ProducesError()
+    public void MutableReferenceInStruct_CompilesAsExclusiveView()
     {
         var code = @"
 struct BadMut {
@@ -105,7 +105,54 @@ struct BadMut {
 
 fn main() {}
 ";
-        AssertHasError(code, "E0106", "cannot contain reference");
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void OwnerTiedViewBlocksMutableBorrowOfOwner()
+    {
+        var code = @"
+struct View { value: &i32 }
+fn view(value: &i32) -> View { return View { value: value } }
+fn test() {
+    var owner: i32 = 1
+    let borrowed = view(&owner)
+    let write = &var owner
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void ExclusiveOwnerTiedViewBlocksImmutableBorrowOfOwner()
+    {
+        var code = @"
+struct MutView { value: &var i32 }
+fn view(value: &var i32) -> MutView { return MutView { value: value } }
+fn test() {
+    var owner: i32 = 1
+    let borrowed = view(&var owner)
+    let read = &owner
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void OwnerTiedViewCannotReturnLocalReference()
+    {
+        var code = @"
+struct View { value: &i32 }
+fn bad() -> View {
+    let local: i32 = 1
+    return View { value: &local }
+}
+fn main() {}
+";
+        AssertHasError(code, "E0106", "no reference parameters");
+        AssertHasError(code, "E0515", "cannot return reference to local");
     }
 
     // ===== POSITIVE TESTS: Should compile =====
@@ -524,6 +571,49 @@ fn main() {}
         AssertCompiles(code);
     }
 
+    [Fact]
+    public void EnumPayloadReferencePatterns_BorrowFromMatchedReference()
+    {
+        const string code = """
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+            enum Maybe { Some(Owned), None }
+
+            fn require(value: &Maybe) -> &Owned {
+                let Maybe::Some(&payload) = value else { panic!("missing") }
+                return payload
+            }
+
+            fn update(value: &var Maybe) {
+                match value {
+                    Maybe::Some(&var payload) => { (*payload).value = 7 },
+                    Maybe::None => {}
+                }
+            }
+            """;
+
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void BorrowedEnumPayload_ByValueMoveIsRejected()
+    {
+        const string code = """
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+            enum Maybe { Some(Owned), None }
+
+            fn bad(value: &Maybe) {
+                match value {
+                    Maybe::Some(payload) => {},
+                    Maybe::None => {}
+                }
+            }
+            """;
+
+        AssertHasError(code, "E3301", "bind it with '&value'");
+    }
+
     // ===== RETURN REFERENCE TO LOCAL TESTS =====
 
     [Fact]
@@ -764,6 +854,219 @@ fn main() {}
     }
 
     [Fact]
+    public void ImmutableThenMutableBorrow_ProducesError()
+    {
+        var code = @"
+fn test() {
+    var value: i32 = 42
+    let read: &i32 = &value
+    let write: &var i32 = &var value
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void MutableThenImmutableBorrow_ProducesError()
+    {
+        var code = @"
+fn test() {
+    var value: i32 = 42
+    let write: &var i32 = &var value
+    let read: &i32 = &value
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void TwoMutableBorrows_ProduceError()
+    {
+        var code = @"
+fn test() {
+    var value: i32 = 42
+    let first: &var i32 = &var value
+    let second: &var i32 = &var value
+}
+fn main() {}
+";
+        AssertHasError(code, "E0499", "more than once");
+    }
+
+    [Fact]
+    public void BorrowEndingWithInnerScope_AllowsLaterMutableBorrow()
+    {
+        var code = @"
+fn test() {
+    var value: i32 = 42
+    if true {
+        let read: &i32 = &value
+        let observed = *read
+    }
+    let write: &var i32 = &var value
+    *write = 7
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void TemporaryMutableBorrowConflictsWithStoredImmutableBorrow()
+    {
+        var code = @"
+fn write(value: &var i32) { *value = 7 }
+fn test() {
+    var value: i32 = 42
+    let read: &i32 = &value
+    write(&var value)
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void TwoTemporaryMutableBorrowsInOneCall_ProduceError()
+    {
+        var code = @"
+fn write_pair(first: &var i32, second: &var i32) {}
+fn test() {
+    var value: i32 = 42
+    write_pair(&var value, &var value)
+}
+fn main() {}
+";
+        AssertHasError(code, "E0499", "more than once");
+    }
+
+    [Fact]
+    public void TemporaryBorrowEndsAfterCall()
+    {
+        var code = @"
+fn read(value: &i32) -> i32 { return *value }
+fn write(value: &var i32) { *value = 7 }
+fn test() {
+    var value: i32 = 42
+    let observed = read(&value)
+    write(&var value)
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void BorrowedMethodResultBlocksMutableReceiverCall()
+    {
+        var code = @"
+struct Container { value: i32 }
+impl Container {
+    fn get(&self) -> &i32 { return &self.value }
+    fn set(&var self, value: i32) { self.value = value }
+}
+fn test() {
+    var container = Container { value: 1 }
+    let value = container.get()
+    container.set(2)
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "incompatible mutability");
+    }
+
+    [Fact]
+    public void MutableReceiverBorrowEndsAfterCall()
+    {
+        var code = @"
+struct Container { value: i32 }
+impl Container {
+    fn set(&var self, value: i32) { self.value = value }
+}
+fn test() {
+    var container = Container { value: 1 }
+    container.set(2)
+    container.set(3)
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void OwnerTiedViewBorrowEndsAtLexicalBlock()
+    {
+        var code = @"
+struct View { value: &i32 }
+struct Container { value: i32 }
+impl Container {
+    fn view(&self) -> View { return View { value: &self.value } }
+    fn set(&var self, value: i32) { self.value = value }
+}
+fn test() {
+    var container = Container { value: 1 }
+    {
+        let view = container.view()
+        let observed = *view.value
+    }
+    container.set(2)
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void NestedBlockMayShadowOuterVariable()
+    {
+        var code = @"
+fn test() {
+    let value = 1
+    {
+        let value = 2
+        let inner = value
+    }
+    let outer = value
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void ImmutableReceiverCannotMutateFields()
+    {
+        var code = @"
+struct Point { x: i32 }
+impl Point {
+    fn set(&self, value: i32) { self.x = value }
+}
+fn main() {}
+";
+        AssertHasError(code, "E0019", "immutable");
+    }
+
+    [Fact]
+    public void MutableAndConsumingReceiversMayMutateFields()
+    {
+        var code = @"
+struct Handle { ptr: *u8 }
+impl Handle {
+    fn clear(&var self) { self.ptr = null }
+    fn into_raw(consuming self) -> *u8 {
+        let ptr = self.ptr
+        self.ptr = null
+        return ptr
+    }
+}
+fn main() {}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
     public void ReferenceToReferenceNotAllowed()
     {
         // Novus doesn't support references to references (&&T)
@@ -808,5 +1111,227 @@ pub fn main() -> i32 {
 }
 ";
         AssertCompiles(code);
+    }
+
+    [Fact]
+    public void BorrowsAttribute_SelectsOneOfMultipleInputs()
+    {
+        var code = @"
+struct View { value: &i32 }
+@borrows(right)
+fn choose(left: &i32, right: &i32) -> View {
+    return View { value: right }
+}
+fn write(value: &var i32) { *value = 4 }
+fn test() {
+    var left = 1
+    var right = 2
+    let view = choose(&left, &right)
+    left = 3
+    write(&var right)
+}
+fn main() {}
+";
+        AssertHasError(code, "E0502", "right");
+    }
+
+    [Fact]
+    public void BorrowsStatic_AllowsPermanentViewWithoutInput()
+    {
+        var code = @"
+struct View { value: &i32 }
+static VALUE: i32 = 42
+@borrows(static)
+fn permanent() -> View {
+    return View { value: &VALUE }
+}
+fn main() {
+    let view = permanent()
+    let value = *view.value
+}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void BorrowsAttribute_CannotLieAboutSource()
+    {
+        var code = @"
+@borrows(right)
+fn choose(left: &i32, right: &i32) -> &i32 {
+    return left
+}
+fn main() {}
+";
+        AssertHasError(code, "E0106", "borrows `left`");
+    }
+
+    [Fact]
+    public void BorrowsStatic_CannotReturnParameterView()
+    {
+        var code = @"
+@borrows(static)
+fn lie(value: &i32) -> &i32 {
+    return value
+}
+fn main() {}
+";
+        AssertHasError(code, "E0106", "borrows `value`");
+    }
+
+    [Fact]
+    public void UnsafeBorrowConstructor_RequiresUnsafeCallSite()
+    {
+        var code = @"
+struct View { value: &i32 }
+@unsafe
+@borrows(ptr)
+fn from_raw(ptr: *i32) -> View {
+    return View { value: &*ptr }
+}
+fn main() {
+    var value = 42
+    let view = from_raw(&value)
+}
+";
+        AssertHasError(code, "E1001", "requires unsafe block");
+    }
+
+    [Fact]
+    public void DirectAssignmentCannotMutateBorrowedOwner()
+    {
+        var code = @"
+fn main() {
+    var value = 1
+    let borrowed = &value
+    value = 2
+}
+";
+        AssertHasError(code, "E0502", "already borrowed");
+    }
+
+    [Fact]
+    public void ConsumingCallCannotMoveBorrowedOwner()
+    {
+        var code = @"
+struct Owned { value: i32 }
+fn consume(consuming value: Owned) {}
+fn main() {
+    var value = Owned { value: 1 }
+    let borrowed = &value
+    consume(value)
+}
+";
+        AssertHasError(code, "E0502", "already borrowed");
+    }
+
+    [Fact]
+    public void NonConsumingParameterCannotForwardOwnedValue()
+    {
+        var code = @"
+struct Handle { ptr: *u8 }
+impl Drop for Handle { fn drop(&var self) {} }
+fn consume(consuming value: Handle) {}
+fn inspect(value: Handle) {
+    consume(value)
+}
+fn main() {
+    let value = Handle { ptr: null }
+    inspect(value)
+}
+";
+        AssertHasError(code, "E0507", "non-consuming parameter");
+    }
+
+    [Fact]
+    public void NonConsumingParameterCannotForwardOwnedField()
+    {
+        var code = @"
+struct Handle { ptr: *u8 }
+impl Drop for Handle { fn drop(&var self) {} }
+struct Wrapper { handle: Handle }
+fn consume(consuming value: Handle) {}
+fn inspect(value: Wrapper) {
+    consume(value.handle)
+}
+fn main() {}
+";
+        AssertHasError(code, "E0507", "owned field `handle`");
+    }
+
+    [Fact]
+    public void ResourceOwnerCannotImplementCopy()
+    {
+        var code = @"
+struct Handle { ptr: *u8 }
+impl Drop for Handle { fn drop(&var self) {} }
+impl Copy for Handle {}
+fn main() {}
+";
+        AssertHasError(code, "E0204", "cannot implement Copy");
+    }
+
+    [Fact]
+    public void MutableReferenceContainerCannotImplementCopy()
+    {
+        var code = @"
+struct Exclusive { value: &var i32 }
+impl Copy for Exclusive {}
+fn main() {}
+";
+        AssertHasError(code, "E0204", "cannot implement Copy");
+    }
+
+    [Fact]
+    public void ResourceFreeValueCanImplementCopy()
+    {
+        var code = @"
+struct Point { x: i32, y: i32 }
+impl Copy for Point {}
+fn main() {
+    let first = Point { x: 1, y: 2 }
+    let second = first
+    let x = first.x + second.x
+}
+";
+        AssertCompiles(code);
+    }
+
+    [Fact]
+    public void GenericContainerOfReferencesRemainsOwnerTied()
+    {
+        var code = @"
+struct Holder<T> { marker: *T }
+fn hold(value: &i32) -> Holder<&i32> {
+    return Holder { marker: null }
+}
+fn write(value: &var i32) { *value = 2 }
+fn main() {
+    var value = 1
+    let holder = hold(&value)
+    write(&var value)
+}
+";
+        AssertHasError(code, "E0502", "already borrowed");
+    }
+
+    [Fact]
+    public void UnsafeRawViewStillBorrowsItsSource()
+    {
+        var code = @"
+struct View { value: &i32 }
+@unsafe
+@borrows(ptr)
+fn from_raw(ptr: *i32) -> View {
+    return View { value: &*ptr }
+}
+fn write(value: &var i32) { *value = 2 }
+fn main() {
+    var value = 1
+    let view = unsafe { from_raw(&value) }
+    write(&var value)
+}
+";
+        AssertHasError(code, "E0502", "already borrowed");
     }
 }

@@ -29,7 +29,7 @@ impl<T> Option<T> {
     }
 
     @inline
-    pub fn is_some(self) -> bool {
+    pub fn is_some(&self) -> bool {
         match self {
             Some(_) => return true,
             None => return false
@@ -37,16 +37,34 @@ impl<T> Option<T> {
     }
 
     @inline
-    pub fn is_none(self) -> bool {
+    pub fn is_none(&self) -> bool {
         match self {
             Some(_) => return false,
             None => return true
         }
     }
 
+    /// Borrow the contained value without consuming the option.
+    @inline
+    pub fn as_ref(&self) -> Option<&T> {
+        match self {
+            Some(&value) => return Option::Some(value),
+            None => return Option::None
+        }
+    }
+
+    /// Mutably borrow the contained value without consuming the option.
+    @inline
+    pub fn as_mut(&var self) -> Option<&var T> {
+        match self {
+            Some(&var value) => return Option::Some(value),
+            None => return Option::None
+        }
+    }
+
     /// Returns the contained value or a default
     @inline
-    pub fn unwrap_or(self, default_val: T) -> T {
+    pub fn unwrap_or(consuming self, consuming default_val: T) -> T {
         match self {
             Some(val) => return val,
             None => return default_val
@@ -55,7 +73,7 @@ impl<T> Option<T> {
 
     /// Unwrap the value, panicking if None
     /// Only use when you're certain the Option is Some
-    pub fn unwrap(self) -> T {
+    pub fn unwrap(consuming self) -> T {
         match self {
             Some(val) => return val,
             None => {
@@ -71,7 +89,7 @@ impl<T> Option<T> {
     /// Since Novus doesn't have closures yet, this takes a default value directly.
     /// TODO: When closures are available, this should take `fn() -> T`
     @inline
-    pub fn unwrap_or_else(self, default_val: T) -> T {
+    pub fn unwrap_or_else(consuming self, consuming default_val: T) -> T {
         // For now, identical to unwrap_or until we have closures
         match self {
             Some(val) => return val,
@@ -91,7 +109,7 @@ impl<T> Option<T> {
     /// let result = x.or(y)  // Some(100)
     /// ```
     @inline
-    pub fn or(self, optb: Option<T>) -> Option<T> {
+    pub fn or(consuming self, consuming optb: Option<T>) -> Option<T> {
         match self {
             Some(v) => return Option::Some(v),
             None => return optb
@@ -110,9 +128,9 @@ impl<T> Option<T> {
     /// assert!(!x.contains(2))  // false
     /// ```
     @inline
-    pub fn contains(self, val: T) -> bool where T: Eq {
+    pub fn contains(&self, val: &T) -> bool where T: Eq {
         match self {
-            Some(v) => return v == val,
+            Some(&value) => return value.eq(val),
             None => return false
         }
     }
@@ -129,7 +147,7 @@ impl<T> Option<T> {
     /// let result = y.ok_or(MyError::NotFound)  // Result::Err(MyError::NotFound)
     /// ```
     @inline
-    pub fn ok_or<E>(self, err: E) -> Result<T, E> {
+    pub fn ok_or<E>(consuming self, consuming err: E) -> Result<T, E> {
         match self {
             Some(v) => return Result::Ok(v),
             None => return Result::Err(err)
@@ -146,7 +164,7 @@ pub enum Result<T, E> {
 
 impl<T, E> Result<T, E> {
     @inline
-    pub fn is_ok(self) -> bool {
+    pub fn is_ok(&self) -> bool {
         match self {
             Ok(_) => return true,
             Err(_) => return false
@@ -154,7 +172,7 @@ impl<T, E> Result<T, E> {
     }
 
     @inline
-    pub fn is_err(self) -> bool {
+    pub fn is_err(&self) -> bool {
         match self {
             Ok(_) => return false,
             Err(_) => return true
@@ -163,7 +181,7 @@ impl<T, E> Result<T, E> {
 
     /// Returns the contained value or a default
     @inline
-    pub fn unwrap_or(self, default_val: T) -> T {
+    pub fn unwrap_or(consuming self, consuming default_val: T) -> T {
         match self {
             Ok(val) => return val,
             Err(_) => return default_val
@@ -172,7 +190,7 @@ impl<T, E> Result<T, E> {
 
     /// Unwrap the value, panicking if Err
     /// Only use when you're certain the Result is Ok
-    pub fn unwrap(self) -> T {
+    pub fn unwrap(consuming self) -> T {
         match self {
             Ok(val) => return val,
             Err(_) => {
@@ -183,7 +201,7 @@ impl<T, E> Result<T, E> {
 
     /// Returns the contained error, panicking if Ok
     /// Only use when you're certain the Result is Err
-    pub fn unwrap_err(self) -> E {
+    pub fn unwrap_err(consuming self) -> E {
         match self {
             Ok(_) => {
                 panic!("called Result::unwrap_err() on an Ok value")
@@ -200,7 +218,7 @@ impl<T, E> Result<T, E> {
     /// let y: Result<i32, MyError> = Result::Ok(2)
     /// let result = x.or(y)  // Ok(2)
     /// ```
-    pub fn or(self, res: Result<T, E>) -> Result<T, E> {
+    pub fn or(consuming self, consuming res: Result<T, E>) -> Result<T, E> {
         match self {
             Ok(v) => return Result::Ok(v),
             Err(_) => return res
@@ -219,7 +237,7 @@ impl<T, E> Result<T, E> {
     /// let opt = y.ok()  // None
     /// ```
     @inline
-    pub fn ok(self) -> Option<T> {
+    pub fn ok(consuming self) -> Option<T> {
         match self {
             Ok(v) => return Option::Some(v),
             Err(_) => return Option::None
@@ -238,7 +256,7 @@ impl<T, E> Result<T, E> {
     /// let opt = y.err()  // None
     /// ```
     @inline
-    pub fn err(self) -> Option<E> {
+    pub fn err(consuming self) -> Option<E> {
         match self {
             Ok(_) => return Option::None,
             Err(e) => return Option::Some(e)
@@ -305,18 +323,18 @@ impl LibraryVersion {
 // Types implementing this trait can be iterated over with: for item in collection { ... }
 //
 // Requirements:
-// - get(index: u32) -> Option<T>: Access element at index, returns None if out of bounds
+// - get(index: u32) -> Option<&T>: Borrow element at index, returns None if out of bounds
 // - len() -> u32: Total number of elements in the collection
 //
 // Example implementation:
 // ```novus
 // impl<T> Iterable<T> for Vec<T> {
-//     fn get(&self, index: u32) -> Option<T> { ... }
+//     fn get(&self, index: u32) -> Option<&T> { ... }
 //     fn len(&self) -> u32 { ... }
 // }
 // ```
 pub trait Iterable<T> {
-    fn get(&self, index: u32) -> Option<T>
+    fn get(&self, index: u32) -> Option<&T>
     fn len(&self) -> u32
 }
 
@@ -385,7 +403,7 @@ pub trait Copy {}
 // }
 // ```
 pub trait From<T> {
-    fn convert(value: T) -> Self
+    fn convert(consuming value: T) -> Self
 }
 
 // ============================================================================
@@ -577,13 +595,13 @@ pub trait PartialOrd {
 // Example implementation:
 // ```novus
 // impl Index<u32, i32> for MyArray {
-//     fn index(&self, idx: u32) -> i32 {
+//     fn index(&self, consuming idx: u32) -> i32 {
 //         return self.data[idx]
 //     }
 // }
 // ```
 pub trait Index<I, T> {
-    fn index(&self, idx: I) -> T
+    fn index(&self, consuming idx: I) -> T
 }
 
 // IndexMut - enables the [] operator for write access on custom types
@@ -591,13 +609,13 @@ pub trait Index<I, T> {
 // Example implementation:
 // ```novus
 // impl IndexMut<u32, i32> for MyArray {
-//     fn index_set(&var self, idx: u32, value: i32) {
+//     fn index_set(&var self, consuming idx: u32, consuming value: i32) {
 //         self.data[idx] = value
 //     }
 // }
 // ```
 pub trait IndexMut<I, T> {
-    fn index_set(&var self, idx: I, value: T)
+    fn index_set(&var self, consuming idx: I, consuming value: T)
 }
 
 // ============================================================================
@@ -1376,7 +1394,7 @@ pub trait FromIterator<T> {
 /// ```
 pub trait TryFrom<T, E> {
     /// Attempt to convert from T to Self
-    fn try_from(value: T) -> Result<Self, E>
+    fn try_from(consuming value: T) -> Result<Self, E>
 }
 
 /// TryInto trait for fallible consuming conversions
@@ -1437,7 +1455,7 @@ pub trait Error {
 /// ```
 pub trait FnOnce<Args, Output> {
     /// Call the function, consuming it
-    fn call_once(consuming self, args: Args) -> Output
+    fn call_once(consuming self, consuming args: Args) -> Output
 }
 
 /// FnMut trait for callables that can be called multiple times with mutation
@@ -1453,7 +1471,7 @@ pub trait FnOnce<Args, Output> {
 /// ```
 pub trait FnMut<Args, Output> {
     /// Call the function, potentially mutating captured state
-    fn call_mut(&var self, args: Args) -> Output
+    fn call_mut(&var self, consuming args: Args) -> Output
 }
 
 /// Fn trait for callables that can be called multiple times without mutation
@@ -1469,5 +1487,5 @@ pub trait FnMut<Args, Output> {
 /// ```
 pub trait Fn<Args, Output> {
     /// Call the function
-    fn call(&self, args: Args) -> Output
+    fn call(&self, consuming args: Args) -> Output
 }

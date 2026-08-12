@@ -1,6 +1,8 @@
 // Target-executed conformance tests for generics, traits, derives, and operators.
 
 from std::test::test import expect, expect_true
+from std::collections::arrayvec import ArrayVec, ArrayVecError
+from std::core import Option, Result
 
 struct Pair<T> {
     first: T,
@@ -14,16 +16,25 @@ impl<T> Pair<T> {
 }
 
 struct Buffer<const N: u32> {
+    bytes: [u8; N],
     len: u32,
 }
 
 impl<const N: u32> Buffer<N> {
     fn new() -> Buffer<N> {
-        return Buffer { len: 0 }
+        return Buffer { bytes: [0u8; N], len: 0 }
     }
 
     fn capacity(&self) -> u32 {
         return N
+    }
+
+    fn set(&var self, index: u32, value: u8) {
+        self.bytes[index] = value
+    }
+
+    fn get(&self, index: u32) -> u8 {
+        return self.bytes[index]
     }
 }
 
@@ -33,7 +44,7 @@ enum Maybe<T> {
 }
 
 impl<T> Maybe<T> {
-    fn get_or(self, fallback: T) -> T {
+    fn get_or(self, consuming fallback: T) -> T {
         match self {
             Maybe::Just(value) => return value,
             Maybe::Nothing => return fallback,
@@ -78,6 +89,39 @@ struct DerivedPoint {
     y: i32,
 }
 
+struct InlineItem {
+    value: u32,
+}
+
+struct InlineItems {
+    items: ArrayVec<InlineItem, 2>,
+}
+
+impl InlineItems {
+    fn sum(&self) -> u32 {
+        var total = 0u32
+        for item in &self.items { total += item.value }
+        return total
+    }
+}
+
+static var ARRAYVEC_DROPS: u32 = 0u32
+
+struct TrackedInlineItem {
+    value: u32,
+}
+
+impl Drop for TrackedInlineItem {
+    fn drop(&var self) { ARRAYVEC_DROPS++ }
+}
+
+fn drop_bounded_items() {
+    var items = ArrayVec::<TrackedInlineItem, 2>::new()
+    let _ = items.push(TrackedInlineItem { value: 1u32 })
+    let _ = items.push(TrackedInlineItem { value: 2u32 })
+    let _ = items.push(TrackedInlineItem { value: 3u32 })
+}
+
 @test("generic structs monomorphize for distinct types")
 pub fn foundation_generic_structs() {
     let numbers = Pair::<i32>::new(10, 20)
@@ -88,10 +132,13 @@ pub fn foundation_generic_structs() {
 
 @test("const generics create distinct capacities")
 pub fn foundation_const_generics() {
-    let small = Buffer::<8>::new()
+    var small = Buffer::<8>::new()
     let large = Buffer::<64>::new()
     expect(small.capacity() == 8u32, "small buffer")
     expect(large.capacity() == 64u32, "large buffer")
+    small.set(7u32, 42u8)
+    expect(small.get(7u32) == 42u8, "const-sized inline array")
+    expect(@sizeof(Buffer<8>) == 12u32, "const-sized layout")
 }
 
 @test("generic enums carry values and fallbacks")
@@ -125,4 +172,40 @@ pub fn foundation_derive() {
     expect_true(a.eq(&b), "derived equality")
     expect(a.hash() == b.hash(), "equal values hash equally")
     expect(a.hash() != c.hash(), "different values hash differently")
+}
+
+@test("inline bounded vectors borrow, mutate, bound, and drop")
+pub fn foundation_arrayvec() {
+    ARRAYVEC_DROPS = 0u32
+    drop_bounded_items()
+    expect(ARRAYVEC_DROPS == 3u32, "moved values drop exactly once")
+
+    var items = ArrayVec::<InlineItem, 2>::new()
+    expect(items.capacity() == 2u32 && items.is_empty(), "inline capacity")
+    expect(items.push(InlineItem { value: 10u32 }).is_ok(), "first push")
+    expect(items.push(InlineItem { value: 20u32 }).is_ok(), "second push")
+    match items.push(InlineItem { value: 30u32 }) {
+        Result::Err(ArrayVecError::Full) => {},
+        Result::Ok(_) => expect(false, "capacity bound"),
+    }
+    match items.get(1u32) {
+        Option::Some(item) => expect(item.value == 20u32, "borrowed get"),
+        Option::None => expect(false, "missing item"),
+    }
+    match items.get_mut(0u32) {
+        Option::Some(item) => { item.value = 11u32 },
+        Option::None => expect(false, "missing mutable item"),
+    }
+    match items.get(0u32) {
+        Option::Some(item) => expect(item.value == 11u32, "mutable get"),
+        Option::None => expect(false, "missing updated item"),
+    }
+    var total = 0u32
+    for item in items { total += item.value }
+    expect(total == 31u32, "inline iteration")
+
+    var nested = InlineItems { items: ArrayVec::<InlineItem, 2>::new() }
+    expect(nested.items.push(InlineItem { value: 12u32 }).is_ok(), "nested first push")
+    expect(nested.items.push(InlineItem { value: 30u32 }).is_ok(), "nested second push")
+    expect(nested.sum() == 42u32, "borrowed generic field iteration")
 }

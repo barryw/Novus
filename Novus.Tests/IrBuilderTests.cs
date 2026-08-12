@@ -67,6 +67,16 @@ fn main() -> u32 {
     }
 
     [Fact]
+    public void BuildIr_ExternVariable_IsRegisteredOnce()
+    {
+        var module = BuildIr("extern var errno: i32");
+
+        var external = Assert.Single(module.ExternalVariables);
+        Assert.Equal("errno", external.Name);
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
     public void BuildIr_FunctionWithParameters_CreatesParameters()
     {
         var source = @"

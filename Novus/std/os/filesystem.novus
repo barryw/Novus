@@ -1,0 +1,299 @@
+// Safe AmigaDOS filesystem discovery and mounted-handler operations.
+
+from std::core import Drop, Error, Option, Result
+from std::ffi::amiga_consts import ACTION_FORMAT, FSRNAME
+from std::ffi::amiga_structs import FileSysEntry, FileSysResource, Node
+from std::ffi::dos import DoPkt, Inhibit, IoErr
+from std::ffi::exec import OpenResource, TypeOfMem
+from std::os::bptr import BPtr
+from std::os::doslist import DeviceProcess, DosDeviceEntry, DosDeviceList
+from std::strings::core import BStr, FixedCString, Str
+from std::sync::critical import CriticalSection
+
+// FileSysEntry is variable-length. These are the documented 32-bit NDK
+// boundaries through fse_PatchFlags and fse_SegList respectively.
+const FILESYS_ENTRY_HEADER_BYTES: u32 = 26u32
+const FILESYS_ENTRY_SEGLIST_BYTES: u32 = 58u32
+const FSEF_STACK_SIZE: u32 = $10u32
+const FSEF_PRIORITY: u32 = $20u32
+const FSEF_SEG_LIST: u32 = $80u32
+const FSEF_GLOBAL_VEC: u32 = $100u32
+
+pub enum FileSystemRegistryError {
+    ResourceUnavailable,
+}
+
+impl FileSystemRegistryError {
+    pub fn message(&self) -> *u8 {
+        return "FileSystem.resource is unavailable"
+    }
+}
+
+impl Error for FileSystemRegistryError {
+    fn message(&self) -> *u8 {
+        return FileSystemRegistryError::message(self)
+    }
+}
+
+/// A copied handler registration. It never borrows the resource list.
+pub struct FileSystemHandler {
+    dos_type: u32
+    version: u32
+    patch_flags: u32
+    segment: BPtr<u8>
+    global_vec: i32
+    stack_size: u32
+    priority: i32
+}
+
+impl FileSystemHandler {
+    pub fn dos_type(&self) -> u32 { return self.dos_type }
+    pub fn version(&self) -> u32 { return self.version }
+    pub fn patch_flags(&self) -> u32 { return self.patch_flags }
+    pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
+    pub fn global_vec(&self) -> i32 { return self.global_vec }
+    pub fn stack_size(&self) -> u32 { return self.stack_size }
+    pub fn priority(&self) -> i32 { return self.priority }
+
+    pub fn matches_family(&self, dos_type: u32) -> bool {
+        return (self.dos_type & $FFFFFF00u32) == (dos_type & $FFFFFF00u32)
+    }
+
+    /// Copy launch metadata from a mounted DOS device of the same family.
+    pub fn find_live(dos_type: u32) -> Option<FileSystemHandler> {
+        let devices = match DosDeviceList::lock() {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        var entries = devices.iter()
+        forever {
+            let entry = match entries.next() {
+                Option::Some(value) => value,
+                Option::None => return Option::None,
+            }
+            match FileSystemHandler::from_device(&entry) {
+                Option::Some(handler) => {
+                    if handler.matches_family(dos_type) { return Option::Some(handler) }
+                },
+                Option::None => {},
+            }
+        }
+    }
+
+    fn from_device(entry: &DosDeviceEntry) -> Option<FileSystemHandler> {
+        let startup = match entry.startup() {
+            Option::Some(value) => value,
+            Option::None => return Option::None,
+        }
+        let environment = match startup.environment() {
+            Option::Some(value) => value,
+            Option::None => return Option::None,
+        }
+        if environment.de_TableSize < 16u32 { return Option::None }
+        let node = entry.handle()
+        let segment = match BPtr::<u8>::from_raw(node.dn_SegList) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        if !segment.is_addressable() { return Option::None }
+        return Option::Some(FileSystemHandler {
+            dos_type: environment.de_DosType,
+            version: 0u32,
+            patch_flags: 0u32,
+            segment: segment,
+            global_vec: node.dn_GlobalVec,
+            stack_size: node.dn_StackSize,
+            priority: node.dn_Priority,
+        })
+    }
+}
+
+/// Non-owning handle to the permanent Exec resource. Each query copies its
+/// result while task switching is forbidden; callers never retain list nodes.
+pub struct FileSystemRegistry {
+    resource: *FileSysResource
+}
+
+impl FileSystemRegistry {
+    pub fn open() -> Result<FileSystemRegistry, FileSystemRegistryError> {
+        let resource = (*FileSysResource)OpenResource(FSRNAME)
+        if !known_memory((*u8)resource, @sizeof(FileSysResource)) {
+            return Result::Err(FileSystemRegistryError::ResourceUnavailable)
+        }
+        return Result::Ok(FileSystemRegistry { resource: resource })
+    }
+
+    /// Find an exact DosType, falling back to another registration in the same
+    /// three-byte family. Exact matches win regardless of list order.
+    pub fn find(&self, dos_type: u32) -> Option<FileSystemHandler> {
+        let _guard = CriticalSection::enter()
+        var fallback: Option<FileSystemHandler> = Option::None
+        var node = unsafe { (*self.resource).fsr_FileSysEntries.lh_Head }
+        var visited = 0u32
+
+        while visited < 256u32 && known_memory((*u8)node, 4u32) {
+            let next = unsafe { (*node).ln_Succ }
+            if next == null { break }
+            if !known_memory((*u8)node, FILESYS_ENTRY_HEADER_BYTES) { break }
+            let entry = unsafe { &*((*FileSysEntry)node) }
+            match snapshot(entry) {
+                Option::Some(handler) => {
+                    if handler.dos_type() == dos_type { return Option::Some(handler) }
+                    if fallback.is_none() && handler.matches_family(dos_type) {
+                        fallback = Option::Some(handler)
+                    }
+                },
+                Option::None => {},
+            }
+            node = next
+            visited++
+        }
+        return fallback
+    }
+
+    pub fn entry_count(&self) -> u32 {
+        let _guard = CriticalSection::enter()
+        var node = unsafe { (*self.resource).fsr_FileSysEntries.lh_Head }
+        var count = 0u32
+        while count < 256u32 && known_memory((*u8)node, 4u32) {
+            let next = unsafe { (*node).ln_Succ }
+            if next == null || !known_memory((*u8)node, FILESYS_ENTRY_HEADER_BYTES) { break }
+            count++
+            node = next
+        }
+        return count
+    }
+
+    /// Explicit lower-layer escape hatch; the resource remains OS-owned.
+    pub fn handle(&self) -> *FileSysResource {
+        return self.resource
+    }
+}
+
+pub enum FileSystemOperationError {
+    InvalidName,
+    ResolveFailed,
+    InhibitFailed(i32),
+    FormatFailed(i32),
+}
+
+impl FileSystemOperationError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            FileSystemOperationError::InvalidName => "Filesystem names must end in ':'",
+            FileSystemOperationError::ResolveFailed => "Could not resolve the filesystem handler",
+            FileSystemOperationError::InhibitFailed(_) => "Could not change filesystem inhibit state",
+            FileSystemOperationError::FormatFailed(_) => "The filesystem rejected the format request",
+        }
+    }
+}
+
+impl Error for FileSystemOperationError {
+    fn message(&self) -> *u8 { return FileSystemOperationError::message(self) }
+}
+
+/// Owns a resolved filesystem process. Its DeviceProcess is released on every exit.
+pub struct MountedFileSystem {
+    name: FixedCString<255>
+    process: DeviceProcess
+}
+
+impl MountedFileSystem {
+    pub fn open(name: Str) -> Result<MountedFileSystem, FileSystemOperationError> {
+        if name.is_empty() || !name.ends_with(":") {
+            return Result::Err(FileSystemOperationError::InvalidName)
+        }
+        let owned_name = match FixedCString::<255>::new_from_str(name) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(FileSystemOperationError::InvalidName),
+        }
+        let process = match DeviceProcess::resolve(owned_name.as_cstr_view()) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(FileSystemOperationError::ResolveFailed),
+        }
+        return Result::Ok(MountedFileSystem { name: owned_name, process: process })
+    }
+
+    pub fn name(&self) -> Str { return self.name.as_str() }
+    pub fn handle(&self) -> &DeviceProcess { return &self.process }
+
+    pub fn inhibit(&self) -> Result<InhibitedFileSystem, FileSystemOperationError> {
+        if Inhibit(self.name.as_cstr(), -1) == 0 {
+            return Result::Err(FileSystemOperationError::InhibitFailed(IoErr()))
+        }
+        return Result::Ok(InhibitedFileSystem { owner: self, active: true })
+    }
+}
+
+/// Proof that a mounted filesystem is inhibited. Drop always attempts to resume it.
+pub struct InhibitedFileSystem {
+    owner: &MountedFileSystem
+    active: bool
+}
+
+impl InhibitedFileSystem {
+    /// Destructive operation: only available while the target is inhibited.
+    @suppress("W0002", "ACTION_FORMAT and the validated BSTR BPTR use signed DOS packet fields")
+    pub fn format(&self, volume_name: Str, dos_type: u32) -> Result<(), FileSystemOperationError> {
+        let name = match BStr::new_from_str(volume_name) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(FileSystemOperationError::InvalidName),
+        }
+        let result = DoPkt(
+            self.owner.process.port(),
+            (i32)ACTION_FORMAT,
+            (i32)name.as_bptr(),
+            (i32)dos_type,
+            0, 0, 0
+        )
+        if result == 0 { return Result::Err(FileSystemOperationError::FormatFailed(IoErr())) }
+        return Result::Ok(())
+    }
+
+    pub fn release(&var self) -> Result<(), FileSystemOperationError> {
+        if !self.active { return Result::Ok(()) }
+        if Inhibit(self.owner.name.as_cstr(), 0) == 0 {
+            return Result::Err(FileSystemOperationError::InhibitFailed(IoErr()))
+        }
+        self.active = false
+        return Result::Ok(())
+    }
+}
+
+impl Drop for InhibitedFileSystem {
+    fn drop(&var self) {
+        if self.active {
+            Inhibit(self.owner.name.as_cstr(), 0)
+            self.active = false
+        }
+    }
+}
+
+fn snapshot(entry: &FileSysEntry) -> Option<FileSystemHandler> {
+    let patch_flags = entry.fse_PatchFlags
+    // AmigaOS 3.2 leaves PatchFlags at zero while still populating SegList.
+    // Non-zero flags retain the documented variable-length field contract.
+    if patch_flags != 0u32 && patch_flags & FSEF_SEG_LIST == 0u32 { return Option::None }
+    if !known_memory(unsafe { (*u8)entry }, FILESYS_ENTRY_SEGLIST_BYTES) { return Option::None }
+    let segment = match BPtr::<u8>::from_raw(entry.fse_SegList) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Option::None,
+    }
+    if !segment.is_addressable() { return Option::None }
+    return Option::Some(FileSystemHandler {
+        dos_type: entry.fse_DosType,
+        version: entry.fse_Version,
+        patch_flags: patch_flags,
+        segment: segment,
+        global_vec: if patch_flags & FSEF_GLOBAL_VEC != 0u32 { entry.fse_GlobalVec } else { -1 },
+        stack_size: if patch_flags & FSEF_STACK_SIZE != 0u32 { entry.fse_StackSize } else { 0u32 },
+        priority: if patch_flags & FSEF_PRIORITY != 0u32 { entry.fse_Priority } else { 0 },
+    })
+}
+
+fn known_memory(ptr: *u8, size: u32) -> bool {
+    if ptr == null || size == 0u32 || TypeOfMem(ptr) == 0u32 { return false }
+    let address = (u32)ptr
+    if address > $FFFFFFFFu32 - (size - 1u32) { return false }
+    return TypeOfMem(ptr + size - 1u32) != 0u32
+}
