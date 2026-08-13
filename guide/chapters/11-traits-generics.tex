@@ -852,12 +852,12 @@ All numeric primitives implement these traits:
 \begin{lstlisting}
 // ... (implemented in std::core)
 impl Zero for i32 {
-    fn zero() -> i32 { return 0i32 }
-    fn is_zero(&self) -> bool { return *self == 0i32 }
+    fn zero() -> i32 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl One for i32 {
-    fn one() -> i32 { return 1i32 }
+    fn one() -> i32 { return 1 }
 }
 \end{lstlisting}
 
@@ -953,11 +953,11 @@ Fixed-point types also implement \texttt{Bounded}:
 impl Bounded for fixed32 {
     fn min_value() -> fixed32 {
         // -32768.0 in 16.16 format
-        return fixed32_from_raw(-2147483648i32)
+        return fixed32_from_raw(-2147483648)
     }
     fn max_value() -> fixed32 {
         // 32767.99998... in 16.16 format
-        return fixed32_from_raw(2147483647i32)
+        return fixed32_from_raw(2147483647)
     }
 }
 \end{lstlisting}
@@ -1182,7 +1182,7 @@ struct FixedBuffer<const N: u32> {
 impl<const N: u32> FixedBuffer<N> {
     pub fn new() -> FixedBuffer<N> {
         return FixedBuffer {
-            data: [0u8; N],
+            data: [0; N],
             len: 0,
         }
     }
@@ -1212,8 +1212,8 @@ fn max<T>(a: T, b: T) -> T where T: Ord {
 }
 
 // When you call:
-let m1 = max(10i32, 20i32)
-let m2 = max(5u8, 3u8)
+let m1 = max(10, 20)
+let m2 = max(5, 3)
 
 // Compiler generates:
 // fn max_i32(a: i32, b: i32) -> i32 { ... }

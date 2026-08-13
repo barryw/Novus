@@ -9,7 +9,7 @@ Usage:
     python update_ffi_docs.py <autodocs_dir> <ffi_file> [--dry-run]
 
 Example:
-    python update_ffi_docs.py ~/amiga-cc/NDK3.9/Documentation/Autodocs Novus/std/ffi/exec.novus
+    python update_ffi_docs.py ~/amiga-cc/NDK3.9/Documentation/Autodocs Novus/std/amiga/raw/exec.novus
 """
 
 import os

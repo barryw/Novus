@@ -1,0 +1,50 @@
+from std::core import Error
+
+pub enum IntuitionError {
+    WindowOpenFailed,
+    ScreenOpenFailed,
+    GadgetCreateFailed,
+    MenuCreateFailed,
+    InvalidWindow,
+    InvalidScreen,
+    NoIDCMP,
+    BadDisplayMode,
+    ModifyIDCMPFailed,
+    LibraryOpenFailed,
+}
+
+pub fn intuition_error_to_code(error: IntuitionError) -> i32 {
+    return match error {
+        IntuitionError::WindowOpenFailed => -200,
+        IntuitionError::ScreenOpenFailed => -201,
+        IntuitionError::GadgetCreateFailed => -202,
+        IntuitionError::MenuCreateFailed => -203,
+        IntuitionError::InvalidWindow => -204,
+        IntuitionError::InvalidScreen => -205,
+        IntuitionError::NoIDCMP => -206,
+        IntuitionError::BadDisplayMode => -207,
+        IntuitionError::ModifyIDCMPFailed => -208,
+        IntuitionError::LibraryOpenFailed => -209,
+    }
+}
+
+impl IntuitionError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            IntuitionError::WindowOpenFailed => "Failed to open window",
+            IntuitionError::ScreenOpenFailed => "Failed to open screen",
+            IntuitionError::GadgetCreateFailed => "Failed to create gadget",
+            IntuitionError::MenuCreateFailed => "Failed to create menu",
+            IntuitionError::InvalidWindow => "Invalid window pointer",
+            IntuitionError::InvalidScreen => "Invalid screen pointer",
+            IntuitionError::NoIDCMP => "IDCMP setup failed",
+            IntuitionError::BadDisplayMode => "Invalid display mode",
+            IntuitionError::ModifyIDCMPFailed => "Failed to modify IDCMP",
+            IntuitionError::LibraryOpenFailed => "Failed to open library",
+        }
+    }
+}
+
+impl Error for IntuitionError {
+    fn message(&self) -> *u8 { return IntuitionError::message(self) }
+}

@@ -2,10 +2,10 @@
 // Uses DOS Delay() instead of timer to rule out timer.device issues
 
 from std::core import Result
-from std::graphics::copper import CopperListBuilder, CopperError
-from std::hardware::registers import rgb12
-from std::ffi::graphics import WaitTOF
-from std::ffi::dos import Delay
+from amiga::sys::graphics::copper import CopperListBuilder, CopperError
+from amiga::sys::hardware::registers import rgb12
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::dos import Delay
 
 pub fn main() -> i32 {
     // Ensure graphics.library is opened

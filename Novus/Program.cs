@@ -47,14 +47,14 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 ///
 /// 2. Object File Cache (usercache directory)
 ///    - Caches compiled .o files for user C code
-///    - Keyed by: CODEGEN_VERSION + C file hash + types header hash + CPU + FPU + build mode + opt level
+///    - Keyed by: compiler build + C file hash + types header hash + CPU + FPU + build mode + opt level
 ///    - Validates integrity via .meta files with size/hash verification
 ///    - Location: {outputDir}/usercache/{cpu}/{buildMode}/
 ///
 /// 3. Stdlib Module Cache (precompiled stdlib)
 ///    - Pre-compiled standard library modules
 ///    - Location: {compilerDir}/precompiled/{cpu}/{buildMode}/
-///    - Invalidates when stdlib source changes or CODEGEN_VERSION bumps
+///    - Invalidates when stdlib source or either compiler assembly changes
 ///
 /// 4. Infrastructure Cache (stubs and runtime)
 ///    - Hashes all .s files in stubs/ and runtime/ directories
@@ -62,7 +62,7 @@ internal partial class CacheMetadataJsonContext : JsonSerializerContext
 ///    - Forces rebuild of infrastructure .o files when changed
 ///
 /// Cache Invalidation Triggers:
-/// - CODEGEN_VERSION bump: invalidates ALL caches (use for breaking codegen changes)
+/// - Compiler assembly change: invalidates all generated-code caches
 /// - Source file change: invalidates that file's IR and object caches + dependents
 /// - Types header change: invalidates all object caches (ABI change)
 /// - Build config change (CPU/FPU/mode/opt): invalidates object caches
@@ -83,11 +83,11 @@ public class Program
     public const int EXIT_USAGE = 1;
     public const int EXIT_COMPILE_ERROR = 2;
 
-    // Codegen format version - increment to invalidate all cached object files
-    // when making breaking changes to code generation or compilation process.
-    // This is the "nuclear option" - prefer targeted invalidation when possible.
-    // v57: shadowed locals and pattern bindings always receive distinct C storage.
-    private const int CODEGEN_VERSION = 57;
+    // Generated IR and objects must change whenever either compiler assembly
+    // changes. Deterministic module IDs remove manual cache-version bumps.
+    private static int CompilerCacheVersion =>
+        BitConverter.ToInt32(typeof(Program).Assembly.ManifestModule.ModuleVersionId.ToByteArray()) ^
+        BitConverter.ToInt32(typeof(IrBuilder).Assembly.ManifestModule.ModuleVersionId.ToByteArray());
 
     internal static string? ResolveGeneratedSourcePath(
         string cFileName,
@@ -100,6 +100,21 @@ public class Program
             .FirstOrDefault();
     }
 
+    internal static string GetGeneratedModulePrefix(string modulePath, string fallback)
+    {
+        var normalized = modulePath.Replace('\\', '/');
+        var stdMarker = normalized.LastIndexOf("/std/", StringComparison.Ordinal);
+        if (stdMarker >= 0)
+        {
+            var relative = Path.ChangeExtension(normalized[(stdMarker + 5)..], null)!;
+            return relative.Replace('/', '_');
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(modulePath))))[..8].ToLowerInvariant();
+        return $"{fallback}_{hash}";
+    }
+
     internal static string ComputeWholeProgramCacheKey(
         IEnumerable<(string Path, string ContentHash)> inputs,
         string typesHeaderHash,
@@ -110,7 +125,7 @@ public class Program
         var parts = inputs
             .OrderBy(input => input.Path, StringComparer.Ordinal)
             .Select(input => $"{Path.GetFullPath(input.Path)}|{input.ContentHash}")
-            .Prepend($"whole-v1|v{CODEGEN_VERSION}|{typesHeaderHash}|{cpu}|{fpu}|O{optimizationLevel}");
+            .Prepend($"whole-v1|v{CompilerCacheVersion}|{typesHeaderHash}|{cpu}|{fpu}|O{optimizationLevel}");
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(string.Join('\n', parts)))).ToLowerInvariant();
     }
@@ -147,7 +162,7 @@ public class Program
                     dir, "*", SearchOption.AllDirectories)))
             .OrderBy(path => path, StringComparer.Ordinal);
         var parts = files.Select(path => $"{Path.GetFullPath(path)}:{HashFile(path)}")
-            .Prepend($"codegen:{CODEGEN_VERSION}")
+            .Prepend($"codegen:{CompilerCacheVersion}")
             .Prepend(sourceGraphHash)
             .Prepend(configHash);
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
@@ -289,28 +304,21 @@ public class Program
 
     private static IReadOnlyList<FfiModuleMetadata> FindRequiredFfiModules(
         ModuleIR mainModule,
-        IEnumerable<ModuleIR> importedModules)
+        IEnumerable<ModuleIR> importedModules,
+        IReadOnlySet<string> reachableFunctions)
     {
         var modules = importedModules.Prepend(mainModule).ToList();
-        var calledFunctions = modules
-            .SelectMany(m => m.IrModule.Functions)
-            .Where(f => !f.IsExtern)
-            .SelectMany(f => f.BasicBlocks)
-            .SelectMany(b => b.Instructions)
-            .OfType<IrCall>()
-            .Select(c => c.FunctionName)
-            .ToHashSet(StringComparer.Ordinal);
 
         return modules
             .Select(module => (Module: module, Metadata: FfiModuleMetadata.TryRead(module.ModulePath)))
             .Where(item => item.Metadata != null &&
-                           item.Module.IrModule.Functions.Any(f => f.IsExtern && calledFunctions.Contains(f.Name)))
+                           item.Module.IrModule.Functions.Any(f => f.IsExtern && reachableFunctions.Contains(f.Name)))
             .Select(item => item.Metadata! with
             {
                 MinimumVersion = Math.Max(
                     item.Metadata!.MinimumVersion,
                     item.Module.IrModule.Functions
-                        .Where(function => function.IsExtern && calledFunctions.Contains(function.Name))
+                        .Where(function => function.IsExtern && reachableFunctions.Contains(function.Name))
                         .Select(function => Math.Max(
                             function.Attributes?.Get(KnownAttributes.Since)?.GetPositionalArg<int>(0) ?? 0,
                             item.Metadata.FunctionVersions.TryGetValue(function.Name, out var version) ? version : 0))
@@ -322,8 +330,166 @@ public class Program
             .ToList();
     }
 
-    private static bool UsesNativeFloat(IEnumerable<ModuleIR> modules) =>
+    private static HashSet<string> FindReachableFunctionNames(
+        ModuleIR mainModule,
+        IEnumerable<ModuleIR> importedModules,
+        bool preservePublicFunctions,
+        bool includeAllDefinitions = false)
+    {
+        var modules = importedModules.Prepend(mainModule).ToList();
+        var definitions = modules
+            .SelectMany(module => module.IrModule.Functions
+                .Where(function => !function.IsExtern && function.BasicBlocks.Count > 0)
+                .Select(function => (function, module.IrModule)))
+            .ToLookup(item => item.function.Name, StringComparer.Ordinal);
+        var reachable = new HashSet<string>(StringComparer.Ordinal);
+        var pending = new Queue<string>();
+
+        void Mark(string name)
+        {
+            if (reachable.Add(name))
+                pending.Enqueue(name);
+        }
+
+        if (includeAllDefinitions)
+        {
+            foreach (var definition in definitions.SelectMany(group => group))
+                Mark(definition.function.Name);
+        }
+        else
+        {
+            foreach (var function in mainModule.IrModule.Functions.Where(function =>
+                         function.Name == "main" ||
+                         function.IsExported ||
+                         function.IsInterruptHandler ||
+                         (preservePublicFunctions && function.IsPublic) ||
+                         IsGeneratedEntryPoint(function)))
+                Mark(function.Name);
+        }
+
+        while (pending.TryDequeue(out var name))
+        {
+            foreach (var (function, owner) in definitions[name])
+            {
+                foreach (var block in function.BasicBlocks.Concat(function.DeferredBlocks))
+                foreach (var instruction in block.Instructions)
+                {
+                    switch (instruction)
+                    {
+                        case IrCall call:
+                            Mark(call.FunctionName);
+                            foreach (var argument in call.Arguments) ScanValue(argument);
+                            break;
+                        case IrIndirectCall call:
+                            ScanValue(call.FunctionPointer);
+                            foreach (var argument in call.Arguments) ScanValue(argument);
+                            break;
+                        case IrCreateClosure closure:
+                            Mark(closure.GeneratedFunctionName);
+                            foreach (var captured in closure.CapturedValues) ScanValue(captured.Value);
+                            break;
+                        case IrInvokeClosure invocation:
+                            ScanValue(invocation.Closure);
+                            foreach (var argument in invocation.Arguments) ScanValue(argument);
+                            break;
+                        case IrDropInPlace drop:
+                            foreach (var dropFunction in GetDropFunctions(owner, drop.ElementType)) Mark(dropFunction);
+                            ScanValue(drop.Pointer);
+                            break;
+                        case IrLocalDecl local when local.InitialValue != null: ScanValue(local.InitialValue); break;
+                        case IrStore store: ScanValue(store.Value); break;
+                        case IrStoreCapture store: ScanValue(store.Value); break;
+                        case IrDereferenceStore store: ScanValue(store.Pointer); ScanValue(store.Value); break;
+                        case IrMemberAccess access: ScanValue(access.Struct); break;
+                        case IrMemberStore store: ScanValue(store.Struct); ScanValue(store.Value); break;
+                        case IrIndexAccess access: ScanValue(access.Array); ScanValue(access.Index); break;
+                        case IrIndexStore store: ScanValue(store.Array); ScanValue(store.Index); ScanValue(store.Value); break;
+                        case IrIndexedFieldStore store: ScanValue(store.Array); ScanValue(store.Index); ScanValue(store.Value); break;
+                        case IrBinaryOp binary: ScanValue(binary.Left); ScanValue(binary.Right); break;
+                        case IrConditionalBranch branch: ScanValue(branch.Condition); break;
+                        case IrPhi phi:
+                            foreach (var value in phi.IncomingValues) ScanValue(value);
+                            break;
+                        case IrMatch match: ScanValue(match.MatchValue); break;
+                        case IrReturn returned when returned.Value != null: ScanValue(returned.Value); break;
+                        case IrAssert assertion: ScanValue(assertion.Condition); break;
+                    }
+                }
+            }
+        }
+
+        return reachable;
+
+        void ScanValue(IrValue value)
+        {
+            switch (value)
+            {
+                case IrFunctionAddress address: Mark(address.FunctionName); break;
+                case IrFunctionRef reference: Mark(reference.Function.Name); break;
+                case IrStructLiteral literal:
+                    foreach (var field in literal.FieldValues.Values) ScanValue(field);
+                    break;
+                case IrTupleLiteral literal:
+                    foreach (var element in literal.Elements) ScanValue(element);
+                    break;
+                case IrArrayLiteral literal:
+                    foreach (var element in literal.Elements) ScanValue(element);
+                    break;
+                case IrEnumValue enumValue:
+                    foreach (var associated in enumValue.AssociatedValues) ScanValue(associated);
+                    break;
+                case IrBorrowValue borrow: ScanValue(borrow.BorrowedValue); break;
+                case IrDereferenceValue dereference: ScanValue(dereference.PointerValue); break;
+                case IrCastValue cast: ScanValue(cast.Value); break;
+                case IrPointerOffsetValue offset: ScanValue(offset.Pointer); ScanValue(offset.Index); break;
+                case IrFieldReference field: ScanValue(field.Struct); break;
+                case IrIndexedFieldAccess field: ScanValue(field.Array); ScanValue(field.Index); break;
+                case IrTupleElementAccess element: ScanValue(element.Tuple); break;
+            }
+        }
+    }
+
+    private static bool IsGeneratedEntryPoint(IrFunction function) =>
+        function.Attributes != null && new[]
+        {
+            KnownAttributes.LibFunc, KnownAttributes.LibOpen, KnownAttributes.LibClose,
+            KnownAttributes.LibExpunge, KnownAttributes.LibInit, KnownAttributes.ResourceFunc,
+            KnownAttributes.ResourceInit, KnownAttributes.DeviceCmd, KnownAttributes.DeviceOpen,
+            KnownAttributes.DeviceClose, KnownAttributes.DeviceExpunge, KnownAttributes.DeviceInit,
+            KnownAttributes.BeginIO, KnownAttributes.AbortIO,
+        }.Any(function.Attributes.Has);
+
+    private static IEnumerable<string> GetDropFunctions(IrModule module, IrType type)
+    {
+        if (!module.TypeImplementsDrop(type))
+            yield break;
+        if (type is IrStructType structType)
+        {
+            if (module.StructImplementsDrop(structType))
+            {
+                yield return $"{CCodeGenerator.MangleNameStatic(structType.CacheKey ?? structType.StructName)}_Drop_drop";
+                yield break;
+            }
+            foreach (var field in structType.Fields)
+            foreach (var function in GetDropFunctions(module, field.Type))
+                yield return function;
+            yield break;
+        }
+        var children = type switch
+        {
+            IrEnumType enumType => enumType.Variants.SelectMany(variant => variant.AssociatedData),
+            IrTupleType tupleType => tupleType.ElementTypes,
+            IrArrayType arrayType => [arrayType.ElementType],
+            _ => [],
+        };
+        foreach (var child in children)
+        foreach (var function in GetDropFunctions(module, child))
+            yield return function;
+    }
+
+    private static bool UsesNativeFloat(IEnumerable<ModuleIR> modules, IReadOnlySet<string> reachableFunctions) =>
         modules.SelectMany(module => module.IrModule.Functions)
+            .Where(function => reachableFunctions.Contains(function.Name))
             .Any(function => function.ReturnType is IrFloatType ||
                              function.Parameters.Any(parameter => parameter.Type is IrFloatType) ||
                              function.LocalVariables.Any(local => local.Type is IrFloatType));
@@ -373,7 +539,7 @@ public class Program
                     options.VbccPath,
                     options.NdkPath,
                     options.Verbose,
-                    CODEGEN_VERSION);
+                    CompilerCacheVersion);
 
                 if (result == 0)
                 {
@@ -974,7 +1140,7 @@ public class Program
             if (!options.NoCache)
             {
                 var projectRoot = Path.GetDirectoryName(Path.GetFullPath(options.InputFile)) ?? ".";
-                compilationCache = new CompilationCache(projectRoot, CODEGEN_VERSION);
+                compilationCache = new CompilationCache(projectRoot, CompilerCacheVersion);
                 compilationCache.BeginBuild();
             }
 
@@ -1078,10 +1244,7 @@ public class Program
                     if (processed.Add(modulePath))
                     {
                         batch.Add(modulePath);
-                        var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-                        var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
-                        var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
-                        Console.WriteLine($"  → {displayName}");
+                        Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath)}");
                     }
                 }
 
@@ -1127,23 +1290,6 @@ public class Program
             if (allModulesIR.Count > 0)
             {
                 Console.WriteLine($"  ✓ Compiled {allModulesIR.Count + 1} module{(allModulesIR.Count > 0 ? "s" : "")}");
-            }
-
-            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values).ToList();
-            var dosMetadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "ffi", "dos.novus"));
-            if (dosMetadata != null && requiredFfiModules.All(item => item.ModuleName != "dos"))
-                requiredFfiModules.Add(dosMetadata);
-            var usesNativeFloat = UsesNativeFloat(allModulesIR.Values.Prepend(mainIR));
-            if (options.Fpu is "none" or "soft" && usesNativeFloat)
-            {
-                foreach (var moduleName in new[] { "mathieeesingbas", "mathieeedoubbas" })
-                {
-                    var metadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "ffi", $"{moduleName}.novus"));
-                    if (metadata != null && requiredFfiModules.All(item => item.ModuleName != moduleName))
-                    {
-                        requiredFfiModules.Add(metadata);
-                    }
-                }
             }
 
             if (options.Verbose && moduleCache.Count > 0)
@@ -1269,6 +1415,32 @@ public class Program
                 }
             }
 
+            var preservePublicFunctions = options.ProjectType.Equals("library", StringComparison.OrdinalIgnoreCase);
+            var reachableFunctions = FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions);
+            var linkedFunctions = options.BuildMode == BuildMode.Release && options.OptimizationLevel == 3
+                ? reachableFunctions
+                : FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions, includeAllDefinitions: true);
+            var ffiCompileModules = allModulesIR.Values.Prepend(mainIR)
+                .Select(module => FfiModuleMetadata.TryRead(module.ModulePath))
+                .Where(metadata => metadata != null)
+                .Select(metadata => metadata!)
+                .DistinctBy(metadata => metadata.ModuleName)
+                .ToList();
+            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values, linkedFunctions).ToList();
+            var dosMetadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "amiga", "raw", "dos.novus"));
+            if (dosMetadata != null && requiredFfiModules.All(item => item.ModuleName != "dos"))
+                requiredFfiModules.Add(dosMetadata);
+            var usesNativeFloat = UsesNativeFloat(allModulesIR.Values.Prepend(mainIR), linkedFunctions);
+            if (options.Fpu is "none" or "soft" && usesNativeFloat)
+            {
+                foreach (var moduleName in new[] { "mathieeesingbas", "mathieeedoubbas" })
+                {
+                    var metadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "amiga", "raw", $"{moduleName}.novus"));
+                    if (metadata != null && requiredFfiModules.All(item => item.ModuleName != moduleName))
+                        requiredFfiModules.Add(metadata);
+                }
+            }
+
             ReportPhase("lowering");
 
             // Optionally emit IR
@@ -1302,7 +1474,7 @@ public class Program
 
             // Generate shared types header
             var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctionsForHeader);
-            var ffiHeaders = requiredFfiModules
+            var ffiHeaders = ffiCompileModules
                 .SelectMany(module => module.Headers)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(header => header, StringComparer.Ordinal)
@@ -1310,7 +1482,7 @@ public class Program
                 .ToList();
             if (ffiHeaders.Count > 0)
             {
-                var ffiDirectory = Path.GetDirectoryName(requiredFfiModules[0].ModulePath)!;
+                var ffiDirectory = Path.GetDirectoryName(ffiCompileModules[0].ModulePath)!;
                 var ndkTypesPath = Path.Combine(ffiDirectory, "ndk_types.h");
                 var ndkTypes = File.Exists(ndkTypesPath)
                     ? string.Join(Environment.NewLine, File.ReadLines(ndkTypesPath)
@@ -1375,7 +1547,7 @@ public class Program
                 try
                 {
                     var lines = File.ReadAllLines(GetGeneratedManifestPath(module.ModulePath));
-                    if (lines.Length == 0 || lines[0] != $"v{CODEGEN_VERSION}")
+                    if (lines.Length == 0 || lines[0] != $"v{CompilerCacheVersion}")
                         return null;
 
                     var files = lines.Skip(1)
@@ -1393,7 +1565,7 @@ public class Program
             async Task SaveGeneratedFiles(string modulePath, IEnumerable<string> files)
             {
                 Directory.CreateDirectory(generatedManifestDir);
-                var contents = string.Join('\n', files.Select(Path.GetFileName).Prepend($"v{CODEGEN_VERSION}"));
+                var contents = string.Join('\n', files.Select(Path.GetFileName).Prepend($"v{CompilerCacheVersion}"));
                 await AtomicCacheWriter.WriteFileAtomicallyAsync(GetGeneratedManifestPath(modulePath), contents);
             }
 
@@ -1614,7 +1786,7 @@ public class Program
             foreach (var (modulePath, moduleIR) in allModulesIR)
             {
                 var moduleName = moduleIR.ModuleName;
-                var isStdModule = modulePath.Contains("/std/");
+                var modulePrefix = GetGeneratedModulePrefix(modulePath, moduleName);
                 var cachedGeneratedFiles = LoadGeneratedFiles(moduleIR);
                 var moduleCFiles = new List<string>();
 
@@ -1683,7 +1855,7 @@ public class Program
                         // This ensures linking succeeds even if the function isn't called
                         // Sanitize function name for use in C filenames (replace :: with _ to match MangleName, and remove < > , & * etc.)
                         var sanitizedFunctionName = function.Name.Replace("::", "_").Replace("()", "unit").Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "").Replace("&", "ref_").Replace("*", "ptr_").Replace("(", "").Replace(")", "");
-                        var functionCFile = Path.Combine(outputDir, $"{moduleName}_{sanitizedFunctionName}.c");
+                        var functionCFile = Path.Combine(outputDir, $"{modulePrefix}_{sanitizedFunctionName}.c");
                         await File.WriteAllTextAsync(functionCFile, functionCCode);
                         moduleCFiles.Add(functionCFile);
                     }
@@ -1695,7 +1867,7 @@ public class Program
                     var staticsCCode = moduleCodegen.GenerateStaticsFile();
                     if (!string.IsNullOrEmpty(staticsCCode))
                     {
-                        var staticsCFile = Path.Combine(outputDir, $"{moduleName}_statics.c");
+                        var staticsCFile = Path.Combine(outputDir, $"{modulePrefix}_statics.c");
                         await File.WriteAllTextAsync(staticsCFile, staticsCCode);
                         moduleCFiles.Add(staticsCFile);
                     }
@@ -1705,9 +1877,8 @@ public class Program
 
                 cFiles.AddRange(cachedGeneratedFiles ?? moduleCFiles);
 
-                var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
                 var cacheLabel = cachedGeneratedFiles != null ? ", cached C" : "";
-                Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")}{cacheLabel})");
+                Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath)} ({functions.Count} function{(functions.Count > 1 ? "s" : "")}{cacheLabel})");
             }
 
             // Always generate debug_symbols.c - it provides __novus_init_debug_symbols()
@@ -1792,7 +1963,7 @@ public class Program
 
             async Task<bool> AssembleCached(string sourceFile, string objectFile, string cpu, bool withFpu)
             {
-                var signature = $"v{CODEGEN_VERSION}|{cpu}|{withFpu}|{ComputeFileHash(sourceFile)}";
+                var signature = $"v{CompilerCacheVersion}|{cpu}|{withFpu}|{ComputeFileHash(sourceFile)}";
                 var signatureFile = objectFile + ".novus-asm";
                 if (File.Exists(objectFile) && File.Exists(signatureFile) &&
                     await File.ReadAllTextAsync(signatureFile) == signature)
@@ -2025,7 +2196,7 @@ ___stack:
                 || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
                 || !AtomicCacheWriter.IsCacheComplete(stdlibPrecompiledDir)  // Check completion marker
-                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CODEGEN_VERSION, out cacheInvalidReason, stdlibPrecompiledDir);
+                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CompilerCacheVersion, out cacheInvalidReason, stdlibPrecompiledDir);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
@@ -2083,7 +2254,7 @@ ___stack:
             // Resolve the longest module prefix so names such as `block_device_read`
             // are not mistaken for files belonging to `block_device`.
             var sourceCandidates = allModulesIR
-                .Select(item => (Prefix: item.Value.ModuleName, SourcePath: item.Key))
+                .Select(item => (Prefix: GetGeneratedModulePrefix(item.Key, item.Value.ModuleName), SourcePath: item.Key))
                 .Append((Prefix: baseName, SourcePath: options.InputFile))
                 .ToList();
             foreach (var cFile in cFiles)
@@ -2372,7 +2543,7 @@ ___stack:
                             assemblyCpu,
                             options.BuildMode,
                             stdlibSourcePaths,
-                            CODEGEN_VERSION);
+                            CompilerCacheVersion);
                     });
 
                     Console.WriteLine($"  ✓ Cache written atomically with types header");
@@ -2411,7 +2582,7 @@ ___stack:
             Directory.CreateDirectory(userCacheDir);
 
             // Validate cache version and clean if stale
-            ValidateAndCleanCache(userCacheDir, CODEGEN_VERSION);
+            ValidateAndCleanCache(userCacheDir, CompilerCacheVersion);
 
             // Track which files need compilation
             var filesToCompile = new List<(string cFile, string objFile, bool cached)>();
@@ -2429,7 +2600,7 @@ ___stack:
                     // Cache key must match the format used when caching: codegen version + C file hash + header + CPU + FPU + buildmode + optlevel
                     // We use C file hash (not source hash) to detect compiler codegen changes
                     // CRITICAL: Include FPU mode and build mode to prevent incorrect cache hits
-                    var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileName}.o";
+                    var cacheKey = $"v{CompilerCacheVersion}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileName}.o";
                     var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
                     var cachedMetaFile = cachedObjFile + ".meta";
 
@@ -2522,7 +2693,7 @@ ___stack:
                             // We use C file hash (not source hash) to detect compiler codegen changes
                             // This ensures cache invalidation when any of these change
                             // CRITICAL: Include FPU mode and build mode to prevent incorrect cache hits
-                            var cacheKey = $"v{CODEGEN_VERSION}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
+                            var cacheKey = $"v{CompilerCacheVersion}_{cFileHash}_{typesHeaderHash.Substring(0, 8)}_{assemblyCpu}_{options.Fpu}_{buildModeStr}_O{options.OptimizationLevel}_{cFileNameNoExt}.o";
                             var cachedObjFile = Path.Combine(userCacheDir, cacheKey);
                             cacheInfo = (objFile, cachedObjFile);
                         }
@@ -2726,7 +2897,7 @@ ___stack:
                 return $"{Path.GetFullPath(path)}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
             });
             var linkSignature = ComputeStringHash(string.Join('\n', linkInputs.Prepend(
-                $"v{CODEGEN_VERSION}|{options.Fpu}|{options.BuildMode}|{isLibrary}|{isDevice}|{isResource}")));
+                $"v{CompilerCacheVersion}|{options.Fpu}|{options.BuildMode}|{isLibrary}|{isDevice}|{isResource}")));
             var success = File.Exists(exeFile) && File.Exists(linkSignatureFile) &&
                           await File.ReadAllTextAsync(linkSignatureFile) == linkSignature;
             if (success)

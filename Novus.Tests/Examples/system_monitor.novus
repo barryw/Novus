@@ -21,17 +21,17 @@
 from std::core import Result, Option, Drop
 
 // UI and Graphics
-from std::ui::window import WindowHandle, WindowBuilder, WindowEvent
-from std::graphics::draw import DrawContext
-from std::graphics::text import draw_text_at
+from amiga::sys::intuition import WindowHandle, WindowBuilder, WindowEvent
+from amiga::sys::graphics::draw import DrawContext
+from amiga::sys::graphics::text import draw_text_at
 
 // Hardware detection
-from std::hardware::chipset import CPU, FPU, CHIPSET, DISPLAY
-from std::hardware::chipset import SystemCPU, SystemFPU, SystemChipset, DisplayType
+from amiga::sys::hardware::chipset import CPU, FPU, CHIPSET, DISPLAY
+from amiga::sys::hardware::chipset import SystemCPU, SystemFPU, SystemChipset, DisplayType
 
 // System calls
-from std::ffi::exec import AvailMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_TOTAL
+from amiga::raw::exec import AvailMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_TOTAL
 
 // =============================================================================
 // Constants
@@ -114,7 +114,7 @@ impl SystemSnapshot {
 // =============================================================================
 
 fn draw_header(ctx: &DrawContext) {
-    let rp = ctx.handle()
+    let rp = ctx.as_raw()
 
     // Draw title text
     ctx.pen(1)  // Standard text color
@@ -122,7 +122,7 @@ fn draw_header(ctx: &DrawContext) {
 }
 
 fn draw_system_info(ctx: &DrawContext, snapshot: &SystemSnapshot) {
-    let rp = ctx.handle()
+    let rp = ctx.as_raw()
     let y = INFO_PANEL_Y
 
     // Draw panel border
@@ -172,7 +172,7 @@ fn draw_system_info(ctx: &DrawContext, snapshot: &SystemSnapshot) {
 
 fn draw_memory_bar(ctx: &DrawContext, y: i16, label: *u8, label_len: u16,
                    total: u32, free: u32, fill_color: u8) {
-    let rp = ctx.handle()
+    let rp = ctx.as_raw()
 
     // Draw label
     ctx.pen(1)
@@ -201,7 +201,7 @@ fn draw_memory_bar(ctx: &DrawContext, y: i16, label: *u8, label_len: u16,
 }
 
 fn draw_memory_panel(ctx: &DrawContext, snapshot: &SystemSnapshot) {
-    let rp = ctx.handle()
+    let rp = ctx.as_raw()
     let y = MEMORY_PANEL_Y
 
     // Draw panel border
@@ -222,7 +222,7 @@ fn draw_memory_panel(ctx: &DrawContext, snapshot: &SystemSnapshot) {
 }
 
 fn draw_footer(ctx: &DrawContext) {
-    let rp = ctx.handle()
+    let rp = ctx.as_raw()
     let y = WINDOW_HEIGHT - 20
 
     // Draw footer text

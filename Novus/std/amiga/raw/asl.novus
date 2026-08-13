@@ -1,0 +1,120 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: asl.library
+// Base: _AslBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+/// Allocates an ASL FileRequester structure. (V36)
+///
+/// See also: AllocAslRequest()
+@library("asl.library")
+extern pub fn AllocFileRequest() -> *FileRequester
+/// Free file requester structure. (V36)
+///
+/// See also: FreeAslRequest()
+@library("asl.library")
+extern pub fn FreeFileRequest(fileReq: *FileRequester)
+/// Request user to select files. (V36)
+///
+/// See also: AslRequest()
+@library("asl.library")
+extern pub fn RequestFile(fileReq: *FileRequester) -> i32
+/// Allocate an ASL requester. (V36)
+///
+/// Allocates an ASL requester data structure of the specified type.
+///
+/// # Arguments
+/// * `type` - type of requester to allocate. Currently defined types are
+///   ASL_FileRequest, ASL_FontRequest and ASL_ScreenModeRequest.
+///   ASL_ScreenModeRequest is available starting with asl.library V38
+///   only. tags - pointer to an optional tag list specifying how to
+///   initialize the data structure returned by this function. See the
+///   documentation for AslRequest() for an explanation of how to use the
+///   currently defined tags.
+///
+/// # Returns
+/// requester - an initialized requester data structure, or NULL on
+/// failure. The data structure returned corresponds to the requested type;
+/// ASL_FileRequest -> (struct FileRequester *) ASL_FontRequest -> (struct
+/// FontRequester *) ASL_ScreenModeRequest -> (struct ScreenModeRequester
+/// *)
+///
+/// # Warning
+/// All ASL requester data structures are READ-ONLY and can only be
+///
+/// See also: AslRequest(), FreeAslRequest()
+@library("asl.library")
+extern pub fn AllocAslRequest(reqType: u32, tagList: *TagItem) -> *u8
+@library("asl.library")
+extern pub fn AllocAslRequestTags(reqType: u32, tagList: u32, ...args) -> *u8
+/// Frees resources allocated by AllocAslRequest(). (V36)
+///
+/// FreeAslRequest() frees any system resources allocated by AllocAslRequest().
+/// Once a requester has been freed, it can no longer be used with other calls
+/// to AslRequest().
+///
+/// # Arguments
+/// * `requester` - requester obtained from AllocAslRequest(), or NULL in
+///   which case this function does nothing.
+///
+/// See also: AllocAslRequest()
+@library("asl.library")
+extern pub fn FreeAslRequest(requester: *u8)
+/// Get input from user using an ASL requester. (V36)
+///
+/// Prompts the user for input, based on the specific type of requester and
+/// modifying tags. The actions and results are specific to the type of
+/// requester, but in general the action is to open a requesting window
+/// prompting the user for a specific input.
+///
+/// # Arguments
+/// * `requester` - requester structure allocated with AllocAslRequest().
+///   If this parameter is NULL, this function will always return FALSE
+///   with a dos.library/IoErr() result of ERROR_NO_FREE_STORE. tags -
+///   pointer to an optional tag list which may be used to control features
+///   of the requester.
+///
+/// # Returns
+/// result - FALSE if the user cancelled the requester or if something
+/// prevented the requester from opening. If TRUE, values in the requester
+/// structure will be set depending on the particular type of requester.
+///
+/// # Warning
+/// All ASL requester data structures are READ-ONLY and can only be
+///
+/// See also: AllocAslRequest(), FreeAslRequest()
+@library("asl.library")
+extern pub fn AslRequest(requester: *u8, tagList: *TagItem) -> i32
+@library("asl.library")
+extern pub fn AslRequestTags(requester: *u8, tagList: u32, ...args) -> i32
+/// Attempt to abort an asl requester. (V44)
+///
+/// The different types of asl requesters are modal (as of V44). Yet at times it
+/// may be necessary to abort a modal requester from a different task context.
+///
+/// # Arguments
+/// * `requester` - requester obtained from AllocAslRequest(), or NULL in
+///   which case this function does nothing.
+///
+/// See also: AslRequest()
+@library("asl.library")
+extern pub fn AbortAslRequest(requester: *u8)
+/// Attempt to activate an asl requester. (V44)
+///
+/// The different types of asl requesters are modal (as of V44). Yet at times it
+/// may be necessary to activate a modal requester from a different task
+/// context.
+///
+/// # Arguments
+/// * `requester` - requester obtained from AllocAslRequest(), or NULL in
+///   which case this function does nothing.
+///
+/// See also: AslRequest()
+@library("asl.library")
+extern pub fn ActivateAslRequest(requester: *u8)

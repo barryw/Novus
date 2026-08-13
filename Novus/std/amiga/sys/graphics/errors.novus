@@ -1,0 +1,65 @@
+from std::core import Error
+
+pub enum GraphicsError {
+    BitMapAllocFailed,
+    RastPortInitFailed,
+    FontOpenFailed,
+    InvalidBitMap,
+    InvalidRastPort,
+    BadDisplayMode,
+    CopperListFailed,
+    InvalidSpriteData,
+    InvalidSpriteChannel,
+    InvalidAttachedSpriteChannel,
+    SpriteNotAllocated,
+    SpriteChannelInUse,
+    InvalidColorCount,
+    NoSpritesAvailable,
+    InvalidViewPort,
+}
+
+pub fn graphics_error_to_code(error: GraphicsError) -> i32 {
+    return match error {
+        GraphicsError::BitMapAllocFailed => -300,
+        GraphicsError::RastPortInitFailed => -301,
+        GraphicsError::FontOpenFailed => -302,
+        GraphicsError::InvalidBitMap => -303,
+        GraphicsError::InvalidRastPort => -304,
+        GraphicsError::BadDisplayMode => -305,
+        GraphicsError::CopperListFailed => -306,
+        GraphicsError::InvalidSpriteData => -307,
+        GraphicsError::InvalidSpriteChannel => -308,
+        GraphicsError::InvalidAttachedSpriteChannel => -309,
+        GraphicsError::SpriteNotAllocated => -310,
+        GraphicsError::SpriteChannelInUse => -311,
+        GraphicsError::InvalidColorCount => -312,
+        GraphicsError::NoSpritesAvailable => -313,
+        GraphicsError::InvalidViewPort => -314,
+    }
+}
+
+impl GraphicsError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            GraphicsError::BitMapAllocFailed => "BitMap allocation failed",
+            GraphicsError::RastPortInitFailed => "RastPort init failed",
+            GraphicsError::FontOpenFailed => "Failed to open font",
+            GraphicsError::InvalidBitMap => "Invalid BitMap pointer",
+            GraphicsError::InvalidRastPort => "Invalid RastPort pointer",
+            GraphicsError::BadDisplayMode => "Invalid display mode",
+            GraphicsError::CopperListFailed => "Copper list setup failed",
+            GraphicsError::InvalidSpriteData => "Invalid sprite data format",
+            GraphicsError::InvalidSpriteChannel => "Invalid sprite channel (must be 0-7)",
+            GraphicsError::InvalidAttachedSpriteChannel => "Invalid attached sprite channel (must be even 0-6)",
+            GraphicsError::SpriteNotAllocated => "Sprite handle not allocated",
+            GraphicsError::SpriteChannelInUse => "Sprite channel already allocated",
+            GraphicsError::InvalidColorCount => "Wrong number of colors for sprite type",
+            GraphicsError::NoSpritesAvailable => "No sprites available (all in use)",
+            GraphicsError::InvalidViewPort => "Invalid ViewPort pointer",
+        }
+    }
+}
+
+impl Error for GraphicsError {
+    fn message(&self) -> *u8 { return GraphicsError::message(self) }
+}

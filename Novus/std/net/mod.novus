@@ -59,7 +59,7 @@
 //     stream.write("\r\n\r\n", 4)?
 //
 //     // Read response
-//     let mut buf: [u8; 4096] = [0u8; 4096]
+//     let mut buf: [u8; 4096] = [0; 4096]
 //     loop {
 //         let n = stream.read(&buf, 4096)?
 //         if n == 0 { break }

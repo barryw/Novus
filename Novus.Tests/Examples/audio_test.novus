@@ -8,10 +8,10 @@
 // Note: This is a compilation test. Running requires an Amiga or emulator.
 
 from std::core import Result
-from std::hardware::paula import period_from_hz, hz_from_period, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK
-from std::hardware::paula import PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD
-from std::hardware::paula import PERIOD_11025_PAL, PERIOD_11025_NTSC
-from std::hardware::paula import is_valid_period, is_valid_volume, is_valid_channel, channel_dma_bit
+from amiga::sys::hardware::paula import period_from_hz, hz_from_period, PAULA_PAL_CLOCK, PAULA_NTSC_CLOCK
+from amiga::sys::hardware::paula import PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD
+from amiga::sys::hardware::paula import PERIOD_11025_PAL, PERIOD_11025_NTSC
+from amiga::sys::hardware::paula import is_valid_period, is_valid_volume, is_valid_channel, channel_dma_bit
 
 // Test compile-time constants
 fn test_paula_constants() -> i32 {

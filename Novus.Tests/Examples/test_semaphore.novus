@@ -10,8 +10,8 @@
 // - Negative cases: find nonexistent, try_lock when held
 
 from std::core import Option, Result
-from std::os::exec import SemaphoreHandle, SemaphoreGuard, SharedSemaphoreGuard
-from std::os::exec import ScopedData, ScopedDataGuard, SharedScopedDataGuard
+from amiga::sys::exec import SemaphoreHandle, SemaphoreGuard, SharedSemaphoreGuard
+from amiga::sys::exec import ScopedData, ScopedDataGuard, SharedScopedDataGuard
 from std::test::test import expect_true, expect_false, expect_eq, expect_eq, fail
 
 // ============================================================================
@@ -457,7 +457,7 @@ pub fn test_multiple_public_semaphores() {
 
 @test("ScopedData::new() creates protected data with u32")
 pub fn test_scoped_data_new_u32() {
-    match ScopedData::<u32>::new(42u32).ok() {
+    match ScopedData::<u32>::new(42).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with u32 should succeed")
         },
@@ -477,7 +477,7 @@ pub fn test_scoped_data_new_i32() {
 
 @test("ScopedData::new() creates protected data with zero")
 pub fn test_scoped_data_new_zero() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with 0 should succeed")
         },
@@ -487,7 +487,7 @@ pub fn test_scoped_data_new_zero() {
 
 @test("ScopedData::new() creates protected data with max value")
 pub fn test_scoped_data_new_max() {
-    match ScopedData::<u32>::new(0xFFFFFFFFu32).ok() {
+    match ScopedData::<u32>::new(0xFFFFFFFF).ok() {
         Option::Some(data) => {
             expect_true(true, "ScopedData::new() with max u32 should succeed")
         },
@@ -501,11 +501,11 @@ pub fn test_scoped_data_new_max() {
 
 @test("ScopedData lock() and get() returns initial value")
 pub fn test_scoped_data_get_initial() {
-    match ScopedData::<u32>::new(123u32).ok() {
+    match ScopedData::<u32>::new(123).ok() {
         Option::Some(var data) => {
             let guard = data.lock()
             let value = *guard.get()
-            expect_eq(value, 123u32, "get() should return initial value")
+            expect_eq(value, 123, "get() should return initial value")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -513,11 +513,11 @@ pub fn test_scoped_data_get_initial() {
 
 @test("ScopedData lock() and get() returns zero")
 pub fn test_scoped_data_get_zero() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var data) => {
             let guard = data.lock()
             let value = *guard.get()
-            expect_eq(value, 0u32, "get() should return 0")
+            expect_eq(value, 0, "get() should return 0")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -541,14 +541,14 @@ pub fn test_scoped_data_get_negative() {
 
 @test("ScopedData set() modifies value")
 pub fn test_scoped_data_set() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
-                guard.set(999u32)
+                guard.set(999)
             }
             let guard2 = data.lock()
-            expect_eq(*guard2.get(), 999u32, "set() should modify value")
+            expect_eq(*guard2.get(), 999, "set() should modify value")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -556,14 +556,14 @@ pub fn test_scoped_data_set() {
 
 @test("ScopedData set() to zero")
 pub fn test_scoped_data_set_zero() {
-    match ScopedData::<u32>::new(12345u32).ok() {
+    match ScopedData::<u32>::new(12345).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
-                guard.set(0u32)
+                guard.set(0)
             }
             let guard2 = data.lock()
-            expect_eq(*guard2.get(), 0u32, "set() to 0 should work")
+            expect_eq(*guard2.get(), 0, "set() to 0 should work")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -571,16 +571,16 @@ pub fn test_scoped_data_set_zero() {
 
 @test("ScopedData set() multiple times")
 pub fn test_scoped_data_set_multiple() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
-                guard.set(1u32)
-                guard.set(2u32)
-                guard.set(3u32)
+                guard.set(1)
+                guard.set(2)
+                guard.set(3)
             }
             let guard2 = data.lock()
-            expect_eq(*guard2.get(), 3u32, "last set() value should persist")
+            expect_eq(*guard2.get(), 3, "last set() value should persist")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -588,24 +588,24 @@ pub fn test_scoped_data_set_multiple() {
 
 @test("ScopedData set() across multiple lock/unlock cycles")
 pub fn test_scoped_data_set_across_locks() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var data) => {
             {
                 var guard1 = data.lock()
-                guard1.set(10u32)
+                guard1.set(10)
             }
             {
                 var guard2 = data.lock()
                 let v1 = *guard2.get()
-                guard2.set(v1 + 5u32)
+                guard2.set(v1 + 5)
             }
             {
                 var guard3 = data.lock()
                 let v2 = *guard3.get()
-                guard3.set(v2 * 2u32)
+                guard3.set(v2 * 2)
             }
             let guard4 = data.lock()
-            expect_eq(*guard4.get(), 30u32, "value should be 30 after operations")
+            expect_eq(*guard4.get(), 30, "value should be 30 after operations")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -617,10 +617,10 @@ pub fn test_scoped_data_set_across_locks() {
 
 @test("ScopedData lock_shared() provides read access")
 pub fn test_scoped_data_lock_shared() {
-    match ScopedData::<u32>::new(456u32).ok() {
+    match ScopedData::<u32>::new(456).ok() {
         Option::Some(var data) => {
             let guard: SharedScopedDataGuard<u32> = data.lock_shared()
-            expect_eq(*guard.get(), 456u32, "lock_shared() should provide read access")
+            expect_eq(*guard.get(), 456, "lock_shared() should provide read access")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -630,19 +630,19 @@ pub fn test_scoped_data_lock_shared() {
 pub fn test_scoped_data_lock_shared_cycles() {
     // Note: AmigaOS shared locks are NOT nestable from the same task
     // This test verifies shared lock works across multiple lock/unlock cycles
-    match ScopedData::<u32>::new(789u32).ok() {
+    match ScopedData::<u32>::new(789).ok() {
         Option::Some(var data) => {
             {
                 let guard1: SharedScopedDataGuard<u32> = data.lock_shared()
-                expect_eq(*guard1.get(), 789u32, "first read sees value")
+                expect_eq(*guard1.get(), 789, "first read sees value")
             }
             {
                 let guard2: SharedScopedDataGuard<u32> = data.lock_shared()
-                expect_eq(*guard2.get(), 789u32, "second read sees value")
+                expect_eq(*guard2.get(), 789, "second read sees value")
             }
             {
                 let guard3: SharedScopedDataGuard<u32> = data.lock_shared()
-                expect_eq(*guard3.get(), 789u32, "third read sees value")
+                expect_eq(*guard3.get(), 789, "third read sees value")
             }
         },
         Option::None => fail("ScopedData::new() failed")
@@ -655,11 +655,11 @@ pub fn test_scoped_data_lock_shared_cycles() {
 
 @test("ScopedData try_lock() succeeds when available")
 pub fn test_scoped_data_try_lock() {
-    match ScopedData::<u32>::new(111u32).ok() {
+    match ScopedData::<u32>::new(111).ok() {
         Option::Some(var data) => {
             match data.try_lock() {
                 Option::Some(guard) => {
-                    expect_eq(*guard.get(), 111u32, "try_lock() should succeed")
+                    expect_eq(*guard.get(), 111, "try_lock() should succeed")
                 },
                 Option::None => fail("try_lock() should succeed")
             }
@@ -670,11 +670,11 @@ pub fn test_scoped_data_try_lock() {
 
 @test("ScopedData try_lock_shared() succeeds when available")
 pub fn test_scoped_data_try_lock_shared() {
-    match ScopedData::<u32>::new(222u32).ok() {
+    match ScopedData::<u32>::new(222).ok() {
         Option::Some(var data) => {
             match data.try_lock_shared() {
                 Option::Some(guard) => {
-                    expect_eq(*guard.get(), 222u32, "try_lock_shared() should succeed")
+                    expect_eq(*guard.get(), 222, "try_lock_shared() should succeed")
                 },
                 Option::None => fail("try_lock_shared() should succeed")
             }
@@ -689,15 +689,15 @@ pub fn test_scoped_data_try_lock_shared() {
 
 @test("ScopedData exclusive guard releases on drop")
 pub fn test_scoped_data_guard_drop() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var data) => {
             {
                 var guard = data.lock()
-                guard.set(100u32)
+                guard.set(100)
             }
             // Should be able to lock again
             let guard2 = data.lock()
-            expect_eq(*guard2.get(), 100u32, "guard should release on drop")
+            expect_eq(*guard2.get(), 100, "guard should release on drop")
         },
         Option::None => fail("ScopedData::new() failed")
     }
@@ -705,73 +705,17 @@ pub fn test_scoped_data_guard_drop() {
 
 @test("ScopedData shared guard releases on drop")
 pub fn test_scoped_data_shared_guard_drop() {
-    match ScopedData::<u32>::new(50u32).ok() {
+    match ScopedData::<u32>::new(50).ok() {
         Option::Some(var data) => {
             {
                 let guard: SharedScopedDataGuard<u32> = data.lock_shared()
             }
             // Should be able to get exclusive lock
             var guard2 = data.lock()
-            guard2.set(60u32)
-            expect_eq(*guard2.get(), 60u32, "shared guard should release")
+            guard2.set(60)
+            expect_eq(*guard2.get(), 60, "shared guard should release")
         },
         Option::None => fail("ScopedData::new() failed")
-    }
-}
-
-// ============================================================================
-// Legacy API Tests
-// ============================================================================
-
-@test("obtain() is alias for lock()")
-pub fn test_obtain_alias() {
-    match SemaphoreHandle::new().ok() {
-        Option::Some(sem) => {
-            let guard = sem.obtain()
-            expect_true(true, "obtain() should work")
-        },
-        Option::None => fail("new() failed")
-    }
-}
-
-@test("try_obtain() is alias for try_lock()")
-pub fn test_try_obtain_alias() {
-    match SemaphoreHandle::new().ok() {
-        Option::Some(sem) => {
-            match sem.try_obtain() {
-                Option::Some(guard) => {
-                    expect_true(true, "try_obtain() should work")
-                },
-                Option::None => fail("try_obtain() should succeed")
-            }
-        },
-        Option::None => fail("new() failed")
-    }
-}
-
-@test("obtain_shared() is alias for lock_shared()")
-pub fn test_obtain_shared_alias() {
-    match SemaphoreHandle::new().ok() {
-        Option::Some(sem) => {
-            let guard: SharedSemaphoreGuard = sem.obtain_shared()
-            expect_true(true, "obtain_shared() should work")
-        },
-        Option::None => fail("new() failed")
-    }
-}
-
-@test("try_obtain_shared() is alias for try_lock_shared()")
-pub fn test_try_obtain_shared_alias() {
-    match SemaphoreHandle::new().ok() {
-        Option::Some(sem) => {
-            match sem.try_obtain_shared() {
-                Option::Some(guard) => {
-                    expect_true(true, "try_obtain_shared() should work")
-                },
-                Option::None => fail("try_obtain_shared() should succeed")
-            }
-        },
-        Option::None => fail("new() failed")
     }
 }
 
@@ -810,24 +754,24 @@ pub fn test_guard_drop_order() {
 
 @test("many semaphores can coexist")
 pub fn test_many_semaphores() {
-    var count: u32 = 0u32
+    var count: u32 = 0
     // Create 10 semaphores
     match SemaphoreHandle::new().ok() {
         Option::Some(s1) => {
-            count = count + 1u32
+            count = count + 1
             match SemaphoreHandle::new().ok() {
                 Option::Some(s2) => {
-                    count = count + 1u32
+                    count = count + 1
                     match SemaphoreHandle::new().ok() {
                         Option::Some(s3) => {
-                            count = count + 1u32
+                            count = count + 1
                             match SemaphoreHandle::new().ok() {
                                 Option::Some(s4) => {
-                                    count = count + 1u32
+                                    count = count + 1
                                     match SemaphoreHandle::new().ok() {
                                         Option::Some(s5) => {
-                                            count = count + 1u32
-                                            expect_eq(count, 5u32, "should create 5 semaphores")
+                                            count = count + 1
+                                            expect_eq(count, 5, "should create 5 semaphores")
                                         },
                                         Option::None => fail("s5 failed")
                                     }
@@ -847,18 +791,18 @@ pub fn test_many_semaphores() {
 
 @test("ScopedData counter increment pattern")
 pub fn test_scoped_data_counter() {
-    match ScopedData::<u32>::new(0u32).ok() {
+    match ScopedData::<u32>::new(0).ok() {
         Option::Some(var counter) => {
             // Simulate increment pattern
-            var i: u32 = 0u32
-            while i < 10u32 {
+            var i: u32 = 0
+            while i < 10 {
                 var loop_guard = counter.lock()
                 let v = *loop_guard.get()
-                loop_guard.set(v + 1u32)
-                i = i + 1u32
+                loop_guard.set(v + 1)
+                i = i + 1
             }
             let final_guard = counter.lock()
-            expect_eq(*final_guard.get(), 10u32, "counter should be 10")
+            expect_eq(*final_guard.get(), 10, "counter should be 10")
         },
         Option::None => fail("ScopedData::new() failed")
     }

@@ -371,10 +371,27 @@ public class ConstantPropagation
                 {
                     var newArray = PropagateInValue(indexAccess.Array);
                     var newIndex = PropagateInValue(indexAccess.Index);
-                    if (newArray != indexAccess.Array || newIndex != indexAccess.Index)
+                    var newLength = indexAccess.Length == null ? null : PropagateInValue(indexAccess.Length);
+                    if (newArray != indexAccess.Array || newIndex != indexAccess.Index || newLength != indexAccess.Length)
                     {
                         indexAccess.Array = newArray;
                         indexAccess.Index = newIndex;
+                        indexAccess.Length = newLength;
+                        changed = true;
+                    }
+                    break;
+                }
+
+            case IrSliceBoundsCheck sliceCheck:
+                {
+                    var start = PropagateInValue(sliceCheck.Start);
+                    var end = PropagateInValue(sliceCheck.End);
+                    var length = PropagateInValue(sliceCheck.Length);
+                    if (start != sliceCheck.Start || end != sliceCheck.End || length != sliceCheck.Length)
+                    {
+                        sliceCheck.Start = start;
+                        sliceCheck.End = end;
+                        sliceCheck.Length = length;
                         changed = true;
                     }
                     break;
@@ -409,11 +426,13 @@ public class ConstantPropagation
                     var newArray = PropagateInValue(indexStore.Array);
                     var newIndex = PropagateInValue(indexStore.Index);
                     var newValue = PropagateInValue(indexStore.Value);
-                    if (newArray != indexStore.Array || newIndex != indexStore.Index || newValue != indexStore.Value)
+                    var newLength = indexStore.Length == null ? null : PropagateInValue(indexStore.Length);
+                    if (newArray != indexStore.Array || newIndex != indexStore.Index || newValue != indexStore.Value || newLength != indexStore.Length)
                     {
                         indexStore.Array = newArray;
                         indexStore.Index = newIndex;
                         indexStore.Value = newValue;
+                        indexStore.Length = newLength;
                         changed = true;
                     }
                     break;

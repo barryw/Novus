@@ -31,18 +31,18 @@ fn asm_store(destination: *u32, value: u32) {
 
 @test("inline asm outputs and explicit registers")
 pub fn foundation_asm_outputs() {
-    expect(asm_magic() == 42u32, "constant output")
-    expect(asm_add(10u32, 32u32) == 42u32, "input registers")
+    expect(asm_magic() == 42, "constant output")
+    expect(asm_add(10, 32) == 42, "input registers")
 }
 
 @test("inline asm clobber declarations preserve callers")
 pub fn foundation_asm_clobbers() {
-    expect(asm_with_clobbers(10u32) == 30u32, "scratch registers")
+    expect(asm_with_clobbers(10) == 30, "scratch registers")
 }
 
 @test("inline asm memory clobber writes through pointers")
 pub fn foundation_asm_memory() {
-    var value: u32 = 0u32
-    asm_store((*u32)&value, 42u32)
-    expect(value == 42u32, "memory output")
+    var value: u32 = 0
+    asm_store((*u32)&value, 42)
+    expect(value == 42, "memory output")
 }

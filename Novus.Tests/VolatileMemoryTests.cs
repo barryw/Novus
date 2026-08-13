@@ -20,8 +20,8 @@ public class VolatileMemoryTests
         }
 
         fn main() -> i32 {
-            let address = 14675970u32 as *u16
-            write_register(address, 1u16)
+            let address: *u16 = (*u16)14675970
+            write_register(address, 1)
             return read_register(address) as i32
         }
         """;
@@ -58,8 +58,8 @@ public class VolatileMemoryTests
     }
 
     [Theory]
-    [InlineData("fn main() -> u16 {\nlet p = 0 as *u16\nreturn read_volatile(p)\n}")]
-    [InlineData("fn main() {\nlet p = 0 as *u16\nwrite_volatile(p, 1u16)\n}")]
+    [InlineData("fn main() -> u16 {\nlet p = (*u16)0\nreturn read_volatile(p)\n}")]
+    [InlineData("fn main() {\nlet p = (*u16)0\nwrite_volatile(p, 1)\n}")]
     public void VolatileAccess_RequiresUnsafe(string source)
     {
         var analyzer = new SemanticAnalyzer("test.novus", source, "std");
@@ -71,7 +71,7 @@ public class VolatileMemoryTests
     [Fact]
     public void VolatileAccess_ValidatesPointerAndValueTypes()
     {
-        const string source = "fn main() { unsafe { write_volatile(1u32, 2u16) } }";
+        const string source = "fn main() { unsafe { write_volatile(1, 2) } }";
         var analyzer = new SemanticAnalyzer("test.novus", source, "std");
         analyzer.Analyze(CompilerTestHelper.Parse(source));
         Assert.True(analyzer.GetResult().Diagnostics.HasErrors);

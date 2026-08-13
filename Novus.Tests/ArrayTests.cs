@@ -41,6 +41,25 @@ pub fn main() -> i32 {
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
+
+        var access = Assert.Single(module.Functions.Single(f => f.Name == "main")
+            .BasicBlocks.SelectMany(block => block.Instructions).OfType<IrIndexAccess>());
+        Assert.Equal(IrBoundsCheckMode.Checked, access.BoundsCheck);
+        Assert.Equal(3L, Assert.IsType<IrConstant>(access.Length).Value);
+    }
+
+    [Fact]
+    public void BuildIr_ArrayIndexInsideUnsafe_IsExplicitlyUnchecked()
+    {
+        var module = BuildIr(@"
+pub fn main() -> i32 {
+    let arr = [10, 20, 30]
+    return unsafe { arr[1] }
+}");
+
+        var access = Assert.Single(module.Functions.Single(f => f.Name == "main")
+            .BasicBlocks.SelectMany(block => block.Instructions).OfType<IrIndexAccess>());
+        Assert.Equal(IrBoundsCheckMode.Unchecked, access.BoundsCheck);
     }
 
     [Fact]
@@ -119,7 +138,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = [1i8, 2i8, 3i8]
+    let arr: [i8] = [1, 2, 3]
     let val = arr[0]
     return (i32)val
 }";
@@ -132,7 +151,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr = [100u32, 200u32, 300u32]
+    let arr: [u32] = [100, 200, 300]
     let val = arr[0]
     return (i32)val
 }";

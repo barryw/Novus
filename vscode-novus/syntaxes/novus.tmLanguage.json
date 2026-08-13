@@ -6,6 +6,7 @@
     { "include": "#comments" },
     { "include": "#asm-block" },
     { "include": "#keywords" },
+    { "include": "#byte-literals" },
     { "include": "#strings" },
     { "include": "#numbers" },
     { "include": "#types" },
@@ -124,25 +125,44 @@
         }
       ]
     },
+    "byte-literals": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.byte.novus",
+          "begin": "\\b(?:b|fourcc)\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.novus",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "constant.character.byte.novus",
+          "match": "\\bb'(?:\\\\.|[^'\\\\])'"
+        }
+      ]
+    },
     "numbers": {
       "patterns": [
         {
           "name": "constant.numeric.hex.novus",
-          "match": "\\$[0-9a-fA-F]+[uUiI]?(8|16|32|64)?|0x[0-9a-fA-F]+\\b"
+          "match": "(?:\\$|0[xX])[0-9a-fA-F]+(?:_[0-9a-fA-F]+)*\\b"
         },
         {
           "name": "constant.numeric.binary.novus",
-          "match": "%[01]+[uUiI]?(8|16|32|64)?"
+          "match": "%[01]+(?:_[01]+)*"
         },
         {
           "name": "constant.numeric.decimal.novus",
-          "match": "\\b[0-9]+(\\.[0-9]+)?([uUiI](8|16|32|64))?\\b"
+          "match": "\\b[0-9]+(?:_[0-9]+)*(?:\\.[0-9]+)?\\b"
         }
       ]
     },
     "types": {
       "name": "storage.type.novus",
-      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|str|Self|void)\\b"
+      "match": "\\b(i8|i16|i32|i64|isize|u8|u16|u32|u64|usize|f32|f64|fixed16|fixed32|bool|str|Self|void)\\b"
     },
     "functions": {
       "name": "entity.name.function.novus",

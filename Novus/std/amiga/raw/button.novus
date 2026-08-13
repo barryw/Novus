@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: button.library
+// Base: _ButtonBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("button.library")
+extern pub fn BUTTON_GetClass() -> *u8

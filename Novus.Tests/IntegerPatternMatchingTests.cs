@@ -48,14 +48,14 @@ pub fn main() -> i32 {
         var code = @"
 pub fn classify_byte(b: u8) -> i32 {
     match b {
-        0u8 => return 1,
-        255u8 => return 2,
+        0 => return 1,
+        255 => return 2,
         _ => return 0,
     }
 }
 
 pub fn main() -> i32 {
-    return classify_byte(0u8)
+    return classify_byte(0)
 }";
         var module = BuildIr(code);
         Assert.NotNull(module);
@@ -142,14 +142,14 @@ pub fn main() -> i32 {
         var code = @"
 pub fn classify_large(n: i64) -> i32 {
     match n {
-        1000000000i64 => return 1,
-        2000000000i64 => return 2,
+        1000000000 => return 1,
+        2000000000 => return 2,
         _ => return 0,
     }
 }
 
 pub fn main() -> i32 {
-    return classify_large(1000000000i64)
+    return classify_large(1000000000)
 }";
         var module = BuildIr(code);
         Assert.NotNull(module);

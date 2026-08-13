@@ -1,9 +1,9 @@
 // Debug screen test - with print statements
-// Test bypassing the std::ui::screen wrapper to debug directly
-from std::ffi::dos import Delay
-from std::ffi::intuition import OpenScreenTagList, CloseScreen
-from std::ffi::amiga_structs import TagItem, Screen
-from std::ffi::amiga_consts import TAG_DONE, SA_Width, SA_Height, SA_Depth, SA_Type, CUSTOMSCREEN
+// Test bypassing the amiga::sys::intuition wrapper to debug directly
+from amiga::raw::dos import Delay
+from amiga::raw::intuition import OpenScreenTagList, CloseScreen
+from amiga::raw::structs import TagItem, Screen
+from amiga::raw::consts import TAG_DONE, SA_Width, SA_Height, SA_Depth, SA_Type, CUSTOMSCREEN
 from std::io::file import write
 
 // Minimal tag constants - hardcoded to avoid any const import issues

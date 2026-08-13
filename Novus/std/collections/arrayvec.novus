@@ -18,7 +18,7 @@ pub struct ArrayVec<T, const N: u32> {
 
 impl<T, const N: u32> ArrayVec<T, N> {
     pub fn new() -> ArrayVec<T, N> {
-        return ArrayVec { items: [Option::None; N], len: 0u32 }
+        return ArrayVec { items: [Option::None; N], len: 0 }
     }
 
     @inline
@@ -28,7 +28,7 @@ impl<T, const N: u32> ArrayVec<T, N> {
     pub fn capacity(&self) -> u32 { return N }
 
     @inline
-    pub fn is_empty(&self) -> bool { return self.len == 0u32 }
+    pub fn is_empty(&self) -> bool { return self.len == 0 }
 
     @inline
     pub fn is_full(&self) -> bool { return self.len == N }
@@ -66,8 +66,8 @@ impl<T, const N: u32> ArrayVec<T, N> {
         if index >= self.len { return Option::None }
         let removed: Option<T> = self.items[index]
         var current = index
-        while current + 1u32 < self.len {
-            self.items[current] = self.items[current + 1u32]
+        while current + 1 < self.len {
+            self.items[current] = self.items[current + 1]
             current++
         }
         self.len--
@@ -78,18 +78,18 @@ impl<T, const N: u32> ArrayVec<T, N> {
 impl<T, const N: u32> Iterable<T> for ArrayVec<T, N> {
     fn len(&self) -> u32 { return self.len }
 
-    fn get(&self, index: u32) -> Option<&T> {
-        if index >= self.len { return Option::None }
+    @unsafe
+    fn get_unchecked(&self, index: u32) -> &T {
         return match &self.items[index] {
-            Option::Some(&value) => Option::Some(value),
-            Option::None => Option::None,
+            Option::Some(&value) => value,
+            Option::None => { panic!("ArrayVec invariant violated") },
         }
     }
 }
 
 impl<T, const N: u32> Drop for ArrayVec<T, N> {
     fn drop(&var self) {
-        while self.len > 0u32 {
+        while self.len > 0 {
             self.len--
             @drop_in_place(&var self.items[self.len])
         }

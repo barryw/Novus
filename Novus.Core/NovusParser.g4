@@ -138,11 +138,11 @@ structField
     ;
 
 enumDeclaration
-    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER genericParams? whereClause? LBRACE NEWLINE* (enumVariant (COMMA NEWLINE* enumVariant)* COMMA?)? NEWLINE* RBRACE NEWLINE*
+    : attribute* (KW_PUB | KW_INTERNAL)? KW_ENUM IDENTIFIER (COLON primitiveTypeName)? genericParams? whereClause? LBRACE NEWLINE* (enumVariant (COMMA? NEWLINE* enumVariant)* COMMA?)? NEWLINE* RBRACE NEWLINE*
     ;
 
 enumVariant
-    : IDENTIFIER (LPAREN typeList RPAREN)?
+    : IDENTIFIER (LPAREN typeList RPAREN)? (EQ (INTEGER_LITERAL | BINARY_LITERAL | HEX_LITERAL))?
     | IDENTIFIER LPAREN RPAREN
     ;
 
@@ -155,7 +155,7 @@ traitItem
     ;
 
 traitMethodDeclaration
-    : KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type)? (block | SEMI)? NEWLINE*
+    : attribute* KW_FN IDENTIFIER genericParams? LPAREN parameterList? RPAREN (ARROW type)? (block | SEMI)? NEWLINE*
     ;
 
 functionSignature
@@ -173,7 +173,7 @@ implTargetType
     ;
 
 primitiveTypeName
-    : KW_U8 | KW_U16 | KW_U32 | KW_U64 | KW_I8 | KW_I16 | KW_I32 | KW_I64 | KW_BOOL
+    : KW_U8 | KW_U16 | KW_U32 | KW_U64 | KW_I8 | KW_I16 | KW_I32 | KW_I64 | KW_USIZE | KW_ISIZE | KW_BOOL
     | KW_F32 | KW_F64 | KW_FIXED16 | KW_FIXED32
     ;
 
@@ -227,6 +227,8 @@ type
     | KW_I16                                                        # PrimitiveType
     | KW_I32                                                        # PrimitiveType
     | KW_I64                                                        # PrimitiveType
+    | KW_USIZE                                                      # PrimitiveType
+    | KW_ISIZE                                                      # PrimitiveType
     | KW_BOOL                                                       # PrimitiveType
     | KW_F32                                                        # PrimitiveType
     | KW_F64                                                        # PrimitiveType
@@ -289,7 +291,7 @@ statement
     ;
 
 letElseStatement
-    : KW_LET pattern EQ expression KW_ELSE block
+    : KW_LET pattern EQ expression KW_ELSE (block | returnStatement | breakStatement | continueStatement | panicStatement)
     ;
 
 labeledLoop
@@ -334,6 +336,8 @@ pattern
     | HEX_LITERAL                                # LiteralPattern
     | BINARY_LITERAL                             # LiteralPattern
     | STRING_LITERAL                             # LiteralPattern
+    | BYTE_STRING_LITERAL                        # LiteralPattern
+    | BYTE_CHAR_LITERAL                          # LiteralPattern
     | CHAR_LITERAL                               # LiteralPattern
     | KW_TRUE                                    # BoolLiteralPattern
     | KW_FALSE                                   # BoolLiteralPattern
@@ -419,7 +423,7 @@ comparisonOp
 
 forStatement
     : KW_FOR (variableDeclaration | assignmentStatement) SEMI expression SEMI assignmentStatement block  # ForCStyle
-    | KW_FOR KW_VAR? IDENTIFIER KW_IN expression block                                                   # ForInLoop
+    | KW_FOR KW_VAR? (IDENTIFIER | tuplePattern) KW_IN expression block                                  # ForInLoop
     ;
 
 foreverStatement
@@ -444,6 +448,8 @@ expression
     | expression COLONCOLON IDENTIFIER                     # PathExpr
     | expression NEWLINE* DOT IDENTIFIER                   # MemberAccessExpr
     | expression LPAREN argumentList? RPAREN               # CallExpr
+    | expression LBRACKET expression DOTDOT RBRACKET       # SliceFromExpr
+    | expression LBRACKET DOTDOT expression RBRACKET       # SliceToExpr
     | expression LBRACKET expression RBRACKET              # IndexExpr
     | expression PLUSPLUS                                  # PostIncrementExpr
     | expression MINUSMINUS                                # PostDecrementExpr
@@ -483,6 +489,9 @@ primaryExpression
     | AT_SIGN? KW_ZEROED LPAREN type RPAREN       # ZeroedExpr
     | AT_SIGN? KW_DROP_IN_PLACE LPAREN expression RPAREN  # DropInPlaceExpr
     | F_STRING_LITERAL                             # InterpolatedStringLiteral
+    | BYTE_CHAR_LITERAL                            # ByteCharLiteral
+    | BYTE_STRING_LITERAL                          # ByteStringLiteral
+    | FOURCC_LITERAL                               # FourCcLiteral
     | CHAR_LITERAL                                 # CharLiteral
     | STRING_LITERAL                               # StringLiteral
     | MINUS? FLOAT_LITERAL                         # FloatLiteral

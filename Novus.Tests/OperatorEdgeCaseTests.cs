@@ -122,8 +122,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i8 = 127i8
-    let overflow = max + 1i8
+    let max: i8 = 127
+    let overflow = max + 1
     return (i32)overflow  // Should wrap to -128
 }";
         var module = BuildIr(source);
@@ -135,8 +135,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let zero: u8 = 0u8
-    let underflow = zero - 1u8
+    let zero: u8 = 0
+    let underflow = zero - 1
     return (i32)underflow  // Should wrap to 255
 }";
         var module = BuildIr(source);
@@ -148,8 +148,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i16 = 1000i16
-    let b: i16 = 100i16
+    let a: i16 = 1000
+    let b: i16 = 100
     let overflow = a * b
     return (i32)overflow  // Should wrap
 }";
@@ -301,7 +301,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: i16 = 1i16
+    let x: i16 = 1
     let result = x << 16  // Masked to 0 for 16-bit, result = 1
     return (i32)result
 }";
@@ -315,7 +315,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: i8 = 1i8
+    let x: i8 = 1
     let result = x << 8  // Masked to 0 for 8-bit, result = 1
     return (i32)result
 }";
@@ -451,7 +451,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i8 = -128i8
+    let min: i8 = -128
     let negated = -min  // Should wrap to -128 (i8::MIN negated = i8::MIN)
     return (i32)negated
 }";

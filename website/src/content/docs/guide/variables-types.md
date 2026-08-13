@@ -102,23 +102,20 @@ let address: u32 = 0xDFF000
 let large: i64 = 1000000000
 ```
 
-### Type Suffixes
+### Contextual Literals and Casts
 
-You can specify the type of a literal using suffixes:
+Literal types come from their assignment, argument, return, or expression context. Use a normal cast when you need to force a type:
 
 ```novus
-let x = 42u16    // u16
-let y = 100i64   // i64
-let z = 255u8    // u8
-let w = -50i32   // i32
+let x: u16 = 42    // u16
+let y: i64 = 100   // i64
+let z: u8 = 255    // u8
+let w: i32 = -50   // i32
+let forced = (u16)42
 
-// Without suffix, defaults to i32
+// Without other context, an integer defaults to i32
 let n = 42       // i32
 ```
-
-Available suffixes:
-- Unsigned: `u8`, `u16`, `u32`, `u64`
-- Signed: `i8`, `i16`, `i32`, `i64`
 
 ### Boolean Type
 
@@ -302,7 +299,7 @@ fn main() -> i32 {
     // Variables with different types
     let width: u16 = 320
     let height: u16 = 200
-    var sprite_count = 0u32
+    var sprite_count: u32 = 0
 
     // Arrays (size inferred from elements)
     let sprite_x: [i16] = [0, 16, 32, 48, 64, 80, 96, 112]

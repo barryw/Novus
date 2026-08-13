@@ -42,13 +42,13 @@ impl Window {
 
 ❌ **WRONG**:
 ```novus
-let screen_bitmap = BitMap::from_raw(&screen.handle().BitMap);  // ❌ CRASH!
+let screen_bitmap = BitMap::from_raw(unsafe { &(*screen.as_raw()).BitMap });  // ❌ CRASH!
 ```
 
 ✅ **CORRECT**:
 ```novus
 // Use raw pointer for screen bitmap
-let screen_bitmap: *BitMap = unsafe { &(*screen.handle()).BitMap };
+let screen_bitmap: *BitMap = unsafe { &(*screen.as_raw()).BitMap };
 ```
 
 ---

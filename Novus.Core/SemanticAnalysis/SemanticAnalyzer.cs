@@ -29,6 +29,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
+    private readonly Dictionary<string, string> _importedFunctionAliases = new();
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
     private IrWhereClause? _currentStructWhereClause; // Track where clause for current struct/impl block
@@ -410,14 +411,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
 
         FunctionSymbol? bestCoercedMatch = null;
+        FunctionSymbol? genericMatch = null;
         int bestCoercedCount = int.MaxValue;
 
         foreach (var func in overloads)
         {
-            // Skip generic functions for now - they need monomorphization first
-            if (func.GenericParameters != null && func.GenericParameters.Count > 0)
-                continue;
-
             // Check parameter count matches
             var nonVariadicCount = func.Parameters.Count(p => !p.IsVariadic);
             if (func.IsVariadic)
@@ -429,6 +427,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             {
                 if (argumentTypes.Count != func.Parameters.Count)
                     continue;
+            }
+
+            if (func.GenericParameters is { Count: > 0 } genericParameters)
+            {
+                var parameterTypes = func.Parameters.Where(parameter => !parameter.IsVariadic)
+                    .Select(parameter => parameter.Type).ToList();
+                if (InferGenericTypes(genericParameters, parameterTypes, argumentTypes.ToList()) != null)
+                    genericMatch ??= func;
+                continue;
             }
 
             // Check if all argument types match
@@ -474,7 +481,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
-        return bestCoercedMatch;
+        return bestCoercedMatch ?? genericMatch;
     }
 
     #endregion
@@ -696,7 +703,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     private void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
-        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        // Get the module path (e.g., "amiga::dos" or "amiga::raw::exec")
         var moduleNamespace = context.modulePath().GetText();
         var location = SourceLocationHelper.FromToken(context.modulePath().Start, _filePath, _sourceLines);
 
@@ -705,6 +712,23 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         bool importAll = importList.GetText() == "*";
 
         ImportModule(moduleNamespace, importAll, importList, location);
+    }
+
+    private void RegisterImportFunctionAliases(
+        NovusParser.CompilationUnitContext moduleContext,
+        NovusParser.ImportListContext? importList)
+    {
+        if (importList == null) return;
+        var functions = moduleContext.functionDeclaration()
+            .Select(declaration => declaration.IDENTIFIER().GetText())
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var imported in importList.importName())
+        {
+            if (imported.IDENTIFIER().Length < 2) continue;
+            var original = imported.IDENTIFIER(0).GetText();
+            if (functions.Contains(original))
+                _importedFunctionAliases[imported.IDENTIFIER(1).GetText()] = original;
+        }
     }
 
     private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames, SourceLocation? location = null)
@@ -725,6 +749,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     location ?? new SourceLocation(_filePath, 0, 0, 0, "")
                 );
                 return;
+            }
+
+
+            // Selective reexports must retain the source declaration's type
+            // dependencies, especially for transparent type aliases.
+            foreach (var importDecl in moduleContext.importDeclaration())
+            {
+                ProcessImport(importDecl);
             }
 
             // Find and register the specific symbol
@@ -823,10 +855,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (alreadyProcessed)
         {
             // Even if module is already processed, we still need to handle selective imports
-            // This allows: from std::ffi::exec import AllocMem
-            //         AND: from std::ffi::exec import FindTask
+            // This allows: from amiga::raw::exec import AllocMem
+            //         AND: from amiga::raw::exec import FindTask
             // Both imports from the same module
-            if (!importAll && importList != null)
+            if (importAll || importList != null)
             {
                 // Build the list of names to import for this specific import statement
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
@@ -894,6 +926,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     }
                 }
 
+                foreach (var aliasDecl in moduleContext.typeAliasDeclaration())
+                {
+                    var aliasName = aliasDecl.IDENTIFIER().GetText();
+                    if (selectiveImports.Contains(aliasName) && _symbols.LookupTypeAlias(aliasName) == null)
+                    {
+                        RegisterTypeAlias(aliasDecl);
+                        _importedNames[aliasName] = moduleNamespace;
+                    }
+                }
+
                 foreach (var traitDecl in moduleContext.traitDeclaration())
                 {
                     var traitName = traitDecl.IDENTIFIER().GetText();
@@ -905,6 +947,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         }
                         _importedNames[traitName] = moduleNamespace;
                     }
+                }
+
+                // Methods travel with their types. Re-register impl blocks using
+                // import semantics so repeated/selective imports expose methods
+                // without reporting duplicate signatures.
+                foreach (var implDecl in moduleContext.implDeclaration())
+                {
+                    RegisterImpl(implDecl, forImport: true);
                 }
 
                 // Register global variables (extern var)
@@ -923,8 +973,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         _importedNames[varName] = moduleNamespace;
                     }
                 }
+
             }
 
+            RegisterImportTypeAliases(importList);
+            RegisterImportFunctionAliases(moduleContext, importList);
             return; // Don't reprocess the entire module
         }
 
@@ -988,6 +1041,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
         }
+        RegisterImportFunctionAliases(moduleContext, importList);
 
         // Register imported enums using two-pass approach
         // Pass 1: Register stub enum types for ALL enums in the module (even non-imported)
@@ -997,17 +1051,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
 
-            // ALWAYS register stub - even if enum already exists
-            // We'll replace it in Pass 2 with the full definition for imported enums
-            // This fixes cases where an enum was previously imported with variants,
-            // and we're re-importing the same module
-
-            // Register a stub enum type with no variants yet
-            // This makes the type name resolvable during variant parsing and trait impl type arg parsing
-            // Parse generic parameters for stub so type checking works correctly
-            var genericParams = AstParsingHelpers.ParseGenericParameters(enumDecl.genericParams());
-            var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
-            _symbols.RegisterEnum(enumName, stubEnum);
+            // Never replace a completed enum with an empty import stub. Facade
+            // aliases and reexports can reach the same dependency by several
+            // paths; erasing variants here made large programs import-order
+            // dependent even though small selective-import tests passed.
+            if (!_symbols.HasEnum(enumName))
+            {
+                var genericParams = AstParsingHelpers.ParseGenericParameters(enumDecl.genericParams());
+                var stubEnum = new IrEnumType(enumName, new List<IrEnumVariant>(), genericParams.Count > 0 ? genericParams : null);
+                _symbols.RegisterEnum(enumName, stubEnum);
+            }
 
             // Track stubs that aren't in the import list so we can remove them later
             if (!namesToImport.Contains(enumName))
@@ -1294,6 +1347,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             RegisterImpl(implDecl);
         }
 
+        // A selective import alias is a transparent local type alias too, not
+        // merely an expression-name mapping.
+        RegisterImportTypeAliases(importList);
+
         // Clean up stub enum types that weren't actually imported
         // This happens at the very end, after all parsing (enums, structs, traits, impls) is complete
         // NOTE: SymbolTable doesn't support Remove, so stub enums remain in the table.
@@ -1311,6 +1368,22 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var name = aliasDecl.IDENTIFIER().GetText();
             if (_symbols.LookupTypeAlias(name) == null)
                 RegisterTypeAlias(aliasDecl);
+        }
+    }
+
+    private void RegisterImportTypeAliases(NovusParser.ImportListContext? importList)
+    {
+        if (importList == null) return;
+        foreach (var imported in importList.importName())
+        {
+            if (imported.IDENTIFIER().Length < 2) continue;
+            var original = imported.IDENTIFIER(0).GetText();
+            var alias = imported.IDENTIFIER(1).GetText();
+            IrType? type = _symbols.LookupTypeAlias(original) ??
+                           (IrType?)_symbols.LookupStruct(original) ??
+                           _symbols.LookupEnum(original);
+            if (type != null && _symbols.LookupTypeAlias(alias) == null)
+                _symbols.RegisterTypeAlias(alias, type);
         }
     }
 
@@ -1362,6 +1435,24 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             var text = stringLiteral.STRING_LITERAL().GetText();
             _symbols.RegisterConstant(name, new ConstantSymbol(name, type, text[1..^1], location));
+            return;
+        }
+
+        if (valueExpr is NovusParser.PrimaryExprContext fourCcPrimary &&
+            fourCcPrimary.primaryExpression() is NovusParser.FourCcLiteralContext fourCcLiteral)
+        {
+            var bytes = ByteLiteralParser.Parse(fourCcLiteral.FOURCC_LITERAL().GetText(), 6);
+            if (bytes.Length != 4)
+            {
+                _diagnostics.ReportError("E0032", "a FourCC literal must contain exactly four bytes", location);
+                return;
+            }
+            type ??= IrIntType.U32;
+            if (!type.Equals(IrIntType.U32))
+                _diagnostics.ReportError("E0032", "a FourCC constant has type u32", location);
+            var fourCcValue = unchecked((int)(((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) |
+                                              ((uint)bytes[2] << 8) | bytes[3]));
+            _symbols.RegisterConstant(name, new ConstantSymbol(name, type, fourCcValue, location));
             return;
         }
 
@@ -1737,10 +1828,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Check for hex literals
         if (text.StartsWith("0x") || text.StartsWith("0X"))
         {
-            if (text.EndsWith("u16"))
-                return IrIntType.U16;
-            if (text.EndsWith("u32"))
-                return IrIntType.U32;
             return IrIntType.I32;
         }
 
@@ -2055,7 +2142,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
     }
 
-    private void RegisterImpl(NovusParser.ImplDeclarationContext context)
+    private void RegisterImpl(NovusParser.ImplDeclarationContext context, bool forImport = false)
     {
         var info = ParseImplBlockInfo(context);
         if (info.ParseError)
@@ -2090,7 +2177,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             if (item.functionDeclaration() != null)
             {
-                RegisterImplMethod(item.functionDeclaration(), context, info.ImplTypeName, info.GenericParams, info.TraitName, info.TraitTypeArgs);
+                RegisterImplMethod(item.functionDeclaration(), context, info.ImplTypeName, info.GenericParams, info.TraitName, info.TraitTypeArgs, forImport);
             }
         }
 
@@ -2150,7 +2237,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         _ => false
     };
 
-    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null, List<IrType>? traitTypeArgs = null)
+    private void RegisterImplMethod(NovusParser.FunctionDeclarationContext context, NovusParser.ImplDeclarationContext implContext, string implTypeName, List<string> genericParams, string? traitName = null, List<IrType>? traitTypeArgs = null, bool forImport = false)
     {
         var methodName = context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
@@ -2164,6 +2251,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Parse attributes (including @suppress for warnings)
         var attributes = ParseAttributes(context.attribute());
+        if (traitName != null)
+        {
+            foreach (var attribute in _symbols.LookupTrait(traitName)?.GetMethod(methodName)?.Attributes.All ?? [])
+            {
+                if (!attributes.Has(attribute.Name))
+                    attributes.Add(attribute);
+            }
+        }
 
         // Generate mangled name for the method
         // For trait impls: TypeName_TraitName_TypeArg1_TypeArg2_methodName (e.g., Counter_Iterator_i32_next)
@@ -2336,7 +2431,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Store both impl-level and method-level generic params in the symbol
         var allGenericParams = genericParams.Count > 0 ? genericParams : null;
         var funcSymbol = new FunctionSymbol(mangledName, returnType, parameters, location, false, allGenericParams, attributes, hasVariadic, methodGenericParams.Count > 0 ? methodGenericParams : null, whereClause);
-        RegisterFunctionWithOverloads(mangledName, funcSymbol, location);
+        if (forImport)
+            RegisterFunctionForImport(mangledName, funcSymbol);
+        else
+            RegisterFunctionWithOverloads(mangledName, funcSymbol, location);
 
         // Clear method-level generic params from scope
         foreach (var param in methodGenericParams)
@@ -2616,7 +2714,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Parse enum variants
         var variants = new List<IrEnumVariant>();
-        int tag = 0;
+        var underlyingType = ParseEnumUnderlyingType(context);
+        long tag = 0;
 
         foreach (var variantCtx in context.enumVariant())
         {
@@ -2633,13 +2732,42 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
 
+            if (underlyingType != null && associatedData.Count > 0)
+                _diagnostics.ReportError("E0006", "represented enums cannot have associated data",
+                    SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+
+            var explicitTag = variantCtx.INTEGER_LITERAL()?.GetText()
+                ?? variantCtx.BINARY_LITERAL()?.GetText()
+                ?? variantCtx.HEX_LITERAL()?.GetText();
+            if (explicitTag != null)
+            {
+                if (underlyingType == null)
+                {
+                    _diagnostics.ReportError("E0006", "explicit discriminants require an enum representation",
+                        SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+                }
+                else
+                {
+                    var parsed = IntegerLiteralParser.Parse(explicitTag, underlyingType, underlyingType);
+                    if (!parsed.FitsType)
+                        _diagnostics.ReportError("E0006", $"enum discriminant '{explicitTag}' does not fit {underlyingType.Name}",
+                            SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+                    else
+                        tag = parsed.ToBitPattern();
+                }
+            }
+
             variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
+
+        if (underlyingType != null && variants.Select(variant => variant.Tag).Distinct().Count() != variants.Count)
+            _diagnostics.ReportError("E0006", $"enum '{name}' contains duplicate discriminants", location);
 
         // Parse where clause
         var whereClause = ParseWhereClause(context.whereClause());
 
-        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null, null, attributes, whereClause);
+        var enumType = new IrEnumType(name, variants, genericParams.Count > 0 ? genericParams : null,
+            null, attributes, whereClause, underlyingType: underlyingType);
 
         // Force size calculation
         if (genericParams is [])
@@ -2724,7 +2852,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         AstParsingHelpers.ParseGenericParameters(context.genericParams(), _genericParams);
 
         // Parse enum variants and add to the stub's Variants list in-place
-        int tag = 0;
+        var underlyingType = ParseEnumUnderlyingType(context);
+        stub.UnderlyingType = underlyingType;
+        long tag = 0;
         foreach (var variantCtx in context.enumVariant())
         {
             var variantName = variantCtx.IDENTIFIER().GetText();
@@ -2740,8 +2870,37 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
 
+            if (underlyingType != null && associatedData.Count > 0)
+                _diagnostics.ReportError("E0006", "represented enums cannot have associated data",
+                    SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+
+            var explicitTag = variantCtx.INTEGER_LITERAL()?.GetText()
+                ?? variantCtx.BINARY_LITERAL()?.GetText()
+                ?? variantCtx.HEX_LITERAL()?.GetText();
+            if (explicitTag != null)
+            {
+                if (underlyingType == null)
+                {
+                    _diagnostics.ReportError("E0006", "explicit discriminants require an enum representation",
+                        SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+                }
+                else
+                {
+                    var parsed = IntegerLiteralParser.Parse(explicitTag, underlyingType, underlyingType);
+                    if (!parsed.FitsType)
+                        _diagnostics.ReportError("E0006", $"enum discriminant '{explicitTag}' does not fit {underlyingType.Name}",
+                            SourceLocationHelper.FromContext(variantCtx, _filePath, _sourceLines));
+                    else
+                        tag = parsed.ToBitPattern();
+                }
+            }
+
             stub.Variants.Add(new IrEnumVariant(variantName, tag++, associatedData));
         }
+
+        if (underlyingType != null && stub.Variants.Select(variant => variant.Tag).Distinct().Count() != stub.Variants.Count)
+            _diagnostics.ReportError("E0006", $"enum '{name}' contains duplicate discriminants",
+                SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
 
         // Parse and set where clause
         var whereClause = ParseWhereClause(context.whereClause());
@@ -2755,6 +2914,28 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Clear generic param scope
         _genericParams.Clear();
+    }
+
+    private IrIntType? ParseEnumUnderlyingType(NovusParser.EnumDeclarationContext context)
+    {
+        var representation = context.primitiveTypeName();
+        if (representation == null)
+            return null;
+
+        var type = representation.GetText() switch
+        {
+            "u8" => IrIntType.U8,
+            "u16" => IrIntType.U16,
+            "u32" => IrIntType.U32,
+            "i8" => IrIntType.I8,
+            "i16" => IrIntType.I16,
+            "i32" => IrIntType.I32,
+            _ => null
+        };
+        if (type == null)
+            _diagnostics.ReportError("E0006", "an enum representation must be u8, u16, u32, i8, i16, or i32",
+                SourceLocationHelper.FromContext(representation, _filePath, _sourceLines));
+        return type;
     }
 
     private void RegisterTrait(NovusParser.TraitDeclarationContext context)
@@ -2842,7 +3023,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     returnType = ParseType(methodDecl.type());
                 }
 
-                var traitMethod = new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null);
+                var traitMethod = new IrTraitMethod(
+                    methodName, parameters, returnType,
+                    methodGenericParams.Count > 0 ? methodGenericParams : null,
+                    ParseAttributes(methodDecl.attribute()));
 
                 // Check if there's a default implementation (body block)
                 if (methodDecl.block() != null)
@@ -4379,6 +4563,133 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return null;
     }
 
+    private IrType? GetAssignmentTargetType(
+        IrType type,
+        int dereferenceCount,
+        NovusParser.LvalueSuffixContext[] suffixes,
+        int suffixesBeforeDereference)
+    {
+        for (var suffixIndex = 0; suffixIndex <= suffixes.Length; suffixIndex++)
+        {
+            if (suffixIndex == suffixesBeforeDereference)
+            {
+                for (var index = 0; index < dereferenceCount; index++)
+                {
+                    type = type switch
+                    {
+                        IrPointerType pointer => pointer.PointeeType,
+                        IrReferenceType reference => reference.PointeeType,
+                        IrMutReferenceType reference => reference.PointeeType,
+                        _ => null!
+                    };
+                    if (type == null)
+                        return null;
+                }
+            }
+
+            if (suffixIndex == suffixes.Length)
+                break;
+
+            var suffix = suffixes[suffixIndex];
+            if (suffix.GetChild(0).GetText() == ".")
+            {
+                type = type switch
+                {
+                    IrPointerType memberPointer => memberPointer.PointeeType,
+                    IrReferenceType memberReference => memberReference.PointeeType,
+                    IrMutReferenceType mutableMemberReference => mutableMemberReference.PointeeType,
+                    _ => type
+                };
+                if (type is not IrStructType structure)
+                    return null;
+                var field = structure.Fields.FirstOrDefault(candidate =>
+                    candidate.Name == suffix.IDENTIFIER().GetText());
+                if (field == null)
+                    return null;
+                type = field.Type;
+                continue;
+            }
+
+            type = type switch
+            {
+                IrReferenceType indexedReference => indexedReference.PointeeType,
+                IrMutReferenceType mutableIndexedReference => mutableIndexedReference.PointeeType,
+                _ => type
+            };
+            if (type is IrArrayType array)
+            {
+                type = array.ElementType;
+                continue;
+            }
+            if (type is IrPointerType indexedPointer)
+            {
+                RequireUnsafe(
+                    suffix,
+                    "raw pointer indexing",
+                    "raw pointers carry no length",
+                    ["use a Slice<T> for checked indexing, or wrap this access in unsafe { ... }"]);
+                type = indexedPointer.PointeeType;
+                continue;
+            }
+
+            var typeName = GetBaseTypeNameForTraitLookup(type);
+            var indexMut = _traitResolver.GetAllImpls().Values.FirstOrDefault(implementation =>
+                implementation.TypeName == typeName &&
+                implementation.TraitName == "IndexMut" &&
+                implementation.TraitTypeArgs.Count >= 2);
+            if (indexMut == null)
+                return null;
+            type = indexMut.TraitTypeArgs[1];
+        }
+
+        return type;
+    }
+
+    private void ValidateAssignmentOperator(
+        string? op,
+        IrType targetType,
+        IrType? valueType,
+        NovusParser.ExpressionContext expression,
+        SourceLocation location)
+    {
+        if (valueType == null)
+            return;
+
+        if (op == "=")
+        {
+            if (!TypesCompatible(targetType, valueType))
+            {
+                _diagnostics.ReportError(
+                    "E0020",
+                    "mismatched types in assignment",
+                    location,
+                    helpTexts:
+                    [
+                        $"expected type '{TypeToString(targetType)}', found '{TypeToString(valueType)}'"
+                    ]);
+            }
+            return;
+        }
+
+        var valid = op switch
+        {
+            "+=" or "-=" or "*=" or "/=" or "%=" =>
+                IsNumericType(targetType) && IsNumericType(valueType),
+            "&=" or "|=" or "^=" =>
+                (IsIntegralType(targetType) || targetType is IrBoolType) &&
+                (IsIntegralType(valueType) || valueType is IrBoolType),
+            "<<=" or ">>=" => IsIntegralType(targetType) && IsIntegralType(valueType),
+            _ => false
+        };
+        if (!valid)
+        {
+            _diagnostics.ReportError(
+                "E0024",
+                $"operator '{op}' is not valid for '{TypeToString(targetType)}' and '{TypeToString(valueType)}'",
+                SourceLocationHelper.FromContext(expression, _filePath, _sourceLines));
+        }
+    }
+
     public override IrType? VisitAssignmentStatement([NotNull] NovusParser.AssignmentStatementContext context)
     {
         // Get the lvalue expression (contains the assignment target)
@@ -4605,14 +4916,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 ReportImmutableLvalue(name, baseVariable, location);
                 return null;
             }
-            // Lvalue suffix chain validation is complex and requires handling:
-            // - IrStructType (direct field access)
-            // - IrPointerType (auto-dereference for field access)
-            // - IrReferenceType (auto-dereference for field access)
-            // - IrArrayType and pointer indexing
-            // The existing code in IrBuilder handles this during code generation.
-            // For now, we just visit the value expression to check its type.
+            var suffixesBeforeDereference = hasParenDeref
+                ? parenDerefSuffixes.Length
+                : lvalueSuffixes.Length;
+            var targetType = GetAssignmentTargetType(
+                baseVariable.Type, derefCount, lvalueSuffixes, suffixesBeforeDereference);
+            var previousExpectedType = _expectedType;
+            _expectedType = targetType;
             var valueType = Visit(context.expression());
+            _expectedType = previousExpectedType;
+            if (targetType != null)
+                ValidateAssignmentOperator(op, targetType, valueType, context.expression(), location);
             return null;
         }
 
@@ -4685,21 +4999,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // Check type compatibility of the assigned value
             var previousExpectedType = _expectedType;
-            if (op == "=") _expectedType = targetType;
+            _expectedType = targetType;
             var exprType = Visit(context.expression());
             _expectedType = previousExpectedType;
-            if (exprType != null && !TypesCompatible(targetType, exprType))
-            {
-                _diagnostics.ReportError(
-                    "E0020",
-                    $"mismatched types in assignment",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"expected type '{TypeToString(targetType)}', found '{TypeToString(exprType)}'"
-                    }
-                );
-            }
+            ValidateAssignmentOperator(op, targetType, exprType, context.expression(), location);
         }
         else
         {
@@ -4727,95 +5030,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
             // Check type compatibility
             var previousExpectedType = _expectedType;
-            if (op == "=") _expectedType = variable.Type;
+            _expectedType = variable.Type;
             var exprType = Visit(context.expression());
             _expectedType = previousExpectedType;
 
-            // Handle compound operators
-            if (op != "=")
-            {
-                // For compound operators, verify the variable type supports the operation
-                if (op == "+=" || op == "-=" || op == "*=" || op == "/=" || op == "%=")
-                {
-                    // Arithmetic operators require numeric types
-                    if (!IsNumericType(variable.Type))
-                    {
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires numeric type, found '{TypeToString(variable.Type)}'",
-                            location
-                        );
-                    }
-                    if (exprType != null && !IsNumericType(exprType))
-                    {
-                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires numeric type, found '{TypeToString(exprType)}'",
-                            exprLocation
-                        );
-                    }
-                }
-                else if (op == "&=" || op == "|=" || op == "^=")
-                {
-                    // Bitwise operators require integer or boolean types
-                    if (!IsIntegralType(variable.Type) && !(variable.Type is IrBoolType))
-                    {
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires integer or boolean type, found '{TypeToString(variable.Type)}'",
-                            location
-                        );
-                    }
-                    if (exprType != null && !IsIntegralType(exprType) && !(exprType is IrBoolType))
-                    {
-                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires integer or boolean type, found '{TypeToString(exprType)}'",
-                            exprLocation
-                        );
-                    }
-                }
-                else if (op == "<<=" || op == ">>=")
-                {
-                    // Shift operators require integer types
-                    if (!IsIntegralType(variable.Type))
-                    {
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires integer type, found '{TypeToString(variable.Type)}'",
-                            location
-                        );
-                    }
-                    if (exprType != null && !IsIntegralType(exprType))
-                    {
-                        var exprLocation = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
-                        _diagnostics.ReportError(
-                            "E0024",
-                            $"operator '{op}' requires integer type, found '{TypeToString(exprType)}'",
-                            exprLocation
-                        );
-                    }
-                }
-            }
-            else
-            {
-                // Simple assignment: check type compatibility
-                if (exprType != null && !TypesCompatible(variable.Type, exprType))
-                {
-                    _diagnostics.ReportError(
-                        "E0020",
-                        $"mismatched types in assignment",
-                        location,
-                        helpTexts: new List<string>
-                        {
-                            $"expected type '{TypeToString(variable.Type)}', found '{TypeToString(exprType)}'",
-                            $"consider using a cast: ({TypeToString(variable.Type)}){context.expression().GetText()}"
-                        }
-                    );
-                }
-            }
+            ValidateAssignmentOperator(op, variable.Type, exprType, context.expression(), location);
         }
 
         return null;
@@ -4863,7 +5082,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         NovusParser.ExpressionContext leftExpression,
         NovusParser.ExpressionContext rightExpression)
     {
-        if (IsUnsuffixedIntegerLiteral(leftExpression))
+        if (IsIntegerLiteral(leftExpression))
         {
             var right = Visit(rightExpression);
             return (VisitWithExpectedType(leftExpression, right), right);
@@ -4873,20 +5092,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return (left, VisitWithExpectedType(rightExpression, left));
     }
 
-    private static bool IsUnsuffixedIntegerLiteral(NovusParser.ExpressionContext expression)
+    private static bool IsIntegerLiteral(NovusParser.ExpressionContext expression)
     {
         if (expression is not NovusParser.PrimaryExprContext primary)
             return false;
-        var text = primary.primaryExpression() switch
+        return primary.primaryExpression() switch
         {
-            NovusParser.IntegerLiteralContext literal => literal.INTEGER_LITERAL().GetText(),
-            NovusParser.BinaryLiteralContext literal => literal.BINARY_LITERAL().GetText(),
-            NovusParser.HexLiteralContext literal => literal.HEX_LITERAL().GetText(),
-            _ => null
+            NovusParser.IntegerLiteralContext => true,
+            NovusParser.BinaryLiteralContext => true,
+            NovusParser.HexLiteralContext => true,
+            _ => false
         };
-        return text != null && !(text.EndsWith("u8") || text.EndsWith("u16") ||
-            text.EndsWith("u32") || text.EndsWith("u64") || text.EndsWith("i8") ||
-            text.EndsWith("i16") || text.EndsWith("i32") || text.EndsWith("i64"));
     }
 
     public override IrType? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
@@ -5072,6 +5288,47 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return leftType;
     }
 
+    public override IrType? VisitRangeExpr([NotNull] NovusParser.RangeExprContext context) =>
+        AnalyzeRange(context.expression(0), context.expression(1), context);
+
+    public override IrType? VisitRangeInclusiveExpr([NotNull] NovusParser.RangeInclusiveExprContext context) =>
+        AnalyzeRange(context.expression(0), context.expression(1), context);
+
+    private IrType? AnalyzeRange(
+        NovusParser.ExpressionContext startExpression,
+        NovusParser.ExpressionContext endExpression,
+        ParserRuleContext context)
+    {
+        var (startType, endType) = VisitBinaryOperands(startExpression, endExpression);
+        if (startType == null || endType == null)
+            return null;
+
+        var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+        if (startType is not IrIntType || endType is not IrIntType)
+        {
+            _diagnostics.ReportError(
+                "E0004",
+                "range endpoints must be integers",
+                location);
+            return null;
+        }
+
+        if (!TypesCompatible(startType, endType) || !TypesCompatible(endType, startType))
+        {
+            _diagnostics.ReportError(
+                "E0017",
+                "range endpoints have incompatible types",
+                location,
+                helpTexts:
+                [
+                    $"start is '{TypeToString(startType)}' and end is '{TypeToString(endType)}'",
+                    "use matching endpoint types or an explicit cast"
+                ]);
+        }
+
+        return startType;
+    }
+
     public override IrType? VisitMultiplicativeExpr([NotNull] NovusParser.MultiplicativeExprContext context)
     {
         var (leftType, rightType) = VisitBinaryOperands(context.expression(0), context.expression(1));
@@ -5171,7 +5428,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         var targetType = ParseType(context.type());
         var previousExpectedType = _expectedType;
-        _expectedType = null;
+        _expectedType = IsIntegerLiteral(context.expression()) ? targetType as IrIntType : null;
         var exprType = Visit(context.expression());
         _expectedType = previousExpectedType;
 
@@ -5190,7 +5447,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                            (targetType is IrPointerType && exprType is IrReferenceType) ||
                            (targetType is IrPointerType && exprType is IrMutReferenceType) ||
                            (IsNumericType(targetType) && exprType is IrFunctionPointerType) ||  // fn(...) -> u32
-                           (targetType is IrFunctionPointerType && IsNumericType(exprType));    // u32 -> fn(...)
+                           (targetType is IrFunctionPointerType && IsNumericType(exprType)) ||  // u32 -> fn(...)
+                           IsValidRepresentedEnumCast(exprType, targetType);
 
         if (!isValidCast)
         {
@@ -5230,11 +5488,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
     {
+        var targetType = ParseType(context.type());
         var previousExpectedType = _expectedType;
-        _expectedType = null;
+        _expectedType = IsIntegerLiteral(context.expression()) ? targetType as IrIntType : null;
         var exprType = Visit(context.expression());
         _expectedType = previousExpectedType;
-        var targetType = ParseType(context.type());
 
         if (exprType == null)
             return targetType;
@@ -5251,7 +5509,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                            (targetType is IrPointerType && exprType is IrReferenceType) ||
                            (targetType is IrPointerType && exprType is IrMutReferenceType) ||
                            (IsNumericType(targetType) && exprType is IrFunctionPointerType) ||  // fn(...) -> u32
-                           (targetType is IrFunctionPointerType && IsNumericType(exprType));    // u32 -> fn(...)
+                           (targetType is IrFunctionPointerType && IsNumericType(exprType)) ||  // u32 -> fn(...)
+                           IsValidRepresentedEnumCast(exprType, targetType);
 
         if (!isValidCast)
         {
@@ -5288,6 +5547,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         return targetType;
     }
+
+    private static bool IsValidRepresentedEnumCast(IrType source, IrType target) =>
+        source is IrEnumType { UnderlyingType: not null } sourceEnum && sourceEnum.UnderlyingType.Equals(target) ||
+        target is IrEnumType { UnderlyingType: not null } targetEnum && targetEnum.UnderlyingType.Equals(source);
 
     public override IrType? VisitTryExpr([NotNull] NovusParser.TryExprContext context)
     {
@@ -5722,9 +5985,24 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitForInLoop([NotNull] NovusParser.ForInLoopContext context)
     {
         // for [var] item in collection { ... }
-        var itemName = context.IDENTIFIER().GetText();
-        var collectionType = Visit(context.expression());
+        var expression = context.expression();
+        var isEnumerated = TryGetEnumeratedSource(expression, out var enumeratedSource);
+        if (isEnumerated)
+            expression = enumeratedSource!;
+        var (indexName, itemName) = GetForBindings(context);
         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
+
+        if ((isEnumerated && indexName == null) || (!isEnumerated && indexName != null))
+        {
+            _diagnostics.ReportError("E0050",
+                isEnumerated
+                    ? "enumerate() requires a two-item loop binding"
+                    : "a two-item loop binding requires enumerate()",
+                location);
+            return null;
+        }
+
+        var collectionType = Visit(expression);
 
         // Check if the binding is mutable
         var isMutable = context.KW_VAR() != null;
@@ -5735,7 +6013,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         if (collectionType != null)
         {
             // Check if this is a range expression (handled specially - ranges yield their element type)
-            var exprCtx = context.expression();
+            var exprCtx = expression;
             if (exprCtx is NovusParser.RangeExprContext || exprCtx is NovusParser.RangeInclusiveExprContext)
             {
                 // Range expressions yield their element type (the integer type)
@@ -5774,15 +6052,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                         helpTexts: new List<string>
                         {
                             "For-in loops require Iterable<T> or Iterator<T>",
-                            $"Implement Iterable<T> with get()/len(), or Iterator<T> with next(), for {typeName}"
+                            $"Implement Iterable<T> with get_unchecked()/len(), or Iterator<T> with next(), for {typeName}"
                         }
                     );
                 }
             }
         }
 
-        var itemSymbol = new VariableSymbol(itemName, itemType, isMutable, location!, Id: _nextVariableId++);
-        _variables[itemName] = itemSymbol;
+        if (indexName != null && indexName != "_")
+            _variables[indexName] = new VariableSymbol(indexName, IrIntType.U32, isMutable, location!, Id: _nextVariableId++);
+        if (itemName != "_")
+            _variables[itemName] = new VariableSymbol(itemName, itemType, isMutable, location!, Id: _nextVariableId++);
 
         // Enter loop context
         _loopDepth++;
@@ -5791,8 +6071,30 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Remove the item variable from scope
         _variables.Remove(itemName);
+        if (indexName != null)
+            _variables.Remove(indexName);
 
         return null;
+    }
+
+    private static bool TryGetEnumeratedSource(NovusParser.ExpressionContext expression,
+        out NovusParser.ExpressionContext? source)
+    {
+        source = null;
+        if (expression is not NovusParser.CallExprContext call || call.argumentList() != null ||
+            call.expression() is not NovusParser.MemberAccessExprContext member ||
+            member.IDENTIFIER().GetText() != "enumerate")
+            return false;
+        source = member.expression();
+        return true;
+    }
+
+    private static (string? Index, string Item) GetForBindings(NovusParser.ForInLoopContext context)
+    {
+        if (context.tuplePattern() == null)
+            return (null, context.IDENTIFIER().GetText());
+        var bindings = context.tuplePattern().GetText()[1..^1].Split(',');
+        return (bindings[0], bindings[1]);
     }
 
     /// <summary>
@@ -6093,27 +6395,48 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             );
         }
 
-        AnalyzeLetElsePattern(pattern, exprType, location,
-            canBorrow: borrowedEnumType != null,
-            canBorrowMutably: exprType is IrMutReferenceType);
-
-        // Visit the else block - it must diverge
-        Visit(context.block());
-
-        // Verify that the else block actually diverges
-        var elseBlock = context.block();
-        if (!BlockIsTerminal(elseBlock))
+        var option = exprType as IrEnumType;
+        var some = option?.EnumName == "Option" ? option.GetVariant("Some") : null;
+        var contextualOption = (pattern is NovusParser.IdentifierPatternContext or
+            NovusParser.VarIdentifierPatternContext) && some is { AssociatedData.Count: 1 };
+        if (contextualOption)
         {
-            var elseLocation = SourceLocationHelper.FromContext(elseBlock, _filePath, _sourceLines);
+            AnalyzeLetElsePattern(pattern, some!.AssociatedData[0], location);
+        }
+        else
+        {
+            if (pattern is NovusParser.IdentifierPatternContext or NovusParser.VarIdentifierPatternContext)
+            {
+                _diagnostics.ReportError(
+                    "E0044",
+                    "plain let...else binding requires Option<T>; use an explicit pattern for other types",
+                    location);
+            }
+            AnalyzeLetElsePattern(pattern, exprType, location,
+                canBorrow: borrowedEnumType != null,
+                canBorrowMutably: exprType is IrMutReferenceType);
+        }
+
+        var divergence = GetLetElseDivergence(context);
+        Visit(divergence);
+
+        if (divergence is NovusParser.BlockContext elseBlock && !BlockIsTerminal(elseBlock))
+        {
             _diagnostics.ReportError(
                 "E0021",
                 "else block in let...else must diverge (return, break, continue, or panic)",
-                elseLocation
+                SourceLocationHelper.FromContext(elseBlock, _filePath, _sourceLines)
             );
         }
 
         return null;
     }
+
+    private static ParserRuleContext GetLetElseDivergence(
+        NovusParser.LetElseStatementContext context) =>
+        context.block() ?? (ParserRuleContext?)context.returnStatement() ??
+        (ParserRuleContext?)context.breakStatement() ??
+        (ParserRuleContext?)context.continueStatement() ?? context.panicStatement()!;
 
     /// <summary>
     /// Analyze a pattern in let...else and register any bindings it introduces.
@@ -6822,6 +7145,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Ensure we're matching on an enum type, integer type, or bool type
         bool isEnumMatch = actualMatchType is IrEnumType;
         bool isIntegerMatch = actualMatchType is IrIntType || actualMatchType is IrBoolType;
+        bool isByteSequenceMatch = actualMatchType is IrArrayType { ElementType: IrIntType { BitWidth: 8 } } ||
+                                   actualMatchType is IrStructType { StructName: "Slice" or "MutSlice" };
 
         // For pattern analysis, we need the enum type to look up variants
         // If actualMatchType is a generic type parameter that refers to an enum,
@@ -6905,12 +7230,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             }
         }
 
-        if (!isEnumMatch && !isIntegerMatch)
+        if (!isEnumMatch && !isIntegerMatch && !isByteSequenceMatch)
         {
             var location = SourceLocationHelper.FromContext(context.expression(), _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0035",
-                $"match expression can only be used with enum or integer types, got '{actualMatchType.Name}'",
+                $"match expression can only be used with enum, integer, or byte-sequence types, got '{actualMatchType.Name}'",
                 location,
                 helpTexts: new List<string>
                 {
@@ -6970,6 +7295,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 // For bool matches, treat it as integer match with values 0/1
                 // Bool patterns can be `true` or `false` which map to 1 and 0
                 AnalyzeIntegerPatternAndBind(pattern, IrIntType.I32, coveredIntegerValues, ref hasWildcard, allowBinding: hasGuard);
+            }
+            else if (isByteSequenceMatch && pattern is not NovusParser.WildcardPatternContext &&
+                     (pattern is not NovusParser.LiteralPatternContext bytes || bytes.BYTE_STRING_LITERAL() == null))
+            {
+                _diagnostics.ReportError("E0042", "byte-sequence matches require byte-string patterns or '_'",
+                    SourceLocationHelper.FromContext(pattern, _filePath, _sourceLines));
             }
 
             // Track moves in this arm
@@ -7374,11 +7705,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             case NovusParser.LiteralPatternContext literalPattern:
             {
                 // Integer literal pattern
-                if (literalPattern.INTEGER_LITERAL() != null)
+                if (literalPattern.INTEGER_LITERAL() != null ||
+                    literalPattern.HEX_LITERAL() != null ||
+                    literalPattern.BINARY_LITERAL() != null)
                 {
-                    var literalText = literalPattern.INTEGER_LITERAL().GetText();
-                    if (long.TryParse(literalText, out long value))
+                    var literalText = literalPattern.GetText();
+                    try
                     {
+                        var literal = IntegerLiteralParser.Parse(literalText, intType);
+                        var value = literal.ToBitPattern();
+
                         // Check if value is already covered
                         if (coveredValues.Contains(value))
                         {
@@ -7397,32 +7733,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                             }
                         }
 
-                        // Validate that value fits in the integer type
-                        bool valueInRange = intType.BitWidth switch
-                        {
-                            8 when intType.IsSigned => value >= sbyte.MinValue && value <= sbyte.MaxValue,
-                            8 when !intType.IsSigned => value >= byte.MinValue && value <= byte.MaxValue,
-                            16 when intType.IsSigned => value >= short.MinValue && value <= short.MaxValue,
-                            16 when !intType.IsSigned => value >= ushort.MinValue && value <= ushort.MaxValue,
-                            32 when intType.IsSigned => value >= int.MinValue && value <= int.MaxValue,
-                            32 when !intType.IsSigned => value >= uint.MinValue && value <= uint.MaxValue,
-                            64 => true, // long can represent all i64 values, u64 would need ulong but we'll accept it
-                            _ => false
-                        };
-
-                        if (!valueInRange)
+                        if (!literal.FitsType)
                         {
                             var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
                             _diagnostics.ReportError(
                                 "E0040",
-                                $"literal value {value} does not fit in type '{intType.Name}'",
+                                $"literal value {literal.Value} does not fit in type '{intType.Name}'",
                                 location
                             );
                         }
 
                         coveredValues.Add(value);
                     }
-                    else
+                    catch (FormatException)
                     {
                         var location = SourceLocationHelper.FromToken(literalPattern.Start, _filePath, _sourceLines);
                         _diagnostics.ReportError(
@@ -7672,12 +7995,30 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             if (paramEnum.EnumName != argEnum.EnumName)
                 return false;
 
-            // If paramEnum is generic and argEnum is monomorphized, extract type arguments
-            if (paramEnum.GenericParameters.Count > 0 && argEnum.GenericParameters is [])
+            if (paramEnum.TypeArguments is { } parameterArguments &&
+                argEnum.TypeArguments is { } argumentArguments &&
+                parameterArguments.Count == argumentArguments.Count)
             {
-                // This is complex - would need to extract from cache key
-                // For now, just check if they're compatible
-                return TypesCompatible(paramType, argType);
+                for (var index = 0; index < parameterArguments.Count; index++)
+                    if (!InferGenericTypeFromPair(parameterArguments[index], argumentArguments[index], substitutions))
+                        return false;
+                return true;
+            }
+
+            // Infer template parameters from the concrete enum's recorded type arguments.
+            if (paramEnum.GenericParameters.Count > 0 &&
+                argEnum.TypeArguments is { } enumArguments &&
+                enumArguments.Count == paramEnum.GenericParameters.Count)
+            {
+                for (var index = 0; index < paramEnum.GenericParameters.Count; index++)
+                {
+                    var parameter = paramEnum.GenericParameters[index];
+                    if (substitutions.TryGetValue(parameter, out var existing) &&
+                        !TypesCompatible(existing, enumArguments[index]))
+                        return false;
+                    substitutions[parameter] = enumArguments[index];
+                }
+                return true;
             }
 
             return true;
@@ -8792,6 +9133,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return IrVoidType.Instance;
         }
 
+        if (_importedFunctionAliases.TryGetValue(functionName, out var importedFunctionName))
+            functionName = importedFunctionName;
+        functionName = ResolveQualifiedAliasName(functionName);
+
         // Check if this is a qualified enum constructor (e.g., Result::Ok)
         if (functionName.Contains("::"))
         {
@@ -9551,6 +9896,34 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        if (receiverType is IrArrayType fillArray && methodName == "fill")
+        {
+            var arguments = callCtx.argumentList()?.expression() ?? [];
+            if (arguments.Length != 1)
+            {
+                _diagnostics.ReportError("E0014", $"array fill expects one value, got {arguments.Length}",
+                    SourceLocationHelper.FromContext(callCtx, _filePath, _sourceLines));
+                return IrVoidType.Instance;
+            }
+            if (!IsCopyType(fillArray.ElementType))
+                _diagnostics.ReportError("E0507",
+                    $"array fill requires Copy elements, but '{fillArray.ElementType.Name}' owns its value",
+                    SourceLocationHelper.FromContext(receiverExpr, _filePath, _sourceLines));
+            var receiverName = ExtractVariableName(receiverExpr);
+            if (receiverName != null && _variables.TryGetValue(receiverName, out var variable) && !variable.IsMutable)
+                _diagnostics.ReportError("E0384", $"cannot fill immutable array '{receiverName}'",
+                    SourceLocationHelper.FromContext(receiverExpr, _filePath, _sourceLines));
+            var previousExpected = _expectedType;
+            _expectedType = fillArray.ElementType;
+            var valueType = Visit(arguments[0]);
+            _expectedType = previousExpected;
+            if (valueType != null && !TypesCompatible(fillArray.ElementType, valueType))
+                _diagnostics.ReportError("E0015",
+                    $"array fill expects '{fillArray.ElementType.Name}', got '{valueType.Name}'",
+                    SourceLocationHelper.FromContext(arguments[0], _filePath, _sourceLines));
+            return IrVoidType.Instance;
+        }
+
         // Get the base type name (struct/enum name)
         string typeName;
         if (receiverType is IrStructType structType)
@@ -10122,6 +10495,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             var traitMethod = trait.Methods.FirstOrDefault(m => m.Name == methodName);
             if (traitMethod != null)
             {
+                if (traitMethod.Attributes.Has(KnownAttributes.Unsafe))
+                    RequireUnsafe(callCtx, methodName + "()", "the trait method is marked @unsafe");
+
                 // Found the trait method!
                 // Validate argument count (excluding self)
                 var providedArgCount = callCtx.argumentList()?.expression().Length ?? 0;
@@ -10375,6 +10751,44 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return IrIntType.U8;
     }
 
+    public override IrType? VisitByteCharLiteral([NotNull] NovusParser.ByteCharLiteralContext context)
+    {
+        var bytes = ParseByteLiteral(context.BYTE_CHAR_LITERAL().GetText(), 1, context);
+        if (bytes is { Length: not 1 })
+            _diagnostics.ReportError("E0006", "a byte character literal must contain exactly one byte",
+                SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+        return IrIntType.U8;
+    }
+
+    public override IrType? VisitByteStringLiteral([NotNull] NovusParser.ByteStringLiteralContext context)
+    {
+        var bytes = ParseByteLiteral(context.BYTE_STRING_LITERAL().GetText(), 1, context);
+        return bytes == null ? null : _typeInterner.GetArrayType(IrIntType.U8, bytes.Length);
+    }
+
+    public override IrType? VisitFourCcLiteral([NotNull] NovusParser.FourCcLiteralContext context)
+    {
+        var bytes = ParseByteLiteral(context.FOURCC_LITERAL().GetText(), 6, context);
+        if (bytes is { Length: not 4 })
+            _diagnostics.ReportError("E0006", "a FourCC literal must contain exactly four bytes",
+                SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+        return IrIntType.U32;
+    }
+
+    private byte[]? ParseByteLiteral(string token, int prefixLength, ParserRuleContext context)
+    {
+        try
+        {
+            return ByteLiteralParser.Parse(token, prefixLength);
+        }
+        catch (FormatException error)
+        {
+            _diagnostics.ReportError("E0006", error.Message,
+                SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+            return null;
+        }
+    }
+
     public override IrType? VisitNullLiteral([NotNull] NovusParser.NullLiteralContext context)
     {
         // null is compatible with any pointer type
@@ -10415,13 +10829,13 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return GetInterpolatedStringType(context);
         }
 
-        // String literals create Str struct instances from std::strings
+        // String literals create Str struct instances from std::string
         // Str is an owner-tied view; literal storage itself has static lifetime.
         var strType = _symbols.LookupStruct("Str");
         if (strType == null)
         {
             // When Str type is not available, fall back to *u8 (C-style string pointer)
-            // This allows string literals to work in modules that can't import std::strings
+            // This allows string literals to work in modules that can't import std::string
             return new IrPointerType(IrIntType.U8);
         }
 
@@ -10674,28 +11088,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     public override IrType? VisitFloatLiteral([NotNull] NovusParser.FloatLiteralContext context)
     {
-        var text = context.FLOAT_LITERAL().GetText();
-
-        // Parse the literal to determine type
-        if (text.EndsWith("fixed32"))
-        {
-            return IrFixedType.Fixed32;
-        }
-        if (text.EndsWith("fixed16"))
-        {
-            return IrFixedType.Fixed16;
-        }
-        if (text.EndsWith("f64"))
-        {
-            return IrFloatType.F64;
-        }
-        if (text.EndsWith("f32"))
-        {
-            return IrFloatType.F32;
-        }
-
-        // Default to f32
-        return IrFloatType.F32;
+        return _expectedType is IrFloatType or IrFixedType
+            ? _expectedType
+            : IrFloatType.F32;
     }
 
     public override IrType? VisitIntegerLiteral([NotNull] NovusParser.IntegerLiteralContext context)
@@ -10737,6 +11132,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitIdentifierExpr([NotNull] NovusParser.IdentifierExprContext context)
     {
         var name = context.identifier().GetText();
+        var resolvedName = ResolveQualifiedAliasName(name);
 
         // Check for use-after-move before any other processing
         // Only check simple identifiers (not qualified names like Result::Ok)
@@ -10788,9 +11184,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Check if this is a qualified name (e.g., Result::Ok, Option::Some)
-        if (name.Contains("::"))
+        if (resolvedName.Contains("::"))
         {
-            var parts = name.Split("::");
+            var parts = resolvedName.Split("::");
             if (parts.Length == 2)
             {
                 var enumName = parts[0];
@@ -10821,7 +11217,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     // variant == null, so check if this might be an impl method
                     // (e.g., Option::FromPointer instead of a variant)
                     // The method would be stored as "TypeName::methodName" in function overloads
-                    if (!HasFunction(name))
+                    if (!HasFunction(resolvedName))
                     {
                         var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
                         _diagnostics.ReportError(
@@ -10844,7 +11240,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return constGenericParam.ConstType;
         }
 
-        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !HasFunction(name) && !_symbols.HasConstant(name))
+        if (!_variables.ContainsKey(name) && !_globalVariables.ContainsKey(name) && !HasFunction(resolvedName) && !_symbols.HasConstant(name))
         {
             var location = SourceLocationHelper.FromToken(context.identifier().Start, _filePath, _sourceLines);
             _diagnostics.ReportError(
@@ -10876,7 +11272,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // If it's a function name being used as a value (not being called), return function pointer type
-        var func = GetFunction(name);
+        var func = GetFunction(resolvedName);
         if (func != null)
         {
             // Create a function pointer type
@@ -10970,6 +11366,14 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         var field = structType.GetField(memberName);
         if (field == null)
         {
+            var property = GetFunction($"{structType.StructName}::{memberName}") ??
+                _functionOverloads.Values.SelectMany(overloads => overloads).FirstOrDefault(function =>
+                    function.Name.StartsWith($"{structType.StructName}_", StringComparison.Ordinal) &&
+                    function.Name.EndsWith($"_{memberName}", StringComparison.Ordinal));
+            if (property is { Parameters.Count: 1, ReturnType: not IrVoidType } &&
+                property.Parameters[0].Type is IrReferenceType)
+                return property.ReturnType;
+
             var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
             _diagnostics.ReportError(
                 "E0022",
@@ -11037,8 +11441,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        if (context.expression(1) is NovusParser.RangeExprContext range)
+            return AnalyzeSlice(baseType, range.expression(0), range.expression(1), context);
+
         // Get the index expression type
-        var indexType = Visit(context.expression(1));
+        var indexExpression = context.expression(1);
+        var expectedIndexType = IsIntegerLiteral(indexExpression)
+            ? FindIndexOperatorIndexType(baseType, "Index")
+            : null;
+        var indexType = VisitWithExpectedType(indexExpression, expectedIndexType);
         if (indexType == null)
         {
             return null;
@@ -11056,20 +11467,25 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
-        // Auto-dereference pointers (like Rust/Swift)
+        // Raw pointer indexing can never prove a bound and therefore requires an
+        // explicit unsafe context. Arrays and slices remain safe by default.
         if (baseType is IrPointerType ptrType)
         {
-            // ptr[index] returns the element type
+            RequireUnsafe(
+                context,
+                "raw pointer indexing",
+                "raw pointers carry no length",
+                ["use a Slice<T> for checked indexing, or wrap this access in unsafe { ... }"]);
             return ptrType.PointeeType;
         }
         else if (baseType is IrReferenceType refType && refType.PointeeType is IrPointerType refPtrType)
         {
-            // &ptr[index] returns the element type
+            RequireUnsafe(context, "raw pointer indexing", "raw pointers carry no length");
             return refPtrType.PointeeType;
         }
         else if (baseType is IrMutReferenceType mutRefType && mutRefType.PointeeType is IrPointerType mutRefPtrType)
         {
-            // &var ptr[index] returns the element type
+            RequireUnsafe(context, "raw pointer indexing", "raw pointers carry no length");
             return mutRefPtrType.PointeeType;
         }
         else if (baseType is IrArrayType arrayType)
@@ -11109,6 +11525,60 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             );
             return null;
         }
+    }
+
+    public override IrType? VisitSliceFromExpr([NotNull] NovusParser.SliceFromExprContext context)
+    {
+        var baseType = Visit(context.expression(0));
+        return baseType == null
+            ? null
+            : AnalyzeSlice(baseType, context.expression(1), null, context);
+    }
+
+    public override IrType? VisitSliceToExpr([NotNull] NovusParser.SliceToExprContext context)
+    {
+        var baseType = Visit(context.expression(0));
+        return baseType == null
+            ? null
+            : AnalyzeSlice(baseType, null, context.expression(1), context);
+    }
+
+    private IrType? AnalyzeSlice(
+        IrType baseType,
+        NovusParser.ExpressionContext? start,
+        NovusParser.ExpressionContext? end,
+        ParserRuleContext context)
+    {
+        var sliceType = baseType switch
+        {
+            IrReferenceType reference => reference.PointeeType,
+            IrMutReferenceType reference => reference.PointeeType,
+            _ => baseType
+        };
+        if (sliceType is not IrStructType slice ||
+            slice.StructName is not ("Slice" or "MutSlice"))
+        {
+            _diagnostics.ReportError(
+                "E0024",
+                $"cannot slice type '{TypeToString(baseType)}'; use Slice<T> or MutSlice<T>",
+                SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+            return null;
+        }
+
+        foreach (var endpoint in new[] { start, end }.OfType<NovusParser.ExpressionContext>())
+        {
+            var endpointType = VisitWithExpectedType(endpoint, IrIntType.U32);
+            if (endpointType is not IrIntType)
+            {
+                _diagnostics.ReportError(
+                    "E0023",
+                    $"slice endpoint must be an integer, found '{TypeToString(endpointType!)}'",
+                    SourceLocationHelper.FromContext(endpoint, _filePath, _sourceLines));
+                return null;
+            }
+        }
+
+        return sliceType;
     }
 
     public override IrType? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
@@ -11951,8 +12421,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return null;
         }
 
+        var resolvedTypeName = ResolveAliasTypeName(typeName);
+
         // Try enum variant first
-        var enumType = _symbols.LookupEnum(typeName);
+        var enumType = _symbols.LookupEnum(resolvedTypeName);
         if (enumType != null)
         {
             // Check if the variant exists
@@ -11988,7 +12460,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         // Try associated function (struct method without self parameter)
-        var mangledName = $"{typeName}::{memberName}";
+        var mangledName = $"{resolvedTypeName}::{memberName}";
 
         var funcSymbol = GetFunction(mangledName);
         if (funcSymbol != null)
@@ -12018,7 +12490,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             if (explicitTypeArgs != null && explicitTypeArgs.Count > 0)
             {
                 // Get the struct to find its generic parameters
-                var structType = _symbols.LookupStruct(typeName);
+                var structType = _symbols.LookupStruct(resolvedTypeName);
                 if (structType != null)
                 {
                     if (structType.GenericParameters.Count != explicitTypeArgs.Count)
@@ -12194,6 +12666,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     public override IrType? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
         var structName = context.typeName().GetText();
+        if (_symbols.LookupTypeAlias(structName) is IrStructType aliasedStruct)
+            structName = aliasedStruct.StructName;
 
         // Check if struct type exists
         var structTypeLookup = _symbols.LookupStruct(structName);
@@ -12359,6 +12833,8 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     {
         // Handle Vec { {10, 20, 30} } syntax
         var structName = context.typeName().GetText();
+        if (_symbols.LookupTypeAlias(structName) is IrStructType aliasedStruct)
+            structName = aliasedStruct.StructName;
 
         // Check if struct type exists
         var structTypeLookup = _symbols.LookupStruct(structName);
@@ -12390,187 +12866,50 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     private IrType ParseAndValidateIntegerLiteral(ParserRuleContext context, string text)
     {
-        text = text.Replace("_", "");
-        var isNegative = context.GetText().StartsWith("-");
-
-        // Determine type from suffix
-        IrType type;
-        string numberText;
-
-        if (text.EndsWith("u8"))
-        {
-            type = IrIntType.U8;
-            numberText = text[..^2];
-        }
-        else if (text.EndsWith("u16"))
-        {
-            type = IrIntType.U16;
-            numberText = text[..^3];
-        }
-        else if (text.EndsWith("u32"))
-        {
-            type = IrIntType.U32;
-            numberText = text[..^3];
-        }
-        else if (text.EndsWith("u64"))
-        {
-            type = IrIntType.U64;
-            numberText = text[..^3];
-        }
-        else if (text.EndsWith("i8"))
-        {
-            type = IrIntType.I8;
-            numberText = text[..^2];
-        }
-        else if (text.EndsWith("i16"))
-        {
-            type = IrIntType.I16;
-            numberText = text[..^3];
-        }
-        else if (text.EndsWith("i32"))
-        {
-            type = IrIntType.I32;
-            numberText = text[..^3];
-        }
-        else if (text.EndsWith("i64"))
-        {
-            type = IrIntType.I64;
-            numberText = text[..^3];
-        }
-        else
-        {
-            type = _expectedType as IrIntType ?? IrIntType.I32;
-            numberText = text;
-        }
-
-        if (!long.TryParse(numberText, out var value))
-        {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0008",
-                $"invalid integer literal '{context.GetText()}'",
-                location
-            );
-            return type;
-        }
-
-        if (isNegative)
-            value = -value;
-
-        ValidateLiteralRange(context, value, type);
-        return type;
+        return ParseAndValidateIntegerLiteral(context);
     }
 
     private IrType ParseAndValidateBinaryLiteral(ParserRuleContext context, string text)
     {
-        text = text[1..].Replace("_", ""); // Remove % prefix and underscores
-        var (type, numberText) = ExtractTypeSuffix(text);
-
-        try
-        {
-            var value = Convert.ToInt64(numberText, 2);
-            if (context.GetText().StartsWith("-"))
-                value = -value;
-            ValidateLiteralRange(context, value, type);
-        }
-        catch (Exception)
-        {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0008",
-                $"invalid binary literal '{context.GetText()}'",
-                location
-            );
-        }
-
-        return type;
+        return ParseAndValidateIntegerLiteral(context);
     }
 
     private IrType ParseAndValidateHexLiteral(ParserRuleContext context, string text)
     {
-        // Remove hex prefix ('$' or '0x'/'0X') and underscores
-        if (text.StartsWith("0x") || text.StartsWith("0X"))
-        {
-            text = text[2..].Replace("_", "");
-        }
-        else
-        {
-            // Must be '$' prefix
-            text = text[1..].Replace("_", "");
-        }
-        var (type, numberText) = ExtractTypeSuffix(text);
-
-        try
-        {
-            var value = Convert.ToInt64(numberText, 16);
-            if (context.GetText().StartsWith("-"))
-                value = -value;
-            ValidateLiteralRange(context, value, type);
-        }
-        catch (Exception)
-        {
-            var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-            _diagnostics.ReportError(
-                "E0008",
-                $"invalid hexadecimal literal '{context.GetText()}'",
-                location
-            );
-        }
-
-        return type;
+        return ParseAndValidateIntegerLiteral(context);
     }
 
-    private (IrType type, string numberText) ExtractTypeSuffix(string text)
-    {
-        if (text.EndsWith("u8")) return (IrIntType.U8, text[..^2]);
-        if (text.EndsWith("u16")) return (IrIntType.U16, text[..^3]);
-        if (text.EndsWith("u32")) return (IrIntType.U32, text[..^3]);
-        if (text.EndsWith("u64")) return (IrIntType.U64, text[..^3]);
-        if (text.EndsWith("i8")) return (IrIntType.I8, text[..^2]);
-        if (text.EndsWith("i16")) return (IrIntType.I16, text[..^3]);
-        if (text.EndsWith("i32")) return (IrIntType.I32, text[..^3]);
-        if (text.EndsWith("i64")) return (IrIntType.I64, text[..^3]);
-        return (_expectedType as IrIntType ?? IrIntType.I32, text);
-    }
-
-    private void ValidateLiteralRange(ParserRuleContext context, long value, IrType type)
+    private IrType ParseAndValidateIntegerLiteral(ParserRuleContext context)
     {
         var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
-
-        if (type is IrIntType intType)
+        ParsedIntegerLiteral literal;
+        try
         {
-            var (min, max) = GetTypeRange(intType);
-
-            if (value < min || value > max)
-            {
-                _diagnostics.ReportError(
-                    "E0009",
-                    $"literal value {value} is out of range for type '{TypeToString(type)}'",
-                    location,
-                    helpTexts: new List<string>
-                    {
-                        $"the range for '{TypeToString(type)}' is {min} to {max}",
-                        "consider using a larger type or adjusting the value"
-                    }
-                );
-            }
+            literal = IntegerLiteralParser.Parse(context.GetText(), _expectedType as IrIntType);
         }
-    }
-
-    private (long min, long max) GetTypeRange(IrIntType type)
-    {
-        return type.IsSigned switch
+        catch (FormatException)
         {
-            true when type.BitWidth == 8 => (sbyte.MinValue, sbyte.MaxValue),
-            true when type.BitWidth == 16 => (short.MinValue, short.MaxValue),
-            true when type.BitWidth == 32 => (int.MinValue, int.MaxValue),
-            true when type.BitWidth == 64 => (long.MinValue, long.MaxValue),
-            false when type.BitWidth == 8 => (0, byte.MaxValue),
-            false when type.BitWidth == 16 => (0, ushort.MaxValue),
-            false when type.BitWidth == 32 => (0, uint.MaxValue),
-            false when type.BitWidth == 64 => (0, long.MaxValue), // Note: can't represent full ulong range
-            _ => (long.MinValue, long.MaxValue)
-        };
+            _diagnostics.ReportError(
+                "E0008",
+                $"invalid integer literal '{context.GetText()}'",
+                location);
+            return _expectedType as IrIntType ?? IrIntType.I32;
+        }
+
+        if (!literal.FitsType)
+        {
+            _diagnostics.ReportError(
+                "E0009",
+                $"literal value {literal.Value} is out of range for type '{TypeToString(literal.Type)}'",
+                location,
+                helpTexts:
+                [
+                    $"the range for '{TypeToString(literal.Type)}' is {literal.Minimum} to {literal.Maximum}",
+                    "use a larger contextual type or an explicit cast"
+                ]);
+        }
+
+        return literal.Type;
     }
 
     private IrType ParseType(NovusParser.TypeContext context)
@@ -12596,6 +12935,21 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Return a placeholder type to allow analysis to continue
             return IrIntType.I32;
         }
+    }
+
+    private string ResolveAliasTypeName(string name) => _symbols.LookupTypeAlias(name) switch
+    {
+        IrStructType type => type.StructName,
+        IrEnumType type => type.EnumName,
+        _ => name
+    };
+
+    private string ResolveQualifiedAliasName(string name)
+    {
+        var separator = name.IndexOf("::", StringComparison.Ordinal);
+        return separator < 0
+            ? name
+            : ResolveAliasTypeName(name[..separator]) + name[separator..];
     }
 
 
@@ -13484,6 +13838,17 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         return null;
     }
 
+    private IrType? FindIndexOperatorIndexType(IrType baseType, string traitName)
+    {
+        var typeName = GetBaseTypeNameForTraitLookup(baseType);
+        return _traitResolver.GetAllImpls().Values
+            .FirstOrDefault(implementation =>
+                implementation.TypeName == typeName &&
+                implementation.TraitName == traitName &&
+                implementation.TraitTypeArgs.Count >= 2)
+            ?.TraitTypeArgs[0];
+    }
+
     /// <summary>
     /// Check if a type supports the index mutation operator via IndexMut trait implementation.
     /// Returns the value type (T in IndexMut&lt;I, T&gt;) if the type implements IndexMut,
@@ -14180,7 +14545,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
     /// <summary>
     /// Attempts to evaluate a compile-time integer literal from an expression context.
-    /// Supports decimal, hexadecimal ($), and binary (%) literals with optional type suffixes.
+    /// Supports decimal, hexadecimal ($), and binary (%) literals.
     /// </summary>
     /// <param name="exprCtx">The expression context to evaluate</param>
     /// <param name="value">The evaluated integer value</param>
@@ -14212,18 +14577,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
         // Remove underscores (used as digit separators)
         text = text.Replace("_", "");
-
-        // Remove type suffix if present
-        if (text.EndsWith("u8") || text.EndsWith("i8"))
-        {
-            text = text[..^2];
-        }
-        else if (text.EndsWith("u16") || text.EndsWith("i16") ||
-                 text.EndsWith("u32") || text.EndsWith("i32") ||
-                 text.EndsWith("u64") || text.EndsWith("i64"))
-        {
-            text = text[..^3];
-        }
 
         int parsedValue;
         bool success;

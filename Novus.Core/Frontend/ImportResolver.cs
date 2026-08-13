@@ -119,7 +119,7 @@ public class ImportResolver
     /// </summary>
     public void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
-        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        // Get the module path (e.g., "amiga::dos" or "amiga::raw::exec")
         var moduleNamespace = context.modulePath().GetText();
 
         // Get the list of names to import
@@ -289,31 +289,19 @@ public class ImportResolver
 
     /// <summary>
     /// Resolve a module namespace to a file path
-    /// std::dos → std/dos.novus
-    /// std::ffi::exec → std/ffi/exec.novus
+    /// amiga::dos → std/amiga/dos.novus
+    /// amiga::raw::exec → std/amiga/raw/exec.novus
     /// </summary>
     private string ResolveModulePath(string moduleNamespace)
     {
-        var pathParts = moduleNamespace.Split(new[] { "::" }, StringSplitOptions.RemoveEmptyEntries);
-
-        if (pathParts is [])
+        try
+        {
+            return ModuleImportHelper.ResolveModulePath(moduleNamespace, _stdLibPath);
+        }
+        catch (ArgumentException)
         {
             _registry.ReportError("E0026", $"Invalid module namespace: {moduleNamespace}");
             return "";
-        }
-
-        // Build file path
-        if (pathParts[0] == "std")
-        {
-            // std library module - relative to std lib path
-            var relativePath = string.Join(Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
-            return Path.Combine(_stdLibPath, relativePath + ".novus");
-        }
-        else
-        {
-            // User module (future: will use package resolution)
-            var relativePath = string.Join(Path.DirectorySeparatorChar.ToString(), pathParts);
-            return relativePath + ".novus";
         }
     }
 
@@ -562,13 +550,13 @@ public class ImportResolver
         }
 
         // Recursively import symbols from FFI modules that this module imports
-        // Only import from std::ffi::* modules to avoid conflicts with wrapper functions
+        // Only import from amiga::raw::* modules to avoid conflicts with wrapper functions
         foreach (var importDecl in context.importDeclaration())
         {
             var importPath = importDecl.modulePath().GetText();
 
-            // Only transitively import from std::ffi::* modules (pure FFI bindings)
-            if (!importPath.Contains("::ffi::"))
+            // Only transitively import from amiga::raw::* modules (pure FFI bindings)
+            if (!importPath.StartsWith("amiga::raw::", StringComparison.Ordinal))
             {
                 continue;
             }

@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: string.library
+// Base: _StringBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("string.library")
+extern pub fn STRING_GetClass() -> *u8

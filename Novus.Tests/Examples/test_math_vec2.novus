@@ -49,7 +49,7 @@ pub fn test_vec2_from_i32() {
 
 @test
 pub fn test_vec2_from_i16() {
-    let v = Vec2::from_i16(100i16, 200i16)
+    let v = Vec2::from_i16(100, 200)
     expect_eq(v.get_x().to_i32(), 100, "from_i16 x")
     expect_eq(v.get_y().to_i32(), 200, "from_i16 y")
 }
@@ -373,7 +373,7 @@ pub fn test_distance_sq() {
 @test
 pub fn test_direction_from_angle() {
     // 0 degrees should point right (1, 0)
-    let v = direction_from_angle(0u16)
+    let v = direction_from_angle(0)
     expect_true(v.get_x().to_i32() == 1 || v.get_x().to_raw() > 60000, "direction 0 x ≈ 1")
     expect_true(v.get_y().to_i32() == 0 || v.get_y().abs().to_raw() < 5000, "direction 0 y ≈ 0")
 }

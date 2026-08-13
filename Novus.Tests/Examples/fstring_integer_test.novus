@@ -1,8 +1,8 @@
 // F-String Integer Formatting Test
 // Tests integer interpolation in f-strings
 
-from std::strings::core import Str, String
-from std::strings::format import Formatter, Display
+from std::string::core import Str, String
+from std::string::format import Formatter, Display
 
 extern fn write(format: *u8, ...args) -> i32
 

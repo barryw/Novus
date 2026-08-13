@@ -8,7 +8,7 @@ public enum FfiModuleKind
     CallerSupplied
 }
 
-/// <summary>Machine-readable metadata carried by generated std::ffi modules.</summary>
+/// <summary>Machine-readable metadata carried by generated amiga::raw modules.</summary>
 public sealed record FfiModuleMetadata(
     string ModulePath,
     string ModuleName,
@@ -70,7 +70,9 @@ public sealed record FfiModuleMetadata(
         if (string.IsNullOrWhiteSpace(libraryName) || string.IsNullOrWhiteSpace(baseSymbol))
             return null;
 
-        var moduleName = Path.GetFileNameWithoutExtension(modulePath);
+        var physicalName = Path.GetFileNameWithoutExtension(modulePath);
+        var moduleName = libraryName.Replace(".library", "", StringComparison.OrdinalIgnoreCase)
+            .Replace('.', '_');
         var kind = baseSymbol.Equals("caller-supplied", StringComparison.OrdinalIgnoreCase)
             ? FfiModuleKind.CallerSupplied
             : libraryName.EndsWith(".device", StringComparison.OrdinalIgnoreCase)
@@ -78,10 +80,13 @@ public sealed record FfiModuleMetadata(
             : libraryName.EndsWith(".resource", StringComparison.OrdinalIgnoreCase)
                 ? FfiModuleKind.Resource
                 : FfiModuleKind.Library;
-        var isClass = ClassOpenNames.TryGetValue(moduleName, out var classOpenName);
+        var isClass = ClassOpenNames.TryGetValue(physicalName, out var classOpenName);
 
         var headers = new List<string>();
-        var headerMapPath = Path.Combine(Path.GetDirectoryName(modulePath)!, "ndk_headers.txt");
+        var metadataDirectory = Path.GetDirectoryName(modulePath)!;
+        var headerMapPath = Path.Combine(metadataDirectory, "ndk_headers.txt");
+        if (!File.Exists(headerMapPath))
+            headerMapPath = Path.Combine(Path.GetDirectoryName(metadataDirectory)!, "ndk_headers.txt");
         if (File.Exists(headerMapPath))
         {
             var prefix = moduleName + "|";
@@ -92,7 +97,9 @@ public sealed record FfiModuleMetadata(
         }
 
         var functionVersions = new Dictionary<string, int>(StringComparer.Ordinal);
-        var versionMapPath = Path.Combine(Path.GetDirectoryName(modulePath)!, "ndk_versions.txt");
+        var versionMapPath = Path.Combine(metadataDirectory, "ndk_versions.txt");
+        if (!File.Exists(versionMapPath))
+            versionMapPath = Path.Combine(Path.GetDirectoryName(metadataDirectory)!, "ndk_versions.txt");
         if (File.Exists(versionMapPath))
         {
             var prefix = moduleName + "|";

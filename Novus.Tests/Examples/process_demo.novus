@@ -4,7 +4,7 @@
 // via the Drop trait.
 
 from std::io::file import write
-from std::os::exec import SignalHandle
+from amiga::sys::exec import SignalHandle
 
 pub fn main() -> i32 {
     write("SignalHandle Demo\n")

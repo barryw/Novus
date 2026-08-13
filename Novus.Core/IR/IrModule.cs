@@ -186,6 +186,11 @@ public class IrModule
         Enums.Add(enumType);
         // Maintain lookup dictionary for O(1) access by name
         // Use indexer to allow overwrites (enum may be re-registered during monomorphization)
+        if (_enumLookup.TryGetValue(enumType.EnumName, out var existing) &&
+            existing.Variants.Count > 0 && enumType.Variants.Count == 0)
+        {
+            return;
+        }
         _enumLookup[enumType.EnumName] = enumType;
     }
 
@@ -543,6 +548,9 @@ public class IrFunction
     /// Null for non-overloaded functions.
     /// </summary>
     public string? OriginalName { get; set; }
+
+    /// <summary>External symbol used by a locally aliased imported function.</summary>
+    public string? LinkName { get; set; }
 
     /// <summary>
     /// For monomorphized functions: the type arguments used to instantiate this function.
@@ -2106,6 +2114,25 @@ public class IrCastValue : IrValue
     }
 }
 
+/// <summary>Computes pointer + index without loading the pointed-to element.</summary>
+public class IrPointerOffsetValue : IrValue
+{
+    public IrValue Pointer { get; set; }
+    public IrValue Index { get; set; }
+    public IrType ElementType { get; }
+
+    public IrPointerOffsetValue(
+        IrValue pointer,
+        IrValue index,
+        IrType elementType,
+        IrType resultType) : base(resultType)
+    {
+        Pointer = pointer;
+        Index = index;
+        ElementType = elementType;
+    }
+}
+
 /// <summary>
 /// Field reference value - represents an lvalue reference to a struct field
 /// Used when we need to pass &struct.field to a function without loading the field value first
@@ -2134,14 +2161,27 @@ public class IrIndexedFieldAccess : IrValue
     public IrValue Index { get; set; }
     public string FieldName { get; set; }
     public int FieldOffset { get; set; }
+    public IrBoundsCheckMode BoundsCheck { get; set; }
+    public IrValue? Length { get; set; }
 
-    public IrIndexedFieldAccess(IrValue array, IrValue index, string fieldName, int fieldOffset, IrType fieldType)
+    public IrIndexedFieldAccess(
+        IrValue array,
+        IrValue index,
+        string fieldName,
+        int fieldOffset,
+        IrType fieldType,
+        IrBoundsCheckMode boundsCheck = IrBoundsCheckMode.Checked,
+        IrValue? length = null)
         : base(fieldType)
     {
         Array = array;
         Index = index;
         FieldName = fieldName;
         FieldOffset = fieldOffset;
+        BoundsCheck = boundsCheck;
+        Length = length ?? (array.Type is IrArrayType arrayType && arrayType.Length >= 0
+            ? new IrConstant(arrayType.Length, IrIntType.U32)
+            : null);
     }
 }
 
@@ -2267,6 +2307,39 @@ public class IrArrayLiteral : IrValue
 }
 
 /// <summary>
+/// Whether an indexed memory operation must emit a bounds check. `Proven`
+/// records that a compiler pass removed a formerly checked operation;
+/// `Unchecked` is reserved for source inside an explicit unsafe context.
+/// </summary>
+public enum IrBoundsCheckMode
+{
+    Checked,
+    Proven,
+    Unchecked,
+}
+
+/// <summary>Validates start &lt;= end &lt;= length before constructing a slice.</summary>
+public class IrSliceBoundsCheck : IrInstruction
+{
+    public IrValue Start { get; set; }
+    public IrValue End { get; set; }
+    public IrValue Length { get; set; }
+    public IrBoundsCheckMode BoundsCheck { get; set; }
+
+    public IrSliceBoundsCheck(
+        IrValue start,
+        IrValue end,
+        IrValue length,
+        IrBoundsCheckMode boundsCheck = IrBoundsCheckMode.Checked)
+    {
+        Start = start;
+        End = end;
+        Length = length;
+        BoundsCheck = boundsCheck;
+    }
+}
+
+/// <summary>
 /// Array index access instruction
 /// Gets the address or value of array[index]
 /// </summary>
@@ -2276,13 +2349,25 @@ public class IrIndexAccess : IrInstruction
     public IrValue Array { get; set; }
     public IrValue Index { get; set; }
     public IrType ElementType { get; set; }
+    public IrBoundsCheckMode BoundsCheck { get; set; }
+    public IrValue? Length { get; set; }
 
-    public IrIndexAccess(string resultName, IrValue array, IrValue index, IrType elementType)
+    public IrIndexAccess(
+        string resultName,
+        IrValue array,
+        IrValue index,
+        IrType elementType,
+        IrBoundsCheckMode boundsCheck = IrBoundsCheckMode.Checked,
+        IrValue? length = null)
     {
         ResultName = resultName;
         Array = array;
         Index = index;
         ElementType = elementType;
+        BoundsCheck = boundsCheck;
+        Length = length ?? (array.Type is IrArrayType arrayType && arrayType.Length >= 0
+            ? new IrConstant(arrayType.Length, IrIntType.U32)
+            : null);
     }
 }
 
@@ -2334,12 +2419,23 @@ public class IrIndexStore : IrInstruction
     public IrValue Array { get; set; }
     public IrValue Index { get; set; }
     public IrValue Value { get; set; }
+    public IrBoundsCheckMode BoundsCheck { get; set; }
+    public IrValue? Length { get; set; }
 
-    public IrIndexStore(IrValue array, IrValue index, IrValue value)
+    public IrIndexStore(
+        IrValue array,
+        IrValue index,
+        IrValue value,
+        IrBoundsCheckMode boundsCheck = IrBoundsCheckMode.Checked,
+        IrValue? length = null)
     {
         Array = array;
         Index = index;
         Value = value;
+        BoundsCheck = boundsCheck;
+        Length = length ?? (array.Type is IrArrayType arrayType && arrayType.Length >= 0
+            ? new IrConstant(arrayType.Length, IrIntType.U32)
+            : null);
     }
 }
 
@@ -2355,14 +2451,27 @@ public class IrIndexedFieldStore : IrInstruction
     public string FieldName { get; set; }
     public int FieldOffset { get; set; }
     public IrValue Value { get; set; }
+    public IrBoundsCheckMode BoundsCheck { get; set; }
+    public IrValue? Length { get; set; }
 
-    public IrIndexedFieldStore(IrValue array, IrValue index, string fieldName, int fieldOffset, IrValue value)
+    public IrIndexedFieldStore(
+        IrValue array,
+        IrValue index,
+        string fieldName,
+        int fieldOffset,
+        IrValue value,
+        IrBoundsCheckMode boundsCheck = IrBoundsCheckMode.Checked,
+        IrValue? length = null)
     {
         Array = array;
         Index = index;
         FieldName = fieldName;
         FieldOffset = fieldOffset;
         Value = value;
+        BoundsCheck = boundsCheck;
+        Length = length ?? (array.Type is IrArrayType arrayType && arrayType.Length >= 0
+            ? new IrConstant(arrayType.Length, IrIntType.U32)
+            : null);
     }
 }
 

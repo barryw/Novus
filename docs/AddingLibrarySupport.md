@@ -120,18 +120,18 @@ This is the most critical step. You MUST add code to open your library at startu
 
 ### Step 3: Create FFI Bindings
 
-**File:** `/Users/barry/RiderProjects/Novus/Novus/std/ffi/gadtools.novus`
+**File:** `/Users/barry/RiderProjects/Novus/Novus/std/amiga/raw/gadtools.novus`
 
 Create FFI bindings for the library's functions. These are typically generated from SFD files using the stub generator, but can be written manually:
 
 ```novus
 // gadtools.novus - Low-level FFI bindings for gadtools.library
-// Namespace: std::ffi::gadtools
+// Namespace: amiga::raw::gadtools
 //
 // These are direct 1:1 mappings to the C functions in gadtools.library.
-// For high-level, ergonomic APIs, see std::graphics::menus
+// For high-level, ergonomic APIs, see amiga::sys::graphics::menus
 
-from std::ffi::amiga_structs import Menu, NewMenu, VisualInfo, Screen, TagItem, Gadget
+from amiga::raw::structs import Menu, NewMenu, VisualInfo, Screen, TagItem, Gadget
 
 // ============================================================================
 // Menu Functions
@@ -188,7 +188,7 @@ extern fn FreeGadgets(gadget: *Gadget)
 
 ### Step 3: Define Necessary Structs
 
-**File:** `/Users/barry/RiderProjects/Novus/Novus/std/ffi/amiga_structs.novus`
+**File:** `/Users/barry/RiderProjects/Novus/Novus/std/amiga/raw/structs.novus`
 
 Add any structs the library uses (if not already present):
 
@@ -255,7 +255,7 @@ sb.AppendLine("typedef struct VisualInfo VisualInfo;"); // ← ADD THIS
 
 ### Step 4: Define Constants
 
-**File:** `/Users/barry/RiderProjects/Novus/Novus/std/ffi/amiga_consts.novus`
+**File:** `/Users/barry/RiderProjects/Novus/Novus/std/amiga/raw/consts.novus`
 
 Add any constants the library defines:
 
@@ -293,12 +293,12 @@ Create ergonomic, type-safe wrappers around the FFI:
 
 from std::core import Result, Vec
 from std::error::core import IntuitionError
-from std::ffi::amiga_structs import Menu, NewMenu, Screen, VisualInfo, Window
-from std::ffi::amiga_consts import *
-from std::ffi::gadtools import CreateMenusA, LayoutMenusA, FreeMenus, GetVisualInfoA, FreeVisualInfo
-from std::ffi::intuition import SetMenuStrip, ClearMenuStrip
-from std::ffi::exec import AllocVec, FreeVec, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
-from std::strings::core import Str, String
+from amiga::raw::structs import Menu, NewMenu, Screen, VisualInfo, Window
+from amiga::raw::consts import *
+from amiga::raw::gadtools import CreateMenusA, LayoutMenusA, FreeMenus, GetVisualInfoA, FreeVisualInfo
+from amiga::raw::intuition import SetMenuStrip, ClearMenuStrip
+from amiga::raw::exec import AllocVec, FreeVec, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::string::core import Str, String
 
 pub struct GadToolsMenuBuilder {
     entries_bytes: Vec<u8>  // Raw menu entry data
@@ -431,9 +431,9 @@ When adding a new library, you'll typically modify these files:
 
 - [ ] `/Novus/stubs/library_bases.s` - Add library base storage
 - [ ] **`/Novus/stubs/novus_startup.s`** - **CRITICAL: Add OpenLibrary/CloseLibrary calls**
-- [ ] `/Novus/std/ffi/yourlib.novus` - FFI function bindings
-- [ ] `/Novus/std/ffi/amiga_structs.novus` - Add structs (if needed)
-- [ ] `/Novus/std/ffi/amiga_consts.novus` - Add constants (if needed)
+- [ ] `/Novus/std/amiga/raw/yourlib.novus` - FFI function bindings
+- [ ] `/Novus/std/amiga/raw/structs.novus` - Add structs (if needed)
+- [ ] `/Novus/std/amiga/raw/consts.novus` - Add constants (if needed)
 - [ ] **`/Novus/Codegen/CCodeGenerator.cs`** - **CRITICAL: Add NDK structs to skip list AND typedef generation**
 - [ ] `/Novus/std/yourmodule/api.novus` - High-level wrappers (optional)
 - [ ] `/Novus/std/error/core.novus` - Error types (if needed)
@@ -634,7 +634,7 @@ Create a minimal test program:
 
 ```novus
 // test_yourlib.novus
-from std::ffi::yourlib import SomeFunction
+from amiga::raw::yourlib import SomeFunction
 from std::io::core import write
 
 pub fn main() -> i32 {
@@ -663,7 +663,7 @@ For GadTools, we:
 
 1. ✅ Added `_GadToolsBase` to `library_bases.s`
 2. ✅ **Added OpenLibrary/CloseLibrary calls to `novus_startup.s`** (CRITICAL!)
-3. ✅ Created `std/ffi/gadtools.novus` with function bindings
+3. ✅ Created `std/amiga/raw/gadtools.novus` with function bindings
 4. ✅ Added `NewMenu` and `VisualInfo` structs to `amiga_structs.novus`
 5. ✅ **Added `NewMenu` and `VisualInfo` to NDK skip list in `CCodeGenerator.cs`** (CRITICAL!)
 6. ✅ **Added typedefs for `NewMenu` and `VisualInfo` in `CCodeGenerator.cs`** (CRITICAL!)

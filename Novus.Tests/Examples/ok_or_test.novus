@@ -48,7 +48,7 @@ fn test_none_ok_or() -> bool {
 
 fn test_ok_or_with_different_types() -> bool {
     // Test with different Option and Error types
-    let opt: Option<u32> = Option::Some(100u32)
+    let opt: Option<u32> = Option::Some(100)
     let result = opt.ok_or(TestError::NotFound)
 
     if !result.is_ok() {

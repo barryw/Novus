@@ -1,5 +1,5 @@
-from std::core import Iterable, Option, Result
-from std::error::errors import ExecError
+from std::core import Copy, Eq, Index, IndexMut, Iterable, Option, Result
+from std::memory::errors import MemoryError
 
 /// Generic slice type - an owner-tied reference plus an array length
 ///
@@ -10,10 +10,10 @@ from std::error::errors import ExecError
 /// ```novus
 /// fn sum(numbers: Slice<i32>) -> i32 {
 ///     var total = 0
-///     var i = 0u32
+///     var i: u32 = 0
 ///     while i < numbers.len {
 ///         total = total + *numbers.get(i).unwrap()
-///         i = i + 1u32
+///         i = i + 1
 ///     }
 ///     return total
 /// }
@@ -29,9 +29,9 @@ pub struct Slice<T> {
 impl<T> Iterable<T> for Slice<T> {
     fn len(&self) -> u32 { return self.len }
 
-    fn get(&self, index: u32) -> Option<&T> {
-        if index >= self.len { return Option::None }
-        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    @unsafe
+    fn get_unchecked(&self, index: u32) -> &T {
+        unsafe { return &((*T)self.ptr)[index] }
     }
 }
 
@@ -50,10 +50,12 @@ impl<T> Slice<T> {
 
     /// Check if the slice is empty
     pub fn is_empty(&self) -> bool {
-        return self.len == 0u32
+        return self.len == 0
     }
 
-    /// Get element at index (unsafe - no bounds checking)
+    /// Get an element without checking the index.
+    /// SAFETY: `index` must be less than `len()`.
+    @unsafe
     pub fn get_unchecked(&self, index: u32) -> &T {
         unsafe { return &((*T)self.ptr)[index] }
     }
@@ -73,12 +75,31 @@ impl<T> Slice<T> {
     }
 }
 
+impl<T> Eq for Slice<T> where T: Eq {
+    @inline
+    fn eq(&self, other: &Slice<T>) -> bool {
+        return false unless self.len == other.len
+        for index in 0..self.len {
+            unsafe {
+                return false unless self.get_unchecked(index).eq(other.get_unchecked(index))
+            }
+        }
+        return true
+    }
+}
+
+impl<T> Index<u32, &T> for Slice<T> {
+    fn index(&self, consuming index: u32) -> &T {
+        return self.get(index).unwrap()
+    }
+}
+
 impl<T> Iterable<T> for MutSlice<T> {
     fn len(&self) -> u32 { return self.len }
 
-    fn get(&self, index: u32) -> Option<&T> {
-        if index >= self.len { return Option::None }
-        unsafe { return Option::Some(&((*T)self.ptr)[index]) }
+    @unsafe
+    fn get_unchecked(&self, index: u32) -> &T {
+        unsafe { return &((*T)self.ptr)[index] }
     }
 }
 
@@ -101,7 +122,7 @@ impl<T> MutSlice<T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        return self.len == 0u32
+        return self.len == 0
     }
 
     pub fn get(&self, index: u32) -> Option<&T> {
@@ -136,9 +157,9 @@ impl<T> MutSlice<T> {
         }
     }
 
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
         unsafe {
             let raw: *T = (*T)self.ptr
@@ -146,5 +167,42 @@ impl<T> MutSlice<T> {
             raw[index] = value
         }
         return Result::Ok(())
+    }
+
+    /// Copy equally-sized slices after one boundary check. `T: Copy` prevents
+    /// duplicating owned values; the raw loop is safe because both lengths were
+    /// validated before entering it.
+    pub fn copy_from(&var self, source: Slice<T>) -> Result<(), MemoryError> where T: Copy {
+        if self.len != source.len { return Result::Err(MemoryError::LengthMismatch) }
+        unsafe {
+            let destination: *T = (*T)self.ptr
+            let input: *T = (*T)source.ptr
+            for index in 0..self.len {
+                destination[index] = input[index]
+            }
+        }
+        return Result::Ok(())
+    }
+
+    /// Fill the entire slice after proving the loop bound once.
+    pub fn fill(&var self, value: T) where T: Copy {
+        unsafe {
+            let destination: *T = (*T)self.ptr
+            for index in 0..self.len {
+                destination[index] = value
+            }
+        }
+    }
+}
+
+impl<T> Index<u32, &T> for MutSlice<T> {
+    fn index(&self, consuming index: u32) -> &T {
+        return self.get(index).unwrap()
+    }
+}
+
+impl<T> IndexMut<u32, T> for MutSlice<T> {
+    fn index_set(&var self, consuming index: u32, consuming value: T) {
+        self.set(index, value).unwrap()
     }
 }

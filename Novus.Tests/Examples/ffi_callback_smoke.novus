@@ -1,4 +1,4 @@
-from std::ffi::exec import Supervisor
+from amiga::raw::exec import Supervisor
 
 fn supervisor_callback() -> u32 {
     return 0

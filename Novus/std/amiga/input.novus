@@ -1,0 +1,4 @@
+from amiga::sys::gadtools import GadToolsEvent
+
+// Tier 1 input is delivered as application window events.
+pub type Event = GadToolsEvent

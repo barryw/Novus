@@ -41,11 +41,13 @@ Avoid making these default language directions:
 
 # Priority 0: immediate ergonomics
 
-## 1. Contextual integer literals
+## 1. Contextual numeric literals and explicit casts
+
+**Status: complete.** Numeric literals use assignment, parameter, return, comparison, arithmetic, range, array-element, pattern, and compound-lvalue context; out-of-range integers are diagnosed before IR generation. Literal type suffixes are not part of Novus. A normal cast such as `(i8)0` is the one explicit spelling.
 
 ### Problem
 
-Current Novus code is saturated with redundant suffixes:
+Older Novus code was saturated with redundant suffixes:
 
 ```novus
 for index in 0u32..summed_longs {
@@ -69,10 +71,11 @@ return false unless high_reserved_block < $FFFFFFFF / BLOCK_BYTES
 
 ### Rules
 
-- Unsuffixed integer literals begin as an abstract integer value.
-- Assignment, parameter, return, comparison, arithmetic, range, array-element, and pattern context may determine the concrete type.
+- Integer and floating-point literals begin without a forced concrete width.
+- Assignment, parameter, return, comparison, arithmetic, range, array-element, and pattern context may determine the concrete type, including fixed-point types.
 - Compilation fails when the value does not fit the inferred type.
-- Explicit suffixes remain available when a programmer wants to force a type.
+- A programmer forces a type with the same cast syntax used everywhere else: `(u16)42`, `(f64)1.5`, or `(fixed16)2.0`.
+- Numeric type suffixes are syntax errors; Novus has one explicit-conversion model rather than a second literal-only notation.
 - Ambiguous expressions must produce a useful diagnostic rather than selecting a surprising type.
 
 ### Code generation
@@ -82,6 +85,8 @@ No runtime cost. Literal typing is compile-time only.
 ---
 
 ## 2. Compound assignment
+
+**Status: complete.** All ten operators lower to the corresponding read-modify-write IR operation, preserve contextual integer typing, evaluate complex lvalue components once, and are covered for variables, fields, array elements, nested lvalues, and dereferences.
 
 Add:
 
@@ -102,6 +107,8 @@ These should lower exactly as their expanded assignment forms.
 ---
 
 ## 3. First-class safe indexing and slicing
+
+**Status: complete.** Arrays and slices are checked by default, raw-pointer indexing requires `unsafe`, closed and open slice ranges lower through explicit bounds-check and pointer-offset IR, and exact `0..slice.len()` loops eliminate the dominated element check.
 
 ### Target syntax
 
@@ -148,6 +155,8 @@ Do not introduce a second ordinary-looking indexing operator whose safety is unc
 
 ## 4. Contextual Option binding
 
+**Status: complete.** A plain binding unwraps `Option<T>` contextually, brace-free `return`, `break`, `continue`, and `panic` are accepted as diverging alternatives, and explicit enum patterns remain available.
+
 ### Problem
 
 Current code repeatedly exposes enum structure when the programmer only wants to unwrap or take an alternate control-flow path:
@@ -181,6 +190,8 @@ Do not automatically generalize this rule to `Result<T, E>` until error propagat
 ---
 
 ## 5. Uniform iteration
+
+**Status: complete.** `Iterable<T>` loops cache `len`, prove the index bound, and call an inherited unsafe `get_unchecked` contract without constructing `Option` values; `Iterator<T>` loops retain direct `next`/done branching.
 
 ### Goal
 
@@ -222,6 +233,8 @@ This must lower to direct iterator initialization plus `next`/done branching. No
 
 ## 6. Native index types
 
+**Status: complete at the language layer.** `usize` and `isize` are reserved native types and map to `u32`/`i32` on every supported 68k target. Migrating every collection API from legacy `u32` signatures belongs to the upcoming library redesign so APIs change once, coherently.
+
 Introduce or standardize:
 
 ```novus
@@ -250,6 +263,8 @@ inside ordinary collection code.
 
 ## 7. `enumerate`
 
+**Status: complete.** Tuple loop bindings over `.enumerate()` lower directly into the existing index/count loop. There is no adapter value, allocation, virtual dispatch, or `enumerate` call in IR.
+
 Support straightforward index + value iteration:
 
 ```novus
@@ -263,6 +278,8 @@ This must remain a static, allocation-free iterator transformation.
 ---
 
 ## 8. Byte literals and byte strings
+
+**Status: complete.** Byte characters are `u8`; byte strings are fixed `[u8; N]` compile-time values. Byte-array and byte-slice match patterns compare the length once and emit proven in-bounds byte checks without allocation.
 
 Systems code frequently works with signatures and binary formats.
 
@@ -294,6 +311,8 @@ No heap allocation is permitted.
 
 ## 9. FourCC literals
 
+**Status: complete.** `fourcc"ABCD"` requires exactly four bytes and produces the big-endian `u32` value `0x41424344` at compile time, including in `const` declarations.
+
 Binary Amiga formats contain many 32-bit ASCII identifiers. Hex constants are unreadable:
 
 ```novus
@@ -322,6 +341,8 @@ const ID_RDSK = fourcc"RDSK"
 
 ## 10. Fixed-capacity formatting support
 
+**Status: complete through existing language and library machinery.** Interpolated `f"..."` strings use the stack-only `StackFormatter`; `FixedString<N>::new_from_str(f"...")?` gives an explicitly sized retained value. Neither path uses heap allocation, varargs, reflection, or dynamic dispatch. A second format-string parser was intentionally not added.
+
 This may be primarily a standard-library feature, but the language must support it efficiently enough that formatting does not require heap strings, varargs, reflection, or dynamic dispatch.
 
 Target source should be able to look approximately like:
@@ -342,6 +363,8 @@ The initial implementation should prefer a library facility over new syntax.
 
 ## 11. Result error remapping without closures
 
+**Status: complete.** `Result<T, E>::or_error<F>` is inline, consumes both values, preserves `Ok`, replaces `Err`, and introduces no closure or allocation.
+
 HDPart often needs to intentionally collapse one error domain into another.
 
 Instead of verbose matches, provide a zero-cost library operation such as:
@@ -357,6 +380,8 @@ This should be preferred over adding general closure machinery solely for `map_e
 # Priority 2: structural improvements
 
 ## 12. Slice equality and bulk copy
+
+**Status: complete.** `Slice<T>: Eq` checks length once and compares through the compiler-proven unchecked primitive. `MutSlice<T>::copy_from` requires `T: Copy`, checks equal lengths once, and performs one proven contiguous loop.
 
 Portable stdlib operations should make hand-written byte loops unnecessary:
 
@@ -374,6 +399,8 @@ Safety checks should occur at the operation boundary, not for every copied byte.
 
 ## 13. Uniform `fill`
 
+**Status: complete.** `MutSlice<T>::fill` and the array `.fill(value)` intrinsic require `T: Copy` and lower to a single proven-bounds loop.
+
 Arrays and mutable slices should expose a consistent operation:
 
 ```novus
@@ -385,6 +412,8 @@ The implementation should be optimized for primitive element types.
 ---
 
 ## 14. Property-style read-only accessors
+
+**Status: complete.** A missing field may resolve to a zero-argument getter whose only parameter is immutable `&self`. Fields always win. Mutable receivers, consuming receivers, parameterized methods, and `void` methods never qualify. Inherent and concrete trait getters use the same call ABI and remain callable with parentheses for layer interoperability.
 
 Consider allowing trivial getter methods to be exposed as read-only properties:
 
@@ -408,6 +437,8 @@ This is lower priority than literal inference, indexing, Option binding, and ite
 
 ## 15. Derived value traits
 
+**Status: complete.** The existing `#[derive(Eq, Hash)]` facility synthesizes structural implementations for non-generic value structs and registers them with normal trait lookup. Derivation remains explicit; domain-specific equality is never inferred automatically.
+
 Simple value types should be able to derive common traits such as equality where semantics are structural.
 
 Exact attribute syntax can follow the existing Novus attribute system.
@@ -417,6 +448,8 @@ Do not derive equality automatically for types whose equality is domain-specific
 ---
 
 ## 16. Enum representation and discriminant ergonomics
+
+**Status: complete.** Fieldless enums accept an explicit integer representation, explicit and auto-incremented discriminants, preserve their ABI width in IR/C output, and allow only explicit conversions to or from the exact underlying integer type. Represented enums cannot carry associated data.
 
 Support strongly typed ABI-transparent IDs:
 
@@ -442,6 +475,8 @@ Use this for gadget IDs, menu IDs, command IDs, and similar domains instead of u
 ---
 
 # Test ergonomics
+
+**Status: complete.** The test module now exposes concise generic `expect_ok`, `expect_err`, `expect_some`, `expect_none`, `expect_eq`, and `expect_ne` helpers while retaining message-bearing and typed compatibility helpers. Generic overloads now have distinct monomorphization cache identities.
 
 Tests are part of the language usability story. The test stdlib should provide:
 
@@ -476,11 +511,15 @@ Required compiler work includes:
 6. Bulk-operation recognition for copy/fill/equality where useful.
 7. Dead-code elimination across unused high-level wrappers.
 
+**Status:** the optimizer already contains general IR inlining, Result/Option temporary optimization, range-aware bounds-check elimination, constant/copy propagation, CFG dead-code elimination, small-function expansion, and module dead-function elimination. The new byte comparison, copy, and fill lowerings expose ordinary proven loops to those passes instead of adding runtime helpers.
+
 Safety should be cheap because the compiler understands it, not because the programmer disables it.
 
 ---
 
 # Acceptance criteria
+
+HDPart migration is intentionally deferred until the library redesign. The language and portable-library features are covered independently now; HDPart should adopt the final library shapes once rather than churn through an intermediate API.
 
 Use HDPart as a continuing benchmark.
 

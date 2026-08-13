@@ -273,7 +273,7 @@ public class ImportResolverTests
         // This test verifies that the ProcessImport method exists and can be called
         // Integration testing with real import contexts happens in full compiler tests
         var registry = new MockSymbolRegistry();
-        var source = "import std::dos::{FileHandle};\npub fn test() {}";
+        var source = "import amiga::dos::{File};\npub fn test() {}";
         var diagnostics = new DiagnosticBag();
         var parser = NovusParserFactory.CreateParser(source, diagnostics, "test.novus", NovusParserFactory.ParseMode.Compilation);
         var unit = parser.compilationUnit();

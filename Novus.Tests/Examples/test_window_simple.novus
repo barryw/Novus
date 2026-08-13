@@ -1,6 +1,6 @@
 // Test WindowHandle::simple - open window, delay 5 seconds, close
-from std::ui::window import WindowHandle
-from std::ffi::dos import Delay
+from amiga::sys::intuition import WindowHandle
+from amiga::raw::dos import Delay
 
 pub fn main() -> i32 {
     let result = WindowHandle::simple("Novus Window", 320, 200)

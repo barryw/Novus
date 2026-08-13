@@ -1,8 +1,10 @@
 using Antlr4.Runtime;
 using Novus.Codegen;
+using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.IR;
 using Novus.Parser;
+using Novus.SemanticAnalysis;
 using Xunit;
 
 namespace Novus.Tests;
@@ -60,6 +62,60 @@ pub fn make_point(x: i32, y: i32) -> Point {
         var structType = registry.StructTypes.First();
         Assert.Equal("Point", structType.Name);
         Assert.Equal(2, structType.Fields.Count);
+    }
+
+    [Fact]
+    public void SharedHeader_EmitsNovusStructThatClashesWithNdkName()
+    {
+        var module = BuildIR(@"
+pub struct Point {
+    x: i16,
+    y: i16,
+}");
+        var registry = new TypeRegistry();
+        registry.RegisterModule(module);
+
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+
+        Assert.Contains("typedef struct nv_Point nv_Point;", header);
+        Assert.Contains("struct nv_Point {", header);
+    }
+
+    [Fact]
+    public void SharedHeader_KeepsNativeAndNovusStructsWithSameName()
+    {
+        var nativeAttributes = new AttributeCollection();
+        nativeAttributes.Add(new AttributeInfo(
+            KnownAttributes.ExternType,
+            new SourceLocation("native.novus", 1, 1, 0, "")));
+        var nativeModule = new IrModule();
+        nativeModule.AddStruct(new IrStructType("Point",
+        [
+            new IrStructField("x", IrIntType.I16),
+            new IrStructField("y", IrIntType.I16),
+        ], attributes: nativeAttributes));
+        var novusModule = BuildIR(@"
+pub struct Point {
+    x: i16,
+    y: i16,
+}
+pub struct Ellipse {
+    center: Point,
+}
+pub enum ShapeResult {
+    Ok(Ellipse),
+}");
+        var registry = new TypeRegistry();
+        registry.RegisterModule(nativeModule);
+        registry.RegisterModule(novusModule);
+
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+
+        Assert.Contains("typedef struct nv_Point nv_Point;", header);
+        Assert.Contains("struct nv_Point {", header);
+        Assert.True(
+            header.IndexOf("struct nv_Point {", StringComparison.Ordinal) <
+            header.IndexOf("struct Ellipse {", StringComparison.Ordinal));
     }
 
     [Fact]

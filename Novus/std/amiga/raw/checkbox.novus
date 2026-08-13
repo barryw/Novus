@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: checkbox.library
+// Base: _CheckBoxBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("checkbox.library")
+extern pub fn CHECKBOX_GetClass() -> *u8

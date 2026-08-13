@@ -2,9 +2,9 @@
 // This mimics what screen_builder_example does
 // Run: novus compile screen_sequence_test.novus -o screen_sequence_test --safety-level 0
 
-from std::ui::screen import ScreenHandle, ScreenBuilder
-from std::ffi::dos import Delay
-from std::ffi::graphics import SetAPen, RectFill
+from amiga::sys::intuition import ScreenHandle, ScreenBuilder
+from amiga::raw::dos import Delay
+from amiga::raw::graphics import SetAPen, RectFill
 from std::io::file import println
 
 pub fn main() -> i32 {

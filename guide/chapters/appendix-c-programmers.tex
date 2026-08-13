@@ -400,8 +400,8 @@ void my_function(void);
 
 \begin{lstlisting}
 // Novus: Semantic imports
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_FAST
 
 pub fn my_function() {
     // ...
@@ -449,25 +449,25 @@ Note: Novus inverts C's default. In C, symbols are public unless marked \texttt{
 
 \subsection{FFI Modules}
 
-The NDK bindings are organized by library in \texttt{std::ffi}:
+The NDK bindings are organized by library in \texttt{amiga::raw}:
 
 \begin{lstlisting}
 // ... (FFI import examples - illustrative)
-from std::ffi::exec import AllocMem, FreeMem, FindTask, Wait, Signal
-from std::ffi::dos import Open, Close, Read, Write, IoErr, Lock, UnLock
-from std::ffi::graphics import BltBitMap, SetAPen, RectFill, Text
-from std::ffi::intuition import OpenWindow, CloseWindow, RefreshGList
-from std::ffi::gadtools import CreateMenus, FreeMenus, LayoutMenus
-from std::ffi::layers import CreateUpfrontLayer, DeleteLayer
-from std::ffi::utility import AllocateTagItems, FreeTagItems
+from amiga::raw::exec import AllocMem, FreeMem, FindTask, Wait, Signal
+from amiga::raw::dos import Open, Close, Read, Write, IoErr, Lock, UnLock
+from amiga::raw::graphics import BltBitMap, SetAPen, RectFill, Text
+from amiga::raw::intuition import OpenWindow, CloseWindow, RefreshGList
+from amiga::raw::gadtools import CreateMenus, FreeMenus, LayoutMenus
+from amiga::raw::layers import CreateUpfrontLayer, DeleteLayer
+from amiga::raw::utility import AllocateTagItems, FreeTagItems
 \end{lstlisting}
 
 Structures and constants:
 
 \begin{lstlisting}
 // ... (structure and constant imports - illustrative)
-from std::ffi::amiga_structs import Window, Screen, BitMap
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
+from amiga::raw::structs import Window, Screen, BitMap
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 \end{lstlisting}
 
 \subsection{Calling Raw NDK Functions}
@@ -475,8 +475,8 @@ from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR
 Raw AmigaOS calls require \texttt{unsafe} blocks because they bypass Novus's safety guarantees:
 
 \begin{lstlisting}
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR
 
 fn allocate_chip_buffer(size: u32) -> *u8 {
     unsafe {
@@ -515,8 +515,8 @@ Errors & Check return values & \texttt{Result<T, E>} \\
 Here's opening a window the ``C way'' in Novus:
 
 \begin{lstlisting}
-from std::ffi::intuition import OpenWindowTags, CloseWindow
-from std::ffi::amiga_consts import WA_Width, WA_Height, WA_Title,
+from amiga::raw::intuition import OpenWindowTags, CloseWindow
+from amiga::raw::consts import WA_Width, WA_Height, WA_Title,
     WA_IDCMP, WA_Flags, WFLG_CLOSEGADGET, WFLG_DRAGBAR,
     IDCMP_CLOSEWINDOW, TAG_DONE
 
@@ -559,8 +559,8 @@ This is nearly identical to C code---the only differences are:
 DOS library functions use BCPL pointers (\texttt{BPTR}/\texttt{BSTR}), which are \texttt{i32} values, not actual pointers:
 
 \begin{lstlisting}
-from std::ffi::dos import Open, Close, Read, Write
-from std::ffi::amiga_consts import MODE_OLDFILE
+from amiga::raw::dos import Open, Close, Read, Write
+from amiga::raw::consts import MODE_OLDFILE
 
 fn read_file_raw(path: *u8) -> i32 {
     // DOS file handle is i32 (BPTR), not *File
@@ -574,7 +574,7 @@ fn read_file_raw(path: *u8) -> i32 {
         return -1
     }
 
-    var buffer = [0u8; 1024]
+    var buffer: [u8] = [0; 1024]
     var bytes_read: i32 = 0
 
     unsafe {

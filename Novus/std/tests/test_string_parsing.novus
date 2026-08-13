@@ -1,7 +1,7 @@
-// Test suite for std::strings::core parsing functions
+// Test suite for std::string::core parsing functions
 // Tests parse_i32, parse_u32, parse_hex, parse_bool
 
-from std::strings::core import Str, ParseError
+from std::string::core import Str, ParseError
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // =============================================================================
@@ -115,7 +115,7 @@ pub fn test_parse_u32_positive() {
     let s: Str = "12345"
     let result = s.parse_u32()
     match result {
-        Ok(val) => expect_eq(val, 12345u32, "parsed value is 12345"),
+        Ok(val) => expect_eq(val, 12345, "parsed value is 12345"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -125,7 +125,7 @@ pub fn test_parse_u32_zero() {
     let s: Str = "0"
     let result = s.parse_u32()
     match result {
-        Ok(val) => expect_eq(val, 0u32, "parsed value is 0"),
+        Ok(val) => expect_eq(val, 0, "parsed value is 0"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -135,7 +135,7 @@ pub fn test_parse_u32_large() {
     let s: Str = "4000000000"
     let result = s.parse_u32()
     match result {
-        Ok(val) => expect_eq(val, 4000000000u32, "parsed value is 4000000000"),
+        Ok(val) => expect_eq(val, (u32)4000000000, "parsed value is 4000000000"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -183,7 +183,7 @@ pub fn test_parse_hex_lowercase() {
     let s: Str = "ff"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 255u32, "ff is 255"),
+        Ok(val) => expect_eq(val, 255, "ff is 255"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -193,7 +193,7 @@ pub fn test_parse_hex_uppercase() {
     let s: Str = "FF"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 255u32, "FF is 255"),
+        Ok(val) => expect_eq(val, 255, "FF is 255"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -203,7 +203,7 @@ pub fn test_parse_hex_mixed_case() {
     let s: Str = "aAbB"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 43707u32, "aAbB is 43707"),
+        Ok(val) => expect_eq(val, 43707, "aAbB is 43707"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -213,7 +213,7 @@ pub fn test_parse_hex_with_prefix() {
     let s: Str = "0xff"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 255u32, "0xff is 255"),
+        Ok(val) => expect_eq(val, 255, "0xff is 255"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -223,7 +223,7 @@ pub fn test_parse_hex_with_upper_prefix() {
     let s: Str = "0XFF"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 255u32, "0XFF is 255"),
+        Ok(val) => expect_eq(val, 255, "0XFF is 255"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -233,7 +233,7 @@ pub fn test_parse_hex_zero() {
     let s: Str = "0"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 0u32, "0 is 0"),
+        Ok(val) => expect_eq(val, 0, "0 is 0"),
         Err(_) => expect(false, "parse should succeed")
     }
 }
@@ -243,7 +243,7 @@ pub fn test_parse_hex_large() {
     let s: Str = "deadbeef"
     let result = s.parse_hex()
     match result {
-        Ok(val) => expect_eq(val, 3735928559u32, "deadbeef correct"),
+        Ok(val) => expect_eq(val, (u32)3735928559, "deadbeef correct"),
         Err(_) => expect(false, "parse should succeed")
     }
 }

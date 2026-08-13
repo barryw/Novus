@@ -1,0 +1,2 @@
+// Tier 2: timer.device-backed timing primitives.
+pub use amiga::sys::timer::device::*

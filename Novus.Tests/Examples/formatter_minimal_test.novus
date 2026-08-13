@@ -1,7 +1,7 @@
 // Minimal Formatter Test
 // Tests just creating and finishing a formatter
 
-from std::strings::format import Formatter
+from std::string::format import Formatter
 from std::core import Result
 
 extern fn write(format: *u8, ...args) -> i32

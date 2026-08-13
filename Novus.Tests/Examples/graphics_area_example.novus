@@ -1,6 +1,6 @@
 // Graphics Area Fill Example
 //
-// Demonstrates all functions in std::graphics::area:
+// Demonstrates all functions in amiga::sys::graphics::area:
 // - AreaContext for filled polygon and ellipse operations
 // - RAII management of AreaInfo and TmpRas resources
 // - Polygon drawing with begin/vertex/end_fill
@@ -8,16 +8,40 @@
 // - Convenience functions: fill_triangle, fill_quad, fill_ellipse, fill_circle
 // - Helper functions: ras_size, vector_buffer_size
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::graphics::draw import DrawContext
-from std::graphics::shapes import Point, Ellipse
-from std::graphics::area import AreaContext, ras_size, vector_buffer_size
-from std::graphics::area import fill_triangle, fill_quad, fill_ellipse, fill_circle
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::graphics::draw import DrawContext
+from amiga::sys::graphics::shapes import Point, Ellipse
+from amiga::sys::graphics::area import AreaContext, ras_size, vector_buffer_size
+from amiga::sys::graphics::area import fill_triangle, fill_quad, fill_ellipse, fill_circle
 from std::io::file import write
-from std::memory::amiga import MemHandle
-from std::error::errors import NovusError
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::sys::intuition::errors import IntuitionError
+from amiga::sys::graphics::errors import GraphicsError
+from std::core import Error, From
 
-pub fn main() -> Result<(), NovusError> {
+pub enum DemoError {
+    Ui(IntuitionError),
+    Graphics(GraphicsError),
+}
+
+impl From<IntuitionError> for DemoError {
+    fn convert(consuming error: IntuitionError) -> DemoError { return DemoError::Ui(error) }
+}
+
+impl From<GraphicsError> for DemoError {
+    fn convert(consuming error: GraphicsError) -> DemoError { return DemoError::Graphics(error) }
+}
+
+impl Error for DemoError {
+    fn message(&self) -> *u8 {
+        return match self {
+            DemoError::Ui(error) => error.message(),
+            DemoError::Graphics(error) => error.message(),
+        }
+    }
+}
+
+pub fn main() -> Result<(), DemoError> {
     let result = WindowHandle::simple("Graphics Area Fill Demo", 640, 400)
 
     match result {
@@ -91,7 +115,7 @@ pub fn main() -> Result<(), NovusError> {
                             // Query methods
                             let max_v = area.max_vertices()
                             let attached = area.is_attached()
-                            let handle = area.handle()
+                            let handle = area.as_raw()
 
                             write("Max vertices: {max_v}\n")
                             write("Is attached: {attached}\n")
@@ -235,7 +259,7 @@ pub fn main() -> Result<(), NovusError> {
                         },
                         Result::Err(e) => {
                             write("Failed to create AreaContext\n")
-                            return Result::Err(NovusError::Graphics(e))
+                            return Result::Err(DemoError::Graphics(e))
                         }
                     }
 
@@ -296,13 +320,13 @@ pub fn main() -> Result<(), NovusError> {
                 },
                 Result::Err(err) => {
                     write("Failed to create DrawContext\n")
-                    return Result::Err(NovusError::Graphics(err))
+                    return Result::Err(DemoError::Graphics(err))
                 }
             }
         },
         Result::Err(err) => {
             write("Failed to open window\n")
-            return Result::Err(NovusError::Intuition(err))
+            return Result::Err(DemoError::Ui(err))
         }
     }
 }

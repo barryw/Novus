@@ -178,21 +178,21 @@ private bool IsStrType(IrType type)
 {
     return type is IrStructType st &&
            st.Name == "Str" &&
-           st.Module == "std::strings";
+           st.Module == "std::string";
 }
 
 private bool IsStringType(IrType type)
 {
     return type is IrStructType st &&
            st.Name == "String" &&
-           st.Module == "std::strings";
+           st.Module == "std::string";
 }
 
 private bool IsBStrType(IrType type)
 {
     return type is IrStructType st &&
            st.Name == "BStr" &&
-           st.Module == "std::strings";
+           st.Module == "std::string";
 }
 ```
 
@@ -217,8 +217,8 @@ private void CheckStringSliceSafety(IrExpression expr, string functionName)
 ### Example 1: File Operations
 
 ```novus
-from std::strings import Str
-from std::ffi::dos import *
+from std::string import Str
+from amiga::raw::dos import *
 
 pub fn main() -> i32 {
     // String literal - seamless
@@ -240,8 +240,8 @@ pub fn main() -> i32 {
 ### Example 2: BSTR Functions
 
 ```novus
-from std::strings import BStr
-from std::ffi::dos import *
+from std::string import BStr
+from amiga::raw::dos import *
 
 pub fn main() -> i32 {
     let bstr = BStr::new_from_str("SYS:System")?
@@ -296,7 +296,7 @@ let path = Str::borrow_raw(&buffer[0], (u32)len)  // ❌ Manual, error-prone
 Create safe wrapper functions that return `Str` or `Option<Str>`:
 
 ```novus
-// In std::ffi::dos module
+// In amiga::raw::dos module
 pub fn get_var(name: Str) -> Option<Str> {
     let mut buffer: [u8; 256]
     let len = unsafe {
@@ -476,15 +476,15 @@ pub fn bstr_to_str(bptr: BPTR) -> Option<Str> {
 
 #### Phase 1: Manual Wrapper Functions (Current)
 
-Write safe wrapper functions in `std::ffi::*` modules:
+Write safe wrapper functions in `amiga::raw::*` modules:
 
 ```novus
-// std::ffi::dos
+// amiga::raw::dos
 pub fn get_var(name: Str) -> Option<String>
 pub fn name_from_lock(lock: i32) -> Option<String>
 pub fn file_part(path: Str) -> Option<Str>
 
-// std::ffi::intuition
+// amiga::raw::intuition
 pub fn get_screen_title(screen: *Screen) -> Option<Str>
 pub fn get_window_title(window: *Window) -> Option<Str>
 ```
@@ -527,7 +527,7 @@ pub fn get_var(name: Str) -> Option<String> {
 #### Example 1: Environment Variables
 
 ```novus
-from std::ffi::dos import get_var
+from amiga::raw::dos import get_var
 
 pub fn main() -> i32 {
     // Seamless: no manual buffer management
@@ -549,7 +549,7 @@ pub fn main() -> i32 {
 #### Example 2: File Name Parsing
 
 ```novus
-from std::ffi::dos import file_part, path_part
+from amiga::raw::dos import file_part, path_part
 
 pub fn process_file(full_path: Str) {
     // Get just the filename
@@ -567,7 +567,7 @@ pub fn process_file(full_path: Str) {
 #### Example 3: Lock Information
 
 ```novus
-from std::ffi::dos import name_from_lock, Lock, UnLock
+from amiga::raw::dos import name_from_lock, Lock, UnLock
 
 pub fn print_directory_name(path: Str) -> Result<(), DosError> {
     let lock = Lock(path, ACCESS_READ)?
@@ -635,7 +635,7 @@ pub fn current_task_name() -> String
 
 ### Standard Library Additions
 
-Add comprehensive wrappers to `std::ffi::dos`:
+Add comprehensive wrappers to `amiga::raw::dos`:
 
 ```novus
 // Environment variables

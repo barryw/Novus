@@ -1,0 +1,1015 @@
+// Novus Standard Library - Preferences System
+// Namespace: amiga::workbench
+//
+// Simple, human-readable preferences storage using AmigaDOS ENV: and ENVARC: directories.
+// Provides versioned key-value configuration with explicit migration support.
+//
+// File format:
+//   #!novus-prefs v<version>
+//   # Comments start with #
+//   key = value
+//   dotted.key = another value
+//
+// Paths:
+//   ENV:<app_name>.prefs      - Volatile (RAM)
+//   ENVARC:<app_name>.prefs   - Persistent (disk)
+
+from std::core import Option, Result, Drop, Error, From
+from std::collections::vec import Vec
+from std::string::core import Str, String, PathString
+from amiga::sys::dos::errors import DosError
+from amiga::sys::dos import OwnedFileHandle, file_exists
+
+// ============================================================================
+// Error Types
+// ============================================================================
+
+/// Errors that can occur during preferences operations
+pub enum PrefsError {
+    /// No prefs file exists (first run)
+    NotFound,
+    /// File version newer than expected (app downgrade)
+    VersionTooNew(u32, u32),
+    /// File version older than expected (app upgrade)
+    VersionTooOld(u32, u32),
+    /// File corrupt or invalid format (line number where error occurred)
+    ParseError(u32),
+    /// DOS I/O error
+    IoError(DosError),
+    /// Invalid key name (empty, contains =, newlines, etc.)
+    InvalidKey,
+    /// Memory allocation failed
+    AllocationFailed,
+}
+
+impl PrefsError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            PrefsError::NotFound => return "Preferences file not found",
+            PrefsError::VersionTooNew(_, _) => return "Preferences version too new",
+            PrefsError::VersionTooOld(_, _) => return "Preferences version too old",
+            PrefsError::ParseError(_) => return "Preferences parse error",
+            PrefsError::IoError(_) => return "I/O error",
+            PrefsError::InvalidKey => return "Invalid key name",
+            PrefsError::AllocationFailed => return "Memory allocation failed",
+        }
+    }
+}
+
+impl From<DosError> for PrefsError {
+    fn convert(consuming error: DosError) -> PrefsError {
+        return PrefsError::IoError(error)
+    }
+}
+
+impl Error for PrefsError {
+    fn message(&self) -> *u8 {
+        return PrefsError::message(self)
+    }
+}
+
+// ============================================================================
+// PrefsEntry - Internal key-value pair
+// ============================================================================
+
+/// Internal key-value pair storage
+struct PrefsEntry {
+    key: String,
+    value: String,
+}
+
+impl Drop for PrefsEntry {
+    fn drop(&var self) {
+        self.key.drop()
+        self.value.drop()
+    }
+}
+
+// ============================================================================
+// Prefs - Main preferences struct
+// ============================================================================
+
+/// Application preferences with versioned file format
+///
+/// Stores key-value pairs in memory with load/save to AmigaDOS ENV: and ENVARC:.
+/// Uses a simple, human-readable file format with version tracking for migrations.
+///
+/// # Example
+/// ```novus
+/// // Load or create prefs
+/// var prefs = match Prefs::load("MyApp", 1) {
+///     Result::Ok(p) => p,
+///     Result::Err(PrefsError::NotFound) => {
+///         var p = Prefs::new("MyApp", 1)?
+///         p.set_u32("window.width", 640)?
+///         p.set_bool("fullscreen", false)?
+///         p
+///     },
+///     Result::Err(PrefsError::VersionTooOld(old_ver, _)) => {
+///         // Migration path
+///         let (var p, _) = Prefs::load_any("MyApp")?
+///         p.set_str("new_setting", "default")?
+///         p.save_as_version(1)?
+///         p
+///     },
+///     Result::Err(e) => return 20,
+/// }
+///
+/// // Use prefs
+/// let width = prefs.get_u32("window.width", 640)
+///
+/// // Save on exit
+/// if prefs.is_dirty() {
+///     prefs.save()?
+/// }
+/// ```
+pub struct Prefs {
+    app_name: PathString,
+    version: u32,
+    entries: Vec<PrefsEntry>,
+    dirty: bool,
+}
+
+impl Prefs {
+    // ========================================================================
+    // Creation and Loading
+    // ========================================================================
+
+    /// Create empty prefs with the given version
+    ///
+    /// Does not create any files until save() is called.
+    pub fn new(app_name: Str, version: u32) -> Result<Prefs, PrefsError> {
+        var name = PathString::new()
+        match name.push_str(app_name) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+
+        match Vec::<PrefsEntry>::with_capacity(16) {
+            Result::Ok(entries) => {
+                return Result::Ok(Prefs {
+                    app_name: name,
+                    version: version,
+                    entries: entries,
+                    dirty: false,
+                })
+            },
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+    }
+
+    /// Load prefs expecting exact version
+    ///
+    /// Returns:
+    /// - `Ok(prefs)` if file exists and version matches
+    /// - `Err(NotFound)` if no prefs file exists
+    /// - `Err(VersionTooNew(file_ver, expected))` if file is newer
+    /// - `Err(VersionTooOld(file_ver, expected))` if file is older
+    /// - `Err(ParseError(line))` if file is corrupt
+    /// - `Err(IoError)` for I/O failures
+    pub fn load(app_name: Str, expected_version: u32) -> Result<Prefs, PrefsError> {
+        let result = Prefs::load_any(app_name)
+        match result {
+            Result::Ok(pair) => {
+                let (prefs, file_version) = pair
+                if file_version > expected_version {
+                    return Result::Err(PrefsError::VersionTooNew(file_version, expected_version))
+                }
+                if file_version < expected_version {
+                    return Result::Err(PrefsError::VersionTooOld(file_version, expected_version))
+                }
+                return Result::Ok(prefs)
+            },
+            Result::Err(e) => return Result::Err(e),
+        }
+    }
+
+    /// Load prefs accepting any version
+    ///
+    /// Returns the prefs and the file version, allowing the caller to
+    /// perform migration as needed.
+    ///
+    /// Returns:
+    /// - `Ok((prefs, version))` if file exists and parses successfully
+    /// - `Err(NotFound)` if no prefs file exists
+    /// - `Err(ParseError(line))` if file is corrupt
+    pub fn load_any(app_name: Str) -> Result<(Prefs, u32), PrefsError> {
+        // Build path: ENV:<app_name>.prefs
+        var env_path = PathString::new()
+        match env_path.push_str("ENV:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match env_path.push_str(app_name) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match env_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+
+        // Try ENV: first (faster, in RAM)
+        var file_result = OwnedFileHandle::open_existing(env_path.as_str())
+        match file_result {
+            Result::Ok(file) => {
+                return Prefs::parse_file(app_name, &file)
+            },
+            Result::Err(_) => {
+                // Try ENVARC: as fallback
+                var envarc_path = PathString::new()
+                match envarc_path.push_str("ENVARC:") {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                }
+                match envarc_path.push_str(app_name) {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                }
+                match envarc_path.push_str(".prefs") {
+                    Result::Ok(_) => {},
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                }
+
+                var envarc_file_result = OwnedFileHandle::open_existing(envarc_path.as_str())
+                match envarc_file_result {
+                    Result::Ok(file) => {
+                        return Prefs::parse_file(app_name, &file)
+                    },
+                    Result::Err(_) => {
+                        return Result::Err(PrefsError::NotFound)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Parse prefs from an open file handle
+    fn parse_file(app_name: Str, file: &OwnedFileHandle) -> Result<(Prefs, u32), PrefsError> {
+        // Buffer for reading lines (max 1024 bytes per line)
+        var buffer: [u8] = [0; 1024]
+        var line_num: u32 = 0
+        var version: u32 = 0
+        var header_found: bool = false
+
+        // Create prefs with version 0 (will be updated after parsing header)
+        var prefs_result = Prefs::new(app_name, 0)
+        match prefs_result {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(var prefs) => {
+                // Read lines
+                var done: bool = false
+                while !done {
+                    let read_result = file.read_line(&buffer[0], 1024)
+                    match read_result {
+                        Result::Err(_) => {
+                            return Result::Err(PrefsError::IoError(DosError::Unknown))
+                        },
+                        Result::Ok(bytes_read) => {
+                            if bytes_read == 0 {
+                                // EOF
+                                done = true
+                            } else {
+                                line_num = line_num + 1
+
+                                // Create Str from buffer
+        let line = unsafe { Str::new(&buffer[0], bytes_read) }
+                                let trimmed = line.trim()
+
+                                // Process non-empty lines
+                                if trimmed.len() > 0 {
+                                    // First non-empty line must be header
+                                    if line_num == 1 {
+                                        let parsed_version = Prefs::parse_header(trimmed)
+                                        match parsed_version {
+                                            Option::None => {
+                                                return Result::Err(PrefsError::ParseError(line_num))
+                                            },
+                                            Option::Some(v) => {
+                                                version = v
+                                                prefs.version = v
+                                                header_found = true
+                                            }
+                                        }
+                                    } else {
+                                        // After header: check for comments or key-value
+                                        if trimmed.starts_with("#") {
+                                            // Comment line - skip (do nothing)
+                                        } else {
+                                            // Key-value line
+                                            let parse_ok = prefs.parse_key_value(trimmed, line_num)
+                                            if !parse_ok {
+                                                return Result::Err(PrefsError::ParseError(line_num))
+                                            }
+                                        }
+                                    }
+                                }
+                                // Empty lines: do nothing, continue to next
+                            }
+                        }
+                    }
+                }
+
+                // Require header
+                if !header_found {
+                    return Result::Err(PrefsError::ParseError(1))
+                }
+
+                // Clear dirty flag since we just loaded
+                prefs.dirty = false
+
+                return Result::Ok((prefs, version))
+            }
+        }
+    }
+
+    /// Parse the header line: #!novus-prefs v<N>
+    fn parse_header(line: Str) -> Option<u32> {
+        let prefix: Str = "#!novus-prefs v"
+        if !line.starts_with(prefix) {
+            return Option::None
+        }
+
+        // Extract version number after prefix
+        if line.len() <= prefix.len() {
+            return Option::None
+        }
+
+        let slice_result = line.slice(prefix.len(), line.len())
+        match slice_result {
+            Result::Err(_) => return Option::None,
+            Result::Ok(version_part) => {
+                let parse_result = version_part.parse_u32()
+                match parse_result {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
+                }
+            }
+        }
+    }
+
+    /// Parse a key = value line and add to entries
+    fn parse_key_value(&var self, line: Str, line_num: u32) -> bool {
+        // Find '=' separator
+        let eq_pos = line.find_byte($3D)  // '='
+        match eq_pos {
+            Option::None => {
+                // No '=' found - invalid line
+                return false
+            },
+            Option::Some(pos) => {
+                if pos == 0 {
+                    // Empty key
+                    return false
+                }
+
+                // Extract key and value via slice (returns Result)
+                let key_slice_result = line.slice(0, pos)
+                match key_slice_result {
+                    Result::Err(_) => return false,
+                    Result::Ok(key_part) => {
+                        let value_slice_result = line.slice(pos + 1, line.len())
+                        match value_slice_result {
+                            Result::Err(_) => return false,
+                            Result::Ok(value_part) => {
+                                let key_trimmed = key_part.trim()
+                                let value_trimmed = value_part.trim()
+
+                                // Validate key
+                                if key_trimmed.len() == 0 {
+                                    return false
+                                }
+
+                                // Create owned strings
+                                let key_result = String::new_from_str(key_trimmed)
+                                match key_result {
+                                    Result::Err(_) => return false,
+                                    Result::Ok(key) => {
+                                        let value_result = String::new_from_str(value_trimmed)
+                                        match value_result {
+                                            Result::Err(_) => {
+                                                // key will be dropped automatically
+                                                return false
+                                            },
+                                            Result::Ok(value) => {
+                                                // Add entry
+                                                let entry = PrefsEntry { key: key, value: value }
+                                                match self.entries.push(entry) {
+                                                    Result::Ok(_) => return true,
+                                                    Result::Err(_) => return false,
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Saving
+    // ========================================================================
+
+    /// Save prefs to ENV: and ENVARC:
+    ///
+    /// Writes to ENVARC: first (persistent), then ENV: (RAM cache).
+    /// Clears the dirty flag on success.
+    pub fn save(&var self) -> Result<(), PrefsError> {
+        // Build ENVARC path
+        var envarc_path = PathString::new()
+        match envarc_path.push_str("ENVARC:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match envarc_path.push_str(self.app_name.as_str()) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match envarc_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+
+        // Build ENV path
+        var env_path = PathString::new()
+        match env_path.push_str("ENV:") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match env_path.push_str(self.app_name.as_str()) {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+        match env_path.push_str(".prefs") {
+            Result::Ok(_) => {},
+            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+        }
+
+        // Write to ENVARC: first (persistent)
+        let envarc_result = self.write_to_file(envarc_path.as_str())
+        match envarc_result {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        // Write to ENV: (RAM cache)
+        let env_result = self.write_to_file(env_path.as_str())
+        match env_result {
+            Result::Err(e) => return Result::Err(e),
+            Result::Ok(_) => {}
+        }
+
+        self.dirty = false
+        return Result::Ok(())
+    }
+
+    /// Save with a new version number
+    ///
+    /// Useful after migration to update the file version.
+    pub fn save_as_version(&var self, new_version: u32) -> Result<(), PrefsError> {
+        self.version = new_version
+        return self.save()
+    }
+
+    /// Write prefs to a specific file path
+    ///
+    /// This is useful for testing or when you need to write to a custom location
+    /// (e.g., RAM: for temporary storage).
+    pub fn write_to_file(&self, path: Str) -> Result<(), PrefsError> {
+        let file_result = OwnedFileHandle::create(path)
+        match file_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(var file) => {
+                // Write header
+                let header_result = self.write_header(&file)
+                match header_result {
+                    Result::Err(e) => return Result::Err(e),
+                    Result::Ok(_) => {}
+                }
+
+                // Write entries
+                let entries_ptr = self.entries.as_ptr()
+                while var i < self.entries.len() {
+                    // Use pointer access to avoid copying PrefsEntry (which would cause double-free)
+                    let entry_ptr = unsafe { &entries_ptr[i] }
+                    let entry_result = self.write_entry(&file, entry_ptr)
+                    match entry_result {
+                        Result::Err(e) => return Result::Err(e),
+                        Result::Ok(_) => {}
+                    }
+                    i = i + 1
+                }
+
+                return Result::Ok(())
+            }
+        }
+    }
+
+    /// Write the header line
+    fn write_header(&self, file: &OwnedFileHandle) -> Result<(), PrefsError> {
+        // Write "#!novus-prefs v"
+        let prefix: Str = "#!novus-prefs v"
+        let write_result = file.write_all(prefix.as_ptr(), prefix.len())
+        match write_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        // Write version number
+        var version_buf: [u8] = [0; 16]
+        let version_len = u32_to_str(self.version, &version_buf[0], 16)
+        let vwrite_result = file.write_all(&version_buf[0], version_len)
+        match vwrite_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        // Write newline
+        let newline: u8 = $0A
+        let nl_result = file.write_all(&newline, 1)
+        match nl_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        return Result::Ok(())
+    }
+
+    /// Write a single entry line
+    fn write_entry(&self, file: &OwnedFileHandle, entry: &PrefsEntry) -> Result<(), PrefsError> {
+        // Write key
+        let key_str = entry.key.as_str()
+        let key_result = file.write_all(key_str.as_ptr(), key_str.len())
+        match key_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        // Write " = "
+        let eq: Str = " = "
+        let eq_result = file.write_all(eq.as_ptr(), eq.len())
+        match eq_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        // Write value
+        let val_str = entry.value.as_str()
+        let val_result = file.write_all(val_str.as_ptr(), val_str.len())
+        match val_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        // Write newline
+        let newline: u8 = $0A
+        let nl_result = file.write_all(&newline, 1)
+        match nl_result {
+            Result::Err(_) => return Result::Err(PrefsError::IoError(DosError::Unknown)),
+            Result::Ok(_) => {}
+        }
+
+        return Result::Ok(())
+    }
+
+    // ========================================================================
+    // Getters (with defaults)
+    // ========================================================================
+
+    /// Get string value with default
+    pub fn get_str(&self, key: Str, def: Str) -> Str {
+        match self.find_entry(key) {
+            Option::None => return def,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry (which would cause double-free)
+                // since PrefsEntry contains String fields that have Drop
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                return entry_ptr.value.as_str()
+            }
+        }
+    }
+
+    /// Get i32 value with default
+    pub fn get_i32(&self, key: Str, def: i32) -> i32 {
+        match self.find_entry(key) {
+            Option::None => return def,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_i32() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
+                }
+            }
+        }
+    }
+
+    /// Get u32 value with default
+    pub fn get_u32(&self, key: Str, def: u32) -> u32 {
+        match self.find_entry(key) {
+            Option::None => return def,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_u32() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
+                }
+            }
+        }
+    }
+
+    /// Get bool value with default
+    ///
+    /// Accepts: "true", "false", "1", "0" (case-insensitive for words)
+    pub fn get_bool(&self, key: Str, def: bool) -> bool {
+        match self.find_entry(key) {
+            Option::None => return def,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return def
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_bool() {
+                    Result::Ok(v) => return v,
+                    Result::Err(_) => return def,
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Getters (optional)
+    // ========================================================================
+
+    /// Try to get string value
+    pub fn try_get_str(&self, key: Str) -> Option<Str> {
+        match self.find_entry(key) {
+            Option::None => return Option::None,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                return Option::Some(entry_ptr.value.as_str())
+            }
+        }
+    }
+
+    /// Try to get i32 value
+    pub fn try_get_i32(&self, key: Str) -> Option<i32> {
+        match self.find_entry(key) {
+            Option::None => return Option::None,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_i32() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
+                }
+            }
+        }
+    }
+
+    /// Try to get u32 value
+    pub fn try_get_u32(&self, key: Str) -> Option<u32> {
+        match self.find_entry(key) {
+            Option::None => return Option::None,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_u32() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
+                }
+            }
+        }
+    }
+
+    /// Try to get bool value
+    pub fn try_get_bool(&self, key: Str) -> Option<bool> {
+        match self.find_entry(key) {
+            Option::None => return Option::None,
+            Option::Some(idx) => {
+                // Use pointer access to avoid copying the entry
+                if idx >= self.entries.len() {
+                    return Option::None
+                }
+                let ptr = self.entries.as_ptr()
+                let entry_ptr = unsafe { &ptr[idx] }
+                let val_str = entry_ptr.value.as_str()
+                match val_str.parse_bool() {
+                    Result::Ok(v) => return Option::Some(v),
+                    Result::Err(_) => return Option::None,
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Setters
+    // ========================================================================
+
+    /// Set string value
+    pub fn set_str(&var self, key: Str, value: Str) -> Result<(), PrefsError> {
+        // Validate key
+        if !Prefs::is_valid_key(key) {
+            return Result::Err(PrefsError::InvalidKey)
+        }
+
+        // Check if key exists
+        match self.find_entry(key) {
+            Option::Some(idx) => {
+                // Update existing entry
+                // We need to create a new value string and update the entry
+                let new_value_result = String::new_from_str(value)
+                match new_value_result {
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                    Result::Ok(new_value) => {
+                        // Get entry and replace value
+                        let entry_ptr = self.entries.as_mut_ptr()
+                        // Free old value and replace
+                        unsafe {
+                            var old_value = entry_ptr[idx].value
+                            old_value.drop()
+                            entry_ptr[idx].value = new_value
+                        }
+                        self.dirty = true
+                        return Result::Ok(())
+                    }
+                }
+            },
+            Option::None => {
+                // Add new entry
+                let key_result = String::new_from_str(key)
+                match key_result {
+                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                    Result::Ok(key_str) => {
+                        let value_result = String::new_from_str(value)
+                        match value_result {
+                            Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                            Result::Ok(value_str) => {
+                                let entry = PrefsEntry { key: key_str, value: value_str }
+                                match self.entries.push(entry) {
+                                    Result::Ok(_) => {
+                                        self.dirty = true
+                                        return Result::Ok(())
+                                    },
+                                    Result::Err(_) => return Result::Err(PrefsError::AllocationFailed),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set i32 value
+    pub fn set_i32(&var self, key: Str, value: i32) -> Result<(), PrefsError> {
+        var buf: [u8] = [0; 16]
+        let len = i32_to_str(value, &buf[0], 16)
+        let value_str = unsafe { Str::new(&buf[0], len) }
+        return self.set_str(key, value_str)
+    }
+
+    /// Set u32 value
+    pub fn set_u32(&var self, key: Str, value: u32) -> Result<(), PrefsError> {
+        var buf: [u8] = [0; 16]
+        let len = u32_to_str(value, &buf[0], 16)
+        let value_str = unsafe { Str::new(&buf[0], len) }
+        return self.set_str(key, value_str)
+    }
+
+    /// Set bool value
+    pub fn set_bool(&var self, key: Str, value: bool) -> Result<(), PrefsError> {
+        if value {
+            return self.set_str(key, "true")
+        } else {
+            return self.set_str(key, "false")
+        }
+    }
+
+    // ========================================================================
+    // Removal and Query
+    // ========================================================================
+
+    /// Remove a key from prefs
+    ///
+    /// Returns true if the key existed and was removed
+    pub fn remove(&var self, key: Str) -> bool {
+        match self.find_entry(key) {
+            Option::None => return false,
+            Option::Some(idx) => {
+                // find_entry proved the index is valid.
+                self.entries.remove(idx).unwrap()
+                self.dirty = true
+                return true
+            }
+        }
+    }
+
+    /// Check if a key exists
+    pub fn contains(&self, key: Str) -> bool {
+        return self.find_entry(key).is_some()
+    }
+
+    /// Remove all entries
+    pub fn clear(&var self) {
+        // Pop all entries - the discarded Option<PrefsEntry> is automatically dropped
+        while self.entries.len() > 0 {
+            self.entries.pop()
+        }
+        self.dirty = true
+    }
+
+    // ========================================================================
+    // Metadata
+    // ========================================================================
+
+    /// Get the file version
+    pub fn version(&self) -> u32 {
+        return self.version
+    }
+
+    /// Get the number of entries
+    pub fn len(&self) -> u32 {
+        return self.entries.len()
+    }
+
+    /// Check if prefs is empty
+    pub fn is_empty(&self) -> bool {
+        return self.entries.is_empty()
+    }
+
+    /// Check if prefs has been modified since load
+    pub fn is_dirty(&self) -> bool {
+        return self.dirty
+    }
+
+    // ========================================================================
+    // Internal Helpers
+    // ========================================================================
+
+    /// Find entry index by key
+    fn find_entry(&self, key: Str) -> Option<u32> {
+        // Use pointer access to avoid copying PrefsEntry (which would cause double-free)
+        let entries_ptr = self.entries.as_ptr()
+        let len = self.entries.len()
+        while var i < len {
+            let entry_ptr = unsafe { &entries_ptr[i] }
+            if entry_ptr.key.as_str().equals(key) {
+                return Option::Some(i)
+            }
+            i = i + 1
+        }
+        return Option::None
+    }
+
+    /// Validate key name
+    fn is_valid_key(key: Str) -> bool {
+        if key.len() == 0 {
+            return false
+        }
+
+        // Key cannot start with #
+        if unsafe { key.as_ptr()[0] == $23 } {  // '#'
+            return false
+        }
+
+        // Key cannot contain = or newlines
+        while var i < key.len() {
+            let ch = unsafe { key.as_ptr()[i] }
+            if ch == $3D {  // '='
+                return false
+            }
+            if ch == $0A || ch == $0D {  // LF or CR
+                return false
+            }
+            i = i + 1
+        }
+
+        return true
+    }
+}
+
+// Automatic cleanup for Prefs (RAII)
+impl Drop for Prefs {
+    fn drop(&var self) {
+        // Drop all entries by popping and explicitly dropping each one
+        while self.entries.len() > 0 {
+            // Pop returns Option<PrefsEntry>, we need to drop the contained entry
+            match self.entries.pop() {
+                Option::Some(entry) => {
+                    // Entry's String fields will be dropped automatically
+                    // when 'entry' goes out of scope at end of match arm
+                },
+                Option::None => {}
+            }
+        }
+        self.entries.drop()
+    }
+}
+
+// ============================================================================
+// Number to String Helpers
+// ============================================================================
+
+/// Convert u32 to decimal string
+/// Returns number of characters written
+fn u32_to_str(value: u32, buffer: *u8, buffer_size: u32) -> u32 {
+    if value == 0 {
+        unsafe { buffer[0] = $30 }  // '0'
+        return 1
+    }
+
+    // Write digits in reverse
+    var temp: [u8] = [0; 16]
+    var temp_len: u32 = 0
+    var v: u32 = value
+
+    while v > 0 && temp_len < 16 {
+        let digit: u8 = (u8)(v % 10)
+        temp[temp_len] = $30 + digit  // '0' + digit
+        temp_len = temp_len + 1
+        v = v / 10
+    }
+
+    // Copy to buffer in correct order
+    var write_len: u32 = 0
+    while temp_len > 0 && write_len < buffer_size {
+        temp_len = temp_len - 1
+        unsafe { buffer[write_len] = temp[temp_len] }
+        write_len = write_len + 1
+    }
+
+    return write_len
+}
+
+/// Convert i32 to decimal string
+/// Returns number of characters written
+fn i32_to_str(value: i32, buffer: *u8, buffer_size: u32) -> u32 {
+    if value == 0 {
+        unsafe { buffer[0] = $30 }  // '0'
+        return 1
+    }
+
+    var offset: u32 = 0
+
+    // Handle negative
+    if value < 0 {
+        unsafe { buffer[0] = $2D }  // '-'
+        offset = 1
+
+        // Handle INT_MIN specially
+        if value == -2147483648 {
+            // Special case: can't negate INT_MIN
+            let min_str: Str = "2147483648"
+            var i: u32 = 0
+            while i < min_str.len() && (offset + i) < buffer_size {
+                unsafe { buffer[offset + i] = min_str.as_ptr()[i] }
+                i = i + 1
+            }
+            return offset + min_str.len()
+        }
+
+        // Negate and convert
+        let abs_len = u32_to_str((u32)(-value), buffer + offset, buffer_size - offset)
+        return offset + abs_len
+    }
+
+    return u32_to_str((u32)value, buffer, buffer_size)
+}

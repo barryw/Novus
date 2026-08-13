@@ -1,9 +1,8 @@
 // HDPart UI-01 control creation without raw GadTools pointers or tag lists.
 
 from std::core import Option, Result
-from std::error::errors import IntuitionError
 from std::test::test import expect_true
-from std::ui::gadtools import GadgetBounds, GadToolsBuilder
+from amiga::ui import Bounds, UiError, WindowBuilder
 
 const DRIVER: u16 = 1
 const PARTITIONS: u16 = 2
@@ -12,97 +11,97 @@ const STATUS: u16 = 4
 const QUIT: u16 = 5
 const BOOTABLE: u16 = 6
 
-fn run_ui_controls() -> Result<(), IntuitionError> {
-    var ui = GadToolsBuilder::workbench()?
+fn run_ui_controls() -> Result<(), UiError> {
+    var ui = WindowBuilder::workbench()?
     let drivers = ["scsi.device", "uaehf.device"]
     let partitions = ["DH0  DOS3  0-511", "DH1  DOS3  512-1023"]
     let rescanned_drivers = ["scsi.device", "uaehf.device", "trackdisk.device"]
     let rescanned_partitions = ["DH0  DOS3  0-255", "DH1  DOS3  256-767", "DH2  DOS3  768-1023"]
 
-    ui.add_cycle(DRIVER, "Driver", GadgetBounds::new(64, 18, 220, 14), &drivers, 0u16)?
-    ui.add_list_view(PARTITIONS, GadgetBounds::new(12, 40, 272, 50), &partitions, Option::None)?
-    ui.add_string(NAME, "Name", GadgetBounds::new(64, 96, 100, 14), "DH0", 31u16)?
-    ui.add_text(STATUS, GadgetBounds::new(12, 122, 180, 12), "Status: RDB OK")?
-    ui.add_checkbox(BOOTABLE, "Bootable", GadgetBounds::new(82, 140, 26, 11), false)?
-    ui.add_button(QUIT, "Quit", GadgetBounds::new(214, 120, 70, 14))?
+    ui.add_cycle(DRIVER, "Driver", Bounds::new(64, 18, 220, 14), &drivers, 0)?
+    ui.add_list_view(PARTITIONS, Bounds::new(12, 40, 272, 50), &partitions, Option::None)?
+    ui.add_string(NAME, "Name", Bounds::new(64, 96, 100, 14), "DH0", 31)?
+    ui.add_text(STATUS, Bounds::new(12, 122, 180, 12), "Status: RDB OK")?
+    ui.add_checkbox(BOOTABLE, "Bootable", Bounds::new(82, 140, 26, 11), false)?
+    ui.add_button(QUIT, "Quit", Bounds::new(214, 120, 70, 14))?
 
     var menus = ui.menu_builder()
     var project = menus.add_menu("Project")
     project.add_item("Quit")
     let menu = menus.build()?
-    var window = ui.build("HDPart controls", GadgetBounds::new(40, 30, 304, 162), menu)?
+    var window = ui.build("HDPart controls", Bounds::new(40, 30, 304, 162), menu)?
 
     // Invalid updates leave the current model installed.
-    match window.replace_cycle(DRIVER, &drivers, 2u16) {
+    match window.replace_cycle(DRIVER, &drivers, 2) {
         Result::Err(_) => {},
-        Result::Ok(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Result::Ok(_) => return Result::Err(UiError::ControlFailed),
     }
     match window.replace_list(DRIVER, &partitions, Option::None) {
         Result::Err(_) => {},
-        Result::Ok(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Result::Ok(_) => return Result::Err(UiError::ControlFailed),
     }
 
     // HDPart replaces both models after scans and every partition edit. Reuse
     // the same two owner slots enough times to expose leaks or stale pointers.
-    var generation = 0u32
-    while generation < 256u32 {
-        if (generation & 1u32) == 0u32 {
-            window.replace_cycle(DRIVER, &rescanned_drivers, 2u16)?
-            window.replace_list(PARTITIONS, &rescanned_partitions, Option::Some(2u32))?
+    var generation: u32 = 0
+    while generation < 256 {
+        if (generation & 1) == 0 {
+            window.replace_cycle(DRIVER, &rescanned_drivers, 2)?
+            window.replace_list(PARTITIONS, &rescanned_partitions, Option::Some(2))?
         } else {
-            window.replace_cycle(DRIVER, &drivers, 1u16)?
-            window.replace_list(PARTITIONS, &partitions, Option::Some(1u32))?
+            window.replace_cycle(DRIVER, &drivers, 1)?
+            window.replace_list(PARTITIONS, &partitions, Option::Some(1))?
         }
         generation++
     }
 
     match window.cycle(DRIVER) {
         Option::Some(control) => {
-            control.set_active(1u16)
+            control.set_active(1)
         },
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
     match window.list_view(PARTITIONS) {
         Option::Some(control) => {
-            control.set_selected(Option::Some(1u16))
+            control.set_selected(Option::Some(1))
         },
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
     match window.string(NAME) {
         Option::Some(control) => {
             match control.set_value("DH1") {
                 Result::Ok(_) => {},
-                Result::Err(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+                Result::Err(_) => return Result::Err(UiError::ControlFailed),
             }
             match control.value() {
                 Option::Some(value) => {
                     if !value.equals("DH1") {
-                        return Result::Err(IntuitionError::GadgetCreateFailed)
+                        return Result::Err(UiError::ControlFailed)
                     }
                 },
-                Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+                Option::None => return Result::Err(UiError::ControlFailed),
             }
         },
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
     match window.text(STATUS) {
         Option::Some(control) => {
             match control.set_text("Status: state OK") {
                 Result::Ok(_) => {},
-                Result::Err(_) => return Result::Err(IntuitionError::GadgetCreateFailed),
+                Result::Err(_) => return Result::Err(UiError::ControlFailed),
             }
         },
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
     if window.string(DRIVER).is_some() {
-        return Result::Err(IntuitionError::GadgetCreateFailed)
+        return Result::Err(UiError::ControlFailed)
     }
     match window.checkbox(BOOTABLE) {
         Option::Some(control) => {
             control.set_checked(true)
-            if !control.checked() { return Result::Err(IntuitionError::GadgetCreateFailed) }
+            if !control.checked() { return Result::Err(UiError::ControlFailed) }
         },
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
 
     return Result::Ok(())

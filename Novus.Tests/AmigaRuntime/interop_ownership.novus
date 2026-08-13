@@ -1,0 +1,166 @@
+from std::core import Option, Result
+from std::test::test import expect
+from amiga::dos import File
+from amiga::storage import BlockDevice
+from amiga::ui import Bounds, StaticControl, StaticMenu, StaticUi
+from amiga::sys::dos import DosDeviceList, OwnedFileHandle, delete_file
+from amiga::sys::exec import MessagePort, SignalHandle
+
+const INTEROP_BUTTON: u16 = 1
+
+static INTEROP_CONTROLS: [StaticControl] = [
+    StaticControl::button(INTEROP_BUTTON, "Close", 40, 35, 70, 18),
+]
+
+static INTEROP_MENUS: [StaticMenu] = [
+    StaticMenu::title("Project"),
+    StaticMenu::item("Close", "Q"),
+    StaticMenu::end(),
+]
+
+static INTEROP_UI: StaticUi = StaticUi {
+    title: "Interop ownership",
+    bounds: Bounds { x: 40, y: 30, width: 180, height: 90 },
+    gadgets: INTEROP_CONTROLS,
+    gadget_count: 1,
+    menus: INTEROP_MENUS,
+}
+
+@test("file creation returns a live owner")
+pub fn file_create_owner() {
+    match File::create("RAM:novus-interop-create") {
+        Result::Ok(file) => expect(file.system().as_raw() != 0, "file created"),
+        Result::Err(_) => expect(false, "file created"),
+    }
+}
+
+@test("file ownership survives application and system wrappers")
+pub fn file_system_owner_roundtrip() {
+    let file = match File::create("RAM:novus-interop-system") {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "file created")
+            return
+        },
+    }
+    let system = file.into_system()
+    let adopted = File::from_system(system)
+    expect(adopted.system().as_raw() != 0, "system owner preserved")
+}
+
+@test("file ownership survives a raw round trip")
+pub fn file_raw_owner_roundtrip() {
+    let file = match File::create("RAM:novus-interop-raw") {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "file created")
+            return
+        },
+    }
+    let raw = file.into_system().into_raw()
+    match OwnedFileHandle::from_raw(raw) {
+        Result::Ok(adopted) => expect(adopted.as_raw() == raw, "raw owner preserved"),
+        Result::Err(_) => expect(false, "raw owner adopted"),
+    }
+}
+
+fn file_roundtrip() -> bool {
+    let file = match File::create("RAM:novus-interop-test") {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    let system = file.into_system()
+    let raw = system.into_raw()
+    let adopted_system = match OwnedFileHandle::from_raw(raw) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    let adopted_file = File::from_system(adopted_system)
+    let bytes: [u8] = ['N', 'O', 'V', 'U', 'S']
+    return match adopted_file.write(&bytes) {
+        Result::Ok(written) => written == 5,
+        Result::Err(_) => false,
+    }
+}
+
+@test("file ownership survives application, system, and raw round trips")
+pub fn file_owner_roundtrip() {
+    expect(file_roundtrip(), "file owner round-trips and closes exactly once")
+    let _ = delete_file("RAM:novus-interop-test")
+}
+
+@test("signal ownership survives a raw round trip")
+pub fn signal_owner_roundtrip() {
+    let signal = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "signal allocated")
+            return
+        },
+    }
+    let bit = signal.bit()
+    let raw_signal = signal.into_raw()
+    match SignalHandle::from_raw(raw_signal) {
+        Result::Ok(adopted) => expect(adopted.bit() == bit, "signal ownership preserved"),
+        Result::Err(_) => expect(false, "owned signal adopted"),
+    }
+}
+
+@test("message-port ownership survives a raw round trip")
+pub fn message_port_owner_roundtrip() {
+    let port = match MessagePort::create() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "message port created")
+            return
+        },
+    }
+    let raw_port = port.into_raw()
+    match MessagePort::from_raw(raw_port) {
+        Result::Ok(adopted) => expect(adopted.as_raw() == raw_port, "message port ownership preserved"),
+        Result::Err(_) => expect(false, "owned message port adopted"),
+    }
+}
+
+@test("block device remains usable after borrowing both lower layers")
+pub fn block_device_borrow_roundtrip() {
+    match BlockDevice::open("trackdisk.device", 0) {
+        Result::Ok(device) => {
+            let system = device.system()
+            expect(system.as_raw() != null, "raw request borrowed")
+            expect(device.geometry().block_bytes() == 512, "application owner remains usable")
+        },
+        Result::Err(_) => expect(false, "trackdisk.device opened"),
+    }
+}
+
+@test("application window borrows systems and raw views without losing ownership")
+pub fn window_borrow_roundtrip() {
+    match INTEROP_UI.open() {
+        Result::Ok(window) => {
+            let system = window.system()
+            let raw = unsafe { system.as_raw() }
+            expect(raw == window.as_raw(), "window raw view preserves identity")
+            match window.control(INTEROP_BUTTON) {
+                Option::Some(control) => expect(control.as_raw() != null, "typed control exposes a raw borrowed gadget"),
+                Option::None => expect(false, "typed control found"),
+            }
+            expect(window.as_raw() != null, "window owner remains usable")
+        },
+        Result::Err(_) => expect(false, "application window opened"),
+    }
+}
+
+@test("DOS-list entries expose native views tied to the list owner")
+pub fn dos_list_borrow_roundtrip() {
+    match DosDeviceList::lock() {
+        Result::Ok(list) => {
+            var entries = list.iter()
+            match entries.next() {
+                Option::Some(entry) => expect(entry.as_raw().dn_Type == 0, "device entry exposes its native DeviceNode"),
+                Option::None => expect(false, "DOS device list has an entry"),
+            }
+        },
+        Result::Err(_) => expect(false, "DOS device list locked"),
+    }
+}

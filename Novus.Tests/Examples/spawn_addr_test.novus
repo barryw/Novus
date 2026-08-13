@@ -1,10 +1,10 @@
 // Test address computation for pr_MsgPort
 
 from std::core import Result
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn
-from std::ffi::dos import VPrintf, Delay
-from std::ffi::amiga_structs import Process
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn
+from amiga::raw::dos import VPrintf, Delay
+from amiga::raw::structs import Process
 
 fn worker() -> i32 {
     VPrintf("W-START\n", (*u8)0)

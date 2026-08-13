@@ -3,10 +3,10 @@
 //
 // Run: novus compile screen_debug.novus -o screen_debug --safety-level 0
 
-from std::ffi::dos import Delay
-from std::ffi::intuition import OpenScreenTagList, CloseScreen
-from std::ffi::amiga_structs import TagItem, Screen
-from std::ffi::amiga_consts import TAG_DONE, SA_*, CUSTOMSCREEN, NTSC_MONITOR_ID
+from amiga::raw::dos import Delay
+from amiga::raw::intuition import OpenScreenTagList, CloseScreen
+from amiga::raw::structs import TagItem, Screen
+from amiga::raw::consts import TAG_DONE, SA_*, CUSTOMSCREEN, NTSC_MONITOR_ID
 from std::io::file import print, println
 
 pub fn main() -> i32 {

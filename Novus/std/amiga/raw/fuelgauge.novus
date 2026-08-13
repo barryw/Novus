@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: fuelgauge.library
+// Base: _FuelGaugeBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("fuelgauge.library")
+extern pub fn FUELGAUGE_GetClass() -> *u8

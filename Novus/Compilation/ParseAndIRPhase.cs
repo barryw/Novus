@@ -66,10 +66,7 @@ public class ParseAndIRPhase : ICompilationPhase
             processed.Add(modulePath);
 
             // Show which module is being compiled
-            var moduleName = Path.GetFileNameWithoutExtension(modulePath);
-            var moduleDir = Path.GetFileName(Path.GetDirectoryName(modulePath));
-            var displayName = moduleDir == "std" ? $"std::{moduleName}" : moduleName;
-            Console.WriteLine($"  → {displayName}");
+            Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath)}");
 
             var moduleIR = await _compileModuleToIR(
                 modulePath,

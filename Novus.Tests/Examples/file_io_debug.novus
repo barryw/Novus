@@ -2,13 +2,13 @@
 // Uses Delay() to pause after each step so we can see where the crash happens
 
 from std::core import Result
-from std::strings::core import Str
+from std::string::core import Str
 from std::io::file import write
-from std::ffi::dos import Delay
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
-from std::error::errors import DosError
-from std::os::dos import OwnedFileHandle
-from std::os::dos import file_exists, delete_file, create_dir, file_info
+from amiga::raw::dos import Delay
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::sys::dos::errors import DosError
+from amiga::sys::dos import OwnedFileHandle
+from amiga::sys::dos import file_exists, delete_file, create_dir, file_info
 
 fn wait() {
     Delay(50)  // 1 second pause
@@ -155,7 +155,7 @@ fn create_test_file() -> Result<(), DosError> {
     write("  DEBUG: create_test_file - about to write line 1\n")
     wait()
 
-    file.write_all("Line 1: Hello, Amiga!\n", 22u32)?
+    file.write_all("Line 1: Hello, Amiga!\n", 22)?
 
     write("  DEBUG: create_test_file - wrote line 1\n")
     wait()
@@ -163,7 +163,7 @@ fn create_test_file() -> Result<(), DosError> {
     write("  DEBUG: create_test_file - about to write line 2\n")
     wait()
 
-    file.write_all("Line 2: Testing File I/O\n", 25u32)?
+    file.write_all("Line 2: Testing File I/O\n", 25)?
 
     write("  DEBUG: create_test_file - wrote line 2\n")
     wait()
@@ -171,7 +171,7 @@ fn create_test_file() -> Result<(), DosError> {
     write("  DEBUG: create_test_file - about to write line 3\n")
     wait()
 
-    file.write_all("Line 3: Novus is awesome!\n", 26u32)?
+    file.write_all("Line 3: Novus is awesome!\n", 26)?
 
     write("  DEBUG: create_test_file - wrote line 3\n")
     wait()
@@ -195,7 +195,7 @@ fn read_with_read_all() -> Result<u32, DosError> {
     write("  DEBUG: read_with_read_all - file opened\n")
     wait()
 
-    var buffer = [0u8; 1024]
+    var buffer: [u8] = [0; 1024]
 
     write("  DEBUG: read_with_read_all - buffer declared\n")
     wait()
@@ -203,7 +203,7 @@ fn read_with_read_all() -> Result<u32, DosError> {
     write("  DEBUG: read_with_read_all - about to call read_all()\n")
     wait()
 
-    let bytes_read = file.read_all((*u8)&buffer, 1024u32)?
+    let bytes_read = file.read_all((*u8)&buffer, 1024)?
 
     write("  DEBUG: read_with_read_all - read_all() returned\n")
     wait()

@@ -1,10 +1,10 @@
 // GadTools Menu Example
 // Demonstrates using the high-level GadTools menu API
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::ui::menu import GadToolsMenuBuilder, MenuSelection
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::gadtools import GadToolsMenuBuilder, MenuSelection
 from std::io::file import write
-from std::ffi::amiga_consts import MENUNULL
+from amiga::raw::consts import MENUNULL
 
 pub fn main() -> i32 {
     write("=== GadTools Menu Example ===\n")

@@ -3,7 +3,7 @@
 
 from std::collections::smallvec import SmallVec
 from std::core import Result, Option
-from std::error::errors import ExecError
+from amiga::sys::exec::errors import ExecError
 from std::test::test import expect_true, expect_false, expect_eq, fail
 
 // ============================================================================

@@ -24,8 +24,8 @@
 
 from std::core import Option, Drop
 from std::memory::block import MemoryBlock
-from std::ffi::exec import FreeMem, MEMF_PUBLIC, MEMF_CLEAR
-from std::error::errors import ExecError
+from amiga::raw::exec import FreeMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::memory::errors import MemoryError
 
 /// RingBuffer<T> - Fixed-size circular buffer
 ///
@@ -72,17 +72,17 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns a typed error if allocation fails.
     /// For best performance, use RingBufferPow2 with a power-of-2 capacity.
-    pub fn with_capacity(capacity: u32) -> Result<RingBuffer<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn with_capacity(capacity: u32) -> Result<RingBuffer<T>, MemoryError> {
+        if capacity == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let element_size: u32 = @sizeof(T)
         // Align element size to 4 bytes for 68k efficiency
-        let aligned_size: u32 = (element_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
         let bytes: u32 = capacity * aligned_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -92,9 +92,9 @@ impl<T> RingBuffer<T> {
                 return Result::Ok(RingBuffer {
                     data: data,
                     capacity: capacity,
-                    head: 0u32,
-                    tail: 0u32,
-                    len: 0u32,
+                    head: 0,
+                    tail: 0,
+                    len: 0,
                     element_size: aligned_size,
                 })
             },
@@ -103,16 +103,16 @@ impl<T> RingBuffer<T> {
     }
 
     /// Create a new ring buffer, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<RingBuffer<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn try_with_capacity(capacity: u32) -> Result<RingBuffer<T>, MemoryError> {
+        if capacity == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let element_size: u32 = @sizeof(T)
-        let aligned_size: u32 = (element_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
         let bytes: u32 = capacity * aligned_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -122,21 +122,21 @@ impl<T> RingBuffer<T> {
                 return Result::Ok(RingBuffer {
                     data: data,
                     capacity: capacity,
-                    head: 0u32,
-                    tail: 0u32,
-                    len: 0u32,
+                    head: 0,
+                    tail: 0,
+                    len: 0,
                     element_size: aligned_size,
                 })
             },
             Result::Err(_) => {
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
 
     /// Check if the buffer is empty
     pub fn is_empty(&self) -> bool {
-        return self.len == 0u32
+        return self.len == 0
     }
 
     /// Check if the buffer is full
@@ -163,16 +163,16 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns a capacity error if the buffer is full.
     /// Uses CopyMem for safe struct copying on 68k.
-    pub fn push_back(&var self, consuming value: T) -> Result<(), ExecError> {
+    pub fn push_back(&var self, consuming value: T) -> Result<(), MemoryError> {
         if self.len == self.capacity {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
         let dst: *T = (*T)(self.data + self.tail * self.element_size)
         *dst = value
 
-        self.tail = (self.tail + 1u32) % self.capacity
-        self.len = self.len + 1u32
+        self.tail = (self.tail + 1) % self.capacity
+        self.len = self.len + 1
         return Result::Ok(())
     }
 
@@ -181,7 +181,7 @@ impl<T> RingBuffer<T> {
     /// Returns Some(value) if buffer has elements, None if empty.
     /// Uses CopyMem for safe struct copying on 68k.
     pub fn pop_front(&var self) -> Option<T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
 
@@ -190,8 +190,8 @@ impl<T> RingBuffer<T> {
         let src: *T = (*T)(self.data + self.head * self.element_size)
         let value: T = *src
 
-        self.head = (self.head + 1u32) % self.capacity
-        self.len = self.len - 1u32
+        self.head = (self.head + 1) % self.capacity
+        self.len = self.len - 1
         return Option::Some(value)
     }
 
@@ -199,7 +199,7 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns a reference to the front element, or None if empty.
     pub fn front(&self) -> Option<&T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + self.head * self.element_size)
@@ -210,11 +210,11 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns a reference to the most recently added element.
     pub fn back(&self) -> Option<&T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
         // Back is at tail - 1, with wrap-around
-        let back_idx: u32 = if self.tail == 0u32 { self.capacity - 1u32 } else { self.tail - 1u32 }
+        let back_idx: u32 = if self.tail == 0 { self.capacity - 1 } else { self.tail - 1 }
         let ptr: *T = (*T)(self.data + back_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
@@ -224,14 +224,14 @@ impl<T> RingBuffer<T> {
     /// Calls Drop on all contained elements if T implements Drop.
     pub fn clear(&var self) {
         // Call Drop on each element
-        while self.len > 0u32 {
+        while self.len > 0 {
             let ptr: *T = (*T)(self.data + self.head * self.element_size)
             @drop_in_place(ptr)
-            self.head = (self.head + 1u32) % self.capacity
-            self.len = self.len - 1u32
+            self.head = (self.head + 1) % self.capacity
+            self.len = self.len - 1
         }
-        self.head = 0u32
-        self.tail = 0u32
+        self.head = 0
+        self.tail = 0
     }
 
     /// Get element at logical index (0 = front)
@@ -259,9 +259,9 @@ impl<T> RingBuffer<T> {
     /// Overwrite the front element (for in-place modification)
     ///
     /// Returns false if buffer is empty.
-    pub fn set_front(&var self, consuming value: T) -> Result<(), ExecError> {
-        if self.len == 0u32 {
-            return Result::Err(ExecError::IndexOutOfBounds)
+    pub fn set_front(&var self, consuming value: T) -> Result<(), MemoryError> {
+        if self.len == 0 {
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
         let dst: *T = (*T)(self.data + self.head * self.element_size)
         @drop_in_place(dst)
@@ -277,11 +277,11 @@ impl<T> RingBuffer<T> {
         let to_skip: u32 = if n > self.len { self.len } else { n }
 
         // Drop each element being skipped
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < to_skip {
             let ptr: *T = (*T)(self.data + ((self.head + i) % self.capacity) * self.element_size)
             @drop_in_place(ptr)
-            i = i + 1u32
+            i = i + 1
         }
 
         self.head = (self.head + to_skip) % self.capacity
@@ -301,7 +301,7 @@ impl<T> Drop for RingBuffer<T> {
                 FreeMem(self.data, bytes)
             }
             self.data = null
-            self.capacity = 0u32
+            self.capacity = 0
         }
     }
 }
@@ -346,9 +346,9 @@ impl<T> RingBufferPow2<T> {
     ///
     /// Capacity will be rounded up to the next power of 2.
     /// Returns a typed error if allocation fails.
-    pub fn with_capacity(requested: u32) -> Result<RingBufferPow2<T>, ExecError> {
-        if requested == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn with_capacity(requested: u32) -> Result<RingBufferPow2<T>, MemoryError> {
+        if requested == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Round up to next power of 2
@@ -356,10 +356,10 @@ impl<T> RingBufferPow2<T> {
 
         let element_size: u32 = @sizeof(T)
         // Align element size to 4 bytes for 68k efficiency
-        let aligned_size: u32 = (element_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
         let bytes: u32 = capacity * aligned_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -369,10 +369,10 @@ impl<T> RingBufferPow2<T> {
                 return Result::Ok(RingBufferPow2 {
                     data: data,
                     capacity: capacity,
-                    mask: capacity - 1u32,
-                    head: 0u32,
-                    tail: 0u32,
-                    len: 0u32,
+                    mask: capacity - 1,
+                    head: 0,
+                    tail: 0,
+                    len: 0,
                     element_size: aligned_size,
                 })
             },
@@ -381,18 +381,18 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Create a new ring buffer, returning a Result for detailed error handling
-    pub fn try_with_capacity(requested: u32) -> Result<RingBufferPow2<T>, ExecError> {
-        if requested == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn try_with_capacity(requested: u32) -> Result<RingBufferPow2<T>, MemoryError> {
+        if requested == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let capacity: u32 = RingBufferPow2::<T>::next_power_of_two(requested)
 
         let element_size: u32 = @sizeof(T)
-        let aligned_size: u32 = (element_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
         let bytes: u32 = capacity * aligned_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -402,36 +402,36 @@ impl<T> RingBufferPow2<T> {
                 return Result::Ok(RingBufferPow2 {
                     data: data,
                     capacity: capacity,
-                    mask: capacity - 1u32,
-                    head: 0u32,
-                    tail: 0u32,
-                    len: 0u32,
+                    mask: capacity - 1,
+                    head: 0,
+                    tail: 0,
+                    len: 0,
                     element_size: aligned_size,
                 })
             },
             Result::Err(_) => {
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
 
     /// Round up to next power of 2
     fn next_power_of_two(n: u32) -> u32 {
-        if n == 0u32 {
-            return 1u32
+        if n == 0 {
+            return 1
         }
-        var v: u32 = n - 1u32
+        var v: u32 = n - 1
         v = v | (v >> 1)
         v = v | (v >> 2)
         v = v | (v >> 4)
         v = v | (v >> 8)
         v = v | (v >> 16)
-        return v + 1u32
+        return v + 1
     }
 
     /// Check if the buffer is empty
     pub fn is_empty(&self) -> bool {
-        return self.len == 0u32
+        return self.len == 0
     }
 
     /// Check if the buffer is full
@@ -455,22 +455,22 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Push an element to the back (fast path with bitmask)
-    pub fn push_back(&var self, consuming value: T) -> Result<(), ExecError> {
+    pub fn push_back(&var self, consuming value: T) -> Result<(), MemoryError> {
         if self.len == self.capacity {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
         let dst: *T = (*T)(self.data + self.tail * self.element_size)
         *dst = value
 
-        self.tail = (self.tail + 1u32) & self.mask
-        self.len = self.len + 1u32
+        self.tail = (self.tail + 1) & self.mask
+        self.len = self.len + 1
         return Result::Ok(())
     }
 
     /// Pop an element from the front (fast path with bitmask)
     pub fn pop_front(&var self) -> Option<T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
 
@@ -478,14 +478,14 @@ impl<T> RingBufferPow2<T> {
         let src: *T = (*T)(self.data + self.head * self.element_size)
         let value: T = *src
 
-        self.head = (self.head + 1u32) & self.mask
-        self.len = self.len - 1u32
+        self.head = (self.head + 1) & self.mask
+        self.len = self.len - 1
         return Option::Some(value)
     }
 
     /// Peek at the front element
     pub fn front(&self) -> Option<&T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + self.head * self.element_size)
@@ -494,11 +494,11 @@ impl<T> RingBufferPow2<T> {
 
     /// Peek at the back element
     pub fn back(&self) -> Option<&T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
         // When tail==0, underflow wraps to 0xFFFFFFFF, mask produces capacity-1 (correct!)
-        let back_idx: u32 = (self.tail - 1u32) & self.mask
+        let back_idx: u32 = (self.tail - 1) & self.mask
         let ptr: *T = (*T)(self.data + back_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
@@ -508,14 +508,14 @@ impl<T> RingBufferPow2<T> {
     /// Calls Drop on all contained elements if T implements Drop.
     pub fn clear(&var self) {
         // Call Drop on each element
-        while self.len > 0u32 {
+        while self.len > 0 {
             let ptr: *T = (*T)(self.data + self.head * self.element_size)
             @drop_in_place(ptr)
-            self.head = (self.head + 1u32) & self.mask
-            self.len = self.len - 1u32
+            self.head = (self.head + 1) & self.mask
+            self.len = self.len - 1
         }
-        self.head = 0u32
-        self.tail = 0u32
+        self.head = 0
+        self.tail = 0
     }
 
     /// Get element at logical index
@@ -546,11 +546,11 @@ impl<T> RingBufferPow2<T> {
         let to_skip: u32 = if n > self.len { self.len } else { n }
 
         // Drop each element being skipped
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < to_skip {
             let ptr: *T = (*T)(self.data + ((self.head + i) & self.mask) * self.element_size)
             @drop_in_place(ptr)
-            i = i + 1u32
+            i = i + 1
         }
 
         self.head = (self.head + to_skip) & self.mask
@@ -570,7 +570,7 @@ impl<T> Drop for RingBufferPow2<T> {
                 FreeMem(self.data, bytes)
             }
             self.data = null
-            self.capacity = 0u32
+            self.capacity = 0
         }
     }
 }

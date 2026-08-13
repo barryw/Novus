@@ -124,15 +124,15 @@ public void BuildIr_Defer_ReturnBeforeDefer_SnapshotValue_Compiles()
 [Fact]
 public void BuildIr_I8_MaxOverflow_Wraps_Compiles()
 {
-    // let max: i8 = 127i8
-    // let overflow = max + 1i8
+    // let max: i8 = 127
+    // let overflow = max + 1
     // return (i32)overflow  // Should wrap to -128
 }
 
 [Fact]
 public void BuildIr_SignExtension_I8_Negative_To_I32_Compiles()
 {
-    // let small: i8 = -1i8
+    // let small: i8 = -1
     // let extended: i32 = (i32)small
     // return extended  // Should be -1 (0xFFFFFFFF), not 255
 }

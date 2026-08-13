@@ -1,15 +1,15 @@
 // ReAction GUI Demo
 // Tests the ReAction builder API
 
-from std::ui::reaction import ReActionBuilder
-from std::ui::reaction import ReActionWindow
-from std::ui::reaction import ReActionEvent
-from std::ui::reaction import LayoutOrientation
-from std::ui::reaction import BevelStyle
-from std::ui::reaction import LayoutHandle
-from std::ui::reaction import GadgetHandle
-from std::ffi::intuition import LockPubScreen
-from std::ffi::intuition import UnlockPubScreen
+from amiga::sys::reaction import ReActionBuilder
+from amiga::sys::reaction import ReActionWindow
+from amiga::sys::reaction import ReActionEvent
+from amiga::sys::reaction import LayoutOrientation
+from amiga::sys::reaction import BevelStyle
+from amiga::sys::reaction import LayoutHandle
+from amiga::sys::reaction import GadgetHandle
+from amiga::raw::intuition import LockPubScreen
+from amiga::raw::intuition import UnlockPubScreen
 
 // Gadget IDs
 const GAD_OK: u32 = 1

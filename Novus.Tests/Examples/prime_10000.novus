@@ -3,7 +3,7 @@
 // Uses Sieve of Eratosthenes algorithm
 
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 from std::collections::vec import Vec
 
 pub fn main() -> i32 {
@@ -34,8 +34,7 @@ pub fn main() -> i32 {
     // Run the sieve algorithm
     var p: u32 = 2
     while p * p <= max {
-        let ptr = sieve.as_ptr()
-        let is_prime = ptr[p]
+        let is_prime = *sieve.get(p).unwrap()
         let check = (u32)is_prime
         if check != 0 {
             // Mark all multiples of p as composite
@@ -56,8 +55,7 @@ pub fn main() -> i32 {
 
     i = 2
     while i <= max {
-        let data = sieve.as_ptr()
-        let val = data[i]
+        let val = *sieve.get(i).unwrap()
         let is_prime_val = (u32)val
         if is_prime_val != 0 {
             write("%ld ", i)

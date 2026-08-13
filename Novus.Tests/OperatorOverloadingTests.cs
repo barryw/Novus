@@ -430,14 +430,14 @@ struct MyArray {
 }
 
 impl Index<u32, i32> for MyArray {
-    fn index(&self, idx: u32) -> i32 {
-        return self.data[idx]
+    fn index(&self, consuming idx: u32) -> i32 {
+        return unsafe { self.data[idx] }
     }
 }
 
 fn main() -> i32 {
-    let arr = MyArray { data: (*i32)0, len: 0u32 }
-    return arr[0u32]  // OK: MyArray implements Index<u32, i32>
+    let arr = MyArray { data: (*i32)0, len: 0 }
+    return arr[0]  // OK: MyArray implements Index<u32, i32>
 }";
         var diagnostics = Analyze(source);
         Assert.False(diagnostics.HasErrors,
@@ -458,14 +458,14 @@ struct MyArray {
 }
 
 impl Index<u32, i32> for MyArray {
-    fn index(&self, idx: u32) -> i32 {
-        return self.data[idx]
+    fn index(&self, consuming idx: u32) -> i32 {
+        return unsafe { self.data[idx] }
     }
 }
 
 pub fn main() -> i32 {
-    let arr = MyArray { data: (*i32)0, len: 0u32 }
-    return arr[0u32]
+    let arr = MyArray { data: (*i32)0, len: 0 }
+    return arr[0]
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -494,14 +494,14 @@ struct MyArray {
 }
 
 impl IndexMut<u32, i32> for MyArray {
-    fn index_set(&var self, idx: u32, value: i32) {
-        self.data[idx] = value
+    fn index_set(&var self, consuming idx: u32, consuming value: i32) {
+        unsafe { self.data[idx] = value }
     }
 }
 
 fn main() -> i32 {
-    var arr = MyArray { data: (*i32)0, len: 0u32 }
-    arr[0u32] = 42  // OK: MyArray implements IndexMut<u32, i32>
+    var arr = MyArray { data: (*i32)0, len: 0 }
+    arr[0] = 42  // OK: MyArray implements IndexMut<u32, i32>
     return 0
 }";
         var diagnostics = Analyze(source);
@@ -523,14 +523,14 @@ struct MyArray {
 }
 
 impl IndexMut<u32, i32> for MyArray {
-    fn index_set(&var self, idx: u32, value: i32) {
-        self.data[idx] = value
+    fn index_set(&var self, consuming idx: u32, consuming value: i32) {
+        unsafe { self.data[idx] = value }
     }
 }
 
 pub fn main() -> i32 {
-    var arr = MyArray { data: (*i32)0, len: 0u32 }
-    arr[0u32] = 42
+    var arr = MyArray { data: (*i32)0, len: 0 }
+    arr[0] = 42
     return 0
 }";
         var module = BuildIr(source);

@@ -1,0 +1,53 @@
+from std::core import Error
+
+pub enum ExecError {
+    NoMem,
+    BadSignal,
+    NullReturn,
+    BadTask,
+    BadNode,
+    BadPort,
+    SignalInUse,
+    TaskNotFound,
+    LibraryNotFound,
+    InvalidAddress,
+    AlignmentError,
+}
+
+pub fn exec_error_to_code(error: ExecError) -> i32 {
+    return match error {
+        ExecError::NoMem => -100,
+        ExecError::BadSignal => -101,
+        ExecError::NullReturn => -102,
+        ExecError::BadTask => -103,
+        ExecError::BadNode => -104,
+        ExecError::BadPort => -105,
+        ExecError::SignalInUse => -106,
+        ExecError::TaskNotFound => -107,
+        ExecError::LibraryNotFound => -108,
+        ExecError::InvalidAddress => -109,
+        ExecError::AlignmentError => -110,
+    }
+}
+
+impl ExecError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            ExecError::NoMem => "Memory allocation failed",
+            ExecError::BadSignal => "Invalid signal number",
+            ExecError::NullReturn => "Unexpected null return",
+            ExecError::BadTask => "Invalid task pointer",
+            ExecError::BadNode => "Invalid list node",
+            ExecError::BadPort => "Invalid message port",
+            ExecError::SignalInUse => "Signal already allocated",
+            ExecError::TaskNotFound => "Task not found",
+            ExecError::LibraryNotFound => "Library not found",
+            ExecError::InvalidAddress => "Invalid memory address",
+            ExecError::AlignmentError => "Memory alignment error",
+        }
+    }
+}
+
+impl Error for ExecError {
+    fn message(&self) -> *u8 { return ExecError::message(self) }
+}

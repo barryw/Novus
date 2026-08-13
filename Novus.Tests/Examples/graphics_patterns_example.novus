@@ -1,20 +1,20 @@
 // Graphics Patterns Example
 //
-// Demonstrates all functions in std::graphics::patterns:
+// Demonstrates all functions in amiga::sys::graphics::patterns:
 // - Line patterns (dotted, dashed, custom)
 // - Fill patterns (checkerboard, horizontal lines, vertical lines, custom)
 // - Pattern builder for runtime pattern creation
 // - Pattern manipulation functions
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::graphics::draw import DrawContext
-from std::graphics::shapes import Rect
-from std::graphics::patterns import LinePattern, FillPattern
-from std::graphics::patterns import set_line_pattern, get_line_pattern, clear_line_pattern
-from std::graphics::patterns import set_fill_pattern, clear_fill_pattern, has_fill_pattern
-from std::graphics::patterns import invert_line_pattern, rotate_line_pattern_left, rotate_line_pattern_right
-from std::graphics::patterns import LINE_SOLID, LINE_DOTTED, LINE_DASHED, LINE_LONG_DASH, LINE_DASH_DOT
-from std::graphics::patterns import CHECKERBOARD_ROW0, CHECKERBOARD_ROW1
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::graphics::draw import DrawContext
+from amiga::sys::graphics::shapes import Rect
+from amiga::sys::graphics::patterns import LinePattern, FillPattern
+from amiga::sys::graphics::patterns import set_line_pattern, get_line_pattern, clear_line_pattern
+from amiga::sys::graphics::patterns import set_fill_pattern, clear_fill_pattern, has_fill_pattern
+from amiga::sys::graphics::patterns import invert_line_pattern, rotate_line_pattern_left, rotate_line_pattern_right
+from amiga::sys::graphics::patterns import LINE_SOLID, LINE_DOTTED, LINE_DASHED, LINE_LONG_DASH, LINE_DASH_DOT
+from amiga::sys::graphics::patterns import CHECKERBOARD_ROW0, CHECKERBOARD_ROW1
 from std::io::file import write
 
 pub fn main() -> i32 {
@@ -26,7 +26,7 @@ pub fn main() -> i32 {
 
             match ctx_result {
                 Result::Ok(ctx) => {
-                    let rp = ctx.handle()
+                    let rp = ctx.as_raw()
                     ctx.clear(0)
 
                     // ========================================================

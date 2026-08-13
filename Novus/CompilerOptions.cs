@@ -46,7 +46,7 @@ public class CompilerOptions
     [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
     public int? SafetyLevelOption { get; set; }
 
-    [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
+    [Option("unsafe", Required = false, HelpText = "Disable optional runtime instrumentation (safe indexing remains checked; equivalent to --safety-level 0)")]
     public bool UnsafeMode { get; set; }
 
     /// <summary>
@@ -107,7 +107,7 @@ public class CompilerOptions
         {
             throw new ArgumentException(
                 "Cannot specify both --unsafe and --safety-level. " +
-                "Use --unsafe for no checks, or --safety-level N for specific level.");
+                "Use --unsafe for minimal instrumentation, or --safety-level N for a specific level.");
         }
 
         // --unsafe flag overrides everything

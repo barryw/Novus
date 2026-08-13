@@ -20,8 +20,8 @@
 //
 // Exit code: Should not reach normal exit due to double-free
 
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_ANY
 
 pub fn main() -> i32 {
     unsafe {
@@ -34,8 +34,8 @@ pub fn main() -> i32 {
 
         // Use the memory
         let byte_ptr: *u8 = (*u8)ptr
-        byte_ptr[0] = 170u8  // 0xAA
-        byte_ptr[1] = 187u8  // 0xBB
+        byte_ptr[0] = 170  // 0xAA
+        byte_ptr[1] = 187  // 0xBB
 
         // Free the memory - this is correct
         FreeMem(ptr, 64)

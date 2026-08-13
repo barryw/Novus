@@ -2,9 +2,9 @@
 // This version does NOT manually destructure tuples - testing automatic tuple drop
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
-from std::ffi::dos import VPrintf
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec::channel import bounded_channel, BoundedSender, BoundedReceiver
+from amiga::raw::dos import VPrintf
 
 pub fn main() -> i32 {
     VPrintf("Signal leak test (NO destructuring) - creating/destroying bounded channels\n", (*u8)0)

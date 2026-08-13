@@ -1,9 +1,9 @@
 // Check if DOSBase gets corrupted by PutMsg
 
-from std::ffi::dos import VPrintf
-from std::ffi::exec import AllocMem, PutMsg, FindTask
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
-from std::ffi::amiga_structs import Process, Message, MsgPort
+from amiga::raw::dos import VPrintf
+from amiga::raw::exec import AllocMem, PutMsg, FindTask
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::structs import Process, Message, MsgPort
 
 // Declare DOSBase as external so we can read it
 extern var DOSBase: *u8

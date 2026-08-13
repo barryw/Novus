@@ -16,13 +16,13 @@
 //   All done!
 
 from std::core import Result, Option
-from std::os::task import spawn_task_fn, ProcessHandle
-from std::os::timer import Duration, TimerHandle
-from std::ffi::exec import Wait, CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, FindPort
-from std::ffi::exec import AllocMem, FreeMem, Forbid, Permit, FindTask
-from std::ffi::exec import AddPort, RemPort
-from std::ffi::amiga_structs import MsgPort, Message, Node, Task
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::sys::exec import spawn_task_fn, ProcessHandle
+from amiga::timer import Duration, Timer
+from amiga::raw::exec import Wait, CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, FindPort
+from amiga::raw::exec import AllocMem, FreeMem, Forbid, Permit, FindTask
+from amiga::raw::exec import AddPort, RemPort
+from amiga::raw::structs import MsgPort, Message, Node, Task
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 from std::io::file import write
 
 // Message type for progress updates
@@ -89,7 +89,7 @@ fn worker_entry() -> i32 {
         Permit()
         if (u32)port == 0 {
             // Small delay before retry
-            let timer_result = TimerHandle::microhz()
+            let timer_result = Timer::microhz()
             match timer_result {
                 Result::Ok(var t) => {
                     let _ = t.delay(Duration::millis(10))
@@ -108,7 +108,7 @@ fn worker_entry() -> i32 {
     write("Worker: Found parent port\n")
 
     // Open timer for delays
-    let timer_result = TimerHandle::microhz()
+    let timer_result = Timer::microhz()
     match timer_result {
         Result::Err(_) => {
             write("Worker: Failed to open timer\n")

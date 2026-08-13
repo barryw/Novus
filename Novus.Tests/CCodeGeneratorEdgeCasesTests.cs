@@ -695,7 +695,7 @@ pub fn divide_void(a: u8, divisor: u8) {
         // Test for bug fix: Module static variables were being shadowed by local variable declarations
         // in functions that used them, causing assignments to update the local instead of the global
         var source = @"
-static var COUNTER: u32 = 0u32
+static var COUNTER: u32 = 0
 static var INITIALIZED: bool = false
 
 pub fn init_system() {
@@ -706,7 +706,7 @@ pub fn init_system() {
 }
 
 pub fn increment_counter() -> u32 {
-    COUNTER = COUNTER + 1u32
+    COUNTER = COUNTER + 1
     return COUNTER
 }";
 
@@ -947,10 +947,10 @@ pub fn short_circuit() -> bool {
     {
         var module = BuildIR("""
             pub fn probe(pointer: *i32) -> bool {
-                let whole = 2.0f32
-                let float_equal = whole == 3.0f32
-                let wide: u64 = 6000000000u64
-                let wide_equal = wide == 6000000001u64
+                let whole: f32 = 2.0
+                let float_equal = whole == 3.0
+                let wide: u64 = 6000000000
+                let wide_equal = wide == 6000000001
                 let ignored = *pointer
                 return float_equal || wide_equal
             }

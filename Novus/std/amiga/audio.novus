@@ -1,0 +1,102 @@
+from std::core import Error, From, Option, Result
+from std::memory import Slice
+from amiga::sys::audio::errors import AudioError as SystemAudioError
+from amiga::sys::device::audio import AudioDeviceHandle as SystemDevice, ChannelPreference
+from amiga::sys::hardware::audio import SampleHandle as SystemSample, is_pal_system
+
+// Tier 1: ordinary PCM playback without chip-RAM, pointer, or audio.device mechanics.
+pub use amiga::sys::device::audio::ChannelPreference
+
+pub enum PlaybackError {
+    Unavailable,
+    InvalidSample,
+    InvalidPlayback,
+    OutOfMemory,
+    PlaybackFailed,
+}
+
+pub type AudioError = PlaybackError
+
+impl Error for PlaybackError {
+    fn message(&self) -> *u8 {
+        return match *self {
+            PlaybackError::Unavailable => "Audio is unavailable",
+            PlaybackError::InvalidSample => "The audio sample is invalid",
+            PlaybackError::InvalidPlayback => "The playback settings are invalid",
+            PlaybackError::OutOfMemory => "There is not enough audio memory",
+            PlaybackError::PlaybackFailed => "Audio playback failed",
+        }
+    }
+}
+
+impl From<SystemAudioError> for PlaybackError {
+    fn convert(consuming error: SystemAudioError) -> PlaybackError {
+        return match error {
+            SystemAudioError::NoMsgPort | SystemAudioError::NoIORequest | SystemAudioError::DeviceOpenFailed | SystemAudioError::NoAllocation | SystemAudioError::AllocFailed => PlaybackError::Unavailable,
+            SystemAudioError::SampleNotChipRam | SystemAudioError::SampleMisaligned | SystemAudioError::SampleTooLong | SystemAudioError::SampleTooShort | SystemAudioError::NullSampleData | SystemAudioError::InvalidSampleNumber | SystemAudioError::InvalidModuleData => PlaybackError::InvalidSample,
+            SystemAudioError::InvalidChannel | SystemAudioError::InvalidVolume | SystemAudioError::InvalidPeriod | SystemAudioError::InvalidSampleRate | SystemAudioError::InvalidChannelMask => PlaybackError::InvalidPlayback,
+            SystemAudioError::AllocationFailed | SystemAudioError::ChipCacheError => PlaybackError::OutOfMemory,
+
+            _ => PlaybackError::PlaybackFailed,
+        }
+    }
+}
+
+pub struct Sample {
+    sample: SystemSample,
+}
+
+impl Sample {
+    /// Copy signed 8-bit PCM into DMA-safe memory. The source may live anywhere.
+    pub fn from_pcm(bytes: Slice<u8>, sample_rate: u32) -> Result<Sample, AudioError> {
+        let Option::Some(first) = bytes.get(0) else {
+            return Result::Err(PlaybackError::InvalidSample)
+        }
+        let sample = SystemSample::from_data_with_rate(unsafe { (*u8)first }, bytes.len(), sample_rate)?
+        return Result::Ok(Sample { sample: sample })
+    }
+
+    pub fn system(&self) -> &SystemSample { return &self.sample }
+    pub fn from_system(consuming sample: SystemSample) -> Sample { return Sample { sample: sample } }
+    pub fn into_system(consuming self) -> SystemSample { return self.sample }
+}
+
+pub struct Device {
+    device: SystemDevice,
+}
+
+impl Device {
+    pub fn open(preference: ChannelPreference, priority: i8) -> Result<Device, AudioError> {
+        let device = SystemDevice::open(preference, priority)?
+        return Result::Ok(Device { device: device })
+    }
+
+    pub fn open_any(priority: i8) -> Result<Device, AudioError> {
+        return Device::open(ChannelPreference::Any, priority)
+    }
+
+    /// Play once at the sample's native rate; PAL/NTSC timing is automatic.
+    pub fn play(&var self, sample: &Sample, volume: u16) -> Result<(), AudioError> {
+        self.device.play_native(sample.system(), volume, 1, is_pal_system())?
+        return Result::Ok(())
+    }
+
+    pub fn play_looped(&var self, sample: &Sample, volume: u16) -> Result<(), AudioError> {
+        self.device.play_native(sample.system(), volume, 0, is_pal_system())?
+        return Result::Ok(())
+    }
+
+    pub fn stop(&var self) -> Result<(), AudioError> {
+        self.device.stop()?
+        return Result::Ok(())
+    }
+
+    pub fn resume(&var self) -> Result<(), AudioError> {
+        self.device.start()?
+        return Result::Ok(())
+    }
+
+    pub fn system(&self) -> &SystemDevice { return &self.device }
+    pub fn from_system(consuming device: SystemDevice) -> Device { return Device { device: device } }
+    pub fn into_system(consuming self) -> SystemDevice { return self.device }
+}

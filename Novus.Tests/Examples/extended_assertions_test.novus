@@ -11,11 +11,11 @@
 // Run with: novus test extended_assertions_test.novus
 
 from std::core import Result, Option
-from std::strings::core import Str
+from std::string::core import Str
 from std::test::test import expect, expect_eq, expect_eq, expect_true, expect_false
 from std::test::assertions import expect_str_eq, expect_str_ne, expect_cstr_eq, expect_str_contains, expect_str_not_contains, expect_str_starts_with, expect_str_ends_with, expect_str_empty, expect_str_not_empty, expect_str_len, expect_ok_i32, expect_err_i32, expect_ok_eq_i32, expect_ok_u32, expect_err_u32, expect_ok_eq_u32, expect_ok_bool, expect_ok_unit, expect_some_i32, expect_none_i32, expect_some_eq_i32, expect_some_u32, expect_none_u32, expect_some_eq_u32, expect_some_bool, expect_none_bool, expect_gt_i32, expect_lt_i32, expect_gte_i32, expect_lte_i32, expect_gt_u32, expect_lt_u32, expect_gte_u32, expect_lte_u32, expect_ne_i32, expect_ne_u32, expect_array_eq_i32, expect_array_eq_u32, expect_array_eq_u8, expect_array_contains_i32, expect_array_not_contains_i32, expect_array_len, expect_array_empty, expect_array_not_empty, expect_in_range_i32, expect_in_range_u32, expect_not_in_range_i32, expect_approx_eq_fixed, expect_approx_eq_u32, expect_chip_mem, expect_fast_mem, expect_valid_mem, expect_chip_available, expect_fast_available
-from std::ffi::exec import AllocVec, FreeVec
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::exec import AllocVec, FreeVec
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC
 
 // ============================================================================
 // String Assertion Tests
@@ -54,7 +54,7 @@ pub fn test_string_length() {
 
     expect_str_empty(empty, "empty string should be empty")
     expect_str_not_empty(hello, "hello should not be empty")
-    expect_str_len(hello, 5u32, "hello should have length 5")
+    expect_str_len(hello, 5, "hello should have length 5")
 }
 
 @test("C string comparison")
@@ -139,15 +139,15 @@ pub fn test_comparisons() {
 @test("Not equal assertions")
 pub fn test_not_equal() {
     expect_ne_i32(5, 10, "5 != 10")
-    expect_ne_u32(100u32, 200u32, "100 != 200")
+    expect_ne_u32(100, 200, "100 != 200")
 }
 
 @test("Unsigned comparisons")
 pub fn test_unsigned_comparisons() {
-    expect_gt_u32(100u32, 50u32, "100 > 50")
-    expect_lt_u32(50u32, 100u32, "50 < 100")
-    expect_gte_u32(100u32, 100u32, "100 >= 100")
-    expect_lte_u32(50u32, 100u32, "50 <= 100")
+    expect_gt_u32(100, 50, "100 > 50")
+    expect_lt_u32(50, 100, "50 < 100")
+    expect_gte_u32(100, 100, "100 >= 100")
+    expect_lte_u32(50, 100, "50 <= 100")
 }
 
 // ============================================================================
@@ -159,24 +159,24 @@ pub fn test_array_equality() {
     let arr1: [i32] = [1, 2, 3, 4, 5]
     let arr2: [i32] = [1, 2, 3, 4, 5]
 
-    expect_array_eq_i32(&arr1[0], 5u32, &arr2[0], 5u32, "arrays should be equal")
+    expect_array_eq_i32(&arr1[0], 5, &arr2[0], 5, "arrays should be equal")
 }
 
 @test("Array contains assertions")
 pub fn test_array_contains() {
     let arr: [i32] = [10, 20, 30, 40, 50]
 
-    expect_array_contains_i32(&arr[0], 5u32, 30, "should contain 30")
-    expect_array_not_contains_i32(&arr[0], 5u32, 99, "should not contain 99")
+    expect_array_contains_i32(&arr[0], 5, 30, "should contain 30")
+    expect_array_not_contains_i32(&arr[0], 5, 99, "should not contain 99")
 }
 
 @test("Array length assertions")
 pub fn test_array_length() {
     let arr: [i32] = [1, 2, 3]
 
-    expect_array_len(3u32, 3u32, "length should be 3")
-    expect_array_not_empty(3u32, "array should not be empty")
-    expect_array_empty(0u32, "empty array should be empty")
+    expect_array_len(3, 3, "length should be 3")
+    expect_array_not_empty(3, "array should not be empty")
+    expect_array_empty(0, "empty array should be empty")
 }
 
 // ============================================================================
@@ -189,7 +189,7 @@ pub fn test_ranges() {
     expect_in_range_i32(1, 1, 10, "1 should be in [1, 10] (boundary)")
     expect_in_range_i32(10, 1, 10, "10 should be in [1, 10] (boundary)")
 
-    expect_in_range_u32(50u32, 0u32, 100u32, "50 should be in [0, 100]")
+    expect_in_range_u32(50, 0, 100, "50 should be in [0, 100]")
 
     expect_not_in_range_i32(0, 1, 10, "0 should not be in [1, 10]")
     expect_not_in_range_i32(11, 1, 10, "11 should not be in [1, 10]")
@@ -199,7 +199,7 @@ pub fn test_ranges() {
 pub fn test_approximate() {
     // Test fixed-point style approximate equality
     expect_approx_eq_fixed(100, 102, 5, "100 ~= 102 with tolerance 5")
-    expect_approx_eq_u32(1000u32, 1005u32, 10u32, "1000 ~= 1005 with tolerance 10")
+    expect_approx_eq_u32(1000, 1005, 10, "1000 ~= 1005 with tolerance 10")
 }
 
 // ============================================================================
@@ -208,7 +208,7 @@ pub fn test_approximate() {
 
 @test("CHIP memory allocation")
 pub fn test_chip_memory() {
-    let chip_ptr = AllocVec(256u32, MEMF_CHIP | MEMF_CLEAR)
+    let chip_ptr = AllocVec(256, MEMF_CHIP | MEMF_CLEAR)
     if chip_ptr != null {
         expect_chip_mem(chip_ptr, "allocated memory should be CHIP RAM")
         expect_valid_mem(chip_ptr, "memory should be valid")
@@ -218,7 +218,7 @@ pub fn test_chip_memory() {
 
 @test("FAST memory allocation")
 pub fn test_fast_memory() {
-    let fast_ptr = AllocVec(256u32, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
+    let fast_ptr = AllocVec(256, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
     if fast_ptr != null {
         // Note: On systems without FAST RAM, this may fail
         // The assertion will gracefully report the failure
@@ -231,7 +231,7 @@ pub fn test_fast_memory() {
 @test("Memory availability checks")
 pub fn test_memory_availability() {
     // Check that at least 1KB of CHIP RAM is available
-    expect_chip_available(1024u32, "should have at least 1KB CHIP RAM")
+    expect_chip_available(1024, "should have at least 1KB CHIP RAM")
 }
 
 // ============================================================================

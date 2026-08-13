@@ -20,7 +20,7 @@
 //     sock.send_to("Hello", server)?
 //
 //     // Receive response
-//     let mut buf: [u8; 512] = [0u8; 512]
+//     let mut buf: [u8; 512] = [0; 512]
 //     let (n, from) = sock.recv_from(&buf, 512)?
 //
 //     return 0
@@ -32,7 +32,7 @@
 // let sock = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::any(), 8080))?
 //
 // loop {
-//     let mut buf: [u8; 1024] = [0u8; 1024]
+//     let mut buf: [u8; 1024] = [0; 1024]
 //     let (n, client) = sock.recv_from(&buf, 1024)?
 //
 //     // Echo back
@@ -40,10 +40,10 @@
 // }
 // ```
 
-from std::ffi::bsdsocket import socket, bind, sendto, recvfrom, CloseSocket, connect, send, recv
-from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
-from std::ffi::bsdsocket import AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET, SO_BROADCAST, SO_RCVBUF, SO_SNDBUF
-from std::ffi::bsdsocket import FIONBIO, FIONREAD
+from amiga::raw::bsdsocket import socket, bind, sendto, recvfrom, CloseSocket, connect, send, recv
+from amiga::raw::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
+from amiga::raw::bsdsocket import AF_INET, SOCK_DGRAM, IPPROTO_UDP, SOL_SOCKET, SO_BROADCAST, SO_RCVBUF, SO_SNDBUF
+from amiga::raw::bsdsocket import FIONBIO, FIONREAD
 from std::net::addr import Ipv4Addr, SocketAddrV4
 from std::net::errors import NetError
 from std::core import Option, Result
@@ -200,16 +200,16 @@ impl UdpSocket {
     ///
     /// Example:
     /// ```novus
-    /// let mut buf: [u8; 512] = [0u8; 512]
+    /// let mut buf: [u8; 512] = [0; 512]
     /// let (n, from_addr) = sock.recv_from(&buf, 512)?
     /// ```
     pub fn recv_from(&self, buf: *u8, len: i32) -> Result<(i32, SocketAddrV4), NetError> {
         var from_sin = sockaddr_in {
-            sin_len: 16u8,
+            sin_len: 16,
             sin_family: AF_INET as u8,
-            sin_port: 0u16,
-            sin_addr: in_addr { s_addr: 0u32 },
-            sin_zero: [0u8; 8],
+            sin_port: 0,
+            sin_addr: in_addr { s_addr: 0 },
+            sin_zero: [0; 8],
         }
         var addr_len: i32 = 16
         let addr_ptr: *sockaddr = (*sockaddr)&from_sin

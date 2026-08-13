@@ -10,6 +10,29 @@ namespace Novus.Tests;
 public class M68kCodeGeneratorTests
 {
     [Fact]
+    public void PointerOffsetComputesAddressWithoutLoadingElement()
+    {
+        var module = new IrModule();
+        var pointerType = new IrPointerType(IrIntType.U16);
+        var function = new IrFunction("offset", pointerType, Visibility.Public);
+        function.Parameters.Add(new IrParameter("ptr", pointerType));
+        function.Parameters.Add(new IrParameter("index", IrIntType.U32));
+        function.CreateBasicBlock("entry").AddInstruction(new IrReturn(
+            new IrPointerOffsetValue(
+                new IrVariable("ptr", pointerType),
+                new IrVariable("index", IrIntType.U32),
+                IrIntType.U16,
+                pointerType)));
+        module.AddFunction(function);
+
+        var asm = new M68kCodeGenerator(module, [], "68020").Generate();
+
+        Assert.Contains("add.l     d1,d1", asm);
+        Assert.Contains("adda.l    d1,a0", asm);
+        Assert.DoesNotContain("(a0,d1.l)", asm);
+    }
+
+    [Fact]
     public void TestSimpleFunction()
     {
         // Create a simple function: fn test() -> i32 { return 42; }

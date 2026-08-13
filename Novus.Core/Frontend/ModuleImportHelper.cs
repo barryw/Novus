@@ -20,8 +20,8 @@ public static class ModuleImportHelper
 
     /// <summary>
     /// Resolve a module namespace to a file path
-    /// std::dos → std/dos.novus
-    /// std::ffi::exec → std/ffi/exec.novus
+    /// amiga::dos → std/amiga/dos.novus
+    /// amiga::raw::exec → std/amiga/raw/exec.novus
     /// </summary>
     public static string ResolveModulePath(
         string moduleNamespace, string stdLibPath, string? userModuleBasePath = null)
@@ -39,6 +39,14 @@ public static class ModuleImportHelper
             // std library module - relative to std lib path
             var relativePath = string.Join(Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
             return Path.Combine(stdLibPath, relativePath + ".novus");
+        }
+        else if (pathParts[0] == "amiga")
+        {
+            if (pathParts.Length < 2)
+                throw new ArgumentException($"Invalid Amiga module namespace: {moduleNamespace}");
+
+            var relativePath = string.Join(Path.DirectorySeparatorChar.ToString(), pathParts.Skip(1));
+            return Path.Combine(stdLibPath, "amiga", relativePath + ".novus");
         }
         else
         {
@@ -469,7 +477,8 @@ public static class ModuleImportHelper
             module.structDeclaration().Length > 0 ||
             module.enumDeclaration().Length > 0 ||
             module.typeAliasDeclaration().Length > 0 ||
-            module.implDeclaration().Length > 0)
+            module.implDeclaration().Length > 0 ||
+            module.reexportDeclaration().Length > 0)
         {
             return false;
         }

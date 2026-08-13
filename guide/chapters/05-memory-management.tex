@@ -28,7 +28,7 @@ The Amiga has distinct memory types with different characteristics:
 When allocating memory, you specify flags to request the appropriate type:
 
 \begin{lstlisting}
-// ... (with memory flags imported from std::ffi::amiga_consts)
+// ... (with memory flags imported from amiga::raw::consts)
 // Chip RAM for graphics buffers
 let bitmap = MemoryBlock::alloc(size, MEMF_CHIP | MEMF_CLEAR)
 
@@ -613,8 +613,8 @@ Novus uses three complementary RAII patterns throughout the standard library:
 Handle types wrap OS resources and manage their complete lifecycle:
 
 \begin{lstlisting}
-from std::ui::window import WindowHandle, WindowBuilder
-from std::ui::screen import ScreenHandle
+from amiga::sys::intuition import WindowHandle, WindowBuilder
+from amiga::sys::intuition import ScreenHandle
 
 fn show_window() -> Result<(), IntuitionError> {
     // WindowHandle manages the Intuition window
@@ -638,12 +638,12 @@ Common handle types in the standard library:
 \hline
 \textbf{Module} & \textbf{Handle Types} \\
 \hline
-\texttt{std::ui} & \texttt{WindowHandle}, \texttt{ScreenHandle}, \texttt{BufferedWindow} \\
-\texttt{std::graphics} & \texttt{BitMapHandle}, \texttt{FontHandle}, \texttt{SpriteHandle} \\
-\texttt{std::audio} & \texttt{AudioChannel}, \texttt{SampleHandle}, \texttt{ModPlayer} \\
-\texttt{std::os} & \texttt{TimerHandle}, \texttt{MsgPortHandle}, \texttt{SignalHandle} \\
+\texttt{amiga::ui} & \texttt{Window}, \texttt{Screen}, \texttt{FileRequester} \\
+\texttt{amiga::sys::graphics} & \texttt{BitMapHandle}, \texttt{FontHandle}, \texttt{SpriteHandle} \\
+\texttt{amiga::audio} & \texttt{Device}, \texttt{Sample} \\
+\texttt{amiga::sys::timer} & \texttt{Timer} \\
+\texttt{amiga::sys::exec} & \texttt{MessagePort}, \texttt{SignalHandle}, \texttt{ThreadHandle} \\
 \texttt{std::net} & \texttt{TcpStream}, \texttt{TcpListener}, \texttt{UdpSocket} \\
-\texttt{std::thread} & \texttt{ThreadHandle}, \texttt{ProcessHandle} \\
 \hline
 \end{tabular}
 \caption{Common Handle Types}
@@ -654,8 +654,8 @@ Common handle types in the standard library:
 Guard types provide temporary exclusive access to a shared resource. When the guard goes out of scope, the resource is released for others to use:
 
 \begin{lstlisting}
-from std::graphics::blitter import BlitterGuard, own_blitter
-from std::os::exec import SemaphoreHandle, SemaphoreGuard
+from amiga::sys::graphics::blitter import BlitterGuard, own_blitter
+from amiga::sys::exec import SemaphoreHandle, SemaphoreGuard
 
 fn blit_safely() {
     // BlitterGuard gives exclusive blitter access
@@ -674,7 +674,7 @@ fn blit_safely() {
 
 fn critical_update(sem: &SemaphoreHandle, data: &var SharedData) {
     // SemaphoreGuard holds the lock
-    var lock = sem.obtain()
+    var lock = sem.lock()
 
     // Safe to modify shared data
     data.counter = data.counter + 1
@@ -714,7 +714,7 @@ Common guard types:
 Builder types accumulate configuration, then create a resource. They clean up intermediate allocations if building fails:
 
 \begin{lstlisting}
-from std::ui::mui import MUIAppBuilder, MUIApp
+from amiga::sys::mui import MUIAppBuilder, MUIApp
 
 fn create_app() -> Option<MUIApp> {
     // Builder accumulates configuration
@@ -767,8 +767,8 @@ When wrapping AmigaOS resources, follow these patterns:
 
 \begin{lstlisting}
 from std::core import Drop, Option
-from std::ffi::exec import FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
+from amiga::raw::exec import FreeMem
+from amiga::raw::consts import MEMF_ANY
 
 // Handle pattern: wrap a resource pointer
 struct MyResourceHandle {
@@ -901,7 +901,7 @@ Novus provides several memory types in \texttt{std::memory} that wrap AmigaOS al
 
 \begin{lstlisting}
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+from amiga::raw::consts import MEMF_FAST, MEMF_CLEAR
 
 fn main() -> i32 {
     // Allocate 1024 bytes
@@ -998,7 +998,7 @@ Use \texttt{MemHandle} for common cases; use \texttt{MemoryBlock} when you need 
 
 \begin{lstlisting}
 from std::memory::block import Allocation
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR
 
 fn main() -> i32 {
     // Allocate space for 100 u32 values
@@ -1242,7 +1242,7 @@ fn process_buffer(data: &Slice<u8>) {
 }
 
 fn main() -> i32 {
-    let buffer = [1u8, 2, 3, 4, 5]
+    let buffer: [u8] = [1, 2, 3, 4, 5]
     let slice = Slice::new(&buffer as *u8, 5)
     process_buffer(&slice)
     return 0

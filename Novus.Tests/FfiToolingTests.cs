@@ -249,14 +249,14 @@ public class FfiToolingTests
 
             new SfdGenerator(ndk, output).GenerateAllBindings();
 
-            var binding = File.ReadAllText(Path.Combine(output, "std", "ffi", "test.novus"));
+            var binding = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "test.novus"));
             var stub = File.ReadAllText(Path.Combine(output, "stubs", "test_stubs.s"));
-            var constants = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_consts.novus"));
-            var structs = File.ReadAllText(Path.Combine(output, "std", "ffi", "amiga_structs.novus"));
+            var constants = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "consts.novus"));
+            var structs = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "structs.novus"));
             Assert.Contains("hook: fn(*u8, *u8) -> u32", binding);
             Assert.Contains("CreateContext(glistptr: **PointerData) -> *PointerData", binding);
             Assert.Equal(39, Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(
-                Path.Combine(output, "std", "ffi", "test.novus"))).FunctionVersions["OpenTagList"]);
+                Path.Combine(output, "std", "amiga", "raw", "test.novus"))).FunctionVersions["OpenTagList"]);
             Assert.Contains("extern pub fn OpenTags(object: u32, first: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgs(object: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgsAlias(object: u32, args: *u8) -> u32", binding);
@@ -286,8 +286,8 @@ public class FfiToolingTests
             Assert.DoesNotContain("pub const BROKEN", constants);
             Assert.DoesNotContain("pub const BROKEN_ALIAS", constants);
             Assert.Contains("BROKEN = BASE_TAG)", File.ReadAllText(
-                Path.Combine(output, "std", "ffi", "ndk_unsupported_macros.txt")));
-            Assert.Contains("from std::ffi::amiga_consts import *", structs);
+                Path.Combine(output, "std", "amiga", "raw", "ndk_unsupported_macros.txt")));
+            Assert.Contains("from amiga::raw::consts import *", structs);
             Assert.Contains("#[extern_type]\npub struct PointerData", structs);
             Assert.Contains("words: [u8; ((1 + 16 + 1) * 2)]", structs);
             Assert.Contains("pub union PointerData_choice", structs);
@@ -299,12 +299,12 @@ public class FfiToolingTests
             Assert.Contains("is_Code: amiga fn(*u8 in a1) -> u32 in d0", structs);
             Assert.Contains("iv_Code: amiga fn(*u8 in a1) -> u32 in d0", structs);
             Assert.Contains("pub struct Missing", structs);
-            Assert.Contains("test|test.h", File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_headers.txt")));
-            var ndkTypes = File.ReadAllText(Path.Combine(output, "std", "ffi", "ndk_types.h"));
+            Assert.Contains("test|test.h", File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "ndk_headers.txt")));
+            var ndkTypes = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "ndk_types.h"));
             Assert.Contains("typedef struct PointerData PointerData;", ndkTypes);
             Assert.DoesNotContain("typedef struct tPoint Point;", ndkTypes);
             Assert.Contains("test.h", Assert.IsType<FfiModuleMetadata>(
-                FfiModuleMetadata.TryRead(Path.Combine(output, "std", "ffi", "test.novus"))).Headers);
+                FfiModuleMetadata.TryRead(Path.Combine(output, "std", "amiga", "raw", "test.novus"))).Headers);
             Assert.Contains("movem.l\td2/d3/a6,-(sp)", stub);
             Assert.Contains("movem.l\t16(sp),d0-d1", stub);
             Assert.Contains("movem.l\t24(sp),d2-d3", stub);
@@ -317,7 +317,7 @@ public class FfiToolingTests
                 Count(binding, "extern pub fn "));
             Assert.Equal(Count(binding, "extern pub fn "), Count(stub, "\txdef\t_"));
 
-            var ciaBindingPath = Path.Combine(output, "std", "ffi", "cia_resource.novus");
+            var ciaBindingPath = Path.Combine(output, "std", "amiga", "raw", "resources", "cia.novus");
             var ciaStub = File.ReadAllText(Path.Combine(output, "stubs", "cia_resource_stubs.s"));
             var ciaMetadata = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(ciaBindingPath));
             Assert.Equal(FfiModuleKind.CallerSupplied, ciaMetadata.Kind);
@@ -326,7 +326,7 @@ public class FfiToolingTests
             Assert.DoesNotContain("\txref\t", ciaStub);
             Assert.DoesNotContain("movea.l\tcaller-supplied,a6", ciaStub);
             Assert.DoesNotContain("__novus_cia_resource_name", FfiRuntimeGenerator.Generate([ciaMetadata]));
-            var intuitionBinding = File.ReadAllText(Path.Combine(output, "std", "ffi", "intuition.novus"));
+            var intuitionBinding = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "intuition.novus"));
             var intuitionStub = File.ReadAllText(Path.Combine(output, "stubs", "intuition_stubs.s"));
             Assert.Contains("ReportMouse1(window: *Window, flag: i32)", intuitionBinding);
             Assert.Contains("movea.l\t8(sp),a0\n\tmove.l\t12(sp),d0", intuitionStub);

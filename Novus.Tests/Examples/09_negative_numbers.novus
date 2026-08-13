@@ -7,15 +7,15 @@
 //   Exit code: calculated result
 
 fn negative_i8() -> i8 {
-    return -42i8
+    return -42
 }
 
 fn negative_i16() -> i16 {
-    return -1000i16
+    return -1000
 }
 
 fn negative_i32() -> i32 {
-    return -999999i32
+    return -999999
 }
 
 pub fn main() -> i32 {

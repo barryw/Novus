@@ -1,19 +1,17 @@
 // Safe formatting plan derived from HDPart's RDB model.
 
 from std::core import Error, From, Option, Result
-from std::os::dosnode import DosEnvironment, DosNodeDraft, DosNodeError, RegisteredDosNode
-from std::os::filesystem import FileSystemHandler, FileSystemRegistry, FileSystemRegistryError, MountedFileSystem
-from std::os::segment import LoadedSegment, SegmentError
-from std::os::timer import Duration, delay
-from std::strings::core import FixedString, Str
+from std::string import Str
+from amiga::dos import FileSystem, FileSystemError, FileSystemImage, Volume, open_volume
+from amiga::sys::dos import DosEnvironment, DosNodeError
 from rdb import RdbModel
-from safety import DeviceIdentity, mounted_partition_name
+from safety import DeviceIdentity, mounted_device_name_exists, mounted_partition_name
 
 pub enum FormatError {
     MissingPartition,
     InvalidEnvironment,
     HandlerUnavailable,
-    NodePreparationFailed,
+    NameConflict,
     MountFailed,
     FormatFailed,
 }
@@ -24,7 +22,7 @@ impl FormatError {
             FormatError::MissingPartition => "Partition index is out of range",
             FormatError::InvalidEnvironment => "Partition has an invalid DOS environment",
             FormatError::HandlerUnavailable => "No compatible filesystem handler is available",
-            FormatError::NodePreparationFailed => "Could not prepare the DOS device node",
+            FormatError::NameConflict => "Another mounted device already uses this partition name",
             FormatError::MountFailed => "The filesystem handler did not mount the partition",
             FormatError::FormatFailed => "The filesystem rejected the format request",
         }
@@ -35,149 +33,21 @@ impl Error for FormatError {
     fn message(&self) -> *u8 { return FormatError::message(self) }
 }
 
+impl From<FileSystemError> for FormatError {
+    fn convert(consuming error: FileSystemError) -> FormatError {
+        return match error {
+            FileSystemError::HandlerUnavailable => FormatError::HandlerUnavailable,
+            FileSystemError::InvalidEnvironment => FormatError::InvalidEnvironment,
+            FileSystemError::MountFailed => FormatError::MountFailed,
+            FileSystemError::FormatFailed => FormatError::FormatFailed,
+        }
+    }
+}
+
 impl From<DosNodeError> for FormatError {
     fn convert(consuming _error: DosNodeError) -> FormatError {
-        return match _error {
-            DosNodeError::InvalidEnvironment => FormatError::InvalidEnvironment,
-            _ => FormatError::NodePreparationFailed,
-        }
+        return FormatError::InvalidEnvironment
     }
-}
-
-impl From<FileSystemRegistryError> for FormatError {
-    fn convert(consuming _error: FileSystemRegistryError) -> FormatError {
-        return FormatError::HandlerUnavailable
-    }
-}
-
-impl From<SegmentError> for FormatError {
-    fn convert(consuming _error: SegmentError) -> FormatError {
-        return FormatError::HandlerUnavailable
-    }
-}
-
-const DOS_FAMILY: u32 = $444F5300
-const DEFAULT_HANDLER_STACK: u32 = 4096
-const DEFAULT_HANDLER_PRIORITY: i32 = 10
-
-pub struct OwnedNode {
-    draft: DosNodeDraft,
-    segment: LoadedSegment,
-    global_vec: i32,
-    stack_size: u32,
-    priority: i32,
-    embedded: bool,
-}
-
-impl OwnedNode {
-    fn dos_type(&self) -> u32 { return self.draft.dos_type() }
-    fn has_handler(&self) -> bool { return self.segment.segment().is_addressable() }
-    fn is_embedded(&self) -> bool { return self.embedded }
-
-    fn register(consuming self, boot_priority: i32, start_process: bool) -> Result<RegisteredDosNode, FormatError> {
-        return Result::Ok(self.draft.register_loaded(
-            self.segment,
-            self.global_vec,
-            self.stack_size,
-            self.priority,
-            boot_priority,
-            start_process
-        )?)
-    }
-}
-
-/// An owned DOS node plus whichever handler lifetime it requires.
-pub enum PreparedNode {
-    Shared(DosNodeDraft),
-    Owned(OwnedNode),
-}
-
-impl PreparedNode {
-    pub fn dos_type(&self) -> u32 {
-        return match self {
-            PreparedNode::Shared(&draft) => draft.dos_type(),
-            PreparedNode::Owned(&owned) => owned.dos_type(),
-        }
-    }
-
-    pub fn has_handler(&self) -> bool {
-        return match self {
-            PreparedNode::Shared(&draft) => draft.has_handler(),
-            PreparedNode::Owned(&owned) => owned.has_handler(),
-        }
-    }
-
-    pub fn is_embedded(&self) -> bool {
-        return match self {
-            PreparedNode::Shared(_) => false,
-            PreparedNode::Owned(&owned) => owned.is_embedded(),
-        }
-    }
-
-    pub fn register(consuming self,
-        boot_priority: i32,
-        start_process: bool
-    ) -> Result<RegisteredDosNode, FormatError> {
-        return match self {
-            PreparedNode::Shared(draft) => Result::Ok(draft.register(boot_priority, start_process)?),
-            PreparedNode::Owned(owned) => owned.register(boot_priority, start_process),
-        }
-    }
-}
-
-/// Prefer a proven live handler, then fall back to FileSystem.resource.
-pub fn handler_for(dos_type: u32) -> Result<FileSystemHandler, FormatError> {
-    match FileSystemHandler::find_live(dos_type) {
-        Option::Some(handler) => return Result::Ok(handler),
-        Option::None => {},
-    }
-    let registry = FileSystemRegistry::open()?
-    return registry.find(dos_type).ok_or(FormatError::HandlerUnavailable)
-}
-
-/// Prepare an owned node without registering or starting it.
-pub fn prepare_node(
-    name: Str,
-    driver: Str,
-    unit: u32,
-    model: &RdbModel,
-    index: u32
-) -> Result<PreparedNode, FormatError> {
-    let environment = environment_for(model, index)?
-    var draft = DosNodeDraft::new(name, driver, unit, 0u32, &environment)?
-    match handler_for(environment.dos_type()) {
-        Result::Ok(handler) => {
-            draft.bind_registered(&handler)?
-            return Result::Ok(PreparedNode::Shared(draft))
-        },
-        Result::Err(_) => {},
-    }
-    match model.embedded_file_system(environment.dos_type()) {
-        Option::Some(embedded) => {
-            let segment = LoadedSegment::from_hunk(embedded.image())?
-            return Result::Ok(PreparedNode::Owned(OwnedNode {
-                draft: draft,
-                segment: segment,
-                global_vec: embedded.global_vec(),
-                stack_size: embedded.stack_size(),
-                priority: embedded.priority(),
-                embedded: true,
-            }))
-        },
-        Option::None => {},
-    }
-    if environment.dos_type() & $FFFFFF00u32 != DOS_FAMILY {
-        return Result::Err(FormatError::HandlerUnavailable)
-    }
-    let segment = LoadedSegment::from_file("L:FastFileSystem")?
-    return Result::Ok(PreparedNode::Owned(OwnedNode {
-        draft: draft,
-        segment: segment,
-        global_vec: -1,
-        stack_size: DEFAULT_HANDLER_STACK,
-        priority: DEFAULT_HANDLER_PRIORITY,
-        embedded: false,
-    }))
 }
 
 /// Build the exact typed environment consumed by DosNodeDraft.
@@ -191,51 +61,30 @@ pub fn environment_for(model: &RdbModel, index: u32) -> Result<DosEnvironment, F
         partition.high_cylinder(),
         partition.dos_type()
     )?
-    environment.set_buffers(partition.buffers(), 0u32)?
+    environment.set_buffers(partition.buffers(), 0)?
     environment.set_transfer(partition.max_transfer(), partition.mask())?
     environment.set_boot_priority(partition.boot_priority())
     return Result::Ok(environment)
 }
 
-fn mounted_name(name: Str) -> Result<FixedString<34>, FormatError> {
-    var value = FixedString::<34>::new()
-    match value.push_str(name) {
-        Result::Ok(_) => {},
-        Result::Err(_) => return Result::Err(FormatError::MountFailed),
-    }
-    match value.push_byte((u8)':') {
-        Result::Ok(_) => {},
-        Result::Err(_) => return Result::Err(FormatError::MountFailed),
-    }
-    return Result::Ok(value)
-}
-
-fn wait_for_mount(name: Str) -> Result<MountedFileSystem, FormatError> {
-    let path = mounted_name(name)?
-    for attempt in 0u32..40u32 {
-        match MountedFileSystem::open(path.as_str()) {
-            Result::Ok(value) => return Result::Ok(value),
-            Result::Err(_) => {},
-        }
-        let _ = delay(Duration::millis(100u32))
-    }
-    return Result::Err(FormatError::MountFailed)
-}
-
 fn format_mounted(name: Str, volume_name: Str, dos_type: u32) -> Result<(), FormatError> {
-    let mounted = wait_for_mount(name)?
-    var inhibited = match mounted.inhibit() {
-        Result::Ok(value) => value,
-        Result::Err(_) => return Result::Err(FormatError::FormatFailed),
+    let mounted = open_volume(name)?
+    return Result::Ok(mounted.format(volume_name, dos_type)?)
+}
+
+/// Resolve the best handler source without exposing DOS nodes or segment ownership.
+pub fn file_system_for(model: &RdbModel, index: u32) -> Result<FileSystem, FormatError> {
+    let environment = environment_for(model, index)?
+    let embedded = match model.embedded_file_system(environment.dos_type()) {
+        Option::Some(value) => Option::Some(FileSystemImage::new(
+            value.image(),
+            value.global_vec(),
+            value.stack_size(),
+            value.priority()
+        )),
+        Option::None => Option::None,
     }
-    match inhibited.format(volume_name, dos_type) {
-        Result::Ok(_) => {},
-        Result::Err(_) => return Result::Err(FormatError::FormatFailed),
-    }
-    match inhibited.release() {
-        Result::Ok(_) => return Result::Ok(()),
-        Result::Err(_) => return Result::Err(FormatError::FormatFailed),
-    }
+    return Result::Ok(FileSystem::resolve(environment.dos_type(), embedded)?)
 }
 
 /// Format one exact partition, reusing its live mount when present.
@@ -252,8 +101,12 @@ pub fn format_partition(
         Option::Some(name) => return format_mounted(name.as_str(), volume_name, partition.dos_type()),
         Option::None => {},
     }
+    if mounted_device_name_exists(partition.name()) {
+        return Result::Err(FormatError::NameConflict)
+    }
 
-    let prepared = prepare_node(partition.name(), driver, unit, model, index)?
-    let _registered = prepared.register(0, true)?
-    return format_mounted(partition.name(), volume_name, partition.dos_type())
+    let environment = environment_for(model, index)?
+    let file_system = file_system_for(model, index)?
+    let mounted = file_system.mount(partition.name(), driver, unit, &environment)?
+    return Result::Ok(mounted.format(volume_name, partition.dos_type())?)
 }

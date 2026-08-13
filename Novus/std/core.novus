@@ -262,6 +262,17 @@ impl<T, E> Result<T, E> {
             Err(e) => return Option::Some(e)
         }
     }
+
+    /// Replace any error with a value from a different error domain.
+    /// This is the closure-free, zero-allocation equivalent of `map_err` when
+    /// the original error value is intentionally discarded.
+    @inline
+    pub fn or_error<F>(consuming self, consuming error: F) -> Result<T, F> {
+        match self {
+            Ok(value) => return Result::Ok(value),
+            Err(_) => return Result::Err(error)
+        }
+    }
 }
 
 // LibraryVersion - semantic version information for AmigaOS libraries
@@ -310,7 +321,7 @@ impl LibraryVersion {
 // - ExecError for memory/tasks/signals
 // - IntuitionError for GUI operations
 // - GraphicsError for graphics operations
-// - NovusError for multi-subsystem errors
+// - AppError for multi-subsystem errors
 
 // Note: For collections like Vec, see std/collections.novus
 // Note: For memory management, see std/mem.novus (MemoryBlock, Allocation<T>, Box<T>)
@@ -323,18 +334,19 @@ impl LibraryVersion {
 // Types implementing this trait can be iterated over with: for item in collection { ... }
 //
 // Requirements:
-// - get(index: u32) -> Option<&T>: Borrow element at index, returns None if out of bounds
+// - get_unchecked(index: u32) -> &T: compiler-only primitive used after index < len
 // - len() -> u32: Total number of elements in the collection
 //
 // Example implementation:
 // ```novus
 // impl<T> Iterable<T> for Vec<T> {
-//     fn get(&self, index: u32) -> Option<&T> { ... }
+//     @unsafe fn get_unchecked(&self, index: u32) -> &T { ... }
 //     fn len(&self) -> u32 { ... }
 // }
 // ```
 pub trait Iterable<T> {
-    fn get(&self, index: u32) -> Option<&T>
+    @unsafe
+    fn get_unchecked(&self, index: u32) -> &T
     fn len(&self) -> u32
 }
 
@@ -388,17 +400,17 @@ pub trait Copy {}
 //
 // Example implementation:
 // ```novus
-// impl From<DosError> for NovusError {
-//     fn convert(err: DosError) -> NovusError {
-//         return NovusError::Dos(err)
+// impl From<DosError> for AppError {
+//     fn convert(err: DosError) -> AppError {
+//         return AppError::Dos(err)
 //     }
 // }
 //
-// // Now the ? operator can automatically convert DosError to NovusError:
-// fn foo() -> Result<i32, NovusError> {
+// // Now the ? operator can automatically convert DosError to AppError:
+// fn foo() -> Result<i32, AppError> {
 //     let file = open_file("test.txt")?  // Returns Result<File, DosError>
 //     // If open_file returns Err(dos_err), ? automatically calls
-//     // NovusError::convert(dos_err) and returns Err(converted_error)
+//     // AppError::convert(dos_err) and returns Err(converted_error)
 //     return Ok(42)
 // }
 // ```
@@ -633,7 +645,7 @@ impl Hash for u8 {
         // Mix the bits for better distribution
         var h: u32 = (u32)*self
         h = h ^ (h >> 4)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
         return h
     }
@@ -644,7 +656,7 @@ impl Hash for u16 {
     fn hash(&self) -> u32 {
         var h: u32 = (u32)*self
         h = h ^ (h >> 8)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
         return h
     }
@@ -656,9 +668,9 @@ impl Hash for u32 {
         // FNV-1a inspired mixing
         var h: u32 = *self
         h = h ^ (h >> 16)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
-        h = h * 3266489909u32
+        h = h * 3266489909
         h = h ^ (h >> 16)
         return h
     }
@@ -671,7 +683,7 @@ impl Hash for i8 {
         let byte_val: u8 = (u8)*self
         var h: u32 = (u32)byte_val
         h = h ^ (h >> 4)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
         return h
     }
@@ -684,7 +696,7 @@ impl Hash for i16 {
         let short_val: u16 = (u16)*self
         var h: u32 = (u32)short_val
         h = h ^ (h >> 8)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
         return h
     }
@@ -696,9 +708,9 @@ impl Hash for i32 {
         // Reinterpret as unsigned
         var h: u32 = (u32)*self
         h = h ^ (h >> 16)
-        h = h * 2246822507u32
+        h = h * 2246822507
         h = h ^ (h >> 13)
-        h = h * 3266489909u32
+        h = h * 3266489909
         h = h ^ (h >> 16)
         return h
     }
@@ -708,9 +720,9 @@ impl Hash for i32 {
 impl Hash for bool {
     fn hash(&self) -> u32 {
         if *self {
-            return 1u32
+            return 1
         }
-        return 0u32
+        return 0
     }
 }
 
@@ -935,7 +947,7 @@ pub trait Iterator<T> {
 /// - File (future) - file output
 ///
 /// Note: We use raw pointer + length instead of Str to avoid circular
-/// dependencies (Str is defined in std::strings which depends on core).
+/// dependencies (Str is defined in std::string which depends on core).
 ///
 /// Example implementation:
 /// ```novus
@@ -1121,27 +1133,27 @@ pub trait Default {
 
 // Default implementations for primitive types
 impl Default for u8 {
-    fn default() -> u8 { return 0u8 }
+    fn default() -> u8 { return 0 }
 }
 
 impl Default for u16 {
-    fn default() -> u16 { return 0u16 }
+    fn default() -> u16 { return 0 }
 }
 
 impl Default for u32 {
-    fn default() -> u32 { return 0u32 }
+    fn default() -> u32 { return 0 }
 }
 
 impl Default for i8 {
-    fn default() -> i8 { return 0i8 }
+    fn default() -> i8 { return 0 }
 }
 
 impl Default for i16 {
-    fn default() -> i16 { return 0i16 }
+    fn default() -> i16 { return 0 }
 }
 
 impl Default for i32 {
-    fn default() -> i32 { return 0i32 }
+    fn default() -> i32 { return 0 }
 }
 
 impl Default for bool {
@@ -1218,58 +1230,58 @@ pub trait One {
 
 // Zero implementations for numeric types
 impl Zero for u8 {
-    fn zero() -> u8 { return 0u8 }
-    fn is_zero(&self) -> bool { return *self == 0u8 }
+    fn zero() -> u8 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl Zero for u16 {
-    fn zero() -> u16 { return 0u16 }
-    fn is_zero(&self) -> bool { return *self == 0u16 }
+    fn zero() -> u16 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl Zero for u32 {
-    fn zero() -> u32 { return 0u32 }
-    fn is_zero(&self) -> bool { return *self == 0u32 }
+    fn zero() -> u32 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl Zero for i8 {
-    fn zero() -> i8 { return 0i8 }
-    fn is_zero(&self) -> bool { return *self == 0i8 }
+    fn zero() -> i8 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl Zero for i16 {
-    fn zero() -> i16 { return 0i16 }
-    fn is_zero(&self) -> bool { return *self == 0i16 }
+    fn zero() -> i16 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 impl Zero for i32 {
-    fn zero() -> i32 { return 0i32 }
-    fn is_zero(&self) -> bool { return *self == 0i32 }
+    fn zero() -> i32 { return 0 }
+    fn is_zero(&self) -> bool { return *self == 0 }
 }
 
 // One implementations for numeric types
 impl One for u8 {
-    fn one() -> u8 { return 1u8 }
+    fn one() -> u8 { return 1 }
 }
 
 impl One for u16 {
-    fn one() -> u16 { return 1u16 }
+    fn one() -> u16 { return 1 }
 }
 
 impl One for u32 {
-    fn one() -> u32 { return 1u32 }
+    fn one() -> u32 { return 1 }
 }
 
 impl One for i8 {
-    fn one() -> i8 { return 1i8 }
+    fn one() -> i8 { return 1 }
 }
 
 impl One for i16 {
-    fn one() -> i16 { return 1i16 }
+    fn one() -> i16 { return 1 }
 }
 
 impl One for i32 {
-    fn one() -> i32 { return 1i32 }
+    fn one() -> i32 { return 1 }
 }
 
 // ============================================================================
@@ -1298,33 +1310,33 @@ pub trait Bounded {
 
 // Bounded implementations for numeric types
 impl Bounded for u8 {
-    fn min_value() -> u8 { return 0u8 }
-    fn max_value() -> u8 { return 255u8 }
+    fn min_value() -> u8 { return 0 }
+    fn max_value() -> u8 { return 255 }
 }
 
 impl Bounded for u16 {
-    fn min_value() -> u16 { return 0u16 }
-    fn max_value() -> u16 { return 65535u16 }
+    fn min_value() -> u16 { return 0 }
+    fn max_value() -> u16 { return 65535 }
 }
 
 impl Bounded for u32 {
-    fn min_value() -> u32 { return 0u32 }
-    fn max_value() -> u32 { return 4294967295u32 }
+    fn min_value() -> u32 { return 0 }
+    fn max_value() -> u32 { return 4294967295 }
 }
 
 impl Bounded for i8 {
-    fn min_value() -> i8 { return -128i8 }
-    fn max_value() -> i8 { return 127i8 }
+    fn min_value() -> i8 { return -128 }
+    fn max_value() -> i8 { return 127 }
 }
 
 impl Bounded for i16 {
-    fn min_value() -> i16 { return -32768i16 }
-    fn max_value() -> i16 { return 32767i16 }
+    fn min_value() -> i16 { return -32768 }
+    fn max_value() -> i16 { return 32767 }
 }
 
 impl Bounded for i32 {
-    fn min_value() -> i32 { return -2147483648i32 }
-    fn max_value() -> i32 { return 2147483647i32 }
+    fn min_value() -> i32 { return -2147483648 }
+    fn max_value() -> i32 { return 2147483647 }
 }
 
 // ============================================================================

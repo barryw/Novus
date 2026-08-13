@@ -49,6 +49,7 @@ public class IrTraitMethod
     public List<IrParameter> Parameters { get; }
     public IrType ReturnType { get; set; }
     public List<string> GenericParameters { get; }  // Method-level generic parameters
+    public Novus.SemanticAnalysis.AttributeCollection Attributes { get; }
 
     /// <summary>
     /// The default implementation function, if one was provided in the trait definition.
@@ -68,12 +69,15 @@ public class IrTraitMethod
     /// </summary>
     public bool HasDefaultImplementation => DefaultBodyContext != null || DefaultImplementation != null;
 
-    public IrTraitMethod(string name, List<IrParameter> parameters, IrType returnType, List<string>? genericParams = null)
+    public IrTraitMethod(string name, List<IrParameter> parameters, IrType returnType,
+        List<string>? genericParams = null,
+        Novus.SemanticAnalysis.AttributeCollection? attributes = null)
     {
         Name = name;
         Parameters = parameters;
         ReturnType = returnType;
         GenericParameters = genericParams ?? new List<string>();
+        Attributes = attributes ?? new Novus.SemanticAnalysis.AttributeCollection();
         DefaultImplementation = null;
         DefaultBodyContext = null;
     }

@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: getscreenmode.library
+// Base: _GetScreenModeBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("getscreenmode.library")
+extern pub fn GETSCREENMODE_GetClass() -> *u8

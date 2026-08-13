@@ -22,7 +22,7 @@ struct Buffer<const N: u32> {
 
 impl<const N: u32> Buffer<N> {
     fn new() -> Buffer<N> {
-        return Buffer { bytes: [0u8; N], len: 0 }
+        return Buffer { bytes: [0; N], len: 0 }
     }
 
     fn capacity(&self) -> u32 {
@@ -99,13 +99,13 @@ struct InlineItems {
 
 impl InlineItems {
     fn sum(&self) -> u32 {
-        var total = 0u32
+        var total: u32 = 0
         for item in &self.items { total += item.value }
         return total
     }
 }
 
-static var ARRAYVEC_DROPS: u32 = 0u32
+static var ARRAYVEC_DROPS: u32 = 0
 
 struct TrackedInlineItem {
     value: u32,
@@ -117,9 +117,9 @@ impl Drop for TrackedInlineItem {
 
 fn drop_bounded_items() {
     var items = ArrayVec::<TrackedInlineItem, 2>::new()
-    let _ = items.push(TrackedInlineItem { value: 1u32 })
-    let _ = items.push(TrackedInlineItem { value: 2u32 })
-    let _ = items.push(TrackedInlineItem { value: 3u32 })
+    let _ = items.push(TrackedInlineItem { value: 1 })
+    let _ = items.push(TrackedInlineItem { value: 2 })
+    let _ = items.push(TrackedInlineItem { value: 3 })
 }
 
 @test("generic structs monomorphize for distinct types")
@@ -134,11 +134,11 @@ pub fn foundation_generic_structs() {
 pub fn foundation_const_generics() {
     var small = Buffer::<8>::new()
     let large = Buffer::<64>::new()
-    expect(small.capacity() == 8u32, "small buffer")
-    expect(large.capacity() == 64u32, "large buffer")
-    small.set(7u32, 42u8)
-    expect(small.get(7u32) == 42u8, "const-sized inline array")
-    expect(@sizeof(Buffer<8>) == 12u32, "const-sized layout")
+    expect(small.capacity() == 8, "small buffer")
+    expect(large.capacity() == 64, "large buffer")
+    small.set(7, 42)
+    expect(small.get(7) == 42, "const-sized inline array")
+    expect(@sizeof(Buffer<8>) == 12, "const-sized layout")
 }
 
 @test("generic enums carry values and fallbacks")
@@ -176,36 +176,36 @@ pub fn foundation_derive() {
 
 @test("inline bounded vectors borrow, mutate, bound, and drop")
 pub fn foundation_arrayvec() {
-    ARRAYVEC_DROPS = 0u32
+    ARRAYVEC_DROPS = 0
     drop_bounded_items()
-    expect(ARRAYVEC_DROPS == 3u32, "moved values drop exactly once")
+    expect(ARRAYVEC_DROPS == 3, "moved values drop exactly once")
 
     var items = ArrayVec::<InlineItem, 2>::new()
-    expect(items.capacity() == 2u32 && items.is_empty(), "inline capacity")
-    expect(items.push(InlineItem { value: 10u32 }).is_ok(), "first push")
-    expect(items.push(InlineItem { value: 20u32 }).is_ok(), "second push")
-    match items.push(InlineItem { value: 30u32 }) {
+    expect(items.capacity() == 2 && items.is_empty(), "inline capacity")
+    expect(items.push(InlineItem { value: 10 }).is_ok(), "first push")
+    expect(items.push(InlineItem { value: 20 }).is_ok(), "second push")
+    match items.push(InlineItem { value: 30 }) {
         Result::Err(ArrayVecError::Full) => {},
         Result::Ok(_) => expect(false, "capacity bound"),
     }
-    match items.get(1u32) {
-        Option::Some(item) => expect(item.value == 20u32, "borrowed get"),
+    match items.get(1) {
+        Option::Some(item) => expect(item.value == 20, "borrowed get"),
         Option::None => expect(false, "missing item"),
     }
-    match items.get_mut(0u32) {
-        Option::Some(item) => { item.value = 11u32 },
+    match items.get_mut(0) {
+        Option::Some(item) => { item.value = 11 },
         Option::None => expect(false, "missing mutable item"),
     }
-    match items.get(0u32) {
-        Option::Some(item) => expect(item.value == 11u32, "mutable get"),
+    match items.get(0) {
+        Option::Some(item) => expect(item.value == 11, "mutable get"),
         Option::None => expect(false, "missing updated item"),
     }
-    var total = 0u32
+    var total: u32 = 0
     for item in items { total += item.value }
-    expect(total == 31u32, "inline iteration")
+    expect(total == 31, "inline iteration")
 
     var nested = InlineItems { items: ArrayVec::<InlineItem, 2>::new() }
-    expect(nested.items.push(InlineItem { value: 12u32 }).is_ok(), "nested first push")
-    expect(nested.items.push(InlineItem { value: 30u32 }).is_ok(), "nested second push")
-    expect(nested.sum() == 42u32, "borrowed generic field iteration")
+    expect(nested.items.push(InlineItem { value: 12 }).is_ok(), "nested first push")
+    expect(nested.items.push(InlineItem { value: 30 }).is_ok(), "nested second push")
+    expect(nested.sum() == 42, "borrowed generic field iteration")
 }

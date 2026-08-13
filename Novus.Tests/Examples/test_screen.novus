@@ -1,8 +1,8 @@
 // Test screen lifecycle using the new ScreenHandle RAII API
 // Demonstrates: ScreenHandle, ScreenBuilder, and window-on-screen creation
 
-from std::ui::screen import ScreenHandle, ScreenBuilder
-from std::ffi::dos import Delay
+from amiga::sys::intuition import ScreenHandle, ScreenBuilder
+from amiga::raw::dos import Delay
 
 pub fn main() -> i32 {
     // Method 1: Simple convenience constructor

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The Amiga library surface has accumulated multiple abstraction levels under the same namespaces. The result is that application code, safe NDK wrappers, and raw NDK bindings are too easy to mix accidentally.
+The Amiga library surface had accumulated multiple abstraction levels under the same namespaces. The result was that application code, safe NDK wrappers, and raw NDK bindings were too easy to mix accidentally.
 
 The desired model is simple:
 
@@ -413,7 +413,7 @@ std::string::FixedString<N>
 std::string::FixedCString<N>
 ```
 
-Avoid exposing implementation-history paths such as `std::strings::core` or multiple competing homes for fixed strings.
+Avoid exposing implementation-history paths such as `std::string::core` or multiple competing homes for fixed strings.
 
 Amiga APIs should convert at the boundary:
 
@@ -463,7 +463,7 @@ amiga::sys::device::DeviceError
 amiga::sys::exec::ExecError
 ```
 
-Do not use a generic platform-error dumping ground such as `std::error::errors`.
+Do not use a generic platform-error dumping ground such as `amiga::sys::errors`.
 
 Portable `std::error` should contain the `Error` trait and generic error infrastructure.
 
@@ -477,20 +477,16 @@ Tier 1 errors should generally collapse implementation-specific detail unless th
 
 The exact names may change during implementation, but the abstraction classification should remain.
 
-| Current | Proposed | Tier |
+| Legacy source | Canonical destination | Tier |
 |---|---|---|
-| `std::os::block_device::BlockDevice` | `amiga::storage::BlockDevice` | Application |
-| `std::os::device::DeviceRequest` | `amiga::sys::device::DeviceRequest` | Systems |
-| `std::os::bptr::BPtr` | `amiga::sys::dos::BPtr` | Systems |
-| `std::os::doslist::*` | `amiga::sys::dos::*` | Systems |
-| `std::os::dosnode::*` | `amiga::sys::dos::*` | Systems |
-| `std::os::filesystem::*` low-level registry/node machinery | `amiga::sys::dos::*` | Systems |
-| `std::os::segment::*` | `amiga::sys::dos::*` or `amiga::sys::exec::*` according to semantics | Systems |
-| `std::os::exec::MsgPortHandle` | `amiga::sys::exec::MessagePort` | Systems |
-| `std::ui::gadtools::*` | mostly `amiga::sys::gadtools::*` | Systems |
-| `std::ui::window::*` NDK wrappers | `amiga::sys::intuition::*` | Systems |
-| `std::ui::dialog::*` application helpers | `amiga::ui::*` | Application |
-| `std::ui::asl::*` | split between `amiga::ui` and `amiga::sys::asl` | Both |
+| `std::os::block_device` | `amiga::storage::BlockDevice` | Application |
+| `std::os::device` | `amiga::sys::device::DeviceRequest` | Systems |
+| `std::os::bptr` | `amiga::sys::dos::BPtr` | Systems |
+| `std::os::{dos,filesystem,handler,doslist,dosnode,segment}` | `amiga::sys::dos::*` | Systems |
+| `std::os::{exec,process,task}` | `amiga::sys::exec::*` | Systems |
+| `std::ui::{gadtools,menu}` | `amiga::sys::gadtools::*` | Systems |
+| `std::ui::{window,screen,dialog}` | `amiga::sys::intuition::*` and `amiga::ui::*` | Both |
+| `std::ui::asl` | `amiga::sys::asl` and `amiga::ui::FileRequester` | Both |
 | Amiga contents of `std::ffi::*` | `amiga::raw::*` | Raw |
 | `std::memory::bytes` | portable `std::memory` | Portable |
 | `std::collections::ArrayVec` | portable `std::collections` | Portable |
@@ -724,3 +720,22 @@ An experienced Amiga developer can step down one level and work safely with reco
 A systems programmer can step down again and get the real NDK.
 
 Each level should be internally coherent, ownership-compatible with adjacent levels, and obvious from its namespace.
+
+---
+
+## Implementation status (2026-08-13)
+
+The staircase is now active rather than only proposed:
+
+- `amiga::raw::*` resolves directly to the generated NDK bindings, including the `devices::*` and `resources::*` families. No bindings are duplicated.
+- `amiga::sys::{exec,dos,device,intuition,gadtools,asl,graphics,hardware,resources,timer,utility,workbench}` exposes owning NDK-level wrappers under canonical systems paths. Systems modules depend only on other systems modules, raw bindings, and portable facilities.
+- `amiga::storage` owns block-device discovery and returns copied `StorageDevice` snapshots; DOS-list locks and owner-tied entries no longer escape into application code.
+- `amiga::dos::File` hides DOS modes and pointer/count I/O. `FileSystem::resolve` and `mount` own handler lookup, embedded HUNK loading, DOS-node construction, handler startup, and mount waiting. `Volume::format` owns inhibit/format/resume.
+- `amiga::ui` owns application windows, builders, events, dialogs, screens, and requesters. Window-parented alerts, confirmation, choices, and ASL requests no longer expose raw Intuition window handles.
+- `amiga::{audio,graphics,input,timer,workbench}` expose application terminology while specialist device, RastPort, hardware, and toolkit APIs remain in `amiga::sys`.
+- `std::{collections,string,memory,io,error}` are canonical portable façades. `Buffer` hides Exec allocation flags and exposes only bounded slices.
+- Owning wrappers use `system()`, `as_raw()`, `into_raw()`, and validating `from_raw()` where the corresponding transition is real and safe. Obsolete `handle()`, `request()`, and `raw()` compatibility names have been removed.
+
+HDPart is the migration proof. Its main application imports only portable façades and `amiga::{storage,ui,workbench}`. Deep format/safety modules use `amiga::sys::dos`; the complete `src` tree has no raw imports or legacy paths.
+
+The old Amiga-specific `std::{ffi,os,ui,graphics,hardware,audio,args,prefs,strings}` implementation trees are removed. Boundary tests reject legacy trees, upward systems dependencies, Tier-1 raw dependencies, noncanonical HDPart imports, and the former platform-error dumping ground.

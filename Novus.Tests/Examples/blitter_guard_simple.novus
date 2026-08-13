@@ -8,11 +8,11 @@
 // Compile: novus compile blitter_guard_simple.novus -o blitter_guard_simple
 // Run: Copy to Amiga and execute from CLI
 
-from std::ffi::exec import OpenLibrary, CloseLibrary
-from std::ffi::amiga_structs import Library
-from std::ffi::graphics import OwnBlitter, DisownBlitter, WaitBlit
+from amiga::raw::exec import OpenLibrary, CloseLibrary
+from amiga::raw::structs import Library
+from amiga::raw::graphics import OwnBlitter, DisownBlitter, WaitBlit
 
-// Simplified BlitterGuard struct (normally from std::graphics::blitter)
+// Simplified BlitterGuard struct (normally from amiga::sys::graphics::blitter)
 struct SimpleBlitterGuard {
     acquired: bool,
 }

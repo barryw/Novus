@@ -26,19 +26,19 @@ pub fn main() -> i32 {
     // pointer should be 4 bytes
     // Point (2 x i32) should be 8 bytes
 
-    if size_i32 != 4u32 {
+    if size_i32 != 4 {
         return 1
     }
 
-    if size_u8 != 1u32 {
+    if size_u8 != 1 {
         return 2
     }
 
-    if size_ptr != 4u32 {
+    if size_ptr != 4 {
         return 3
     }
 
-    if size_point != 8u32 {
+    if size_point != 8 {
         return 4
     }
 

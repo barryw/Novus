@@ -24,7 +24,7 @@ public class TryOperatorTests
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)
@@ -50,13 +50,19 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import *
+from std::core import From
+from amiga::sys::dos import DosError
+
+enum AppError { Dos(DosError) }
+impl From<DosError> for AppError {
+    fn convert(consuming error: DosError) -> AppError { return AppError::Dos(error) }
+}
 
 fn dos_operation() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)
 }
 
-fn higher_level() -> Result<i32, NovusError> {
+fn higher_level() -> Result<i32, AppError> {
     let value = dos_operation()?
     return Result::Ok(value * 2)
 }
@@ -72,7 +78,7 @@ pub fn main() -> i32 {
 
         // Verify that the From<DosError> impl is present
         var fromImpl = module.TraitImpls.FirstOrDefault(ti =>
-            ti.TraitName == "From<DosError>" && ti.TypeName == "NovusError");
+            ti.TraitName == "From<DosError>" && ti.TypeName == "AppError");
         Assert.NotNull(fromImpl);
     }
 
@@ -81,7 +87,17 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import *
+from std::core import From
+from amiga::sys::dos import DosError
+from amiga::sys::exec import ExecError
+
+enum AppError { Dos(DosError), Exec(ExecError) }
+impl From<DosError> for AppError {
+    fn convert(consuming error: DosError) -> AppError { return AppError::Dos(error) }
+}
+impl From<ExecError> for AppError {
+    fn convert(consuming error: ExecError) -> AppError { return AppError::Exec(error) }
+}
 
 fn dos_op() -> Result<i32, DosError> {
     return Result::Err(DosError::NoFreeStore)
@@ -91,7 +107,7 @@ fn exec_op() -> Result<i32, ExecError> {
     return Result::Err(ExecError::NoMem)
 }
 
-fn combined() -> Result<i32, NovusError> {
+fn combined() -> Result<i32, AppError> {
     let a = dos_op()?
     let b = exec_op()?
     return Result::Ok(a + b)
@@ -109,7 +125,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Ok(42)
@@ -131,7 +147,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos import DosError
 
 fn may_fail() -> Result<i32, DosError> {
     return Result::Ok(5)
@@ -157,7 +173,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos import DosError
 
 fn step1() -> Result<i32, DosError> {
     return Result::Ok(1)
@@ -190,7 +206,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos import DosError
 
 struct Point {
     x: i32,
@@ -225,7 +241,17 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import DosError, ExecError, IntuitionError, GraphicsError, NovusError
+from std::core import From
+from amiga::sys::dos import DosError
+from amiga::sys::exec import ExecError
+from amiga::sys::intuition import IntuitionError
+from amiga::sys::graphics import GraphicsError
+
+enum AppError { Dos(DosError), Exec(ExecError), Intuition(IntuitionError), Graphics(GraphicsError) }
+impl From<DosError> for AppError { fn convert(consuming error: DosError) -> AppError { return AppError::Dos(error) } }
+impl From<ExecError> for AppError { fn convert(consuming error: ExecError) -> AppError { return AppError::Exec(error) } }
+impl From<IntuitionError> for AppError { fn convert(consuming error: IntuitionError) -> AppError { return AppError::Intuition(error) } }
+impl From<GraphicsError> for AppError { fn convert(consuming error: GraphicsError) -> AppError { return AppError::Graphics(error) } }
 
 fn dos_op() -> Result<i32, DosError> {
     return Result::Err(DosError::NotFound)
@@ -243,7 +269,7 @@ fn gfx_op() -> Result<i32, GraphicsError> {
     return Result::Err(GraphicsError::BitMapAllocFailed)
 }
 
-fn all_ops() -> Result<i32, NovusError> {
+fn all_ops() -> Result<i32, AppError> {
     let a = dos_op()?
     let b = exec_op()?
     let c = intui_op()?
@@ -258,9 +284,9 @@ pub fn main() -> i32 {
         Assert.NotNull(module);
 
         // Verify all From impls are present
-        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<DosError>" && ti.TypeName == "NovusError");
-        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<ExecError>" && ti.TypeName == "NovusError");
-        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<IntuitionError>" && ti.TypeName == "NovusError");
-        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<GraphicsError>" && ti.TypeName == "NovusError");
+        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<DosError>" && ti.TypeName == "AppError");
+        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<ExecError>" && ti.TypeName == "AppError");
+        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<IntuitionError>" && ti.TypeName == "AppError");
+        Assert.Contains(module.TraitImpls, ti => ti.TraitName == "From<GraphicsError>" && ti.TypeName == "AppError");
     }
 }

@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: space.library
+// Base: _SpaceBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("space.library")
+extern pub fn SPACE_GetClass() -> *u8

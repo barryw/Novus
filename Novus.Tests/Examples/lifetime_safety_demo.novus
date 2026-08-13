@@ -3,7 +3,7 @@
 // This example demonstrates Novus's reference lifetime tracking.
 // References are safe by default - the compiler prevents dangling pointers.
 
-from std::ffi::dos import Delay
+from amiga::raw::dos import Delay
 
 // CORRECT: Reference and source in same scope
 fn safe_reference() {

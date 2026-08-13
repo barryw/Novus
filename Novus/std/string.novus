@@ -1,0 +1,4 @@
+// Canonical portable string surface.
+pub use std::string::core::*
+pub use std::string::display::*
+pub use std::string::format::*

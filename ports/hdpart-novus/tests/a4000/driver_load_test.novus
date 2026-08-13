@@ -1,5 +1,5 @@
 from std::core import Result
-from std::os::device import DriverLoadError, load_device_driver
+from amiga::sys::device import DriverLoadError, load_device_driver
 from std::test::test import expect_true
 
 // A missing file must fail before any Resident initialization is attempted.

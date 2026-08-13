@@ -1,4 +1,4 @@
-from std::ffi::asl import AllocFileRequest, FreeFileRequest
+from amiga::raw::asl import AllocFileRequest, FreeFileRequest
 
 pub fn main() -> i32 {
     let requester = unsafe { AllocFileRequest() }

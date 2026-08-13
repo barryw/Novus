@@ -42,12 +42,12 @@ pub struct Buffer {
 impl Buffer {
     pub fn put(&var self, c: u8) -> bool {
         self.buf[self.len] = c
-        self.len = self.len + 1u32
+        self.len = self.len + 1
         return true
     }
 
     pub fn first(&self) -> u8 {
-        return self.buf[0u32]
+        return self.buf[0]
     }
 }";
 

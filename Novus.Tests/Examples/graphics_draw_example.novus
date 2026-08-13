@@ -1,6 +1,6 @@
 // Graphics Drawing Primitives Example
 //
-// Demonstrates all functions in std::graphics::draw and std::graphics::shapes:
+// Demonstrates all functions in amiga::sys::graphics::draw and amiga::sys::graphics::shapes:
 // - DrawContext creation and usage
 // - Lines, rectangles, ellipses, circles
 // - Pen colors and draw modes
@@ -8,10 +8,10 @@
 // - Pixel operations
 // - Shape types: Point, Rect, Ellipse, Size
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::graphics::draw import DrawContext, DrawMode
-from std::graphics::draw import draw_line, fill_rect, draw_ellipse, draw_circle
-from std::graphics::shapes import Point, Rect, Ellipse, Size
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::graphics::draw import DrawContext, DrawMode
+from amiga::sys::graphics::draw import draw_line, fill_rect, draw_ellipse, draw_circle
+from amiga::sys::graphics::shapes import Point, Rect, Ellipse, Size
 from std::io::file import write
 
 pub fn main() -> i32 {
@@ -249,7 +249,7 @@ pub fn main() -> i32 {
                     write("Using convenience functions...\n")
 
                     // These work without creating a DrawContext
-                    let rp = ctx.handle()
+                    let rp = ctx.as_raw()
                     draw_line(rp, 500, 10, 550, 50)
                     fill_rect(rp, 560, 10, 610, 50)
                     draw_ellipse(rp, 530, 100, 40, 25)

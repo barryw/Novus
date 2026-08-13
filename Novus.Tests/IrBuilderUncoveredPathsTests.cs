@@ -634,7 +634,7 @@ fn main() -> i32 {
         var source = @"
 fn main() -> i32 {
     var arr = [1, 2, 3]
-    arr[0u32] = 10
+    arr[0] = 10
     return 0
 }";
         var module = BuildIr(source);

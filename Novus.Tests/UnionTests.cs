@@ -18,7 +18,7 @@ public class UnionTests
         }
 
         pub fn read_low() -> u16 {
-            let value = RegisterValue { raw: 305419896u32 }
+            let value = RegisterValue { raw: 305419896 }
             return unsafe { value.raw } as u16
         }
 
@@ -85,7 +85,7 @@ public class UnionTests
     {
         const string source = """
             union Value { word: u16, raw: u32 }
-            fn main() { let value = Value { word: 1u16, raw: 2u32 } }
+            fn main() { let value = Value { word: 1, raw: 2 } }
             """;
 
         Assert.True(Analyze(source).HasErrors);
@@ -97,7 +97,7 @@ public class UnionTests
         const string source = """
             union Value { word: u16, raw: u32 }
             fn main() -> u32 {
-                let value = Value { raw: 2u32 }
+                let value = Value { raw: 2 }
                 return value.raw
             }
             """;

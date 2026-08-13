@@ -3,9 +3,9 @@
 // Spawns a task that receives a pointer via NP_ExitData tag.
 
 from std::core import Result
-from std::os::task import spawn_task_fn_with_ptr, ProcessHandle
-from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, CreateMsgPort, DeleteMsgPort
-from std::ffi::amiga_structs import MsgPort, Message, Process
+from amiga::sys::exec import spawn_task_fn_with_ptr, ProcessHandle
+from amiga::raw::exec import Wait, GetMsg, ReplyMsg, FindTask, CreateMsgPort, DeleteMsgPort
+from amiga::raw::structs import MsgPort, Message, Process
 from std::io::file import write
 
 fn responder_task() -> i32 {

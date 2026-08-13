@@ -1,13 +1,13 @@
 // Minimal test for bounded channel handoff
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
-from std::sync::channel import PortHandoff, PortOwnership, complete_handoff
-from std::os::task import spawn_task_fn_with_ptr, receive_startup_data
-from std::ffi::exec import Wait, GetMsg, ReplyMsg
-from std::ffi::dos import VPrintf
-from std::ffi::amiga_structs import MsgPort, Message
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec::channel import bounded_channel, BoundedSender, BoundedReceiver
+from amiga::sys::exec::channel import PortHandoff, PortOwnership, complete_handoff
+from amiga::sys::exec import spawn_task_fn_with_ptr, receive_startup_data
+from amiga::raw::exec import Wait, GetMsg, ReplyMsg
+from amiga::raw::dos import VPrintf
+from amiga::raw::structs import MsgPort, Message
 
 fn responder_task() -> i32 {
     VPrintf("Child: started\n", (*u8)0)

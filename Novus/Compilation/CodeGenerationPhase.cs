@@ -156,7 +156,8 @@ public class CodeGenerationPhase : ICompilationPhase
                 .Replace("*", "ptr_")
                 .Replace("(", "")       // Remove any remaining parens
                 .Replace(")", "");
-            var functionCFile = Path.Combine(context.OutputDir, $"{moduleName}_{sanitizedFunctionName}.c");
+            var modulePrefix = Program.GetGeneratedModulePrefix(moduleIR.ModulePath, moduleName);
+            var functionCFile = Path.Combine(context.OutputDir, $"{modulePrefix}_{sanitizedFunctionName}.c");
             await File.WriteAllTextAsync(functionCFile, functionCCode);
             context.CFiles.Add(functionCFile);
         }
@@ -165,7 +166,8 @@ public class CodeGenerationPhase : ICompilationPhase
         var staticsCCode = codegen.GenerateStaticsFile();
         if (!string.IsNullOrEmpty(staticsCCode))
         {
-            var staticsCFile = Path.Combine(context.OutputDir, $"{moduleName}_statics.c");
+            var modulePrefix = Program.GetGeneratedModulePrefix(moduleIR.ModulePath, moduleName);
+            var staticsCFile = Path.Combine(context.OutputDir, $"{modulePrefix}_statics.c");
             await File.WriteAllTextAsync(staticsCFile, staticsCCode);
             context.CFiles.Add(staticsCFile);
         }
@@ -189,9 +191,7 @@ public class CodeGenerationPhase : ICompilationPhase
         }
         else
         {
-            var isStdModule = modulePath?.Contains("/std/") ?? false;
-            var displayName = isStdModule ? $"std::{moduleName}" : moduleName;
-            Console.WriteLine($"  → {displayName} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
+            Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath!)} ({functions.Count} function{(functions.Count > 1 ? "s" : "")})");
         }
     }
 

@@ -1,2 +1,0 @@
-// Compatibility module. High-level Intuition lives in std::ui::window.
-pub use std::ui::window::*

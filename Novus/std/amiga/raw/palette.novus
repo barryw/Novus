@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: palette.library
+// Base: _PaletteBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("palette.library")
+extern pub fn PALETTE_GetClass() -> *u8

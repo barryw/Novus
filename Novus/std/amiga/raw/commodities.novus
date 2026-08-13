@@ -1,0 +1,419 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: commodities.library
+// Base: _CxBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+/// Create a new commodity object. (V36)
+///
+/// This function creates a commodity object of type 'type'. It is not proper to
+/// call this function directly.
+///
+/// # Arguments
+/// * `type` - the type of object to create as defined in
+///   <libraries/commodities.h> arg1 - first argument, meaning depends on
+///   'type' arg2 - second argument, meaning depends on 'type'
+///
+/// # Returns
+/// co - a pointer to the new object or NULL if it could not be created. A
+/// NULL return indicates typically a lack of system memory. Minor problems
+/// in creating an object, such as providing a bad filter description to
+/// cx_lib/CxFilter(), typically don't cause failure, but are recorded in
+/// an internal error field in the new object which can be accessed via
+/// CxObjError().
+///
+/// See also: CxObjError(), cx_lib/CxFilter(), cx_lib/CxSender(), cx_lib/CxSignal(), cx_lib/CxTranslate()
+@library("commodities.library")
+extern pub fn CreateCxObj(_type: u32, arg1: i32, arg2: i32) -> *u8
+/// Create a commodity broker. (V36)
+///
+/// This function creates a broker from the specification found in the NewBroker
+/// structure pointed to by 'nb'. The purpose and meaning of the fields of the
+/// NewBroker structure are described below.
+///
+/// # Arguments
+/// * `nb` - an initialized NewBroker structure error - a pointer to a
+///   longword where to store a failure code (may be NULL)
+///
+/// # Returns
+/// broker - a pointer to the broker object or NULL upon failure. If the
+/// 'error' pointer is not NULL, a further diagnostic code is placed at
+/// that address. Error codes are defined in <libraries/commodities.h> and
+/// include:
+///
+/// See also: SetCxObjPri(), <libraries/commodities.h>
+@library("commodities.library")
+extern pub fn CxBroker(nb: *NewBroker, error: *u8) -> *u8
+/// Change the activation state of a commodity object.
+///
+/// Commodity objects of all types maintain an activation state. If an object is
+/// "active", then it performs its particular action whenever a commodity
+/// message arrives.
+///
+/// # Arguments
+/// * `co` - the commodity object to affect (may be NULL) true - 0 to
+///   deactivate the object, anything else to activate it
+///
+/// # Returns
+/// previous - the previous activation state: 0 if the object was inactive
+/// or if 'co' was NULL, anything else if the object was active
+///
+/// See also: CxBroker()
+@library("commodities.library")
+extern pub fn ActivateCxObj(co: *u8, doIt: i32) -> i32
+/// Delete a commmodity object. (V36)
+///
+/// Deletes a commodity object of any type. If the object is linked into a list,
+/// it is first removed.
+///
+/// # Arguments
+/// * `co` - the commodity object to delete (may be NULL)
+///
+/// See also: DeleteCxObjAll()
+@library("commodities.library")
+extern pub fn DeleteCxObj(co: *u8)
+/// Recursively delete a tree of commodity objects.
+///
+/// This function deletes the commodity object 'co', and recursively deletes all
+/// objects attached to it, and the objects attached to them, etc. If 'co' is
+/// linked into a list, it is first removed.
+///
+/// # Arguments
+/// * `co` - the first commodity object to delete (may be NULL)
+///
+/// See also: DeleteCxObj()
+@library("commodities.library")
+extern pub fn DeleteCxObjAll(co: *u8)
+/// Obtain the type of a commodity object. (V36)
+///
+/// This function should not really be necessary. It returns the type of a
+/// commodity object, which you should already know, since you created it in the
+/// first place.
+///
+/// # Arguments
+/// * `co` - the commodity object to inquire about (may be NULL)
+///
+/// # Returns
+/// type - the type of the commodity object, possible values are defined in
+/// <libraries/commodities.h>. Returns CX_INVALID if 'co' is NULL.
+///
+/// See also: CreateCxObj()
+@library("commodities.library")
+extern pub fn CxObjType(co: *u8) -> u32
+/// Obtain a commodity object's accumulated error. (V36)
+///
+/// When a function acting on an object fails, it records the failure in the
+/// object. This function returns the accumulated error value.
+///
+/// # Arguments
+/// * `co` - the commodity object to get the accumulated error from (may be
+///   NULL)
+///
+/// # Returns
+/// error - the accumulated error, or 0 if 'co' is NULL
+///
+/// See also: SetFilter(), SetFilterIX(), AttachCxObj(), ActivateCxObj(), ClearCxObjError()
+@library("commodities.library")
+extern pub fn CxObjError(co: *u8) -> i32
+/// Clear the accumulated error value of a commodity
+///
+/// This function clears the accumulated error value of commodity object 'co'.
+/// It is unwise to do this to a filter if COERR_BADFILTER is set.
+///
+/// # Arguments
+/// * `co` - the object to affect (may be NULL)
+///
+/// See also: CxObjError()
+@library("commodities.library")
+extern pub fn ClearCxObjError(co: *u8)
+/// Set the priority of a commodity object. (V36)
+///
+/// This function sets the priority of a commodity object for the purposes of
+/// EnqueueCxObj(). It is strongly recommended that the ToolTypes environment be
+/// utilized to provide end-user control over the priority of brokers, but
+/// application specific ordering of other objects within their lists is not
+/// dictated.
+///
+/// # Arguments
+/// * `co` - the commodity object to affect (may be NULL) pri - the
+///   object's new priority in the range -128 to +127. A value of 0 is
+///   normal.
+///
+/// # Returns
+/// oldPri - the previous priority of the object or 0 if 'co' was NULL.
+/// This value is only returned in V38 and beyond.
+///
+/// See also: EnqueueCxObj()
+@library("commodities.library")
+extern pub fn SetCxObjPri(co: *u8, pri: i32) -> i32
+/// Attach a commodity object to the end of an existing
+///
+/// Adds 'co' to the list of objects pointed to by 'headObj'. The new object is
+/// added at the end of the list.
+///
+/// # Arguments
+/// * `headObj` - pointer to a list of objects. If this value is NULL, then
+///   the entire tree of objects pointed to by 'co' is deleted and becomes
+///   invalid. co - the object to add to the list (may be NULL)
+///
+/// # Returns
+/// If 'co' is NULL, this function will record that fact in the internal
+/// accumulated error of 'headObj'. This error record can be retrieved
+/// using CxObjError() and cleared using ClearCxObjError().
+///
+/// See also: CxObjError(), ClearCxObjError()
+@library("commodities.library")
+extern pub fn AttachCxObj(headObj: *u8, co: *u8)
+/// Insert a commodity object within a list of objects
+///
+/// This function puts object 'co' into the list of object 'headObj'. The
+/// insertion point is determined by the object's priority.
+///
+/// # Arguments
+/// * `headObj` - pointer to a list of objects. If this value is NULL, then
+///   the entire tree of objects pointed to by 'co' is deleted and becomes
+///   invalid. co - the object to add to the list (may be NULL)
+///
+/// # Returns
+/// If 'co' is NULL, this function will record that fact in the internal
+/// accumulated error of 'headObj'. This error record can be retrieved
+/// using CxObjError() and cleared using ClearCxObjError().
+///
+/// See also: SetCxObjPri(), CxObjError(), ClearCxObjError()
+@library("commodities.library")
+extern pub fn EnqueueCxObj(headObj: *u8, co: *u8)
+/// Insert a commodity object in a list after a given
+///
+/// Adds 'co' to the list of objects pointed to by 'headObj' after object
+/// 'pred'.
+///
+/// # Arguments
+/// * `headObj` - pointer to a list of objects. If this value is NULL, then
+///   the entire tree of objects pointed to by 'co' is deleted and becomes
+///   invalid. co - the object to add to the list (may be NULL) pred - the
+///   object after which 'co' should be inserted. If this is NULL then 'co'
+///   is added to the head of the list.
+///
+/// # Returns
+/// If 'co' is NULL, this function will record that fact in the internal
+/// accumulated error of 'headObj'. This error record can be retrieved
+/// using CxObjError() and cleared using ClearCxObjError().
+///
+/// See also: CxObjError(), ClearCxObjError()
+@library("commodities.library")
+extern pub fn InsertCxObj(headObj: *u8, co: *u8, pred: *u8)
+/// Remove a commodity object from a list. (V36)
+///
+/// This function removes 'co' from any list it may be a part of. Will not crash
+/// if 'co' is NULL, or if it has not been inserted in a list.
+///
+/// # Arguments
+/// * `co` - the object to remove (may be NULL)
+///
+/// See also: AttachCxObj(), EnqueueCxObj(), InsertCxObj()
+@library("commodities.library")
+extern pub fn RemoveCxObj(co: *u8)
+/// Replace a translator object's translation list. (V36)
+///
+/// This function replaces the translation list of a commodity translator object
+/// with the linked list starting at 'events'. A NULL value for 'events'
+/// indicates that the object 'translator' should swallow all commodity messages
+/// that are sent its way.
+///
+/// # Arguments
+/// * `translator` - the translator object to affect (may be NULL) events -
+///   the new input event translation list
+///
+/// See also: <devices/inputevent.h>, cx_lib/CxTranslate()
+@library("commodities.library")
+extern pub fn SetTranslate(translator: *u8, events: *InputEvent)
+/// Change the matching condition of a commodity filter.
+///
+/// This function changes the matching condition of a commodity input filter to
+/// that described by the input description string 'text'.
+///
+/// # Arguments
+/// * `filter` - the filter object to affect (may be NULL) text - the new
+///   matching conditions for the filter
+///
+/// # Returns
+/// The internal error of 'filter' will have the COERR_BADFILTER bit set or
+/// cleared depending on the failure or success of this function.
+///
+/// See also: SetFilterIX(), CxObjError()
+@library("commodities.library")
+extern pub fn SetFilter(filter: *u8, text: *u8)
+/// Change the matching condition of a commodity filter.
+///
+/// This function changes the matching condition of a commodity input filter to
+/// that described by the binary input expression pointed by 'ix'. Input
+/// expressions are defined in <libraries/commodities.h>.
+///
+/// # Arguments
+/// * `filter` - the filter object to affect (may be NULL) ix - the new
+///   matching conditions for the filter
+///
+/// # Returns
+/// The internal error of 'filter' will have the COERR_BADFILTER bit set or
+/// cleared depending on the failure or success of this function.
+///
+/// See also: SetFilter(), CxObjError()
+@library("commodities.library")
+extern pub fn SetFilterIX(filter: *u8, ix: *u8)
+/// Initialize an input expression given a description string.
+///
+/// Given an input description string and an allocated input expression, sets
+/// the fields of the input expression to correspond to the description string.
+///
+/// # Arguments
+/// * `description` - the string to parse ix - the input expression to hold
+///   the result of the parse
+///
+/// # Returns
+/// failureCode - 0 if all went well, -1 if tokens after end (code spec) -2
+/// if 'description' was NULL
+///
+/// See also: <libraries/commodities.h>, MatchIX()
+@library("commodities.library")
+extern pub fn ParseIX(description: *u8, ix: *u8) -> i32
+/// Obtain the type of a commodity message. (V36)
+///
+/// This function returns the type of a commodity message. Possible values of
+/// 'type' are defined in <libraries/commodities.h>.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to inquire about (must NOT be NULL)
+///
+/// # Returns
+/// type - the type of the commodity message, possible values are defined
+/// in <libraries/commodities.h>
+@library("commodities.library")
+extern pub fn CxMsgType(cxm: *u8) -> u32
+/// Obtain a pointer to a commodity message's data area. (V36)
+///
+/// Most commodity messages contain meaningful data such as an InputEvent
+/// structure. This function returns a pointer to this data.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to get the data pointer from (may be
+///   NULL)
+///
+/// # Returns
+/// data - a pointer to the message's data, or NULL if 'cxm' is NULL. The
+/// meaning of the data varies depending on which kind of object is being
+/// inspected.
+///
+/// See also: cx_lib/CxSender(), cx_lib/CxCustom()
+@library("commodities.library")
+extern pub fn CxMsgData(cxm: *u8) -> *u8
+/// Obtain the ID of a commodity message. (V36)
+///
+/// This function returns the value associated with the cause or source of the
+/// commodity message 'cxm'. Values are provided by the application when a
+/// sender or custom object is created.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to inquire about (must NOT be NULL)
+///
+/// # Returns
+/// id - if not specified by the application, the ID value of a commodity
+/// message will be 0. It is suggested that using non-zero values in your
+/// program as a rule may identify some possible errors.
+///
+/// See also: cx_lib/CxSender(), cx_lib/CxCustom()
+@library("commodities.library")
+extern pub fn CxMsgID(cxm: *u8) -> i32
+/// Send a commodity message down an object list. (V36)
+///
+/// This function sends the commodity message 'cxm' down the list of objects
+/// attached to 'headObj'. The pointer 'returnObj' is first pushed onto the
+/// routing stack of 'cxm' so that when the end of the list of 'headObj' is
+/// reached the SUCCESSOR of 'returnObj' is the next destination.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to divert (must NOT be NULL) headObj -
+///   the list of objects to divert the message to returnObj - the object
+///   to use as a place holder
+///
+/// See also: RouteCxMsg()
+@library("commodities.library")
+extern pub fn DivertCxMsg(cxm: *u8, headObj: *u8, returnObj: *u8)
+/// Set the next destination of a commodity message. (V36)
+///
+/// Establishes the next destination of a commodity message to be 'co', which
+/// must be a valid commodity object, and must be linked in ultimately to
+/// commodities' object list. Routing of an object is analogous to a 'goto' in a
+/// program.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to route (must NOT be NULL) co - the
+///   commodity object to route the message to (must NOT be NULL)
+///
+/// See also: DivertCxMsg()
+@library("commodities.library")
+extern pub fn RouteCxMsg(cxm: *u8, co: *u8)
+/// Delete a commodity message. (V36)
+///
+/// This function eliminates the commodity message pointed to by 'cxm'. Can be
+/// used to 'swallow' input events by disposing of every commodity message of
+/// type CXM_IEVENT.
+///
+/// # Arguments
+/// * `cxm` - the commodity message to delete (must NOT be NULL)
+@library("commodities.library")
+extern pub fn DisposeCxMsg(cxm: *u8)
+/// Generate an input event from an ANSI code. (V36)
+///
+/// This function uses the system call MapANSI() to figure out what InputEvent
+/// translates to an ANSI character code 'ansiCode'. The InputEvent pointed to
+/// by 'event' is filled in with that information.
+///
+/// # Arguments
+/// * `ansiCode` - the ANSI code to convert to an input event event - the
+///   InputEvent to fill-in km - the keymap to use for the translation, or
+///   NULL to use the current system default keymap.
+///
+/// # Returns
+/// success - TRUE if the translation worked, FALSE otherwise.
+///
+/// See also: cx_lib/InvertString()
+@library("commodities.library")
+extern pub fn InvertKeyMap(ansiCode: u32, event: *InputEvent, km: *KeyMap) -> i16
+/// Add input events to commodities' input stream. (V36)
+///
+/// This function adds a null-terminated linked list of input events to the
+/// input stream processed by commodities. It is a touch easier than using the
+/// input device directly.
+///
+/// # Arguments
+/// * `events` - the list of input events to add (may be NULL)
+///
+/// # Warning
+/// The cx_lib/InvertString() function creates lists of input events that
+///
+/// See also: cx_lib/FreeIEvents()
+@library("commodities.library")
+extern pub fn AddIEvents(events: *InputEvent)
+/// See if an input event matches an initialized input
+///
+/// This function determines whether an input event matches an initialized input
+/// expression. Applications generally do not need to call this function as
+/// filter objects will normally provide all the event filtering needed.
+///
+/// # Arguments
+/// * `event` - the input event to match against the input expression ix -
+///   the input expression for the comparison
+///
+/// # Returns
+/// match - TRUE if the input event matches the input expression, or FALSE
+/// if not
+///
+/// See also: <libraries/commodities.h>, ParseIX()
+@library("commodities.library")
+extern pub fn MatchIX(event: *InputEvent, ix: *u8) -> i16

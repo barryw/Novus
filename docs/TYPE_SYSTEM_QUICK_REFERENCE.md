@@ -91,8 +91,8 @@ public void BuildIr_I8_Addition_Overflow_Compiles()
 {
     var source = @"
 pub fn main() -> i8 {
-    let max: i8 = 127i8
-    return max + 1i8  // Wraps?
+    let max: i8 = 127
+    return max + 1  // Wraps?
 }";
     var module = BuildIr(source);
     Assert.NotNull(module);
@@ -121,7 +121,7 @@ public void BuildIr_I32_Min_Compiles()
 {
     var source = @"
 pub fn main() -> i32 {
-    return -2147483648i32  // i32::MIN
+    return -2147483648  // i32::MIN
 }";
     var module = BuildIr(source);
     Assert.NotNull(module);
@@ -135,7 +135,7 @@ public void BuildIr_F32_NaN_Compiles()
 {
     var source = @"
 pub fn main() -> f32 {
-    let nan: f32 = 0.0f32 / 0.0f32
+    let nan: f32 = 0.0 / 0.0
     return nan
 }";
     var module = BuildIr(source);

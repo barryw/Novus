@@ -1,9 +1,9 @@
 // Test spawning a worker that does nothing - just prints and exits
 
 from std::core import Result
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn
-from std::ffi::dos import VPrintf, Delay
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn
+from amiga::raw::dos import VPrintf, Delay
 
 fn worker() -> i32 {
     VPrintf("Worker: running\n", (*u8)0)

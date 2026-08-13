@@ -1,0 +1,86 @@
+// mmu.novus - Memory Management Unit detection
+// Namespace: amiga::sys::hardware::mmu
+// Provides runtime MMU detection on Amiga systems with 68030/040/060 processors
+
+from std::string::format import Display, Formatter
+
+/// Memory Management Unit type detected at runtime
+///
+/// Identifies the type of MMU available on the system.
+/// Note: 68020 does NOT have an integrated MMU - requires external 68851 PMMU.
+pub enum SystemMMU {
+    /// No MMU present (68020/030 without PMMU, or 040/060 with MMU disabled)
+    None,
+    /// External 68851 PMMU (coprocessor for 68020)
+    M68851,
+    /// 68030 integrated MMU
+    M68030,
+    /// 68040 integrated MMU
+    M68040,
+    /// 68060 integrated MMU
+    M68060,
+}
+
+/// MMU capabilities detected on the current system
+///
+/// Contains information about the MMU's configuration and available
+/// software support for advanced operations.
+pub struct MMUCapabilities {
+    /// Page size in bytes (typically 4096 or 8192, 0 if no MMU)
+    page_size: u32,
+    /// Whether mmu.library is available for advanced MMU operations
+    has_mmu_library: bool,
+}
+
+// Runtime MMU detection functions
+// These call into the Novus runtime which detects MMU at startup
+extern fn __detect_mmu() -> SystemMMU
+extern fn __get_mmu_page_size() -> u32
+extern fn __has_mmu_library() -> bool
+
+// Global accessors for MMU detection
+// These call the runtime's extern detection functions
+
+/// Returns the detected MMU type for the current system
+pub fn MMU() -> SystemMMU {
+    return __detect_mmu()
+}
+
+/// Returns whether an MMU is available on this system
+pub fn has_mmu() -> bool {
+    return match __detect_mmu() {
+        SystemMMU::None => false,
+        _ => true,
+    }
+}
+
+/// Returns the MMU page size in bytes (0 if no MMU)
+pub fn page_size() -> u32 {
+    return __get_mmu_page_size()
+}
+
+/// Returns whether mmu.library is available for advanced MMU operations
+pub fn has_mmu_library() -> bool {
+    return __has_mmu_library()
+}
+
+/// Returns full MMU capabilities structure
+pub fn capabilities() -> MMUCapabilities {
+    return MMUCapabilities {
+        page_size: __get_mmu_page_size(),
+        has_mmu_library: __has_mmu_library(),
+    }
+}
+
+// Display trait implementation for SystemMMU
+impl Display for SystemMMU {
+    fn fmt(&self, f: &var Formatter) -> bool {
+        return match *self {
+            SystemMMU::None => f.write_str("None"),
+            SystemMMU::M68851 => f.write_str("68851 PMMU"),
+            SystemMMU::M68030 => f.write_str("68030 MMU"),
+            SystemMMU::M68040 => f.write_str("68040 MMU"),
+            SystemMMU::M68060 => f.write_str("68060 MMU"),
+        }
+    }
+}

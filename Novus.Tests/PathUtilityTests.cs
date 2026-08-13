@@ -9,6 +9,16 @@ namespace Novus.Tests;
 public class PathUtilityTests
 {
     [Theory]
+    [InlineData("/compiler/std/core.novus", "std::core")]
+    [InlineData("/compiler/std/collections/arrayvec.novus", "std::collections::arrayvec")]
+    [InlineData("/compiler/std/amiga/ui.novus", "amiga::ui")]
+    [InlineData("/project/src/model.novus", "model")]
+    public void ModuleDisplayName_UsesCanonicalNamespace(string path, string expected)
+    {
+        Assert.Equal(expected, PathUtility.GetModuleDisplayName(path));
+    }
+
+    [Theory]
     [InlineData("foo/bar/baz.cs", "foo/bar/baz.cs")]
     [InlineData("foo\\bar\\baz.cs", "foo/bar/baz.cs")]
     [InlineData("foo\\bar/baz.cs", "foo/bar/baz.cs")]

@@ -1,0 +1,17 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: colorwheel.library
+// Base: _ColorWheelBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("colorwheel.library")
+extern pub fn ConvertHSBToRGB(hsb: *ColorWheelHSB, rgb: *ColorWheelRGB)
+@library("colorwheel.library")
+extern pub fn ConvertRGBToHSB(rgb: *ColorWheelRGB, hsb: *ColorWheelHSB)

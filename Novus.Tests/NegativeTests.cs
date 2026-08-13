@@ -102,7 +102,7 @@ fn test() {
     {
         var source = @"
 fn test() -> u8 {
-    return 256u8  // Max u8 is 255
+    return 256  // Max u8 is 255
 }";
         var diagnostics = Analyze(source);
         AssertError(diagnostics, "E0009");
@@ -113,7 +113,7 @@ fn test() -> u8 {
     {
         var source = @"
 fn test() -> i8 {
-    return 128i8  // Max i8 is 127
+    return 128  // Max i8 is 127
 }";
         var diagnostics = Analyze(source);
         AssertError(diagnostics, "E0009");

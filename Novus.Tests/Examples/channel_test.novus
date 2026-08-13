@@ -4,8 +4,8 @@
 // Tests: channel::<T>(), send(), try_recv(), signal mask.
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::sync::channel import channel, Sender, Receiver
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec::channel import channel, Sender, Receiver
 from std::io::file import write
 
 fn main() -> i32 {

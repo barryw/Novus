@@ -353,34 +353,8 @@ public static class AstParsingHelpers
     /// </summary>
     public static (object Value, IrType Type) ParseIntegerLiteral(string text)
     {
-        // Remove suffix if present
-        var suffix = "";
-        var numPart = text;
-
-        if (text.EndsWith("u8")) { suffix = "u8"; numPart = text[..^2]; }
-        else if (text.EndsWith("u16")) { suffix = "u16"; numPart = text[..^3]; }
-        else if (text.EndsWith("u32")) { suffix = "u32"; numPart = text[..^3]; }
-        else if (text.EndsWith("u64")) { suffix = "u64"; numPart = text[..^3]; }
-        else if (text.EndsWith("i8")) { suffix = "i8"; numPart = text[..^2]; }
-        else if (text.EndsWith("i16")) { suffix = "i16"; numPart = text[..^3]; }
-        else if (text.EndsWith("i32")) { suffix = "i32"; numPart = text[..^3]; }
-        else if (text.EndsWith("i64")) { suffix = "i64"; numPart = text[..^3]; }
-
-        var value = long.Parse(numPart);
-        IrType type = suffix switch
-        {
-            "u8" => IrIntType.U8,
-            "u16" => IrIntType.U16,
-            "u32" => IrIntType.U32,
-            "u64" => IrIntType.U64,
-            "i8" => IrIntType.I8,
-            "i16" => IrIntType.I16,
-            "i32" => IrIntType.I32,
-            "i64" => IrIntType.I64,
-            _ => IrIntType.U32 // Default to u32 for const generics
-        };
-
-        return (value, type);
+        var literal = IntegerLiteralParser.Parse(text, defaultType: IrIntType.U32);
+        return (literal.ToBitPattern(), literal.Type);
     }
 
     /// <summary>
@@ -388,35 +362,8 @@ public static class AstParsingHelpers
     /// </summary>
     public static (object Value, IrType Type) ParseHexLiteral(string text)
     {
-        // Remove 0x prefix
-        var numPart = text.StartsWith("0x") || text.StartsWith("0X") ? text[2..] : text;
-
-        // Remove suffix if present
-        var suffix = "";
-        if (numPart.EndsWith("u8")) { suffix = "u8"; numPart = numPart[..^2]; }
-        else if (numPart.EndsWith("u16")) { suffix = "u16"; numPart = numPart[..^3]; }
-        else if (numPart.EndsWith("u32")) { suffix = "u32"; numPart = numPart[..^3]; }
-        else if (numPart.EndsWith("u64")) { suffix = "u64"; numPart = numPart[..^3]; }
-        else if (numPart.EndsWith("i8")) { suffix = "i8"; numPart = numPart[..^2]; }
-        else if (numPart.EndsWith("i16")) { suffix = "i16"; numPart = numPart[..^3]; }
-        else if (numPart.EndsWith("i32")) { suffix = "i32"; numPart = numPart[..^3]; }
-        else if (numPart.EndsWith("i64")) { suffix = "i64"; numPart = numPart[..^3]; }
-
-        var value = Convert.ToInt64(numPart, 16);
-        IrType type = suffix switch
-        {
-            "u8" => IrIntType.U8,
-            "u16" => IrIntType.U16,
-            "u32" => IrIntType.U32,
-            "u64" => IrIntType.U64,
-            "i8" => IrIntType.I8,
-            "i16" => IrIntType.I16,
-            "i32" => IrIntType.I32,
-            "i64" => IrIntType.I64,
-            _ => IrIntType.U32 // Default to u32 for const generics
-        };
-
-        return (value, type);
+        var literal = IntegerLiteralParser.Parse(text, defaultType: IrIntType.U32);
+        return (literal.ToBitPattern(), literal.Type);
     }
 
     /// <summary>

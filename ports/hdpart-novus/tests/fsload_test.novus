@@ -3,9 +3,9 @@ from std::test::test import expect_eq, expect_true
 
 @test("filesystem image metadata is detected")
 pub fn test_filesystem_image_metadata() {
-    var image = [0u8; 64]
-    image[2] = 3u8
-    image[3] = $F3u8
+    var image: [u8] = [0; 64]
+    image[2] = 3
+    image[3] = $F3
     image[8] = (u8)'$'
     image[9] = (u8)'V'
     image[10] = (u8)'E'
@@ -18,12 +18,14 @@ pub fn test_filesystem_image_metadata() {
     image[24] = (u8)'P'
     image[25] = (u8)'F'
     image[26] = (u8)'S'
-    image[27] = 3u8
+    image[27] = 3
     image[32] = (u8)'P'
     image[33] = (u8)'F'
     image[34] = (u8)'S'
-    image[35] = 3u8
+    image[35] = 3
     expect_true(is_hunk_file(&image), "valid Amiga hunk is accepted")
-    expect_eq(parse_version(&image), (19u32 << 16u32) | 2u32, "version is parsed")
-    expect_eq(detect_dos_type(&image), $50465303u32, "DOS type is detected")
+    expect_eq(parse_version(&image), (19 << 16) | 2, "version is parsed")
+    expect_eq(detect_dos_type(&image), $50465303, "DOS type is detected")
+    expect_eq(detect_dos_type("FastFileSystem".as_bytes()), $444F5303, "stock FastFileSystem defaults to DOS\\3")
+    expect_eq(detect_dos_type("UnknownHandler".as_bytes()), 0, "unknown handlers are not mislabeled")
 }

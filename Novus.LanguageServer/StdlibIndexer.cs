@@ -31,15 +31,8 @@ public class StdlibIndexer
 
         try
         {
-            // Index main stdlib directory
-            IndexDirectory(_stdLibPath, "std");
-
-            // Index ffi subdirectory
-            var ffiPath = Path.Combine(_stdLibPath, "ffi");
-            if (Directory.Exists(ffiPath))
-            {
-                IndexDirectory(ffiPath, "std::ffi");
-            }
+            IndexTree(_stdLibPath, "std", skipDirectory: "amiga");
+            IndexTree(Path.Combine(_stdLibPath, "amiga"), "amiga");
 
             _indexed = true;
             Console.Error.WriteLine($"[LSP] Indexed {_moduleExports.Count} stdlib modules");
@@ -53,7 +46,7 @@ public class StdlibIndexer
     /// <summary>
     /// Indexes all .novus files in a directory
     /// </summary>
-    private void IndexDirectory(string directoryPath, string namespacePrefix)
+    private void IndexTree(string directoryPath, string namespacePrefix, string? skipDirectory = null)
     {
         if (!Directory.Exists(directoryPath))
         {
@@ -67,6 +60,14 @@ public class StdlibIndexer
             var fullModuleName = $"{namespacePrefix}::{moduleName}";
 
             IndexModule(file, fullModuleName);
+        }
+
+        foreach (var child in Directory.GetDirectories(directoryPath))
+        {
+            var name = Path.GetFileName(child);
+            if (name.StartsWith('.') || name is "bin" or "obj" || name == skipDirectory)
+                continue;
+            IndexTree(child, $"{namespacePrefix}::{name}");
         }
     }
 

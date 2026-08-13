@@ -1,0 +1,43 @@
+from std::string import Str
+from amiga::sys::intuition::dialog import RetryChoice
+from amiga::sys::intuition::dialog import alert as system_alert
+from amiga::sys::intuition::dialog import alert_with_button as system_alert_with_button
+from amiga::sys::intuition::dialog import choice as system_choice
+from amiga::sys::intuition::dialog import confirm as system_confirm
+from amiga::sys::intuition::dialog import confirm_with_buttons as system_confirm_with_buttons
+from amiga::sys::intuition::dialog import retry_dialog as system_retry
+from amiga::sys::intuition::dialog import save_dialog as system_save
+
+pub type Retry = RetryChoice
+
+pub fn alert(title: Str, message: Str) {
+    system_alert(title.as_cstr(), message.as_cstr())
+}
+
+pub fn alert_with_button(title: Str, message: Str, button: Str) {
+    system_alert_with_button(title.as_cstr(), message.as_cstr(), button.as_cstr())
+}
+
+pub fn confirm(title: Str, message: Str) -> bool {
+    return system_confirm(title.as_cstr(), message.as_cstr())
+}
+
+pub fn confirm_with_buttons(title: Str, message: Str, buttons: Str) -> bool {
+    return system_confirm_with_buttons(title.as_cstr(), message.as_cstr(), buttons.as_cstr())
+}
+
+pub fn choice(title: Str, message: Str, buttons: Str) -> i32 {
+    return system_choice(title.as_cstr(), message.as_cstr(), buttons.as_cstr())
+}
+
+pub fn save_dialog(title: Str, message: Str) -> i32 {
+    return system_save(title.as_cstr(), message.as_cstr())
+}
+
+pub fn retry(title: Str, message: Str) -> Retry {
+    return system_retry(title.as_cstr(), message.as_cstr())
+}
+
+pub fn error(message: Str) { alert("Error", message) }
+pub fn warning(message: Str) { alert("Warning", message) }
+pub fn info(message: Str) { alert("Information", message) }

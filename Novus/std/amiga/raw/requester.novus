@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: requester.library
+// Base: _RequesterBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("requester.library")
+extern pub fn REQUESTER_GetClass() -> *u8

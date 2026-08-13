@@ -41,7 +41,7 @@ The standard library uses the \texttt{std} prefix:
 \hline
 \texttt{std/core.novus} & \texttt{std::core} \\
 \texttt{std/collections/vec.novus} & \texttt{std::collections::vec} \\
-\texttt{std/ffi/exec.novus} & \texttt{std::ffi::exec} \\
+\texttt{std/amiga/raw/exec.novus} & \texttt{amiga::raw::exec} \\
 \end{tabular}
 \end{center}
 
@@ -60,8 +60,8 @@ Import specific items by name:
 from std::core import Option, Result
 
 // Import functions and constants
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_FAST, MEMF_CLEAR
 \end{lstlisting}
 
 \begin{comingfromc}
@@ -83,8 +83,8 @@ Novus imports are semantic, not textual:
 
 \begin{lstlisting}
 // Novus: Import specific symbols
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_FAST
 \end{lstlisting}
 
 Benefits:
@@ -104,7 +104,7 @@ Import all public items from a module:
 
 \begin{lstlisting}
 // Import everything from amiga_structs
-from std::ffi::amiga_structs import *
+from amiga::raw::structs import *
 
 // Now Task, MsgPort, Library, etc. are all in scope
 \end{lstlisting}
@@ -118,7 +118,7 @@ Import multiple items matching a prefix or suffix pattern:
 
 \begin{lstlisting}
 // Import all IDCMP_* constants (prefix pattern)
-from std::ffi::amiga_consts import IDCMP_*
+from amiga::raw::consts import IDCMP_*
 
 // This imports IDCMP_CLOSEWINDOW, IDCMP_MOUSEBUTTONS, etc.
 
@@ -162,16 +162,16 @@ from std::collections::vec import Vec
 // 3. std::memory - memory management
 from std::memory::block import MemoryBlock
 
-// 4. std::strings - string types
-from std::strings::core import Str
+// 4. std::string - string types
+from std::string import Str
 
 // 5. std::error - error types
 from std::error::errors import ExecError
 
-// 6. std::ffi - AmigaOS bindings
-from std::ffi::amiga_structs import Task, MsgPort
-from std::ffi::amiga_consts import MEMF_PUBLIC
-from std::ffi::exec import AllocMem, FreeMem
+// 6. amiga::raw - AmigaOS bindings
+from amiga::raw::structs import Task, MsgPort
+from amiga::raw::consts import MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, FreeMem
 \end{lstlisting}
 
 \section{Visibility Modifiers}
@@ -287,9 +287,9 @@ The \texttt{at ADDRESS} syntax is used for memory-mapped hardware registers. Com
 \textbf{Note:} AmigaOS library functions are imported from the standard library FFI modules, not declared as \texttt{extern} in user code:
 
 \begin{lstlisting}
-// Import AmigaOS functions from std::ffi
-from std::ffi::exec import AllocMem, FreeMem, Wait, Signal
-from std::ffi::dos import Open, Close, Read, Write
+// Import AmigaOS functions from amiga::raw
+from amiga::raw::exec import AllocMem, FreeMem, Wait, Signal
+from amiga::raw::dos import Open, Close, Read, Write
 \end{lstlisting}
 
 External declarations have no implementation in Novus---they're provided by AmigaOS, assembly files, or C libraries.
@@ -309,7 +309,7 @@ Re-exports allow modules to expose items from other modules as part of their own
 pub use std::core::Option, Result, Drop, From
 
 // Re-export string types
-pub use std::strings::core::Str
+pub use std::string::Str
 
 // Re-export error types
 pub use std::error::errors::DosError, ExecError, IntuitionError
@@ -320,7 +320,7 @@ Now users can import from \texttt{std::prelude} instead of multiple modules:
 \begin{lstlisting}
 // Instead of:
 from std::core import Option, Result
-from std::strings::core import Str
+from std::string import Str
 from std::error::errors import DosError
 
 // Users can write:
@@ -592,8 +592,8 @@ The Novus standard library is organized into focused modules:
 \label{subsec:string-modules}
 
 \begin{description}
-    \item[\texttt{std::strings::core}] String slice type (\texttt{Str})
-    \item[\texttt{std::strings::format}] Formatting and \texttt{Display} trait
+    \item[\texttt{std::string}] String slice type (\texttt{Str})
+    \item[\texttt{std::string}] Formatting and \texttt{Display} trait
 \end{description}
 
 \subsection{Error Handling}
@@ -619,23 +619,22 @@ The Novus standard library is organized into focused modules:
 
 \begin{description}
     \item[\texttt{std::async}] Async/await runtime
-    \item[\texttt{std::sync}] Synchronization primitives
-    \item[\texttt{std::thread}] Task management
+    \item[\texttt{amiga::sys::exec}] Synchronization and Amiga task management
 \end{description}
 
 \subsection{Graphics and UI}
 \label{subsec:graphics-modules}
 
 \begin{description}
-    \item[\texttt{std::graphics::bitmap}] Bitmap handling
-    \item[\texttt{std::graphics::sprite}] Hardware sprites
-    \item[\texttt{std::graphics::copper}] Copper list generation
-    \item[\texttt{std::graphics::blitter}] Blitter operations
-    \item[\texttt{std::graphics::intuition}] Intuition window/screen wrappers
-    \item[\texttt{std::ui::window}] Window management
-    \item[\texttt{std::ui::screen}] Screen management
-    \item[\texttt{std::ui::menu}] Menu creation
-    \item[\texttt{std::ui::events}] Event handling
+    \item[\texttt{amiga::sys::graphics::bitmap}] Bitmap handling
+    \item[\texttt{amiga::sys::graphics::sprite}] Hardware sprites
+    \item[\texttt{amiga::sys::graphics::copper}] Copper list generation
+    \item[\texttt{amiga::sys::graphics::blitter}] Blitter operations
+    \item[\texttt{amiga::sys::graphics::intuition}] Intuition window/screen wrappers
+    \item[\texttt{amiga::sys::intuition}] Window management
+    \item[\texttt{amiga::sys::intuition}] Screen management
+    \item[\texttt{amiga::sys::gadtools}] Menu creation
+    \item[\texttt{amiga::sys::intuition}] Event handling
 \end{description}
 
 \subsection{AmigaOS FFI}
@@ -644,24 +643,24 @@ The Novus standard library is organized into focused modules:
 The FFI modules provide direct bindings to AmigaOS libraries:
 
 \begin{description}
-    \item[\texttt{std::ffi::exec}] Exec library (memory, tasks, signals)
-    \item[\texttt{std::ffi::dos}] DOS library (files, paths, CLI)
-    \item[\texttt{std::ffi::graphics}] Graphics library (rendering, text)
-    \item[\texttt{std::ffi::intuition}] Intuition library (windows, screens)
-    \item[\texttt{std::ffi::layers}] Layers library (layer management)
-    \item[\texttt{std::ffi::gadtools}] GadTools library (GUI toolkit)
-    \item[\texttt{std::ffi::utility}] Utility library (tags, hooks)
-    \item[\texttt{std::ffi::workbench}] Workbench library (icons, AppIcons)
-    \item[\texttt{std::ffi::icon}] Icon library (icon handling)
-    \item[\texttt{std::ffi::asl}] ASL library (file/font requesters)
-    \item[\texttt{std::ffi::diskfont}] Diskfont library (font loading)
-    \item[\texttt{std::ffi::commodities}] Commodities library (hotkeys)
-    \item[\texttt{std::ffi::iffparse}] IFFParse library (IFF files)
-    \item[\texttt{std::ffi::timer\_device}] Timer device (delays, timing)
-    \item[\texttt{std::ffi::audio\_device}] Audio device (Paula access)
-    \item[\texttt{std::ffi::bsdsocket}] BSD sockets (networking)
-    \item[\texttt{std::ffi::amiga\_structs}] AmigaOS structure definitions
-    \item[\texttt{std::ffi::amiga\_consts}] AmigaOS constants
+    \item[\texttt{amiga::raw::exec}] Exec library (memory, tasks, signals)
+    \item[\texttt{amiga::raw::dos}] DOS library (files, paths, CLI)
+    \item[\texttt{amiga::raw::graphics}] Graphics library (rendering, text)
+    \item[\texttt{amiga::raw::intuition}] Intuition library (windows, screens)
+    \item[\texttt{amiga::raw::layers}] Layers library (layer management)
+    \item[\texttt{amiga::raw::gadtools}] GadTools library (GUI toolkit)
+    \item[\texttt{amiga::raw::utility}] Utility library (tags, hooks)
+    \item[\texttt{amiga::raw::workbench}] Workbench library (icons, AppIcons)
+    \item[\texttt{amiga::raw::icon}] Icon library (icon handling)
+    \item[\texttt{amiga::raw::asl}] ASL library (file/font requesters)
+    \item[\texttt{amiga::raw::diskfont}] Diskfont library (font loading)
+    \item[\texttt{amiga::raw::commodities}] Commodities library (hotkeys)
+    \item[\texttt{amiga::raw::iffparse}] IFFParse library (IFF files)
+    \item[\texttt{amiga::raw::timer\_device}] Timer device (delays, timing)
+    \item[\texttt{amiga::raw::audio\_device}] Audio device (Paula access)
+    \item[\texttt{amiga::raw::bsdsocket}] BSD sockets (networking)
+    \item[\texttt{amiga::raw::amiga\_structs}] AmigaOS structure definitions
+    \item[\texttt{amiga::raw::amiga\_consts}] AmigaOS constants
 \end{description}
 
 \subsection{Other Modules}
@@ -669,9 +668,9 @@ The FFI modules provide direct bindings to AmigaOS libraries:
 
 \begin{description}
     \item[\texttt{std::math}] Fixed-point math, trigonometry
-    \item[\texttt{std::audio}] Paula audio, ProTracker player
+    \item[\texttt{amiga::audio}] Paula audio, ProTracker player
     \item[\texttt{std::test}] Test framework
-    \item[\texttt{std::os}] Operating system utilities
+    \item[\texttt{amiga::sys}] Operating system utilities
 \end{description}
 
 \section{The Prelude}
@@ -682,7 +681,7 @@ The prelude (\texttt{std::prelude}) re-exports commonly used types:
 \begin{lstlisting}
 // ... (contents of std/prelude.novus - illustrative)
 pub use std::core::Option, Result, Drop, From
-pub use std::strings::core::Str
+pub use std::string::Str
 pub use std::error::errors::DosError, ExecError, IntuitionError, GraphicsError
 \end{lstlisting}
 
@@ -920,7 +919,7 @@ impl PluginManager {
     }
 
     pub fn process_all(&var self, data: &var PluginData) -> Result<(), PluginError> {
-        for i in 0u32..self.plugins.len() {
+        for i in 0..self.plugins.len() {
             self.plugins.get_mut(i).unwrap().process(data)?
         }
         return Result::Ok(())
@@ -1251,7 +1250,7 @@ impl Game for MyGame {
                 }
 
                 // Update enemies
-                for i in 0u32..self.enemies.len() {
+                for i in 0..self.enemies.len() {
                     self.enemies.get_mut(i).unwrap().update()
                 }
 
@@ -1278,7 +1277,7 @@ impl Game for MyGame {
             },
             GameState::Playing => {
                 self.player.draw(display)
-                for i in 0u32..self.enemies.len() {
+                for i in 0..self.enemies.len() {
                     self.enemies.get(i).unwrap().draw(display)
                 }
             },

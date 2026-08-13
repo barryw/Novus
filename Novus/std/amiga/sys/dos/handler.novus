@@ -1,0 +1,58 @@
+// Safe ownership wrapper for AmigaDOS filesystem-handler packets.
+
+from std::core import Drop
+from amiga::raw::dos import WaitPkt, ReplyPkt
+from amiga::raw::structs import DosPacket
+from amiga::raw::consts import ERROR_ACTION_NOT_KNOWN
+
+pub struct Packet {
+    raw: *DosPacket,
+    replied: bool,
+}
+
+impl Packet {
+    /// Wait for and take ownership of the next packet sent to this handler.
+    pub fn wait() -> Packet {
+        return Packet { raw: WaitPkt(), replied: false }
+    }
+
+    pub fn action(&self) -> i32 {
+        return unsafe { (*self.raw).dp_Type }
+    }
+
+    pub fn arg(&self, index: u8) -> i32 {
+        return unsafe {
+            match index {
+                1 => (*self.raw).dp_Arg1,
+                2 => (*self.raw).dp_Arg2,
+                3 => (*self.raw).dp_Arg3,
+                4 => (*self.raw).dp_Arg4,
+                5 => (*self.raw).dp_Arg5,
+                6 => (*self.raw).dp_Arg6,
+                7 => (*self.raw).dp_Arg7,
+                _ => 0,
+            }
+        }
+    }
+
+    /// Reply exactly once and release ownership of the packet.
+    pub fn reply(&var self, result: i32, error: i32) {
+        if !self.replied {
+            ReplyPkt(self.raw, result, error)
+            self.replied = true
+            self.raw = null
+        }
+    }
+}
+
+impl Drop for Packet {
+    @suppress("W0002", "ERROR_ACTION_NOT_KNOWN is 209 and fits i32")
+    fn drop(&var self) {
+        if !self.replied && (u32)self.raw != 0 {
+            // Never leave DOS waiting forever when a handler path forgets to reply.
+            ReplyPkt(self.raw, 0, ERROR_ACTION_NOT_KNOWN as i32)
+            self.replied = true
+            self.raw = null
+        }
+    }
+}

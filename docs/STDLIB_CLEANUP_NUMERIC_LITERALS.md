@@ -1,5 +1,7 @@
 # Standard Library Cleanup - Numeric Literal Type Suffixes
 
+> Historical migration record. Numeric type suffixes have since been removed from the language; current Novus uses contextual literals or normal casts such as `(u16)0`.
+
 **Date:** 2025-11-01
 **Status:** ✅ COMPLETE
 **Test Status:** 960/960 passing (100%)
@@ -81,31 +83,19 @@ new_capacity = 4                // Beautiful!
 
 ## 🎨 Design Principle
 
-**When to use type suffixes:**
+Numeric literals always inherit their type from context:
 
-❌ **DON'T use when type is already specified:**
 ```novus
-pub const TRUE: i16 = 1i16      // ❌ Type specified twice
-let x: u32 = 0u32               // ❌ Redundant suffix
+pub const TRUE: i16 = 1
+let x: u32 = 0
+
+// Or let the surrounding expression infer it:
+if self.len == 0 { ... }
 ```
 
-✅ **DO use type annotation OR suffix, not both:**
+Use a normal cast only when no useful context exists:
 ```novus
-pub const TRUE: i16 = 1         // ✅ Clean!
-let x: u32 = 0                  // ✅ Clean!
-
-// Or if type can be inferred:
-let y = 42                      // ✅ Type inferred from usage
-```
-
-❌ **DON'T use suffix when type is known from context:**
-```novus
-if self.len == 0u32 { ... }     // ❌ self.len is already u32
-```
-
-✅ **DO let the compiler infer:**
-```novus
-if self.len == 0 { ... }        // ✅ Clean!
+let byte = (u8)0
 ```
 
 ---

@@ -29,10 +29,10 @@
 // }
 // ```
 
-from std::ffi::exec import OpenLibrary, CloseLibrary, Library
+from amiga::raw::exec import OpenLibrary, CloseLibrary, Library
 from std::net::errors import NetError
-from std::ffi::bsdsocket import SetErrnoPtr, SocketBaseTags, SBTM_SETVAL, SBTC_ERRNOPTR, SocketBase
-from std::ffi::bsdsocket import socket, CloseSocket, AF_INET, SOCK_STREAM
+from amiga::raw::bsdsocket import SetErrnoPtr, SocketBaseTags, SBTM_SETVAL, SBTC_ERRNOPTR, SocketBase
+from amiga::raw::bsdsocket import socket, CloseSocket, AF_INET, SOCK_STREAM
 from std::core import Result
 
 // Minimum required bsdsocket.library version

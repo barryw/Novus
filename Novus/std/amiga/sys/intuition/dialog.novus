@@ -1,0 +1,325 @@
+// Novus Standard Library - Dialog Functions
+// Namespace: amiga::ui
+//
+// High-level wrappers for AmigaOS EasyRequest dialogs.
+// Provides simple, ergonomic APIs for common dialog patterns.
+
+from amiga::raw::intuition import EasyRequestArgs
+from amiga::raw::structs import EasyStruct, Window
+
+// ============================================================================
+// Simple Alert Dialog
+// ============================================================================
+
+/// Display a simple alert dialog with an OK button.
+///
+/// This is the simplest dialog - just shows a message and waits for acknowledgment.
+///
+/// # Arguments
+/// * `title` - Dialog title (shown in title bar)
+/// * `message` - Message to display
+///
+/// # Example
+/// ```novus
+/// alert("Error", "File not found!")
+/// alert("Success", "Operation completed successfully.")
+/// ```
+pub fn alert(title: *u8, message: *u8) {
+    let es = EasyStruct {
+        es_StructSize: 20,  // sizeof(EasyStruct) = 5 * 4 bytes
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "OK",
+    }
+
+    // NULL window = center on default public screen
+    // NULL idcmpPtr = we don't care about IDCMP
+    // NULL args = no printf-style arguments
+    EasyRequestArgs(null, &es, null, null)
+}
+
+/// Display an alert dialog with a custom button label.
+///
+/// # Arguments
+/// * `title` - Dialog title
+/// * `message` - Message to display
+/// * `button` - Custom button text
+///
+/// # Example
+/// ```novus
+/// alert_with_button("Warning", "Low disk space!", "Understood")
+/// ```
+pub fn alert_with_button(title: *u8, message: *u8, button: *u8) {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: button,
+    }
+
+    EasyRequestArgs(null, &es, null, null)
+}
+
+// ============================================================================
+// Confirmation Dialog (Yes/No)
+// ============================================================================
+
+/// Display a Yes/No confirmation dialog.
+///
+/// Returns true if user clicked Yes (left button), false if No (right button).
+///
+/// # Arguments
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+///
+/// # Returns
+/// `true` if user confirmed (Yes), `false` if declined (No)
+///
+/// # Example
+/// ```novus
+/// if confirm("Save Changes", "Do you want to save before closing?") {
+///     save_document()
+/// }
+/// ```
+pub fn confirm(title: *u8, message: *u8) -> bool {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "Yes|No",
+    }
+
+    // EasyRequest returns:
+    // - 1 for leftmost button (Yes)
+    // - 0 for rightmost button (No)
+    let result = EasyRequestArgs(null, &es, null, null)
+    return result == 1
+}
+
+/// Display a confirmation dialog with custom button labels.
+///
+/// # Arguments
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+/// * `buttons` - Button labels separated by '|' (e.g., "Delete|Cancel")
+///              Left button returns true, right button returns false.
+///
+/// # Returns
+/// `true` if user clicked the left button, `false` for right button
+///
+/// # Example
+/// ```novus
+/// if confirm_with_buttons("Delete File", "Are you sure?", "Delete|Cancel") {
+///     delete_file()
+/// }
+/// ```
+pub fn confirm_with_buttons(title: *u8, message: *u8, buttons: *u8) -> bool {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: buttons,
+    }
+
+    let result = EasyRequestArgs(null, &es, null, null)
+    return result == 1
+}
+
+// ============================================================================
+// Three-Way Choice Dialog (Save/Don't Save/Cancel pattern)
+// ============================================================================
+
+/// Display a three-button choice dialog.
+///
+/// Common pattern for "save before closing" type dialogs.
+///
+/// # Arguments
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+///
+/// # Returns
+/// - `1` = Save (left button)
+/// - `2` = Don't Save (middle button)
+/// - `0` = Cancel (right button)
+///
+/// # Example
+/// ```novus
+/// match save_dialog("Unsaved Changes", "Save changes before closing?") {
+///     1 => { save_and_close() },
+///     2 => { close_without_saving() },
+///     _ => { /* Cancel - do nothing */ }
+/// }
+/// ```
+pub fn save_dialog(title: *u8, message: *u8) -> i32 {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "Save|Don't Save|Cancel",
+    }
+
+    // EasyRequest returns button number from left to right:
+    // - 1 = Save (leftmost)
+    // - 2 = Don't Save (middle)
+    // - 0 = Cancel (rightmost, always returns 0)
+    return EasyRequestArgs(null, &es, null, null)
+}
+
+/// Display a choice dialog with custom buttons.
+///
+/// Supports 2-4 buttons. The rightmost button always returns 0 (cancel).
+///
+/// # Arguments
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+/// * `buttons` - Button labels separated by '|' (e.g., "Yes|No|Cancel")
+///
+/// # Returns
+/// Button index from left (1, 2, 3...) or 0 for rightmost button
+///
+/// # Example
+/// ```novus
+/// match choice("Format", "Choose format:", "PNG|JPEG|GIF|Cancel") {
+///     1 => save_as_png(),
+///     2 => save_as_jpeg(),
+///     3 => save_as_gif(),
+///     _ => { /* Cancel */ }
+/// }
+/// ```
+pub fn choice(title: *u8, message: *u8, buttons: *u8) -> i32 {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: buttons,
+    }
+
+    return EasyRequestArgs(null, &es, null, null)
+}
+
+// ============================================================================
+// Window-Parented Dialogs
+// ============================================================================
+
+/// Display an alert dialog centered on a specific window.
+///
+/// # Arguments
+/// * `window` - Parent window (dialog centers on this window)
+/// * `title` - Dialog title
+/// * `message` - Message to display
+pub fn alert_on(window: *Window, title: *u8, message: *u8) {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "OK",
+    }
+
+    EasyRequestArgs(window, &es, null, null)
+}
+
+/// Display a confirmation dialog centered on a specific window.
+///
+/// # Arguments
+/// * `window` - Parent window
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+///
+/// # Returns
+/// `true` if user confirmed, `false` if declined
+pub fn confirm_on(window: *Window, title: *u8, message: *u8) -> bool {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "Yes|No",
+    }
+
+    let result = EasyRequestArgs(window, &es, null, null)
+    return result == 1
+}
+
+/// Display a choice dialog centered on a specific window.
+///
+/// # Arguments
+/// * `window` - Parent window
+/// * `title` - Dialog title
+/// * `message` - Question to ask
+/// * `buttons` - Button labels separated by '|'
+///
+/// # Returns
+/// Button index (1, 2, 3...) or 0 for rightmost button
+pub fn choice_on(window: *Window, title: *u8, message: *u8, buttons: *u8) -> i32 {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: buttons,
+    }
+
+    return EasyRequestArgs(window, &es, null, null)
+}
+
+// ============================================================================
+// Retry/Abort/Ignore Pattern (for error handling)
+// ============================================================================
+
+/// Result from a retry dialog
+pub enum RetryChoice {
+    Retry,
+    Abort,
+    Ignore,
+}
+
+/// Display a Retry/Abort/Ignore dialog for error recovery.
+///
+/// Common pattern for handling recoverable errors like disk full,
+/// file locked, network timeout, etc.
+///
+/// # Arguments
+/// * `title` - Dialog title (usually "Error" or operation name)
+/// * `message` - Error description
+///
+/// # Returns
+/// `RetryChoice::Retry`, `RetryChoice::Abort`, or `RetryChoice::Ignore`
+///
+/// # Example
+/// ```novus
+/// loop {
+///     match write_file(data) {
+///         Ok(_) => break,
+///         Err(e) => {
+///             match retry_dialog("Write Error", "Disk is full. Free some space and retry?") {
+///                 RetryChoice::Retry => continue,
+///                 RetryChoice::Abort => return Err(e),
+///                 RetryChoice::Ignore => break,
+///             }
+///         }
+///     }
+/// }
+/// ```
+pub fn retry_dialog(title: *u8, message: *u8) -> RetryChoice {
+    let es = EasyStruct {
+        es_StructSize: 20,
+        es_Flags: 0,
+        es_Title: title,
+        es_TextFormat: message,
+        es_GadgetFormat: "Retry|Ignore|Abort",
+    }
+
+    let result = EasyRequestArgs(null, &es, null, null)
+    match result {
+        1 => RetryChoice::Retry,
+        2 => RetryChoice::Ignore,
+        _ => RetryChoice::Abort,
+    }
+}

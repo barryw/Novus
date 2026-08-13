@@ -195,8 +195,8 @@ impl StringBuilder {
 Many AmigaOS system calls use \texttt{consuming} to indicate ownership transfer. For example, \texttt{FreeMem} consumes its pointer parameter:
 
 \begin{lstlisting}
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_FAST
 
 fn example() {
     let ptr = unsafe { AllocMem(1024, MEMF_FAST) }
@@ -331,7 +331,7 @@ Novus defines several important traits in \texttt{std::core}:
 Example implementing \texttt{Drop}:
 
 \begin{lstlisting}
-from std::ffi::exec import FreeMem
+from amiga::raw::exec import FreeMem
 
 impl Drop for Buffer {
     fn drop(&var self) {
@@ -777,8 +777,8 @@ External functions have no body---they're implemented in ROM or disk-based libra
 AmigaOS system calls require \texttt{unsafe} blocks because they bypass Novus's safety guarantees:
 
 \begin{lstlisting}
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_FAST, MEMF_CLEAR
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_FAST, MEMF_CLEAR
 
 fn allocate_buffer(size: u32) -> *u8 {
     var ptr: *u8 = null
@@ -802,16 +802,16 @@ Novus provides pre-generated FFI bindings for all AmigaOS libraries. These are a
 
 \begin{lstlisting}
 // Import from pre-generated FFI modules
-from std::ffi::exec import AllocMem, FreeMem, Wait, Signal
-from std::ffi::dos import Open, Close, Read, Write
-from std::ffi::graphics import BltBitMap, BltTemplate
-from std::ffi::intuition import OpenWindow, CloseWindow
+from amiga::raw::exec import AllocMem, FreeMem, Wait, Signal
+from amiga::raw::dos import Open, Close, Read, Write
+from amiga::raw::graphics import BltBitMap, BltTemplate
+from amiga::raw::intuition import OpenWindow, CloseWindow
 
 // Import structure definitions
-from std::ffi::amiga_structs import Task, MsgPort, BitMap, RastPort
+from amiga::raw::structs import Task, MsgPort, BitMap, RastPort
 
 // Import constants
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MODE_OLDFILE
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MODE_OLDFILE
 \end{lstlisting}
 
 Developers should import from these modules rather than writing \texttt{extern fn} declarations manually.
@@ -876,7 +876,7 @@ Example of safe memory management:
 
 \begin{lstlisting}
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::consts import MEMF_FAST
 
 // Prefer MemoryBlock over raw AllocMem/FreeMem
 match MemoryBlock::alloc(1024, MEMF_FAST) {
@@ -1052,8 +1052,8 @@ type Comparator<T> = fn(&T, &T) -> i32
 // Sort with custom comparator
 pub fn sort_by<T>(items: &var [T], count: u32, compare: Comparator<T>) {
     // Simple bubble sort for demonstration
-    for i in 0u32..count {
-        for j in 0u32..(count - 1 - i) {
+    for i in 0..count {
+        for j in 0..(count - 1 - i) {
             if compare(&items[j], &items[j + 1]) > 0 {
                 // Swap
                 let temp = items[j]
@@ -1397,7 +1397,7 @@ impl<T> AnimationSequence<T> where T: Animatable + Clone {
                 if self.loop_count < 0 || self.loops_remaining > 1 {
                     // Reset for next loop
                     self.current_index = 0
-                    for i in 0u32..self.tweens.len() {
+                    for i in 0..self.tweens.len() {
                         self.tweens.get_mut(i).unwrap().reset()
                     }
                     if self.loops_remaining > 0 {

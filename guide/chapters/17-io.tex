@@ -228,20 +228,20 @@ fn chained_demo() {
 \label{sec:file-io}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-The \texttt{std::os::dos} module provides RAII wrappers for AmigaOS file operations.
+The \texttt{amiga::sys::dos} module provides RAII wrappers for AmigaOS file operations.
 
 \subsection{OwnedFileHandle --- RAII File Access}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::sys::dos import OwnedFileHandle
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
 
 fn read_file_example() -> Result<(), DosError> {
     // Open file - automatically closed when handle goes out of scope
     let file = OwnedFileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?
 
     // Read content
-    var buffer: [u8; 1024] = [0u8; 1024]
+    var buffer: [u8; 1024] = [0; 1024]
     let bytes_read = file.read((*u8)&buffer[0], 1024)
 
     if bytes_read > 0 {
@@ -273,8 +273,8 @@ In C, you'd use \texttt{Open()} and must remember to call \texttt{Close()} on ev
 \subsection{Reading and Writing}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle
-from std::ffi::amiga_consts import MODE_NEWFILE
+from amiga::sys::dos import OwnedFileHandle
+from amiga::raw::consts import MODE_NEWFILE
 
 fn write_file_example() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("RAM:output.txt", MODE_NEWFILE)?
@@ -292,7 +292,7 @@ fn write_file_example() -> Result<(), DosError> {
 fn read_all_example() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("RAM:input.txt", MODE_OLDFILE)?
 
-    var buffer: [u8; 4096] = [0u8; 4096]
+    var buffer: [u8; 4096] = [0; 4096]
 
     // Read up to buffer size
     let total = file.read_all((*u8)&buffer[0], 4096)?
@@ -306,13 +306,13 @@ fn read_all_example() -> Result<(), DosError> {
 \subsection{Reading Lines}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle
-from std::ffi::amiga_consts import MODE_OLDFILE
+from amiga::sys::dos import OwnedFileHandle
+from amiga::raw::consts import MODE_OLDFILE
 
 fn read_lines_example() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("S:Startup-Sequence", MODE_OLDFILE)?
 
-    var line_buffer: [u8; 256] = [0u8; 256]
+    var line_buffer: [u8; 256] = [0; 256]
     var line_num: i32 = 1
 
     loop {
@@ -335,8 +335,8 @@ fn read_lines_example() -> Result<(), DosError> {
 \subsection{Seeking}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle
-from std::ffi::amiga_consts import MODE_OLDFILE, OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
+from amiga::sys::dos import OwnedFileHandle
+from amiga::raw::consts import MODE_OLDFILE, OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
 
 fn seek_example() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("RAM:data.bin", MODE_OLDFILE)?
@@ -408,8 +408,8 @@ fn from_raw_example(handle: i32) {
 AmigaOS uses ``locks'' to access directories. \texttt{DirLockHandle} provides RAII management:
 
 \begin{lstlisting}
-from std::os::dos import DirLockHandle
-from std::ffi::amiga_consts import ACCESS_READ, ACCESS_WRITE
+from amiga::sys::dos import DirLockHandle
+from amiga::raw::consts import ACCESS_READ, ACCESS_WRITE
 
 fn lock_example() -> Result<(), DosError> {
     // Lock directory for reading
@@ -434,7 +434,7 @@ fn lock_example() -> Result<(), DosError> {
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \begin{lstlisting}
-from std::os::dos import file_exists, delete_file, create_dir, file_info
+from amiga::sys::dos import file_exists, delete_file, create_dir, file_info
 
 fn fs_examples() -> Result<(), DosError> {
     // Check existence
@@ -480,12 +480,12 @@ pub struct FileInfo {
 \label{sec:args}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-AmigaOS uses \texttt{ReadArgs()} for parsing command-line arguments with a template syntax. The \texttt{std::args} module provides a type-safe wrapper.
+AmigaOS uses \texttt{ReadArgs()} for parsing command-line arguments with a template syntax. The \texttt{amiga::workbench} module provides a type-safe wrapper.
 
 \subsection{Basic Argument Parsing}
 
 \begin{lstlisting}
-from std::args import Args
+from amiga::workbench import Args
 
 pub fn main() -> i32 {
     match Args::parse("FROM/A,TO/A,VERBOSE/S") {
@@ -536,7 +536,7 @@ Modifiers can be combined: \texttt{COUNT/N/A} means required number, \texttt{OUT
 \subsection{Argument Types}
 
 \begin{lstlisting}
-from std::args import Args
+from amiga::workbench import Args
 
 fn argument_types() {
     match Args::parse("FILE,COUNT/N,VERBOSE/S,FILES/M") {
@@ -580,7 +580,7 @@ fn argument_types() {
 For programmatic template construction:
 
 \begin{lstlisting}
-from std::args import ArgParser, ArgType
+from amiga::workbench import ArgParser, ArgType
 
 fn builder_example() -> Result<(), ArgsError> {
     var parser = ArgParser::new()
@@ -651,7 +651,7 @@ Programs can be launched from either the CLI or Workbench. The two modes require
 \subsection{Detecting Launch Mode}
 
 \begin{lstlisting}
-from std::args import is_workbench, Args, get_workbench_startup
+from amiga::workbench import is_workbench, Args, get_workbench_startup
 
 pub fn main() -> i32 {
     if is_workbench() {
@@ -699,7 +699,7 @@ When launched from Workbench, the program receives a \texttt{WBStartup} message 
 \end{notebox}
 
 \begin{lstlisting}
-from std::args import get_workbench_startup, WorkbenchStartup
+from amiga::workbench import get_workbench_startup, WorkbenchStartup
 
 fn workbench_example() {
     let wb = get_workbench_startup() or { return }
@@ -793,14 +793,14 @@ fn check_tool_window(wb: &WorkbenchStartup) {
 I/O operations return \texttt{Result} types for proper error handling:
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle, DosError
-from std::ffi::dos import IoErr
+from amiga::sys::dos import OwnedFileHandle, DosError
+from amiga::raw::dos import IoErr
 
 fn robust_io() -> Result<(), DosError> {
     // The ? operator propagates errors
     let file = OwnedFileHandle::open("RAM:data.txt", MODE_OLDFILE)?
 
-    var buffer: [u8; 1024] = [0u8; 1024]
+    var buffer: [u8; 1024] = [0; 1024]
     let result = file.read_all((*u8)&buffer[0], 1024)?
 
     return Result::Ok(())
@@ -848,9 +848,9 @@ fn detailed_error_handling() {
 \subsection{Pattern 1: Read Entire File}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle, file_info
+from amiga::sys::dos import OwnedFileHandle, file_info
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MODE_OLDFILE, MEMF_ANY, OFFSET_BEGINNING
+from amiga::raw::consts import MODE_OLDFILE, MEMF_ANY, OFFSET_BEGINNING
 
 fn read_entire_file(path: Str) -> Result<MemoryBlock, DosError> {
     // Get file size
@@ -871,8 +871,8 @@ fn read_entire_file(path: Str) -> Result<MemoryBlock, DosError> {
 \subsection{Pattern 2: Write with Backup}
 
 \begin{lstlisting}
-from std::os::dos import OwnedFileHandle, file_exists, delete_file
-from std::ffi::amiga_consts import MODE_NEWFILE
+from amiga::sys::dos import OwnedFileHandle, file_exists, delete_file
+from amiga::raw::consts import MODE_NEWFILE
 
 fn write_with_backup(path: Str, data: *u8, len: u32) -> Result<(), DosError> {
     // Create backup filename
@@ -903,7 +903,7 @@ fn write_with_backup(path: Str, data: *u8, len: u32) -> Result<(), DosError> {
 fn process_lines(path: Str, handler: fn(*u8, u32) -> bool) -> Result<u32, DosError> {
     let file = OwnedFileHandle::open(path, MODE_OLDFILE)?
 
-    var buffer: [u8; 1024] = [0u8; 1024]
+    var buffer: [u8; 1024] = [0; 1024]
     var line_count: u32 = 0
 
     loop {

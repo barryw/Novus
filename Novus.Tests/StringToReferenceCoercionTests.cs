@@ -56,7 +56,7 @@ pub fn main() -> i32 {
     {
         // This test uses the actual Str type from the import
         string source = @"
-from std::strings::core import Str
+from std::string::core import Str
 
 fn test_ref(s: &Str) -> i32 {
     return 42
@@ -87,12 +87,10 @@ pub fn main() -> i32 {
     public void TestStringToReferenceCoercion_WindowHandleSimple()
     {
         string source = @"
-from std::graphics::intuition import WindowHandle
+from amiga::sys::intuition import WindowHandle
 
 pub fn main() -> i32 {
-    // WindowHandle::simple expects &Str for the title parameter
-    // String literal needs explicit & operator
-    let result = WindowHandle::simple(&""Novus Window"", 320, 200)
+    let result = WindowHandle::simple(""Novus Window"", 320, 200)
 
     return 0
 }
@@ -119,7 +117,7 @@ pub fn main() -> i32 {
         // Test that string literals automatically coerce to *u8 inside Option::Some
         string source = @"
 from std::core import Option
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     // String literal should auto-coerce from Str to *u8
@@ -149,9 +147,9 @@ pub fn main() -> i32 {
     {
         // Test set_titles() with automatic string coercion
         string source = @"
-from std::graphics::intuition import WindowHandle
+from amiga::sys::intuition import WindowHandle
 from std::core import Option
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn test_set_titles(window: &WindowHandle) {
     // String literals should auto-coerce to *u8 inside Option::Some
@@ -185,7 +183,7 @@ pub fn main() -> i32 {
     {
         // Test modify_idcmp() returns Result<(), IntuitionError>
         string source = @"
-from std::graphics::intuition import WindowHandle, IDCMP_MOUSEBUTTONS
+from amiga::sys::intuition import WindowHandle, IntuitionError, IDCMP_MOUSEBUTTONS
 from std::core import Result
 
 pub fn test_modify_idcmp(window: &WindowHandle) -> Result<(), IntuitionError> {
@@ -218,7 +216,7 @@ pub fn main() -> i32 {
         // Test that WindowHandle Drop implementation compiles correctly
         // The Drop impl should automatically clear menu strips and close the window
         string source = @"
-from std::graphics::intuition import WindowHandle
+from amiga::sys::intuition import WindowHandle
 
 pub fn test_window_drop() {
     let result = WindowHandle::simple(""Test"", 320, 200)

@@ -1,0 +1,29 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: chooser.library
+// Base: _ChooserBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("chooser.library")
+extern pub fn CHOOSER_GetClass() -> *u8
+@library("chooser.library")
+extern pub fn AllocChooserNodeA(tags: *TagItem) -> *Node
+@library("chooser.library")
+extern pub fn AllocChooserNode(tags: u32, ...args) -> *Node
+@library("chooser.library")
+extern pub fn FreeChooserNode(node: *Node)
+@library("chooser.library")
+extern pub fn SetChooserNodeAttrsA(node: *Node, tags: *TagItem)
+@library("chooser.library")
+extern pub fn SetChooserNodeAttrs(node: *Node, ...args)
+@library("chooser.library")
+extern pub fn GetChooserNodeAttrsA(node: *Node, tags: *TagItem)
+@library("chooser.library")
+extern pub fn GetChooserNodeAttrs(node: *Node, ...args)

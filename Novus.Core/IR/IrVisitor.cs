@@ -100,6 +100,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrAssert assert => VisitAssert(assert, context),
             IrPanic panic => VisitPanic(panic, context),
             IrStructuredForLoopHint loopHint => VisitStructuredForLoopHint(loopHint, context),
+            IrSliceBoundsCheck sliceCheck => VisitSliceBoundsCheck(sliceCheck, context),
             IrIndexAccess indexAccess => VisitIndexAccess(indexAccess, context),
             IrMemberAccess memberAccess => VisitMemberAccess(memberAccess, context),
             IrMemberStore memberStore => VisitMemberStore(memberStore, context),
@@ -136,6 +137,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrEnumTagAccess enumTag => VisitEnumTagAccess(enumTag, context),
             IrEnumPayloadAccess enumPayload => VisitEnumPayloadAccess(enumPayload, context),
             IrCastValue castValue => VisitCastValue(castValue, context),
+            IrPointerOffsetValue pointerOffset => VisitPointerOffsetValue(pointerOffset, context),
             IrFunctionAddress funcAddr => VisitFunctionAddress(funcAddr, context),
             IrEnumValue enumValue => VisitEnumValue(enumValue, context),
             IrEnumConstructor enumCtor => VisitEnumConstructor(enumCtor, context),
@@ -305,6 +307,15 @@ public abstract class IrVisitor<TResult, TContext>
     {
         VisitValue(indexAccess.Array, context);
         VisitValue(indexAccess.Index, context);
+        if (indexAccess.Length != null) VisitValue(indexAccess.Length, context);
+        return default!;
+    }
+
+    public virtual TResult VisitSliceBoundsCheck(IrSliceBoundsCheck sliceCheck, TContext context)
+    {
+        VisitValue(sliceCheck.Start, context);
+        VisitValue(sliceCheck.End, context);
+        VisitValue(sliceCheck.Length, context);
         return default!;
     }
 
@@ -335,6 +346,7 @@ public abstract class IrVisitor<TResult, TContext>
         VisitValue(indexStore.Array, context);
         VisitValue(indexStore.Index, context);
         VisitValue(indexStore.Value, context);
+        if (indexStore.Length != null) VisitValue(indexStore.Length, context);
         return default!;
     }
 
@@ -550,6 +562,7 @@ public abstract class IrVisitor<TResult, TContext>
     {
         VisitValue(indexedField.Array, context);
         VisitValue(indexedField.Index, context);
+        if (indexedField.Length != null) VisitValue(indexedField.Length, context);
         return default!;
     }
 
@@ -577,6 +590,13 @@ public abstract class IrVisitor<TResult, TContext>
     public virtual TResult VisitCastValue(IrCastValue castValue, TContext context)
     {
         VisitValue(castValue.Value, context);
+        return default!;
+    }
+
+    public virtual TResult VisitPointerOffsetValue(IrPointerOffsetValue pointerOffset, TContext context)
+    {
+        VisitValue(pointerOffset.Pointer, context);
+        VisitValue(pointerOffset.Index, context);
         return default!;
     }
 

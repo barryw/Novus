@@ -1,11 +1,11 @@
-// Test example for std::ui::dialog module
+// Test example for amiga::ui module
 // Tests compilation of dialog functions
 
-from std::ui::dialog import alert, alert_with_button
-from std::ui::dialog import confirm, confirm_with_buttons
-from std::ui::dialog import choice, save_dialog
-from std::ui::dialog import retry_dialog, RetryChoice
-from std::ui::dialog import error, warning, info
+from amiga::ui import alert, alert_with_button
+from amiga::ui import confirm, confirm_with_buttons
+from amiga::ui import choice, save_dialog
+from amiga::ui import retry, Retry
+from amiga::ui import error, warning, info
 
 fn main() -> i32 {
     // Simple alerts
@@ -43,11 +43,11 @@ fn main() -> i32 {
     }
 
     // Retry pattern
-    let retry_result = retry_dialog("Error", "Operation failed. Retry?")
+    let retry_result = retry("Error", "Operation failed. Retry?")
     match retry_result {
-        RetryChoice::Retry => info("Retrying..."),
-        RetryChoice::Ignore => info("Ignoring error"),
-        RetryChoice::Abort => info("Aborting"),
+        Retry::Retry => info("Retrying..."),
+        Retry::Ignore => info("Ignoring error"),
+        Retry::Abort => info("Aborting"),
     }
 
     return 0

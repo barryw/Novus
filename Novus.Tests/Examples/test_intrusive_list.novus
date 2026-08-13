@@ -1,8 +1,8 @@
 // Comprehensive tests for IntrusiveList<T>
 // Run with: novus test test_intrusive_list.novus
 
-from std::collections::intrusive_list import IntrusiveList, init_min_node
-from std::ffi::amiga_structs import MinNode, MinList
+from amiga::sys::exec::intrusive_list import IntrusiveList, init_min_node
+from amiga::raw::structs import MinNode, MinList
 from std::test::test import expect_true, expect_false, expect_eq, expect_null, expect_not_null, fail
 
 // Test struct - MinNode MUST be the first field for intrusive list compatibility

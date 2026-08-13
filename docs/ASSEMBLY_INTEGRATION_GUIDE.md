@@ -92,14 +92,14 @@ The compiler will:
 ### ✅ Good Use Cases
 
 - **Performance-critical inner loops** (after profiling proves need)
-- **Direct hardware manipulation** not exposed via `std/ffi`
+- **Direct hardware manipulation** not exposed via `std/amiga/raw`
 - **Legacy assembly code integration**
 - **Specialized algorithms** (fixed-point math, decompression, crypto)
 - **Startup/low-level code** (boot sequence, hardware detection)
 
 ### ❌ Bad Use Cases
 
-- **Simple hardware access** → use `std/ffi` abstractions instead
+- **Simple hardware access** → use `std/amiga/raw` abstractions instead
 - **Copper/Blitter operations** → use hardware DSLs (§23 of LanguageDesignDoc.md)
 - **Memory/task/signal management** → use `std/exec` wrappers
 - **Premature optimization** → profile first, use Novus until proven slow

@@ -7,7 +7,7 @@
 // Expected Output:
 //   Exit code: 0 (critical sections work correctly)
 
-from std::sync::critical import CriticalSection, InterruptSection
+from amiga::sys::exec::critical import CriticalSection, InterruptSection
 
 // Simulate a shared data structure (in real code, this would be accessed by multiple tasks)
 static var shared_counter: i32 = 0

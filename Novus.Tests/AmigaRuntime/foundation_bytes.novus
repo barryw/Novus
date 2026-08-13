@@ -4,33 +4,33 @@ from std::test::test import expect
 
 @test("big-endian byte access is bounds checked")
 pub fn foundation_bytes() {
-    var bytes = [0u8; 8]
+    var bytes: [u8] = [0; 8]
     {
         var writer = ByteWriter::new(&var bytes)
-        match writer.write_be_u16(0u32, $1234u16) {
+        match writer.write_be_u16(0, $1234) {
             Result::Ok(_) => {},
             Result::Err(_) => expect(false, "write u16"),
         }
-        match writer.write_be_u32(2u32, $89ABCDEFu32) {
+        match writer.write_be_u32(2, $89ABCDEF) {
             Result::Ok(_) => {},
             Result::Err(_) => expect(false, "write u32"),
         }
-        match writer.write_be_u32(5u32, 0u32) {
+        match writer.write_be_u32(5, 0) {
             Result::Err(ByteError::OutOfBounds) => {},
             _ => expect(false, "reject crossing end"),
         }
     }
 
     let reader = ByteReader::new(&bytes)
-    match reader.read_be_u16(0u32) {
-        Result::Ok(value) => expect(value == $1234u16, "read u16"),
+    match reader.read_be_u16(0) {
+        Result::Ok(value) => expect(value == $1234, "read u16"),
         Result::Err(_) => expect(false, "read u16 failed"),
     }
-    match reader.read_be_u32(2u32) {
-        Result::Ok(value) => expect(value == $89ABCDEFu32, "read u32"),
+    match reader.read_be_u32(2) {
+        Result::Ok(value) => expect(value == $89ABCDEF, "read u32"),
         Result::Err(_) => expect(false, "read u32 failed"),
     }
-    match reader.read_be_u16($FFFFFFFFu32) {
+    match reader.read_be_u16($FFFFFFFF) {
         Result::Err(ByteError::OutOfBounds) => {},
         _ => expect(false, "overflow-safe bounds check"),
     }

@@ -17,8 +17,8 @@
 //
 // For most games and demos, use std::math::fixed instead.
 
-from std::ffi::exec import OpenLibrary, CloseLibrary
-from std::ffi::amiga_structs import Library
+from amiga::raw::exec import OpenLibrary, CloseLibrary
+from amiga::raw::structs import Library
 from std::core import Result, Error
 from std::math::fixed import Fixed32
 
@@ -167,14 +167,14 @@ impl Error for FfpError {
 pub fn open_ffp_libraries() -> Result<(), FfpError> {
     unsafe {
         if mathffp_base == null {
-            mathffp_base = OpenLibrary("mathffp.library", 33u32)
+            mathffp_base = OpenLibrary("mathffp.library", 33)
             if mathffp_base == null {
                 return Result::Err(FfpError::MathFfpLibraryNotFound)
             }
         }
 
         if mathtrans_base == null {
-            mathtrans_base = OpenLibrary("mathtrans.library", 33u32)
+            mathtrans_base = OpenLibrary("mathtrans.library", 33)
             if mathtrans_base == null {
                 CloseLibrary(mathffp_base)
                 mathffp_base = (*Library)null
@@ -227,7 +227,7 @@ impl FFP {
     /// Create FFP zero
     @inline
     pub fn zero() -> FFP {
-        return FFP { raw: 0u32 }
+        return FFP { raw: 0 }
     }
 
     /// Create FFP from integer
@@ -474,12 +474,12 @@ pub fn ffp_e() -> FFP {
 
 /// 1.0 in FFP format
 pub fn ffp_one() -> FFP {
-    return FFP::from_raw(0x80000041u32)
+    return FFP::from_raw(0x80000041)
 }
 
 /// 0.5 in FFP format
 pub fn ffp_half() -> FFP {
-    return FFP::from_raw(0x80000040u32)
+    return FFP::from_raw(0x80000040)
 }
 
 // ============================================================================

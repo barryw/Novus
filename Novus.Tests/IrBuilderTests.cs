@@ -114,23 +114,52 @@ fn test() -> u32 {
     }
 
     [Fact]
-    public void BuildIr_IntegerLiteralTypes_CreatesCorrectTypes()
+    public void BuildIr_RangeStartUsesEndTypeContext()
+    {
+        var module = BuildIr("""
+            fn count(limit: u32) -> u32 {
+                var total: u32 = 0
+                for index in 0..limit { total += index }
+                return total
+            }
+            """);
+
+        var function = Assert.Single(module.Functions);
+        var index = Assert.Single(function.LocalVariables, variable => variable.Name == "index");
+        Assert.Equal("u32", index.Type.Name);
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
+    public void BuildIr_FullUnsigned64Literal_PreservesBitPattern()
+    {
+        var module = BuildIr("fn maximum() -> u64 { return 18446744073709551615 }");
+        var returned = Assert.IsType<IrReturn>(Assert.Single(module.Functions).BasicBlocks
+            .SelectMany(block => block.Instructions).Single(instruction => instruction is IrReturn));
+        var constant = Assert.IsType<IrConstant>(returned.Value);
+
+        Assert.Equal("u64", constant.Type.Name);
+        Assert.Equal(-1, constant.Value);
+    }
+
+    [Fact]
+    public void BuildIr_ContextualIntegerLiteralTypes_CreatesCorrectTypes()
     {
         var testCases = new[]
         {
-            ("42u8", typeof(IrIntType), 8, false, 42L),
-            ("42u16", typeof(IrIntType), 16, false, 42L),
-            ("42u32", typeof(IrIntType), 32, false, 42L),
-            ("42i8", typeof(IrIntType), 8, true, 42L),
-            ("42i16", typeof(IrIntType), 16, true, 42L),
-            ("42i32", typeof(IrIntType), 32, true, 42L)
+            ("u8", 8, false, 42L),
+            ("u16", 16, false, 42L),
+            ("u32", 32, false, 42L),
+            ("i8", 8, true, 42L),
+            ("i16", 16, true, 42L),
+            ("i32", 32, true, 42L)
         };
 
-        foreach (var (literal, expectedType, bitWidth, isSigned, value) in testCases)
+        foreach (var (type, bitWidth, isSigned, value) in testCases)
         {
             var source = $@"
-fn test() -> i32 {{
-    return {literal}
+fn test() -> {type} {{
+    return 42
 }}";
             var module = BuildIr(source);
             var func = module.Functions[0];
@@ -325,7 +354,7 @@ fn test() -> u32 {
     {
         var source = @"
 fn test() -> u32 {
-    return 1_234_567u32
+    return 1_234_567
 }";
         var module = BuildIr(source);
 
@@ -386,7 +415,7 @@ fn test() -> u8 {
     {
         var source = @"
 fn test() -> u16 {
-    return %1111_1111_0000_0000u16
+    return %1111_1111_0000_0000
 }";
         var module = BuildIr(source);
 
@@ -402,7 +431,7 @@ fn test() -> u16 {
     {
         var source = @"
 fn test() -> u32 {
-    return $DEAD_BEEFu32
+    return $DEAD_BEEF
 }";
         var module = BuildIr(source);
 
@@ -1008,7 +1037,7 @@ pub fn main(a: u32, b: u32) -> u32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    return 1u32 << 8u32
+    return 1 << 8
 }";
         var module = BuildIr(source);
         var function = module.Functions.First(f => f.Name == "main");
@@ -1023,7 +1052,7 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    return 256u32 >> 8u32
+    return 256 >> 8
 }";
         var module = BuildIr(source);
         var function = module.Functions.First(f => f.Name == "main");
@@ -1038,9 +1067,9 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn cleanup_test() -> i32 {
-    let x = 10i32
+    let x: i32 = 10
     defer {
-        let y = 20i32
+        let y: i32 = 20
     }
     return x
 }";

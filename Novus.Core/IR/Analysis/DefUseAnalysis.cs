@@ -235,6 +235,14 @@ public class DefUseAnalysis
             case IrIndexAccess indexAccess:
                 indexAccess.Array = ReplaceInValue(indexAccess.Array, oldName, newValue);
                 indexAccess.Index = ReplaceInValue(indexAccess.Index, oldName, newValue);
+                if (indexAccess.Length != null)
+                    indexAccess.Length = ReplaceInValue(indexAccess.Length, oldName, newValue);
+                break;
+
+            case IrSliceBoundsCheck sliceCheck:
+                sliceCheck.Start = ReplaceInValue(sliceCheck.Start, oldName, newValue);
+                sliceCheck.End = ReplaceInValue(sliceCheck.End, oldName, newValue);
+                sliceCheck.Length = ReplaceInValue(sliceCheck.Length, oldName, newValue);
                 break;
 
             case IrMemberAccess memberAccess:
@@ -250,6 +258,8 @@ public class DefUseAnalysis
                 indexStore.Array = ReplaceInValue(indexStore.Array, oldName, newValue);
                 indexStore.Index = ReplaceInValue(indexStore.Index, oldName, newValue);
                 indexStore.Value = ReplaceInValue(indexStore.Value, oldName, newValue);
+                if (indexStore.Length != null)
+                    indexStore.Length = ReplaceInValue(indexStore.Length, oldName, newValue);
                 break;
 
             case IrMatch match:
@@ -297,6 +307,11 @@ public class DefUseAnalysis
                 castValue.Value = ReplaceInValue(castValue.Value, oldName, newValue);
                 break;
 
+            case IrPointerOffsetValue pointerOffset:
+                pointerOffset.Pointer = ReplaceInValue(pointerOffset.Pointer, oldName, newValue);
+                pointerOffset.Index = ReplaceInValue(pointerOffset.Index, oldName, newValue);
+                break;
+
             case IrStructLiteral structLiteral:
                 {
                     var updatedFields = new Dictionary<string, IrValue>();
@@ -336,6 +351,8 @@ public class DefUseAnalysis
             case IrIndexedFieldAccess indexedField:
                 indexedField.Array = ReplaceInValue(indexedField.Array, oldName, newValue);
                 indexedField.Index = ReplaceInValue(indexedField.Index, oldName, newValue);
+                if (indexedField.Length != null)
+                    indexedField.Length = ReplaceInValue(indexedField.Length, oldName, newValue);
                 break;
 
             case IrTupleElementAccess tupleElement:

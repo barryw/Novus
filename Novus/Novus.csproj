@@ -39,10 +39,10 @@
         <None Include="std/**/*.novus">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
-        <None Include="std/ffi/ndk_headers.txt">
+        <None Include="std/amiga/raw/ndk_headers.txt">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
-        <None Include="std/ffi/ndk_types.h">
+        <None Include="std/amiga/raw/ndk_types.h">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Include="stdlib/**/*.novus">

@@ -54,25 +54,25 @@ The standard library is organized into modules under the \texttt{std} namespace:
 
     \item[\texttt{std::collections}] Data structures: \texttt{Vec}, \texttt{HashMap}, \texttt{HashSet}, \texttt{VecDeque}, \texttt{BitSet}, \texttt{SlotMap}
 
-    \item[\texttt{std::strings}] String handling: \texttt{Str} (borrowed), \texttt{String} (owned), \texttt{StringBuilder}, formatting
+    \item[\texttt{std::string}] String handling: \texttt{Str} (borrowed), \texttt{String} (owned), \texttt{StringBuilder}, formatting
 
     \item[\texttt{std::memory}] Memory management: \texttt{MemoryBlock}, \texttt{Slice}, chip memory pools, allocators
 
     \item[\texttt{std::io}] Input/output: file operations, console I/O, ANSI terminal support
 
-    \item[\texttt{std::ffi}] AmigaOS bindings: Exec, DOS, Graphics, Intuition, and 70+ other libraries
+    \item[\texttt{amiga::raw}] AmigaOS bindings: Exec, DOS, Graphics, Intuition, and 70+ other libraries
 
     \item[\texttt{std::math}] Mathematics: fixed-point operations, vectors, angles, square roots
 
     \item[\texttt{std::async}] Asynchronous programming: futures, executors, sleep operations
 
-    \item[\texttt{std::hardware}] Hardware access: CPU detection, chipset identification, custom registers
+    \item[\texttt{amiga::sys::hardware}] Hardware access: CPU detection, chipset identification, custom registers
 
-    \item[\texttt{std::ui}] User interface: windows, screens, menus, gadgets, events
+    \item[\texttt{amiga::ui}] User interface: windows, screens, menus, gadgets, events
 
-    \item[\texttt{std::graphics}] Graphics operations: drawing, sprites, copper lists, blitter
+    \item[\texttt{amiga::sys::graphics}] Graphics operations: drawing, sprites, copper lists, blitter
 
-    \item[\texttt{std::audio}] Audio playback: Paula channels, MOD players, sample management
+    \item[\texttt{amiga::audio}] Audio playback: Paula channels, MOD players, sample management
 
     \item[\texttt{std::net}] Networking: TCP/UDP sockets, DNS, TLS (requires bsdsocket.library)
 
@@ -150,7 +150,7 @@ Or import directly from the source module:
 
 \begin{lstlisting}
 from std::core import Option, Result, Drop
-from std::strings::core import Str, String
+from std::string import Str, String
 from std::error::errors import DosError
 \end{lstlisting}
 
@@ -163,7 +163,7 @@ In C, you might include multiple headers to get the types you need:
 #include <string.h>
 \end{lstlisting}
 
-In Novus, the prelude gives you essentials in one import. For AmigaOS types, the \texttt{std::ffi} modules are organized by library, not by NDK header structure.
+In Novus, the prelude gives you essentials in one import. For AmigaOS types, the \texttt{amiga::raw} modules are organized by library, not by NDK header structure.
 \end{comingfromc}
 
 % ============================================================================
@@ -188,22 +188,22 @@ from std::memory::block import MemoryBlock
 from std::memory::slice import Slice
 
 // 4. Strings
-from std::strings::core import Str, String
-from std::strings::format import format
+from std::string import Str, String
+from std::string import format
 
 // 5. Error types
 from std::error::errors import DosError, ExecError, NovusError
 
 // 6. AmigaOS structures
-from std::ffi::amiga_structs import Window, Screen, RastPort
+from amiga::raw::structs import Window, Screen, RastPort
 
 // 7. AmigaOS constants
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP
 
 // 8. AmigaOS library functions
-from std::ffi::exec import AllocMem, FreeMem, Wait
-from std::ffi::dos import Open, Close, Read, Write
-from std::ffi::intuition import OpenWindow, CloseWindow
+from amiga::raw::exec import AllocMem, FreeMem, Wait
+from amiga::raw::dos import Open, Close, Read, Write
+from amiga::raw::intuition import OpenWindow, CloseWindow
 
 // 9. Other stdlib modules
 from std::io::file import println
@@ -219,15 +219,15 @@ Use wildcard imports sparingly---they can cause name collisions:
 from std::prelude import *
 
 // OK: constants are namespaced and rarely collide
-from std::ffi::amiga_consts import *
+from amiga::raw::consts import *
 
 // Avoid: too many names, potential collisions
-from std::ffi::exec import *
-from std::ffi::dos import *
+from amiga::raw::exec import *
+from amiga::raw::dos import *
 
 // Better: import specific functions
-from std::ffi::exec import AllocMem, FreeMem, Wait
-from std::ffi::dos import Open, Close, Lock, UnLock
+from amiga::raw::exec import AllocMem, FreeMem, Wait
+from amiga::raw::dos import Open, Close, Lock, UnLock
 \end{lstlisting}
 
 \subsection{Module Aliases}
@@ -236,12 +236,12 @@ For frequently-used modules with long paths, create local aliases:
 
 \begin{lstlisting}
 // Not yet supported - planned feature
-// use std::ffi::amiga_consts as consts
+// use amiga::raw::consts as consts
 // use std::collections::hashmap as map
 
 // Current workaround: import specific items
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
 \end{lstlisting}
 
 % ============================================================================
@@ -541,11 +541,11 @@ match MemoryBlock::alloc(4096, MEMF_CHIP) {
 
 \subsection{Memory Type Flags}
 
-AmigaOS memory flags are in \texttt{std::ffi::amiga\_consts}:
+AmigaOS memory flags are in \texttt{amiga::raw::amiga\_consts}:
 
 \begin{lstlisting}
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST
-from std::ffi::amiga_consts import MEMF_CLEAR, MEMF_LARGEST, MEMF_TOTAL
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST
+from amiga::raw::consts import MEMF_CLEAR, MEMF_LARGEST, MEMF_TOTAL
 
 // Memory flags:
 // MEMF_PUBLIC  - Accessible by other tasks
@@ -592,12 +592,12 @@ fn early_exit() -> Result<(), Error> {
 \label{sec:stdlib-ffi}
 % ============================================================================
 
-The \texttt{std::ffi} module provides bindings to AmigaOS libraries.
+The \texttt{amiga::raw} module provides bindings to AmigaOS libraries.
 
 \subsection{Structure}
 
 \begin{lstlisting}[language=bash]
-std/ffi/
+std/amiga/raw/
     amiga_consts.novus    # ALL constants (combined)
     amiga_structs.novus   # ALL structures (combined)
     exec.novus            # Exec library functions
@@ -614,15 +614,15 @@ std/ffi/
 
 \begin{lstlisting}
 // Import structures
-from std::ffi::amiga_structs import Window, Screen, NewWindow
+from amiga::raw::structs import Window, Screen, NewWindow
 
 // Import constants
-from std::ffi::amiga_consts import WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_ACTIVATE
-from std::ffi::amiga_consts import IDCMP_CLOSEWINDOW, IDCMP_VANILLAKEY
+from amiga::raw::consts import WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_ACTIVATE
+from amiga::raw::consts import IDCMP_CLOSEWINDOW, IDCMP_VANILLAKEY
 
 // Import functions
-from std::ffi::intuition import OpenWindow, CloseWindow, WaitPort
-from std::ffi::exec import Wait
+from amiga::raw::intuition import OpenWindow, CloseWindow, WaitPort
+from amiga::raw::exec import Wait
 
 // Use in unsafe blocks
 unsafe {
@@ -640,10 +640,10 @@ Many FFI functions have safe wrappers in higher-level modules:
 
 \begin{lstlisting}
 // Low-level FFI (requires unsafe)
-from std::ffi::intuition import OpenWindowTags, CloseWindow
+from amiga::raw::intuition import OpenWindowTags, CloseWindow
 
 // High-level safe wrapper
-from std::ui::window import Window, WindowBuilder
+from amiga::sys::intuition import WindowHandle, WindowBuilder
 
 // Safe usage (no unsafe needed)
 let window = WindowBuilder::new()
@@ -747,7 +747,7 @@ Novus provides two main string types for different use cases.
 \subsection{Usage Examples}
 
 \begin{lstlisting}
-from std::strings::core import Str, String, StringBuilder
+from std::string import Str, String, StringBuilder
 
 // Literal (null-terminated, borrowed)
 let greeting: *u8 = "Hello, Amiga!"
@@ -796,8 +796,8 @@ print("Enter name: ")
 \subsection{File Operations}
 
 \begin{lstlisting}
-from std::os::dos import open, close, read, write
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::sys::dos import open, close, read, write
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
 
 // Reading a file
 fn read_file(path: *u8) -> Result<Vec<u8>, DosError> {
@@ -910,7 +910,7 @@ The following chapters cover each module area in depth:
 from std::prelude import *
 from std::collections::vec import Vec
 from std::io::file import println
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP
 \end{lstlisting}
 
 \subsection{Error Handling Pattern}

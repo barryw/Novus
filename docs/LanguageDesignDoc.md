@@ -71,7 +71,7 @@ templates and `docs/AMIGA_LANGUAGE_AUDIT.md` are the current Amiga integration b
 
 ### 6.1 Copper Lists
 
-> ⚠️ **Status: 📅 Planned (v1.5)** — Parser grammar exists but codegen not implemented. Use inline assembly or `std/ffi/` for now.
+> ⚠️ **Status: 📅 Planned (v1.5)** — Parser grammar exists but codegen not implemented. Use inline assembly or `std/amiga/raw/` for now.
 
 ```novus
 // Future DSL syntax (not yet implemented):
@@ -88,7 +88,7 @@ templates and `docs/AMIGA_LANGUAGE_AUDIT.md` are the current Amiga integration b
 
 ```novus
 unsafe {
-    write_volatile(color00, $0F0u16)
+    write_volatile(color00, $0F0)
     memory_fence()
     let current = read_volatile(color00)
 }
@@ -107,38 +107,34 @@ window := intuition.OpenWindow(title: "Novus Demo", width: 320, height: 200)
 comparisons, and numeric conversions are implemented.
 
 ```novus
-let angle: fixed16 = 45.0fixed16
-let doubled = angle * 2.0fixed16
+let angle: fixed16 = 45.0
+let doubled = angle * 2.0
 ```
 
 ---
 
 ## 7. Example Program
 
-> **Note:** This example demonstrates the *intended* high-level API. For v1.0, see the test examples in `Novus.Tests/Examples/` for working code.
+This example uses the application-level Amiga UI API. Window ownership, native
+message replies, and cleanup stay inside the library.
 
 ```novus
-// Simple window demo (v1.0 working example)
-from std::core import Result, Option
-from std::os::intuition import open_window, close_window, WindowBuilder, wait_event
+from std::core import Result
+from amiga::ui import Bounds, Event, UiError, WindowBuilder
 
-fn main() -> Result[(), i32] {
-    let win = open_window(WindowBuilder {
-        title: "Hello Novus",
-        width: 320,
-        height: 200,
-    })?
+fn run() -> Result<(), UiError> {
+    var ui = WindowBuilder::workbench_or_own()?
+    var menus = ui.menu_builder()
+    let menu = menus.build()?
+    let window = ui.build("Hello Novus", Bounds::new(40, 30, 320, 200), menu)?
 
-    // Wait for close event
-    loop {
-        match wait_event(win) {
-            Event::CloseWindow => break,
-            _ => {}
+    for event in window.events() {
+        match event {
+            Event::Close => break,
+            _ => {},
         }
     }
-
-    close_window(win)
-    Ok(())
+    return Result::Ok(())
 }
 ```
 
@@ -279,7 +275,7 @@ The first parameter is generated persistent state and is hidden from callers.
 
 ### 13.5 DOS handlers
 
-Handler programs use `std::os::handler::Packet`. `Packet::wait()` takes ownership,
+Handler programs use `amiga::sys::dos::Packet`. `Packet::wait()` takes ownership,
 `reply()` replies once, and `Drop` returns `ERROR_ACTION_NOT_KNOWN` if a branch forgets.
 The handler template includes ACTION_STARTUP and ACTION_DIE handling.
 
@@ -416,7 +412,7 @@ Benefits:
 | Assembler dialects | `phxass`, `devpac`, `as` differ.          | Emit VBCC-compatible `vasm` syntax.               |
 | Linker hell        | Manual base-rel relocations.              | `vlink` invoked with correct HUNK flags.          |
 | Tool fragmentation | Many binaries chained manually.           | `novusc build` orchestrates end-to-end.           |
-| Header mismatches  | Inconsistent NDKs.                        | Canonical FFI in `std/ffi/*`.                     |
+| Header mismatches  | Inconsistent NDKs.                        | Canonical FFI in `std/amiga/raw/*`.                     |
 | Cross-compiling    | Hand-maintained environments.             | Bundled cross-VBCC for all hosts.                 |
 | Binary inspection  | Relied on ancient tools.                  | `novusc inspect` shows symbols, ROMTags, vectors. |
 
@@ -725,7 +721,7 @@ let owned = win.detach() // caller must ui.close(owned) later
 
 > ⚠️ **Implementation Status: 📅 PLANNED (v1.5)**
 >
-> This section describes the *design specification* for hardware DSLs. The parser grammar includes support for `copper` and `blitter` blocks, but semantic analysis and code generation are **not yet implemented**. For v1.0, use the `std/ffi/` bindings and inline assembly for direct hardware access.
+> This section describes the *design specification* for hardware DSLs. The parser grammar includes support for `copper` and `blitter` blocks, but semantic analysis and code generation are **not yet implemented**. For v1.0, use the `std/amiga/raw/` bindings and inline assembly for direct hardware access.
 
 > **Purpose:** Make the *fun stuff* braindead simple and insanely powerful. These DSLs compile to exact register sequences (Copper words, BLTCONx, Paula periods, etc.) with compile‑time checks, PAL/NTSC awareness, and zero inline asm for 99% of use cases.
 
@@ -938,7 +934,7 @@ async fn tick() { loop { await signal(sig); update(); } }
 
 ### 24.1 Design Tenets
 
-1. **No duplication of effort**: raw NDK prototypes are available as‑is via `extern "amiga"` in `std/ffi/*`.
+1. **No duplication of effort**: raw NDK prototypes are available as‑is via `extern "amiga"` in `std/amiga/raw/*`.
 2. **Opt‑in safety**: idiomatic Novus APIs wrap NDK with `Result`/`Option`, typed handles, and RAII.
 3. **Zero‑cost abstractions**: builders and DSLs lower to the same calls/TagItem arrays/IORequests a C expert would write.
 4. **Capability types, not globals**: permissions and ownership are expressed in types (e.g., `CopperAccess`).
@@ -948,7 +944,7 @@ async fn tick() { loop { await signal(sig); update(); } }
 
 ### 24.2 Thin Layer: Canonical FFI (1:1 with NDK)
 
-* Location: `std/ffi/exec`, `std/ffi/intuition`, `std/ffi/graphics`, `std/ffi/dos`, `std/ffi/devs/*`.
+* Location: `std/amiga/raw/exec`, `std/amiga/raw/intuition`, `std/amiga/raw/graphics`, `std/amiga/raw/dos`, `std/amiga/raw/devs/*`.
 * Generated from `.fd`/protos + a mapping file (see §13 NDK→Result mapping).
 * Example:
 
@@ -1693,12 +1689,12 @@ After analyzing real-world Amiga development patterns, we've chosen to support *
 
 **When to use assembly:**
 * Performance-critical inner loops (after profiling shows need)
-* Direct hardware manipulation not exposed via std/ffi
+* Direct hardware manipulation not exposed via std/amiga/raw
 * Legacy assembly code integration
 * Specialized algorithms (fixed-point math kernels, decompression, crypto)
 
 **When NOT to use assembly:**
-* Simple hardware access → use `std/ffi` abstractions
+* Simple hardware access → use `std/amiga/raw` abstractions
 * Copper/Blitter operations → use hardware DSLs (§23)
 * Memory/task/signal management → use `std/exec` wrappers
 
@@ -2086,8 +2082,8 @@ The Novus SDK provides:
 
 ### 29.7 Ergonomics
 
-* Literal suffixes: `1.0f32`, `1.0f64`; default is `f64`.
-* Explicit casts `as f32/f64`.
+* Literals inherit their type from context; an otherwise unconstrained float defaults to `f32`.
+* Explicit casts use the normal form `(f32)value`, `(f64)value`, or `(fixed16)value`.
 * Fixed/float interop helpers: `fx.to_f32()`, `f32.to_fixed16()`.
 
 ### 29.8 Diagnostics

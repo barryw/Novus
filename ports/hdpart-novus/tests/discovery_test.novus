@@ -14,7 +14,7 @@ fn discovery_is_correct() -> bool {
     return false unless capacity.block_bytes == 512 &&
         capacity.total_blocks == 2097152
 
-    let short_response = [0u8; 7]
+    let short_response: [u8] = [0; 7]
     return false unless parse_read_capacity_10(&short_response).is_none()
 
     let geometry = synthesize_geometry(2097152)

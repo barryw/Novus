@@ -1,5 +1,7 @@
 # Standard Library Code Cleanup - COMPLETE! 🎉
 
+> Historical migration record. Numeric type suffixes have since been removed from the language; current Novus uses contextual literals or normal casts such as `(u16)0`.
+
 **Date:** 2025-11-01
 **Status:** ✅ COMPLETE
 **Test Status:** 960/960 passing (100%)

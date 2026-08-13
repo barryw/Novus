@@ -4,7 +4,7 @@
 
 **Date**: 2025-12-07
 **Target**: Modern Amigas (68040+, 16MB+ RAM)
-**Module**: `std::ui::buffered_window`
+**Module**: `amiga::sys::intuition::buffered_window`
 
 ---
 
@@ -77,7 +77,7 @@ Comprehensive design document covering:
 
 ### FFI Additions
 
-Added to `std/ffi/amiga_consts.novus`:
+Added to `std/amiga/raw/consts.novus`:
 ```novus
 pub const BMF_CLEAR: u32 = $00000001          // Clear bitmap to color 0
 pub const BMF_DISPLAYABLE: u32 = $00000002    // Optimize for blitting to screen
@@ -174,9 +174,9 @@ Drop::drop() called
 
 ### Basic Pattern
 ```novus
-from std::ui::buffered_window import BufferedWindow
-from std::ui::window import WindowEvent
-from std::graphics::draw import DrawContext
+from amiga::sys::intuition::buffered_window import BufferedWindow
+from amiga::sys::intuition import WindowEvent
+from amiga::sys::graphics::draw import DrawContext
 
 pub fn main() -> i32 {
     // Create buffered window
@@ -255,7 +255,7 @@ while running {
         window.present()?
 
         // Frame-rate limit
-        from std::ffi::graphics import WaitTOF
+        from amiga::raw::graphics import WaitTOF
         WaitTOF()  // ~50Hz PAL / 60Hz NTSC
     }
 }
@@ -413,7 +413,7 @@ Currently manual. Future: integrate into Novus test suite.
 - `/Users/barry/RiderProjects/Novus/docs/BufferedWindow_Implementation_Summary.md` (this file)
 
 ### FFI Additions
-- Added BMF_* constants to `/Users/barry/RiderProjects/Novus/Novus/std/ffi/amiga_consts.novus`
+- Added BMF_* constants to `/Users/barry/RiderProjects/Novus/Novus/std/amiga/raw/consts.novus`
 
 ---
 

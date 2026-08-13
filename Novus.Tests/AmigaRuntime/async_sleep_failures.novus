@@ -4,8 +4,8 @@ from std::core import Result
 from std::async::future import Poll, Context, Waker
 from std::async::sleep import Sleep
 from std::async::executor import ExecutorError, poll_sleep_once
-from std::os::timer import Duration, TimerError
-from std::ffi::exec import FindTask, AllocSignal, FreeSignal
+from amiga::timer import Duration, TimerError
+from amiga::raw::exec import FindTask, AllocSignal, FreeSignal
 from std::test::test import expect, expect_true
 
 @test("Sleep reports invalid timer unit")

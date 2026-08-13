@@ -95,7 +95,9 @@ public class TemplateScaffoldingTests : IDisposable
         if (templates == null) return;
 
         var source = File.ReadAllText(Path.Combine(templates, "gui", "modern", "src", "main.novus"));
-        Assert.Contains("StaticGadToolsUi", source);
+        Assert.Contains("from amiga::ui import", source);
+        Assert.Contains("StaticUi", source);
+        Assert.DoesNotContain("amiga::sys", source);
         Assert.DoesNotContain("GadToolsBuilder", source);
     }
 

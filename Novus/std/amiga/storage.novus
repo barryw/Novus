@@ -1,0 +1,120 @@
+from std::collections::arrayvec import ArrayVec, ArrayVecError
+from std::core import Error, From, Option, Result
+from std::string import FixedCString, FixedString, Str
+from amiga::storage::block_device import BlockDeviceError
+from amiga::sys::device import DriverLoadError, device_is_resident, load_device_driver
+from amiga::sys::dos import DosDeviceList, DosListError
+
+// Tier 1: safe block storage and owned device discovery for applications.
+pub use amiga::storage::block_device::*
+
+pub const MAX_DEVICES: u32 = 32
+
+pub enum StorageError {
+    DeviceUnavailable,
+    DriverLoadFailed,
+    DiscoveryFailed,
+    TooManyDevices,
+}
+
+impl From<BlockDeviceError> for StorageError {
+    fn convert(consuming error: BlockDeviceError) -> StorageError {
+        return StorageError::DeviceUnavailable
+    }
+}
+
+impl From<ArrayVecError> for StorageError {
+    fn convert(consuming _error: ArrayVecError) -> StorageError {
+        return StorageError::TooManyDevices
+    }
+}
+
+impl StorageError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            StorageError::DeviceUnavailable => "The storage device is unavailable",
+            StorageError::DriverLoadFailed => "Could not load the device driver",
+            StorageError::DiscoveryFailed => "Could not discover storage devices",
+            StorageError::TooManyDevices => "Too many mounted devices",
+        }
+    }
+}
+
+impl From<DriverLoadError> for StorageError {
+    fn convert(consuming error: DriverLoadError) -> StorageError {
+        return StorageError::DriverLoadFailed
+    }
+}
+
+pub fn driver_is_loaded(name: Str) -> bool {
+    return device_is_resident(name)
+}
+
+pub fn load_driver(path: Str) -> Result<FixedCString<40>, StorageError> {
+    return Result::Ok(load_device_driver(path)?)
+}
+
+impl Error for StorageError {
+    fn message(&self) -> *u8 { return StorageError::message(self) }
+}
+
+/// Owner-independent identity copied while the DOS list is locked.
+pub struct StorageDevice {
+    driver: FixedCString<60>,
+    name: FixedString<32>,
+    unit: u32,
+    flags: u32,
+}
+
+impl StorageDevice {
+    pub fn driver(&self) -> Str { return self.driver.as_str() }
+    pub fn name(&self) -> Str { return self.name.as_str() }
+    pub fn unit(&self) -> u32 { return self.unit }
+    pub fn flags(&self) -> u32 { return self.flags }
+}
+
+fn contains_device(devices: &ArrayVec<StorageDevice, 32>, driver: Str, unit: u32) -> bool {
+    for device in devices {
+        return true if device.unit() == unit && device.driver().eq_ignore_case(driver)
+    }
+    return false
+}
+
+fn valid_driver_name(name: Str) -> bool {
+    return false unless name.len() >= 8 && name.len() <= 60
+    return match name.slice_from(name.len() - 7) {
+        Result::Ok(suffix) => suffix.eq_ignore_case(".device"),
+        Result::Err(_) => false,
+    }
+}
+
+/// Return owned snapshots; no DOS-list lock or borrowed view escapes this call.
+pub fn devices() -> Result<ArrayVec<StorageDevice, 32>, StorageError> {
+    let list = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Result::Err(StorageError::DiscoveryFailed),
+    }
+    var result = ArrayVec::<StorageDevice, 32>::new()
+    var entries = list.iter()
+    forever {
+        let Option::Some(entry) = entries.next() else { break }
+        let Option::Some(startup) = entry.startup() else { continue }
+        let Option::Some(driver) = startup.device_name() else { continue }
+        continue unless valid_driver_name(driver)
+        continue if contains_device(&result, driver, startup.unit())
+
+        let Result::Ok(owned_driver) = FixedCString::<60>::new_from_str(driver) else { continue }
+        var owned_name = FixedString::<32>::new()
+        match entry.name() {
+            Option::Some(name) => { let _ = owned_name.push_str(name) },
+            Option::None => {},
+        }
+        result.push(StorageDevice {
+            driver: owned_driver,
+            name: owned_name,
+            unit: startup.unit(),
+            flags: startup.flags(),
+        })?
+    }
+    return Result::Ok(result)
+}

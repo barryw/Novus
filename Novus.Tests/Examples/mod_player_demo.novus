@@ -8,10 +8,10 @@
 // Press Ctrl+C to stop playback.
 
 from std::core import Result
-from std::audio::ptplayer import ModPlayer
-from std::audio::errors import AudioError
-from std::hardware::chipset import DISPLAY, DisplayType
-from std::ffi::graphics import WaitTOF
+from amiga::sys::hardware::ptplayer import ModPlayer
+from amiga::audio import AudioError
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::raw::graphics import WaitTOF
 
 // Embed the MOD file at compile time - automatically placed in chip RAM
 @embed("GSLINGER.MOD")

@@ -5,24 +5,35 @@
 //
 // For example:
 // - WindowHandle::simple() returns Result<WindowHandle, IntuitionError>
-// - But we can use it in a function returning Result<T, NovusError>
+// - But we can use it in a function returning Result<T, AppError>
 // - The ? operator automatically calls From<IntuitionError>::convert()
 
-from std::core import Result, From
-from std::error::errors import NovusError, IntuitionError, GraphicsError
-from std::ui::window import WindowHandle
+from std::core import Error, Result, From
+from amiga::sys::intuition::errors import IntuitionError
+from amiga::sys::intuition import WindowHandle
 
-// This function returns NovusError, but calls functions that return
-// more specific error types (IntuitionError, GraphicsError)
-fn test_error_conversion() -> Result<(), NovusError> {
+enum AppError { Ui(IntuitionError) }
+
+impl From<IntuitionError> for AppError {
+    fn convert(consuming error: IntuitionError) -> AppError { return AppError::Ui(error) }
+}
+
+impl Error for AppError {
+    fn message(&self) -> *u8 {
+        return match self { AppError::Ui(error) => error.message() }
+    }
+}
+
+// Applications define the error combinations they actually need.
+fn test_error_conversion() -> Result<(), AppError> {
     // WindowHandle::simple returns Result<WindowHandle, IntuitionError>
-    // The ? operator will automatically convert IntuitionError -> NovusError
+    // The ? operator automatically converts IntuitionError -> AppError.
     let window = WindowHandle::simple("Test Window", 320, 200)?
 
     // Function succeeds, return Ok
     return Result::Ok(())
 }
 
-fn main() -> Result<(), NovusError> {
+fn main() -> Result<(), AppError> {
     return test_error_conversion()
 }

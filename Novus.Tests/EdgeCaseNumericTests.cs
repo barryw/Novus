@@ -34,7 +34,7 @@ public class EdgeCaseNumericTests
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i8 = -128i8
+    let min: i8 = -128
     return (i32)min
 }";
         var module = BuildIr(source);
@@ -46,7 +46,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i8 = 127i8
+    let max: i8 = 127
     return (i32)max
 }";
         var module = BuildIr(source);
@@ -58,8 +58,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i8 = -128i8
-    let underflow = min - 1i8
+    let min: i8 = -128
+    let underflow = min - 1
     return (i32)underflow  // Should wrap to 127
 }";
         var module = BuildIr(source);
@@ -71,8 +71,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i8 = 127i8
-    let overflow = max + 1i8
+    let max: i8 = 127
+    let overflow = max + 1
     return (i32)overflow  // Should wrap to -128
 }";
         var module = BuildIr(source);
@@ -86,7 +86,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: u8 = 0u8
+    let min: u8 = 0
     return (i32)min
 }";
         var module = BuildIr(source);
@@ -98,7 +98,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: u8 = 255u8
+    let max: u8 = 255
     return (i32)max
 }";
         var module = BuildIr(source);
@@ -110,8 +110,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let zero: u8 = 0u8
-    let underflow = zero - 1u8
+    let zero: u8 = 0
+    let underflow = zero - 1
     return (i32)underflow  // Should wrap to 255
 }";
         var module = BuildIr(source);
@@ -123,8 +123,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: u8 = 255u8
-    let overflow = max + 1u8
+    let max: u8 = 255
+    let overflow = max + 1
     return (i32)overflow  // Should wrap to 0
 }";
         var module = BuildIr(source);
@@ -138,7 +138,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i16 = -32768i16
+    let min: i16 = -32768
     return (i32)min
 }";
         var module = BuildIr(source);
@@ -150,7 +150,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i16 = 32767i16
+    let max: i16 = 32767
     return (i32)max
 }";
         var module = BuildIr(source);
@@ -162,8 +162,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i16 = -32768i16
-    let underflow = min - 1i16
+    let min: i16 = -32768
+    let underflow = min - 1
     return (i32)underflow  // Should wrap to 32767
 }";
         var module = BuildIr(source);
@@ -175,8 +175,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i16 = 32767i16
-    let overflow = max + 1i16
+    let max: i16 = 32767
+    let overflow = max + 1
     return (i32)overflow  // Should wrap to -32768
 }";
         var module = BuildIr(source);
@@ -190,7 +190,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: u16 = 0u16
+    let min: u16 = 0
     return (i32)min
 }";
         var module = BuildIr(source);
@@ -202,7 +202,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: u16 = 65535u16
+    let max: u16 = 65535
     return (i32)max
 }";
         var module = BuildIr(source);
@@ -214,8 +214,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let zero: u16 = 0u16
-    let underflow = zero - 1u16
+    let zero: u16 = 0
+    let underflow = zero - 1
     return (i32)underflow  // Should wrap to 65535
 }";
         var module = BuildIr(source);
@@ -227,8 +227,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: u16 = 65535u16
-    let overflow = max + 1u16
+    let max: u16 = 65535
+    let overflow = max + 1
     return (i32)overflow  // Should wrap to 0
 }";
         var module = BuildIr(source);
@@ -294,7 +294,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let small: i8 = -1i8
+    let small: i8 = -1
     let extended: i32 = (i32)small
     return extended  // Should be -1 (0xFFFFFFFF), not 255
 }";
@@ -307,7 +307,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let small: i8 = 127i8
+    let small: i8 = 127
     let extended: i32 = (i32)small
     return extended  // Should be 127
 }";
@@ -320,7 +320,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let small: i16 = -1i16
+    let small: i16 = -1
     let extended: i32 = (i32)small
     return extended  // Should be -1 (0xFFFFFFFF), not 65535
 }";
@@ -333,7 +333,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let small: u8 = 255u8
+    let small: u8 = 255
     let extended: i32 = (i32)small
     return extended  // Should be 255, not -1
 }";
@@ -346,7 +346,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let small: u16 = 65535u16
+    let small: u16 = 65535
     let extended: i32 = (i32)small
     return extended  // Should be 65535, not -1
 }";
@@ -361,7 +361,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i8 = 10i8
+    let a: i8 = 10
     let b: i32 = 20
     let result = (i32)a + b
     return result
@@ -375,7 +375,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: u8 = 200u8
+    let a: u8 = 200
     let b: i32 = 100
     let result = (i32)a + b
     return result  // Should be 300
@@ -389,8 +389,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i16 = 1000i16
-    let b: i16 = 100i16
+    let a: i16 = 1000
+    let b: i16 = 100
     let result = a * b
     return (i32)result  // Should wrap
 }";
@@ -405,7 +405,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let min: i8 = -128i8
+    let min: i8 = -128
     let negated = -min
     return (i32)negated  // Should wrap to -128 (i8::MIN negated = i8::MIN)
 }";
@@ -418,8 +418,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let max: i8 = 127i8
-    let result = max + 1i8
+    let max: i8 = 127
+    let result = max + 1
     return (i32)result  // Should wrap to -128
 }";
         var module = BuildIr(source);
@@ -431,8 +431,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let zero: u8 = 0u8
-    let result = zero - 1u8
+    let zero: u8 = 0
+    let result = zero - 1
     return (i32)result  // Should wrap to 255
 }";
         var module = BuildIr(source);
@@ -457,9 +457,9 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: i8 = 100i8
-    let y = x + 50i8  // Overflow to -106
-    let z = y + 50i8  // Overflow again
+    let x: i8 = 100
+    let y = x + 50  // Overflow to -106
+    let z = y + 50  // Overflow again
     return (i32)z
 }";
         var module = BuildIr(source);
@@ -514,10 +514,10 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i8 = 127i8
-    let b: i16 = 32767i16
+    let a: i8 = 127
+    let b: i16 = 32767
     let c: i32 = 2147483647
-    let result = (i32)(a * 0i8) + (i32)(b * 0i16) + (c * 0)
+    let result = (i32)(a * 0) + (i32)(b * 0) + (c * 0)
     return result  // Should be 0
 }";
         var module = BuildIr(source);
@@ -529,9 +529,9 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i8 = 42i8
-    let b: i16 = 1000i16
-    let result = (i32)(a * 1i8) + (i32)(b * 1i16)
+    let a: i8 = 42
+    let b: i16 = 1000
+    let result = (i32)(a * 1) + (i32)(b * 1)
     return result  // Should be 1042
 }";
         var module = BuildIr(source);

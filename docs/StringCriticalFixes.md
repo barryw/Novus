@@ -87,7 +87,7 @@ impl BStr {
 
 ```novus
 // Add MEMF_CHIP constant
-from std::ffi::exec import MEMF_CHIP
+from amiga::raw::exec import MEMF_CHIP
 
 impl String {
     /// Allocate string in Chip RAM (for hardware access)

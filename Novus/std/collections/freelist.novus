@@ -22,8 +22,8 @@
 
 from std::core import Option, Drop
 from std::memory::block import MemoryBlock
-from std::ffi::exec import FreeMem, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
-from std::error::errors import ExecError
+from amiga::raw::exec import FreeMem, CopyMem, MEMF_PUBLIC, MEMF_CLEAR
+from std::memory::errors import MemoryError
 
 /// ObjectPool<T> - Pool allocator for fixed-size objects
 ///
@@ -86,24 +86,24 @@ impl<T> ObjectPool<T> {
     ///
     /// Returns a typed error if allocation fails.
     /// All slots are zero-initialized for safety.
-    pub fn with_capacity(capacity: u32) -> Result<ObjectPool<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn with_capacity(capacity: u32) -> Result<ObjectPool<T>, MemoryError> {
+        if capacity == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Slot size must be at least pointer size (for free list linkage)
         // and at least the size of T
         let t_size: u32 = @sizeof(T)
-        let ptr_size: u32 = 4u32  // 32-bit pointers on 68k
+        let ptr_size: u32 = 4  // 32-bit pointers on 68k
         let slot_size: u32 = if t_size > ptr_size { t_size } else { ptr_size }
 
         // Align to 4-byte boundary for 68k efficiency (DMA, cache, instructions)
-        let aligned_slot_size: u32 = (slot_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_slot_size: u32 = (slot_size + 3) & 0xFFFFFFFC
 
         let total_bytes: u32 = capacity * aligned_slot_size
 
         // Allocate with MEMF_CLEAR for safety
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -111,16 +111,16 @@ impl<T> ObjectPool<T> {
                 block.into_raw()  // Take ownership
 
                 // Initialize free list - link all slots together
-                var i: u32 = 0u32
-                while i < capacity - 1u32 {
+                var i: u32 = 0
+                while i < capacity - 1 {
                     let current: *FreeNode = (*FreeNode)(data + i * aligned_slot_size)
-                    let next: *FreeNode = (*FreeNode)(data + (i + 1u32) * aligned_slot_size)
+                    let next: *FreeNode = (*FreeNode)(data + (i + 1) * aligned_slot_size)
                     current.next = next
-                    i = i + 1u32
+                    i = i + 1
                 }
 
                 // Last slot points to null
-                let last: *FreeNode = (*FreeNode)(data + (capacity - 1u32) * aligned_slot_size)
+                let last: *FreeNode = (*FreeNode)(data + (capacity - 1) * aligned_slot_size)
                 last.next = null
 
                 // Free list head is the first slot
@@ -130,7 +130,7 @@ impl<T> ObjectPool<T> {
                     data: data,
                     capacity: capacity,
                     free_head: free_head,
-                    allocated: 0u32,
+                    allocated: 0,
                     slot_size: aligned_slot_size,
                 })
             },
@@ -139,33 +139,33 @@ impl<T> ObjectPool<T> {
     }
 
     /// Create a new ObjectPool, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<ObjectPool<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn try_with_capacity(capacity: u32) -> Result<ObjectPool<T>, MemoryError> {
+        if capacity == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let t_size: u32 = @sizeof(T)
-        let ptr_size: u32 = 4u32
+        let ptr_size: u32 = 4
         let slot_size: u32 = if t_size > ptr_size { t_size } else { ptr_size }
-        let aligned_slot_size: u32 = (slot_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_slot_size: u32 = (slot_size + 3) & 0xFFFFFFFC
         let total_bytes: u32 = capacity * aligned_slot_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(total_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
                 let data: *u8 = block.ptr()
                 block.into_raw()
 
-                var i: u32 = 0u32
-                while i < capacity - 1u32 {
+                var i: u32 = 0
+                while i < capacity - 1 {
                     let current: *FreeNode = (*FreeNode)(data + i * aligned_slot_size)
-                    let next: *FreeNode = (*FreeNode)(data + (i + 1u32) * aligned_slot_size)
+                    let next: *FreeNode = (*FreeNode)(data + (i + 1) * aligned_slot_size)
                     current.next = next
-                    i = i + 1u32
+                    i = i + 1
                 }
 
-                let last: *FreeNode = (*FreeNode)(data + (capacity - 1u32) * aligned_slot_size)
+                let last: *FreeNode = (*FreeNode)(data + (capacity - 1) * aligned_slot_size)
                 last.next = null
 
                 let free_head: *FreeNode = (*FreeNode)data
@@ -174,12 +174,12 @@ impl<T> ObjectPool<T> {
                     data: data,
                     capacity: capacity,
                     free_head: free_head,
-                    allocated: 0u32,
+                    allocated: 0,
                     slot_size: aligned_slot_size,
                 })
             },
             Result::Err(_) => {
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
@@ -189,15 +189,15 @@ impl<T> ObjectPool<T> {
     /// Returns a pointer to UNINITIALIZED memory of size T.
     /// The caller MUST initialize all fields before use.
     /// Returns `CapacityExceeded` if the pool is exhausted.
-    pub fn alloc(&var self) -> Result<*T, ExecError> {
+    pub fn alloc(&var self) -> Result<*T, MemoryError> {
         if self.free_head == null {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
         // Pop the head of the free list
         let node: *FreeNode = self.free_head
         self.free_head = node.next
-        self.allocated = self.allocated + 1u32
+        self.allocated = self.allocated + 1
 
         return Result::Ok((*T)node)
     }
@@ -206,15 +206,15 @@ impl<T> ObjectPool<T> {
     ///
     /// Returns a pointer to zero-initialized memory of size T.
     /// Returns `CapacityExceeded` if the pool is exhausted.
-    pub fn alloc_zeroed(&var self) -> Result<*T, ExecError> {
+    pub fn alloc_zeroed(&var self) -> Result<*T, MemoryError> {
         match self.alloc() {
             Result::Ok(ptr) => {
                 // Zero out the memory
                 let bytes: *u8 = (*u8)ptr
-                var i: u32 = 0u32
+                var i: u32 = 0
                 while i < self.slot_size {
-                    bytes[i] = 0u8
-                    i = i + 1u32
+                    unsafe { bytes[i] = 0 }
+                    i = i + 1
                 }
                 return Result::Ok(ptr)
             },
@@ -230,17 +230,17 @@ impl<T> ObjectPool<T> {
     ///
     /// WARNING: Double-free and freeing objects not from this pool
     /// will corrupt the pool!
-    pub fn free(&var self, ptr: *T) -> Result<(), ExecError> {
+    pub fn free(&var self, ptr: *T) -> Result<(), MemoryError> {
         // Guard against underflow (indicates double-free or corruption)
-        if self.allocated == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+        if self.allocated == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Push onto the free list head
         let node: *FreeNode = (*FreeNode)ptr
         node.next = self.free_head
         self.free_head = node
-        self.allocated = self.allocated - 1u32
+        self.allocated = self.allocated - 1
         return Result::Ok(())
     }
 
@@ -266,7 +266,7 @@ impl<T> ObjectPool<T> {
 
     /// Check if the pool is full (no slots allocated)
     pub fn is_full(&self) -> bool {
-        return self.allocated == 0u32
+        return self.allocated == 0
     }
 
     /// Reset the pool - mark all objects as free
@@ -280,19 +280,19 @@ impl<T> ObjectPool<T> {
         // TODO: Add allocation bitmap for proper Drop support
 
         // Re-initialize free list
-        var i: u32 = 0u32
-        while i < self.capacity - 1u32 {
+        var i: u32 = 0
+        while i < self.capacity - 1 {
             let current: *FreeNode = (*FreeNode)(self.data + i * self.slot_size)
-            let next: *FreeNode = (*FreeNode)(self.data + (i + 1u32) * self.slot_size)
+            let next: *FreeNode = (*FreeNode)(self.data + (i + 1) * self.slot_size)
             current.next = next
-            i = i + 1u32
+            i = i + 1
         }
 
-        let last: *FreeNode = (*FreeNode)(self.data + (self.capacity - 1u32) * self.slot_size)
+        let last: *FreeNode = (*FreeNode)(self.data + (self.capacity - 1) * self.slot_size)
         last.next = null
 
         self.free_head = (*FreeNode)self.data
-        self.allocated = 0u32
+        self.allocated = 0
     }
 
     /// Check if a pointer belongs to this pool
@@ -309,7 +309,7 @@ impl<T> ObjectPool<T> {
 
         // Check if it's aligned to slot boundaries
         let offset: u32 = addr - start
-        return offset % self.slot_size == 0u32
+        return offset % self.slot_size == 0
     }
 }
 
@@ -326,8 +326,8 @@ impl<T> Drop for ObjectPool<T> {
             }
             self.data = null
             self.free_head = null
-            self.capacity = 0u32
-            self.allocated = 0u32
+            self.capacity = 0
+            self.allocated = 0
         }
     }
 }
@@ -369,44 +369,44 @@ impl<T> ObjectPoolFixed<T> {
     /// Create a new fixed-capacity pool
     ///
     /// All slots are initially free and zero-initialized.
-    pub fn with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, ExecError> {
-        if capacity == 0u32 {
-            return Result::Err(ExecError::InvalidAddress)
+    pub fn with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, MemoryError> {
+        if capacity == 0 {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let element_size: u32 = @sizeof(T)
         // Align to 4-byte boundary
-        let aligned_size: u32 = (element_size + 3u32) & 0xFFFFFFFCu32
+        let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
         let data_bytes: u32 = capacity * aligned_size
-        let index_bytes: u32 = capacity * 4u32   // u32 per index
+        let index_bytes: u32 = capacity * 4   // u32 per index
         let flags_bytes: u32 = capacity          // bool per slot
 
         // Allocate data array
-        let data_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(data_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let data_opt = MemoryBlock::alloc(data_bytes, MEMF_PUBLIC | MEMF_CLEAR)
         match data_opt {
             Result::Ok(var data_block) => {
                 let data: *u8 = data_block.ptr()
                 data_block.into_raw()
 
                 // Allocate index stack
-                let index_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(index_bytes, MEMF_PUBLIC)
+                let index_opt = MemoryBlock::alloc(index_bytes, MEMF_PUBLIC)
                 match index_opt {
                     Result::Ok(var index_block) => {
                         let free_indices: *u32 = (*u32)index_block.ptr()
                         index_block.into_raw()
 
                         // Allocate flags array
-                        let flags_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(flags_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+                        let flags_opt = MemoryBlock::alloc(flags_bytes, MEMF_PUBLIC | MEMF_CLEAR)
                         match flags_opt {
                             Result::Ok(var flags_block) => {
                                 let allocated_flags: *bool = (*bool)flags_block.ptr()
                                 flags_block.into_raw()
 
                                 // Initialize free index stack (all indices are free)
-                                var i: u32 = 0u32
+                                var i: u32 = 0
                                 while i < capacity {
-                                    free_indices[i] = i
-                                    i = i + 1u32
+                                    unsafe { free_indices[i] = i }
+                                    i = i + 1
                                 }
 
                                 return Result::Ok(ObjectPoolFixed {
@@ -440,35 +440,35 @@ impl<T> ObjectPoolFixed<T> {
     }
 
     /// Create a new pool, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, ExecError> {
+    pub fn try_with_capacity(capacity: u32) -> Result<ObjectPoolFixed<T>, MemoryError> {
         return ObjectPoolFixed::<T>::with_capacity(capacity)
     }
 
     /// Allocate an object, returns pointer to the slot
     ///
     /// Memory is uninitialized; caller must initialize before use.
-    pub fn alloc(&var self) -> Result<*T, ExecError> {
-        if self.free_top == 0u32 {
-            return Result::Err(ExecError::CapacityExceeded)
+    pub fn alloc(&var self) -> Result<*T, MemoryError> {
+        if self.free_top == 0 {
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
-        self.free_top = self.free_top - 1u32
-        let idx: u32 = self.free_indices[self.free_top]
-        self.allocated_flags[idx] = true
+        self.free_top = self.free_top - 1
+        let idx: u32 = unsafe { self.free_indices[self.free_top] }
+        unsafe { self.allocated_flags[idx] = true }
 
         let ptr: *T = (*T)(self.data + idx * self.element_size)
         return Result::Ok(ptr)
     }
 
     /// Allocate a zero-initialized object
-    pub fn alloc_zeroed(&var self) -> Result<*T, ExecError> {
+    pub fn alloc_zeroed(&var self) -> Result<*T, MemoryError> {
         match self.alloc() {
             Result::Ok(ptr) => {
                 let bytes: *u8 = (*u8)ptr
-                var i: u32 = 0u32
+                var i: u32 = 0
                 while i < self.element_size {
-                    bytes[i] = 0u8
-                    i = i + 1u32
+                    unsafe { bytes[i] = 0 }
+                    i = i + 1
                 }
                 return Result::Ok(ptr)
             },
@@ -480,35 +480,37 @@ impl<T> ObjectPoolFixed<T> {
     ///
     /// The pointer must point into this pool's data array.
     /// Returns true if successful, false if invalid or already free.
-    pub fn free(&var self, ptr: *T) -> Result<(), ExecError> {
+    pub fn free(&var self, ptr: *T) -> Result<(), MemoryError> {
         // Calculate index from pointer
         let base: u32 = (u32)self.data
         let addr: u32 = (u32)ptr
 
         // Bounds check
         if addr < base {
-            return Result::Err(ExecError::InvalidAddress)
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         let offset: u32 = addr - base
         let idx: u32 = offset / self.element_size
 
         if idx >= self.capacity {
-            return Result::Err(ExecError::InvalidAddress)
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Check if actually allocated
-        if !self.allocated_flags[idx] {
-            return Result::Err(ExecError::InvalidAddress)
+        if unsafe { !self.allocated_flags[idx] } {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Call Drop on the element if it implements Drop
         @drop_in_place(ptr)
 
         // Mark as free and push index onto free stack
-        self.allocated_flags[idx] = false
-        self.free_indices[self.free_top] = idx
-        self.free_top = self.free_top + 1u32
+        unsafe {
+            self.allocated_flags[idx] = false
+            self.free_indices[self.free_top] = idx
+        }
+        self.free_top = self.free_top + 1
         return Result::Ok(())
     }
 
@@ -516,22 +518,24 @@ impl<T> ObjectPoolFixed<T> {
     ///
     /// Returns true if successful, false if invalid or already free.
     /// Calls Drop on the element if T implements Drop.
-    pub fn free_index(&var self, idx: u32) -> Result<(), ExecError> {
+    pub fn free_index(&var self, idx: u32) -> Result<(), MemoryError> {
         if idx >= self.capacity {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        if !self.allocated_flags[idx] {
-            return Result::Err(ExecError::InvalidAddress)
+        if unsafe { !self.allocated_flags[idx] } {
+            return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Call Drop on the element
         let ptr: *T = (*T)(self.data + idx * self.element_size)
         @drop_in_place(ptr)
 
-        self.allocated_flags[idx] = false
-        self.free_indices[self.free_top] = idx
-        self.free_top = self.free_top + 1u32
+        unsafe {
+            self.allocated_flags[idx] = false
+            self.free_indices[self.free_top] = idx
+        }
+        self.free_top = self.free_top + 1
         return Result::Ok(())
     }
 
@@ -552,7 +556,7 @@ impl<T> ObjectPoolFixed<T> {
 
     /// Check if pool is exhausted
     pub fn is_empty(&self) -> bool {
-        return self.free_top == 0u32
+        return self.free_top == 0
     }
 
     /// Reset pool - all slots become free
@@ -560,21 +564,23 @@ impl<T> ObjectPoolFixed<T> {
     /// Calls Drop on all allocated objects before resetting.
     pub fn reset(&var self) {
         // First, call Drop on all allocated objects
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.capacity {
-            if self.allocated_flags[i] {
+            if unsafe { self.allocated_flags[i] } {
                 let ptr: *T = (*T)(self.data + i * self.element_size)
                 @drop_in_place(ptr)
             }
-            i = i + 1u32
+            i = i + 1
         }
 
         // Then reset the allocation tracking
-        i = 0u32
+        i = 0
         while i < self.capacity {
-            self.allocated_flags[i] = false
-            self.free_indices[i] = i
-            i = i + 1u32
+            unsafe {
+                self.allocated_flags[i] = false
+                self.free_indices[i] = i
+            }
+            i = i + 1
         }
         self.free_top = self.capacity
     }
@@ -584,7 +590,7 @@ impl<T> ObjectPoolFixed<T> {
         if idx >= self.capacity {
             return false
         }
-        return self.allocated_flags[idx]
+        return unsafe { self.allocated_flags[idx] }
     }
 
     /// Get reference to object at index (for iteration)
@@ -594,7 +600,7 @@ impl<T> ObjectPoolFixed<T> {
         if idx >= self.capacity {
             return Option::None
         }
-        if !self.allocated_flags[idx] {
+        if unsafe { !self.allocated_flags[idx] } {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + idx * self.element_size)
@@ -608,7 +614,7 @@ impl<T> ObjectPoolFixed<T> {
         if idx >= self.capacity {
             return Option::None
         }
-        if !self.allocated_flags[idx] {
+        if unsafe { !self.allocated_flags[idx] } {
             return Option::None
         }
         let ptr: *T = (*T)(self.data + idx * self.element_size)
@@ -620,17 +626,17 @@ impl<T> Drop for ObjectPoolFixed<T> {
     fn drop(&var self) {
         if self.data != null {
             // Call Drop on all allocated elements before freeing memory
-            var i: u32 = 0u32
+            var i: u32 = 0
             while i < self.capacity {
-                if self.allocated_flags[i] {
+                if unsafe { self.allocated_flags[i] } {
                     let ptr: *T = (*T)(self.data + i * self.element_size)
                     @drop_in_place(ptr)
                 }
-                i = i + 1u32
+                i = i + 1
             }
 
             let data_bytes: u32 = self.capacity * self.element_size
-            let index_bytes: u32 = self.capacity * 4u32
+            let index_bytes: u32 = self.capacity * 4
             let flags_bytes: u32 = self.capacity
             unsafe {
                 FreeMem(self.data, data_bytes)
@@ -640,8 +646,8 @@ impl<T> Drop for ObjectPoolFixed<T> {
             self.data = null
             self.free_indices = null
             self.allocated_flags = null
-            self.capacity = 0u32
-            self.free_top = 0u32
+            self.capacity = 0
+            self.free_top = 0
         }
     }
 }

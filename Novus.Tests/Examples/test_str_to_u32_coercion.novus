@@ -1,8 +1,8 @@
 // Test Str → u32 coercion in struct literals
 // Both string literals and string variables should work
 
-from std::ffi::amiga_structs import TagItem
-from std::strings::core import Str
+from amiga::raw::structs import TagItem
+from std::string::core import Str
 
 // Test 3 helper: String expression (function return value)
 @borrows(static)

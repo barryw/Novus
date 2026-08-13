@@ -206,6 +206,11 @@ public class SymbolTable
     /// </summary>
     public void RegisterEnum(string name, IrEnumType type, SourceLocation? location = null)
     {
+        if (_enums.TryGetValue(name, out var existing) &&
+            existing.Variants.Count > 0 && type.Variants.Count == 0)
+        {
+            return;
+        }
         _enums[name] = type;
         if (location != null)
             _enumLocations[name] = location;

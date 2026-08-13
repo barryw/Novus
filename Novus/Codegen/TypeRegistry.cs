@@ -382,7 +382,10 @@ public class TypeRegistry
     private string GetStructName(IrStructType structType)
     {
         // Use CacheKey for monomorphized generics, otherwise use Name
-        return structType.CacheKey ?? structType.Name;
+        var name = structType.CacheKey ?? structType.Name;
+        return structType.Attributes?.Has(SemanticAnalysis.KnownAttributes.ExternType) == true
+            ? name + "#extern"
+            : name;
     }
 
     private bool UsesStringType(IrFunction function)

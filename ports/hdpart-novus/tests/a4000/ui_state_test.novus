@@ -1,39 +1,44 @@
 // First HDPart UI-01 slice: static text, owner-tied state access, and event values.
 
 from std::core import Option, Result
-from std::error::errors import IntuitionError
 from std::test::test import expect_true
-from std::ui::gadtools import GadgetBounds, StaticGadget, StaticGadToolsUi, StaticMenuEntry
+from amiga::ui import Bounds, StaticControl, StaticMenu, StaticUi, UiError
 
 const STATUS: u16 = 1
 const QUIT: u16 = 2
 
-static GADGETS: [StaticGadget] = [
-    StaticGadget::text(STATUS, "Status: no disk selected", 12, 28, 240, 12),
-    StaticGadget::button(QUIT, "Quit", 182, 48, 70, 16),
+static GADGETS: [StaticControl] = [
+    StaticControl::text(STATUS, "Status: no disk selected", 12, 28, 240, 12),
+    StaticControl::button(QUIT, "Quit", 182, 48, 70, 16),
 ]
 
-static MENUS: [StaticMenuEntry] = [
-    StaticMenuEntry::title("Project"),
-    StaticMenuEntry::item("Quit", "Q"),
-    StaticMenuEntry::end(),
+static MENUS: [StaticMenu] = [
+    StaticMenu::title("Project"),
+    StaticMenu::item("Quit", "Q"),
+    StaticMenu::end(),
 ]
 
-static UI: StaticGadToolsUi = StaticGadToolsUi {
+static UI: StaticUi = StaticUi {
     title: "HDPart UI state probe",
-    bounds: GadgetBounds { x: 40, y: 30, width: 270, height: 92 },
+    bounds: Bounds { x: 40, y: 30, width: 270, height: 92 },
     gadgets: GADGETS,
-    gadget_count: 2u32,
+    gadget_count: 2,
     menus: MENUS,
 }
 
-fn run_static_ui() -> Result<(), IntuitionError> {
+fn run_static_ui() -> Result<(), UiError> {
     let window = UI.open()?
+
+    // Borrow through both lower layers, then continue using the application owner.
+    let system = window.system()
+    if unsafe { system.as_raw() == null } {
+        return Result::Err(UiError::WindowFailed)
+    }
 
     // Lookup is owner-tied: this handle cannot outlive `window`.
     match window.control(QUIT) {
         Option::Some(control) => control.set_enabled(true),
-        Option::None => return Result::Err(IntuitionError::GadgetCreateFailed),
+        Option::None => return Result::Err(UiError::ControlFailed),
     }
 
     return Result::Ok(())

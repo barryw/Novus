@@ -16,7 +16,4 @@
 pub use std::core::Option, Result, Drop, From
 
 // Re-export string types
-pub use std::strings::core::Str
-
-// Re-export error types
-pub use std::error::errors::DosError, ExecError, IntuitionError, GraphicsError, NovusError
+pub use std::string::core::Str

@@ -13,9 +13,10 @@ public class IrEnumType : IrType
     public string? CacheKey { get; set; }  // Cache key for monomorphized types (e.g., "Option<i32>")
     public Novus.SemanticAnalysis.AttributeCollection? Attributes { get; set; }  // Enum attributes
     public IrWhereClause? WhereClause { get; set; }  // Generic type constraints (e.g., where T: Sortable)
+    public IrIntType? UnderlyingType { get; set; }  // ABI representation for fieldless represented enums
     private int? _cachedSize;
 
-    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null)
+    public IrEnumType(string enumName, List<IrEnumVariant> variants, List<string>? genericParams = null, string? cacheKey = null, Novus.SemanticAnalysis.AttributeCollection? attributes = null, IrWhereClause? whereClause = null, List<IrType>? typeArguments = null, IrIntType? underlyingType = null)
     {
         EnumName = enumName;
         Variants = variants;
@@ -24,6 +25,7 @@ public class IrEnumType : IrType
         CacheKey = cacheKey;
         Attributes = attributes;
         WhereClause = whereClause;
+        UnderlyingType = underlyingType;
     }
 
     public override int SizeInBytes
@@ -32,6 +34,9 @@ public class IrEnumType : IrType
         {
             if (_cachedSize.HasValue)
                 return _cachedSize.Value;
+
+            if (UnderlyingType != null)
+                return UnderlyingType.SizeInBytes;
 
             // Enum size = tag (4 bytes) + max(variant data sizes)
             // Tag is 32-bit int discriminant
@@ -94,7 +99,7 @@ public class IrEnumType : IrType
         return Variants.FirstOrDefault(v => v.Name == variantName);
     }
 
-    public int GetVariantTag(string variantName)
+    public long GetVariantTag(string variantName)
     {
         for (int i = 0; i < Variants.Count; i++)
         {
@@ -141,9 +146,9 @@ public class IrEnumVariant
 {
     public string Name { get; set; }
     public List<IrType> AssociatedData { get; set; }  // Types of associated data
-    public int Tag { get; set; }  // Discriminant value (0, 1, 2, ...)
+    public long Tag { get; set; }  // Discriminant value (0, 1, 2, ...)
 
-    public IrEnumVariant(string name, int tag, List<IrType>? associatedData = null)
+    public IrEnumVariant(string name, long tag, List<IrType>? associatedData = null)
     {
         Name = name;
         Tag = tag;
@@ -160,9 +165,9 @@ public class IrEnumVariant
 public class IrEnumConstructor : IrValue
 {
     public string VariantName { get; set; }
-    public int VariantTag { get; set; }
+    public long VariantTag { get; set; }
 
-    public IrEnumConstructor(IrEnumType enumType, string variantName, int tag)
+    public IrEnumConstructor(IrEnumType enumType, string variantName, long tag)
         : base(enumType)
     {
         VariantName = variantName;
@@ -177,9 +182,9 @@ public class IrEnumValue : IrValue
 {
     public string VariantName { get; set; }
     public List<IrValue> AssociatedValues { get; set; }  // Values for the variant's associated data
-    public int VariantTag { get; set; }
+    public long VariantTag { get; set; }
 
-    public IrEnumValue(IrEnumType enumType, string variantName, int tag, List<IrValue>? associatedValues = null)
+    public IrEnumValue(IrEnumType enumType, string variantName, long tag, List<IrValue>? associatedValues = null)
         : base(enumType)
     {
         VariantName = variantName;

@@ -1,12 +1,12 @@
 from std::core import Option, Result
-from std::ffi::asl import AllocFileRequest, FreeFileRequest, RequestFile
+from amiga::raw::asl import AllocFileRequest, FreeFileRequest, RequestFile
 from std::io::file import write
 from std::test::test import expect_true
-from std::ui::asl import FileRequesterHandle
+from amiga::sys::asl import FileRequesterHandle
 from fsload import load_file_system
 
-@test("legacy ASL file requester opens and cancels safely")
-pub fn test_legacy_asl_requester() {
+@test("systems ASL file requester opens and cancels safely")
+pub fn test_systems_asl_requester() {
     let requester = AllocFileRequest()
     if requester == null {
         expect_true(false, "ASL allocated a file requester")

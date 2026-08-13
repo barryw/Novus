@@ -1,27 +1,26 @@
 from std::core import Result
-from std::os::block_device import BlockDevice, BlockDeviceError
-from std::os::device import DeviceError
+from amiga::storage import BlockDevice, BlockDeviceError
 from std::test::test import expect
 
 @test("block geometry and transfers are safely wrapped")
 pub fn block_device_read() {
-    match BlockDevice::open("trackdisk.device", 0u32) {
+    match BlockDevice::open("trackdisk.device", 0) {
         Result::Ok(var disk) => {
-            expect(disk.geometry().block_bytes() == 512u32, "512-byte sectors")
-            expect(disk.geometry().total_blocks() > 0u32, "geometry has blocks")
+            expect(disk.geometry().block_bytes() == 512, "512-byte sectors")
+            expect(disk.geometry().total_blocks() > 0, "geometry has blocks")
 
-            var block = [0u8; 512]
-            match disk.read_blocks(0u32, &var block) {
-                Result::Ok(bytes) => expect(bytes == 512u32, "complete block read"),
-                Result::Err(BlockDeviceError::Device(DeviceError::CommandFailed(_))) => {
+            var block: [u8] = [0; 512]
+            match disk.read_blocks(0, &var block) {
+                Result::Ok(bytes) => expect(bytes == 512, "complete block read"),
+                Result::Err(BlockDeviceError::CommandFailed) => {
                     // No media is inserted in the standard A4000 test configuration.
                     expect(true, "no-media error returned safely")
                 },
                 Result::Err(_) => expect(false, "unexpected read error"),
             }
 
-            let invalid = [0u8; 513]
-            match disk.write_blocks(0u32, &invalid) {
+            let invalid: [u8] = [0; 513]
+            match disk.write_blocks(0, &invalid) {
                 Result::Err(BlockDeviceError::InvalidBufferLength) => {},
                 _ => expect(false, "reject partial-block write"),
             }

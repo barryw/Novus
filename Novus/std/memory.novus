@@ -1,0 +1,24 @@
+from std::memory::block import MemoryBlock
+from std::core import Result
+from std::memory::errors import MemoryError
+from std::memory::slice import MutSlice, Slice
+
+// Canonical portable memory surface. Platform allocation policy stays internal.
+pub use std::memory::slice::*
+pub use std::memory::bytes::*
+pub use std::memory::errors::MemoryError
+
+pub struct Buffer {
+    memory: MemoryBlock,
+}
+
+impl Buffer {
+    pub fn new(size: u32) -> Result<Buffer, MemoryError> {
+        return Result::Ok(Buffer { memory: MemoryBlock::new(size)? })
+    }
+
+    pub fn len(&self) -> u32 { return self.memory.size() }
+    pub fn is_empty(&self) -> bool { return self.memory.is_empty() }
+    pub fn as_bytes(&self) -> Slice<u8> { return self.memory.as_bytes() }
+    pub fn as_mut_bytes(&var self) -> MutSlice<u8> { return self.memory.as_mut_bytes() }
+}

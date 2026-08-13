@@ -250,6 +250,9 @@ public class IrValidator
             case IrIndexAccess indexAccess:
                 ValidateIndexAccess(indexAccess);
                 break;
+            case IrSliceBoundsCheck sliceCheck:
+                ValidateSliceBoundsCheck(sliceCheck);
+                break;
             case IrIndexStore indexStore:
                 ValidateIndexStore(indexStore);
                 break;
@@ -314,6 +317,10 @@ public class IrValidator
                 ValidateValue(indexedFieldStore.Array);
                 ValidateValue(indexedFieldStore.Index);
                 ValidateValue(indexedFieldStore.Value);
+                if (indexedFieldStore.Length != null)
+                    ValidateValue(indexedFieldStore.Length);
+                if (indexedFieldStore.BoundsCheck == IrBoundsCheckMode.Checked && indexedFieldStore.Length == null)
+                    AddError("Checked indexed field store has no length");
                 break;
 
             case IrHardwareWrite hwWrite:
@@ -501,6 +508,8 @@ public class IrValidator
 
         ValidateValue(indexAccess.Array);
         ValidateValue(indexAccess.Index);
+        if (indexAccess.Length != null)
+            ValidateValue(indexAccess.Length);
 
         // Index should be integer type
         if (indexAccess.Index.Type is not IrIntType)
@@ -513,6 +522,11 @@ public class IrValidator
             AddError($"Index access {indexAccess.ResultName} has null element type");
         }
 
+        if (indexAccess.BoundsCheck == IrBoundsCheckMode.Checked && indexAccess.Length == null)
+        {
+            AddError($"Checked index access {indexAccess.ResultName} has no length");
+        }
+
         _declaredVariables.Add(indexAccess.ResultName);
     }
 
@@ -521,12 +535,29 @@ public class IrValidator
         ValidateValue(indexStore.Array);
         ValidateValue(indexStore.Index);
         ValidateValue(indexStore.Value);
+        if (indexStore.Length != null)
+            ValidateValue(indexStore.Length);
 
         // Index should be integer type
         if (indexStore.Index.Type is not IrIntType)
         {
             AddError($"Array index has non-integer type: {indexStore.Index.Type.Name}");
         }
+        if (indexStore.BoundsCheck == IrBoundsCheckMode.Checked && indexStore.Length == null)
+        {
+            AddError("Checked index store has no length");
+        }
+    }
+
+    private void ValidateSliceBoundsCheck(IrSliceBoundsCheck sliceCheck)
+    {
+        ValidateValue(sliceCheck.Start);
+        ValidateValue(sliceCheck.End);
+        ValidateValue(sliceCheck.Length);
+        if (sliceCheck.Start.Type is not IrIntType ||
+            sliceCheck.End.Type is not IrIntType ||
+            sliceCheck.Length.Type is not IrIntType)
+            AddError("Slice bounds must be integers");
     }
 
     private void ValidateMemberAccess(IrMemberAccess memberAccess)
@@ -795,6 +826,15 @@ public class IrValidator
                 // Target type is validated via value.Type check above
                 break;
 
+            case IrPointerOffsetValue pointerOffset:
+                ValidateValue(pointerOffset.Pointer);
+                ValidateValue(pointerOffset.Index);
+                if (pointerOffset.Pointer.Type is not (IrPointerType or IrReferenceType or IrMutReferenceType))
+                    AddError("Pointer offset requires a pointer or reference base");
+                if (pointerOffset.Index.Type is not IrIntType)
+                    AddError("Pointer offset requires an integer index");
+                break;
+
             case IrGenericAssociatedFunction genericFunc:
                 AddError($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized before validation");
                 break;
@@ -820,6 +860,10 @@ public class IrValidator
                 // Indexed field access - array[index].field
                 ValidateValue(indexedFieldAccess.Array);
                 ValidateValue(indexedFieldAccess.Index);
+                if (indexedFieldAccess.Length != null)
+                    ValidateValue(indexedFieldAccess.Length);
+                if (indexedFieldAccess.BoundsCheck == IrBoundsCheckMode.Checked && indexedFieldAccess.Length == null)
+                    AddError("Checked indexed field access has no length");
                 if (string.IsNullOrEmpty(indexedFieldAccess.FieldName))
                 {
                     AddError("Indexed field access has empty field name");

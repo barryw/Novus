@@ -16,7 +16,7 @@ let rdargs = ReadArgs(template_str.as_cstr(), (*u8)&arg_results[0], (*RDArgs)0)
 
 // Null pointer checks are awkward
 let rdargs_addr: u32 = (u32)rdargs
-if rdargs_addr == 0u32 {
+if rdargs_addr == 0 {
     return 1
 }
 
@@ -105,13 +105,13 @@ if port != null {
 
 **Current**:
 ```novus
-var results: [u32; 3] = [0u32, 0u32, 0u32]
+var results: [u32; 3] = [0, 0, 0]
 ReadArgs(template, (*u8)&results[0], null)           // verbose cast
 ```
 
 **Desired**:
 ```novus
-var results: [u32; 3] = [0u32, 0u32, 0u32]
+var results: [u32; 3] = [0, 0, 0]
 ReadArgs(template, &results, null)                   // auto-cast to *u8
 ```
 
@@ -141,7 +141,7 @@ ReadArgs(template, &data, null)  // &data is *i32, but ReadArgs expects *u8!
 **Current**:
 ```novus
 let rdargs_addr: u32 = (u32)rdargs
-if rdargs_addr == 0u32 {
+if rdargs_addr == 0 {
     return 1
 }
 ```
@@ -162,7 +162,7 @@ if !rdargs {  // pointer as boolean
 - Support `ptr == null` and `ptr != null` (implemented via null keyword above)
 - Optionally support pointer-to-bool coercion in conditions: `if ptr { ... }`
   - null = false, non-null = true
-  - Compile to: `(u32)ptr != 0u32`
+  - Compile to: `(u32)ptr != 0`
 
 **User Choice**: Do we want implicit pointer-to-bool? Or require explicit `ptr != null`?
 
@@ -285,7 +285,7 @@ let f3 = Open(s.as_cstr(), MODE_OLDFILE) // explicit (expression, not var)
 ```novus
 extern pub fn ReadArgs(template: *u8, array: *u8, args: *RDArgs) -> *RDArgs
 
-var results: [u32; 3] = [0u32, 0u32, 0u32]
+var results: [u32; 3] = [0, 0, 0]
 ReadArgs(template, &results, null)  // OK: &[u32] → *u8
 
 extern pub fn ProcessInts(data: *i32, len: i32)
@@ -302,7 +302,7 @@ BadFunc(&data)                      // ERROR: cannot convert &[i32] to *i16
 **Files to Modify**:
 1. `Novus.Core/Middleend/SemanticAnalyzer.cs`
    - In `VisitIfStmt`, detect if condition is pointer type
-   - Auto-convert to: `(u32)ptr != 0u32`
+   - Auto-convert to: `(u32)ptr != 0`
 
 **Debate**: Is this too implicit? User preference?
 
@@ -310,11 +310,11 @@ BadFunc(&data)                      // ERROR: cannot convert &[i32] to *i16
 ```novus
 let ptr: *i32 = GetPtr()
 
-if ptr {        // auto: (u32)ptr != 0u32
+if ptr {        // auto: (u32)ptr != 0
     // use ptr
 }
 
-if !ptr {       // auto: (u32)ptr == 0u32
+if !ptr {       // auto: (u32)ptr == 0
     return
 }
 ```

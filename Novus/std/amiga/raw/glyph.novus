@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: glyph.library
+// Base: _GlyphBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("glyph.library")
+extern pub fn GLYPH_GetClass() -> *u8

@@ -1,0 +1,29 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: bullet.library
+// Base: _BulletBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("bullet.library")
+extern pub fn OpenEngine() -> *GlyphEngine
+@library("bullet.library")
+extern pub fn CloseEngine(glyphEngine: *GlyphEngine)
+@library("bullet.library")
+extern pub fn SetInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+@library("bullet.library")
+extern pub fn SetInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
+@library("bullet.library")
+extern pub fn ObtainInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+@library("bullet.library")
+extern pub fn ObtainInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
+@library("bullet.library")
+extern pub fn ReleaseInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+@library("bullet.library")
+extern pub fn ReleaseInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32

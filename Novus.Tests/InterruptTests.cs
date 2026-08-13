@@ -22,7 +22,7 @@ public class InterruptTests
     {
         const string source = """
             @interrupt
-            amiga fn server(data: *u8 in a1) -> u32 in d0 { return 0u32 }
+            amiga fn server(data: *u8 in a1) -> u32 in d0 { return 0 }
 
             @interrupt_vector
             fn bus_error() {}

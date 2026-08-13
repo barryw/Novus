@@ -4,10 +4,10 @@
 // Shows how to create banks, load/unload them, and share assets between banks.
 
 from std::core import Result, Option
-from std::strings::core import Str
-from std::memory::chip import Priority, ChipAsset, ChipCacheError
-from std::memory::chip_cache import ChipCache
-from std::memory::resource_bank import ResourceBank, BankBuilder, BankError, BankState, ChipBudget
+from std::string::core import Str
+from amiga::sys::exec::memory::chip import Priority, ChipAsset, ChipCacheError
+from amiga::sys::exec::memory::chip_cache import ChipCache
+from amiga::sys::exec::memory::resource_bank import ResourceBank, BankBuilder, BankError, BankState, ChipBudget
 
 #[stack_size(65536)]
 

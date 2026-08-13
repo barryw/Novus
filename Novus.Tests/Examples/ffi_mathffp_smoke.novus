@@ -1,4 +1,4 @@
-from std::ffi::mathffp import SPFlt, SPAdd, SPFix
+from amiga::raw::mathffp import SPFlt, SPAdd, SPFix
 
 pub fn main() -> i32 {
     let sum = unsafe { SPAdd(SPFlt(20), SPFlt(22)) }

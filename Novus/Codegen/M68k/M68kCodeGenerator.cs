@@ -153,6 +153,10 @@ public class M68kCodeGenerator
 
     private void GenerateDataSection()
     {
+        _dataSection.AppendLine("_str_file:");
+        EmitStringData("<novus>", _dataSection);
+        _dataSection.AppendLine();
+
         // String literals
         if (_stringLiterals.Count > 0)
         {
@@ -227,7 +231,8 @@ public class M68kCodeGenerator
         var allocator = new RegisterAllocator(function);
         allocator.AllocateRegisters();
 
-        var selector = new InstructionSelector(allocator, _output, _cpuTarget);
+        var selector = new InstructionSelector(
+            allocator, _output, _cpuTarget, $"{function.Name}_epilogue");
 
         // Emit function prologue
         EmitPrologue(function, allocator);
@@ -358,6 +363,10 @@ public class M68kCodeGenerator
                 selector.EmitIndexAccess(indexAccess);
                 break;
 
+            case IrSliceBoundsCheck sliceCheck:
+                selector.EmitSliceBoundsCheck(sliceCheck);
+                break;
+
             case IrIndexStore indexStore:
                 // Array store: load base address, compute offset, store value
                 selector.EmitIndexStore(indexStore);
@@ -375,6 +384,9 @@ public class M68kCodeGenerator
 
             case IrDefer:
                 // Defer is handled at block level
+                break;
+
+            case IrStructuredForLoopHint:
                 break;
 
             case IrAssert assertInst:

@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: integer.library
+// Base: _IntegerBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("integer.library")
+extern pub fn INTEGER_GetClass() -> *u8

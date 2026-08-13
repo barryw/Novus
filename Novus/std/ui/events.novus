@@ -1,2 +1,0 @@
-// Compatibility module. Window events live in std::ui::window.
-pub use std::ui::window::*

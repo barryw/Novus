@@ -112,6 +112,37 @@ pub fn main() -> i32 {
 
     // ==================== COMPOUND ASSIGNMENT TESTS ====================
 
+    [Theory]
+    [InlineData("+=", IrBinaryOp.OpKind.Add)]
+    [InlineData("-=", IrBinaryOp.OpKind.Sub)]
+    [InlineData("*=", IrBinaryOp.OpKind.Mul)]
+    [InlineData("/=", IrBinaryOp.OpKind.Div)]
+    [InlineData("%=", IrBinaryOp.OpKind.Mod)]
+    [InlineData("&=", IrBinaryOp.OpKind.And)]
+    [InlineData("|=", IrBinaryOp.OpKind.Or)]
+    [InlineData("^=", IrBinaryOp.OpKind.Xor)]
+    [InlineData("<<=", IrBinaryOp.OpKind.Shl)]
+    [InlineData(">>=", IrBinaryOp.OpKind.Shr)]
+    public void BuildIr_CompoundAssignment_LowersToExactBinaryOperator(
+        string assignmentOperator,
+        IrBinaryOp.OpKind expectedOperator)
+    {
+        var module = BuildIr($$"""
+            fn apply() -> u32 {
+                var value: u32 = 8
+                value {{assignmentOperator}} 2
+                return value
+            }
+            """);
+
+        var binary = Assert.Single(module.Functions.Single().BasicBlocks
+            .SelectMany(block => block.Instructions).OfType<IrBinaryOp>());
+        Assert.Equal(expectedOperator, binary.Operation);
+        Assert.Equal("u32", binary.Left.Type.Name);
+        Assert.Equal("u32", binary.Right.Type.Name);
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
     [Fact]
     public void BuildIr_PlusEquals_Compiles()
     {
@@ -262,7 +293,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: u8 = 0u8
+    let x: u8 = 0
     let result = ~x
     return (i32)result
 }";

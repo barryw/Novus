@@ -1,5 +1,5 @@
-from std::ffi::dos import Printf
-from std::ffi::amiga_consts import ID_DTYP, DATATYPESCLASS
+from amiga::raw::dos import Printf
+from amiga::raw::consts import ID_DTYP, DATATYPESCLASS
 
 pub fn main() -> i32 {
     Printf("NOVUS_VARARGS_OK %ld %s\n", ID_DTYP, DATATYPESCLASS)

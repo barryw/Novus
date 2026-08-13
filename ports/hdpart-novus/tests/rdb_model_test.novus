@@ -18,12 +18,12 @@ fn rdb_model_is_correct() -> bool {
     return false unless partition.name().equals("DH0") && partition.low_cylinder() == 2 && partition.high_cylinder() == 408
     return false unless model.largest_free_gap().is_some()
 
-    var header = [0u8; 512]
+    var header: [u8] = [0; 512]
     return false if model.write_header(&var header).is_err()
     {
         let bytes = ByteReader::new(&header)
-        let Result::Ok(value) = bytes.read_be_u32(0u32) else { return false }
-        return false unless value == $5244534Bu32
+        let Result::Ok(value) = bytes.read_be_u32(0) else { return false }
+        return false unless value == $5244534B
     }
     let Result::Ok(parsed) = RdbModel::from_header(&header) else { return false }
     return false unless parsed.cylinders() == 996 && parsed.heads() == 16 && parsed.sectors() == 63
@@ -32,12 +32,12 @@ fn rdb_model_is_correct() -> bool {
     header[64]++
     return false unless matches!(RdbModel::from_header(&header), Result::Err(RdbError::InvalidChecksum))
 
-    var part_block = [0u8; 512]
-    return false if partition.write_block(&model, $FFFFFFFFu32, &var part_block).is_err()
+    var part_block: [u8] = [0; 512]
+    return false if partition.write_block(&model, $FFFFFFFF, &var part_block).is_err()
     let Result::Ok(record) = RdbPartition::from_block(&part_block) else { return false }
     let (parsed_partition, next) = record
     return false unless parsed_partition.name().equals("DH0") && parsed_partition.low_cylinder() == 2 && parsed_partition.high_cylinder() == 408
-    return false unless parsed_partition.dos_type() == DOS_TYPE_FFS_INTL && next == $FFFFFFFFu32
+    return false unless parsed_partition.dos_type() == DOS_TYPE_FFS_INTL && next == $FFFFFFFF
 
     part_block[128]++
     return matches!(RdbPartition::from_block(&part_block), Result::Err(RdbError::InvalidChecksum))

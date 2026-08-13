@@ -1,8 +1,8 @@
 // Test actual struct offsets
 
-from std::ffi::dos import VPrintf, Delay
-from std::ffi::exec import FindTask
-from std::ffi::amiga_structs import Process, Task, MsgPort, Node, List
+from amiga::raw::dos import VPrintf, Delay
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import Process, Task, MsgPort, Node, List
 
 pub fn main() -> i32 {
     // Print sizes

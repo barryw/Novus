@@ -3,11 +3,11 @@
 //
 // Run: novus compile screen_builder_example.novus -o screen_builder --safety-level 0 -O2
 
-from std::ui::screen import ScreenHandle, ScreenBuilder
-from std::ui::window import WindowHandle, WindowBuilder
-from std::ffi::dos import Delay
-from std::ffi::graphics import SetAPen, RectFill, Move, Text
-from std::ffi::amiga_consts import OSCAN_STANDARD
+from amiga::sys::intuition import ScreenHandle, ScreenBuilder
+from amiga::sys::intuition import WindowHandle, WindowBuilder
+from amiga::raw::dos import Delay
+from amiga::raw::graphics import SetAPen, RectFill, Move, Text
+from amiga::raw::consts import OSCAN_STANDARD
 
 pub fn main() -> i32 {
     // =========================================================================
@@ -93,7 +93,7 @@ pub fn main() -> i32 {
     match result4 {
         Result::Ok(screen4) => {
             // Open a window on this screen using WindowBuilder
-            let win_result4 = WindowBuilder::new().title("My Window").position(20, 20).size(200, 100).activate(true).screen(screen4.handle()).build()
+            let win_result4 = WindowBuilder::new().title("My Window").position(20, 20).size(200, 100).activate(true).screen(screen4.as_raw()).build()
 
             match win_result4 {
                 Result::Ok(win4) => {

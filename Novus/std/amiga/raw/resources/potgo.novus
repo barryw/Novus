@@ -1,0 +1,19 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: potgo.resource
+// Base: _PotgoBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("potgo.resource")
+extern pub fn AllocPotBits(bits: u16) -> u16
+@library("potgo.resource")
+extern pub fn FreePotBits(bits: u16)
+@library("potgo.resource")
+extern pub fn WritePotgo(word: u16, mask: u16)

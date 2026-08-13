@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: window.library
+// Base: _WindowBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("window.library")
+extern pub fn WINDOW_GetClass() -> *u8

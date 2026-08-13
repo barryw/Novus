@@ -5,7 +5,7 @@
 
 from std::collections::vecdeque import VecDeque
 from std::core import Option, Result
-from std::error::errors import ExecError
+from amiga::sys::exec::errors import ExecError
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // ============================================================================
@@ -15,17 +15,17 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 @test("VecDeque::new creates empty deque")
 pub fn test_vecdeque_new() {
     let deque = VecDeque::<i32>::new()
-    expect_eq(deque.len(), 0u32, "new deque has len 0")
-    expect_eq(deque.capacity(), 0u32, "new deque has capacity 0")
+    expect_eq(deque.len(), 0, "new deque has len 0")
+    expect_eq(deque.capacity(), 0, "new deque has capacity 0")
     expect_true(deque.is_empty(), "new deque is empty")
 }
 
 @test("VecDeque::with_capacity allocates capacity")
 pub fn test_vecdeque_with_capacity() {
-    match VecDeque::<i32>::with_capacity(10u32) {
+    match VecDeque::<i32>::with_capacity(10) {
         Result::Ok(deque) => {
-            expect_eq(deque.len(), 0u32, "deque has len 0")
-            expect_eq(deque.capacity(), 10u32, "capacity is 10")
+            expect_eq(deque.len(), 0, "deque has len 0")
+            expect_eq(deque.capacity(), 10, "capacity is 10")
             expect_true(deque.is_empty(), "deque is empty")
         },
         Result::Err(_) => expect(false, "with_capacity should succeed")
@@ -44,19 +44,19 @@ pub fn test_vecdeque_push_back() {
         Result::Ok(_) => expect(true, "first push succeeds"),
         Result::Err(_) => expect(false, "first push should succeed")
     }
-    expect_eq(deque.len(), 1u32, "len is 1")
+    expect_eq(deque.len(), 1, "len is 1")
 
     match deque.push_back(20) {
         Result::Ok(_) => expect(true, "second push succeeds"),
         Result::Err(_) => expect(false, "second push should succeed")
     }
-    expect_eq(deque.len(), 2u32, "len is 2")
+    expect_eq(deque.len(), 2, "len is 2")
 
     match deque.push_back(30) {
         Result::Ok(_) => expect(true, "third push succeeds"),
         Result::Err(_) => expect(false, "third push should succeed")
     }
-    expect_eq(deque.len(), 3u32, "len is 3")
+    expect_eq(deque.len(), 3, "len is 3")
 }
 
 @test("VecDeque::pop_back removes from end")
@@ -70,13 +70,13 @@ pub fn test_vecdeque_pop_back() {
         Option::Some(val) => expect_eq(val, 30, "popped 30"),
         Option::None => expect(false, "should have value")
     }
-    expect_eq(deque.len(), 2u32, "len is 2")
+    expect_eq(deque.len(), 2, "len is 2")
 
     match deque.pop_back() {
         Option::Some(val) => expect_eq(val, 20, "popped 20"),
         Option::None => expect(false, "should have value")
     }
-    expect_eq(deque.len(), 1u32, "len is 1")
+    expect_eq(deque.len(), 1, "len is 1")
 }
 
 // ============================================================================
@@ -91,7 +91,7 @@ pub fn test_vecdeque_push_front() {
     let _ = deque.push_front(20)
     let _ = deque.push_front(30)
 
-    expect_eq(deque.len(), 3u32, "len is 3")
+    expect_eq(deque.len(), 3, "len is 3")
 
     // Front should now be 30 (most recently pushed)
     match deque.front() {
@@ -111,13 +111,13 @@ pub fn test_vecdeque_pop_front() {
         Option::Some(val) => expect_eq(val, 10, "popped 10"),
         Option::None => expect(false, "should have value")
     }
-    expect_eq(deque.len(), 2u32, "len is 2")
+    expect_eq(deque.len(), 2, "len is 2")
 
     match deque.pop_front() {
         Option::Some(val) => expect_eq(val, 20, "popped 20"),
         Option::None => expect(false, "should have value")
     }
-    expect_eq(deque.len(), 1u32, "len is 1")
+    expect_eq(deque.len(), 1, "len is 1")
 }
 
 // ============================================================================
@@ -169,7 +169,7 @@ pub fn test_vecdeque_front() {
     }
 
     // Front should not remove the element
-    expect_eq(deque.len(), 3u32, "len unchanged")
+    expect_eq(deque.len(), 3, "len unchanged")
 }
 
 @test("VecDeque::back returns back element")
@@ -185,7 +185,7 @@ pub fn test_vecdeque_back() {
     }
 
     // Back should not remove the element
-    expect_eq(deque.len(), 3u32, "len unchanged")
+    expect_eq(deque.len(), 3, "len unchanged")
 }
 
 @test("VecDeque::front/back on empty returns None")
@@ -214,17 +214,17 @@ pub fn test_vecdeque_get() {
     let _ = deque.push_back(20)
     let _ = deque.push_back(30)
 
-    match deque.get(0u32) {
+    match deque.get(0) {
         Option::Some(val) => expect_eq(*val, 10, "element 0 is 10"),
         Option::None => expect(false, "should have element 0")
     }
 
-    match deque.get(1u32) {
+    match deque.get(1) {
         Option::Some(val) => expect_eq(*val, 20, "element 1 is 20"),
         Option::None => expect(false, "should have element 1")
     }
 
-    match deque.get(2u32) {
+    match deque.get(2) {
         Option::Some(val) => expect_eq(*val, 30, "element 2 is 30"),
         Option::None => expect(false, "should have element 2")
     }
@@ -235,7 +235,7 @@ pub fn test_vecdeque_get_oob() {
     var deque = VecDeque::<i32>::new()
     let _ = deque.push_back(10)
 
-    match deque.get(1u32) {
+    match deque.get(1) {
         Option::Some(_) => expect(false, "should return None"),
         Option::None => expect(true, "correctly returned None")
     }
@@ -248,12 +248,12 @@ pub fn test_vecdeque_set() {
     let _ = deque.push_back(20)
     let _ = deque.push_back(30)
 
-    match deque.set(1u32, 200) {
+    match deque.set(1, 200) {
         Result::Ok(_) => expect(true, "set should succeed"),
         Result::Err(_) => expect(false, "set should not fail")
     }
 
-    match deque.get(1u32) {
+    match deque.get(1) {
         Option::Some(val) => expect_eq(*val, 200, "element 1 is now 200"),
         Option::None => expect(false, "should have element 1")
     }
@@ -272,7 +272,7 @@ pub fn test_vecdeque_clear() {
 
     deque.clear()
 
-    expect_eq(deque.len(), 0u32, "len is 0")
+    expect_eq(deque.len(), 0, "len is 0")
     expect_true(deque.is_empty(), "deque is empty")
 }
 
@@ -284,12 +284,12 @@ pub fn test_vecdeque_get_mut() {
     let _ = deque.pop_front()
     let _ = deque.push_back(30)
 
-    match deque.get_mut(1u32) {
+    match deque.get_mut(1) {
         Option::Some(value) => { *value = 42 },
         Option::None => expect(false, "logical index 1 should exist")
     }
 
-    match deque.get(1u32) {
+    match deque.get(1) {
         Option::Some(value) => expect_eq(*value, 42, "mutable borrow updates wrapped element"),
         Option::None => expect(false, "logical index 1 should exist")
     }
@@ -307,15 +307,15 @@ pub fn test_vecdeque_rotate_left() {
     let _ = deque.push_back(3)
     let _ = deque.push_back(4)
 
-    deque.rotate_left(1u32)
+    deque.rotate_left(1)
 
     // [1, 2, 3, 4] -> [2, 3, 4, 1]
-    match deque.get(0u32) {
+    match deque.get(0) {
         Option::Some(val) => expect_eq(*val, 2, "front is now 2"),
         Option::None => expect(false, "should have element")
     }
 
-    match deque.get(3u32) {
+    match deque.get(3) {
         Option::Some(val) => expect_eq(*val, 1, "back is now 1"),
         Option::None => expect(false, "should have element")
     }
@@ -329,15 +329,15 @@ pub fn test_vecdeque_rotate_right() {
     let _ = deque.push_back(3)
     let _ = deque.push_back(4)
 
-    deque.rotate_right(1u32)
+    deque.rotate_right(1)
 
     // [1, 2, 3, 4] -> [4, 1, 2, 3]
-    match deque.get(0u32) {
+    match deque.get(0) {
         Option::Some(val) => expect_eq(*val, 4, "front is now 4"),
         Option::None => expect(false, "should have element")
     }
 
-    match deque.get(3u32) {
+    match deque.get(3) {
         Option::Some(val) => expect_eq(*val, 3, "back is now 3"),
         Option::None => expect(false, "should have element")
     }
@@ -349,7 +349,7 @@ pub fn test_vecdeque_rotate_right() {
 
 @test("VecDeque handles wrap-around correctly")
 pub fn test_vecdeque_wrap_around() {
-    match VecDeque::<i32>::with_capacity(4u32) {
+    match VecDeque::<i32>::with_capacity(4) {
         Result::Ok(var deque) => {
             // Push some, pop some, push more to force wrap-around
             let _ = deque.push_back(1)
@@ -361,7 +361,7 @@ pub fn test_vecdeque_wrap_around() {
             let _ = deque.push_back(5)
             let _ = deque.push_back(6)  // Should wrap around
 
-            expect_eq(deque.len(), 4u32, "len is 4")
+            expect_eq(deque.len(), 4, "len is 4")
 
             // Verify order is [3, 4, 5, 6]
             match deque.pop_front() {
@@ -405,7 +405,7 @@ pub fn test_vecdeque_grows() {
         i = i + 1
     }
 
-    expect_eq(deque.len(), 20u32, "len is 20")
+    expect_eq(deque.len(), 20, "len is 20")
 
     // Verify first and last elements
     match deque.front() {

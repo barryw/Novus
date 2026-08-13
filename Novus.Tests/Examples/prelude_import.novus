@@ -1,6 +1,6 @@
-// Test file for prelude import issue
-// This tests that importing from std::prelude doesn't cause duplicate enum registration
-from std::prelude import DosError
+// Portable prelude and platform errors remain separate.
+from std::prelude import Result
+from amiga::dos import DosError
 
 fn test_error() -> i32 {
     let err = DosError::NotFound

@@ -583,7 +583,7 @@ impl Hash for Point {
     fn hash(&self) -> u32 {
         // Combine hashes using XOR and FNV-1a mixing constant
         var h: u32 = self.x.hash()
-        h = h ^ (self.y.hash() * 2246822507u32)
+        h = h ^ (self.y.hash() * 2246822507)
         return h
     }
 }

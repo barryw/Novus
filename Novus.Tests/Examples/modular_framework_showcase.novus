@@ -144,7 +144,7 @@ impl Framework {
     pub fn run<T>(&var self, plugin: &var T, max_frames: u32) -> Result<(), FrameworkError> where T: Plugin {
         plugin.on_init()?
         self.running = true
-        var frame = 0u32
+        var frame: u32 = 0
 
         while self.running && frame < max_frames {
             self.input.poll()

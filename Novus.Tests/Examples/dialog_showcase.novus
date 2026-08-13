@@ -1,14 +1,14 @@
-// Dialog Showcase - Demonstrates all std::ui::dialog functions
+// Dialog Showcase - Demonstrates all amiga::ui functions
 // This example shows every dialog type available in the dialog module.
 //
 // Run this on an Amiga to see all the different dialog styles!
 
-from std::ui::dialog import alert, alert_with_button, alert_on
-from std::ui::dialog import confirm, confirm_with_buttons, confirm_on
-from std::ui::dialog import choice, choice_on, save_dialog
-from std::ui::dialog import retry_dialog, RetryChoice
-from std::ui::dialog import error, warning, info
-from std::ui::window import WindowHandle
+from amiga::ui import alert, alert_with_button, alert_on
+from amiga::ui import confirm, confirm_with_buttons, confirm_on
+from amiga::ui import choice, choice_on, save_dialog
+from amiga::ui import retry, Retry
+from amiga::ui import error, warning, info
+from amiga::sys::intuition import WindowHandle
 from std::io::file import write
 
 fn main() -> i32 {
@@ -142,17 +142,17 @@ fn main() -> i32 {
     write("\n--- Part 6: Retry Dialog Pattern ---\n")
 
     write("Showing retry dialog...\n")
-    let retry_choice = retry_dialog("Disk Error", "Cannot write to disk.\n\nThe disk may be full or write-protected.")
+    let retry_choice = retry("Disk Error", "Cannot write to disk.\n\nThe disk may be full or write-protected.")
     match retry_choice {
-        RetryChoice::Retry => {
+        Retry::Retry => {
             write("  -> User chose RETRY\n")
             info("Retrying operation...")
         },
-        RetryChoice::Ignore => {
+        Retry::Ignore => {
             write("  -> User chose IGNORE\n")
             info("Ignoring error, continuing...")
         },
-        RetryChoice::Abort => {
+        Retry::Abort => {
             write("  -> User chose ABORT\n")
             info("Operation aborted.")
         }
@@ -172,11 +172,11 @@ fn main() -> i32 {
 
             // Alert centered on window
             write("Showing alert on window...\n")
-            alert_on(window.handle(), "Window Alert", "This dialog is centered on the parent window!")
+            alert_on(window.as_raw(), "Window Alert", "This dialog is centered on the parent window!")
 
             // Confirm centered on window
             write("Showing confirm on window...\n")
-            if confirm_on(window.handle(), "Window Confirm", "Did you notice this is centered on the window?") {
+            if confirm_on(window.as_raw(), "Window Confirm", "Did you notice this is centered on the window?") {
                 write("  -> User confirmed\n")
             } else {
                 write("  -> User declined\n")
@@ -184,7 +184,7 @@ fn main() -> i32 {
 
             // Choice centered on window
             write("Showing choice on window...\n")
-            let window_choice = choice_on(window.handle(), "Window Choice", "Pick a number:", "One|Two|Three|Cancel")
+            let window_choice = choice_on(window.as_raw(), "Window Choice", "Pick a number:", "One|Two|Three|Cancel")
             match window_choice {
                 1 => write("  -> User chose ONE\n"),
                 2 => write("  -> User chose TWO\n"),
@@ -216,16 +216,16 @@ fn main() -> i32 {
 
         // Simulate failure on first two attempts
         if attempts < 3 {
-            let retry = retry_dialog("Write Failed", "Failed to write file.\n\nRetry the operation?")
-            match retry {
-                RetryChoice::Retry => {
+            let retry_choice = retry("Write Failed", "Failed to write file.\n\nRetry the operation?")
+            match retry_choice {
+                Retry::Retry => {
                     write("    -> Retrying...\n")
                 },
-                RetryChoice::Ignore => {
+                Retry::Ignore => {
                     write("    -> Ignoring error\n")
                     should_retry = false
                 },
-                RetryChoice::Abort => {
+                Retry::Abort => {
                     write("    -> Aborting\n")
                     should_retry = false
                 }

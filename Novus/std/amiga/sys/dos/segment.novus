@@ -1,0 +1,184 @@
+// Owned AmigaDOS segments reconstructed from in-memory HUNK images.
+
+from std::core import Drop, Error, Result
+from amiga::raw::consts import MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::dos import InternalLoadSeg, InternalUnLoadSeg, LoadSeg, UnLoadSeg
+from amiga::raw::exec import AllocMem, FreeMem
+from std::memory::slice import Slice
+from amiga::sys::dos::bptr import BPtr
+from std::string::core import FixedCString, Str
+
+pub enum SegmentError {
+    EmptyImage,
+    LoadFailed,
+}
+
+impl SegmentError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            SegmentError::EmptyImage => "The HUNK image is empty",
+            SegmentError::LoadFailed => "AmigaDOS could not load the HUNK image",
+        }
+    }
+}
+
+impl Error for SegmentError {
+    fn message(&self) -> *u8 { return SegmentError::message(self) }
+}
+
+struct MemoryCursor {
+    data: *u8
+    offset: u32
+    len: u32
+}
+
+type SegmentRead = amiga fn(*MemoryCursor in d1, *u8 in d2, i32 in d3) -> i32 in d0
+type SegmentAlloc = amiga fn(u32 in d0, u32 in d1) -> *u8 in d0
+type SegmentFree = amiga fn(*u8 in a1, u32 in d0)
+
+@suppress("W0002", "Positive byte counts are bounded to the remaining in-memory stream")
+amiga fn segment_read(cursor: *MemoryCursor in d1, target: *u8 in d2, count: i32 in d3) -> i32 in d0 {
+    if cursor == null || target == null || count <= 0 { return 0 }
+    var available: u32 = 0
+    unsafe {
+        if (*cursor).offset <= (*cursor).len {
+            available = (*cursor).len - (*cursor).offset
+        }
+    }
+    let requested = (u32)count
+    let actual = if requested < available { requested } else { available }
+    unsafe {
+        var i: u32 = 0
+        while i < actual {
+            target[i] = (*cursor).data[(*cursor).offset + i]
+            i++
+        }
+        (*cursor).offset = (*cursor).offset + actual
+    }
+    return (i32)actual
+}
+
+amiga fn segment_alloc(size: u32 in d0, requirements: u32 in d1) -> *u8 in d0 {
+    return unsafe { AllocMem(size, requirements | MEMF_PUBLIC | MEMF_CLEAR) }
+}
+
+amiga fn segment_free(memory: *u8 in a1, size: u32 in d0) {
+    if memory != null { unsafe { FreeMem(memory, size) } }
+}
+
+/// Owns every hunk allocated by InternalLoadSeg until explicitly transferred.
+pub struct LoadedSegment {
+    segment: BPtr<u8>
+    active: bool
+    file_backed: bool
+}
+
+impl LoadedSegment {
+    @suppress("W0002", "InternalLoadSeg uses a pointer-sized BPTR handle and callback table")
+    pub fn from_hunk(image: Slice<u8>) -> Result<LoadedSegment, SegmentError> {
+        if image.is_empty() { return Result::Err(SegmentError::EmptyImage) }
+
+        let read_callback: SegmentRead = segment_read
+        let alloc_callback: SegmentAlloc = segment_alloc
+        let free_callback: SegmentFree = segment_free
+        let read_address = unsafe { *(*u32)&read_callback }
+        let alloc_address = unsafe { *(*u32)&alloc_callback }
+        let free_address = unsafe { *(*u32)&free_callback }
+        var callbacks = [read_address, alloc_address, free_address]
+        var cursor = MemoryCursor {
+            data: unsafe { (*u8)image.get_unchecked(0) },
+            offset: 0,
+            len: image.len(),
+        }
+        var stack_size: u32 = 0
+        let raw = InternalLoadSeg(
+            (i32)(u32)(*u8)&var cursor,
+            0,
+            (*u8)&var callbacks[0],
+            (*u8)&var stack_size
+        )
+        let segment = match BPtr::<u8>::from_raw(raw) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(SegmentError::LoadFailed),
+        }
+        if segment.is_null() { return Result::Err(SegmentError::LoadFailed) }
+        return Result::Ok(LoadedSegment { segment: segment, active: true, file_backed: false })
+    }
+
+    /// Load and own a segment from an AmigaDOS file.
+    pub fn from_file(path: Str) -> Result<LoadedSegment, SegmentError> {
+        let c_path = match FixedCString::<255>::new_from_str(path) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(SegmentError::LoadFailed),
+        }
+        let raw = LoadSeg(c_path.as_cstr())
+        let segment = match BPtr::<u8>::from_raw(raw) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(SegmentError::LoadFailed),
+        }
+        if segment.is_null() { return Result::Err(SegmentError::LoadFailed) }
+        return Result::Ok(LoadedSegment { segment: segment, active: true, file_backed: true })
+    }
+
+    pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
+
+    /// Transfer the segment to a permanent DOS owner.
+    pub fn into_raw(consuming self) -> BPtr<u8> {
+        self.active = false
+        return self.segment
+    }
+}
+
+impl Drop for LoadedSegment {
+    @suppress("W0002", "A validated BPTR is passed back through the signed NDK ABI field")
+    fn drop(&var self) {
+        if self.active {
+            if self.file_backed {
+                UnLoadSeg((i32)self.segment.as_raw())
+            } else {
+                InternalUnLoadSeg((i32)self.segment.as_raw(), segment_free)
+            }
+            self.active = false
+        }
+    }
+}
+
+/// Owns a segment list loaded from an AmigaDOS file.
+pub struct LoadedFileSegment {
+    segment: BPtr<u8>
+    active: bool
+}
+
+impl LoadedFileSegment {
+    pub fn open(path: Str) -> Result<LoadedFileSegment, SegmentError> {
+        let c_path = match FixedCString::<255>::new_from_str(path) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(SegmentError::LoadFailed),
+        }
+        let raw = LoadSeg(c_path.as_cstr())
+        let segment = match BPtr::<u8>::from_raw(raw) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(SegmentError::LoadFailed),
+        }
+        if segment.is_null() { return Result::Err(SegmentError::LoadFailed) }
+        return Result::Ok(LoadedFileSegment { segment: segment, active: true })
+    }
+
+    pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
+
+    /// Transfer the loaded image to an operating-system resident.
+    pub fn into_raw(consuming self) -> BPtr<u8> {
+        self.active = false
+        return self.segment
+    }
+}
+
+impl Drop for LoadedFileSegment {
+    @suppress("W0002", "A validated BPTR is returned through the signed DOS ABI")
+    fn drop(&var self) {
+        if self.active {
+            UnLoadSeg((i32)self.segment.as_raw())
+            self.active = false
+        }
+    }
+}

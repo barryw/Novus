@@ -801,12 +801,12 @@ pub fn audio_dma_bit(channel: u8) -> u16 {
 
 ```novus
 // Paula Audio API
-// Module: std::audio::paula
+// Module: amiga::sys::hardware::audio
 //
 // Safe wrapper around Paula audio hardware for playing 8-bit samples.
 // Paula has 4 independent DMA channels supporting 8-bit signed PCM audio.
 
-use std::hardware::registers::{
+use amiga::sys::hardware::registers::{
     AUD0LC, AUD1LC, AUD2LC, AUD3LC,
     AUD0LEN, AUD1LEN, AUD2LEN, AUD3LEN,
     AUD0PER, AUD1PER, AUD2PER, AUD3PER,
@@ -1156,7 +1156,7 @@ fn play_beep() {
 
 ```novus
 // Safe wrapper API
-use std::audio::paula::{Channel, AudioSample, play_sample, SAMPLE_RATE_11KHZ}
+use amiga::sys::hardware::audio::{Channel, AudioSample, play_sample, SAMPLE_RATE_11KHZ}
 use std::memory::allocate_chip
 
 fn play_sound_effect() {
@@ -1200,7 +1200,7 @@ fn load_explosion_sound() -> *u8 {
 8. Write lowering tests
 
 ### Phase 3 (Polish)
-9. Create high-level wrapper API (`std::audio::paula`)
+9. Create high-level wrapper API (`amiga::sys::hardware::audio`)
 10. Write integration tests and examples
 11. Add documentation and code comments
 12. Performance testing on real hardware

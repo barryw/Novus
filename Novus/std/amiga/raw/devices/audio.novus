@@ -1,0 +1,15 @@
+// Audio Device FFI
+// Library: audio.device
+//
+// NOTE: audio.device is purely IORequest-based and has no library functions.
+// All operations use standard exec.library device I/O:
+// - OpenDevice() to open and allocate channels
+// - DoIO() / SendIO() / WaitIO() for commands
+// - CloseDevice() to close
+//
+// Constants are in amiga::raw::consts (ADCMD_*, ADIOF_*, ADIOERR_*)
+// Structs are in amiga::raw::structs (IOAudio)
+//
+// For high-level audio playback, use:
+// - amiga::sys::hardware::audio for direct hardware access (games/demos)
+// - amiga::sys::device::audio for OS-friendly playback (applications)

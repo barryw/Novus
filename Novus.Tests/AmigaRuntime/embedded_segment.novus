@@ -1,16 +1,17 @@
 from std::core import Result
-from std::ffi::amiga_consts import MEMF_ANY
-from std::ffi::exec import AvailMem
-from std::os::segment import LoadedSegment
+from amiga::raw::consts import MEMF_ANY
+from amiga::raw::exec import AvailMem
+from std::io::file import write
+from amiga::sys::dos import LoadedSegment
 from std::test::test import expect
 
 // One four-byte CODE hunk containing RTS.
 static var MINIMAL_HUNK: [u8] = [
-    0u8, 0u8, 3u8, $F3u8, 0u8, 0u8, 0u8, 0u8,
-    0u8, 0u8, 0u8, 1u8, 0u8, 0u8, 0u8, 0u8,
-    0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 1u8,
-    0u8, 0u8, 3u8, $E9u8, 0u8, 0u8, 0u8, 1u8,
-    $4Eu8, $75u8, 0u8, 0u8, 0u8, 0u8, 3u8, $F2u8,
+    0, 0, 3, $F3, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1,
+    0, 0, 3, $E9, 0, 0, 0, 1,
+    $4E, $75, 0, 0, 0, 0, 3, $F2,
 ]
 
 @test("embedded HUNK segments load and release every allocation")
@@ -18,7 +19,7 @@ pub fn embedded_segment() {
     expect(load_and_drop(), "minimal HUNK loads")
     let before = unsafe { AvailMem(MEMF_ANY) }
     var ok = true
-    while var i < 64u32 {
+    while var i < 64 {
         if !load_and_drop() { ok = false }
         i++
     }
@@ -30,7 +31,16 @@ pub fn embedded_segment() {
 fn load_and_drop() -> bool {
     let segment = match LoadedSegment::from_hunk(&MINIMAL_HUNK) {
         Result::Ok(value) => value,
-        Result::Err(_) => return false,
+        Result::Err(_) => {
+            write("InternalLoadSeg failed\n")
+            return false
+        },
     }
-    return !segment.segment().is_null() && segment.segment().is_addressable()
+    return false if segment.segment().is_null() || !segment.segment().is_addressable()
+    let code = unsafe { (*u8)(segment.segment().address() + 4) }
+    if unsafe { code[0] != $4E || code[1] != $75 } {
+        write("segment %lX begins %lX %lX\n", segment.segment().address(), (u32)code[0], (u32)code[1])
+        return false
+    }
+    return true
 }

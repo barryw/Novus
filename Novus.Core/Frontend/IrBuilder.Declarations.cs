@@ -111,6 +111,27 @@ public partial class IrBuilder
             return;
         }
 
+        if (valueExpr is NovusParser.PrimaryExprContext fourCcPrimary &&
+            fourCcPrimary.primaryExpression() is NovusParser.FourCcLiteralContext fourCcLiteral)
+        {
+            var bytes = ByteLiteralParser.Parse(fourCcLiteral.FOURCC_LITERAL().GetText(), 6);
+            if (bytes.Length != 4)
+            {
+                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                    "a FourCC literal must contain exactly four bytes", GetLocation(fourCcLiteral));
+                return;
+            }
+            var fourCcValue = unchecked((int)(((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) |
+                                              ((uint)bytes[2] << 8) | bytes[3]));
+            var type = declaredType ?? IrIntType.U32;
+            if (!type.Equals(IrIntType.U32))
+                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                    "a FourCC constant has type u32", GetLocation(fourCcLiteral));
+            _symbols.RegisterConstant(name, type, fourCcValue);
+            _module.Constants[name] = (visibility, type, fourCcValue);
+            return;
+        }
+
         if (declaredType is IrFixedType or IrFloatType &&
             ConstantExpressionEvaluator.TryParseFloatingLiteral(valueExpr, out var floatingValue))
         {
@@ -483,7 +504,7 @@ public partial class IrBuilder
     private void CreateStaticAudioSample(string name, string dataName, Audio.AudioConverter.ConversionResult result, Visibility visibility)
     {
         // Look up or create AudioSample struct type
-        // The struct should match std::audio::paula::SampleHandle layout:
+        // The struct should match amiga::sys::hardware::audio::SampleHandle layout:
         // - data: *u8 (pointer to sample data)
         // - length_bytes: u32
         // - length_words: u16
@@ -499,7 +520,7 @@ public partial class IrBuilder
         if (sampleStruct == null)
         {
             // AudioSample struct not imported - create a compatible anonymous struct type
-            // This allows the audio attribute to work even without importing std::audio
+            // This allows the audio attribute to work without an explicit audio import.
             var fields = new List<IrStructField>
             {
                 new IrStructField("data", new IrPointerType(IrIntType.U8)),
@@ -544,7 +565,7 @@ public partial class IrBuilder
     /// </summary>
     private void CreateStaticAudioAsset(string name, string dataName, Audio.AudioConverter.ConversionResult result, Visibility visibility)
     {
-        // AudioAsset struct layout (matches std::audio::ptplayer::AudioAsset):
+        // AudioAsset struct layout (matches amiga::sys::hardware::ptplayer::AudioAsset):
         // - data: *u8 (pointer to the data array in fast RAM)
         // - size: u32 (size in bytes)
         // - sample_rate: u32 (original sample rate)
@@ -1029,7 +1050,17 @@ public partial class IrBuilder
 
         // Parse enum variants
         var variants = new List<IrEnumVariant>();
-        int tag = 0;
+        var underlyingType = context.primitiveTypeName() == null
+            ? null
+            : MapPrimitiveTypeName(context.primitiveTypeName().GetText()) as IrIntType;
+        if (context.primitiveTypeName() != null && underlyingType == null)
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                "an enum representation must be an integer type", GetLocation(context.primitiveTypeName()));
+        }
+        enumType.UnderlyingType = underlyingType;
+
+        long tag = 0;
 
         foreach (var variantCtx in context.enumVariant())
         {
@@ -1042,6 +1073,33 @@ public partial class IrBuilder
                 {
                     var dataType = ParseType(typeCtx);
                     associatedData.Add(dataType);
+                }
+            }
+
+            if (underlyingType != null && associatedData.Count > 0)
+            {
+                _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                    "represented enums cannot have associated data", GetLocation(variantCtx));
+            }
+
+            var explicitTag = variantCtx.INTEGER_LITERAL()?.GetText()
+                ?? variantCtx.BINARY_LITERAL()?.GetText()
+                ?? variantCtx.HEX_LITERAL()?.GetText();
+            if (explicitTag != null)
+            {
+                if (underlyingType == null)
+                {
+                    _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                        "explicit discriminants require an enum representation", GetLocation(variantCtx));
+                }
+                else
+                {
+                    var parsed = IntegerLiteralParser.Parse(explicitTag, underlyingType, underlyingType);
+                    if (!parsed.FitsType)
+                        _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                            $"enum discriminant '{explicitTag}' does not fit {underlyingType.Name}", GetLocation(variantCtx));
+                    else
+                        tag = parsed.ToBitPattern();
                 }
             }
 
@@ -1058,6 +1116,10 @@ public partial class IrBuilder
         {
             enumType.Variants.Add(variant);
         }
+
+        if (underlyingType != null && variants.Select(variant => variant.Tag).Distinct().Count() != variants.Count)
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                $"enum '{name}' contains duplicate discriminants", GetLocation(context));
 
         // Force size calculation for non-generic enums
         if (genericParams is [])
@@ -1258,7 +1320,10 @@ public partial class IrBuilder
                 // Parse return type
                 var returnType = ParseReturnType(methodDecl.type());
 
-                var traitMethod = new IrTraitMethod(methodName, parameters, returnType, methodGenericParams.Count > 0 ? methodGenericParams : null);
+                var traitMethod = new IrTraitMethod(
+                    methodName, parameters, returnType,
+                    methodGenericParams.Count > 0 ? methodGenericParams : null,
+                    ParseAttributesSimple(methodDecl.attribute()));
 
                 // Check if there's a default implementation (body block)
                 if (methodDecl.block() != null)

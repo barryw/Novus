@@ -1,0 +1,1238 @@
+// ReAction GUI Builder API
+// Namespace: amiga::sys::reaction
+//
+// High-level builder API for ReAction GUI applications (OS 3.5+).
+// Follows the same patterns as GadToolsMenuBuilder in amiga::sys::gadtools.
+//
+// ## Design Pattern: Hierarchical Builder → Flat BOOPSI Objects
+//
+// The user sees a clean hierarchical API:
+//   var layout = builder.layout(LayoutOrientation::Vertical)
+//   layout.add_button(1, "OK")
+//   layout.add_checkbox(2, "Enable")
+//
+// Behind the scenes, we track gadgets/layouts and create BOOPSI objects
+// with proper parent-child relationships at build() time.
+
+from std::core import Option, Result, Vec
+from amiga::sys::intuition::errors import IntuitionError
+from amiga::raw::structs import Screen
+from amiga::raw::structs import Window
+from amiga::raw::structs import Menu
+from amiga::raw::structs import DrawInfo
+from amiga::raw::structs import TagItem
+from amiga::raw::structs import Node
+from amiga::raw::structs import List
+from amiga::raw::structs import IClass
+from amiga::raw::structs import Gadget
+from amiga::raw::structs import Requester
+from std::memory::slice import Slice
+from amiga::raw::consts import *
+from amiga::raw::reaction_tags import *
+from amiga::raw::intuition import NewObjectA
+from amiga::raw::intuition import DisposeObject
+from amiga::raw::intuition import SetAttrsA
+from amiga::raw::intuition import GetAttr
+from amiga::raw::intuition import SetGadgetAttrsA
+from amiga::raw::intuition import LockPubScreen
+from amiga::raw::intuition import UnlockPubScreen
+from amiga::raw::intuition import GetScreenDrawInfo
+from amiga::raw::intuition import FreeScreenDrawInfo
+from amiga::raw::layout import LAYOUT_GetClass
+from amiga::raw::layout import RethinkLayout
+from amiga::raw::button import BUTTON_GetClass
+from amiga::raw::checkbox import CHECKBOX_GetClass
+from amiga::raw::integer import INTEGER_GetClass
+from amiga::raw::radiobutton import RADIOBUTTON_GetClass
+from amiga::raw::radiobutton import AllocRadioButtonNodeA
+from amiga::raw::radiobutton import FreeRadioButtonNode
+from amiga::raw::label import LABEL_GetClass
+from amiga::raw::window import WINDOW_GetClass
+from amiga::raw::exec import AllocVec
+from amiga::raw::exec import FreeVec
+from amiga::raw::exec import CopyMem
+from amiga::raw::exec import Wait
+from amiga::raw::exec import GetMsg
+from amiga::raw::exec import ReplyMsg
+from amiga::raw::exec import NewList
+from amiga::raw::exec import AddTail
+from std::string::core import Str
+from amiga::sys::gadtools import GadToolsMenuBuilder, GadToolsMenuStrip
+
+// ============================================================================
+// External: DoMethodA from amiga.lib
+// ============================================================================
+// DoMethodA dispatches a BOOPSI method to an object's class dispatcher.
+// It's provided by amiga.lib which Novus links against.
+
+extern fn DoMethodA(object: *u8, message: *u32) -> u32
+
+// ============================================================================
+// Orientation Enum
+// ============================================================================
+
+pub enum LayoutOrientation {
+    Horizontal,
+    Vertical,
+}
+
+// ============================================================================
+// Bevel Style Enum
+// ============================================================================
+
+pub enum BevelStyle {
+    None,
+    Thin,
+    Button,
+    Group,
+    Field,
+}
+
+// ============================================================================
+// Internal: Gadget Entry (tracked during building)
+// ============================================================================
+
+// Type of gadget/layout being tracked
+// Note: pub required to work around codegen bug with private enum variants
+pub enum GadgetType {
+    Layout,
+    Button,
+    Checkbox,
+    Integer,
+    RadioButton,
+    Label,
+}
+
+// Entry for a gadget or layout being built
+struct GadgetEntry {
+    gadget_type: GadgetType
+    id: u32
+    parent_index: i32           // Index of parent layout (-1 = root)
+    object: *u8                 // Created BOOPSI object (filled in during build)
+    // Tag storage
+    tags: *TagItem
+    tag_count: u32
+    tag_capacity: u32
+}
+
+// ============================================================================
+// ReActionBuilder - Main Builder
+// ============================================================================
+
+pub struct ReActionBuilder {
+    screen: *Screen
+    draw_info: *DrawInfo
+    owns_screen: bool
+    // Gadget/layout entries
+    entries: *GadgetEntry
+    entry_count: u32
+    entry_capacity: u32
+    // String allocations tracking
+    labels: **u8
+    label_count: u32
+    label_capacity: u32
+    // RadioButton node tracking
+    radio_nodes: **Node
+    radio_node_count: u32
+    radio_node_capacity: u32
+    // Radio button list headers
+    radio_lists: **List
+    radio_list_count: u32
+    radio_list_capacity: u32
+}
+
+impl ReActionBuilder {
+    /// Create a new ReAction builder for the given screen
+    pub fn new(screen: *Screen) -> ReActionBuilder {
+        unsafe {
+            let draw_info = GetScreenDrawInfo(screen)
+
+            // Allocate initial entry array (16 entries)
+            let entry_capacity: u32 = 16
+            let entry_size = entry_capacity * @sizeof(GadgetEntry)
+            let entry_mem = AllocVec(entry_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !entry_mem {
+                panic!("Failed to allocate memory for ReAction builder entries")
+            }
+
+            // Allocate label tracking array
+            let label_capacity: u32 = 32
+            let label_size = label_capacity * 4
+            let label_mem = AllocVec(label_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                FreeVec(entry_mem)
+                panic!("Failed to allocate memory for label tracking")
+            }
+
+            // Allocate radio node tracking array
+            let radio_capacity: u32 = 16
+            let radio_size = radio_capacity * 4
+            let radio_mem = AllocVec(radio_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !radio_mem {
+                FreeVec(label_mem)
+                FreeVec(entry_mem)
+                panic!("Failed to allocate memory for radio node tracking")
+            }
+
+            // Allocate radio list tracking array
+            let radio_list_mem = AllocVec(radio_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !radio_list_mem {
+                FreeVec(radio_mem)
+                FreeVec(label_mem)
+                FreeVec(entry_mem)
+                panic!("Failed to allocate memory for radio list tracking")
+            }
+
+            return ReActionBuilder {
+                screen: screen,
+                draw_info: draw_info,
+                owns_screen: false,
+                entries: (*GadgetEntry)entry_mem,
+                entry_count: 0,
+                entry_capacity: entry_capacity,
+                labels: (**u8)label_mem,
+                label_count: 0,
+                label_capacity: label_capacity,
+                radio_nodes: (**Node)radio_mem,
+                radio_node_count: 0,
+                radio_node_capacity: radio_capacity,
+                radio_lists: (**List)radio_list_mem,
+                radio_list_count: 0,
+                radio_list_capacity: radio_capacity,
+            }
+        }
+    }
+
+    /// Create a builder on the Workbench screen and own its lock.
+    pub fn workbench() -> Result<ReActionBuilder, IntuitionError> {
+        let screen = LockPubScreen(null)
+        if !screen {
+            return Result::Err(IntuitionError::InvalidScreen)
+        }
+
+        var builder = ReActionBuilder::new(screen)
+        builder.owns_screen = true
+        return Result::Ok(builder)
+    }
+
+    /// Create a menu builder for this window's screen.
+    pub fn menu_builder(&self) -> GadToolsMenuBuilder {
+        return GadToolsMenuBuilder::new(self.screen)
+    }
+
+    /// Create the root layout and return a handle
+    pub fn layout(&var self, orientation: LayoutOrientation) -> LayoutHandle {
+        let orient_val = match orientation {
+            LayoutOrientation::Horizontal => LAYOUT_ORIENT_HORIZ,
+            LayoutOrientation::Vertical => LAYOUT_ORIENT_VERT,
+        }
+
+        let index = self.add_entry(GadgetType::Layout, 0, -1)
+
+        // Add orientation tag
+        self.add_tag_to_entry(index, LAYOUT_Orientation, orient_val)
+        // Add draw info
+        self.add_tag_to_entry(index, GA_DrawInfo, (u32)self.draw_info)
+
+        return LayoutHandle {
+            builder: self,
+            entry_index: index,
+        }
+    }
+
+    /// Build the window with all gadgets
+    pub fn build(&var self, title: Str) -> Result<ReActionWindow, IntuitionError> {
+        return self.build_window(title, null, Option::None)
+    }
+
+    /// Build a window that owns its menu strip.
+    pub fn build_with_menu(&var self, title: Str, consuming menu_strip: GadToolsMenuStrip) -> Result<ReActionWindow, IntuitionError> {
+        let menu = menu_strip.raw_menu()
+        return self.build_window(title, menu, Option::Some(menu_strip))
+    }
+
+    fn build_window(&var self, title: Str, menu: *Menu, consuming menu_strip: Option<GadToolsMenuStrip>) -> Result<ReActionWindow, IntuitionError> {
+        // Allocate title string
+        let title_ptr = self.alloc_label(title)
+
+        // Build all BOOPSI objects in dependency order (children first)
+        // We process entries in reverse to ensure children are built before parents
+
+        unsafe {
+            // First pass: create all gadget objects (leaves)
+            var i: u32 = 0
+            forever {
+                if i >= self.entry_count {
+                    break
+                }
+
+                let entry = &var self.entries[i]
+                match entry.gadget_type {
+                    GadgetType::Button => {
+                        self.finalize_entry_tags(i)
+                        let class_ptr = BUTTON_GetClass()
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
+                    },
+                    GadgetType::Checkbox => {
+                        self.finalize_entry_tags(i)
+                        let class_ptr = CHECKBOX_GetClass()
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
+                    },
+                    GadgetType::Integer => {
+                        self.finalize_entry_tags(i)
+                        let class_ptr = INTEGER_GetClass()
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
+                    },
+                    GadgetType::RadioButton => {
+                        self.finalize_entry_tags(i)
+                        let class_ptr = RADIOBUTTON_GetClass()
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
+                    },
+                    GadgetType::Label => {
+                        self.finalize_entry_tags(i)
+                        let class_ptr = LABEL_GetClass()
+                        entry.object = NewObjectA((*IClass)class_ptr, null, entry.tags)
+                    },
+                    _ => {
+                        // Layout handled in second pass
+                    }
+                }
+
+                i++
+            }
+
+            // Second pass: create layout objects and add children
+            // Process in reverse order so nested layouts work correctly
+            var j: i32 = (i32)self.entry_count - 1
+            forever {
+                if j < 0 {
+                    break
+                }
+
+                let idx = (u32)j
+                let layout_entry = &var self.entries[idx]
+
+                match layout_entry.gadget_type {
+                    GadgetType::Layout => {
+                        // Add LAYOUT_AddChild tags for all children of this layout
+                        var k: u32 = 0
+                        forever {
+                            if k >= self.entry_count {
+                                break
+                            }
+
+                            let child_entry = &self.entries[k]
+                            if child_entry.parent_index == j {
+                                // This is a child of our layout
+                                if child_entry.object {
+                                    self.add_tag_to_entry(idx, LAYOUT_AddChild, (u32)child_entry.object)
+                                }
+                            }
+                            k++
+                        }
+
+                        // Finalize and create the layout
+                        self.finalize_entry_tags(idx)
+                        let class_ptr = LAYOUT_GetClass()
+                        layout_entry.object = NewObjectA((*IClass)class_ptr, null, layout_entry.tags)
+                    },
+                    _ => {}
+                }
+
+                j--
+            }
+
+            // Get the root layout (entry 0)
+            let root_layout = self.entries[0].object
+            if !root_layout {
+                return Result::Err(IntuitionError::WindowOpenFailed)
+            }
+
+            // Create window object
+            let window_class = WINDOW_GetClass()
+            let window_tags = [
+                TagItem { ti_Tag: WA_Title, ti_Data: (u32)title_ptr },
+                TagItem { ti_Tag: WA_DragBar, ti_Data: 1 },
+                TagItem { ti_Tag: WA_CloseGadget, ti_Data: 1 },
+                TagItem { ti_Tag: WA_DepthGadget, ti_Data: 1 },
+                TagItem { ti_Tag: WA_SizeGadget, ti_Data: 1 },
+                TagItem { ti_Tag: WA_Activate, ti_Data: 1 },
+                TagItem { ti_Tag: WA_CustomScreen, ti_Data: (u32)self.screen },
+                TagItem { ti_Tag: WINDOW_MenuStrip, ti_Data: (u32)menu },
+                TagItem { ti_Tag: WINDOW_Layout, ti_Data: (u32)root_layout },
+                TagItem { ti_Tag: WINDOW_Position, ti_Data: WPOS_CENTERSCREEN },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+
+            let window_obj = NewObjectA((*IClass)window_class, null, &window_tags[0])
+            if !window_obj {
+                // Cleanup gadgets
+                self.cleanup_objects()
+                return Result::Err(IntuitionError::WindowOpenFailed)
+            }
+
+            // Open the window using WM_OPEN method
+            let open_msg: [u32] = [WM_OPEN]
+            let window_ptr = DoMethodA(window_obj, &open_msg[0])
+
+            if window_ptr == 0 {
+                DisposeObject(window_obj)
+                self.cleanup_objects()
+                return Result::Err(IntuitionError::WindowOpenFailed)
+            }
+
+            // Get the signal mask
+            var sig_mask: u32 = 0
+            GetAttr(WINDOW_SigMask, window_obj, (*u8)&sig_mask)
+
+            // Transfer ownership to window wrapper
+            let labels = self.labels
+            let label_count = self.label_count
+            let radio_nodes = self.radio_nodes
+            let radio_node_count = self.radio_node_count
+            let radio_lists = self.radio_lists
+            let radio_list_count = self.radio_list_count
+            let draw_info = self.draw_info
+            let owns_screen = self.owns_screen
+
+            // Clear builder ownership
+            self.labels = null
+            self.label_count = 0
+            self.radio_nodes = null
+            self.radio_node_count = 0
+            self.radio_lists = null
+            self.radio_list_count = 0
+            self.draw_info = null
+            self.owns_screen = false
+
+            return Result::Ok(ReActionWindow {
+                window_obj: window_obj,
+                window: (*Window)window_ptr,
+                sig_mask: sig_mask,
+                screen: self.screen,
+                draw_info: draw_info,
+                owns_screen: owns_screen,
+                menu_strip: menu_strip,
+                labels: labels,
+                label_count: label_count,
+                radio_nodes: radio_nodes,
+                radio_node_count: radio_node_count,
+                radio_lists: radio_lists,
+                radio_list_count: radio_list_count,
+            })
+        }
+    }
+
+    // ========================================================================
+    // Internal helpers
+    // ========================================================================
+
+    /// Allocate a null-terminated copy of a string label
+    fn alloc_label(&var self, label: Str) -> *u8 {
+        unsafe {
+            let len = label.len
+            let size = len + 1
+            let label_mem = AllocVec(size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !label_mem {
+                panic!("Failed to allocate memory for label")
+            }
+
+            CopyMem(label.ptr, label_mem, len)
+
+            // Null-terminate
+            let label_bytes = (*u8)label_mem
+            label_bytes[len] = 0
+
+            self.track_label(label_bytes)
+            return label_bytes
+        }
+    }
+
+    /// Track a label allocation
+    fn track_label(&var self, label: *u8) {
+        unsafe {
+            if self.label_count >= self.label_capacity {
+                // Resize
+                let new_capacity = self.label_capacity * 2
+                let new_size = new_capacity * 4
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize label tracking array")
+                }
+
+                // Copy existing
+                var i: u32 = 0
+                forever {
+                    if i >= self.label_count {
+                        break
+                    }
+                    let new_labels = (**u8)new_mem
+                    new_labels[i] = self.labels[i]
+                    i++
+                }
+
+                let old_mem = (*u8)self.labels
+                FreeVec(old_mem)
+                self.labels = (**u8)new_mem
+                self.label_capacity = new_capacity
+            }
+
+            self.labels[self.label_count] = label
+            self.label_count++
+        }
+    }
+
+    /// Add a new entry and return its index
+    fn add_entry(&var self, gtype: GadgetType, id: u32, parent: i32) -> u32 {
+        unsafe {
+            if self.entry_count >= self.entry_capacity {
+                // Resize
+                let new_capacity = self.entry_capacity * 2
+                let new_size = new_capacity * @sizeof(GadgetEntry)
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize entry array")
+                }
+
+                // Copy existing entries byte by byte
+                let old_size = self.entry_count * @sizeof(GadgetEntry)
+                let src = (*u8)self.entries
+                let dst = (*u8)new_mem
+                var i: u32 = 0
+                forever {
+                    if i >= old_size {
+                        break
+                    }
+                    dst[i] = src[i]
+                    i++
+                }
+
+                let old_mem = (*u8)self.entries
+                FreeVec(old_mem)
+                self.entries = (*GadgetEntry)new_mem
+                self.entry_capacity = new_capacity
+            }
+
+            // Allocate initial tag array for this entry
+            let tag_capacity: u32 = 16
+            let tag_size = tag_capacity * @sizeof(TagItem)
+            let tag_mem = AllocVec(tag_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+            if !tag_mem {
+                panic!("Failed to allocate tag array for entry")
+            }
+
+            let idx = self.entry_count
+            let entry = &var self.entries[idx]
+            entry.gadget_type = gtype
+            entry.id = id
+            entry.parent_index = parent
+            entry.object = null
+            entry.tags = (*TagItem)tag_mem
+            entry.tag_count = 0
+            entry.tag_capacity = tag_capacity
+
+            self.entry_count++
+            return idx
+        }
+    }
+
+    /// Add a tag to an entry's tag array
+    fn add_tag_to_entry(&var self, entry_idx: u32, tag: u32, data: u32) {
+        unsafe {
+            let entry = &var self.entries[entry_idx]
+
+            if entry.tag_count >= entry.tag_capacity {
+                // Resize
+                let new_capacity = entry.tag_capacity * 2
+                let new_size = new_capacity * @sizeof(TagItem)
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize tag array")
+                }
+
+                // Copy existing tags
+                let old_size = entry.tag_count * @sizeof(TagItem)
+                let src = (*u8)entry.tags
+                let dst = (*u8)new_mem
+                var i: u32 = 0
+                forever {
+                    if i >= old_size {
+                        break
+                    }
+                    dst[i] = src[i]
+                    i++
+                }
+
+                let old_mem = (*u8)entry.tags
+                FreeVec(old_mem)
+                entry.tags = (*TagItem)new_mem
+                entry.tag_capacity = new_capacity
+            }
+
+            let tag_idx = entry.tag_count
+            entry.tags[tag_idx].ti_Tag = tag
+            entry.tags[tag_idx].ti_Data = data
+            entry.tag_count++
+        }
+    }
+
+    /// Finalize entry tags by adding TAG_DONE
+    fn finalize_entry_tags(&var self, entry_idx: u32) {
+        self.add_tag_to_entry(entry_idx, TAG_DONE, 0)
+    }
+
+    /// Track a radio button node
+    fn track_radio_node(&var self, node: *Node) {
+        unsafe {
+            if self.radio_node_count >= self.radio_node_capacity {
+                let new_capacity = self.radio_node_capacity * 2
+                let new_size = new_capacity * 4
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize radio node array")
+                }
+
+                var i: u32 = 0
+                forever {
+                    if i >= self.radio_node_count {
+                        break
+                    }
+                    let new_nodes = (**Node)new_mem
+                    new_nodes[i] = self.radio_nodes[i]
+                    i++
+                }
+
+                let old_mem = (*u8)self.radio_nodes
+                FreeVec(old_mem)
+                self.radio_nodes = (**Node)new_mem
+                self.radio_node_capacity = new_capacity
+            }
+
+            self.radio_nodes[self.radio_node_count] = node
+            self.radio_node_count++
+        }
+    }
+
+    /// Track a radio list header
+    fn track_radio_list(&var self, list: *List) {
+        unsafe {
+            if self.radio_list_count >= self.radio_list_capacity {
+                let new_capacity = self.radio_list_capacity * 2
+                let new_size = new_capacity * 4
+                let new_mem = AllocVec(new_size, MEMF_PUBLIC | MEMF_CLEAR)
+
+                if !new_mem {
+                    panic!("Failed to resize radio list array")
+                }
+
+                var i: u32 = 0
+                forever {
+                    if i >= self.radio_list_count {
+                        break
+                    }
+                    let new_lists = (**List)new_mem
+                    new_lists[i] = self.radio_lists[i]
+                    i++
+                }
+
+                let old_mem = (*u8)self.radio_lists
+                FreeVec(old_mem)
+                self.radio_lists = (**List)new_mem
+                self.radio_list_capacity = new_capacity
+            }
+
+            self.radio_lists[self.radio_list_count] = list
+            self.radio_list_count++
+        }
+    }
+
+    /// Cleanup objects on failure
+    fn cleanup_objects(&var self) {
+        unsafe {
+            var i: u32 = 0
+            forever {
+                if i >= self.entry_count {
+                    break
+                }
+
+                let entry = &self.entries[i]
+                if entry.object {
+                    DisposeObject(entry.object)
+                }
+
+                i++
+            }
+        }
+    }
+}
+
+impl Drop for ReActionBuilder {
+    fn drop(&var self) {
+        unsafe {
+            // Free entry tag arrays
+            var i: u32 = 0
+            forever {
+                if i >= self.entry_count {
+                    break
+                }
+                let entry = &self.entries[i]
+                if entry.tags {
+                    let tag_mem = (*u8)entry.tags
+                    FreeVec(tag_mem)
+                }
+                i++
+            }
+
+            // Free entry array
+            if self.entries {
+                let entry_mem = (*u8)self.entries
+                FreeVec(entry_mem)
+            }
+
+            // Free labels if still owned
+            if self.labels {
+                var j: u32 = 0
+                forever {
+                    if j >= self.label_count {
+                        break
+                    }
+                    let label = self.labels[j]
+                    if label {
+                        FreeVec(label)
+                    }
+                    j++
+                }
+                let label_mem = (*u8)self.labels
+                FreeVec(label_mem)
+            }
+
+            // Free radio nodes if still owned
+            if self.radio_nodes {
+                var k: u32 = 0
+                forever {
+                    if k >= self.radio_node_count {
+                        break
+                    }
+                    let node = self.radio_nodes[k]
+                    if node {
+                        FreeRadioButtonNode(node)
+                    }
+                    k++
+                }
+                let radio_mem = (*u8)self.radio_nodes
+                FreeVec(radio_mem)
+            }
+
+            // Free radio lists if still owned
+            if self.radio_lists {
+                var l: u32 = 0
+                forever {
+                    if l >= self.radio_list_count {
+                        break
+                    }
+                    let list = self.radio_lists[l]
+                    if list {
+                        let list_mem = (*u8)list
+                        FreeVec(list_mem)
+                    }
+                    l++
+                }
+                let radio_list_mem = (*u8)self.radio_lists
+                FreeVec(radio_list_mem)
+            }
+
+            // Free draw info
+            if self.draw_info {
+                FreeScreenDrawInfo(self.screen, self.draw_info)
+            }
+            if self.owns_screen {
+                UnlockPubScreen(null, self.screen)
+            }
+        }
+    }
+}
+
+// ============================================================================
+// LayoutHandle - Handle for adding children to a layout
+// ============================================================================
+
+pub struct LayoutHandle {
+    builder: *ReActionBuilder
+    entry_index: u32
+}
+
+impl LayoutHandle {
+    /// Enable outer spacing
+    pub fn space_outer(&var self) -> LayoutHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, LAYOUT_SpaceOuter, 1)
+        }
+        return LayoutHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set bevel style
+    pub fn with_bevel(&var self, style: BevelStyle) -> LayoutHandle {
+        let bevel_val = match style {
+            BevelStyle::None => BVS_NONE,
+            BevelStyle::Thin => BVS_THIN,
+            BevelStyle::Button => BVS_BUTTON,
+            BevelStyle::Group => BVS_GROUP,
+            BevelStyle::Field => BVS_FIELD,
+        }
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, LAYOUT_BevelStyle, bevel_val)
+        }
+        return LayoutHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set layout label
+    pub fn with_label(&var self, label: Str) -> LayoutHandle {
+        unsafe {
+            let label_ptr = (*self.builder).alloc_label(label)
+            (*self.builder).add_tag_to_entry(self.entry_index, LAYOUT_Label, (u32)label_ptr)
+        }
+        return LayoutHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Add a nested layout
+    pub fn add_layout(&var self, orientation: LayoutOrientation) -> LayoutHandle {
+        let orient_val = match orientation {
+            LayoutOrientation::Horizontal => LAYOUT_ORIENT_HORIZ,
+            LayoutOrientation::Vertical => LAYOUT_ORIENT_VERT,
+        }
+
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::Layout, 0, parent)
+            (*self.builder).add_tag_to_entry(idx, LAYOUT_Orientation, orient_val)
+            (*self.builder).add_tag_to_entry(idx, GA_DrawInfo, (u32)(*self.builder).draw_info)
+
+            return LayoutHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+
+    /// Add a button
+    pub fn add_button(&var self, id: u32, label: Str) -> GadgetHandle {
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::Button, id, parent)
+            let label_ptr = (*self.builder).alloc_label(label)
+
+            (*self.builder).add_tag_to_entry(idx, GA_ID, id)
+            (*self.builder).add_tag_to_entry(idx, GA_Text, (u32)label_ptr)
+            (*self.builder).add_tag_to_entry(idx, GA_RelVerify, 1)
+
+            return GadgetHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+
+    /// Add a checkbox
+    pub fn add_checkbox(&var self, id: u32, label: Str) -> GadgetHandle {
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::Checkbox, id, parent)
+            let label_ptr = (*self.builder).alloc_label(label)
+
+            (*self.builder).add_tag_to_entry(idx, GA_ID, id)
+            (*self.builder).add_tag_to_entry(idx, GA_Text, (u32)label_ptr)
+            (*self.builder).add_tag_to_entry(idx, GA_RelVerify, 1)
+
+            return GadgetHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+
+    /// Add an integer gadget
+    pub fn add_integer(&var self, id: u32, initial: i32) -> GadgetHandle {
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::Integer, id, parent)
+
+            (*self.builder).add_tag_to_entry(idx, GA_ID, id)
+            (*self.builder).add_tag_to_entry(idx, INTEGER_Number, (u32)initial)
+            (*self.builder).add_tag_to_entry(idx, GA_RelVerify, 1)
+
+            return GadgetHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+
+    /// Add a label (non-interactive text)
+    pub fn add_label(&var self, text: Str) -> GadgetHandle {
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::Label, 0, parent)
+            let label_ptr = (*self.builder).alloc_label(text)
+
+            (*self.builder).add_tag_to_entry(idx, LABEL_Text, (u32)label_ptr)
+            (*self.builder).add_tag_to_entry(idx, IA_Font, (u32)(*self.builder).screen)  // TODO: Get screen font
+
+            return GadgetHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+
+    /// Add a radio button group
+    pub fn add_radiobutton(&var self, id: u32, options: Slice<Str>) -> GadgetHandle {
+        unsafe {
+            let parent = (i32)self.entry_index
+            let idx = (*self.builder).add_entry(GadgetType::RadioButton, id, parent)
+
+            // Allocate List header
+            let list_size = @sizeof(List)
+            let list_mem = AllocVec(list_size, MEMF_PUBLIC | MEMF_CLEAR)
+            if !list_mem {
+                panic!("Failed to allocate radio button list")
+            }
+            let list = (*List)list_mem
+            // Initialize list (equivalent to NewList macro)
+            // lh_Head = &lh_Tail, lh_Tail = NULL, lh_TailPred = &lh_Head
+            list.lh_TailPred = (*Node)list_mem
+            list.lh_Tail = null
+            // lh_Head points to lh_Tail field (offset 4 bytes from list start)
+            let tail_addr = list_mem + 4
+            list.lh_Head = (*Node)tail_addr
+            (*self.builder).track_radio_list(list)
+
+            // Create nodes for each option
+            var i: u32 = 0
+            forever {
+                if i >= options.len {
+                    break
+                }
+
+                let option_label = *options.get(i).unwrap()
+                let label_ptr = (*self.builder).alloc_label(option_label)
+
+                // Create radio button node
+                let node_tags = [
+                    TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+                ]
+                let node = AllocRadioButtonNodeA(1, &node_tags[0])
+                if node {
+                    // Set the label on the node via ln_Name field
+                    node.ln_Name = label_ptr
+                    AddTail(list, node)
+                    (*self.builder).track_radio_node(node)
+                }
+
+                i++
+            }
+
+            (*self.builder).add_tag_to_entry(idx, GA_ID, id)
+            (*self.builder).add_tag_to_entry(idx, RADIOBUTTON_Labels, (u32)list)
+            (*self.builder).add_tag_to_entry(idx, GA_RelVerify, 1)
+
+            return GadgetHandle {
+                builder: self.builder,
+                entry_index: idx,
+            }
+        }
+    }
+}
+
+// ============================================================================
+// GadgetHandle - Handle for configuring a gadget
+// ============================================================================
+
+pub struct GadgetHandle {
+    builder: *ReActionBuilder
+    entry_index: u32
+}
+
+impl GadgetHandle {
+    /// Set the gadget as disabled
+    pub fn disabled(&var self) -> GadgetHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, GA_Disabled, 1)
+        }
+        return GadgetHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set the gadget as read-only
+    pub fn read_only(&var self) -> GadgetHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, GA_ReadOnly, 1)
+        }
+        return GadgetHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set checkbox initially selected
+    pub fn selected(&var self) -> GadgetHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, GA_Selected, 1)
+        }
+        return GadgetHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set integer minimum value
+    pub fn with_minimum(&var self, min: i32) -> GadgetHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, INTEGER_Minimum, (u32)min)
+        }
+        return GadgetHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+
+    /// Set integer maximum value
+    pub fn with_maximum(&var self, max: i32) -> GadgetHandle {
+        unsafe {
+            (*self.builder).add_tag_to_entry(self.entry_index, INTEGER_Maximum, (u32)max)
+        }
+        return GadgetHandle {
+            builder: self.builder,
+            entry_index: self.entry_index,
+        }
+    }
+}
+
+// ============================================================================
+// ReActionEvent - Event from ReAction window
+// ============================================================================
+
+pub enum ReActionEvent {
+    Close,
+    GadgetUp(u32),          // Gadget ID
+    GadgetDown(u32),        // Gadget ID
+    Active,
+    Inactive,
+    NewSize,
+    MenuPick(u16),          // Menu selection code
+    Iconify,
+    Uniconify,
+    Unknown(u32),
+}
+
+// ============================================================================
+// ReActionWindow - RAII wrapper for the window
+// ============================================================================
+
+pub struct ReActionWindow {
+    window_obj: *u8         // BOOPSI window object
+    window: *Window         // Opened window pointer
+    sig_mask: u32           // Signal mask for waiting
+    screen: *Screen
+    draw_info: *DrawInfo
+    owns_screen: bool
+    menu_strip: Option<GadToolsMenuStrip>
+    labels: **u8
+    label_count: u32
+    radio_nodes: **Node
+    radio_node_count: u32
+    radio_lists: **List
+    radio_list_count: u32
+}
+
+impl ReActionWindow {
+    /// Get the raw window pointer
+    pub fn window(&self) -> *Window {
+        return self.window
+    }
+
+    /// Get the signal mask for use with Wait()
+    pub fn sig_mask(&self) -> u32 {
+        return self.sig_mask
+    }
+
+    /// Wait for and return the next event (blocking)
+    pub fn wait_event(&self) -> ReActionEvent {
+        unsafe {
+            // Wait for signals
+            Wait(self.sig_mask)
+
+            // Handle input - use array so we can get a pointer
+            var code: [u16] = [0]
+            let code_ptr = (*u16)&code[0]
+            let handle_msg: [u32] = [WM_HANDLEINPUT, (u32)code_ptr]
+
+            forever {
+                let result = DoMethodA(self.window_obj, &handle_msg[0])
+
+                if result == WMHI_LASTMSG {
+                    // No more messages, wait again
+                    Wait(self.sig_mask)
+                    continue
+                }
+
+                return self.decode_result(result)
+            }
+        }
+    }
+
+    /// Poll for an event (non-blocking)
+    pub fn poll_event(&self) -> Option<ReActionEvent> {
+        unsafe {
+            // Use array so we can get a pointer
+            var code: [u16] = [0]
+            let code_ptr = (*u16)&code[0]
+            let handle_msg: [u32] = [WM_HANDLEINPUT, (u32)code_ptr]
+
+            let result = DoMethodA(self.window_obj, &handle_msg[0])
+
+            if result == WMHI_LASTMSG {
+                return Option::None
+            }
+
+            return Option::Some(self.decode_result(result))
+        }
+    }
+
+    /// Decode a WM_HANDLEINPUT result
+    fn decode_result(&self, result: u32) -> ReActionEvent {
+        let class = result & WMHI_CLASSMASK
+
+        match class {
+            WMHI_CLOSEWINDOW => ReActionEvent::Close,
+            WMHI_GADGETUP => {
+                let gadget_id = result & WMHI_GADGETMASK
+                ReActionEvent::GadgetUp(gadget_id)
+            },
+            WMHI_ACTIVE => ReActionEvent::Active,
+            WMHI_INACTIVE => ReActionEvent::Inactive,
+            WMHI_NEWSIZE => ReActionEvent::NewSize,
+            WMHI_MENUPICK => {
+                let menu_code = (u16)(result & WMHI_MENUMASK)
+                ReActionEvent::MenuPick(menu_code)
+            },
+            WMHI_ICONIFY => ReActionEvent::Iconify,
+            WMHI_UNICONIFY => ReActionEvent::Uniconify,
+            _ => ReActionEvent::Unknown(result),
+        }
+    }
+
+    /// Set attributes on a gadget by ID
+    /// Note: This requires finding the gadget object, which is complex.
+    /// For now, we'll skip this and add it in a future iteration.
+    pub fn refresh_layout(&self) {
+        unsafe {
+            // Get layout from window
+            var layout_ptr: u32 = 0
+            GetAttr(WINDOW_Layout, self.window_obj, (*u8)&layout_ptr)
+
+            if layout_ptr != 0 {
+                RethinkLayout((*Gadget)layout_ptr, self.window, null, 1)
+            }
+        }
+    }
+}
+
+impl Drop for ReActionWindow {
+    fn drop(&var self) {
+        unsafe {
+            // Close window via WM_CLOSE
+            if self.window {
+                let close_msg: [u32] = [WM_CLOSE]
+                DoMethodA(self.window_obj, &close_msg[0])
+                self.window = null
+            }
+
+            // Dispose window object (this disposes all child gadgets)
+            if self.window_obj {
+                DisposeObject(self.window_obj)
+                self.window_obj = null
+            }
+
+            // Free labels
+            if self.labels {
+                var i: u32 = 0
+                forever {
+                    if i >= self.label_count {
+                        break
+                    }
+                    let label = self.labels[i]
+                    if label {
+                        FreeVec(label)
+                    }
+                    i++
+                }
+                let label_mem = (*u8)self.labels
+                FreeVec(label_mem)
+            }
+
+            // Free radio nodes
+            if self.radio_nodes {
+                var j: u32 = 0
+                forever {
+                    if j >= self.radio_node_count {
+                        break
+                    }
+                    let node = self.radio_nodes[j]
+                    if node {
+                        FreeRadioButtonNode(node)
+                    }
+                    j++
+                }
+                let radio_mem = (*u8)self.radio_nodes
+                FreeVec(radio_mem)
+            }
+
+            // Free radio lists
+            if self.radio_lists {
+                var k: u32 = 0
+                forever {
+                    if k >= self.radio_list_count {
+                        break
+                    }
+                    let list = self.radio_lists[k]
+                    if list {
+                        let list_mem = (*u8)list
+                        FreeVec(list_mem)
+                    }
+                    k++
+                }
+                let radio_list_mem = (*u8)self.radio_lists
+                FreeVec(radio_list_mem)
+            }
+
+            // Free draw info
+            if self.draw_info {
+                FreeScreenDrawInfo(self.screen, self.draw_info)
+            }
+            if self.owns_screen {
+                UnlockPubScreen(null, self.screen)
+            }
+        }
+    }
+}

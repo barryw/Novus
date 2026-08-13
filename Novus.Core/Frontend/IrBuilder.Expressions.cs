@@ -198,8 +198,17 @@ public partial class IrBuilder
         // NOTE: Str → *u8 coercion is now handled later, after function lookup,
         // so we can check the actual parameter types and only coerce when needed
 
-        // If it's a generic function template, infer types and instantiate
-        if (genericFuncName != null && _genericInstantiator.TryGetFunctionTemplate(genericFuncName, out var templateFromCache) && templateFromCache != null)
+        // If it's a generic function template, infer types and instantiate. Generic
+        // overloads use an arity-qualified cache key so one overload cannot replace another.
+        var genericTemplateName = genericFuncName;
+        Generics.GenericTemplate? templateFromCache = null;
+        if (genericTemplateName != null &&
+            !_genericInstantiator.TryGetFunctionTemplate(genericTemplateName, out templateFromCache))
+        {
+            genericTemplateName = $"{genericTemplateName}__arity_{arguments.Count}";
+            _genericInstantiator.TryGetFunctionTemplate(genericTemplateName, out templateFromCache);
+        }
+        if (genericTemplateName != null && templateFromCache != null)
         {
             // Get template and parse parameters
             var template = templateFromCache;
@@ -273,7 +282,7 @@ public partial class IrBuilder
             }
 
             // Instantiate
-            var instantiatedFunc = _genericInstantiator.InstantiateFunction(genericFuncName, typeSubstitutions);
+            var instantiatedFunc = _genericInstantiator.InstantiateFunction(genericTemplateName, typeSubstitutions);
             if (instantiatedFunc == null)
             {
                 var errorLocation = GetLocation(context);
@@ -1680,6 +1689,9 @@ public partial class IrBuilder
             return null;
         }
 
+        if (receiver.Type is IrArrayType fillArray && methodName == "fill")
+            return LowerArrayFill(callCtx, receiver, fillArray);
+
         List<IrValue>? evaluatedMethodArgs = null;
 
         // Handle unresolved generic types - resolve them from method arguments
@@ -2235,6 +2247,12 @@ public partial class IrBuilder
             }
         }
 
+        // Generic receivers may need their arguments evaluated before the method
+        // signature is instantiated. Reapply that now-known expected type to
+        // aggregate literals so unsuffixed payloads retain contextual inference.
+        for (var i = 1; i < arguments.Count && i < method.Parameters.Count; i++)
+            arguments[i] = CoerceAggregateLiteral(arguments[i], method.Parameters[i].Type);
+
         // Method arguments use the same array-borrow coercion as free functions.
         for (int i = 1; i < arguments.Count && i < method.Parameters.Count; i++)
         {
@@ -2326,6 +2344,71 @@ public partial class IrBuilder
         return null;
     }
 
+    private IrValue CoerceAggregateLiteral(IrValue value, IrType expectedType)
+    {
+        if (value is IrConstant constant && value.Type is IrIntType && expectedType is IrIntType expectedInteger)
+            return new IrConstant(constant.Value, expectedInteger);
+
+        if (value is not IrEnumValue enumValue || expectedType is not IrEnumType expectedEnum ||
+            enumValue.Type is not IrEnumType actualEnum || actualEnum.EnumName != expectedEnum.EnumName)
+            return value;
+
+        var variant = expectedEnum.GetVariant(enumValue.VariantName);
+        if (variant == null || variant.AssociatedData.Count != enumValue.AssociatedValues.Count)
+            return value;
+
+        var payload = enumValue.AssociatedValues
+            .Select((item, index) => CoerceAggregateLiteral(item, variant.AssociatedData[index]))
+            .ToList();
+        return new IrEnumValue(expectedEnum, enumValue.VariantName, variant.Tag, payload);
+    }
+
+    private object? LowerArrayFill(NovusParser.CallExprContext context, IrValue array, IrArrayType arrayType)
+    {
+        var arguments = context.argumentList()?.expression() ?? [];
+        if (arguments.Length != 1)
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                $"array fill expects one value, got {arguments.Length}", GetLocation(context));
+            return null;
+        }
+
+        var savedExpectedType = _expectedType;
+        _expectedType = arrayType.ElementType;
+        var value = Visit(arguments[0]) as IrValue;
+        _expectedType = savedExpectedType;
+        if (value == null)
+            return null;
+        if (value is IrConstant integer && integer.Type is IrIntType && arrayType.ElementType is IrIntType targetInteger)
+            value = new IrConstant(integer.Value, targetInteger);
+
+        var id = _labelCounter++;
+        var indexName = $"_fill_index_{id}";
+        var conditionLabel = $"fill_cond_{id}";
+        var bodyLabel = $"fill_body_{id}";
+        var endLabel = $"fill_end_{id}";
+        _currentFunction!.LocalVariables.Add(new IrLocalVariable(indexName, IrIntType.U32, true));
+        _localVariables[indexName] = new IrLocalVariable(indexName, IrIntType.U32, true);
+        Emit(new IrLocalDecl(indexName, IrIntType.U32, true, new IrConstant(0, IrIntType.U32)));
+        Emit(new IrBranch(conditionLabel));
+        Emit(new IrLabel(conditionLabel));
+        var conditionName = $"%t{_tempCounter++}";
+        Emit(new IrBinaryOp(conditionName, IrBinaryOp.OpKind.Lt,
+            new IrVariable(indexName, IrIntType.U32), new IrConstant(arrayType.Length, IrIntType.U32),
+            IrBoolType.Instance));
+        Emit(new IrConditionalBranch(new IrVariable(conditionName, IrBoolType.Instance), bodyLabel, endLabel));
+        Emit(new IrLabel(bodyLabel));
+        Emit(new IrIndexStore(array, new IrVariable(indexName, IrIntType.U32), value,
+            IrBoundsCheckMode.Proven, new IrConstant(arrayType.Length, IrIntType.U32)));
+        var nextName = $"%t{_tempCounter++}";
+        Emit(new IrBinaryOp(nextName, IrBinaryOp.OpKind.Add, new IrVariable(indexName, IrIntType.U32),
+            new IrConstant(1, IrIntType.U32), IrIntType.U32));
+        Emit(new IrStore(indexName, new IrVariable(nextName, IrIntType.U32)));
+        Emit(new IrBranch(conditionLabel));
+        Emit(new IrLabel(endLabel));
+        return null;
+    }
+
     public override object? VisitBorrowExpr([NotNull] NovusParser.BorrowExprContext context)
     {
         var exprContext = context.expression();
@@ -2376,6 +2459,10 @@ public partial class IrBuilder
 
     public override object? VisitIndexExpr([NotNull] NovusParser.IndexExprContext context)
     {
+        if (context.expression(1) is NovusParser.RangeExprContext range)
+            return LowerSlice(
+                context.expression(0), range.expression(0), range.expression(1), context);
+
         var baseExpr = Visit(context.expression(0)) as IrValue;
         var indexExpr = Visit(context.expression(1)) as IrValue;
 
@@ -2391,12 +2478,16 @@ public partial class IrBuilder
         else if (baseExpr.Type is IrMutReferenceType mutRefType)
             baseExpr = new IrDereferenceValue(baseExpr, mutRefType.PointeeType);
 
+        if (baseExpr.Type is IrStructType slice && slice.StructName is "Slice" or "MutSlice")
+            return LowerSliceIndex(baseExpr, indexExpr, slice, context);
+
         // Handle array indexing
         if (baseExpr.Type is IrArrayType arrayType)
         {
             // Create an index access instruction for arrays
             var tempName = $"%t{_tempCounter++}";
-            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, arrayType.ElementType);
+            var indexAccess = new IrIndexAccess(
+                tempName, baseExpr, indexExpr, arrayType.ElementType, IndexBoundsMode(baseExpr));
             indexAccess.Location = GetLocation(context);
             _currentBlock!.AddInstruction(indexAccess);
 
@@ -2412,9 +2503,21 @@ public partial class IrBuilder
         // Handle pointer indexing: ptr[index] = *(ptr + index * sizeof(T))
         if (baseExpr.Type is IrPointerType ptrType)
         {
+            if (_unsafeDepth == 0)
+            {
+                _diagnostics.Add(new Diagnostic(
+                    DiagnosticSeverity.Error,
+                    "E0133",
+                    "raw pointer indexing requires `unsafe` block",
+                    GetLocation(context),
+                    helpTexts: ["raw pointers carry no length; use a Slice<T> for checked indexing"]));
+                return null;
+            }
+
             // Create an index access instruction for pointers
             var tempName = $"%t{_tempCounter++}";
-            var indexAccess = new IrIndexAccess(tempName, baseExpr, indexExpr, ptrType.PointeeType);
+            var indexAccess = new IrIndexAccess(
+                tempName, baseExpr, indexExpr, ptrType.PointeeType, IrBoundsCheckMode.Unchecked);
             indexAccess.Location = GetLocation(context);
             _currentBlock!.AddInstruction(indexAccess);
 
@@ -2442,6 +2545,143 @@ public partial class IrBuilder
         );
         return null;
     }
+
+    private IrValue? LowerSliceIndex(
+        IrValue source,
+        IrValue index,
+        IrStructType slice,
+        ParserRuleContext context)
+    {
+        var pointerField = slice.GetField("ptr");
+        var lengthField = slice.GetField("len");
+        var elementType = pointerField?.Type switch
+        {
+            IrPointerType pointer => pointer.PointeeType,
+            IrReferenceType pointer => pointer.PointeeType,
+            IrMutReferenceType pointer => pointer.PointeeType,
+            _ => null
+        };
+        if (pointerField == null || lengthField == null || elementType == null)
+            return null;
+
+        var pointerName = $"%slice_ptr_{_tempCounter++}";
+        var lengthName = $"%slice_len_{_tempCounter++}";
+        Emit(new IrMemberAccess(pointerName, source, "ptr", pointerField.Type, pointerField.Offset));
+        Emit(new IrMemberAccess(lengthName, source, "len", lengthField.Type, lengthField.Offset));
+        var rawPointer = new IrCastValue(
+            new IrVariable(pointerName, pointerField.Type),
+            pointerField.Type,
+            _typeInterner.GetPointerType(elementType));
+        var mode = _unsafeDepth > 0 ? IrBoundsCheckMode.Unchecked : IrBoundsCheckMode.Checked;
+        var resultName = $"%t{_tempCounter++}";
+        IrValue boundsLength = new IrVariable(lengthName, lengthField.Type);
+        if (context is NovusParser.IndexExprContext indexContext && _rangeLoopBounds.TryPeek(out var loop) &&
+            !loop.Inclusive && indexContext.expression(1).GetText() == loop.ItemName)
+        {
+            var sourceText = indexContext.expression(0).GetText();
+            if (loop.EndExpression is var bound &&
+                (bound == $"{sourceText}.len" || bound == $"{sourceText}.len()"))
+                boundsLength = new IrVariable(loop.EndVarName, lengthField.Type);
+        }
+
+        Emit(new IrIndexAccess(
+            resultName,
+            rawPointer,
+            index,
+            elementType,
+            mode,
+            boundsLength) { Location = GetLocation(context) });
+        return new IrBorrowValue(
+            new IrVariable(resultName, elementType),
+            _typeInterner.GetReferenceType(elementType),
+            false);
+    }
+
+    public override object? VisitSliceFromExpr([NotNull] NovusParser.SliceFromExprContext context) =>
+        LowerSlice(context.expression(0), context.expression(1), null, context);
+
+    public override object? VisitSliceToExpr([NotNull] NovusParser.SliceToExprContext context) =>
+        LowerSlice(context.expression(0), null, context.expression(1), context);
+
+    private IrValue? LowerSlice(
+        NovusParser.ExpressionContext sourceExpression,
+        NovusParser.ExpressionContext? startExpression,
+        NovusParser.ExpressionContext? endExpression,
+        ParserRuleContext context)
+    {
+        var source = Visit(sourceExpression) as IrValue;
+        if (source == null)
+            return null;
+
+        if (source.Type is IrReferenceType reference)
+            source = new IrDereferenceValue(source, reference.PointeeType);
+        else if (source.Type is IrMutReferenceType mutableReference)
+            source = new IrDereferenceValue(source, mutableReference.PointeeType);
+
+        if (source.Type is not IrStructType slice ||
+            slice.StructName is not ("Slice" or "MutSlice"))
+        {
+            _diagnostics.ReportError(
+                ErrorCodes.CannotIndexType,
+                $"Cannot slice type '{source.Type.Name}'; use Slice<T> or MutSlice<T>",
+                GetLocation(context));
+            return null;
+        }
+
+        var pointerField = slice.GetField("ptr")!;
+        var lengthField = slice.GetField("len")!;
+        var pointerName = $"%slice_ptr_{_tempCounter++}";
+        var lengthName = $"%slice_len_{_tempCounter++}";
+        Emit(new IrMemberAccess(pointerName, source, "ptr", pointerField.Type, pointerField.Offset));
+        Emit(new IrMemberAccess(lengthName, source, "len", lengthField.Type, lengthField.Offset));
+
+        var length = new IrVariable(lengthName, lengthField.Type);
+        var start = startExpression == null
+            ? new IrConstant(0, IrIntType.U32)
+            : VisitWithExpectedType(startExpression, IrIntType.U32);
+        var end = endExpression == null
+            ? length
+            : VisitWithExpectedType(endExpression, IrIntType.U32);
+        if (start == null || end == null)
+            return null;
+        if (start.Type != IrIntType.U32)
+            start = new IrCastValue(start, start.Type, IrIntType.U32);
+        if (end.Type != IrIntType.U32)
+            end = new IrCastValue(end, end.Type, IrIntType.U32);
+
+        var mode = _unsafeDepth > 0 ? IrBoundsCheckMode.Unchecked : IrBoundsCheckMode.Checked;
+        var check = new IrSliceBoundsCheck(start, end, length, mode) { Location = GetLocation(context) };
+        Emit(check);
+
+        var elementType = pointerField.Type switch
+        {
+            IrPointerType pointer => pointer.PointeeType,
+            IrReferenceType pointer => pointer.PointeeType,
+            IrMutReferenceType pointer => pointer.PointeeType,
+            _ => null
+        };
+        if (elementType == null)
+            return null;
+
+        var resultLengthName = $"%slice_result_len_{_tempCounter++}";
+        Emit(new IrBinaryOp(
+            resultLengthName, IrBinaryOp.OpKind.Sub, end, start, IrIntType.U32));
+
+        return new IrStructLiteral(slice, new Dictionary<string, IrValue>
+        {
+            ["ptr"] = new IrPointerOffsetValue(
+                new IrVariable(pointerName, pointerField.Type),
+                start,
+                elementType,
+                pointerField.Type),
+            ["len"] = new IrVariable(resultLengthName, IrIntType.U32)
+        });
+    }
+
+    private IrBoundsCheckMode IndexBoundsMode(IrValue indexed) =>
+        _unsafeDepth > 0 || indexed.Type is IrPointerType
+            ? IrBoundsCheckMode.Unchecked
+            : IrBoundsCheckMode.Checked;
 
     public override object? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
     {
@@ -2483,8 +2723,9 @@ public partial class IrBuilder
 
         // Create array literal value
         var arrayLiteral = new IrArrayLiteral(arrayType);
-        foreach (var elem in elements)
+        foreach (var original in elements)
         {
+            var elem = elementType == null ? original : CoerceAggregateLiteral(original, elementType);
             // Verify element type compatibility (semantic analyzer should have caught mismatches)
             if (elem.Type != null && elementType != null && !TypesEqual(elementType, elem.Type))
             {
@@ -2640,6 +2881,9 @@ public partial class IrBuilder
     {
         return type switch
         {
+            IrPointerType pointer => GetTypeNameForOperator(pointer.PointeeType),
+            IrReferenceType reference => GetTypeNameForOperator(reference.PointeeType),
+            IrMutReferenceType reference => GetTypeNameForOperator(reference.PointeeType),
             IrStructType st => st.StructName,
             IrEnumType et => et.EnumName,
             _ => type.Name
@@ -2721,20 +2965,7 @@ public partial class IrBuilder
     /// </summary>
     private IrValue? EmitIndexTraitCall(IrValue baseExpr, IrValue indexExpr, ParserRuleContext context)
     {
-        // Get the type name for trait lookup
-        string typeName = GetTypeNameForOperator(baseExpr.Type);
-
-        // Find the Index::index mangled method name
-        // The naming convention is TypeName_Index_index for generic trait impls
-        var mangledMethodName = _module.FindTraitMethod(typeName, "index");
-        if (mangledMethodName == null)
-        {
-            // No Index implementation found
-            return null;
-        }
-
-        // Find the method in the module
-        var method = _module.GetFunction(mangledMethodName);
+        var method = FindOrInstantiateTraitMethod(baseExpr, "Index", "index", [indexExpr]);
         if (method == null)
         {
             return null;
@@ -2747,7 +2978,7 @@ public partial class IrBuilder
         // Create the call
         var returnType = method.ReturnType;
         var resultName = $"%t{_tempCounter++}";
-        var call = new IrCall(mangledMethodName, returnType, resultName);
+        var call = new IrCall(method.Name, returnType, resultName);
         call.Location = GetLocation(context);
         call.Arguments.Add(baseBorrowed);
         call.Arguments.Add(indexExpr);
@@ -2762,19 +2993,8 @@ public partial class IrBuilder
     /// </summary>
     private bool EmitIndexMutTraitCall(IrValue baseExpr, IrValue indexExpr, IrValue valueExpr, ParserRuleContext context)
     {
-        // Get the type name for trait lookup
-        string typeName = GetTypeNameForOperator(baseExpr.Type);
-
-        // Find the IndexMut::index_set mangled method name
-        var mangledMethodName = _module.FindTraitMethod(typeName, "index_set");
-        if (mangledMethodName == null)
-        {
-            // No IndexMut implementation found
-            return false;
-        }
-
-        // Find the method in the module
-        var method = _module.GetFunction(mangledMethodName);
+        var method = FindOrInstantiateTraitMethod(
+            baseExpr, "IndexMut", "index_set", [indexExpr, valueExpr]);
         if (method == null)
         {
             return false;
@@ -2788,7 +3008,7 @@ public partial class IrBuilder
         DeactivateVariableDeferIfMove(valueExpr);
 
         // Create the call (index_set returns void)
-        var call = new IrCall(mangledMethodName, IrVoidType.Instance, null);
+        var call = new IrCall(method.Name, IrVoidType.Instance, null);
         call.Location = GetLocation(context);
         call.Arguments.Add(baseBorrowed);
         call.Arguments.Add(indexExpr);
@@ -2796,6 +3016,43 @@ public partial class IrBuilder
         _currentBlock!.AddInstruction(call);
 
         return true;
+    }
+
+    private IrFunction? FindOrInstantiateTraitMethod(
+        IrValue receiver,
+        string traitName,
+        string methodName,
+        List<IrValue> arguments)
+    {
+        var typeName = GetTypeNameForOperator(receiver.Type);
+        var functionName = _module.FindTraitMethod(typeName, traitName, methodName);
+        var method = functionName == null ? null : _module.GetFunction(functionName);
+        var receiverType = receiver.Type switch
+        {
+            IrPointerType pointer => pointer.PointeeType,
+            IrReferenceType reference => reference.PointeeType,
+            IrMutReferenceType reference => reference.PointeeType,
+            _ => receiver.Type
+        };
+        if (method != null || receiverType is not IrStructType structure)
+            return method;
+
+        var implementation = _module.GetTraitImplsForType(typeName).FirstOrDefault(candidate =>
+            candidate.TraitName.Split('<', 2)[0] == traitName);
+        if (implementation == null)
+            return null;
+
+        var genericParameters = _symbols.LookupStruct(structure.StructName)?.GenericParameters;
+        var substitutions = genericParameters != null && structure.TypeArguments != null &&
+                            genericParameters.Count == structure.TypeArguments.Count
+            ? genericParameters.Zip(structure.TypeArguments, (name, type) => (name, type))
+                .ToDictionary(pair => pair.name, pair => pair.type)
+            : new Dictionary<string, IrType>();
+        var traitArguments = implementation.TraitTypeArgs
+            .Select(type => _typeParser.SubstituteGenericTypes(type, substitutions))
+            .ToList();
+        return _genericInstantiator.InstantiateStructMethod(
+            structure, methodName, true, traitName, traitArguments, arguments);
     }
 
     // ========================================================================
@@ -2815,7 +3072,7 @@ public partial class IrBuilder
         NovusParser.ExpressionContext leftExpression,
         NovusParser.ExpressionContext rightExpression)
     {
-        if (IsUnsuffixedIntegerLiteral(leftExpression))
+        if (IsIntegerLiteral(leftExpression))
         {
             var right = Visit(rightExpression) as IrValue;
             return (VisitWithExpectedType(leftExpression, right?.Type), right);
@@ -2825,20 +3082,17 @@ public partial class IrBuilder
         return (left, VisitWithExpectedType(rightExpression, left?.Type));
     }
 
-    private static bool IsUnsuffixedIntegerLiteral(NovusParser.ExpressionContext expression)
+    private static bool IsIntegerLiteral(NovusParser.ExpressionContext expression)
     {
         if (expression is not NovusParser.PrimaryExprContext primary)
             return false;
-        var text = primary.primaryExpression() switch
+        return primary.primaryExpression() switch
         {
-            NovusParser.IntegerLiteralContext literal => literal.INTEGER_LITERAL().GetText(),
-            NovusParser.BinaryLiteralContext literal => literal.BINARY_LITERAL().GetText(),
-            NovusParser.HexLiteralContext literal => literal.HEX_LITERAL().GetText(),
-            _ => null
+            NovusParser.IntegerLiteralContext => true,
+            NovusParser.BinaryLiteralContext => true,
+            NovusParser.HexLiteralContext => true,
+            _ => false
         };
-        return text != null && !(text.EndsWith("u8") || text.EndsWith("u16") ||
-            text.EndsWith("u32") || text.EndsWith("u64") || text.EndsWith("i8") ||
-            text.EndsWith("i16") || text.EndsWith("i32") || text.EndsWith("i64"));
     }
 
     public override object? VisitAdditiveExpr([NotNull] NovusParser.AdditiveExprContext context)
@@ -2954,6 +3208,14 @@ public partial class IrBuilder
             return null;
         }
 
+        if ((value.Type is IrEnumType || targetType is IrEnumType) &&
+            !IsValidRepresentedEnumCast(value.Type, targetType))
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                $"cannot cast from '{value.Type.Name}' to '{targetType.Name}'", GetLocation(context));
+            return null;
+        }
+
         // Check if this is a ref-to-pointer conversion (requires unsafe)
         if ((value.Type is IrReferenceType || value.Type is IrMutReferenceType) && targetType is IrPointerType)
         {
@@ -2987,6 +3249,10 @@ public partial class IrBuilder
         return new IrCastValue(value, value.Type, targetType);
     }
 
+    private static bool IsValidRepresentedEnumCast(IrType source, IrType target) =>
+        source is IrEnumType { UnderlyingType: not null } sourceEnum && sourceEnum.UnderlyingType.Equals(target) ||
+        target is IrEnumType { UnderlyingType: not null } targetEnum && targetEnum.UnderlyingType.Equals(source);
+
     public override object? VisitAsCastExpr([NotNull] NovusParser.AsCastExprContext context)
     {
         var savedExpectedType = _expectedType;
@@ -2998,6 +3264,14 @@ public partial class IrBuilder
         // If child expression had an error, bail out
         if (value == null)
         {
+            return null;
+        }
+
+        if ((value.Type is IrEnumType || targetType is IrEnumType) &&
+            !IsValidRepresentedEnumCast(value.Type, targetType))
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                $"cannot cast from '{value.Type.Name}' to '{targetType.Name}'", GetLocation(context));
             return null;
         }
 
@@ -3678,7 +3952,7 @@ public partial class IrBuilder
             var arrayExpr = (IrValue)Visit(indexCtx.expression(0))!;
             var indexExpr = (IrValue)Visit(indexCtx.expression(1))!;
 
-            Emit(new IrIndexStore(arrayExpr, indexExpr, value));
+            Emit(new IrIndexStore(arrayExpr, indexExpr, value, IndexBoundsMode(arrayExpr)));
             return;
         }
 
@@ -3883,7 +4157,8 @@ public partial class IrBuilder
 
             // Load current value
             var loadTemp = $"%index_load_{_tempCounter++}";
-            _currentBlock!.AddInstruction(new IrIndexAccess(loadTemp, arrayExpr, indexExpr, elementType));
+            _currentBlock!.AddInstruction(new IrIndexAccess(
+                loadTemp, arrayExpr, indexExpr, elementType, IndexBoundsMode(arrayExpr)));
             var currentValue = new IrVariable(loadTemp, elementType);
 
             // Increment/decrement
@@ -3894,7 +4169,8 @@ public partial class IrBuilder
             _currentBlock.AddInstruction(op);
 
             var newValue = new IrVariable(newValueTemp, elementType);
-            _currentBlock.AddInstruction(new IrIndexStore(arrayExpr, indexExpr, newValue));
+            _currentBlock.AddInstruction(new IrIndexStore(
+                arrayExpr, indexExpr, newValue, IndexBoundsMode(arrayExpr)));
             return newValue;
         }
 
@@ -4081,16 +4357,7 @@ public partial class IrBuilder
 
         var resultTemp = $"%t{_tempCounter++}";
 
-        // Automatic pointer-to-bool coercion: if ptr { ... } else { ... }
-        // Convert pointer to bool by comparing with null (ptr != 0)
-        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-        {
-            var ptrToBoolTemp = $"%t{_tempCounter++}";
-            var zeroValue = new IrConstant(0, IrIntType.U32);
-            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-            _currentBlock!.AddInstruction(comparison);
-            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-        }
+        condition = CoerceConditionToBool(condition);
 
         // Branch based on condition
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
@@ -4162,15 +4429,7 @@ public partial class IrBuilder
 
         var resultTemp = $"%t{_tempCounter++}";
 
-        // Automatic pointer-to-bool coercion
-        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-        {
-            var ptrToBoolTemp = $"%t{_tempCounter++}";
-            var zeroValue = new IrConstant(0, IrIntType.U32);
-            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-            _currentBlock!.AddInstruction(comparison);
-            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-        }
+        condition = CoerceConditionToBool(condition);
 
         // Branch based on condition
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, trueLabel, falseLabel));
@@ -4298,27 +4557,12 @@ public partial class IrBuilder
         var isNegative = context.GetText().StartsWith("-");
         var text = context.FLOAT_LITERAL().GetText();
         var (value, type) = ParseFloatLiteral(text);
-        var hasExplicitSuffix = text.EndsWith("f32") || text.EndsWith("f64") ||
-                                text.EndsWith("fixed16") || text.EndsWith("fixed32");
 
         if (isNegative)
         {
             value = -value;
         }
 
-        // If expected type is fixed-point and we have an unsuffixed float literal,
-        // convert to fixed-point. This allows: var pos: fixed16 = 100.0
-        if (_expectedType is IrFixedType expectedFixed && type is IrFloatType)
-        {
-            return new IrFixedConstant(value, expectedFixed);
-        }
-
-        if (!hasExplicitSuffix && _expectedType is IrFloatType expectedFloat)
-        {
-            type = expectedFloat;
-        }
-
-        // Return appropriate constant type based on whether it's float or fixed
         if (type is IrFloatType floatType)
         {
             return new IrFloatConstant(value, floatType);
@@ -4391,6 +4635,62 @@ public partial class IrBuilder
     public override object? VisitCharLiteral([NotNull] NovusParser.CharLiteralContext context)
     {
         return new IrConstant(ParseCharLiteralValue(context.CHAR_LITERAL().GetText()), IrIntType.U8);
+    }
+
+    public override object? VisitByteCharLiteral([NotNull] NovusParser.ByteCharLiteralContext context)
+    {
+        var bytes = ParseBytes(context.BYTE_CHAR_LITERAL().GetText(), 1, context);
+        if (bytes == null)
+            return null;
+        if (bytes.Length != 1)
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                "a byte character literal must contain exactly one byte", GetLocation(context));
+            return null;
+        }
+        return new IrConstant(bytes[0], IrIntType.U8);
+    }
+
+    public override object? VisitByteStringLiteral([NotNull] NovusParser.ByteStringLiteralContext context)
+    {
+        var bytes = ParseBytes(context.BYTE_STRING_LITERAL().GetText(), 1, context);
+        if (bytes == null)
+            return null;
+
+        var literal = new IrArrayLiteral(_typeInterner.GetArrayType(IrIntType.U8, bytes.Length));
+        foreach (var value in bytes)
+            literal.Elements.Add(new IrConstant(value, IrIntType.U8));
+        return literal;
+    }
+
+    public override object? VisitFourCcLiteral([NotNull] NovusParser.FourCcLiteralContext context)
+    {
+        var bytes = ParseBytes(context.FOURCC_LITERAL().GetText(), 6, context);
+        if (bytes == null)
+            return null;
+        if (bytes.Length != 4)
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                "a FourCC literal must contain exactly four bytes", GetLocation(context));
+            return null;
+        }
+
+        var value = ((uint)bytes[0] << 24) | ((uint)bytes[1] << 16) |
+                    ((uint)bytes[2] << 8) | bytes[3];
+        return new IrConstant(value, IrIntType.U32);
+    }
+
+    private byte[]? ParseBytes(string token, int prefixLength, ParserRuleContext context)
+    {
+        try
+        {
+            return ByteLiteralParser.Parse(token, prefixLength);
+        }
+        catch (FormatException error)
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType, error.Message, GetLocation(context));
+            return null;
+        }
     }
 
     private static byte ParseCharLiteralValue(string text)
@@ -4496,7 +4796,7 @@ public partial class IrBuilder
         if (strType == null)
         {
             // When Str type is not available, fall back to *u8 (C-style string pointer)
-            // This allows string literals to work in modules that can't import std::strings
+            // This allows string literals to work in modules that can't import std::string
             return stringLiteral;  // Return just the *u8 pointer
         }
 
@@ -4652,11 +4952,12 @@ public partial class IrBuilder
             {
                 var typeName = parts[0];
                 var memberName = parts[1];
+                var resolvedTypeName = ResolveAliasTypeName(typeName);
 
                 // Try enum variant first
-                if (_symbols.HasEnum(typeName))
+                if (_symbols.HasEnum(resolvedTypeName))
                 {
-                    var enumType = RequireEnum(typeName);
+                    var enumType = RequireEnum(resolvedTypeName);
                     var variant = enumType.GetVariant(memberName);
 
                     if (variant != null)
@@ -4686,12 +4987,12 @@ public partial class IrBuilder
                 }
 
                 // Try associated function (struct method without self parameter)
-                var mangledName = name; // Already has :: format
+                var mangledName = $"{resolvedTypeName}::{memberName}";
 
                 // Check if this is a generic type - look in generic method templates
-                if (_symbols.HasStruct(typeName))
+                if (_symbols.HasStruct(resolvedTypeName))
                 {
-                    var structType = RequireStruct(typeName);
+                    var structType = RequireStruct(resolvedTypeName);
 
                     // If the struct is generic, check generic method templates
                     if (structType.GenericParameters.Count > 0)
@@ -4701,7 +5002,7 @@ public partial class IrBuilder
                         {
                             // Return a special marker for generic associated function
                             // This will be instantiated later when we know the concrete types
-                            return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters);
+                            return new IrGenericAssociatedFunction(resolvedTypeName, memberName, structType.GenericParameters);
                         }
                     }
                 }
@@ -4899,6 +5200,8 @@ public partial class IrBuilder
     public override object? VisitStructLiteral([NotNull] NovusParser.StructLiteralContext context)
     {
         var structName = context.typeName().GetText();
+        if (_symbols.LookupTypeAlias(structName) is IrStructType aliasedStruct)
+            structName = aliasedStruct.StructName;
 
         if (!_symbols.HasStruct(structName))
         {
@@ -5245,6 +5548,8 @@ public partial class IrBuilder
         // This is syntactic sugar for collections that can be initialized from an array literal
 
         var structName = context.typeName().GetText();
+        if (_symbols.LookupTypeAlias(structName) is IrStructType aliasedStruct)
+            structName = aliasedStruct.StructName;
 
         if (!_symbols.HasStruct(structName))
         {
@@ -5426,7 +5731,10 @@ public partial class IrBuilder
         if (baseExpr is IrVariable indexedVar && _indexAccessTemps.TryGetValue(indexedVar.Name, out var indexInfo))
         {
             var (array, index, elementType) = indexInfo;
-            if (elementType is IrStructType indexedStructType)
+            var sourceIndex = _currentBlock!.Instructions.LastOrDefault() as IrIndexAccess;
+            if (elementType is IrStructType indexedStructType &&
+                sourceIndex?.ResultName == indexedVar.Name &&
+                sourceIndex.BoundsCheck != IrBoundsCheckMode.Checked)
             {
                 var indexedField = indexedStructType.GetField(memberName);
                 if (indexedField == null)
@@ -5442,11 +5750,7 @@ public partial class IrBuilder
 
                 // Remove the now-unnecessary IrIndexAccess instruction from the current block
                 // This prevents the dead intermediate struct variable from being created
-                var lastInst = _currentBlock!.Instructions.LastOrDefault();
-                if (lastInst is IrIndexAccess indexAccess && indexAccess.ResultName == indexedVar.Name)
-                {
-                    _currentBlock.Instructions.Remove(indexAccess);
-                }
+                _currentBlock.Instructions.Remove(sourceIndex);
 
                 // IMPORTANT: Substitute generic types in field type if we're in a monomorphized context
                 var indexedFieldType = indexedField.Type;
@@ -5456,7 +5760,9 @@ public partial class IrBuilder
                 }
 
                 // Return IrIndexedFieldAccess value instead of creating IrMemberAccess instruction
-                return new IrIndexedFieldAccess(array, index, memberName, indexedField.Offset, indexedFieldType);
+                return new IrIndexedFieldAccess(
+                    array, index, memberName, indexedField.Offset, indexedFieldType,
+                    sourceIndex.BoundsCheck, sourceIndex.Length);
             }
         }
 
@@ -5499,6 +5805,22 @@ public partial class IrBuilder
         var field = structType.GetField(memberName);
         if (field == null)
         {
+            var property = FindReadOnlyProperty(structType, memberName);
+            if (property != null)
+            {
+                var receiver = baseExpr.Type is IrReferenceType or IrMutReferenceType
+                    ? baseExpr
+                    : new IrBorrowValue(baseExpr, property.Parameters[0].Type, false);
+                var propertyResult = $"%t{_tempCounter++}";
+                var call = new IrCall(property.Name, property.ReturnType, propertyResult)
+                {
+                    Location = GetLocation(context)
+                };
+                call.Arguments.Add(receiver);
+                Emit(call);
+                return new IrVariable(propertyResult, property.ReturnType);
+            }
+
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
@@ -5524,6 +5846,21 @@ public partial class IrBuilder
         Emit(memberAccess);
 
         return new IrVariable(resultName, fieldType);
+    }
+
+    private IrFunction? FindReadOnlyProperty(IrStructType type, string memberName)
+    {
+        var method = _module.GetFunction($"{type.StructName}::{memberName}");
+        if (method == null && type.CacheKey != null)
+            method = _genericInstantiator.InstantiateStructMethod(type, memberName, arguments: []);
+        method ??= _module.Functions.FirstOrDefault(function =>
+            function.Name.StartsWith($"{type.StructName}_", StringComparison.Ordinal) &&
+            function.Name.EndsWith($"_{memberName}", StringComparison.Ordinal));
+
+        return method is { Parameters.Count: 1, ReturnType: not IrVoidType } &&
+               method.Parameters[0].Type is IrReferenceType
+            ? method
+            : null;
     }
 
     public override object? VisitTurboFishExpr([NotNull] NovusParser.TurboFishExprContext context)
@@ -5607,10 +5944,12 @@ public partial class IrBuilder
             return null;
         }
 
+        var resolvedTypeName = ResolveAliasTypeName(typeName);
+
         // Try enum variant first
-        if (_symbols.HasEnum(typeName))
+        if (_symbols.HasEnum(resolvedTypeName))
         {
-            var enumType = RequireEnum(typeName);
+            var enumType = RequireEnum(resolvedTypeName);
             var variant = enumType.GetVariant(memberName);
 
             if (variant == null)
@@ -5645,12 +5984,12 @@ public partial class IrBuilder
         }
 
         // Try associated function (struct method without self parameter)
-        var mangledName = Generics.InstantiationKeyBuilder.BuildInherentMethodName(typeName, memberName);
+        var mangledName = Generics.InstantiationKeyBuilder.BuildInherentMethodName(resolvedTypeName, memberName);
 
         // Check if this is a generic type - look in generic method templates
-        if (_symbols.HasStruct(typeName))
+        if (_symbols.HasStruct(resolvedTypeName))
         {
-            var structType = RequireStruct(typeName);
+            var structType = RequireStruct(resolvedTypeName);
 
             // If the struct is generic, check generic method templates
             if (structType.GenericParameters.Count > 0)
@@ -5660,7 +5999,7 @@ public partial class IrBuilder
                 {
                     // Return a special marker for generic associated function
                     // This will be instantiated later when we know the concrete types
-                    return new IrGenericAssociatedFunction(typeName, memberName, structType.GenericParameters, explicitTypeArgs);
+                    return new IrGenericAssociatedFunction(resolvedTypeName, memberName, structType.GenericParameters, explicitTypeArgs);
                 }
             }
         }
@@ -5695,6 +6034,13 @@ public partial class IrBuilder
         );
         return null;
     }
+
+    private string ResolveAliasTypeName(string name) => _symbols.LookupTypeAlias(name) switch
+    {
+        IrStructType type => type.StructName,
+        IrEnumType type => type.EnumName,
+        _ => name
+    };
 
 
     /// <summary>

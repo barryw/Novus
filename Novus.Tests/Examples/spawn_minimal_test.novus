@@ -1,9 +1,9 @@
 // Minimal test for spawning with data to isolate Guru 80000004
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn_with_ptr, receive_startup_data
-from std::ffi::dos import VPrintf, Delay
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn_with_ptr, receive_startup_data
+from amiga::raw::dos import VPrintf, Delay
 
 fn worker() -> i32 {
     VPrintf("Worker: started\n", (*u8)0)

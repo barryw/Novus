@@ -653,7 +653,7 @@ fn open_with_retry(path: *u8, max_retries: u32) -> Result<FileHandle, DosError> 
             Result::Err(DosError::NoDisk) => {
                 // Disk not ready - wait and retry
                 delay(Duration::from_secs(1))
-                attempts = attempts + 1u32
+                attempts = attempts + 1
             },
             Result::Err(e) => return Result::Err(e)  // Non-retriable
         }
@@ -800,8 +800,8 @@ This complete program demonstrates comprehensive error handling in Novus. It loa
 
 from std::core import Option, Result
 from std::error::errors import DosError
-from std::ffi::dos import Open, Close, Read, Lock, UnLock, Examine
-from std::ffi::amiga_consts import MODE_OLDFILE, ACCESS_READ
+from amiga::raw::dos import Open, Close, Read, Lock, UnLock, Examine
+from amiga::raw::consts import MODE_OLDFILE, ACCESS_READ
 from std::io::file import print, println
 
 // ----------------------------------------------------------------------------
@@ -851,7 +851,7 @@ impl ConfigError {
 // ----------------------------------------------------------------------------
 
 pub fn load_config(name: *u8) -> Result<Config, ConfigError> {
-    var path_buffer = [0u8; 256]
+    var path_buffer: [u8] = [0; 256]
 
     // Try ENV: first (volatile)
     copy_path(&path_buffer[0], "ENV:", name)
@@ -1409,7 +1409,7 @@ pub fn convert_file(
     var bytes_written: u32 = 0
 
     // Process in chunks
-    var buffer = [0u8; 4096]
+    var buffer: [u8] = [0; 4096]
     loop {
         let bytes_read = match read(&input, &buffer) {
             Result::Ok(0) => break,  // EOF

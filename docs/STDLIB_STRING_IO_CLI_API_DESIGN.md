@@ -100,7 +100,7 @@ pub fn find(haystack: Str, needle: Str) -> Option&lt;u32&gt;
 
 ## String Manipulation API
 
-### Namespace: `std::strings`
+### Namespace: `std::string`
 
 ### 1. String Building and Formatting
 
@@ -349,7 +349,7 @@ impl Str {
 ### 4. Path Manipulation (AmigaDOS-specific)
 
 ```novus
-/// Namespace: std::strings::path
+/// Namespace: std::string::path
 ///
 /// AmigaDOS path manipulation utilities
 
@@ -418,7 +418,7 @@ impl From&lt;DosError&gt; for IoError {
 ### 2. File Opening and Closing
 
 **Existing foundation:**
-- `OwnedFileHandle` in `std::os::dos` provides RAII wrapper
+- `OwnedFileHandle` in `amiga::sys::dos` provides RAII wrapper
 - Basic `read()`, `write()`, `seek()` methods
 
 **Enhancement: File struct with more ergonomics**
@@ -718,7 +718,7 @@ impl Drop for BufWriter {
 
 ## CLI Argument Parsing API
 
-### Namespace: `std::args`
+### Namespace: `amiga::workbench`
 
 ### Design: Wrapper around AmigaDOS ReadArgs()
 
@@ -963,10 +963,10 @@ This example demonstrates all three APIs working together to build a real CLI to
 // Example:
 //   filecat file1.txt file2.txt OUTPUT=combined.txt VERBOSE
 
-from std::args import Args, is_workbench
+from amiga::workbench import Args, is_workbench
 from std::io import File, BufReader, write_string, IoError
-from std::strings import StringBuilder
-from std::error::errors import DosError
+from std::string import StringBuilder
+from amiga::sys::dos import DosError
 from std::io import write
 
 pub fn main() -> i32 {
@@ -1071,7 +1071,7 @@ fn read_file_to_string(path: Str) -> Result&lt;String, IoError&gt; {
 #### Example 1: Simple File Copy
 
 ```novus
-from std::args import Args
+from amiga::workbench import Args
 from std::io import copy, IoError
 
 pub fn main() -> i32 {
@@ -1093,7 +1093,7 @@ pub fn main() -> i32 {
 #### Example 2: Line Counter
 
 ```novus
-from std::args import Args
+from amiga::workbench import Args
 from std::io import File, BufReader
 from std::io import write
 
@@ -1127,9 +1127,9 @@ pub fn main() -> i32 {
 #### Example 3: Config File Parser
 
 ```novus
-from std::args import Args
+from amiga::workbench import Args
 from std::io import read_to_string
-from std::strings import Str
+from std::string import Str
 
 pub fn main() -> i32 {
     let args = Args::parse("CONFIG/A") or { return 10 }
@@ -1295,7 +1295,7 @@ let s = builder.build()
 
 **Before (low-level):**
 ```novus
-from std::os::dos import open_file, read_file, close_file
+from amiga::sys::dos import open_file, read_file, close_file
 
 let fh = open_file("S:Startup-Sequence", MODE_OLDFILE) or { return 1 }
 defer { close_file(fh) }
@@ -1385,7 +1385,7 @@ New APIs are additive, not breaking.
 ### A. Complete Type Reference
 
 ```novus
-// std::strings
+// std::string
 pub struct StringBuilder { ... }
 pub enum ParseError { ... }
 pub struct SplitIter { ... }
@@ -1400,7 +1400,7 @@ pub enum IoError { ... }
 pub enum SeekFrom { ... }
 pub struct FileInfo { ... }
 
-// std::args
+// amiga::workbench
 pub struct Args { ... }
 pub struct ArgParser { ... }
 pub enum ArgType { ... }
@@ -1411,7 +1411,7 @@ pub struct WBArg { ... }
 
 ### B. Complete Function Reference
 
-**std::strings:**
+**std::string:**
 - `format(template: Str, args: &[FormatArg]) -> Result&lt;String, StringError&gt;`
 - `split_path(path: Str) -> Result&lt;PathComponents, StringError&gt;`
 - `join_path(...) -> Result&lt;String, StringError&gt;`
@@ -1427,7 +1427,7 @@ pub struct WBArg { ... }
 - `append_string(path: Str, contents: Str) -> Result&lt;(), IoError&gt;`
 - `copy(from: Str, to: Str) -> Result&lt;(), IoError&gt;`
 
-**std::args:**
+**amiga::workbench:**
 - `is_workbench() -> bool`
 - `get_workbench_startup() -> Option&lt;WBStartup&gt;`
 

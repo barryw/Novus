@@ -1,0 +1,262 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: expansion.library
+// Base: _ExpansionBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+/// Add a new ConfigDev structure to the system
+///
+/// (Not typically called by user code) This routine adds the specified
+/// ConfigDev structure to the list of Configuration Devices in the system.
+///
+/// # Arguments
+/// * `configDev` - a valid ConfigDev structure.
+///
+/// # Returns
+/// EXCEPTIONS
+///
+/// See also: RemConfigDev()
+@library("expansion.library")
+extern pub fn AddConfigDev(configDev: *ConfigDev)
+/// Add a BOOTNODE to the system (V36)
+///
+/// This routine makes sure that your disk device (or a device that wants to be
+/// treated as if it was a disk...) will be entered into the system. If the dos
+/// is already up and running, then it will be entered immediately.
+///
+/// # Arguments
+///
+/// # Returns
+/// ok - non-zero everything went ok, zero if we ran out of memory
+///
+/// See also: AddDosNode()
+@library("expansion.library")
+extern pub fn AddBootNode(bootPri: i32, flags: u32, deviceNode: *DeviceNode, configDev: *ConfigDev) -> i16
+@library("expansion.library")
+extern pub fn AllocBoardMem(slotSpec: u32)
+/// Allocate a ConfigDev structure
+///
+/// This routine returns the address of a ConfigDev structure. It is provided so
+/// new fields can be added to the structure without breaking old, existing
+/// code.
+///
+/// # Returns
+/// configDev - either a valid ConfigDev structure or NULL.
+///
+/// See also: FreeConfigDev()
+@library("expansion.library")
+extern pub fn AllocConfigDev() -> *ConfigDev
+/// Allocate expansion memory
+///
+/// (Not typically called by user code) This function allocates numslots of
+/// expansion space (each slot is E_SLOTSIZE bytes). It returns the slot number
+/// of the start of the expansion memory.
+///
+/// # Arguments
+/// * `numSlots` - the number of slots required. slotOffset - an offset from...
+///
+/// # Returns
+/// startSlot - the slot number that was allocated, or -1 for error.
+///
+/// See also: FreeExpansionMem()
+@library("expansion.library")
+extern pub fn AllocExpansionMem(numSlots: u32, slotAlign: u32) -> *u8
+/// Configure a board
+///
+/// This routine configures an expansion board. The board will generally live at
+/// E_EXPANSIONBASE, but the base is passed as a parameter to allow future
+/// compatibility.
+///
+/// # Arguments
+/// * `board` - the current address that the expansion board is respondin...
+///
+/// # Returns
+/// error - non-zero if there was a problem configuring this board
+///
+/// See also: FreeConfigDev()
+@library("expansion.library")
+extern pub fn ConfigBoard(board: *u8, configDev: *ConfigDev)
+@library("expansion.library")
+extern pub fn ConfigChain(baseAddr: *u8)
+/// Find a matching ConfigDev entry
+///
+/// This routine searches the list of existing ConfigDev structures in the
+/// system and looks for one that has the specified manufacturer and product
+/// codes. If the oldConfigDev is NULL the the search is from the start of the
+/// list of configuration devices.
+///
+/// # Arguments
+/// * `oldConfigDev` - a valid ConfigDev structure, or NULL to start from the st...
+///
+/// # Returns
+/// configDev - the next ConfigDev entry that matches the
+@library("expansion.library")
+extern pub fn FindConfigDev(oldConfigDev: *ConfigDev, manufacturer: i32, product: i32) -> *ConfigDev
+@library("expansion.library")
+extern pub fn FreeBoardMem(startSlot: u32, slotSpec: u32)
+/// Free a ConfigDev structure
+///
+/// This routine frees a ConfigDev structure as returned by AllocConfigDev.
+///
+/// # Arguments
+/// * `configDev` - a valid ConfigDev structure.
+///
+/// # Returns
+/// EXCEPTIONS
+///
+/// See also: AllocConfigDev()
+@library("expansion.library")
+extern pub fn FreeConfigDev(configDev: *ConfigDev)
+/// Allocate standard device expansion memory
+///
+/// (Not typically called by user code) This function allocates numslots of
+/// expansion space (each slot is E_SLOTSIZE bytes). It is the inverse function
+/// of AllocExpansionMem().
+///
+/// # Arguments
+/// * `startSlot` - the slot number that was allocated, or -1 for error. numS...
+///
+/// See also: AllocExpansionMem()
+@library("expansion.library")
+extern pub fn FreeExpansionMem(startSlot: u32, numSlots: u32)
+/// Read a byte nybble by nybble.
+///
+/// (Not typically called by user code) ReadExpansionByte reads a byte from a
+/// new-style expansion board. These boards have their readable data organized
+/// as a series of nybbles in memory.
+///
+/// # Arguments
+/// * `board` - a pointer to the base of a new style expansion board. off...
+///
+/// # Returns
+/// byte - a byte of data from the expansion board.
+///
+/// See also: WriteExpansionByte(), ReadExpansionRom()
+@library("expansion.library")
+extern pub fn ReadExpansionByte(board: *u8, offset: u32) -> u8
+/// Read a boards configuration ROM space
+///
+/// (Not typically called by user code) ReadExpansionRom reads a the ROM portion
+/// of an expansion device in to cd_Rom portion of a ConfigDev structure. This
+/// routine knows how to detect whether or not there is actually a board there,
+/// In addition, the ROM portion of a new style expansion board is encoded in
+/// ones-complement format (except for the first two nybbles -- the er_Type
+/// field).
+///
+/// # Arguments
+/// * `board` - a pointer to the base of a new style expansion board. con...
+///
+/// # Returns
+/// error - If the board address does not contain a valid new style
+///
+/// See also: ReadExpansionByte(), WriteExpansionByte()
+@library("expansion.library")
+extern pub fn ReadExpansionRom(board: *u8, configDev: *ConfigDev)
+/// Remove a ConfigDev structure from the system
+///
+/// (Not typically called by user code) This routine removes the specified
+/// ConfigDev structure from the list of Configuration Devices in the system.
+///
+/// # Arguments
+/// * `configDev` - a valid ConfigDev structure.
+///
+/// # Returns
+/// EXCEPTIONS
+///
+/// See also: AddConfigDev()
+@library("expansion.library")
+extern pub fn RemConfigDev(configDev: *ConfigDev)
+/// Write a byte nybble by nybble.
+///
+/// (Not typically called by user code) WriteExpansionByte writes a byte to a
+/// new-style expansion board. These boards have their writeable data organized
+/// as a series of nybbles in memory.
+///
+/// # Arguments
+/// * `board` - a pointer to the base of a new style expansion board. off...
+///
+/// See also: ReadExpansionByte(), ReadExpansionRom()
+@library("expansion.library")
+extern pub fn WriteExpansionByte(board: *u8, offset: u32, byte: u8)
+/// Try to get permission to bind drivers
+///
+/// ObtainConfigBinding gives permission to bind drivers to ConfigDev
+/// structures. It exists so two drivers at once do not try and own the same
+/// ConfigDev structure.
+///
+/// # Returns
+/// EXCEPTIONS
+///
+/// See also: ReleaseConfigBinding()
+@library("expansion.library")
+extern pub fn ObtainConfigBinding()
+/// Allow others to bind to drivers
+///
+/// This call should be used when you are done binding drivers to ConfigDev
+/// entries. It releases the SignalSemaphore; this allows others to bind their
+/// drivers to ConfigDev structures.
+///
+/// See also: ObtainConfigBinding()
+@library("expansion.library")
+extern pub fn ReleaseConfigBinding()
+/// Sets static board configuration area
+///
+/// This function records the contents of the "currentBinding" structure in a
+/// private place. It may be read via GetCurrentBinding().
+///
+/// # Arguments
+/// * `currentBinding` - a pointer to a CurrentBinding structure
+/// * `size` - The size of the user's binddriver structure.  No more tha...
+///
+/// See also: GetCurrentBinding()
+@library("expansion.library")
+extern pub fn SetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u32)
+/// Gets static board configuration area
+///
+/// This function writes the contents of the "currentBinding" structure out of a
+/// private place. It may be set via SetCurrentBinding().
+///
+/// # Arguments
+/// * `currentBinding` - a pointer to a CurrentBinding structure
+/// * `size` - The size of the user's binddriver structure. Do not pass ...
+///
+/// # Returns
+/// actual - the true size of a CurrentBinding structure is returned.
+///
+/// See also: SetCurrentBinding()
+@library("expansion.library")
+extern pub fn GetCurrentBinding(currentBinding: *CurrentBinding, bindingSize: u32) -> u32
+/// Construct dos data structures that a disk needs
+///
+/// This routine manufactures the data structures needed to enter a dos disk
+/// device into the system. This consists of a DeviceNode, a FileSysStartupMsg,
+/// a disk environment vector, and up to two bcpl strings.
+///
+/// # Arguments
+/// * `parameterPkt` - a longword array containing all the information needed to...
+///
+/// # Returns
+/// deviceNode - pointer to initialize device node structure, or
+///
+/// See also: AddDosNode(), libraries/dosextens.h, libraries/filehandler.h
+@library("expansion.library")
+extern pub fn MakeDosNode(parmPacket: *u8) -> *DeviceNode
+/// Mount a disk to the system
+///
+/// This is the old (pre V36) function that works just like AddBootNode(). It
+/// should only be used if you *MUST* work in a 1.3 system and you don't need to
+/// autoboot.
+///
+/// # Returns
+/// ok - non-zero everything went ok, zero if we ran out of memory
+///
+/// See also: MakeDosNode(), AddBootNode()
+@library("expansion.library")
+extern pub fn AddDosNode(bootPri: i32, flags: u32, deviceNode: *DeviceNode) -> i16

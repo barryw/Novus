@@ -25,7 +25,7 @@ public class AmigaAbiTests
             type HookEntry = amiga fn(*u8 in a0, *u8 in a2, *u8 in a1) -> u32 in d0
 
             amiga fn hook_entry(hook: *u8 in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
-                return 1u32
+                return 1
             }
 
             pub fn main() -> i32 {

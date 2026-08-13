@@ -119,7 +119,7 @@ When the type is obvious from context, annotations are optional:
 
 \begin{lstlisting}
 let x = 42       // Inferred as i32
-let y = 42u32    // Type suffix makes it u32
+let y: u32 = 42  // Annotation supplies the literal type
 \end{lstlisting}
 
 The compiler performs type inference within function bodies. Module-level constants typically require explicit types.
@@ -261,7 +261,7 @@ This catches bugs like \texttt{if (x = 10)} which in C silently assigns and eval
 
 \subsection{Integer Literals}
 
-Integer literals support multiple bases and optional type suffixes.
+Integer literals support multiple bases and inherit their type from context.
 
 \subsubsection{Decimal}
 
@@ -294,25 +294,25 @@ let flags = %11110000
 
 Binary literals are useful for bit patterns and masks when working with hardware registers.
 
-\subsubsection{Type Suffixes}
+\subsubsection{Contextual Literals and Casts}
 
-Append a type suffix to specify the literal's type explicitly:
-
-\begin{lstlisting}
-let a = 42u32   // u32
-let b = 42i8    // i8
-let c = 100u16  // u16
-\end{lstlisting}
-
-Type suffixes work with all bases:
+Assignments, arguments, returns, and expressions supply literal types:
 
 \begin{lstlisting}
-let hex_byte = $FFu8
-let binary_word = %1010u16
-let decimal_long = 1000u32
+let a: u32 = 42   // u32
+let b: i8 = 42    // i8
+let c: u16 = 100  // u16
 \end{lstlisting}
 
-Without a suffix, integer literals default to \texttt{i32}.
+Use a normal cast when no useful context exists:
+
+\begin{lstlisting}
+let hex_byte = (u8)$FF
+let binary_word = (u16)%1010
+let decimal_long = (u32)1000
+\end{lstlisting}
+
+Without another context, integer literals default to \texttt{i32}.
 
 \subsection{Floating-Point Literals}
 
@@ -320,10 +320,10 @@ Floating-point literals require a decimal point:
 
 \begin{lstlisting}
 let pi = 3.14
-let e = 2.71828f32  // f32 with explicit suffix
+let e: f32 = 2.71828  // annotation supplies f32 context
 \end{lstlisting}
 
-Without a suffix, floating-point literals default to \texttt{f64}.
+Without another context, floating-point literals default to \texttt{f32}. Use a type annotation or cast for \texttt{f64} and fixed-point values.
 
 \subsection{String Literals}
 
@@ -755,7 +755,7 @@ Pointer arithmetic works like C---offsets are scaled by the pointed-to type's si
 
 \begin{lstlisting}
 let arr = [10, 20, 30, 40, 50]
-let ptr: *i32 = &arr[0u32]
+let ptr: *i32 = &arr[0]
 
 let first = *ptr           // 10
 let second = *(ptr + 1)    // 20 (advances by sizeof(i32) = 4 bytes)
@@ -765,8 +765,8 @@ let third = *(ptr + 2)     // 30
 Pointer subtraction returns the number of elements between two pointers:
 
 \begin{lstlisting}
-let start: *i32 = &arr[0u32]
-let end: *i32 = &arr[4u32]
+let start: *i32 = &arr[0]
+let end: *i32 = &arr[4]
 let count = end - start    // 4 elements
 \end{lstlisting}
 
@@ -821,7 +821,7 @@ Initialize arrays with a repeated value:
 
 \begin{lstlisting}
 let zeros = [0; 100]       // 100 zeros
-let buffer = [0u8; 1024]   // 1024 bytes
+let buffer: [u8] = [0; 1024]   // 1024 bytes
 \end{lstlisting}
 
 The syntax \texttt{[value; count]} creates an array of \texttt{count} elements, each initialized to \texttt{value}.
@@ -832,8 +832,8 @@ Access array elements with bracket indexing:
 
 \begin{lstlisting}
 let numbers = [10, 20, 30]
-let first = numbers[0u32]   // 10
-let second = numbers[1u32]  // 20
+let first = numbers[0]   // 10
+let second = numbers[1]  // 20
 \end{lstlisting}
 
 Indices must be unsigned integers. In debug builds, out-of-bounds access triggers a panic. In release builds, bounds checking may be elided for performance.
@@ -979,7 +979,7 @@ Following these guidelines will help you write clear, efficient Novus code:
 // Good
 const SCREEN_WIDTH: u16 = 320
 let player_count = get_player_count()
-var current_score = 0u32
+var current_score: u32 = 0
 
 // Avoid
 var x = 0       // What is x?
@@ -1156,7 +1156,7 @@ fn main() -> i32 {
 
     // Find the hottest
     var max_celsius: fixed32 = -1000.0
-    for i in 0u32..3 {
+    for i in 0..3 {
         let c = temps[i].to_celsius()
         if c > max_celsius {
             max_celsius = c
@@ -1168,7 +1168,7 @@ fn main() -> i32 {
     // Bit manipulation example: encode temp + scale in u16
     // Format: [scale:2][temp_int:14]
     let temp_int = room_temp.to_celsius().to_int()
-    let scale_bits: u16 = 0u16  // Celsius = 0
+    let scale_bits: u16 = 0  // Celsius = 0
     let encoded: u16 = (scale_bits << 14) | ((u16)(temp_int) & $3FFF)
 
     // Decode

@@ -1,0 +1,130 @@
+// std::fmt - Formatting and Display/Debug traits
+// Provides zero-allocation formatting infrastructure for string interpolation
+
+from std::core import Option, Result, Drop
+from std::string::core import String, Str, StringError
+
+// Runtime helper for memory copy (implemented in novus_runtime.c)
+extern fn __novus_memcpy(dest: *u8, src: *u8, n: u32)
+
+// StackFormatter - stack-allocated formatter for string interpolation
+// Uses a fixed 256-byte buffer to avoid heap allocations entirely
+// Perfect for embedded systems like Amiga where malloc/free are expensive
+pub struct StackFormatter {
+    buf: [u8; 256],
+    len: u32,
+}
+
+impl StackFormatter {
+    // Create a new stack formatter (always succeeds - no allocation)
+    pub fn new() -> StackFormatter {
+        StackFormatter {
+            buf: [0; 256],
+            len: 0,
+        }
+    }
+
+    // Write a string slice to the formatter
+    // Returns true on success, false if buffer is full
+    pub fn write_str(&var self, s: Str) -> bool {
+        let bytes_needed = s.len
+        if self.len + bytes_needed > 256 {
+            return false  // Buffer full
+        }
+
+        // Copy bytes from s into our buffer using memcpy
+        unsafe {
+            let dest: *u8 = (*u8)&self.buf[self.len]
+            __novus_memcpy(dest, s.ptr, bytes_needed)
+        }
+
+        self.len = self.len + bytes_needed
+        return true
+    }
+
+    // Write a single character to the formatter
+    // Returns true on success, false if buffer is full
+    pub fn write_char(&var self, c: u8) -> bool {
+        if self.len >= 256 {
+            return false  // Buffer full
+        }
+        self.buf[self.len] = c
+        self.len = self.len + 1
+        return true
+    }
+
+    // Get the formatted result as a Str (pointer into our stack buffer)
+    // IMPORTANT: The returned Str is only valid while this StackFormatter is in scope!
+    pub fn as_str(&self) -> Str {
+        Str {
+            ptr: &self.buf[0],
+            len: self.len,
+        }
+    }
+}
+
+// Formatter - builds formatted output efficiently without intermediate allocations
+// NOTE: This heap-allocates and should be avoided for f-strings. Use StackFormatter instead.
+pub struct Formatter {
+    buffer: String,
+}
+
+impl Formatter {
+    /// Create a new formatter with default capacity (256 bytes)
+    pub fn new() -> Result<Formatter, StringError> {
+        match String::with_capacity(256) {
+            Result::Ok(s) => Result::Ok(Formatter { buffer: s }),
+            Result::Err(e) => Result::Err(e),
+        }
+    }
+
+    /// Create a formatter with specific capacity
+    pub fn with_capacity(capacity: u32) -> Result<Formatter, StringError> {
+        match String::with_capacity(capacity) {
+            Result::Ok(s) => Result::Ok(Formatter { buffer: s }),
+            Result::Err(e) => Result::Err(e),
+        }
+    }
+
+    // Write a string slice to the formatter
+    // Returns true on success, false on allocation failure
+    pub fn write_str(&var self, s: Str) -> bool {
+        match self.buffer.push_str(s) {
+            Result::Ok(_) => true,
+            Result::Err(_) => false,
+        }
+    }
+
+    // Write a single character to the formatter
+    // Returns true on success, false on allocation failure
+    pub fn write_char(&var self, c: u8) -> bool {
+        match self.buffer.push_byte(c) {
+            Result::Ok(_) => true,
+            Result::Err(_) => false,
+        }
+    }
+
+    // Get the formatted result as a String
+    pub fn finish(consuming self) -> String {
+        self.buffer
+    }
+
+    // Get the current contents as a Str
+    pub fn as_str(&self) -> Str {
+        self.buffer.as_str()
+    }
+}
+
+// Display trait - for user-facing formatted output
+// Types should implement Display for how they want to appear to end users
+// Returns true on success, false on allocation failure
+pub trait Display {
+    fn fmt(&self, f: &var Formatter) -> bool
+}
+
+// Debug trait - for programmer-facing debug output
+// Types should implement Debug for detailed inspection/debugging
+// Returns true on success, false on allocation failure
+pub trait Debug {
+    fn fmt(&self, f: &var Formatter) -> bool
+}

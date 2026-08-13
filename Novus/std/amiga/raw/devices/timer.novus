@@ -1,0 +1,68 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: timer.device
+// Base: _TimerBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+/// Add one time request to another.
+///
+/// This routine adds one timeval structure to another. The results are stored
+/// in the destination (Dest + Source -> Dest) A0 and A1 will be left unchanged
+///
+/// # Arguments
+///
+/// See also: timer.device/CmpTime(), timer.device/SubTime()
+@library("timer.device")
+extern pub fn AddTime(dest: *timeval, src: *timeval)
+/// Subtract one time request from another.
+///
+/// This routine subtracts one timeval structure from another. The results are
+/// stored in the destination (Dest - Source -> Dest) A0 and A1 will be left
+/// unchanged
+///
+/// # Arguments
+///
+/// See also: timer.device/AddTime(), timer.device/CmpTime()
+@library("timer.device")
+extern pub fn SubTime(dest: *timeval, src: *timeval)
+/// Compare two timeval structures.
+///
+/// This routine compares timeval structures A0 and A1 will be left unchanged
+///
+/// # Arguments
+///
+/// # Returns
+/// result will be 0 if Dest has same time as source -1 if Dest has more
+/// time than source +1 if Dest has less time than source
+///
+/// See also: timer.device/AddTime(), timer.device/SubTime()
+@library("timer.device")
+extern pub fn CmpTime(dest: *timeval, src: *timeval) -> i32
+/// Get the current value of the E-Clock. (V36)
+///
+/// This routine calculates the current 64 bit value of the E-Clock and stores
+/// it in the destination EClockVal structure. The count rate of the E-Clock is
+/// also returned.
+///
+/// # Arguments
+@library("timer.device")
+extern pub fn ReadEClock(dest: *EClockVal) -> u32
+/// Get the system time. (V36)
+///
+/// Ask the system what time it is. The system time starts off at zero at power
+/// on, but may be initialized via the TR_SETSYSTIME timer.device command.
+///
+/// # Arguments
+///
+/// # Returns
+/// Dest -- the timeval structure will contain the system time.
+///
+/// See also: timer.device/TR_GETSYSTIME, timer.device/TR_SETSYSTIME
+@library("timer.device")
+extern pub fn GetSysTime(dest: *timeval)

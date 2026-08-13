@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: dtclass.library
+// Base: _DTClassBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("dtclass.library")
+extern pub fn ObtainEngine() -> *u8

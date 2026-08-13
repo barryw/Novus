@@ -76,7 +76,7 @@ my-gui/
 
 **Generated main.novus:**
 ```novus
-from std::ffi::dos import Input, Output, Write
+from amiga::raw::dos import Input, Output, Write
 
 pub fn main() -> i32 {
     let input_fh = Input()

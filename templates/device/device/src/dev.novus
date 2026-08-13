@@ -4,8 +4,8 @@
 // BeginIO dispatcher, AbortIO handler, and A6 wrappers. Application code only
 // defines persistent state and command handlers.
 
-from std::ffi::amiga_structs import IORequest, IOStdReq
-from std::ffi::amiga_consts import CMD_RESET
+from amiga::raw::structs import IORequest, IOStdReq
+from amiga::raw::consts import CMD_RESET
 
 @device(name = "{{PROJECT_NAME}}.device", units = 1)
 pub struct DeviceState {

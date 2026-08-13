@@ -8,7 +8,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq, expect
 from std::net::errors import NetError
 from std::net::addr import Ipv4Addr, SocketAddrV4
 from std::net::socket import is_tcp_functional
-from std::ffi::bsdsocket import bsd_timeval, fd_set, FD_ZERO, FD_SET, FD_CLR, FD_ISSET
+from amiga::raw::bsdsocket import bsd_timeval, fd_set, FD_ZERO, FD_SET, FD_CLR, FD_ISSET
 
 // ============================================================================
 // NetError Display Tests
@@ -223,7 +223,7 @@ pub fn test_bsd_timeval_100ms() {
 
 @test("FD_ZERO clears all bits")
 pub fn test_fd_zero() {
-    var fds = fd_set { fds_bits: [0xFFFFFFFFu32; 2] }
+    var fds = fd_set { fds_bits: [0xFFFFFFFF; 2] }
     FD_ZERO((*fd_set)&fds)
     expect_eq(fds.fds_bits[0], 0, "first word should be 0")
     expect_eq(fds.fds_bits[1], 0, "second word should be 0")
@@ -231,55 +231,55 @@ pub fn test_fd_zero() {
 
 @test("FD_SET sets correct bit for fd 0")
 pub fn test_fd_set_zero() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(0, (*fd_set)&fds)
     expect_eq(fds.fds_bits[0] & 1, 1, "bit 0 should be set")
 }
 
 @test("FD_SET sets correct bit for fd 1")
 pub fn test_fd_set_one() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(1, (*fd_set)&fds)
     expect_eq(fds.fds_bits[0] & 2, 2, "bit 1 should be set")
 }
 
 @test("FD_SET sets correct bit for fd 31")
 pub fn test_fd_set_31() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(31, (*fd_set)&fds)
-    expect_eq(fds.fds_bits[0] & 0x80000000u32, 0x80000000u32, "bit 31 should be set")
+    expect_eq(fds.fds_bits[0] & (u32)0x80000000, (u32)0x80000000, "bit 31 should be set")
 }
 
 @test("FD_SET sets correct bit for fd 32")
 pub fn test_fd_set_32() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(32, (*fd_set)&fds)
     expect_eq(fds.fds_bits[1] & 1, 1, "bit 0 of second word should be set")
 }
 
 @test("FD_CLR clears correct bit")
 pub fn test_fd_clr() {
-    var fds = fd_set { fds_bits: [0xFFFFFFFFu32; 2] }
+    var fds = fd_set { fds_bits: [0xFFFFFFFF; 2] }
     FD_CLR(5, (*fd_set)&fds)
     expect_eq(fds.fds_bits[0] & 0x20, 0, "bit 5 should be clear")
 }
 
 @test("FD_ISSET returns true for set bit")
 pub fn test_fd_isset_true() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(7, (*fd_set)&fds)
     expect_true(FD_ISSET(7, (*fd_set)&fds), "fd 7 should be set")
 }
 
 @test("FD_ISSET returns false for clear bit")
 pub fn test_fd_isset_false() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     expect_false(FD_ISSET(7, (*fd_set)&fds), "fd 7 should not be set")
 }
 
 @test("Multiple FD_SET operations work")
 pub fn test_fd_set_multiple() {
-    var fds = fd_set { fds_bits: [0u32; 2] }
+    var fds = fd_set { fds_bits: [0; 2] }
     FD_SET(3, (*fd_set)&fds)
     FD_SET(10, (*fd_set)&fds)
     FD_SET(40, (*fd_set)&fds)

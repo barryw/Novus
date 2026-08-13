@@ -1,0 +1,33 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: resource.library
+// Base: _ResourceBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("resource.library")
+extern pub fn RL_OpenResource(resource: *u8, screen: *Screen, catalog: *Catalog) -> *u8
+@library("resource.library")
+extern pub fn RL_CloseResource(resfile: *u8)
+@library("resource.library")
+extern pub fn RL_NewObjectA(resfile: *u8, resid: u32, tags: *TagItem) -> *u8
+@library("resource.library")
+extern pub fn RL_NewObject(resfile: *u8, resid: u32, ...args) -> *u8
+@library("resource.library")
+extern pub fn RL_DisposeObject(resfile: *u8, obj: *u8)
+@library("resource.library")
+extern pub fn RL_NewGroupA(resfile: *u8, id: u32, taglist: *TagItem) -> *u8
+@library("resource.library")
+extern pub fn RL_NewGroup(resfile: *u8, id: u32, ...args) -> *u8
+@library("resource.library")
+extern pub fn RL_DisposeGroup(resfile: *u8, obj: *u8)
+@library("resource.library")
+extern pub fn RL_GetObjectArray(resfile: *u8, obj: *u8, id: u32) -> *u8
+@library("resource.library")
+extern pub fn RL_SetResourceScreen(resfile: *u8, screen: *Screen) -> i16

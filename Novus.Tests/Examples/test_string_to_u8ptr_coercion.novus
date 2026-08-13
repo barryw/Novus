@@ -6,7 +6,7 @@
 // Expected Output:
 //   Exit code: 0
 
-from std::strings::core import String
+from std::string::core import String
 
 // Function that accepts a raw *u8 pointer
 fn takes_pointer(ptr: *u8) -> u32 {

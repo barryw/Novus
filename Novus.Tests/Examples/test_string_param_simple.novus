@@ -6,7 +6,7 @@
 // Expected Output:
 //   Exit code: 0
 
-from std::strings::core import Str
+from std::string::core import Str
 
 fn get_length(s: Str) -> i32 {
     return s.len

@@ -20,7 +20,7 @@ fn overloaded(value: i32) -> i32 {
 }
 
 fn overloaded(value: i16) -> i16 {
-    return value + 10i16
+    return value + 10
 }
 
 fn add(a: i32, b: i32) -> i32 { return a + b }
@@ -56,10 +56,10 @@ pub fn foundation_references() {
 
 @test("function overload resolution")
 pub fn foundation_overloads() {
-    let wide: i32 = overloaded(5i32)
-    let narrow: i16 = overloaded(5i16)
+    let wide: i32 = overloaded(5)
+    let narrow: i16 = overloaded(5)
     expect(wide == 105, "i32 overload")
-    expect(narrow == 15i16, "i16 overload")
+    expect(narrow == 15, "i16 overload")
 }
 
 @test("function pointers and indirect calls")
@@ -77,10 +77,10 @@ pub fn foundation_closures() {
 
 @test("generic functions monomorphize independently")
 pub fn foundation_generic_functions() {
-    let a: i32 = identity(42i32)
-    let b: u8 = identity(7u8)
+    let a: i32 = identity(42)
+    let b: u8 = identity(7)
     let c: bool = identity(true)
     expect(a == 42, "generic i32")
-    expect(b == 7u8, "generic u8")
+    expect(b == 7, "generic u8")
     expect(c, "generic bool")
 }

@@ -282,20 +282,20 @@ Better than C (everything unsafe) and more pragmatic than trying to make everyth
 
 The three-tier FFI approach is **exactly right**:
 
-1. **Raw FFI** (`std::ffi::*`) - 1:1 with NDK, unsafe
-2. **Safe wrappers** (`std::dos`, `std::intuition`) - Result-based, typed
-3. **Ergonomic builders** - Tag-based APIs, zero-cost sugar
+1. **Raw FFI** (`amiga::raw::*`) - 1:1 with NDK, unsafe
+2. **Systems wrappers** (`amiga::sys::*`) - Result-based, typed, and owning
+3. **Application APIs** (`amiga::*`) - intent-based, concise APIs
 
 Example:
 ```novus
-// Raw FFI (std::ffi::intuition)
+// Raw FFI (amiga::raw::intuition)
 extern "amiga" fn OpenWindowTagList(nw: *NewWindow, tags: *TagItem) -> *Window
 
-// Safe wrapper (std::intuition)
-pub fn OpenWindow(tags_ptr: *TagItem, count: u32) -> Result<*Window, NovusError>
+// Safe systems wrapper
+pub fn WindowHandle::open(tags: Slice<TagItem>) -> Result<WindowHandle, IntuitionError>
 
-// Future: Builder API
-WindowBuilder { title: "Test", width: 640, height: 480 }.open()?
+// Application API
+WindowBuilder::workbench().title("Test").size(640, 480).build()?
 ```
 
 This progression from **power** → **safety** → **ergonomics** is perfect.

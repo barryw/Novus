@@ -78,7 +78,7 @@ output buffers, null sentinels, and integer error conventions from the C API.
 | Capacity parsing and synthetic geometry | [`discover.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/discover.c) | Green | Bounds-checked decoding passes its 68020 tests. |
 | In-memory partition model | [`rdb.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/rdb.c) | Green | Compiles and passes its 68020 tests. |
 | RDB block serialization | [`rdb.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/rdb.c) | Green | RDSK, PART, FSHD, and LSEG offsets, checksums, links, round trips, corruption rejection, and byte-for-byte compatibility with the pinned C serializer pass. |
-| Device discovery and block I/O | [`device.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/device.c) | Amber | `DeviceRequest` owns the Exec lifecycle, `BlockDevice` validates whole-block reads and writes, and DOS discovery returns an owned bounded snapshot. A disposable HDF passed RDB write, independent readback, and cold-remount tests. Automatic discovery of the start-time HDF remains an emulator-configuration limitation. |
+| Device discovery and block I/O | [`device.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/device.c) | Green | `amiga::storage` owns discovery, driver loading, the Exec request lifecycle, geometry validation, and bounded whole-block I/O. A disposable HDF passed RDB write, independent readback, and cold-remount tests. |
 | Boot/mounted-media protection | [`safety.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/safety.c) | Amber | Pure and live fail-safe classifiers are ported. `SYS:` resolution, bounded DOS traversal, and mounted-device detection pass on the A4000; an HDF-backed boot device remains necessary to prove the live `Boot` and `Clear` branches. |
 | GadTools application UI | [`gui.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/gui.c) | Amber | Cycle, list-view, string, text, button, menu, ownership, typed state, model replacement, and events pass on the A4000. Own-screen fallback and canvas remain. |
 | Filesystem install and format | [`format.c`](https://github.com/stefanskotte/hdpart/blob/d71ced9cc601db4909f6350c8dcfa68639eec46a/src/format.c) | Amber | HUNK validation, `FileSystem.resource` discovery, embedded HUNK ownership, typed DOS environments, registration, inhibit-gated format, and cold remount pass. MCP input now drives ASL reliably, but the latest live `L:FastFileSystem` selection returned `Could not open the filesystem handler`; resolve that path/open failure before calling import complete. |
@@ -96,15 +96,15 @@ partitions: [RdbPartition::empty(); 32]
 only compile-time constant arrays use the static initializer. The unchanged RDB
 test suite now links with VBCC and passes under 68020 emulation.
 
-**DEV-01 is fixed.** `std::os::device::DeviceRequest` owns the reply port,
+**DEV-01 is fixed.** `amiga::sys::device::DeviceRequest` owns the reply port,
 variable-sized I/O request, open device, and cleanup.
-`std::os::block_device::BlockDevice` exposes typed geometry and bounded whole-
+`amiga::storage::BlockDevice` exposes typed geometry and bounded whole-
 block reads and writes. Its A4000 tests cover the `trackdisk.device` no-media
 path plus successful writes and reads on an explicitly disposable HDF.
 
-**DOS-01 and DOS-02 are fixed.** `std::os::doslist::DosDeviceList` owns the
+**DOS-01 and DOS-02 are fixed.** `amiga::sys::dos::DosDeviceList` owns the
 read lock, exposes normal iteration, and always unlocks through `Drop`.
-`std::os::bptr::BPtr<T>` checks BCPL range and Amiga memory before any safe
+`amiga::sys::dos::BPtr<T>` checks BCPL range and Amiga memory before any safe
 wrapper dereferences it; DOS names, `FileSysStartupMsg`, and `DosEnvec` are
 owner-tied views. The A4000 test traverses live devices and proves the list can
 be reacquired after an early `Result::Err`. HDPart's pure safety rules now live
@@ -133,7 +133,7 @@ exactly. The test passes on the real A4000.
 `RdbModel::from_image` now follows the complete bounded RDSK/PART/FSHD/LSEG
 chain and rejects invalid links or truncated blocks. `src/rdb_io.novus::load_rdb`
 locates the header through the owning `BlockDevice`, validates the declared
-reserved area, and reads it into an owning `MemoryBlock` through bounded slice
+reserved area, and reads it into an owning `std::memory::Buffer` through bounded slice
 views. Its no-media/live-device test passes on the A4000 without exposing an
 `IORequest`, allocation pointer, or manual cleanup to application code.
 
@@ -179,7 +179,7 @@ constant payloads. A focused IR regression and the 12-test A4000 errors/patterns
 suite pass; codegen cache contract 46 prevents reuse of affected objects.
 
 **FS-01 is fixed.**
-`std::os::filesystem::FileSystemRegistry` opens the permanent Exec resource,
+`amiga::sys::dos::FileSystemRegistry` opens the permanent Exec resource,
 traverses its variable-length entries under `CriticalSection`, reads optional
 fields only when their patch bits are present, and returns copied handler
 metadata with a typed `BPtr` segment. The A4000 test covers the stock resource's
@@ -192,7 +192,7 @@ same-typed fields could silently receive the final field's value. Liveness now
 walks enum payloads recursively, a focused regression passes, and codegen cache
 contract 47 prevents reuse of affected objects.
 
-`std::os::dosnode::DosNodeDraft` now owns the `DeviceNode`, startup message,
+`amiga::sys::dos::DosNodeDraft` now owns the `DeviceNode`, startup message,
 environment, device name, and driver name without relying on the NDK's
 allocation-only `MakeDosNode`. Failure and ordinary scope exit free everything;
 successful `AddDosNode` registration transfers the complete graph to DOS. A live
@@ -211,7 +211,7 @@ cannot accidentally send `ACTION_FORMAT` to an active filesystem. The A4000 test
 resolves and reacquires `SYS:` without leaking the process handle. It does not
 inhibit or format the live boot volume.
 
-`std::os::segment::LoadedSegment` loads embedded HUNK data through
+`amiga::sys::dos::LoadedSegment` loads embedded HUNK data through
 `InternalLoadSeg` with Novus-native register-ABI callbacks and always unloads it
 through `Drop`. `DosNodeDraft::register_loaded` binds that segment to the node and
 transfers both ownership graphs only after registration succeeds. A 64-cycle
@@ -271,9 +271,9 @@ The port closed these general language/tooling gaps on 2026-08-11:
 
 | ID | Priority | Missing natural Novus facility | Why HDPart needs it |
 |---|---:|---|---|
-| UI-02 | P1 | Workbench-or-own-screen policy | A partitioner must still start when Workbench is unavailable. The current GadTools builder only locks the public screen. |
-| UI-03 | P1 | Safe canvas plus mouse events | HDPart's disk map is custom-rendered and supports hit testing and dragging. Raw RastPort/window pointers should stay inside the UI module. |
-| LAYER-01 | P0 | Uniform safe-to-raw interoperability | A developer must be able to borrow or transfer the underlying device, window, gadget, screen, buffer, DOS entry, or request without rebuilding the surrounding application. |
+| UI-02 | Complete | Workbench-or-own-screen policy | `WindowBuilder::workbench_or_own` opens on Workbench when available and owns a fallback screen otherwise. |
+| UI-03 | Complete | Safe canvas plus mouse events | Tier 1 windows expose bounded drawing helpers and `Event::MouseButton`; raw RastPort/window pointers remain inside the UI implementation. |
+| LAYER-01 | Complete | Uniform safe-to-raw interoperability | Owning wrappers consistently expose `system()`, `as_raw()`, `into_raw()`, and validating `from_raw()` only where the transition exists. |
 
 **UI-04 is fixed.** `FileRequesterHandle` owns its ASL request and returns an
 owned `PathString`. The application validates the selected load file, detects
@@ -340,13 +340,12 @@ window they produce composes with the existing `WindowHandle`.
 
 ## Interoperability contract
 
-Every owning wrapper should support the same three operations already used by
-`WindowHandle`, `ScreenHandle`, `BitMapHandle`, `MsgPortHandle`, and DOS file
-handles:
+Owning wrappers use the same interop vocabulary where that transition is real:
 
 | Operation | Meaning | Ownership after the call |
 |---|---|---|
-| `handle()` | Borrow the lower-layer/native handle for an advanced call | High-level owner remains valid and continues cleanup. |
+| `system()` | Borrow the next safe systems-layer object | High-level owner remains valid and continues cleanup. |
+| `as_raw()` | Borrow the native handle for an advanced call | High-level owner remains valid and continues cleanup. |
 | `into_raw(consuming self)` | Transfer the complete lower-layer state out | High-level owner is moved and cannot clean up or be reused. |
 | `from_raw(...)` | Adopt explicitly owned lower-layer state | High-level wrapper becomes responsible for cleanup. |
 
@@ -360,26 +359,26 @@ Interop is required at every adjacent boundary, not just at the bottom:
 
 | Boundary | Borrow downward without changing ownership |
 |---|---|
-| `BlockDevice` → `DeviceRequest` | `request()` |
-| `DeviceRequest` → `*IORequest` | `handle()` |
-| `GadToolsWindow` → `WindowHandle` | `window()` |
-| `WindowHandle` → `*Window` | `handle()` |
-| typed gadget → `*Gadget` | `handle()` |
+| `BlockDevice` → `DeviceRequest` | `system()` |
+| `DeviceRequest` → `*IORequest` | `as_raw()` |
+| `Window` → systems window view | `system()` |
+| systems window view → `*Window` | `as_raw()` |
+| typed control → `*Gadget` | `as_raw()` |
 
 Ownership-transfer APIs are added only when a real lower-level API consumes
 the resource. If a wrapper owns several cooperating native resources, its
 `into_raw` returns one named raw-state value that preserves them all, and
 `from_raw` validates that state with `Result`. We should not manufacture a
 second family of `parts` or adapter objects merely for theoretical symmetry.
-Existing methods with different names should receive compatibility aliases;
-normalizing the layers must not break applications already using them.
+Obsolete compatibility names were removed once call sites moved to the canonical
+surface; they no longer create a second vocabulary.
 
 ```novus
 let var disk = BlockDevice::open("scsi.device", 0)?
 let geometry = disk.geometry()?
 
 // One controller-specific operation at the systems layer.
-custom_scsi_command(disk.request().handle(), command)?
+custom_scsi_command(disk.system().as_raw(), command)?
 
 // The same high-level object is still owned and usable.
 let rdb = disk.read_rdb()?
@@ -401,19 +400,19 @@ This work belongs primarily in reusable libraries:
 
 | Module | Responsibility |
 |---|---|
-| `std::os::device` | Generic owning Exec device/request lifecycle and typed command execution. |
-| `std::os::block_device` | Geometry, readiness, block I/O, SCSI passthrough, and discovery built on `std::os::device`. |
-| `std::os::doslist` | Locked DOS-list iterator and typed mounted-device/startup views. |
-| `std::os::bptr` | Typed BCPL pointers and checked BSTR/native conversions. |
-| `std::memory::bytes` | Bounds-checked endian readers/writers over owner-tied slices. |
+| `amiga::sys::device` | Generic owning Exec device/request lifecycle and typed command execution. |
+| `amiga::storage` | Geometry, bounded block I/O, and owned storage-device discovery. |
+| `amiga::sys::dos` | Locked DOS-list views, typed BPTRs, DOS nodes, handlers, and segments. |
+| `amiga::dos` | Files, filesystem resolution/mounting, volumes, and safe formatting. |
+| `std::memory` | Owned buffers plus bounds-checked slices and endian readers/writers. |
 | `std::collections::arrayvec` | Inline bounded collection using existing collection/iterator conventions. |
-| `std::strings::fixed` | Generic `FixedString<N>` and `FixedCString<N>` replacing capacity-specific copies. |
-| `std::ui::gadtools` | More control definitions, typed state handles, events, own/public-screen selection, and access to the underlying `WindowHandle`. |
-| `std::ui::asl` | Owning requesters returning existing string/path types. |
+| `std::string` | Canonical `Str`, `FixedString<N>`, and `FixedCString<N>` surface. |
+| `amiga::ui` | Application windows, typed controls/events, dialogs, and requesters. |
+| `amiga::sys::gadtools` / `amiga::sys::asl` | Safe NDK-level toolkit and requester control. |
 
-The device and DOS libraries are Amiga-specific and therefore stay under
-`std::os`; byte, collection, and string facilities are general-purpose. The
-existing raw bindings remain in `std::ffi` as the bottom layer.
+Device, DOS, and UI libraries live under `amiga`; byte, collection, string, and
+buffer facilities remain portable `std` APIs. Raw NDK bindings are canonical
+under `amiga::raw`; the former `std::ffi` compatibility paths are removed.
 
 ## The application-facing API we should make possible
 
@@ -423,18 +422,18 @@ implements the workflow with the dynamic builder; the remaining blockers above
 prevent this final static form and the upstream custom disk map.
 
 ```novus
-static GADGETS: [StaticGadget] = [
-    StaticGadget::cycle(DISK, "Device", (78, 22, 228, 14)),
-    StaticGadget::list_view(PARTITIONS, (8, 70, 304, 82)),
-    StaticGadget::string(NAME, "Name", (54, 158, 92, 14), max: 31),
-    StaticGadget::integer(SIZE, "Size MB", (220, 158, 62, 14), 0, 6),
-    StaticGadget::button(SAVE, "Save changes", (192, 178, 120, 14)),
+static CONTROLS: [StaticControl] = [
+    StaticControl::cycle(DISK, "Device", (78, 22, 228, 14)),
+    StaticControl::list_view(PARTITIONS, (8, 70, 304, 82)),
+    StaticControl::string(NAME, "Name", (54, 158, 92, 14), max: 31),
+    StaticControl::integer(SIZE, "Size MB", (220, 158, 62, 14), 0, 6),
+    StaticControl::button(SAVE, "Save changes", (192, 178, 120, 14)),
 ]
 
-static UI = StaticGadToolsUi::new(
+static UI = StaticUi::new(
     "HDPart",
     (0, 11, 320, 200),
-    GADGETS,
+    CONTROLS,
     MENUS,
 )
 
@@ -463,16 +462,15 @@ fn run() -> Result<(), HdPartError> {
 ```
 
 There is no `*`, `&`, numeric `BPTR`, tag list, manual message reply, or cleanup
-sequence in the application. Advanced users can still reach the existing FFI.
-The wrappers should lower to those same calls and remain zero-cost after
-link-time dead-code elimination.
+sequence in the application. Advanced users can step down to `amiga::sys` or
+the raw NDK under `amiga::raw` without rewriting the rest of the application.
+The wrappers lower to those same calls and remain zero-cost after link-time
+dead-code elimination.
 
 ## Proposed order, with acceptance tests
 
 1. Fix and validate higher-level IR optimization, then remove dominated checked
    byte-access paths and remeasure the complete application.
-2. Add **UI-02** and **UI-03** to reproduce own-screen startup and the upstream
-   custom disk map without exposing raw drawing or input APIs.
 
 ## Reproduce
 

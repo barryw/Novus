@@ -1,0 +1,339 @@
+// Chip RAM Management
+// Module: amiga::sys::exec::memory::chip
+//
+// Provides unified chip RAM management through the global ChipCache.
+// All chip RAM allocations for DMA assets should go through this module.
+//
+// The ChipCache provides:
+// - LRU eviction when chip RAM is low
+// - Priority-based eviction (Low evicted first)
+// - Pinning to protect assets during DMA operations
+// - Debug names for troubleshooting
+// - Pooled allocation to reduce fragmentation
+
+from std::core import Result, Option, Drop, Error
+from std::string::core import Str
+from amiga::raw::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearE, CachePreDMA, CachePostDMA
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, CACRF_ClearI, CACRF_ClearD, DMA_ReadFromRAM, DMA_Continue
+
+// ============================================================================
+// Priority for cache eviction
+// ============================================================================
+
+/// Priority hint for cache eviction decisions
+pub enum Priority {
+    /// Evict first - large assets used infrequently
+    Low,
+    /// Default priority
+    Normal,
+    /// Evict last - small assets or frequently used
+    High,
+}
+
+// ============================================================================
+// ChipAsset Trait
+// ============================================================================
+
+/// Trait for assets that require chip RAM for DMA operations
+///
+/// Implement this trait for any asset type that needs to be accessible
+/// by Amiga custom chips (Paula, Blitter, Copper, etc.).
+pub trait ChipAsset {
+    /// Unique identifier for this asset instance
+    ///
+    /// Used by ResourceBank for reference-counted pinning. Each asset instance
+    /// must return a unique ID. Typically, this is the data pointer cast to u32,
+    /// but assets with complex ownership may generate unique IDs differently.
+    ///
+    /// The ID must be stable for the lifetime of the asset (same ID each call).
+    fn asset_id(&self) -> u32
+
+    /// Pointer to the asset data (may be in fast or chip RAM)
+    fn data_ptr(&self) -> *u8
+
+    /// Size of the asset data in bytes
+    fn data_size(&self) -> u32
+
+    /// Priority hint for cache eviction
+    fn cache_priority(&self) -> Priority
+}
+
+// ============================================================================
+// ChipBuffer - Low-level chip RAM allocation
+// ============================================================================
+
+/// A manually-managed block of chip RAM
+///
+/// Use this for fine-grained control over chip RAM allocation.
+/// The memory is automatically freed when the ChipBuffer is dropped.
+pub struct ChipBuffer {
+    ptr: *u8,
+    size: u32,
+}
+
+impl ChipBuffer {
+    /// Allocate a block of chip RAM
+    pub fn alloc(size: u32) -> Result<ChipBuffer, ChipCacheError> {
+        if size == 0 {
+            return Result::Err(ChipCacheError::InvalidSize)
+        }
+
+        unsafe {
+            let ptr = (*u8)AllocMem(size, MEMF_CHIP | MEMF_CLEAR)
+            if !ptr {
+                return Result::Err(ChipCacheError::OutOfMemory)
+            }
+
+            return Result::Ok(ChipBuffer {
+                ptr: ptr,
+                size: size,
+            })
+        }
+    }
+
+    /// Copy data from a source buffer into this chip buffer
+    ///
+    /// Flushes the CPU data cache after copying to ensure DMA hardware
+    /// sees the correct data on 68040/68060 systems.
+    pub fn copy_from(&var self, src: *u8, len: u32) -> Result<(), ChipCacheError> {
+        if len > self.size {
+            return Result::Err(ChipCacheError::AssetTooLarge)
+        }
+        unsafe {
+            CopyMem(src, self.ptr, len)
+            // Flush data cache - critical for 68040/68060 DMA operations
+            CacheClearE(self.ptr, len, CACRF_ClearD)
+        }
+        return Result::Ok(())
+    }
+
+    /// Get the raw pointer for DMA operations
+    pub fn as_ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    /// Get the size of this buffer
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+}
+
+impl Drop for ChipBuffer {
+    fn drop(&var self) {
+        if self.ptr {
+            unsafe {
+                FreeMem(self.ptr, self.size)
+            }
+            self.ptr = null
+            self.size = 0
+        }
+    }
+}
+
+// ============================================================================
+// Memory type detection
+// ============================================================================
+
+/// Check if a pointer is in chip RAM
+pub fn is_chip_ram(ptr: *u8) -> bool {
+    if !ptr {
+        return false
+    }
+    unsafe {
+        let mem_type = TypeOfMem(ptr)
+        return (mem_type & MEMF_CHIP) != 0
+    }
+}
+
+// ============================================================================
+// Cache errors
+// ============================================================================
+
+pub enum ChipCacheError {
+    /// A zero-sized allocation was requested
+    InvalidSize,
+    /// Cache not initialized - call ChipCache::init() first
+    NotInitialized,
+    /// Cache already initialized
+    AlreadyInitialized,
+    /// Pointer does not belong to the chip pool
+    InvalidPointer,
+    /// Not enough chip RAM even after eviction
+    OutOfMemory,
+    /// Asset too large for cache budget
+    AssetTooLarge,
+    /// Cannot allocate - all cached assets are pinned
+    AllAssetsPinned,
+}
+
+impl ChipCacheError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ChipCacheError::InvalidSize => return "Chip allocation size must be greater than zero",
+            ChipCacheError::NotInitialized => return "Cache not initialized",
+            ChipCacheError::AlreadyInitialized => return "Cache already initialized",
+            ChipCacheError::InvalidPointer => return "Pointer does not belong to the chip pool",
+            ChipCacheError::OutOfMemory => return "Out of chip RAM",
+            ChipCacheError::AssetTooLarge => return "Asset too large for cache",
+            ChipCacheError::AllAssetsPinned => return "All cached assets are pinned",
+        }
+    }
+}
+
+impl Error for ChipCacheError {
+    fn message(&self) -> *u8 {
+        return ChipCacheError::message(self)
+    }
+}
+
+// ============================================================================
+// Chip RAM copy with cache flush
+// ============================================================================
+
+/// Copy data to chip RAM and flush CPU cache
+///
+/// This is the safe way to copy data to chip RAM on 68040/68060 systems.
+/// After copying, the data cache is flushed for the specific memory range
+/// to ensure DMA hardware sees the correct data.
+///
+/// Use this when copying data that will be read by custom chips (Paula,
+/// Blitter, Copper, etc.).
+pub fn copy_to_chip(dst: *u8, src: *u8, size: u32) {
+    unsafe {
+        CopyMem(src, dst, size)
+        // Flush data cache for this memory range - critical for 68040/68060
+        // CacheClearE() is more efficient than CacheClearU() (flushes only the range)
+        // Safe to call on 68020/030 (just returns)
+        CacheClearE(dst, size, CACRF_ClearD)
+    }
+}
+
+// ============================================================================
+// Simplified chip RAM copy function
+// ============================================================================
+
+/// Copy data to chip RAM if needed
+///
+/// If the data is already in chip RAM, returns the pointer directly.
+/// Otherwise, allocates chip RAM and copies the data.
+///
+/// Note: The caller is responsible for managing the allocated memory.
+/// This simplified version does not implement caching or eviction.
+pub fn ensure_chip_ram(ptr: *u8, size: u32, priority: Priority) -> Result<*u8, ChipCacheError> {
+    // Already in chip RAM? Return as-is
+    if is_chip_ram(ptr) {
+        return Result::Ok(ptr)
+    }
+
+    // Allocate chip RAM
+    unsafe {
+        let chip_ptr = (*u8)AllocMem(size, MEMF_CHIP)
+        if !chip_ptr {
+            return Result::Err(ChipCacheError::OutOfMemory)
+        }
+
+        // Copy data and flush cache
+        copy_to_chip(chip_ptr, ptr, size)
+        return Result::Ok(chip_ptr)
+    }
+}
+
+// ============================================================================
+// DMA Cache Management (68040/68060)
+// ============================================================================
+
+/// Prepare a memory region for DMA read operations
+///
+/// Call this BEFORE starting a DMA operation where the custom chips will
+/// READ from the specified memory region (e.g., Blitter source, audio sample).
+///
+/// On 68040/68060, this flushes the data cache for the region to ensure
+/// the DMA hardware sees any CPU-modified data. It returns a physical
+/// address that may be different from the virtual address on systems with
+/// MMU-based virtual memory.
+///
+/// On 68020/030, this is a no-op that returns the input pointer.
+///
+/// Example (Blitter copy):
+///   let src_dma = prepare_for_dma_read(source_ptr, blit_size)
+///   blitter_copy(dst_dma, src_dma, blit_size)
+///   complete_dma_read(source_ptr, blit_size)
+pub fn prepare_for_dma_read(ptr: *u8, size: u32) -> *u8 {
+    unsafe {
+        // CachePreDMA returns the physical address (may differ on MMU systems)
+        // For DMA reads, flags = 0 (DMA_ReadFromRAM)
+        // The size parameter is passed by reference
+        var actual_size: u32 = size
+        return CachePreDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Complete a DMA read operation
+///
+/// Call this AFTER the DMA operation completes where custom chips were
+/// READING from the specified memory region.
+///
+/// On 68040/68060, this performs any necessary cache management after
+/// the DMA transfer (typically nothing for read operations).
+///
+/// On 68020/030, this is a no-op.
+pub fn complete_dma_read(ptr: *u8, size: u32) {
+    unsafe {
+        var actual_size: u32 = size
+        CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Prepare a memory region for DMA write operations
+///
+/// Call this BEFORE starting a DMA operation where the custom chips will
+/// WRITE to the specified memory region (e.g., Blitter destination).
+///
+/// On 68040/68060, this invalidates the data cache for the region so the
+/// CPU doesn't have stale cached copies of the data that DMA will overwrite.
+///
+/// On 68020/030, this is a no-op that returns the input pointer.
+///
+/// Example (Blitter fill):
+///   let dst_dma = prepare_for_dma_write(dest_ptr, fill_size)
+///   blitter_fill(dst_dma, fill_size)
+///   complete_dma_write(dest_ptr, fill_size)
+pub fn prepare_for_dma_write(ptr: *u8, size: u32) -> *u8 {
+    unsafe {
+        // For DMA writes, we need to invalidate the cache
+        // CachePreDMA with flags = 0 handles this
+        var actual_size: u32 = size
+        return CachePreDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Complete a DMA write operation
+///
+/// Call this AFTER the DMA operation completes where custom chips were
+/// WRITING to the specified memory region.
+///
+/// On 68040/68060, this invalidates any cached copies of the memory region
+/// so the CPU will read fresh data written by DMA.
+///
+/// On 68020/030, this is a no-op.
+pub fn complete_dma_write(ptr: *u8, size: u32) {
+    unsafe {
+        var actual_size: u32 = size
+        CachePostDMA(ptr, (&var actual_size) as *u8, DMA_ReadFromRAM)
+    }
+}
+
+/// Helper macro pattern for DMA-safe blitter operations
+///
+/// This combines cache management with a blitter operation:
+/// 1. Prepare source and destination regions
+/// 2. Perform the DMA operation (user code)
+/// 3. Complete the DMA operation
+///
+/// Usage:
+///   with_dma_region(src, dst, size, || {
+///       blitter_copy(...)
+///   })
+///
+/// Note: Currently implemented as separate functions since Novus doesn't
+/// have closure support yet. Use prepare/complete pairs manually.

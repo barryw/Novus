@@ -37,7 +37,7 @@ pub fn main() -> i32 {
     let pos = move_to(1, 1)  // Would move to top-left
     write("  move_to(1, 1) = [")
     // Print the bytes in hex-like format
-    var i: u32 = 0u32
+    var i: u32 = 0
     while i < pos.len() {
         if i > 0 {
             write(" ")
@@ -84,13 +84,13 @@ pub fn main() -> i32 {
     write("Test 7: Default console size\n")
     let size = default_size()
     write("  Default: 80x25 (width=")
-    if size.width == 80u32 {
+    if size.width == 80 {
         write("80")
     } else {
         write("?")
     }
     write(", height=")
-    if size.height == 25u32 {
+    if size.height == 25 {
         write("25")
     } else {
         write("?")

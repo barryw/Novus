@@ -1,10 +1,10 @@
 // Test if child can write to a file to prove it runs
 
 from std::core import Result
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn
-from std::ffi::dos import VPrintf, Delay, Open, Write, Close
-from std::ffi::amiga_consts import MODE_NEWFILE
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn
+from amiga::raw::dos import VPrintf, Delay, Open, Write, Close
+from amiga::raw::consts import MODE_NEWFILE
 
 fn worker() -> i32 {
     // Try to create a file to prove we ran

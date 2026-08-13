@@ -1,9 +1,9 @@
 // String Coercion Test
 // Demonstrates automatic string coercion for seamless NDK integration
 
-from std::ffi::dos import Open, Close
-from std::ffi::amiga_consts import MODE_OLDFILE
-from std::strings::core import Str
+from amiga::raw::dos import Open, Close
+from amiga::raw::consts import MODE_OLDFILE
+from std::string::core import Str
 
 extern fn write(format: *u8, ...args) -> i32
 

@@ -95,12 +95,12 @@ $DEAD_BEEF
 0xDEADBEEF
 ```
 
-**Type suffixes:**
+The surrounding expression normally determines the type. Use a cast only when no useful context exists:
 ```novus
-42u8        // unsigned 8-bit
--50i16      // signed 16-bit
-1000u32     // unsigned 32-bit
-0xFFFFi64   // signed 64-bit
+let byte: u8 = 42
+let signed = (i16)(-50)
+let count = (u32)1000
+let mask = (i64)0xFFFF
 ```
 
 ### Floating-Point Literals
@@ -114,12 +114,12 @@ Floating-point literals use decimal notation with a decimal point:
 -1.5
 ```
 
-**Type suffixes:**
+Floating-point and fixed-point literals follow the same rule:
 ```novus
-3.14f32     // 32-bit float
-2.0f64      // 64-bit float
-1.5fixed16  // 16.16 fixed-point
-2.5fixed32  // 32-bit fixed-point
+let single: f32 = 3.14
+let double = (f64)2.0
+let position: fixed16 = 1.5
+let precise = (fixed32)2.5
 ```
 
 ### Character Literals

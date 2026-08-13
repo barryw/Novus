@@ -103,16 +103,16 @@ impl ZMemory {
         return ZMemory {
             data: data,
             size: size,
-            pc: 0u32,
+            pc: 0,
         }
     }
 
     /// Read a byte at the current PC and advance
     pub fn read_byte(&var self) -> u8 {
         if self.pc >= self.size {
-            return 0u8
+            return 0
         }
-        let b: u8 = self.data[self.pc]
+        let b: u8 = unsafe { self.data[self.pc] }
         self.pc++
         return b
     }
@@ -127,9 +127,9 @@ impl ZMemory {
     /// Peek at byte without advancing PC
     pub fn peek_byte(&self) -> u8 {
         if self.pc >= self.size {
-            return 0u8
+            return 0
         }
-        return self.data[self.pc]
+        return unsafe { self.data[self.pc] }
     }
 
     /// Set the PC
@@ -207,7 +207,7 @@ fn read_branch_offset(mem: &var ZMemory) -> u16 {
     // Bit 6 = polarity (1 = branch on true)
     // Bit 7 = short form (1 = 1-byte offset in bits 0-5)
 
-    if (first & $40) != 0u8 {
+    if (first & $40) != 0 {
         // Short form: 6-bit unsigned offset
         let offset: u16 = (u16)(first & $3F)
         return offset
@@ -226,13 +226,13 @@ fn decode_long_2op(mem: &var ZMemory, opcode: u8) -> Instruction {
     // Bit 5 = operand 2 type (0=small constant, 1=variable)
     // Bits 0-4 = opcode number
 
-    let op1_type: OperandType = if (opcode & $40) != 0u8 {
+    let op1_type: OperandType = if (opcode & $40) != 0 {
         OperandType::Variable
     } else {
         OperandType::Small
     }
 
-    let op2_type: OperandType = if (opcode & $20) != 0u8 {
+    let op2_type: OperandType = if (opcode & $20) != 0 {
         OperandType::Variable
     } else {
         OperandType::Small
@@ -372,26 +372,26 @@ pub fn decode_instruction(mem: &var ZMemory) -> Instruction {
 /// Get the opcode number from an instruction for verification
 fn get_instruction_kind(instr: &Instruction) -> u8 {
     match *instr {
-        Je(_, _, _) => return 1u8,
-        Jl(_, _, _) => return 2u8,
-        Add(_, _, _) => return 3u8,
-        Sub(_, _, _) => return 4u8,
-        Mul(_, _, _) => return 5u8,
-        Div(_, _, _) => return 6u8,
-        Loadw(_, _, _) => return 7u8,
-        Storew(_, _, _) => return 8u8,
-        Jz(_, _) => return 9u8,
-        Inc(_) => return 10u8,
-        Dec(_) => return 11u8,
-        Print_obj(_) => return 12u8,
-        Rtrue => return 13u8,
-        Rfalse => return 14u8,
-        Print => return 15u8,
-        Newline => return 16u8,
-        Quit => return 17u8,
-        Call(_, _) => return 18u8,
-        Ret(_) => return 19u8,
-        Unknown(_) => return 0u8,
+        Je(_, _, _) => return 1,
+        Jl(_, _, _) => return 2,
+        Add(_, _, _) => return 3,
+        Sub(_, _, _) => return 4,
+        Mul(_, _, _) => return 5,
+        Div(_, _, _) => return 6,
+        Loadw(_, _, _) => return 7,
+        Storew(_, _, _) => return 8,
+        Jz(_, _) => return 9,
+        Inc(_) => return 10,
+        Dec(_) => return 11,
+        Print_obj(_) => return 12,
+        Rtrue => return 13,
+        Rfalse => return 14,
+        Print => return 15,
+        Newline => return 16,
+        Quit => return 17,
+        Call(_, _) => return 18,
+        Ret(_) => return 19,
+        Unknown(_) => return 0,
     }
 }
 
@@ -422,23 +422,23 @@ pub fn main() -> i32 {
     // Operand 2: 5
     // Branch: short form, true polarity, offset 10 = 0x4A (0100_1010)
     let test1_data: [u8] = [$01, $05, $05, $4A, $00]
-    var mem1 = ZMemory::new(&test1_data[0], 4u32)
+    var mem1 = ZMemory::new(&test1_data[0], 4)
     let instr1: Instruction = decode_instruction(&var mem1)
 
-    if get_instruction_kind(&instr1) != 1u8 {
+    if get_instruction_kind(&instr1) != 1 {
         return 1  // Expected 'je' instruction
     }
 
     // Verify operands
     match instr1 {
         Je(op1, op2, branch) => {
-            if !is_small_const(&op1, 5u8) {
+            if !is_small_const(&op1, 5) {
                 return 2  // op1 should be SmallConstant(5)
             }
-            if !is_small_const(&op2, 5u8) {
+            if !is_small_const(&op2, 5) {
                 return 3  // op2 should be SmallConstant(5)
             }
-            if branch != 10u16 {
+            if branch != 10 {
                 return 4  // Branch offset should be 10
             }
         },
@@ -451,22 +451,22 @@ pub fn main() -> i32 {
     // Operand 2: 10
     // Store: variable 4
     let test2_data: [u8] = [$54, $03, $0A, $04]
-    var mem2 = ZMemory::new(&test2_data[0], 4u32)
+    var mem2 = ZMemory::new(&test2_data[0], 4)
     let instr2: Instruction = decode_instruction(&var mem2)
 
-    if get_instruction_kind(&instr2) != 3u8 {
+    if get_instruction_kind(&instr2) != 3 {
         return 10  // Expected 'add' instruction
     }
 
     match instr2 {
         Add(op1, op2, result_var) => {
-            if !is_variable_ref(&op1, 3u8) {
+            if !is_variable_ref(&op1, 3) {
                 return 11  // op1 should be VariableRef(3)
             }
-            if !is_small_const(&op2, 10u8) {
+            if !is_small_const(&op2, 10) {
                 return 12  // op2 should be SmallConstant(10)
             }
-            if result_var != 4u8 {
+            if result_var != 4 {
                 return 13  // Result should be stored in variable 4
             }
         },
@@ -476,20 +476,20 @@ pub fn main() -> i32 {
     // Test 3: Decode 'rtrue' (0OP)
     // rtrue is 0OP:0 = 0xB0 (1011_0000)
     let test3_data: [u8] = [$B0]
-    var mem3 = ZMemory::new(&test3_data[0], 1u32)
+    var mem3 = ZMemory::new(&test3_data[0], 1)
     let instr3: Instruction = decode_instruction(&var mem3)
 
-    if get_instruction_kind(&instr3) != 13u8 {
+    if get_instruction_kind(&instr3) != 13 {
         return 20  // Expected 'rtrue' instruction
     }
 
     // Test 4: Decode 'rfalse' (0OP)
     // rfalse is 0OP:1 = 0xB1 (1011_0001)
     let test4_data: [u8] = [$B1]
-    var mem4 = ZMemory::new(&test4_data[0], 1u32)
+    var mem4 = ZMemory::new(&test4_data[0], 1)
     let instr4: Instruction = decode_instruction(&var mem4)
 
-    if get_instruction_kind(&instr4) != 14u8 {
+    if get_instruction_kind(&instr4) != 14 {
         return 21  // Expected 'rfalse' instruction
     }
 
@@ -498,19 +498,19 @@ pub fn main() -> i32 {
     // Operand: variable 2
     // Branch: short form, offset 5 = 0x45
     let test5_data: [u8] = [$A0, $02, $45]
-    var mem5 = ZMemory::new(&test5_data[0], 3u32)
+    var mem5 = ZMemory::new(&test5_data[0], 3)
     let instr5: Instruction = decode_instruction(&var mem5)
 
-    if get_instruction_kind(&instr5) != 9u8 {
+    if get_instruction_kind(&instr5) != 9 {
         return 30  // Expected 'jz' instruction
     }
 
     match instr5 {
         Jz(operand, branch) => {
-            if !is_variable_ref(&operand, 2u8) {
+            if !is_variable_ref(&operand, 2) {
                 return 31  // Operand should be VariableRef(2)
             }
-            if branch != 5u16 {
+            if branch != 5 {
                 return 32  // Branch offset should be 5
             }
         },
@@ -521,16 +521,16 @@ pub fn main() -> i32 {
     // inc is 1OP:5 with variable operand = 0xA5 (1010_0101)
     // Operand: variable 5
     let test6_data: [u8] = [$A5, $05]
-    var mem6 = ZMemory::new(&test6_data[0], 2u32)
+    var mem6 = ZMemory::new(&test6_data[0], 2)
     let instr6: Instruction = decode_instruction(&var mem6)
 
-    if get_instruction_kind(&instr6) != 10u8 {
+    if get_instruction_kind(&instr6) != 10 {
         return 40  // Expected 'inc' instruction
     }
 
     match instr6 {
         Inc(var_num) => {
-            if var_num != 5u8 {
+            if var_num != 5 {
                 return 41  // Variable should be 5
             }
         },
@@ -541,16 +541,16 @@ pub fn main() -> i32 {
     // dec is 1OP:6 with variable operand = 0xA6 (1010_0110)
     // Operand: variable 7
     let test7_data: [u8] = [$A6, $07]
-    var mem7 = ZMemory::new(&test7_data[0], 2u32)
+    var mem7 = ZMemory::new(&test7_data[0], 2)
     let instr7: Instruction = decode_instruction(&var mem7)
 
-    if get_instruction_kind(&instr7) != 11u8 {
+    if get_instruction_kind(&instr7) != 11 {
         return 50  // Expected 'dec' instruction
     }
 
     match instr7 {
         Dec(var_num) => {
-            if var_num != 7u8 {
+            if var_num != 7 {
                 return 51  // Variable should be 7
             }
         },
@@ -561,16 +561,16 @@ pub fn main() -> i32 {
     // ret is 1OP:$0B with small constant = 0x9B (1001_1011)
     // Operand: 42
     let test8_data: [u8] = [$9B, $2A]
-    var mem8 = ZMemory::new(&test8_data[0], 2u32)
+    var mem8 = ZMemory::new(&test8_data[0], 2)
     let instr8: Instruction = decode_instruction(&var mem8)
 
-    if get_instruction_kind(&instr8) != 19u8 {
+    if get_instruction_kind(&instr8) != 19 {
         return 60  // Expected 'ret' instruction
     }
 
     match instr8 {
         Ret(operand) => {
-            if !is_small_const(&operand, 42u8) {
+            if !is_small_const(&operand, 42) {
                 return 61  // Operand should be SmallConstant(42)
             }
         },

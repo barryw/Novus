@@ -1,0 +1,17 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: ramdrive.device
+// Base: _RamdriveDevice
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("ramdrive.device")
+extern pub fn KillRAD0() -> *u8
+@library("ramdrive.device")
+extern pub fn KillRAD(unit: u32) -> *u8

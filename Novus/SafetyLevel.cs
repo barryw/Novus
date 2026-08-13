@@ -7,11 +7,11 @@ namespace Novus;
 public enum SafetyLevel
 {
     /// <summary>
-    /// Level 0: No runtime checks - "Footguns Enabled" 🔫
-    /// - No bounds checking
+    /// Level 0: Minimal supplemental runtime checks
+    /// - Safe indexing remains bounds checked; explicit unsafe indexing is unchecked
     /// - No division-by-zero checks
     /// - No integer overflow checks
-    /// - Maximum performance, maximum danger
+    /// - Maximum performance for optional instrumentation
     /// Use: Performance-critical code where you know what you're doing
     /// </summary>
     Unsafe = 0,
@@ -59,7 +59,7 @@ public static class SafetyLevelExtensions
     /// </summary>
     public static bool EnableBoundsChecking(this SafetyLevel level)
     {
-        return level >= SafetyLevel.Basic;
+        return true;
     }
 
     /// <summary>
@@ -144,7 +144,7 @@ public static class SafetyLevelExtensions
     {
         return level switch
         {
-            SafetyLevel.Unsafe => "No runtime checks (footguns enabled)",
+            SafetyLevel.Unsafe => "Minimal instrumentation (safe indexing remains checked)",
             SafetyLevel.Basic => "Basic safety checks (bounds, division-by-zero)",
             SafetyLevel.Full => "Full safety checks (overflow, memory tracking, leak detection)",
             SafetyLevel.Paranoid => "Paranoid mode (guard bytes, memory poisoning, maximum safety)",

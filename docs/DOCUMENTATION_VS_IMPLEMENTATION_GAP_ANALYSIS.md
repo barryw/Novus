@@ -103,7 +103,7 @@ The Novus language has **excellent documentation** that is thorough, well-organi
 ```novus
 // From std/async/sleep.novus - this syntax works!
 pub async fn sleep_ms(ms: u32) -> Result<(), ExecError> {
-    let timer_handle = std::os::timer::Timer::open()?
+    let timer_handle = amiga::timer::Timer::open()?
     defer timer_handle.close()
 
     let signal = timer_handle.wait_async(ms)?
@@ -243,15 +243,15 @@ unsafe {
 
 | Library | Design Doc | Implementation | Files |
 |---------|------------|----------------|-------|
-| **Exec** | §24.2 | ✅ Complete | std/ffi/exec.novus, std/os/exec.novus |
-| **Graphics** | §24 | ✅ Complete | std/ffi/graphics.novus (21 structs/functions) |
-| **Intuition** | §24 | ✅ Complete | std/ffi/intuition.novus (14 structs) |
-| **DOS** | §24 | ✅ Complete | std/ffi/dos.novus (13 functions) |
-| **Gadtools** | §24 | ✅ Complete | std/ffi/gadtools.novus (11 functions) |
-| **Icon** | §24 | ✅ Complete | std/ffi/icon.novus (8 structs) |
-| **Datatypes** | §24 | ✅ Complete | std/ffi/datatypes.novus |
-| **Workbench** | §24 | ✅ Complete | std/ffi/workbench.novus |
-| **AML (MUI)** | §24 | ✅ Complete | std/ffi/aml.novus (26 definitions) |
+| **Exec** | §24.2 | ✅ Complete | std/amiga/raw/exec.novus, std/os/exec.novus |
+| **Graphics** | §24 | ✅ Complete | std/amiga/raw/graphics.novus (21 structs/functions) |
+| **Intuition** | §24 | ✅ Complete | std/amiga/raw/intuition.novus (14 structs) |
+| **DOS** | §24 | ✅ Complete | std/amiga/raw/dos.novus (13 functions) |
+| **Gadtools** | §24 | ✅ Complete | std/amiga/raw/gadtools.novus (11 functions) |
+| **Icon** | §24 | ✅ Complete | std/amiga/raw/icon.novus (8 structs) |
+| **Datatypes** | §24 | ✅ Complete | std/amiga/raw/datatypes.novus |
+| **Workbench** | §24 | ✅ Complete | std/amiga/raw/workbench.novus |
+| **AML (MUI)** | §24 | ✅ Complete | std/amiga/raw/aml.novus (26 definitions) |
 | **Reaction** | §24 | ✅ Complete | Multiple ReAction gadget FFIs |
 | **Total libraries** | - | ✅ **90+ libraries** | 147 FFI modules |
 
@@ -311,7 +311,7 @@ impl Drop for WindowHandle {
 | **std/graphics** | 18 | ✅ Complete | Copper, Blitter, Sprites, Bitmaps, Fonts |
 | **std/audio** | 8 | ✅ Complete | Paula, streaming, ProTracker, 8SVX |
 | **std/ui** | 8 | ✅ Complete | Windows, screens, menus, dialogs |
-| **std/ffi** | 90+ | ✅ Complete | All major AmigaOS libraries |
+| **std/amiga/raw** | 90+ | ✅ Complete | All major AmigaOS libraries |
 | **std/hardware** | 5 | ✅ Complete | Chipset, CPU, registers, Paula |
 | **std/async** | 4 | ✅ Complete | Executor, futures, sleep, channels |
 | **std/collections** | 2 | ✅ Complete | Vec, HashMap |
@@ -523,16 +523,31 @@ paula::play_sample(0, sample.data(), sample.length(), 428, 64)
 
 **idiomatic_gui.novus**
 ```novus
-from std::ui::gadtools import GadToolsBuilder, GadgetBounds
+from amiga::ui import Bounds, Event, StaticControl, StaticMenu, StaticUi
 
-var ui = GadToolsBuilder::workbench()?
-ui.add_button(1, "Quit", GadgetBounds::new(124, 88, 70, 18))?
+static CONTROLS: [StaticControl] = [
+    StaticControl::button(1, "Quit", 124, 88, 70, 18),
+]
+static MENUS: [StaticMenu] = [
+    StaticMenu::title("File"),
+    StaticMenu::item("Quit", "Q"),
+    StaticMenu::end(),
+]
+static UI: StaticUi = StaticUi {
+    title: "My App",
+    bounds: Bounds { x: 40, y: 30, width: 230, height: 135 },
+    gadgets: CONTROLS,
+    gadget_count: 1,
+    menus: MENUS,
+}
 
-var menus = ui.menu_builder()
-var file = menus.add_menu("File")
-file.add_item("Quit").with_command_key('Q')
-let menu_strip = menus.build()?
-let window = ui.build("My App", GadgetBounds::new(40, 30, 230, 135), menu_strip)?
+let Result::Ok(window) = UI.open() else { return 20 }
+forever {
+    match window.wait_event() {
+        Event::Close | Event::GadgetUp(1, _) | Event::MenuPick(0, 0) => { break },
+        _ => {},
+    }
+}
 ```
 
 **Result:** Native AmigaOS 3.1/3.2 GUI using the V36 Intuition/GadTools surface;

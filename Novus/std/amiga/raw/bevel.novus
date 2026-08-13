@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: bevel.library
+// Base: _BevelBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("bevel.library")
+extern pub fn BEVEL_GetClass() -> *u8

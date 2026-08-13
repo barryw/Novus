@@ -12,54 +12,54 @@ fn add_f64(left: f64, right: f64) -> f64 {
 
 @test("64-bit arithmetic preserves values beyond 32 bits")
 pub fn foundation_wide_integers() {
-    let wide_u: u64 = 4000000000u64 + 2000000000u64
-    let wide_i: i64 = -5000000000i64 + 2000000000i64
-    expect(wide_u == 6000000000u64, "u64 addition")
-    expect(wide_u / 2000000000u64 == 3u64, "u64 division")
-    expect(wide_i == -3000000000i64, "i64 addition")
-    expect(wide_i / 3i64 == -1000000000i64, "i64 division")
+    let wide_u: u64 = 4000000000 + 2000000000
+    let wide_i: i64 = -5000000000 + 2000000000
+    expect(wide_u == 6000000000, "u64 addition")
+    expect(wide_u / 2000000000 == 3, "u64 division")
+    expect(wide_i == -3000000000, "i64 addition")
+    expect(wide_i / 3 == -1000000000, "i64 division")
 }
 
 @test("f32 arithmetic comparisons calls and casts")
 pub fn foundation_f32() {
-    let sum = add_f32(1.5f32, 2.25f32)
-    let product: f32 = 1.5f32 * 2.0f32
-    let quotient: f32 = 9.0f32 / 4.0f32
-    expect(sum == 3.75f32, "f32 addition")
-    expect(product == 3.0f32, "f32 multiplication")
-    expect(quotient == 2.25f32, "f32 division")
+    let sum = add_f32(1.5, 2.25)
+    let product: f32 = 1.5 * 2.0
+    let quotient: f32 = 9.0 / 4.0
+    expect(sum == 3.75, "f32 addition")
+    expect(product == 3.0, "f32 multiplication")
+    expect(quotient == 2.25, "f32 division")
     expect((i32)sum == 3, "f32 to integer")
 }
 
 @test("f64 arithmetic comparisons calls and casts")
 pub fn foundation_f64() {
-    let sum = add_f64(10.5f64, 0.25f64)
-    let difference: f64 = 100.0f64 - 0.5f64
-    let quotient: f64 = 9.0f64 / 4.0f64
-    expect(sum == 10.75f64, "f64 addition")
-    expect(difference == 99.5f64, "f64 subtraction")
-    expect(quotient == 2.25f64, "f64 division")
+    let sum = add_f64(10.5, 0.25)
+    let difference: f64 = 100.0 - 0.5
+    let quotient: f64 = 9.0 / 4.0
+    expect(sum == 10.75, "f64 addition")
+    expect(difference == 99.5, "f64 subtraction")
+    expect(quotient == 2.25, "f64 division")
     expect((i32)sum == 10, "f64 to integer")
 }
 
 @test("fixed16 arithmetic keeps 8.8 scaling")
 pub fn foundation_fixed16() {
-    let sum: fixed16 = 1.5fixed16 + 2.25fixed16
-    let product: fixed16 = 1.5fixed16 * 2.0fixed16
-    let quotient: fixed16 = 4.5fixed16 / 2.0fixed16
-    expect(sum == 3.75fixed16, "fixed16 addition")
-    expect(product == 3.0fixed16, "fixed16 multiplication")
-    expect(quotient == 2.25fixed16, "fixed16 division")
+    let sum: fixed16 = 1.5 + 2.25
+    let product: fixed16 = 1.5 * 2.0
+    let quotient: fixed16 = 4.5 / 2.0
+    expect(sum == 3.75, "fixed16 addition")
+    expect(product == 3.0, "fixed16 multiplication")
+    expect(quotient == 2.25, "fixed16 division")
     expect((i32)sum == 3, "fixed16 to integer")
 }
 
 @test("fixed32 arithmetic keeps 16.16 scaling")
 pub fn foundation_fixed32() {
-    let sum: fixed32 = 1.5fixed32 + 2.25fixed32
-    let product: fixed32 = 1.5fixed32 * 2.0fixed32
-    let quotient: fixed32 = 4.5fixed32 / 2.0fixed32
-    expect(sum == 3.75fixed32, "fixed32 addition")
-    expect(product == 3.0fixed32, "fixed32 multiplication")
-    expect(quotient == 2.25fixed32, "fixed32 division")
+    let sum: fixed32 = 1.5 + 2.25
+    let product: fixed32 = 1.5 * 2.0
+    let quotient: fixed32 = 4.5 / 2.0
+    expect(sum == 3.75, "fixed32 addition")
+    expect(product == 3.0, "fixed32 multiplication")
+    expect(quotient == 2.25, "fixed32 division")
     expect((i32)sum == 3, "fixed32 to integer")
 }

@@ -192,8 +192,8 @@ struct LargeData {
 fn create_large_data() -> Result<Box<LargeData>, Error> {
     // Too big for stack, allocate on heap
     var data = Box.new(LargeData {
-        buffer: [0u8; 10000],
-        metadata: [0u32; 1000]
+        buffer: [0; 10000],
+        metadata: [0; 1000]
     })?
 
     return Ok(data)

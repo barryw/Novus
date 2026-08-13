@@ -89,34 +89,34 @@ pub fn use_address_regs(ptr: *u8, offset1: u32, offset2: u32) -> *u8 {
 pub fn main() -> i32 {
     // Test scratch register usage
     // compute_with_scratch: x + x + (x + x) = 3x
-    let result1 = compute_with_scratch(10u32)
-    assert!(result1 == 30u32, "compute_with_scratch(10) should be 30")
+    let result1 = compute_with_scratch(10)
+    assert!(result1 == 30, "compute_with_scratch(10) should be 30")
 
     // sum_of_squares: 3*3 + 4*4 = 9 + 16 = 25
-    let result2 = sum_of_squares(3u32, 4u32)
-    assert!(result2 == 25u32, "sum_of_squares(3, 4) should be 25")
+    let result2 = sum_of_squares(3, 4)
+    assert!(result2 == 25, "sum_of_squares(3, 4) should be 25")
 
     // Test memory barriers (just shouldn't crash)
     memory_store_barrier()
 
     // Test with actual memory - complex_operation doubles each value
-    var data = [1u32, 2u32, 3u32, 4u32]
-    var output = [0u32; 4]
+    var data: [u32] = [1, 2, 3, 4]
+    var output: [u32] = [0; 4]
 
     let src = (*u32)&data[0]
     let dest = (*u32)&output[0]
 
-    complex_operation(src, dest, 4u32)
+    complex_operation(src, dest, 4)
 
     // Verify the output values are doubled
-    assert!(output[0] == 2u32, "output[0] should be 2")
-    assert!(output[1] == 4u32, "output[1] should be 4")
-    assert!(output[2] == 6u32, "output[2] should be 6")
-    assert!(output[3] == 8u32, "output[3] should be 8")
+    assert!(output[0] == 2, "output[0] should be 2")
+    assert!(output[1] == 4, "output[1] should be 4")
+    assert!(output[2] == 6, "output[2] should be 6")
+    assert!(output[3] == 8, "output[3] should be 8")
 
     // Test all scratch regs: x + 6*x = 7x
-    let seven_x = use_all_scratch_regs(10u32)
-    assert!(seven_x == 70u32, "use_all_scratch_regs(10) should be 70")
+    let seven_x = use_all_scratch_regs(10)
+    assert!(seven_x == 70, "use_all_scratch_regs(10) should be 70")
 
     return 0
 }

@@ -98,6 +98,90 @@ pub fn test() -> bool {
         Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "W0001");
     }
 
+    [Fact]
+    public void Analyze_IntegerLiteralsUseAllBidirectionalContexts_NoErrors()
+    {
+        var source = """
+            struct Header {
+                byte: u8,
+                word: u16,
+                mask: u32,
+            }
+
+            fn accepts(value: u32) -> u32 { return value }
+
+            pub fn test(limit: u32) -> u32 {
+                let header = Header { byte: 255, word: 65535, mask: $FFFFFFFF }
+                let words: [u16] = [0, 65535]
+                var assigned: u16 = 0
+                assigned = 65535
+                for index in 0..limit {
+                    assigned = words[0]
+                }
+                return accepts(limit + 4) + header.mask
+            }
+            """;
+
+        var diagnostics = Analyze(source);
+
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics.Diagnostics));
+        Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "W0001");
+    }
+
+    [Fact]
+    public void Analyze_ContextualLiteralOutsideTargetRange_ReportsExactType()
+    {
+        var diagnostics = Analyze("fn test() { let byte: u8 = 256 }");
+
+        var error = Assert.Single(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "E0009");
+        Assert.Contains("u8", error.Message);
+        Assert.Contains("256", error.Message);
+    }
+
+    [Fact]
+    public void Analyze_FullUnsigned64Literal_NoErrors()
+    {
+        var diagnostics = Analyze("fn test() -> u64 { return 18446744073709551615 }");
+
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics.Diagnostics));
+    }
+
+    [Fact]
+    public void Analyze_IntegerPatternsUseMatchedTypeContext_NoErrors()
+    {
+        var diagnostics = Analyze("""
+            fn classify(value: u8) -> u8 {
+                return match value {
+                    255 => 1,
+                    $1F => 2,
+                    %00001111 => 3,
+                    _ => 0,
+                }
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics.Diagnostics));
+    }
+
+    [Fact]
+    public void Analyze_CompoundAssignmentsUseLvalueTypeContext_NoErrors()
+    {
+        var diagnostics = Analyze("""
+            struct Counters { total: u32 }
+
+            fn update(counters: &var Counters) {
+                counters.total += 1
+                var values: [u16] = [0]
+                values[0] += 1
+                var total: u32 = 0
+                total += 1
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics.Diagnostics));
+        Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "W0001");
+    }
+
     #endregion
 
     #region Panic Statement Tests
@@ -227,7 +311,7 @@ struct Counter { value: u32 }
 
 impl Iterator<u32> for Counter {
     fn next(&var self) -> Option<u32> {
-        return Option::None if self.value == 3u32
+        return Option::None if self.value == 3
         let value = self.value
         self.value++
         return Option::Some(value)
@@ -235,8 +319,8 @@ impl Iterator<u32> for Counter {
 }
 
 pub fn test() -> u32 {
-    var sum = 0u32
-    for value in Counter { value: 0u32 } { sum = sum + value }
+    var sum: u32 = 0
+    for value in Counter { value: 0 } { sum = sum + value }
     return sum
 }";
         var diagnostics = Analyze(source);

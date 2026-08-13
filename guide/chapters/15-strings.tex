@@ -1,7 +1,7 @@
 \chapter{Strings}
 \label{chap:strings}
 
-The \texttt{std::strings} module provides a comprehensive string handling system designed for Amiga development. It offers both borrowed views (zero-copy) and owned strings (heap-allocated), plus AmigaDOS-specific types like BCPL strings.
+The \texttt{std::string} module provides a comprehensive string handling system designed for Amiga development. It offers both borrowed views (zero-copy) and owned strings (heap-allocated), plus AmigaDOS-specific types like BCPL strings.
 
 \section{Overview}
 
@@ -35,7 +35,7 @@ All Novus strings are Latin-1 (ISO-8859-1) encoded, matching AmigaOS conventions
 \texttt{Str} is a ``fat pointer'' containing a pointer and length. It does NOT own the data---it's just a view into existing memory. This makes it extremely efficient for passing strings to functions.
 
 \begin{lstlisting}
-from std::strings::core import Str
+from std::string import Str
 
 fn greet(name: Str) {
     // name is just a view - no allocation, no copy
@@ -190,7 +190,7 @@ Trimming removes ASCII whitespace: space (\texttt{\$20}), tab (\texttt{\$09}), L
 \texttt{String} is a heap-allocated, growable, mutable string backed by \texttt{Vec<u8>}. Use it when you need to build strings dynamically or own string data.
 
 \begin{lstlisting}
-from std::strings::core import String, Str
+from std::string import String, Str
 
 fn build_greeting(name: Str) -> Result<String, StringError> {
     var greeting = String::new()
@@ -277,7 +277,7 @@ For embedded systems work, heap allocation can be expensive or unpredictable. No
 For short identifiers, variable names, and labels:
 
 \begin{lstlisting}
-from std::strings::core import NameString, Str
+from std::string import NameString, Str
 
 var name = NameString::new()
 name.push_str(Str::from_cstr("Player1")?)?
@@ -294,7 +294,7 @@ let slice: Str = name.as_str()
 For Intuition gadget text buffers and UI strings:
 
 \begin{lstlisting}
-from std::strings::core import GadgetString, Str
+from std::string import GadgetString, Str
 
 var button_text = GadgetString::new()
 button_text.push_str(Str::from_cstr("Click Here")?)?
@@ -308,7 +308,7 @@ let label_ptr: *u8 = button_text.as_mut_ptr()
 For AmigaDOS file paths (max path length is typically 256 bytes):
 
 \begin{lstlisting}
-from std::strings::core import PathString, Str
+from std::string import PathString, Str
 
 var path = PathString::new()
 path.push_str(Str::from_cstr("Work:Projects/")?)?
@@ -330,7 +330,7 @@ Fixed strings return \texttt{Result::Err(StringError::TooLong)} if you exceed th
 \texttt{StringBuilder} provides efficient string construction with built-in formatting methods for numbers:
 
 \begin{lstlisting}
-from std::strings::core import StringBuilder, Str
+from std::string import StringBuilder, Str
 
 fn format_status(x: i32, y: i32, health: u32) -> Result<String, StringError> {
     var sb = StringBuilder::new()?
@@ -394,7 +394,7 @@ let result: String = sb.build()
 AmigaDOS uses BCPL-style strings for many operations. These have a length byte prefix and use ``BPTR'' addressing (address divided by 4).
 
 \begin{lstlisting}
-from std::strings::core import BStr, Str
+from std::string import BStr, Str
 
 fn dos_example() -> Result<(), StringError> {
     // Create BCPL string from Str
@@ -437,10 +437,6 @@ char *str = BADDR(bptr);   // bptr * 4
 \end{lstlisting}
 \texttt{BStr} handles this automatically and provides RAII cleanup.
 \end{comingfromc}
-
-\begin{notebox}
-\texttt{BStr} has a \texttt{free()} method for explicit cleanup, but this is \textbf{deprecated}. Prefer letting the \texttt{Drop} trait handle cleanup automatically when the \texttt{BStr} goes out of scope.
-\end{notebox}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{String Parsing}
@@ -579,7 +575,7 @@ let result: String = text.replace(
 \subsection{Joining Strings}
 
 \begin{lstlisting}
-from std::strings::core import str_join, Str
+from std::string import str_join, Str
 
 // Join array of Str with separator
 var parts: [Str; 3] = [
@@ -600,7 +596,7 @@ let path: String = str_join((*Str)&parts, 3, Str::from_cstr("/")?)?
 Novus provides AmigaDOS-aware path utilities:
 
 \begin{lstlisting}
-from std::strings::core import (
+from std::string import (
     path_split, path_filename, path_dirname,
     path_is_absolute, path_join, PathComponents
 )
@@ -653,10 +649,10 @@ AmigaDOS path conventions:
 \label{sec:display-debug}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-The \texttt{std::strings::format} module provides traits for formatted output:
+The \texttt{std::string} module provides traits for formatted output:
 
 \begin{lstlisting}
-from std::strings::format import Display, Debug, Formatter
+from std::string import Display, Debug, Formatter
 
 // Display - user-facing output
 pub trait Display {
@@ -705,7 +701,7 @@ All primitive types implement \texttt{Display} and \texttt{Debug}:
 For zero-allocation formatting (e.g., in interrupt handlers), use \texttt{StackFormatter}:
 
 \begin{lstlisting}
-from std::strings::format import StackFormatter
+from std::string import StackFormatter
 
 fn format_on_stack() {
     var fmt = StackFormatter::new()  // 256-byte stack buffer

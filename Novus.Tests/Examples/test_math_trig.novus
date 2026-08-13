@@ -33,7 +33,7 @@ pub fn test_angle_three_quarter() {
 @test
 pub fn test_sin_0_degrees() {
     // sin(0) = 0
-    let result = sin_fixed32(0u16)
+    let result = sin_fixed32(0)
     // Should be very close to 0
     expect_true(result.abs().to_raw() < 1000, "sin(0) ≈ 0")
 }
@@ -70,7 +70,7 @@ pub fn test_sin_270_degrees() {
 @test
 pub fn test_cos_0_degrees() {
     // cos(0) = 1.0
-    let result = cos_fixed32(0u16)
+    let result = cos_fixed32(0)
     let raw = result.to_raw()
     expect_true(raw > 60000 && raw < 70000, "cos(0) ≈ 1.0")
 }
@@ -104,7 +104,7 @@ pub fn test_cos_270_degrees() {
 @test
 pub fn test_sin_cos_identity_45_degrees() {
     // At 45 degrees, sin and cos should be equal
-    let angle_45 = 8192u16  // 45 degrees in BAMS
+    let angle_45: u16 = 8192  // 45 degrees in BAMS
     let s = sin_fixed32(angle_45)
     let c = cos_fixed32(angle_45)
 
@@ -116,7 +116,7 @@ pub fn test_sin_cos_identity_45_degrees() {
 @test
 pub fn test_sin_squared_plus_cos_squared() {
     // sin²(x) + cos²(x) = 1 for any angle
-    let angle = 12345u16  // Arbitrary angle
+    let angle: u16 = 12345  // Arbitrary angle
     let s = sin_fixed32(angle)
     let c = cos_fixed32(angle)
 
@@ -135,7 +135,7 @@ pub fn test_sin_squared_plus_cos_squared() {
 
 @test
 pub fn test_sin_i16_0_degrees() {
-    let result = sin_i16(0u16)
+    let result = sin_i16(0)
     expect_true((i32)result < 100 && (i32)result > -100, "sin_i16(0) ≈ 0")
 }
 
@@ -150,7 +150,7 @@ pub fn test_sin_i16_90_degrees() {
 @test
 pub fn test_cos_i16_0_degrees() {
     // cos(0) = 16384 in 14-bit scale (since 16384 = 1.0)
-    let result = cos_i16(0u16)
+    let result = cos_i16(0)
     expect_true((i32)result > 16000 && (i32)result <= 16384, "cos_i16(0) ≈ 16384")
 }
 
@@ -160,13 +160,13 @@ pub fn test_cos_i16_0_degrees() {
 
 @test
 pub fn test_degrees_to_angle_0() {
-    let result = degrees_to_angle(0i16)
+    let result = degrees_to_angle(0)
     expect_eq((i32)result, 0, "0 degrees = 0 BAMS")
 }
 
 @test
 pub fn test_degrees_to_angle_90() {
-    let result = degrees_to_angle(90i16)
+    let result = degrees_to_angle(90)
     // Should be approximately 16384 (90 * 65536 / 360)
     let diff = (i32)result - 16384
     if diff < 0 {
@@ -178,7 +178,7 @@ pub fn test_degrees_to_angle_90() {
 
 @test
 pub fn test_degrees_to_angle_180() {
-    let result = degrees_to_angle(180i16)
+    let result = degrees_to_angle(180)
     let diff = (i32)result - 32768
     if diff < 0 {
         expect_true(-diff < 400, "180 degrees ≈ 32768 BAMS")
@@ -189,7 +189,7 @@ pub fn test_degrees_to_angle_180() {
 
 @test
 pub fn test_angle_to_degrees_0() {
-    let result = angle_to_degrees(0u16)
+    let result = angle_to_degrees(0)
     expect_eq((i32)result, 0, "0 BAMS = 0 degrees")
 }
 
@@ -239,14 +239,14 @@ pub fn test_angle_to_radians() {
 @test
 pub fn test_tan_0_degrees() {
     // tan(0) = 0
-    let result = tan_fixed32(0u16)
+    let result = tan_fixed32(0)
     expect_true(result.abs().to_raw() < 1000, "tan(0) ≈ 0")
 }
 
 @test
 pub fn test_tan_45_degrees() {
     // tan(45) = 1.0
-    let angle_45 = 8192u16
+    let angle_45: u16 = 8192
     let result = tan_fixed32(angle_45)
     // Should be approximately 1.0 (65536 in raw)
     let raw = result.to_raw()
@@ -296,7 +296,7 @@ pub fn test_atan2_angle_left() {
 
 @test
 pub fn test_sin_fixed32_interp_0() {
-    let result = sin_fixed32_interp(0u16)
+    let result = sin_fixed32_interp(0)
     expect_true(result.abs().to_raw() < 500, "sin_interp(0) ≈ 0")
 }
 
@@ -309,7 +309,7 @@ pub fn test_sin_fixed32_interp_90() {
 
 @test
 pub fn test_cos_fixed32_interp_0() {
-    let result = cos_fixed32_interp(0u16)
+    let result = cos_fixed32_interp(0)
     let raw = result.to_raw()
     expect_true(raw > 60000 && raw < 70000, "cos_interp(0) ≈ 1.0")
 }

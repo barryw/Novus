@@ -91,7 +91,7 @@ pub fn foundation_struct_arrays() {
 @test("array references coerce to slices")
 pub fn foundation_array_slice_coercion() {
     let values = [1, 2, 3, 4, 5]
-    expect(slice_length(&values) == 5u32, "slice length")
+    expect(slice_length(&values) == 5, "slice length")
     expect(slice_sum(&values) == 15, "slice iteration")
 }
 
@@ -118,7 +118,7 @@ pub fn foundation_patterns() {
 
     let pointer: *u8 = (*u8)123
     if let bound = pointer {
-        expect((u32)bound == 123u32, "if-let binding")
+        expect((u32)bound == 123, "if-let binding")
     } else {
         expect(false, "if-let should match")
     }

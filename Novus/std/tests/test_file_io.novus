@@ -1,16 +1,16 @@
-// Test suite for std::ffi::dos file I/O operations
+// Test suite for amiga::raw::dos file I/O operations
 // Tests Open, Close, Read, Write, Seek, DeleteFile, Rename, Lock, Examine, Info
 
-from std::ffi::dos import Open, Close, Read, Write, Seek, DeleteFile, Rename
-from std::ffi::dos import Lock, UnLock, Examine, Info, IoErr, CreateDir
-from std::ffi::amiga_consts import MODE_NEWFILE, MODE_OLDFILE, MODE_READWRITE
-from std::ffi::amiga_consts import OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
-from std::ffi::amiga_consts import SHARED_LOCK, EXCLUSIVE_LOCK
-from std::ffi::amiga_structs import FileInfoBlock, InfoData
+from amiga::raw::dos import Open, Close, Read, Write, Seek, DeleteFile, Rename
+from amiga::raw::dos import Lock, UnLock, Examine, Info, IoErr, CreateDir
+from amiga::raw::consts import MODE_NEWFILE, MODE_OLDFILE, MODE_READWRITE
+from amiga::raw::consts import OFFSET_BEGINNING, OFFSET_CURRENT, OFFSET_END
+from amiga::raw::consts import SHARED_LOCK, EXCLUSIVE_LOCK
+from amiga::raw::structs import FileInfoBlock, InfoData
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 from std::test::test import expect, expect_true, expect_false, expect_eq
-from std::strings::core import Str
+from std::string::core import Str
 
 // =============================================================================
 // Open and Close tests
@@ -154,7 +154,7 @@ pub fn test_read_basic() {
     }
 
     // Now read it back
-    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(64, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -168,10 +168,12 @@ pub fn test_read_basic() {
                 expect_eq(bytes_read, 9, "read 9 bytes")
 
                 // Verify content
-                expect_true(buffer[0] == 84u8, "first byte is 'T'")  // 'T'
-                expect_true(buffer[1] == 101u8, "second byte is 'e'") // 'e'
-                expect_true(buffer[2] == 115u8, "third byte is 's'")  // 's'
-                expect_true(buffer[3] == 116u8, "fourth byte is 't'") // 't'
+                unsafe {
+                    expect_true(buffer[0] == 84, "first byte is 'T'")  // 'T'
+                    expect_true(buffer[1] == 101, "second byte is 'e'") // 'e'
+                    expect_true(buffer[2] == 115, "third byte is 's'")  // 's'
+                    expect_true(buffer[3] == 116, "fourth byte is 't'") // 't'
+                }
 
                 Close(fh_read)
             }
@@ -197,7 +199,7 @@ pub fn test_read_eof() {
         Close(fh_write)
     }
 
-    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(64, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -241,7 +243,7 @@ pub fn test_seek_beginning() {
         Close(fh_write)
     }
 
-    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(16, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -260,7 +262,7 @@ pub fn test_seek_beginning() {
                 // Now read should get first bytes again
                 let bytes = Read(fh, buffer, 3)
                 expect_eq(bytes, 3, "read after seek")
-                expect_true(buffer[0] == 48u8, "first byte is '0'") // '0'
+                unsafe { expect_true(buffer[0] == 48, "first byte is '0'") } // '0'
 
                 Close(fh)
             }
@@ -286,7 +288,7 @@ pub fn test_seek_current() {
         Close(fh_write)
     }
 
-    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(16, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -299,7 +301,7 @@ pub fn test_seek_current() {
 
                 let bytes = Read(fh, buffer, 1)
                 expect_eq(bytes, 1, "read 1 byte")
-                expect_true(buffer[0] == 70u8, "byte is 'F'") // 'F' is at position 5
+                unsafe { expect_true(buffer[0] == 70, "byte is 'F'") } // 'F' is at position 5
 
                 Close(fh)
             }
@@ -325,7 +327,7 @@ pub fn test_seek_end() {
         Close(fh_write)
     }
 
-    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(16, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -338,8 +340,10 @@ pub fn test_seek_end() {
 
                 let bytes = Read(fh, buffer, 2)
                 expect_eq(bytes, 2, "read 2 bytes")
-                expect_true(buffer[0] == 73u8, "first byte is 'I'")  // 'I'
-                expect_true(buffer[1] == 74u8, "second byte is 'J'") // 'J'
+                unsafe {
+                    expect_true(buffer[0] == 73, "first byte is 'I'")  // 'I'
+                    expect_true(buffer[1] == 74, "second byte is 'J'") // 'J'
+                }
 
                 Close(fh)
             }
@@ -417,7 +421,7 @@ pub fn test_rename_file() {
     expect_true(fh1 == 0, "original path no longer exists")
 
     // Verify path2 exists and has content
-    let opt = MemoryBlock::alloc(16u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(16, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -516,7 +520,7 @@ pub fn test_examine_file() {
     }
 
     // Allocate FileInfoBlock
-    let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(260, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -551,7 +555,7 @@ pub fn test_examine_file() {
 pub fn test_examine_directory() {
     let path: Str = "RAM:"  // RAM: is always a directory
 
-    let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(260, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -584,7 +588,7 @@ pub fn test_examine_directory() {
 pub fn test_info_volume() {
     let path: Str = "RAM:"
 
-    let opt = MemoryBlock::alloc(64u32, MEMF_PUBLIC | MEMF_CLEAR)
+    let opt = MemoryBlock::alloc(64, MEMF_PUBLIC | MEMF_CLEAR)
     match opt {
         Result::Ok(block) => {
             var b = block
@@ -633,7 +637,7 @@ pub fn test_createdir() {
         UnLock(lock)
 
         // Verify it's a directory
-        let opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+        let opt = MemoryBlock::alloc(260, MEMF_PUBLIC | MEMF_CLEAR)
         match opt {
             Result::Ok(block) => {
                 var b = block
@@ -684,16 +688,16 @@ pub fn test_write_read_roundtrip() {
     DeleteFile(path)
 
     // Test data: various byte values - write phase
-    let write_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC)
+    let write_opt = MemoryBlock::alloc(256, MEMF_PUBLIC)
     match write_opt {
         Result::Ok(write_block) => {
             var write_buf = write_block
             let write_ptr = write_buf.ptr()
 
             // Fill with test pattern
-            while var i < 256u32 {
-                write_ptr[i] = i as u8
-                i = i + 1u32
+            while var i < 256 {
+                unsafe { write_ptr[i] = (u8)i }
+                i = i + 1
             }
 
             // Write to file
@@ -709,7 +713,7 @@ pub fn test_write_read_roundtrip() {
             write_buf.free()
 
             // Read back and verify - inside the same branch to avoid scope issue
-            let read_opt = MemoryBlock::alloc(256u32, MEMF_PUBLIC | MEMF_CLEAR)
+            let read_opt = MemoryBlock::alloc(256, MEMF_PUBLIC | MEMF_CLEAR)
             match read_opt {
                 Result::Ok(read_block) => {
                     var read_buf = read_block
@@ -724,11 +728,11 @@ pub fn test_write_read_roundtrip() {
 
                         // Verify pattern
                         var all_match = true
-                        while var j < 256u32 {
-                            if read_ptr[j] != j as u8 {
+                        while var j < 256 {
+                            if unsafe { read_ptr[j] } != (u8)j {
                                 all_match = false
                             }
-                            j = j + 1u32
+                            j = j + 1
                         }
                         expect_true(all_match, "all bytes match original pattern")
 
@@ -751,7 +755,7 @@ pub fn test_large_file() {
     let path: Str = "RAM:novus_test_file.txt"
     DeleteFile(path)
 
-    let size: u32 = 4096u32  // 4KB
+    let size: u32 = 4096  // 4KB
 
     let buf_opt = MemoryBlock::alloc(size, MEMF_PUBLIC)
     match buf_opt {
@@ -761,8 +765,8 @@ pub fn test_large_file() {
 
             // Fill buffer
             while var i < size {
-                ptr[i] = (i & 255u32) as u8
-                i = i + 1u32
+                unsafe { ptr[i] = (u8)(i & 255) }
+                i = i + 1
             }
 
             // Write
@@ -776,7 +780,7 @@ pub fn test_large_file() {
             buf.free()
 
             // Verify file size via Examine - nested to avoid scope issue
-            let fib_opt = MemoryBlock::alloc(260u32, MEMF_PUBLIC | MEMF_CLEAR)
+            let fib_opt = MemoryBlock::alloc(260, MEMF_PUBLIC | MEMF_CLEAR)
             match fib_opt {
                 Result::Ok(fib_block) => {
                     var b = fib_block

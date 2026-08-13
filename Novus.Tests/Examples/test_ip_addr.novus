@@ -42,7 +42,7 @@ pub fn test_ipv4_new_max() {
 @test("Ipv4Addr::from_u32 creates correct address")
 pub fn test_ipv4_from_u32() {
     // 192.168.1.100 = 0xC0A80164
-    let addr = Ipv4Addr::from_u32(0xC0A80164u32)
+    let addr = Ipv4Addr::from_u32(0xC0A80164)
     let octets = addr.octets()
     expect_eq(octets[0], 192, "from_u32 first octet")
     expect_eq(octets[1], 168, "from_u32 second octet")
@@ -58,13 +58,13 @@ pub fn test_ipv4_from_u32_zero() {
 
 @test("Ipv4Addr::from_u32 with max")
 pub fn test_ipv4_from_u32_max() {
-    let addr = Ipv4Addr::from_u32(0xFFFFFFFFu32)
+    let addr = Ipv4Addr::from_u32(0xFFFFFFFF)
     expect_true(addr.is_broadcast(), "from_u32(max) should be broadcast")
 }
 
 @test("Ipv4Addr::to_u32 roundtrip")
 pub fn test_ipv4_to_u32_roundtrip() {
-    let original: u32 = 0xC0A80164u32
+    let original: u32 = 0xC0A80164
     let addr = Ipv4Addr::from_u32(original)
     let result = addr.to_u32()
     expect_eq(result, original, "to_u32 should roundtrip")
@@ -536,7 +536,7 @@ pub fn test_is_global_documentation() {
 @test("Ipv4Addr::format writes correct string")
 pub fn test_ipv4_format() {
     let addr = Ipv4Addr::new(192, 168, 1, 100)
-    var buf = [0u8; 16]
+    var buf: [u8] = [0; 16]
     let len = addr.format((*u8)&buf[0])
 
     // Check length (192.168.1.100 = 13 chars)
@@ -552,7 +552,7 @@ pub fn test_ipv4_format() {
 @test("Ipv4Addr::format single digit octets")
 pub fn test_ipv4_format_single_digits() {
     let addr = Ipv4Addr::new(1, 2, 3, 4)
-    var buf = [0u8; 16]
+    var buf: [u8] = [0; 16]
     let len = addr.format((*u8)&buf[0])
 
     // 1.2.3.4 = 7 chars
@@ -562,7 +562,7 @@ pub fn test_ipv4_format_single_digits() {
 @test("Ipv4Addr::format max value octets")
 pub fn test_ipv4_format_max() {
     let addr = Ipv4Addr::new(255, 255, 255, 255)
-    var buf = [0u8; 16]
+    var buf: [u8] = [0; 16]
     let len = addr.format((*u8)&buf[0])
 
     // 255.255.255.255 = 15 chars
@@ -572,7 +572,7 @@ pub fn test_ipv4_format_max() {
 @test("Ipv4Addr::format zero address")
 pub fn test_ipv4_format_zero() {
     let addr = Ipv4Addr::new(0, 0, 0, 0)
-    var buf = [0u8; 16]
+    var buf: [u8] = [0; 16]
     let len = addr.format((*u8)&buf[0])
 
     // 0.0.0.0 = 7 chars
@@ -1030,7 +1030,7 @@ pub fn test_cidr_is_private_public() {
 @test("Cidr::format for 192.168.1.0/24")
 pub fn test_cidr_format_24() {
     let cidr = Cidr::new(Ipv4Addr::new(192, 168, 1, 0), 24)
-    var buf = [0u8; 20]
+    var buf: [u8] = [0; 20]
     let len = cidr.format((*u8)&buf[0])
 
     // 192.168.1.0/24 = 14 chars
@@ -1040,7 +1040,7 @@ pub fn test_cidr_format_24() {
 @test("Cidr::format for 10.0.0.0/8")
 pub fn test_cidr_format_8() {
     let cidr = Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
-    var buf = [0u8; 20]
+    var buf: [u8] = [0; 20]
     let len = cidr.format((*u8)&buf[0])
 
     // 10.0.0.0/8 = 10 chars

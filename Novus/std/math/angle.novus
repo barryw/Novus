@@ -41,25 +41,25 @@ extern fn asm_angle_move_towards(current: u16, target: u16, max_delta: u16) -> u
 // ============================================================================
 
 /// 45 degrees in angle units
-pub const ANGLE_45: u16 = 8192u16
+pub const ANGLE_45: u16 = 8192
 
 /// 30 degrees in angle units
-pub const ANGLE_30: u16 = 5461u16
+pub const ANGLE_30: u16 = 5461
 
 /// 60 degrees in angle units
-pub const ANGLE_60: u16 = 10923u16
+pub const ANGLE_60: u16 = 10923
 
 /// 15 degrees in angle units
-pub const ANGLE_15: u16 = 2731u16
+pub const ANGLE_15: u16 = 2731
 
 /// 10 degrees in angle units
-pub const ANGLE_10: u16 = 1820u16
+pub const ANGLE_10: u16 = 1820
 
 /// 5 degrees in angle units
-pub const ANGLE_5: u16 = 910u16
+pub const ANGLE_5: u16 = 910
 
 /// 1 degree in angle units (more precise than ANGLE_ONE_DEGREE in trig)
-pub const ANGLE_1: u16 = 182u16
+pub const ANGLE_1: u16 = 182
 
 // ============================================================================
 // Angle Normalization - Public API

@@ -1373,7 +1373,7 @@ async fn https_get(url: String) -> Result[String, SSLError] {
 
     // Read response
     let mut response = String::new()
-    let mut buf = [0u8; 4096]
+    let mut buf = [0; 4096]
 
     loop {
         let n = ssl_stream.read(&mut buf).await?

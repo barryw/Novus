@@ -1,0 +1,99 @@
+// Typed BCPL pointers used by AmigaDOS.
+
+from std::core import Error, Option, Result
+from amiga::raw::exec import TypeOfMem
+
+pub enum BPtrError {
+    OutOfRange,
+}
+
+impl BPtrError {
+    pub fn message(&self) -> *u8 {
+        return "Invalid BCPL pointer"
+    }
+}
+
+impl Error for BPtrError {
+    fn message(&self) -> *u8 {
+        return BPtrError::message(self)
+    }
+}
+
+/// A typed, non-owning AmigaDOS pointer. Dereferencing remains an explicit
+/// unsafe boundary because the operating system owns the pointed-to memory.
+pub struct BPtr<T> {
+    raw: u32,
+    _marker: u8,
+}
+
+impl<T> BPtr<T> {
+    pub fn from_raw(raw: i32) -> Result<BPtr<T>, BPtrError> {
+        if raw < 0 {
+            return Result::Err(BPtrError::OutOfRange)
+        }
+        return BPtr::<T>::from_raw_u32((u32)raw)
+    }
+
+    pub fn from_raw_u32(raw: u32) -> Result<BPtr<T>, BPtrError> {
+        if raw > $3FFFFFFF {
+            return Result::Err(BPtrError::OutOfRange)
+        }
+        return Result::Ok(BPtr { raw: raw, _marker: 0 })
+    }
+
+    /// Convert a known Amiga pointer to a typed BPTR.
+    pub fn from_ptr(ptr: *T) -> Result<BPtr<T>, BPtrError> {
+        let address = (u32)ptr
+        if address == 0 || address & 3 != 0 {
+            return Result::Err(BPtrError::OutOfRange)
+        }
+        let value = BPtr { raw: address >> 2, _marker: 0 }
+        if !value.is_addressable() {
+            return Result::Err(BPtrError::OutOfRange)
+        }
+        return Result::Ok(value)
+    }
+
+    pub fn as_raw(&self) -> u32 {
+        return self.raw
+    }
+
+    pub fn is_null(&self) -> bool {
+        return self.raw == 0
+    }
+
+    pub fn address(&self) -> u32 {
+        return self.raw << 2
+    }
+
+    /// True when the complete pointed-to value is in known Amiga memory.
+    pub fn is_addressable(&self) -> bool {
+        if self.is_null() {
+            return false
+        }
+        let size = @sizeof(T)
+        let address = self.address()
+        if size > 1 && address > $FFFFFFFF - (size - 1) {
+            return false
+        }
+        if TypeOfMem((*u8)address) == 0 {
+            return false
+        }
+        return size <= 1 || TypeOfMem((*u8)(address + size - 1)) != 0
+    }
+
+    /// The caller must prove that the OS object is alive and has type T.
+    @unsafe
+    pub fn as_ptr(&self) -> *T {
+        return (*T)self.address()
+    }
+
+    /// The caller must prove that the OS object remains alive for the borrow.
+    @unsafe
+    pub fn borrow(&self) -> Option<&T> {
+        if !self.is_addressable() {
+            return Option::None
+        }
+        return Option::Some(unsafe { &*self.as_ptr() })
+    }
+}

@@ -6,11 +6,11 @@
 
 from std::core import Option, Result, Drop
 from std::async::future import Future, Poll, Context, Waker
-from std::os::timer import Duration, TimerError
-from std::ffi::amiga_structs import timeval, timerequest, IORequest, MsgPort
-from std::ffi::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
-from std::ffi::exec import OpenDevice, CloseDevice, SendIO, CheckIO, WaitIO, AbortIO, Signal
-from std::ffi::amiga_consts import UNIT_MICROHZ, TR_ADDREQUEST
+from amiga::timer import Duration, TimerError
+from amiga::raw::structs import timeval, timerequest, IORequest, MsgPort
+from amiga::raw::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
+from amiga::raw::exec import OpenDevice, CloseDevice, SendIO, CheckIO, WaitIO, AbortIO, Signal
+from amiga::raw::consts import UNIT_MICROHZ, TR_ADDREQUEST
 
 // ============================================================================
 // Sleep Future
@@ -113,7 +113,7 @@ impl Sleep {
     /// Start the async timer request
     fn start_timer(&var self) {
         // Set up the timer request
-        self.timereq.tr_node.io_Command = TR_ADDREQUEST
+        self.timereq.tr_node.io_Command = (u16)TR_ADDREQUEST
         self.timereq.tr_time = timeval {
             tv_secs: self.duration.get_secs(),
             tv_micro: self.duration.get_micros(),
@@ -245,7 +245,7 @@ impl Drop for Sleep {
 ///
 /// ```novus
 /// from std::async import block_on, sleep
-/// from std::os::timer import Duration
+/// from amiga::timer import Duration
 ///
 /// fn main() -> i32 {
 ///     block_on(async {

@@ -1,0 +1,10 @@
+from amiga::sys::intuition::screen import ScreenHandle
+from amiga::sys::intuition::window import WindowHandle
+
+// Tier 2: owning Intuition windows and screens.
+pub use amiga::sys::intuition::screen::*
+pub use amiga::sys::intuition::window::*
+pub use amiga::sys::intuition::errors::*
+
+pub type IntuitionWindow = WindowHandle
+pub type IntuitionScreen = ScreenHandle

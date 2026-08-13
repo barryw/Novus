@@ -157,7 +157,7 @@ fn main() -> i32 {
         var builder = BuildModule("""
             #[stack_size(8192)]
             fn main() -> i32 {
-                let buffer = [0u8; 5000]
+                let buffer: [u8] = [0; 5000]
                 return (i32)buffer[0]
             }
             """);

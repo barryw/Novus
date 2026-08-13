@@ -44,10 +44,10 @@ pub fn into_raw(consuming self) -> *Resource
 ```
 
 Collections, slices, iterators, semaphore/data guards, channels, boxes,
-futures, and owning Amiga handles use these forms consistently. `handle()` and
-`as_ptr()` are explicit raw FFI escape hatches; `from_raw()` adopts ownership,
-`borrow_raw()` creates a non-owning unsafe view, and `into_raw()` transfers
-ownership after disarming automatic cleanup.
+futures, and owning Amiga handles use these forms consistently. `system()`
+borrows the next safe layer and `as_raw()`/`as_ptr()` are explicit native
+escape hatches; validating `from_raw()` adopts ownership and `into_raw()`
+transfers ownership after disarming automatic cleanup.
 
 `Str`, `Slice`, `DrawContext`, `AreaContext`, Workbench arguments, and nested
 generic views store checked references rather than erasing their owners into

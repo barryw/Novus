@@ -9,20 +9,20 @@ fn main() -> i32 {
     match HashMap::<u32, u32>::new() {
         Result::Ok(var map) => {
             // Insert some values
-            let _ = map.insert(1u32, 100u32)
-            let _ = map.insert(2u32, 200u32)
-            let _ = map.insert(3u32, 300u32)
+            let _ = map.insert(1, 100)
+            let _ = map.insert(2, 200)
+            let _ = map.insert(3, 300)
 
             // Check length
-            if map.len() != 3u32 {
+            if map.len() != 3 {
                 return 1  // Error: wrong length
             }
 
             // Test get
-            let key2: u32 = 2u32
+            let key2: u32 = 2
             match map.get(&key2) {
                 Option::Some(val_ptr) => {
-                    if *val_ptr != 200u32 {
+                    if *val_ptr != 200 {
                         return 2  // Error: wrong value
                     }
                 },
@@ -32,8 +32,8 @@ fn main() -> i32 {
             }
 
             // Test contains_key
-            let key4: u32 = 4u32
-            let key1: u32 = 1u32
+            let key4: u32 = 4
+            let key1: u32 = 1
             if map.contains_key(&key4) {
                 return 4  // Error: should not contain key 4
             }
@@ -43,10 +43,10 @@ fn main() -> i32 {
             }
 
             // Test update (insert existing key)
-            let _ = map.insert(2u32, 250u32)
+            let _ = map.insert(2, 250)
             match map.get(&key2) {
                 Option::Some(val_ptr) => {
-                    if *val_ptr != 250u32 {
+                    if *val_ptr != 250 {
                         return 6  // Error: value not updated
                     }
                 },
@@ -58,7 +58,7 @@ fn main() -> i32 {
             // Test remove
             match map.remove(&key1) {
                 Option::Some(val) => {
-                    if val != 100u32 {
+                    if val != 100 {
                         return 8  // Error: wrong removed value
                     }
                 },
@@ -68,7 +68,7 @@ fn main() -> i32 {
             }
 
             // Verify removal
-            if map.len() != 2u32 {
+            if map.len() != 2 {
                 return 10  // Error: wrong length after removal
             }
 
@@ -77,13 +77,13 @@ fn main() -> i32 {
             }
 
             // Test iteration
-            var count: u32 = 0u32
+            var count: u32 = 0
             var iter: HashMapIter<u32, u32> = map.iter()
             var done: bool = false
             while !done {
                 match iter.next() {
                     Option::Some(kv) => {
-                        count = count + 1u32
+                        count = count + 1
                     },
                     Option::None => {
                         done = true
@@ -91,7 +91,7 @@ fn main() -> i32 {
                 }
             }
 
-            if count != 2u32 {
+            if count != 2 {
                 return 12  // Error: wrong iteration count
             }
 

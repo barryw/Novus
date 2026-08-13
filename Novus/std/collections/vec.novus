@@ -6,9 +6,9 @@
 from std::core import Option, Result, Iterable, From, Drop, Clone
 from std::memory::block import MemoryBlock
 from std::memory::slice import Slice, MutSlice
-from std::error::errors import ExecError
-from std::ffi::exec import CopyMem, FreeMem
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::memory::errors import MemoryError
+from amiga::raw::exec import CopyMem, FreeMem
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 
 /// Vec<T> - dynamic array (growable)
 ///
@@ -51,13 +51,13 @@ impl<T> Vec<T> {
 
     /// Create a vector with pre-allocated capacity
     ///
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    /// Returns `Result::Err(MemoryError::OutOfMemory)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// let vec = Vec::<u32>::with_capacity(100)?
     /// ```
-    pub fn with_capacity(capacity: u32) -> Result<Vec<T>, ExecError> {
+    pub fn with_capacity(capacity: u32) -> Result<Vec<T>, MemoryError> {
         if capacity == 0 {
             return Result::Ok(@zeroed(Vec<T>))
         }
@@ -66,7 +66,7 @@ impl<T> Vec<T> {
         let bytes_needed: u32 = capacity * element_size
 
         // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -82,7 +82,7 @@ impl<T> Vec<T> {
             },
             Result::Err(_) => {
                 // Allocation failed
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
@@ -104,34 +104,34 @@ impl<T> Vec<T> {
 
     /// Reserve additional capacity (grow if needed)
     ///
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    /// Returns `Result::Err(MemoryError::OutOfMemory)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// var vec = Vec::<u32>::new()
     /// vec.reserve(100)?
     /// ```
-    pub fn reserve(&var self, additional: u32) -> Result<(), ExecError> {
+    pub fn reserve(&var self, additional: u32) -> Result<(), MemoryError> {
         let needed_capacity: u32 = self.len + additional
 
         // Only grow if we need more capacity
         if needed_capacity > self.capacity {
             // Calculate new capacity (double current or use needed, whichever is larger)
-            var new_capacity: u32 = self.capacity * 2u32
+            var new_capacity: u32 = self.capacity * 2
             if new_capacity < needed_capacity {
                 new_capacity = needed_capacity
             }
 
             // Minimum capacity of 4 elements
-            if new_capacity < 4u32 {
-                new_capacity = 4u32
+            if new_capacity < 4 {
+                new_capacity = 4
             }
 
             let element_size: u32 = @sizeof(T)
             let new_bytes: u32 = new_capacity * element_size
 
             // Allocate with MEMF_PUBLIC | MEMF_CLEAR (clear memory to zero)
-            let new_block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+            let new_block_opt = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
             match new_block_opt {
                 Result::Ok(var new_block) => {
@@ -141,9 +141,11 @@ impl<T> Vec<T> {
                     let new_ptr: *T = (*T)raw_ptr
 
                     // Copy existing elements to new allocation
-                    while var i < self.len {
-                        new_ptr[i] = self.ptr[i]
-                        i++
+                    unsafe {
+                        while var i < self.len {
+                            new_ptr[i] = self.ptr[i]
+                            i++
+                        }
                     }
 
                     // Free old memory if it exists
@@ -162,7 +164,7 @@ impl<T> Vec<T> {
                 },
                 Result::Err(_) => {
                     // Allocation failed
-                    return Result::Err(ExecError::NoMem)
+                    return Result::Err(MemoryError::OutOfMemory)
                 }
             }
         }
@@ -172,39 +174,39 @@ impl<T> Vec<T> {
 
     /// Add an element to the end of the vector
     ///
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    /// Returns `Result::Err(MemoryError::OutOfMemory)` if allocation fails.
     ///
     /// # Example
     /// ```novus
     /// var vec = Vec::<u32>::new()
     /// vec.push(42)?
     /// ```
-    pub fn push(&var self, consuming value: T) -> Result<(), ExecError> {
+    pub fn push(&var self, consuming value: T) -> Result<(), MemoryError> {
         // Ensure we have capacity
         if self.len >= self.capacity {
             self.reserve(1)?
         }
 
         // Add the element
-        self.ptr[self.len] = value
+        unsafe { self.ptr[self.len] = value }
         self.len++
         return Result::Ok(())
     }
 
     // Remove and return the last element (returns Option<T>)
     pub fn pop(&var self) -> Option<T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             return Option::None
         }
 
         self.len--
-        let value: T = self.ptr[self.len]
+        let value: T = unsafe { self.ptr[self.len] }
         return Option::Some(value)
     }
 
     /// Set element at index
     ///
-    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index >= len.
+    /// Returns `Result::Err(MemoryError::IndexOutOfBounds)` if index >= len.
     ///
     /// # Example
     /// ```novus
@@ -212,13 +214,15 @@ impl<T> Vec<T> {
     /// vec.push(1)?
     /// vec.set(0, 42)?
     /// ```
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        @drop_in_place(&var self.ptr[index])
-        self.ptr[index] = value
+        unsafe {
+            @drop_in_place(&var self.ptr[index])
+            self.ptr[index] = value
+        }
         return Result::Ok(())
     }
 
@@ -228,7 +232,7 @@ impl<T> Vec<T> {
             return Option::None
         }
 
-        return Option::Some(&self.ptr[index])
+        unsafe { return Option::Some(&self.ptr[index]) }
     }
 
     /// Mutably borrow the element at index.
@@ -237,14 +241,14 @@ impl<T> Vec<T> {
             return Option::None
         }
 
-        return Option::Some(&var self.ptr[index])
+        unsafe { return Option::Some(&var self.ptr[index]) }
     }
 
     // Remove all elements (keeps capacity)
     pub fn clear(&var self) {
-        while self.len > 0u32 {
+        while self.len > 0 {
             self.len--
-            @drop_in_place(&var self.ptr[self.len])
+            unsafe { @drop_in_place(&var self.ptr[self.len]) }
         }
     }
 
@@ -259,25 +263,25 @@ impl<T> Vec<T> {
     }
 
     pub fn as_slice(&self) -> Slice<T> {
-        if self.len == 0u32 {
+        if self.len == 0 {
             // References are non-null; use the Vec object's aligned address as
             // the never-dereferenced sentinel for an empty view.
-            unsafe { return Slice::<T>::new(&*((*T)self), 0u32) }
+            unsafe { return Slice::<T>::new(&*((*T)self), 0) }
         }
         return unsafe { Slice::<T>::new(&self.ptr[0], self.len) }
     }
 
     pub fn as_mut_slice(&var self) -> MutSlice<T> {
-        if self.len == 0u32 {
-            unsafe { return MutSlice::<T>::new(&var *((*T)self), 0u32) }
+        if self.len == 0 {
+            unsafe { return MutSlice::<T>::new(&var *((*T)self), 0) }
         }
         return unsafe { MutSlice::<T>::new(&var self.ptr[0], self.len) }
     }
 
     /// Insert an element at the given index, shifting all elements after it to the right
     ///
-    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index > len.
-    /// Returns `Result::Err(ExecError::NoMem)` if allocation fails.
+    /// Returns `Result::Err(MemoryError::IndexOutOfBounds)` if index > len.
+    /// Returns `Result::Err(MemoryError::OutOfMemory)` if allocation fails.
     ///
     /// # Example
     /// ```novus
@@ -286,10 +290,10 @@ impl<T> Vec<T> {
     /// vec.push(3)?
     /// vec.insert(1, 2)?  // vec is now [1, 2, 3]
     /// ```
-    pub fn insert(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
+    pub fn insert(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
         // Check bounds - can insert at len (append position)
         if index > self.len {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
         // Ensure we have capacity
@@ -299,20 +303,22 @@ impl<T> Vec<T> {
 
         // Shift elements right to make room
         var i: u32 = self.len
-        while i > index {
-            self.ptr[i] = self.ptr[i - 1u32]
-            i--
-        }
+        unsafe {
+            while i > index {
+                self.ptr[i] = self.ptr[i - 1]
+                i--
+            }
 
-        // Insert the element
-        self.ptr[index] = value
+            // Insert the element
+            self.ptr[index] = value
+        }
         self.len++
         return Result::Ok(())
     }
 
     /// Remove element at the given index, shifting all elements after it to the left
     ///
-    /// Returns `Result::Err(ExecError::IndexOutOfBounds)` if index >= len.
+    /// Returns `Result::Err(MemoryError::IndexOutOfBounds)` if index >= len.
     ///
     /// # Example
     /// ```novus
@@ -322,19 +328,21 @@ impl<T> Vec<T> {
     /// vec.push(3)?
     /// let removed = vec.remove(1)?  // Returns 2, vec is now [1, 3]
     /// ```
-    pub fn remove(&var self, index: u32) -> Result<T, ExecError> {
+    pub fn remove(&var self, index: u32) -> Result<T, MemoryError> {
         if index >= self.len {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
         // Save the value to return
-        let value: T = self.ptr[index]
+        let value: T = unsafe { self.ptr[index] }
 
         // Shift elements left
         var i: u32 = index
-        while i < self.len - 1u32 {
-            self.ptr[i] = self.ptr[i + 1u32]
-            i++
+        unsafe {
+            while i < self.len - 1 {
+                self.ptr[i] = self.ptr[i + 1]
+                i++
+            }
         }
 
         self.len--
@@ -357,13 +365,13 @@ impl<T> Vec<T> {
     pub fn truncate(&var self, new_len: u32) {
         while self.len > new_len {
             self.len--
-            @drop_in_place(&var self.ptr[self.len])
+            unsafe { @drop_in_place(&var self.ptr[self.len]) }
         }
     }
 
     /// Shrink the capacity to match the length
     ///
-    /// Returns `Result::Err(ExecError::NoMem)` if reallocation fails.
+    /// Returns `Result::Err(MemoryError::OutOfMemory)` if reallocation fails.
     /// On failure, the vector is unchanged.
     ///
     /// # Example
@@ -373,7 +381,7 @@ impl<T> Vec<T> {
     /// vec.push(2)?
     /// vec.shrink_to_fit()?  // Reduces capacity from 100 to 2
     /// ```
-    pub fn shrink_to_fit(&var self) -> Result<(), ExecError> {
+    pub fn shrink_to_fit(&var self) -> Result<(), MemoryError> {
         // Nothing to do if already optimal
         if self.len == self.capacity {
             return Result::Ok(())
@@ -398,7 +406,7 @@ impl<T> Vec<T> {
         let element_size: u32 = @sizeof(T)
         let new_bytes: u32 = self.len * element_size
 
-        let new_block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
+        let new_block_opt = MemoryBlock::alloc(new_bytes, MEMF_PUBLIC | MEMF_CLEAR)
 
         match new_block_opt {
             Result::Ok(var new_block) => {
@@ -407,9 +415,11 @@ impl<T> Vec<T> {
                 let new_ptr: *T = (*T)raw_ptr
 
                 // Copy existing elements to new allocation
-                while var i < self.len {
-                    new_ptr[i] = self.ptr[i]
-                    i++
+                unsafe {
+                    while var i < self.len {
+                        new_ptr[i] = self.ptr[i]
+                        i++
+                    }
                 }
 
                 // Free old memory
@@ -426,7 +436,7 @@ impl<T> Vec<T> {
             },
             Result::Err(_) => {
                 // Allocation failed - keep the old allocation
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
@@ -457,13 +467,9 @@ impl<T> Iterable<T> for Vec<T> {
         return self.len
     }
 
-    // Get element at index (safe, returns Option)
-    fn get(&self, index: u32) -> Option<&T> {
-        if index >= self.len {
-            return Option::None
-        }
-
-        return Option::Some(&self.ptr[index])
+    @unsafe
+    fn get_unchecked(&self, index: u32) -> &T {
+        unsafe { return &self.ptr[index] }
     }
 }
 
@@ -495,15 +501,17 @@ impl<T> Clone for Vec<T> where T: Clone {
         match Vec::<T>::with_capacity(self.capacity) {
             Result::Ok(var new_vec) => {
                 // Copy elements
-                while var i < self.len {
-                    match self.ptr[i].clone() {
-                        Option::Some(value) => match new_vec.push(value) {
-                            Result::Ok(_) => {},
-                            Result::Err(_) => return Option::None,
-                        },
-                        Option::None => return Option::None,
+                unsafe {
+                    while var i < self.len {
+                        match self.ptr[i].clone() {
+                            Option::Some(value) => match new_vec.push(value) {
+                                Result::Ok(_) => {},
+                                Result::Err(_) => return Option::None,
+                            },
+                            Option::None => return Option::None,
+                        }
+                        i++
                     }
-                    i++
                 }
                 return Option::Some(new_vec)
             },

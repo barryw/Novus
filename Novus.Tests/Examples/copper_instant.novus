@@ -2,9 +2,9 @@
 // Tests if copper activation itself is causing the hang
 
 from std::core import Result
-from std::graphics::copper import CopperListBuilder, CopperError
-from std::hardware::registers import rgb12
-from std::ffi::graphics import WaitTOF
+from amiga::sys::graphics::copper import CopperListBuilder, CopperError
+from amiga::sys::hardware::registers import rgb12
+from amiga::raw::graphics import WaitTOF
 
 pub fn main() -> i32 {
     // Ensure graphics.library is opened

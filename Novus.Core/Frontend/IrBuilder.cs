@@ -42,6 +42,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private int _closureCounter = 0;  // Counter for auto-generated closure functions and environment structs
     private readonly Stack<string> _loopExitLabels = new(); // Track loop exit labels for break
     private readonly Stack<string> _loopContinueLabels = new(); // Track loop continue labels for continue
+    private readonly Stack<(string ItemName, string EndVarName, string EndExpression, bool Inclusive)> _rangeLoopBounds = new();
     // For labeled loops: maps label name to (exitLabel, continueLabel)
     private readonly Dictionary<string, (string ExitLabel, string ContinueLabel)> _labeledLoops = new();
     private readonly Dictionary<string, IrLocalVariable> _localVariables = new(); // Track local variables in current function
@@ -843,6 +844,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             return; // Error already reported
         }
 
+        conditionExpr = CoerceConditionToBool(conditionExpr);
+
         // Check if this is an 'unless' condition (invert the condition)
         bool isUnless = postfixContext.KW_UNLESS() != null;
 
@@ -868,6 +871,21 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
         // The conditional branch references this label, so it must exist
         // If the statement terminated (e.g., return), this label is unreachable but still valid
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
+    }
+
+    private IrValue CoerceConditionToBool(IrValue condition)
+    {
+        if (condition.Type is not (IrPointerType or IrReferenceType or IrMutReferenceType))
+            return condition;
+
+        var result = $"%t{_tempCounter++}";
+        _currentBlock!.AddInstruction(new IrBinaryOp(
+            result,
+            IrBinaryOp.OpKind.Ne,
+            condition,
+            new IrConstant(0, IrIntType.U32),
+            IrBoolType.Instance));
+        return new IrVariable(result, IrBoolType.Instance);
     }
 
     /// <summary>
@@ -940,6 +958,17 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     {
         // Module-level attributes are now handled when parsing the first declaration's attributes
         // The ProcessModuleAttributes is called from declaration processing
+
+        // AnalysisResult already contains this module's declarations. Keep them out of
+        // dependency parsing: imported modules must never resolve their types through a
+        // caller's same-named alias/struct/enum.
+        foreach (var name in context.structDeclaration().Select(x => x.IDENTIFIER().GetText())
+                     .Concat(context.enumDeclaration().Select(x => x.IDENTIFIER().GetText()))
+                     .Concat(context.typeAliasDeclaration().Select(x => x.IDENTIFIER().GetText()))
+                     .Distinct())
+        {
+            _symbols.RemoveNamedType(name);
+        }
 
         // Multi-pass approach to handle forward references:
         // Pass 0a: Implicitly import all of core module (unless testing or compiling a std library module)
@@ -1085,7 +1114,10 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 var whereClause = AstParsingHelpers.ParseWhereClause(funcContext.whereClause());
                 // Store source module path so dependencies can be resolved during instantiation
                 var template = new Generics.GenericTemplate(genericParams, funcContext, templateConstants, whereClause, MethodGenericParams: null, SourceModulePath: _inputFilePath);
-                _genericInstantiator.RegisterFunctionTemplate(name, template);
+                var templateName = IsFunctionOverloaded(name)
+                    ? $"{name}__arity_{funcContext.parameterList()?.parameter().Length ?? 0}"
+                    : name;
+                _genericInstantiator.RegisterFunctionTemplate(templateName, template);
                 continue; // Don't add to _module.Functions yet
             }
 
@@ -1231,6 +1263,14 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
 
                 // Parse and store function attributes (for #[chain], @test, @export, etc.)
                 var methodAttributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
+                if (isTraitImpl && traitName != null)
+                {
+                    foreach (var attribute in _symbols.LookupTrait(traitName)?.GetMethod(methodName)?.Attributes.All ?? [])
+                    {
+                        if (!methodAttributes.Has(attribute.Name))
+                            methodAttributes.Add(attribute);
+                    }
+                }
                 function.Attributes = methodAttributes;
 
                 // Parse parameters (including self)
@@ -1312,8 +1352,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
             {
                 var funcName = funcContext.IDENTIFIER().GetText();
 
-            // Skip generic function templates - they'll be instantiated on-demand
-                if (_genericInstantiator.HasFunctionTemplate(funcName))
+            // Skip generic function templates - they'll be instantiated on-demand.
+                if (funcContext.genericParams() != null)
                 {
                     continue;
                 }

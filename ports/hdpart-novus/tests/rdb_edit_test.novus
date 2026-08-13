@@ -3,43 +3,43 @@ from std::test::test import expect_eq
 from rdb import DOS_TYPE_FFS_INTL, PartitionSettings, RdbModel
 
 fn verify_rdb_edits() -> i32 {
-    var model = RdbModel::new(996u32, 16u32, 63u32)
-    let Result::Ok(first) = model.add_partition_cylinders("DH0", 2u32, 101u32, DOS_TYPE_FFS_INTL) else { return 20 }
-    let Result::Ok(second) = model.add_partition_cylinders("DH1", 200u32, 299u32, DOS_TYPE_FFS_INTL) else { return 21 }
-    return 22 unless first == 0u32 && second == 1u32
-    let Result::Ok(after) = model.gap_end_after(0u32) else { return 23 }
-    let Result::Ok(before) = model.gap_start_before(1u32) else { return 24 }
-    return 23 unless after == 199u32
-    return 24 unless before == 102u32
-    return 25 if model.resize_partition(0u32, 2u32, 220u32).is_ok()
-    return 26 unless model.resize_partition(0u32, 2u32, 150u32).is_ok()
-    return 27 unless model.update_partition(0u32, "DH2", 70u32, DOS_TYPE_FFS_INTL).is_ok()
-    let Option::Some(updated) = model.partition(0u32) else { return 28 }
+    var model = RdbModel::new(996, 16, 63)
+    let Result::Ok(first) = model.add_partition_cylinders("DH0", 2, 101, DOS_TYPE_FFS_INTL) else { return 20 }
+    let Result::Ok(second) = model.add_partition_cylinders("DH1", 200, 299, DOS_TYPE_FFS_INTL) else { return 21 }
+    return 22 unless first == 0 && second == 1
+    let Result::Ok(after) = model.gap_end_after(0) else { return 23 }
+    let Result::Ok(before) = model.gap_start_before(1) else { return 24 }
+    return 23 unless after == 199
+    return 24 unless before == 102
+    return 25 if model.resize_partition(0, 2, 220).is_ok()
+    return 26 unless model.resize_partition(0, 2, 150).is_ok()
+    return 27 unless model.update_partition(0, "DH2", 70, DOS_TYPE_FFS_INTL).is_ok()
+    let Option::Some(updated) = model.partition(0) else { return 28 }
     return 29 unless updated.name().equals("DH2")
-    let Result::Ok(settings) = PartitionSettings::new("DH2", 70u32, $50465303u32, true, 5, $1FE00u32, $FFFFFFFCu32) else { return 40 }
-    return 41 unless model.update_partition_settings(0u32, settings).is_ok()
-    let Option::Some(configured) = model.partition(0u32) else { return 42 }
+    let Result::Ok(settings) = PartitionSettings::new("DH2", 70, $50465303, true, 5, $1FE00, $FFFFFFFC) else { return 40 }
+    return 41 unless model.update_partition_settings(0, settings).is_ok()
+    let Option::Some(configured) = model.partition(0) else { return 42 }
     return 43 unless configured.bootable() && configured.boot_priority() == 5 &&
-        configured.max_transfer() == $1FE00u32 && configured.mask() == $FFFFFFFCu32 &&
-        configured.dos_type() == $50465303u32
-    return 30 unless model.delete_partition(0u32).is_ok()
-    let Option::Some(remaining) = model.partition(0u32) else { return 31 }
-    return 32 unless model.partition_count() == 1u32 && remaining.name().equals("DH1")
+        configured.max_transfer() == $1FE00 && configured.mask() == $FFFFFFFC &&
+        configured.dos_type() == $50465303
+    return 30 unless model.delete_partition(0).is_ok()
+    let Option::Some(remaining) = model.partition(0) else { return 31 }
+    return 32 unless model.partition_count() == 1 && remaining.name().equals("DH1")
     let before_split = model.partition_count()
-    let Result::Ok(_) = model.split_largest_gap(3u32, DOS_TYPE_FFS_INTL) else { return 33 }
-    return 34 unless model.partition_count() == before_split + 3u32
+    let Result::Ok(_) = model.split_largest_gap(3, DOS_TYPE_FFS_INTL) else { return 33 }
+    return 34 unless model.partition_count() == before_split + 3
     let Option::Some(split0) = model.partition(before_split) else { return 35 }
-    let Option::Some(split1) = model.partition(before_split + 1u32) else { return 36 }
-    let Option::Some(split2) = model.partition(before_split + 2u32) else { return 37 }
-    return 38 unless split0.high_cylinder() + 1u32 == split1.low_cylinder()
-    return 39 unless split1.high_cylinder() + 1u32 == split2.low_cylinder()
+    let Option::Some(split1) = model.partition(before_split + 1) else { return 36 }
+    let Option::Some(split2) = model.partition(before_split + 2) else { return 37 }
+    return 38 unless split0.high_cylinder() + 1 == split1.low_cylinder()
+    return 39 unless split1.high_cylinder() + 1 == split2.low_cylinder()
 
-    var exact = RdbModel::new(996u32, 16u32, 63u32)
-    let Result::Ok(exact_index) = exact.add_partition_cylinders("DH0", 2u32, 408u32, DOS_TYPE_FFS_INTL) else { return 44 }
-    let Result::Ok(exact_settings) = PartitionSettings::new("DH0", 200u32, DOS_TYPE_FFS_INTL, false, 0, $7FFFFFFFu32, $7FFFFFFEu32) else { return 45 }
+    var exact = RdbModel::new(996, 16, 63)
+    let Result::Ok(exact_index) = exact.add_partition_cylinders("DH0", 2, 408, DOS_TYPE_FFS_INTL) else { return 44 }
+    let Result::Ok(exact_settings) = PartitionSettings::new("DH0", 200, DOS_TYPE_FFS_INTL, false, 0, $7FFFFFFF, $7FFFFFFE) else { return 45 }
     return 46 unless exact.update_partition_settings(exact_index, exact_settings).is_ok()
     let Option::Some(exact_partition) = exact.partition(exact_index) else { return 47 }
-    return 48 unless exact_partition.low_cylinder() == 2u32 && exact_partition.high_cylinder() == 408u32
+    return 48 unless exact_partition.low_cylinder() == 2 && exact_partition.high_cylinder() == 408
 
     let previous_count = exact.partition_count()
     let Option::Some(gap) = exact.largest_free_gap() else { return 49 }
@@ -48,7 +48,7 @@ fn verify_rdb_edits() -> i32 {
     let Option::Some(added) = exact.partition(provisional) else { return 51 }
     return 52 unless added.name().equals("DH1") && added.low_cylinder() == gap.start() && added.high_cylinder() == gap.end()
     return 53 unless exact.delete_partition(provisional).is_ok()
-    return 54 unless exact.partition_count() == previous_count && exact.partition(0u32).unwrap().name().equals("DH0")
+    return 54 unless exact.partition_count() == previous_count && exact.partition(0).unwrap().name().equals("DH0")
     return 0
 }
 

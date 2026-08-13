@@ -27,7 +27,7 @@ public class RuntimeLibraryTests
     {
         var source = @"
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Hello\n""
@@ -48,7 +48,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Value: %ld\n""
@@ -68,7 +68,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     let msg: Str = ""Values: %ld, %ld, %ld\n""
@@ -134,7 +134,7 @@ pub fn main() -> i32 {
         var source = @"
 from std::core import LibraryVersion
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     let maj: u16 = 1
@@ -232,10 +232,11 @@ pub fn main() -> i32 {
         var libraryReporter = File.ReadAllText(Path.Combine(runtimeDir, "runtime_library_error.s"));
         Assert.Contains("\tsection\t__novus_library_not_found,code", libraryReporter);
         Assert.DoesNotContain("_IntuitionBase", libraryReporter);
-        Assert.Contains("'NOVUS_RUNTIME_ERROR',10,'Library: '", libraryReporter);
+        Assert.Contains("move.l\t#$7f00000d,d7", libraryReporter);
+        Assert.Contains("'Novus'", libraryReporter);
+        Assert.Contains("'Need %s v%ld+.'", libraryReporter);
         Assert.Contains("%ld+", libraryReporter);
-        Assert.Contains("LIBS:", libraryReporter);
-        Assert.Equal(2, libraryReporter.Split("jsr\t-48(a6)", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, libraryReporter.Split("jsr\t-588(a6)", StringSplitOptions.None).Length - 1);
         Assert.Contains("NOVUS_RUNTIME_SECTION(__novus_panic)",
             File.ReadAllText(Path.Combine(runtimeDir, "runtime_errors.c")));
     }

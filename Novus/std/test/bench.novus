@@ -4,7 +4,7 @@
 // High-level benchmarking utilities for measuring code performance.
 // Uses timer.device for microsecond-precision timing.
 
-from std::os::timer import TimerHandle, Duration, TimerError
+from amiga::timer import Timer, Duration, TimerError
 from std::io::file import write
 
 // ============================================================================
@@ -114,13 +114,13 @@ impl BenchStats {
 
 /// Benchmark runner that measures function execution time
 pub struct BenchRunner {
-    timer: TimerHandle,
+    timer: Timer,
 }
 
 impl BenchRunner {
     /// Create a new benchmark runner
     pub fn new() -> Result<BenchRunner, TimerError> {
-        var timer = TimerHandle::microhz()?
+        var timer = Timer::microhz()?
         return Result::Ok(BenchRunner { timer: timer })
     }
 

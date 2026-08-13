@@ -30,8 +30,9 @@ public class SfdGenerator
             return;
         }
 
-        var ffiPath = Path.Combine(_outputPath, "std", "ffi");
+        var rawPath = Path.Combine(_outputPath, "std", "amiga", "raw");
         var stubsPath = Path.Combine(_outputPath, "stubs");
+        Directory.CreateDirectory(rawPath);
 
         var sfdFiles = Directory.GetFiles(sfdPath, "*_lib.sfd")
             .OrderBy(path => path, StringComparer.Ordinal)
@@ -95,7 +96,7 @@ public class SfdGenerator
                 return $"{moduleName}|{string.Join(',', headers)}";
             })
             .OrderBy(line => line, StringComparer.Ordinal);
-        var outputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_headers.txt");
+        var outputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_headers.txt");
         Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
         File.WriteAllLines(outputFile, lines);
     }
@@ -108,7 +109,7 @@ public class SfdGenerator
                 .Select(function =>
                     $"{library.LibraryName.Replace(".library", "").Replace(".", "_")}|{function.Name}|{function.Version}"))
             .OrderBy(line => line, StringComparer.Ordinal);
-        var outputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_versions.txt");
+        var outputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_versions.txt");
         File.WriteAllLines(outputFile, lines);
     }
 
@@ -130,10 +131,10 @@ public class SfdGenerator
         sb.AppendLine($"// Library: {library.LibraryName}");
         sb.AppendLine($"// Base: {(string.IsNullOrWhiteSpace(library.BaseSymbol) ? "caller-supplied" : library.BaseSymbol)}");
         sb.AppendLine("//");
-        sb.AppendLine("// NOTE: Constants are in std::ffi::amiga_consts");
-        sb.AppendLine("// NOTE: Structs are in std::ffi::amiga_structs");
+        sb.AppendLine("// NOTE: Constants are in amiga::raw::consts");
+        sb.AppendLine("// NOTE: Structs are in amiga::raw::structs");
         sb.AppendLine();
-        sb.AppendLine("from std::ffi::amiga_structs import *");
+        sb.AppendLine("from amiga::raw::structs import *");
         sb.AppendLine();
 
         // Function declarations section
@@ -183,7 +184,7 @@ public class SfdGenerator
         }
 
         // Write to file
-        var outputFile = Path.Combine(_outputPath, "std", "ffi", $"{libName}.novus");
+        var outputFile = RawModulePath(libName);
         Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
         File.WriteAllText(outputFile, sb.ToString());
         Console.WriteLine($"  Generated {outputFile}");
@@ -376,7 +377,7 @@ public class SfdGenerator
         constsSb.AppendLine("// AmigaOS constant definitions (source of truth)");
         constsSb.AppendLine("//");
         constsSb.AppendLine("// This file contains numeric and string constants from the NDK headers.");
-        constsSb.AppendLine("// Struct definitions are in std::ffi::amiga_structs");
+        constsSb.AppendLine("// Struct definitions are in amiga::raw::structs");
         constsSb.AppendLine();
         constsSb.AppendLine("// ============================================================================");
         constsSb.AppendLine("// Constants");
@@ -425,14 +426,14 @@ public class SfdGenerator
         foreach (var constant in TopologicalSortConstants(stringConstants))
             constsSb.AppendLine($"pub const {constant.Key}: *u8 = {constant.Value}");
 
-        var constsOutputFile = Path.Combine(_outputPath, "std", "ffi", "amiga_consts.novus");
+        var constsOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "consts.novus");
         Directory.CreateDirectory(Path.GetDirectoryName(constsOutputFile)!);
         File.WriteAllText(constsOutputFile, constsSb.ToString());
         var includedCount = convertedConstants.Count + stringConstants.Count;
         var skippedCount = allConstants.Count - includedCount;
         Console.WriteLine($"  Generated {constsOutputFile} with {includedCount} constants ({skippedCount} skipped)");
 
-        var unsupportedOutputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_unsupported_macros.txt");
+        var unsupportedOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_unsupported_macros.txt");
         var includedNames = convertedConstants.Keys.Concat(stringConstants.Keys).ToHashSet(StringComparer.Ordinal);
         File.WriteAllLines(unsupportedOutputFile, allConstants.Values
             .Where(constant => !includedNames.Contains(constant.Name))
@@ -445,9 +446,9 @@ public class SfdGenerator
         structsSb.AppendLine("// AmigaOS struct definitions");
         structsSb.AppendLine("//");
         structsSb.AppendLine("// This file contains struct definitions from the NDK headers.");
-        structsSb.AppendLine("// Constants are in std::ffi::amiga_consts");
+        structsSb.AppendLine("// Constants are in amiga::raw::consts");
         structsSb.AppendLine();
-        structsSb.AppendLine("from std::ffi::amiga_consts import *");
+        structsSb.AppendLine("from amiga::raw::consts import *");
         structsSb.AppendLine();
         structsSb.AppendLine("// ============================================================================");
         structsSb.AppendLine("// Struct Definitions");
@@ -460,12 +461,12 @@ public class SfdGenerator
             GenerateNovusStruct(structsSb, structDef, allStructs.Keys, allConstants);
         }
 
-        var structsOutputFile = Path.Combine(_outputPath, "std", "ffi", "amiga_structs.novus");
+        var structsOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "structs.novus");
         Directory.CreateDirectory(Path.GetDirectoryName(structsOutputFile)!);
         File.WriteAllText(structsOutputFile, structsSb.ToString());
         Console.WriteLine($"  Generated {structsOutputFile} with {sortedStructs.Count} structs");
 
-        var ndkTypesOutputFile = Path.Combine(_outputPath, "std", "ffi", "ndk_types.h");
+        var ndkTypesOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_types.h");
         var ndkTypes = new StringBuilder();
         ndkTypes.AppendLine("/* Generated NDK tag/typedef bridge for Novus C output. */");
         foreach (var structDef in sortedStructs.OrderBy(value => value.Name, StringComparer.Ordinal))
@@ -476,6 +477,16 @@ public class SfdGenerator
             ndkTypes.AppendLine($"typedef {(structDef.IsUnion ? "union" : "struct")} {tagName} {structDef.Name};");
         }
         File.WriteAllText(ndkTypesOutputFile, ndkTypes.ToString());
+    }
+
+    private string RawModulePath(string moduleName)
+    {
+        var rawPath = Path.Combine(_outputPath, "std", "amiga", "raw");
+        if (moduleName.EndsWith("_device", StringComparison.Ordinal))
+            return Path.Combine(rawPath, "devices", moduleName[..^7] + ".novus");
+        if (moduleName.EndsWith("_resource", StringComparison.Ordinal))
+            return Path.Combine(rawPath, "resources", moduleName[..^9] + ".novus");
+        return Path.Combine(rawPath, moduleName + ".novus");
     }
 
     private void GenerateConstants(StringBuilder sb, List<string> includes)

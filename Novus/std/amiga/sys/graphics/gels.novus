@@ -1,0 +1,1808 @@
+// GEL (Graphics Elements) System for Amiga
+//
+// This module provides safe, ergonomic access to AmigaOS GEL system for:
+// - VSprites: Software sprites rendered via blitter (unlimited count)
+// - BOBs: Arbitrary-sized blitter objects with background save/restore
+// - AnimObs: Frame-based animation system (TODO)
+// - Collision detection via callbacks
+//
+// GELs are rendered using the blitter, unlike hardware sprites which use
+// dedicated DMA channels. This means:
+// - Unlimited number of objects (limited only by blitter bandwidth)
+// - Arbitrary sizes (not just 16 pixels wide)
+// - Can be any depth (not limited to 2 bitplanes like hardware sprites)
+// - Automatic background save/restore for BOBs
+//
+// VSprite Quick Start:
+//   var gels = GelsSystem::init(&rp, &vp)?
+//   var vsprite = gels.create_vsprite(16, 16, 4, image_data)?
+//   vsprite.show(&var gels)?
+//   vsprite.move_to(100, 50)
+//   gels.render_frame()  // Sort, draw, and check collisions
+//
+// BOB Quick Start:
+//   var gels = GelsSystem::init(&rp, &vp)?
+//   var bob = gels.create_bob(32, 32, 4, image_data, shadow_mask)?
+//   bob.show(&var gels)?
+//   bob.move_to(100, 50)
+//   gels.render_frame()  // Sort, draw, and check collisions
+//
+// Difference between VSprites and BOBs:
+// - VSprites: Fixed 16-pixel width, faster rendering, no background save
+// - BOBs: Arbitrary width, automatic background save/restore, cookie-cut transparency
+
+from std::core import Result, Option
+from amiga::sys::graphics::errors import GraphicsError
+from std::core import Error
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::raw::structs import VSprite, GelsInfo, collTable, RastPort, ViewPort, Bob, AnimOb, AnimComp
+from amiga::raw::graphics import InitGels, SortGList, DrawGList, DoCollision, WaitBlit, AddVSprite, RemVSprite, AddBob, RemIBob, SetCollision, AddAnimOb, Animate, GetGBuffers, FreeGBuffers, InitGMasks
+from amiga::raw::exec import AllocVec, FreeVec
+from amiga::raw::consts import VSPRITE, SAVEBACK, OVERLAY, MUSTDRAW, BACKSAVED, BOBUPDATE, GELGONE, VSOVERFLOW, MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC, ANFRACSIZE, RINGTRIGGER, ANIMHALF
+
+fn no_anim_ob_callback(_object: *AnimOb) -> i16 { return 0 }
+fn no_anim_comp_callback(_component: *AnimComp) -> i16 { return 0 }
+
+// GEL-specific error types
+pub enum GelError {
+    OutOfMemory,
+    ChipRamExhausted,
+    InvalidDimensions,
+    AlreadyActive,
+    NotActive,
+    InvalidCollisionType,
+    GelsNotInitialized,
+    SentinelCreationFailed,
+    // Animation-specific errors
+    NoFramesProvided,       // build() called with no frames
+    TooManyFrames,          // More than 256 frames
+    InvalidSequence,        // Invalid sequence index
+    NotReady,               // Operation requires built AnimOb
+    GetGBuffersFailed,      // CHIP RAM exhausted for animation buffers
+}
+
+impl GelError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            GelError::OutOfMemory => return "Out of memory",
+            GelError::ChipRamExhausted => return "Chip RAM exhausted",
+            GelError::InvalidDimensions => return "Invalid GEL dimensions",
+            GelError::AlreadyActive => return "GEL already active",
+            GelError::NotActive => return "GEL not active",
+            GelError::InvalidCollisionType => return "Invalid collision type",
+            GelError::GelsNotInitialized => return "GELs system not initialized",
+            GelError::SentinelCreationFailed => return "Sentinel creation failed",
+            GelError::NoFramesProvided => return "No animation frames provided",
+            GelError::TooManyFrames => return "Too many animation frames",
+            GelError::InvalidSequence => return "Invalid animation sequence",
+            GelError::NotReady => return "Animation not ready",
+            GelError::GetGBuffersFailed => return "Failed to allocate GEL buffers",
+        }
+    }
+
+    // Convert GelError to GraphicsError for unified error handling
+    pub fn to_graphics_error(&self) -> GraphicsError {
+        match *self {
+            GelError::OutOfMemory => GraphicsError::BitMapAllocFailed,
+            GelError::ChipRamExhausted => GraphicsError::BitMapAllocFailed,
+            GelError::InvalidDimensions => GraphicsError::InvalidSpriteData,
+            GelError::AlreadyActive => GraphicsError::InvalidSpriteData,
+            GelError::NotActive => GraphicsError::SpriteNotAllocated,
+            GelError::InvalidCollisionType => GraphicsError::InvalidSpriteChannel,
+            GelError::GelsNotInitialized => GraphicsError::SpriteNotAllocated,
+            GelError::SentinelCreationFailed => GraphicsError::BitMapAllocFailed,
+            GelError::NoFramesProvided => GraphicsError::InvalidSpriteData,
+            GelError::TooManyFrames => GraphicsError::InvalidSpriteData,
+            GelError::InvalidSequence => GraphicsError::InvalidSpriteData,
+            GelError::NotReady => GraphicsError::SpriteNotAllocated,
+            GelError::GetGBuffersFailed => GraphicsError::BitMapAllocFailed,
+        }
+    }
+}
+
+impl Error for GelError {
+    fn message(&self) -> *u8 {
+        return GelError::message(self)
+    }
+}
+
+// Collision types (0-15) - games can define their own semantics
+pub const COLL_TYPE_0: u8 = 0
+pub const COLL_TYPE_1: u8 = 1
+pub const COLL_TYPE_2: u8 = 2
+pub const COLL_TYPE_3: u8 = 3
+pub const COLL_TYPE_4: u8 = 4
+pub const COLL_TYPE_5: u8 = 5
+pub const COLL_TYPE_6: u8 = 6
+pub const COLL_TYPE_7: u8 = 7
+pub const COLL_TYPE_8: u8 = 8
+pub const COLL_TYPE_9: u8 = 9
+pub const COLL_TYPE_10: u8 = 10
+pub const COLL_TYPE_11: u8 = 11
+pub const COLL_TYPE_12: u8 = 12
+pub const COLL_TYPE_13: u8 = 13
+pub const COLL_TYPE_14: u8 = 14
+pub const COLL_TYPE_15: u8 = 15
+
+// Example collision type aliases - games can define their own
+pub const COLL_PLAYER: u8 = 0
+pub const COLL_ENEMY: u8 = 1
+pub const COLL_BULLET: u8 = 2
+pub const COLL_WALL: u8 = 3
+pub const COLL_POWERUP: u8 = 4
+
+// GelsSystem - Manages the entire GEL system
+//
+// Must be initialized before creating any VSprites or BOBs.
+// Owns the GelsInfo structure and sentinel VSprites.
+// Attach to RastPort for rendering.
+pub struct GelsSystem {
+    gels_info: *GelsInfo,         // GelsInfo structure (owned)
+    head_sprite: *VSprite,        // Head sentinel VSprite (Y = -32767)
+    tail_sprite: *VSprite,        // Tail sentinel VSprite (Y = 32767)
+    coll_table: *collTable,       // Collision callback table
+    rast_port: *RastPort,         // RastPort for rendering
+    view_port: *ViewPort,         // ViewPort for display
+    active_count: u32,            // Number of active VSprites/BOBs
+    anim_key: *AnimOb,            // Animation list head (for Animate())
+    initialized: bool,            // System is ready
+}
+
+impl GelsSystem {
+    // Initialize the GEL system
+    //
+    // Creates GelsInfo, sentinel VSprites, and attaches to RastPort.
+    // The RastPort must be valid for the lifetime of the GelsSystem.
+    pub fn init(rp: *RastPort, vp: *ViewPort) -> Result<GelsSystem, GelError> {
+        // Allocate GelsInfo structure
+        let gels_info_size: u32 = 40  // sizeof(GelsInfo)
+        let gels_info_ptr = AllocVec(gels_info_size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if gels_info_ptr == null {
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let gels_info = (*GelsInfo)gels_info_ptr
+
+        // Allocate collision table
+        let coll_table_size: u32 = 64  // 16 pointers * 4 bytes
+        let coll_table_ptr = AllocVec(coll_table_size, MEMF_CLEAR | MEMF_PUBLIC)
+        if coll_table_ptr == null {
+            FreeVec(gels_info_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let coll_table = (*collTable)coll_table_ptr
+
+        // Allocate head sentinel VSprite (Y = -32767 for sorting)
+        let vsprite_size: u32 = 60  // sizeof(VSprite) = 0x3C bytes
+        let head_ptr = AllocVec(vsprite_size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if head_ptr == null {
+            FreeVec(coll_table_ptr)
+            FreeVec(gels_info_ptr)
+            return Result::Err(GelError::SentinelCreationFailed)
+        }
+        let head_sprite = (*VSprite)head_ptr
+
+        // Allocate tail sentinel VSprite (Y = 32767 for sorting)
+        let tail_ptr = AllocVec(vsprite_size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if tail_ptr == null {
+            FreeVec(head_ptr)
+            FreeVec(coll_table_ptr)
+            FreeVec(gels_info_ptr)
+            return Result::Err(GelError::SentinelCreationFailed)
+        }
+        let tail_sprite = (*VSprite)tail_ptr
+
+        // Initialize sentinel VSprites
+        unsafe {
+            // Head sentinel at Y = -32767 (always first in sorted list)
+            head_sprite.Y = -32767
+            head_sprite.Flags = (i16)VSPRITE
+            head_sprite.NextVSprite = tail_sprite
+            head_sprite.PrevVSprite = null
+            head_sprite.ClearPath = null
+            head_sprite.DrawPath = null
+
+            // Tail sentinel at Y = 32767 (always last in sorted list)
+            tail_sprite.Y = 32767
+            tail_sprite.Flags = (i16)VSPRITE
+            tail_sprite.NextVSprite = null
+            tail_sprite.PrevVSprite = head_sprite
+            tail_sprite.ClearPath = null
+            tail_sprite.DrawPath = null
+
+            // Initialize GelsInfo
+            gels_info.sprRsrvd = 0
+            gels_info.Flags = 0
+            gels_info.gelHead = head_sprite
+            gels_info.gelTail = tail_sprite
+            gels_info.collHandler = coll_table
+            gels_info.leftmost = 0
+            gels_info.rightmost = 320
+            gels_info.topmost = 0
+            gels_info.bottommost = 256
+            gels_info.nextLine = null
+            gels_info.lastColor = null
+            gels_info.firstBlissObj = null
+            gels_info.lastBlissObj = null
+
+            // Initialize the GEL system via AmigaOS
+            InitGels(head_sprite, tail_sprite, gels_info)
+
+            // Attach GelsInfo to RastPort
+            rp.GelsInfo = gels_info
+        }
+
+        return Result::Ok(GelsSystem {
+            gels_info: gels_info,
+            head_sprite: head_sprite,
+            tail_sprite: tail_sprite,
+            coll_table: coll_table,
+            rast_port: rp,
+            view_port: vp,
+            active_count: 0,
+            anim_key: null,
+            initialized: true,
+        })
+    }
+
+    // Check if system is initialized
+    pub fn is_initialized(&self) -> bool {
+        return self.initialized
+    }
+
+    // Get count of active VSprites/BOBs
+    pub fn active_count(&self) -> u32 {
+        return self.active_count
+    }
+
+    // Register a collision callback for a specific type
+    //
+    // Collision type is 0-15. When a VSprite of type A hits type B,
+    // the callback registered for type A is called.
+    //
+    // Callback signature: fn(sprite_a: *VSprite, sprite_b: *VSprite)
+    pub fn set_collision(&var self, type_num: u8, callback: fn(*VSprite, *VSprite)) -> Result<(), GelError> {
+        if !self.initialized {
+            return Result::Err(GelError::GelsNotInitialized)
+        }
+        if type_num > 15 {
+            return Result::Err(GelError::InvalidCollisionType)
+        }
+
+        // Register callback via AmigaOS
+        SetCollision((u32)type_num, callback, self.gels_info)
+
+        return Result::Ok(())
+    }
+
+    // Sort GEL list by Y position
+    // Called automatically by render_frame()
+    pub fn sort(&var self) {
+        if !self.initialized {
+            return
+        }
+        SortGList(self.rast_port)
+    }
+
+    // Draw all VSprites and BOBs
+    // Called automatically by render_frame()
+    pub fn draw(&var self) {
+        if !self.initialized {
+            return
+        }
+        DrawGList(self.rast_port, self.view_port)
+        // Wait for blitter to complete before returning
+        WaitBlit()
+    }
+
+    // Check for collisions and call registered callbacks
+    // Called automatically by render_frame()
+    pub fn do_collision(&var self) {
+        if !self.initialized {
+            return
+        }
+        DoCollision(self.rast_port)
+    }
+
+    // Complete render frame: sort, draw, animate, and check collisions
+    // Call this once per frame in your game loop
+    pub fn render_frame(&var self) {
+        if !self.initialized {
+            return
+        }
+        self.sort()
+        self.draw()
+        self.animate()
+        self.do_collision()
+    }
+
+    // Get the GelsInfo pointer (for advanced use)
+    pub fn gels_info(&self) -> *GelsInfo {
+        return self.gels_info
+    }
+
+    // Get the RastPort pointer
+    pub fn rast_port(&self) -> *RastPort {
+        return self.rast_port
+    }
+
+    // Get the ViewPort pointer
+    pub fn view_port(&self) -> *ViewPort {
+        return self.view_port
+    }
+
+    // Set clipping boundaries for collision detection
+    pub fn set_bounds(&var self, left: i16, right: i16, top: i16, bottom: i16) {
+        if !self.initialized {
+            return
+        }
+        unsafe {
+            self.gels_info.leftmost = left
+            self.gels_info.rightmost = right
+            self.gels_info.topmost = top
+            self.gels_info.bottommost = bottom
+        }
+    }
+
+    // Create a new VSprite (convenience method)
+    //
+    // width_pixels: Width in pixels (rounded up to multiple of 16)
+    // height: Height in scanlines
+    // depth: Number of bitplanes (1-8)
+    // image_data: Pointer to image data in CHIP RAM
+    //
+    // This is a convenience wrapper around VSpriteHandle::new()
+    pub fn create_vsprite(
+        gels: &GelsSystem,
+        width_pixels: u16,
+        height: u16,
+        depth: u16,
+        image_data: *u8
+    ) -> Result<VSpriteHandle, GelError> {
+        return VSpriteHandle::new(gels, width_pixels, height, depth, image_data)
+    }
+
+    // Create a new BOB (convenience method)
+    //
+    // width_pixels: Width in pixels (rounded up to multiple of 16)
+    // height: Height in scanlines
+    // depth: Number of bitplanes (1-8)
+    // image_data: Pointer to image data in CHIP RAM
+    // image_shadow: Pointer to shadow mask (null for no transparency)
+    //
+    // This is a convenience wrapper around BobHandle::new()
+    pub fn create_bob(
+        gels: &GelsSystem,
+        width_pixels: u16,
+        height: u16,
+        depth: u16,
+        image_data: *u8,
+        image_shadow: *u8
+    ) -> Result<BobHandle, GelError> {
+        return BobHandle::new(gels, width_pixels, height, depth, image_data, image_shadow)
+    }
+
+    // Internal: increment active count (called by VSpriteHandle)
+    pub fn inc_active(&var self) {
+        self.active_count++
+    }
+
+    // Internal: decrement active count (called by VSpriteHandle)
+    pub fn dec_active(&var self) {
+        if self.active_count > 0 {
+            self.active_count--
+        }
+    }
+}
+
+// RAII cleanup for GelsSystem
+impl Drop for GelsSystem {
+    fn drop(&var self) {
+        if !self.initialized {
+            return
+        }
+
+        // Detach from RastPort
+        unsafe {
+            self.rast_port.GelsInfo = null
+        }
+
+        // Free sentinel VSprites
+        if self.tail_sprite != null {
+            FreeVec((*u8)self.tail_sprite)
+        }
+        if self.head_sprite != null {
+            FreeVec((*u8)self.head_sprite)
+        }
+
+        // Free collision table
+        if self.coll_table != null {
+            FreeVec((*u8)self.coll_table)
+        }
+
+        // Free GelsInfo
+        if self.gels_info != null {
+            FreeVec((*u8)self.gels_info)
+        }
+
+        self.initialized = false
+    }
+}
+
+// VSprite state machine
+pub enum VSpriteState {
+    Created,    // VSprite allocated but not in GEL list
+    Active,     // VSprite in GEL list and being rendered
+}
+
+// VSpriteHandle - Safe wrapper for a VSprite
+//
+// Manages a single VSprite with RAII cleanup.
+// State machine: Created -> show() -> Active -> hide() -> Created
+//
+// Note: The show/hide methods take &var GelsSystem because method calls
+// through raw pointers are not supported in Novus.
+pub struct VSpriteHandle {
+    vsprite: *VSprite,            // VSprite structure (CHIP RAM)
+    image_data: *u8,              // Image data (CHIP RAM, owned)
+    coll_mask: *u8,               // Collision mask (CHIP RAM, owned, optional)
+    rast_port: *RastPort,         // RastPort (cached from GelsSystem)
+    state: VSpriteState,          // Current state
+    owns_image: bool,             // Whether we own image_data
+    owns_mask: bool,              // Whether we own coll_mask
+}
+
+impl VSpriteHandle {
+    // Create a new VSprite
+    //
+    // width_pixels: Width in pixels (will be rounded up to multiple of 16)
+    // height: Height in scanlines
+    // depth: Number of bitplanes (1-8)
+    // image_data: Pointer to image data in CHIP RAM
+    //             Format: interleaved bitplanes, width_words * depth * 2 bytes per line
+    pub fn new(
+        gels: &GelsSystem,
+        width_pixels: u16,
+        height: u16,
+        depth: u16,
+        image_data: *u8
+    ) -> Result<VSpriteHandle, GelError> {
+        if !gels.initialized {
+            return Result::Err(GelError::GelsNotInitialized)
+        }
+
+        if width_pixels == 0 || height == 0 || depth == 0 || depth > 8 {
+            return Result::Err(GelError::InvalidDimensions)
+        }
+
+        // Calculate width in words (16-pixel units)
+        let width_words = (width_pixels + 15) / 16
+
+        // Allocate VSprite structure in CHIP RAM
+        let vsprite_size: u32 = 60  // sizeof(VSprite) = 0x3C bytes
+        let vsprite_ptr = AllocVec(vsprite_size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if vsprite_ptr == null {
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let vsprite = (*VSprite)vsprite_ptr
+
+        // Initialize VSprite fields
+        unsafe {
+            vsprite.Y = 0
+            vsprite.X = 0
+            vsprite.Height = (i16)height
+            vsprite.Width = (i16)width_words
+            vsprite.Depth = (i16)depth
+            vsprite.Flags = (i16)VSPRITE  // Mark as VSprite (not BOB)
+            vsprite.ImageData = (*i16)image_data
+            vsprite.MeMask = 0
+            vsprite.HitMask = 0
+            vsprite.BorderLine = null
+            vsprite.CollMask = null
+            vsprite.SprColors = null
+            vsprite.VSBob = null
+            vsprite.PlanePick = -1  // Use all planes
+            vsprite.PlaneOnOff = 0
+            vsprite.VUserExt = 0
+        }
+
+        return Result::Ok(VSpriteHandle {
+            vsprite: vsprite,
+            image_data: image_data,
+            coll_mask: null,
+            rast_port: gels.rast_port,
+            state: VSpriteState::Created,
+            owns_image: false,
+            owns_mask: false,
+        })
+    }
+
+    // Add VSprite to GEL list (make it visible)
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            VSpriteState::Active => return Result::Err(GelError::AlreadyActive),
+            VSpriteState::Created => {
+                AddVSprite(self.vsprite, self.rast_port)
+                gels.inc_active()
+                self.state = VSpriteState::Active
+                return Result::Ok(())
+            },
+            _ => return Result::Err(GelError::GelsNotInitialized),
+        }
+    }
+
+    // Remove VSprite from GEL list (make it invisible)
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            VSpriteState::Created => return Result::Err(GelError::NotActive),
+            VSpriteState::Active => {
+                RemVSprite(self.vsprite)
+                gels.dec_active()
+                self.state = VSpriteState::Created
+                return Result::Ok(())
+            },
+            _ => return Result::Err(GelError::GelsNotInitialized),
+        }
+    }
+
+    // Move VSprite to absolute position
+    pub fn move_to(&var self, x: i16, y: i16) {
+        unsafe {
+            self.vsprite.X = x
+            self.vsprite.Y = y
+        }
+    }
+
+    // Get current position
+    pub fn position(&self) -> (i16, i16) {
+        return (self.vsprite.X, self.vsprite.Y)
+    }
+
+    // Move by relative offset
+    pub fn move_by(&var self, dx: i16, dy: i16) {
+        unsafe {
+            self.vsprite.X = self.vsprite.X + dx
+            self.vsprite.Y = self.vsprite.Y + dy
+        }
+    }
+
+    // Set collision masks
+    //
+    // me_mask: Bitmask indicating what collision types this sprite IS
+    // hit_mask: Bitmask indicating what collision types this sprite DETECTS
+    //
+    // Example:
+    //   // This is a player (type 0), it detects enemies (type 1) and bullets (type 2)
+    //   sprite.set_collision_masks(1 << COLL_PLAYER, (1 << COLL_ENEMY) | (1 << COLL_BULLET))
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
+        unsafe {
+            self.vsprite.MeMask = me_mask
+            self.vsprite.HitMask = hit_mask
+        }
+    }
+
+    // Get collision masks
+    pub fn collision_masks(&self) -> (i16, i16) {
+        return (self.vsprite.MeMask, self.vsprite.HitMask)
+    }
+
+    // Check if VSprite is active (in GEL list)
+    pub fn is_active(&self) -> bool {
+        match self.state {
+            VSpriteState::Active => return true,
+            VSpriteState::Created => return false,
+            _ => return false,
+        }
+    }
+
+    // Get raw VSprite pointer (for advanced use)
+    pub fn as_ptr(&self) -> *VSprite {
+        return self.vsprite
+    }
+
+    // Set image data pointer (for animation)
+    pub fn set_image(&var self, image_data: *u8) {
+        self.image_data = image_data
+        unsafe {
+            self.vsprite.ImageData = (*i16)image_data
+        }
+    }
+
+    // Set collision mask data (for pixel-perfect collision)
+    pub fn set_collision_mask(&var self, mask_data: *u8) {
+        self.coll_mask = mask_data
+        unsafe {
+            self.vsprite.CollMask = (*i16)mask_data
+        }
+    }
+
+    // Set flags
+    pub fn set_flags(&var self, flags: i16) {
+        unsafe {
+            self.vsprite.Flags = flags
+        }
+    }
+
+    // Get flags
+    pub fn flags(&self) -> i16 {
+        return self.vsprite.Flags
+    }
+}
+
+// RAII cleanup for VSpriteHandle
+// Note: This doesn't decrement GelsSystem.active_count because we don't have
+// a reference to it. The user should call hide() before dropping if they want
+// accurate tracking. The sprite is still properly removed from the GEL list.
+impl Drop for VSpriteHandle {
+    fn drop(&var self) {
+        // If active, remove from GEL list first
+        match self.state {
+            VSpriteState::Active => {
+                RemVSprite(self.vsprite)
+            },
+            VSpriteState::Created => {},
+            _ => {},
+        }
+
+        // Free owned memory
+        if self.owns_mask && self.coll_mask != null {
+            FreeVec(self.coll_mask)
+        }
+        if self.owns_image && self.image_data != null {
+            FreeVec(self.image_data)
+        }
+
+        // Free VSprite structure
+        if self.vsprite != null {
+            FreeVec((*u8)self.vsprite)
+        }
+    }
+}
+
+// ============================================================================
+// BOB (Blitter Object) Support
+// ============================================================================
+
+// BOB state machine (same as VSprite)
+pub enum BobState {
+    Created,    // BOB allocated but not in GEL list
+    Active,     // BOB in GEL list and being rendered
+}
+
+// BobHandle - Safe wrapper for a BOB (Blitter Object)
+//
+// BOBs are arbitrary-sized blitter objects with automatic background
+// save/restore. Unlike VSprites (16px wide), BOBs can be any size.
+//
+// Features:
+// - Automatic background save/restore (SAVEBACK flag)
+// - Cookie-cut overlay (OVERLAY flag) for transparency
+// - Arbitrary width (not limited to 16 pixels)
+// - Z-ordering via Before/After links
+pub struct BobHandle {
+    bob: *Bob,                    // Bob structure (any memory)
+    vsprite: *VSprite,            // Associated VSprite (CHIP RAM)
+    save_buffer: *u8,             // Background save buffer (CHIP RAM)
+    image_shadow: *u8,            // Shadow mask for cookie-cut (CHIP RAM)
+    image_data: *u8,              // Image data (CHIP RAM)
+    rast_port: *RastPort,         // RastPort (cached from GelsSystem)
+    view_port: *ViewPort,         // ViewPort (cached from GelsSystem)
+    state: BobState,              // Current state
+    width_words: u16,             // Width in words (16-pixel units)
+    height: u16,                  // Height in scanlines
+    depth: u16,                   // Number of bitplanes
+    owns_image: bool,             // Whether we own image_data
+    owns_shadow: bool,            // Whether we own image_shadow
+}
+
+impl BobHandle {
+    // Create a new BOB
+    //
+    // width_pixels: Width in pixels (will be rounded up to multiple of 16)
+    // height: Height in scanlines
+    // depth: Number of bitplanes (1-8)
+    // image_data: Pointer to image data in CHIP RAM
+    // image_shadow: Pointer to shadow mask for cookie-cut (null for no transparency)
+    //
+    // Image data format: interleaved bitplanes, (width_words * depth * 2) bytes per line
+    // Shadow mask format: 1 bitplane, width_words * 2 bytes per line
+    pub fn new(
+        gels: &GelsSystem,
+        width_pixels: u16,
+        height: u16,
+        depth: u16,
+        image_data: *u8,
+        image_shadow: *u8
+    ) -> Result<BobHandle, GelError> {
+        if !gels.initialized {
+            return Result::Err(GelError::GelsNotInitialized)
+        }
+
+        if width_pixels == 0 || height == 0 || depth == 0 || depth > 8 {
+            return Result::Err(GelError::InvalidDimensions)
+        }
+
+        // Calculate width in words (16-pixel units)
+        // Add 1 word for blitter shifts
+        let width_words = ((width_pixels + 15) / 16) + 1
+
+        // Calculate save buffer size: width_words * height * depth * 2 bytes
+        let save_size = (u32)width_words * (u32)height * (u32)depth * 2
+
+        // Allocate save buffer in CHIP RAM
+        let save_ptr = AllocVec(save_size, MEMF_CHIP | MEMF_CLEAR)
+        if save_ptr == null {
+            return Result::Err(GelError::ChipRamExhausted)
+        }
+
+        // Allocate VSprite structure in CHIP RAM
+        let vsprite_size: u32 = 60  // sizeof(VSprite) = 0x3C bytes
+        let vsprite_ptr = AllocVec(vsprite_size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if vsprite_ptr == null {
+            FreeVec(save_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let vsprite = (*VSprite)vsprite_ptr
+
+        // Allocate Bob structure
+        let bob_size: u32 = 32  // sizeof(Bob) = 0x20 bytes
+        let bob_ptr = AllocVec(bob_size, MEMF_CLEAR | MEMF_PUBLIC)
+        if bob_ptr == null {
+            FreeVec(vsprite_ptr)
+            FreeVec(save_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let bob = (*Bob)bob_ptr
+
+        // Determine flags
+        // SAVEBACK = save and restore background
+        // OVERLAY = use shadow mask for cookie-cut
+        var bob_flags: i16 = (i16)SAVEBACK
+        if image_shadow != null {
+            bob_flags = bob_flags | (i16)OVERLAY
+        }
+
+        // Initialize VSprite fields
+        unsafe {
+            vsprite.Y = 0
+            vsprite.X = 0
+            vsprite.Height = (i16)height
+            vsprite.Width = (i16)width_words
+            vsprite.Depth = (i16)depth
+            vsprite.Flags = 0  // Not VSPRITE - this is a BOB
+            vsprite.ImageData = (*i16)image_data
+            vsprite.MeMask = 0
+            vsprite.HitMask = 0
+            vsprite.BorderLine = null
+            vsprite.CollMask = null
+            vsprite.SprColors = null
+            vsprite.VSBob = bob  // Link to Bob
+            vsprite.PlanePick = -1
+            vsprite.PlaneOnOff = 0
+            vsprite.VUserExt = 0
+
+            // Initialize Bob fields
+            bob.Flags = bob_flags
+            bob.SaveBuffer = (*i16)save_ptr
+            bob.ImageShadow = (*i16)image_shadow
+            bob.Before = null
+            bob.After = null
+            bob.BobVSprite = vsprite
+            bob.BobComp = null
+            bob.DBuffer = null
+        }
+
+        return Result::Ok(BobHandle {
+            bob: bob,
+            vsprite: vsprite,
+            save_buffer: save_ptr,
+            image_shadow: image_shadow,
+            image_data: image_data,
+            rast_port: gels.rast_port,
+            view_port: gels.view_port,
+            state: BobState::Created,
+            width_words: width_words,
+            height: height,
+            depth: depth,
+            owns_image: false,
+            owns_shadow: false,
+        })
+    }
+
+    // Add BOB to GEL list (make it visible)
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            BobState::Active => return Result::Err(GelError::AlreadyActive),
+            BobState::Created => {
+                AddBob(self.bob, self.rast_port)
+                gels.inc_active()
+                self.state = BobState::Active
+                return Result::Ok(())
+            },
+            _ => return Result::Err(GelError::GelsNotInitialized),
+        }
+    }
+
+    // Remove BOB from GEL list (make it invisible)
+    // Unlike VSprites, BOBs require WaitBlit for background restore
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            BobState::Created => return Result::Err(GelError::NotActive),
+            BobState::Active => {
+                RemIBob(self.bob, self.rast_port, self.view_port)
+                WaitBlit()  // Wait for background restore
+                gels.dec_active()
+                self.state = BobState::Created
+                return Result::Ok(())
+            },
+            _ => return Result::Err(GelError::GelsNotInitialized),
+        }
+    }
+
+    // Move BOB to absolute position
+    pub fn move_to(&var self, x: i16, y: i16) {
+        unsafe {
+            self.vsprite.X = x
+            self.vsprite.Y = y
+        }
+    }
+
+    // Get current position
+    pub fn position(&self) -> (i16, i16) {
+        return (self.vsprite.X, self.vsprite.Y)
+    }
+
+    // Move by relative offset
+    pub fn move_by(&var self, dx: i16, dy: i16) {
+        unsafe {
+            self.vsprite.X = self.vsprite.X + dx
+            self.vsprite.Y = self.vsprite.Y + dy
+        }
+    }
+
+    // Set collision masks
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
+        unsafe {
+            self.vsprite.MeMask = me_mask
+            self.vsprite.HitMask = hit_mask
+        }
+    }
+
+    // Get collision masks
+    pub fn collision_masks(&self) -> (i16, i16) {
+        return (self.vsprite.MeMask, self.vsprite.HitMask)
+    }
+
+    // Check if BOB is active (in GEL list)
+    pub fn is_active(&self) -> bool {
+        match self.state {
+            BobState::Active => return true,
+            BobState::Created => return false,
+            _ => return false,
+        }
+    }
+
+    // Get raw Bob pointer (for advanced use)
+    pub fn as_ptr(&self) -> *Bob {
+        return self.bob
+    }
+
+    // Get raw VSprite pointer (for advanced use)
+    pub fn vsprite_ptr(&self) -> *VSprite {
+        return self.vsprite
+    }
+
+    // Set image data pointer (for animation)
+    pub fn set_image(&var self, image_data: *u8) {
+        self.image_data = image_data
+        unsafe {
+            self.vsprite.ImageData = (*i16)image_data
+        }
+    }
+
+    // Set shadow mask pointer (for animation with different masks)
+    pub fn set_shadow(&var self, image_shadow: *u8) {
+        self.image_shadow = image_shadow
+        unsafe {
+            self.bob.ImageShadow = (*i16)image_shadow
+        }
+    }
+
+    // Get dimensions
+    pub fn width(&self) -> u16 {
+        return (self.width_words - 1) * 16  // Subtract the extra word
+    }
+
+    pub fn height(&self) -> u16 {
+        return self.height
+    }
+
+    pub fn depth(&self) -> u16 {
+        return self.depth
+    }
+}
+
+// RAII cleanup for BobHandle
+impl Drop for BobHandle {
+    fn drop(&var self) {
+        // If active, remove from GEL list first
+        match self.state {
+            BobState::Active => {
+                RemIBob(self.bob, self.rast_port, self.view_port)
+                WaitBlit()
+            },
+            BobState::Created => {},
+            _ => {},
+        }
+
+        // Free owned memory
+        if self.owns_shadow && self.image_shadow != null {
+            FreeVec(self.image_shadow)
+        }
+        if self.owns_image && self.image_data != null {
+            FreeVec(self.image_data)
+        }
+
+        // Free save buffer
+        if self.save_buffer != null {
+            FreeVec(self.save_buffer)
+        }
+
+        // Free Bob structure
+        if self.bob != null {
+            FreeVec((*u8)self.bob)
+        }
+
+        // Free VSprite structure
+        if self.vsprite != null {
+            FreeVec((*u8)self.vsprite)
+        }
+    }
+}
+
+// ============================================================================
+// Animation System (AnimOb/AnimComp)
+// ============================================================================
+
+// AnimOb state machine
+pub enum AnimObState {
+    Building,   // Being constructed via builder
+    Ready,      // Built, not yet in GEL list
+    Active,     // In GEL list and animating
+}
+
+// Internal: Frame data stored during building
+struct FrameData {
+    width_pixels: u16,
+    height: u16,
+    depth: u16,
+    image_data: *u8,
+    shadow_mask: *u8,
+    duration: i16,
+    x_trans: i16,
+    y_trans: i16,
+    c_routine: fn(*AnimComp) -> i16,
+    me_mask: u16,
+    hit_mask: u16,
+}
+
+// Internal: Sequence configuration during building
+struct SequenceData {
+    frames: *FrameData,      // Array of frame data
+    frame_count: u32,
+    frame_capacity: u32,
+    is_looping: bool,
+    chain_to: i32,           // -1 = no chain, else sequence index
+}
+
+// Internal: Ownership tracking for cleanup
+struct AnimCompOwned {
+    comp: *AnimComp,
+    bob: *Bob,
+    vsprite: *VSprite,
+    save_buffer: *u8,
+}
+
+// AnimObBuilder - Fluent builder for animations
+// NOTE: Must be defined before SequenceHandle/FrameHandle which reference it
+pub struct AnimObBuilder {
+    gels: *GelsSystem,
+    // AnimOb configuration
+    x: i16,
+    y: i16,
+    x_vel: i16,
+    y_vel: i16,
+    x_accel: i16,
+    y_accel: i16,
+    ob_routine: fn(*AnimOb) -> i16,
+    // Sequences
+    sequences: *SequenceData,
+    sequence_count: u32,
+    sequence_capacity: u32,
+}
+
+// Maximum frames per sequence and maximum sequences
+const MAX_FRAMES_PER_SEQUENCE: u32 = 64
+const MAX_SEQUENCES: u32 = 16
+
+// SequenceHandle - Handle for configuring a sequence during building
+pub struct SequenceHandle {
+    builder: *AnimObBuilder,
+    sequence_idx: u32,
+}
+
+impl SequenceHandle {
+    // Add a frame to this sequence
+    pub fn add_frame(&var self, width_pixels: u16, height: u16, depth: u16, image_data: *u8, shadow_mask: *u8) -> FrameHandle {
+        // Get sequence data pointer
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &var sequences[seq_idx]
+            let frame_count = seq.frame_count
+            let frame_capacity = seq.frame_capacity
+
+            // Ensure capacity
+            if frame_count >= frame_capacity {
+                // At capacity - return handle to last frame
+                return FrameHandle {
+                    builder: builder_ptr,
+                    sequence_idx: seq_idx,
+                    frame_idx: frame_count - 1,
+                }
+            }
+
+            // Add frame with defaults
+            let frames = seq.frames
+            let frame = &var frames[frame_count]
+            frame.width_pixels = width_pixels
+            frame.height = height
+            frame.depth = depth
+            frame.image_data = image_data
+            frame.shadow_mask = shadow_mask
+            frame.duration = 1
+            frame.x_trans = 0
+            frame.y_trans = 0
+            frame.c_routine = no_anim_comp_callback
+            frame.me_mask = 0
+            frame.hit_mask = 0
+
+            // Increment frame count
+            let seq_mut = &var sequences[seq_idx]
+            seq_mut.frame_count = frame_count + 1
+
+            return FrameHandle {
+                builder: builder_ptr,
+                sequence_idx: seq_idx,
+                frame_idx: frame_count,
+            }
+        }
+    }
+
+    // Make this sequence loop back to first frame
+    @chain
+    pub fn set_looping(&var self) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &var sequences[seq_idx]
+            seq.is_looping = true
+        }
+    }
+
+    // Chain to another sequence when this completes
+    @chain
+    pub fn set_chain_to(&var self, target_sequence: u32) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &var sequences[seq_idx]
+            seq.chain_to = (i32)target_sequence
+        }
+    }
+}
+
+// FrameHandle - Handle for configuring a frame during building
+pub struct FrameHandle {
+    builder: *AnimObBuilder,
+    sequence_idx: u32,
+    frame_idx: u32,
+}
+
+impl FrameHandle {
+    // Set frame duration in ticks
+    @chain
+    pub fn set_duration(&var self, ticks: i16) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        let frm_idx = self.frame_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &sequences[seq_idx]
+            let frames = seq.frames
+            let frame = &var frames[frm_idx]
+            frame.duration = ticks
+        }
+    }
+
+    // Set position offset from AnimOb
+    @chain
+    pub fn set_offset(&var self, x_trans: i16, y_trans: i16) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        let frm_idx = self.frame_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &sequences[seq_idx]
+            let frames = seq.frames
+            let frame = &var frames[frm_idx]
+            frame.x_trans = x_trans
+            frame.y_trans = y_trans
+        }
+    }
+
+    // Set AnimCRoutine callback
+    @chain
+    pub fn set_on_enter(&var self, routine: fn(*AnimComp) -> i16) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        let frm_idx = self.frame_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &sequences[seq_idx]
+            let frames = seq.frames
+            let frame = &var frames[frm_idx]
+            frame.c_routine = routine
+        }
+    }
+
+    // Set collision masks for this frame
+    @chain
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
+        let builder_ptr = self.builder
+        let seq_idx = self.sequence_idx
+        let frm_idx = self.frame_idx
+        unsafe {
+            let sequences = (*builder_ptr).sequences
+            let seq = &sequences[seq_idx]
+            let frames = seq.frames
+            let frame = &var frames[frm_idx]
+            frame.me_mask = me_mask
+            frame.hit_mask = hit_mask
+        }
+    }
+}
+
+impl AnimObBuilder {
+    // Create a new animation builder
+    pub fn new(gels: *GelsSystem) -> AnimObBuilder {
+        // Allocate sequence array
+        let seq_size: u32 = 24 * MAX_SEQUENCES  // sizeof(SequenceData) ~= 24 bytes
+        let seq_ptr = AllocVec(seq_size, MEMF_CLEAR | MEMF_PUBLIC)
+
+        return AnimObBuilder {
+            gels: gels,
+            x: 0,
+            y: 0,
+            x_vel: 0,
+            y_vel: 0,
+            x_accel: 0,
+            y_accel: 0,
+            ob_routine: no_anim_ob_callback,
+            sequences: (*SequenceData)seq_ptr,
+            sequence_count: 0,
+            sequence_capacity: MAX_SEQUENCES,
+        }
+    }
+
+    // Set initial position (pixels)
+    @chain
+    pub fn set_position(&var self, x: i16, y: i16) {
+        self.x = x
+        self.y = y
+    }
+
+    // Set velocity (raw 6.10 fixed-point)
+    @chain
+    pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
+        self.x_vel = x_vel
+        self.y_vel = y_vel
+    }
+
+    // Set acceleration
+    @chain
+    pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
+        self.x_accel = x_accel
+        self.y_accel = y_accel
+    }
+
+    // Set AnimORoutine callback
+    @chain
+    pub fn set_on_animate(&var self, routine: fn(*AnimOb) -> i16) {
+        self.ob_routine = routine
+    }
+
+    // Add a new sequence
+    pub fn add_sequence(&var self) -> SequenceHandle {
+        if self.sequence_count >= self.sequence_capacity {
+            // Return handle to last sequence if at capacity
+            return SequenceHandle {
+                builder: self,
+                sequence_idx: self.sequence_count - 1,
+            }
+        }
+
+        let seq_idx = self.sequence_count
+
+        // Allocate frame array for this sequence
+        let frame_size: u32 = 32 * MAX_FRAMES_PER_SEQUENCE  // sizeof(FrameData) ~= 32 bytes
+        let frame_ptr = AllocVec(frame_size, MEMF_CLEAR | MEMF_PUBLIC)
+
+        unsafe {
+            let sequences = self.sequences
+            let seq = &var sequences[seq_idx]
+            seq.frames = (*FrameData)frame_ptr
+            seq.frame_count = 0
+            seq.frame_capacity = MAX_FRAMES_PER_SEQUENCE
+            seq.is_looping = false
+            seq.chain_to = -1
+        }
+
+        self.sequence_count = seq_idx + 1
+
+        return SequenceHandle {
+            builder: self,
+            sequence_idx: seq_idx,
+        }
+    }
+
+    // Build the AnimOb
+    pub fn build(&var self) -> Result<AnimObHandle, GelError> {
+        // Count total frames across all sequences
+        var total_frames: u32 = 0
+        for seq_i in 0..self.sequence_count {
+            unsafe {
+                total_frames = total_frames + self.sequences[seq_i].frame_count
+            }
+        }
+
+        if total_frames == 0 {
+            return Result::Err(GelError::NoFramesProvided)
+        }
+
+        if total_frames > 256 {
+            return Result::Err(GelError::TooManyFrames)
+        }
+
+        // Allocate AnimOb (42 bytes)
+        let animob_size: u32 = 42
+        let animob_ptr = AllocVec(animob_size, MEMF_CLEAR | MEMF_PUBLIC)
+        if animob_ptr == null {
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let animob = (*AnimOb)animob_ptr
+
+        // Allocate tracking array for cleanup
+        let owned_size: u32 = 20 * total_frames  // sizeof(AnimCompOwned) ~= 20 bytes
+        let owned_ptr = AllocVec(owned_size, MEMF_CLEAR | MEMF_PUBLIC)
+        if owned_ptr == null {
+            FreeVec(animob_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+        let owned_data = (*AnimCompOwned)owned_ptr
+
+        // Allocate all AnimComps, Bobs, VSprites contiguously
+        let comp_size: u32 = 38  // sizeof(AnimComp)
+        let bob_size: u32 = 32   // sizeof(Bob)
+        let vsprite_size: u32 = 60  // sizeof(VSprite)
+
+        let all_comps_ptr = AllocVec(comp_size * total_frames, MEMF_CLEAR | MEMF_PUBLIC)
+        if all_comps_ptr == null {
+            FreeVec(owned_ptr)
+            FreeVec(animob_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+
+        let all_bobs_ptr = AllocVec(bob_size * total_frames, MEMF_CLEAR | MEMF_PUBLIC)
+        if all_bobs_ptr == null {
+            FreeVec(all_comps_ptr)
+            FreeVec(owned_ptr)
+            FreeVec(animob_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+
+        let all_vsprites_ptr = AllocVec(vsprite_size * total_frames, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+        if all_vsprites_ptr == null {
+            FreeVec(all_bobs_ptr)
+            FreeVec(all_comps_ptr)
+            FreeVec(owned_ptr)
+            FreeVec(animob_ptr)
+            return Result::Err(GelError::OutOfMemory)
+        }
+
+        // Initialize AnimOb
+        let fp_shift = 6  // ANFRACSIZE
+        unsafe {
+            animob.NextOb = null
+            animob.PrevOb = null
+            animob.Clock = 0
+            animob.AnY = self.y << fp_shift
+            animob.AnX = self.x << fp_shift
+            animob.AnOldY = self.y << fp_shift
+            animob.AnOldX = self.x << fp_shift
+            animob.YVel = self.y_vel
+            animob.XVel = self.x_vel
+            animob.YAccel = self.y_accel
+            animob.XAccel = self.x_accel
+            animob.RingYTrans = 0
+            animob.RingXTrans = 0
+            animob.AnimORoutine = self.ob_routine
+            animob.AUserExt = 0
+        }
+
+        // Build all components
+        var comp_idx: u32 = 0
+        var first_comp: *AnimComp = null
+
+        // Get cached gels pointer
+        let gels_ptr = self.gels
+        let sequences_ptr = self.sequences
+        let sequence_count = self.sequence_count
+
+        for seq_i in 0..sequence_count {
+            // Get sequence frame count from unsafe block
+            let seq_frame_count = unsafe { (&sequences_ptr[seq_i]).frame_count }
+            let seq_first_comp_idx = comp_idx
+
+            for frame_i in 0..seq_frame_count {
+                // Get frame data from unsafe block
+                var frame_width: u16 = 0
+                var frame_height: u16 = 0
+                var frame_depth: u16 = 0
+                var frame_image: *u8 = null
+                var frame_shadow: *u8 = null
+                var frame_duration: i16 = 0
+                var frame_x_trans: i16 = 0
+                var frame_y_trans: i16 = 0
+                var frame_c_routine: fn(*AnimComp) -> i16 = no_anim_comp_callback
+                var frame_me_mask: u16 = 0
+                var frame_hit_mask: u16 = 0
+
+                unsafe {
+                    let seq_for_frame = &sequences_ptr[seq_i]
+                    let frames = seq_for_frame.frames
+                    let frame = &frames[frame_i]
+                    frame_width = frame.width_pixels
+                    frame_height = frame.height
+                    frame_depth = frame.depth
+                    frame_image = frame.image_data
+                    frame_shadow = frame.shadow_mask
+                    frame_duration = frame.duration
+                    frame_x_trans = frame.x_trans
+                    frame_y_trans = frame.y_trans
+                    frame_c_routine = frame.c_routine
+                    frame_me_mask = frame.me_mask
+                    frame_hit_mask = frame.hit_mask
+                }
+
+                // Get pointers to this frame's structures
+                let comp_offset = comp_idx * comp_size
+                let bob_offset = comp_idx * bob_size
+                let vsprite_offset = comp_idx * vsprite_size
+
+                // Calculate addresses then cast (avoids parser ambiguity with (*Type)(expr))
+                let comp_addr = (*u8)all_comps_ptr + comp_offset
+                let bob_addr = (*u8)all_bobs_ptr + bob_offset
+                let vsprite_addr = (*u8)all_vsprites_ptr + vsprite_offset
+                let comp = (*AnimComp)comp_addr
+                let bob = (*Bob)bob_addr
+                let vsprite = (*VSprite)vsprite_addr
+
+                // Calculate dimensions
+                let width_words = ((frame_width + 15) / 16) + 1
+
+                // Allocate save buffer
+                let save_size = (u32)width_words * (u32)frame_height * (u32)frame_depth * 2
+                let save_ptr = AllocVec(save_size, MEMF_CHIP | MEMF_CLEAR)
+                if save_ptr == null {
+                    // Cleanup on failure - simplified for now
+                    FreeVec(all_vsprites_ptr)
+                    FreeVec(all_bobs_ptr)
+                    FreeVec(all_comps_ptr)
+                    FreeVec(owned_ptr)
+                    FreeVec(animob_ptr)
+                    return Result::Err(GelError::ChipRamExhausted)
+                }
+
+                // Initialize VSprite
+                unsafe {
+                    vsprite.Y = 0
+                    vsprite.X = 0
+                    vsprite.Height = (i16)frame_height
+                    vsprite.Width = (i16)width_words
+                    vsprite.Depth = (i16)frame_depth
+                    vsprite.Flags = 0  // BOB, not VSPRITE
+                    vsprite.ImageData = (*i16)frame_image
+                    vsprite.MeMask = frame_me_mask
+                    vsprite.HitMask = frame_hit_mask
+                    vsprite.BorderLine = null
+                    vsprite.CollMask = null
+                    vsprite.SprColors = null
+                    vsprite.VSBob = bob
+                    vsprite.PlanePick = -1
+                    vsprite.PlaneOnOff = 0
+                    vsprite.VUserExt = 0
+                }
+
+                // Initialize Bob
+                var bob_flags: i16 = (i16)SAVEBACK
+                if frame_shadow != null {
+                    bob_flags = bob_flags | (i16)OVERLAY
+                }
+                unsafe {
+                    bob.Flags = bob_flags
+                    bob.SaveBuffer = (*i16)save_ptr
+                    bob.ImageShadow = (*i16)frame_shadow
+                    bob.Before = null
+                    bob.After = null
+                    bob.BobVSprite = vsprite
+                    bob.BobComp = comp
+                    bob.DBuffer = null
+                    bob.BUserExt = 0
+                }
+
+                // Initialize AnimComp
+                unsafe {
+                    comp.Flags = 0
+                    comp.Timer = frame_duration
+                    comp.TimeSet = frame_duration
+                    comp.AnimCRoutine = frame_c_routine
+                    comp.YTrans = frame_y_trans
+                    comp.XTrans = frame_x_trans
+                    comp.HeadOb = animob
+                    comp.AnimBob = bob
+                    comp.NextSeq = null
+                    comp.PrevSeq = null
+                }
+
+                // Track for cleanup
+                unsafe {
+                    let owned_entry = &var owned_data[comp_idx]
+                    owned_entry.comp = comp
+                    owned_entry.bob = bob
+                    owned_entry.vsprite = vsprite
+                    owned_entry.save_buffer = save_ptr
+                }
+
+                // Set first component for AnimOb
+                if first_comp == null {
+                    first_comp = comp
+                }
+
+                comp_idx = comp_idx + 1
+            }
+
+            // Link components in this sequence into a ring
+            let seq_last_comp_idx = comp_idx - 1
+            for i in seq_first_comp_idx..comp_idx {
+                // Calculate next and prev indices for circular ring
+                var next_i: u32 = 0
+                var prev_i: u32 = 0
+                if i == seq_last_comp_idx {
+                    next_i = seq_first_comp_idx
+                } else {
+                    next_i = i + 1
+                }
+                if i == seq_first_comp_idx {
+                    prev_i = seq_last_comp_idx
+                } else {
+                    prev_i = i - 1
+                }
+
+                unsafe {
+                    let ring_entry = &owned_data[i]
+                    let ring_comp = ring_entry.comp
+                    let next_entry = &owned_data[next_i]
+                    let prev_entry = &owned_data[prev_i]
+                    let next_comp = next_entry.comp
+                    let prev_comp = prev_entry.comp
+
+                    ring_comp.NextComp = next_comp
+                    ring_comp.PrevComp = prev_comp
+                }
+            }
+        }
+
+        // Set HeadComp
+        unsafe {
+            animob.HeadComp = first_comp
+        }
+
+        // Clean up builder allocations
+        for seq_i in 0..self.sequence_count {
+            unsafe {
+                if self.sequences[seq_i].frames != null {
+                    FreeVec((*u8)self.sequences[seq_i].frames)
+                }
+            }
+        }
+        if self.sequences != null {
+            FreeVec((*u8)self.sequences)
+        }
+
+        // Get rast_port and view_port from gels pointer
+        let rp = unsafe { (*gels_ptr).rast_port }
+        let vp = unsafe { (*gels_ptr).view_port }
+
+        return Result::Ok(AnimObHandle {
+            anim_ob: animob,
+            comp_data: owned_data,
+            comp_count: total_frames,
+            all_comps: all_comps_ptr,
+            all_bobs: all_bobs_ptr,
+            all_vsprites: all_vsprites_ptr,
+            rast_port: rp,
+            view_port: vp,
+            state: AnimObState::Ready,
+            buffers_allocated: false,
+        })
+    }
+}
+
+// AnimObHandle - RAII handle for an animation
+pub struct AnimObHandle {
+    anim_ob: *AnimOb,
+    comp_data: *AnimCompOwned,
+    comp_count: u32,
+    all_comps: *u8,
+    all_bobs: *u8,
+    all_vsprites: *u8,
+    rast_port: *RastPort,
+    view_port: *ViewPort,
+    state: AnimObState,
+    buffers_allocated: bool,
+}
+
+impl AnimObHandle {
+    // Add to GEL list and start animating
+    pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            AnimObState::Active => return Result::Err(GelError::AlreadyActive),
+            AnimObState::Building => return Result::Err(GelError::NotReady),
+            AnimObState::Ready => {
+                // Add all BOBs to GEL list first
+                for i in 0..self.comp_count {
+                    unsafe {
+                        AddBob(self.comp_data[i].bob, self.rast_port)
+                    }
+                }
+
+                // Add AnimOb to animation list
+                AddAnimOb(self.anim_ob, gels.anim_key, gels.rast_port)
+
+                // Update anim_key if this is the first animation
+                if gels.anim_key == null {
+                    gels.anim_key = self.anim_ob
+                }
+
+                gels.inc_active()
+                self.state = AnimObState::Active
+                return Result::Ok(())
+            },
+        }
+    }
+
+    // Remove from GEL list
+    pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
+        match self.state {
+            AnimObState::Ready => return Result::Err(GelError::NotActive),
+            AnimObState::Building => return Result::Err(GelError::NotReady),
+            AnimObState::Active => {
+                // Remove all BOBs from GEL list
+                for i in 0..self.comp_count {
+                    unsafe {
+                        RemIBob(self.comp_data[i].bob, self.rast_port, self.view_port)
+                    }
+                }
+                WaitBlit()
+
+                // Unlink from animation list
+                unsafe {
+                    let ob = self.anim_ob
+                    let prev = (*ob).PrevOb
+                    let next = (*ob).NextOb
+
+                    if prev != null {
+                        prev.NextOb = next
+                    } else {
+                        // We were the head
+                        gels.anim_key = next
+                    }
+                    if next != null {
+                        next.PrevOb = prev
+                    }
+
+                    ob.PrevOb = null
+                    ob.NextOb = null
+                }
+
+                gels.dec_active()
+                self.state = AnimObState::Ready
+                return Result::Ok(())
+            },
+        }
+    }
+
+    // Move to absolute pixel position
+    @chain
+    pub fn move_to(&var self, x: i16, y: i16) {
+        let fp_shift = 6
+        unsafe {
+            self.anim_ob.AnX = x << fp_shift
+            self.anim_ob.AnY = y << fp_shift
+        }
+    }
+
+    // Get current pixel position
+    pub fn position(&self) -> (i16, i16) {
+        let fp_shift = 6
+        let x = self.anim_ob.AnX >> fp_shift
+        let y = self.anim_ob.AnY >> fp_shift
+        return (x, y)
+    }
+
+    // Move by relative offset
+    @chain
+    pub fn move_by(&var self, dx: i16, dy: i16) {
+        let fp_shift = 6
+        unsafe {
+            self.anim_ob.AnX = self.anim_ob.AnX + (dx << fp_shift)
+            self.anim_ob.AnY = self.anim_ob.AnY + (dy << fp_shift)
+        }
+    }
+
+    // Set velocity (raw fixed-point)
+    @chain
+    pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
+        unsafe {
+            self.anim_ob.XVel = x_vel
+            self.anim_ob.YVel = y_vel
+        }
+    }
+
+    // Set velocity in pixels per frame (convenience)
+    @chain
+    pub fn set_velocity_pixels(&var self, x: i16, y: i16) {
+        let fp_shift = 6
+        self.set_velocity(x << fp_shift, y << fp_shift)
+    }
+
+    // Get velocity
+    pub fn velocity(&self) -> (i16, i16) {
+        return (self.anim_ob.XVel, self.anim_ob.YVel)
+    }
+
+    // Set acceleration
+    @chain
+    pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
+        unsafe {
+            self.anim_ob.XAccel = x_accel
+            self.anim_ob.YAccel = y_accel
+        }
+    }
+
+    // Get acceleration
+    pub fn acceleration(&self) -> (i16, i16) {
+        return (self.anim_ob.XAccel, self.anim_ob.YAccel)
+    }
+
+    // Set collision masks for all components
+    @chain
+    pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
+        for i in 0..self.comp_count {
+            unsafe {
+                *self.comp_data[i].vsprite.MeMask = me_mask
+                *self.comp_data[i].vsprite.HitMask = hit_mask
+            }
+        }
+    }
+
+    // Get collision masks (from first component)
+    pub fn collision_masks(&self) -> (i16, i16) {
+        if self.comp_count > 0 {
+            unsafe {
+                return (self.comp_data[0].vsprite.MeMask, self.comp_data[0].vsprite.HitMask)
+            }
+        }
+        return (0, 0)
+    }
+
+    // Check if active
+    pub fn is_active(&self) -> bool {
+        match self.state {
+            AnimObState::Active => return true,
+            AnimObState::Ready => return false,
+            AnimObState::Building => return false,
+        }
+    }
+
+    // Get frame count
+    pub fn frame_count(&self) -> u32 {
+        return self.comp_count
+    }
+
+    // Get raw AnimOb pointer
+    pub fn as_ptr(&self) -> *AnimOb {
+        return self.anim_ob
+    }
+}
+
+// RAII cleanup for AnimObHandle
+impl Drop for AnimObHandle {
+    fn drop(&var self) {
+        // If active, remove from GEL list
+        match self.state {
+            AnimObState::Active => {
+                for i in 0..self.comp_count {
+                    unsafe {
+                        RemIBob(self.comp_data[i].bob, self.rast_port, self.view_port)
+                    }
+                }
+                WaitBlit()
+            },
+            AnimObState::Ready => {},
+            AnimObState::Building => {},
+        }
+
+        // Free save buffers
+        for i in 0..self.comp_count {
+            unsafe {
+                if self.comp_data[i].save_buffer != null {
+                    FreeVec(self.comp_data[i].save_buffer)
+                }
+            }
+        }
+
+        // Free contiguous arrays
+        if self.all_vsprites != null {
+            FreeVec(self.all_vsprites)
+        }
+        if self.all_bobs != null {
+            FreeVec(self.all_bobs)
+        }
+        if self.all_comps != null {
+            FreeVec(self.all_comps)
+        }
+
+        // Free ownership tracking
+        if self.comp_data != null {
+            FreeVec((*u8)self.comp_data)
+        }
+
+        // Free AnimOb
+        if self.anim_ob != null {
+            FreeVec((*u8)self.anim_ob)
+        }
+    }
+}
+
+// GelsSystem animation extensions
+impl GelsSystem {
+    // Create a new animation builder
+    pub fn create_anim_builder(&var self) -> AnimObBuilder {
+        return AnimObBuilder::new(self)
+    }
+
+    // Advance all animations (called by render_frame)
+    pub fn animate(&var self) {
+        if !self.initialized {
+            return
+        }
+        if self.anim_key != null {
+            Animate(self.anim_key, self.rast_port)
+        }
+    }
+}

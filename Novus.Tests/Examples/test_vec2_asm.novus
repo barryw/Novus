@@ -114,7 +114,7 @@ pub fn test_vec2_rotate_90() {
 pub fn test_vec2_rotate_180() {
     // Rotate (1,0) by 180° = (-1,0)
     let v = Vec2::unit_x()
-    let rotated = v.rotate(32768u16)  // 180 degrees
+    let rotated = v.rotate(32768)  // 180 degrees
     expect_true(rotated.get_x().to_raw() <= -64000, "rotate(1,0, 180).x ≈ -1")
     expect_true(rotated.get_y().to_raw() >= -1000 && rotated.get_y().to_raw() <= 1000,
                 "rotate(1,0, 180).y ≈ 0")

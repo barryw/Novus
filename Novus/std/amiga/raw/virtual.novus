@@ -1,0 +1,19 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: virtual.library
+// Base: _VirtualBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("virtual.library")
+extern pub fn VIRTUAL_GetClass() -> *u8
+@library("virtual.library")
+extern pub fn RefreshVirtualGadget(gadget: *Gadget, obj: *u8, window: *Window, requester: *Requester)
+@library("virtual.library")
+extern pub fn RethinkVirtualSize(virt_obj: *u8, rootlayout: *u8, font: *TextFont, screen: *Screen, layoutlimits: *LayoutLimits) -> i16

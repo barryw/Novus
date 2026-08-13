@@ -94,26 +94,26 @@ pub fn read_via_pointer(ptr: *u32) -> u32 {
 
 pub fn main() -> i32 {
     // Create a test buffer on the stack (size inferred from initializer)
-    var buffer = [0u8; 16]
+    var buffer: [u8] = [0; 16]
 
     // Get pointer to buffer - use (*u8) C-style cast
     let ptr = (*u8)&buffer[0]
 
     // Test poke and peek
-    poke_byte(ptr, $42u8)
+    poke_byte(ptr, $42)
     let val = peek_byte(ptr)
-    assert!(val == $42u8, "peek_byte should return poked value")
+    assert!(val == $42, "peek_byte should return poked value")
 
     // Test word operations
     let wptr = (*u16)ptr
-    poke_word(wptr, $1234u16)
+    poke_word(wptr, $1234)
     let wval = peek_word(wptr)
-    assert!(wval == $1234u16, "peek_word should return poked value")
+    assert!(wval == $1234, "peek_word should return poked value")
 
     // Test clear
-    clear_memory(ptr, 16u32)
+    clear_memory(ptr, 16)
     let cleared = peek_byte(ptr)
-    assert!(cleared == 0u8, "memory should be cleared to zero")
+    assert!(cleared == 0, "memory should be cleared to zero")
 
     return 0
 }

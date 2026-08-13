@@ -37,7 +37,7 @@ int main(int argc, char **argv)  // This is FAKE on Amiga!
 
 ```novus
 // Amiga programs can read the command line directly from DOS
-from std::ffi::dos import Input, Read, Output, Write
+from amiga::raw::dos import Input, Read, Output, Write
 
 pub fn main() -> i32 {
     // Get the input filehandle (CLI command line)
@@ -78,7 +78,7 @@ When user **double-clicks your icon** in Workbench:
 
 ```novus
 // Your program receives WBStartup message instead of argc/argv
-from std::ffi::amiga_structs import WBStartup, WBArg
+from amiga::raw::structs import WBStartup, WBArg
 
 pub fn main() -> i32 {
     // Check if launched from Workbench
@@ -162,8 +162,8 @@ Modifiers:
 ### Example Usage:
 
 ```novus
-from std::ffi::dos import ReadArgs, FreeArgs
-from std::ffi::amiga_structs import RDArgs
+from amiga::raw::dos import ReadArgs, FreeArgs
+from amiga::raw::structs import RDArgs
 
 pub fn parse_args() -> i32 {
     // Define template
@@ -273,7 +273,7 @@ Implement ReadArgs() wrapper in Novus stdlib:
 
 ```novus
 // Proposed Novus API
-from std::args import Args
+from amiga::workbench import Args
 
 pub fn main() -> i32 {
     let args = Args::parse("FROM/A,TO/A,VERBOSE/S") or {
@@ -329,9 +329,9 @@ fn launched_from_workbench() -> bool {
 
 Based on the codebase analysis:
 
-1. ✅ **WBStartup struct defined** - in `std/ffi/amiga_structs.novus:1223`
-2. ✅ **ReadArgs() extern declared** - in `std/ffi/dos.novus:143`
-3. ✅ **RDArgs struct defined** - in `std/ffi/amiga_structs.novus:617`
+1. ✅ **WBStartup struct defined** - in `std/amiga/raw/structs.novus:1223`
+2. ✅ **ReadArgs() extern declared** - in `std/amiga/raw/dos.novus:143`
+3. ✅ **RDArgs struct defined** - in `std/amiga/raw/structs.novus:617`
 4. ❌ **High-level Args API** - Not yet implemented
 5. ❌ **Workbench launch support** - Not yet implemented
 
@@ -351,7 +351,7 @@ pub fn main() -> i32 {
 
 ### Tier 2: Native ReadArgs (Implement Next)
 ```novus
-from std::args import parse_args
+from amiga::workbench import parse_args
 
 pub fn main() -> i32 {
     let args = parse_args("FROM/A,TO/A") or { return 1 }
@@ -434,19 +434,19 @@ AmigaOS **does NOT use argc/argv natively**. You have three options:
 
 **For Novus, I recommend:**
 
-Start with VBCC's argc/argv (works now), then add a high-level `std::args` module that wraps ReadArgs() for the authentic Amiga experience.
+Use `amiga::workbench::Args` for ReadArgs templates and `WorkbenchStartup` for GUI launches. `command_line()` remains available for simple CLI programs.
 
 ---
 
 ## Files in Novus That Already Support This
 
-- `Novus/std/ffi/dos.novus:143` - `ReadArgs()` extern
-- `Novus/std/ffi/dos.novus:152` - `FreeArgs()` extern
-- `Novus/std/ffi/amiga_structs.novus:617` - `RDArgs` struct
-- `Novus/std/ffi/amiga_structs.novus:1223` - `WBStartup` struct
-- `Novus/std/ffi/amiga_structs.novus:1232` - `WBArg` struct
+- `Novus/std/amiga/raw/dos.novus:143` - `ReadArgs()` extern
+- `Novus/std/amiga/raw/dos.novus:152` - `FreeArgs()` extern
+- `Novus/std/amiga/raw/structs.novus:617` - `RDArgs` struct
+- `Novus/std/amiga/raw/structs.novus:1223` - `WBStartup` struct
+- `Novus/std/amiga/raw/structs.novus:1232` - `WBArg` struct
 
-**Next step:** Implement `std::args` module with a nice Novus wrapper!
+The owning wrapper is implemented in `Novus/std/amiga/workbench/args.novus` and exported by `amiga::workbench`.
 
 ---
 

@@ -870,7 +870,7 @@ This showcase demonstrates interrupt and synchronization attributes for audio pl
 
 from std::core import Option
 from std::io::file import print, println
-from std::ffi::exec import Forbid, Permit, Disable, Enable
+from amiga::raw::exec import Forbid, Permit, Disable, Enable
 
 // Player state stored as globals for interrupt access
 static var g_is_playing: bool = false
@@ -888,7 +888,7 @@ fn advance_position() -> bool {
     if g_current_position >= g_sample_length {
         return false
     }
-    g_current_position = g_current_position + 1u32
+    g_current_position = g_current_position + 1
     return true
 }
 
@@ -904,7 +904,7 @@ fn write_audio_volume(volume: u16) {
 fn start_playback(length: u32, tempo: u32) -> bool {
     if g_is_playing { return false }
     g_sample_length = length
-    g_current_position = 0u32
+    g_current_position = 0
     g_tempo_divider = tempo
     g_is_playing = true
     return true
@@ -914,7 +914,7 @@ fn start_playback(length: u32, tempo: u32) -> bool {
 fn stop_playback() {
     if g_is_playing {
         g_is_playing = false
-        write_audio_volume(0u16)
+        write_audio_volume(0)
     }
 }
 
@@ -925,9 +925,9 @@ fn stop_playback() {
 pub fn vblank_music_handler() {
     if !g_is_playing { return }
 
-    g_tempo_counter = g_tempo_counter + 1u32
+    g_tempo_counter = g_tempo_counter + 1
     if g_tempo_counter < g_tempo_divider { return }
-    g_tempo_counter = 0u32
+    g_tempo_counter = 0
 
     if !advance_position() {
         g_is_playing = false

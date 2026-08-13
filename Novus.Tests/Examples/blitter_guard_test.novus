@@ -8,12 +8,12 @@
 // Run: Copy to Amiga and execute from CLI
 
 from std::core import Result, Drop
-from std::ffi::exec import OpenLibrary, CloseLibrary, AllocVec, FreeVec, TypeOfMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
-from std::ffi::amiga_structs import Library, BitMap
-from std::ffi::graphics import InitBitMap, FreeBitMap, WaitBlit
-from std::ffi::dos import Write
-from std::graphics::blitter import BlitterGuard, BlitterOps, BlitterError
+from amiga::raw::exec import OpenLibrary, CloseLibrary, AllocVec, FreeVec, TypeOfMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR
+from amiga::raw::structs import Library, BitMap
+from amiga::raw::graphics import InitBitMap, FreeBitMap, WaitBlit
+from amiga::raw::dos import Write
+from amiga::sys::graphics::blitter import BlitterGuard, BlitterOps, BlitterError
 
 pub fn main() -> i32 {
     // Open graphics.library

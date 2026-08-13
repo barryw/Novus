@@ -86,7 +86,7 @@ DisownBlitter();    // Must not forget!
 
 **Novus Safe Pattern:**
 ```novus
-from std::hardware::blitter import acquire_blitter, BlitterHandle
+from amiga::sys::hardware::blitter import acquire_blitter, BlitterHandle
 
 fn do_blit() -> Result<(), ResourceError> {
     // Blocks until blitter available, returns handle
@@ -803,6 +803,6 @@ let blitter = acquire_with_timeout(
 
 1. Implement `Drop` trait in compiler
 2. Implement `Result<T, E>` enum
-3. Create `std::hardware::blitter` module as proof of concept
+3. Create `amiga::sys::hardware::blitter` module as proof of concept
 4. Test with real Amiga hardware
 5. Iterate based on usability feedback

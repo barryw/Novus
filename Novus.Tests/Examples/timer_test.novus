@@ -6,9 +6,9 @@
 // 3. Measure elapsed time
 // 4. Duration arithmetic
 
-from std::os::timer import TimerHandle, Duration, delay, now, elapsed_since
-from std::strings::core import Str, String
-from std::strings::format import Formatter, Display
+from amiga::timer import Timer, Duration, delay, now, elapsed_since
+from std::string::core import Str, String
+from std::string::format import Formatter, Display
 from std::io::file import write
 
 pub fn main() -> i32 {
@@ -71,7 +71,7 @@ pub fn main() -> i32 {
 
     // Test 4: Using Timer handle for multiple operations
     write("\nTest 4: Timer handle for efficient repeated use\n")
-    match TimerHandle::microhz() {
+    match Timer::microhz() {
         Result::Ok(var timer) => {
             // Get time
             match timer.get_time() {

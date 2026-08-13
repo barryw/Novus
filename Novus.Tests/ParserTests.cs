@@ -79,11 +79,11 @@ fn test(a: u32, b: u32) -> bool {
     }
 
     [Fact]
-    public void Parse_IntegerLiteralWithSuffix_Success()
+    public void Parse_ContextualIntegerLiteral_Success()
     {
         var source = @"
 fn test() -> u16 {
-    return 42u16
+    return 42
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -91,17 +91,30 @@ fn test() -> u16 {
         Assert.Equal(0, parser.NumberOfSyntaxErrors);
     }
 
+    [Theory]
+    [InlineData("42u16")]
+    [InlineData("-1i8")]
+    [InlineData("1.5f64")]
+    [InlineData("2.0fixed16")]
+    public void Parse_NumericTypeSuffix_ReportsError(string literal)
+    {
+        var parser = CreateParser($"fn test() {{ let value = {literal} }}");
+        parser.compilationUnit();
+
+        Assert.NotEqual(0, parser.NumberOfSyntaxErrors);
+    }
+
     [Fact]
     public void Parse_MultipleTypeSizes_Success()
     {
         var testCases = new[]
         {
-            ("u8", "255u8"),
-            ("u16", "65535u16"),
-            ("u32", "4294967295u32"),
-            ("i8", "127i8"),
-            ("i16", "32767i16"),
-            ("i32", "2147483647i32")
+            ("u8", "255"),
+            ("u16", "65535"),
+            ("u32", "4294967295"),
+            ("i8", "127"),
+            ("i16", "32767"),
+            ("i32", "2147483647")
         };
 
         foreach (var (returnType, literal) in testCases)
@@ -275,11 +288,11 @@ fn test() -> u32 {
     }
 
     [Fact]
-    public void Parse_UnderscoredLiteralWithTypeSuffix_Success()
+    public void Parse_UnderscoredLiteralInContext_Success()
     {
         var source = @"
 fn test() -> u32 {
-    return 1_000_000u32
+    return 1_000_000
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -292,7 +305,7 @@ fn test() -> u32 {
     {
         var source = @"
 fn test() -> u64 {
-    return 1_234_567_890u64
+    return 1_234_567_890
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -331,7 +344,7 @@ fn test() -> u8 {
     {
         var source = @"
 fn test() -> u16 {
-    return %1111_1111_0000_0000u16
+    return %1111_1111_0000_0000
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -344,7 +357,7 @@ fn test() -> u16 {
     {
         var source = @"
 fn test() -> u32 {
-    return $DEAD_BEEFu32
+    return $DEAD_BEEF
 }";
         var parser = CreateParser(source);
         var tree = parser.compilationUnit();
@@ -945,7 +958,7 @@ impl Point {
     {
         var source = @"
 fn cleanup_test() -> i32 {
-    let ptr = allocate(100u32)
+    let ptr = allocate(100)
     defer {
         free(ptr)
     }

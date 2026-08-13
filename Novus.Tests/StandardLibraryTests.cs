@@ -69,7 +69,7 @@ public class StandardLibraryTests
             {
                 var errorMessages = string.Join("\n", preprocessorDiagnostics.Diagnostics
                     .Where(d => d.IsError)
-                    .Select(d => d.Message));
+                    .Select(d => d.ToString()));
                 return (false, $"Preprocessor errors: {errorMessages}");
             }
 
@@ -91,7 +91,7 @@ public class StandardLibraryTests
             {
                 var errorMessages = string.Join("\n", diagnostics.Diagnostics
                     .Where(d => d.IsError)
-                    .Select(d => d.Message));
+                    .Select(d => d.ToString()));
                 return (false, $"Parse errors: {errorMessages}");
             }
 
@@ -105,7 +105,7 @@ public class StandardLibraryTests
                 {
                     var errors = string.Join("\n", semanticAnalyzer.Diagnostics.Diagnostics
                         .Where(d => d.IsError)
-                        .Select(d => d.Message));
+                        .Select(d => d.ToString()));
                     return (false, errors);
                 }
             }

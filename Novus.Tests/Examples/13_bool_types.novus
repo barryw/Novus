@@ -13,14 +13,14 @@ pub fn test_bool_literals() -> bool {
 }
 
 pub fn test_comparison_lt() -> bool {
-    let a: u32 = 10u32
-    let b: u32 = 20u32
+    let a: u32 = 10
+    let b: u32 = 20
     return a < b  // true
 }
 
 pub fn test_comparison_gt() -> bool {
-    let a: u32 = 30u32
-    let b: u32 = 20u32
+    let a: u32 = 30
+    let b: u32 = 20
     return a > b  // true
 }
 
@@ -56,25 +56,25 @@ pub fn test_logical_not() -> bool {
 pub fn test_bool_in_if() -> u32 {
     let condition: bool = true
     if condition {
-        return 42u32
+        return 42
     }
-    return 0u32
+    return 0
 }
 
 pub fn test_comparison_in_if() -> u32 {
-    let a: u32 = 10u32
-    let b: u32 = 20u32
+    let a: u32 = 10
+    let b: u32 = 20
     if a < b {
-        return 1u32
+        return 1
     } else {
-        return 0u32
+        return 0
     }
 }
 
 pub fn main() -> i32 {
     let result: bool = test_comparison_lt()
     if result {
-        return 42u32
+        return 42
     }
-    return 0u32
+    return 0
 }

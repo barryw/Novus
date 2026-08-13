@@ -198,6 +198,15 @@ public class CCodeGeneratorHelperTests
     }
 
     [Fact]
+    public void SharedTypesHeader_DefinesTimerValueTypes()
+    {
+        var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());
+
+        Assert.Contains("#include <devices/timer.h>", header);
+        Assert.Contains("typedef struct timeval timeval;", header);
+    }
+
+    [Fact]
     public void SharedTypesHeader_DefinesDosValueTypes()
     {
         var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());

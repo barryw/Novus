@@ -1,0 +1,29 @@
+// Tier 2: safe, non-owning access to Exec resources.
+
+from std::core import Option, Result
+from std::string::core import FixedCString, Str
+from amiga::raw::exec import OpenResource
+
+pub struct Resource {
+    handle: *u8,
+}
+
+impl Resource {
+    pub fn open(name: Str) -> Option<Resource> {
+        let c_name = match FixedCString::<128>::new_from_str(name) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Option::None,
+        }
+        let handle = OpenResource(c_name.as_cstr())
+        return if handle == null {
+            Option::None
+        } else {
+            Option::Some(Resource { handle: handle })
+        }
+    }
+
+    /// Exec resources are system-owned and have no CloseResource operation.
+    pub fn as_raw(&self) -> *u8 {
+        return self.handle
+    }
+}

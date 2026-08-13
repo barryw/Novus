@@ -5,9 +5,9 @@
 //   rx "address NOVUS_DEMO 'HELLO World'"
 //   rx "address NOVUS_DEMO 'QUIT'"
 
-from std::ipc::arexx import ARexxPort, ARexxCommand, ARexxError
+from amiga::sys::workbench::arexx import ARexxPort, ARexxCommand, ARexxError
 from std::core import Result, Option
-from std::strings::core import Str
+from std::string::core import Str
 from std::io::file import print, println
 
 fn handle_command(cmd: &ARexxCommand) -> bool {

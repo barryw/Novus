@@ -1,0 +1,25 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: disk.resource
+// Base: _DiskBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("disk.resource")
+extern pub fn AllocUnit(unitNum: i32) -> i16
+@library("disk.resource")
+extern pub fn FreeUnit(unitNum: i32)
+@library("disk.resource")
+extern pub fn GetUnit(unitPointer: *DiscResourceUnit) -> *DiscResourceUnit
+@library("disk.resource")
+extern pub fn GiveUnit()
+@library("disk.resource")
+extern pub fn GetUnitID(unitNum: i32) -> i32
+@library("disk.resource")
+extern pub fn ReadUnitID(unitNum: i32) -> i32

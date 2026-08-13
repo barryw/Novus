@@ -45,18 +45,18 @@ public partial class IrBuilder
     {
         // Auto-import required modules for f-string support
         // F-strings need:
-        // - std::strings::display for Display trait implementations on primitive types
-        // - std::strings::format for StackFormatter type (stack-allocated, zero heap allocation!)
-        // - std::strings::core for Str type
+        // - std::string::display for Display trait implementations on primitive types
+        // - std::string::format for StackFormatter type (stack-allocated, zero heap allocation!)
+        // - std::string::core for Str type
         bool isStdLibraryModule = _inputFilePath != null && _inputFilePath.Contains(System.IO.Path.DirectorySeparatorChar + "std" + System.IO.Path.DirectorySeparatorChar);
 
         if (!isStdLibraryModule)
         {
             // Always import these modules to ensure all necessary types and methods are available
             // The ImportModule function handles already-processed modules correctly
-            ImportModule("std::strings::display", importAll: true);
-            ImportModule("std::strings::format", importAll: true);
-            ImportModule("std::strings::core", importAll: true);
+            ImportModule("std::string::display", importAll: true);
+            ImportModule("std::string::format", importAll: true);
+            ImportModule("std::string::core", importAll: true);
         }
 
         // Parse the string into string and expression segments
@@ -304,7 +304,7 @@ public partial class IrBuilder
         {
             _diagnostics.ReportError(
                 ErrorCodes.MethodNotFound,
-                "Formatting *u8 requires strlen() and Str from std::strings::core",
+                "Formatting *u8 requires strlen() and Str from std::string::core",
                 new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, ""));
             return;
         }

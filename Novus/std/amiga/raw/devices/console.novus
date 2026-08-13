@@ -1,0 +1,17 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: console.device
+// Base: _ConsoleDevice
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("console.device")
+extern pub fn CDInputHandler(events: *InputEvent, consoleDevice: *Library) -> *InputEvent
+@library("console.device")
+extern pub fn RawKeyConvert(events: *InputEvent, buffer: *u8, length: i32, keyMap: *KeyMap) -> i32

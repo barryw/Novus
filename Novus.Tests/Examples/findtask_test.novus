@@ -1,7 +1,7 @@
 // Simplest possible exec call test
 
-from std::ffi::dos import VPrintf
-from std::ffi::exec import FindTask
+from amiga::raw::dos import VPrintf
+from amiga::raw::exec import FindTask
 
 pub fn main() -> i32 {
     VPrintf("1\n", (*u8)0)

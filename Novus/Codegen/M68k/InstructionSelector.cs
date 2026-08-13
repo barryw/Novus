@@ -48,6 +48,7 @@ public class InstructionSelector
     private readonly RegisterAllocator _allocator;
     private readonly StringBuilder _output;
     private readonly string _cpuTarget;
+    private readonly string _epilogueLabel;
     private readonly HashSet<string> _externalReferences = new();
 
     /// <summary>
@@ -55,11 +56,16 @@ public class InstructionSelector
     /// </summary>
     public IReadOnlySet<string> ExternalReferences => _externalReferences;
 
-    public InstructionSelector(RegisterAllocator allocator, StringBuilder output, string cpuTarget = "68020")
+    public InstructionSelector(
+        RegisterAllocator allocator,
+        StringBuilder output,
+        string cpuTarget = "68020",
+        string epilogueLabel = "")
     {
         _allocator = allocator;
         _output = output;
         _cpuTarget = cpuTarget;
+        _epilogueLabel = epilogueLabel;
     }
 
     /// <summary>
@@ -398,6 +404,25 @@ public class InstructionSelector
             case IrStringLiteral stringLit:
                 // Load address of string literal
                 _output.AppendLine($"    lea       {stringLit.Label}(pc),{reg}");
+                break;
+
+            case IrPointerOffsetValue pointerOffset:
+                EmitLoadValue(pointerOffset.Pointer, M68kRegister.A0, pointerOffset.Pointer.Type);
+                EmitLoadValue(pointerOffset.Index, M68kRegister.D1, pointerOffset.Index.Type);
+                var elementSize = pointerOffset.ElementType.SizeInBytes;
+                if (elementSize == 2)
+                    _output.AppendLine("    add.l     d1,d1");
+                else if (elementSize == 4)
+                    _output.AppendLine("    lsl.l     #2,d1");
+                else if (elementSize != 1)
+                {
+                    _output.AppendLine($"    mulu.l    #{elementSize},d1");
+                }
+                _output.AppendLine("    adda.l    d1,a0");
+                if (destReg != M68kRegister.A0)
+                    _output.AppendLine(destReg.IsAddressRegister()
+                        ? $"    movea.l   a0,{reg}"
+                        : $"    move.l    a0,{reg}");
                 break;
 
             default:
@@ -823,12 +848,61 @@ public class InstructionSelector
     // ARRAY AND STRUCT ACCESS
     // ============================================================================
 
+    private void EmitBoundsCheck(IrValue index, IrValue? length, IrBoundsCheckMode mode)
+    {
+        if (mode != IrBoundsCheckMode.Checked || length == null)
+            return;
+
+        var okLabel = $"_bounds_ok_{_labelCounter++}";
+        EmitLoadValue(index, M68kRegister.D1, index.Type);
+        EmitLoadValue(length, M68kRegister.D0, length.Type);
+        _output.AppendLine("    cmp.l     d0,d1");
+        _output.AppendLine($"    bcs       {okLabel}");
+        EmitBoundsFailure();
+        _output.AppendLine($"{okLabel}:");
+    }
+
+    private void EmitBoundsFailure()
+    {
+        _output.AppendLine("    move.l    #0,-(sp)        ; line");
+        _output.AppendLine("    pea       _str_file       ; file");
+        _output.AppendLine("    move.l    d0,-(sp)        ; length");
+        _output.AppendLine("    move.l    d1,-(sp)        ; index");
+        _externalReferences.Add("__novus_bounds_check_failed");
+        _output.AppendLine("    jsr       __novus_bounds_check_failed");
+        _output.AppendLine("    lea       16(sp),sp");
+        _output.AppendLine($"    bra       {_epilogueLabel}");
+    }
+
+    public void EmitSliceBoundsCheck(IrSliceBoundsCheck sliceCheck)
+    {
+        if (sliceCheck.BoundsCheck != IrBoundsCheckMode.Checked)
+            return;
+
+        var orderedLabel = $"_slice_ordered_{_labelCounter++}";
+        var validLabel = $"_slice_valid_{_labelCounter++}";
+        EmitLoadValue(sliceCheck.Start, M68kRegister.D1, sliceCheck.Start.Type);
+        EmitLoadValue(sliceCheck.End, M68kRegister.D0, sliceCheck.End.Type);
+        _output.AppendLine("    cmp.l     d0,d1");
+        _output.AppendLine($"    bls       {orderedLabel}");
+        EmitBoundsFailure();
+        _output.AppendLine($"{orderedLabel}:");
+        EmitLoadValue(sliceCheck.End, M68kRegister.D1, sliceCheck.End.Type);
+        EmitLoadValue(sliceCheck.Length, M68kRegister.D0, sliceCheck.Length.Type);
+        _output.AppendLine("    cmp.l     d0,d1");
+        _output.AppendLine($"    bls       {validLabel}");
+        EmitBoundsFailure();
+        _output.AppendLine($"{validLabel}:");
+    }
+
     /// <summary>
     /// Emit array index access: result = array[index]
     /// </summary>
     public void EmitIndexAccess(IrIndexAccess indexAccess)
     {
         _output.AppendLine($"    ; Index access: {indexAccess.ResultName} = array[index]");
+
+        EmitBoundsCheck(indexAccess.Index, indexAccess.Length, indexAccess.BoundsCheck);
 
         // Load array base address to A0
         EmitLoadValue(indexAccess.Array, M68kRegister.A0, indexAccess.Array.Type);
@@ -875,6 +949,8 @@ public class InstructionSelector
     public void EmitIndexStore(IrIndexStore indexStore)
     {
         _output.AppendLine($"    ; Index store: array[index] = value");
+
+        EmitBoundsCheck(indexStore.Index, indexStore.Length, indexStore.BoundsCheck);
 
         // Load value to D0
         EmitLoadValue(indexStore.Value, M68kRegister.D0, indexStore.Value.Type);

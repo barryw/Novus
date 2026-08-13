@@ -1,7 +1,7 @@
-from std::ffi::exec import OpenResource
-from std::ffi::cia_resource import AbleICR
-from std::ffi::amiga_structs import Library
-from std::ffi::amiga_consts import operation_not_permitted
+from amiga::raw::exec import OpenResource
+from amiga::raw::resources::cia import AbleICR
+from amiga::raw::structs import Library
+from amiga::raw::consts import operation_not_permitted
 
 pub fn main() -> i32 {
     let cia = unsafe { OpenResource("ciaa.resource") }

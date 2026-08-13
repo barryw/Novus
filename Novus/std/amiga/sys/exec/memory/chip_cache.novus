@@ -1,0 +1,561 @@
+// Chip RAM Cache Manager
+// Module: amiga::sys::exec::memory::chip_cache
+//
+// Provides a global LRU cache for chip RAM with priority-based eviction
+// and pinning to protect assets actively used by DMA.
+
+from std::core import Result, Option, Drop
+from std::string::core import Str
+from amiga::raw::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, AvailMem
+from amiga::raw::graphics import WaitBlit
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST
+from amiga::sys::exec::memory::chip import Priority, ChipAsset, ChipCacheError, is_chip_ram, copy_to_chip
+from amiga::sys::exec::memory::chip_pool import ChipPool, PoolSizeClass, POOL_HUGE_SIZE
+from amiga::sys::exec::critical import CriticalSection
+
+// ============================================================================
+// Cache Entry
+// ============================================================================
+
+/// Maximum length of debug name
+const MAX_NAME_LEN: u32 = 32
+
+/// A single entry in the chip cache
+struct CacheEntry {
+    asset_id: u32,              // Unique identifier for this asset
+    source_ptr: *u8,            // Original pointer (may be fast RAM)
+    chip_ptr: *u8,              // Pointer to chip RAM copy
+    size: u32,                  // Size in bytes
+    priority: Priority,         // Eviction priority
+    pin_count: u32,             // Reference count for pinning (0 = can evict)
+    last_access: u32,           // Frame number of last access (for LRU)
+    pooled: bool,               // True if allocated from pool, false if direct
+    debug_name: [u8; 32],       // Debug name for this asset
+    debug_name_len: u8,         // Length of debug name
+}
+
+impl CacheEntry {
+    fn new() -> CacheEntry {
+        return CacheEntry {
+            asset_id: 0,
+            source_ptr: null,
+            chip_ptr: null,
+            size: 0,
+            priority: Priority::Low,  // Use Low (0) for default to enable all-zero optimization
+            pin_count: 0,
+            last_access: 0,
+            pooled: false,
+            debug_name: [0; 32],
+            debug_name_len: 0,
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        return self.chip_ptr != null
+    }
+
+    fn set_name(&var self, name: Str) {
+        var max_len: u32 = MAX_NAME_LEN
+        if name.len() < MAX_NAME_LEN {
+            max_len = name.len()
+        }
+        while var i < max_len {
+            self.debug_name[i] = unsafe { name.as_ptr()[i] }
+            i++
+        }
+        self.debug_name_len = (u8)max_len
+    }
+}
+
+// ============================================================================
+// Cache Statistics
+// ============================================================================
+
+/// Statistics about cache usage
+pub struct CacheStats {
+    entries: u32,           // Number of cached assets
+    pinned_entries: u32,    // Number of pinned assets
+    total_cached: u32,      // Total bytes in cache
+    pinned_bytes: u32,      // Bytes that are pinned
+    chip_available: u32,    // Available chip RAM
+    chip_largest: u32,      // Largest contiguous chip RAM block
+    cache_hits: u32,        // Number of cache hits
+    cache_misses: u32,      // Number of cache misses
+    evictions: u32,         // Number of evictions performed
+}
+
+// ============================================================================
+// Chip Cache
+// ============================================================================
+
+/// Maximum number of cache entries
+const MAX_CACHE_ENTRIES: u32 = 128
+
+/// Global chip RAM cache manager
+///
+/// Provides automatic caching of assets in chip RAM with:
+/// - Priority-based eviction (Low evicted first, High last)
+/// - LRU eviction within same priority
+/// - Pinning to protect assets during DMA
+/// - Debug names for troubleshooting
+pub struct ChipCache {
+    entries: [CacheEntry; 128],
+    entry_count: u32,
+    frame_counter: u32,         // For LRU tracking
+    cache_hits: u32,
+    cache_misses: u32,
+    evictions: u32,
+    initialized: bool,
+}
+
+// Global singleton
+// The compiler will automatically use {0} initialization for this large struct (VBCC workaround)
+static var g_chip_cache: ChipCache = ChipCache {
+    entries: [CacheEntry {
+        asset_id: 0,
+        source_ptr: null,
+        chip_ptr: null,
+        size: 0,
+        priority: Priority::Low,
+        pin_count: 0,
+        last_access: 0,
+        pooled: false,
+        debug_name: [0; 32],
+        debug_name_len: 0,
+    }; 128],
+    entry_count: 0,
+    frame_counter: 0,
+    cache_hits: 0,
+    cache_misses: 0,
+    evictions: 0,
+    initialized: false,
+}
+
+impl ChipCache {
+    /// Initialize the chip cache
+    ///
+    /// Call this once at program startup. The cache will auto-initialize
+    /// on first use if not called explicitly.
+    pub fn init() {
+        unsafe {
+            if g_chip_cache.initialized {
+                return
+            }
+
+            // Initialize all entries
+            while var i < MAX_CACHE_ENTRIES {
+                g_chip_cache.entries[i] = CacheEntry::new()
+                i++
+            }
+
+            g_chip_cache.entry_count = 0
+            g_chip_cache.frame_counter = 0
+            g_chip_cache.cache_hits = 0
+            g_chip_cache.cache_misses = 0
+            g_chip_cache.evictions = 0
+            g_chip_cache.initialized = true
+
+            // Initialize the pool
+            let _ = ChipPool::init()
+        }
+    }
+
+    /// Tick the frame counter (call once per frame for LRU)
+    pub fn tick() {
+        unsafe {
+            g_chip_cache.frame_counter++
+        }
+    }
+
+    /// Get or load an asset into chip RAM
+    ///
+    /// If the asset is already cached, returns the cached pointer.
+    /// If not, allocates chip RAM and copies the data.
+    /// May evict other assets if chip RAM is low.
+    ///
+    /// Note: This function uses CriticalSection for safe task-switching protection
+    /// when modifying the global cache state.
+    pub fn get(asset_id: u32, source_ptr: *u8, size: u32, priority: Priority, name: Str) -> Result<*u8, ChipCacheError> {
+        unsafe {
+            if !g_chip_cache.initialized {
+                ChipCache::init()
+            }
+
+            // Already in chip RAM? Return directly (no cache modification needed)
+            if is_chip_ram(source_ptr) {
+                return Result::Ok(source_ptr)
+            }
+
+            // Use RAII guard for safe critical section
+            let _guard = CriticalSection::enter()
+
+            // Check if already cached
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id && g_chip_cache.entries[i].is_valid() {
+                    // Cache hit
+                    g_chip_cache.entries[i].last_access = g_chip_cache.frame_counter
+                    g_chip_cache.cache_hits++
+                    return Result::Ok(g_chip_cache.entries[i].chip_ptr)
+                }
+                i++
+            }
+
+            // Cache miss - need to allocate
+            g_chip_cache.cache_misses++
+
+            // Try to allocate chip RAM (eviction happens inside critical section)
+            let alloc_result = ChipCache::allocate_chip_ram(size)
+            match alloc_result {
+                Result::Err(e) => {
+                    return Result::Err(e)
+                },
+                Result::Ok(chip_ptr) => {
+                    // Copy data with cache flush for 68040/060 compatibility
+                    copy_to_chip(chip_ptr, source_ptr, size)
+
+                    // Determine if this was a pooled allocation
+                    let pooled = size <= POOL_HUGE_SIZE
+
+                    // Add to cache
+                    ChipCache::add_entry(asset_id, source_ptr, chip_ptr, size, priority, pooled, name)
+
+                    return Result::Ok(chip_ptr)
+                }
+            }
+        }
+    }
+
+    /// Pin an asset to prevent eviction (increments reference count)
+    ///
+    /// Call this before starting DMA operations on the asset.
+    /// The asset must be in the cache. Each pin() call must be
+    /// balanced by an unpin() call.
+    pub fn pin(asset_id: u32) {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    g_chip_cache.entries[i].pin_count++
+                    return
+                }
+                i++
+            }
+        }
+    }
+
+    /// Unpin an asset to allow eviction (decrements reference count)
+    ///
+    /// Call this after DMA operations are complete.
+    /// Only unpins when count reaches zero.
+    pub fn unpin(asset_id: u32) {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    if g_chip_cache.entries[i].pin_count > 0 {
+                        g_chip_cache.entries[i].pin_count--
+                    }
+                    return
+                }
+                i++
+            }
+        }
+    }
+
+    /// Check if an asset is pinned (pin_count > 0)
+    pub fn is_pinned(asset_id: u32) -> bool {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    return g_chip_cache.entries[i].pin_count > 0
+                }
+                i++
+            }
+            return false
+        }
+    }
+
+    /// Get the current pin count for an asset
+    pub fn pin_count(asset_id: u32) -> u32 {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    return g_chip_cache.entries[i].pin_count
+                }
+                i++
+            }
+            return 0
+        }
+    }
+
+    /// Manually evict a specific asset
+    ///
+    /// Returns true if the asset was evicted, false if not found or pinned.
+    pub fn evict(asset_id: u32) -> bool {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].asset_id == asset_id {
+                    if g_chip_cache.entries[i].pin_count > 0 {
+                        return false  // Can't evict pinned asset
+                    }
+                    ChipCache::free_entry(i)
+                    ChipCache::remove_entry(i)
+                    return true
+                }
+                i++
+            }
+            return false
+        }
+    }
+
+    /// Evict all unpinned assets (pin_count == 0)
+    ///
+    /// Useful for level transitions or scene changes.
+    pub fn clear_unpinned() {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            var i: u32 = 0
+            while i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].pin_count == 0 && g_chip_cache.entries[i].is_valid() {
+                    ChipCache::free_entry(i)
+                    ChipCache::remove_entry(i)
+                    // Don't increment i - entries shifted down
+                } else {
+                    i++
+                }
+            }
+        }
+    }
+
+    /// Get cache statistics
+    pub fn stats() -> CacheStats {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            var pinned_entries: u32 = 0
+            var total_cached: u32 = 0
+            var pinned_bytes: u32 = 0
+
+            while var i < g_chip_cache.entry_count {
+                if g_chip_cache.entries[i].is_valid() {
+                    total_cached = total_cached + g_chip_cache.entries[i].size
+                    if g_chip_cache.entries[i].pin_count > 0 {
+                        pinned_entries++
+                        pinned_bytes = pinned_bytes + g_chip_cache.entries[i].size
+                    }
+                }
+                i++
+            }
+
+            return CacheStats {
+                entries: g_chip_cache.entry_count,
+                pinned_entries: pinned_entries,
+                total_cached: total_cached,
+                pinned_bytes: pinned_bytes,
+                chip_available: AvailMem(MEMF_CHIP),
+                chip_largest: AvailMem(MEMF_CHIP | MEMF_LARGEST),
+                cache_hits: g_chip_cache.cache_hits,
+                cache_misses: g_chip_cache.cache_misses,
+                evictions: g_chip_cache.evictions,
+            }
+        }
+    }
+
+    /// Shutdown the cache and free all memory
+    pub fn shutdown() {
+        unsafe {
+            let _guard = CriticalSection::enter()
+            // Free all entries
+            while var i < g_chip_cache.entry_count {
+                ChipCache::free_entry(i)
+                i++
+            }
+            g_chip_cache.entry_count = 0
+            g_chip_cache.initialized = false
+
+            // Shutdown the pool
+            ChipPool::shutdown()
+        }
+    }
+
+    // ========================================================================
+    // Internal helpers
+    // ========================================================================
+
+    /// Allocate chip RAM, evicting if necessary
+    fn allocate_chip_ram(size: u32) -> Result<*u8, ChipCacheError> {
+        unsafe {
+            // First try pool allocation
+            if size <= POOL_HUGE_SIZE {
+                match ChipPool::alloc(size) {
+                    Result::Ok(ptr) => return Result::Ok(ptr),
+                    Result::Err(_) => {}  // Fall through to eviction
+                }
+            }
+
+            // Try direct allocation
+            let ptr = (*u8)AllocMem(size, MEMF_CHIP)
+            if ptr {
+                return Result::Ok(ptr)
+            }
+
+            // Need to evict - try multiple times
+            var attempts: u32 = 0
+            var evicted_any = false
+            while attempts < 5 {
+                if ChipCache::evict_one() {
+                    evicted_any = true
+                    // Try allocation again
+                    if size <= POOL_HUGE_SIZE {
+                        match ChipPool::alloc(size) {
+                            Result::Ok(ptr) => return Result::Ok(ptr),
+                            Result::Err(_) => {}
+                        }
+                    }
+                    let ptr2 = (*u8)AllocMem(size, MEMF_CHIP)
+                    if ptr2 {
+                        return Result::Ok(ptr2)
+                    }
+                } else {
+                    // No more assets to evict
+                    break
+                }
+                attempts++
+            }
+
+            // If we have entries but couldn't evict any, all are pinned
+            if g_chip_cache.entry_count > 0 && !evicted_any {
+                return Result::Err(ChipCacheError::AllAssetsPinned)
+            }
+
+            return Result::Err(ChipCacheError::OutOfMemory)
+        }
+    }
+
+    /// Evict one asset based on priority + LRU
+    ///
+    /// Returns true if an asset was evicted, false if none available.
+    fn evict_one() -> bool {
+        unsafe {
+            if g_chip_cache.entry_count == 0 {
+                return false
+            }
+
+            // Find best candidate: lowest priority, then oldest access
+            var best_idx: i32 = -1
+            var best_priority: u32 = 3  // Higher than High
+            var best_access: u32 = $FFFFFFFF
+
+            while var i < g_chip_cache.entry_count {
+                let entry = &g_chip_cache.entries[i]
+                if entry.is_valid() && entry.pin_count == 0 {
+                    let pri = ChipCache::priority_value(entry.priority)
+
+                    // Lower priority wins, or same priority + older access
+                    if pri < best_priority || (pri == best_priority && entry.last_access < best_access) {
+                        best_idx = (i32)i
+                        best_priority = pri
+                        best_access = entry.last_access
+                    }
+                }
+                i++
+            }
+
+            if best_idx < 0 {
+                return false  // All assets are pinned
+            }
+
+            ChipCache::free_entry((u32)best_idx)
+            ChipCache::remove_entry((u32)best_idx)
+            g_chip_cache.evictions++
+            return true
+        }
+    }
+
+    /// Convert priority to numeric value for comparison
+    fn priority_value(p: Priority) -> u32 {
+        match p {
+            Priority::Low => 0,
+            Priority::Normal => 1,
+            Priority::High => 2,
+        }
+    }
+
+    /// Add an entry to the cache
+    fn add_entry(asset_id: u32, source_ptr: *u8, chip_ptr: *u8, size: u32, priority: Priority, pooled: bool, name: Str) {
+        unsafe {
+            if g_chip_cache.entry_count >= MAX_CACHE_ENTRIES {
+                // Cache full - evict oldest low-priority entry
+                ChipCache::evict_one()
+            }
+
+            if g_chip_cache.entry_count < MAX_CACHE_ENTRIES {
+                var entry = &var g_chip_cache.entries[g_chip_cache.entry_count]
+                entry.asset_id = asset_id
+                entry.source_ptr = source_ptr
+                entry.chip_ptr = chip_ptr
+                entry.size = size
+                entry.priority = priority
+                entry.pin_count = 0
+                entry.last_access = g_chip_cache.frame_counter
+                entry.pooled = pooled
+                entry.set_name(name)
+
+                g_chip_cache.entry_count++
+            }
+        }
+    }
+
+    /// Free the memory for an entry (but don't remove from list)
+    fn free_entry(idx: u32) {
+        unsafe {
+            let entry = &var g_chip_cache.entries[idx]
+            if entry.chip_ptr {
+                // CRITICAL: Wait for any Blitter DMA to complete before freeing chip RAM
+                // The asset may have been used by the Blitter even if unpinned
+                WaitBlit()
+
+                if entry.pooled {
+                    let _ = ChipPool::free(entry.chip_ptr)
+                } else {
+                    FreeMem(entry.chip_ptr, entry.size)
+                }
+                entry.chip_ptr = null
+            }
+        }
+    }
+
+    /// Remove an entry from the cache (shift remaining entries down)
+    fn remove_entry(idx: u32) {
+        unsafe {
+            if idx >= g_chip_cache.entry_count {
+                return
+            }
+
+            // Shift entries down
+            var i = idx
+            while i < g_chip_cache.entry_count - 1 {
+                g_chip_cache.entries[i] = g_chip_cache.entries[i + 1]
+                i++
+            }
+
+            // Clear last entry
+            g_chip_cache.entries[g_chip_cache.entry_count - 1] = CacheEntry::new()
+            g_chip_cache.entry_count--
+        }
+    }
+}
+
+// ============================================================================
+// Convenience function for ChipAsset trait users
+// ============================================================================
+
+/// Get or load a ChipAsset into chip RAM
+///
+/// This is a convenience wrapper for ChipCache::get that extracts
+/// the necessary fields from a ChipAsset implementor.
+pub fn cache_asset(asset_id: u32, asset_ptr: *u8, asset_size: u32, priority: Priority, name: Str) -> Result<*u8, ChipCacheError> {
+    return ChipCache::get(asset_id, asset_ptr, asset_size, priority, name)
+}

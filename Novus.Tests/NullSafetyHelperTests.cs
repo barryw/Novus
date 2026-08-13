@@ -112,7 +112,7 @@ struct Rectangle {
 }
 
 fn main() {
-    let r = Rectangle { x: 10, y: 20, width: 100u32, height: 50u32 };
+    let r = Rectangle { x: 10, y: 20, width: 100, height: 50 };
 }";
 
         var module = BuildIr(source);
@@ -261,7 +261,7 @@ struct Outer {
 
 fn main() {
     let i = Inner { value: 42 };
-    let o = Outer { name: 1u32, inner: i };
+    let o = Outer { name: 1, inner: i };
 }";
 
         var module = BuildIr(source);

@@ -341,7 +341,7 @@ pub fn main() -> i32 {
         var actualValues = module.GetFunction("test_compile_time_constants")!.BasicBlocks
             .SelectMany(block => block.Instructions)
             .OfType<IrCall>()
-            .Where(call => call.FunctionName == "expect_eq_i32")
+            .Where(call => call.FunctionName.Contains("expect_eq", StringComparison.Ordinal))
             .Select(call => Assert.IsType<IrConstant>(call.Arguments[0]).Value)
             .ToArray();
         Assert.Equal(new long[] { 320, 200, 640, 520, 21, 100 }, actualValues);

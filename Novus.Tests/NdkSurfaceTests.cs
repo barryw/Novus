@@ -9,15 +9,23 @@ public class NdkSurfaceTests
 
     public static IEnumerable<object[]> GeneratedModules()
     {
-        var map = Path.Combine(ProjectRoot, "Novus", "std", "ffi", "ndk_headers.txt");
+        var map = Path.Combine(ProjectRoot, "Novus", "std", "amiga", "raw", "ndk_headers.txt");
         return File.ReadLines(map)
             .Select(line => line.Split('|')[0])
-            .Append("amiga_consts")
-            .Append("amiga_structs")
+            .Select(CanonicalModule)
+            .Append("consts")
+            .Append("structs")
             .Distinct(StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal)
             .Select(name => new object[] { name });
     }
+
+    private static string CanonicalModule(string module) => module switch
+    {
+        _ when module.EndsWith("_device", StringComparison.Ordinal) => $"devices::{module[..^7]}",
+        _ when module.EndsWith("_resource", StringComparison.Ordinal) => $"resources::{module[..^9]}",
+        _ => module
+    };
 
     [Theory]
     [MemberData(nameof(GeneratedModules))]
@@ -27,7 +35,7 @@ public class NdkSurfaceTests
         try
         {
             await File.WriteAllTextAsync(source, $$"""
-                from std::ffi::{{moduleName}} import *
+                from amiga::raw::{{moduleName}} import *
 
                 pub fn main() -> i32 {
                     return 0
@@ -35,7 +43,7 @@ public class NdkSurfaceTests
                 """);
 
             var result = await Compiler.CompileAndVerifyAsync(source);
-            Assert.True(result.Success, $"std::ffi::{moduleName} is not importable:\n{result.ErrorMessage}");
+            Assert.True(result.Success, $"amiga::raw::{moduleName} is not importable:\n{result.ErrorMessage}");
         }
         finally
         {

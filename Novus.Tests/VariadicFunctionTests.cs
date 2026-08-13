@@ -84,7 +84,7 @@ pub fn main() -> i32 {
     public void VariadicFunction_CallWithExtraArgs_CompilesSuccessfully()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 extern fn printf(format: *u8, ...args) -> i32
 pub fn main() -> i32 {
     let msg: Str = ""test""
@@ -99,7 +99,7 @@ pub fn main() -> i32 {
     public void VariadicFunction_CallWithMinimumArgs_CompilesSuccessfully()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 extern fn printf(format: *u8, ...args) -> i32
 pub fn main() -> i32 {
     let msg: Str = ""test""
@@ -127,7 +127,7 @@ pub fn main() -> i32 {
     public void VariadicFunction_GeneratesCorrectCSignature()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 extern fn my_variadic_func(format: *u8, ...args) -> i32
 pub fn main() -> i32 {
     let msg: Str = ""test""

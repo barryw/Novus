@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: arexx.library
+// Base: _ARexxBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("arexx.library")
+extern pub fn AREXX_GetClass() -> *u8

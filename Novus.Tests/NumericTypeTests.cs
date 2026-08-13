@@ -30,7 +30,7 @@ public class NumericTypeTests
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f32 = 3.14f32
+    let x: f32 = 3.14
     return 0
 }";
         var module = BuildIr(source);
@@ -47,8 +47,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f32 = 1.5f32
-    let y: f32 = 2.5f32
+    let x: f32 = 1.5
+    let y: f32 = 2.5
     let result = x + y
     return 0
 }";
@@ -63,7 +63,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f64 = 3.141592653589793f64
+    let x: f64 = 3.141592653589793
     return 0
 }";
         var module = BuildIr(source);
@@ -75,8 +75,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f64 = 1.0f64
-    let y: f64 = 2.0f64
+    let x: f64 = 1.0
+    let y: f64 = 2.0
     let sum = x + y
     return 0
 }";
@@ -91,7 +91,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: fixed16 = 1.5fixed16
+    let x: fixed16 = 1.5
     return 0
 }";
         var module = BuildIr(source);
@@ -108,8 +108,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: fixed16 = 2.5fixed16
-    let y: fixed16 = 1.5fixed16
+    let x: fixed16 = 2.5
+    let y: fixed16 = 1.5
     let result = x + y
     return 0
 }";
@@ -124,7 +124,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: fixed32 = 123.456fixed32
+    let x: fixed32 = 123.456
     return 0
 }";
         var module = BuildIr(source);
@@ -136,8 +136,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: fixed32 = 100.25fixed32
-    let y: fixed32 = 50.75fixed32
+    let x: fixed32 = 100.25
+    let y: fixed32 = 50.75
     let result = x + y
     return 0
 }";
@@ -152,7 +152,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: u64 = 4000000000u64
+    let x: u64 = 4000000000
     return 0
 }";
         var module = BuildIr(source);
@@ -164,8 +164,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: u64 = 1000000000u64
-    let y: u64 = 2000000000u64
+    let x: u64 = 1000000000
+    let y: u64 = 2000000000
     let result = x + y
     return 0
 }";
@@ -178,8 +178,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: u64 = 1000000u64
-    let y: u64 = 1000000u64
+    let x: u64 = 1000000
+    let y: u64 = 1000000
     let result = x * y
     return 0
 }";
@@ -194,7 +194,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: i64 = -1234567890123456789i64
+    let x: i64 = -1234567890123456789
     return 0
 }";
         var module = BuildIr(source);
@@ -206,8 +206,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: i64 = 1000000000i64
-    let y: i64 = -500000000i64
+    let x: i64 = 1000000000
+    let y: i64 = -500000000
     let result = x + y
     return 0
 }";
@@ -218,11 +218,28 @@ pub fn main() -> i32 {
     // ==================== TYPE CASTING TESTS ====================
 
     [Fact]
+    public void BuildIr_ExplicitLiteralCasts_Compile()
+    {
+        var module = BuildIr(@"
+pub fn main() -> i32 {
+    let byte = (i8)0
+    let precise = (f64)1.5
+    let fixed = (fixed16)2.0
+    return (i32)byte
+}");
+
+        var locals = module.Functions[0].LocalVariables.ToDictionary(local => local.Name, local => local.Type);
+        Assert.Equal(IrIntType.I8, locals["byte"]);
+        Assert.Equal(IrFloatType.F64, locals["precise"]);
+        Assert.Equal(IrFixedType.Fixed16, locals["fixed"]);
+    }
+
+    [Fact]
     public void BuildIr_F32ToI32Cast_Compiles()
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f32 = 3.14f32
+    let x: f32 = 3.14
     let y: i32 = (i32)x
     return y
 }";

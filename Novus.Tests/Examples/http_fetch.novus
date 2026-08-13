@@ -15,7 +15,7 @@ from std::net::tcp import TcpStream
 from std::net::dns import resolve_hostname
 from std::net::addr import SocketAddrV4, Ipv4Addr
 from std::net::errors import NetError
-from std::strings::core import strlen
+from std::string::core import strlen
 
 fn main() -> i32 {
     // Quick check if bsdsocket.library exists
@@ -76,7 +76,7 @@ fn main() -> i32 {
     }
 
     // Format IP address for display
-    var ip_buf = [0u8; 16]
+    var ip_buf: [u8] = [0; 16]
     ip.format((*u8)&ip_buf[0])
     write("Connecting to %s:80...\n", (*u8)&ip_buf[0])
 
@@ -107,7 +107,7 @@ fn main() -> i32 {
     write("Reading response...\n")
     write("---\n")
 
-    var buf = [0u8; 4097]  // Extra byte for null terminator
+    var buf: [u8] = [0; 4097]  // Extra byte for null terminator
     let buf_ptr: *u8 = (*u8)&buf[0]
 
     while true {

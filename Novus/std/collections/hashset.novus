@@ -4,7 +4,7 @@
 
 from std::core import Option, Result, Drop, Hash, Eq
 from std::collections::hashmap import HashMap, HashMapIter, KeyValueRef
-from std::error::errors import ExecError
+from std::memory::errors import MemoryError
 
 // ============================================================================
 // HashSet<T> - A set of unique values with O(1) operations
@@ -26,11 +26,11 @@ from std::error::errors import ExecError
 /// let result = HashSet::<u32>::new()
 /// match result {
 ///     Result::Ok(var set) => {
-///         set.insert(1u32)?
-///         set.insert(2u32)?
-///         set.insert(1u32)?  // Returns Ok(false) - already present
+///         set.insert(1)?
+///         set.insert(2)?
+///         set.insert(1)?  // Returns Ok(false) - already present
 ///
-///         if set.contains(&1u32) {
+///         if set.contains(&1) {
 ///             // value is in set
 ///         }
 ///     },
@@ -45,8 +45,8 @@ pub struct HashSet<T> where T: Hash + Eq {
 
 impl<T> HashSet<T> where T: Hash + Eq {
     /// Create a new empty HashSet with default capacity (16)
-    /// Returns ExecError::NoMem if memory allocation fails
-    pub fn new() -> Result<HashSet<T>, ExecError> {
+    /// Returns MemoryError::OutOfMemory if memory allocation fails
+    pub fn new() -> Result<HashSet<T>, MemoryError> {
         match HashMap::<T, ()>::new() {
             Result::Ok(map) => return Result::Ok(HashSet { map: map }),
             Result::Err(err) => return Result::Err(err),
@@ -54,8 +54,8 @@ impl<T> HashSet<T> where T: Hash + Eq {
     }
 
     /// Create a HashSet with specified initial capacity
-    /// Returns ExecError::NoMem if memory allocation fails
-    pub fn with_capacity(capacity: u32) -> Result<HashSet<T>, ExecError> {
+    /// Returns MemoryError::OutOfMemory if memory allocation fails
+    pub fn with_capacity(capacity: u32) -> Result<HashSet<T>, MemoryError> {
         match HashMap::<T, ()>::with_capacity(capacity) {
             Result::Ok(map) => return Result::Ok(HashSet { map: map }),
             Result::Err(err) => return Result::Err(err),
@@ -65,9 +65,9 @@ impl<T> HashSet<T> where T: Hash + Eq {
     /// Insert a value into the set
     ///
     /// Returns Ok(true) if the value was newly inserted, Ok(false) if already present.
-    /// Returns Err(ExecError) if allocation fails during resize.
-    pub fn insert(&var self, consuming value: T) -> Result<bool, ExecError> {
-        // HashMap.insert returns Result<Option<V>, ExecError>
+    /// Returns Err(MemoryError) if allocation fails during resize.
+    pub fn insert(&var self, consuming value: T) -> Result<bool, MemoryError> {
+        // HashMap.insert returns Result<Option<V>, MemoryError>
         // The Option indicates whether a previous value existed
         match self.map.insert(value, ()) {
             Result::Ok(opt) => {

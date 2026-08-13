@@ -8,7 +8,7 @@
 //   Exit code: 42
 
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MEMF_PUBLIC
+from amiga::raw::consts import MEMF_PUBLIC
 
 pub fn main() -> i32 {
     // Allocate 100 bytes using MemoryBlock
@@ -19,7 +19,7 @@ pub fn main() -> i32 {
             // Allocation succeeded
             // Use the memory (size is tracked automatically)
             let ptr: *u8 = block.ptr()
-            ptr[0] = 42u8  // Write to first byte
+            unsafe { ptr[0] = 42 }  // Write to first byte
 
             // Free the memory (no size parameter needed!)
             var mut_block = block

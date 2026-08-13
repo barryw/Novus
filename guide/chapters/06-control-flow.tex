@@ -1239,7 +1239,7 @@ fn find_resource(name: *u8) -> Option<*Resource> {
     }
 
     // Check system paths
-    for i in 0u32..system_paths.len() {
+    for i in 0..system_paths.len() {
         let path = system_paths.get(i)
         if let res = path_lookup(path, name) {
             cache_store(name, res)

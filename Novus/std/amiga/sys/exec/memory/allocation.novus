@@ -1,0 +1,98 @@
+// Amiga memory management utilities with RAII safety
+// Provides safe wrappers for chip/fast memory allocation
+
+from std::core import Result
+from amiga::sys::exec::errors import ExecError
+from amiga::raw::exec import AllocVec, FreeVec
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC, MEMF_ANY
+
+// ============================================================================
+// Unified Memory Handle - RAII wrapper for Amiga memory allocation
+// ============================================================================
+
+/// RAII wrapper for Amiga memory allocation
+/// Automatically frees memory when going out of scope
+///
+/// Factory methods:
+/// - new_chip(size): Chip RAM for DMA (graphics, audio, etc.)
+/// - new_fast(size): Fast RAM for CPU-only data
+/// - new_any(size): Any available memory
+/// - new_with_flags(size, flags): Custom memory flags
+///
+/// Example:
+/// ```novus
+/// // Allocate chip memory for graphics
+/// let chip_mem = MemHandle::new_chip(1024)?
+/// defer { chip_mem.drop() }
+///
+/// // Allocate fast memory for general use
+/// let fast_mem = MemHandle::new_fast(2048)?
+/// defer { fast_mem.drop() }
+///
+/// // Allocate with custom flags
+/// let any_mem = MemHandle::new_with_flags(512, MEMF_ANY | MEMF_CLEAR)?
+/// ```
+pub struct MemHandle {
+    ptr: *u8,
+    size: u32
+}
+
+impl MemHandle {
+    /// Allocate chip memory (required for DMA - graphics, audio, etc.)
+    /// Returns an error when Exec cannot allocate chip memory.
+    @inline
+    pub fn new_chip(size: u32) -> Result<MemHandle, ExecError> {
+        return MemHandle::new_with_flags(size, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC)
+    }
+
+    /// Allocate fast memory (for CPU-only data, faster access)
+    /// Returns an error when Exec cannot allocate fast memory.
+    @inline
+    pub fn new_fast(size: u32) -> Result<MemHandle, ExecError> {
+        return MemHandle::new_with_flags(size, MEMF_FAST | MEMF_CLEAR | MEMF_PUBLIC)
+    }
+
+    /// Allocate any available memory (chip or fast, whichever is available)
+    /// Returns an error when Exec cannot allocate memory.
+    @inline
+    pub fn new_any(size: u32) -> Result<MemHandle, ExecError> {
+        return MemHandle::new_with_flags(size, MEMF_ANY | MEMF_CLEAR | MEMF_PUBLIC)
+    }
+
+    /// Allocate with custom memory flags
+    /// Returns an error for a zero size or failed allocation.
+    pub fn new_with_flags(size: u32, flags: u32) -> Result<MemHandle, ExecError> {
+        if size == 0 {
+            return Result::Err(ExecError::InvalidAddress)
+        }
+        let ptr: *u8 = AllocVec(size, flags)
+        return if ptr { Result::Ok(MemHandle { ptr: ptr, size: size }) } else { Result::Err(ExecError::NoMem) }
+    }
+
+    /// Get raw pointer (for FFI calls)
+    @inline
+    pub fn ptr(&self) -> *u8 {
+        return self.ptr
+    }
+
+    /// Get size
+    @inline
+    pub fn size(&self) -> u32 {
+        return self.size
+    }
+
+    /// Check if allocation is valid (non-null pointer)
+    @inline
+    pub fn is_valid(&self) -> bool {
+        return (u32)self.ptr != 0
+    }
+}
+
+impl Drop for MemHandle {
+    fn drop(&var self) {
+        if (u32)self.ptr != 0 {
+            FreeVec(self.ptr)
+            self.ptr = null
+        }
+    }
+}

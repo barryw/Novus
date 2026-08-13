@@ -349,20 +349,20 @@ dependencies = ["mylib"]  # Depends on mylib target
 
 **src/lib.novus:**
 ```novus
-from std::sync import Mutex
+from amiga::sys::exec import SemaphoreHandle
 
 // Private constant (file-local)
 const BUFFER_SIZE: i32 = 1024
 
 // Internal state (shared across library modules)
-internal static cache: Mutex<Cache> = Mutex::new(Cache::new())
+internal static cache_lock: SemaphoreHandle
 
 // Public API
 pub const VERSION: u32 = 1
 
 pub fn initialize() -> Result<(), Error> {
-    let mut c = cache.lock()?
-    c.init()
+    let guard = cache_lock.lock()
+    init_cache()
     return Ok(())
 }
 ```

@@ -15,9 +15,9 @@
 // ```
 
 from std::core import Option, Result, Drop
-from std::strings::core import Str, String
+from std::string::core import Str, String
 from std::collections::vec import Vec
-from std::error::errors import DosError
+from amiga::sys::dos::errors import DosError
 
 // Runtime helper for integer to string conversion
 extern fn u32_to_string(value: u32, buffer: *u8, buffer_size: u32) -> u32
@@ -159,16 +159,16 @@ pub fn clear_to_eos() -> Str {
 /// ```
 pub fn move_to(row: u32, col: u32) -> String {
     // Validate parameters
-    let r = if row == 0 { 1u32 } else if row > 999 { 999u32 } else { row }
-    let c = if col == 0 { 1u32 } else if col > 999 { 999u32 } else { col }
+    let r = if row == 0 { 1 } else if row > 999 { 999 } else { row }
+    let c = if col == 0 { 1 } else if col > 999 { 999 } else { col }
 
     // Build escape sequence: CSI row ; col H
     var result = String::new()
     let _ = result.push_byte($9b)  // CSI
 
     // Convert row to string
-    var row_buf = [0u8; 16]
-    let row_len = u32_to_string(r, (*u8)&row_buf[0], 16u32)
+    var row_buf: [u8] = [0; 16]
+    let row_len = u32_to_string(r, (*u8)&row_buf[0], 16)
     while var i < row_len {
         let _ = result.push_byte(row_buf[i])
         i++
@@ -177,8 +177,8 @@ pub fn move_to(row: u32, col: u32) -> String {
     let _ = result.push_byte($3b)  // ';'
 
     // Convert col to string
-    var col_buf = [0u8; 16]
-    let col_len = u32_to_string(c, (*u8)&col_buf[0], 16u32)
+    var col_buf: [u8] = [0; 16]
+    let col_len = u32_to_string(c, (*u8)&col_buf[0], 16)
     while var i < col_len {
         let _ = result.push_byte(col_buf[i])
         i++
@@ -191,13 +191,13 @@ pub fn move_to(row: u32, col: u32) -> String {
 
 /// Move cursor up by n rows
 pub fn cursor_up(n: u32) -> String {
-    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
+    let count = if n == 0 { 1 } else if n > 999 { 999 } else { n }
 
     var result = String::new()
     let _ = result.push_byte($9b)  // CSI
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -210,13 +210,13 @@ pub fn cursor_up(n: u32) -> String {
 
 /// Move cursor down by n rows
 pub fn cursor_down(n: u32) -> String {
-    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
+    let count = if n == 0 { 1 } else if n > 999 { 999 } else { n }
 
     var result = String::new()
     let _ = result.push_byte($9b)  // CSI
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -229,13 +229,13 @@ pub fn cursor_down(n: u32) -> String {
 
 /// Move cursor right by n columns
 pub fn cursor_right(n: u32) -> String {
-    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
+    let count = if n == 0 { 1 } else if n > 999 { 999 } else { n }
 
     var result = String::new()
     let _ = result.push_byte($9b)  // CSI
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -248,13 +248,13 @@ pub fn cursor_right(n: u32) -> String {
 
 /// Move cursor left by n columns
 pub fn cursor_left(n: u32) -> String {
-    let count = if n == 0 { 1u32 } else if n > 999 { 999u32 } else { n }
+    let count = if n == 0 { 1 } else if n > 999 { 999 } else { n }
 
     var result = String::new()
     let _ = result.push_byte($9b)  // CSI
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(count, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(count, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -276,19 +276,19 @@ pub fn fg(pen: Pen) -> String {
     // ANSI SGR codes: 30-37 for foreground, 39 for default
     // These map to Amiga pens 0-7
     let code: u32 = match pen {
-        Pen::Pen0 => 30u32,
-        Pen::Pen1 => 31u32,
-        Pen::Pen2 => 32u32,
-        Pen::Pen3 => 33u32,
-        Pen::Pen4 => 34u32,
-        Pen::Pen5 => 35u32,
-        Pen::Pen6 => 36u32,
-        Pen::Pen7 => 37u32,
-        Pen::Default => 39u32,
+        Pen::Pen0 => 30,
+        Pen::Pen1 => 31,
+        Pen::Pen2 => 32,
+        Pen::Pen3 => 33,
+        Pen::Pen4 => 34,
+        Pen::Pen5 => 35,
+        Pen::Pen6 => 36,
+        Pen::Pen7 => 37,
+        Pen::Default => 39,
     }
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(code, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(code, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -310,19 +310,19 @@ pub fn bg(pen: Pen) -> String {
     // ANSI SGR codes: 40-47 for background, 49 for default
     // These map to Amiga pens 0-7
     let code: u32 = match pen {
-        Pen::Pen0 => 40u32,
-        Pen::Pen1 => 41u32,
-        Pen::Pen2 => 42u32,
-        Pen::Pen3 => 43u32,
-        Pen::Pen4 => 44u32,
-        Pen::Pen5 => 45u32,
-        Pen::Pen6 => 46u32,
-        Pen::Pen7 => 47u32,
-        Pen::Default => 49u32,
+        Pen::Pen0 => 40,
+        Pen::Pen1 => 41,
+        Pen::Pen2 => 42,
+        Pen::Pen3 => 43,
+        Pen::Pen4 => 44,
+        Pen::Pen5 => 45,
+        Pen::Pen6 => 46,
+        Pen::Pen7 => 47,
+        Pen::Default => 49,
     }
 
-    var buf = [0u8; 16]
-    let len = u32_to_string(code, (*u8)&buf[0], 16u32)
+    var buf: [u8] = [0; 16]
+    let len = u32_to_string(code, (*u8)&buf[0], 16)
     while var i < len {
         let _ = result.push_byte(buf[i])
         i++
@@ -386,34 +386,34 @@ impl Ansi {
     /// Add bold attribute
     @chain
     pub fn bold(&var self) {
-        let _ = self.codes.push(1u32)
+        let _ = self.codes.push(1)
     }
 
     /// Add underline attribute
     @chain
     pub fn underline(&var self) {
-        let _ = self.codes.push(4u32)
+        let _ = self.codes.push(4)
     }
 
     /// Add reverse video attribute
     @chain
     pub fn reverse(&var self) {
-        let _ = self.codes.push(7u32)
+        let _ = self.codes.push(7)
     }
 
     /// Set foreground pen
     @chain
     pub fn fg(&var self, pen: Pen) {
         let code: u32 = match pen {
-            Pen::Pen0 => 30u32,
-            Pen::Pen1 => 31u32,
-            Pen::Pen2 => 32u32,
-            Pen::Pen3 => 33u32,
-            Pen::Pen4 => 34u32,
-            Pen::Pen5 => 35u32,
-            Pen::Pen6 => 36u32,
-            Pen::Pen7 => 37u32,
-            Pen::Default => 39u32,
+            Pen::Pen0 => 30,
+            Pen::Pen1 => 31,
+            Pen::Pen2 => 32,
+            Pen::Pen3 => 33,
+            Pen::Pen4 => 34,
+            Pen::Pen5 => 35,
+            Pen::Pen6 => 36,
+            Pen::Pen7 => 37,
+            Pen::Default => 39,
         }
         let _ = self.codes.push(code)
     }
@@ -422,15 +422,15 @@ impl Ansi {
     @chain
     pub fn bg(&var self, pen: Pen) {
         let code: u32 = match pen {
-            Pen::Pen0 => 40u32,
-            Pen::Pen1 => 41u32,
-            Pen::Pen2 => 42u32,
-            Pen::Pen3 => 43u32,
-            Pen::Pen4 => 44u32,
-            Pen::Pen5 => 45u32,
-            Pen::Pen6 => 46u32,
-            Pen::Pen7 => 47u32,
-            Pen::Default => 49u32,
+            Pen::Pen0 => 40,
+            Pen::Pen1 => 41,
+            Pen::Pen2 => 42,
+            Pen::Pen3 => 43,
+            Pen::Pen4 => 44,
+            Pen::Pen5 => 45,
+            Pen::Pen6 => 46,
+            Pen::Pen7 => 47,
+            Pen::Default => 49,
         }
         let _ = self.codes.push(code)
     }
@@ -449,9 +449,9 @@ impl Ansi {
                 }
 
                 // Access directly via pointer arithmetic
-                let c = self.codes.ptr[i]
-                var buf = [0u8; 16]
-                let len = u32_to_string(c, (*u8)&buf[0], 16u32)
+                let c = unsafe { self.codes.ptr[i] }
+                var buf: [u8] = [0; 16]
+                let len = u32_to_string(c, (*u8)&buf[0], 16)
                 while var j < len {
                     let _ = result.push_byte(buf[j])
                     j++
@@ -482,5 +482,5 @@ impl Ansi {
 /// Returns 80x25 as a reasonable default. For actual console dimensions,
 /// a future version will query the console device directly.
 pub fn default_size() -> ConsoleSize {
-    return ConsoleSize { width: 80u32, height: 25u32 }
+    return ConsoleSize { width: 80, height: 25 }
 }

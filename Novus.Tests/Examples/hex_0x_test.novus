@@ -5,20 +5,20 @@ from std::io::file import write
 
 pub fn main() -> i32 {
     // Test basic 0x hex literals
-    let a: u32 = 0xFFu32
-    let b: u32 = 0xffu32
-    let c: u32 = 0xDEADBEEFu32
-    let d: u32 = 0x1234_5678u32
+    let a: u32 = 0xFF
+    let b: u32 = 0xff
+    let c: u32 = 0xDEADBEEF
+    let d: u32 = 0x1234_5678
 
     // Test with type suffixes
-    let e: u8 = 0xFFu8
-    let f: u16 = 0x1234u16
-    let g: u32 = 0xABCDu32
-    let h: i32 = 0x7FFFFFFFi32
+    let e: u8 = 0xFF
+    let f: u16 = 0x1234
+    let g: u32 = 0xABCD
+    let h: i32 = 0x7FFFFFFF
 
     // Compare with $ prefix (should be identical)
-    let i: u32 = $FFu32
-    let j: u32 = $DEADBEEFu32
+    let i: u32 = $FF
+    let j: u32 = $DEADBEEF
 
     // Verify equality
     if a != i {

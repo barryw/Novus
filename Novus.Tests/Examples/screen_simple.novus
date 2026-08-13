@@ -3,8 +3,8 @@
 //
 // Run: novus compile screen_simple.novus -o screen_simple --safety-level 0
 
-from std::ffi::dos import Delay
-from std::ui::screen import ScreenHandle
+from amiga::raw::dos import Delay
+from amiga::sys::intuition import ScreenHandle
 from std::io::file import println
 
 pub fn main() -> i32 {

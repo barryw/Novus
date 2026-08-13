@@ -266,6 +266,15 @@ public partial class IrBuilder
 
         bool isEnumMatch = actualMatchType is IrEnumType;
         bool isIntegerMatch = actualMatchType is IrIntType;
+        bool isByteSequenceMatch = actualMatchType is IrArrayType { ElementType: IrIntType { BitWidth: 8 } } ||
+                                   actualMatchType is IrStructType { StructName: "Slice" or "MutSlice" } slice &&
+                                   slice.GetField("ptr")?.Type switch
+                                   {
+                                       IrPointerType { PointeeType: IrIntType { BitWidth: 8 } } => true,
+                                       IrReferenceType { PointeeType: IrIntType { BitWidth: 8 } } => true,
+                                       IrMutReferenceType { PointeeType: IrIntType { BitWidth: 8 } } => true,
+                                       _ => false
+                                   };
 
         // Handle case where actualMatchType is IrGenericType that refers to an enum
         // This happens when matching on enum types that haven't been fully monomorphized yet
@@ -284,12 +293,12 @@ public partial class IrBuilder
             }
         }
 
-        if (!isEnumMatch && !isIntegerMatch)
+        if (!isEnumMatch && !isIntegerMatch && !isByteSequenceMatch)
         {
             errorLocation = GetLocation(context);
             _diagnostics.ReportError(
                 ErrorCodes.InvalidExpressionType,
-                $"Match can only be used with enum or integer types, got '{matchValue.Type.Name}'",
+                $"Match can only be used with enum, integer, or byte-sequence types, got '{matchValue.Type.Name}'",
                 errorLocation
             );
             return null;
@@ -444,7 +453,21 @@ public partial class IrBuilder
             }
 
             // Handle patterns based on match type
-            if (isEnumMatch)
+            if (isByteSequenceMatch)
+            {
+                var nextLabel = i < checkLabels.Count - 1 ? checkLabels[i + 1] : matchEndLabel;
+                if (pattern is not NovusParser.LiteralPatternContext bytePattern ||
+                    bytePattern.BYTE_STRING_LITERAL() == null)
+                {
+                    _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                        "byte-sequence matches require byte-string patterns or '_'", GetLocation(pattern));
+                    return null;
+                }
+                EmitByteSequencePatternCheck(matchValue, actualMatchType,
+                    ByteLiteralParser.Parse(bytePattern.BYTE_STRING_LITERAL().GetText(), 1),
+                    armLabels[i], nextLabel, $"match_{matchId}_bytes_{i}");
+            }
+            else if (isEnumMatch)
             {
                 // Handle variant patterns
                 string? variantName = null;
@@ -1132,12 +1155,14 @@ public partial class IrBuilder
         if (pattern is NovusParser.LiteralPatternContext literalPattern)
         {
             var literalText = literalPattern.GetText();
-            var parsed = literalPattern.CHAR_LITERAL() != null
+            long? parsed = literalPattern.CHAR_LITERAL() != null
                 ? ParseCharLiteralValue(literalText)
-                : int.TryParse(literalText, out var integerValue) ? integerValue : -1;
-            if (parsed >= 0)
+                : exprIr.Type is IrIntType integerType
+                    ? IntegerLiteralParser.Parse(literalText, integerType).ToBitPattern()
+                    : null;
+            if (parsed is { } literalValue)
             {
-                var literalConstant = new IrConstant(parsed, exprIr.Type);
+                var literalConstant = new IrConstant(literalValue, exprIr.Type);
                 var compareResultName = $"%matches_cmp_{_tempCounter++}";
                 Emit(new IrBinaryOp(compareResultName, IrBinaryOp.OpKind.Eq, exprIr, literalConstant, IrBoolType.Instance));
                 return new IrVariable(compareResultName, IrBoolType.Instance);
@@ -1155,6 +1180,54 @@ public partial class IrBuilder
 
         // Fallback for unsupported patterns
         return new IrBoolConstant(false);
+    }
+
+    private void EmitByteSequencePatternCheck(IrValue value, IrType type, byte[] expected,
+        string matchedLabel, string failedLabel, string prefix)
+    {
+        IrValue pointer;
+        IrValue length;
+        if (type is IrArrayType array)
+        {
+            pointer = value;
+            length = new IrConstant(array.Length, IrIntType.U32);
+        }
+        else
+        {
+            var slice = (IrStructType)type;
+            var pointerField = slice.GetField("ptr")!;
+            var lengthField = slice.GetField("len")!;
+            var pointerName = $"%t{_tempCounter++}";
+            var lengthName = $"%t{_tempCounter++}";
+            Emit(new IrMemberAccess(pointerName, value, "ptr", pointerField.Type, pointerField.Offset));
+            Emit(new IrMemberAccess(lengthName, value, "len", lengthField.Type, lengthField.Offset));
+            pointer = new IrVariable(pointerName, pointerField.Type);
+            length = new IrVariable(lengthName, lengthField.Type);
+        }
+
+        var lengthMatch = $"%t{_tempCounter++}";
+        Emit(new IrBinaryOp(lengthMatch, IrBinaryOp.OpKind.Eq, length,
+            new IrConstant(expected.Length, IrIntType.U32), IrBoolType.Instance));
+        if (expected.Length == 0)
+        {
+            Emit(new IrConditionalBranch(new IrVariable(lengthMatch, IrBoolType.Instance), matchedLabel, failedLabel));
+            return;
+        }
+
+        Emit(new IrConditionalBranch(new IrVariable(lengthMatch, IrBoolType.Instance), $"{prefix}_0", failedLabel));
+        for (var index = 0; index < expected.Length; index++)
+        {
+            Emit(new IrLabel($"{prefix}_{index}"));
+            var elementName = $"%t{_tempCounter++}";
+            Emit(new IrIndexAccess(elementName, pointer, new IrConstant(index, IrIntType.U32), IrIntType.U8,
+                IrBoundsCheckMode.Proven, length));
+            var equalName = $"%t{_tempCounter++}";
+            Emit(new IrBinaryOp(equalName, IrBinaryOp.OpKind.Eq,
+                new IrVariable(elementName, IrIntType.U8), new IrConstant(expected[index], IrIntType.U8),
+                IrBoolType.Instance));
+            Emit(new IrConditionalBranch(new IrVariable(equalName, IrBoolType.Instance),
+                index == expected.Length - 1 ? matchedLabel : $"{prefix}_{index + 1}", failedLabel));
+        }
     }
 
     /// <summary>

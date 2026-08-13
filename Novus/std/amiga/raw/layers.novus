@@ -1,0 +1,417 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: layers.library
+// Base: _LayersBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+/// Initialize Layer_Info structure
+///
+/// Initialize Layer_Info structure in preparation to use other layer operations
+/// on this list of layers. Make the Layers unlocked (open), available to layer
+/// operations.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure
+///
+/// See also: NewLayerInfo(), DisposeLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn InitLayers(li: *Layer_Info)
+/// Create a new layer on top of existing layers.
+///
+/// Create a new Layer of position and size (x0,y0)->(x1,y1) and place it on top
+/// of all other layers. Make this layer of type found in flags if SuperBitMap,
+/// use bm2 as pointer to real SuperBitMap.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure bm - pointer to common BitMap
+///   used by all Layers x0,y0 - upper left hand corner of layer x1,y1 -
+///   lower right hand corner of layer flags - various types of layers
+///   supported as bit sets. bm2 - pointer to optional Super BitMap
+///
+/// # Returns
+/// result - pointer to Layer structure if successful NULL if not
+/// successful
+///
+/// See also: DeleteLayer(), graphics/layers.h, graphics/clip.h, graphics/gfx.h
+@library("layers.library")
+extern pub fn CreateUpfrontLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
+/// Create a new layer behind all existing layers.
+///
+/// Create a new Layer of position and size (x0,y0)->(x1,y1) Make this layer of
+/// type found in flags. If SuperBitMap, use bm2 as pointer to real SuperBitMap,
+/// and copy contents of Superbitmap into display layer.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure bm - pointer to common BitMap
+///   used by all Layers x0,y0 - upper left hand corner of layer x1,y1 -
+///   lower right hand corner of layer flags - various types of layers
+///   supported as bit sets. (for bit definitions, see graphics/layers.h )
+///   bm2 - pointer to optional Super BitMap
+///
+/// # Returns
+/// result - pointer to Layer structure if successful NULL if not
+/// successful
+///
+/// See also: DeleteLayer(), graphics/layers.h, graphics/clip.h, graphics/gfx.h
+@library("layers.library")
+extern pub fn CreateBehindLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, bm2: *BitMap) -> *Layer
+/// Put layer in front of all other layers.
+///
+/// Move this layer to the most upfront position swapping bits in and out of the
+/// display with other layers. If this is a refresh layer then collect damage
+/// list and set the LAYERREFRESH bit in layer->Flags if redraw required.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a nonbackdrop layer
+///
+/// # Returns
+/// result - TRUE if operation successful FALSE if operation unsuccessful
+/// (probably out of memory)
+///
+/// See also: graphics/layers.h
+@library("layers.library")
+extern pub fn UpfrontLayer(dummy: i32, layer: *Layer) -> i32
+/// Put layer behind other layers.
+///
+/// Move this layer to the most behind position swapping bits in and out of the
+/// display with other layers. If other layers are REFRESH then collect their
+/// damage lists and set the LAYERREFRESH bit in the Flags fields of those
+/// layers that may be revealed.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a layer
+///
+/// # Returns
+/// result - TRUE if operation successful FALSE if operation unsuccessful
+/// (probably out of memory)
+///
+/// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn BehindLayer(dummy: i32, layer: *Layer) -> i32
+/// Move layer to new position in BitMap.
+///
+/// Move this layer to new position in shared BitMap. If any refresh layers
+/// become revealed, collect damage and set REFRESH bit in layer Flags.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a nonbackdrop layer dx - delta to add
+///   to current x position dy - delta to add to current y position
+/// * `RETURNS result` - TRUE if operation successful FALSE if failed (out
+///   of memory)
+///
+/// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn MoveLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
+/// Swap bits between common bitmap
+///
+/// Support routine useful for those that need to do some operations not done by
+/// the layer library. Allows programmer to swap the contents of a small BitMap
+/// with a subsection of the display.
+///
+/// # Arguments
+/// * `rp` - pointer to rastport cr - pointer to cliprect to swap bits with
+///
+/// # Returns
+/// result - TRUE if operation successful FALSE if failed (out of memory)
+///
+/// See also: graphics/clip.h, graphics/rastport.h, graphics/clip.h
+@library("layers.library")
+extern pub fn SizeLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32) -> i32
+/// Scroll around in a superbitmap, translate coordinates
+///
+/// For a SuperBitMap Layer: Update the SuperBitMap from the layer display, then
+/// copy bits between Layer and SuperBitMap to reposition layer over different
+/// portion of SuperBitMap. For nonSuperBitMap layers, all (x,y) pairs are
+/// adjusted by the scroll(x,y) value in the layer.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a layer dx - delta to add to current
+///   x scroll value dy - delta to add to current y scroll value
+///
+/// See also: graphics/layers.h
+@library("layers.library")
+extern pub fn ScrollLayer(dummy: i32, layer: *Layer, dx: i32, dy: i32)
+/// Prepare to repair damaged layer.
+///
+/// Convert damage list to ClipRect list and swap in for programmer to redraw
+/// through. This routine simulates the ROM library environment.
+///
+/// # Arguments
+/// * `l` - pointer to a layer
+///
+/// # Returns
+/// result - TRUE if damage list converted to ClipRect list successfully.
+/// FALSE if list conversion aborted. (probably out of memory)
+///
+/// See also: EndUpdate(), graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn BeginUpdate(l: *Layer) -> i32
+/// Remove damage list and restore state of layer to normal.
+///
+/// After the programmer has redrawn his picture he calls this routine to
+/// restore the ClipRects to point to his standard layer tiling. The layer is
+/// then unlocked for access by the layer library.
+///
+/// # Arguments
+/// * `l` - pointer to a layer flag - use TRUE if update was completed. The
+///   damage list is cleared. use FALSE if update not complete. The damage
+///   list is retained.
+///
+/// See also: BeginUpdate(), graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn EndUpdate(layer: *Layer, flag: u16)
+/// Delete layer from layer list.
+///
+/// Remove this layer from the list of layers. Release memory associated with
+/// it.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a layer
+///
+/// # Returns
+/// result - TRUE if this layer successfully deleted from the system FALSE
+/// if layer not deleted. (probably out of memory )
+///
+/// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn DeleteLayer(dummy: i32, layer: *Layer) -> i32
+/// Lock layer to make changes to ClipRects.
+///
+/// Make this layer unavailable for other tasks to use. If another task is
+/// already using this layer then wait for it to complete and then reserve the
+/// layer for your own use.
+///
+/// # Arguments
+/// * `dummy` - unused l - pointer to a layer
+///
+/// See also: UnlockLayer(), LockLayerInfo(), UnlockLayerInfo(), graphics.library/LockLayerRom(), graphics/layers.h
+@library("layers.library")
+extern pub fn LockLayer(dummy: i32, layer: *Layer)
+/// Unlock layer and allow graphics routines to use it.
+///
+/// When finished changing the ClipRects or whatever you were doing with this
+/// layer you must call UnlockLayer() to allow other tasks to proceed with
+/// graphic output to the layer.
+///
+/// # Arguments
+/// * `l` - pointer to a layer
+///
+/// See also: graphics/layers.h, graphics/clip.h
+@library("layers.library")
+extern pub fn UnlockLayer(layer: *Layer)
+/// Lock all layers from graphics output.
+///
+/// First calls LockLayerInfo() Make all layers in this layer list locked.
+///
+/// # Arguments
+/// * `li` - pointer to Layer_Info structure
+///
+/// See also: LockLayer(), LockLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn LockLayers(li: *Layer_Info)
+/// Unlock all layers from graphics output.
+///
+/// Make all layers in this layer list unlocked. Then call UnlockLayerInfo
+///
+/// # Arguments
+/// * `li` - pointer to the Layer_Info structure
+///
+/// See also: LockLayers(), UnlockLayer(), graphics/layers.h
+@library("layers.library")
+extern pub fn UnlockLayers(li: *Layer_Info)
+/// Lock the LayerInfo structure.
+///
+/// Before doing an operation that requires the LayerInfo structure, make sure
+/// that no other task is also using the LayerInfo structure. LockLayerInfo()
+/// returns when the LayerInfo belongs to this task.
+///
+/// # Arguments
+/// * `li` - pointer to Layer_Info structure
+///
+/// See also: UnlockLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn LockLayerInfo(li: *Layer_Info)
+@library("layers.library")
+extern pub fn SwapBitsRastPortClipRect(rp: *RastPort, cr: *ClipRect)
+/// Which Layer is this point in?
+///
+/// Starting at the topmost layer check to see if this point (x,y) occurs in
+/// this layer. If it does return the pointer to this layer.
+///
+/// # Arguments
+///
+/// # Returns
+/// layer - pointer to the topmost layer that this point is in NULL if this
+/// point is not in a layer
+///
+/// See also: graphics/layers.h
+@library("layers.library")
+extern pub fn WhichLayer(li: *Layer_Info, x: i16, y: i16) -> *Layer
+/// Unlock the LayerInfo structure.
+///
+/// After the operation is complete that required a LockLayerInfo, unlock the
+/// LayerInfo structure so that other tasks may affect the layers.
+///
+/// # Arguments
+/// * `li` - pointer to the Layer_Info structure
+///
+/// See also: LockLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn UnlockLayerInfo(li: *Layer_Info)
+/// Allocate and Initialize full Layer_Info structure.
+///
+/// Allocate memory required for full Layer_Info structure. Initialize
+/// Layer_Info structure in preparation to use other layer operations on this
+/// list of layers.
+///
+/// # Arguments
+///
+/// # Returns
+/// result- pointer to Layer_Info structure if successful NULL if not
+/// enough memory
+///
+/// See also: graphics/layers.h
+@library("layers.library")
+extern pub fn NewLayerInfo() -> *Layer_Info
+/// Return all memory for LayerInfo to memory pool
+///
+/// return LayerInfo and any other memory attached to this LayerInfo to memory
+/// allocator. Note: if you wish to delete the layers associated with this
+/// Layer_Info structure, remember to call DeleteLayer() for each of the layers
+/// before calling DisposeLayerInfo().
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure
+///
+/// See also: DeleteLayer(), graphics/layers.h
+@library("layers.library")
+extern pub fn DisposeLayerInfo(li: *Layer_Info)
+/// Convert 1.0 LayerInfo to 1.1 LayerInfo
+///
+/// V1.1 software and any later releases need to have more info in the
+/// Layer_Info structure. To do this in a 1.0 supportable manner requires
+/// allocation and deallocation of the memory whenever most layer library
+/// functions are called.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure
+///
+/// See also: NewLayerInfo(), ThinLayerInfo(), DisposeLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn FattenLayerInfo(li: *Layer_Info) -> i32
+/// Convert 1.1 LayerInfo to 1.0 LayerInfo.
+///
+/// return the extra memory needed that was allocated with FattenLayerInfo. This
+/// is must be done prior to freeing the Layer_Info structure itself.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure
+///
+/// See also: DisposeLayerInfo(), FattenLayerInfo(), graphics/layers.h
+@library("layers.library")
+extern pub fn ThinLayerInfo(li: *Layer_Info)
+/// Put layer in front of another layer.
+///
+/// Move this layer in front of target layer, swapping bits in and out of the
+/// display with other layers. If this is a refresh layer then collect damage
+/// list and set the LAYERREFRESH bit in layer->Flags if redraw required.
+///
+/// # Arguments
+/// * `layertomove` - pointer to layer which should be moved targetlayer -
+///   pointer to target layer in front of which to move layer
+///
+/// # Returns
+/// result = TRUE if operation successful FALSE if operation unsuccessful
+/// (probably out of memory)
+///
+/// See also: graphics/layers.h
+@library("layers.library")
+extern pub fn MoveLayerInFrontOf(layer_to_move: *Layer, other_layer: *Layer) -> i32
+/// Install clip region in layer
+///
+/// Installs a transparent Clip region in the layer. All subsequent graphics
+/// calls will be clipped to this region.
+///
+/// # Arguments
+/// * `l` - pointer to a layer region - pointer to a region
+///
+/// # Returns
+/// oldclipregion - The pointer to the previous ClipRegion that was
+/// installed. Returns NULL if no previous ClipRegion installed.
+///
+/// See also: BeginUpdate() EndUpdate(), graphics/layers.h, graphics/clip.h, graphics/regions.h
+@library("layers.library")
+extern pub fn InstallClipRegion(layer: *Layer, region: *Region) -> *Region
+@library("layers.library")
+extern pub fn MoveSizeLayer(layer: *Layer, dx: i32, dy: i32, dw: i32, dh: i32) -> i32
+@library("layers.library")
+extern pub fn CreateUpfrontHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
+@library("layers.library")
+extern pub fn CreateBehindHookLayer(li: *Layer_Info, bm: *BitMap, x0: i32, y0: i32, x1: i32, y1: i32, flags: i32, hook: *Hook, bm2: *BitMap) -> *Layer
+/// Safely install a new Layer->BackFill hook.    (V36)
+///
+/// Installs a new Layer->Backfill Hook, waiting until it is safe to do so.
+/// Locks the layer while substituting the new Hook and removing the old one.
+///
+/// # Arguments
+/// * `layer` - pointer to the layer in which to install the Backfill Hook.
+///   hook - pointer to layer callback Hook which will be called with
+///   object == (struct RastPort *) result->RastPort and message == [
+///   (Layer *) layer, (struct Rectangle) bounds, (LONG) offsetx, (LONG)
+///   offsety ]
+///
+/// # Returns
+/// oldhook - pointer to the Layer->BackFill Hook that was previously
+/// active. Returns NULL if it was the default hook. In V39, it could
+/// return 1 if there was no hook.
+///
+/// See also: graphics/clip.h utility/hooks.h
+@library("layers.library")
+extern pub fn InstallLayerHook(layer: *Layer, hook: *Hook) -> *Hook
+/// Install a backfill hook for non-layer      (V39)
+///
+/// This function will install a backfill hook for the Layer_Info structure
+/// passed. This backfill hook will be used to clear the background area where
+/// no layer exists.
+///
+/// # Arguments
+/// * `li` - pointer to LayerInfo structure
+/// * `hook` - pointer to layer callback Hook which will be called with
+///   object == (struct RastPort *) result->RastPort and message == [
+///   (ULONG) undefined, (struct Rectangle) bounds ]
+///
+/// # Returns
+/// oldhook - Returns the backfill hook that was in the Layer_Info. Returns
+/// LAYERS_BACKFILL if the default was installed. Returns LAYERS_NOBACKFILL
+/// if there was a NO-OP hook. Returns -1 if there was some failure.
+///
+/// See also: InstallLayerHook()
+@library("layers.library")
+extern pub fn InstallLayerInfoHook(li: *Layer_Info, hook: *Hook) -> *Hook
+@library("layers.library")
+extern pub fn SortLayerCR(layer: *Layer, dx: i16, dy: i16)
+/// Do the given hook for each of the ClipRects    (V39)
+///
+/// This function will call the given hook for each cliprect in the layer that
+/// can be rendered into. This is how the backfill hook in Layers is
+/// implemented.
+///
+/// # Arguments
+/// * `hook` - pointer to layer callback Hook which will be called with
+///   object == (struct RastPort *) result->RastPort and message == [
+///   (Layer *) layer, (struct Rectangle) bounds, (LONG) offsetx, (LONG)
+///   offsety ]
+/// * `rect` - The bounding rectangle that should be used on the layer.
+///   This rectangle "clips" the cliprects to the bound given. If this is
+///   NULL, no bounding will take place. *MUST* not be NULL if the RastPort
+///   is non-layered!
+///
+/// See also: graphics/clip.h utility/hooks.h
+@library("layers.library")
+extern pub fn DoHookClipRects(hook: *Hook, rport: *RastPort, rect: *Rectangle)

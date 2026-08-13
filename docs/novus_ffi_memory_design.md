@@ -103,7 +103,7 @@ fn shared_memory() {
 **NDK functions return raw pointers. You choose how to manage them.**
 
 ```novus
-// std/ffi/exec.novus - Raw FFI layer
+// std/amiga/raw/exec.novus - Raw FFI layer
 extern fn AllocMem(size: u32, flags: u32) -> *u8
 extern fn FreeMem(ptr: *u8, size: u32)
 extern fn OpenLibrary(name: *u8, version: u32) -> *Library
@@ -692,7 +692,7 @@ fn write_file_safe(path: str, data: str) -> Result<(), IoError> {
 
 ### For Library Authors:
 
-1. **std/ffi/** has raw FFI - unsafe but direct
+1. **std/amiga/raw/** has raw FFI - unsafe but direct
 2. **std/** has safe wrappers - build on top of ffi
 3. **Mark unsafe** functions that work with raw pointers
 4. **Provide both** - raw for power users, safe for everyone else

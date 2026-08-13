@@ -1,6 +1,6 @@
 # BufferedWindow Quick Reference
 
-**Module**: `std::ui::buffered_window`
+**Module**: `amiga::sys::intuition::buffered_window`
 **Target**: Modern Amigas (68040+, 16MB+ RAM)
 
 ---
@@ -8,8 +8,8 @@
 ## Basic Usage
 
 ```novus
-from std::ui::buffered_window import BufferedWindow
-from std::ui::window import WindowEvent
+from amiga::sys::intuition::buffered_window import BufferedWindow
+from amiga::sys::intuition import WindowEvent
 
 // Create window
 let mut window = BufferedWindow::new("My App", 640, 480)?
@@ -182,7 +182,7 @@ WindowEvent::Resize(w, h) => {
 **Solution**: Draw to buffer, then present (don't draw directly to window)
 ```novus
 // WRONG
-let ctx = DrawContext::from_window(window.window_handle().handle())?
+let ctx = DrawContext::from_window(window.window_handle().as_raw())?
 
 // RIGHT
 let ctx = window.draw_context()?
@@ -217,9 +217,9 @@ window.present()?  // Don't forget!
   - `Novus.Tests/Examples/buffered_window_demo.novus`
   - `Novus.Tests/Examples/buffered_window_animation.novus`
 - **Related Modules**:
-  - `std::ui::window` - Underlying window management
-  - `std::graphics::draw` - DrawContext for rendering
-  - `std::graphics::bitmap` - BitMapHandle RAII wrapper
+  - `amiga::sys::intuition` - Underlying window management
+  - `amiga::sys::graphics::draw` - DrawContext for rendering
+  - `amiga::sys::graphics::bitmap` - BitMapHandle RAII wrapper
 
 ---
 

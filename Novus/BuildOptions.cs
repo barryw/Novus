@@ -43,7 +43,7 @@ public class BuildOptions
     [Option("safety-level", Required = false, HelpText = "Safety level (0=unsafe, 1=basic, 2=full, 3=paranoid). Default: 2 for debug, 1 for release")]
     public int? SafetyLevel { get; set; }
 
-    [Option("unsafe", Required = false, HelpText = "Disable all safety checks (equivalent to --safety-level 0)")]
+    [Option("unsafe", Required = false, HelpText = "Disable optional runtime instrumentation (safe indexing remains checked; equivalent to --safety-level 0)")]
     public bool UnsafeMode { get; set; }
 
     [Option("use-stdlib-cache", Required = false, HelpText = "Use cached stdlib if available (default; retained for compatibility)")]

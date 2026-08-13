@@ -10,11 +10,11 @@ namespace Novus.Tests;
 public class SafetyLevelTests
 {
     [Fact]
-    public void SafetyLevel_Unsafe_EnableBoundsChecking_ReturnsFalse()
+    public void SafetyLevel_Unsafe_EnableBoundsChecking_ReturnsTrue()
     {
         var level = SafetyLevel.Unsafe;
 
-        Assert.False(level.EnableBoundsChecking());
+        Assert.True(level.EnableBoundsChecking());
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public class SafetyLevelTests
 
         var description = level.GetDescription();
 
-        Assert.Equal("No runtime checks (footguns enabled)", description);
+        Assert.Equal("Minimal instrumentation (safe indexing remains checked)", description);
     }
 
     [Fact]
@@ -276,10 +276,8 @@ public class SafetyLevelTests
     [Fact]
     public void SafetyLevel_AllLevels_BoundsCheckingLogic_IsConsistent()
     {
-        // Unsafe: no bounds checking
-        Assert.False(SafetyLevel.Unsafe.EnableBoundsChecking());
-
-        // Basic and above: bounds checking enabled
+        // Safe indexing is checked at every instrumentation level.
+        Assert.True(SafetyLevel.Unsafe.EnableBoundsChecking());
         Assert.True(SafetyLevel.Basic.EnableBoundsChecking());
         Assert.True(SafetyLevel.Full.EnableBoundsChecking());
         Assert.True(SafetyLevel.Paranoid.EnableBoundsChecking());
@@ -314,7 +312,7 @@ public class SafetyLevelTests
     {
         var level = SafetyLevel.Unsafe;
 
-        Assert.False(level.EnableBoundsChecking());
+        Assert.True(level.EnableBoundsChecking());
         Assert.False(level.EnableDivisionByZeroChecks());
         Assert.False(level.EnableOverflowChecks());
         Assert.False(level.EnableNullChecks());

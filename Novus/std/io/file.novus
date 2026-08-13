@@ -2,9 +2,9 @@
 // Namespace: std::io
 
 from std::core import Result
-from std::error::errors import DosError, dos_last_error
-from std::strings::core import Str
-from std::ffi::dos import VPrintf, Input, Output, WaitForChar, Read, Write
+from amiga::sys::dos::errors import DosError, dos_last_error
+from std::string::core import Str
+from amiga::raw::dos import VPrintf, Input, Output, WaitForChar, Read, Write
 
 // Printf-style formatted output using AmigaOS VPrintf
 // Format string uses AmigaOS RawDoFmt syntax:

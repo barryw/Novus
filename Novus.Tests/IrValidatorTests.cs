@@ -360,6 +360,44 @@ public class IrValidatorTests
     }
 
     [Fact]
+    public void Validate_CheckedPointerIndexWithoutLength_ReportsError()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrIntType.I32);
+        var pointerType = new IrPointerType(IrIntType.I32);
+        function.Parameters.Add(new IrParameter("values", pointerType));
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrIndexAccess(
+            "%value", new IrVariable("values", pointerType),
+            new IrConstant(0, IrIntType.U32), IrIntType.I32));
+        block.AddInstruction(new IrReturn(new IrVariable("%value", IrIntType.I32)));
+        module.AddFunction(function);
+
+        var result = new IrValidator().Validate(module);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("has no length"));
+    }
+
+    [Fact]
+    public void Validate_ExplicitUncheckedPointerIndexWithoutLength_IsValid()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrIntType.I32);
+        var pointerType = new IrPointerType(IrIntType.I32);
+        function.Parameters.Add(new IrParameter("values", pointerType));
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrIndexAccess(
+            "%value", new IrVariable("values", pointerType),
+            new IrConstant(0, IrIntType.U32), IrIntType.I32,
+            IrBoundsCheckMode.Unchecked));
+        block.AddInstruction(new IrReturn(new IrVariable("%value", IrIntType.I32)));
+        module.AddFunction(function);
+
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
     public void Validate_ExtractTagFromNonEnum_ReportsError()
     {
         var module = new IrModule();

@@ -1,9 +1,9 @@
 // Test PutMsg to our own port - simplest possible case
 
-from std::ffi::dos import VPrintf, Delay
-from std::ffi::exec import AllocMem, FreeMem, PutMsg, GetMsg, FindTask
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
-from std::ffi::amiga_structs import Process, Message, MsgPort
+from amiga::raw::dos import VPrintf, Delay
+from amiga::raw::exec import AllocMem, FreeMem, PutMsg, GetMsg, FindTask
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::structs import Process, Message, MsgPort
 
 pub fn main() -> i32 {
     VPrintf("1-START\n", (*u8)0)

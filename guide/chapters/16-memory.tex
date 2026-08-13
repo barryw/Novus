@@ -45,7 +45,7 @@ In C, you'd use \texttt{AllocMem()} with \texttt{MEMF\_CHIP} or \texttt{MEMF\_FA
 \subsection{Memory Flags}
 
 \begin{lstlisting}
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_ANY, MEMF_CLEAR
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_ANY, MEMF_CLEAR
 \end{lstlisting}
 
 \begin{table}[h]
@@ -97,7 +97,7 @@ The \texttt{std::memory} module provides a hierarchy of memory types, from low-l
 
 \begin{lstlisting}
 from std::memory::block import MemoryBlock
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::consts import MEMF_FAST
 
 fn allocate_buffer() {
     // Allocate 1024 bytes of fast RAM
@@ -108,8 +108,8 @@ fn allocate_buffer() {
             let size: u32 = block.size()
 
             // Write data
-            ptr[0] = 42u8
-            ptr[1] = 43u8
+            ptr[0] = 42
+            ptr[1] = 43
 
             // Memory automatically freed here!
         },
@@ -194,7 +194,7 @@ match MemoryBlock::alloc(1024, MEMF_CHIP) {
 
 \begin{lstlisting}
 from std::memory::block import Allocation
-from std::ffi::amiga_consts import MEMF_FAST
+from amiga::raw::consts import MEMF_FAST
 
 struct Vertex {
     x: i32,
@@ -229,7 +229,7 @@ fn allocate_vertices() {
 
 \begin{lstlisting}
 // This would overflow: $FFFFFFFF * 4 > u32::MAX
-match Allocation::<u32>::new($FFFFFFFFu32, MEMF_FAST) {
+match Allocation::<u32>::new($FFFFFFFF, MEMF_FAST) {
     Option::Some(_) => {},  // Never reached
     Option::None => {}      // Returns None - overflow detected
 }
@@ -244,7 +244,7 @@ match Allocation::<u32>::new($FFFFFFFFu32, MEMF_FAST) {
 
 \begin{lstlisting}
 from std::memory::block import Box
-from std::ffi::amiga_consts import MEMF_CHIP
+from amiga::raw::consts import MEMF_CHIP
 
 struct LargeBuffer {
     data: [u8; 4096],
@@ -252,13 +252,13 @@ struct LargeBuffer {
 
 fn use_large_struct() {
     // Too big for stack? Put it on the heap
-    let initial = LargeBuffer { data: [0u8; 4096] }
+    let initial = LargeBuffer { data: [0; 4096] }
 
     match Box::new(initial) {
         Option::Some(var boxed) => {
             // Access via get() / get_mut()
             let ptr: *LargeBuffer = boxed.get_mut()
-            (*ptr).data[0] = 42u8
+            (*ptr).data[0] = 42
         },
         Option::None => {}
     }
@@ -818,7 +818,7 @@ This naming convention matches the AmigaOS \texttt{CacheClearE()} flags.
 When freeing chip RAM that the Blitter may have been using, you \textbf{must} wait for the Blitter to finish first:
 
 \begin{lstlisting}
-from std::ffi::graphics import WaitBlit
+from amiga::raw::graphics import WaitBlit
 
 fn safe_free_chip_buffer(buffer: &var MemoryBlock) {
     // CRITICAL: Blitter might still be reading/writing this memory!

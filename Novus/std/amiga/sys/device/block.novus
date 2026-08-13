@@ -1,0 +1,82 @@
+// Tier 2 block-device commands over an owned DeviceRequest.
+
+from std::core import Option, Result
+from std::memory::slice import MutSlice, Slice
+from std::string::core import Str
+from amiga::sys::device::request import DeviceError, DeviceRequest
+from amiga::raw::consts import CMD_READ, CMD_WRITE, TD_GETGEOMETRY
+from amiga::raw::structs import DriveGeometry, IOStdReq
+
+pub struct SystemBlockGeometry {
+    block_bytes: u32,
+    total_blocks: u32,
+    cylinders: u32,
+    heads: u32,
+    blocks_per_track: u32,
+}
+
+impl SystemBlockGeometry {
+    pub fn block_bytes(&self) -> u32 { return self.block_bytes }
+    pub fn total_blocks(&self) -> u32 { return self.total_blocks }
+    pub fn cylinders(&self) -> u32 { return self.cylinders }
+    pub fn heads(&self) -> u32 { return self.heads }
+    pub fn blocks_per_track(&self) -> u32 { return self.blocks_per_track }
+}
+
+impl DeviceRequest {
+    pub fn open_block(name: Str, unit: u32) -> Result<DeviceRequest, DeviceError> {
+        return DeviceRequest::open(name, unit, @sizeof(IOStdReq))
+    }
+
+    pub fn block_geometry(&var self) -> Result<SystemBlockGeometry, DeviceError> {
+        var raw = DriveGeometry {
+            dg_SectorSize: 0,
+            dg_TotalSectors: 0,
+            dg_Cylinders: 0,
+            dg_CylSectors: 0,
+            dg_Heads: 0,
+            dg_TrackSectors: 0,
+            dg_BufMemType: 0,
+            dg_DeviceType: 0,
+            dg_Flags: 0,
+            dg_Reserved: 0,
+        }
+        let io = (*IOStdReq)self.as_raw()
+        io.io_Actual = 0
+        io.io_Length = @sizeof(DriveGeometry)
+        io.io_Data = (*u8)&var raw
+        io.io_Offset = 0
+        self.command((u16)TD_GETGEOMETRY)?
+        return Result::Ok(SystemBlockGeometry {
+            block_bytes: raw.dg_SectorSize,
+            total_blocks: raw.dg_TotalSectors,
+            cylinders: raw.dg_Cylinders,
+            heads: raw.dg_Heads,
+            blocks_per_track: raw.dg_TrackSectors,
+        })
+    }
+
+    pub fn read_at(&var self, offset: u32, consuming buffer: MutSlice<u8>) -> Result<u32, DeviceError> {
+        return Result::Ok(0) if buffer.is_empty()
+        let Option::Some(first) = buffer.get_mut(0) else { return Result::Ok(0) }
+        let io = (*IOStdReq)self.as_raw()
+        io.io_Actual = 0
+        io.io_Length = buffer.len()
+        unsafe { io.io_Data = (*u8)first }
+        io.io_Offset = offset
+        self.command((u16)CMD_READ)?
+        return Result::Ok(io.io_Actual)
+    }
+
+    pub fn write_at(&var self, offset: u32, consuming buffer: Slice<u8>) -> Result<u32, DeviceError> {
+        return Result::Ok(0) if buffer.is_empty()
+        let Option::Some(first) = buffer.get(0) else { return Result::Ok(0) }
+        let io = (*IOStdReq)self.as_raw()
+        io.io_Actual = 0
+        io.io_Length = buffer.len()
+        unsafe { io.io_Data = (*u8)first }
+        io.io_Offset = offset
+        self.command((u16)CMD_WRITE)?
+        return Result::Ok(io.io_Actual)
+    }
+}

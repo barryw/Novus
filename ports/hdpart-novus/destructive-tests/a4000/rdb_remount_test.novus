@@ -1,22 +1,22 @@
 // Explicit cold-start proof for the disposable lifecycle HDF.
 
 from std::core import Option, Result
-from std::ffi::amiga_consts import ACCESS_READ
-from std::os::block_device import BlockDevice
-from std::os::dos import DirLockHandle
-from std::os::timer import Duration, delay
+from amiga::raw::consts import ACCESS_READ
+from amiga::storage import BlockDevice
+from amiga::sys::dos import DirLockHandle
+from amiga::timer import Duration, delay
 from std::test::test import expect_eq
 from format import prepare_node
 from rdb_io import load_rdb
 
 fn wait_for_root() -> Option<DirLockHandle> {
-    var attempt = 0u32
-    while attempt < 20u32 {
+    var attempt: u32 = 0
+    while attempt < 20 {
         match DirLockHandle::lock("NVT0:", ACCESS_READ) {
             Result::Ok(value) => return Option::Some(value),
             Result::Err(_) => {},
         }
-        match delay(Duration::millis(100u32)) {
+        match delay(Duration::millis(100)) {
             Result::Ok(_) => {},
             Result::Err(_) => return Option::None,
         }
@@ -26,18 +26,18 @@ fn wait_for_root() -> Option<DirLockHandle> {
 }
 
 fn probe() -> i32 {
-    var disk = match BlockDevice::open("uaehf.device", 1u32) {
+    var disk = match BlockDevice::open("uaehf.device", 1) {
         Result::Ok(value) => value,
         Result::Err(_) => return 50,
     }
-    if disk.geometry().total_blocks() != 131072u32 || disk.geometry().block_bytes() != 512u32 {
+    if disk.geometry().total_blocks() != 131072 || disk.geometry().block_bytes() != 512 {
         return 51
     }
     let model = match load_rdb(&var disk) {
         Result::Ok(value) => value,
         Result::Err(_) => return 52,
     }
-    let prepared = match prepare_node("NVT0", "uaehf.device", 1u32, &model, 0u32) {
+    let prepared = match prepare_node("NVT0", "uaehf.device", 1, &model, 0) {
         Result::Ok(value) => value,
         Result::Err(_) => return 53,
     }

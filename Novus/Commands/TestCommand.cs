@@ -493,7 +493,7 @@ public static class TestCommand
         // Import timer for benchmark mode
         if (options.Benchmark)
         {
-            sb.AppendLine("from std::os::timer import TimerHandle");
+            sb.AppendLine("from amiga::timer import TimerHandle");
         }
         sb.AppendLine();
 
@@ -665,13 +665,13 @@ public static class TestCommand
         {
             sb.AppendLine();
             sb.AppendLine("    // Display total time with appropriate unit");
-            sb.AppendLine("    if total_time_us >= 1000000u32 {");
-            sb.AppendLine("        let secs = total_time_us / 1000000u32");
-            sb.AppendLine("        let ms = (total_time_us % 1000000u32) / 1000u32");
+            sb.AppendLine("    if total_time_us >= 1000000 {");
+            sb.AppendLine("        let secs = total_time_us / 1000000");
+            sb.AppendLine("        let ms = (total_time_us % 1000000) / 1000");
             sb.AppendLine("        write(\"Time:    %lu.%03lu s\\n\", secs, ms)");
-            sb.AppendLine("    } else if total_time_us >= 1000u32 {");
-            sb.AppendLine("        let ms = total_time_us / 1000u32");
-            sb.AppendLine("        let us = total_time_us % 1000u32");
+            sb.AppendLine("    } else if total_time_us >= 1000 {");
+            sb.AppendLine("        let ms = total_time_us / 1000");
+            sb.AppendLine("        let us = total_time_us % 1000");
             sb.AppendLine("        write(\"Time:    %lu.%03lu ms\\n\", ms, us)");
             sb.AppendLine("    } else {");
             sb.AppendLine("        write(\"Time:    %lu µs\\n\", total_time_us)");

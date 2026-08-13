@@ -173,9 +173,9 @@ fpu = "auto"
 //
 // This template handles WBStartup messages for Workbench launches.
 
-from std::ffi::dos import Input, Output, Write
-from std::ffi::exec import ReplyMsg, Forbid
-from std::ffi::amiga_structs import WBStartup, WBArg
+from amiga::raw::dos import Input, Output, Write
+from amiga::raw::exec import ReplyMsg, Forbid
+from amiga::raw::structs import WBStartup, WBArg
 
 pub fn main() -> i32 {
     // Check if launched from Workbench or CLI
@@ -218,13 +218,10 @@ fn handle_cli() -> i32 {
 ```novus
 // {{PROJECT_NAME}} - Dual-mode application (CLI + Workbench)
 
-from std::ffi::dos import Input
-from std::args import parse_args
+from amiga::workbench import is_workbench
 
 pub fn main() -> i32 {
-    let input_fh = Input()
-
-    if input_fh == 0 {
+    if is_workbench() {
         // Workbench launch
         return run_workbench()
     } else {

@@ -12,7 +12,7 @@
 //
 // Run with: novus test str_equals_test.novus
 
-from std::strings::core import Str
+from std::string::core import Str
 from std::test::test import expect
 
 // ============================================================================

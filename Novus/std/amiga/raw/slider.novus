@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: slider.library
+// Base: _SliderBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("slider.library")
+extern pub fn SLIDER_GetClass() -> *u8

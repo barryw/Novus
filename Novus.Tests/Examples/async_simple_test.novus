@@ -12,7 +12,7 @@
 from std::core import Result
 from std::async::executor import block_on_sleep, ExecutorError
 from std::async::sleep import sleep
-from std::os::timer import Duration
+from amiga::timer import Duration
 from std::io::file import write
 
 fn main() -> i32 {

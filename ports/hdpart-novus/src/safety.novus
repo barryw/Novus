@@ -1,9 +1,9 @@
 // Pure safety rules ported from HDPart safety.c at d71ced9.
 
 from std::core import Option, Result
-from std::memory::slice import Slice
-from std::os::doslist import DeviceProcess, DosDeviceList
-from std::strings::core import FixedCString, FixedString, Str
+from std::memory import Slice
+from amiga::sys::dos import DeviceProcess, DosDeviceList
+from std::string import FixedCString, FixedString, Str
 from discovery import is_device_name
 
 pub enum DeviceLiveness {
@@ -118,6 +118,22 @@ pub fn mounted_partition_name(
         }
     }
     return Option::None
+}
+
+/// True when DOS already owns this device name. Failure is treated as a
+/// conflict so callers cannot register an ambiguous replacement.
+pub fn mounted_device_name_exists(name: Str) -> bool {
+    let devices = match DosDeviceList::lock() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return true,
+    }
+    var entries = devices.iter()
+    forever {
+        let Option::Some(entry) = entries.next() else { break }
+        let Option::Some(existing) = entry.name() else { continue }
+        return true if existing.eq_ignore_case(name)
+    }
+    return false
 }
 
 /// Return the live DOS name of the first overlapping mounted partition.

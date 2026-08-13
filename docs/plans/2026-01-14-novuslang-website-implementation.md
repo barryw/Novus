@@ -1593,7 +1593,7 @@ add_one(&mut numbers)
 For OS-level allocation (Chip RAM, specific memory types):
 
 ```novus
-use std::os::exec::{AllocMem, FreeMem, MEMF_CHIP}
+use amiga::sys::exec::{AllocMem, FreeMem, MEMF_CHIP}
 
 let chip_buffer = AllocMem(1024, MEMF_CHIP)?
 // ... use buffer ...

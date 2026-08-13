@@ -1,0 +1,21 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: battmem.resource
+// Base: _BattMemBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("battmem.resource")
+extern pub fn ObtainBattSemaphore()
+@library("battmem.resource")
+extern pub fn ReleaseBattSemaphore()
+@library("battmem.resource")
+extern pub fn ReadBattMem(buffer: *u8, offset: u32, length: u32) -> u32
+@library("battmem.resource")
+extern pub fn WriteBattMem(buffer: *u8, offset: u32, length: u32) -> u32

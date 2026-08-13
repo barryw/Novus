@@ -33,7 +33,7 @@ This approach has several problems:
 Novus provides `BlitterGuard`, an RAII (Resource Acquisition Is Initialization) wrapper that automatically manages blitter ownership:
 
 ```novus
-from std::graphics::blitter import BlitterGuard
+from amiga::sys::graphics::blitter import BlitterGuard
 
 {
     let guard = BlitterGuard::acquire()
@@ -97,7 +97,7 @@ When `BlitterGuard` goes out of scope, its `Drop` implementation automatically:
 ### Basic Usage
 
 ```novus
-from std::graphics::blitter import BlitterGuard
+from amiga::sys::graphics::blitter import BlitterGuard
 
 fn do_blit_operation() {
     let guard = BlitterGuard::acquire()
@@ -170,8 +170,8 @@ fn multiple_blits() {
 The high-level `BlitterOps` API uses `BlitterGuard` internally, so you don't need to manually acquire the blitter:
 
 ```novus
-from std::graphics::blitter import BlitterOps
-from std::graphics::bitmap import BitMapHandle
+from amiga::sys::graphics::blitter import BlitterOps
+from amiga::sys::graphics::bitmap import BitMapHandle
 
 fn high_level_blit(src: &BitMapHandle, dst: &mut BitMapHandle) -> Result<(), BlitterError> {
     // BlitterOps::copy_rect() uses BlitterGuard internally
@@ -294,5 +294,5 @@ guard.wait()
 ## See Also
 
 - `/Users/barry/RiderProjects/Novus/Novus/std/graphics/blitter.novus` - Full BlitterGuard implementation
-- `/Users/barry/RiderProjects/Novus/Novus/std/ffi/graphics.novus` - FFI declarations for OwnBlitter/DisownBlitter/WaitBlit
+- `/Users/barry/RiderProjects/Novus/Novus/std/amiga/raw/graphics.novus` - FFI declarations for OwnBlitter/DisownBlitter/WaitBlit
 - Amiga Hardware Reference Manual, Chapter 6 - Blitter hardware details

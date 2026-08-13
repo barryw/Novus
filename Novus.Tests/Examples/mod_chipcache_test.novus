@@ -2,10 +2,10 @@
 // Demonstrates storing MOD in fast RAM with automatic chip RAM copy on play
 
 from std::core import Result
-from std::audio::ptplayer import ModPlayer, ModAsset
-from std::audio::errors import AudioError
-from std::hardware::chipset import DISPLAY, DisplayType
-from std::memory::chip import is_chip_ram
+from amiga::sys::hardware::ptplayer import ModPlayer, ModAsset
+from amiga::sys::audio::errors import AudioError
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::exec::memory::chip import is_chip_ram
 from std::io::file import write, wait_for_key
 
 // Embed MOD in fast RAM (chip = false)

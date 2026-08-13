@@ -6,7 +6,7 @@ from std::net::tcp import TcpStream
 from std::net::addr import SocketAddrV4, Ipv4Addr
 from std::net::errors import NetError
 from std::core import Result
-from std::ffi::dos import PutStr
+from amiga::raw::dos import PutStr
 
 fn main() -> i32 {
     // Initialize the socket library
@@ -20,7 +20,7 @@ fn main() -> i32 {
     }
 
     // Create address for localhost:8080
-    let addr = SocketAddrV4::new(Ipv4Addr::localhost(), 8080u16)
+    let addr = SocketAddrV4::new(Ipv4Addr::localhost(), 8080)
 
     // Try to connect
     let stream = match TcpStream::connect(addr) {
@@ -47,7 +47,7 @@ fn main() -> i32 {
     }
 
     // Read response
-    var buf = [0u8; 256]
+    var buf: [u8] = [0; 256]
     let buf_ptr: *u8 = (*u8)&buf
     match stream.read(buf_ptr, 256) {
         Result::Ok(n) => {

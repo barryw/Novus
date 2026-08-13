@@ -51,7 +51,7 @@ fn main() {
 
     // Also test 180 degree rotation
     write("\n--- Calling v.rotate(180deg) ---\n")
-    let rot180 = v.rotate(32768u16)
+    let rot180 = v.rotate(32768)
     write("rot180.x raw = %ld (expect ~-65536)\n", rot180.get_x().to_raw())
     write("rot180.y raw = %ld (expect ~0)\n", rot180.get_y().to_raw())
 

@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: translator.library
+// Base: _TranslatorBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("translator.library")
+extern pub fn Translate(inputString: *u8, inputLength: i32, outputBuffer: *u8, bufferSize: i32) -> i32

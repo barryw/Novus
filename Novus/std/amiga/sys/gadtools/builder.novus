@@ -1,0 +1,1351 @@
+// Safe GadTools window and control builder for AmigaOS 3.1+.
+
+from std::core import Option, Result
+from amiga::sys::intuition::errors import IntuitionError
+from amiga::raw::structs import Gadget, IntuiMessage, List, Menu, NewGadget, Node, RastPort, Screen, StringInfo, TagItem, Window
+from amiga::raw::consts import *
+from amiga::raw::exec import AddTail, AllocVec, CopyMem, FreeVec, WaitPort
+from amiga::raw::gadtools import CreateContext, CreateGadgetA, CreateMenusA, FreeGadgets, FreeMenus, FreeVisualInfo, GetVisualInfoA, GT_GetIMsg, GT_RefreshWindow, GT_ReplyIMsg, GT_SetGadgetAttrsA, LayoutMenusA, NewMenu
+from amiga::raw::graphics import Draw, Move, RectFill, SetAPen
+from amiga::raw::intuition import ClearMenuStrip, CloseScreen, CloseWindow, LockPubScreen, OffMenu, OnMenu, OpenScreenTagList, OpenWindowTagList, SetMenuStrip, UnlockPubScreen
+from std::string::core import Str
+from std::memory::slice import Slice
+from amiga::sys::gadtools::menu import GadToolsMenuBuilder, GadToolsMenuStrip
+from amiga::sys::intuition::window import WindowRef
+
+/// Events enabled by GadToolsWindow's fixed IDCMP mask.
+pub enum GadToolsEvent {
+    Close,
+    Refresh,
+    MenuPick(u16, u16),
+    MenuSubPick(u16, u16, u16),
+    GadgetUp(u16, u16),
+    GadgetDown(u16, u16),
+    MouseButton(i16, i16, bool),
+    Unknown(u32),
+}
+
+pub struct GadgetBounds {
+    x: i16
+    y: i16
+    width: i16
+    height: i16
+}
+
+/// Compile-time UI descriptions use static string data and fixed-size arrays.
+/// Use GadToolsBuilder instead when controls or menus are created at runtime.
+pub struct StaticGadget {
+    kind: u32
+    id: u16
+    label: *u8
+    x: i16
+    y: i16
+    width: i16
+    height: i16
+    placement: u32
+    tags: [TagItem; 3]
+}
+
+pub struct StaticMenuEntry {
+    raw: NewMenu
+}
+
+pub struct StaticGadToolsUi {
+    title: *u8
+    bounds: GadgetBounds
+    gadgets: *StaticGadget
+    gadget_count: u32
+    menus: *StaticMenuEntry
+}
+
+struct GadgetModelSlot {
+    id: u16
+    data: *u8
+    gadget: *Gadget
+}
+
+impl GadgetBounds {
+    pub const fn new(x: i16, y: i16, width: i16, height: i16) -> GadgetBounds {
+        return GadgetBounds { x: x, y: y, width: width, height: height }
+    }
+}
+
+impl StaticGadget {
+    pub const fn checkbox(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16, checked: bool) -> StaticGadget {
+        return StaticGadget {
+            kind: CHECKBOX_KIND, id: id, label: label,
+            x: x, y: y, width: width, height: height,
+            placement: PLACETEXT_LEFT,
+            tags: [
+                TagItem { ti_Tag: GTCB_Checked, ti_Data: (u32)checked },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+        }
+    }
+
+    @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    pub const fn integer(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16, value: i32, max_chars: u16) -> StaticGadget {
+        return StaticGadget {
+            kind: INTEGER_KIND, id: id, label: label,
+            x: x, y: y, width: width, height: height,
+            placement: PLACETEXT_LEFT,
+            tags: [
+                TagItem { ti_Tag: GTIN_Number, ti_Data: (u32)value },
+                TagItem { ti_Tag: GTIN_MaxChars, ti_Data: (u32)max_chars },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+        }
+    }
+
+    pub const fn button(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16) -> StaticGadget {
+        return StaticGadget {
+            kind: BUTTON_KIND, id: id, label: label,
+            x: x, y: y, width: width, height: height,
+            placement: PLACETEXT_IN,
+            tags: [
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+        }
+    }
+
+    /// Read-only text that owns an internal copy of its initial value.
+    pub const fn text(id: u16, text: *u8, x: i16, y: i16, width: i16, height: i16) -> StaticGadget {
+        return StaticGadget {
+            kind: TEXT_KIND, id: id, label: null,
+            x: x, y: y, width: width, height: height,
+            placement: 0,
+            tags: [
+                TagItem { ti_Tag: GTTX_Text, ti_Data: (u32)text },
+                TagItem { ti_Tag: GTTX_CopyText, ti_Data: 1 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+        }
+    }
+}
+
+impl StaticMenuEntry {
+    pub const fn title(label: *u8) -> StaticMenuEntry {
+        return StaticMenuEntry { raw: NewMenu {
+            nm_Type: (u8)NM_TITLE, nm_Label: label, nm_CommKey: null,
+            nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null
+        } }
+    }
+
+    pub const fn item(label: *u8, key: *u8) -> StaticMenuEntry {
+        return StaticMenuEntry { raw: NewMenu {
+            nm_Type: (u8)NM_ITEM, nm_Label: label, nm_CommKey: key,
+            nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null
+        } }
+    }
+
+    pub const fn sub_item(label: *u8, key: *u8) -> StaticMenuEntry {
+        return StaticMenuEntry { raw: NewMenu {
+            nm_Type: (u8)NM_SUB, nm_Label: label, nm_CommKey: key,
+            nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null
+        } }
+    }
+
+    pub const fn separator() -> StaticMenuEntry {
+        return StaticMenuEntry { raw: NewMenu {
+            nm_Type: (u8)NM_ITEM, nm_Label: (*u8)(-1), nm_CommKey: null,
+            nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null
+        } }
+    }
+
+    pub const fn end() -> StaticMenuEntry {
+        return StaticMenuEntry { raw: NewMenu {
+            nm_Type: (u8)NM_END, nm_Label: null, nm_CommKey: null,
+            nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null
+        } }
+    }
+}
+
+pub struct GadToolsBuilder {
+    screen: *Screen
+    owns_screen: bool
+    releases_screen: bool
+    visual_info: *u8
+    gadgets: *Gadget
+    previous: *Gadget
+    labels: **u8
+    label_count: u32
+    label_capacity: u32
+    models: *GadgetModelSlot
+    model_count: u32
+    model_capacity: u32
+}
+
+impl GadToolsBuilder {
+    /// Lock Workbench and create a GadTools context using only V36 APIs.
+    pub fn workbench() -> Result<GadToolsBuilder, IntuitionError> {
+        unsafe {
+            let screen = LockPubScreen(null)
+            if !screen {
+                return Result::Err(IntuitionError::InvalidScreen)
+            }
+
+            let visual_info = GetVisualInfoA(screen, null)
+            if !visual_info {
+                UnlockPubScreen(null, screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+
+            var gadgets: *Gadget = null
+            let previous = CreateContext(&var gadgets)
+            if !previous {
+                FreeVisualInfo(visual_info)
+                UnlockPubScreen(null, screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+
+            let label_capacity: u32 = 16
+            let labels = AllocVec(label_capacity * 4, MEMF_PUBLIC | MEMF_CLEAR)
+            if !labels {
+                FreeGadgets(gadgets)
+                FreeVisualInfo(visual_info)
+                UnlockPubScreen(null, screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+
+            let model_capacity: u32 = 4
+            let models = AllocVec(model_capacity * @sizeof(GadgetModelSlot), MEMF_PUBLIC | MEMF_CLEAR)
+            if !models {
+                FreeVec(labels)
+                FreeGadgets(gadgets)
+                FreeVisualInfo(visual_info)
+                UnlockPubScreen(null, screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+
+            return Result::Ok(GadToolsBuilder {
+                screen: screen,
+                owns_screen: false,
+                releases_screen: true,
+                visual_info: visual_info,
+                gadgets: gadgets,
+                previous: previous,
+                labels: (**u8)labels,
+                label_count: 0,
+                label_capacity: label_capacity,
+                models: (*GadgetModelSlot)models,
+                model_count: 0,
+                model_capacity: model_capacity,
+            })
+        }
+    }
+
+    /// Use Workbench when available, otherwise open a modest OS 3.1-compatible
+    /// own screen. Applications that repair boot media must not require Workbench.
+    pub fn workbench_or_own() -> Result<GadToolsBuilder, IntuitionError> {
+        match GadToolsBuilder::workbench() {
+            Result::Ok(builder) => return Result::Ok(builder),
+            Result::Err(_) => {},
+        }
+        unsafe {
+            let title: Str = "HDPart"
+            let tags = [
+                TagItem { ti_Tag: SA_DisplayID, ti_Data: HIRES_KEY },
+                TagItem { ti_Tag: SA_Depth, ti_Data: 2 },
+                TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
+                TagItem { ti_Tag: SA_ShowTitle, ti_Data: 1 },
+                TagItem { ti_Tag: SA_Quiet, ti_Data: 1 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+            let screen = OpenScreenTagList(null, &tags[0])
+            if !screen { return Result::Err(IntuitionError::InvalidScreen) }
+            let visual_info = GetVisualInfoA(screen, null)
+            if !visual_info {
+                CloseScreen(screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            var gadgets: *Gadget = null
+            let previous = CreateContext(&var gadgets)
+            if !previous {
+                FreeVisualInfo(visual_info)
+                CloseScreen(screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            let labels = AllocVec(16 * 4, MEMF_PUBLIC | MEMF_CLEAR)
+            let models = AllocVec(4 * @sizeof(GadgetModelSlot), MEMF_PUBLIC | MEMF_CLEAR)
+            if !labels || !models {
+                if models { FreeVec(models) }
+                if labels { FreeVec(labels) }
+                FreeGadgets(gadgets)
+                FreeVisualInfo(visual_info)
+                CloseScreen(screen)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            return Result::Ok(GadToolsBuilder {
+                screen: screen,
+                owns_screen: true,
+                releases_screen: true,
+                visual_info: visual_info,
+                gadgets: gadgets,
+                previous: previous,
+                labels: (**u8)labels,
+                label_count: 0,
+                label_capacity: 16,
+                models: (*GadgetModelSlot)models,
+                model_count: 0,
+                model_capacity: 4,
+            })
+        }
+    }
+
+    fn borrowed_screen(screen: *Screen) -> Result<GadToolsBuilder, IntuitionError> {
+        unsafe {
+            if !screen { return Result::Err(IntuitionError::InvalidScreen) }
+            let visual_info = GetVisualInfoA(screen, null)
+            if !visual_info { return Result::Err(IntuitionError::GadgetCreateFailed) }
+            var gadgets: *Gadget = null
+            let previous = CreateContext(&var gadgets)
+            if !previous {
+                FreeVisualInfo(visual_info)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            let labels = AllocVec(16 * 4, MEMF_PUBLIC | MEMF_CLEAR)
+            let models = AllocVec(4 * @sizeof(GadgetModelSlot), MEMF_PUBLIC | MEMF_CLEAR)
+            if !labels || !models {
+                if models { FreeVec(models) }
+                if labels { FreeVec(labels) }
+                FreeGadgets(gadgets)
+                FreeVisualInfo(visual_info)
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            return Result::Ok(GadToolsBuilder {
+                screen: screen,
+                owns_screen: false,
+                releases_screen: false,
+                visual_info: visual_info,
+                gadgets: gadgets,
+                previous: previous,
+                labels: (**u8)labels,
+                label_count: 0,
+                label_capacity: 16,
+                models: (*GadgetModelSlot)models,
+                model_count: 0,
+                model_capacity: 4,
+            })
+        }
+    }
+
+    pub fn menu_builder(&self) -> GadToolsMenuBuilder {
+        return GadToolsMenuBuilder::new(self.screen)
+    }
+
+    pub fn add_checkbox(&var self, id: u16, label: Str, bounds: GadgetBounds, checked: bool) -> Result<(), IntuitionError> {
+        let tags = [
+            TagItem { ti_Tag: GTCB_Checked, ti_Data: if checked { 1 } else { 0 } },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return self.add_gadget(CHECKBOX_KIND, id, label, bounds, PLACETEXT_LEFT, &tags[0])
+    }
+
+    @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    pub fn add_integer(&var self, id: u16, label: Str, bounds: GadgetBounds, value: i32, max_chars: u16) -> Result<(), IntuitionError> {
+        let tags = [
+            TagItem { ti_Tag: GTIN_Number, ti_Data: (u32)value },
+            TagItem { ti_Tag: GTIN_MaxChars, ti_Data: (u32)max_chars },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return self.add_gadget(INTEGER_KIND, id, label, self.fit_string_bounds(bounds), PLACETEXT_LEFT, &tags[0])
+    }
+
+    pub fn add_button(&var self, id: u16, label: Str, bounds: GadgetBounds) -> Result<(), IntuitionError> {
+        return self.add_gadget(BUTTON_KIND, id, label, bounds, PLACETEXT_IN, null)
+    }
+
+    /// Add a cycle gadget from ordinary Novus strings. Labels are copied and
+    /// remain valid until the completed window is dropped.
+    pub fn add_cycle(&var self, id: u16, label: Str, bounds: GadgetBounds, choices: Slice<Str>, active: u16) -> Result<(), IntuitionError> {
+        if choices.is_empty() || (u32)active >= choices.len() {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let model = alloc_choice_model(choices)
+        if !model { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        if !self.track_model(id, model) {
+            unsafe { FreeVec(model) }
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let tags = [
+            TagItem { ti_Tag: GTCY_Labels, ti_Data: (u32)model },
+            TagItem { ti_Tag: GTCY_Active, ti_Data: (u32)active },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return match self.add_gadget(CYCLE_KIND, id, label, bounds, PLACETEXT_LEFT, &tags[0]) {
+            Result::Ok(_) => Result::Ok(()),
+            Result::Err(error) => {
+                self.discard_last_model(id)
+                Result::Err(error)
+            },
+        }
+    }
+
+    /// Add a list view whose rows are copied into an Exec list owned by the
+    /// completed window. Application code never handles List or Node pointers.
+    pub fn add_list_view(&var self, id: u16, bounds: GadgetBounds, rows: Slice<Str>, selected: Option<u16>) -> Result<(), IntuitionError> {
+        let selected_index: u32 = match selected {
+            Option::Some(index) => (u32)index,
+            Option::None => $FFFF,
+        }
+        if selected_index != $FFFF && selected_index >= rows.len() {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let model = alloc_list_model(rows)
+        if !model { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        if !self.track_model(id, model) {
+            unsafe { FreeVec(model) }
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let tags = [
+            TagItem { ti_Tag: GTLV_Labels, ti_Data: (u32)model },
+            TagItem { ti_Tag: GTLV_Selected, ti_Data: selected_index },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return match self.add_gadget(LISTVIEW_KIND, id, "", bounds, 0, &tags[0]) {
+            Result::Ok(_) => Result::Ok(()),
+            Result::Err(error) => {
+                self.discard_last_model(id)
+                Result::Err(error)
+            },
+        }
+    }
+
+    /// Add an editable string gadget with a copied, NUL-terminated initial value.
+    pub fn add_string(&var self, id: u16, label: Str, bounds: GadgetBounds, value: Str, max_chars: u16) -> Result<(), IntuitionError> {
+        if max_chars == 0 || value.len() > (u32)max_chars {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let initial = self.alloc_label(value)
+        if !initial { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        let tags = [
+            TagItem { ti_Tag: GTST_String, ti_Data: (u32)initial },
+            TagItem { ti_Tag: GTST_MaxChars, ti_Data: (u32)max_chars },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return self.add_gadget(STRING_KIND, id, label, self.fit_string_bounds(bounds), PLACETEXT_LEFT, &tags[0])
+    }
+
+    /// Add read-only text. GadTools keeps its own copy for later state updates.
+    pub fn add_text(&var self, id: u16, bounds: GadgetBounds, text: Str) -> Result<(), IntuitionError> {
+        let initial = self.alloc_label(text)
+        if !initial { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        let tags = [
+            TagItem { ti_Tag: GTTX_Text, ti_Data: (u32)initial },
+            TagItem { ti_Tag: GTTX_CopyText, ti_Data: 1 },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        return self.add_gadget(TEXT_KIND, id, "", bounds, 0, &tags[0])
+    }
+
+    fn add_gadget(&var self, kind: u32, id: u16, label: Str, bounds: GadgetBounds, placement: u32, tags: *TagItem) -> Result<(), IntuitionError> {
+        unsafe {
+            if find_gadget(self.gadgets, id) != null {
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            let label_ptr = self.alloc_label(label)
+            if !label_ptr {
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+
+            var definition = NewGadget {
+                ng_LeftEdge: bounds.x,
+                ng_TopEdge: bounds.y,
+                ng_Width: bounds.width,
+                ng_Height: bounds.height,
+                ng_GadgetText: label_ptr,
+                ng_TextAttr: (*self.screen).Font,
+                ng_GadgetID: id,
+                ng_Flags: placement,
+                ng_VisualInfo: self.visual_info,
+                ng_UserData: (*u8)kind,
+            }
+
+            let gadget = CreateGadgetA(kind, self.previous, &var definition, tags)
+            if !gadget {
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+            let slot = find_model_slot(self.models, self.model_count, id)
+            if slot != null { (*slot).gadget = gadget }
+            self.previous = gadget
+            return Result::Ok(())
+        }
+    }
+
+    @suppress("W0002", "Amiga window tags carry signed coordinates as u32")
+    pub fn build(&var self, title: Str, bounds: GadgetBounds, consuming menu_strip: GadToolsMenuStrip) -> Result<GadToolsWindow, IntuitionError> {
+        let title_ptr = self.alloc_label(title)
+        if !title_ptr {
+            return Result::Err(IntuitionError::WindowOpenFailed)
+        }
+        return self.build_static(title_ptr, bounds, menu_strip)
+    }
+
+    @suppress("W0002", "Amiga window tags carry signed coordinates as u32")
+    fn build_static(&var self, title: *u8, bounds: GadgetBounds, consuming menu_strip: GadToolsMenuStrip) -> Result<GadToolsWindow, IntuitionError> {
+        unsafe {
+            let tags = [
+                TagItem { ti_Tag: WA_Title, ti_Data: (u32)title },
+                TagItem { ti_Tag: WA_CustomScreen, ti_Data: (u32)self.screen },
+                TagItem { ti_Tag: WA_Left, ti_Data: (u32)bounds.x },
+                TagItem { ti_Tag: WA_Top, ti_Data: (u32)bounds.y },
+                TagItem { ti_Tag: WA_Width, ti_Data: (u32)bounds.width },
+                TagItem { ti_Tag: WA_Height, ti_Data: (u32)bounds.height },
+                TagItem { ti_Tag: WA_Gadgets, ti_Data: (u32)self.gadgets },
+                TagItem { ti_Tag: WA_IDCMP, ti_Data: IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MENUPICK | IDCMP_MOUSEBUTTONS | CHECKBOXIDCMP | INTEGERIDCMP | BUTTONIDCMP | CYCLEIDCMP | LISTVIEWIDCMP | STRINGIDCMP },
+                TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_ACTIVATE | WFLG_SMART_REFRESH },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+
+            let window = OpenWindowTagList(null, &tags[0])
+            if !window {
+                return Result::Err(IntuitionError::WindowOpenFailed)
+            }
+            if SetMenuStrip(window, menu_strip.raw_menu()) == 0 {
+                CloseWindow(window)
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+            GT_RefreshWindow(window, null)
+
+            let result = GadToolsWindow {
+                window: window,
+                screen: self.screen,
+                owns_screen: self.owns_screen,
+                releases_screen: self.releases_screen,
+                visual_info: self.visual_info,
+                gadgets: self.gadgets,
+                labels: self.labels,
+                label_count: self.label_count,
+                label_capacity: self.label_capacity,
+                models: self.models,
+                model_count: self.model_count,
+                menu_strip: Option::Some(menu_strip),
+            }
+
+            self.screen = null
+            self.owns_screen = false
+            self.releases_screen = false
+            self.visual_info = null
+            self.gadgets = null
+            self.previous = null
+            self.labels = null
+            self.label_count = 0
+            self.label_capacity = 0
+            self.models = null
+            self.model_count = 0
+            self.model_capacity = 0
+            return Result::Ok(result)
+        }
+    }
+
+    fn alloc_label(&var self, label: Str) -> *u8 {
+        unsafe {
+            let copy = AllocVec(label.len + 1, MEMF_PUBLIC | MEMF_CLEAR)
+            if !copy {
+                return null
+            }
+            CopyMem(label.ptr, copy, label.len)
+            let result = (*u8)copy
+            if !self.track_allocation(result) {
+                FreeVec(result)
+                return null
+            }
+            return result
+        }
+    }
+
+    fn track_allocation(&var self, allocation: *u8) -> bool {
+        unsafe {
+            if self.label_count >= self.label_capacity {
+                let new_capacity = self.label_capacity * 2
+                let new_labels = AllocVec(new_capacity * 4, MEMF_PUBLIC | MEMF_CLEAR)
+                if !new_labels { return false }
+                CopyMem((*u8)self.labels, new_labels, self.label_count * 4)
+                FreeVec((*u8)self.labels)
+                self.labels = (**u8)new_labels
+                self.label_capacity = new_capacity
+            }
+            self.labels[self.label_count] = allocation
+            self.label_count++
+            return true
+        }
+    }
+
+    /// GadTools rejects string/integer gadgets shorter than the active font.
+    /// Fit the native minimum so callers do not need to know that OS detail.
+    @suppress("W0002", "TextAttr font height is bounded by Intuition's signed gadget coordinates")
+    fn fit_string_bounds(&self, bounds: GadgetBounds) -> GadgetBounds {
+        var fitted = bounds
+        let min_height = unsafe { (i16)((*(*self.screen).Font).ta_YSize + 6) }
+        if fitted.height < min_height { fitted.height = min_height }
+        return fitted
+    }
+
+    fn track_model(&var self, id: u16, data: *u8) -> bool {
+        unsafe {
+            var i: u32 = 0
+            while i < self.model_count {
+                if self.models[i].id == id { return false }
+                i++
+            }
+            if self.model_count >= self.model_capacity {
+                let new_capacity = self.model_capacity * 2
+                let new_models = AllocVec(new_capacity * @sizeof(GadgetModelSlot), MEMF_PUBLIC | MEMF_CLEAR)
+                if !new_models { return false }
+                CopyMem((*u8)self.models, new_models, self.model_count * @sizeof(GadgetModelSlot))
+                FreeVec((*u8)self.models)
+                self.models = (*GadgetModelSlot)new_models
+                self.model_capacity = new_capacity
+            }
+            self.models[self.model_count] = GadgetModelSlot { id: id, data: data, gadget: null }
+            self.model_count++
+            return true
+        }
+    }
+
+    fn discard_last_model(&var self, id: u16) {
+        unsafe {
+            if self.model_count == 0 { return }
+            let index = self.model_count - 1
+            if self.models[index].id != id { return }
+            if self.models[index].data { FreeVec(self.models[index].data) }
+            self.models[index].data = null
+            self.model_count = index
+        }
+    }
+}
+
+fn add_string_bytes(total: u32, value: Str) -> Option<u32> {
+    if value.len() == $FFFFFFFF { return Option::None }
+    let bytes = value.len() + 1
+    if total > $FFFFFFFF - bytes { return Option::None }
+    return Option::Some(total + bytes)
+}
+
+/// One allocation contains the null-terminated pointer table and every label,
+/// so replacing a model has one unambiguous owner and one free.
+fn alloc_choice_model(choices: Slice<Str>) -> *u8 {
+    if choices.len() >= $3FFFFFFF { return null }
+    let table_bytes = (choices.len() + 1) * 4
+    var total = table_bytes
+    var i: u32 = 0
+    while i < choices.len() {
+        total = match add_string_bytes(total, *choices.get(i).unwrap()) {
+            Option::Some(value) => value,
+            Option::None => return null,
+        }
+        i++
+    }
+
+    unsafe {
+        let memory = AllocVec(total, MEMF_PUBLIC | MEMF_CLEAR)
+        if !memory { return null }
+        let labels = (**u8)memory
+        var cursor = memory + table_bytes
+        i = 0
+        while i < choices.len() {
+            let label = *choices.get(i).unwrap()
+            labels[i] = cursor
+            CopyMem(label.as_ptr(), cursor, label.len())
+            cursor = cursor + label.len() + 1
+            i++
+        }
+        return memory
+    }
+}
+
+/// One allocation contains the Exec list header, nodes, and every row string.
+fn alloc_list_model(rows: Slice<Str>) -> *u8 {
+    let nodes_offset = (@sizeof(List) + 1) & $FFFFFFFE
+    if rows.len() > ($FFFFFFFF - nodes_offset) / @sizeof(Node) { return null }
+    let strings_offset = nodes_offset + rows.len() * @sizeof(Node)
+    var total = strings_offset
+    var i: u32 = 0
+    while i < rows.len() {
+        total = match add_string_bytes(total, *rows.get(i).unwrap()) {
+            Option::Some(value) => value,
+            Option::None => return null,
+        }
+        i++
+    }
+
+    unsafe {
+        let memory = AllocVec(total, MEMF_PUBLIC | MEMF_CLEAR)
+        if !memory { return null }
+        let list = (*List)memory
+        list.lh_Head = (*Node)&list.lh_Tail
+        list.lh_Tail = null
+        list.lh_TailPred = (*Node)&list.lh_Head
+
+        let nodes = (*Node)(memory + nodes_offset)
+        var cursor = memory + strings_offset
+        i = 0
+        while i < rows.len() {
+            let row = *rows.get(i).unwrap()
+            nodes[i].ln_Name = (*i8)cursor
+            CopyMem(row.as_ptr(), cursor, row.len())
+            AddTail(list, &nodes[i])
+            cursor = cursor + row.len() + 1
+            i++
+        }
+        return memory
+    }
+}
+
+impl StaticGadToolsUi {
+    /// Open a compile-time UI without copying labels or allocating builder arrays.
+    @suppress("W0002", "Amiga window tags carry signed coordinates as u32")
+    pub fn open(&self) -> Result<StaticGadToolsWindow, IntuitionError> {
+        var result = StaticGadToolsWindow {
+            window: null,
+            screen: null,
+            visual_info: null,
+            gadgets: null,
+            menu: null,
+        }
+
+        unsafe {
+            result.screen = LockPubScreen(null)
+            if !result.screen {
+                return Result::Err(IntuitionError::InvalidScreen)
+            }
+
+            result.visual_info = GetVisualInfoA(result.screen, null)
+            if !result.visual_info {
+                return Result::Err(IntuitionError::GadgetCreateFailed)
+            }
+        }
+
+        var previous = unsafe { CreateContext(&var result.gadgets) }
+        if !previous {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+
+        var gadget_index: u32 = 0
+        forever {
+            if gadget_index >= self.gadget_count { break }
+
+            var gadget = unsafe { &self.gadgets[gadget_index] }
+            var definition = NewGadget {
+                ng_LeftEdge: gadget.x,
+                ng_TopEdge: gadget.y,
+                ng_Width: gadget.width,
+                ng_Height: gadget.height,
+                ng_GadgetText: gadget.label,
+                ng_TextAttr: unsafe { (*result.screen).Font },
+                ng_GadgetID: gadget.id,
+                ng_Flags: gadget.placement,
+                ng_VisualInfo: result.visual_info,
+                ng_UserData: (*u8)gadget.kind,
+            }
+
+            unsafe {
+                let created = CreateGadgetA(
+                    gadget.kind,
+                    previous,
+                    &var definition,
+                    &gadget.tags[0]
+                )
+                if !created {
+                    return Result::Err(IntuitionError::GadgetCreateFailed)
+                }
+                previous = created
+            }
+            gadget_index++
+        }
+
+        unsafe {
+            result.menu = CreateMenusA((*NewMenu)self.menus, null)
+            if !result.menu {
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+            if LayoutMenusA(result.menu, result.visual_info, null) == 0 {
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+
+            let window_tags = [
+                TagItem { ti_Tag: WA_Title, ti_Data: (u32)self.title },
+                TagItem { ti_Tag: WA_CustomScreen, ti_Data: (u32)result.screen },
+                TagItem { ti_Tag: WA_Left, ti_Data: (u32)self.bounds.x },
+                TagItem { ti_Tag: WA_Top, ti_Data: (u32)self.bounds.y },
+                TagItem { ti_Tag: WA_Width, ti_Data: (u32)self.bounds.width },
+                TagItem { ti_Tag: WA_Height, ti_Data: (u32)self.bounds.height },
+                TagItem { ti_Tag: WA_Gadgets, ti_Data: (u32)result.gadgets },
+                TagItem { ti_Tag: WA_IDCMP, ti_Data: IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW | IDCMP_MENUPICK | CHECKBOXIDCMP | INTEGERIDCMP | BUTTONIDCMP | CYCLEIDCMP | LISTVIEWIDCMP | STRINGIDCMP },
+                TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_CLOSEGADGET | WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_ACTIVATE | WFLG_SMART_REFRESH },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+
+            result.window = OpenWindowTagList(null, &window_tags[0])
+            if !result.window {
+                return Result::Err(IntuitionError::WindowOpenFailed)
+            }
+            if SetMenuStrip(result.window, result.menu) == 0 {
+                return Result::Err(IntuitionError::MenuCreateFailed)
+            }
+            GT_RefreshWindow(result.window, null)
+            return Result::Ok(result)
+        }
+    }
+}
+
+/// Zero-allocation owner returned by StaticGadToolsUi.
+pub struct StaticGadToolsWindow {
+    window: *Window
+    screen: *Screen
+    visual_info: *u8
+    gadgets: *Gadget
+    menu: *Menu
+}
+
+/// Owner-tied access to one native gadget. The window remains responsible for
+/// cleanup; `as_raw()` is the explicit escape hatch for uncommon native calls.
+pub struct GadToolsControl<Owner> {
+    owner: &Owner
+    window: *Window
+    gadget: *Gadget
+}
+
+/// Kind-checked GadTools controls expose only the state valid for that kind.
+pub struct CycleControl<Owner> { control: GadToolsControl<Owner> }
+pub struct ListViewControl<Owner> { control: GadToolsControl<Owner> }
+pub struct CheckboxControl<Owner> { control: GadToolsControl<Owner> }
+pub struct StringControl<Owner> { control: GadToolsControl<Owner> }
+pub struct IntegerControl<Owner> { control: GadToolsControl<Owner> }
+pub struct TextControl<Owner> { control: GadToolsControl<Owner> }
+
+impl<Owner> GadToolsControl<Owner> {
+    pub fn id(&self) -> u16 {
+        return unsafe { (*self.gadget).GadgetID }
+    }
+
+    pub fn set_enabled(&self, enabled: bool) {
+        let tags = [
+            TagItem { ti_Tag: GA_Disabled, ti_Data: if enabled { 0 } else { 1 } },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        GT_SetGadgetAttrsA(self.gadget, self.window, null, &tags[0])
+    }
+
+    pub fn as_raw(&self) -> *Gadget {
+        return self.gadget
+    }
+
+    fn set_u32(&self, tag: u32, value: u32) {
+        let tags = [
+            TagItem { ti_Tag: tag, ti_Data: value },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        GT_SetGadgetAttrsA(self.gadget, self.window, null, &tags[0])
+    }
+
+    fn set_string(&self, tag: u32, value: Str) -> Result<(), IntuitionError> {
+        unsafe {
+            let copy = AllocVec(value.len() + 1, MEMF_PUBLIC | MEMF_CLEAR)
+            if !copy { return Result::Err(IntuitionError::GadgetCreateFailed) }
+            CopyMem(value.as_ptr(), copy, value.len())
+            self.set_u32(tag, (u32)copy)
+            FreeVec(copy)
+            return Result::Ok(())
+        }
+    }
+}
+
+impl<Owner> CycleControl<Owner> {
+    /// Programmatic selection. User selections arrive as GadgetUp's code.
+    pub fn set_active(&self, active: u16) {
+        self.control.set_u32(GTCY_Active, (u32)active)
+    }
+}
+
+impl<Owner> ListViewControl<Owner> {
+    /// Programmatic selection. User selections arrive as GadgetUp's code.
+    pub fn set_selected(&self, selected: Option<u16>) {
+        let Option::Some(value) = selected else { return }
+        self.control.set_u32(GTLV_Selected, (u32)value)
+    }
+}
+
+impl<Owner> CheckboxControl<Owner> {
+    pub fn checked(&self) -> bool {
+        return unsafe { ((*self.control.gadget).Flags & GFLG_SELECTED) != 0 }
+    }
+
+    pub fn set_checked(&self, checked: bool) {
+        self.control.set_u32(GTCB_Checked, if checked { 1 } else { 0 })
+    }
+}
+
+impl<Owner> StringControl<Owner> {
+    /// Borrow the current edit buffer for no longer than this control/window.
+    pub fn value(&self) -> Option<Str> {
+        unsafe {
+            let info = (*StringInfo)(*self.control.gadget).SpecialInfo
+            if !info { return Option::None }
+            return Str::from_cstr((*info).Buffer)
+        }
+    }
+
+    pub fn set_value(&self, value: Str) -> Result<(), IntuitionError> {
+        return self.control.set_string(GTST_String, value)
+    }
+}
+
+impl<Owner> IntegerControl<Owner> {
+    pub fn value(&self) -> Option<i32> {
+        unsafe {
+            let info = (*StringInfo)(*self.control.gadget).SpecialInfo
+            if !info { return Option::None }
+            return Option::Some((*info).LongInt)
+        }
+    }
+
+    @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    pub fn set_value(&self, value: i32) {
+        self.control.set_u32(GTIN_Number, (u32)value)
+    }
+
+    @suppress("W0002", "the range check makes this signed conversion lossless")
+    pub fn set_u32_saturating(&self, value: u32) {
+        let display = if value > 2147483647 { 2147483647 } else { (i32)value }
+        self.set_value(display)
+    }
+
+    @suppress("W0002", "negative values are rejected before converting to unsigned")
+    pub fn u32_value(&self) -> Option<u32> {
+        let Option::Some(value) = self.value() else { return Option::None }
+        return Option::None if value < 0
+        return Option::Some((u32)value)
+    }
+}
+
+impl<Owner> TextControl<Owner> {
+    pub fn set_text(&self, value: Str) -> Result<(), IntuitionError> {
+        return self.control.set_string(GTTX_Text, value)
+    }
+}
+
+fn find_gadget(head: *Gadget, id: u16) -> *Gadget {
+    unsafe {
+        var gadget = head
+        while gadget != null {
+            if (*gadget).GadgetID == id { return gadget }
+            gadget = (*gadget).NextGadget
+        }
+    }
+    return null
+}
+
+fn is_gadget_kind(gadget: *Gadget, kind: u32) -> bool {
+    return gadget != null && unsafe { (u32)(*gadget).UserData == kind }
+}
+
+fn find_model_slot(models: *GadgetModelSlot, count: u32, id: u16) -> *GadgetModelSlot {
+    var i: u32 = 0
+    unsafe {
+        while i < count {
+            if models[i].id == id { return (*GadgetModelSlot)&var models[i] }
+            i++
+        }
+    }
+    return null
+}
+
+fn model_gadget(slot: *GadgetModelSlot) -> *Gadget {
+    return null if slot == null
+    return unsafe { (*slot).gadget }
+}
+
+impl StaticGadToolsWindow {
+    pub fn system(&self) -> WindowRef { return WindowRef::borrow(unsafe { &*self.window }) }
+    pub fn as_raw(&self) -> *Window { return self.window }
+
+    pub fn control(&self, id: u16) -> Option<GadToolsControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if gadget == null { return Option::None }
+        return Option::Some(GadToolsControl { owner: self, window: self.window, gadget: gadget })
+    }
+
+    pub fn cycle(&self, id: u16) -> Option<CycleControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, CYCLE_KIND) { return Option::None }
+        return Option::Some(CycleControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn list_view(&self, id: u16) -> Option<ListViewControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, LISTVIEW_KIND) { return Option::None }
+        return Option::Some(ListViewControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn checkbox(&self, id: u16) -> Option<CheckboxControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, CHECKBOX_KIND) { return Option::None }
+        return Option::Some(CheckboxControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn string(&self, id: u16) -> Option<StringControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, STRING_KIND) { return Option::None }
+        return Option::Some(StringControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn integer(&self, id: u16) -> Option<IntegerControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, INTEGER_KIND) { return Option::None }
+        return Option::Some(IntegerControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn text(&self, id: u16) -> Option<TextControl<StaticGadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, TEXT_KIND) { return Option::None }
+        return Option::Some(TextControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn wait_event(&self) -> GadToolsEvent {
+        unsafe {
+            let port = (*self.window).UserPort
+            forever {
+                WaitPort(port)
+                let message = GT_GetIMsg(port)
+                if message {
+                    let event = decode_event(message)
+                    GT_ReplyIMsg(message)
+                    return event
+                }
+            }
+        }
+    }
+}
+
+impl Drop for StaticGadToolsWindow {
+    fn drop(&var self) {
+        unsafe {
+            let window = self.window
+            let menu = self.menu
+            let gadgets = self.gadgets
+            let visual_info = self.visual_info
+            let screen = self.screen
+            if window {
+                if menu { ClearMenuStrip(window) }
+                let port = (*window).UserPort
+                forever {
+                    let message = GT_GetIMsg(port)
+                    if !message { break }
+                    GT_ReplyIMsg(message)
+                }
+                CloseWindow(window)
+            }
+            if menu { FreeMenus(menu) }
+            if gadgets { FreeGadgets(gadgets) }
+            if visual_info { FreeVisualInfo(visual_info) }
+            if screen { UnlockPubScreen(null, screen) }
+        }
+    }
+}
+
+impl Drop for GadToolsBuilder {
+    fn drop(&var self) {
+        unsafe {
+            if self.gadgets { FreeGadgets(self.gadgets) }
+            if self.visual_info { FreeVisualInfo(self.visual_info) }
+            if self.models {
+                var model_index: u32 = 0
+                while model_index < self.model_count {
+                    if self.models[model_index].data { FreeVec(self.models[model_index].data) }
+                    model_index++
+                }
+                FreeVec((*u8)self.models)
+                self.models = null
+            }
+            if self.labels {
+                var i: u32 = 0
+                forever {
+                    if i >= self.label_count { break }
+                    if self.labels[i] { FreeVec(self.labels[i]) }
+                    i++
+                }
+                FreeVec((*u8)self.labels)
+                self.labels = null
+            }
+            if self.screen {
+                if self.owns_screen { CloseScreen(self.screen) }
+                if !self.owns_screen && self.releases_screen { UnlockPubScreen(null, self.screen) }
+            }
+        }
+    }
+}
+
+pub struct GadToolsWindow {
+    window: *Window
+    screen: *Screen
+    owns_screen: bool
+    releases_screen: bool
+    visual_info: *u8
+    gadgets: *Gadget
+    labels: **u8
+    label_count: u32
+    label_capacity: u32
+    models: *GadgetModelSlot
+    model_count: u32
+    menu_strip: Option<GadToolsMenuStrip>
+}
+
+impl GadToolsWindow {
+    fn track_allocation(&var self, allocation: *u8) -> bool {
+        unsafe {
+            if self.label_count >= self.label_capacity {
+                let new_capacity = self.label_capacity * 2
+                let new_labels = AllocVec(new_capacity * 4, MEMF_PUBLIC | MEMF_CLEAR)
+                if !new_labels { return false }
+                CopyMem((*u8)self.labels, new_labels, self.label_count * 4)
+                FreeVec((*u8)self.labels)
+                self.labels = (**u8)new_labels
+                self.label_capacity = new_capacity
+            }
+            self.labels[self.label_count] = allocation
+            self.label_count++
+            return true
+        }
+    }
+
+    /// Borrow the native window for drawing, requesters, or uncommon OS calls.
+    pub fn system(&self) -> WindowRef { return WindowRef::borrow(unsafe { &*self.window }) }
+    pub fn as_raw(&self) -> *Window { return self.window }
+    /// Create another GadTools window on this window's screen. The parent must
+    /// remain alive until the child is closed.
+    pub fn child_builder(&self) -> Result<GadToolsBuilder, IntuitionError> {
+        return GadToolsBuilder::borrowed_screen(self.screen)
+    }
+
+    /// Borrow the window RastPort for safe graphics helpers.
+    pub fn rastport(&self) -> &RastPort { return unsafe { &*(*self.window).RPort } }
+
+    /// Fill an inclusive rectangle using one of the window screen's pens.
+    pub fn fill_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
+        let rastport = self.rastport()
+        SetAPen(rastport, (u32)pen)
+        RectFill(rastport, left, top, right, bottom)
+    }
+
+    /// Outline an inclusive rectangle using one of the window screen's pens.
+    pub fn outline_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
+        let rastport = self.rastport()
+        SetAPen(rastport, (u32)pen)
+        Move(rastport, left, top)
+        Draw(rastport, right, top)
+        Draw(rastport, right, bottom)
+        Draw(rastport, left, bottom)
+        Draw(rastport, left, top)
+    }
+
+    pub fn set_menu_enabled(&self, menu: u16, item: u16, enabled: bool) {
+        let number = (menu & $001F) | ((item & $003F) << 5) | ($001F << 11)
+        if enabled { OnMenu(self.window, number) }
+        if !enabled { OffMenu(self.window, number) }
+    }
+
+    pub fn control(&self, id: u16) -> Option<GadToolsControl<GadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if gadget == null { return Option::None }
+        return Option::Some(GadToolsControl { owner: self, window: self.window, gadget: gadget })
+    }
+
+    pub fn cycle(&self, id: u16) -> Option<CycleControl<GadToolsWindow>> {
+        let gadget = model_gadget(find_model_slot(self.models, self.model_count, id))
+        if !is_gadget_kind(gadget, CYCLE_KIND) { return Option::None }
+        return Option::Some(CycleControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn list_view(&self, id: u16) -> Option<ListViewControl<GadToolsWindow>> {
+        let gadget = model_gadget(find_model_slot(self.models, self.model_count, id))
+        if !is_gadget_kind(gadget, LISTVIEW_KIND) { return Option::None }
+        return Option::Some(ListViewControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn checkbox(&self, id: u16) -> Option<CheckboxControl<GadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, CHECKBOX_KIND) { return Option::None }
+        return Option::Some(CheckboxControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn string(&self, id: u16) -> Option<StringControl<GadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, STRING_KIND) { return Option::None }
+        return Option::Some(StringControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn integer(&self, id: u16) -> Option<IntegerControl<GadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, INTEGER_KIND) { return Option::None }
+        return Option::Some(IntegerControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    pub fn text(&self, id: u16) -> Option<TextControl<GadToolsWindow>> {
+        let gadget = find_gadget(self.gadgets, id)
+        if !is_gadget_kind(gadget, TEXT_KIND) { return Option::None }
+        return Option::Some(TextControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
+    }
+
+    /// Replace all labels for an existing cycle.
+    pub fn replace_cycle(&var self, id: u16, choices: Slice<Str>, active: u16) -> Result<(), IntuitionError> {
+        let slot = find_model_slot(self.models, self.model_count, id)
+        let gadget = model_gadget(slot)
+        if !is_gadget_kind(gadget, CYCLE_KIND) || !slot || choices.is_empty() || (u32)active >= choices.len() {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let model = alloc_choice_model(choices)
+        if !model { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        let tags = [
+            TagItem { ti_Tag: GTCY_Labels, ti_Data: (u32)model },
+            TagItem { ti_Tag: GTCY_Active, ti_Data: (u32)active },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        let old = unsafe { (*slot).data }
+        if old != null && !self.track_allocation(old) {
+            unsafe { FreeVec(model) }
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        GT_SetGadgetAttrsA(gadget, self.window, null, &tags[0])
+        unsafe { (*slot).data = model }
+        return Result::Ok(())
+    }
+
+    /// Replace all rows for an existing list view.
+    pub fn replace_list(&var self, id: u16, rows: Slice<Str>, selected: Option<u32>) -> Result<(), IntuitionError> {
+        let slot = find_model_slot(self.models, self.model_count, id)
+        let gadget = model_gadget(slot)
+        let selected_index: u32 = match selected {
+            Option::Some(index) => index,
+            Option::None => if rows.is_empty() { $FFFF } else { 0 },
+        }
+        if !is_gadget_kind(gadget, LISTVIEW_KIND) || !slot || (selected_index != $FFFF && selected_index >= rows.len()) {
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        let model = alloc_list_model(rows)
+        if !model { return Result::Err(IntuitionError::GadgetCreateFailed) }
+        let old = unsafe { (*slot).data }
+        if old != null && !self.track_allocation(old) {
+            unsafe { FreeVec(model) }
+            return Result::Err(IntuitionError::GadgetCreateFailed)
+        }
+        if selected_index == $FFFF {
+            let tags = [
+                TagItem { ti_Tag: GTLV_Labels, ti_Data: (u32)model },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+            GT_SetGadgetAttrsA(gadget, self.window, null, &tags[0])
+        } else {
+            let tags = [
+                TagItem { ti_Tag: GTLV_Labels, ti_Data: (u32)model },
+                TagItem { ti_Tag: GTLV_Selected, ti_Data: selected_index },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+            ]
+            GT_SetGadgetAttrsA(gadget, self.window, null, &tags[0])
+        }
+        unsafe { (*slot).data = model }
+        return Result::Ok(())
+    }
+
+    pub fn wait_event(&self) -> GadToolsEvent {
+        unsafe {
+            let port = (*self.window).UserPort
+            forever {
+                WaitPort(port)
+                let message = GT_GetIMsg(port)
+                if message {
+                    let event = decode_event(message)
+                    GT_ReplyIMsg(message)
+                    return event
+                }
+            }
+        }
+    }
+
+    /// Refresh GadTools-managed controls after a Refresh event. Custom drawing
+    /// should be redrawn immediately after this call.
+    pub fn refresh(&self) {
+        GT_RefreshWindow(self.window, null)
+    }
+}
+
+impl Drop for GadToolsWindow {
+    fn drop(&var self) {
+        unsafe {
+            if self.window {
+                ClearMenuStrip(self.window)
+                let port = (*self.window).UserPort
+                forever {
+                    let message = GT_GetIMsg(port)
+                    if !message { break }
+                    GT_ReplyIMsg(message)
+                }
+                CloseWindow(self.window)
+                self.window = null
+            }
+            if self.gadgets { FreeGadgets(self.gadgets) }
+            if self.visual_info { FreeVisualInfo(self.visual_info) }
+            if self.models {
+                var model_index: u32 = 0
+                while model_index < self.model_count {
+                    if self.models[model_index].data { FreeVec(self.models[model_index].data) }
+                    model_index++
+                }
+                FreeVec((*u8)self.models)
+                self.models = null
+            }
+            if self.labels {
+                var i: u32 = 0
+                forever {
+                    if i >= self.label_count { break }
+                    if self.labels[i] { FreeVec(self.labels[i]) }
+                    i++
+                }
+                FreeVec((*u8)self.labels)
+                self.labels = null
+            }
+            if self.screen {
+                if self.owns_screen { CloseScreen(self.screen) }
+                if !self.owns_screen && self.releases_screen { UnlockPubScreen(null, self.screen) }
+                self.screen = null
+            }
+        }
+    }
+}
+
+fn decode_event(message: *IntuiMessage) -> GadToolsEvent {
+    unsafe {
+        return match (*message).Class {
+            IDCMP_CLOSEWINDOW => GadToolsEvent::Close,
+            IDCMP_REFRESHWINDOW => GadToolsEvent::Refresh,
+            IDCMP_MENUPICK => {
+                let code = (*message).Code
+                let menu = code & $001F
+                let item = (code >> 5) & $003F
+                let sub = (code >> 11) & $001F
+                if sub == $001F {
+                    GadToolsEvent::MenuPick(menu, item)
+                } else {
+                    GadToolsEvent::MenuSubPick(menu, item, sub)
+                }
+            },
+            IDCMP_GADGETUP => {
+                let gadget = (*Gadget)(*message).IAddress
+                GadToolsEvent::GadgetUp((*gadget).GadgetID, (*message).Code)
+            },
+            IDCMP_GADGETDOWN => {
+                let gadget = (*Gadget)(*message).IAddress
+                GadToolsEvent::GadgetDown((*gadget).GadgetID, (*message).Code)
+            },
+            IDCMP_MOUSEBUTTONS => GadToolsEvent::MouseButton(
+                (*message).MouseX,
+                (*message).MouseY,
+                (u32)(*message).Code == SELECTDOWN
+            ),
+            _ => GadToolsEvent::Unknown((*message).Class),
+        }
+    }
+}

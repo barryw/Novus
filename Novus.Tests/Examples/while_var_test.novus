@@ -10,8 +10,8 @@ fn test_basic_while_var() -> i32 {
 }
 
 fn test_while_var_with_type() -> u32 {
-    var sum: u32 = 0u32
-    while var i: u32 < 10u32 {
+    var sum: u32 = 0
+    while var i: u32 < 10 {
         sum = sum + i
         i++
     }
@@ -62,7 +62,7 @@ fn main() -> i32 {
 
     // Test while var with explicit type
     let result2: u32 = test_while_var_with_type()
-    if result2 != 45u32 {
+    if result2 != 45 {
         return 2
     }
 

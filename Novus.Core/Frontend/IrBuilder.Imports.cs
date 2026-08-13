@@ -52,7 +52,7 @@ public partial class IrBuilder
 
     private void ProcessImport(NovusParser.ImportDeclarationContext context)
     {
-        // Get the module path (e.g., "std::dos" or "std::ffi::exec")
+        // Get the module path (e.g., "amiga::dos" or "amiga::raw::exec")
         var modulePath = context.modulePath().GetText();
 
         // Get the list of names to import
@@ -80,6 +80,14 @@ public partial class IrBuilder
                 errorLocation
             );
             return;
+        }
+
+        // A selectively reexported alias or declaration may name types from
+        // the source module's imports. Resolve those dependencies before
+        // registering the requested symbol.
+        foreach (var importDecl in moduleContext.importDeclaration())
+        {
+            ProcessImport(importDecl);
         }
 
         // IMPORTANT: Process the module's own reexports first
@@ -240,18 +248,19 @@ public partial class IrBuilder
         if (alreadyProcessed)
         {
             // Even if module is already processed, we still need to handle imports
-            // This allows: from std::ffi::dos import SystemTagList
-            //         AND: from std::ffi::dos import IoErr
+            // This allows: from amiga::raw::dos import SystemTagList
+            //         AND: from amiga::raw::dos import IoErr
             // Both imports from the same module
 
             // CRITICAL: ALWAYS register type stubs first (even for importAll)
             // This is needed for auto-imports from f-strings which use importAll=true
             RegisterAllEnumStubsForImport(moduleContext);
             RegisterAllStructPlaceholdersForImport(moduleContext);
+            RegisterTypeAliasesForImport(moduleContext);
 
             // For importAll (used by f-string auto-imports), we need to also register impl methods
             // This ensures that StackFormatter::new() and other methods are available
-            if (importAll)
+            if (importAll || importList != null)
             {
                 // Process all impl blocks to register their methods
                 // This is a simplified version of the impl processing in the main path below
@@ -313,7 +322,7 @@ public partial class IrBuilder
                         }
 
                         // For generic impl blocks, store as templates
-                        if (genericParams.Count > 0)
+                        if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                         {
                             StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                             continue;
@@ -376,7 +385,7 @@ public partial class IrBuilder
                     _currentSelfType = null;
                 }
             }
-            else if (importList != null)
+            if (importAll || importList != null)
             {
                 // Build the list of names to import for this specific import statement
                 var selectiveImports = ModuleImportHelper.BuildImportNameSet(moduleContext, importAll, importList);
@@ -436,7 +445,7 @@ public partial class IrBuilder
                         // Check if this is a generic function - skip for now, they're handled as templates
                         // Generic functions have type parameters like T that can't be parsed without context
                         var genericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams(), _symbols, registerInSymbolTable: false);
-                        if (genericParams.Count > 0)
+                        if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                         {
                             // For generic functions, just register the template (they'll be instantiated on use)
                             // Note: We can't compute mangled names for generics since param types contain T
@@ -494,7 +503,7 @@ public partial class IrBuilder
 
                 // Register impl blocks for ALL types (not just selective imports)
                 // This is critical: when you import a type, you also need its methods!
-                // For example: "from std::graphics::menus import GadToolsMenuBuilder"
+                // For example: "from amiga::sys::graphics::menus import GadToolsMenuBuilder"
                 // should also import methods on MenuHandle, MenuItemHandle, etc.
                 foreach (var implDecl in moduleContext.implDeclaration())
                 {
@@ -554,7 +563,7 @@ public partial class IrBuilder
                         }
 
                         // For generic impl blocks, store as templates
-                        if (genericParams.Count > 0)
+                        if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                         {
                             StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                             continue;
@@ -618,6 +627,7 @@ public partial class IrBuilder
                 }
             }
 
+            RegisterImportTypeAliases(importList);
             return; // Don't reprocess the entire module
         }
 
@@ -692,7 +702,7 @@ public partial class IrBuilder
         // CRITICAL PHASE 1: Register ALL type stubs BEFORE parsing any signatures
         // This is essential because impl block method signatures may reference ANY type from the module,
         // even types not being explicitly imported. For example:
-        //   - User imports Str (struct) from std::strings
+        //   - User imports Str (struct) from std::string
         //   - Str has methods that return Result<Str, StringError>
         //   - StringError enum must be resolvable during impl block processing
         //   - Similarly, String struct may be referenced even if not imported
@@ -784,7 +794,7 @@ public partial class IrBuilder
             // IMPORTANT: We do NOT skip impl blocks based on whether the type is in namesToImport
             // Even if a type isn't explicitly imported, it may still be used (returned from methods,
             // passed as parameters, etc.). For example:
-            //   from std::graphics::menus import GadToolsMenuBuilder
+            //   from amiga::sys::graphics::menus import GadToolsMenuBuilder
             //   let menu = builder.add_menu("File")  // returns MenuHandle (not explicitly imported)
             //   menu.add_item("New")  // need MenuHandle::add_item method!
             // So we import ALL pub methods from ALL impl blocks in the module.
@@ -818,7 +828,7 @@ public partial class IrBuilder
 
                 // For generic impl blocks, store ALL methods as templates (pub and private)
                 // because instantiating one method may need to call private helper methods
-                if (genericParams.Count > 0)
+                if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                 {
                     StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
                     // Don't create function yet - it will be instantiated when called with concrete types
@@ -909,7 +919,7 @@ public partial class IrBuilder
         }
 
         // If we're importing any impl blocks (generic or not), also import all transitive dependencies
-        // that the impl methods might need (e.g., AllocMem from std::exec for Vec methods)
+        // that the impl methods might need (e.g., allocation helpers used by Vec methods)
         bool hasImplBlocks = moduleContext.implDeclaration().Length > 0;
         if (hasImplBlocks)
         {
@@ -943,14 +953,14 @@ public partial class IrBuilder
             }
 
             // Second, recursively import symbols from FFI modules that this module imports
-            // This handles cases like std::core importing from std::ffi::exec
-            // Only import from std::ffi::* modules to avoid conflicts with wrapper functions
+            // This handles cases like std::core importing from amiga::raw::exec
+            // Only import from amiga::raw::* modules to avoid conflicts with wrapper functions
             foreach (var importDecl in moduleContext.importDeclaration())
             {
                 var importPath = importDecl.modulePath().GetText();
 
-                // Only transitively import from std::ffi::* modules (pure FFI bindings)
-                if (!importPath.Contains("::ffi::"))
+                // Only transitively import from amiga::raw::* modules (pure FFI bindings)
+                if (!importPath.StartsWith("amiga::raw::", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -966,9 +976,38 @@ public partial class IrBuilder
             }
         }
 
+        RegisterImportTypeAliases(importList);
+
         // Exit the module from the import chain now that processing is complete
         if (needsDependencies)
             _circularImportDetector.ExitModule();
+    }
+
+    private void RegisterImportTypeAliases(NovusParser.ImportListContext? importList)
+    {
+        if (importList == null) return;
+        foreach (var imported in importList.importName())
+        {
+            if (imported.IDENTIFIER().Length < 2) continue;
+            var original = imported.IDENTIFIER(0).GetText();
+            var alias = imported.IDENTIFIER(1).GetText();
+            IrType? type = _symbols.LookupTypeAlias(original) ??
+                           (IrType?)_symbols.LookupStruct(original) ??
+                           _symbols.LookupEnum(original);
+            if (type != null && _symbols.LookupTypeAlias(alias) == null)
+                _symbols.RegisterTypeAlias(alias, type);
+            else if (type == null)
+            {
+                foreach (var function in _module.Functions.Where(function =>
+                             (function.Name == original || function.OriginalName == original) &&
+                             function.BasicBlocks.Count == 0 &&
+                             !string.Equals(function.Location?.FilePath, _inputFilePath, StringComparison.Ordinal)))
+                {
+                    function.LinkName = original;
+                    _module.RenameFunction(function, alias);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -1851,8 +1890,8 @@ public partial class IrBuilder
                     // import chain. We need to ensure the trait is also in the module so that
                     // FindTraitMethod can find it via _module.GetTrait().
                     //
-                    // Example: User imports SystemCPU from std::hardware::chipset which imports
-                    // Display from std::strings::format and has impl Display for SystemCPU.
+                    // Example: User imports SystemCPU from amiga::sys::hardware::chipset which imports
+                    // Display from std::string::format and has impl Display for SystemCPU.
                     // When processing the impl, FindTraitMethod needs to find Display trait.
                     var existingTrait = _symbols.LookupTrait(traitName);
                     if (existingTrait != null && _module.GetTrait(traitName) == null)
@@ -1943,7 +1982,10 @@ public partial class IrBuilder
                 var whereClause = AstParsingHelpers.ParseWhereClause(funcDecl.whereClause());
                 // Store the source module path so dependencies can be resolved during instantiation
                 var template = new Generics.GenericTemplate(genericParams, funcDecl, templateConstants, whereClause, MethodGenericParams: null, SourceModulePath: modulePath);
-                _genericInstantiator.RegisterFunctionTemplate(funcName, template);
+                var templateName = IsFunctionOverloaded(funcName)
+                    ? $"{funcName}__arity_{funcDecl.parameterList()?.parameter().Length ?? 0}"
+                    : funcName;
+                _genericInstantiator.RegisterFunctionTemplate(templateName, template);
 
                 // Clear generic params from symbol table
                 _symbols.ClearGenericParameters();

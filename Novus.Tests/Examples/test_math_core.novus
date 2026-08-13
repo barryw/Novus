@@ -49,14 +49,14 @@ pub fn test_max_i32() {
 
 @test
 pub fn test_min_u32() {
-    expect_eq(min_u32(5u32, 10u32), 5u32, "min(5, 10) unsigned")
-    expect_eq(min_u32(10u32, 5u32), 5u32, "min(10, 5) unsigned")
+    expect_eq(min_u32(5, 10), 5, "min(5, 10) unsigned")
+    expect_eq(min_u32(10, 5), 5, "min(10, 5) unsigned")
 }
 
 @test
 pub fn test_max_u32() {
-    expect_eq(max_u32(5u32, 10u32), 10u32, "max(5, 10) unsigned")
-    expect_eq(max_u32(10u32, 5u32), 10u32, "max(10, 5) unsigned")
+    expect_eq(max_u32(5, 10), 10, "max(5, 10) unsigned")
+    expect_eq(max_u32(10, 5), 10, "max(10, 5) unsigned")
 }
 
 // ============================================================================
@@ -80,8 +80,8 @@ pub fn test_clamp_i32_above_max() {
 
 @test
 pub fn test_clamp_u32() {
-    expect_eq(clamp_u32(5u32, 0u32, 10u32), 5u32, "clamp_u32 in range")
-    expect_eq(clamp_u32(15u32, 0u32, 10u32), 10u32, "clamp_u32 above max")
+    expect_eq(clamp_u32(5, 0, 10), 5, "clamp_u32 in range")
+    expect_eq(clamp_u32(15, 0, 10), 10, "clamp_u32 above max")
 }
 
 // ============================================================================
@@ -109,27 +109,27 @@ pub fn test_sign_i32_zero() {
 
 @test
 pub fn test_is_power_of_two_true() {
-    expect_true(is_power_of_two_u32(1u32), "1 is power of two")
-    expect_true(is_power_of_two_u32(2u32), "2 is power of two")
-    expect_true(is_power_of_two_u32(4u32), "4 is power of two")
-    expect_true(is_power_of_two_u32(256u32), "256 is power of two")
+    expect_true(is_power_of_two_u32(1), "1 is power of two")
+    expect_true(is_power_of_two_u32(2), "2 is power of two")
+    expect_true(is_power_of_two_u32(4), "4 is power of two")
+    expect_true(is_power_of_two_u32(256), "256 is power of two")
 }
 
 @test
 pub fn test_is_power_of_two_false() {
-    expect_false(is_power_of_two_u32(0u32), "0 is not power of two")
-    expect_false(is_power_of_two_u32(3u32), "3 is not power of two")
-    expect_false(is_power_of_two_u32(5u32), "5 is not power of two")
-    expect_false(is_power_of_two_u32(100u32), "100 is not power of two")
+    expect_false(is_power_of_two_u32(0), "0 is not power of two")
+    expect_false(is_power_of_two_u32(3), "3 is not power of two")
+    expect_false(is_power_of_two_u32(5), "5 is not power of two")
+    expect_false(is_power_of_two_u32(100), "100 is not power of two")
 }
 
 @test
 pub fn test_next_power_of_two() {
-    expect_eq(next_power_of_two_u32(0u32), 0u32, "next_power_of_two(0)")
-    expect_eq(next_power_of_two_u32(1u32), 1u32, "next_power_of_two(1)")
-    expect_eq(next_power_of_two_u32(3u32), 4u32, "next_power_of_two(3)")
-    expect_eq(next_power_of_two_u32(5u32), 8u32, "next_power_of_two(5)")
-    expect_eq(next_power_of_two_u32(17u32), 32u32, "next_power_of_two(17)")
+    expect_eq(next_power_of_two_u32(0), 0, "next_power_of_two(0)")
+    expect_eq(next_power_of_two_u32(1), 1, "next_power_of_two(1)")
+    expect_eq(next_power_of_two_u32(3), 4, "next_power_of_two(3)")
+    expect_eq(next_power_of_two_u32(5), 8, "next_power_of_two(5)")
+    expect_eq(next_power_of_two_u32(17), 32, "next_power_of_two(17)")
 }
 
 // ============================================================================
@@ -138,16 +138,16 @@ pub fn test_next_power_of_two() {
 
 @test
 pub fn test_div_ceil_u32() {
-    expect_eq(div_ceil_u32(10u32, 3u32), 4u32, "ceil(10/3) = 4")
-    expect_eq(div_ceil_u32(9u32, 3u32), 3u32, "ceil(9/3) = 3")
-    expect_eq(div_ceil_u32(11u32, 3u32), 4u32, "ceil(11/3) = 4")
+    expect_eq(div_ceil_u32(10, 3), 4, "ceil(10/3) = 4")
+    expect_eq(div_ceil_u32(9, 3), 3, "ceil(9/3) = 3")
+    expect_eq(div_ceil_u32(11, 3), 4, "ceil(11/3) = 4")
 }
 
 @test
 pub fn test_div_round_u32() {
-    expect_eq(div_round_u32(10u32, 3u32), 3u32, "round(10/3) = 3")
-    expect_eq(div_round_u32(11u32, 3u32), 4u32, "round(11/3) = 4")
-    expect_eq(div_round_u32(10u32, 4u32), 3u32, "round(10/4) = 3")
+    expect_eq(div_round_u32(10, 3), 3, "round(10/3) = 3")
+    expect_eq(div_round_u32(11, 3), 4, "round(11/3) = 4")
+    expect_eq(div_round_u32(10, 4), 3, "round(10/4) = 3")
 }
 
 // ============================================================================
@@ -163,6 +163,6 @@ pub fn test_diff_i32() {
 
 @test
 pub fn test_diff_u32() {
-    expect_eq(diff_u32(10u32, 3u32), 7u32, "diff(10, 3) unsigned")
-    expect_eq(diff_u32(3u32, 10u32), 7u32, "diff(3, 10) unsigned")
+    expect_eq(diff_u32(10, 3), 7, "diff(10, 3) unsigned")
+    expect_eq(diff_u32(3, 10), 7, "diff(3, 10) unsigned")
 }

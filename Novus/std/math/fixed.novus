@@ -47,7 +47,7 @@ pub struct Fixed32 {
 }
 
 /// Shift amount for Fixed32 (16 bits fractional)
-const FIXED32_SHIFT: u32 = 16u32
+const FIXED32_SHIFT: u32 = 16
 
 /// Scale factor for Fixed32 (65536)
 const FIXED32_SCALE: i32 = 65536
@@ -284,21 +284,21 @@ impl Fixed32 {
     @inline
     @suppress("W0001", "Bit manipulation is intentional")
     pub fn floor(&self) -> Fixed32 {
-        return Fixed32 { raw: self.raw & 0xFFFF0000u32 }
+        return Fixed32 { raw: self.raw & -65536 }
     }
 
     /// Ceiling - round toward positive infinity
     @inline
     @suppress("W0001", "Arithmetic is intentional")
     pub fn ceil(&self) -> Fixed32 {
-        return Fixed32 { raw: (self.raw + FIXED32_ONE - 1) & 0xFFFF0000u32 }
+        return Fixed32 { raw: (self.raw + FIXED32_ONE - 1) & -65536 }
     }
 
     /// Round to nearest integer (as Fixed32)
     @inline
     @suppress("W0001", "Arithmetic is intentional")
     pub fn round(&self) -> Fixed32 {
-        return Fixed32 { raw: (self.raw + FIXED32_HALF) & 0xFFFF0000u32 }
+        return Fixed32 { raw: (self.raw + FIXED32_HALF) & -65536 }
     }
 }
 
@@ -314,16 +314,16 @@ pub struct Fixed16 {
 }
 
 /// Shift amount for Fixed16 (8 bits fractional)
-const FIXED16_SHIFT: u32 = 8u32
+const FIXED16_SHIFT: u32 = 8
 
 /// Scale factor for Fixed16 (256)
-const FIXED16_SCALE: i16 = 256i16
+const FIXED16_SCALE: i16 = 256
 
 /// One in Fixed16 representation
-const FIXED16_ONE: i16 = 256i16
+const FIXED16_ONE: i16 = 256
 
 /// Half in Fixed16 representation
-const FIXED16_HALF: i16 = 128i16
+const FIXED16_HALF: i16 = 128
 
 impl Fixed16 {
     /// Create a Fixed16 from raw bits
@@ -362,7 +362,7 @@ impl Fixed16 {
     /// Create zero
     @inline
     pub fn zero() -> Fixed16 {
-        return Fixed16 { raw: 0i16 }
+        return Fixed16 { raw: 0 }
     }
 
     /// Create one
@@ -388,13 +388,13 @@ impl Fixed16 {
     /// Check if zero
     @inline
     pub fn is_zero(&self) -> bool {
-        return self.raw == 0i16
+        return self.raw == 0
     }
 
     /// Check if negative
     @inline
     pub fn is_negative(&self) -> bool {
-        return self.raw < 0i16
+        return self.raw < 0
     }
 
     // === Arithmetic Operations ===
@@ -420,7 +420,7 @@ impl Fixed16 {
     /// Absolute value
     @inline
     pub fn abs(&self) -> Fixed16 {
-        if self.raw < 0i16 {
+        if self.raw < 0 {
             return Fixed16 { raw: -self.raw }
         }
         return *self

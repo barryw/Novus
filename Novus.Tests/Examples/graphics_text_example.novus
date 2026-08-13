@@ -1,22 +1,22 @@
 // Graphics Text Rendering Example
 //
-// Demonstrates all functions in std::graphics::text:
+// Demonstrates all functions in amiga::sys::graphics::text:
 // - Basic text drawing with draw_text and draw_text_at
 // - Text measurement with text_width
 // - Font metrics: font_height, font_baseline, font_width
 // - Text styles: bold, italic, underlined
 // - Character drawing with draw_char and draw_char_at
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::graphics::draw import DrawContext
-from std::graphics::shapes import Rect
-from std::graphics::text import draw_text, draw_text_at, text_width
-from std::graphics::text import font_height, font_baseline, font_width
-from std::graphics::text import set_text_style, get_text_style, reset_text_style
-from std::graphics::text import set_bold, set_italic, set_underline
-from std::graphics::text import draw_char, draw_char_at
-from std::graphics::text import set_font, get_font
-from std::graphics::text import STYLE_NORMAL, STYLE_BOLD, STYLE_ITALIC, STYLE_UNDERLINED
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::graphics::draw import DrawContext
+from amiga::sys::graphics::shapes import Rect
+from amiga::sys::graphics::text import draw_text, draw_text_at, text_width
+from amiga::sys::graphics::text import font_height, font_baseline, font_width
+from amiga::sys::graphics::text import set_text_style, get_text_style, reset_text_style
+from amiga::sys::graphics::text import set_bold, set_italic, set_underline
+from amiga::sys::graphics::text import draw_char, draw_char_at
+from amiga::sys::graphics::text import set_font, get_font
+from amiga::sys::graphics::text import STYLE_NORMAL, STYLE_BOLD, STYLE_ITALIC, STYLE_UNDERLINED
 from std::io::file import write
 
 pub fn main() -> i32 {
@@ -28,7 +28,7 @@ pub fn main() -> i32 {
 
             match ctx_result {
                 Result::Ok(ctx) => {
-                    let rp = ctx.handle()
+                    let rp = ctx.as_raw()
                     ctx.clear(0)
                     ctx.pen(1)
 

@@ -1,0 +1,625 @@
+// Novus Standard Library - AmiSSL FFI Bindings
+// Namespace: amiga::raw::amissl
+//
+// Low-level FFI bindings for AmiSSL (OpenSSL 3.x for AmigaOS).
+// Provides SSL/TLS encryption for secure network connections.
+//
+// IMPORTANT: AmiSSL requires:
+// 1. amisslmaster.library to be opened first
+// 2. InitAmiSSLMaster() and OpenAmiSSLTags() to initialize
+// 3. bsdsocket.library for underlying sockets
+//
+// For high-level TLS, use std::net::tls instead.
+
+// ============================================================================
+// Library Bases
+// ============================================================================
+
+extern var AmiSSLMasterBase: *u8
+extern var AmiSSLBase: *u8
+
+// ============================================================================
+// Initialization Functions
+// ============================================================================
+
+/// Initialize AmiSSL master library
+/// Must be called after opening amisslmaster.library
+/// Returns: Non-zero on success
+@library("amisslmaster.library")
+extern fn InitAmiSSLMaster(api_version: u32, all: i32) -> i32
+
+/// Open AmiSSL library with specific version
+/// Returns: Library base pointer or null
+@library("amisslmaster.library")
+extern fn OpenAmiSSL() -> *u8
+
+/// Open AmiSSL with tags for version control
+@library("amisslmaster.library")
+extern fn OpenAmiSSLTags(...tags) -> *u8
+
+/// Close AmiSSL library
+@library("amisslmaster.library")
+extern fn CloseAmiSSL() -> i32
+
+// ============================================================================
+// SSL Library Initialization (OpenSSL 3.x API)
+// ============================================================================
+
+/// Initialize OpenSSL library
+/// opts: OPENSSL_INIT_* flags
+/// settings: Optional OPENSSL_INIT_SETTINGS or null
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn OPENSSL_init_ssl(opts: u64, settings: *u8) -> i32
+
+/// Initialize crypto library
+@library("amissl.library")
+extern fn OPENSSL_init_crypto(opts: u64, settings: *u8) -> i32
+
+/// Cleanup (deprecated in OpenSSL 3.x but may be needed)
+@library("amissl.library")
+extern fn OPENSSL_cleanup()
+
+// ============================================================================
+// SSL Context (SSL_CTX) Functions
+// ============================================================================
+
+/// Create new SSL context
+/// method: TLS method (use TLS_client_method() or TLS_server_method())
+/// Returns: SSL_CTX pointer or null on error
+@library("amissl.library")
+extern fn SSL_CTX_new(method: *SSL_METHOD) -> *SSL_CTX
+
+/// Free SSL context
+@library("amissl.library")
+extern fn SSL_CTX_free(ctx: *SSL_CTX)
+
+/// Set verification mode
+/// mode: SSL_VERIFY_* flags
+/// callback: Optional verification callback (null for default)
+@library("amissl.library")
+extern fn SSL_CTX_set_verify(ctx: *SSL_CTX, mode: i32, callback: *u8)
+
+/// Set verification depth
+@library("amissl.library")
+extern fn SSL_CTX_set_verify_depth(ctx: *SSL_CTX, depth: i32)
+
+/// Load default CA certificate paths
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_set_default_verify_paths(ctx: *SSL_CTX) -> i32
+
+/// Load CA certificates from file
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_load_verify_locations(ctx: *SSL_CTX, ca_file: *u8, ca_path: *u8) -> i32
+
+/// Use certificate file for client/server
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_use_certificate_file(ctx: *SSL_CTX, file: *u8, kind: i32) -> i32
+
+/// Use certificate chain file
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_use_certificate_chain_file(ctx: *SSL_CTX, file: *u8) -> i32
+
+/// Use private key file
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_use_PrivateKey_file(ctx: *SSL_CTX, file: *u8, kind: i32) -> i32
+
+/// Check private key matches certificate
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_check_private_key(ctx: *SSL_CTX) -> i32
+
+/// Set cipher list
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_set_cipher_list(ctx: *SSL_CTX, str: *u8) -> i32
+
+/// Set TLS 1.3 ciphersuites
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_set_ciphersuites(ctx: *SSL_CTX, str: *u8) -> i32
+
+/// Set minimum protocol version
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_set_min_proto_version(ctx: *SSL_CTX, version: i32) -> i32
+
+/// Set maximum protocol version
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_CTX_set_max_proto_version(ctx: *SSL_CTX, version: i32) -> i32
+
+/// Set session cache mode
+/// Returns: Previous mode
+@library("amissl.library")
+extern fn SSL_CTX_set_session_cache_mode(ctx: *SSL_CTX, mode: i32) -> i32
+
+/// Set options
+/// Returns: New options value
+@library("amissl.library")
+extern fn SSL_CTX_set_options(ctx: *SSL_CTX, options: u64) -> u64
+
+/// Clear options
+/// Returns: New options value
+@library("amissl.library")
+extern fn SSL_CTX_clear_options(ctx: *SSL_CTX, options: u64) -> u64
+
+// ============================================================================
+// SSL Connection Functions
+// ============================================================================
+
+/// Create new SSL connection
+/// Returns: SSL pointer or null on error
+@library("amissl.library")
+extern fn SSL_new(ctx: *SSL_CTX) -> *SSL
+
+/// Free SSL connection
+@library("amissl.library")
+extern fn SSL_free(ssl: *SSL)
+
+/// Set socket file descriptor for SSL
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_set_fd(ssl: *SSL, fd: i32) -> i32
+
+/// Set read file descriptor
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_set_rfd(ssl: *SSL, fd: i32) -> i32
+
+/// Set write file descriptor
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_set_wfd(ssl: *SSL, fd: i32) -> i32
+
+/// Get socket file descriptor
+@library("amissl.library")
+extern fn SSL_get_fd(ssl: *SSL) -> i32
+
+/// Initiate TLS/SSL handshake as client
+/// Returns: 1 on success, 0 or negative on error
+@library("amissl.library")
+extern fn SSL_connect(ssl: *SSL) -> i32
+
+/// Accept TLS/SSL handshake as server
+/// Returns: 1 on success, 0 or negative on error
+@library("amissl.library")
+extern fn SSL_accept(ssl: *SSL) -> i32
+
+/// Perform handshake (client or server depending on mode)
+/// Returns: 1 on success, 0 or negative on error
+@library("amissl.library")
+extern fn SSL_do_handshake(ssl: *SSL) -> i32
+
+/// Read data from SSL connection
+/// Returns: Bytes read, 0 on close, negative on error
+@library("amissl.library")
+extern fn SSL_read(ssl: *SSL, buf: *u8, num: i32) -> i32
+
+/// Read data with extended error info
+@library("amissl.library")
+extern fn SSL_read_ex(ssl: *SSL, buf: *u8, num: u32, readbytes: *u32) -> i32
+
+/// Write data to SSL connection
+/// Returns: Bytes written, 0 on close, negative on error
+@library("amissl.library")
+extern fn SSL_write(ssl: *SSL, buf: *u8, num: i32) -> i32
+
+/// Write data with extended info
+@library("amissl.library")
+extern fn SSL_write_ex(ssl: *SSL, buf: *u8, num: u32, written: *u32) -> i32
+
+/// Peek at data without consuming
+@library("amissl.library")
+extern fn SSL_peek(ssl: *SSL, buf: *u8, num: i32) -> i32
+
+/// Shutdown SSL connection
+/// Returns: 0 (in progress), 1 (complete), negative on error
+@library("amissl.library")
+extern fn SSL_shutdown(ssl: *SSL) -> i32
+
+/// Get pending bytes in SSL buffer
+@library("amissl.library")
+extern fn SSL_pending(ssl: *SSL) -> i32
+
+/// Check if shutdown was received
+@library("amissl.library")
+extern fn SSL_get_shutdown(ssl: *SSL) -> i32
+
+/// Set shutdown state
+@library("amissl.library")
+extern fn SSL_set_shutdown(ssl: *SSL, mode: i32)
+
+// ============================================================================
+// Error Handling
+// ============================================================================
+
+/// Get error code for last SSL operation
+/// ret: Return value from the failed SSL function
+/// Returns: SSL_ERROR_* constant
+@library("amissl.library")
+extern fn SSL_get_error(ssl: *SSL, ret: i32) -> i32
+
+/// Get first error from error queue
+@library("amissl.library")
+extern fn ERR_get_error() -> u32
+
+/// Peek at first error without removing
+@library("amissl.library")
+extern fn ERR_peek_error() -> u32
+
+/// Clear error queue
+@library("amissl.library")
+extern fn ERR_clear_error()
+
+/// Get error string
+/// Returns: Static error string
+@library("amissl.library")
+extern fn ERR_error_string(e: u32, buf: *u8) -> *u8
+
+/// Get error string with buffer
+@library("amissl.library")
+extern fn ERR_error_string_n(e: u32, buf: *u8, len: u32)
+
+/// Get reason string for error
+@library("amissl.library")
+extern fn ERR_reason_error_string(e: u32) -> *u8
+
+/// Print error queue to BIO
+@library("amissl.library")
+extern fn ERR_print_errors(bp: *BIO)
+
+// ============================================================================
+// Certificate Functions
+// ============================================================================
+
+/// Get peer certificate
+/// Returns: X509 pointer (must be freed with X509_free) or null
+@library("amissl.library")
+extern fn SSL_get_peer_certificate(ssl: *SSL) -> *X509
+
+/// Get certificate verification result
+/// Returns: X509_V_OK on success, or error code
+@library("amissl.library")
+extern fn SSL_get_verify_result(ssl: *SSL) -> i32
+
+/// Free X509 certificate
+@library("amissl.library")
+extern fn X509_free(cert: *X509)
+
+/// Get certificate subject name
+@library("amissl.library")
+extern fn X509_get_subject_name(cert: *X509) -> *X509_NAME
+
+/// Get certificate issuer name
+@library("amissl.library")
+extern fn X509_get_issuer_name(cert: *X509) -> *X509_NAME
+
+/// Convert X509_NAME to single-line string
+@library("amissl.library")
+extern fn X509_NAME_oneline(name: *X509_NAME, buf: *u8, size: i32) -> *u8
+
+/// Get certificate not-before time
+@library("amissl.library")
+extern fn X509_get_notBefore(cert: *X509) -> *ASN1_TIME
+
+/// Get certificate not-after time
+@library("amissl.library")
+extern fn X509_get_notAfter(cert: *X509) -> *ASN1_TIME
+
+/// Check if certificate is self-signed
+@library("amissl.library")
+extern fn X509_check_issued(issuer: *X509, subject: *X509) -> i32
+
+// ============================================================================
+// Server Name Indication (SNI)
+// ============================================================================
+
+/// Set hostname for SNI (REQUIRED for modern HTTPS)
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_set_tlsext_host_name(ssl: *SSL, name: *u8) -> i32
+
+/// Get hostname from SNI
+@library("amissl.library")
+extern fn SSL_get_servername(ssl: *SSL, kind: i32) -> *u8
+
+// ============================================================================
+// TLS Methods
+// ============================================================================
+
+/// General TLS client method (auto-negotiates highest version)
+@library("amissl.library")
+extern fn TLS_client_method() -> *SSL_METHOD
+
+/// General TLS server method (auto-negotiates highest version)
+@library("amissl.library")
+extern fn TLS_server_method() -> *SSL_METHOD
+
+/// General TLS method (client or server)
+@library("amissl.library")
+extern fn TLS_method() -> *SSL_METHOD
+
+// Legacy methods (avoid if possible)
+@library("amissl.library")
+extern fn TLSv1_2_client_method() -> *SSL_METHOD
+
+@library("amissl.library")
+extern fn TLSv1_2_server_method() -> *SSL_METHOD
+
+// ============================================================================
+// Session Management
+// ============================================================================
+
+/// Get current session
+@library("amissl.library")
+extern fn SSL_get_session(ssl: *SSL) -> *SSL_SESSION
+
+/// Get session with incremented reference count
+@library("amissl.library")
+extern fn SSL_get1_session(ssl: *SSL) -> *SSL_SESSION
+
+/// Set session for resumption
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn SSL_set_session(ssl: *SSL, session: *SSL_SESSION) -> i32
+
+/// Free session
+@library("amissl.library")
+extern fn SSL_SESSION_free(session: *SSL_SESSION)
+
+/// Check if session was reused
+@library("amissl.library")
+extern fn SSL_session_reused(ssl: *SSL) -> i32
+
+// ============================================================================
+// Cipher Information
+// ============================================================================
+
+/// Get current cipher
+@library("amissl.library")
+extern fn SSL_get_current_cipher(ssl: *SSL) -> *SSL_CIPHER
+
+/// Get cipher name
+@library("amissl.library")
+extern fn SSL_CIPHER_get_name(cipher: *SSL_CIPHER) -> *u8
+
+/// Get cipher bits
+@library("amissl.library")
+extern fn SSL_CIPHER_get_bits(cipher: *SSL_CIPHER, alg_bits: *i32) -> i32
+
+/// Get cipher version
+@library("amissl.library")
+extern fn SSL_CIPHER_get_version(cipher: *SSL_CIPHER) -> *u8
+
+/// Get cipher description
+@library("amissl.library")
+extern fn SSL_CIPHER_description(cipher: *SSL_CIPHER, buf: *u8, size: i32) -> *u8
+
+// ============================================================================
+// Protocol Version
+// ============================================================================
+
+/// Get negotiated protocol version
+@library("amissl.library")
+extern fn SSL_version(ssl: *SSL) -> i32
+
+/// Get protocol version string
+@library("amissl.library")
+extern fn SSL_get_version(ssl: *SSL) -> *u8
+
+// ============================================================================
+// BIO Functions (Basic I/O abstraction)
+// ============================================================================
+
+/// Create new BIO
+@library("amissl.library")
+extern fn BIO_new(method: *BIO_METHOD) -> *BIO
+
+/// Free BIO
+@library("amissl.library")
+extern fn BIO_free(bio: *BIO) -> i32
+
+/// Free BIO chain
+@library("amissl.library")
+extern fn BIO_free_all(bio: *BIO)
+
+/// Create socket BIO
+@library("amissl.library")
+extern fn BIO_new_socket(sock: i32, close_flag: i32) -> *BIO
+
+/// Create memory BIO
+@library("amissl.library")
+extern fn BIO_new_mem_buf(buf: *u8, len: i32) -> *BIO
+
+/// Set SSL for BIO
+@library("amissl.library")
+extern fn BIO_set_ssl(bio: *BIO, ssl: *SSL, close_flag: i32) -> i32
+
+/// Read from BIO
+@library("amissl.library")
+extern fn BIO_read(bio: *BIO, buf: *u8, len: i32) -> i32
+
+/// Write to BIO
+@library("amissl.library")
+extern fn BIO_write(bio: *BIO, buf: *u8, len: i32) -> i32
+
+/// Flush BIO
+@library("amissl.library")
+extern fn BIO_flush(bio: *BIO) -> i32
+
+/// Check if BIO should retry
+@library("amissl.library")
+extern fn BIO_should_retry(bio: *BIO) -> i32
+
+/// Check if BIO should read
+@library("amissl.library")
+extern fn BIO_should_read(bio: *BIO) -> i32
+
+/// Check if BIO should write
+@library("amissl.library")
+extern fn BIO_should_write(bio: *BIO) -> i32
+
+// ============================================================================
+// Random Number Generation
+// ============================================================================
+
+/// Get random bytes
+/// Returns: 1 on success, 0 on failure
+@library("amissl.library")
+extern fn RAND_bytes(buf: *u8, num: i32) -> i32
+
+/// Seed random generator
+@library("amissl.library")
+extern fn RAND_seed(buf: *u8, num: i32)
+
+/// Check if random generator is seeded
+@library("amissl.library")
+extern fn RAND_status() -> i32
+
+// ============================================================================
+// Opaque Type Declarations
+// ============================================================================
+
+// All OpenSSL 3.x structures are opaque - use accessor functions
+pub struct SSL_CTX { _private: u8 }
+pub struct SSL { _private: u8 }
+pub struct SSL_METHOD { _private: u8 }
+pub struct SSL_SESSION { _private: u8 }
+pub struct SSL_CIPHER { _private: u8 }
+pub struct X509 { _private: u8 }
+pub struct X509_NAME { _private: u8 }
+pub struct ASN1_TIME { _private: u8 }
+pub struct BIO { _private: u8 }
+pub struct BIO_METHOD { _private: u8 }
+
+// ============================================================================
+// Constants - SSL_ERROR codes (from SSL_get_error)
+// ============================================================================
+
+pub const SSL_ERROR_NONE: i32 = 0              // Success
+pub const SSL_ERROR_SSL: i32 = 1               // SSL library error
+pub const SSL_ERROR_WANT_READ: i32 = 2         // Need more data to read
+pub const SSL_ERROR_WANT_WRITE: i32 = 3        // Need to write data
+pub const SSL_ERROR_WANT_X509_LOOKUP: i32 = 4  // Waiting for cert callback
+pub const SSL_ERROR_SYSCALL: i32 = 5           // System call error (check errno)
+pub const SSL_ERROR_ZERO_RETURN: i32 = 6       // Clean shutdown
+pub const SSL_ERROR_WANT_CONNECT: i32 = 7      // Connect not complete
+pub const SSL_ERROR_WANT_ACCEPT: i32 = 8       // Accept not complete
+pub const SSL_ERROR_WANT_ASYNC: i32 = 9        // Async engine not complete
+pub const SSL_ERROR_WANT_ASYNC_JOB: i32 = 10   // Async job not complete
+pub const SSL_ERROR_WANT_CLIENT_HELLO_CB: i32 = 11  // Client hello callback
+
+// ============================================================================
+// Constants - SSL_VERIFY modes
+// ============================================================================
+
+pub const SSL_VERIFY_NONE: i32 = 0x00                  // Don't verify
+pub const SSL_VERIFY_PEER: i32 = 0x01                  // Verify peer cert
+pub const SSL_VERIFY_FAIL_IF_NO_PEER_CERT: i32 = 0x02  // Fail if no cert (server)
+pub const SSL_VERIFY_CLIENT_ONCE: i32 = 0x04           // Only request once (server)
+pub const SSL_VERIFY_POST_HANDSHAKE: i32 = 0x08        // Post-handshake auth
+
+// ============================================================================
+// Constants - Protocol Versions
+// ============================================================================
+
+pub const SSL3_VERSION: i32 = 0x0300    // SSLv3 (deprecated)
+pub const TLS1_VERSION: i32 = 0x0301    // TLS 1.0 (deprecated)
+pub const TLS1_1_VERSION: i32 = 0x0302  // TLS 1.1 (deprecated)
+pub const TLS1_2_VERSION: i32 = 0x0303  // TLS 1.2
+pub const TLS1_3_VERSION: i32 = 0x0304  // TLS 1.3
+
+// ============================================================================
+// Constants - SSL Options
+// ============================================================================
+
+pub const SSL_OP_NO_SSLv2: u64 = 0x00000000           // SSLv2 not supported anyway
+pub const SSL_OP_NO_SSLv3: u64 = 0x02000000           // Disable SSLv3
+pub const SSL_OP_NO_TLSv1: u64 = 0x04000000           // Disable TLS 1.0
+pub const SSL_OP_NO_TLSv1_1: u64 = 0x10000000         // Disable TLS 1.1
+pub const SSL_OP_NO_TLSv1_2: u64 = 0x08000000         // Disable TLS 1.2
+pub const SSL_OP_NO_TLSv1_3: u64 = 0x20000000         // Disable TLS 1.3
+pub const SSL_OP_NO_COMPRESSION: u64 = 0x00020000     // Disable compression
+pub const SSL_OP_CIPHER_SERVER_PREFERENCE: u64 = 0x00400000  // Use server's cipher order
+
+// ============================================================================
+// Constants - Certificate File Types
+// ============================================================================
+
+pub const SSL_FILETYPE_PEM: i32 = 1    // PEM format
+pub const SSL_FILETYPE_ASN1: i32 = 2   // DER/ASN.1 format
+
+// ============================================================================
+// Constants - X509 Verification Results
+// ============================================================================
+
+pub const X509_V_OK: i32 = 0                                // Success
+pub const X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT: i32 = 2     // Can't get issuer cert
+pub const X509_V_ERR_UNABLE_TO_GET_CRL: i32 = 3             // Can't get CRL
+pub const X509_V_ERR_UNABLE_TO_DECRYPT_CERT_SIGNATURE: i32 = 4
+pub const X509_V_ERR_CERT_SIGNATURE_FAILURE: i32 = 7        // Signature failure
+pub const X509_V_ERR_CERT_NOT_YET_VALID: i32 = 9            // Not yet valid
+pub const X509_V_ERR_CERT_HAS_EXPIRED: i32 = 10             // Expired
+pub const X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD: i32 = 13
+pub const X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD: i32 = 14
+pub const X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT: i32 = 18  // Self-signed cert
+pub const X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN: i32 = 19    // Self-signed in chain
+pub const X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY: i32 = 20  // No local issuer
+pub const X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE: i32 = 21
+pub const X509_V_ERR_CERT_CHAIN_TOO_LONG: i32 = 22          // Chain too long
+pub const X509_V_ERR_CERT_REVOKED: i32 = 23                 // Certificate revoked
+pub const X509_V_ERR_INVALID_CA: i32 = 24                   // Invalid CA
+pub const X509_V_ERR_HOSTNAME_MISMATCH: i32 = 62            // Hostname mismatch
+
+// ============================================================================
+// Constants - SNI Type
+// ============================================================================
+
+pub const TLSEXT_NAMETYPE_host_name: i32 = 0
+
+// ============================================================================
+// Constants - BIO Close Flags
+// ============================================================================
+
+pub const BIO_NOCLOSE: i32 = 0   // Don't close underlying I/O on BIO_free
+pub const BIO_CLOSE: i32 = 1     // Close underlying I/O on BIO_free
+
+// ============================================================================
+// Constants - OpenSSL Init Flags
+// ============================================================================
+
+pub const OPENSSL_INIT_NO_LOAD_CRYPTO_STRINGS: u64 = 0x00000001
+pub const OPENSSL_INIT_LOAD_CRYPTO_STRINGS: u64 = 0x00000002
+pub const OPENSSL_INIT_ADD_ALL_CIPHERS: u64 = 0x00000004
+pub const OPENSSL_INIT_ADD_ALL_DIGESTS: u64 = 0x00000008
+pub const OPENSSL_INIT_NO_ADD_ALL_CIPHERS: u64 = 0x00000010
+pub const OPENSSL_INIT_NO_ADD_ALL_DIGESTS: u64 = 0x00000020
+pub const OPENSSL_INIT_LOAD_CONFIG: u64 = 0x00000040
+pub const OPENSSL_INIT_NO_LOAD_CONFIG: u64 = 0x00000080
+pub const OPENSSL_INIT_NO_LOAD_SSL_STRINGS: u64 = 0x00100000
+pub const OPENSSL_INIT_LOAD_SSL_STRINGS: u64 = 0x00200000
+
+// ============================================================================
+// Constants - AmiSSL Specific
+// ============================================================================
+
+// AmiSSL API version constants
+pub const AMISSL_V3: u32 = 3   // AmiSSL v3 (OpenSSL 1.0.x)
+pub const AMISSL_V4: u32 = 4   // AmiSSL v4 (OpenSSL 1.1.x)
+pub const AMISSL_V5: u32 = 5   // AmiSSL v5 (OpenSSL 3.x)
+
+// Current AmiSSL API version to request (v5 for OpenSSL 3.x API)
+// Note: Using literal 5 because constant-to-constant references aren't supported yet
+pub const AMISSL_CURRENT_VERSION: u32 = 5
+
+// AmiSSL certificate paths
+// These are the default locations on AmigaOS
+// AmiSSL:Certs/      - Root CA certificates
+// AmiSSL:UserCerts/  - User certificates
+// AmiSSL:Private/    - Private keys

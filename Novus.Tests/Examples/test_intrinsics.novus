@@ -1,6 +1,6 @@
 // Test suite for @zeroed and @drop_in_place intrinsics
 
-from std::ffi::dos import Dos
+from amiga::raw::dos import Dos
 from std::core import Option
 from std::test::test import expect, expect_true, expect_false, expect_eq, fail
 

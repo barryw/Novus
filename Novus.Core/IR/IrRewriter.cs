@@ -111,6 +111,7 @@ public abstract class IrRewriter
             IrAssert assert => RewriteAssert(assert),
             IrPanic panic => RewritePanic(panic),
             IrStructuredForLoopHint loopHint => RewriteStructuredForLoopHint(loopHint),
+            IrSliceBoundsCheck sliceCheck => RewriteSliceBoundsCheck(sliceCheck),
             IrIndexAccess indexAccess => RewriteIndexAccess(indexAccess),
             IrMemberAccess memberAccess => RewriteMemberAccess(memberAccess),
             IrMemberStore memberStore => RewriteMemberStore(memberStore),
@@ -145,6 +146,7 @@ public abstract class IrRewriter
             IrIndexedFieldAccess indexedField => RewriteIndexedFieldAccess(indexedField),
             IrTupleElementAccess tupleElement => RewriteTupleElementAccess(tupleElement),
             IrCastValue castValue => RewriteCastValue(castValue),
+            IrPointerOffsetValue pointerOffset => RewritePointerOffsetValue(pointerOffset),
             IrFunctionAddress funcAddr => RewriteFunctionAddress(funcAddr),
             IrEnumValue enumValue => RewriteEnumValue(enumValue),
             IrEnumConstructor enumCtor => RewriteEnumConstructor(enumCtor),
@@ -314,7 +316,17 @@ public abstract class IrRewriter
     {
         indexAccess.Array = RewriteValue(indexAccess.Array);
         indexAccess.Index = RewriteValue(indexAccess.Index);
+        if (indexAccess.Length != null)
+            indexAccess.Length = RewriteValue(indexAccess.Length);
         return indexAccess;
+    }
+
+    public virtual IrInstruction? RewriteSliceBoundsCheck(IrSliceBoundsCheck sliceCheck)
+    {
+        sliceCheck.Start = RewriteValue(sliceCheck.Start);
+        sliceCheck.End = RewriteValue(sliceCheck.End);
+        sliceCheck.Length = RewriteValue(sliceCheck.Length);
+        return sliceCheck;
     }
 
     /// <summary>
@@ -344,6 +356,8 @@ public abstract class IrRewriter
         indexStore.Array = RewriteValue(indexStore.Array);
         indexStore.Index = RewriteValue(indexStore.Index);
         indexStore.Value = RewriteValue(indexStore.Value);
+        if (indexStore.Length != null)
+            indexStore.Length = RewriteValue(indexStore.Length);
         return indexStore;
     }
 
@@ -541,6 +555,8 @@ public abstract class IrRewriter
     {
         indexedField.Array = RewriteValue(indexedField.Array);
         indexedField.Index = RewriteValue(indexedField.Index);
+        if (indexedField.Length != null)
+            indexedField.Length = RewriteValue(indexedField.Length);
         return indexedField;
     }
 
@@ -557,6 +573,13 @@ public abstract class IrRewriter
     {
         castValue.Value = RewriteValue(castValue.Value);
         return castValue;
+    }
+
+    public virtual IrValue RewritePointerOffsetValue(IrPointerOffsetValue pointerOffset)
+    {
+        pointerOffset.Pointer = RewriteValue(pointerOffset.Pointer);
+        pointerOffset.Index = RewriteValue(pointerOffset.Index);
+        return pointerOffset;
     }
 
     /// <summary>

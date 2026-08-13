@@ -1,12 +1,12 @@
 // Debug test for bounded channel with spawned responder
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
-from std::os::task import spawn_task_fn_with_ptr, receive_startup_data
-from std::ffi::exec import Wait, GetMsg, ReplyMsg, FindTask, AllocSignal, FreeSignal
-from std::ffi::dos import VPrintf, Delay
-from std::ffi::amiga_structs import MsgPort, Message, Task
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec::channel import bounded_channel, BoundedSender, BoundedReceiver
+from amiga::sys::exec import spawn_task_fn_with_ptr, receive_startup_data
+from amiga::raw::exec import Wait, GetMsg, ReplyMsg, FindTask, AllocSignal, FreeSignal
+from amiga::raw::dos import VPrintf, Delay
+from amiga::raw::structs import MsgPort, Message, Task
 
 fn responder_task() -> i32 {
     VPrintf("Child: started\n", null)

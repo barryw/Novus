@@ -82,7 +82,7 @@ The Novus compiler is a **production-ready systems language** for Amiga 68k deve
 | **std/memory** | ✅ Complete | MemoryBlock, Slice, chip/fast allocation |
 | **std/collections** | ✅ Complete | Vec, HashMap, HashSet, VecDeque, SmallVec, etc. |
 | **std/strings** | ✅ Complete | String, StringBuilder, Str, formatting |
-| **std/ffi** | ✅ Complete | 90+ AmigaOS bindings (Exec, DOS, Graphics, Intuition, etc.) |
+| **std/amiga/raw** | ✅ Complete | 90+ AmigaOS bindings (Exec, DOS, Graphics, Intuition, etc.) |
 | **std/async** | ✅ Complete | Executor, futures, signal-based awaiting |
 | **std/sync** | ✅ Complete | Channels (bounded/unbounded), message passing |
 | **std/io** | ✅ Complete | File I/O, ANSI terminal output |
@@ -94,14 +94,14 @@ The Novus compiler is a **production-ready systems language** for Amiga 68k deve
 
 ### 📅 Hardware DSLs - PLANNED (v1.5)
 
-> **Status Clarification:** Parser grammar for `copper {}` and `blitter {}` blocks exists, but semantic analysis and code generation are **not yet implemented**. Use `std/ffi/` bindings and inline assembly for direct hardware access.
+> **Status Clarification:** Parser grammar for `copper {}` and `blitter {}` blocks exists, but semantic analysis and code generation are **not yet implemented**. Use `std/amiga/raw/` bindings and inline assembly for direct hardware access.
 
 | DSL | Parser | Semantic | Codegen | Status |
 |-----|--------|----------|---------|--------|
 | **Copper** | ✅ | ❌ | ❌ | 📅 Planned v1.5 |
 | **Blitter** | ✅ | ❌ | ❌ | 📅 Planned v1.5 |
-| **Paula Audio** | N/A | N/A | N/A | ✅ Via std/ffi/audio.device |
-| **GELs System** | N/A | N/A | N/A | 🚧 Basic via std/ffi/graphics |
+| **Paula Audio** | N/A | N/A | N/A | ✅ Via std/amiga/raw/audio.device |
+| **GELs System** | N/A | N/A | N/A | 🚧 Basic via std/amiga/raw/graphics |
 
 ### ✅ AmigaOS FFI - EXTENSIVE COVERAGE
 

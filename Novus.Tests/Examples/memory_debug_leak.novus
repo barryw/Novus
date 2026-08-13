@@ -18,8 +18,8 @@
 //
 // Exit code: 0
 
-from std::ffi::exec import AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_ANY
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::consts import MEMF_ANY
 
 pub fn main() -> i32 {
     unsafe {
@@ -32,7 +32,7 @@ pub fn main() -> i32 {
 
         // Write something to prove it's valid memory
         let byte_ptr: *u8 = (*u8)ptr1
-        byte_ptr[0] = 42u8
+        byte_ptr[0] = 42
 
         // Allocate more memory
         let ptr2 = AllocMem(128, MEMF_ANY)

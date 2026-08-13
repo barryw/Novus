@@ -409,7 +409,7 @@ fn area(rect: &Rectangle) -> u32 {
 }
 
 fn perimeter(rect: &Rectangle) -> u32 {
-    return 2u32 * ((u32)rect.width + (u32)rect.height)
+    return 2 * ((u32)rect.width + (u32)rect.height)
 }
 
 fn is_square(rect: &Rectangle) -> bool {
@@ -441,7 +441,7 @@ fn max<T>(consuming a: T, consuming b: T) -> T where T: Ord {
 
 pub fn main() -> i32 {
     let max_int = max(10, 20)
-    let max_byte = max(100u8, 200u8)
+    let max_byte = max(100, 200)
     return 0
 }
 ```

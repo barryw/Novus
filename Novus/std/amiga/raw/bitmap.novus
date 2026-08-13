@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: bitmap.library
+// Base: _BitMapBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("bitmap.library")
+extern pub fn BITMAP_GetClass() -> *u8

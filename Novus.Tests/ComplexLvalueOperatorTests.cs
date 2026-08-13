@@ -19,6 +19,65 @@ public class ComplexLvalueOperatorTests
         return builder.BuildModule(tree);
     }
 
+    [Fact]
+    public void BuildIr_CompoundIndexedLvalue_EvaluatesIndexOnce()
+    {
+        var module = BuildIr("""
+            fn next(counter: &var u32) -> u32 {
+                *counter += 1
+                return 0
+            }
+
+            fn update() -> u32 {
+                var counter: u32 = 0
+                var values = [1]
+                values[next(&var counter)] += 2
+                return counter
+            }
+            """);
+
+        var update = module.Functions.Single(function => function.Name == "update");
+        Assert.Single(
+            update.BasicBlocks.SelectMany(block => block.Instructions).OfType<IrCall>(),
+            call => call.FunctionName == "next");
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
+    public void BuildIr_DereferencedReferenceField_AssignsPointee()
+    {
+        var module = BuildIr("""
+            struct Guard { data: &var i32 }
+
+            fn set(guard: &var Guard, value: i32) {
+                *guard.data = value
+            }
+            """);
+
+        var set = module.Functions.Single(function => function.Name == "set");
+        Assert.Contains(set.BasicBlocks.SelectMany(block => block.Instructions),
+            instruction => instruction is IrDereferenceStore);
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
+    [Fact]
+    public void BuildIr_GenericDereferencedReferenceField_AssignsPointee()
+    {
+        var module = BuildIr("""
+            struct Guard<T> { data: &var T }
+
+            impl<T> Guard<T> {
+                fn set(&var self, value: T) {
+                    *self.data = value
+                }
+            }
+
+            fn use_guard(guard: &var Guard<i32>) { guard.set(1) }
+            """);
+
+        Assert.True(new IrValidator().Validate(module).IsValid);
+    }
+
     // Array element compound assignment
     [Fact]
     public void BuildIr_ArrayElement_CompoundAdd_Compiles()

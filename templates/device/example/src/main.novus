@@ -7,12 +7,12 @@
 //   - Properly manage IOStdReq and MsgPort resources
 
 from std::io::file import println, print
-from std::ffi::exec import OpenDevice, CloseDevice, DoIO
-from std::ffi::exec import SendIO, CheckIO, WaitIO, AbortIO
-from std::ffi::exec import CreateMsgPort, DeleteMsgPort
-from std::ffi::exec import CreateIORequest, DeleteIORequest
-from std::ffi::amiga_structs import IORequest, IOStdReq, MsgPort
-from std::ffi::amiga_consts import CMD_RESET
+from amiga::raw::exec import OpenDevice, CloseDevice, DoIO
+from amiga::raw::exec import SendIO, CheckIO, WaitIO, AbortIO
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort
+from amiga::raw::exec import CreateIORequest, DeleteIORequest
+from amiga::raw::structs import IORequest, IOStdReq, MsgPort
+from amiga::raw::consts import CMD_RESET
 
 // Device command constants (match those in dev.novus)
 const NOVUS_CMD_STATUS: u16 = 9

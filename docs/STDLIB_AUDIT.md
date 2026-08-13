@@ -5,7 +5,7 @@
 
 Novus uses `Result<T, E>` when an operation can fail and the caller needs the reason.
 `Option<T>` is reserved for ordinary absence: an empty iterator, a missing map key, or
-a nonblocking receive with no message ready. Raw `std::ffi` declarations preserve the
+a nonblocking receive with no message ready. Raw `amiga::raw` declarations preserve the
 Amiga ABI; safe wrappers translate its null pointers, negative values, and status codes
 at that boundary.
 
@@ -48,13 +48,14 @@ diagnostics also detect alerts, CPU exceptions, and Guru Meditations.
 
 When adding a wrapper:
 
-1. Keep ABI sentinels inside `std::ffi` or the wrapper implementation.
+1. Keep ABI sentinels inside `amiga::raw` or the wrapper implementation.
 2. Return the narrowest existing error enum; add a variant only when callers can act on
    the distinction.
 3. Use `Option` only if absence is a successful state.
 4. Add one success-path and one failure-path test; use the A4000 suite for behavior that
    depends on AmigaOS.
-5. Reuse the existing ownership shape: `handle()` borrows, `into_raw(consuming self)`
-   transfers, and `from_raw(...)` adopts. Do not invent synonymous methods.
+5. Reuse the existing ownership shape: `system()` borrows the next safe layer,
+   `as_raw()` borrows native state, `into_raw(consuming self)` transfers, and
+   validating `from_raw(...)` adopts. Do not invent synonymous methods.
 6. Expose a borrowed path to the next lower API layer when advanced operations are
    plausible, and test that callers can return to the high-level API afterward.

@@ -3,9 +3,9 @@
 // Unified memory management API with automatic size tracking
 
 from std::core import Option, Result, From, Drop
-from std::error::errors import ExecError
-from std::ffi::exec import AllocMem, FreeMem, CopyMem
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY
+from std::memory::errors import MemoryError
+from amiga::raw::exec import AllocMem, FreeMem, CopyMem
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_ANY
 from std::memory::slice import Slice, MutSlice
 
 /// MemoryBlock - Raw memory allocation with automatic size tracking
@@ -43,6 +43,11 @@ pub struct MemoryBlock {
 }
 
 impl MemoryBlock {
+    /// Allocate zero-initialized application memory without exposing Exec flags.
+    pub fn new(size: u32) -> Result<MemoryBlock, MemoryError> {
+        return MemoryBlock::alloc(size, MEMF_PUBLIC | MEMF_CLEAR)
+    }
+
     /// Allocate raw memory of specified size
     /// Returns an error if allocation fails.
     ///
@@ -59,7 +64,7 @@ impl MemoryBlock {
     ///     Result::Err(_) => { /* failed */ }
     /// }
     /// ```
-    pub fn alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
+    pub fn alloc(size: u32, flags: u32) -> Result<MemoryBlock, MemoryError> {
         if size == 0 {
             // Zero-size allocation returns valid empty block
             return Result::Ok(MemoryBlock { ptr: null, size: 0 })
@@ -72,7 +77,7 @@ impl MemoryBlock {
 
         // Check if allocation failed (returns null pointer)
         if (u32)ptr == 0 {
-            return Result::Err(ExecError::NoMem)
+            return Result::Err(MemoryError::OutOfMemory)
         }
 
         return Result::Ok(MemoryBlock { ptr: ptr, size: size })
@@ -87,7 +92,7 @@ impl MemoryBlock {
     ///     block.free()
     /// }
     /// ```
-    pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, ExecError> {
+    pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, MemoryError> {
         return MemoryBlock::alloc(size, flags)
     }
 
@@ -104,7 +109,7 @@ impl MemoryBlock {
     /// Borrow the allocation as bounded bytes without exposing its raw pointer.
     pub fn as_bytes(&self) -> Slice<u8> {
         if self.size == 0 {
-            return unsafe { Slice::<u8>::new(&*((*u8)self), 0u32) }
+            return unsafe { Slice::<u8>::new(&*((*u8)self), 0) }
         }
         return unsafe { Slice::<u8>::new(&*self.ptr, self.size) }
     }
@@ -112,7 +117,7 @@ impl MemoryBlock {
     /// Mutably borrow the allocation as bounded bytes.
     pub fn as_mut_bytes(&var self) -> MutSlice<u8> {
         if self.size == 0 {
-            return unsafe { MutSlice::<u8>::new(&var *((*u8)self), 0u32) }
+            return unsafe { MutSlice::<u8>::new(&var *((*u8)self), 0) }
         }
         return unsafe { MutSlice::<u8>::new(&var *self.ptr, self.size) }
     }
@@ -162,7 +167,7 @@ impl MemoryBlock {
     /// Resize the memory block (realloc equivalent)
     /// Returns Ok on success or the allocation error.
     /// On failure, original block is unchanged
-    pub fn resize(&var self, new_size: u32, flags: u32) -> Result<(), ExecError> {
+    pub fn resize(&var self, new_size: u32, flags: u32) -> Result<(), MemoryError> {
         if new_size == self.size {
             return Result::Ok(())
         }
@@ -236,7 +241,7 @@ pub struct Allocation<T> {
 impl<T> Allocation<T> {
     /// Allocate memory for `count` elements of type T
     /// Returns an error if allocation fails.
-    pub fn new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
+    pub fn new(count: u32, flags: u32) -> Result<Allocation<T>, MemoryError> {
         if count == 0 {
             return Result::Ok(Allocation {
                 block: MemoryBlock { ptr: null, size: 0 },
@@ -247,8 +252,8 @@ impl<T> Allocation<T> {
         let element_size: u32 = @sizeof(T)
 
         // Check for overflow: count * element_size
-        if element_size > ($FFFFFFFFu32 / count) {
-            return Result::Err(ExecError::NoMem)  // Would overflow
+        if element_size > ($FFFFFFFF / count) {
+            return Result::Err(MemoryError::OutOfMemory)  // Would overflow
         }
 
         let total_bytes: u32 = count * element_size
@@ -265,7 +270,7 @@ impl<T> Allocation<T> {
     }
 
     /// Allocate and return Result with typed error
-    pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, ExecError> {
+    pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, MemoryError> {
         return Allocation::<T>::new(count, flags)
     }
 
@@ -302,12 +307,12 @@ impl<T> Allocation<T> {
     }
 
     /// Resize allocation to new element count
-    pub fn resize(&var self, new_count: u32, flags: u32) -> Result<(), ExecError> {
+    pub fn resize(&var self, new_count: u32, flags: u32) -> Result<(), MemoryError> {
         let element_size: u32 = @sizeof(T)
 
         // Check for overflow: new_count * element_size
-        if new_count > 0 && element_size > ($FFFFFFFFu32 / new_count) {
-            return Result::Err(ExecError::NoMem)  // Would overflow
+        if new_count > 0 && element_size > ($FFFFFFFF / new_count) {
+            return Result::Err(MemoryError::OutOfMemory)  // Would overflow
         }
 
         let new_bytes: u32 = new_count * element_size
@@ -361,12 +366,12 @@ pub struct Box<T> {
 impl<T> Box<T> {
     /// Allocate and initialize a Box with the given value
     /// Uses MEMF_PUBLIC by default
-    pub fn new(consuming value: T) -> Result<Box<T>, ExecError> {
+    pub fn new(consuming value: T) -> Result<Box<T>, MemoryError> {
         return Box::new_in(value, MEMF_PUBLIC)
     }
 
     /// Allocate with specific memory flags
-    pub fn new_in(consuming value: T, flags: u32) -> Result<Box<T>, ExecError> {
+    pub fn new_in(consuming value: T, flags: u32) -> Result<Box<T>, MemoryError> {
         let element_size: u32 = @sizeof(T)
         let total_bytes: u32 = element_size
 
@@ -385,12 +390,12 @@ impl<T> Box<T> {
     }
 
     /// Try allocate with Result
-    pub fn try_new(consuming value: T) -> Result<Box<T>, ExecError> {
+    pub fn try_new(consuming value: T) -> Result<Box<T>, MemoryError> {
         return Box::new(value)
     }
 
     /// Try allocate with specific flags
-    pub fn try_new_in(consuming value: T, flags: u32) -> Result<Box<T>, ExecError> {
+    pub fn try_new_in(consuming value: T, flags: u32) -> Result<Box<T>, MemoryError> {
         return Box::new_in(value, flags)
     }
 

@@ -129,9 +129,9 @@ The compiler automatically generates:
 From your program:
 
 ```novus
-from std::ffi::exec import OpenDevice, CloseDevice, DoIO
-from std::ffi::exec import CreateMsgPort, DeleteMsgPort
-from std::ffi::exec import CreateIORequest, DeleteIORequest
+from amiga::raw::exec import OpenDevice, CloseDevice, DoIO
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort
+from amiga::raw::exec import CreateIORequest, DeleteIORequest
 
 pub fn main() -> i32 {
     let port = CreateMsgPort()

@@ -2,7 +2,7 @@
 // Demonstrates for i in start..end and for i in start..=end syntax
 
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 
 pub fn main() -> i32 {
     // Test 1: Exclusive range (0..5 gives 0,1,2,3,4)

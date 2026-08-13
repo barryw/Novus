@@ -837,6 +837,12 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         Write("enum ");
         Write(context.IDENTIFIER().GetText());
 
+        if (context.primitiveTypeName() != null)
+        {
+            Write(": ");
+            Write(context.primitiveTypeName().GetText());
+        }
+
         if (context.genericParams() != null)
         {
             Visit(context.genericParams());
@@ -877,6 +883,11 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
             Visit(context.typeList());
             Write(")");
         }
+        var discriminant = context.INTEGER_LITERAL()?.GetText()
+            ?? context.BINARY_LITERAL()?.GetText()
+            ?? context.HEX_LITERAL()?.GetText();
+        if (discriminant != null)
+            Write($" = {discriminant}");
         return null;
     }
 
@@ -1686,7 +1697,10 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
         EmitHiddenTokensBefore(context);
         Write("for ");
         if (context.KW_VAR() != null) Write("var ");
-        Write(context.IDENTIFIER().GetText());
+        if (context.tuplePattern() != null)
+            Visit(context.tuplePattern());
+        else
+            Write(context.IDENTIFIER().GetText());
         Write(" in ");
         Visit(context.expression());
         Write(" ");
@@ -1881,6 +1895,24 @@ public class NovusFormatter : NovusParserBaseVisitor<object?>
     public override object? VisitCharLiteral(NovusParser.CharLiteralContext context)
     {
         Write(context.CHAR_LITERAL().GetText());
+        return null;
+    }
+
+    public override object? VisitByteCharLiteral(NovusParser.ByteCharLiteralContext context)
+    {
+        Write(context.BYTE_CHAR_LITERAL().GetText());
+        return null;
+    }
+
+    public override object? VisitByteStringLiteral(NovusParser.ByteStringLiteralContext context)
+    {
+        Write(context.BYTE_STRING_LITERAL().GetText());
+        return null;
+    }
+
+    public override object? VisitFourCcLiteral(NovusParser.FourCcLiteralContext context)
+    {
+        Write(context.FOURCC_LITERAL().GetText());
         return null;
     }
 

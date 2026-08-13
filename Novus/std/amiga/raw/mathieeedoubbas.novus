@@ -1,0 +1,37 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: mathieeedoubbas.library
+// Base: _MathIeeeDoubBasBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPFix(parm: f64) -> i32
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPFlt(integer: i32) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPCmp(leftParm: f64, rightParm: f64) -> i32
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPTst(parm: f64) -> i32
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPAbs(parm: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPNeg(parm: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPAdd(leftParm: f64, rightParm: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPSub(leftParm: f64, rightParm: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPMul(factor1: f64, factor2: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPDiv(dividend: f64, divisor: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPFloor(parm: f64) -> f64
+@library("mathieeedoubbas.library")
+extern pub fn IEEEDPCeil(parm: f64) -> f64

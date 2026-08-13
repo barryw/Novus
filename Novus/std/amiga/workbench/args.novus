@@ -1,0 +1,2 @@
+// Tier 1 launch arguments backed by the Workbench systems wrapper.
+pub use amiga::sys::workbench::args::*

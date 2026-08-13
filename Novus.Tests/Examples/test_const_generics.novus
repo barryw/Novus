@@ -7,7 +7,7 @@ pub struct Buffer<const N: u32> {
 
 impl<const N: u32> Buffer<N> {
     pub fn new() -> Buffer<N> {
-        return Buffer { bytes: [0u8; N], len: 0 }
+        return Buffer { bytes: [0; N], len: 0 }
     }
 
     pub fn capacity(&self) -> u32 {
@@ -52,11 +52,11 @@ pub fn main() -> i32 {
     if buf5.capacity() != 8 {
         return 5
     }
-    buf5.set(7u32, 42u8)
-    if buf5.get(7u32) != 42u8 {
+    buf5.set(7, 42)
+    if buf5.get(7) != 42 {
         return 6
     }
-    if @sizeof(Buffer<8>) != 12u32 || @sizeof(Buffer<32>) != 36u32 {
+    if @sizeof(Buffer<8>) != 12 || @sizeof(Buffer<32>) != 36 {
         return 7
     }
 

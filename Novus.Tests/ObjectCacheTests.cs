@@ -14,7 +14,7 @@ public class ObjectCacheTests
             "block_device_read_block_device_read",
             new[]
             {
-                (Prefix: "block_device", SourcePath: "/std/os/block_device.novus"),
+                (Prefix: "block_device", SourcePath: "/std/amiga/storage/block_device.novus"),
                 (Prefix: "block_device_read", SourcePath: "/tests/block_device_read.novus"),
             });
 

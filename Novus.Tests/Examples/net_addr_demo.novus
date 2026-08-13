@@ -32,7 +32,7 @@ pub fn main() -> i32 {
     write("\n")
 
     // From u32
-    let addr2 = Ipv4Addr::from_u32(0xC0A80164u32) // 192.168.1.100
+    let addr2 = Ipv4Addr::from_u32(0xC0A80164) // 192.168.1.100
     write("From u32 (0xC0A80164): ")
     print_ip(addr2)
     write("\n")
@@ -115,13 +115,13 @@ fn check_address(ip: Ipv4Addr) {
 fn print_ip(ip: Ipv4Addr) {
     // Access octets via to_u32 and bit extraction to avoid array-by-value issue
     let addr = ip.to_u32()
-    print_u32((addr >> 24u32) & 0xFFu32)
+    print_u32((addr >> 24) & 0xFF)
     write(".")
-    print_u32((addr >> 16u32) & 0xFFu32)
+    print_u32((addr >> 16) & 0xFF)
     write(".")
-    print_u32((addr >> 8u32) & 0xFFu32)
+    print_u32((addr >> 8) & 0xFF)
     write(".")
-    print_u32(addr & 0xFFu32)
+    print_u32(addr & 0xFF)
 }
 
 fn print_socket_addr(addr: SocketAddrV4) {
@@ -136,14 +136,14 @@ fn print_u32(n: u32) {
         return
     }
 
-    var buf = [0u8; 12]
+    var buf: [u8] = [0; 12]
     var i = 11
     var val = n
 
-    while val > 0u32 {
+    while val > 0 {
         i = i - 1
-        buf[i] = 48u8 + ((val % 10u32) as u8)  // '0' = 48
-        val = val / 10u32
+        buf[i] = 48 + ((val % 10) as u8)  // '0' = 48
+        val = val / 10
     }
 
     while i < 11 {
@@ -153,25 +153,25 @@ fn print_u32(n: u32) {
 }
 
 fn print_hex32(n: u32) {
-    var buf = [0u8; 9]
+    var buf: [u8] = [0; 9]
     var i = 8
     var val = n
 
     while i > 0 {
         i = i - 1
-        let digit = (val & 0xFu32) as u8
-        if digit < 10u8 {
-            buf[i] = 48u8 + digit  // '0' = 48
+        let digit = (val & 0xF) as u8
+        if digit < 10 {
+            buf[i] = 48 + digit  // '0' = 48
         } else {
-            buf[i] = 65u8 + digit - 10u8  // 'A' = 65
+            buf[i] = 65 + digit - 10  // 'A' = 65
         }
-        val = val >> 4u32
+        val = val >> 4
     }
 
     write(&buf[0])
 }
 
 fn print_char(c: u8) {
-    var buf = [c, 0u8]
+    var buf = [c, 0]
     write(&buf[0])
 }

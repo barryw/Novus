@@ -2,11 +2,11 @@
 // Plays a MOD file once and exits when finished
 
 from std::core import Result
-from std::audio::ptplayer import ModPlayer, ModAsset
-from std::audio::errors import AudioError
-from std::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::hardware::ptplayer import ModPlayer, ModAsset
+from amiga::audio import AudioError
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
 from std::io::file import write
-from std::os::timer import AsyncTimer, Duration, WaitResult, TimerError
+from amiga::timer import AsyncTimer, Duration, WaitResult, TimerError
 
 // Embed MOD in fast RAM
 @embed("GSLINGER.MOD", chip = false)
@@ -35,8 +35,8 @@ pub fn main() -> i32 {
         match timer.wait_or_break(Duration::secs(1)) {
             WaitResult::Timer => {
                 seconds++
-                let mins = seconds / 60u32
-                let secs = seconds % 60u32
+                let mins = seconds / 60
+                let secs = seconds % 60
                 let pct = player.progress()
 
                 write("Time: %ld:%02ld  Pos: %ld/%ld (%ld%%)\r",

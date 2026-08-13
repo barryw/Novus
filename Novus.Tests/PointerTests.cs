@@ -65,7 +65,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     let ptr: *i32 = 0 as *i32
-    if (u32)ptr == 0u32 {
+    if (u32)ptr == 0 {
         return 1
     }
     return 0
@@ -140,7 +140,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let addr: u32 = 0x1000u32
+    let addr: u32 = 0x1000
     let ptr: *i32 = addr as *i32
     return 0
 }";
@@ -230,7 +230,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     let ptr: *i32 = 0x1000 as *i32
-    let offset: u32 = 4u32
+    let offset: u32 = 4
     let ptr2_addr = (ptr as u32) + offset
     let ptr2: *i32 = ptr2_addr as *i32
     return 0
@@ -278,7 +278,7 @@ pub fn main() -> i32 {
 pub fn main() -> i32 {
     var sum = 0
     for (var i = 0; i < 5; i++) {
-        let addr = 0x1000u32 + ((u32)i * 4u32)
+        let addr: u32 = 0x1000 + ((u32)i * 4)
         let ptr: *i32 = addr as *i32
         sum += (i32)addr
     }
@@ -293,7 +293,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 fn isNull(ptr: *i32) -> bool {
-    return (u32)ptr == 0u32
+    return (u32)ptr == 0
 }
 pub fn main() -> i32 {
     let ptr: *i32 = 0 as *i32

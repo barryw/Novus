@@ -167,10 +167,10 @@ pub fn into_vec(consuming self) -> Vec<T>  // Consuming conversion
 pub fn from_slice(s: Str) -> Result<String, StringError>  // Constructor
 ```
 
-Owning raw-handle wrappers use one vocabulary: `handle()` borrows,
-`into_raw(consuming self)` transfers ownership after disarming `Drop`, and
-`from_raw(...)` adopts ownership. Non-owning raw views use `borrow_raw(...)`.
-Raw pointers stay at FFI and explicitly raw escape hatches; safe collection
+Owning wrappers use one vocabulary: `system()` borrows the next safe layer,
+`as_raw()` borrows the native handle, `into_raw(consuming self)` transfers
+ownership after disarming `Drop`, and validating `from_raw(...)` adopts
+ownership. Raw pointers stay at `amiga::raw` and explicit escape hatches; safe collection
 views and iterators store `&T` or `&var T` so the compiler can tie them to
 their owner.
 

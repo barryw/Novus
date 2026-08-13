@@ -82,7 +82,7 @@ pub fn sortItems<T>(items: *T, count: u32) -> i32 where T: Sortable {
 
 pub fn main() -> i32 {
     let w = Window { width: 100 }
-    return sortItems::<Window>(&w, 1u32)
+    return sortItems::<Window>(&w, 1)
 }";
         var (module, diagnostics) = BuildIrWithDiagnostics(source);
 
@@ -119,7 +119,7 @@ pub fn sortItems<T>(items: *T, count: u32) -> i32 where T: Sortable {
 
 pub fn main() -> i32 {
     let c = Counter { value: 42 }
-    return sortItems::<Counter>(&c, 1u32)
+    return sortItems::<Counter>(&c, 1)
 }";
         var (module, diagnostics) = BuildIrWithDiagnostics(source);
 

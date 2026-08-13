@@ -1,8 +1,11 @@
-from safety import DeviceIdentity, DeviceLiveness, classify_live_device
+from safety import DeviceIdentity, DeviceLiveness, classify_live_device, mounted_device_name_exists
 from std::test::test import expect_true
 
 fn live_safety_is_correct() -> bool {
-    let floppy = DeviceIdentity { driver: "trackdisk.device", unit: 0u32 }
+    return false unless mounted_device_name_exists("DH0")
+    return false if mounted_device_name_exists("NOVUS_NOT_MOUNTED")
+
+    let floppy = DeviceIdentity { driver: "trackdisk.device", unit: 0 }
     match classify_live_device(&floppy) {
         DeviceLiveness::Mounted => {},
         _ => return false,
@@ -10,7 +13,7 @@ fn live_safety_is_correct() -> bool {
 
     // This A4000 boots from a host-directory DH0:, which has no startup
     // message identifying a raw backing device. The classifier must fail closed.
-    let missing = DeviceIdentity { driver: "not-a-real.device", unit: 99u32 }
+    let missing = DeviceIdentity { driver: "not-a-real.device", unit: 99 }
     return match classify_live_device(&missing) {
         DeviceLiveness::Mounted => true,
         _ => false,

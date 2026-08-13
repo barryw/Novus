@@ -41,10 +41,10 @@
 // }
 // ```
 
-from std::ffi::bsdsocket import gethostbyname, gethostbyaddr, gethostname
-from std::ffi::bsdsocket import getprotobyname, getprotobynumber, getservbyname, getservbyport
-from std::ffi::bsdsocket import hostent, protoent, servent, AF_INET, h_errno
-from std::ffi::bsdsocket import HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
+from amiga::raw::bsdsocket import gethostbyname, gethostbyaddr, gethostname
+from amiga::raw::bsdsocket import getprotobyname, getprotobynumber, getservbyname, getservbyport
+from amiga::raw::bsdsocket import hostent, protoent, servent, AF_INET, h_errno
+from amiga::raw::bsdsocket import HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
 from std::net::addr import Ipv4Addr
 from std::net::errors import NetError
 from std::core import Option, Result
@@ -174,7 +174,7 @@ pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
 ///
 /// Example:
 /// ```novus
-/// var buf: [u8; 256] = [0u8; 256]
+/// var buf: [u8; 256] = [0; 256]
 /// get_local_hostname((*u8)&buf, 256)?
 /// println((*u8)&buf)
 /// ```

@@ -1,0 +1,47 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: mathieeesingtrans.library
+// Base: _MathIeeeSingTransBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPAtan(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPSin(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPCos(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPTan(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPSincos(cosptr: *u8, parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPSinh(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPCosh(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPTanh(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPExp(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPLog(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPPow(exp: f32, arg: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPSqrt(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPTieee(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPFieee(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPAsin(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPAcos(parm: f32) -> f32
+@library("mathieeesingtrans.library")
+extern pub fn IEEESPLog10(parm: f32) -> f32

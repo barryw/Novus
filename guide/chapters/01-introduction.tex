@@ -353,10 +353,10 @@ Before diving into the full language, let's look at a complete program. This ope
 \begin{lstlisting}
 // hello_window.novus - A complete Novus program
 from std::core import Result
-from std::ffi::intuition import OpenWindowTags, CloseWindow
-from std::ffi::graphics import SetAPen, Move, Text
-from std::ffi::exec import Wait
-from std::ffi::amiga_consts import (
+from amiga::raw::intuition import OpenWindowTags, CloseWindow
+from amiga::raw::graphics import SetAPen, Move, Text
+from amiga::raw::exec import Wait
+from amiga::raw::consts import (
     WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP,
     WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_ACTIVATE,
     IDCMP_CLOSEWINDOW, TAG_DONE
@@ -390,7 +390,7 @@ pub fn main() -> i32 {
 
     // Wait for close gadget
     unsafe {
-        let signal = 1u32 << window.UserPort.mp_SigBit
+        let signal: u32 = 1 << window.UserPort.mp_SigBit
         Wait(signal)
     }
 
@@ -493,10 +493,10 @@ To close this introduction, here's a program that demonstrates what makes Novus 
 \begin{lstlisting}
 // copper_rainbow.novus - A visual showcase
 from std::core import Result
-from std::graphics::copper import CopperListBuilder, CopperListHandle, CopperError
-from std::hardware::registers import rgb12
-from std::os::timer import delay, Duration
-from std::ffi::graphics import WaitTOF
+from amiga::sys::graphics::copper import CopperListBuilder, CopperListHandle, CopperError
+from amiga::sys::hardware::registers import rgb12
+from amiga::timer import delay, Duration
+from amiga::raw::graphics import WaitTOF
 
 /// Interpolate between two colors
 fn lerp_color(c1: u16, c2: u16, t: u16) -> u16 {
@@ -710,8 +710,8 @@ Create a new module for joystick input:
 
 \begin{lstlisting}
 // src/input/joystick.novus
-from std::ffi::exec import custom_chips
-from std::ffi::amiga_consts import JOYDAT0, JOYDAT1
+from amiga::raw::exec import custom_chips
+from amiga::raw::consts import JOYDAT0, JOYDAT1
 
 pub struct JoystickState {
     left: bool,

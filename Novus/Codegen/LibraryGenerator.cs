@@ -1156,7 +1156,7 @@ public class LibraryGenerator
         sb.AppendLine($"// Version: {GetLibraryVersion()}.{GetLibraryRevision()}");
         sb.AppendLine("//");
         sb.AppendLine();
-        sb.AppendLine("from std::ffi::exec import Library, OpenLibrary, CloseLibrary");
+        sb.AppendLine("from amiga::raw::exec import Library, OpenLibrary, CloseLibrary");
         sb.AppendLine();
 
         // Library base type
@@ -1682,7 +1682,7 @@ struct {structName} {{
         sb.AppendLine("// Generated Novus resource binding");
         sb.AppendLine($"// Library: {name}");
         sb.AppendLine($"// Base: _{_libraryStruct.StructName}Base");
-        sb.AppendLine("from std::ffi::exec import Library, OpenResource");
+        sb.AppendLine("from amiga::raw::exec import Library, OpenResource");
         sb.AppendLine($"pub struct {baseName} {{ lib: Library }}");
         sb.AppendLine($"static mut {_libraryStruct.StructName}_BASE: *{baseName} = 0 as *{baseName};");
         sb.AppendLine($"pub fn open_{moduleName}() -> bool {{");

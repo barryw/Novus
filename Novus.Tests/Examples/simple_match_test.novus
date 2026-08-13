@@ -1,7 +1,7 @@
 // Simple test to verify match statements work without spawning
 
 from std::core import Option
-from std::ffi::dos import VPrintf
+from amiga::raw::dos import VPrintf
 
 pub fn main() -> i32 {
     VPrintf("Test: starting\n", (*u8)0)

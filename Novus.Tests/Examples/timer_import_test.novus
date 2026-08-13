@@ -1,7 +1,7 @@
 // Test just importing from timer module
 
-from std::ffi::dos import VPrintf
-from std::os::timer import Duration
+from amiga::raw::dos import VPrintf
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     VPrintf("Timer import works\n", (*u8)0)

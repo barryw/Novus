@@ -3,23 +3,21 @@
 
 	section	__novus_library_not_found,code
 	xdef	___novus_library_not_found
-	xref	_SysBase
 
 ___novus_library_not_found:
 	movem.l	d6-d7/a2-a4/a6,-(sp)
 	movea.l	28(sp),a4		; library name
 	move.l	32(sp),d6		; minimum version
 	movea.l	4.w,a0
-	tst.b	294(a0)		; ExecBase.IDNestCnt
-	bge	.alert
-	tst.b	295(a0)		; ExecBase.TDNestCnt
-	bge	.alert
+	move.b	294(a0),d0		; ExecBase.IDNestCnt
+	and.b	295(a0),d0		; both counters must be negative
+	bpl.s	.alert
 	tst.l	276(a0)		; ExecBase.ThisTask
-	beq	.alert
+	beq.s	.alert
 
 .try_requester:
-	movea.l	_SysBase,a6
-	lea	.intuition_name,a1
+	movea.l	4.w,a6
+	lea	.intuition_name(pc),a1
 	moveq	#33,d0
 	jsr	-552(a6)		; OpenLibrary()
 	move.l	d0,d7
@@ -30,18 +28,18 @@ ___novus_library_not_found:
 	move.l	a4,-(sp)
 	movea.l	d7,a6
 	suba.l	a0,a0
-	lea	.request,a1
+	lea	.request(pc),a1
 	suba.l	a2,a2
 	lea	(sp),a3
 	jsr	-588(a6)		; EasyRequest()
 	addq.l	#8,sp
 	movea.l	d7,a1
-	movea.l	_SysBase,a6
+	movea.l	4.w,a6
 	jsr	-414(a6)		; CloseLibrary()
 	bra.s	.done
 
 .alert:
-	movea.l	_SysBase,a6
+	movea.l	4.w,a6
 	move.l	#$7f00000d,d7		; AN_NovusLib | AG_NovusError | AO_LibraryNotFound
 	jsr	-108(a6)		; Alert()
 
@@ -55,9 +53,9 @@ ___novus_library_not_found:
 .intuition_name:
 	dc.b	'intuition.library',0
 .title:
-	dc.b	'Novus failure',0
+	dc.b	'Novus',0
 .text:
-	dc.b	'Cannot open %s v%ld+.',10,'Add it to LIBS: and retry.',0
+	dc.b	'Need %s v%ld+.',0
 .ok:
 	dc.b	'OK',0
 

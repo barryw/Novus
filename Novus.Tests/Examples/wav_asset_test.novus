@@ -5,12 +5,12 @@
 // This shows how to use @audio with chip = false for memory efficiency
 
 from std::core import Result
-from std::audio::ptplayer import AudioAsset, AudioSample
-from std::audio::paula import AudioChannel, PlaybackMode, is_pal_system
-from std::audio::errors import AudioError
-from std::memory::chip import is_chip_ram
+from amiga::sys::hardware::ptplayer import AudioAsset, AudioSample
+from amiga::sys::hardware::audio import AudioChannel, PlaybackMode, is_pal_system
+from amiga::audio import AudioError
+from amiga::sys::exec::memory::chip import is_chip_ram
 from std::io::file import write, wait_for_key
-from std::hardware::chipset import DISPLAY, DisplayType
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
 
 // ============================================================================
 // Test 1: Audio stored in fast RAM using AudioAsset

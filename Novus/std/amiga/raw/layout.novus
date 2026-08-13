@@ -1,0 +1,31 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: layout.library
+// Base: _LayoutBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("layout.library")
+extern pub fn LAYOUT_GetClass() -> *u8
+@library("layout.library")
+extern pub fn ActivateLayoutGadget(gadget: *Gadget, window: *Window, requester: *Requester, object: u32) -> i16
+@library("layout.library")
+extern pub fn FlushLayoutDomainCache(gadget: *Gadget)
+@library("layout.library")
+extern pub fn RethinkLayout(gadget: *Gadget, window: *Window, requester: *Requester, refresh: i16) -> i16
+@library("layout.library")
+extern pub fn LayoutLimits(gadget: *Gadget, limits: *LayoutLimits, font: *TextFont, screen: *Screen)
+@library("layout.library")
+extern pub fn PAGE_GetClass() -> *u8
+@library("layout.library")
+extern pub fn SetPageGadgetAttrsA(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, tags: *TagItem) -> u32
+@library("layout.library")
+extern pub fn SetPageGadgetAttrs(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, ...args) -> u32
+@library("layout.library")
+extern pub fn RefreshPageGadget(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester)

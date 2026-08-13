@@ -640,7 +640,7 @@ fn example() {
 ### Example 2: Get ExecBase
 
 ```novus
-use std::exec::Library
+from amiga::raw::structs import Library
 
 /// Read ExecBase pointer from absolute address 4
 fn get_execbase() -> *Library in a0 {
@@ -713,7 +713,7 @@ fn memcpy_fast(dst: *u8, src: *u8, count: u32) {
 ### Example 5: Library Vector with Specific Registers
 
 ```novus
-use std::exec::Library
+from amiga::raw::structs import Library
 
 /// Library Open vector (must follow Amiga ABI)
 @libvec(offset = -6)

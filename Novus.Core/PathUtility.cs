@@ -45,6 +45,18 @@ public static class PathUtility
                normalized.EndsWith($"/{directoryName}");
     }
 
+    public static string GetModuleDisplayName(string path)
+    {
+        var normalized = NormalizeForStorage(path);
+        var marker = normalized.LastIndexOf("/std/", StringComparison.Ordinal);
+        if (marker < 0)
+            return Path.GetFileNameWithoutExtension(path);
+
+        var module = Path.ChangeExtension(normalized[(marker + 5)..], null)!
+            .Replace("/", "::", StringComparison.Ordinal);
+        return module.StartsWith("amiga::", StringComparison.Ordinal) ? module : $"std::{module}";
+    }
+
     /// <summary>
     /// Gets the VBCC installation path. Vendored VBCC takes priority over system VBCC
     /// because it contains Novus-specific configuration (e.g., aos68k_fpu for FPU support).

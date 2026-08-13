@@ -26,7 +26,7 @@ Rather than implementing a MOD player in Novus (a significant undertaking), we w
 
 ### Files to Modify
 
-#### `Novus/std/ffi/amiga_structs.novus`
+#### `Novus/std/amiga/raw/structs.novus`
 
 Add NDK struct definitions:
 
@@ -55,7 +55,7 @@ pub struct IOAudio {
 }
 ```
 
-#### `Novus/std/ffi/amiga_consts.novus`
+#### `Novus/std/amiga/raw/consts.novus`
 
 Add audio-related constants from NDK headers:
 
@@ -151,15 +151,15 @@ pub const ADKF_USE3PN: u16 = $0080
 pub const ADKF_SETCLR: u16 = $8000
 ```
 
-#### `Novus/std/ffi/audio_device.novus` (New File)
+#### `Novus/std/amiga/raw/audio_device.novus` (New File)
 
 ```novus
 // Generated from SFD file by Novus SFD Parser
 // Library: audio.device
 // Base: _AudioBase
 //
-// NOTE: Constants are in std::ffi::amiga_consts
-// NOTE: Structs are in std::ffi::amiga_structs
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
 
 // audio.device has no library functions - it's purely IORequest-based
 // All operations use standard exec.library device I/O:
@@ -176,13 +176,13 @@ pub const ADKF_SETCLR: u16 = $8000
 
 ```novus
 // Paula Audio Hardware Registers
-// Module: std::hardware::paula
+// Module: amiga::sys::hardware::paula
 //
 // Direct hardware register access for games and demos.
-// For OS-friendly applications, use std::audio::device instead.
+// For OS-friendly applications, use amiga::sys::device::audio instead.
 
 from std::core import Option
-from std::hardware::registers import CUSTOM_BASE
+from amiga::sys::hardware::registers import CUSTOM_BASE
 
 // ============================================================================
 // Audio Channel Register Offsets (from CUSTOM_BASE = $DFF000)
@@ -355,17 +355,17 @@ pub fn channel_int_bit(channel: u8) -> u16 {
 
 ```novus
 // Paula Audio API
-// Module: std::audio::paula
+// Module: amiga::sys::hardware::audio
 //
 // High-level RAII-based API for Paula audio playback.
 // Provides safe wrappers around hardware registers with automatic cleanup.
 //
 // For OS-friendly applications that need to coexist with other programs,
-// use std::audio::device instead.
+// use amiga::sys::device::audio instead.
 //
 // # Example
 // ```novus
-// from std::audio::paula import AudioChannel, SampleHandle, PlaybackMode
+// from amiga::sys::hardware::audio import AudioChannel, SampleHandle, PlaybackMode
 //
 // // Load sample into chip RAM
 // let sample = SampleHandle::from_data(raw_pcm_data, length)?
@@ -379,10 +379,10 @@ pub fn channel_int_bit(channel: u8) -> u16 {
 // ```
 
 from std::core import Option, Result, Drop
-from std::ffi::exec import AllocVec, FreeVec, CopyMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
-from std::hardware::registers import CUSTOM_BASE, DMACON
-from std::hardware::paula import (
+from amiga::raw::exec import AllocVec, FreeVec, CopyMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, DMAF_SETCLR, DMAF_MASTER
+from amiga::sys::hardware::registers import CUSTOM_BASE, DMACON
+from amiga::sys::hardware::paula import (
     period_from_hz, channel_base_offset, channel_dma_bit,
     PAULA_MAX_VOLUME, PAULA_MIN_PERIOD, PAULA_MAX_PERIOD,
     PAULA_MAX_LENGTH_WORDS, PAULA_PAL_CLOCK, AUD0LCH
@@ -787,20 +787,20 @@ impl Drop for AudioChannel {
 
 ```novus
 // Audio Device API
-// Module: std::audio::device
+// Module: amiga::sys::device::audio
 //
 // OS-friendly audio playback using audio.device.
 // Properly allocates channels through AmigaOS, allowing coexistence
 // with other applications.
 //
-// Use this instead of std::audio::paula when:
+// Use this instead of amiga::sys::hardware::audio when:
 // - Running as a Workbench application
 // - Need to play sounds without disturbing other programs
 // - Want automatic channel allocation
 //
 // # Example
 // ```novus
-// from std::audio::device import AudioDeviceHandle
+// from amiga::sys::device::audio import AudioDeviceHandle
 //
 // // Request any available channel with medium priority
 // var audio = AudioDeviceHandle::open_any(0)?
@@ -812,18 +812,18 @@ impl Drop for AudioChannel {
 // ```
 
 from std::core import Option, Result, Drop
-from std::ffi::exec import (
+from amiga::raw::exec import (
     OpenDevice, CloseDevice, DoIO, SendIO, WaitIO, AbortIO,
     CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort,
     CopyMem
 )
-from std::ffi::amiga_structs import IOAudio, IORequest, MsgPort, Message
-from std::ffi::amiga_consts import (
+from amiga::raw::structs import IOAudio, IORequest, MsgPort, Message
+from amiga::raw::consts import (
     AUDIONAME, ADCMD_ALLOCATE, ADCMD_FREE, ADCMD_PERVOL,
     ADIOF_PERVOL, CMD_WRITE, CMD_STOP, CMD_START,
     ADIOERR_NOALLOCATION, ADIOERR_ALLOCFAILED, ADIOERR_CHANNELSTOLEN
 )
-from std::audio::paula import SampleHandle
+from amiga::sys::hardware::audio import SampleHandle
 
 // ============================================================================
 // Error Types
@@ -1182,11 +1182,11 @@ static EXPLOSION: AudioSample = AudioSample {
    - `ptplayer.h` - C header
    - Pre-assembled object files for different CPUs
 
-2. **`Novus/std/audio/mod.novus`**
+2. **`Novus/std/amiga/sys/hardware/ptplayer.novus`**
 
 ```novus
 // MOD File Playback
-// Module: std::audio::mod
+// Module: amiga::sys::hardware::ptplayer
 //
 // Wrapper for ptplayer - the standard ProTracker MOD player for Amiga.
 //
@@ -1195,7 +1195,7 @@ static EXPLOSION: AudioSample = AudioSample {
 // @mod("music/intro.mod")
 // static INTRO_MUSIC: ModFile
 //
-// from std::audio::mod import ModPlayer
+// from amiga::sys::hardware::ptplayer import ModPlayer
 //
 // let player = ModPlayer::new()?
 // player.play(&INTRO_MUSIC)

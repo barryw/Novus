@@ -1,0 +1,89 @@
+from std::core import Error, From, Option, Result
+from std::string import PathString, Str
+from amiga::sys::intuition::dialog import alert_on, choice_on, confirm_on
+from amiga::sys::intuition::errors import IntuitionError
+from amiga::sys::asl import AslError, FileRequesterHandle
+from amiga::sys::gadtools import GadgetBounds, GadToolsBuilder, GadToolsEvent, GadToolsWindow, StaticGadget, StaticGadToolsUi, StaticMenuEntry
+from amiga::sys::intuition import ScreenHandle
+
+// Tier 1: application windows, controls, dialogs, screens, and requesters.
+pub use amiga::ui::dialog::*
+
+pub type Window = GadToolsWindow
+pub type WindowBuilder = GadToolsBuilder
+pub type Event = GadToolsEvent
+pub type Bounds = GadgetBounds
+pub type StaticControl = StaticGadget
+pub type StaticUi = StaticGadToolsUi
+pub type StaticMenu = StaticMenuEntry
+pub type FileRequester = FileRequesterHandle
+pub type Screen = ScreenHandle
+pub enum UiError {
+    WindowFailed,
+    ScreenFailed,
+    ControlFailed,
+    MenuFailed,
+    RequesterFailed,
+}
+
+impl From<IntuitionError> for UiError {
+    fn convert(consuming error: IntuitionError) -> UiError {
+        return match error {
+            IntuitionError::ScreenOpenFailed | IntuitionError::InvalidScreen | IntuitionError::BadDisplayMode => UiError::ScreenFailed,
+            IntuitionError::GadgetCreateFailed => UiError::ControlFailed,
+            IntuitionError::MenuCreateFailed => UiError::MenuFailed,
+            _ => UiError::WindowFailed,
+        }
+    }
+}
+
+impl From<AslError> for UiError {
+    fn convert(consuming _error: AslError) -> UiError { return UiError::RequesterFailed }
+}
+
+impl UiError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            UiError::WindowFailed => "Could not open or manage the window",
+            UiError::ScreenFailed => "Could not open or manage the screen",
+            UiError::ControlFailed => "Could not create or update a control",
+            UiError::MenuFailed => "Could not create the menu",
+            UiError::RequesterFailed => "Could not open the requester",
+        }
+    }
+}
+
+impl Error for UiError {
+    fn message(&self) -> *u8 { return UiError::message(self) }
+}
+
+impl GadToolsWindow {
+    pub fn alert(&self, title: Str, message: Str) {
+        alert_on(self.as_raw(), title.as_cstr(), message.as_cstr())
+    }
+
+    pub fn alert_error<E>(&self, title: Str, consuming error: E) where E: Error {
+        alert_on(self.as_raw(), title.as_cstr(), error.message())
+    }
+
+    pub fn confirm(&self, title: Str, message: Str) -> bool {
+        return confirm_on(self.as_raw(), title.as_cstr(), message.as_cstr())
+    }
+
+    pub fn choice(&self, title: Str, message: Str, buttons: Str) -> i32 {
+        return choice_on(self.as_raw(), title.as_cstr(), message.as_cstr(), buttons.as_cstr())
+    }
+}
+
+impl FileRequesterHandle {
+    /// Show a requester owned by an application window without exposing Intuition handles.
+    pub fn choose_for(&self,
+        parent: &GadToolsWindow,
+        title: Str,
+        initial_drawer: Str,
+        initial_file: Str,
+        save: bool
+    ) -> Result<Option<PathString>, AslError> {
+        return self.choose(parent.as_raw(), title, initial_drawer, initial_file, save)
+    }
+}

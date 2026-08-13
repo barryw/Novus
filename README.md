@@ -15,8 +15,8 @@ _**Novus** is a Walker Heavy Industries project._
 Novus is a compiled systems language designed specifically for the Amiga 68k platform. It combines modern language ergonomics — Result types, pattern matching, safe memory management — with direct hardware access and the efficiency that 68k systems demand.
 
 ```novus
-from std::ui::screen import ScreenHandle
-from std::ffi::graphics import SetAPen, RectFill
+from amiga::sys::intuition import ScreenHandle
+from amiga::raw::graphics import SetAPen, RectFill
 
 pub fn main() -> i32 {
     let result = ScreenHandle::lores("Demo", 5)
@@ -56,13 +56,13 @@ This compiles to clean 68k assembly that runs natively on any Amiga.
 
 ### Standard Library Highlights
 
-- `std::ui::screen` / `std::ui::window` — Safe screen and window management
+- `amiga::ui` / `amiga::graphics` — Application windows, events, and drawing
 - `std::collections` — Vec, HashMap, HashSet, VecDeque, and more
-- `std::strings` — UTF-8 aware string handling
+- `std::string` — UTF-8 aware string handling
 - `std::io` — File I/O with RAII handles
 - `std::net` — TCP/UDP networking via bsdsocket.library
-- `std::audio` — Paula audio and ProTracker module playback
-- `std::ffi` — Complete AmigaOS FFI bindings (Exec, DOS, Intuition, Graphics...)
+- `amiga::audio` — Paula audio and ProTracker module playback
+- `amiga::raw` — Complete AmigaOS FFI bindings (Exec, DOS, Intuition, Graphics...)
 
 ## Quick Start
 

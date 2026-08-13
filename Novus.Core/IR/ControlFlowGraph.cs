@@ -474,6 +474,8 @@ public class ControlFlowGraph
             case IrIndexedFieldAccess indexedField:
                 CollectUsedVariables(indexedField.Array, blockLabel, usedIn);
                 CollectUsedVariables(indexedField.Index, blockLabel, usedIn);
+                if (indexedField.Length != null)
+                    CollectUsedVariables(indexedField.Length, blockLabel, usedIn);
                 break;
 
             case IrDereferenceValue deref:
@@ -482,6 +484,11 @@ public class ControlFlowGraph
 
             case IrCastValue cast:
                 CollectUsedVariables(cast.Value, blockLabel, usedIn);
+                break;
+
+            case IrPointerOffsetValue pointerOffset:
+                CollectUsedVariables(pointerOffset.Pointer, blockLabel, usedIn);
+                CollectUsedVariables(pointerOffset.Index, blockLabel, usedIn);
                 break;
 
             case IrTupleElementAccess tupleAccess:
@@ -535,12 +542,14 @@ public class ControlFlowGraph
                 CollectUsedVariables(indexStore.Array, blockLabel, usedIn);
                 CollectUsedVariables(indexStore.Index, blockLabel, usedIn);
                 CollectUsedVariables(indexStore.Value, blockLabel, usedIn);
+                if (indexStore.Length != null) CollectUsedVariables(indexStore.Length, blockLabel, usedIn);
                 break;
 
             case IrIndexedFieldStore indexedFieldStore:
                 CollectUsedVariables(indexedFieldStore.Array, blockLabel, usedIn);
                 CollectUsedVariables(indexedFieldStore.Index, blockLabel, usedIn);
                 CollectUsedVariables(indexedFieldStore.Value, blockLabel, usedIn);
+                if (indexedFieldStore.Length != null) CollectUsedVariables(indexedFieldStore.Length, blockLabel, usedIn);
                 break;
 
             case IrDereferenceStore derefStore:
@@ -551,6 +560,14 @@ public class ControlFlowGraph
             case IrIndexAccess indexAccess:
                 CollectUsedVariables(indexAccess.Array, blockLabel, usedIn);
                 CollectUsedVariables(indexAccess.Index, blockLabel, usedIn);
+                if (indexAccess.Length != null)
+                    CollectUsedVariables(indexAccess.Length, blockLabel, usedIn);
+                break;
+
+            case IrSliceBoundsCheck sliceCheck:
+                CollectUsedVariables(sliceCheck.Start, blockLabel, usedIn);
+                CollectUsedVariables(sliceCheck.End, blockLabel, usedIn);
+                CollectUsedVariables(sliceCheck.Length, blockLabel, usedIn);
                 break;
 
             case IrMemberAccess memberAccess:

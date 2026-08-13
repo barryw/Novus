@@ -3,7 +3,7 @@
 // This program can be launched from either CLI or Workbench.
 // It demonstrates that the runtime correctly detects the launch method.
 
-from std::args::args import is_workbench, get_workbench_startup
+from amiga::workbench::args import is_workbench, get_workbench_startup
 from std::io::file import write
 
 pub fn main() -> i32 {
@@ -44,7 +44,7 @@ fn workbench_main() -> i32 {
 
 // Helper to write a u32 as a string
 fn write_u32(value: u32) {
-    var buf = [0u8; 12]
+    var buf: [u8] = [0; 12]
     let len = u32_to_str(value, (*u8)&buf, 12)
     buf[len] = 0
     write((*u8)&buf)
@@ -62,7 +62,7 @@ fn u32_to_str(value: u32, buf: *u8, buf_size: u32) -> u32 {
     }
 
     // Convert digits in reverse
-    var temp = [0u8; 12]
+    var temp: [u8] = [0; 12]
     var len: u32 = 0
 
     var n = value

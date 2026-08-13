@@ -25,10 +25,10 @@
 // ```
 
 from std::io::file import write
-from std::strings::core import Str, strlen, strcmp
+from std::string::core import Str, strlen, strcmp
 from std::core import Result, Option
-from std::ffi::exec import TypeOfMem, AvailMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST
+from amiga::raw::exec import TypeOfMem, AvailMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST
 from std::test::test import __test_record_failure
 
 // ============================================================================
@@ -153,9 +153,9 @@ pub fn expect_str_len(s: Str, expected_len: u32, message: *u8) {
 // Helper to write Str bytes (handles non-null-terminated strings)
 fn write_str_bytes(s: Str) {
     while var i < s.len() {
-        let c: u8 = s.as_ptr()[i]
+        let c: u8 = s.get(i).unwrap()
         write("%c", (c as i32))
-        i = i + 1u32
+        i = i + 1
     }
 }
 
@@ -462,13 +462,15 @@ pub fn expect_array_eq_i32(actual_ptr: *i32, actual_len: u32, expected_ptr: *i32
     }
 
     while var i < actual_len {
-        if actual_ptr[i] != expected_ptr[i] {
+        let actual = unsafe { actual_ptr[i] }
+        let expected = unsafe { expected_ptr[i] }
+        if actual != expected {
             __test_record_failure()
             write("  FAIL: %s - element [%lu] mismatch: expected %ld, got %ld\n",
-                  message, i, expected_ptr[i], actual_ptr[i])
+                  message, i, expected, actual)
             return
         }
-        i = i + 1u32
+        i = i + 1
     }
 }
 
@@ -481,13 +483,15 @@ pub fn expect_array_eq_u32(actual_ptr: *u32, actual_len: u32, expected_ptr: *u32
     }
 
     while var i < actual_len {
-        if actual_ptr[i] != expected_ptr[i] {
+        let actual = unsafe { actual_ptr[i] }
+        let expected = unsafe { expected_ptr[i] }
+        if actual != expected {
             __test_record_failure()
             write("  FAIL: %s - element [%lu] mismatch: expected %lu, got %lu\n",
-                  message, i, expected_ptr[i], actual_ptr[i])
+                  message, i, expected, actual)
             return
         }
-        i = i + 1u32
+        i = i + 1
     }
 }
 
@@ -500,23 +504,25 @@ pub fn expect_array_eq_u8(actual_ptr: *u8, actual_len: u32, expected_ptr: *u8, e
     }
 
     while var i < actual_len {
-        if actual_ptr[i] != expected_ptr[i] {
+        let actual = unsafe { actual_ptr[i] }
+        let expected = unsafe { expected_ptr[i] }
+        if actual != expected {
             __test_record_failure()
             write("  FAIL: %s - element [%lu] mismatch: expected 0x%02x, got 0x%02x\n",
-                  message, i, (expected_ptr[i] as u32), (actual_ptr[i] as u32))
+                  message, i, (u32)expected, (u32)actual)
             return
         }
-        i = i + 1u32
+        i = i + 1
     }
 }
 
 /// Expect array to contain element
 pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
     while var i < len {
-        if ptr[i] == element {
+        if unsafe { ptr[i] } == element {
             return  // Found it
         }
-        i = i + 1u32
+        i = i + 1
     }
     __test_record_failure()
     write("  FAIL: %s - array does not contain %ld\n", message, element)
@@ -525,12 +531,12 @@ pub fn expect_array_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8
 /// Expect array to NOT contain element
 pub fn expect_array_not_contains_i32(ptr: *i32, len: u32, element: i32, message: *u8) {
     while var i < len {
-        if ptr[i] == element {
+        if unsafe { ptr[i] } == element {
             __test_record_failure()
             write("  FAIL: %s - array contains %ld at index %lu\n", message, element, i)
             return
         }
-        i = i + 1u32
+        i = i + 1
     }
 }
 
@@ -544,7 +550,7 @@ pub fn expect_array_len(actual_len: u32, expected_len: u32, message: *u8) {
 
 /// Expect array to be empty
 pub fn expect_array_empty(len: u32, message: *u8) {
-    if len != 0u32 {
+    if len != 0 {
         __test_record_failure()
         write("  FAIL: %s - expected empty array, got length %lu\n", message, len)
     }
@@ -552,7 +558,7 @@ pub fn expect_array_empty(len: u32, message: *u8) {
 
 /// Expect array to NOT be empty
 pub fn expect_array_not_empty(len: u32, message: *u8) {
-    if len == 0u32 {
+    if len == 0 {
         __test_record_failure()
         write("  FAIL: %s - expected non-empty array\n", message)
     }
@@ -621,7 +627,7 @@ pub fn expect_approx_eq_u32(actual: u32, expected: u32, tolerance: u32, message:
 /// Expect pointer to be in CHIP RAM
 pub fn expect_chip_mem(ptr: *u8, message: *u8) {
     let mem_type: u32 = TypeOfMem(ptr)
-    if (mem_type & MEMF_CHIP) == 0u32 {
+    if (mem_type & MEMF_CHIP) == 0 {
         __test_record_failure()
         write("  FAIL: %s - expected CHIP memory at 0x%08lx, got type 0x%08lx\n",
               message, (ptr as u32), mem_type)
@@ -631,7 +637,7 @@ pub fn expect_chip_mem(ptr: *u8, message: *u8) {
 /// Expect pointer to be in FAST RAM
 pub fn expect_fast_mem(ptr: *u8, message: *u8) {
     let mem_type: u32 = TypeOfMem(ptr)
-    if (mem_type & MEMF_FAST) == 0u32 {
+    if (mem_type & MEMF_FAST) == 0 {
         __test_record_failure()
         write("  FAIL: %s - expected FAST memory at 0x%08lx, got type 0x%08lx\n",
               message, (ptr as u32), mem_type)
@@ -646,7 +652,7 @@ pub fn expect_valid_mem(ptr: *u8, message: *u8) {
         return
     }
     let mem_type: u32 = TypeOfMem(ptr)
-    if mem_type == 0u32 {
+    if mem_type == 0 {
         __test_record_failure()
         write("  FAIL: %s - pointer 0x%08lx not recognized by TypeOfMem\n",
               message, (ptr as u32))

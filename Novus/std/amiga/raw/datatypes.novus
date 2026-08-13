@@ -1,0 +1,264 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: datatypes.library
+// Base: _DataTypesBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+/// Examines a handle and return its DataType.
+///
+/// This function examines the data that the handle points to, and returns a
+/// DataType record that describes the data.
+///
+/// # Arguments
+/// * `type` - Type of handle.
+/// * `handle` - Handle to examine. For DTST_FILE, handle must be BPTR
+///   lock. For DTST_CLIPBOARD, handle must be struct IFFHandle *. For
+///   DTST_MEMORY, handle will be ignored (you need to specify the
+///   additional information required by this source type through the attrs
+///   list).
+/// * `attrs` - Additional attributes (see TAGS).
+///
+/// See also: FreeDataType()
+@library("datatypes.library")
+extern pub fn ObtainDataTypeA(_type: u32, handle: *u8, attrs: *TagItem) -> *DataType
+@library("datatypes.library")
+extern pub fn ObtainDataType(_type: u32, handle: *u8, attrs: u32, ...args) -> *DataType
+/// Release a DataType structure.         (V39)
+///
+/// This function is used to release a DataType structure obtained by
+/// ObtainDataTypeA().
+///
+/// # Arguments
+/// * `dtn` - DataType structure returned by ObtainDataTypeA(). NULL is a
+///   valid input.
+///
+/// See also: ObtainDataTypeA()
+@library("datatypes.library")
+extern pub fn ReleaseDataType(dt: *DataType)
+/// Create an data type object.              (V39)
+///
+/// This is the method for creating datatype objects from 'boopsi' classes.
+/// Boopsi' stands for "basic object-oriented programming system for
+/// Intuition".) You further specify initial "create-time" attributes for the
+/// object via a TagItem list, and they are applied to the resulting datatype
+/// object that is returned.
+///
+/// # Arguments
+/// * `name` - Name of the data source.  Usually an existing file name.
+/// * `attrs` - Pointer to a taglist containing additional arguments.
+///
+/// See also: AddDTObject(), DisposeDTObject(), RemoveDTObject(), intuition.library/NewObjectA()
+@library("datatypes.library")
+extern pub fn NewDTObjectA(name: *u8, attrs: *TagItem) -> *u8
+@library("datatypes.library")
+extern pub fn NewDTObject(name: *u8, attrs: u32, ...args) -> *u8
+/// Delete a data type object.            (V39)
+///
+/// This function is used to dispose of a data type object that was obtained
+/// with NewDTObjectA().
+///
+/// # Arguments
+/// * `o` - Pointer to an object as returned by NewDTObjectA(). NULL is a
+///   valid input.
+///
+/// See also: NewDTObjectA()
+@library("datatypes.library")
+extern pub fn DisposeDTObject(o: *u8)
+/// Set attributes for an object.             (V39)
+///
+/// This function is used to set the attributes of a data type object.
+///
+/// # Arguments
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `win` - Window that the object has been added to.
+/// * `attrs` - Attributes to set, terminated with TAG_DONE.
+///
+/// See also: GetDTAttrsA(), intuition.library/SetGadgetAttrsA()
+@library("datatypes.library")
+extern pub fn SetDTAttrsA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem) -> u32
+@library("datatypes.library")
+extern pub fn SetDTAttrs(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args) -> u32
+/// Obtain attributes for an object.          (V39)
+///
+/// This function is used to get the attributes of a data type object.
+///
+/// # Arguments
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `attrs` - Attributes to get, terminated with TAG_DONE. The data
+///   element of each pair contains the address of the storage variable.
+/// * `RETURNS retval` - Contains the number of attributes the system was
+///   able to obtain.
+///
+/// See also: SetDTAttrsA(), intuition.library/GetAttr()
+@library("datatypes.library")
+extern pub fn GetDTAttrsA(o: *u8, attrs: *TagItem) -> u32
+@library("datatypes.library")
+extern pub fn GetDTAttrs(o: *u8, attrs: u32, ...args) -> u32
+/// Add an object to a window or requester.   (V39)
+///
+/// This function adds a single object to the gadget list of the given window or
+/// requester at the position in the list specified by the position argument.
+/// When the object is added to the gadget list, the object will receive a
+/// GM_LAYOUT message with the gpl_Initial field set to one.
+///
+/// # Arguments
+/// * `window` - Pointer to the window.
+/// * `requester` - Must be NULL.
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+/// * `position` - Integer position in the list for the new gadget. -1 to
+///   add to the end of the list.
+///
+/// See also: RemoveDTObject(), intuition.library/AddGList()
+@library("datatypes.library")
+extern pub fn AddDTObject(win: *Window, req: *Requester, o: *u8, pos: i32) -> i32
+/// Refresh a datatypes object.          (V39)
+///
+/// Refreshes the specified object, by sending the GM_RENDER method to the
+/// object.
+///
+/// # Arguments
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+/// * `window` - Pointer to the window.
+/// * `req` - Must be NULL.
+/// * `attrs` - Additional attributes (currently none are defined).
+///
+/// See also: AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
+@library("datatypes.library")
+extern pub fn RefreshDTObjectA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem)
+@library("datatypes.library")
+extern pub fn RefreshDTObjects(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
+@library("datatypes.library")
+extern pub fn RefreshDTObject(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
+/// Call the DTM_ASYNCLAYOUT method on a separate process.
+///
+/// This function is used to asyncronously perform the object's DTM_ASYNCLAYOUT
+/// method. This is used to offload the layout method from input.device.
+///
+/// # Arguments
+/// * `object` - Pointer to the data types object. gpl - Pointer to a
+///   gpLayout message.
+@library("datatypes.library")
+extern pub fn DoAsyncLayout(o: *u8, gpl: *gpLayout) -> u32
+/// Do a datatypes method.                    (V39)
+///
+/// This function is used to perform a datatypes method.
+///
+/// # Arguments
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `win` - Window that the object is attached to.
+/// * `req` - Requester that the object is attached to.
+/// * `msg` - The message to send to the object.
+///
+/// See also: intuition.library/DoGadgetMethod()
+@library("datatypes.library")
+extern pub fn DoDTMethodA(o: *u8, win: *Window, req: *Requester, msg: *u32) -> u32
+@library("datatypes.library")
+extern pub fn DoDTMethod(o: *u8, win: *Window, req: *Requester, msg: u32, ...args) -> u32
+/// Remove an object from a window.        (V39)
+///
+/// Removes the object from the window's object list. This will wait until the
+/// AsyncLayout process is complete.
+///
+/// # Arguments
+/// * `window` - Pointer to the window.
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+///
+/// See also: AddDTObject(), intuition.library/RemoveGList()
+@library("datatypes.library")
+extern pub fn RemoveDTObject(win: *Window, o: *u8) -> i32
+/// Obtain methods an object supports.       (V39)
+///
+/// This function is used to obtain a list of methods that an object supports.
+///
+/// # Arguments
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+///
+/// See also: GetDTTriggerMethods()
+@library("datatypes.library")
+extern pub fn GetDTMethods(object: *u8) -> *u8
+/// Obtain trigger methods supported by an object
+///
+/// This function is used to obtain a list of trigger methods that an object
+/// supports. This is so that an application can provide the appropriate
+/// controls for an object.
+///
+/// # Arguments
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+///
+/// See also: GetDTMethods()
+@library("datatypes.library")
+extern pub fn GetDTTriggerMethods(object: *u8) -> *DTMethods
+/// Call the DTM_PRINT method on a separate process.
+///
+/// This function is used to asyncronously perform the object's DTM_PRINT
+/// method. Once the application has performed the PrintDTObjectA() function, it
+/// must not manipulate the printerIO union until it receives a
+/// IDCMP_IDCMPUPDATE message that contains the DTA_PrinterStatus tag.
+///
+/// # Arguments
+/// * `object` - Pointer to the DataTypes object. window - Pointer to the
+///   window that the object has been added to. requester - Pointer to the
+///   requester that the object has been added to.
+@library("datatypes.library")
+extern pub fn PrintDTObjectA(o: *u8, w: *Window, r: *Requester, msg: *dtPrint) -> u32
+@library("datatypes.library")
+extern pub fn PrintDTObject(o: *u8, w: *Window, r: *Requester, msg: u32, ...args) -> u32
+/// Obtain a DataTypes object for drawing. (V44)
+///
+/// This function is used to prepare a DataTypes object for drawing into a
+/// RastPort. This function will send the DTM_OBTAINDRAWINFO method to the
+/// object using the opSet message structure.
+///
+/// # Arguments
+/// * `o` - Pointer to an object as returned by NewDTObjectA(). attrs -
+///   Additional attributes.
+///
+/// See also: DrawDTObjectA(), ReleaseDTDrawInfo()
+@library("datatypes.library")
+extern pub fn ObtainDTDrawInfoA(o: *u8, attrs: *TagItem) -> *u8
+@library("datatypes.library")
+extern pub fn ObtainDTDrawInfo(o: *u8, attrs: u32, ...args) -> *u8
+/// Draw a DataTypes object.                (V44)
+///
+/// This function is used to draw a DataTypes object into a RastPort. This
+/// function can be used for strip printing the object or embedding it within a
+/// document.
+///
+/// # Arguments
+/// * `rp` - Pointer to the RastPort to draw into. o - Pointer to an object
+///   returned by NewDTObjectA(). x - Left-most point of area to draw into.
+///   y - Top-most point of area to draw into. w - Width of area to draw
+///   into. h - Height of area to draw into. th - Horizontal top in units.
+///   tv - Vertical top in units. attrs - Additional attributes.
+///
+/// See also: ObtainDTDrawInfo(), ReleaseDTDrawInfo()
+@library("datatypes.library")
+extern pub fn DrawDTObjectA(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: *TagItem) -> i32
+@library("datatypes.library")
+extern pub fn DrawDTObject(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: u32, ...args) -> i32
+/// Release a DataTypes object from drawing. (V44)
+///
+/// This function is used to release the information obtained with
+/// ObtainDTDrawInfoA(). This function invokes the object's DTM_RELEASEDRAWINFO
+/// method using the opMember message structure.
+///
+/// # Arguments
+/// * `handle` - Pointer to an object returned by ObtainDTDrawInfoA().
+///
+/// See also: DrawDTObjectA(), ObtainDTDrawInfo()
+@library("datatypes.library")
+extern pub fn ReleaseDTDrawInfo(o: *u8, handle: *u8)
+/// Obtain a DataTypes string.                (V39)
+///
+/// This function is used to obtain a pointer to a localized DataTypes string.
+///
+/// # Arguments
+/// * `id` - ID of the string to obtain.
+@library("datatypes.library")
+extern pub fn GetDTString(id: u32) -> *u8

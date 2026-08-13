@@ -17,7 +17,7 @@ AmigaOS devices differ from libraries in how they're opened and used:
 
 ### 1. Add Device Constants
 
-Add command constants to `Novus/std/ffi/amiga_consts.novus`:
+Add command constants to `Novus/std/amiga/raw/consts.novus`:
 
 ```novus
 // Timer device commands
@@ -31,7 +31,7 @@ pub const UNIT_VBLANK: u32 = 1
 
 ### 2. Define FFI Structs
 
-Ensure the device-specific structs are defined in `Novus/std/ffi/amiga_structs.novus`:
+Ensure the device-specific structs are defined in `Novus/std/amiga/raw/structs.novus`:
 
 ```novus
 pub struct timerequest {
@@ -250,7 +250,7 @@ Create a test file in `Novus.Tests/Examples/`:
 
 ```novus
 from std::system::timer import Timer, Duration, delay, now
-from std::strings::format import Formatter, Display
+from std::string::format import Formatter, Display
 from std::io::core import write
 
 pub fn main() -> i32 {

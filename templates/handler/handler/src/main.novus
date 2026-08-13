@@ -4,9 +4,9 @@
 // Packet owns every received request and replies ERROR_ACTION_NOT_KNOWN on Drop
 // if a branch accidentally forgets to answer it.
 
-from std::os::handler import Packet
-from std::ffi::amiga_consts import ACTION_STARTUP, ACTION_DIE
-from std::ffi::amiga_consts import DOSTRUE, DOSFALSE, ERROR_ACTION_NOT_KNOWN
+from amiga::sys::dos import Packet
+from amiga::raw::consts import ACTION_STARTUP, ACTION_DIE
+from amiga::raw::consts import DOSTRUE, DOSFALSE, ERROR_ACTION_NOT_KNOWN
 
 @suppress("W0002", "AmigaDOS ACTION and result constants fit their signed packet fields")
 pub fn main() -> i32 {

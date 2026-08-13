@@ -4,12 +4,12 @@
 // Uses AudioStreamer for seamless triple-buffered STEREO playback
 
 from std::core import Result
-from std::audio::ptplayer import AudioAsset
-from std::audio::streaming import AudioStreamer
-from std::audio::errors import AudioError
+from amiga::sys::hardware::ptplayer import AudioAsset
+from amiga::sys::device::audio_streaming import AudioStreamer
+from amiga::sys::audio::errors import AudioError
 from std::io::file import write
-from std::hardware::chipset import DISPLAY, DisplayType
-from std::ffi::graphics import WaitTOF
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::raw::graphics import WaitTOF
 
 // ============================================================================
 // Long audio file stored in fast RAM

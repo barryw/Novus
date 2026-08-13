@@ -443,7 +443,7 @@ enum Command {
 fn process_commands(commands: [Command; 10], count: u32) -> i32 {
     var x = 0
     var y = 0
-    var i = 0u32
+    var i: u32 = 0
 
     while i < count {
         let cmd = commands[i]

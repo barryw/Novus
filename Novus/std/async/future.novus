@@ -8,8 +8,8 @@
 // native preemptive multitasking and signal-based I/O completion.
 
 from std::core import Option, Result
-from std::ffi::exec import Signal
-from std::ffi::amiga_structs import Task
+from amiga::raw::exec import Signal
+from amiga::raw::structs import Task
 
 // ============================================================================
 // Poll - Result of polling a future
@@ -80,7 +80,7 @@ impl Waker {
     /// Get the signal mask for this waker (1 << signal_bit)
     @suppress("W0002", "Safe: signal_bit is 0-31, shift produces valid mask")
     pub fn signal_mask(&self) -> u32 {
-        return 1u32 << (u32)self.signal_bit
+        return 1 << (u32)self.signal_bit
     }
 
     /// Get the signal bit

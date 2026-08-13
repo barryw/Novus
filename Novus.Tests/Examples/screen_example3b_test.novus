@@ -1,9 +1,9 @@
 // Test Examples 1, 2, and 3 - without Text() call
 // Run: novus compile screen_example3b_test.novus -o screen_example3b_test --safety-level 0
 
-from std::ui::screen import ScreenHandle, ScreenBuilder
-from std::ffi::dos import Delay
-from std::ffi::graphics import SetAPen, RectFill, Move
+from amiga::sys::intuition import ScreenHandle, ScreenBuilder
+from amiga::raw::dos import Delay
+from amiga::raw::graphics import SetAPen, RectFill, Move
 from std::io::file import println
 
 pub fn main() -> i32 {

@@ -28,6 +28,7 @@ public abstract class ExampleCompilationTestBase
         "ffi_cia_resource_smoke",   // Caller-supplied A6 resource ABI
         "ffi_device_resource_smoke",// Device/resource lifecycle generation
         "ffi_mathffp_smoke",        // Generated floating-point FFI
+        "idiomatic_gui",            // Tier-1 facade must link at non-DCE optimization levels
         "mem_block_demo",           // Memory management
         "operator_overload_test",   // Trait-based operators
         "type_alias_smoke",         // Local and imported transparent aliases
@@ -58,7 +59,7 @@ public abstract class ExampleCompilationTestBase
             .Where(name => !name.Contains("error", StringComparison.OrdinalIgnoreCase)
                         || name == "error_handling_demo") // This one is valid
             // Exclude copper/blitter demos that depend on unimplemented stdlib modules
-            // These use the CopperListBuilder pattern which requires std::graphics::copper
+            // These use the CopperListBuilder pattern which requires amiga::sys::graphics::copper
             .Where(name => !name.StartsWith("copper_", StringComparison.OrdinalIgnoreCase))
             .Where(name => !name.StartsWith("blitter_", StringComparison.OrdinalIgnoreCase))
             // Exclude examples with known compiler bugs (tracked as TODOs):
@@ -139,7 +140,7 @@ public class ExampleAsmTests : ExampleCompilationTestBase
             var source = string.Join('\n', File.ReadLines(path)
                 .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 
-            foreach (var forbidden in new[] { "std::ffi", "std::ui::reaction", "ReAction", "unsafe", "extern", "asm!", "*u8", "*u16", "*u32" })
+            foreach (var forbidden in new[] { "std::ffi", "amiga::sys", "ReAction", "unsafe", "extern", "asm!", "*u8", "*u16", "*u32" })
                 Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
         }
     }
@@ -148,13 +149,13 @@ public class ExampleAsmTests : ExampleCompilationTestBase
     public void IdiomaticGui_UsesOnlyV36IntuitionAndGadToolsCalls()
     {
         var root = GetProjectRoot();
-        var ffi = Path.Combine(root, "Novus", "std", "ffi");
+        var ffi = Path.Combine(root, "Novus", "std", "amiga", "raw");
         var gadtools = FfiModuleMetadata.TryRead(Path.Combine(ffi, "gadtools.novus"))!;
         var intuition = FfiModuleMetadata.TryRead(Path.Combine(ffi, "intuition.novus"))!;
         var surfaces = new[]
         {
-            Path.Combine(root, "Novus", "std", "ui", "gadtools.novus"),
-            Path.Combine(root, "Novus", "std", "ui", "menu.novus")
+            Path.Combine(root, "Novus", "std", "amiga", "sys", "gadtools", "builder.novus"),
+            Path.Combine(root, "Novus", "std", "amiga", "sys", "gadtools", "menu.novus")
         };
 
         foreach (var (module, metadata) in new[]
@@ -163,7 +164,7 @@ public class ExampleAsmTests : ExampleCompilationTestBase
             ("intuition", intuition)
         })
         {
-            var prefix = $"from std::ffi::{module} import ";
+            var prefix = $"from amiga::raw::{module} import ";
             var functions = surfaces.SelectMany(path => File.ReadLines(path))
                 .Select(line => line.Trim())
                 .Where(line => line.StartsWith(prefix, StringComparison.Ordinal))
@@ -223,6 +224,8 @@ public class ExampleFullCompilationTests : ExampleCompilationTestBase
                 $"GUI size build failed.\n{stdout}\n{stderr}");
             Assert.True(new FileInfo(output).Length <= 3072,
                 $"Idiomatic GUI grew to {new FileInfo(output).Length} bytes (budget: 3072)");
+            Assert.False(stdout.Contains("asl.library", StringComparison.Ordinal),
+                "Importing amiga::ui must not initialize its unused requester dependency");
         }
         finally
         {

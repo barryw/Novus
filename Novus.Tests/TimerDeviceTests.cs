@@ -10,7 +10,7 @@ using Xunit;
 namespace Novus.Tests;
 
 /// <summary>
-/// Comprehensive tests for the timer device integration (std::os::timer).
+/// Comprehensive tests for the timer device integration (amiga::timer).
 /// Tests both positive cases (valid usage) and negative cases (error detection).
 /// </summary>
 public class TimerDeviceTests
@@ -76,7 +76,7 @@ public class TimerDeviceTests
     public void Duration_Secs_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::secs(5)
@@ -90,7 +90,7 @@ pub fn main() -> i32 {
     public void Duration_Millis_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::millis(500)
@@ -104,7 +104,7 @@ pub fn main() -> i32 {
     public void Duration_Micros_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::micros(1500)
@@ -118,7 +118,7 @@ pub fn main() -> i32 {
     public void Duration_New_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::new(5, 500000)
@@ -132,7 +132,7 @@ pub fn main() -> i32 {
     public void Duration_Zero_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::zero()
@@ -146,7 +146,7 @@ pub fn main() -> i32 {
     public void Duration_GetSecs_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::secs(5)
@@ -161,7 +161,7 @@ pub fn main() -> i32 {
     public void Duration_GetMicros_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::millis(500)
@@ -176,7 +176,7 @@ pub fn main() -> i32 {
     public void Duration_AsMillis_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::secs(2)
@@ -191,7 +191,7 @@ pub fn main() -> i32 {
     public void Duration_AsMicros_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::secs(1)
@@ -206,7 +206,7 @@ pub fn main() -> i32 {
     public void Duration_Add_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d1 = Duration::secs(2)
@@ -222,7 +222,7 @@ pub fn main() -> i32 {
     public void Duration_Sub_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d1 = Duration::secs(2)
@@ -238,7 +238,7 @@ pub fn main() -> i32 {
     public void Duration_Cmp_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d1 = Duration::secs(2)
@@ -254,7 +254,7 @@ pub fn main() -> i32 {
     public void Duration_IsZero_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::zero()
@@ -275,7 +275,7 @@ pub fn main() -> i32 {
     public void Timer_Microhz_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer
+from amiga::timer import Timer
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -291,7 +291,7 @@ pub fn main() -> i32 {
     public void Timer_Vblank_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer
+from amiga::timer import Timer
 
 pub fn main() -> i32 {
     match Timer::vblank() {
@@ -307,7 +307,7 @@ pub fn main() -> i32 {
     public void Timer_Eclock_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer
+from amiga::timer import Timer
 
 pub fn main() -> i32 {
     match Timer::eclock() {
@@ -323,7 +323,7 @@ pub fn main() -> i32 {
     public void Timer_GetTime_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, Duration
+from amiga::timer import Timer, Duration
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -344,7 +344,7 @@ pub fn main() -> i32 {
     public void Timer_Delay_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, Duration
+from amiga::timer import Timer, Duration
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -365,7 +365,7 @@ pub fn main() -> i32 {
     public void Timer_WaitUntil_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, Duration
+from amiga::timer import Timer, Duration
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -392,7 +392,7 @@ pub fn main() -> i32 {
     public void Timer_WaitFrames_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer
+from amiga::timer import Timer
 
 pub fn main() -> i32 {
     match Timer::vblank() {
@@ -413,7 +413,7 @@ pub fn main() -> i32 {
     public void Timer_Handle_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer
+from amiga::timer import Timer
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -436,7 +436,7 @@ pub fn main() -> i32 {
     public void Delay_Function_ShouldCompile()
     {
         var code = @"
-from std::os::timer import delay, Duration
+from amiga::timer import delay, Duration
 
 pub fn main() -> i32 {
     match delay(Duration::millis(100)) {
@@ -452,7 +452,7 @@ pub fn main() -> i32 {
     public void Now_Function_ShouldCompile()
     {
         var code = @"
-from std::os::timer import now
+from amiga::timer import now
 
 pub fn main() -> i32 {
     match now() {
@@ -468,7 +468,7 @@ pub fn main() -> i32 {
     public void ElapsedSince_Function_ShouldCompile()
     {
         var code = @"
-from std::os::timer import now, elapsed_since
+from amiga::timer import now, elapsed_since
 
 pub fn main() -> i32 {
     match now() {
@@ -493,7 +493,7 @@ pub fn main() -> i32 {
     public void TimerError_OpenFailed_ShouldCompile()
     {
         var code = @"
-from std::os::timer import TimerError
+from amiga::timer import TimerError
 
 pub fn main() -> i32 {
     let err = TimerError::OpenFailed
@@ -507,7 +507,7 @@ pub fn main() -> i32 {
     public void TimerError_NoMemory_ShouldCompile()
     {
         var code = @"
-from std::os::timer import TimerError
+from amiga::timer import TimerError
 
 pub fn main() -> i32 {
     let err = TimerError::NoMemory
@@ -521,7 +521,7 @@ pub fn main() -> i32 {
     public void TimerError_CommandFailed_ShouldCompile()
     {
         var code = @"
-from std::os::timer import TimerError
+from amiga::timer import TimerError
 
 pub fn main() -> i32 {
     let err = TimerError::CommandFailed(-1)
@@ -535,7 +535,7 @@ pub fn main() -> i32 {
     public void TimerError_MatchAll_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, TimerError
+from amiga::timer import Timer, TimerError
 
 pub fn main() -> i32 {
     match Timer::microhz() {
@@ -561,7 +561,7 @@ pub fn main() -> i32 {
     public void Timer_CompleteWorkflow_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, Duration, now, elapsed_since
+from amiga::timer import Timer, Duration, now, elapsed_since
 
 pub fn main() -> i32 {
     // Get start time
@@ -599,7 +599,7 @@ pub fn main() -> i32 {
     public void Timer_DurationArithmetic_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d1 = Duration::secs(2)
@@ -624,7 +624,7 @@ pub fn main() -> i32 {
     public void Timer_WithTryOperator_ShouldCompile()
     {
         var code = @"
-from std::os::timer import Timer, Duration, TimerError
+from amiga::timer import Timer, Duration, TimerError
 
 pub fn test() -> Result<(), TimerError> {
     let timer = Timer::microhz()?
@@ -656,7 +656,7 @@ pub fn main() -> i32 {
     public void Duration_ShouldGenerateStructDef()
     {
         var code = @"
-from std::os::timer import Duration
+from amiga::timer import Duration
 
 pub fn main() -> i32 {
     let d = Duration::secs(5)
@@ -674,7 +674,7 @@ pub fn main() -> i32 {
     public void Timer_ShouldGenerateTimerDeviceIncludes()
     {
         var code = @"
-from std::os::timer import TimerHandle, Duration
+from amiga::timer import TimerHandle, Duration
 
 pub fn main() -> i32 {
     match TimerHandle::microhz() {
@@ -702,7 +702,7 @@ pub fn main() -> i32 {
     public void TimerError_ShouldGenerateEnumDef()
     {
         var code = @"
-from std::os::timer import TimerError
+from amiga::timer import TimerError
 
 pub fn main() -> i32 {
     let err = TimerError::OpenFailed
@@ -723,7 +723,7 @@ pub fn main() -> i32 {
     [Fact]
     public void TimerModule_ShouldExistAndParse()
     {
-        var timerPath = Path.Combine(GetStdLibPath(), "os", "timer.novus");
+        var timerPath = Path.Combine(GetStdLibPath(), "amiga", "timer.novus");
         Assert.True(File.Exists(timerPath), $"Timer module not found at {timerPath}");
 
         var source = File.ReadAllText(timerPath);
@@ -746,7 +746,7 @@ pub fn main() -> i32 {
     [Fact]
     public void TimerConstants_ShouldExist()
     {
-        var constsPath = Path.Combine(GetStdLibPath(), "ffi", "amiga_consts.novus");
+        var constsPath = Path.Combine(GetStdLibPath(), "amiga", "raw", "consts.novus");
         Assert.True(File.Exists(constsPath), $"Amiga constants file not found at {constsPath}");
 
         var source = File.ReadAllText(constsPath);

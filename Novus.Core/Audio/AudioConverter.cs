@@ -229,7 +229,7 @@ public static class AudioConverter
         }
 
         // Note: We no longer truncate large files. The streaming audio system
-        // (std::audio::streaming) handles files larger than Paula's 128KB limit
+        // (amiga::sys::device::audio_streaming) handles files larger than Paula's 128KB limit
         // by using triple-buffered playback. The compiler will generate an
         // AudioAsset for large files which can be played via AudioStreamer.
         //

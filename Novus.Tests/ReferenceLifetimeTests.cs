@@ -1091,8 +1091,8 @@ fn main() {}
     {
         // This is the homepage example - should compile
         var code = @"
-from std::ui::screen import ScreenHandle
-from std::ffi::graphics import SetAPen, RectFill
+from amiga::sys::intuition import ScreenHandle
+from amiga::raw::graphics import SetAPen, RectFill
 
 pub fn main() -> i32 {
     let result = ScreenHandle::lores(""Demo Screen"", 5)

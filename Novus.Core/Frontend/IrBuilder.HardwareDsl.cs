@@ -208,7 +208,7 @@ public partial class IrBuilder
     /// <summary>
     /// Generate IR instructions for blitter register setup.
     /// This generates straight-line code that writes to hardware registers.
-    /// Note: Does NOT generate wait loops - users should call WaitBlit() from std::ffi::graphics.
+    /// Note: Does NOT generate wait loops - users should call WaitBlit() from amiga::raw::graphics.
     /// </summary>
     private void GenerateBlitterCode(ushort bltcon0, ushort bltcon1, ushort bltSize,
                                       IrValue? sourceA, IrValue? sourceB, IrValue? sourceC, IrValue destination,
@@ -249,7 +249,7 @@ public partial class IrBuilder
         }
 
         // Note: We don't generate wait loops inline - the user should call WaitBlit()
-        // from std::ffi::graphics before and after blitter operations for proper
+        // from amiga::raw::graphics before and after blitter operations for proper
         // synchronization. This keeps the DSL simple and predictable.
 
         // 1. Write control registers (order matters!)

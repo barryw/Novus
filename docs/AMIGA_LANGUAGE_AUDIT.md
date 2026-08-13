@@ -1,6 +1,6 @@
 # Amiga application language audit
 
-**Updated:** 2026-08-11
+**Updated:** 2026-08-13
 **Target:** AmigaOS 3.1/3.2 on 68020 or newer
 
 Novus can express the language and ABI mechanisms needed to build Amiga applications,
@@ -16,17 +16,17 @@ Novus exposes Amiga functionality through three interoperable layers:
    ordinary domain concepts. This is the default path.
 2. Systems APIs expose typed handles, buffers, requests, and explicit ownership for
    advanced Novus code.
-3. `std::ffi`, `unsafe`, inline assembly, and hardware DSLs preserve unrestricted
+3. `amiga::raw`, `unsafe`, inline assembly, and hardware DSLs preserve unrestricted
    access to the ABI and machine.
 
 The layers are not separate toolkits. Each high-level owner must allow borrowed access
 to its next lower-layer object so a special operation can be performed without
 rewriting the rest of the application. Native owners follow the existing conventions:
-`handle()` borrows a raw handle, `into_raw(consuming self)` transfers ownership, and
-`from_raw(...)` adopts owned state. Composite wrappers return a named raw-state value
-rather than losing required cleanup metadata. Existing APIs with older names gain
-compatibility aliases and a migration path; layer interoperability must not itself
-force an application rewrite.
+`system()` borrows the next safe layer, `as_raw()` borrows a native handle,
+`into_raw(consuming self)` transfers ownership, and validating `from_raw(...)`
+adopts owned state. Composite wrappers return a named raw-state value rather than
+losing required cleanup metadata. Layer interoperability does not force an
+application rewrite.
 
 New APIs extend existing Novus forms: `Drop`, move-only handles, `consuming self`,
 `Slice`, standard iterators, `From`/`Into`/`AsRef`/`AsMut`, static descriptions, and
@@ -46,20 +46,20 @@ initial values, IDCMP classes, menu structure, command key, and exit behavior. V
 older than AmigaOS 3.1, so every used call is present on both 3.1 and 3.2.
 
 - [idiomatic_gui.novus](../Novus.Tests/Examples/idiomatic_gui.novus) uses only safe
-  Novus APIs. It has no `std::ffi` import, raw pointer, `unsafe`, `extern`, C, or
+  Novus APIs. It has no `amiga::raw` import, raw pointer, `unsafe`, `extern`, C, or
   assembly.
 - [idiomatic_gui.c](../Novus.Tests/Examples/idiomatic_gui.c) calls those V36 APIs
   directly. It does not use ReAction or a newer convenience toolkit.
 
 | Measure | Novus | C |
 |---|---:|---:|
-| Nonblank, noncomment source lines | 28 | 117 |
+| Nonblank, noncomment source lines | 31 | 118 |
 | Application-level cleanup calls | 0 | 8 |
-| Explicit failure branches before the event loop | 0 (`?` propagates them) | 8 |
+| Explicit failure branches before the event loop | 1 | 8 |
 | Raw message dequeue/reply protocol | hidden by typed API | manual |
 | Raw pointers or pointer casts in application code | 0 | required throughout |
 
-That is 70% less application code, but the stronger argument is what is absent. The
+That is 74% less application code, but the stronger argument is what is absent. The
 Novus program cannot forget to unlock its public screen, detach/free its menu, dispose
 its gadgets, or reply to an Intuition message on an early return. Ownership and `Drop`
 handle those obligations, `Result` and `?` preserve failure paths, and the event loop
@@ -70,7 +70,7 @@ The first comparison incorrectly used ReAction on the Novus side. That was not a
 comparison and would have imposed an AmigaOS 3.5 requirement. The corrected work closed
 the actual gap in the shared UI/compiler layers:
 
-- `StaticGadToolsUi` keeps literal descriptors and labels in static data and returns a
+- `amiga::ui::StaticUi` keeps literal descriptors and labels in static data and returns a
   zero-allocation owner for the public-screen lock, VisualInfo, gadgets, window, and
   menu. `GadToolsBuilder` remains available when controls are assembled at runtime.
 - controls use `CreateContext`/`CreateGadgetA`; events use
@@ -89,7 +89,7 @@ injected close event, and exited with code 0. Guest diagnostics remained healthy
 Novus dependency graph contains only `exec.library`, `dos.library`,
 `intuition.library`, and `gadtools.library`; no ReAction class libraries are linked.
 
-The optimized 68020 release binary is currently **2,976 bytes**, down from 13,264 bytes
+The optimized 68020 release binary is currently **2,972 bytes**, down from 13,264 bytes
 for the original dynamic-builder version; the direct C reference is 2,444 bytes. A
 full-compilation regression test enforces the 3,072-byte acceptance gate. The dynamic
 builder remains available for interfaces assembled at runtime.

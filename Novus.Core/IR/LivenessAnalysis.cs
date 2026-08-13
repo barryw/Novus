@@ -337,12 +337,20 @@ public class LivenessAnalysis(IrFunction function)
             case IrIndexAccess indexAccess:
                 RecordValueUses(indexAccess.Array);
                 RecordValueUses(indexAccess.Index);
+                if (indexAccess.Length != null) RecordValueUses(indexAccess.Length);
+                break;
+
+            case IrSliceBoundsCheck sliceCheck:
+                RecordValueUses(sliceCheck.Start);
+                RecordValueUses(sliceCheck.End);
+                RecordValueUses(sliceCheck.Length);
                 break;
 
             case IrIndexStore indexStore:
                 RecordValueUses(indexStore.Array);
                 RecordValueUses(indexStore.Index);
                 RecordValueUses(indexStore.Value);
+                if (indexStore.Length != null) RecordValueUses(indexStore.Length);
                 break;
 
             case IrMemberAccess memberAccess:
@@ -358,6 +366,7 @@ public class LivenessAnalysis(IrFunction function)
                 RecordValueUses(indexedFieldStore.Array);
                 RecordValueUses(indexedFieldStore.Index);
                 RecordValueUses(indexedFieldStore.Value);
+                if (indexedFieldStore.Length != null) RecordValueUses(indexedFieldStore.Length);
                 break;
 
             case IrDereferenceStore derefStore:
@@ -409,6 +418,11 @@ public class LivenessAnalysis(IrFunction function)
                 RecordValueUses(cast.Value);
                 break;
 
+            case IrPointerOffsetValue pointerOffset:
+                RecordValueUses(pointerOffset.Pointer);
+                RecordValueUses(pointerOffset.Index);
+                break;
+
             case IrFieldReference fieldRef:
                 RecordValueUses(fieldRef.Struct);
                 break;
@@ -416,6 +430,7 @@ public class LivenessAnalysis(IrFunction function)
             case IrIndexedFieldAccess indexedField:
                 RecordValueUses(indexedField.Array);
                 RecordValueUses(indexedField.Index);
+                if (indexedField.Length != null) RecordValueUses(indexedField.Length);
                 break;
 
             case IrTupleElementAccess tupleAccess:

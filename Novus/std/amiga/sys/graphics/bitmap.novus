@@ -1,0 +1,237 @@
+// Novus Standard Library - Graphics Core (High-Level)
+// Namespace: amiga::sys::graphics::bitmap
+//
+// High-level wrappers for graphics.library functions
+// For low-level FFI access, use amiga::raw::graphics
+
+from std::core import Option, Result, Drop
+from amiga::sys::graphics::errors import GraphicsError
+from amiga::raw::structs import *
+from amiga::raw::graphics import AllocBitMap, FreeBitMap, WaitBlit, LoadView, WaitTOF
+from std::memory::block import MemoryBlock
+
+// ============================================================================
+// RAII Resource Wrappers (Automatic Cleanup)
+// ============================================================================
+
+/// BitMapHandle - RAII wrapper for graphics.library bitmaps
+///
+/// Automatically waits for the blitter to finish and frees the bitmap
+/// when it goes out of scope. This prevents:
+/// - Bitmap memory freed while blitter DMA is active (causes corruption)
+/// - Bitmap memory leaks
+///
+/// The Drop implementation calls WaitBlit() before FreeBitMap() to ensure
+/// all blitter operations are complete.
+///
+/// Example:
+/// ```novus
+/// fn create_offscreen_buffer(width: u32, height: u32, depth: u32) -> Result<BitMapHandle, GraphicsError> {
+///     let bitmap = BitMapHandle::alloc(width, height, depth, BMF_CLEAR, 0)?;
+///
+///     // Use bitmap for blitting...
+///
+///     // Automatically cleaned up here:
+///     // 1. WaitBlit() ensures blitter is done
+///     // 2. FreeBitMap() frees the memory
+/// }
+/// ```
+pub struct BitMapHandle {
+    bitmap: *BitMap,  // Pointer to BitMap struct (null = invalid)
+    owns_blitter: bool,  // Track if blitter operations pending
+}
+
+impl BitMapHandle {
+    /// Allocate a bitmap
+    ///
+    /// width: Width in pixels
+    /// height: Height in pixels (rows)
+    /// depth: Number of bitplanes (1-8)
+    /// flags: Allocation flags (BMF_CLEAR, BMF_DISPLAYABLE, etc.)
+    /// friend_bitmap: Friend bitmap for optimal allocation (or null)
+    ///
+    /// Returns Err if allocation fails (out of memory).
+    pub fn alloc(width: u32, height: u32, depth: u32, flags: u32, friend: *BitMap) -> Result<BitMapHandle, GraphicsError> {
+        let bitmap = AllocBitMap(width, height, depth, flags, friend)
+        if let bm = bitmap {
+            return Result::Ok(BitMapHandle {
+                bitmap: bm,
+                owns_blitter: false,
+            })
+        }
+        return Result::Err(GraphicsError::BitMapAllocFailed)
+    }
+
+    /// Get the raw BitMap pointer for FFI calls
+    pub fn as_raw(&self) -> *BitMap {
+        return self.bitmap
+    }
+
+    /// Create BitMapHandle from raw pointer (takes ownership)
+    ///
+    /// The bitmap will be automatically freed when the BitMapHandle is dropped.
+    /// WaitBlit() will be called if blitter operations are marked pending.
+    ///
+    /// Only use this if you own the bitmap and it should be freed.
+    /// DO NOT use for system-owned bitmaps like Screen.BitMap.
+    pub fn from_raw(bitmap: *BitMap) -> Result<BitMapHandle, GraphicsError> {
+        return Result::Err(GraphicsError::InvalidBitMap) unless bitmap
+        return Result::Ok(BitMapHandle {
+            bitmap: bitmap,
+            owns_blitter: false,
+        })
+    }
+
+    /// Extract raw pointer and prevent automatic free
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for calling WaitBlit() and FreeBitMap() manually.
+    ///
+    /// Use this when passing ownership to another system or storing
+    /// the bitmap beyond the current scope.
+    pub fn into_raw(consuming self) -> *BitMap {
+        let bitmap = self.bitmap
+        self.bitmap = null
+        self.owns_blitter = false
+        return bitmap
+    }
+
+    /// Mark that a blitter operation is pending for this bitmap
+    ///
+    /// This ensures WaitBlit() is called before the bitmap is freed.
+    /// Call this after starting any blitter operation that uses this bitmap.
+    pub fn mark_blitter_pending(&var self) {
+        self.owns_blitter = true
+    }
+
+    /// Wait for blitter to finish
+    ///
+    /// Blocks until the blitter is idle.
+    /// This is called automatically by Drop if blitter operations are pending.
+    pub fn wait_blit(&var self) {
+        if self.owns_blitter {
+            WaitBlit()
+            self.owns_blitter = false
+        }
+    }
+}
+
+// Automatic cleanup for BitMapHandle (RAII)
+impl Drop for BitMapHandle {
+    fn drop(&var self) {
+        if let bm = self.bitmap {
+            // CRITICAL: Wait for blitter before freeing bitmap
+            // If blitter is still using this memory, freeing it
+            // causes memory corruption and crashes
+            if self.owns_blitter {
+                WaitBlit()
+            }
+
+            // Now safe to free the bitmap
+            FreeBitMap(bm)
+            self.bitmap = null
+        }
+    }
+}
+
+/// CopperListHandle - RAII wrapper for custom copper lists
+///
+/// Automatically restores the system copper list and waits for vertical blank
+/// before freeing the copper list memory. This prevents:
+/// - Display corruption from copper reading freed memory
+/// - Crashes from copper DMA accessing invalid memory
+///
+/// The Drop implementation:
+/// 1. Calls LoadView(null) to restore system copper
+/// 2. Calls WaitTOF() to ensure copper has switched
+/// 3. Frees the copper list memory
+///
+/// Example:
+/// ```novus
+/// fn create_custom_display() -> Result<CopperListHandle, GraphicsError> {
+///     let copper_mem = MemoryBlock::alloc(1024, MEMF_CHIP)?;
+///     let copper = CopperListHandle::new(copper_mem, true);
+///
+///     // Build copper list...
+///     // Install with LoadView()...
+///
+///     // Automatically cleaned up here:
+///     // 1. LoadView(null) restores system
+///     // 2. WaitTOF() ensures switch complete
+///     // 3. Memory freed
+/// }
+/// ```
+pub struct CopperListHandle {
+    memory: MemoryBlock,  // Copper list memory (must be CHIP RAM)
+    active: bool,  // Is this copper list currently active?
+}
+
+impl CopperListHandle {
+    /// Create a copper list from allocated memory
+    ///
+    /// memory: CHIP RAM containing copper list instructions
+    /// active: Set to true if this list is currently active (installed via LoadView)
+    pub fn new(consuming memory: MemoryBlock, active: bool) -> CopperListHandle {
+        return CopperListHandle {
+            memory: memory,
+            active: active,
+        }
+    }
+
+    /// Get pointer to copper list memory
+    pub fn ptr(&self) -> *u8 {
+        return self.memory.ptr()
+    }
+
+    /// Extract memory and prevent automatic cleanup
+    ///
+    /// This transfers ownership to the caller. The caller is responsible
+    /// for calling LoadView(null) + WaitTOF() and freeing the memory manually.
+    ///
+    /// Use this when passing ownership to another system or storing
+    /// the copper list beyond the current scope.
+    pub fn into_memory(consuming self) -> MemoryBlock {
+        self.active = false
+        return self.memory
+    }
+
+    /// Mark this copper list as active
+    ///
+    /// Call this after installing the list with LoadView().
+    pub fn mark_active(&var self) {
+        self.active = true
+    }
+
+    /// Mark this copper list as inactive
+    ///
+    /// Call this after restoring the system copper.
+    pub fn mark_inactive(&var self) {
+        self.active = false
+    }
+
+    /// Restore system copper and wait for switch
+    ///
+    /// This is called automatically by Drop if the list is active.
+    pub fn restore_system(&var self) {
+        if self.active {
+            LoadView(null)  // null = system copper
+            WaitTOF()  // CRITICAL: Wait for vertical blank
+            self.active = false
+        }
+    }
+}
+
+// Automatic cleanup for CopperListHandle (RAII)
+impl Drop for CopperListHandle {
+    fn drop(&var self) {
+        // CRITICAL: If this copper list is active, we must:
+        // 1. Restore system copper (LoadView(null))
+        // 2. Wait for vertical blank (WaitTOF)
+        // Otherwise the copper will read freed memory!
+        if self.active {
+            LoadView(null)  // null = restore system copper
+            WaitTOF()  // Wait for copper to switch
+        }
+        // memory.drop() called automatically (RAII composition!)
+    }
+}

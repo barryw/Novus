@@ -2,10 +2,10 @@
 // Tests: 0x hex literals, ok_or, LibraryHandle, MsgPortHandle.signal_mask
 
 from std::core import Option, Result
-from std::os::exec import LibraryHandle, MsgPortHandle, SignalHandle
-from std::error::errors import ExecError
+from amiga::sys::exec import LibraryHandle, MsgPortHandle, SignalHandle
+from amiga::sys::exec::errors import ExecError
 from std::io::file import write
-from std::sync::critical import CriticalSection
+from amiga::sys::exec::critical import CriticalSection
 
 // ============================================================================
 // Test 0x hex literals
@@ -13,8 +13,8 @@ from std::sync::critical import CriticalSection
 
 fn test_hex_literals() -> bool {
     // Test 0x and $ are equivalent
-    let a: u32 = 0xFFu32
-    let b: u32 = $FFu32
+    let a: u32 = 0xFF
+    let b: u32 = $FF
 
     if a != b {
         write("FAIL: 0xFF != $FF\n")
@@ -22,15 +22,15 @@ fn test_hex_literals() -> bool {
     }
 
     // Test 0x with underscores
-    let c: u32 = 0xDEAD_BEEFu32
-    if c != 3735928559u32 {
+    let c: u32 = 0xDEAD_BEEF
+    if c != 3735928559 {
         write("FAIL: 0xDEAD_BEEF != 3735928559\n")
         return false
     }
 
     // Test lowercase
-    let d: u32 = 0xabcdu32
-    if d != 43981u32 {
+    let d: u32 = 0xabcd
+    if d != 43981 {
         write("FAIL: 0xabcd != 43981\n")
         return false
     }
@@ -135,18 +135,18 @@ fn test_msgport_handle() -> Result<bool, ExecError> {
     let mask = port.signal_mask()
 
     // Verify mask is a single bit set
-    if mask == 0u32 {
+    if mask == 0 {
         write("FAIL: signal_mask returned 0\n")
         return Result::Ok(false)
     }
 
     // Verify mask corresponds to bit
     // Since we have a lookup table, verify the pattern
-    var expected_mask: u32 = 1u32
+    var expected_mask: u32 = 1
     var i: u8 = 0
     while i < bit {
-        expected_mask = expected_mask * 2u32
-        i = i + 1u8
+        expected_mask = expected_mask * 2
+        i = i + 1
     }
 
     if mask != expected_mask {
@@ -178,7 +178,7 @@ fn test_signal_handle() -> Result<bool, ExecError> {
     }
 
     // Verify mask is non-zero
-    if mask == 0u32 {
+    if mask == 0 {
         write("FAIL: signal mask is 0\n")
         return Result::Ok(false)
     }

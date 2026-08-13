@@ -11,11 +11,11 @@
 // Usage: file_copy_progress <source> <destination>
 
 from std::core import Result, Option
-from std::os::timer import Duration, TimerHandle
-from std::ffi::dos import Open, Close, Seek, IoErr, Read, Write, Output, SetMode
-from std::ffi::exec import Wait, AllocMem, FreeMem
-from std::ffi::amiga_consts import MEMF_PUBLIC
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE, OFFSET_END, OFFSET_BEGINNING
+from amiga::timer import Duration, Timer
+from amiga::raw::dos import Open, Close, Seek, IoErr, Read, Write, Output, SetMode
+from amiga::raw::exec import Wait, AllocMem, FreeMem
+from amiga::raw::consts import MEMF_PUBLIC
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE, OFFSET_END, OFFSET_BEGINNING
 from std::io::file import write
 
 // Copy buffer size - 32KB chunks for good performance

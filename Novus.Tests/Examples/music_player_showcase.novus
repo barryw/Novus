@@ -17,7 +17,7 @@
 
 from std::core import Option
 from std::io::file import print, println
-from std::ffi::exec import Forbid, Permit, Disable, Enable
+from amiga::raw::exec import Forbid, Permit, Disable, Enable
 
 // ============================================================================
 // Constants
@@ -56,7 +56,7 @@ fn advance_position() -> bool {
         return false  // Reached end
     }
 
-    g_current_position = pos + 1u32
+    g_current_position = pos + 1
     return true
 }
 
@@ -66,15 +66,15 @@ fn advance_position() -> bool {
 @inline
 fn calculate_fade_volume(base_volume: u16, position: u32, length: u32) -> u16 {
     // Simple linear fade out over last 10% of sample
-    let fade_start = length - (length / 10u32)
+    let fade_start = length - (length / 10)
     if position < fade_start {
         return base_volume
     }
 
     let fade_progress = position - fade_start
     let fade_range = length - fade_start
-    if fade_range == 0u32 {
-        return 0u16
+    if fade_range == 0 {
+        return 0
     }
 
     let fade_factor = ((fade_range - fade_progress) * (base_volume as u32)) / fade_range
@@ -130,13 +130,13 @@ fn start_playback(length: u32, tempo: u32) -> bool {
     }
 
     g_sample_length = length
-    g_current_position = 0u32
-    g_tempo_counter = 0u32
+    g_current_position = 0
+    g_tempo_counter = 0
     g_tempo_divider = tempo
     g_is_playing = true
 
     // Set up initial audio
-    setup_audio_channel(428u16, g_volume)  // ~8363 Hz sample rate
+    setup_audio_channel(428, g_volume)  // ~8363 Hz sample rate
 
     // Permit() called automatically on exit
     return true
@@ -147,7 +147,7 @@ fn start_playback(length: u32, tempo: u32) -> bool {
 fn stop_playback() {
     if g_is_playing {
         g_is_playing = false
-        write_audio_volume(0u16)
+        write_audio_volume(0)
     }
 }
 
@@ -189,11 +189,11 @@ pub fn vblank_music_handler() {
     }
 
     // Tempo timing - only process on tempo tick
-    g_tempo_counter = g_tempo_counter + 1u32
+    g_tempo_counter = g_tempo_counter + 1
     if g_tempo_counter < g_tempo_divider {
         return
     }
-    g_tempo_counter = 0u32
+    g_tempo_counter = 0
 
     // Advance playback position
     if !advance_position() {
@@ -229,7 +229,7 @@ pub fn player_init() {
 /// Play a sample with the given parameters
 @export
 pub fn player_play(length: u32) -> bool {
-    return start_playback(length, 6u32)
+    return start_playback(length, 6)
 }
 
 /// Stop current playback
@@ -258,7 +258,7 @@ pub fn player_status() {
 
 /// Print a u32 number
 fn print_number(n: u32) {
-    if n == 0u32 {
+    if n == 0 {
         print("0")
         return
     }
@@ -266,14 +266,14 @@ fn print_number(n: u32) {
 }
 
 fn print_number_recursive(n: u32) {
-    if n == 0u32 {
+    if n == 0 {
         return
     }
-    print_number_recursive(n / 10u32)
-    let digit: u8 = (u8)(n % 10u32) + 48u8
-    var buf = [0u8; 2]
+    print_number_recursive(n / 10)
+    let digit: u8 = (u8)(n % 10) + 48
+    var buf: [u8] = [0; 2]
     buf[0] = digit
-    buf[1] = 0u8
+    buf[1] = 0
     print(&buf[0])
 }
 
@@ -305,7 +305,7 @@ pub fn main() -> i32 {
     // Demonstrate starting playback (simulation)
     println("Starting playback simulation...")
 
-    if player_play(1000u32) {
+    if player_play(1000) {
         println("Playback started successfully")
     } else {
         println("Failed to start playback")
@@ -316,7 +316,7 @@ pub fn main() -> i32 {
     player_status()
 
     // Simulate some playback progress
-    g_current_position = 500u32
+    g_current_position = 500
 
     println("")
     println("After advancing position:")

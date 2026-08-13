@@ -133,15 +133,15 @@ pub fn main() -> i32 {
     let vpos = read_vpos()
 
     // Wait for a specific line
-    wait_vpos(100u16)
+    wait_vpos(100)
 
     // Set background color
-    set_background_color($0F00u16)
+    set_background_color($0F00)
 
     // Do a critical section with interrupts disabled
     let saved_ints = disable_interrupts()
     // ... critical code here ...
-    set_background_color($000Fu16)
+    set_background_color($000F)
     restore_interrupts(saved_ints)
 
     // Read timer

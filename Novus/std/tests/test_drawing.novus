@@ -2,11 +2,11 @@
 // Tests graphics primitives by drawing and reading back pixels
 
 from std::test::test import expect, expect_true, expect_false, expect_eq
-from std::ui::screen import WindowHandle
-from std::graphics::draw import DrawContext, DrawMode
-from std::graphics::shapes import Point, Rect
-from std::ffi::amiga_structs import Window, RastPort
-from std::error::errors import GraphicsError
+from amiga::sys::intuition import WindowHandle
+from amiga::sys::graphics::draw import DrawContext, DrawMode
+from amiga::sys::graphics::shapes import Point, Rect
+from amiga::raw::structs import Window, RastPort
+from amiga::sys::graphics::errors import GraphicsError
 
 // ============================================================================
 // DrawContext Creation Tests
@@ -60,12 +60,12 @@ pub fn test_draw_pen_get_set() {
                     // Set pen to color 1
                     ctx.pen(1)
                     let pen = ctx.pen_color()
-                    expect_eq((u32)pen, 1u32, "get_pen returns set value")
+                    expect_eq((u32)pen, 1, "get_pen returns set value")
 
                     // Set to color 2
                     ctx.pen(2)
                     let pen2 = ctx.pen_color()
-                    expect_eq((u32)pen2, 2u32, "get_pen returns new value")
+                    expect_eq((u32)pen2, 2, "get_pen returns new value")
                 },
                 Result::Err(_) => expect(false, "context should create")
             }
@@ -85,7 +85,7 @@ pub fn test_draw_bg_pen_get_set() {
                 Result::Ok(ctx) => {
                     ctx.bg_pen(2)
                     let bg = ctx.bg_pen_color()
-                    expect_eq((u32)bg, 2u32, "get_bg_pen returns set value")
+                    expect_eq((u32)bg, 2, "get_bg_pen returns set value")
                 },
                 Result::Err(_) => expect(false, "context should create")
             }

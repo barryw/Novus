@@ -1,9 +1,9 @@
 // Standard Library Tests - Str Type
-// Tests for std::strings::core::Str (borrowed string slice)
+// Tests for std::string::core::Str (borrowed string slice)
 //
 // Run with: novus test Novus/std/tests/test_str.novus
 
-from std::strings::core import Str, StringError
+from std::string::core import Str, StringError
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // ============================================================================
@@ -16,9 +16,9 @@ pub fn test_str_len() {
     let hello: Str = "Hello"
     let longer: Str = "Hello, World!"
 
-    expect_eq(empty.len(), 0u32, "empty string length")
-    expect_eq(hello.len(), 5u32, "hello length")
-    expect_eq(longer.len(), 13u32, "longer string length")
+    expect_eq(empty.len(), 0, "empty string length")
+    expect_eq(hello.len(), 5, "hello length")
+    expect_eq(longer.len(), 13, "longer string length")
 }
 
 @test("Str::is_empty returns true for empty strings")
@@ -199,7 +199,7 @@ pub fn test_str_find_found() {
     let needle: Str = "World"
 
     match s.find(needle) {
-        Some(idx) => expect_eq(idx, 7u32, "World at index 7"),
+        Some(idx) => expect_eq(idx, 7, "World at index 7"),
         None => expect(false, "should have found World")
     }
 }
@@ -221,7 +221,7 @@ pub fn test_str_find_beginning() {
     let needle: Str = "Hello"
 
     match s.find(needle) {
-        Some(idx) => expect_eq(idx, 0u32, "Hello at index 0"),
+        Some(idx) => expect_eq(idx, 0, "Hello at index 0"),
         None => expect(false, "should have found Hello")
     }
 }
@@ -232,7 +232,7 @@ pub fn test_str_find_end() {
     let needle: Str = "!"
 
     match s.find(needle) {
-        Some(idx) => expect_eq(idx, 12u32, "! at index 12"),
+        Some(idx) => expect_eq(idx, 12, "! at index 12"),
         None => expect(false, "should have found !")
     }
 }
@@ -242,7 +242,7 @@ pub fn test_str_find_byte() {
     let s: Str = "Hello, World!"
 
     match s.find_byte($2C) {  // ','
-        Some(idx) => expect_eq(idx, 5u32, "comma at index 5"),
+        Some(idx) => expect_eq(idx, 5, "comma at index 5"),
         None => expect(false, "should have found comma")
     }
 }
@@ -262,7 +262,7 @@ pub fn test_str_rfind_byte() {
     let s: Str = "a/b/c/d"
 
     match s.rfind_byte($2F) {  // '/'
-        Some(idx) => expect_eq(idx, 5u32, "last slash at index 5"),
+        Some(idx) => expect_eq(idx, 5, "last slash at index 5"),
         None => expect(false, "should have found slash")
     }
 }
@@ -275,7 +275,7 @@ pub fn test_str_rfind_byte() {
 pub fn test_str_slice_basic() {
     let s: Str = "Hello, World!"
 
-    match s.slice(0u32, 5u32) {
+    match s.slice(0, 5) {
         Ok(sub) => {
             let expected: Str = "Hello"
             expect_true(sub.equals(expected), "slice 0..5 is Hello")
@@ -288,7 +288,7 @@ pub fn test_str_slice_basic() {
 pub fn test_str_slice_middle() {
     let s: Str = "Hello, World!"
 
-    match s.slice(7u32, 12u32) {
+    match s.slice(7, 12) {
         Ok(sub) => {
             let expected: Str = "World"
             expect_true(sub.equals(expected), "slice 7..12 is World")
@@ -301,7 +301,7 @@ pub fn test_str_slice_middle() {
 pub fn test_str_slice_empty() {
     let s: Str = "Hello"
 
-    match s.slice(2u32, 2u32) {
+    match s.slice(2, 2) {
         Ok(sub) => expect_true(sub.is_empty(), "slice 2..2 is empty"),
         Err(_) => expect(false, "empty slice should not fail")
     }
@@ -311,7 +311,7 @@ pub fn test_str_slice_empty() {
 pub fn test_str_slice_oob() {
     let s: Str = "Hello"
 
-    match s.slice(0u32, 100u32) {
+    match s.slice(0, 100) {
         Ok(_) => expect(false, "should have failed for out of bounds"),
         Err(_) => expect(true, "correctly returned error")
     }
@@ -321,7 +321,7 @@ pub fn test_str_slice_oob() {
 pub fn test_str_slice_invalid_range() {
     let s: Str = "Hello"
 
-    match s.slice(3u32, 1u32) {
+    match s.slice(3, 1) {
         Ok(_) => expect(false, "should have failed for start > end"),
         Err(_) => expect(true, "correctly returned error")
     }
@@ -331,7 +331,7 @@ pub fn test_str_slice_invalid_range() {
 pub fn test_str_slice_from() {
     let s: Str = "Hello, World!"
 
-    match s.slice_from(7u32) {
+    match s.slice_from(7) {
         Ok(sub) => {
             let expected: Str = "World!"
             expect_true(sub.equals(expected), "slice_from 7 is World!")
@@ -344,7 +344,7 @@ pub fn test_str_slice_from() {
 pub fn test_str_slice_to() {
     let s: Str = "Hello, World!"
 
-    match s.slice_to(5u32) {
+    match s.slice_to(5) {
         Ok(sub) => {
             let expected: Str = "Hello"
             expect_true(sub.equals(expected), "slice_to 5 is Hello")
@@ -576,13 +576,13 @@ pub fn test_str_lines_crlf() {
 pub fn test_str_get_valid() {
     let s: Str = "Hello"
 
-    match s.get(0u32) {
-        Some(b) => expect_eq((u32)b, $48u32, "first byte is H"),
+    match s.get(0) {
+        Some(b) => expect_eq((u32)b, $48, "first byte is H"),
         None => expect(false, "should have returned byte")
     }
 
-    match s.get(4u32) {
-        Some(b) => expect_eq((u32)b, $6Fu32, "last byte is o"),
+    match s.get(4) {
+        Some(b) => expect_eq((u32)b, $6F, "last byte is o"),
         None => expect(false, "should have returned byte")
     }
 }
@@ -591,12 +591,12 @@ pub fn test_str_get_valid() {
 pub fn test_str_get_oob() {
     let s: Str = "Hello"
 
-    match s.get(5u32) {
+    match s.get(5) {
         Some(_) => expect(false, "should have returned None for out of bounds"),
         None => expect(true, "correctly returned None")
     }
 
-    match s.get(100u32) {
+    match s.get(100) {
         Some(_) => expect(false, "should have returned None for far out of bounds"),
         None => expect(true, "correctly returned None")
     }
@@ -606,7 +606,7 @@ pub fn test_str_get_oob() {
 pub fn test_str_get_empty() {
     let s: Str = ""
 
-    match s.get(0u32) {
+    match s.get(0) {
         Some(_) => expect(false, "empty string should return None"),
         None => expect(true, "correctly returned None")
     }

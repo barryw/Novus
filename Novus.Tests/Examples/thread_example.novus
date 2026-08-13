@@ -12,10 +12,10 @@
 //   Exit code: 0
 
 from std::io::file import write
-from std::strings::core import Str
-from std::thread::thread import spawn_thread, run_thread_loop, ThreadHandle
-from std::ffi::exec import Wait, Signal, FindTask
-from std::ffi::amiga_consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
+from std::string::core import Str
+from amiga::sys::exec::thread import spawn_thread, run_thread_loop, ThreadHandle
+from amiga::raw::exec import Wait, Signal, FindTask
+from amiga::raw::consts import SIGBREAKF_CTRL_C, SIGBREAKF_CTRL_D
 
 // State for the worker thread
 struct ComputeState {
@@ -52,7 +52,7 @@ fn thread_entry() -> i32 {
 
     // Custom signal for completion notification
     // Signal bit 20 = 1 << 20 = 0x100000 = 1048576
-    let done_signal = 1048576u32
+    let done_signal: u32 = 1048576
 
     // Run thread loop - will wake on signals
     run_thread_loop(done_signal, (*u8)&state, compute_tick)
@@ -81,7 +81,7 @@ pub fn main() -> i32 {
             // Signal bit 20 = 1 << 20 = 0x100000 = 1048576
             var signals_sent: i32 = 0
             while signals_sent < 100 {
-                handle.signal(1048576u32)
+                handle.signal(1048576)
                 signals_sent++
 
                 // Small delay between signals

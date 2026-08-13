@@ -3,10 +3,10 @@
 // A compact bit storage for boolean flags
 
 from std::core import Option, Result, Drop
-from std::error::errors import ExecError
+from std::memory::errors import MemoryError
 from std::memory::block import MemoryBlock
-from std::ffi::exec import FreeMem
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::exec import FreeMem
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 
 // ============================================================================
 // BitSet - Compact bit storage for boolean flags
@@ -52,16 +52,16 @@ impl BitSet {
     ///
     /// All bits are initially cleared (false).
     /// Returns a typed allocation error on failure.
-    pub fn with_capacity(num_bits: u32) -> Result<BitSet, ExecError> {
-        if num_bits == 0u32 {
+    pub fn with_capacity(num_bits: u32) -> Result<BitSet, MemoryError> {
+        if num_bits == 0 {
             return Result::Ok(@zeroed(BitSet))
         }
 
         // Calculate number of u32 words needed (round up)
-        let num_words: u32 = (num_bits + 31u32) / 32u32
-        let bytes_needed: u32 = num_words * 4u32
+        let num_words: u32 = (num_bits + 31) / 32
+        let bytes_needed: u32 = num_words * 4
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -79,37 +79,37 @@ impl BitSet {
 
     /// Set bit at index to true
     ///
-    pub fn set(&var self, index: u32) -> Result<(), ExecError> {
+    pub fn set(&var self, index: u32) -> Result<(), MemoryError> {
         if index >= self.num_bits {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        let word_index: u32 = index / 32u32
-        let bit_index: u32 = index % 32u32
-        let mask: u32 = 1u32 << bit_index
+        let word_index: u32 = index / 32
+        let bit_index: u32 = index % 32
+        let mask: u32 = 1 << bit_index
 
-        self.data[word_index] = self.data[word_index] | mask
+        unsafe { self.data[word_index] = self.data[word_index] | mask }
         return Result::Ok(())
     }
 
     /// Clear bit at index to false
     ///
-    pub fn clear(&var self, index: u32) -> Result<(), ExecError> {
+    pub fn clear(&var self, index: u32) -> Result<(), MemoryError> {
         if index >= self.num_bits {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        let word_index: u32 = index / 32u32
-        let bit_index: u32 = index % 32u32
-        let mask: u32 = 1u32 << bit_index
+        let word_index: u32 = index / 32
+        let bit_index: u32 = index % 32
+        let mask: u32 = 1 << bit_index
 
-        self.data[word_index] = self.data[word_index] & (~mask)
+        unsafe { self.data[word_index] = self.data[word_index] & (~mask) }
         return Result::Ok(())
     }
 
     /// Set bit at index to the given value
     ///
-    pub fn set_value(&var self, index: u32, value: bool) -> Result<(), ExecError> {
+    pub fn set_value(&var self, index: u32, value: bool) -> Result<(), MemoryError> {
         if value {
             return self.set(index)
         } else {
@@ -119,66 +119,66 @@ impl BitSet {
 
     /// Get bit at index
     ///
-    pub fn get(&self, index: u32) -> Result<bool, ExecError> {
+    pub fn get(&self, index: u32) -> Result<bool, MemoryError> {
         if index >= self.num_bits {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        let word_index: u32 = index / 32u32
-        let bit_index: u32 = index % 32u32
-        let mask: u32 = 1u32 << bit_index
+        let word_index: u32 = index / 32
+        let bit_index: u32 = index % 32
+        let mask: u32 = 1 << bit_index
 
-        return Result::Ok((self.data[word_index] & mask) != 0u32)
+        return Result::Ok(unsafe { (self.data[word_index] & mask) != 0 })
     }
 
     /// Toggle bit at index (flip true<->false)
     ///
-    pub fn toggle(&var self, index: u32) -> Result<(), ExecError> {
+    pub fn toggle(&var self, index: u32) -> Result<(), MemoryError> {
         if index >= self.num_bits {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        let word_index: u32 = index / 32u32
-        let bit_index: u32 = index % 32u32
-        let mask: u32 = 1u32 << bit_index
+        let word_index: u32 = index / 32
+        let bit_index: u32 = index % 32
+        let mask: u32 = 1 << bit_index
 
-        self.data[word_index] = self.data[word_index] ^ mask
+        unsafe { self.data[word_index] = self.data[word_index] ^ mask }
         return Result::Ok(())
     }
 
     /// Set all bits to true
     pub fn set_all(&var self) {
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = 0xFFFFFFFFu32
-            i = i + 1u32
+            unsafe { self.data[i] = 0xFFFFFFFF }
+            i = i + 1
         }
 
         // Clear any unused bits in the last word
-        let used_bits_in_last: u32 = self.num_bits % 32u32
-        if used_bits_in_last != 0u32 && self.num_words > 0u32 {
-            let mask: u32 = (1u32 << used_bits_in_last) - 1u32
-            self.data[self.num_words - 1u32] = self.data[self.num_words - 1u32] & mask
+        let used_bits_in_last: u32 = self.num_bits % 32
+        if used_bits_in_last != 0 && self.num_words > 0 {
+            let mask: u32 = (1 << used_bits_in_last) - 1
+            unsafe { self.data[self.num_words - 1] = self.data[self.num_words - 1] & mask }
         }
     }
 
     /// Clear all bits to false
     pub fn clear_all(&var self) {
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = 0u32
-            i = i + 1u32
+            unsafe { self.data[i] = 0 }
+            i = i + 1
         }
     }
 
     /// Count number of set bits (population count)
     pub fn count_ones(&self) -> u32 {
-        var count: u32 = 0u32
-        var i: u32 = 0u32
+        var count: u32 = 0
+        var i: u32 = 0
 
         while i < self.num_words {
-            count = count + BitSet::popcount(self.data[i])
-            i = i + 1u32
+            count = count + BitSet::popcount(unsafe { self.data[i] })
+            i = i + 1
         }
 
         return count
@@ -193,14 +193,14 @@ impl BitSet {
     ///
     /// Returns None if no bits are set.
     pub fn find_first_set(&self) -> Option<u32> {
-        var word_idx: u32 = 0u32
+        var word_idx: u32 = 0
 
         while word_idx < self.num_words {
-            let word: u32 = self.data[word_idx]
-            if word != 0u32 {
+            let word: u32 = unsafe { self.data[word_idx] }
+            if word != 0 {
                 // Find first set bit in this word
                 let bit_pos: u32 = BitSet::find_first_set_bit(word)
-                let index: u32 = word_idx * 32u32 + bit_pos
+                let index: u32 = word_idx * 32 + bit_pos
 
                 // Make sure we don't return an index beyond num_bits
                 if index < self.num_bits {
@@ -209,7 +209,7 @@ impl BitSet {
                     return Option::None
                 }
             }
-            word_idx = word_idx + 1u32
+            word_idx = word_idx + 1
         }
 
         return Option::None
@@ -219,14 +219,14 @@ impl BitSet {
     ///
     /// Returns None if all bits are set.
     pub fn find_first_clear(&self) -> Option<u32> {
-        var word_idx: u32 = 0u32
+        var word_idx: u32 = 0
 
         while word_idx < self.num_words {
-            let word: u32 = self.data[word_idx]
-            if word != 0xFFFFFFFFu32 {
+            let word: u32 = unsafe { self.data[word_idx] }
+            if word != 0xFFFFFFFF {
                 // Find first clear bit in this word (first set bit in inverted word)
                 let bit_pos: u32 = BitSet::find_first_set_bit(~word)
-                let index: u32 = word_idx * 32u32 + bit_pos
+                let index: u32 = word_idx * 32 + bit_pos
 
                 // Make sure we don't return an index beyond num_bits
                 if index < self.num_bits {
@@ -235,7 +235,7 @@ impl BitSet {
                     return Option::None
                 }
             }
-            word_idx = word_idx + 1u32
+            word_idx = word_idx + 1
         }
 
         return Option::None
@@ -244,15 +244,15 @@ impl BitSet {
     /// Bitwise AND with another bitset (self &= other)
     ///
     /// Sets require the same size.
-    pub fn and(&var self, other: &BitSet) -> Result<(), ExecError> {
+    pub fn and(&var self, other: &BitSet) -> Result<(), MemoryError> {
         if self.num_bits != other.num_bits {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = self.data[i] & other.data[i]
-            i = i + 1u32
+            unsafe { self.data[i] = self.data[i] & other.data[i] }
+            i = i + 1
         }
 
         return Result::Ok(())
@@ -261,15 +261,15 @@ impl BitSet {
     /// Bitwise OR with another bitset (self |= other)
     ///
     /// Sets require the same size.
-    pub fn or(&var self, other: &BitSet) -> Result<(), ExecError> {
+    pub fn or(&var self, other: &BitSet) -> Result<(), MemoryError> {
         if self.num_bits != other.num_bits {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = self.data[i] | other.data[i]
-            i = i + 1u32
+            unsafe { self.data[i] = self.data[i] | other.data[i] }
+            i = i + 1
         }
 
         return Result::Ok(())
@@ -278,15 +278,15 @@ impl BitSet {
     /// Bitwise XOR with another bitset (self ^= other)
     ///
     /// Sets require the same size.
-    pub fn xor(&var self, other: &BitSet) -> Result<(), ExecError> {
+    pub fn xor(&var self, other: &BitSet) -> Result<(), MemoryError> {
         if self.num_bits != other.num_bits {
-            return Result::Err(ExecError::CapacityExceeded)
+            return Result::Err(MemoryError::CapacityExceeded)
         }
 
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = self.data[i] ^ other.data[i]
-            i = i + 1u32
+            unsafe { self.data[i] = self.data[i] ^ other.data[i] }
+            i = i + 1
         }
 
         return Result::Ok(())
@@ -294,17 +294,17 @@ impl BitSet {
 
     /// Bitwise NOT (complement all bits)
     pub fn not(&var self) {
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            self.data[i] = ~self.data[i]
-            i = i + 1u32
+            unsafe { self.data[i] = ~self.data[i] }
+            i = i + 1
         }
 
         // Clear any unused bits in the last word
-        let used_bits_in_last: u32 = self.num_bits % 32u32
-        if used_bits_in_last != 0u32 && self.num_words > 0u32 {
-            let mask: u32 = (1u32 << used_bits_in_last) - 1u32
-            self.data[self.num_words - 1u32] = self.data[self.num_words - 1u32] & mask
+        let used_bits_in_last: u32 = self.num_bits % 32
+        if used_bits_in_last != 0 && self.num_words > 0 {
+            let mask: u32 = (1 << used_bits_in_last) - 1
+            unsafe { self.data[self.num_words - 1] = self.data[self.num_words - 1] & mask }
         }
     }
 
@@ -315,7 +315,7 @@ impl BitSet {
 
     /// Check if the bitset is empty (has zero capacity)
     pub fn is_empty(&self) -> bool {
-        return self.num_bits == 0u32
+        return self.num_bits == 0
     }
 
     /// Check if all bits are set
@@ -325,12 +325,12 @@ impl BitSet {
 
     /// Check if any bit is set
     pub fn any(&self) -> bool {
-        var i: u32 = 0u32
+        var i: u32 = 0
         while i < self.num_words {
-            if self.data[i] != 0u32 {
+            if unsafe { self.data[i] != 0 } {
                 return true
             }
-            i = i + 1u32
+            i = i + 1
         }
         return false
     }
@@ -343,12 +343,12 @@ impl BitSet {
     // Internal: Population count (number of set bits in a u32)
     // Uses Brian Kernighan's algorithm
     fn popcount(n: u32) -> u32 {
-        var count: u32 = 0u32
+        var count: u32 = 0
         var value: u32 = n
 
-        while value != 0u32 {
-            value = value & (value - 1u32)
-            count = count + 1u32
+        while value != 0 {
+            value = value & (value - 1)
+            count = count + 1
         }
 
         return count
@@ -357,32 +357,32 @@ impl BitSet {
     // Internal: Find position of first set bit in a u32 (0-31)
     // Returns 0 if n is 0 (caller should check for 0)
     fn find_first_set_bit(n: u32) -> u32 {
-        if n == 0u32 {
-            return 0u32
+        if n == 0 {
+            return 0
         }
 
-        var pos: u32 = 0u32
+        var pos: u32 = 0
         var value: u32 = n
 
         // Binary search for the first set bit
-        if (value & 0x0000FFFFu32) == 0u32 {
-            pos = pos + 16u32
+        if (value & 0x0000FFFF) == 0 {
+            pos = pos + 16
             value = value >> 16
         }
-        if (value & 0x000000FFu32) == 0u32 {
-            pos = pos + 8u32
+        if (value & 0x000000FF) == 0 {
+            pos = pos + 8
             value = value >> 8
         }
-        if (value & 0x0000000Fu32) == 0u32 {
-            pos = pos + 4u32
+        if (value & 0x0000000F) == 0 {
+            pos = pos + 4
             value = value >> 4
         }
-        if (value & 0x00000003u32) == 0u32 {
-            pos = pos + 2u32
+        if (value & 0x00000003) == 0 {
+            pos = pos + 2
             value = value >> 2
         }
-        if (value & 0x00000001u32) == 0u32 {
-            pos = pos + 1u32
+        if (value & 0x00000001) == 0 {
+            pos = pos + 1
         }
 
         return pos
@@ -392,15 +392,15 @@ impl BitSet {
 // Automatic cleanup for BitSet (RAII)
 impl Drop for BitSet {
     fn drop(&var self) {
-        if self.num_words > 0u32 {
-            let bytes: u32 = self.num_words * 4u32
+        if self.num_words > 0 {
+            let bytes: u32 = self.num_words * 4
             let mem: *u8 = (*u8)(self.data)
             unsafe {
                 FreeMem(mem, bytes)
             }
             self.data = null
-            self.num_bits = 0u32
-            self.num_words = 0u32
+            self.num_bits = 0
+            self.num_words = 0
         }
     }
 }

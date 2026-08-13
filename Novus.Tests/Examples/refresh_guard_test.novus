@@ -1,5 +1,5 @@
 // RefreshGuard RAII Test - demonstrates automatic BeginRefresh/EndRefresh
-from std::ui::window import WindowHandle, WindowEvent, RefreshGuard
+from amiga::sys::intuition import WindowHandle, WindowEvent, RefreshGuard
 from std::io::file import write
 
 pub fn main() -> i32 {

@@ -1,13 +1,14 @@
 // Deterministic target-executed checks for stdlib Result failure contracts.
 
 from std::core import Result
-from std::error::errors import ExecError
-from std::memory::amiga import MemHandle
-from std::memory::chip import ChipCacheError
-from std::memory::chip_pool import ChipPool
+from amiga::sys::exec::errors import ExecError
+from std::memory import MemoryError
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::sys::exec::memory::chip import ChipCacheError
+from amiga::sys::exec::memory::chip_pool import ChipPool
 from std::collections::ringbuffer import RingBuffer
-from std::os::dos import open_file
-from std::ffi::dos import MODE_OLDFILE
+from amiga::sys::dos import open_file
+from amiga::raw::dos import MODE_OLDFILE
 from std::test::test import expect, expect_true
 
 @test("MemHandle rejects zero-sized allocations")
@@ -29,14 +30,14 @@ pub fn chip_pool_zero_size_error() {
 @test("RingBuffer reports invalid capacity and overflow")
 pub fn ring_buffer_failure_contracts() {
     match RingBuffer::<i32>::with_capacity(0) {
-        Result::Err(ExecError::InvalidAddress) => expect_true(true, "invalid capacity"),
+        Result::Err(MemoryError::InvalidCapacity) => expect_true(true, "invalid capacity"),
         _ => expect(false, "zero-capacity ring buffer must fail"),
     }
 
     var ring = RingBuffer::<i32>::with_capacity(1).unwrap()
     let _ = ring.push_back(1)
     match ring.push_back(2) {
-        Result::Err(ExecError::CapacityExceeded) => expect_true(true, "capacity exceeded"),
+        Result::Err(MemoryError::CapacityExceeded) => expect_true(true, "capacity exceeded"),
         _ => expect(false, "full ring buffer must fail"),
     }
 }

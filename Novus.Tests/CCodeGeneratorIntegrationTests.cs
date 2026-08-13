@@ -186,7 +186,7 @@ pub fn caller(y: i32) -> i32 {
 from std::core import Option
 
 pub fn clear() -> i32 {
-    var value: Option<u16> = Option::Some(1u16)
+    var value: Option<u16> = Option::Some(1)
     value = Option::None
     return 0
 }");
@@ -354,6 +354,26 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_ContextualOptionLetElseExtractsSomePayload()
+    {
+        var module = BuildIR("""
+            enum Option<T> { Some(T), None }
+
+            pub fn unwrap(value: Option<i32>) -> i32 {
+                let number = value else return -1
+                return number
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(function => function.Name == "unwrap"));
+
+        Assert.Contains("Option_i32_Some", code);
+        Assert.Contains("number =", code);
+        Assert.Contains("data.Some._0", code);
+    }
+
+    [Fact]
     public void CCodeGen_DropInPlaceRecursesIntoEnumPayload()
     {
         var module = BuildIR("""
@@ -422,7 +442,7 @@ pub fn clear() -> i32 {
         var module = BuildIR("""
             struct Big { values: [u32; 64] }
 
-            fn make() -> Big { return Big { values: [0u32; 64] } }
+            fn make() -> Big { return Big { values: [0; 64] } }
 
             pub fn touch() -> u32 {
                 let value = make()
@@ -443,9 +463,9 @@ pub fn clear() -> i32 {
             enum Maybe<T> { Some(T), None }
 
             pub fn choose(first: Maybe<u32>, left: Maybe<&u8>, right: Maybe<&u8>) -> u32 {
-                let a = match first { Maybe::Some(value) => value, Maybe::None => 0u32 }
-                let b = match left { Maybe::Some(value) => value, Maybe::None => return 0u32 }
-                let c = match right { Maybe::Some(value) => value, Maybe::None => return 0u32 }
+                let a = match first { Maybe::Some(value) => value, Maybe::None => 0 }
+                let b = match left { Maybe::Some(value) => value, Maybe::None => return 0 }
+                let c = match right { Maybe::Some(value) => value, Maybe::None => return 0 }
                 return a + (u32)*b + (u32)*c
             }
             """);
@@ -466,16 +486,16 @@ pub fn clear() -> i32 {
             impl Drop for Guard { fn drop(&var self) {} }
             enum Outcome<T> { Ok(T), Err }
 
-            fn acquire() -> Outcome<Guard> { return Outcome::Ok(Guard { value: 7u32 }) }
-            fn check() -> Outcome<u32> { return Outcome::Ok(0u32) }
+            fn acquire() -> Outcome<Guard> { return Outcome::Ok(Guard { value: 7 }) }
+            fn check() -> Outcome<u32> { return Outcome::Ok(0) }
 
             pub fn inspect() -> u32 {
                 let guard = match acquire() {
                     Outcome::Ok(value) => value,
-                    Outcome::Err => return 0u32,
+                    Outcome::Err => return 0,
                 }
                 match check() {
-                    Outcome::Ok(value) => return 1u32 unless value == 0u32,
+                    Outcome::Ok(value) => return 1 unless value == 0,
                     Outcome::Err => {},
                 }
                 return guard.value
@@ -516,19 +536,19 @@ pub fn clear() -> i32 {
             enum Load { Ready(Wide), Blank }
 
             pub fn choose(load: Load) -> u32 {
-                let value = 7u16
+                let value: u16 = 7
                 match load {
                     Load::Ready(value) => { return value.value },
                     Load::Blank => {
-                        let value = Wide { value: 9u32 }
+                        let value = Wide { value: 9 }
                         return value.value
                     },
                 }
             }
 
             pub fn unwrap(load: Load) -> u32 {
-                let name = 7u16
-                let Load::Ready(name) = load else { return 0u32 }
+                let name: u16 = 7
+                let Load::Ready(name) = load else { return 0 }
                 return name.value
             }
             """);
@@ -664,11 +684,53 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_ReturningOwnedFieldClearsSourceBeforeOwnerDrop()
+    {
+        var module = BuildIR("""
+            struct Handle { value: i32 }
+            impl Drop for Handle { fn drop(&var self) {} }
+            struct Wrapper { handle: Handle }
+            fn unwrap(consuming wrapper: Wrapper) -> Handle { return wrapper.handle }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "unwrap"));
+
+        Assert.Contains("__novus_memset(&(wrapper.handle), 0, sizeof(Handle));", code);
+        Assert.True(
+            code.IndexOf("__novus_memset(&(wrapper.handle)", StringComparison.Ordinal) <
+            code.LastIndexOf("Handle_Drop_drop", StringComparison.Ordinal),
+            code);
+    }
+
+    [Fact]
+    public void CCodeGen_ReturningNestedOwnedLiteralTransfersLocalOwnership()
+    {
+        var module = BuildIR("""
+            struct Handle { value: i32 }
+            impl Drop for Handle { fn drop(&var self) {} }
+            struct Wrapper { handle: Handle }
+            enum Outcome { Ok(Wrapper), Err }
+
+            fn wrap() -> Outcome {
+                let handle = Handle { value: 1 }
+                return Outcome::Ok(Wrapper { handle: handle })
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "wrap"));
+
+        Assert.Contains("__out->data.Ok._0.handle = handle;", code);
+        Assert.Contains("_defer_1_active = false;", code);
+    }
+
+    [Fact]
     public void CCodeGen_ImportedGenericConsumingParameterDropsOnErrorPaths()
     {
         var module = BuildIRWithStdlib("""
             from std::collections::vec import Vec
-            from std::strings::core import String
+            from std::string::core import String
 
             pub fn run() {
                 var values = Vec::<String>::new()
@@ -1086,6 +1148,53 @@ pub fn get_element(arr: [i32; 5], index: u32) -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_PointerOffsetComputesAddressWithoutLoadingElement()
+    {
+        var module = new IrModule();
+        var pointerType = new IrPointerType(IrIntType.U16);
+        var function = new IrFunction("offset", pointerType, Visibility.Public);
+        function.Parameters.Add(new IrParameter("ptr", pointerType));
+        function.Parameters.Add(new IrParameter("index", IrIntType.U32));
+        function.CreateBasicBlock("entry").AddInstruction(new IrReturn(
+            new IrPointerOffsetValue(
+                new IrVariable("ptr", pointerType),
+                new IrVariable("index", IrIntType.U32),
+                IrIntType.U16,
+                pointerType)));
+        module.AddFunction(function);
+
+        var code = GenerateCCode(module);
+
+        Assert.Contains("return (ptr + index);", code);
+    }
+
+    [Fact]
+    public void CCodeGen_SafeIndexRemainsCheckedAtMinimalInstrumentationLevel()
+    {
+        var module = BuildIR(@"
+pub fn get_element(arr: [i32; 5], index: u32) -> i32 {
+    return arr[index]
+}");
+        var code = new CCodeGenerator(
+            module, [], "68020", "soft", BuildMode.Release, SafetyLevel.Unsafe).Generate();
+
+        Assert.Contains("if ((uint32_t)index >= (uint32_t)", code);
+        Assert.Contains("__novus_bounds_check_failed(index", code);
+    }
+
+    [Fact]
+    public void CCodeGen_ExplicitUnsafeIndexDoesNotEmitBoundsCheck()
+    {
+        var module = BuildIR(@"
+pub fn get_element(arr: [i32; 5], index: u32) -> i32 {
+    return unsafe { arr[index] }
+}");
+        var code = GenerateCCode(module, BuildMode.Release);
+
+        Assert.DoesNotContain("if ((uint32_t)index >=", code);
+    }
+
+    [Fact]
     public void CCodeGen_ArrayAssignment_GeneratesIndexedStore()
     {
         var source = @"
@@ -1106,7 +1215,7 @@ pub fn set_element(arr: [i32; 5], index: u32, value: i32) -> [i32; 5] {
     {
         var source = @"
 fn make_array() -> [u8; 4] {
-    return [1u8, 2u8, 3u8, 4u8]
+    return [1, 2, 3, 4]
 }
 
 pub fn first() -> u8 {
@@ -1126,7 +1235,7 @@ pub fn first() -> u8 {
     {
         var source = """
             pub fn make_array() -> [u8; 20] {
-                return [1u8; 20]
+                return [1; 20]
             }
             """;
 
@@ -1158,8 +1267,8 @@ pub fn equal(left: &[u8; 4], right: &[u8; 4]) -> bool {
     {
         var source = @"
 pub fn set_at(index: u32) -> [u8; 4] {
-    var values = [0u8; 4]
-    values[index] = 1u8
+    var values: [u8] = [0; 4]
+    values[index] = 1
     return values
 }";
 

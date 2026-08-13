@@ -1,15 +1,12 @@
 // RDB loading and writing through the owning BlockDevice boundary.
 
 from std::core import Error, From, Result
-from std::error::errors import ExecError
-from std::ffi::amiga_consts import MEMF_PUBLIC
-from std::memory::block import MemoryBlock
-from std::memory::bytes import ByteError, ByteReader
-from std::os::block_device import BlockDevice, BlockDeviceError
+from std::memory import Buffer, ByteError, ByteReader, MemoryError
+from amiga::storage import BlockDevice, BlockDeviceError
 from rdb import BLOCK_BYTES, RdbError, RdbModel
 
-const RDB_SCAN_BLOCKS: u32 = 16u32
-const RDB_END_BLOCK: u32 = $FFFFFFFFu32
+const RDB_SCAN_BLOCKS: u32 = 16
+const RDB_END_BLOCK: u32 = $FFFFFFFF
 
 pub enum RdbDeviceError {
     Device(BlockDeviceError),
@@ -37,8 +34,8 @@ impl From<ByteError> for RdbDeviceError {
     }
 }
 
-impl From<ExecError> for RdbDeviceError {
-    fn convert(consuming _error: ExecError) -> RdbDeviceError {
+impl From<MemoryError> for RdbDeviceError {
+    fn convert(consuming _error: MemoryError) -> RdbDeviceError {
         return RdbDeviceError::AllocationFailed
     }
 }
@@ -64,16 +61,16 @@ impl Error for RdbDeviceError {
 pub fn load_rdb(device: &var BlockDevice) -> Result<RdbModel, RdbDeviceError> {
     return Result::Err(RdbDeviceError::UnsupportedBlockSize) unless device.geometry().block_bytes() == BLOCK_BYTES
 
-    var header = [0u8; 512]
+    var header: [u8] = [0; 512]
     var header_block = RDB_SCAN_BLOCKS
-    var high_reserved_block = 0u32
-    var scan = 0u32
+    var high_reserved_block: u32 = 0
+    var scan: u32 = 0
     while scan < RDB_SCAN_BLOCKS && scan < device.geometry().total_blocks() {
         device.read_blocks(scan, &var header)?
         match RdbModel::from_header(&header) {
             Result::Ok(model) => {
                 let reader = ByteReader::new(&header)
-                high_reserved_block = reader.read_be_u32(132u32)?
+                high_reserved_block = reader.read_be_u32(132)?
                 return Result::Err(RdbDeviceError::UnsupportedBlockSize) unless model.block_bytes() == BLOCK_BYTES
                 header_block = scan
                 break
@@ -83,13 +80,13 @@ pub fn load_rdb(device: &var BlockDevice) -> Result<RdbModel, RdbDeviceError> {
         scan++
     }
     return Result::Err(RdbDeviceError::Model(RdbError::MissingRigidDiskBlock)) if header_block == RDB_SCAN_BLOCKS
-    return Result::Err(RdbDeviceError::InvalidReservedArea) unless high_reserved_block >= header_block && high_reserved_block < device.geometry().total_blocks() && high_reserved_block < $FFFFFFFFu32 / BLOCK_BYTES
+    return Result::Err(RdbDeviceError::InvalidReservedArea) unless high_reserved_block >= header_block && high_reserved_block < device.geometry().total_blocks() && high_reserved_block < $FFFFFFFF / BLOCK_BYTES
 
-    let byte_count = (high_reserved_block + 1u32) * BLOCK_BYTES
-    var storage = MemoryBlock::alloc(byte_count, MEMF_PUBLIC)?
+    let byte_count = (high_reserved_block + 1) * BLOCK_BYTES
+    var storage = Buffer::new(byte_count)?
     {
         let bytes = storage.as_mut_bytes()
-        device.read_blocks(0u32, bytes)?
+        device.read_blocks(0, bytes)?
     }
     return Result::Ok(RdbModel::from_image(storage.as_bytes())?)
 }
@@ -100,49 +97,49 @@ pub fn write_rdb(device: &var BlockDevice, model: &RdbModel) -> Result<(), RdbDe
     return Result::Err(RdbDeviceError::UnsupportedBlockSize) unless device.geometry().block_bytes() == BLOCK_BYTES && model.block_bytes() == BLOCK_BYTES
     model.validate()?
 
-    return Result::Err(RdbDeviceError::InvalidReservedArea) unless model.serialized_block_count() - 1u32 <= model.rdb_blocks_high()
-    return Result::Err(RdbDeviceError::InvalidReservedArea) unless model.rdb_blocks_high() < device.geometry().total_blocks() && model.cylinder_blocks() > 0u32
+    return Result::Err(RdbDeviceError::InvalidReservedArea) unless model.serialized_block_count() - 1 <= model.rdb_blocks_high()
+    return Result::Err(RdbDeviceError::InvalidReservedArea) unless model.rdb_blocks_high() < device.geometry().total_blocks() && model.cylinder_blocks() > 0
     return Result::Err(RdbDeviceError::InvalidReservedArea) unless model.cylinders() <= device.geometry().total_blocks() / model.cylinder_blocks()
 
-    var block = [0u8; 512]
+    var block: [u8] = [0; 512]
     model.write_header(&var block)?
-    device.write_blocks(0u32, &block)?
+    device.write_blocks(0, &block)?
 
-    for partition_index in 0u32..model.partition_count() {
+    for partition_index in 0..model.partition_count() {
         let partition = model.partition(partition_index).ok_or(RdbDeviceError::InvalidReservedArea)?
-        let next = if partition_index + 1u32 < model.partition_count() {
-            partition_index + 2u32
+        let next = if partition_index + 1 < model.partition_count() {
+            partition_index + 2
         } else {
             RDB_END_BLOCK
         }
         partition.write_block(model, next, &var block)?
-        device.write_blocks(1u32 + partition_index, &block)?
+        device.write_blocks(1 + partition_index, &block)?
     }
 
-    var current = 1u32 + model.partition_count()
-    for file_system_index in 0u32..model.file_system_count() {
+    var current: u32 = 1 + model.partition_count()
+    for file_system_index in 0..model.file_system_count() {
         let file_system = model.file_system(file_system_index).ok_or(RdbDeviceError::InvalidReservedArea)?
         let segment_count = file_system.lseg_block_count()
-        let first_segment = if segment_count > 0u32 { current + 1u32 } else { RDB_END_BLOCK }
-        let next_file_system = if file_system_index + 1u32 < model.file_system_count() {
-            current + 1u32 + segment_count
+        let first_segment = if segment_count > 0 { current + 1 } else { RDB_END_BLOCK }
+        let next_file_system = if file_system_index + 1 < model.file_system_count() {
+            current + 1 + segment_count
         } else {
             RDB_END_BLOCK
         }
         file_system.write_header(next_file_system, first_segment, &var block)?
         device.write_blocks(current, &block)?
 
-        for segment_index in 0u32..segment_count {
-            let segment_block = current + 1u32 + segment_index
-            let next_segment = if segment_index + 1u32 < segment_count {
-                segment_block + 1u32
+        for segment_index in 0..segment_count {
+            let segment_block = current + 1 + segment_index
+            let next_segment = if segment_index + 1 < segment_count {
+                segment_block + 1
             } else {
                 RDB_END_BLOCK
             }
             file_system.write_lseg_block(segment_index, next_segment, &var block)?
             device.write_blocks(segment_block, &block)?
         }
-        current = current + 1u32 + segment_count
+        current = current + 1 + segment_count
     }
     return Result::Ok(())
 }

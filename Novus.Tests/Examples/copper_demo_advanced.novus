@@ -12,11 +12,11 @@
 // - PAL systems show blue border, NTSC shows red border
 
 from std::core import Option, Result
-from std::ffi::exec import AllocVec, FreeVec
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_CLEAR
-from std::ffi::graphics import WaitTOF
-from std::graphics::copper import CopperListBuilder, CopperError
-from std::hardware::registers import rgb12, COLOR00, BPLCON0, DIWSTRT, DIWSTOP, DDFSTRT, DDFSTOP
+from amiga::raw::exec import AllocVec, FreeVec
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR
+from amiga::raw::graphics import WaitTOF
+from amiga::sys::graphics::copper import CopperListBuilder, CopperError
+from amiga::sys::hardware::registers import rgb12, COLOR00, BPLCON0, DIWSTRT, DIWSTOP, DDFSTRT, DDFSTOP
 
 // Screen dimensions
 const SCREEN_WIDTH: u16 = 320

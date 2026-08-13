@@ -1,0 +1,132 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: realtime.library
+// Base: _RealTimeBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+/// Prevent other tasks from changing internal structures.
+///
+/// This routine will lock the internal sempahores in the RealTime library. If
+/// they are already locked by another task, this routine will wait until they
+/// are free.
+///
+/// # Arguments
+/// * `lockType` - the internal list to lock. Only RT_CONDUCTORS is currentl...
+///
+/// # Returns
+/// handle - if lockType is valid, returns a value that must be passed
+///
+/// See also: UnlockRealTime()
+@library("realtime.library")
+extern pub fn LockRealTime(lockType: u32) -> *u8
+/// Unlock internal lists. (V37)
+///
+/// Undoes the effects of LockRealTime().
+///
+/// # Arguments
+/// * `lockHandle` - value returned by LockRealTime(). May be NULL.
+///
+/// See also: LockRealTime()
+@library("realtime.library")
+extern pub fn UnlockRealTime(lock: *u8)
+@library("realtime.library")
+extern pub fn CreatePlayerA(tagList: *TagItem) -> *Player
+@library("realtime.library")
+extern pub fn CreatePlayer(tagList: u32, ...args) -> *Player
+/// Delete a player. (V37)
+///
+/// Deletes the specified player. Flushes the conductor that the player was
+/// connected to if this is the last player connected to that conductor.
+///
+/// # Arguments
+/// * `player` - Player structure to delete, as allocated by CreatePlayer(...
+///
+/// See also: CreatePlayer()
+@library("realtime.library")
+extern pub fn DeletePlayer(player: *Player)
+@library("realtime.library")
+extern pub fn SetPlayerAttrsA(player: *Player, tagList: *TagItem) -> i16
+@library("realtime.library")
+extern pub fn SetPlayerAttrs(player: *Player, tagList: u32, ...args) -> i16
+/// Change the play state of a player's
+///
+/// Changes the play state of the conductor referenced by the player. The states
+/// can be CONDSTATE_STOPPED, CONDSTATE_PAUSED, CONDSTATE_LOCATE,
+/// CONDSTATE_RUNNING, or the special value CONDSTATE_METRIC which asks the
+/// highest priority conducted node to do a CONDSTATE_LOCATE, or the special
+/// value CONDSTATE_SHUTTLE which informs the players that the clock value is
+/// changing, but the clock isn't actually running.
+///
+/// # Arguments
+/// * `player` - player referencing the conductor to change state - new pl...
+///
+/// # Returns
+/// result - 0 if everything went OK, or a realtime.library error code
+@library("realtime.library")
+extern pub fn SetConductorState(player: *Player, state: u32, time: i32) -> i32
+/// Provide external source clock for a player's
+///
+/// Allows external applications to constrain conductor time between minTime and
+/// maxTime, with the restraint that time can never run backwards. Does nothing
+/// if the given player is not the current External Sync source.
+///
+/// # Arguments
+/// * `player` - player referencing the conductor to change minTime, maxTi...
+///
+/// # Returns
+/// result - TRUE if everything went OK, FALSE if the player is not the
+@library("realtime.library")
+extern pub fn ExternalSync(player: *Player, minTime: i32, maxTime: i32) -> i16
+/// Return the next conductor on realtime.library's
+///
+/// Returns the next conductor on realtime.library's conductor list. If
+/// previousConductor is NULL, returns the first conductor in the list.
+///
+/// # Arguments
+/// * `previousConductor` - previous conductor or NULL to get first conductor.
+///
+/// # Returns
+/// conductor - next conductor on the list, or NULL if no more.
+///
+/// See also: FindConductor(), LockRealTime(), UnlockRealTime()
+@library("realtime.library")
+extern pub fn NextConductor(previousConductor: *Conductor) -> *Conductor
+/// Find a conductor by name. (V37)
+///
+/// Returns the conductor with the given name or NULL if not found. The
+/// conductor list must be locked before calling this function.
+///
+/// # Arguments
+/// * `name` - name of conductor to find.
+///
+/// # Returns
+/// conductor - pointer to a Conductor structure, or NULL if not found.
+///
+/// See also: NextConductor(), LockRealTime(), UnlockRealTime()
+@library("realtime.library")
+extern pub fn FindConductor(name: *u8) -> *Conductor
+/// Get the attributes of a player. (V37)
+///
+/// Retrieves the attributes of the specified player, according to the
+/// attributes chosen in the tag list. For each entry in the tag list, ti_Tag
+/// identifies the attribute, and ti_Data is a pointer to the longword variable
+/// where you wish the result to be stored.
+///
+/// # Arguments
+/// * `player` - pointer to the player in question. May be NULL, in which ...
+///
+/// # Returns
+/// numProcessed - the number of attributes successfully filled in.
+///
+/// See also: CreatePlayer(), SetPlayerAttrs()
+@library("realtime.library")
+extern pub fn GetPlayerAttrsA(player: *Player, tagList: *TagItem) -> u32
+@library("realtime.library")
+extern pub fn GetPlayerAttrs(player: *Player, tagList: u32, ...args) -> u32

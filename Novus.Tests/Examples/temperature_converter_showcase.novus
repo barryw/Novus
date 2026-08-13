@@ -113,7 +113,7 @@ fn min_max(temps: &[Temperature; 4]) -> (fixed32, fixed32) {
     var min_c: fixed32 = 1000.0
     var max_c: fixed32 = -1000.0
 
-    for i in 0u32..4 {
+    for i in 0..4 {
         let c = temps[i].to_celsius()
         if c < min_c {
             min_c = c
@@ -227,9 +227,9 @@ fn main() -> i32 {
     println(f"Min: {(i32)min_temp}C, Max: {(i32)max_temp}C")
 
     // Demonstrate pointer usage with swap
-    println(f"Before swap: temps[0]={(i32)temps[0u32].to_celsius()}C, temps[1]={(i32)temps[1u32].to_celsius()}C")
-    swap_temps(&var temps[0u32], &var temps[1u32])
-    println(f"After swap:  temps[0]={(i32)temps[0u32].to_celsius()}C, temps[1]={(i32)temps[1u32].to_celsius()}C\n")
+    println(f"Before swap: temps[0]={(i32)temps[0].to_celsius()}C, temps[1]={(i32)temps[1].to_celsius()}C")
+    swap_temps(&var temps[0], &var temps[1])
+    println(f"After swap:  temps[0]={(i32)temps[0].to_celsius()}C, temps[1]={(i32)temps[1].to_celsius()}C\n")
 
     // -------------------------------------------------------------------------
     // Bitwise operations (hardware register style)

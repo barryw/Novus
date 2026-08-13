@@ -1,10 +1,10 @@
 // MUI Demo Application - Demonstrates the MUI builder API for Novus
-from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp, MenuBuilder, MenuItemBuilder, MenuStrip
-from std::ui::mui import MUITabsBuilder, set_attr, set_text, get_attr, make_button, make_text
-from std::ui::mui import make_radio, make_progress, set_progress, app_busy
-from std::ui::mui import MENU_NEW, MENU_OPEN, MENU_SAVE, MENU_QUIT, MENU_CUT, MENU_COPY, MENU_PASTE, MENU_ABOUT
-from std::ffi::mui_tags import *
-from std::ffi::exec import Wait
+from amiga::sys::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp, MenuBuilder, MenuItemBuilder, MenuStrip
+from amiga::sys::mui import MUITabsBuilder, set_attr, set_text, get_attr, make_button, make_text
+from amiga::sys::mui import make_radio, make_progress, set_progress, app_busy
+from amiga::sys::mui import MENU_NEW, MENU_OPEN, MENU_SAVE, MENU_QUIT, MENU_CUT, MENU_COPY, MENU_PASTE, MENU_ABOUT
+from amiga::raw::mui_tags import *
+from amiga::raw::exec import Wait
 
 // Gadget IDs (app-specific)
 const GAD_QUIT: u32 = 1

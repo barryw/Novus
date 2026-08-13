@@ -1,0 +1,15 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: label.library
+// Base: _LabelBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("label.library")
+extern pub fn LABEL_GetClass() -> *u8

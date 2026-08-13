@@ -373,7 +373,7 @@ fn main() -> i32 {
 
     // Demo 8: Using fixed32 for smoother animation
     println("\n--- Fixed32 Tween Demo ---")
-    var smooth: Tween<fixed32> = Tween::new(0.0fixed32, 10.0fixed32, 5)
+    var smooth: Tween<fixed32> = Tween::new((fixed32)0.0, (fixed32)10.0, 5)
     smooth.with_easing(ease_out_cubic)
     smooth.start()
 

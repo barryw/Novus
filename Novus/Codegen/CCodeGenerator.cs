@@ -85,7 +85,7 @@ public partial class CCodeGenerator
 
     // Track member access instructions for move semantic analysis
     // Maps result variable name -> (source struct, field name, accessor, field type)
-    private Dictionary<string, (string structValue, string fieldName, string accessor, IrStructType fieldType)> _memberAccessInfo = new();
+    private Dictionary<string, (string structValue, string fieldName, string accessor, IrType fieldType)> _memberAccessInfo = new();
 
     // Track index access instructions so we can reconstruct lvalue expressions when taking address
     // Maps result variable name -> (array expression, index expression)
@@ -340,6 +340,7 @@ public partial class CCodeGenerator
                             {
                                 var fieldValue = EmitValue(kvp.Value);
                                 _output.AppendLine($"    {destExpr}.data.{nestedEnumValue.VariantName}._{j}.{kvp.Key} = {fieldValue};");
+                                EmitMovedSourceZero(kvp.Value);
                             }
                         }
                         // Recursively handle nested enum literals
@@ -622,6 +623,7 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <exec/devices.h>");
         sb.AppendLine("#include <exec/semaphores.h>");
         sb.AppendLine("#include <devices/trackdisk.h>");
+        sb.AppendLine("#include <devices/timer.h>");
         sb.AppendLine("#include <intuition/intuition.h>");
         sb.AppendLine("#include <graphics/gfx.h>");
         sb.AppendLine("#include <graphics/text.h>");
@@ -656,10 +658,6 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <inline/graphics_protos.h>");
         sb.AppendLine("#include <inline/gadtools_protos.h>");
         sb.AppendLine("#endif");
-        // NOTE: Do NOT include <devices/timer.h> here - it defines struct timeval with
-        // AmigaOS-style field names (tv_secs/tv_micro) which conflicts with the POSIX
-        // names (tv_sec/tv_usec) used by bsdsocket.library. Timer device code should
-        // include the header directly when needed.
         // ReAction class headers (OS 3.5+) - tag definitions
         sb.AppendLine("#include <classes/window.h>");
         sb.AppendLine("#include <gadgets/layout.h>");
@@ -706,9 +704,8 @@ public partial class CCodeGenerator
         sb.AppendLine("typedef struct NewMenu NewMenu;");
         sb.AppendLine("typedef struct VisualInfo VisualInfo;");
         sb.AppendLine("typedef struct EasyStruct EasyStruct;");
-        // NOTE: timeval is NOT typedefed here because we emit our own definition from
-        // bsdsocket.novus FFI (with POSIX tv_sec/tv_usec field names, not NDK's tv_secs/tv_micro)
-        // fd_set is also defined with fields from bsdsocket.novus FFI
+        sb.AppendLine("typedef struct timeval timeval;");
+        // bsdsocket uses the separate bsd_timeval value type with POSIX field names.
         sb.AppendLine("typedef struct timerequest timerequest;");
         sb.AppendLine("typedef struct EClockVal EClockVal;");
         sb.AppendLine("typedef struct IORequest IORequest;");
@@ -783,25 +780,30 @@ public partial class CCodeGenerator
             var concreteStructs = typeRegistry.StructTypes
                 .Where(s => s.GenericParameters is [])
                 .ToHashSet();
-            var sortedStructs = codegen.TopologicalSortStructTypes(concreteStructs);
 
-            // AmigaOS NDK structs: defined in std/ffi/amiga_structs.novus and std/ffi/*/
+            // AmigaOS NDK structs: defined in std/amiga/raw/structs.novus and std/amiga/raw/*/
             // These are provided by NDK headers, so we skip generating definitions.
             // Uses the canonical NdkStructs static field as the single source of truth.
             // Primary method: Check for #[extern_type] attribute on struct
             // Fallback: Hardcoded NdkStructs list (for backward compatibility)
 
             // Filter structs: skip those marked with #[extern_type] or in the NdkStructs list
-            var userStructs = sortedStructs
+            var userStructs = concreteStructs
                 .Where(s => {
                     // Primary check: #[extern_type] attribute
                     if (s.Attributes != null && s.Attributes.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType))
                         return false;
 
-                    // Fallback check: canonical NdkStructs list
-                    return !NdkStructs.Contains(s.StructName);
+                    // Legacy imported NDK stubs may lose #[extern_type]. Only the
+                    // deliberately mangled Novus value names may shadow an NDK name.
+                    return !NdkStructs.Contains(s.StructName) ||
+                           (s.Fields.Count > 0 && NdkClashingNames.Contains(s.StructName));
                 })
                 .ToList();
+
+            // Sort after removing native NDK structs. Otherwise a user value type
+            // can be ordered after a native namesake that is never emitted.
+            userStructs = codegen.TopologicalSortStructTypes(userStructs.ToHashSet());
 
             // CRITICAL: Collect and emit tuple types referenced by struct fields BEFORE struct definitions
             // This prevents duplicate typedef warnings when multiple structs use the same tuple type
@@ -888,6 +890,15 @@ public partial class CCodeGenerator
             }
             sb.AppendLine();
 
+            // Novus value types that shadow NDK names are referenced through their
+            // nv_* C names. Emit them first so imported NDK stubs cannot steal the
+            // dependency edge and leave a by-value field incomplete.
+            var preEmittedStructs = userStructs
+                .Where(structType => codegen.MangleName(structType).StartsWith("nv_", StringComparison.Ordinal))
+                .ToHashSet();
+            foreach (var structType in codegen.TopologicalSortStructTypes(preEmittedStructs))
+                codegen.EmitStructTypeToBuilder(sb, structType, emitTypedef: false);
+
             // PASS 2: Emit structs that are needed by enum payloads FIRST
             // This ensures enums like Option<Str> can reference Str by value
             // CRITICAL: We must also include all transitive dependencies of these structs
@@ -904,8 +915,27 @@ public partial class CCodeGenerator
             // Filter to only user-defined structs (not NDK or extern_type structs)
             var structsNeededByEnums = userStructs
                 .Where(s => structsNeededByEnumsWithDeps.Any(e =>
-                    (e.CacheKey ?? e.StructName) == (s.CacheKey ?? s.StructName)))
+                    StructIdentity(e) == StructIdentity(s)))
                 .ToHashSet();
+
+            // Imported field types can be lightweight stubs. Resolve the complete
+            // dependency closure back to canonical registry structs before emission.
+            var canonicalEarlyDependencies = new HashSet<IrStructType>();
+            foreach (var structType in structsNeededByEnums.ToList())
+            {
+                var dependencies = new HashSet<IrStructType>();
+                codegen.CollectStructDependenciesRecursively(
+                    structType, dependencies, new HashSet<string>());
+                foreach (var dependency in dependencies)
+                {
+                    var canonical = userStructs.FirstOrDefault(candidate =>
+                        StructIdentity(candidate) == StructIdentity(dependency));
+                    if (canonical != null)
+                        canonicalEarlyDependencies.Add(canonical);
+                }
+            }
+            structsNeededByEnums.UnionWith(canonicalEarlyDependencies);
+            structsNeededByEnums.ExceptWith(preEmittedStructs);
 
             if (structsNeededByEnums.Any())
             {
@@ -945,7 +975,7 @@ public partial class CCodeGenerator
             // PASS 4: Emit remaining struct definitions (those not already emitted)
             foreach (var structType in userStructs)
             {
-                if (!structsNeededByEnums.Contains(structType))
+                if (!structsNeededByEnums.Contains(structType) && !preEmittedStructs.Contains(structType))
                 {
                     // Pass emitTypedef: false because forward declarations already provide typedef
                     codegen.EmitStructTypeToBuilder(sb, structType, emitTypedef: false);
@@ -1302,7 +1332,7 @@ public partial class CCodeGenerator
     /// <summary>
     /// Static version of MangleName for use in static methods
     /// </summary>
-    private static string MangleNameStatic(string name)
+    internal static string MangleNameStatic(string name)
     {
         // Must match MangleName exactly - handle all the same cases
         // Generic names like "From<DosError>" become "From_DosError"
@@ -2465,6 +2495,22 @@ public partial class CCodeGenerator
         sb.AppendLine($"#define {guardName}");
         sb.AppendLine($"// Enum: {enumType.Name}");
 
+        if (enumType.UnderlyingType != null)
+        {
+            sb.AppendLine($"typedef {GetCType(enumType.UnderlyingType)} {enumName};");
+            sb.AppendLine("enum {");
+            for (int i = 0; i < enumType.Variants.Count; i++)
+            {
+                var variant = enumType.Variants[i];
+                var comma = i < enumType.Variants.Count - 1 ? "," : "";
+                sb.AppendLine($"    {enumName}_{variant.Name} = {variant.Tag}{comma}");
+            }
+            sb.AppendLine("};");
+            sb.AppendLine($"#endif // {guardName}");
+            sb.AppendLine();
+            return;
+        }
+
         if (!hasAnyData)
         {
             // OPTIMIZATION: For enums with no associated data, use plain C enum
@@ -2897,14 +2943,14 @@ public partial class CCodeGenerator
     /// This is the SINGLE SOURCE OF TRUTH for NDK struct names.
     /// These structs are:
     /// 1. Defined in AmigaOS SDK headers (not generated by Novus)
-    /// 2. Referenced in std/ffi/amiga_structs.novus with #[extern_type] attribute
+    /// 2. Referenced in std/amiga/raw/structs.novus with #[extern_type] attribute
     /// 3. Used for forward declaration generation in novus_types.h
     /// 4. Used to filter out structs from user code generation
     ///
     /// WHEN ADDING NEW NDK STRUCTS:
     /// 1. Add the struct name to this list
     /// 2. Add the typedef to EmitNdkTypedefs() method (~line 475)
-    /// 3. Define the struct in std/ffi/amiga_structs.novus with #[extern_type]
+    /// 3. Define the struct in std/amiga/raw/structs.novus with #[extern_type]
     ///
     /// See also: EmitNdkTypedefs() for the typedef emission that must be kept in sync.
     /// </summary>
@@ -2926,9 +2972,8 @@ public partial class CCodeGenerator
         "Window", "IntuiMessage", "NewWindow", "GadgetInfo", "IntuiText",
         // GadTools types
         "NewMenu", "Menu", "MenuItem", "VisualInfo", "NewGadget",
-        // DOS types - NOTE: timeval is NOT included here because NDK timeval uses tv_secs/tv_micro
-        // but bsdsocket.library uses tv_sec/tv_usec (POSIX names). We emit our own timeval from FFI.
-        "IORequest", "IOStdReq", "EClockVal", "timerequest",
+        // Device and DOS types. bsdsocket uses its separate bsd_timeval value type.
+        "IORequest", "IOStdReq", "timeval", "EClockVal", "timerequest",
         "DateStamp", "FileInfoBlock", "InfoData", "FileHandle", "DosPacket",
         "StandardPacket", "ErrorString", "RootNode", "DosLibrary", "CliProcList",
         "DosInfo", "Segment", "CommandLineInterface", "DeviceList", "DevInfo",
@@ -3176,7 +3221,7 @@ public partial class CCodeGenerator
         {
             case IrStructType structType:
                 // Use CacheKey if available (for monomorphized types), otherwise StructName
-                var key = structType.CacheKey ?? structType.StructName;
+                var key = StructIdentity(structType);
                 if (visitedStructs.Contains(key))
                     return;
                 visitedStructs.Add(key);
@@ -3219,6 +3264,14 @@ public partial class CCodeGenerator
             // Pointer types don't need the full struct definition, just forward declaration
             // so we don't recurse into them
         }
+    }
+
+    private static string StructIdentity(IrStructType structType)
+    {
+        var name = structType.CacheKey ?? structType.StructName;
+        return structType.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType) == true
+            ? name + "#extern"
+            : name;
     }
 
     /// <summary>
@@ -3446,7 +3499,13 @@ public partial class CCodeGenerator
         var visiting = new HashSet<IrStructType>();
 
         // Helper to get struct name (same logic as TypeRegistry)
-        string GetStructName(IrStructType st) => st.CacheKey ?? st.Name;
+        string GetStructName(IrStructType st)
+        {
+            var name = st.CacheKey ?? st.Name;
+            return st.Attributes?.Has(Novus.SemanticAnalysis.KnownAttributes.ExternType) == true
+                ? name + "#extern"
+                : name;
+        }
 
         // Build a name-to-type map for efficient lookup
         var structByName = structTypes.ToDictionary(s => GetStructName(s), s => s);
@@ -3534,6 +3593,11 @@ public partial class CCodeGenerator
 
                 case IrCastValue castValue:
                     ScanValueForFuncAddrs(castValue.Value);
+                    break;
+
+                case IrPointerOffsetValue pointerOffset:
+                    ScanValueForFuncAddrs(pointerOffset.Pointer);
+                    ScanValueForFuncAddrs(pointerOffset.Index);
                     break;
 
                 case IrBorrowValue borrowValue:
@@ -3715,6 +3779,10 @@ public partial class CCodeGenerator
             case IrCastValue cast:
                 CollectStringLiteralLabels(cast.Value, labels);
                 break;
+            case IrPointerOffsetValue pointerOffset:
+                CollectStringLiteralLabels(pointerOffset.Pointer, labels);
+                CollectStringLiteralLabels(pointerOffset.Index, labels);
+                break;
             case IrBorrowValue borrow:
                 CollectStringLiteralLabels(borrow.BorrowedValue, labels);
                 break;
@@ -3755,6 +3823,10 @@ public partial class CCodeGenerator
                     break;
                 case IrCastValue castValue:
                     ScanValue(castValue.Value);
+                    break;
+                case IrPointerOffsetValue pointerOffset:
+                    ScanValue(pointerOffset.Pointer);
+                    ScanValue(pointerOffset.Index);
                     break;
                 case IrBorrowValue borrowValue:
                     ScanValue(borrowValue.BorrowedValue);
@@ -4220,6 +4292,11 @@ public partial class CCodeGenerator
                 ScanValueForFunctionReferences(castValue.Value, reachable, worklist);
                 break;
 
+            case IrPointerOffsetValue pointerOffset:
+                ScanValueForFunctionReferences(pointerOffset.Pointer, reachable, worklist);
+                ScanValueForFunctionReferences(pointerOffset.Index, reachable, worklist);
+                break;
+
             // For simple values (constants, variables), there's nothing to scan
             case IrConstant:
             case IrBoolConstant:
@@ -4447,6 +4524,22 @@ public partial class CCodeGenerator
         _output.AppendLine($"#ifndef {guardName}");
         _output.AppendLine($"#define {guardName}");
         _output.AppendLine($"// Enum: {enumType.Name}");
+
+        if (enumType.UnderlyingType != null)
+        {
+            _output.AppendLine($"typedef {GetCType(enumType.UnderlyingType)} {enumName};");
+            _output.AppendLine("enum {");
+            for (int i = 0; i < enumType.Variants.Count; i++)
+            {
+                var variant = enumType.Variants[i];
+                var comma = i < enumType.Variants.Count - 1 ? "," : "";
+                _output.AppendLine($"    {enumName}_{variant.Name} = {variant.Tag}{comma}");
+            }
+            _output.AppendLine("};");
+            _output.AppendLine($"#endif // {guardName}");
+            _output.AppendLine();
+            return;
+        }
 
         if (!hasAnyData)
         {
@@ -4752,6 +4845,11 @@ public partial class CCodeGenerator
 
                 case IrCastValue castValue:
                     ScanValueForFunctionAddresses(castValue.Value);
+                    break;
+
+                case IrPointerOffsetValue pointerOffset:
+                    ScanValueForFunctionAddresses(pointerOffset.Pointer);
+                    ScanValueForFunctionAddresses(pointerOffset.Index);
                     break;
 
                 case IrBorrowValue borrowValue:
@@ -5775,6 +5873,10 @@ public partial class CCodeGenerator
                 EmitMemberAccess(memberAccess);
                 break;
 
+            case IrSliceBoundsCheck sliceCheck:
+                EmitSliceBoundsCheck(sliceCheck);
+                break;
+
             case IrIndexAccess indexAccess:
                 EmitIndexAccess(indexAccess);
                 break;
@@ -5827,6 +5929,9 @@ public partial class CCodeGenerator
                 }
                 break;
 
+            case IrStructuredForLoopHint:
+                break;
+
             case IrInlineAsm inlineAsm:
                 EmitInlineAsm(inlineAsm);
                 break;
@@ -5872,6 +5977,9 @@ public partial class CCodeGenerator
                     }
                     break;
                 case IrCastValue cast: Check(cast.Value); break;
+                case IrPointerOffsetValue pointerOffset:
+                    Check(pointerOffset.Pointer); Check(pointerOffset.Index);
+                    break;
                 case IrBorrowValue borrow: Check(borrow.BorrowedValue); break;
                 case IrTupleElementAccess tuple: Check(tuple.Tuple); break;
                 case IrFieldReference field: Check(field.Struct); break;
@@ -5907,6 +6015,9 @@ public partial class CCodeGenerator
             case IrMemberStore member: Check(member.Struct); Check(member.Value); break;
             case IrIndexAccess index: Check(index.Array); Check(index.Index); break;
             case IrIndexStore index: Check(index.Array); Check(index.Index); Check(index.Value); break;
+            case IrSliceBoundsCheck slice:
+                Check(slice.Start); Check(slice.End); Check(slice.Length);
+                break;
             case IrDereferenceStore store: Check(store.Pointer); Check(store.Value); break;
             case IrInvokeClosure invoke:
                 Check(invoke.Closure);
@@ -6213,6 +6324,7 @@ public partial class CCodeGenerator
                                     {
                                         var fieldValue = EmitValue(kvp.Value);
                                         _output.AppendLine($"    {varName}.data.{enumValueAssign.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                        EmitMovedSourceZero(kvp.Value);
                                     }
                                 }
                                 // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
@@ -6453,6 +6565,7 @@ public partial class CCodeGenerator
                                     {
                                         var fieldValue = EmitValue(kvp.Value);
                                         _output.AppendLine($"    {varName}.data.{enumValueDecl.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                        EmitMovedSourceZero(kvp.Value);
                                     }
                                 }
                                 // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
@@ -6657,6 +6770,7 @@ public partial class CCodeGenerator
                                 {
                                     var fieldValue = EmitValue(kvp.Value);
                                     _output.AppendLine($"    {varName}.data.{enumValue.VariantName}._{i}.{kvp.Key} = {fieldValue};");
+                                    EmitMovedSourceZero(kvp.Value);
                                 }
                             }
                             // VBCC_004: Compound literals cause misalignment on 68k - emit field-by-field for nested enum literals
@@ -7798,9 +7912,8 @@ public partial class CCodeGenerator
                     var sanitizedName = SanitizeVariableName(returnVar.Name);
                     if (_memberAccessInfo.TryGetValue(sanitizedName, out var accessInfo))
                     {
-                        var (structValue, fieldName, accessor, fieldStructType) = accessInfo;
-                        // This is a move operation - null out the source field to prevent double-free
-                        NullOutPointerFields(structValue, fieldName, fieldStructType, accessor);
+                        var (structValue, fieldName, accessor, fieldType) = accessInfo;
+                        ZeroMovedField(structValue, fieldName, fieldType, accessor);
                     }
                 }
             }
@@ -8771,20 +8884,10 @@ public partial class CCodeGenerator
             // Track this member access for potential move semantics
             // If this result is later returned, we'll need to null out the source
             if (memberAccess.Struct is IrVariable trackVar &&
-                _currentEmittingFunction != null &&
-                memberAccess.FieldType is IrStructType trackFieldType &&
-                TypeContainsHeapData(memberAccess.FieldType))
+                trackVar.Type is not IrReferenceType and not IrMutReferenceType &&
+                TypeContainsDroppableContent(memberAccess.FieldType))
             {
-                var trackParam = _currentEmittingFunction.Parameters.FirstOrDefault(p => p.Name == trackVar.Name);
-
-                if (trackParam != null &&
-                    trackParam.Type is IrStructType &&
-                    TypeContainsHeapData(trackParam.Type) &&
-                    trackParam.Type is not IrReferenceType and not IrMutReferenceType)
-                {
-                    // Track this for potential move detection in return statement
-                    _memberAccessInfo[resultName] = (structValue, memberAccess.FieldName, accessor, trackFieldType);
-                }
+                _memberAccessInfo[resultName] = (structValue, memberAccess.FieldName, accessor, memberAccess.FieldType);
             }
 
             // Only null out pointer fields if this is actually a move operation
@@ -8793,42 +8896,18 @@ public partial class CCodeGenerator
                 memberAccess.FieldType is IrStructType moveFieldType &&
                 TypeContainsHeapData(memberAccess.FieldType))
             {
-                // Recursively null out all pointer fields in the moved struct
-                NullOutPointerFields(structValue, memberAccess.FieldName, moveFieldType, accessor);
+                ZeroMovedField(structValue, memberAccess.FieldName, moveFieldType, accessor);
             }
         }
     }
 
     /// <summary>
-    /// Null out pointer fields in a struct to prevent double-free after a move.
-    /// This is called when we extract a heap-containing field from a by-value parameter.
-    /// Respects SafetyLevel: skips in Unsafe mode, adds debug comments in Full/Paranoid.
+    /// Clear a moved field so its former owner cannot drop the transferred resource.
     /// </summary>
-    private void NullOutPointerFields(string structValue, string fieldName, IrStructType structType, string accessor)
+    private void ZeroMovedField(string structValue, string fieldName, IrType fieldType, string accessor)
     {
-        // Skip null-outs in unsafe mode (no safety checks)
-        if (_safetyLevel == SafetyLevel.Unsafe)
-            return;
-
-        // Add debug comment for Full and Paranoid modes
-        if (_safetyLevel >= SafetyLevel.Full)
-        {
-            _output.AppendLine($"    // DEBUG: Nulling out moved field {fieldName} to prevent double-free");
-        }
-
-        foreach (var field in structType.Fields)
-        {
-            if (field.Type is IrPointerType)
-            {
-                // Null out the pointer field
-                _output.AppendLine($"    {structValue}{accessor}{fieldName}.{field.Name} = 0;");
-            }
-            else if (field.Type is IrStructType nestedStruct && TypeContainsHeapData(nestedStruct))
-            {
-                // Recursively null out nested struct's pointer fields
-                NullOutPointerFields(structValue, $"{fieldName}.{field.Name}", nestedStruct, accessor);
-            }
-        }
+        var expression = $"{structValue}{accessor}{fieldName}";
+        _output.AppendLine($"    __novus_memset(&({expression}), 0, {GetSizeofExpression(fieldType)});");
     }
 
     /// <summary>
@@ -9405,32 +9484,17 @@ public partial class CCodeGenerator
         // Store the array and index expressions for later use when taking address
         _indexAccessInfo[resultName] = (arrayValue, indexValue);
 
-        // MEMORY LEAK FIX: If this index access result is ONLY used for address-of operations,
-        // don't emit the copy at all. The EmitBorrowValue method will use _indexAccessInfo
-        // to directly emit &array[index] without needing the temp variable.
-        if (_addressOnlyIndexAccess.Contains(resultName))
-        {
-            // Skip emitting the copy - the variable is only used for &var, and EmitBorrowValue
-            // will reconstruct &array[index] from _indexAccessInfo
-            return;
-        }
-
         // Get source location if available
         var filePath = indexAccess.Location?.FilePath ?? "<unknown>";
         var line = indexAccess.Location?.Line ?? 0;
 
-        // Add runtime bounds check if enabled and array type information is available
-        if (_safetyLevel.EnableBoundsChecking() && indexAccess.Array.Type is IrArrayType arrayType)
+        // Safe indexing is independent of build mode. Only explicit unsafe source or
+        // a compiler proof may remove this check.
+        if (indexAccess.BoundsCheck == IrBoundsCheckMode.Checked && indexAccess.Length != null)
         {
-            // Emit conditional: if index is out of bounds, show error and return
-            // Otherwise perform the actual array access
-            if (!alreadyDeclared)
-            {
-                _output.AppendLine($"    {GetCVariableDeclaration(indexAccess.ElementType, resultName)};");
-            }
-            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
-
-            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"{EscapeString(filePath)}\", {line});");
+            var lengthValue = EmitValue(indexAccess.Length);
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){lengthValue}) {{");
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {lengthValue}, \"{EscapeString(filePath)}\", {line});");
 
             // Execute deferred cleanup before returning
             if (_currentEmittingFunction != null)
@@ -9439,12 +9503,16 @@ public partial class CCodeGenerator
             }
 
             EmitErrorPathReturn(2);  // Exit after bounds check failure
-            _output.AppendLine($"    }} else {{");
-            EmitLoad("        ");
             _output.AppendLine($"    }}");
         }
-        // Add use-after-free check for pointer access at safety level 3
-        else if (_safetyLevel.EnableMemoryTracking() && indexAccess.Array.Type is IrPointerType)
+
+        // If this index result is used only to form a borrow, the borrow emitter
+        // reconstructs &array[index]. The safety check above must still run.
+        if (_addressOnlyIndexAccess.Contains(resultName))
+            return;
+
+        // Add use-after-free check for raw pointer access in instrumented builds.
+        if (_safetyLevel.EnableMemoryTracking() && indexAccess.Array.Type is IrPointerType)
         {
             // Emit UAF check before pointer dereference
             _output.AppendLine($"    __novus_check_ptr_access((void*){arrayValue}, \"{EscapeString(filePath)}\", {line});");
@@ -9475,25 +9543,49 @@ public partial class CCodeGenerator
         }
     }
 
+    private void EmitSliceBoundsCheck(IrSliceBoundsCheck sliceCheck)
+    {
+        if (sliceCheck.BoundsCheck != IrBoundsCheckMode.Checked)
+            return;
+
+        var start = EmitValue(sliceCheck.Start);
+        var end = EmitValue(sliceCheck.End);
+        var length = EmitValue(sliceCheck.Length);
+        var file = EscapeString(sliceCheck.Location?.FilePath ?? "<unknown>");
+        var line = sliceCheck.Location?.Line ?? 0;
+
+        void EmitFailure(string index, string bound)
+        {
+            _output.AppendLine($"        __novus_bounds_check_failed({index}, {bound}, \"{file}\", {line});");
+            if (_currentEmittingFunction != null)
+                EmitDeferredCleanup(_currentEmittingFunction, 2);
+            EmitErrorPathReturn(2);
+            _output.AppendLine("    }");
+        }
+
+        _output.AppendLine($"    if ((uint32_t){start} > (uint32_t){end}) {{");
+        EmitFailure(start, end);
+        _output.AppendLine($"    if ((uint32_t){end} > (uint32_t){length}) {{");
+        EmitFailure(end, length);
+    }
+
     private void EmitIndexStore(IrIndexStore indexStore)
     {
         var arrayValue = EmitValue(indexStore.Array);
         var indexValue = EmitValue(indexStore.Index);
         var storeValue = EmitValue(indexStore.Value);
 
-        // Add runtime bounds check if enabled and array type information is available
-        if (_safetyLevel.EnableBoundsChecking() && indexStore.Array.Type is IrArrayType arrayType)
+        if (indexStore.BoundsCheck == IrBoundsCheckMode.Checked && indexStore.Length != null)
         {
-            // Emit conditional: if index is out of bounds, show error and return
-            // Otherwise perform the actual array store
-            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){arrayType.Length}) {{");
+            var lengthValue = EmitValue(indexStore.Length);
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){lengthValue}) {{");
 
             // Use instruction location if available, otherwise use placeholder
             // IrInstruction.Location is set during IR building from AST source locations
             var locInfo = indexStore.Location;
             var fileName = locInfo?.FilePath != null ? System.IO.Path.GetFileName(locInfo.FilePath) : "<compiler-generated>";
             var lineNum = locInfo?.Line ?? 0;
-            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {arrayType.Length}, \"{fileName}\", {lineNum});");
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {lengthValue}, \"{fileName}\", {lineNum});");
 
             // Execute deferred cleanup before returning
             if (_currentEmittingFunction != null)
@@ -9546,6 +9638,21 @@ public partial class CCodeGenerator
         var arrayValue = EmitValue(indexedFieldStore.Array);
         var indexValue = EmitValue(indexedFieldStore.Index);
         var storeValue = EmitValue(indexedFieldStore.Value);
+
+        if (indexedFieldStore.BoundsCheck == IrBoundsCheckMode.Checked && indexedFieldStore.Length != null)
+        {
+            var lengthValue = EmitValue(indexedFieldStore.Length);
+            var fileName = indexedFieldStore.Location?.FilePath == null
+                ? "<compiler-generated>"
+                : System.IO.Path.GetFileName(indexedFieldStore.Location.FilePath);
+            var line = indexedFieldStore.Location?.Line ?? 0;
+            _output.AppendLine($"    if ((uint32_t){indexValue} >= (uint32_t){lengthValue}) {{");
+            _output.AppendLine($"        __novus_bounds_check_failed({indexValue}, {lengthValue}, \"{fileName}\", {line});");
+            if (_currentEmittingFunction != null)
+                EmitDeferredCleanup(_currentEmittingFunction, 2);
+            EmitErrorPathReturn(2);
+            _output.AppendLine("    }");
+        }
 
         // Emit direct assignment to array[index].field
         // This is the whole point of this instruction - avoid creating a temporary copy
@@ -9817,6 +9924,8 @@ public partial class CCodeGenerator
                 $"(*(volatile {GetCType(derefValue.Type)}*)({EmitValue(derefValue.PointerValue)}))",
             IrDereferenceValue derefValue => $"(*{EmitValue(derefValue.PointerValue)})",
             IrCastValue castValue => EmitCastValue(castValue),
+            IrPointerOffsetValue pointerOffset =>
+                $"({EmitValue(pointerOffset.Pointer)} + {EmitValue(pointerOffset.Index)})",
             IrStructLiteral structLit => EmitStructLiteral(structLit),
             IrTupleLiteral tupleLit => EmitTupleLiteral(tupleLit),
             IrTupleElementAccess tupleAccess => EmitTupleElementAccess(tupleAccess),
@@ -11255,7 +11364,7 @@ public partial class CCodeGenerator
             return "void";
 
         // Generate a mangled name for the tuple based on element types
-        // Example: (u8, u8, u8) -> Tuple_u8_u8_u8
+        // Example: (u8, u8, u8) -> Tuple_u8_u8_
         var elementNames = tupleType.ElementTypes.Select(t => MangleTypeForTupleName(t));
         return $"Tuple_{string.Join("_", elementNames)}";
     }
@@ -11635,7 +11744,7 @@ public partial class CCodeGenerator
     {
         // Handle module separators and generic type parameters
         // Generic names like "From<DosError>" become "From_DosError"
-        // Multiple type parameters like "HashMap<u32, u32>" become "HashMap_u32_u32"
+        // Multiple type parameters like "HashMap<u32, u32>" become "HashMap_u32_"
         // Reference types like "Option<&u32>" become "Option_ref_u32"
         // Unit type like "Result<(), BlitterError>" becomes "Result_unit_BlitterError"
         return name.Replace("::", "_")
@@ -11661,6 +11770,9 @@ public partial class CCodeGenerator
     /// </summary>
     public string MangleFunctionName(IrFunction function)
     {
+        if (function.LinkName != null)
+            return MangleName(function.LinkName);
+
         // Start with basic name mangling
         var baseName = MangleName(function.Name);
 
@@ -12034,6 +12146,11 @@ public partial class CCodeGenerator
 
             case IrCastValue cast:
                 CollectVariableReferencesFromValue(cast.Value, variables);
+                break;
+
+            case IrPointerOffsetValue pointerOffset:
+                CollectVariableReferencesFromValue(pointerOffset.Pointer, variables);
+                CollectVariableReferencesFromValue(pointerOffset.Index, variables);
                 break;
 
             case IrTupleElementAccess tupleAccess:

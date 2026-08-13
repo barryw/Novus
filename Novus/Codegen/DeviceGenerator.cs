@@ -898,9 +898,9 @@ public class DeviceGenerator
         sb.AppendLine($"// Version: {GetDeviceVersion()}.{GetDeviceRevision()}");
         sb.AppendLine("//");
         sb.AppendLine();
-        sb.AppendLine("from std::ffi::exec import OpenDevice, CloseDevice, DoIO, SendIO, AbortIO");
-        sb.AppendLine("from std::ffi::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest");
-        sb.AppendLine("from std::ffi::amiga_structs import IORequest, MsgPort, Unit, Device");
+        sb.AppendLine("from amiga::raw::exec import OpenDevice, CloseDevice, DoIO, SendIO, AbortIO");
+        sb.AppendLine("from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, CreateIORequest, DeleteIORequest");
+        sb.AppendLine("from amiga::raw::structs import IORequest, MsgPort, Unit, Device");
         sb.AppendLine();
 
         // Error type

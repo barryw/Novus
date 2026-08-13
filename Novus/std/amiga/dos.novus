@@ -1,0 +1,268 @@
+from std::core import Error, From, Option, Result
+from amiga::sys::dos::errors import DosError
+from std::memory::slice import MutSlice, Slice
+from amiga::sys::dos import DirLockHandle, OwnedFileHandle
+from amiga::sys::dos import DosEnvironment, DosNodeDraft, DosNodeError
+from amiga::sys::dos import FileSystemHandler, FileSystemOperationError, FileSystemRegistry, MountedFileSystem
+from amiga::sys::dos import LoadedSegment, SegmentError
+from std::string::core import FixedString, Str
+from amiga::sys::timer import Duration, delay
+
+// Tier 1: files, directories, mounted volumes, and formatting.
+pub use amiga::sys::dos::errors::DosError
+
+pub type Directory = DirLockHandle
+pub type Volume = MountedFileSystem
+
+const DOS_FAMILY: u32 = $444F5300
+const DEFAULT_HANDLER_STACK: u32 = 4096
+const DEFAULT_HANDLER_PRIORITY: i32 = 10
+
+pub enum FileSystemError {
+    HandlerUnavailable,
+    InvalidEnvironment,
+    MountFailed,
+    FormatFailed,
+}
+
+impl FileSystemError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            FileSystemError::HandlerUnavailable => "No compatible filesystem handler is available",
+            FileSystemError::InvalidEnvironment => "The filesystem environment is invalid",
+            FileSystemError::MountFailed => "The filesystem handler did not mount the volume",
+            FileSystemError::FormatFailed => "The filesystem rejected the format request",
+        }
+    }
+}
+
+impl Error for FileSystemError {
+    fn message(&self) -> *u8 { return FileSystemError::message(self) }
+}
+
+impl From<DosNodeError> for FileSystemError {
+    fn convert(consuming _error: DosNodeError) -> FileSystemError {
+        return FileSystemError::InvalidEnvironment
+    }
+}
+
+impl From<SegmentError> for FileSystemError {
+    fn convert(consuming _error: SegmentError) -> FileSystemError {
+        return FileSystemError::HandlerUnavailable
+    }
+}
+
+impl From<FileSystemOperationError> for FileSystemError {
+    fn convert(consuming error: FileSystemOperationError) -> FileSystemError {
+        return match error {
+            FileSystemOperationError::FormatFailed(_) | FileSystemOperationError::InhibitFailed(_) => FileSystemError::FormatFailed,
+            _ => FileSystemError::MountFailed,
+        }
+    }
+}
+
+/// An RDB-embedded filesystem handler and its launch metadata.
+pub struct FileSystemImage {
+    image: Slice<u8>,
+    global_vec: i32,
+    stack_size: u32,
+    priority: i32,
+}
+
+impl FileSystemImage {
+    pub fn new(image: Slice<u8>, global_vec: i32, stack_size: u32, priority: i32) -> FileSystemImage {
+        return FileSystemImage {
+            image: image,
+            global_vec: global_vec,
+            stack_size: stack_size,
+            priority: priority,
+        }
+    }
+}
+
+struct OwnedFileSystem {
+    segment: LoadedSegment,
+    global_vec: i32,
+    stack_size: u32,
+    priority: i32,
+}
+
+enum FileSystemSource {
+    Shared(FileSystemHandler),
+    Owned(OwnedFileSystem),
+}
+
+/// A resolved handler ready to mount a DOS environment.
+pub struct FileSystem {
+    source: FileSystemSource,
+}
+
+impl FileSystem {
+    /// Resolve a live/registered handler, then an embedded image, then FastFileSystem.
+    pub fn resolve(dos_type: u32, embedded: Option<FileSystemImage>) -> Result<FileSystem, FileSystemError> {
+        match FileSystemHandler::find_live(dos_type) {
+            Option::Some(handler) => return Result::Ok(FileSystem { source: FileSystemSource::Shared(handler) }),
+            Option::None => {},
+        }
+        match FileSystemRegistry::open() {
+            Result::Ok(registry) => {
+                match registry.find(dos_type) {
+                    Option::Some(handler) => return Result::Ok(FileSystem { source: FileSystemSource::Shared(handler) }),
+                    Option::None => {},
+                }
+            },
+            Result::Err(_) => {},
+        }
+        match embedded {
+            Option::Some(image) => {
+                let segment = LoadedSegment::from_hunk(image.image)?
+                return Result::Ok(FileSystem {
+                    source: FileSystemSource::Owned(OwnedFileSystem {
+                        segment: segment,
+                        global_vec: image.global_vec,
+                        stack_size: image.stack_size,
+                        priority: image.priority,
+                    }),
+                })
+            },
+            Option::None => {},
+        }
+        return Result::Err(FileSystemError::HandlerUnavailable) unless dos_type & $FFFFFF00 == DOS_FAMILY
+        let segment = LoadedSegment::from_file("L:FastFileSystem")?
+        return Result::Ok(FileSystem {
+            source: FileSystemSource::Owned(OwnedFileSystem {
+                segment: segment,
+                global_vec: -1,
+                stack_size: DEFAULT_HANDLER_STACK,
+                priority: DEFAULT_HANDLER_PRIORITY,
+            }),
+        })
+    }
+
+    /// Create, register, start, and wait for a DOS device in one owned operation.
+    pub fn mount(consuming self,
+        name: Str,
+        driver: Str,
+        unit: u32,
+        environment: &DosEnvironment
+    ) -> Result<Volume, FileSystemError> {
+        var draft = DosNodeDraft::new(name, driver, unit, 0, environment)?
+        match self.source {
+            FileSystemSource::Shared(handler) => {
+                draft.bind_registered(&handler)?
+                let _registered = draft.register(0, true)?
+            },
+            FileSystemSource::Owned(owned) => {
+                let _registered = draft.register_loaded(
+                    owned.segment,
+                    owned.global_vec,
+                    owned.stack_size,
+                    owned.priority,
+                    0,
+                    true
+                )?
+            },
+        }
+        return wait_for_volume(name)
+    }
+}
+
+impl MountedFileSystem {
+    /// Inhibit, format, and always resume the volume.
+    pub fn format(&self, volume_name: Str, dos_type: u32) -> Result<(), FileSystemError> {
+        var inhibited = self.inhibit()?
+        inhibited.format(volume_name, dos_type)?
+        inhibited.release()?
+        return Result::Ok(())
+    }
+}
+
+pub fn open_volume(name: Str) -> Result<Volume, FileSystemError> {
+    if name.ends_with(":") {
+        return Result::Ok(MountedFileSystem::open(name)?)
+    }
+    var path = FixedString::<256>::new()
+    return Result::Err(FileSystemError::MountFailed) if path.push_str(name).is_err()
+    return Result::Err(FileSystemError::MountFailed) if path.push_byte((u8)':').is_err()
+    return Result::Ok(MountedFileSystem::open(path.as_str())?)
+}
+
+fn wait_for_volume(name: Str) -> Result<Volume, FileSystemError> {
+    for _attempt in 0..40 {
+        match open_volume(name) {
+            Result::Ok(volume) => return Result::Ok(volume),
+            Result::Err(_) => {},
+        }
+        let _ = delay(Duration::millis(100))
+    }
+    return Result::Err(FileSystemError::MountFailed)
+}
+
+/// Owned file with semantic open/create operations and bounded I/O.
+pub struct File {
+    file: OwnedFileHandle,
+}
+
+impl File {
+    pub fn open(path: Str) -> Result<File, DosError> {
+        return match OwnedFileHandle::open_existing(path) {
+            Result::Ok(file) => Result::Ok(File { file: file }),
+            Result::Err(error) => Result::Err(error),
+        }
+    }
+
+    pub fn create(path: Str) -> Result<File, DosError> {
+        return match OwnedFileHandle::create(path) {
+            Result::Ok(file) => Result::Ok(File { file: file }),
+            Result::Err(error) => Result::Err(error),
+        }
+    }
+
+    pub fn read(&self, consuming buffer: MutSlice<u8>) -> Result<u32, DosError> {
+        if buffer.is_empty() { return Result::Ok(0) }
+        let Option::Some(first) = buffer.get_mut(0) else { return Result::Ok(0) }
+        return self.file.read(unsafe { (*u8)first }, buffer.len())
+    }
+
+    pub fn read_all(&self, consuming buffer: MutSlice<u8>) -> Result<u32, DosError> {
+        if buffer.is_empty() { return Result::Ok(0) }
+        let Option::Some(first) = buffer.get_mut(0) else { return Result::Ok(0) }
+        return self.file.read_all(unsafe { (*u8)first }, buffer.len())
+    }
+
+    pub fn write(&self, buffer: Slice<u8>) -> Result<u32, DosError> {
+        if buffer.is_empty() { return Result::Ok(0) }
+        let Option::Some(first) = buffer.get(0) else { return Result::Ok(0) }
+        return self.file.write(unsafe { (*u8)first }, buffer.len())
+    }
+
+    pub fn write_all(&self, buffer: Slice<u8>) -> Result<(), DosError> {
+        if buffer.is_empty() { return Result::Ok(()) }
+        let Option::Some(first) = buffer.get(0) else { return Result::Ok(()) }
+        return self.file.write_all(unsafe { (*u8)first }, buffer.len())
+    }
+
+    /// Return the file size without changing its current position.
+    @suppress("W0002", "successful AmigaDOS Seek positions are non-negative signed LONG values")
+    pub fn len(&self) -> Result<u32, DosError> {
+        let original = self.file.seek_from_current(0)?
+        let _ = self.file.seek_from_end(0)?
+        let end = self.file.seek_from_current(0)?
+        let _ = self.file.seek_from_start(original)?
+        return Result::Ok((u32)end)
+    }
+
+    @suppress("W0002", "AmigaDOS seek mode constants are signed LONG values")
+    pub fn rewind(&self) -> Result<(), DosError> {
+        let _ = self.file.seek_from_start(0)?
+        return Result::Ok(())
+    }
+
+    pub fn system(&self) -> &OwnedFileHandle { return &self.file }
+
+    pub fn from_system(consuming file: OwnedFileHandle) -> File {
+        return File { file: file }
+    }
+
+    pub fn into_system(consuming self) -> OwnedFileHandle { return self.file }
+}

@@ -24,7 +24,7 @@ Novus.Tests/
 - Function declarations with parameters and return types
 - Arithmetic expressions (+, -, *, /, %)
 - Comparison operators (==, !=, <, >, <=, >=)
-- Integer literals with type suffixes (u8, u16, i32, etc.)
+- Contextual numeric literals and explicit casts (`(u8)0`, `(f64)1.5`, etc.)
 - Negative literals
 - Let statements with and without type annotations
 - Comments (line and block)
@@ -125,7 +125,7 @@ public void Generate_ReturnSmallConstant_UsesMoveq()
 public void Generate_UnsignedMultiply_UsesMulu()
 {
     var asm = GenerateAssembly(
-        "fn test() -> u32 { return 5u32 * 6u32 }",
+        "fn test() -> u32 { return 5 * 6 }",
         "68020");
 
     Assert.Contains("mulu.l\td1,d0", asm);
@@ -325,7 +325,7 @@ dotnet test --filter "TestName" --logger "console;verbosity=detailed"
 ### Common Failure Patterns
 
 1. **Assembly mismatch**: Check generated vs expected assembly
-2. **Type errors**: Verify type suffixes in test literals
+2. **Type errors**: Verify contextual literal types and explicit casts in test literals
 3. **CPU target**: Ensure correct target for instruction set
 
 ## Test Quality Metrics

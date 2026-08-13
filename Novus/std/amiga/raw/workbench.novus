@@ -1,0 +1,165 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: workbench.library
+// Base: _WorkbenchBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+/// Change a Workbench window in such a
+///
+/// Due to how the scrollers of a Workbench window affect the positions of the
+/// icons inside that window, some icons may not be drawn inside the bounds of
+/// the window. By using MakeWorkbenchObjectVisibleA() the window scrollers can
+/// be made to scroll such a "hidden" icon into view.
+///
+/// # Arguments
+///
+/// # Returns
+/// result -- FALSE if the icon in question could not be found,
+///
+/// See also: dos.library/IoErr
+@library("workbench.library")
+extern pub fn AddAppWindowA(id: u32, userdata: u32, window: *Window, msgport: *MsgPort, taglist: *TagItem) -> *AppWindow
+@library("workbench.library")
+extern pub fn AddAppWindow(id: u32, userdata: u32, window: *Window, msgport: *MsgPort, taglist: u32, ...args) -> *AppWindow
+/// Remove a drop zone from an AppWindow.
+///
+/// Attempt to remove a drop zone from an AppWindow.
+///
+/// # Arguments
+///
+/// # Returns
+/// success - TRUE if the drop zone could be removed, FALSE otherwise.
+///
+/// See also: workbench.library/AddAppWindowDropZoneA
+@library("workbench.library")
+extern pub fn RemoveAppWindow(appWindow: *AppWindow) -> i16
+/// Add an icon to Workbench's list of AppIcons.       (V36)
+///
+/// Attempt to add an icon to Workbench's list of AppIcons. If successful, the
+/// icon is displayed on the Workbench backdrop (the same place disk icons are
+/// displayed).
+///
+/// # Arguments
+/// * `id` - this variable is strictly for your own use and is ignored...
+/// * `taglist` - ptr to a list of tag items.  Must be NULL for V2.0.
+///
+/// # Returns
+/// AppIcon - a pointer to an AppIcon structure which you pass to
+///
+/// See also: workbench.library/RemoveAppIcon workbench.library/WorkbenchControlA icon.library/DrawIconStateA
+@library("workbench.library")
+extern pub fn AddAppIconA(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, lock: i32, diskobj: *DiskObject, taglist: *TagItem) -> *AppIcon
+@library("workbench.library")
+extern pub fn AddAppIcon(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, lock: i32, diskobj: *DiskObject, taglist: u32, ...args) -> *AppIcon
+/// Remove an icon from Workbench's list            (V36)
+///
+/// Attempt to remove an AppIcon from Workbench's list of AppIcons.
+///
+/// # Arguments
+/// * `AppIcon` - pointer to an AppIcon structure returned by AddAppIcon.
+///
+/// # Returns
+/// success - TRUE if the icon could be removed, FALSE otherwise.
+///
+/// See also: workbench.library/AddAppIconA
+@library("workbench.library")
+extern pub fn RemoveAppIcon(appIcon: *AppIcon) -> i16
+/// Add a menu item to Workbench's list            (V36)
+///
+/// Attempt to add the text as a menu item to Workbench's list of AppMenuItems
+/// (the 'Tools' menu strip).
+///
+/// # Arguments
+/// * `id` - this variable is strictly for your own use and is ignored...
+///
+/// # Returns
+/// AppMenuItem - a pointer to an appmenuitem structure which you pass to
+///
+/// See also: workbench.library/RemoveAppMenuItem
+@library("workbench.library")
+extern pub fn AddAppMenuItemA(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, taglist: *TagItem) -> *AppMenuItem
+@library("workbench.library")
+extern pub fn AddAppMenuItem(id: u32, userdata: u32, text: *u8, msgport: *MsgPort, taglist: u32, ...args) -> *AppMenuItem
+/// Remove a menu item from Workbench's list     (V36)
+///
+/// Attempt to remove an AppMenuItem from Workbench's list of AppMenuItems.
+///
+/// # Arguments
+/// * `AppMenuItem` - pointer to an AppMenuItem structure returned by AddAppMen...
+///
+/// # Returns
+/// success - TRUE if the menu could be removed, FALSE otherwise.
+///
+/// See also: workbench.library/AddAppMenuItemA
+@library("workbench.library")
+extern pub fn RemoveAppMenuItem(appMenuItem: *AppMenuItem) -> i16
+/// Bring up the Information requester                     (V39)
+///
+/// This is the LVO that Workbench calls to bring up the Icon Information
+/// requester. External applications may also call this requester.
+///
+/// # Arguments
+/// * `lock` - A lock on the parent directory name   - The name of the i...
+///
+/// # Returns
+/// worked - Returns TRUE if the requester came up, FALSE if it did not.
+///
+/// See also: icon.library
+@library("workbench.library")
+extern pub fn WBInfo(lock: i32, name: *u8, screen: *Screen)
+/// Open a drawer or launch a program as if
+///
+/// This routine attempts to open the named object as if the user had
+/// double-clicked on its icon. This allows you to open drawers under program
+/// control or to have Workbench launch your programs.
+///
+/// # Arguments
+///
+/// # Returns
+/// result -- FALSE if the object in question could not be opened,
+///
+/// See also: dos.library/IoErr workbench.library/CloseWorkbenchObjectA <workbench/startup.h>
+@library("workbench.library")
+extern pub fn OpenWorkbenchObjectA(name: *u8, tags: *TagItem) -> i16
+@library("workbench.library")
+extern pub fn OpenWorkbenchObject(name: *u8, ...args) -> i16
+@library("workbench.library")
+extern pub fn CloseWorkbenchObjectA(name: *u8, tags: *TagItem) -> i16
+@library("workbench.library")
+extern pub fn CloseWorkbenchObject(name: *u8, ...args) -> i16
+/// Query or modify Workbench and icon
+///
+/// With this function you can query or modify global Workbench parameters or
+/// local icon options.
+///
+/// # Arguments
+///
+/// # Returns
+/// result -- FALSE if the requested action could not be performed,
+///
+/// See also: dos.library/FreeDosObject dos.library/IoErr <dos/dosextens.h>
+@library("workbench.library")
+extern pub fn WorkbenchControlA(name: *u8, tags: *TagItem) -> i16
+@library("workbench.library")
+extern pub fn WorkbenchControl(name: *u8, ...args) -> i16
+@library("workbench.library")
+extern pub fn AddAppWindowDropZoneA(aw: *AppWindow, id: u32, userdata: u32, tags: *TagItem) -> *AppWindowDropZone
+@library("workbench.library")
+extern pub fn AddAppWindowDropZone(aw: *AppWindow, id: u32, userdata: u32, ...args) -> *AppWindowDropZone
+@library("workbench.library")
+extern pub fn RemoveAppWindowDropZone(aw: *AppWindow, dropZone: *AppWindowDropZone) -> i16
+@library("workbench.library")
+extern pub fn ChangeWorkbenchSelectionA(name: *u8, hook: *Hook, tags: *TagItem) -> i16
+@library("workbench.library")
+extern pub fn ChangeWorkbenchSelection(name: *u8, hook: *Hook, ...args) -> i16
+@library("workbench.library")
+extern pub fn MakeWorkbenchObjectVisibleA(name: *u8, tags: *TagItem) -> i16
+@library("workbench.library")
+extern pub fn MakeWorkbenchObjectVisible(name: *u8, ...args) -> i16

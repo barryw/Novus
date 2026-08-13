@@ -17,7 +17,7 @@
 //
 //     stream.write("GET / HTTP/1.0\r\n\r\n")?
 //
-//     let mut buf: [u8; 1024] = [0u8; 1024]
+//     let mut buf: [u8; 1024] = [0; 1024]
 //     let n = stream.read(&buf, 1024)?
 //
 //     return 0
@@ -36,13 +36,13 @@
 // }
 // ```
 
-from std::ffi::bsdsocket import socket, bind, listen, accept, connect, send, recv, CloseSocket, shutdown
-from std::ffi::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
-from std::ffi::bsdsocket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR, SO_KEEPALIVE, SO_ERROR
-from std::ffi::bsdsocket import IPPROTO_TCP_OPT, TCP_NODELAY, FIONBIO, FIONREAD
-from std::ffi::bsdsocket import SHUT_RD, SHUT_WR, SHUT_RDWR, MSG_PEEK, MSG_WAITALL
-from std::ffi::bsdsocket import WaitSelect, fd_set, bsd_timeval, FD_ZERO, FD_SET, FD_ISSET
-from std::ffi::bsdsocket import EINPROGRESS, EWOULDBLOCK
+from amiga::raw::bsdsocket import socket, bind, listen, accept, connect, send, recv, CloseSocket, shutdown
+from amiga::raw::bsdsocket import setsockopt, getsockopt, IoctlSocket, sockaddr, sockaddr_in, in_addr
+from amiga::raw::bsdsocket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR, SO_KEEPALIVE, SO_ERROR
+from amiga::raw::bsdsocket import IPPROTO_TCP_OPT, TCP_NODELAY, FIONBIO, FIONREAD
+from amiga::raw::bsdsocket import SHUT_RD, SHUT_WR, SHUT_RDWR, MSG_PEEK, MSG_WAITALL
+from amiga::raw::bsdsocket import WaitSelect, fd_set, bsd_timeval, FD_ZERO, FD_SET, FD_ISSET
+from amiga::raw::bsdsocket import EINPROGRESS, EWOULDBLOCK
 from std::net::addr import Ipv4Addr, SocketAddrV4
 from std::net::errors import NetError
 from std::net::socket import SocketLibrary
@@ -141,7 +141,7 @@ impl TcpStream {
 
         // Connection either succeeded immediately or is in progress
         // Use WaitSelect to wait for connection completion with timeout
-        var write_fds = fd_set { fds_bits: [0u32; 2] }
+        var write_fds = fd_set { fds_bits: [0; 2] }
         FD_ZERO((*fd_set)&write_fds)
         FD_SET(fd, (*fd_set)&write_fds)
 
@@ -217,7 +217,7 @@ impl TcpStream {
     ///
     /// Example:
     /// ```novus
-    /// let mut buf: [u8; 1024] = [0u8; 1024]
+    /// let mut buf: [u8; 1024] = [0; 1024]
     /// let n = stream.read(&buf, 1024)?
     /// ```
     pub fn read(&self, buf: *u8, len: i32) -> Result<i32, NetError> {
@@ -455,11 +455,11 @@ impl TcpListener {
     /// ```
     pub fn accept(&self) -> Result<(TcpStream, SocketAddrV4), NetError> {
         var client_sin = sockaddr_in {
-            sin_len: 16u8,
+            sin_len: 16,
             sin_family: AF_INET as u8,
-            sin_port: 0u16,
-            sin_addr: in_addr { s_addr: 0u32 },
-            sin_zero: [0u8; 8],
+            sin_port: 0,
+            sin_addr: in_addr { s_addr: 0 },
+            sin_zero: [0; 8],
         }
         var addr_len: i32 = 16
         let addr_ptr: *sockaddr = (*sockaddr)&client_sin

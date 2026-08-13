@@ -23,10 +23,34 @@ public class UnsafeBlockTests
     }
 
     [Fact]
+    public void UnsafeTraitContractIsInheritedByImplementations()
+    {
+        var source = @"
+trait Peek {
+    @unsafe
+    fn peek(&self) -> i32
+}
+
+struct Box { value: i32 }
+
+impl Peek for Box {
+    fn peek(&self) -> i32 { return self.value }
+}
+
+fn bad(box: Box) -> i32 { return box.peek() }
+fn good(box: Box) -> i32 { return unsafe { box.peek() } }
+";
+        var (diagnostics, _) = Analyze(source);
+
+        var error = Assert.Single(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "E1001");
+        Assert.Contains("peek()", error.Message);
+    }
+
+    [Fact]
     public void UnsafeBlock_AllocMemOutsideUnsafe_ReportsError()
     {
         var source = @"
-from std::ffi::exec import AllocMem, MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, MEMF_PUBLIC
 
 fn test() -> i32 {
     let ptr = AllocMem(100, 0)
@@ -45,7 +69,7 @@ fn test() -> i32 {
     public void UnsafeBlock_FreeMemOutsideUnsafe_ReportsError()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem
+from amiga::raw::exec import AllocMem, FreeMem
 
 fn test() -> i32 {
     let ptr = AllocMem(100, 0)
@@ -68,7 +92,7 @@ fn test() -> i32 {
     public void UnsafeBlock_AllocMemInsideUnsafe_NoError()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, FreeMem, MEMF_PUBLIC
 
 fn test() -> i32 {
     unsafe {
@@ -88,7 +112,7 @@ fn test() -> i32 {
     public void UnsafeBlock_NestedUnsafeBlocks_NoError()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem
+from amiga::raw::exec import AllocMem, FreeMem
 
 fn test() -> i32 {
     unsafe {
@@ -111,7 +135,7 @@ fn test() -> i32 {
     public void UnsafeBlock_OpenLibraryOutsideUnsafe_ReportsError()
     {
         var source = @"
-from std::ffi::exec import OpenLibrary
+from amiga::raw::exec import OpenLibrary
 
 fn test() -> i32 {
     let lib = OpenLibrary(""dos.library"", 0)
@@ -129,7 +153,7 @@ fn test() -> i32 {
     public void UnsafeBlock_SupervisorOutsideUnsafe_ReportsError()
     {
         var source = @"
-from std::ffi::exec import Supervisor
+from amiga::raw::exec import Supervisor
 
 fn test() -> u32 {
     return Supervisor(0 as *u8)
@@ -146,7 +170,7 @@ fn test() -> u32 {
     public void UnsafeBlock_MultipleUnsafeCallsOutside_ReportsMultipleErrors()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem, OpenLibrary
+from amiga::raw::exec import AllocMem, FreeMem, OpenLibrary
 
 fn test() -> i32 {
     let ptr = AllocMem(100, 0)
@@ -165,7 +189,7 @@ fn test() -> i32 {
     public void UnsafeBlock_TracksUnsafeBlockLocations()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem
+from amiga::raw::exec import AllocMem, FreeMem
 
 fn test() -> i32 {
     unsafe {
@@ -187,7 +211,7 @@ fn test() -> i32 {
     public void UnsafeBlock_ErrorMessageIncludesSafeAlternatives()
     {
         var source = @"
-from std::ffi::exec import AllocMem
+from amiga::raw::exec import AllocMem
 
 fn test() -> i32 {
     let ptr = AllocMem(100, 0)

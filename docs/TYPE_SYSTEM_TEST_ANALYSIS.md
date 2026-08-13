@@ -45,7 +45,7 @@ The Novus type system has **basic** test coverage but with **significant gaps** 
 
 **What's NOT tested:**
 - **Behavior of narrowing casts**: What happens when casting 256 to u8? No validation tests
-- **Behavior of sign-bit changes**: Casting -1i8 to u8 produces different bits - no verification
+- **Behavior of sign-bit changes**: Casting -1 to u8 produces different bits - no verification
 - **Casts involving floats**: Only 2 tests (f32→i32, i32→f32), no i64↔f32, f64→i8, etc.
 - **Casts from/to fixed-point types**: Completely untested
 - **Invalid cast errors**: Are there casts that should fail? No error tests
@@ -145,7 +145,7 @@ fn null_check_variants() -> bool {
     let ptr8: *u8 = 0 as *u8
     let ptr32: *i32 = 0 as *i32
     let ptr64: *u64 = 0 as *u64
-    return (ptr8 as u32 == 0u32) && (ptr32 as u32 == 0u32) && (ptr64 as u32 == 0u32)
+    return (ptr8 as u32 == 0) && (ptr32 as u32 == 0) && (ptr64 as u32 == 0)
 }
 ```
 
@@ -164,14 +164,14 @@ fn null_check_variants() -> bool {
 ```novus
 // Test 1: Signed overflow
 fn signed_byte_overflow() -> i8 {
-    let max: i8 = 127i8
-    return max + 1i8  // Wraps to -128
+    let max: i8 = 127
+    return max + 1  // Wraps to -128
 }
 
 // Test 2: Unsigned underflow
 fn unsigned_byte_underflow() -> u8 {
-    let zero: u8 = 0u8
-    return zero - 1u8  // Wraps to 255
+    let zero: u8 = 0
+    return zero - 1  // Wraps to 255
 }
 
 // Test 3: Signed multiplication overflow
@@ -207,19 +207,19 @@ fn neg_to_unsigned() -> u32 {
 ```novus
 // Test 1: Float division by zero (compile-time unknown)
 fn float_div_zero() -> f32 {
-    let x: f32 = 1.0f32
-    let y: f32 = 0.0f32
+    let x: f32 = 1.0
+    let y: f32 = 0.0
     return x / y  // Should be Inf or NaN
 }
 
 // Test 2: Modulo with negatives
 fn mod_negative() -> i32 {
-    return (-7i32) % 3i32  // -1 or -1? (implementation dependent)
+    return (-7) % 3  // -1 or -1? (implementation dependent)
 }
 
 // Test 3: Division truncation
 fn div_truncate() -> i32 {
-    return (-7i32) / 2i32  // -3 or -4? (toward zero = -3)
+    return (-7) / 2  // -3 or -4? (toward zero = -3)
 }
 ```
 
@@ -239,43 +239,43 @@ fn div_truncate() -> i32 {
 ```novus
 // Test 1: All signed integer type boundaries
 fn i8_boundaries() -> (i8, i8) {
-    return (-128i8, 127i8)  // i8::MIN, i8::MAX
+    return (-128, 127)  // i8::MIN, i8::MAX
 }
 
 fn i16_boundaries() -> (i16, i16) {
-    return (-32768i16, 32767i16)  // i16::MIN, i16::MAX
+    return (-32768, 32767)  // i16::MIN, i16::MAX
 }
 
 fn i32_boundaries() -> (i32, i32) {
-    return (-2147483648i32, 2147483647i32)  // i32::MIN, i32::MAX
+    return (-2147483648, 2147483647)  // i32::MIN, i32::MAX
 }
 
 fn i64_boundaries() -> (i64, i64) {
-    return (-9223372036854775808i64, 9223372036854775807i64)  // i64::MIN, i64::MAX
+    return (-9223372036854775808, 9223372036854775807)  // i64::MIN, i64::MAX
 }
 
 // Test 2: All unsigned integer type boundaries
 fn u8_boundary() -> u8 {
-    return 255u8  // u8::MAX
+    return 255  // u8::MAX
 }
 
 fn u16_boundary() -> u16 {
-    return 65535u16  // u16::MAX
+    return 65535  // u16::MAX
 }
 
 fn u32_boundary() -> u32 {
-    return 4294967295u32  // u32::MAX
+    return 4294967295  // u32::MAX
 }
 
 fn u64_boundary() -> u64 {
-    return 18446744073709551615u64  // u64::MAX
+    return 18446744073709551615  // u64::MAX
 }
 
 // Test 3: Operations at boundaries
 fn boundary_ops() -> bool {
-    let max_i8 = 127i8
-    let min_i8 = -128i8
-    return (max_i8 + 1i8 == min_i8) && (min_i8 - 1i8 == max_i8)
+    let max_i8: i8 = 127
+    let min_i8: i8 = -128
+    return (max_i8 + 1 == min_i8) && (min_i8 - 1 == max_i8)
 }
 ```
 
@@ -295,26 +295,26 @@ fn boundary_ops() -> bool {
 ```novus
 // Test 1: NaN semantics
 fn nan_comparison() -> bool {
-    let nan: f32 = 0.0f32 / 0.0f32
+    let nan: f32 = 0.0 / 0.0
     return nan == nan  // Should be false (IEEE 754)
 }
 
 // Test 2: Infinity arithmetic
 fn inf_arithmetic() -> f32 {
-    let inf: f32 = 1.0f32 / 0.0f32
-    return inf + 1.0f32  // Should still be Inf
+    let inf: f32 = 1.0 / 0.0
+    return inf + 1.0  // Should still be Inf
 }
 
 // Test 3: Float to int with Inf/NaN
 fn float_to_int_inf() -> i32 {
-    let inf: f32 = 1.0f32 / 0.0f32
+    let inf: f32 = 1.0 / 0.0
     return (i32)inf  // Undefined, likely INT_MAX or INT_MIN
 }
 
 // Test 4: Large float precision loss
 fn float_precision() -> bool {
-    let large: f32 = 16777216.0f32  // 2^24
-    let large_plus_1: f32 = large + 1.0f32
+    let large: f32 = 16777216.0  // 2^24
+    let large_plus_1: f32 = large + 1.0
     return large == large_plus_1  // May be true due to precision loss
 }
 ```
@@ -373,15 +373,15 @@ fn ref_to_int() -> u32 {
 ```novus
 // Test 1: Pointer arithmetic with different type sizes
 fn ptr_arithmetic_sizes() -> (u32, u32) {
-    let base: u32 = 0x1000u32
+    let base: u32 = 0x1000
 
     // Advance *u8 pointer by 4
     let ptr_u8: *u8 = base as *u8
-    let addr_u8 = (ptr_u8 as u32) + 4u32  // +4 bytes
+    let addr_u8 = (ptr_u8 as u32) + 4  // +4 bytes
 
     // Advance *i32 pointer by 4 (should scale?)
     let ptr_i32: *i32 = base as *i32
-    let addr_i32_scaled = (ptr_i32 as u32) + (4u32 * 4u32)  // +16 bytes? Or +4?
+    let addr_i32_scaled = (ptr_i32 as u32) + (4 * 4)  // +16 bytes? Or +4?
 
     return (addr_u8, addr_i32_scaled)
 }
@@ -391,15 +391,15 @@ fn ptr_to_array() -> i32 {
     let arr = {10, 20, 30, 40, 50}
     let ptr: *i32 = &arr[0] as *i32
     // Can we do pointer arithmetic safely?
-    let next_addr = (ptr as u32) + 4u32
+    let next_addr = (ptr as u32) + 4
     let next_ptr: *i32 = next_addr as *i32
     return *next_ptr  // Should be 20
 }
 
 // Test 3: Pointer overflow wrapping
 fn ptr_overflow_wrap() -> u32 {
-    let ptr: *i32 = 0xFFFFFFFCu32 as *i32  // Near max
-    let overflow_addr = (ptr as u32) + 4u32
+    let ptr: *i32 = 0xFFFFFFFC as *i32  // Near max
+    let overflow_addr = (ptr as u32) + 4
     return overflow_addr  // Wraps to 0x00000000
 }
 ```
@@ -462,11 +462,11 @@ fn borrow_reuse() -> i32 {
 // Test 1: Array of pointers
 fn array_of_ptrs() -> i32 {
     let arr: [3]*i32 = {
-        0x1000u32 as *i32,
-        0x2000u32 as *i32,
-        0x3000u32 as *i32
+        0x1000 as *i32,
+        0x2000 as *i32,
+        0x3000 as *i32
     }
-    return (arr[0] as u32) == 0x1000u32 ? 1 : 0
+    return (arr[0] as u32) == 0x1000 ? 1 : 0
 }
 
 // Test 2: Pointer to array
@@ -531,17 +531,17 @@ struct Buffer<T> {
 }
 
 fn generic_with_ptr() -> i32 {
-    let addr: u32 = 0x1000u32
+    let addr: u32 = 0x1000
     let buf: Buffer<i32> = Buffer {
         ptr: addr as *i32,
-        len: 10u32
+        len: 10
     }
     return 0
 }
 
 // Test 3: Nested generics with pointers
 fn option_ptr_nesting() -> i32 {
-    let ptr: *i32 = 0x1000u32 as *i32
+    let ptr: *i32 = 0x1000 as *i32
     // Option<*i32> - how does None vs Some differ?
     return 0
 }
@@ -560,29 +560,29 @@ fn option_ptr_nesting() -> i32 {
 ```novus
 // Test 1: Sign extension semantics
 fn sign_extend_test() -> i32 {
-    let neg: i8 = -1i8  // 0xFF in bits
+    let neg: i8 = -1  // 0xFF in bits
     let extended: i32 = (i32)neg  // Should be 0xFFFFFFFF (-1)
     return extended
 }
 
 // Test 2: Zero extension semantics
 fn zero_extend_test() -> u32 {
-    let val: u8 = 255u8  // 0xFF
+    let val: u8 = 255  // 0xFF
     let extended: u32 = (u32)val  // Should be 0x000000FF (255)
     return extended
 }
 
 // Test 3: Bit pattern preservation
 fn bit_pattern_preservation() -> u32 {
-    let neg_i32: i32 = -1i32  // 0xFFFFFFFF
+    let neg_i32: i32 = -1  // 0xFFFFFFFF
     let as_u32: u32 = (u32)neg_i32  // Should preserve bits = 0xFFFFFFFF
     return as_u32
 }
 
 // Test 4: Mixed width comparison
 fn mixed_width_compare() -> bool {
-    let a: i8 = -1i8
-    let b: i32 = -1i32
+    let a: i8 = -1
+    let b: i32 = -1
     // Are these equal? Requires type coercion
     return ((i32)a) == b
 }
@@ -604,34 +604,34 @@ fn mixed_width_compare() -> bool {
 // Test 1: Fixed-point type boundaries
 fn fixed16_bounds() -> (fixed16, fixed16) {
     // fixed16 is 8.8 format: -128 to 127.99609375
-    let min: fixed16 = -128.0fixed16
-    let max: fixed16 = 127.99609375fixed16
+    let min: fixed16 = -128.0
+    let max: fixed16 = 127.99609375
     return (min, max)
 }
 
 fn fixed32_bounds() -> (fixed32, fixed32) {
     // fixed32 is 16.16 format: -32768 to 32767.9999...
-    let min: fixed32 = -32768.0fixed32
-    let max: fixed32 = 32767.9999fixed32
+    let min: fixed32 = -32768.0
+    let max: fixed32 = 32767.9999
     return (min, max)
 }
 
 // Test 2: Fixed-point overflow
 fn fixed16_overflow() -> fixed16 {
-    let near_max: fixed16 = 127.0fixed16
-    return near_max + 1.0fixed16  // Overflows in 8.8 format
+    let near_max: fixed16 = 127.0
+    return near_max + 1.0  // Overflows in 8.8 format
 }
 
 // Test 3: Fixed-point precision
 fn fixed_precision() -> bool {
-    let a: fixed16 = 1.5fixed16
-    let b: fixed16 = 1.5fixed16
+    let a: fixed16 = 1.5
+    let b: fixed16 = 1.5
     return a == b
 }
 
 // Test 4: Fixed to int conversion
 fn fixed_to_int() -> i32 {
-    let f: fixed16 = 42.75fixed16
+    let f: fixed16 = 42.75
     return (i32)f  // Truncates to 42
 }
 

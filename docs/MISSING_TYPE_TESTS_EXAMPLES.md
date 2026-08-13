@@ -40,7 +40,7 @@ public class EdgeCaseNumericTests
     {
         var source = @"
 pub fn main() -> i8 {
-    return -128i8
+    return -128
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -51,7 +51,7 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> i8 {
-    return 127i8
+    return 127
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -62,7 +62,7 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> i16 {
-    return -32768i16
+    return -32768
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -73,7 +73,7 @@ pub fn main() -> i16 {
     {
         var source = @"
 pub fn main() -> i16 {
-    return 32767i16
+    return 32767
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -84,7 +84,7 @@ pub fn main() -> i16 {
     {
         var source = @"
 pub fn main() -> i32 {
-    return -2147483648i32
+    return -2147483648
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -95,7 +95,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    return 2147483647i32
+    return 2147483647
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -106,7 +106,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i64 {
-    return -9223372036854775808i64
+    return -9223372036854775808
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -117,7 +117,7 @@ pub fn main() -> i64 {
     {
         var source = @"
 pub fn main() -> i64 {
-    return 9223372036854775807i64
+    return 9223372036854775807
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -130,7 +130,7 @@ pub fn main() -> i64 {
     {
         var source = @"
 pub fn main() -> u8 {
-    return 255u8
+    return 255
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -141,7 +141,7 @@ pub fn main() -> u8 {
     {
         var source = @"
 pub fn main() -> u16 {
-    return 65535u16
+    return 65535
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -152,7 +152,7 @@ pub fn main() -> u16 {
     {
         var source = @"
 pub fn main() -> u32 {
-    return 4294967295u32
+    return 4294967295
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -163,7 +163,7 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u64 {
-    return 18446744073709551615u64
+    return 18446744073709551615
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -176,8 +176,8 @@ pub fn main() -> u64 {
     {
         var source = @"
 pub fn main() -> i8 {
-    let max: i8 = 127i8
-    let one: i8 = 1i8
+    let max: i8 = 127
+    let one: i8 = 1
     return max + one
 }";
         var module = BuildIr(source);
@@ -189,7 +189,7 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> i8 {
-    let min: i8 = -128i8
+    let min: i8 = -128
     return -min
 }";
         var module = BuildIr(source);
@@ -201,8 +201,8 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i32 = 100000i32
-    let b: i32 = 100000i32
+    let a: i32 = 100000
+    let b: i32 = 100000
     return a * b
 }";
         var module = BuildIr(source);
@@ -214,8 +214,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i64 {
-    let a: i64 = 9000000000000000000i64
-    let b: i64 = 2i64
+    let a: i64 = 9000000000000000000
+    let b: i64 = 2
     return a * b
 }";
         var module = BuildIr(source);
@@ -229,8 +229,8 @@ pub fn main() -> i64 {
     {
         var source = @"
 pub fn main() -> u8 {
-    let zero: u8 = 0u8
-    let one: u8 = 1u8
+    let zero: u8 = 0
+    let one: u8 = 1
     return zero - one
 }";
         var module = BuildIr(source);
@@ -242,8 +242,8 @@ pub fn main() -> u8 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let a: u32 = 100u32
-    let b: u32 = 200u32
+    let a: u32 = 100
+    let b: u32 = 200
     return a - b
 }";
         var module = BuildIr(source);
@@ -257,7 +257,7 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let neg: i32 = -1i32
+    let neg: i32 = -1
     return (u32)neg
 }";
         var module = BuildIr(source);
@@ -269,7 +269,7 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let neg: i8 = -1i8
+    let neg: i8 = -1
     return (i32)neg
 }";
         var module = BuildIr(source);
@@ -281,7 +281,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let val: u8 = 255u8
+    let val: u8 = 255
     return (u32)val
 }";
         var module = BuildIr(source);
@@ -293,7 +293,7 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u8 {
-    let neg: i8 = -128i8
+    let neg: i8 = -128
     return (u8)neg
 }";
         var module = BuildIr(source);
@@ -307,8 +307,8 @@ pub fn main() -> u8 {
     {
         var source = @"
 pub fn main() -> i16 {
-    let a: i8 = 100i8
-    let b: i16 = 1000i16
+    let a: i8 = 100
+    let b: i16 = 1000
     return ((i16)a) + b
 }";
         var module = BuildIr(source);
@@ -320,8 +320,8 @@ pub fn main() -> i16 {
     {
         var source = @"
 pub fn main() -> i64 {
-    let a: i32 = 1000000i32
-    let b: i64 = 2000000000i64
+    let a: i32 = 1000000
+    let b: i64 = 2000000000
     return ((i64)a) + b
 }";
         var module = BuildIr(source);
@@ -333,8 +333,8 @@ pub fn main() -> i64 {
     {
         var source = @"
 pub fn main() -> u64 {
-    let a: u32 = 1000000u32
-    let b: u64 = 2000000000u64
+    let a: u32 = 1000000
+    let b: u64 = 2000000000
     return ((u64)a) + b
 }";
         var module = BuildIr(source);
@@ -348,7 +348,7 @@ pub fn main() -> u64 {
     {
         var source = @"
 pub fn main() -> i8 {
-    let val: i16 = 200i16
+    let val: i16 = 200
     return (i8)val
 }";
         var module = BuildIr(source);
@@ -360,7 +360,7 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> i8 {
-    let val: i32 = 1000000i32
+    let val: i32 = 1000000
     return (i8)val
 }";
         var module = BuildIr(source);
@@ -372,7 +372,7 @@ pub fn main() -> i8 {
     {
         var source = @"
 pub fn main() -> u8 {
-    let val: u32 = 1000u32
+    let val: u32 = 1000
     return (u8)val
 }";
         var module = BuildIr(source);
@@ -386,8 +386,8 @@ pub fn main() -> u8 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i32 = -10i32
-    let b: i32 = 20i32
+    let a: i32 = -10
+    let b: i32 = 20
     return a - b
 }";
         var module = BuildIr(source);
@@ -399,8 +399,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i64 {
-    let a: i64 = -1000000000i64
-    let b: i64 = 1000000000i64
+    let a: i64 = -1000000000
+    let b: i64 = 1000000000
     return a - b
 }";
         var module = BuildIr(source);
@@ -414,8 +414,8 @@ pub fn main() -> i64 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i32 = -2147483648i32
-    let b: i32 = -1i32
+    let a: i32 = -2147483648
+    let b: i32 = -1
     return a / b
 }";
         var module = BuildIr(source);
@@ -427,8 +427,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i32 = -7i32
-    let b: i32 = 3i32
+    let a: i32 = -7
+    let b: i32 = 3
     return a % b
 }";
         var module = BuildIr(source);
@@ -440,8 +440,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let a: i32 = 7i32
-    let b: i32 = -3i32
+    let a: i32 = 7
+    let b: i32 = -3
     return a % b
 }";
         var module = BuildIr(source);
@@ -516,15 +516,15 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let addr1: u32 = 0x1000u32
-    let addr2: u32 = 0x2000u32
-    let addr3: u32 = 0x3000u32
+    let addr1: u32 = 0x1000
+    let addr2: u32 = 0x2000
+    let addr3: u32 = 0x3000
     let arr: [3]*i32 = {
         addr1 as *i32,
         addr2 as *i32,
         addr3 as *i32
     }
-    return (arr[0] as u32) == 0x1000u32 ? 1 : 0
+    return (arr[0] as u32) == 0x1000 ? 1 : 0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -536,9 +536,9 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     let arr: [3]*u8 = {
-        0x1000u32 as *u8,
-        0x2000u32 as *u8,
-        0x3000u32 as *u8
+        0x1000 as *u8,
+        0x2000 as *u8,
+        0x3000 as *u8
     }
     return 0
 }";
@@ -553,8 +553,8 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let ptr: *i32 = 0xFFFFFFFCu32 as *i32
-    let offset: u32 = 4u32
+    let ptr: *i32 = 0xFFFFFFFC as *i32
+    let offset: u32 = 4
     let result: u32 = (ptr as u32) + offset
     return result
 }";
@@ -567,12 +567,12 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let base: u32 = 0x1000u32
+    let base: u32 = 0x1000
     let ptr_u8: *u8 = base as *u8
     let ptr_i32: *i32 = base as *i32
 
-    let addr_u8 = (ptr_u8 as u32) + 4u32
-    let addr_i32 = (ptr_i32 as u32) + 4u32
+    let addr_u8 = (ptr_u8 as u32) + 4
+    let addr_i32 = (ptr_i32 as u32) + 4
 
     return addr_u8
 }";
@@ -585,8 +585,8 @@ pub fn main() -> u32 {
     {
         var source = @"
 pub fn main() -> u32 {
-    let ptr: *i32 = 0x1000u32 as *i32
-    let large_offset: u32 = 0x10000000u32
+    let ptr: *i32 = 0x1000 as *i32
+    let large_offset: u32 = 0x10000000
     return (ptr as u32) + large_offset
 }";
         var module = BuildIr(source);
@@ -618,7 +618,7 @@ pub fn main() -> i32 {
     let ptr1: *i32 = &x as *i32
     let ptr2: **i32 = &ptr1 as **i32
     *ptr2 = 0 as *i32
-    return (ptr1 as u32) == 0u32 ? 1 : 0
+    return (ptr1 as u32) == 0 ? 1 : 0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -631,7 +631,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let addr: u32 = 0x1000u32
+    let addr: u32 = 0x1000
     let ptr_i32: *i32 = addr as *i32
     let ptr_u8: *u8 = (addr as *u8)
     return 0
@@ -646,7 +646,7 @@ pub fn main() -> i32 {
         var source = @"
 struct Point { x: i32, y: i32 }
 pub fn main() -> i32 {
-    let addr: u32 = 0x1000u32
+    let addr: u32 = 0x1000
     let ptr: *Point = addr as *Point
     return 0
 }";
@@ -707,7 +707,7 @@ pub fn main() -> i32 {
         var source = @"
 pub fn main() -> i32 {
     let fp: fn() -> i32 = 0 as fn() -> i32
-    return (fp as u32) == 0u32 ? 1 : 0
+    return (fp as u32) == 0 ? 1 : 0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -765,7 +765,7 @@ pub fn main() -> bool {
         var source = @"
 pub fn main() -> bool {
     let null_ptr: *i32 = 0 as *i32
-    let addr: u32 = 0x1000u32
+    let addr: u32 = 0x1000
     let real_ptr: *i32 = addr as *i32
     return (null_ptr as u32) != (real_ptr as u32)
 }";
@@ -868,7 +868,7 @@ enum PtrValue {
     Int(i32)
 }
 pub fn main() -> i32 {
-    let v1 = PtrValue::Ptr(0x1000u32 as *i32)
+    let v1 = PtrValue::Ptr(0x1000 as *i32)
     let v2 = PtrValue::Null
     let v3 = PtrValue::Int(42)
     return 0
@@ -889,8 +889,8 @@ struct Buffer {
 }
 pub fn main() -> i32 {
     let buf = Buffer {
-        data: 0x1000u32 as *u8,
-        len: 1024u32
+        data: 0x1000 as *u8,
+        len: 1024
     }
     return 0
 }";
@@ -1166,8 +1166,8 @@ public class FloatingPointEdgeCaseTests
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = 1.0f32
-    let y: f32 = 0.0f32
+    let x: f32 = 1.0
+    let y: f32 = 0.0
     return x / y
 }";
         var module = BuildIr(source);
@@ -1179,8 +1179,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f64 {
-    let x: f64 = 1.0f64
-    let y: f64 = 0.0f64
+    let x: f64 = 1.0
+    let y: f64 = 0.0
     return x / y
 }";
         var module = BuildIr(source);
@@ -1192,8 +1192,8 @@ pub fn main() -> f64 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = -1.0f32
-    let y: f32 = 0.0f32
+    let x: f32 = -1.0
+    let y: f32 = 0.0
     return x / y
 }";
         var module = BuildIr(source);
@@ -1207,8 +1207,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let inf: f32 = 1.0f32 / 0.0f32
-    return inf + 1.0f32
+    let inf: f32 = 1.0 / 0.0
+    return inf + 1.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1219,8 +1219,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let inf: f32 = 1.0f32 / 0.0f32
-    return inf * 2.0f32
+    let inf: f32 = 1.0 / 0.0
+    return inf * 2.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1231,8 +1231,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let inf: f32 = 1.0f32 / 0.0f32
-    return inf / 2.0f32
+    let inf: f32 = 1.0 / 0.0
+    return inf / 2.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1245,7 +1245,7 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = 0.0f32
+    let x: f32 = 0.0
     return x / x
 }";
         var module = BuildIr(source);
@@ -1257,8 +1257,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let nan: f32 = 0.0f32 / 0.0f32
-    return nan + 1.0f32
+    let nan: f32 = 0.0 / 0.0
+    return nan + 1.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1269,7 +1269,7 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> bool {
-    let nan: f32 = 0.0f32 / 0.0f32
+    let nan: f32 = 0.0 / 0.0
     return nan == nan
 }";
         var module = BuildIr(source);
@@ -1283,7 +1283,7 @@ pub fn main() -> bool {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = -0.0f32
+    let x: f32 = -0.0
     return x
 }";
         var module = BuildIr(source);
@@ -1295,9 +1295,9 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = -1.0f32
-    let z: f32 = -0.0f32
-    return 1.0f32 / z
+    let x: f32 = -1.0
+    let z: f32 = -0.0
+    return 1.0 / z
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1310,8 +1310,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let large: f32 = 16777216.0f32
-    let large_plus_one: f32 = large + 1.0f32
+    let large: f32 = 16777216.0
+    let large_plus_one: f32 = large + 1.0
     return large
 }";
         var module = BuildIr(source);
@@ -1323,8 +1323,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f64 {
-    let x: f64 = 0.1f64
-    let y: f64 = 0.2f64
+    let x: f64 = 0.1
+    let y: f64 = 0.2
     return x + y
 }";
         var module = BuildIr(source);
@@ -1338,7 +1338,7 @@ pub fn main() -> f64 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f32 = 3.14f32
+    let x: f32 = 3.14
     return (i32)x
 }";
         var module = BuildIr(source);
@@ -1350,7 +1350,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let x: f32 = -3.14f32
+    let x: f32 = -3.14
     return (i32)x
 }";
         var module = BuildIr(source);
@@ -1362,7 +1362,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let inf: f32 = 1.0f32 / 0.0f32
+    let inf: f32 = 1.0 / 0.0
     return (i32)inf
 }";
         var module = BuildIr(source);
@@ -1374,7 +1374,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let nan: f32 = 0.0f32 / 0.0f32
+    let nan: f32 = 0.0 / 0.0
     return (i32)nan
 }";
         var module = BuildIr(source);
@@ -1386,7 +1386,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let large: f32 = 3000000000.0f32
+    let large: f32 = 3000000000.0
     return (i32)large
 }";
         var module = BuildIr(source);
@@ -1398,7 +1398,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let large: f32 = -3000000000.0f32
+    let large: f32 = -3000000000.0
     return (i32)large
 }";
         var module = BuildIr(source);
@@ -1450,7 +1450,7 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f64 {
-    let x: f32 = 3.14f32
+    let x: f32 = 3.14
     return (f64)x
 }";
         var module = BuildIr(source);
@@ -1462,7 +1462,7 @@ pub fn main() -> f64 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f64 = 3.141592653589793f64
+    let x: f64 = 3.141592653589793
     return (f32)x
 }";
         var module = BuildIr(source);
@@ -1476,7 +1476,7 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let x: f32 = 0.00000001f32
+    let x: f32 = 0.00000001
     return x
 }";
         var module = BuildIr(source);
@@ -1490,8 +1490,8 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> bool {
-    let zero: f32 = 0.0f32
-    return zero == 0.0f32
+    let zero: f32 = 0.0
+    return zero == 0.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1502,8 +1502,8 @@ pub fn main() -> bool {
     {
         var source = @"
 pub fn main() -> bool {
-    let pos_zero: f32 = 0.0f32
-    let neg_zero: f32 = -0.0f32
+    let pos_zero: f32 = 0.0
+    let neg_zero: f32 = -0.0
     return pos_zero == neg_zero
 }";
         var module = BuildIr(source);
@@ -1550,7 +1550,7 @@ public class FixedPointTests
     {
         var source = @"
 pub fn main() -> fixed16 {
-    return -128.0fixed16
+    return -128.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1561,7 +1561,7 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    return 127.99609375fixed16
+    return 127.99609375
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1574,7 +1574,7 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    return -32768.0fixed32
+    return -32768.0
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1585,7 +1585,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    return 32767.9999fixed32
+    return 32767.9999
 }";
         var module = BuildIr(source);
         Assert.NotNull(module);
@@ -1598,8 +1598,8 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let a: fixed16 = 10.5fixed16
-    let b: fixed16 = 20.25fixed16
+    let a: fixed16 = 10.5
+    let b: fixed16 = 20.25
     return a + b
 }";
         var module = BuildIr(source);
@@ -1611,8 +1611,8 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let a: fixed16 = 50.75fixed16
-    let b: fixed16 = 20.25fixed16
+    let a: fixed16 = 50.75
+    let b: fixed16 = 20.25
     return a - b
 }";
         var module = BuildIr(source);
@@ -1624,8 +1624,8 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let a: fixed32 = 2.5fixed32
-    let b: fixed32 = 3.5fixed32
+    let a: fixed32 = 2.5
+    let b: fixed32 = 3.5
     return a * b
 }";
         var module = BuildIr(source);
@@ -1637,8 +1637,8 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let a: fixed32 = 10.0fixed32
-    let b: fixed32 = 2.0fixed32
+    let a: fixed32 = 10.0
+    let b: fixed32 = 2.0
     return a / b
 }";
         var module = BuildIr(source);
@@ -1652,8 +1652,8 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let max: fixed16 = 127.99609375fixed16
-    let small: fixed16 = 0.1fixed16
+    let max: fixed16 = 127.99609375
+    let small: fixed16 = 0.1
     return max + small
 }";
         var module = BuildIr(source);
@@ -1665,8 +1665,8 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let large: fixed32 = 1000.0fixed32
-    let factor: fixed32 = 100.0fixed32
+    let large: fixed32 = 1000.0
+    let factor: fixed32 = 100.0
     return large * factor
 }";
         var module = BuildIr(source);
@@ -1680,7 +1680,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let f: fixed16 = 42.75fixed16
+    let f: fixed16 = 42.75
     return (i32)f
 }";
         var module = BuildIr(source);
@@ -1692,7 +1692,7 @@ pub fn main() -> i32 {
     {
         var source = @"
 pub fn main() -> i32 {
-    let f: fixed32 = 42.75fixed32
+    let f: fixed32 = 42.75
     return (i32)f
 }";
         var module = BuildIr(source);
@@ -1732,7 +1732,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let f: f32 = 42.5f32
+    let f: f32 = 42.5
     return (fixed16)f
 }";
         var module = BuildIr(source);
@@ -1744,7 +1744,7 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let f: f64 = 100.75f64
+    let f: f64 = 100.75
     return (fixed32)f
 }";
         var module = BuildIr(source);
@@ -1758,7 +1758,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> f32 {
-    let f: fixed16 = 42.5fixed16
+    let f: fixed16 = 42.5
     return (f32)f
 }";
         var module = BuildIr(source);
@@ -1770,7 +1770,7 @@ pub fn main() -> f32 {
     {
         var source = @"
 pub fn main() -> f64 {
-    let f: fixed32 = 100.75fixed32
+    let f: fixed32 = 100.75
     return (f64)f
 }";
         var module = BuildIr(source);
@@ -1784,8 +1784,8 @@ pub fn main() -> f64 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let a: fixed16 = 1.0fixed16
-    let b: fixed16 = 0.00390625fixed16
+    let a: fixed16 = 1.0
+    let b: fixed16 = 0.00390625
     return a + b
 }";
         var module = BuildIr(source);
@@ -1797,8 +1797,8 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let a: fixed32 = 1.0fixed32
-    let b: fixed32 = 0.000015258789fixed32
+    let a: fixed32 = 1.0
+    let b: fixed32 = 0.000015258789
     return a + b
 }";
         var module = BuildIr(source);
@@ -1812,7 +1812,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let x: fixed16 = -42.5fixed16
+    let x: fixed16 = -42.5
     return x
 }";
         var module = BuildIr(source);
@@ -1824,8 +1824,8 @@ pub fn main() -> fixed16 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let a: fixed32 = -10.5fixed32
-    let b: fixed32 = 2.0fixed32
+    let a: fixed32 = -10.5
+    let b: fixed32 = 2.0
     return a * b
 }";
         var module = BuildIr(source);
@@ -1839,7 +1839,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed32 {
-    let f16: fixed16 = 42.5fixed16
+    let f16: fixed16 = 42.5
     return (fixed32)f16
 }";
         var module = BuildIr(source);
@@ -1851,7 +1851,7 @@ pub fn main() -> fixed32 {
     {
         var source = @"
 pub fn main() -> fixed16 {
-    let f32: fixed32 = 42.5fixed32
+    let f32: fixed32 = 42.5
     return (fixed16)f32
 }";
         var module = BuildIr(source);

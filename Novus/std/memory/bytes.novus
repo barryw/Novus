@@ -44,22 +44,22 @@ impl ByteReader {
     }
 
     pub fn read_be_u16(&self, offset: u32) -> Result<u16, ByteError> {
-        if !contains(self.bytes.len(), offset, 2u32) {
+        if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
         }
-        let high = *self.bytes.get_unchecked(offset)
-        let low = *self.bytes.get_unchecked(offset + 1u32)
+        let high = unsafe { *self.bytes.get_unchecked(offset) }
+        let low = unsafe { *self.bytes.get_unchecked(offset + 1) }
         return Result::Ok(((u16)high << 8) | (u16)low)
     }
 
     pub fn read_be_u32(&self, offset: u32) -> Result<u32, ByteError> {
-        if !contains(self.bytes.len(), offset, 4u32) {
+        if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
-        let b0 = *self.bytes.get_unchecked(offset)
-        let b1 = *self.bytes.get_unchecked(offset + 1u32)
-        let b2 = *self.bytes.get_unchecked(offset + 2u32)
-        let b3 = *self.bytes.get_unchecked(offset + 3u32)
+        let b0 = unsafe { *self.bytes.get_unchecked(offset) }
+        let b1 = unsafe { *self.bytes.get_unchecked(offset + 1) }
+        let b2 = unsafe { *self.bytes.get_unchecked(offset + 2) }
+        let b3 = unsafe { *self.bytes.get_unchecked(offset + 3) }
         return Result::Ok(((u32)b0 << 24) | ((u32)b1 << 16) | ((u32)b2 << 8) | (u32)b3)
     }
 }
@@ -86,42 +86,42 @@ impl ByteWriter {
     }
 
     pub fn read_be_u32(&self, offset: u32) -> Result<u32, ByteError> {
-        if !contains(self.bytes.len(), offset, 4u32) {
+        if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
         let b0 = unsafe { *self.bytes.get_unchecked(offset) }
-        let b1 = unsafe { *self.bytes.get_unchecked(offset + 1u32) }
-        let b2 = unsafe { *self.bytes.get_unchecked(offset + 2u32) }
-        let b3 = unsafe { *self.bytes.get_unchecked(offset + 3u32) }
+        let b1 = unsafe { *self.bytes.get_unchecked(offset + 1) }
+        let b2 = unsafe { *self.bytes.get_unchecked(offset + 2) }
+        let b3 = unsafe { *self.bytes.get_unchecked(offset + 3) }
         return Result::Ok(((u32)b0 << 24) | ((u32)b1 << 16) | ((u32)b2 << 8) | (u32)b3)
     }
 
     pub fn write_be_u16(&var self, offset: u32, value: u16) -> Result<(), ByteError> {
-        if !contains(self.bytes.len(), offset, 2u32) {
+        if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
         }
         unsafe {
             self.bytes.set_unchecked(offset, (u8)(value >> 8))
-            self.bytes.set_unchecked(offset + 1u32, (u8)value)
+            self.bytes.set_unchecked(offset + 1, (u8)value)
         }
         return Result::Ok(())
     }
 
     pub fn write_be_u32(&var self, offset: u32, value: u32) -> Result<(), ByteError> {
-        if !contains(self.bytes.len(), offset, 4u32) {
+        if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
         unsafe {
             self.bytes.set_unchecked(offset, (u8)(value >> 24))
-            self.bytes.set_unchecked(offset + 1u32, (u8)(value >> 16))
-            self.bytes.set_unchecked(offset + 2u32, (u8)(value >> 8))
-            self.bytes.set_unchecked(offset + 3u32, (u8)value)
+            self.bytes.set_unchecked(offset + 1, (u8)(value >> 16))
+            self.bytes.set_unchecked(offset + 2, (u8)(value >> 8))
+            self.bytes.set_unchecked(offset + 3, (u8)value)
         }
         return Result::Ok(())
     }
 
     pub fn fill(&var self, value: u8) -> Result<(), ByteError> {
-        var offset = 0u32
+        var offset: u32 = 0
         while offset < self.bytes.len() {
             unsafe { self.bytes.set_unchecked(offset, value) }
             offset++

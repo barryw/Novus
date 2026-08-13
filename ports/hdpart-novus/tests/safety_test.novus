@@ -3,32 +3,32 @@ from std::test::test import expect_true
 from safety import DeviceIdentity, DeviceLiveness, MountEntry, MountedPartition, classify_device, partition_conflict
 
 fn safety_rules_are_correct() -> bool {
-    let target = DeviceIdentity { driver: "scsi.device", unit: 0u32 }
-    let boot = DeviceIdentity { driver: "SCSI.DEVICE", unit: 0u32 }
-    let floppy = DeviceIdentity { driver: "trackdisk.device", unit: 0u32 }
+    let target = DeviceIdentity { driver: "scsi.device", unit: 0 }
+    let boot = DeviceIdentity { driver: "SCSI.DEVICE", unit: 0 }
+    let floppy = DeviceIdentity { driver: "trackdisk.device", unit: 0 }
     let mounts = [
-        MountEntry { device: DeviceIdentity { driver: "scsi.device", unit: 0u32 }, name: "DH4" },
-        MountEntry { device: DeviceIdentity { driver: "scsi.device", unit: 0u32 }, name: "DH5" },
+        MountEntry { device: DeviceIdentity { driver: "scsi.device", unit: 0 }, name: "DH4" },
+        MountEntry { device: DeviceIdentity { driver: "scsi.device", unit: 0 }, name: "DH5" },
     ]
 
     return false unless matches!(classify_device(&target, Option::Some(&boot), &mounts), DeviceLiveness::Boot)
     return false unless matches!(classify_device(&target, Option::Some(&floppy), &mounts), DeviceLiveness::Mounted)
     let no_mounts = [MountEntry {
-        device: DeviceIdentity { driver: "scsi.device", unit: 1u32 },
+        device: DeviceIdentity { driver: "scsi.device", unit: 1 },
         name: "DH0",
     }]
     return false unless matches!(classify_device(&target, Option::Some(&floppy), &no_mounts), DeviceLiveness::Clear)
     return false unless matches!(classify_device(&target, Option::None, &no_mounts), DeviceLiveness::Mounted)
 
     let partitions = [MountedPartition {
-        device: DeviceIdentity { driver: "SCSI.DEVICE", unit: 0u32 },
-        low_cylinder: 10u32,
-        high_cylinder: 50u32,
+        device: DeviceIdentity { driver: "SCSI.DEVICE", unit: 0 },
+        low_cylinder: 10,
+        high_cylinder: 50,
         name: "DH1",
     }]
-    let Option::Some(name) = partition_conflict(&target, 20u32, 40u32, &partitions) else { return false }
+    let Option::Some(name) = partition_conflict(&target, 20, 40, &partitions) else { return false }
     return false unless name.equals("DH1")
-    return partition_conflict(&target, 0u32, 9u32, &partitions).is_none()
+    return partition_conflict(&target, 0, 9, &partitions).is_none()
 }
 
 @test("mounted and boot devices are protected")

@@ -1,7 +1,7 @@
 from std::core import Option, Result
-from std::os::bptr import BPtr, BPtrError
-from std::os::doslist import DeviceProcess, DosDeviceList
-from std::strings::core import FixedCString
+from amiga::sys::dos import BPtr, BPtrError
+from amiga::sys::dos import DeviceProcess, DosDeviceList
+from std::string::core import FixedCString
 from std::test::test import expect
 
 pub enum ProbeError {
@@ -21,11 +21,11 @@ fn leave_locked_scope_on_error() -> Result<(), ProbeError> {
 
 @test("BPTR conversion and DOS device iteration are safe")
 pub fn dos_device_list() {
-    match BPtr::<u8>::from_raw(0i32) {
+    match BPtr::<u8>::from_raw(0) {
         Result::Ok(value) => expect(value.is_null(), "zero BPTR is null"),
         Result::Err(_) => expect(false, "zero BPTR accepted"),
     }
-    match BPtr::<u8>::from_raw_u32($40000000u32) {
+    match BPtr::<u8>::from_raw_u32($40000000) {
         Result::Err(BPtrError::OutOfRange) => {},
         _ => expect(false, "overflowing BPTR rejected"),
     }
@@ -54,13 +54,13 @@ pub fn dos_device_list() {
     match DosDeviceList::lock() {
         Result::Ok(devices) => {
             var entries = devices.iter()
-            var count = 0u32
+            var count: u32 = 0
             var boot_entry_found = false
             forever {
                 match entries.next() {
                     Option::Some(entry) => {
                         match entry.name() {
-                            Option::Some(name) => expect(name.len() > 0u32, "device name is bounded"),
+                            Option::Some(name) => expect(name.len() > 0, "device name is bounded"),
                             Option::None => expect(false, "device has a name"),
                         }
                         if entry.is_handled_by(&boot_process) { boot_entry_found = true }
@@ -70,7 +70,7 @@ pub fn dos_device_list() {
                     Option::None => { break },
                 }
             }
-            expect(count > 0u32, "DOS device list is not empty")
+            expect(count > 0, "DOS device list is not empty")
             expect(boot_entry_found, "SYS: handler belongs to a DOS device entry")
         },
         Result::Err(_) => expect(false, "DOS device list lock reacquired"),

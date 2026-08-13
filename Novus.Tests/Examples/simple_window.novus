@@ -6,9 +6,9 @@
 // - Type-safe event handling via WindowEvent enum
 // - Menu event decoding with MenuSelection
 
-from std::ui::window import WindowHandle, WindowEvent
-from std::ui::menu import GadToolsMenuBuilder, MenuSelection
-from std::strings::core import Str
+from amiga::sys::intuition import WindowHandle, WindowEvent
+from amiga::sys::gadtools import GadToolsMenuBuilder, MenuSelection
+from std::string::core import Str
 from std::io::file import write
 
 pub fn main() -> i32 {

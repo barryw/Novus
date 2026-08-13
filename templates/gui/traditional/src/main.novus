@@ -1,6 +1,6 @@
 // Traditional Intuition application using Novus's owning window wrapper.
 
-from std::ui::window import WindowHandle, WindowEvent
+from amiga::sys::intuition import WindowHandle, WindowEvent
 
 pub fn main() -> i32 {
     match WindowHandle::simple("{{PROJECT_NAME}}", 480, 160) {

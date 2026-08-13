@@ -111,10 +111,6 @@ public class TypeParser : ITypeSubstitutionEngine
 {
     private readonly ITypeParsingContext _context;
 
-    // Track in-progress struct monomorphizations to detect when incomplete placeholders are being accessed
-    // Key: cache key (e.g., "Vec<i32>"), Value: the placeholder struct being populated
-    private readonly Dictionary<string, IrStructType> _inProgressStructs = new();
-
     public TypeParser(ITypeParsingContext context)
     {
         _context = context;
@@ -237,6 +233,10 @@ public class TypeParser : ITypeSubstitutionEngine
     {
         var typeName = context.typeName().GetText();
 
+        // Native index aliases are target-defined language types, not user aliases.
+        if (typeName == "usize") return IrIntType.U32;
+        if (typeName == "isize") return IrIntType.I32;
+
         // Check if it's a generic type parameter (T, E, etc.)
         var genericParam = _context.LookupGenericParameter(typeName);
         if (genericParam != null)
@@ -290,14 +290,6 @@ public class TypeParser : ITypeSubstitutionEngine
                 return MonomorphizeEnum(enumType, context);
             }
 
-            // DEBUG: If enum has generics but no type args, print warning
-            if (enumType.GenericParameters.Count > 0)
-            {
-                System.Console.Error.WriteLine($"DEBUG ParseNamedType: returning generic enum without type args: {typeName}");
-                System.Console.Error.WriteLine($"  context text: {context.GetText()}");
-                System.Console.Error.WriteLine($"  genericTypeArgs: {context.genericTypeArgs()?.GetText() ?? "null"}");
-            }
-
             return enumType;
         }
 
@@ -323,113 +315,12 @@ public class TypeParser : ITypeSubstitutionEngine
     /// </summary>
     private IrType MonomorphizeStruct(IrStructType structType, NovusParser.NamedTypeContext context)
     {
-        // First, create a preliminary cache key using raw text to check for cycles
-        // This prevents infinite recursion when the struct's type arguments reference the struct itself
-        var rawTypeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
-        var rawPreliminaryCacheKey = $"{structType.StructName}<{string.Join(",", rawTypeArgNames)}>";
-
-        // If we have type substitutions, compute the "true" cache key by substituting generic params
-        // This ensures Vec<T> with T=i32 maps to Vec<i32>, not Vec<T>
-        string preliminaryCacheKey = rawPreliminaryCacheKey;
-        if (_context.CurrentTypeSubstitutions != null && _context.CurrentTypeSubstitutions.Count > 0)
-        {
-            var substitutedArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => {
-                var rawText = t.GetText();
-                // Simple case: the type arg itself is a generic parameter (e.g., "T")
-                if (_context.CurrentTypeSubstitutions.TryGetValue(rawText, out var substitutedType))
-                {
-                    return GetTypeCacheKey(substitutedType);
-                }
-                // Check if raw text contains any generic parameters needing substitution
-                bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
-                if (needsSubstitution)
-                {
-                    // Complex case: the type arg contains generic parameters
-                    // Handle prefixes like "&var", "&", "*" which get concatenated with the type name
-                    var substitutedText = rawText;
-
-                    // Handle reference/pointer prefixes
-                    string prefix = "";
-                    string remaining = rawText;
-                    if (rawText.StartsWith("&var"))
-                    {
-                        prefix = "&var ";
-                        remaining = rawText.Substring(4);
-                    }
-                    else if (rawText.StartsWith("&"))
-                    {
-                        prefix = "&";
-                        remaining = rawText.Substring(1);
-                    }
-                    else if (rawText.StartsWith("*"))
-                    {
-                        prefix = "*";
-                        remaining = rawText.Substring(1);
-                    }
-
-                    // Try to substitute the remaining part
-                    if (_context.CurrentTypeSubstitutions.TryGetValue(remaining, out var substitutedType2))
-                    {
-                        return prefix + GetTypeCacheKey(substitutedType2);
-                    }
-
-                    // Fallback to regex for nested cases like "HashMap<K,V>"
-                    foreach (var kvp in _context.CurrentTypeSubstitutions)
-                    {
-                        // Be careful to replace whole words only (K but not KV)
-                        var pattern = $@"\b{kvp.Key}\b";
-                        substitutedText = System.Text.RegularExpressions.Regex.Replace(
-                            substitutedText, pattern, GetTypeCacheKey(kvp.Value));
-                    }
-                    return substitutedText;
-                }
-                return rawText;
-            });
-            preliminaryCacheKey = $"{structType.StructName}<{string.Join(",", substitutedArgNames)}>";
-        }
-
-        // Check cache first - this catches already-completed monomorphizations
-        var cached = _context.LookupMonomorphizedStruct(preliminaryCacheKey);
-        if (cached != null)
-        {
-            return cached;
-        }
-
-        // Create placeholder struct and register it BEFORE parsing type arguments
-        // This breaks cycles when parsing recursive types
-        var placeholderFields = new List<IrStructField>();
-        var placeholderStruct = new IrStructType(
-            structType.StructName,
-            placeholderFields,
-            null,  // No generic parameters on monomorphized type
-            preliminaryCacheKey
-        );
-        _context.RegisterMonomorphizedStruct(preliminaryCacheKey, placeholderStruct);
-
-        // Now parse type arguments (this can recurse safely because we've cached the placeholder)
+        // Resolve aliases and substitutions before caching so every spelling of a type
+        // shares one canonical monomorphization.
         var typeArgs = new List<IrType>();
         foreach (var typeCtx in context.genericTypeArgs()!.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
-        }
-
-        // IMPORTANT: Set TypeArguments immediately after parsing so any code that looks up
-        // this struct from the cache gets a struct with TypeArguments populated
-        // This MUST happen BEFORE any other code can use the cached struct for method instantiation
-        placeholderStruct.TypeArguments = typeArgs;
-
-        // Create final cache key using actual parsed types
-        var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-        var finalCacheKey = $"{structType.StructName}<{string.Join(",", typeArgKeys)}>";
-
-        // If the final cache key is different (shouldn't happen often), check cache again
-        if (finalCacheKey != preliminaryCacheKey)
-        {
-            cached = _context.LookupMonomorphizedStruct(finalCacheKey);
-            if (cached != null)
-            {
-                return cached;
-            }
         }
 
         // Validate type argument count matches generic parameter count
@@ -439,6 +330,21 @@ public class TypeParser : ITypeSubstitutionEngine
                 $"Type argument count mismatch for struct '{structType.StructName}': " +
                 $"expected {structType.GenericParameters.Count} type arguments, got {typeArgs.Count}");
         }
+
+        var cacheKey = $"{structType.StructName}<{string.Join(",", typeArgs.Select(GetTypeCacheKey))}>";
+        var cached = _context.LookupMonomorphizedStruct(cacheKey);
+        if (cached != null)
+            return cached;
+
+        // Register before substituting fields so recursive fields can refer to this type.
+        var placeholderStruct = new IrStructType(
+            structType.StructName,
+            new List<IrStructField>(),
+            null,
+            cacheKey,
+            typeArguments: typeArgs
+        );
+        _context.RegisterMonomorphizedStruct(cacheKey, placeholderStruct);
 
         // Create monomorphized struct with concrete types
         var typeSubstitutions = new Dictionary<string, IrType>();
@@ -479,15 +385,6 @@ public class TypeParser : ITypeSubstitutionEngine
             _ = placeholderStruct.SizeInBytes;
         }
 
-        // If we used a different final cache key, update the struct and register under that too
-        if (finalCacheKey != preliminaryCacheKey)
-        {
-            // IMPORTANT: Update the struct's CacheKey to use the final (correct) cache key
-            // The preliminary cache key was based on raw text, but the final one is based on actual types
-            placeholderStruct.CacheKey = finalCacheKey;
-            _context.RegisterMonomorphizedStruct(finalCacheKey, placeholderStruct);
-        }
-
         // IMPORTANT: Only finalize if fully monomorphized (no generic types remain in fields)
         // This adds the struct to the module so it gets emitted in code generation
         // Partially monomorphized structs (like HashMapEntry<K,V> during HashMap<K,V> processing)
@@ -506,109 +403,12 @@ public class TypeParser : ITypeSubstitutionEngine
     /// </summary>
     private IrType MonomorphizeEnum(IrEnumType enumType, NovusParser.NamedTypeContext context)
     {
-        // First, create a preliminary cache key using raw text to check for cycles
-        // This prevents infinite recursion when the enum's type arguments reference the enum itself
-        var rawTypeArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => t.GetText());
-        var rawPreliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", rawTypeArgNames)}>";
-
-        // If we have type substitutions, compute the "true" cache key by substituting generic params
-        // This ensures Option<HashMap<K,V>> with K=u32,V=u32 maps to Option<HashMap<u32,u32>>
-        string preliminaryCacheKey = rawPreliminaryCacheKey;
-        if (_context.CurrentTypeSubstitutions != null && _context.CurrentTypeSubstitutions.Count > 0)
-        {
-            var substitutedArgNames = context.genericTypeArgs()!.typeList()!.type().Select(t => {
-                var rawText = t.GetText();
-                // Simple case: the type arg itself is a generic parameter (e.g., "K")
-                if (_context.CurrentTypeSubstitutions.TryGetValue(rawText, out var substitutedType))
-                {
-                    return GetTypeCacheKey(substitutedType);
-                }
-                // Check if raw text contains any generic parameters needing substitution
-                bool needsSubstitution = _context.CurrentTypeSubstitutions.Keys.Any(k => rawText.Contains(k));
-                if (needsSubstitution)
-                {
-                    // Complex case: the type arg contains generic parameters
-                    // Handle prefixes like "&var", "&", "*" which get concatenated with the type name
-                    var substitutedText = rawText;
-
-                    // Handle reference/pointer prefixes
-                    string prefix = "";
-                    string remaining = rawText;
-                    if (rawText.StartsWith("&var"))
-                    {
-                        prefix = "&var ";
-                        remaining = rawText.Substring(4);
-                    }
-                    else if (rawText.StartsWith("&"))
-                    {
-                        prefix = "&";
-                        remaining = rawText.Substring(1);
-                    }
-                    else if (rawText.StartsWith("*"))
-                    {
-                        prefix = "*";
-                        remaining = rawText.Substring(1);
-                    }
-
-                    // Try to substitute the remaining part
-                    if (_context.CurrentTypeSubstitutions.TryGetValue(remaining, out var substitutedType2))
-                    {
-                        return prefix + GetTypeCacheKey(substitutedType2);
-                    }
-
-                    // Fallback to regex for nested cases like "HashMap<K,V>"
-                    foreach (var kvp in _context.CurrentTypeSubstitutions)
-                    {
-                        // Be careful to replace whole words only (K but not KV)
-                        var pattern = $@"\b{kvp.Key}\b";
-                        substitutedText = System.Text.RegularExpressions.Regex.Replace(
-                            substitutedText, pattern, GetTypeCacheKey(kvp.Value));
-                    }
-                    return substitutedText;
-                }
-                return rawText;
-            });
-            preliminaryCacheKey = $"{enumType.EnumName}<{string.Join(",", substitutedArgNames)}>";
-        }
-
-        // Check cache first - this catches already-completed monomorphizations
-        var cached = _context.LookupMonomorphizedEnum(preliminaryCacheKey);
-        if (cached != null)
-        {
-            return cached;
-        }
-
-        // Create placeholder enum and register it BEFORE parsing type arguments
-        // This breaks cycles when parsing recursive types like Result<String, DosError>
-        // where DosError might contain Result in its variants
-        var placeholderVariants = new List<IrEnumVariant>();
-        var placeholderEnum = new IrEnumType(
-            enumType.EnumName,
-            placeholderVariants,
-            null,  // No generic parameters on monomorphized type
-            preliminaryCacheKey
-        );
-        _context.RegisterMonomorphizedEnum(preliminaryCacheKey, placeholderEnum);
-
-        // Now parse type arguments (this can recurse safely because we've cached the placeholder)
+        // Resolve aliases and substitutions before caching so every spelling of a type
+        // shares one canonical monomorphization.
         var typeArgs = new List<IrType>();
         foreach (var typeCtx in context.genericTypeArgs()!.typeList()!.type())
         {
             typeArgs.Add(ParseType(typeCtx));
-        }
-
-        // Create final cache key using actual parsed types (should match preliminary if substitutions were correct)
-        var typeArgKeys = typeArgs.Select(t => GetTypeCacheKey(t));
-        var finalCacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgKeys)}>";
-
-        // If the final cache key is different, check cache again and also register under final key
-        if (finalCacheKey != preliminaryCacheKey)
-        {
-            cached = _context.LookupMonomorphizedEnum(finalCacheKey);
-            if (cached != null)
-            {
-                return cached;
-            }
         }
 
         // Validate type argument count matches generic parameter count
@@ -618,6 +418,21 @@ public class TypeParser : ITypeSubstitutionEngine
                 $"Type argument count mismatch for enum '{enumType.EnumName}': " +
                 $"expected {enumType.GenericParameters.Count} type arguments, got {typeArgs.Count}");
         }
+
+        var cacheKey = $"{enumType.EnumName}<{string.Join(",", typeArgs.Select(GetTypeCacheKey))}>";
+        var cached = _context.LookupMonomorphizedEnum(cacheKey);
+        if (cached != null)
+            return cached;
+
+        // Register before substituting variants so recursive variants can refer to this type.
+        var placeholderEnum = new IrEnumType(
+            enumType.EnumName,
+            new List<IrEnumVariant>(),
+            null,
+            cacheKey,
+            typeArguments: typeArgs
+        );
+        _context.RegisterMonomorphizedEnum(cacheKey, placeholderEnum);
 
         // Create monomorphized enum with concrete types
         var typeSubstitutions = new Dictionary<string, IrType>();
@@ -656,18 +471,6 @@ public class TypeParser : ITypeSubstitutionEngine
         {
             placeholderEnum.Variants.Add(variant);
         }
-        // IMPORTANT: Set TypeArguments so Name property includes them (e.g., Option<i32> not just Option)
-        placeholderEnum.TypeArguments = typeArgs;
-
-        // If we used a different final cache key, update the enum and register under that too
-        if (finalCacheKey != preliminaryCacheKey)
-        {
-            // IMPORTANT: Update the enum's CacheKey to use the final (correct) cache key
-            // The preliminary cache key was based on raw text, but the final one is based on actual types
-            placeholderEnum.CacheKey = finalCacheKey;
-            _context.RegisterMonomorphizedEnum(finalCacheKey, placeholderEnum);
-        }
-
         // IMPORTANT: Only finalize if fully monomorphized (no generic types remain in variant data)
         // This adds the enum to the module so it gets emitted in code generation
         if (fullyMonomorphized)
@@ -872,6 +675,8 @@ public class TypeParser : ITypeSubstitutionEngine
             "i16" => IrIntType.I16,
             "i32" => IrIntType.I32,
             "i64" => IrIntType.I64,
+            "usize" => IrIntType.U32,
+            "isize" => IrIntType.I32,
             "bool" => IrBoolType.Instance,
             "f32" => IrFloatType.F32,
             "f64" => IrFloatType.F64,

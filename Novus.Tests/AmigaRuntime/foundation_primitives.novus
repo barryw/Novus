@@ -38,39 +38,39 @@ pub fn foundation_integer_arithmetic() {
     expect(a / b == -5, "signed division truncates toward zero")
     expect(a % b == -1, "signed remainder")
 
-    let x: u32 = 100u32
-    let y: u32 = 9u32
-    expect(x + y == 109u32, "unsigned addition")
-    expect(x - y == 91u32, "unsigned subtraction")
-    expect(x * y == 900u32, "unsigned multiplication")
-    expect(x / y == 11u32, "unsigned division")
-    expect(x % y == 1u32, "unsigned remainder")
+    let x: u32 = 100
+    let y: u32 = 9
+    expect(x + y == 109, "unsigned addition")
+    expect(x - y == 91, "unsigned subtraction")
+    expect(x * y == 900, "unsigned multiplication")
+    expect(x / y == 11, "unsigned division")
+    expect(x % y == 1, "unsigned remainder")
 }
 
 @test("integer widths preserve values and signs")
 pub fn foundation_integer_widths() {
-    let a: i8 = -12i8
-    let b: i16 = -1234i16
-    let c: i64 = -123456i64
-    let d: u8 = 250u8
-    let e: u16 = 60000u16
-    let f: u64 = 123456u64
-    expect(a == -12i8, "i8")
-    expect(b == -1234i16, "i16")
-    expect(c == -123456i64, "i64")
-    expect(d == 250u8, "u8")
-    expect(e == 60000u16, "u16")
-    expect(f == 123456u64, "u64")
+    let a: i8 = -12
+    let b: i16 = -1234
+    let c: i64 = -123456
+    let d: u8 = 250
+    let e: u16 = 60000
+    let f: u64 = 123456
+    expect(a == -12, "i8")
+    expect(b == -1234, "i16")
+    expect(c == -123456, "i64")
+    expect(d == 250, "u8")
+    expect(e == 60000, "u16")
+    expect(f == 123456, "u64")
 }
 
 @test("bitwise and shift operators")
 pub fn foundation_bitwise_operators() {
-    let value: u32 = $A5A5000Fu32
-    expect((value & $000000FFu32) == $0Fu32, "and")
-    expect((value | $000000F0u32) == $A5A500FFu32, "or")
-    expect((value ^ $FFFF0000u32) == $5A5A000Fu32, "xor")
-    expect((1u32 << 12) == 4096u32, "left shift")
-    expect(($80000000u32 >> 31) == 1u32, "logical right shift")
+    let value: u32 = $A5A5000F
+    expect((value & $000000FF) == $0F, "and")
+    expect((value | $000000F0) == $A5A500FF, "or")
+    expect((value ^ $FFFF0000) == $5A5A000F, "xor")
+    expect((1 << 12) == 4096, "left shift")
+    expect(($80000000 >> 31) == 1, "logical right shift")
 }
 
 @test("comparison and boolean operators")
@@ -97,21 +97,21 @@ pub fn foundation_short_circuit() {
 
 @test("casts sign extend and truncate predictably")
 pub fn foundation_casts() {
-    let negative: i8 = -1i8
+    let negative: i8 = -1
     let widened: i32 = (i32)negative
-    let narrowed: u8 = (u8)300u32
+    let narrowed: u8 = (u8)300
     let bits: u32 = (u32)widened
     expect(widened == -1, "sign extension")
-    expect(narrowed == 44u8, "narrowing")
-    expect(bits == $FFFFFFFFu32, "signed to unsigned preserves bits")
+    expect(narrowed == 44, "narrowing")
+    expect(bits == $FFFFFFFF, "signed to unsigned preserves bits")
 }
 
 @test("character and escape literals")
 pub fn foundation_character_literals() {
-    expect('A' == 65u8, "ASCII literal")
-    expect('\n' == 10u8, "newline")
-    expect('\t' == 9u8, "tab")
-    expect('\0' == 0u8, "nul")
+    expect('A' == 65, "ASCII literal")
+    expect('\n' == 10, "newline")
+    expect('\t' == 9, "tab")
+    expect('\0' == 0, "nul")
     expect('\x41' == 'A', "hex escape")
 }
 
@@ -128,10 +128,10 @@ pub fn foundation_bindings() {
 
 @test("sizeof reports target layouts")
 pub fn foundation_sizeof() {
-    expect(@sizeof(u8) == 1u32, "u8 size")
-    expect(@sizeof(u16) == 2u32, "u16 size")
-    expect(@sizeof(u32) == 4u32, "u32 size")
-    expect(@sizeof(*u8) == 4u32, "pointer size")
+    expect(@sizeof(u8) == 1, "u8 size")
+    expect(@sizeof(u16) == 2, "u16 size")
+    expect(@sizeof(u32) == 4, "u32 size")
+    expect(@sizeof(*u8) == 4, "pointer size")
 }
 
 @test("unsafe raw pointers read and write stack values")

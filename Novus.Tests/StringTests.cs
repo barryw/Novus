@@ -23,7 +23,7 @@ public class StringTests
     public void BuildIr_StringLiteral_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = ""Hello, World!""
     return 0
@@ -36,7 +36,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringType_Explicit_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s: Str = ""test""
     return 0
@@ -49,7 +49,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringAsParameter_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 fn process(s: Str) -> i32 {
     return 42
 }
@@ -64,7 +64,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringAsReturnType_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 fn getMessage() -> Str {
     return ""Hello""
 }
@@ -80,7 +80,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Newline_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = ""Line 1\nLine 2""
     return 0
@@ -93,7 +93,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Tab_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = ""Column1\tColumn2""
     return 0
@@ -106,7 +106,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Quote_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = ""He said \""Hello\""""
     return 0
@@ -119,7 +119,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEscapeSequence_Backslash_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = ""Path\\To\\File""
     return 0
@@ -132,7 +132,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringInStruct_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 struct Person {
     name: Str,
     age: i32
@@ -152,7 +152,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringEmpty_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s = """"
     return 0
@@ -165,7 +165,7 @@ pub fn main() -> i32 {
     public void BuildIr_MultipleStrings_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 pub fn main() -> i32 {
     let s1 = ""First""
     let s2 = ""Second""
@@ -180,7 +180,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringInEnum_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 enum Message {
     Text(Str),
     Number(i32)
@@ -197,7 +197,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringInMatch_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 enum Message {
     Text(Str),
     Value(i32)
@@ -217,7 +217,7 @@ pub fn main() -> i32 {
     public void BuildIr_StrToU8PtrCoercion_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 fn takes_pointer(ptr: *u8) -> i32 {
     return 42
 }
@@ -266,7 +266,7 @@ pub fn main() -> i32 {
     public void BuildIr_StringAndStrToU8PtrCoercion_Compiles()
     {
         var source = @"
-from std::strings::core import Str
+from std::string::core import Str
 from std::collections::vec import Vec
 
 // Minimal String type definition for testing

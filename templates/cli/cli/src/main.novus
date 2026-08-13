@@ -1,6 +1,6 @@
 // CLI application that also starts safely from Workbench.
 
-from std::args::args import Args, is_workbench
+from amiga::workbench::args import Args, is_workbench
 from std::io::file import write
 
 pub fn main() -> i32 {

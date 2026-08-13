@@ -32,19 +32,19 @@ extern fn trig_angle_to_degrees(angle: u16) -> i16
 // ============================================================================
 
 /// Full circle in angle units (65536, but wraps to 0)
-pub const ANGLE_FULL: u16 = 0u16
+pub const ANGLE_FULL: u16 = 0
 
 /// Half circle (180 degrees)
-pub const ANGLE_HALF: u16 = 32768u16
+pub const ANGLE_HALF: u16 = 32768
 
 /// Quarter circle (90 degrees)
-pub const ANGLE_QUARTER: u16 = 16384u16
+pub const ANGLE_QUARTER: u16 = 16384
 
 /// Three-quarter circle (270 degrees)
-pub const ANGLE_THREE_QUARTER: u16 = 49152u16
+pub const ANGLE_THREE_QUARTER: u16 = 49152
 
 /// One degree in angle units (approximately 182)
-pub const ANGLE_ONE_DEGREE: u16 = 182u16
+pub const ANGLE_ONE_DEGREE: u16 = 182
 
 // ============================================================================
 // Sine Lookup Table
@@ -204,7 +204,7 @@ pub fn radians_to_angle(radians: Fixed32) -> u16 {
     // angle = radians * 65536 / (2 * pi)
     // = radians * 10430.378...
     // Using fixed-point: radians.raw * 10430 >> 16
-    let scaled = (radians.to_raw() * 10430i32) >> 16
+    let scaled = (radians.to_raw() * 10430) >> 16
     return (u16)scaled
 }
 
@@ -265,7 +265,7 @@ pub fn tan_fixed32(angle: u16) -> Fixed32 {
 pub fn atan2_angle(y: i32, x: i32) -> u16 {
     // Handle special cases
     if x == 0 && y == 0 {
-        return 0u16
+        return 0
     }
 
     // Determine octant and normalize to first octant
@@ -274,7 +274,7 @@ pub fn atan2_angle(y: i32, x: i32) -> u16 {
     if abs_x < 0 { abs_x = -abs_x }
     if abs_y < 0 { abs_y = -abs_y }
 
-    var angle: u16 = 0u16
+    var angle: u16 = 0
     var swap = false
 
     // Ensure abs_x >= abs_y for the approximation
@@ -295,16 +295,16 @@ pub fn atan2_angle(y: i32, x: i32) -> u16 {
 
     // Adjust for octant
     if swap {
-        angle = 16384u16 - angle  // Reflect around 45° to get 45-90°
+        angle = 16384 - angle  // Reflect around 45° to get 45-90°
     }
 
     // Adjust for quadrant based on original signs
     if x < 0 && y >= 0 {
-        angle = 32768u16 - angle  // Q2: 90-180°
+        angle = 32768 - angle  // Q2: 90-180°
     } else if x < 0 && y < 0 {
-        angle = 32768u16 + angle  // Q3: 180-270°
+        angle = 32768 + angle  // Q3: 180-270°
     } else if x >= 0 && y < 0 {
-        angle = 0u16 - angle  // Q4: 270-360° (wraps around)
+        angle = 0 - angle  // Q4: 270-360° (wraps around)
     }
 
     return angle
@@ -323,21 +323,21 @@ pub fn atan2_angle(y: i32, x: i32) -> u16 {
 pub fn sin_fixed32_interp(angle: u16) -> Fixed32 {
     // Get quadrant and local position within quadrant
     var quadrant = angle >> 14  // 0-3
-    var local = angle & 0x3FFFu16  // 0-16383 within quadrant
+    var local = angle & 0x3FFF  // 0-16383 within quadrant
 
     // For Q1 and Q3, use local directly; for Q2 and Q4, mirror
-    if quadrant == 1u16 || quadrant == 3u16 {
-        local = 16383u16 - local
+    if quadrant == 1 || quadrant == 3 {
+        local = 16383 - local
     }
 
     // Map local (0-16383) to table index (0-64)
     // local / 256 = index (0-63), local % 256 = interpolation factor
     let idx = local >> 8  // 0-63
-    let frac = local & 0xFFu16  // 0-255, interpolation weight
+    let frac = local & 0xFF  // 0-255, interpolation weight
 
     // Get two adjacent table values
     let v0 = (i32)SINE_TABLE[idx]
-    let v1 = (i32)SINE_TABLE[idx + 1u16]
+    let v1 = (i32)SINE_TABLE[idx + 1]
 
     // Linear interpolation: result = v0 + (v1 - v0) * frac / 256
     var value = v0 + ((v1 - v0) * (i32)frac >> 8)
@@ -346,7 +346,7 @@ pub fn sin_fixed32_interp(angle: u16) -> Fixed32 {
     value = value << 2
 
     // Apply sign for Q2 and Q3
-    if quadrant >= 2u16 {
+    if quadrant >= 2 {
         value = -value
     }
 

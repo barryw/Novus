@@ -1,7 +1,7 @@
 // Simple screen test - minimal to debug the crash
-from std::ui::screen import ScreenHandle
-from std::ffi::dos import Delay
-from std::ffi::graphics import SetAPen, RectFill
+from amiga::sys::intuition import ScreenHandle
+from amiga::raw::dos import Delay
+from amiga::raw::graphics import SetAPen, RectFill
 
 pub fn main() -> i32 {
     // Try to open a simple lores screen

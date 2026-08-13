@@ -163,7 +163,7 @@ fn test() -> i32 {
     public void UnsafeExpression_AllowsUnsafeOperations()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, FreeMem, MEMF_PUBLIC
 
 fn test() -> i32 {
     let ptr = unsafe { AllocMem(100, MEMF_PUBLIC) }
@@ -246,6 +246,33 @@ fn test(ptr: *i32) -> i32 {
 }";
         var module = BuildIR(source);
         Assert.NotNull(module);
+        var access = Assert.Single(module.Functions.Single(f => f.Name == "test")
+            .BasicBlocks.SelectMany(block => block.Instructions).OfType<IrIndexAccess>());
+        Assert.Equal(IrBoundsCheckMode.Unchecked, access.BoundsCheck);
+    }
+
+    [Fact]
+    public void RawPointerIndexing_OutsideUnsafe_IsRejected()
+    {
+        var (diagnostics, _) = Analyze(@"
+fn test(ptr: *i32) -> i32 {
+    return ptr[0]
+}");
+
+        Assert.Contains(diagnostics.Diagnostics,
+            diagnostic => diagnostic.Code == "E1001" && diagnostic.Message.Contains("raw pointer indexing"));
+    }
+
+    [Fact]
+    public void RawPointerIndexStore_OutsideUnsafe_IsRejected()
+    {
+        var (diagnostics, _) = Analyze(@"
+fn test(ptr: *i32) {
+    ptr[0] = 1
+}");
+
+        Assert.Contains(diagnostics.Diagnostics,
+            diagnostic => diagnostic.Code == "E1001" && diagnostic.Message.Contains("raw pointer indexing"));
     }
 
     [Fact]
@@ -314,7 +341,7 @@ fn test(cond: bool) -> i32 {
     public void UnsafeExpression_ComplexExample_Works()
     {
         var source = @"
-from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, FreeMem, MEMF_PUBLIC
 
 fn allocate_and_fill(size: u32) -> *u8 {
     let ptr = unsafe { (*u8)AllocMem(size, MEMF_PUBLIC) }

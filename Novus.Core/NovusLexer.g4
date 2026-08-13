@@ -81,6 +81,8 @@ KW_I8       : 'i8';
 KW_I16      : 'i16';
 KW_I32      : 'i32';
 KW_I64      : 'i64';
+KW_USIZE    : 'usize';
+KW_ISIZE    : 'isize';
 KW_BOOL     : 'bool';
 KW_F32      : 'f32';
 KW_F64      : 'f64';
@@ -100,25 +102,39 @@ LESS           : '<';
 GREATER        : '>';
 
 FLOAT_LITERAL
-    : [0-9]+ '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?
-    | [0-9]* '.' [0-9]+ ('f32' | 'f64' | 'fixed16' | 'fixed32')?
+    : [0-9]+ '.' [0-9]+
+    | [0-9]* '.' [0-9]+
     ;
 
 INTEGER_LITERAL
-    : [0-9]+ ('_' [0-9]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : [0-9]+ ('_' [0-9]+)*
     ;
 
 BINARY_LITERAL
-    : '%' [01]+ ('_' [01]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : '%' [01]+ ('_' [01]+)*
     ;
 
 HEX_LITERAL
-    : '$' [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
-    | '0' [xX] [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)* ('u8' | 'u16' | 'u32' | 'u64' | 'i8' | 'i16' | 'i32' | 'i64')?
+    : '$' [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)*
+    | '0' [xX] [0-9A-Fa-f]+ ('_' [0-9A-Fa-f]+)*
     ;
 
 F_STRING_LITERAL
     : 'f"' ( F_ESC | F_INTERP | ~["\\{] )* '"'
+    ;
+
+// Binary-format literals. Keep these before identifiers so their prefixes are
+// consumed as part of one token rather than as `b`/`fourcc` identifiers.
+BYTE_CHAR_LITERAL
+    : 'b\'' ( ESC | ~['\\] ) '\''
+    ;
+
+BYTE_STRING_LITERAL
+    : 'b"' ( ESC | ~["\\] )* '"'
+    ;
+
+FOURCC_LITERAL
+    : 'fourcc"' ( ESC | ~["\\] )* '"'
     ;
 
 fragment F_ESC
@@ -261,6 +277,8 @@ ASM_HDR_I8          : 'i8' -> type(KW_I8);
 ASM_HDR_I16         : 'i16' -> type(KW_I16);
 ASM_HDR_I32         : 'i32' -> type(KW_I32);
 ASM_HDR_I64         : 'i64' -> type(KW_I64);
+ASM_HDR_USIZE       : 'usize' -> type(KW_USIZE);
+ASM_HDR_ISIZE       : 'isize' -> type(KW_ISIZE);
 ASM_HDR_BOOL        : 'bool' -> type(KW_BOOL);
 ASM_HDR_STAR        : '*' -> type(STAR);
 

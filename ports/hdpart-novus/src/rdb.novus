@@ -2,12 +2,9 @@
 // d71ced9cc601db4909f6350c8dcfa68639eec46a.
 
 from std::core import Clone, From, Option, Result
-from std::collections::arrayvec import ArrayVec, ArrayVecError
-from std::collections::vec import Vec
-from std::error::errors import ExecError
-from std::memory::bytes import ByteError, ByteReader, ByteWriter
-from std::memory::slice import Slice, MutSlice
-from std::strings::core import FixedString, NameString, Str, StringError
+from std::collections import ArrayVec, ArrayVecError, Vec
+from std::memory import ByteError, ByteReader, ByteWriter, MemoryError, MutSlice, Slice
+from std::string import FixedString, NameString, Str, StringError
 
 pub const BLOCK_BYTES: u32 = 512
 pub const MAX_PARTITIONS: u32 = 32
@@ -57,8 +54,8 @@ impl From<ArrayVecError> for RdbError {
     }
 }
 
-impl From<ExecError> for RdbError {
-    fn convert(consuming _error: ExecError) -> RdbError {
+impl From<MemoryError> for RdbError {
+    fn convert(consuming _error: MemoryError) -> RdbError {
         return RdbError::AllocationFailed
     }
 }
@@ -70,30 +67,30 @@ impl From<StringError> for RdbError {
 }
 
 fn header_sum(reader: &ByteReader, summed_longs: u32) -> Result<u32, RdbError> {
-    var sum = 0u32
-    for index in 0u32..summed_longs {
-        sum = sum + reader.read_be_u32(index * 4u32)?
+    var sum: u32 = 0
+    for index in 0..summed_longs {
+        sum = sum + reader.read_be_u32(index * 4)?
     }
     return Result::Ok(sum)
 }
 
 fn writer_sum(writer: &ByteWriter, summed_longs: u32) -> Result<u32, RdbError> {
-    var sum = 0u32
-    for index in 0u32..summed_longs {
-        sum = sum + writer.read_be_u32(index * 4u32)?
+    var sum: u32 = 0
+    for index in 0..summed_longs {
+        sum = sum + writer.read_be_u32(index * 4)?
     }
     return Result::Ok(sum)
 }
 
 fn write_checksum(writer: &var ByteWriter, summed_longs: u32) -> Result<(), RdbError> {
-    writer.write_be_u32(8u32, 0u32)?
+    writer.write_be_u32(8, 0)?
     let sum = writer_sum(writer, summed_longs)?
-    writer.write_be_u32(8u32, if sum == 0u32 { 0u32 } else { ~sum + 1u32 })?
+    writer.write_be_u32(8, if sum == 0 { 0 } else { ~sum + 1 })?
     return Result::Ok(())
 }
 
 fn env_offset(index: u32) -> u32 {
-    return PART_ENV_OFFSET + index * 4u32
+    return PART_ENV_OFFSET + index * 4
 }
 
 fn read_env(reader: &ByteReader, index: u32, table_size: u32, fallback: u32) -> Result<u32, RdbError> {
@@ -118,7 +115,7 @@ pub struct CylinderRange {
 impl CylinderRange {
     pub fn start(&self) -> u32 { return self.start }
     pub fn end(&self) -> u32 { return self.end }
-    pub fn cylinders(&self) -> u32 { return self.end - self.start + 1u32 }
+    pub fn cylinders(&self) -> u32 { return self.end - self.start + 1 }
 }
 
 pub struct RdbPartition {
@@ -151,7 +148,7 @@ impl PartitionSettings {
     pub fn new(name: Str, size_mb: u32, dos_type: u32, bootable: bool,
         boot_priority: i32, max_transfer: u32, mask: u32
     ) -> Result<PartitionSettings, RdbError> {
-        return Result::Err(RdbError::InvalidName) unless name.len() >= 1u32 && name.len() <= 31u32
+        return Result::Err(RdbError::InvalidName) unless name.len() >= 1 && name.len() <= 31
         var owned = NameString::new()
         owned.push_str(name)?
         return Result::Ok(PartitionSettings {
@@ -208,37 +205,37 @@ impl RdbPartition {
     pub fn write_block(&self, model: &RdbModel, next: u32, consuming block: MutSlice<u8>) -> Result<(), RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         var writer = ByteWriter::new(block)
-        writer.fill(0u8)?
+        writer.fill(0)?
 
-        writer.write_be_u32(0u32, ID_PART)?
-        writer.write_be_u32(4u32, PART_SUMMED_LONGS)?
-        writer.write_be_u32(12u32, 7u32)?
-        writer.write_be_u32(16u32, next)?
-        writer.write_be_u32(20u32, (self.flags & ~PART_BOOTABLE) | if self.bootable { PART_BOOTABLE } else { 0u32 })?
+        writer.write_be_u32(0, ID_PART)?
+        writer.write_be_u32(4, PART_SUMMED_LONGS)?
+        writer.write_be_u32(12, 7)?
+        writer.write_be_u32(16, next)?
+        writer.write_be_u32(20, (self.flags & ~PART_BOOTABLE) | if self.bootable { PART_BOOTABLE } else { 0 })?
 
         let name = self.name()
         writer.write_u8(PART_NAME_OFFSET, (u8)name.len())?
-        for index in 0u32..name.len() {
+        for index in 0..name.len() {
             let value = match name.get(index) {
                 Option::Some(value) => value,
                 Option::None => return Result::Err(RdbError::InvalidName),
             }
-            writer.write_u8(PART_NAME_OFFSET + 1u32 + index, value)?
+            writer.write_u8(PART_NAME_OFFSET + 1 + index, value)?
         }
 
-        writer.write_be_u32(env_offset(0u32), 16u32)?
-        writer.write_be_u32(env_offset(1u32), model.block_bytes / 4u32)?
-        writer.write_be_u32(env_offset(3u32), model.heads)?
-        writer.write_be_u32(env_offset(4u32), 1u32)?
-        writer.write_be_u32(env_offset(5u32), model.sectors)?
-        writer.write_be_u32(env_offset(6u32), 2u32)?
-        writer.write_be_u32(env_offset(9u32), self.low_cylinder)?
-        writer.write_be_u32(env_offset(10u32), self.high_cylinder)?
-        writer.write_be_u32(env_offset(11u32), self.buffers)?
-        writer.write_be_u32(env_offset(13u32), self.max_transfer)?
-        writer.write_be_u32(env_offset(14u32), self.mask)?
-        writer.write_be_u32(env_offset(15u32), (u32)self.boot_priority)?
-        writer.write_be_u32(env_offset(16u32), self.dos_type)?
+        writer.write_be_u32(env_offset(0), 16)?
+        writer.write_be_u32(env_offset(1), model.block_bytes / 4)?
+        writer.write_be_u32(env_offset(3), model.heads)?
+        writer.write_be_u32(env_offset(4), 1)?
+        writer.write_be_u32(env_offset(5), model.sectors)?
+        writer.write_be_u32(env_offset(6), 2)?
+        writer.write_be_u32(env_offset(9), self.low_cylinder)?
+        writer.write_be_u32(env_offset(10), self.high_cylinder)?
+        writer.write_be_u32(env_offset(11), self.buffers)?
+        writer.write_be_u32(env_offset(13), self.max_transfer)?
+        writer.write_be_u32(env_offset(14), self.mask)?
+        writer.write_be_u32(env_offset(15), (u32)self.boot_priority)?
+        writer.write_be_u32(env_offset(16), self.dos_type)?
 
         write_checksum(&var writer, PART_SUMMED_LONGS)?
         return Result::Ok(())
@@ -248,27 +245,27 @@ impl RdbPartition {
     pub fn from_block(block: Slice<u8>) -> Result<(RdbPartition, u32), RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         let reader = ByteReader::new(block)
-        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0u32)? == ID_PART && reader.read_be_u32(4u32)? == PART_SUMMED_LONGS
-        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, PART_SUMMED_LONGS)? == 0u32
+        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0)? == ID_PART && reader.read_be_u32(4)? == PART_SUMMED_LONGS
+        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, PART_SUMMED_LONGS)? == 0
 
         var partition = RdbPartition::empty()
         var name_len = (u32)reader.read_u8(PART_NAME_OFFSET)?
-        if name_len > 31u32 { name_len = 31u32 }
-        for index in 0u32..name_len {
-            partition.name.push_byte(reader.read_u8(PART_NAME_OFFSET + 1u32 + index)?)?
+        if name_len > 31 { name_len = 31 }
+        for index in 0..name_len {
+            partition.name.push_byte(reader.read_u8(PART_NAME_OFFSET + 1 + index)?)?
         }
 
-        let table_size = reader.read_be_u32(env_offset(0u32))?
-        partition.low_cylinder = read_env(&reader, 9u32, table_size, 0u32)?
-        partition.high_cylinder = read_env(&reader, 10u32, table_size, 0u32)?
-        partition.buffers = read_env(&reader, 11u32, table_size, 0u32)?
-        partition.max_transfer = read_env(&reader, 13u32, table_size, DEFAULT_MAX_TRANSFER)?
-        partition.mask = read_env(&reader, 14u32, table_size, DEFAULT_MASK)?
-        partition.boot_priority = (i32)read_env(&reader, 15u32, table_size, 0u32)?
-        partition.dos_type = read_env(&reader, 16u32, table_size, DOS_TYPE_FFS_INTL)?
-        partition.flags = reader.read_be_u32(20u32)?
-        partition.bootable = (partition.flags & PART_BOOTABLE) != 0u32
-        let next = reader.read_be_u32(16u32)?
+        let table_size = reader.read_be_u32(env_offset(0))?
+        partition.low_cylinder = read_env(&reader, 9, table_size, 0)?
+        partition.high_cylinder = read_env(&reader, 10, table_size, 0)?
+        partition.buffers = read_env(&reader, 11, table_size, 0)?
+        partition.max_transfer = read_env(&reader, 13, table_size, DEFAULT_MAX_TRANSFER)?
+        partition.mask = read_env(&reader, 14, table_size, DEFAULT_MASK)?
+        partition.boot_priority = (i32)read_env(&reader, 15, table_size, 0)?
+        partition.dos_type = read_env(&reader, 16, table_size, DOS_TYPE_FFS_INTL)?
+        partition.flags = reader.read_be_u32(20)?
+        partition.bootable = (partition.flags & PART_BOOTABLE) != 0
+        let next = reader.read_be_u32(16)?
         return Result::Ok((partition, next))
     }
 }
@@ -307,13 +304,13 @@ impl RdbFileSystem {
             dos_type: dos_type,
             version: version,
             patch_flags: patch_flags,
-            node_type: 0u32,
-            task: 0u32,
-            lock: 0u32,
-            handler: 0u32,
+            node_type: 0,
+            task: 0,
+            lock: 0,
+            handler: 0,
             stack_size: stack_size,
             priority: priority,
-            startup: 0u32,
+            startup: 0,
             global_vec: global_vec,
             image: owned,
         })
@@ -329,14 +326,14 @@ impl RdbFileSystem {
     pub fn set_dos_type(&var self, dos_type: u32) { self.dos_type = dos_type }
     pub fn lseg_block_count(&self) -> u32 {
         return if self.image.is_empty() {
-            0u32
+            0
         } else {
-            1u32 + (self.image.len() - 1u32) / LSEG_PAYLOAD_BYTES
+            1 + (self.image.len() - 1) / LSEG_PAYLOAD_BYTES
         }
     }
 
     pub fn matches_family(&self, dos_type: u32) -> bool {
-        return (self.dos_type & $FFFFFF00u32) == (dos_type & $FFFFFF00u32)
+        return (self.dos_type & $FFFFFF00) == (dos_type & $FFFFFF00)
     }
 
     @suppress("W0002", "Signed DeviceNode fields are stored as raw big-endian longwords")
@@ -347,23 +344,23 @@ impl RdbFileSystem {
     ) -> Result<(), RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         var writer = ByteWriter::new(block)
-        writer.fill(0u8)?
-        writer.write_be_u32(0u32, ID_FSHD)?
-        writer.write_be_u32(4u32, FSHD_SUMMED_LONGS)?
-        writer.write_be_u32(12u32, 7u32)?
-        writer.write_be_u32(16u32, next)?
-        writer.write_be_u32(32u32, self.dos_type)?
-        writer.write_be_u32(36u32, self.version)?
-        writer.write_be_u32(40u32, self.patch_flags | if first_lseg != NULL_BLOCK { FSHD_SEG_LIST_FLAG } else { 0u32 })?
-        writer.write_be_u32(44u32, self.node_type)?
-        writer.write_be_u32(48u32, self.task)?
-        writer.write_be_u32(52u32, self.lock)?
-        writer.write_be_u32(56u32, self.handler)?
-        writer.write_be_u32(60u32, self.stack_size)?
-        writer.write_be_u32(64u32, (u32)self.priority)?
-        writer.write_be_u32(68u32, self.startup)?
-        writer.write_be_u32(72u32, first_lseg)?
-        writer.write_be_u32(76u32, (u32)self.global_vec)?
+        writer.fill(0)?
+        writer.write_be_u32(0, ID_FSHD)?
+        writer.write_be_u32(4, FSHD_SUMMED_LONGS)?
+        writer.write_be_u32(12, 7)?
+        writer.write_be_u32(16, next)?
+        writer.write_be_u32(32, self.dos_type)?
+        writer.write_be_u32(36, self.version)?
+        writer.write_be_u32(40, self.patch_flags | if first_lseg != NULL_BLOCK { FSHD_SEG_LIST_FLAG } else { 0 })?
+        writer.write_be_u32(44, self.node_type)?
+        writer.write_be_u32(48, self.task)?
+        writer.write_be_u32(52, self.lock)?
+        writer.write_be_u32(56, self.handler)?
+        writer.write_be_u32(60, self.stack_size)?
+        writer.write_be_u32(64, (u32)self.priority)?
+        writer.write_be_u32(68, self.startup)?
+        writer.write_be_u32(72, first_lseg)?
+        writer.write_be_u32(76, (u32)self.global_vec)?
         write_checksum(&var writer, FSHD_SUMMED_LONGS)?
         return Result::Ok(())
     }
@@ -372,22 +369,22 @@ impl RdbFileSystem {
     pub fn from_header(block: Slice<u8>) -> Result<(RdbFileSystem, u32, u32), RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         let reader = ByteReader::new(block)
-        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0u32)? == ID_FSHD && reader.read_be_u32(4u32)? == FSHD_SUMMED_LONGS
-        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, FSHD_SUMMED_LONGS)? == 0u32
+        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0)? == ID_FSHD && reader.read_be_u32(4)? == FSHD_SUMMED_LONGS
+        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, FSHD_SUMMED_LONGS)? == 0
         return Result::Ok((RdbFileSystem {
-            dos_type: reader.read_be_u32(32u32)?,
-            version: reader.read_be_u32(36u32)?,
-            patch_flags: reader.read_be_u32(40u32)?,
-            node_type: reader.read_be_u32(44u32)?,
-            task: reader.read_be_u32(48u32)?,
-            lock: reader.read_be_u32(52u32)?,
-            handler: reader.read_be_u32(56u32)?,
-            stack_size: reader.read_be_u32(60u32)?,
-            priority: (i32)reader.read_be_u32(64u32)?,
-            startup: reader.read_be_u32(68u32)?,
-            global_vec: (i32)reader.read_be_u32(76u32)?,
+            dos_type: reader.read_be_u32(32)?,
+            version: reader.read_be_u32(36)?,
+            patch_flags: reader.read_be_u32(40)?,
+            node_type: reader.read_be_u32(44)?,
+            task: reader.read_be_u32(48)?,
+            lock: reader.read_be_u32(52)?,
+            handler: reader.read_be_u32(56)?,
+            stack_size: reader.read_be_u32(60)?,
+            priority: (i32)reader.read_be_u32(64)?,
+            startup: reader.read_be_u32(68)?,
+            global_vec: (i32)reader.read_be_u32(76)?,
             image: Vec::<u8>::new(),
-        }, reader.read_be_u32(16u32)?, reader.read_be_u32(72u32)?))
+        }, reader.read_be_u32(16)?, reader.read_be_u32(72)?))
     }
 
     pub fn write_lseg_block(&self,
@@ -400,15 +397,15 @@ impl RdbFileSystem {
         return Result::Err(RdbError::InvalidRange) unless offset < self.image.len()
         var count = self.image.len() - offset
         if count > LSEG_PAYLOAD_BYTES { count = LSEG_PAYLOAD_BYTES }
-        let summed_longs = 5u32 + (count + 3u32) / 4u32
+        let summed_longs: u32 = 5 + (count + 3) / 4
         var writer = ByteWriter::new(block)
-        writer.fill(0u8)?
-        writer.write_be_u32(0u32, ID_LSEG)?
-        writer.write_be_u32(4u32, summed_longs)?
-        writer.write_be_u32(12u32, 7u32)?
-        writer.write_be_u32(16u32, next)?
-        for position in 0u32..count {
-            writer.write_u8(20u32 + position, unsafe { self.image.as_ptr()[offset + position] })?
+        writer.fill(0)?
+        writer.write_be_u32(0, ID_LSEG)?
+        writer.write_be_u32(4, summed_longs)?
+        writer.write_be_u32(12, 7)?
+        writer.write_be_u32(16, next)?
+        for position in 0..count {
+            writer.write_u8(20 + position, unsafe { self.image.as_ptr()[offset + position] })?
         }
         write_checksum(&var writer, summed_longs)?
         return Result::Ok(())
@@ -417,15 +414,15 @@ impl RdbFileSystem {
     pub fn append_lseg_block(&var self, block: Slice<u8>) -> Result<u32, RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         let reader = ByteReader::new(block)
-        let summed_longs = reader.read_be_u32(4u32)?
-        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0u32)? == ID_LSEG && summed_longs >= 5u32 && summed_longs <= 128u32
-        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, summed_longs)? == 0u32
-        var count = (summed_longs - 5u32) * 4u32
+        let summed_longs = reader.read_be_u32(4)?
+        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0)? == ID_LSEG && summed_longs >= 5 && summed_longs <= 128
+        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, summed_longs)? == 0
+        var count = (summed_longs - 5) * 4
         if count > LSEG_PAYLOAD_BYTES { count = LSEG_PAYLOAD_BYTES }
-        for index in 0u32..count {
-            self.image.push(reader.read_u8(20u32 + index)?)?
+        for index in 0..count {
+            self.image.push(reader.read_u8(20 + index)?)?
         }
-        return Result::Ok(reader.read_be_u32(16u32)?)
+        return Result::Ok(reader.read_be_u32(16)?)
     }
 }
 
@@ -473,15 +470,15 @@ pub struct RdbModel {
 impl RdbModel {
     pub fn new(cylinders: u32, heads: u32, sectors: u32) -> RdbModel {
         let cylinder_blocks = heads * sectors
-        var reserved_cylinders = 2u32
+        var reserved_cylinders: u32 = 2
 
         if cylinder_blocks != 0 {
-            let required = (1024u32 + cylinder_blocks - 1u32) / cylinder_blocks
+            let required = (1024 + cylinder_blocks - 1) / cylinder_blocks
             if required > reserved_cylinders {
                 reserved_cylinders = required
             }
             if cylinders > 8 {
-                let cap = cylinders / 4u32
+                let cap = cylinders / 4
                 if reserved_cylinders > cap {
                     reserved_cylinders = cap
                 }
@@ -498,9 +495,9 @@ impl RdbModel {
             block_bytes: BLOCK_BYTES,
             cylinder_blocks: cylinder_blocks,
             low_cylinder: reserved_cylinders,
-            high_cylinder: if cylinders > 0 { cylinders - 1u32 } else { 0 },
+            high_cylinder: if cylinders > 0 { cylinders - 1 } else { 0 },
             rdb_blocks_low: 0,
-            rdb_blocks_high: if cylinder_blocks > 0 { reserved_cylinders * cylinder_blocks - 1u32 } else { 0 },
+            rdb_blocks_high: if cylinder_blocks > 0 { reserved_cylinders * cylinder_blocks - 1 } else { 0 },
             partitions: [RdbPartition::empty(); 32],
             partition_count: 0,
             file_systems: ArrayVec::<RdbFileSystem, 8>::new(),
@@ -549,7 +546,7 @@ impl RdbModel {
         var staged = ArrayVec::<RdbFileSystem, 8>::new()
         for file_system in pool {
             var used = false
-            for index in 0u32..self.partition_count {
+            for index in 0..self.partition_count {
                 if self.partitions[index].dos_type() == file_system.dos_type() {
                     used = true
                     break
@@ -572,9 +569,9 @@ impl RdbModel {
     }
 
     pub fn serialized_block_count(&self) -> u32 {
-        var count = 1u32 + self.partition_count
+        var count: u32 = 1 + self.partition_count
         for file_system in &self.file_systems {
-            count = count + 1u32 + file_system.lseg_block_count()
+            count = count + 1 + file_system.lseg_block_count()
         }
         return count
     }
@@ -584,33 +581,33 @@ impl RdbModel {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
 
         var writer = ByteWriter::new(block)
-        writer.fill(0u8)?
-        writer.write_be_u32(0u32, ID_RDSK)?
-        writer.write_be_u32(4u32, RDB_SUMMED_LONGS)?
-        writer.write_be_u32(12u32, 7u32)?
-        writer.write_be_u32(16u32, self.block_bytes)?
-        writer.write_be_u32(24u32, NULL_BLOCK)?
-        writer.write_be_u32(28u32, if self.partition_count > 0 { 1u32 } else { NULL_BLOCK })?
-        writer.write_be_u32(32u32, if self.file_systems.is_empty() {
+        writer.fill(0)?
+        writer.write_be_u32(0, ID_RDSK)?
+        writer.write_be_u32(4, RDB_SUMMED_LONGS)?
+        writer.write_be_u32(12, 7)?
+        writer.write_be_u32(16, self.block_bytes)?
+        writer.write_be_u32(24, NULL_BLOCK)?
+        writer.write_be_u32(28, if self.partition_count > 0 { 1 } else { NULL_BLOCK })?
+        writer.write_be_u32(32, if self.file_systems.is_empty() {
             NULL_BLOCK
         } else {
-            1u32 + self.partition_count
+            1 + self.partition_count
         })?
-        writer.write_be_u32(36u32, NULL_BLOCK)?
-        writer.write_be_u32(64u32, self.cylinders)?
-        writer.write_be_u32(68u32, self.sectors)?
-        writer.write_be_u32(72u32, self.heads)?
-        writer.write_be_u32(76u32, 1u32)?
-        writer.write_be_u32(80u32, self.cylinders)?
-        writer.write_be_u32(96u32, self.cylinders)?
-        writer.write_be_u32(100u32, self.cylinders)?
-        writer.write_be_u32(104u32, 3u32)?
-        writer.write_be_u32(128u32, self.rdb_blocks_low)?
-        writer.write_be_u32(132u32, self.rdb_blocks_high)?
-        writer.write_be_u32(136u32, self.low_cylinder)?
-        writer.write_be_u32(140u32, self.high_cylinder)?
-        writer.write_be_u32(144u32, self.cylinder_blocks)?
-        writer.write_be_u32(152u32, self.serialized_block_count() - 1u32)?
+        writer.write_be_u32(36, NULL_BLOCK)?
+        writer.write_be_u32(64, self.cylinders)?
+        writer.write_be_u32(68, self.sectors)?
+        writer.write_be_u32(72, self.heads)?
+        writer.write_be_u32(76, 1)?
+        writer.write_be_u32(80, self.cylinders)?
+        writer.write_be_u32(96, self.cylinders)?
+        writer.write_be_u32(100, self.cylinders)?
+        writer.write_be_u32(104, 3)?
+        writer.write_be_u32(128, self.rdb_blocks_low)?
+        writer.write_be_u32(132, self.rdb_blocks_high)?
+        writer.write_be_u32(136, self.low_cylinder)?
+        writer.write_be_u32(140, self.high_cylinder)?
+        writer.write_be_u32(144, self.cylinder_blocks)?
+        writer.write_be_u32(152, self.serialized_block_count() - 1)?
 
         write_checksum(&var writer, RDB_SUMMED_LONGS)?
         return Result::Ok(())
@@ -620,21 +617,21 @@ impl RdbModel {
     pub fn from_header(block: Slice<u8>) -> Result<RdbModel, RdbError> {
         return Result::Err(RdbError::BufferTooSmall) unless block.len() >= BLOCK_BYTES
         let reader = ByteReader::new(block)
-        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0u32)? == ID_RDSK && reader.read_be_u32(4u32)? == RDB_SUMMED_LONGS
-        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, RDB_SUMMED_LONGS)? == 0u32
+        return Result::Err(RdbError::InvalidBlock) unless reader.read_be_u32(0)? == ID_RDSK && reader.read_be_u32(4)? == RDB_SUMMED_LONGS
+        return Result::Err(RdbError::InvalidChecksum) unless header_sum(&reader, RDB_SUMMED_LONGS)? == 0
 
-        let cylinders = reader.read_be_u32(64u32)?
-        let sectors = reader.read_be_u32(68u32)?
-        let heads = reader.read_be_u32(72u32)?
+        let cylinders = reader.read_be_u32(64)?
+        let sectors = reader.read_be_u32(68)?
+        let heads = reader.read_be_u32(72)?
         var model = RdbModel::new(cylinders, heads, sectors)
-        model.block_bytes = reader.read_be_u32(16u32)?
-        if model.block_bytes == 0u32 { model.block_bytes = BLOCK_BYTES }
-        model.rdb_blocks_low = reader.read_be_u32(128u32)?
-        model.rdb_blocks_high = reader.read_be_u32(132u32)?
-        model.low_cylinder = reader.read_be_u32(136u32)?
-        model.high_cylinder = reader.read_be_u32(140u32)?
-        model.cylinder_blocks = reader.read_be_u32(144u32)?
-        if model.cylinder_blocks == 0u32 { model.cylinder_blocks = heads * sectors }
+        model.block_bytes = reader.read_be_u32(16)?
+        if model.block_bytes == 0 { model.block_bytes = BLOCK_BYTES }
+        model.rdb_blocks_low = reader.read_be_u32(128)?
+        model.rdb_blocks_high = reader.read_be_u32(132)?
+        model.low_cylinder = reader.read_be_u32(136)?
+        model.high_cylinder = reader.read_be_u32(140)?
+        model.cylinder_blocks = reader.read_be_u32(144)?
+        if model.cylinder_blocks == 0 { model.cylinder_blocks = heads * sectors }
         return Result::Ok(model)
     }
 
@@ -643,9 +640,9 @@ impl RdbModel {
     pub fn from_image(image: Slice<u8>) -> Result<RdbModel, RdbError> {
         let block_count = image.len() / BLOCK_BYTES
         var scan_count = block_count
-        if scan_count > 16u32 { scan_count = 16u32 }
+        if scan_count > 16 { scan_count = 16 }
         var header_block = scan_count
-        for scan in 0u32..scan_count {
+        for scan in 0..scan_count {
             let block = image_block(&image, scan)?
             match RdbModel::from_header(block) {
                 Result::Ok(_) => {
@@ -660,11 +657,11 @@ impl RdbModel {
         let header = image_block(&image, header_block)?
         let header_reader = ByteReader::new(header)
         var model = RdbModel::from_header(header)?
-        var partition_block = header_reader.read_be_u32(28u32)?
-        var file_system_block = header_reader.read_be_u32(32u32)?
+        var partition_block = header_reader.read_be_u32(28)?
+        var file_system_block = header_reader.read_be_u32(32)?
 
-        var partition_guard = 0u32
-        while partition_block != NULL_BLOCK && partition_block != 0u32 {
+        var partition_guard: u32 = 0
+        while partition_block != NULL_BLOCK && partition_block != 0 {
             return Result::Err(RdbError::TooManyPartitions) unless partition_guard < MAX_PARTITIONS
             let record = RdbPartition::from_block(image_block(&image, partition_block)?)?
             let (partition, next) = record
@@ -675,15 +672,15 @@ impl RdbModel {
         }
         model.validate()?
 
-        var file_system_guard = 0u32
-        while file_system_block != NULL_BLOCK && file_system_block != 0u32 {
+        var file_system_guard: u32 = 0
+        while file_system_block != NULL_BLOCK && file_system_block != 0 {
             return Result::Err(RdbError::TooManyFileSystems) unless file_system_guard < MAX_FILE_SYSTEMS
             let record = RdbFileSystem::from_header(image_block(&image, file_system_block)?)?
             let (parsed, next_file_system, first_lseg) = record
             var file_system = parsed
             var lseg_block = first_lseg
-            var lseg_guard = 0u32
-            while lseg_block != NULL_BLOCK && lseg_block != 0u32 {
+            var lseg_guard: u32 = 0
+            while lseg_block != NULL_BLOCK && lseg_block != 0 {
                 return Result::Err(RdbError::InvalidRange) unless lseg_guard < block_count
                 lseg_block = file_system.append_lseg_block(image_block(&image, lseg_block)?)?
                 lseg_guard++
@@ -701,15 +698,19 @@ impl RdbModel {
     }
 
     fn name_is_taken(&self, name: Str, skip: u32) -> bool {
-        for index in 0u32..self.partition_count {
+        for index in 0..self.partition_count {
             return true if index != skip && self.partitions[index].name().equals(name)
         }
         return false
     }
 
+    pub fn has_partition_named(&self, name: Str) -> bool {
+        return self.name_is_taken(name, MAX_PARTITIONS)
+    }
+
     /// Lowest unused Workbench-style partition name (`DH0` through `DH100`).
     pub fn next_partition_name(&self) -> FixedString<8> {
-        for number in 0u32..100u32 {
+        for number in 0..100 {
             var candidate = FixedString::<8>::new()
             let _ = candidate.push_str("DH")
             let _ = candidate.push_u32(number)
@@ -720,8 +721,8 @@ impl RdbModel {
 
     fn next_free_cylinder(&self) -> u32 {
         var next = self.low_cylinder
-        for index in 0u32..self.partition_count {
-            let candidate = self.partitions[index].high_cylinder + 1u32
+        for index in 0..self.partition_count {
+            let candidate = self.partitions[index].high_cylinder + 1
             next = candidate if candidate > next
         }
         return next
@@ -737,7 +738,7 @@ impl RdbModel {
         return Result::Err(RdbError::DuplicateName) if self.name_is_taken(name, MAX_PARTITIONS)
 
         let cylinder_count = mb_to_cylinders(size_mb, self.cylinder_blocks, self.block_bytes)
-        let end = start + cylinder_count - 1u32
+        let end = start + cylinder_count - 1
         return Result::Err(RdbError::NoSpace) unless start >= self.low_cylinder && end <= self.high_cylinder
 
         var partition = RdbPartition::empty()
@@ -760,7 +761,7 @@ impl RdbModel {
 
     pub fn add_partition_cylinders(&var self, name: Str, start: u32, end: u32, dos_type: u32) -> Result<u32, RdbError> {
         return Result::Err(RdbError::TooManyPartitions) unless self.partition_count < MAX_PARTITIONS
-        return Result::Err(RdbError::InvalidName) unless name.len() >= 1u32 && name.len() <= 31u32
+        return Result::Err(RdbError::InvalidName) unless name.len() >= 1 && name.len() <= 31
         return Result::Err(RdbError::DuplicateName) if self.name_is_taken(name, MAX_PARTITIONS)
         return Result::Err(RdbError::NoSpace) unless start >= self.low_cylinder && start <= end && end <= self.high_cylinder
 
@@ -784,7 +785,7 @@ impl RdbModel {
 
     pub fn update_partition(&var self, index: u32, name: Str, size_mb: u32, dos_type: u32) -> Result<(), RdbError> {
         return Result::Err(RdbError::InvalidRange) unless index < self.partition_count
-        return Result::Err(RdbError::InvalidName) unless name.len() >= 1u32 && name.len() <= 31u32
+        return Result::Err(RdbError::InvalidName) unless name.len() >= 1 && name.len() <= 31
         return Result::Err(RdbError::DuplicateName) if self.name_is_taken(name, index)
 
         let previous = self.partitions[index]
@@ -792,7 +793,7 @@ impl RdbModel {
         var updated = RdbPartition::empty()
         updated.name.push_str(name)?
         updated.low_cylinder = previous.low_cylinder
-        updated.high_cylinder = updated.low_cylinder + cylinder_count - 1u32
+        updated.high_cylinder = updated.low_cylinder + cylinder_count - 1
         updated.dos_type = dos_type
         updated.buffers = previous.buffers
         updated.boot_priority = previous.boot_priority
@@ -815,7 +816,7 @@ impl RdbModel {
         return Result::Err(RdbError::DuplicateName) if self.name_is_taken(settings.name.as_str(), index)
         let previous = self.partitions[index]
         let current_mb = cylinders_to_mb(
-            previous.high_cylinder - previous.low_cylinder + 1u32,
+            previous.high_cylinder - previous.low_cylinder + 1,
             self.cylinder_blocks,
             self.block_bytes
         )
@@ -827,7 +828,7 @@ impl RdbModel {
         updated.flags = previous.flags
         if settings.size_mb != current_mb {
             let cylinder_count = mb_to_cylinders(settings.size_mb, self.cylinder_blocks, self.block_bytes)
-            updated.high_cylinder = updated.low_cylinder + cylinder_count - 1u32
+            updated.high_cylinder = updated.low_cylinder + cylinder_count - 1
         }
         updated.dos_type = settings.dos_type
         updated.bootable = settings.bootable
@@ -861,8 +862,8 @@ impl RdbModel {
     pub fn delete_partition(&var self, index: u32) -> Result<(), RdbError> {
         return Result::Err(RdbError::InvalidRange) unless index < self.partition_count
         var current = index
-        while current + 1u32 < self.partition_count {
-            self.partitions[current] = self.partitions[current + 1u32]
+        while current + 1 < self.partition_count {
+            self.partitions[current] = self.partitions[current + 1]
             current++
         }
         self.partition_count--
@@ -874,11 +875,11 @@ impl RdbModel {
         return Result::Err(RdbError::InvalidRange) unless index < self.partition_count
         let target = self.partitions[index]
         var start = self.low_cylinder
-        for other_index in 0u32..self.partition_count {
+        for other_index in 0..self.partition_count {
             if other_index == index { continue }
             let other = self.partitions[other_index]
-            if other.high_cylinder < target.low_cylinder && other.high_cylinder + 1u32 > start {
-                start = other.high_cylinder + 1u32
+            if other.high_cylinder < target.low_cylinder && other.high_cylinder + 1 > start {
+                start = other.high_cylinder + 1
             }
         }
         return Result::Ok(start)
@@ -888,23 +889,23 @@ impl RdbModel {
         return Result::Err(RdbError::InvalidRange) unless index < self.partition_count
         let target = self.partitions[index]
         var end = self.high_cylinder
-        for other_index in 0u32..self.partition_count {
+        for other_index in 0..self.partition_count {
             if other_index == index { continue }
             let other = self.partitions[other_index]
-            if other.low_cylinder > target.high_cylinder && other.low_cylinder - 1u32 < end {
-                end = other.low_cylinder - 1u32
+            if other.low_cylinder > target.high_cylinder && other.low_cylinder - 1 < end {
+                end = other.low_cylinder - 1
             }
         }
         return Result::Ok(end)
     }
 
     pub fn validate(&self) -> Result<(), RdbError> {
-        for left in 0u32..self.partition_count {
+        for left in 0..self.partition_count {
             let partition = self.partitions[left]
             return Result::Err(RdbError::InvalidRange) unless partition.low_cylinder <= partition.high_cylinder
             return Result::Err(RdbError::NoSpace) unless partition.low_cylinder >= self.low_cylinder && partition.high_cylinder <= self.high_cylinder
 
-            for right in left + 1u32..self.partition_count {
+            for right in left + 1..self.partition_count {
                 let other = self.partitions[right]
                 return Result::Err(RdbError::DuplicateName) if partition.name().equals(other.name())
                 return Result::Err(RdbError::Overlap) if partition.low_cylinder <= other.high_cylinder && other.low_cylinder <= partition.high_cylinder
@@ -915,14 +916,14 @@ impl RdbModel {
 
     pub fn largest_free_gap(&self) -> Option<CylinderRange> {
         var cursor = self.low_cylinder
-        var best_start = 0u32
-        var best_end = 0u32
-        var best_length = 0u32
+        var best_start: u32 = 0
+        var best_end: u32 = 0
+        var best_length: u32 = 0
 
         while cursor <= self.high_cylinder {
-            var next_start = self.high_cylinder + 1u32
+            var next_start = self.high_cylinder + 1
             var covering = MAX_PARTITIONS
-            var index = 0u32
+            var index: u32 = 0
             while index < self.partition_count {
                 let partition = self.partitions[index]
                 if partition.low_cylinder <= cursor && cursor <= partition.high_cylinder {
@@ -936,16 +937,16 @@ impl RdbModel {
             }
 
             if covering < MAX_PARTITIONS {
-                cursor = self.partitions[covering].high_cylinder + 1u32
+                cursor = self.partitions[covering].high_cylinder + 1
                 continue
             }
 
-            var gap_end = if next_start > 0 { next_start - 1u32 } else { 0 }
+            var gap_end = if next_start > 0 { next_start - 1 } else { 0 }
             if gap_end > self.high_cylinder {
                 gap_end = self.high_cylinder
             }
             if gap_end >= cursor {
-                let length = gap_end - cursor + 1u32
+                let length = gap_end - cursor + 1
                 if length > best_length {
                     best_length = length
                     best_start = cursor
@@ -960,7 +961,7 @@ impl RdbModel {
     }
 
     pub fn split_largest_gap(&var self, count: u32, dos_type: u32) -> Result<(), RdbError> {
-        return Result::Err(RdbError::InvalidRange) unless count > 0u32 && self.partition_count + count <= MAX_PARTITIONS
+        return Result::Err(RdbError::InvalidRange) unless count > 0 && self.partition_count + count <= MAX_PARTITIONS
         let gap = self.largest_free_gap().ok_or(RdbError::NoSpace)?
         return Result::Err(RdbError::NoSpace) if count > gap.cylinders()
 
@@ -968,16 +969,16 @@ impl RdbModel {
         let ordinary_size = gap.cylinders() / count
         var extra = gap.cylinders() % count
         var start = gap.start()
-        for partition_index in 0u32..count {
+        for partition_index in 0..count {
             var size = ordinary_size
-            if extra > 0u32 {
+            if extra > 0 {
                 size++
                 extra--
             }
-            let end = start + size - 1u32
-            var suffix = 0u32
+            let end = start + size - 1
+            var suffix: u32 = 0
             var added = false
-            while suffix < 1000u32 && !added {
+            while suffix < 1000 && !added {
                 var name = FixedString::<32>::new()
                 name.push_str("DH")?
                 name.push_u32(suffix)?
@@ -993,7 +994,7 @@ impl RdbModel {
                 while self.partition_count > before { self.partition_count-- }
                 return Result::Err(RdbError::NoSpace)
             }
-            start = end + 1u32
+            start = end + 1
         }
         return Result::Ok(())
     }
@@ -1002,15 +1003,15 @@ impl RdbModel {
 pub fn mb_to_cylinders(mb: u32, cylinder_blocks: u32, block_bytes: u32) -> u32 {
     let bytes_per_block = if block_bytes == 0 { BLOCK_BYTES } else { block_bytes }
     return 1 if cylinder_blocks == 0
-    let blocks_per_mb = (1024u32 * 1024u32) / bytes_per_block
+    let blocks_per_mb = (1024 * 1024) / bytes_per_block
     let total_blocks = mb * blocks_per_mb
-    let result = (total_blocks + cylinder_blocks - 1u32) / cylinder_blocks
+    let result = (total_blocks + cylinder_blocks - 1) / cylinder_blocks
     return if result == 0 { 1 } else { result }
 }
 
 pub fn cylinders_to_mb(cylinders: u32, cylinder_blocks: u32, block_bytes: u32) -> u32 {
     let bytes_per_block = if block_bytes == 0 { BLOCK_BYTES } else { block_bytes }
-    let blocks_per_mb = (1024u32 * 1024u32) / bytes_per_block
+    let blocks_per_mb = (1024 * 1024) / bytes_per_block
     return 0 if blocks_per_mb == 0
     return (cylinders * cylinder_blocks) / blocks_per_mb
 }

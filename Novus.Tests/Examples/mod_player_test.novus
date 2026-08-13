@@ -1,9 +1,9 @@
 // Simple MOD Player Test - debug version with diagnostics
 from std::core import Result
-from std::audio::ptplayer import ModPlayer
-from std::audio::errors import AudioError
-from std::hardware::chipset import DISPLAY, DisplayType
-from std::ffi::dos import Delay, PutStr, Output, Write, Input, WaitForChar, Read
+from amiga::sys::hardware::ptplayer import ModPlayer
+from amiga::audio import AudioError
+from amiga::sys::hardware::chipset import DISPLAY, DisplayType
+from amiga::raw::dos import Delay, PutStr, Output, Write, Input, WaitForChar, Read
 
 // External debug helper to read mt_Enable value
 extern fn __novus_ptplayer_get_enable() -> u8

@@ -3,9 +3,9 @@
 
 from std::core import Option, Result, Drop, Clone
 from std::memory::block import MemoryBlock
-from std::error::errors import ExecError
-from std::ffi::exec import CopyMem, FreeMem
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
+from std::memory::errors import MemoryError
+from amiga::raw::exec import CopyMem, FreeMem
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 
 /// SmallVec<T, N> - Small vector with configurable initial capacity
 ///
@@ -42,7 +42,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Create a SmallVec with pre-allocated capacity
     /// Uses the const generic N as the initial capacity
-    pub fn with_capacity() -> Result<SmallVec<T, N>, ExecError> {
+    pub fn with_capacity() -> Result<SmallVec<T, N>, MemoryError> {
         if N == 0 {
             return Result::Ok(@zeroed(SmallVec<T, N>))
         }
@@ -50,7 +50,7 @@ impl<T, const N: u32> SmallVec<T, N> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = N * element_size
 
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -63,7 +63,7 @@ impl<T, const N: u32> SmallVec<T, N> {
                 })
             },
             Result::Err(_) => {
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }
@@ -90,7 +90,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Push an element onto the end of the SmallVec
     /// Returns Err if allocation fails
-    pub fn push(&var self, consuming value: T) -> Result<(), ExecError> {
+    pub fn push(&var self, consuming value: T) -> Result<(), MemoryError> {
         if self.len >= self.capacity {
             // Need to grow - use N as initial capacity, then double
             let new_capacity = if self.capacity == 0 { N } else { self.capacity * 2 }
@@ -102,7 +102,7 @@ impl<T, const N: u32> SmallVec<T, N> {
         }
 
         // Store the element
-        self.ptr[self.len] = value
+        unsafe { self.ptr[self.len] = value }
         self.len = self.len + 1
         return Result::Ok(())
     }
@@ -114,7 +114,7 @@ impl<T, const N: u32> SmallVec<T, N> {
             return Option::None
         }
         self.len = self.len - 1
-        return Option::Some(self.ptr[self.len])
+        return Option::Some(unsafe { self.ptr[self.len] })
     }
 
     /// Get a reference to an element by index
@@ -123,7 +123,7 @@ impl<T, const N: u32> SmallVec<T, N> {
         if index >= self.len {
             return Option::None
         }
-        return Option::Some(&self.ptr[index])
+        return Option::Some(unsafe { &self.ptr[index] })
     }
 
     /// Get a mutable reference to an element by index
@@ -132,35 +132,37 @@ impl<T, const N: u32> SmallVec<T, N> {
         if index >= self.len {
             return Option::None
         }
-        return Option::Some(&var self.ptr[index])
+        return Option::Some(unsafe { &var self.ptr[index] })
     }
 
     /// Set an element at the given index
-    /// Returns Err(ExecError::IndexOutOfBounds) if index is out of bounds
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), ExecError> {
+    /// Returns Err(MemoryError::IndexOutOfBounds) if index is out of bounds
+    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
-            return Result::Err(ExecError::IndexOutOfBounds)
+            return Result::Err(MemoryError::IndexOutOfBounds)
         }
-        @drop_in_place(&var self.ptr[index])
-        self.ptr[index] = value
+        unsafe {
+            @drop_in_place(&var self.ptr[index])
+            self.ptr[index] = value
+        }
         return Result::Ok(())
     }
 
     /// Clear all elements without deallocating
     pub fn clear(&var self) {
-        while self.len > 0u32 {
+        while self.len > 0 {
             self.len--
-            @drop_in_place(&var self.ptr[self.len])
+            unsafe { @drop_in_place(&var self.ptr[self.len]) }
         }
     }
 
     /// Internal: grow the storage to at least new_capacity
-    fn grow(&var self, new_capacity: u32) -> Result<(), ExecError> {
+    fn grow(&var self, new_capacity: u32) -> Result<(), MemoryError> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = new_capacity * element_size
 
         // Allocate new heap storage
-        let block_opt: Result<MemoryBlock, ExecError> = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
+        let block_opt = MemoryBlock::alloc(bytes_needed, MEMF_PUBLIC | MEMF_CLEAR)
 
         match block_opt {
             Result::Ok(var block) => {
@@ -184,7 +186,7 @@ impl<T, const N: u32> SmallVec<T, N> {
                 return Result::Ok(())
             },
             Result::Err(_) => {
-                return Result::Err(ExecError::NoMem)
+                return Result::Err(MemoryError::OutOfMemory)
             }
         }
     }

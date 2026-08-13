@@ -1,0 +1,37 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: mathieeesingbas.library
+// Base: _MathIeeeSingBasBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFix(parm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFlt(integer: i32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPCmp(leftParm: f32, rightParm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPTst(parm: f32) -> i32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPAbs(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPNeg(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPAdd(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPSub(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPMul(leftParm: f32, rightParm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPDiv(dividend: f32, divisor: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPFloor(parm: f32) -> f32
+@library("mathieeesingbas.library")
+extern pub fn IEEESPCeil(parm: f32) -> f32

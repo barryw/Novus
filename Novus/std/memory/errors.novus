@@ -1,0 +1,25 @@
+from std::core import Error
+
+pub enum MemoryError {
+    OutOfMemory,
+    IndexOutOfBounds,
+    LengthMismatch,
+    InvalidCapacity,
+    CapacityExceeded,
+}
+
+impl MemoryError {
+    pub fn message(&self) -> *u8 {
+        return match *self {
+            MemoryError::OutOfMemory => "Memory allocation failed",
+            MemoryError::IndexOutOfBounds => "Index out of bounds",
+            MemoryError::LengthMismatch => "Slice lengths do not match",
+            MemoryError::InvalidCapacity => "Invalid capacity",
+            MemoryError::CapacityExceeded => "Capacity exceeded",
+        }
+    }
+}
+
+impl Error for MemoryError {
+    fn message(&self) -> *u8 { return MemoryError::message(self) }
+}

@@ -12,7 +12,7 @@ public class ModuleImportHelperTests
 {
     [Theory]
     [InlineData("std::core", "/test/std", "/test/std/core.novus")]
-    [InlineData("std::ffi::exec", "/test/std", "/test/std/ffi/exec.novus")]
+    [InlineData("amiga::raw::exec", "/test/std", "/test/std/amiga/raw/exec.novus")]
     [InlineData("std::collections", "/test/std", "/test/std/collections.novus")]
     public void ResolveModulePath_StdModule_ReturnsCorrectPath(string moduleNamespace, string stdLibPath, string expected)
     {
@@ -33,6 +33,20 @@ public class ModuleImportHelperTests
         var normalizedResult = result.Replace('\\', '/');
 
         Assert.Equal("myapp/utils.novus", normalizedResult);
+    }
+
+    [Theory]
+    [InlineData("amiga::storage", "/test/std/amiga/storage.novus")]
+    [InlineData("amiga::sys::device", "/test/std/amiga/sys/device.novus")]
+    [InlineData("amiga::raw::exec", "/test/std/amiga/raw/exec.novus")]
+    [InlineData("amiga::raw::structs", "/test/std/amiga/raw/structs.novus")]
+    [InlineData("amiga::raw::devices::timer", "/test/std/amiga/raw/devices/timer.novus")]
+    [InlineData("amiga::raw::devices::input", "/test/std/amiga/raw/devices/input.novus")]
+    [InlineData("amiga::raw::resources::cia", "/test/std/amiga/raw/resources/cia.novus")]
+    [InlineData("amiga::raw::resources::battclock", "/test/std/amiga/raw/resources/battclock.novus")]
+    public void ResolveModulePath_AmigaModule_UsesPlatformLibrary(string moduleNamespace, string expected)
+    {
+        Assert.Equal(expected, ModuleImportHelper.ResolveModulePath(moduleNamespace, "/test/std"));
     }
 
     [Fact]
@@ -191,7 +205,7 @@ public class ModuleImportHelperTests
     {
         var module = CreateParser("pub const TAG_USER: u32 = 1 << 31\npub const WA_Dummy: u32 = TAG_USER + 99\n")
             .compilationUnit();
-        var request = CreateParser("from std::ffi::amiga_consts import WA_*\n")
+        var request = CreateParser("from amiga::raw::consts import WA_*\n")
             .compilationUnit().importDeclaration()[0];
 
         var names = ModuleImportHelper.BuildImportNameSet(module, false, request.importList());

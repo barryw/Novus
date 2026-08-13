@@ -13,8 +13,8 @@ pub fn main() -> i32 {
     let rst = reset()
 
     // Simulate a 20-step progress bar
-    let total: u32 = 20u32
-    var current: u32 = 0u32
+    let total: u32 = 20
+    var current: u32 = 0
 
     while current <= total {
         // Move to beginning of line and clear it
@@ -26,7 +26,7 @@ pub fn main() -> i32 {
         // Filled portion (Pen3 = blue on standard WB)
         write(f"{fg(Pen::Pen3)}")
 
-        var j: u32 = 0u32
+        var j: u32 = 0
         while j < current {
             write("=")
             j++
@@ -44,53 +44,53 @@ pub fn main() -> i32 {
         write("] ")
 
         // Percentage
-        let pct = (current * 100u32) / total
-        if pct < 10u32 {
+        let pct = (current * 100) / total
+        if pct < 10 {
             write("  ")
-        } else if pct < 100u32 {
+        } else if pct < 100 {
             write(" ")
         }
 
         // Simple number output (would be better with format strings)
-        if pct == 0u32 {
+        if pct == 0 {
             write("0")
-        } else if pct == 5u32 {
+        } else if pct == 5 {
             write("5")
-        } else if pct == 10u32 {
+        } else if pct == 10 {
             write("10")
-        } else if pct == 15u32 {
+        } else if pct == 15 {
             write("15")
-        } else if pct == 20u32 {
+        } else if pct == 20 {
             write("20")
-        } else if pct == 25u32 {
+        } else if pct == 25 {
             write("25")
-        } else if pct == 30u32 {
+        } else if pct == 30 {
             write("30")
-        } else if pct == 35u32 {
+        } else if pct == 35 {
             write("35")
-        } else if pct == 40u32 {
+        } else if pct == 40 {
             write("40")
-        } else if pct == 45u32 {
+        } else if pct == 45 {
             write("45")
-        } else if pct == 50u32 {
+        } else if pct == 50 {
             write("50")
-        } else if pct == 55u32 {
+        } else if pct == 55 {
             write("55")
-        } else if pct == 60u32 {
+        } else if pct == 60 {
             write("60")
-        } else if pct == 65u32 {
+        } else if pct == 65 {
             write("65")
-        } else if pct == 70u32 {
+        } else if pct == 70 {
             write("70")
-        } else if pct == 75u32 {
+        } else if pct == 75 {
             write("75")
-        } else if pct == 80u32 {
+        } else if pct == 80 {
             write("80")
-        } else if pct == 85u32 {
+        } else if pct == 85 {
             write("85")
-        } else if pct == 90u32 {
+        } else if pct == 90 {
             write("90")
-        } else if pct == 95u32 {
+        } else if pct == 95 {
             write("95")
         } else {
             write("100")

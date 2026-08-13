@@ -1,15 +1,14 @@
 from std::core import Error, Option, Result
-from std::ffi::amiga_consts import MEMF_PUBLIC, MODE_OLDFILE, OFFSET_BEGINNING, OFFSET_END
-from std::memory::block import MemoryBlock
-from std::memory::slice import Slice
-from std::os::dos import OwnedFileHandle
-from std::strings::core import Str
+from std::memory import Buffer, Slice
+from std::string import Str
+from amiga::dos import File
 from rdb import RdbFileSystem
 
-const MAX_HANDLER_BYTES: u32 = 512u32 * 1024u32
+const MAX_HANDLER_BYTES: u32 = 512 * 1024
 const PFS3: u32 = $50465303
 const PDS3: u32 = $50445303
 const SFS2: u32 = $53465302
+const DOS3: u32 = $444F5303
 
 pub enum FsLoadError {
     OpenFailed,
@@ -36,43 +35,46 @@ impl Error for FsLoadError {
 }
 
 fn byte(image: &Slice<u8>, index: u32) -> u8 {
-    return *image.get_unchecked(index)
+    return match image.get(index) {
+        Option::Some(value) => *value,
+        Option::None => 0,
+    }
 }
 
 pub fn is_hunk_file(image: Slice<u8>) -> bool {
-    return false unless image.len() >= 4u32
-    return byte(&image, 0u32) == 0u8 && byte(&image, 1u32) == 0u8 &&
-        byte(&image, 2u32) == 3u8 && byte(&image, 3u32) == $F3u8
+    return false unless image.len() >= 4
+    return byte(&image, 0) == 0 && byte(&image, 1) == 0 &&
+        byte(&image, 2) == 3 && byte(&image, 3) == $F3
 }
 
 fn parse_number_pair(image: &Slice<u8>, start: u32, end: u32) -> Option<(u32, u32)> {
     var cursor = start
     return Option::None unless cursor < end && byte(image, cursor) >= (u8)'0' && byte(image, cursor) <= (u8)'9'
-    var major = 0u32
+    var major: u32 = 0
     while cursor < end && byte(image, cursor) >= (u8)'0' && byte(image, cursor) <= (u8)'9' {
-        major = if major <= 6553u32 { major * 10u32 + (u32)(byte(image, cursor) - (u8)'0') } else { 65535u32 }
+        major = if major <= 6553 { major * 10 + (u32)(byte(image, cursor) - (u8)'0') } else { 65535 }
         cursor++
     }
     return Option::None unless cursor < end && byte(image, cursor) == (u8)'.'
     cursor++
     return Option::None unless cursor < end && byte(image, cursor) >= (u8)'0' && byte(image, cursor) <= (u8)'9'
-    var minor = 0u32
+    var minor: u32 = 0
     while cursor < end && byte(image, cursor) >= (u8)'0' && byte(image, cursor) <= (u8)'9' {
-        minor = if minor <= 6553u32 { minor * 10u32 + (u32)(byte(image, cursor) - (u8)'0') } else { 65535u32 }
+        minor = if minor <= 6553 { minor * 10 + (u32)(byte(image, cursor) - (u8)'0') } else { 65535 }
         cursor++
     }
-    return Option::Some(((major << 16u32) | minor, cursor))
+    return Option::Some(((major << 16) | minor, cursor))
 }
 
 pub fn parse_version(image: Slice<u8>) -> u32 {
-    if image.len() >= 5u32 {
-        for index in 0u32..image.len() - 4u32 {
-            let cookie = byte(&image, index) == (u8)'$' && byte(&image, index + 1u32) == (u8)'V' &&
-                byte(&image, index + 2u32) == (u8)'E' && byte(&image, index + 3u32) == (u8)'R' &&
-                byte(&image, index + 4u32) == (u8)':'
+    if image.len() >= 5 {
+        for index in 0..image.len() - 4 {
+            let cookie = byte(&image, index) == (u8)'$' && byte(&image, index + 1) == (u8)'V' &&
+                byte(&image, index + 2) == (u8)'E' && byte(&image, index + 3) == (u8)'R' &&
+                byte(&image, index + 4) == (u8)':'
             if cookie {
-                var cursor = index + 5u32
-                var end = cursor + 200u32
+                var cursor = index + 5
+                var end = cursor + 200
                 if end > image.len() { end = image.len() }
                 while cursor < end {
                     match parse_number_pair(&image, cursor, end) {
@@ -87,71 +89,66 @@ pub fn parse_version(image: Slice<u8>) -> u32 {
             }
         }
     }
-    if image.len() >= 4u32 {
-        for index in 0u32..image.len() - 1u32 {
+    if image.len() >= 4 {
+        for index in 0..image.len() - 1 {
             if byte(&image, index) == (u8)' ' {
-                match parse_number_pair(&image, index + 1u32, image.len()) {
+                match parse_number_pair(&image, index + 1, image.len()) {
                     Option::Some(pair) => {
                         let (version, end) = pair
-                        return version if end + 1u32 < image.len() && byte(&image, end) == (u8)' ' && byte(&image, end + 1u32) == (u8)'('
+                        return version if end + 1 < image.len() && byte(&image, end) == (u8)' ' && byte(&image, end + 1) == (u8)'('
                     },
                     Option::None => {},
                 }
             }
         }
     }
-    return 0u32
+    return 0
 }
 
 pub fn detect_dos_type(image: Slice<u8>) -> u32 {
-    return 0u32 unless image.len() >= 4u32
-    var pfs = 0u32
-    var pds = 0u32
-    var sfs = 0u32
-    for index in 0u32..image.len() - 3u32 {
-        continue if byte(&image, index + 3u32) > 15u8
+    return 0 unless image.len() >= 4
+    var pfs: u32 = 0
+    var pds: u32 = 0
+    var sfs: u32 = 0
+    for index in 0..image.len() - 3 {
+        continue if byte(&image, index + 3) > 15
         let a = byte(&image, index)
-        let b = byte(&image, index + 1u32)
-        let c = byte(&image, index + 2u32)
+        let b = byte(&image, index + 1)
+        let c = byte(&image, index + 2)
         if a == (u8)'P' && b == (u8)'F' && c == (u8)'S' { pfs++ }
         if a == (u8)'P' && b == (u8)'D' && c == (u8)'S' { pds++ }
         if a == (u8)'S' && b == (u8)'F' && c == (u8)'S' { sfs++ }
     }
-    return SFS2 if sfs >= 2u32 && sfs >= pfs && sfs >= pds
-    return PFS3 if pfs >= 2u32 && pfs >= pds
-    return PDS3 if pds >= 2u32
-    return 0u32
+    return SFS2 if sfs >= 2 && sfs >= pfs && sfs >= pds
+    return PFS3 if pfs >= 2 && pfs >= pds
+    return PDS3 if pds >= 2
+    return DOS3 if Str::from_bytes(image).contains("FastFileSystem")
+    return 0
 }
 
 pub fn load_file_system(path: Str) -> Result<RdbFileSystem, FsLoadError> {
-    let file = match OwnedFileHandle::open(path, MODE_OLDFILE as i32) {
+    let file = match File::open(path) {
         Result::Ok(value) => value,
         Result::Err(_) => return Result::Err(FsLoadError::OpenFailed),
     }
-    match file.seek(0, OFFSET_END as i32) {
-        Result::Ok(_) => {},
-        Result::Err(_) => return Result::Err(FsLoadError::ReadFailed),
-    }
-    let end = match file.seek(0, OFFSET_BEGINNING as i32) {
+    let size = match file.len() {
         Result::Ok(value) => value,
         Result::Err(_) => return Result::Err(FsLoadError::ReadFailed),
     }
-    return Result::Err(FsLoadError::ReadFailed) unless end > 0
-    let size = end as u32
+    return Result::Err(FsLoadError::ReadFailed) unless size > 0
     return Result::Err(FsLoadError::TooLarge) if size > MAX_HANDLER_BYTES
-    var storage = match MemoryBlock::alloc(size, MEMF_PUBLIC) {
+    var storage = match Buffer::new(size) {
         Result::Ok(value) => value,
         Result::Err(_) => return Result::Err(FsLoadError::OutOfMemory),
     }
-    match file.read_all(storage.ptr(), size) {
+    match file.read_all(storage.as_mut_bytes()) {
         Result::Ok(read) => return Result::Err(FsLoadError::ReadFailed) unless read == size,
         Result::Err(_) => return Result::Err(FsLoadError::ReadFailed),
     }
     let image = storage.as_bytes()
     return Result::Err(FsLoadError::NotLoadFile) unless is_hunk_file(image)
-    var dos_type = detect_dos_type(image)
-    if dos_type == 0u32 { dos_type = PFS3 }
-    return match RdbFileSystem::embedded(dos_type, parse_version(image), $1B0u32, 4096u32, 10, -1, image) {
+    let dos_type = detect_dos_type(image)
+    return match RdbFileSystem::embedded(dos_type, parse_version(image), $1B0, 4096, 10, -1, image) {
         Result::Ok(value) => Result::Ok(value),
         Result::Err(_) => Result::Err(FsLoadError::OutOfMemory),
     }

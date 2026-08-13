@@ -100,29 +100,16 @@ Return proper exit codes from main():
 4. **Add more commands**: Extend the argument parsing in `cli/src/main.novus`
 5. **Add more projects**: Create new project directories and add them to `members` in `workspace.toml`
 
-## Example: Adding ReadArgs() Support
+## Example: Typed ReadArgs Support
 
-For more sophisticated argument parsing, you can use the DOS ReadArgs() function:
+For more sophisticated argument parsing, use the owning application wrapper around DOS `ReadArgs()`:
 
 ```novus
-from std::dos import ReadArgs, FreeArgs
+from amiga::workbench import Args, ArgsError
 
-fn parse_args() -> bool {
-    // Template string for ReadArgs
-    let template = "FROM/A,TO/A,VERBOSE/S"
-
-    // Parse arguments
-    let rdargs = ReadArgs(template, null, null)
-    if rdargs == null {
-        write(output(), "Invalid arguments\n")
-        return false
-    }
-
-    // Access parsed arguments
-    // ...
-
-    FreeArgs(rdargs)
-    return true
+fn parse_args() -> Result<Args, ArgsError> {
+    // Args owns the native RDArgs state and releases it automatically.
+    return Args::parse("FROM/A,TO/A,VERBOSE/S")
 }
 ```
 

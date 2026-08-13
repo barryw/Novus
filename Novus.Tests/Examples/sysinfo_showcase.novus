@@ -14,8 +14,8 @@
 
 from std::core import Option
 from std::io::file import print, println
-from std::ffi::exec import AvailMem
-from std::ffi::amiga_consts import MEMF_FAST, MEMF_CHIP, MEMF_TOTAL, MEMF_LARGEST
+from amiga::raw::exec import AvailMem
+from amiga::raw::consts import MEMF_FAST, MEMF_CHIP, MEMF_TOTAL, MEMF_LARGEST
 
 // ============================================================================
 // Helper Functions
@@ -36,7 +36,7 @@ fn print_memory(label: *u8, bytes: u32) {
     print(": ")
 
     // Convert to KB for readability
-    let kb: u32 = bytes / 1024u32
+    let kb: u32 = bytes / 1024
 
     // Print the number digit by digit
     if kb == 0 {
@@ -55,12 +55,12 @@ fn print_number(n: u32) {
 
     // Recursively print higher digits first
     if n >= 10 {
-        print_number(n / 10u32)
+        print_number(n / 10)
     }
 
     // Print the last digit
-    let digit: u8 = (u8)(n % 10u32) + 48u8  // '0' = 48 in ASCII
-    var buf = [0u8; 2]
+    let digit: u8 = (u8)(n % 10) + 48  // '0' = 48 in ASCII
+    var buf: [u8] = [0; 2]
     buf[0] = digit
     buf[1] = 0
     print(&buf[0])
@@ -127,14 +127,14 @@ fn show_tips() {
     println("This program demonstrates key Novus concepts:")
     println("")
     println("  1. IMPORTS")
-    println("     from std::ffi::exec import AvailMem")
-    println("     from std::ffi::amiga_consts import MEMF_CHIP")
+    println("     from amiga::raw::exec import AvailMem")
+    println("     from amiga::raw::consts import MEMF_CHIP")
     println("")
     println("  2. UNSAFE FFI CALLS")
     println("     let mem = unsafe [AvailMem(flags)]")
     println("")
     println("  3. BASIC ARITHMETIC")
-    println("     let kb = bytes / 1024u32")
+    println("     let kb = bytes / 1024")
     println("")
     println("  4. CONTROL FLOW")
     println("     if fast_total > 0 [handle it]")

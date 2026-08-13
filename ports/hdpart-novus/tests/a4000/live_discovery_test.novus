@@ -1,17 +1,18 @@
 from std::core import Option, Result
 from std::test::test import expect_eq
-from discovery import discover_mounted_devices, is_device_name
+from amiga::storage import devices
+from discovery import is_device_name
 
 fn verify_live_discovery() -> i32 {
-    let devices = match discover_mounted_devices() {
+    let devices = match devices() {
         Result::Ok(value) => value,
         Result::Err(_) => return 1,
     }
     // The standard A4000 fixture uses a host-directory DH0:, which has no raw
     // FileSysStartupMsg. An HDF-backed fixture must additionally require non-empty.
-    if devices.len() > 32u32 { return 2 }
+    if devices.len() > 32 { return 2 }
 
-    var index = 0u32
+    var index: u32 = 0
     while index < devices.len() {
         match devices.get(index) {
             Option::Some(device) => {

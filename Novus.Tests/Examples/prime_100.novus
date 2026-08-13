@@ -2,7 +2,7 @@
 // Simple example demonstrating loops and Vec
 
 from std::io::file import write
-from std::strings::core import Str
+from std::string::core import Str
 from std::collections::vec import Vec
 
 pub fn main() -> i32 {
@@ -25,8 +25,7 @@ pub fn main() -> i32 {
     // Sieve of Eratosthenes
     var p: u32 = 2
     while p * p <= 100 {
-        let ptr = sieve.as_ptr()
-        let is_prime = ptr[p]
+        let is_prime = *sieve.get(p).unwrap()
         let check = (u32)is_prime
         if check != 0 {
             var m: u32 = p * p
@@ -42,8 +41,7 @@ pub fn main() -> i32 {
     var count: u32 = 0
     i = 2
     while i <= 100 {
-        let data = sieve.as_ptr()
-        let val = data[i]
+        let val = *sieve.get(i).unwrap()
         let is_set = (u32)val
         if is_set != 0 {
             write("%ld ", i)

@@ -29,13 +29,13 @@ public class SemanticAnalyzerTests
         var stdLibPath = Path.Combine(Path.GetTempPath(), $"novus-import-{Guid.NewGuid():N}");
         try
         {
-            Directory.CreateDirectory(Path.Combine(stdLibPath, "ffi"));
+            Directory.CreateDirectory(Path.Combine(stdLibPath, "amiga", "raw"));
             File.WriteAllText(Path.Combine(stdLibPath, "core.novus"), "");
-            File.WriteAllText(Path.Combine(stdLibPath, "ffi", "types.novus"), "#[extern_type]\npub struct IClass {}\n");
+            File.WriteAllText(Path.Combine(stdLibPath, "amiga", "raw", "types.novus"), "#[extern_type]\npub struct IClass {}\n");
 
             var diagnostics = Analyze("""
-                from std::ffi::types import IClass
-                from std::ffi::types import IClass
+                from amiga::raw::types import IClass
+                from amiga::raw::types import IClass
                 fn use_class(value: *IClass) {}
                 """, stdLibPath);
 
@@ -98,6 +98,22 @@ fn main() -> u32 {
     }
 
     [Fact]
+    public void Analyze_DereferencedGenericReferenceField_UsesPointeeType()
+    {
+        var diagnostics = Analyze("""
+            struct Guard<T> { data: &var T }
+
+            impl<T> Guard<T> {
+                fn set(&var self, value: T) {
+                    *self.data = value
+                }
+            }
+            """);
+
+        Assert.False(diagnostics.HasErrors, diagnostics.FormatDiagnostics());
+    }
+
+    [Fact]
     public void Analyze_NullReassignment_UsesPointerTargetType()
     {
         var diagnostics = Analyze("""
@@ -133,15 +149,15 @@ fn test() -> u32 {
     }
 
     [Fact]
-    public void Analyze_ExplicitTypeSuffixOutOfRange_ReportsError()
+    public void Analyze_ContextualIntegerOutOfRange_ReportsError()
     {
         var source = @"
 fn test() -> u8 {
-    return 1000u8
+    return 1000
 }";
         var diagnostics = Analyze(source);
 
-        // 1000 with explicit u8 suffix should fail - doesn't fit in u8
+        // The return type supplies the u8 context, so 1000 cannot fit.
         Assert.True(diagnostics.HasErrors);
         var error = diagnostics.Diagnostics.FirstOrDefault(d => d.Code == "E0009");
         Assert.NotNull(error);
@@ -181,8 +197,8 @@ fn test() -> u32 {
     public void Analyze_MixedSignedness_ReportsWarning()
     {
         var source = @"
-fn test() -> u32 {
-    return 42u32 + 10i32
+fn test(left: i32, right: u32) {
+    let mixed = left + right
 }";
         var diagnostics = Analyze(source);
 
@@ -197,7 +213,7 @@ fn test() -> u32 {
     {
         var source = @"
 fn test() -> u8 {
-    return 256u8
+    return 256
 }";
         var diagnostics = Analyze(source);
 
@@ -212,7 +228,7 @@ fn test() -> u8 {
     {
         var source = @"
 fn test() -> u32 {
-    return -42u32
+    return -42
 }";
         var diagnostics = Analyze(source);
 
@@ -238,8 +254,8 @@ fn test() -> u16 {
     public void Analyze_LossyCast_ReportsWarning()
     {
         var source = @"
-fn test() -> u8 {
-    return (u8)1000
+fn test(value: i32) -> u8 {
+    return (u8)value
 }";
         var diagnostics = Analyze(source);
 
@@ -265,7 +281,7 @@ fn test(value: u16) -> i32 {
     {
         var source = @"
 fn test() -> u8 {
-    return %111111111u8
+    return %111111111
 }";
         var diagnostics = Analyze(source);
 
@@ -279,7 +295,7 @@ fn test() -> u8 {
     {
         var source = @"
 fn test() -> u8 {
-    return $FFFu8
+    return $FFF
 }";
         var diagnostics = Analyze(source);
 
@@ -304,8 +320,8 @@ fn add(a: i32, b: i32) -> i32 {
     public void Analyze_SignedToUnsignedCast_ReportsWarning()
     {
         var source = @"
-fn test() -> u32 {
-    return (u32)-42
+fn test(value: i32) -> u32 {
+    return (u32)value
 }";
         var diagnostics = Analyze(source);
 
@@ -978,6 +994,54 @@ fn test(value: Maybe) {
         Assert.DoesNotContain(diagnostics.Diagnostics, d => d.Code == "E0021");
     }
 
+    [Fact]
+    public void Analyze_ContextualOptionLetElseBindsPayload()
+    {
+        var diagnostics = Analyze("""
+enum Option<T> { Some(T), None }
+
+fn unwrap(value: Option<i32>) -> i32 {
+    let number = value else return -1
+    return number
+}
+""");
+
+        Assert.False(diagnostics.HasErrors,
+            string.Join(Environment.NewLine, diagnostics.Diagnostics.Select(diagnostic => diagnostic.Message)));
+    }
+
+    [Fact]
+    public void Analyze_BraceFreeLetElseAcceptsLoopDivergence()
+    {
+        var diagnostics = Analyze("""
+enum Option<T> { Some(T), None }
+
+fn consume(value: Option<i32>) {
+    forever {
+        let number = value else break
+        let other = value else continue
+        return
+    }
+}
+""");
+
+        Assert.DoesNotContain(diagnostics.Diagnostics, diagnostic => diagnostic.Code == "E0021");
+    }
+
+    [Fact]
+    public void Analyze_PlainLetElseRejectsNonOptionValue()
+    {
+        var diagnostics = Analyze("""
+fn invalid(value: i32) -> i32 {
+    let number = value else return 0
+    return number
+}
+""");
+
+        Assert.Contains(diagnostics.Diagnostics,
+            diagnostic => diagnostic.Code == "E0044" && diagnostic.Message.Contains("Option<T>"));
+    }
+
     // ===== Struct Tests =====
 
     [Fact]
@@ -1616,12 +1680,12 @@ pub fn main() -> i32 {
     }
 
     [Fact]
-    public void Analyze_ArrayRepeatLiteralWithTypeSuffix_NoErrors()
+    public void Analyze_ArrayRepeatLiteralWithContext_NoErrors()
     {
         var source = @"
 pub fn main() -> i32 {
-    let arr1 = [4; 20i32]
-    let arr2 = [5; 15u32]
+    let arr1 = [4; 20]
+    let arr2 = [5; 15]
     return 0
 }";
         var diagnostics = Analyze(source);

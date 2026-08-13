@@ -8,13 +8,13 @@
 // - Proper Amiga resource management
 
 from std::core import Result, Option
-from std::ui::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp
-from std::ui::mui import set_text, make_text, make_progress, set_progress
-from std::ffi::mui_tags import MUIV_Frame_Group, MUIA_Application_Sleep, MUIV_Application_ReturnID_Quit
-from std::ffi::dos import Open, Close, Seek, IoErr, Read, Write, DeleteFile
-from std::ffi::exec import Wait, AllocMem, FreeMem, SetSignal
-from std::ffi::amiga_consts import MEMF_PUBLIC
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE, OFFSET_END, OFFSET_BEGINNING
+from amiga::sys::mui import MUIAppBuilder, MUIGroupBuilder, MUIApp
+from amiga::sys::mui import set_text, make_text, make_progress, set_progress
+from amiga::raw::mui_tags import MUIV_Frame_Group, MUIA_Application_Sleep, MUIV_Application_ReturnID_Quit
+from amiga::raw::dos import Open, Close, Seek, IoErr, Read, Write, DeleteFile
+from amiga::raw::exec import Wait, AllocMem, FreeMem, SetSignal
+from amiga::raw::consts import MEMF_PUBLIC
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE, OFFSET_END, OFFSET_BEGINNING
 
 // Gadget IDs
 const GAD_COPY: u32 = 1

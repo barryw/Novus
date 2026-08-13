@@ -31,8 +31,8 @@ novusc new my-driver --type device
 
 ```novus
 // my-driver/src/main.novus
-from std::ffi::amiga_structs import IORequest, Unit
-from std::ffi::amiga_consts import IOERR_NOCMD
+from amiga::raw::structs import IORequest, Unit
+from amiga::raw::consts import IOERR_NOCMD
 
 // The @device attribute marks this struct as the device base.
 // The compiler generates all boilerplate: ROMTag, lifecycle, BeginIO/AbortIO

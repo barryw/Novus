@@ -31,31 +31,31 @@
 //     stream.write("GET / HTTP/1.1\r\nHost: www.example.com\r\n\r\n")?
 //
 //     // Read response
-//     let mut buf: [u8; 4096] = [0u8; 4096]
+//     let mut buf: [u8; 4096] = [0; 4096]
 //     let n = stream.read(&buf, 4096)?
 //
 //     return 0
 // }
 // ```
 
-from std::ffi::exec import OpenLibrary, CloseLibrary, Library
-from std::ffi::amissl import AmiSSLMasterBase, AmiSSLBase, InitAmiSSLMaster, OpenAmiSSL, CloseAmiSSL
-from std::ffi::amissl import OPENSSL_init_ssl, OPENSSL_init_crypto, SSL_CTX, SSL, SSL_METHOD
-from std::ffi::amissl import SSL_CTX_new, SSL_CTX_free, SSL_CTX_set_verify, SSL_CTX_set_verify_depth
-from std::ffi::amissl import SSL_CTX_set_default_verify_paths, SSL_CTX_load_verify_locations
-from std::ffi::amissl import SSL_CTX_set_min_proto_version, SSL_CTX_set_options
-from std::ffi::amissl import SSL_new, SSL_free, SSL_set_fd, SSL_connect, SSL_accept, SSL_do_handshake
-from std::ffi::amissl import SSL_read, SSL_write, SSL_peek, SSL_shutdown, SSL_pending
-from std::ffi::amissl import SSL_get_error, SSL_get_verify_result, SSL_get_peer_certificate
-from std::ffi::amissl import SSL_set_tlsext_host_name, SSL_get_version
-from std::ffi::amissl import TLS_client_method, TLS_server_method, TLS_method, X509_free
-from std::ffi::amissl import ERR_get_error, ERR_clear_error, ERR_error_string
-from std::ffi::amissl import SSL_ERROR_NONE, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE
-from std::ffi::amissl import SSL_ERROR_ZERO_RETURN, SSL_ERROR_SYSCALL, SSL_ERROR_SSL
-from std::ffi::amissl import SSL_VERIFY_NONE, SSL_VERIFY_PEER, TLS1_2_VERSION, TLS1_3_VERSION
-from std::ffi::amissl import SSL_OP_NO_SSLv3, SSL_OP_NO_TLSv1, SSL_OP_NO_TLSv1_1, SSL_OP_NO_COMPRESSION
-from std::ffi::amissl import X509_V_OK, AMISSL_CURRENT_VERSION
-from std::ffi::amissl import OPENSSL_INIT_LOAD_SSL_STRINGS, OPENSSL_INIT_LOAD_CRYPTO_STRINGS
+from amiga::raw::exec import OpenLibrary, CloseLibrary, Library
+from amiga::raw::amissl import AmiSSLMasterBase, AmiSSLBase, InitAmiSSLMaster, OpenAmiSSL, CloseAmiSSL
+from amiga::raw::amissl import OPENSSL_init_ssl, OPENSSL_init_crypto, SSL_CTX, SSL, SSL_METHOD
+from amiga::raw::amissl import SSL_CTX_new, SSL_CTX_free, SSL_CTX_set_verify, SSL_CTX_set_verify_depth
+from amiga::raw::amissl import SSL_CTX_set_default_verify_paths, SSL_CTX_load_verify_locations
+from amiga::raw::amissl import SSL_CTX_set_min_proto_version, SSL_CTX_set_options
+from amiga::raw::amissl import SSL_new, SSL_free, SSL_set_fd, SSL_connect, SSL_accept, SSL_do_handshake
+from amiga::raw::amissl import SSL_read, SSL_write, SSL_peek, SSL_shutdown, SSL_pending
+from amiga::raw::amissl import SSL_get_error, SSL_get_verify_result, SSL_get_peer_certificate
+from amiga::raw::amissl import SSL_set_tlsext_host_name, SSL_get_version
+from amiga::raw::amissl import TLS_client_method, TLS_server_method, TLS_method, X509_free
+from amiga::raw::amissl import ERR_get_error, ERR_clear_error, ERR_error_string
+from amiga::raw::amissl import SSL_ERROR_NONE, SSL_ERROR_WANT_READ, SSL_ERROR_WANT_WRITE
+from amiga::raw::amissl import SSL_ERROR_ZERO_RETURN, SSL_ERROR_SYSCALL, SSL_ERROR_SSL
+from amiga::raw::amissl import SSL_VERIFY_NONE, SSL_VERIFY_PEER, TLS1_2_VERSION, TLS1_3_VERSION
+from amiga::raw::amissl import SSL_OP_NO_SSLv3, SSL_OP_NO_TLSv1, SSL_OP_NO_TLSv1_1, SSL_OP_NO_COMPRESSION
+from amiga::raw::amissl import X509_V_OK, AMISSL_CURRENT_VERSION
+from amiga::raw::amissl import OPENSSL_INIT_LOAD_SSL_STRINGS, OPENSSL_INIT_LOAD_CRYPTO_STRINGS
 from std::net::tcp import TcpStream
 from std::net::errors import NetError
 from std::core import Option

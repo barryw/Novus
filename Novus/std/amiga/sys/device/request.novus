@@ -1,0 +1,223 @@
+// Owning access to an AmigaOS Exec device request.
+
+from std::core import Drop, Error, From, Option, Result
+from std::string::core import FixedCString, Str
+from amiga::sys::exec::errors import ExecError
+from amiga::sys::exec::exec import MsgPortHandle
+from amiga::raw::consts import NT_DEVICE, RTC_MATCHWORD
+from amiga::raw::structs import IORequest, List, Resident
+from amiga::raw::exec import CloseDevice, CreateIORequest, DeleteIORequest, DoIO, FindName, Forbid, InitResident, OpenDevice, Permit, TypeOfMem
+from amiga::sys::dos::segment import LoadedFileSegment
+
+pub enum DriverLoadError {
+    LoadFailed,
+    NoResident,
+    NotDevice,
+    InvalidName,
+    InitFailed,
+}
+
+impl DriverLoadError {
+    pub fn message(&self) -> *u8 {
+        return match self {
+            DriverLoadError::LoadFailed => "Could not load that file",
+            DriverLoadError::NoResident => "The file has no Resident tag",
+            DriverLoadError::NotDevice => "The file is not an Exec device",
+            DriverLoadError::InvalidName => "The device has no valid name",
+            DriverLoadError::InitFailed => "The device failed to initialize",
+        }
+    }
+}
+
+impl Error for DriverLoadError {
+    fn message(&self) -> *u8 { return DriverLoadError::message(self) }
+}
+
+pub fn device_is_resident(name: Str) -> bool {
+    let Result::Ok(owned_name) = FixedCString::<60>::new_from_str(name) else { return false }
+    unsafe {
+        let base_address = *(*u32)4
+        if base_address == 0 || TypeOfMem((*u8)base_address) == 0 { return false }
+        Forbid()
+        // ExecBase.DeviceList is the V37+ ABI field at byte offset 350.
+        let found = FindName((*List)(base_address + 350), owned_name.as_cstr()) != null
+        Permit()
+        return found
+    }
+}
+
+fn resident_name(resident: *Resident) -> Result<FixedCString<40>, DriverLoadError> {
+    var result = FixedCString::<40>::new()
+    unsafe {
+        // Resident is a 26-byte, word-aligned ABI record; rt_Name is at +14.
+        let name = (*u8)*(*u32)((u32)resident + 14)
+        if name == null { return Result::Err(DriverLoadError::InvalidName) }
+        var index: u32 = 0
+        while index < 40 {
+            if TypeOfMem(name + index) == 0 { return Result::Err(DriverLoadError::InvalidName) }
+            let byte = name[index]
+            if byte == 0 {
+                return Result::Err(DriverLoadError::InvalidName) if result.is_empty()
+                return Result::Ok(result)
+            }
+            match result.push_byte(byte) {
+                Result::Ok(_) => {},
+                Result::Err(_) => return Result::Err(DriverLoadError::InvalidName),
+            }
+            index++
+        }
+    }
+    return Result::Err(DriverLoadError::InvalidName)
+}
+
+fn find_device_resident(segment: &LoadedFileSegment) -> Result<*Resident, DriverLoadError> {
+    var raw = segment.segment().as_raw()
+    var saw_resident = false
+    var segment_count: u32 = 0
+    while raw != 0 && segment_count < 256 {
+        let address = raw << 2
+        return Result::Err(DriverLoadError::NoResident) if address < 4
+        unsafe {
+            if TypeOfMem((*u8)(address - 4)) == 0 || TypeOfMem((*u8)(address + 3)) == 0 {
+                return Result::Err(DriverLoadError::NoResident)
+            }
+            let total = *(*u32)(address - 4)
+            if total >= 8 && total <= 16 * 1024 * 1024 {
+                let data = address + 4
+                let len = total - 8
+                if len >= @sizeof(Resident) && TypeOfMem((*u8)(data + len - 1)) != 0 {
+                    var offset: u32 = 0
+                    while offset + @sizeof(Resident) <= len {
+                        let candidate = (*Resident)(data + offset)
+                        if *(*u16)(data + offset) == (u16)RTC_MATCHWORD &&
+                            *(*u32)(data + offset + 2) == (u32)candidate {
+                            saw_resident = true
+                            return Result::Ok(candidate) if (u32)*(*u8)(data + offset + 12) == NT_DEVICE
+                        }
+                        offset = offset + 2
+                    }
+                }
+            }
+            raw = *(*u32)address
+        }
+        segment_count++
+    }
+    return if saw_resident { Result::Err(DriverLoadError::NotDevice) } else { Result::Err(DriverLoadError::NoResident) }
+}
+
+/// Load and initialize an Exec `.device` file. The returned name is owned.
+/// Once InitResident begins, the segment is permanently transferred to Exec;
+/// even a failed initializer may have published pointers into it.
+pub fn load_device_driver(path: Str) -> Result<FixedCString<40>, DriverLoadError> {
+    var segment = match LoadedFileSegment::open(path) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return Result::Err(DriverLoadError::LoadFailed),
+    }
+    let resident = find_device_resident(&segment)?
+    let name = resident_name(resident)?
+    return Result::Ok(name) if device_is_resident(name.as_str())
+    let owned = segment.into_raw()
+    InitResident(resident, owned.as_raw())
+    return Result::Err(DriverLoadError::InitFailed) unless device_is_resident(name.as_str())
+    return Result::Ok(name)
+}
+
+pub enum DeviceError {
+    NoMemory,
+    InvalidRequestSize,
+    OpenFailed(i8),
+    CommandFailed(i8),
+}
+
+impl DeviceError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            DeviceError::NoMemory => return "Out of memory",
+            DeviceError::InvalidRequestSize => return "I/O request is too small",
+            DeviceError::OpenFailed(_) => return "Could not open device",
+            DeviceError::CommandFailed(_) => return "Device command failed",
+        }
+    }
+}
+
+impl Error for DeviceError {
+    fn message(&self) -> *u8 {
+        return DeviceError::message(self)
+    }
+}
+
+impl From<ExecError> for DeviceError {
+    fn convert(consuming _error: ExecError) -> DeviceError {
+        return DeviceError::NoMemory
+    }
+}
+
+/// Owns the reply port, request allocation, and open device.
+pub struct DeviceRequest {
+    request: *u8,
+    request_size: u32,
+    port: MsgPortHandle,
+}
+
+impl DeviceRequest {
+    /// Open any Exec device with the request size required by that device.
+    pub fn open(name: Str, unit: u32, request_size: u32) -> Result<DeviceRequest, DeviceError> {
+        if request_size < @sizeof(IORequest) {
+            return Result::Err(DeviceError::InvalidRequestSize)
+        }
+
+        let port = MsgPortHandle::create()?
+        let request = CreateIORequest(port.as_raw(), request_size)
+        if request == null {
+            return Result::Err(DeviceError::NoMemory)
+        }
+
+        var error: i8 = 0
+        unsafe {
+            error = OpenDevice(name.as_cstr(), unit, (*IORequest)request, 0)
+        }
+        if error != 0 {
+            DeleteIORequest(request)
+            return Result::Err(DeviceError::OpenFailed(error))
+        }
+
+        return Result::Ok(DeviceRequest {
+            request: request,
+            request_size: request_size,
+            port: port,
+        })
+    }
+
+    /// Borrow the request for a device-specific command.
+    pub fn as_raw(&self) -> *IORequest {
+        return (*IORequest)self.request
+    }
+
+    pub fn size(&self) -> u32 {
+        return self.request_size
+    }
+
+    /// Execute the configured request synchronously.
+    pub fn command(&var self, command: u16) -> Result<(), DeviceError> {
+        let request = (*IORequest)self.request
+        request.io_Command = command
+        let error = DoIO(request)
+        if error != 0 {
+            return Result::Err(DeviceError::CommandFailed(error))
+        }
+        return Result::Ok(())
+    }
+}
+
+impl Drop for DeviceRequest {
+    fn drop(&var self) {
+        if self.request != null {
+            let allocation = self.request
+            self.request = null
+            unsafe {
+                CloseDevice((*IORequest)allocation)
+            }
+            DeleteIORequest(allocation)
+        }
+    }
+}

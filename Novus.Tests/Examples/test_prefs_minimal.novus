@@ -1,5 +1,5 @@
 // Minimal test to reproduce prefs double-free
-from std::prefs::prefs import Prefs
+from amiga::workbench::preferences import Prefs
 from std::io::file import println
 
 pub fn main() -> i32 {

@@ -26,10 +26,10 @@
 Get a sprite on screen in 30 seconds:
 
 ```novus
-from std::graphics::sprite import sprite, SpriteHandle
-from std::graphics::screen import open_screen
-from std::graphics::palette import rgb
-from std::hardware::timer import vblank_wait
+from amiga::sys::graphics::sprite import sprite, SpriteHandle
+from amiga::sys::graphics::screen import open_screen
+from amiga::sys::graphics::palette import rgb
+from amiga::sys::hardware::timer import vblank_wait
 
 // Define sprite at compile time (always 16 pixels wide)
 const CURSOR: Sprite = sprite! {
@@ -85,7 +85,7 @@ pub fn main() -> i32 {
 Regular sprites always use 2 bitplanes for 4 colors (0-3):
 
 ```novus
-from std::graphics::sprite import sprite
+from amiga::sys::graphics::sprite import sprite
 
 const PLAYER: Sprite = sprite! {
     pixels: [
@@ -120,7 +120,7 @@ const PLAYER: Sprite = sprite! {
 Attached sprites use 4 bitplanes for 16 colors (0-F):
 
 ```novus
-from std::graphics::sprite import attached_sprite
+from amiga::sys::graphics::sprite import attached_sprite
 
 const BOSS: AttachedSprite = attached_sprite! {
     pixels: [
@@ -795,10 +795,10 @@ error: attached sprite channel must be even
 ### Example 1: Simple Cursor
 
 ```novus
-from std::graphics::sprite import sprite, SpriteHandle
-from std::graphics::screen import open_screen
-from std::graphics::palette import rgb
-from std::hardware::timer import vblank_wait
+from amiga::sys::graphics::sprite import sprite, SpriteHandle
+from amiga::sys::graphics::screen import open_screen
+from amiga::sys::graphics::palette import rgb
+from amiga::sys::hardware::timer import vblank_wait
 
 const CURSOR: Sprite = sprite! {
     pixels: [
@@ -841,10 +841,10 @@ pub fn main() -> i32 {
 ### Example 2: Attached Sprite (16 Colors)
 
 ```novus
-from std::graphics::sprite import attached_sprite, AttachedSpriteHandle
-from std::graphics::screen import open_screen
-from std::graphics::palette import rgb
-from std::hardware::timer import vblank_wait
+from amiga::sys::graphics::sprite import attached_sprite, AttachedSpriteHandle
+from amiga::sys::graphics::screen import open_screen
+from amiga::sys::graphics::palette import rgb
+from amiga::sys::hardware::timer import vblank_wait
 
 const BOSS: AttachedSprite = attached_sprite! {
     pixels: [
@@ -911,10 +911,10 @@ pub fn main() -> i32 {
 ### Example 3: Multiple Bullets
 
 ```novus
-from std::graphics::sprite import sprite, SpriteHandle
-from std::graphics::screen import open_screen
-from std::graphics::palette import rgb
-from std::hardware::timer import vblank_wait
+from amiga::sys::graphics::sprite import sprite, SpriteHandle
+from amiga::sys::graphics::screen import open_screen
+from amiga::sys::graphics::palette import rgb
+from amiga::sys::hardware::timer import vblank_wait
 
 const BULLET: Sprite = sprite! {
     pixels: [
@@ -956,9 +956,9 @@ pub fn main() -> i32 {
 ### Example 4: Animation Sequence
 
 ```novus
-from std::graphics::sprite import sprite, SpriteHandle
-from std::graphics::screen import open_screen
-from std::hardware::timer import vblank_wait
+from amiga::sys::graphics::sprite import sprite, SpriteHandle
+from amiga::sys::graphics::screen import open_screen
+from amiga::sys::hardware::timer import vblank_wait
 
 const WALK_1: Sprite = sprite! {
     pixels: [ /* 16x16 walk frame 1 */ ]

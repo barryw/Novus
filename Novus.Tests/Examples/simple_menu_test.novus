@@ -1,7 +1,7 @@
 // Simple menu test - just window with menu activation
 // Testing menu event handling without GadTools for now
 
-from std::ui::window import WindowHandle, WindowEvent
+from amiga::sys::intuition import WindowHandle, WindowEvent
 from std::io::file import write
 
 pub fn main() -> i32 {

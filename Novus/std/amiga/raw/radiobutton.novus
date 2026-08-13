@@ -1,0 +1,29 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: radiobutton.library
+// Base: _RadioButtonBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("radiobutton.library")
+extern pub fn RADIOBUTTON_GetClass() -> *u8
+@library("radiobutton.library")
+extern pub fn AllocRadioButtonNodeA(columns: u16, tags: *TagItem) -> *Node
+@library("radiobutton.library")
+extern pub fn AllocRadioButtonNode(columns: u16, tags: u32, ...args) -> *Node
+@library("radiobutton.library")
+extern pub fn FreeRadioButtonNode(node: *Node)
+@library("radiobutton.library")
+extern pub fn SetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
+@library("radiobutton.library")
+extern pub fn SetRadioButtonNodeAttrs(node: *Node, ...args)
+@library("radiobutton.library")
+extern pub fn GetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
+@library("radiobutton.library")
+extern pub fn GetRadioButtonNodeAttrs(node: *Node, ...args)

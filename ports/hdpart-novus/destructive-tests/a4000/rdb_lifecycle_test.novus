@@ -1,24 +1,24 @@
 // Destructive: run only after rdb_write_test prepared the exact disposable HDF.
 
 from std::core import Option, Result
-from std::ffi::amiga_consts import ACCESS_READ
-from std::os::block_device import BlockDevice
-from std::os::dos import DirLockHandle
-from std::os::filesystem import MountedFileSystem
-from std::os::timer import Duration, delay
+from amiga::raw::consts import ACCESS_READ
+from amiga::storage import BlockDevice
+from amiga::sys::dos import DirLockHandle
+from amiga::sys::dos import MountedFileSystem
+from amiga::timer import Duration, delay
 from std::test::test import expect_eq
 from format import prepare_node
 from rdb import DOS_TYPE_FFS_INTL
 from rdb_io import load_rdb
 
 fn wait_for_mount() -> Option<MountedFileSystem> {
-    var attempt = 0u32
-    while attempt < 20u32 {
+    var attempt: u32 = 0
+    while attempt < 20 {
         match MountedFileSystem::open("NVT0:") {
             Result::Ok(value) => return Option::Some(value),
             Result::Err(_) => {},
         }
-        match delay(Duration::millis(100u32)) {
+        match delay(Duration::millis(100)) {
             Result::Ok(_) => {},
             Result::Err(_) => return Option::None,
         }
@@ -28,26 +28,26 @@ fn wait_for_mount() -> Option<MountedFileSystem> {
 }
 
 fn probe() -> i32 {
-    var disk = match BlockDevice::open("uaehf.device", 1u32) {
+    var disk = match BlockDevice::open("uaehf.device", 1) {
         Result::Ok(value) => value,
         Result::Err(_) => return 30,
     }
-    if disk.geometry().total_blocks() != 131072u32 || disk.geometry().block_bytes() != 512u32 {
+    if disk.geometry().total_blocks() != 131072 || disk.geometry().block_bytes() != 512 {
         return 31
     }
     let model = match load_rdb(&var disk) {
         Result::Ok(value) => value,
         Result::Err(_) => return 32,
     }
-    let partition = match model.partition(0u32) {
+    let partition = match model.partition(0) {
         Option::Some(value) => value,
         Option::None => return 33,
     }
-    if model.partition_count() != 1u32 || !partition.name().equals("NVT0") {
+    if model.partition_count() != 1 || !partition.name().equals("NVT0") {
         return 34
     }
 
-    let prepared = match prepare_node("NVT0", "uaehf.device", 1u32, &model, 0u32) {
+    let prepared = match prepare_node("NVT0", "uaehf.device", 1, &model, 0) {
         Result::Ok(value) => value,
         Result::Err(_) => return 35,
     }
@@ -72,7 +72,7 @@ fn probe() -> i32 {
         Result::Err(_) => return 40,
     }
 
-    match delay(Duration::millis(250u32)) {
+    match delay(Duration::millis(250)) {
         Result::Ok(_) => {},
         Result::Err(_) => return 41,
     }

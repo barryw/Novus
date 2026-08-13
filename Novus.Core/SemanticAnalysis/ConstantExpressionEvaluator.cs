@@ -40,16 +40,7 @@ public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
 {
     public static bool TryParseFloatingLiteral(NovusParser.ExpressionContext context, out double value)
     {
-        var text = context.GetText();
-        foreach (var suffix in new[] { "fixed16", "fixed32", "f32", "f64" })
-        {
-            if (text.EndsWith(suffix, StringComparison.Ordinal))
-            {
-                text = text[..^suffix.Length];
-                break;
-            }
-        }
-        return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        return double.TryParse(context.GetText(), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private readonly Dictionary<string, object> _constants;
@@ -72,8 +63,6 @@ public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
     public override int? VisitIntegerLiteral([NotNull] NovusParser.IntegerLiteralContext context)
     {
         var text = context.INTEGER_LITERAL().GetText();
-        // Remove type suffixes
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"(u8|u16|u32|u64|i8|i16|i32|i64)$", "");
 
         // Handle negative prefix if present
         var fullText = context.GetText();
@@ -103,7 +92,6 @@ public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
             text = text.TrimStart('$');
         }
         text = text.Replace("_", "");
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"(u8|u16|u32|u64|i8|i16|i32|i64)$", "");
 
         if (int.TryParse(text, NumberStyles.HexNumber, null, out var value))
         {
@@ -123,7 +111,6 @@ public class ConstantExpressionEvaluator : NovusParserBaseVisitor<int?>
     {
         var text = context.BINARY_LITERAL().GetText();
         text = text.TrimStart('%');
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"(u8|u16|u32|u64|i8|i16|i32|i64)$", "");
         text = text.Replace("_", "");
 
         try

@@ -128,7 +128,7 @@ The `?` operator automatically propagates errors up the call stack, making error
 
 ```novus
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos::errors import DosError
 
 fn open_file(valid: bool) -> Result<i32, DosError> {
     if !valid {
@@ -315,7 +315,7 @@ Novus standard library wraps AmigaOS calls in `Result` types:
 
 ```novus
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos::errors import DosError
 
 fn read_config_file(path: str) -> Result<i32, DosError> {
     // DOS Open() returns Result<FileHandle, DosError>
@@ -352,7 +352,7 @@ Common AmigaOS error types:
 
 ```novus
 from std::core import Result, Option
-from std::error::errors import DosError
+from amiga::sys::dos::errors import DosError
 
 struct Config {
     width: u16,

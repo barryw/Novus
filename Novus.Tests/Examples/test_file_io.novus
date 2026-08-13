@@ -1,13 +1,13 @@
 // Test File I/O Operations
 // Run with: novus test test_file_io.novus
 //
-// Tests all major file I/O functions in std::os::dos
+// Tests all major file I/O functions in amiga::sys::dos
 
 from std::core import Result
 from std::test::test import expect, expect_true, expect_false, expect_eq, expect_eq
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
-from std::error::errors import DosError
-from std::os::dos import OwnedFileHandle, file_exists, delete_file, file_info
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::sys::dos::errors import DosError
+from amiga::sys::dos import OwnedFileHandle, file_exists, delete_file, file_info
 
 @test("Create and write to a new file")
 pub fn test_create_file() {
@@ -21,13 +21,13 @@ pub fn test_create_file() {
     match file_result {
         Result::Ok(file) => {
             // Write some content
-            let write_result = file.write_all("Line 1: Hello, Amiga!\n", 22u32)
+            let write_result = file.write_all("Line 1: Hello, Amiga!\n", 22)
             expect(write_result.is_ok(), "First write should succeed")
 
-            let write_result2 = file.write_all("Line 2: Testing File I/O\n", 25u32)
+            let write_result2 = file.write_all("Line 2: Testing File I/O\n", 25)
             expect(write_result2.is_ok(), "Second write should succeed")
 
-            let write_result3 = file.write_all("Line 3: Novus is awesome!\n", 26u32)
+            let write_result3 = file.write_all("Line 3: Novus is awesome!\n", 26)
             expect(write_result3.is_ok(), "Third write should succeed")
         },
         Result::Err(_) => {
@@ -74,13 +74,13 @@ pub fn test_read_file() {
 
     match file_result {
         Result::Ok(file) => {
-            var buffer = [0u8; 1024]
-            let read_result = file.read_all((*u8)&buffer, 1024u32)
+            var buffer: [u8] = [0; 1024]
+            let read_result = file.read_all((*u8)&buffer, 1024)
             expect(read_result.is_ok(), "read_all should succeed")
 
             match read_result {
                 Result::Ok(bytes_read) => {
-                    expect_eq(bytes_read, 73u32, "Bytes read check")
+                    expect_eq(bytes_read, 73, "Bytes read check")
                 },
                 Result::Err(_) => {}
             }

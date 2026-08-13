@@ -15,11 +15,11 @@ from std::math::sqrt import math_echo_u32
 @test
 pub fn test_echo_u32() {
     // Test if the echo function returns its input correctly
-    expect_eq((i32)math_echo_u32(0u32), 0, "echo(0) = 0")
-    expect_eq((i32)math_echo_u32(1u32), 1, "echo(1) = 1")
-    expect_eq((i32)math_echo_u32(42u32), 42, "echo(42) = 42")
-    expect_eq((i32)math_echo_u32(1000u32), 1000, "echo(1000) = 1000")
-    expect_eq((i32)math_echo_u32(65536u32), 65536, "echo(65536) = 65536")
+    expect_eq((i32)math_echo_u32(0), 0, "echo(0) = 0")
+    expect_eq((i32)math_echo_u32(1), 1, "echo(1) = 1")
+    expect_eq((i32)math_echo_u32(42), 42, "echo(42) = 42")
+    expect_eq((i32)math_echo_u32(1000), 1000, "echo(1000) = 1000")
+    expect_eq((i32)math_echo_u32(65536), 65536, "echo(65536) = 65536")
 }
 
 // ============================================================================
@@ -28,38 +28,38 @@ pub fn test_echo_u32() {
 
 @test
 pub fn test_sqrt_u32_zero() {
-    expect_eq((i32)sqrt(0u32), 0, "sqrt(0u32) = 0")
+    expect_eq((i32)sqrt(0), 0, "sqrt(0) = 0")
 }
 
 @test
 pub fn test_sqrt_u32_one() {
-    expect_eq((i32)sqrt(1u32), 1, "sqrt(1u32) = 1")
+    expect_eq((i32)sqrt(1), 1, "sqrt(1) = 1")
 }
 
 @test
 pub fn test_sqrt_u32_perfect_squares() {
-    expect_eq((i32)sqrt(4u32), 2, "sqrt(4u32) = 2")
-    expect_eq((i32)sqrt(9u32), 3, "sqrt(9u32) = 3")
-    expect_eq((i32)sqrt(16u32), 4, "sqrt(16u32) = 4")
-    expect_eq((i32)sqrt(25u32), 5, "sqrt(25u32) = 5")
-    expect_eq((i32)sqrt(100u32), 10, "sqrt(100u32) = 10")
-    expect_eq((i32)sqrt(10000u32), 100, "sqrt(10000u32) = 100")
+    expect_eq((i32)sqrt(4), 2, "sqrt(4) = 2")
+    expect_eq((i32)sqrt(9), 3, "sqrt(9) = 3")
+    expect_eq((i32)sqrt(16), 4, "sqrt(16) = 4")
+    expect_eq((i32)sqrt(25), 5, "sqrt(25) = 5")
+    expect_eq((i32)sqrt(100), 10, "sqrt(100) = 10")
+    expect_eq((i32)sqrt(10000), 100, "sqrt(10000) = 100")
 }
 
 @test
 pub fn test_sqrt_u32_non_perfect() {
     // Should return floor of square root
-    expect_eq((i32)sqrt(2u32), 1, "sqrt(2u32) = 1")
-    expect_eq((i32)sqrt(3u32), 1, "sqrt(3u32) = 1")
-    expect_eq((i32)sqrt(5u32), 2, "sqrt(5u32) = 2")
-    expect_eq((i32)sqrt(8u32), 2, "sqrt(8u32) = 2")
-    expect_eq((i32)sqrt(10u32), 3, "sqrt(10u32) = 3")
+    expect_eq((i32)sqrt(2), 1, "sqrt(2) = 1")
+    expect_eq((i32)sqrt(3), 1, "sqrt(3) = 1")
+    expect_eq((i32)sqrt(5), 2, "sqrt(5) = 2")
+    expect_eq((i32)sqrt(8), 2, "sqrt(8) = 2")
+    expect_eq((i32)sqrt(10), 3, "sqrt(10) = 3")
 }
 
 @test
 pub fn test_sqrt_u32_large() {
-    expect_eq((i32)sqrt(65536u32), 256, "sqrt(65536u32) = 256")
-    expect_eq((i32)sqrt(1000000u32), 1000, "sqrt(1000000u32) = 1000")
+    expect_eq((i32)sqrt(65536), 256, "sqrt(65536) = 256")
+    expect_eq((i32)sqrt(1000000), 1000, "sqrt(1000000) = 1000")
 }
 
 // ============================================================================
@@ -90,17 +90,17 @@ pub fn test_sqrt_i32_negative() {
 
 @test
 pub fn test_sqrt_u16_perfect() {
-    expect_eq((i32)sqrt(0u16), 0, "sqrt(0u16) = 0")
-    expect_eq((i32)sqrt(1u16), 1, "sqrt(1u16) = 1")
-    expect_eq((i32)sqrt(4u16), 2, "sqrt(4u16) = 2")
-    expect_eq((i32)sqrt(144u16), 12, "sqrt(144u16) = 12")
-    expect_eq((i32)sqrt(256u16), 16, "sqrt(256u16) = 16")
+    expect_eq((i32)sqrt(0), 0, "sqrt(0) = 0")
+    expect_eq((i32)sqrt(1), 1, "sqrt(1) = 1")
+    expect_eq((i32)sqrt(4), 2, "sqrt(4) = 2")
+    expect_eq((i32)sqrt(144), 12, "sqrt(144) = 12")
+    expect_eq((i32)sqrt(256), 16, "sqrt(256) = 16")
 }
 
 @test
 pub fn test_sqrt_u16_non_perfect() {
-    expect_eq((i32)sqrt(10u16), 3, "sqrt(10u16) = 3")
-    expect_eq((i32)sqrt(50u16), 7, "sqrt(50u16) = 7")
+    expect_eq((i32)sqrt(10), 3, "sqrt(10) = 3")
+    expect_eq((i32)sqrt(50), 7, "sqrt(50) = 7")
 }
 
 // ============================================================================
@@ -109,20 +109,20 @@ pub fn test_sqrt_u16_non_perfect() {
 
 @test
 pub fn test_sqrt_fast_zero() {
-    expect_eq((i32)sqrt_fast(0u32), 0, "sqrt_fast(0) = 0")
+    expect_eq((i32)sqrt_fast(0), 0, "sqrt_fast(0) = 0")
 }
 
 @test
 pub fn test_sqrt_fast_one() {
-    expect_eq((i32)sqrt_fast(1u32), 1, "sqrt_fast(1) = 1")
+    expect_eq((i32)sqrt_fast(1), 1, "sqrt_fast(1) = 1")
 }
 
 @test
 pub fn test_sqrt_fast_perfect() {
     // Fast sqrt should be close to exact for perfect squares
-    let r4 = sqrt_fast(4u32)
-    let r16 = sqrt_fast(16u32)
-    let r100 = sqrt_fast(100u32)
+    let r4 = sqrt_fast(4)
+    let r16 = sqrt_fast(16)
+    let r100 = sqrt_fast(100)
 
     expect_true((i32)r4 >= 1 && (i32)r4 <= 3, "sqrt_fast(4) ~ 2")
     expect_true((i32)r16 >= 3 && (i32)r16 <= 5, "sqrt_fast(16) ~ 4")
@@ -131,7 +131,7 @@ pub fn test_sqrt_fast_perfect() {
 
 @test
 pub fn test_sqrt_fast_large() {
-    let r = sqrt_fast(1000000u32)
+    let r = sqrt_fast(1000000)
     // Should be approximately 1000
     expect_true((i32)r >= 950 && (i32)r <= 1050, "sqrt_fast(1000000) ~ 1000")
 }
@@ -293,21 +293,21 @@ pub fn test_hypot_large() {
 
 @test
 pub fn test_inv_sqrt_one() {
-    let result = inv_sqrt(1u32)
+    let result = inv_sqrt(1)
     // 1/sqrt(1) = 1.0 in 16.16 fixed point = 65536
     expect_true(result > 60000 && result < 70000, "inv_sqrt(1) ~ 1.0")
 }
 
 @test
 pub fn test_inv_sqrt_four() {
-    let result = inv_sqrt(4u32)
+    let result = inv_sqrt(4)
     // 1/sqrt(4) = 0.5 in 16.16 fixed point = 32768
     expect_true(result > 30000 && result < 35000, "inv_sqrt(4) ~ 0.5")
 }
 
 @test
 pub fn test_inv_sqrt_zero() {
-    let result = inv_sqrt(0u32)
+    let result = inv_sqrt(0)
     // Should return max value for divide by zero
     expect_eq(result, 0x7FFFFFFF, "inv_sqrt(0) = max i32")
 }

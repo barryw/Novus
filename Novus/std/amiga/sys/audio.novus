@@ -1,0 +1,2 @@
+// Tier 2: shared safe audio concepts used by device and hardware backends.
+pub use amiga::sys::audio::errors::*

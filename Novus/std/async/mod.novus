@@ -11,7 +11,7 @@
 //
 // ```novus
 // from std::async import block_on, sleep
-// from std::os::timer import Duration
+// from amiga::timer import Duration
 //
 // fn main() -> i32 {
 //     block_on(async {

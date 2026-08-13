@@ -1,7 +1,7 @@
 // Test Amiga memory allocation with RAII
 
 from std::core import Result
-from std::memory::amiga import MemHandle
+from amiga::sys::exec::memory::allocation import MemHandle
 
 fn test_chip_memory() -> i32 {
     // Allocate chip memory

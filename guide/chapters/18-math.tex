@@ -426,9 +426,9 @@ The \texttt{std::math::sqrt} module provides square root operations with automat
 \begin{lstlisting}
 from std::math::sqrt import sqrt
 
-let root = sqrt(16u32)   // Returns 4
-let root2 = sqrt(100u32) // Returns 10
-let root3 = sqrt(2u32)   // Returns 1 (integer truncation)
+let root = sqrt(16)   // Returns 4
+let root2 = sqrt(100) // Returns 10
+let root3 = sqrt(2)   // Returns 1 (integer truncation)
 \end{lstlisting}
 
 The function is overloaded for \texttt{u32}, \texttt{i32}, and \texttt{u16}. For signed values, negative inputs return 0.
@@ -1345,7 +1345,7 @@ Multi-target & Fixed32 + tables (works everywhere) & FPU-only code paths \\
 Novus provides CPU detection to choose optimal code paths:
 
 \begin{lstlisting}
-from std::os::cpu import get_cpu_type, has_fpu, CpuType
+from amiga::sys::hardware::cpu import get_cpu_type, has_fpu, CpuType
 from std::math::sqrt import fixed32_sqrt
 from std::math::fixed import Fixed32
 

@@ -1,0 +1,12 @@
+// Canonical portable collections surface. Fallible dynamic storage operations
+// use std::memory::MemoryError.
+pub use std::collections::arrayvec::*
+pub use std::collections::bitset::*
+pub use std::collections::freelist::*
+pub use std::collections::hashmap::*
+pub use std::collections::hashset::*
+pub use std::collections::ringbuffer::*
+pub use std::collections::slotmap::*
+pub use std::collections::smallvec::*
+pub use std::collections::vec::*
+pub use std::collections::vecdeque::*

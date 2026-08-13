@@ -38,6 +38,8 @@ public partial class IrBuilder
             "u16" => IrIntType.U16,
             "u32" => IrIntType.U32,
             "u64" => IrIntType.U64,
+            "usize" => IrIntType.U32,
+            "isize" => IrIntType.I32,
             "bool" => IrBoolType.Instance,
             "f32" => IrFloatType.F32,
             "f64" => IrFloatType.F64,
@@ -149,117 +151,29 @@ public partial class IrBuilder
         }
     }
 
-    /// <summary>
-    /// Extract type suffix from numeric literal text. Consolidates the duplicated type suffix checking
-    /// logic from ParseIntegerLiteral, ParseBinaryLiteral, and ParseHexLiteral.
-    /// </summary>
-    /// <param name="text">The literal text (with underscores already stripped)</param>
-    /// <param name="defaultType">The default type if no suffix is found</param>
-    /// <returns>Tuple of (numeric part without suffix, type)</returns>
-    private (string NumericPart, IrType Type) ExtractIntegerTypeSuffix(string text, IrType defaultType)
-    {
-        // Check suffixes in order of decreasing length to avoid partial matches
-        // For example, check "u64" before "u8" to avoid matching "u8" in "123u64"
-        if (text.Length >= 3)
-        {
-            var suffix3 = text[^3..];
-            switch (suffix3)
-            {
-                case "u64": return (text[..^3], IrIntType.U64);
-                case "i64": return (text[..^3], IrIntType.I64);
-                case "u32": return (text[..^3], IrIntType.U32);
-                case "i32": return (text[..^3], IrIntType.I32);
-                case "u16": return (text[..^3], IrIntType.U16);
-                case "i16": return (text[..^3], IrIntType.I16);
-            }
-        }
-
-        if (text.Length >= 2)
-        {
-            var suffix2 = text[^2..];
-            switch (suffix2)
-            {
-                case "u8": return (text[..^2], IrIntType.U8);
-                case "i8": return (text[..^2], IrIntType.I8);
-            }
-        }
-
-        // No suffix found, use default type
-        return (text, defaultType);
-    }
-
     private (long value, IrType type) ParseIntegerLiteral(string text)
     {
-        // Strip underscores for readability (e.g., 1_000_000)
-        text = text.Replace("_", "");
-
-        // Extract type suffix and numeric part
-        var (numericPart, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
-
-        // Parse the numeric part
-        return (long.Parse(numericPart), type);
+        var literal = IntegerLiteralParser.Parse(text, _expectedType as IrIntType);
+        return (literal.ToBitPattern(), literal.Type);
     }
 
     private (double value, IrType type) ParseFloatLiteral(string text)
     {
-        // Check for type suffix
-        if (text.EndsWith("fixed32"))
-        {
-            var numText = text[..^7];
-            return (double.Parse(numText), IrFixedType.Fixed32);
-        }
-        if (text.EndsWith("fixed16"))
-        {
-            var numText = text[..^7];
-            return (double.Parse(numText), IrFixedType.Fixed16);
-        }
-        if (text.EndsWith("f64"))
-        {
-            var numText = text[..^3];
-            return (double.Parse(numText), IrFloatType.F64);
-        }
-        if (text.EndsWith("f32"))
-        {
-            var numText = text[..^3];
-            return (double.Parse(numText), IrFloatType.F32);
-        }
-
-        // Default to f32
-        return (double.Parse(text), IrFloatType.F32);
+        return (double.Parse(text), _expectedType is IrFloatType or IrFixedType
+            ? _expectedType
+            : IrFloatType.F32);
     }
 
     private (long value, IrType type) ParseBinaryLiteral(string text)
     {
-        // Remove '%' prefix and underscores
-        text = text[1..].Replace("_", "");
-
-        // Extract type suffix and binary part
-        var (binaryText, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
-
-        // Parse binary string to long
-        var value = Convert.ToInt64(binaryText, 2);
-        return (value, type);
+        var literal = IntegerLiteralParser.Parse(text, _expectedType as IrIntType);
+        return (literal.ToBitPattern(), literal.Type);
     }
 
     private (long value, IrType type) ParseHexLiteral(string text)
     {
-        // Remove hex prefix ('$' or '0x'/'0X') and underscores
-        if (text.StartsWith("0x") || text.StartsWith("0X"))
-        {
-            text = text[2..].Replace("_", "");
-        }
-        else
-        {
-            // Must be '$' prefix
-            text = text[1..].Replace("_", "");
-        }
-
-        // Extract type suffix and hex part
-        var (hexText, type) = ExtractIntegerTypeSuffix(text, _expectedType as IrIntType ?? IrIntType.I32);
-
-        // Parse hex string to long
-        var value = Convert.ToInt64(hexText, 16);
-        return (value, type);
+        var literal = IntegerLiteralParser.Parse(text, _expectedType as IrIntType);
+        return (literal.ToBitPattern(), literal.Type);
     }
 
     /// <summary>

@@ -1,0 +1,385 @@
+// Novus Standard Library - ARexx Integration
+// Namespace: amiga::sys::workbench::arexx
+//
+// High-level wrappers for ARexx (Amiga REXX) message-based communication.
+// ARexx is the Amiga's inter-process communication protocol using named ports.
+//
+// This module provides:
+// - ARexxPort: RAII handle for ARexx message ports
+// - Command sending and receiving
+// - Result handling
+//
+// Quick Start (Host):
+//   var port = ARexxPort::create("MYAPP")?
+//   while running {
+//       match port.get_command() {
+//           Option::Some(var cmd) => {
+//               let result = handle_command(&cmd)
+//               port.reply_ok(&var cmd)
+//           },
+//           Option::None => {},
+//       }
+//   }
+//
+// Quick Start (Client):
+//   let result = arexx_call("MYAPP", "QUIT")?
+
+from std::core import Result, Option, Drop
+from amiga::sys::exec::errors import ExecError
+from std::core import Error
+from std::string::core import Str, String
+from amiga::raw::structs import MsgPort, RexxMsg, Message, Node
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg, WaitPort, FindPort, PutMsg, AllocMem, FreeMem, AddPort, RemPort
+from amiga::raw::rexxsyslib import CreateArgstring, DeleteArgstring, LengthArgstring, CreateRexxMsg, DeleteRexxMsg, IsRexxMsg
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, RXCOMM, RXFB_RESULT, RXARGMASK, RXCODEMASK
+
+// ARexx-specific error types
+pub enum ARexxError {
+    OutOfMemory,
+    PortAlreadyExists,
+    PortNotFound,
+    MessageCreationFailed,
+    ArgstringCreationFailed,
+    SendFailed,
+    InvalidMessage,
+    CommandFailed,
+    LibraryNotAvailable,
+}
+
+impl ARexxError {
+    pub fn message(&self) -> *u8 {
+        match *self {
+            ARexxError::OutOfMemory => return "Out of memory",
+            ARexxError::PortAlreadyExists => return "Port already exists",
+            ARexxError::PortNotFound => return "Port not found",
+            ARexxError::MessageCreationFailed => return "Message creation failed",
+            ARexxError::ArgstringCreationFailed => return "Argstring creation failed",
+            ARexxError::SendFailed => return "Send failed",
+            ARexxError::InvalidMessage => return "Invalid message",
+            ARexxError::CommandFailed => return "Command failed",
+            ARexxError::LibraryNotAvailable => return "rexxsyslib.library not available",
+        }
+    }
+}
+
+impl Error for ARexxError {
+    fn message(&self) -> *u8 {
+        return ARexxError::message(self)
+    }
+}
+
+// Result of an ARexx command
+pub enum ARexxResult {
+    Ok(Str),        // Command succeeded with optional result string
+    Err(i32),       // Command failed with error code
+}
+
+impl ARexxResult {
+    pub fn is_ok(&self) -> bool {
+        match *self {
+            ARexxResult::Ok(_) => return true,
+            ARexxResult::Err(_) => return false,
+        }
+    }
+
+    pub fn is_err(&self) -> bool {
+        match *self {
+            ARexxResult::Ok(_) => return false,
+            ARexxResult::Err(_) => return true,
+        }
+    }
+
+    pub fn error_code(&self) -> i32 {
+        match *self {
+            ARexxResult::Ok(_) => return 0,
+            ARexxResult::Err(code) => return code,
+        }
+    }
+}
+
+// Received ARexx command (for hosts)
+pub struct ARexxCommand {
+    msg: *RexxMsg,              // The original message (for replying)
+    command: String,            // Owned copy; the incoming message may be replied independently
+}
+
+impl ARexxCommand {
+    // Get the command string
+    pub fn command(&self) -> Str {
+        return self.command.as_str()
+    }
+
+    // Get raw message pointer (for advanced use)
+    pub fn raw_msg(&self) -> *RexxMsg {
+        return self.msg
+    }
+}
+
+// ARexxPort - RAII handle for an ARexx message port
+pub struct ARexxPort {
+    port: *MsgPort,             // The message port
+    name_ptr: *u8,              // Port name (allocated)
+    name_len: u32,              // Length including null terminator
+}
+
+impl ARexxPort {
+    // Create a new ARexx port with the given name
+    // Note: rexxsyslib.library is automatically opened by the stubs on first use
+    pub fn create(name: Str) -> Result<ARexxPort, ARexxError> {
+        // Check if port already exists
+        let existing = FindPort(name.ptr)
+        if existing != null {
+            return Result::Err(ARexxError::PortAlreadyExists)
+        }
+
+        // Create the message port
+        let port = CreateMsgPort()
+        if port == null {
+            return Result::Err(ARexxError::OutOfMemory)
+        }
+
+        // Allocate and copy name
+        let name_len = name.len + 1
+        let name_ptr = unsafe { (*u8)AllocMem(name_len, MEMF_PUBLIC | MEMF_CLEAR) }
+        if name_ptr == null {
+            DeleteMsgPort(port)
+            return Result::Err(ARexxError::OutOfMemory)
+        }
+
+        // Copy name
+        for i in 0..name.len {
+            match name.get(i) {
+                Option::Some(byte) => unsafe { name_ptr[i] = byte },
+                Option::None => {},
+            }
+        }
+
+        // Set port name and make public
+        unsafe {
+            port.mp_Node.ln_Name = name_ptr
+            port.mp_Node.ln_Pri = 0
+        }
+        AddPort(port)
+
+        return Result::Ok(ARexxPort {
+            port: port,
+            name_ptr: name_ptr,
+            name_len: name_len,
+        })
+    }
+
+    // Get the port's signal bit for use with Wait()
+    pub fn signal_bit(&self) -> u32 {
+        unsafe {
+            return 1 << (u32)self.port.mp_SigBit
+        }
+    }
+
+    // Get next command (non-blocking)
+    pub fn get_command(&var self) -> Option<ARexxCommand> {
+        let msg = (*RexxMsg)GetMsg(self.port)
+        if msg == null {
+            return Option::None
+        }
+
+        // Verify it's a RexxMsg
+        if IsRexxMsg(msg) == 0 {
+            unsafe {
+                msg.rm_Result1 = 10
+                msg.rm_Result2 = 0
+            }
+            ReplyMsg((*Message)msg)
+            return Option::None
+        }
+
+        // Check if this is a command (RXCOMM)
+        let action = msg.rm_Action
+        let code_mask = action & (i32)RXCODEMASK
+        if code_mask != (i32)RXCOMM {
+            unsafe {
+                msg.rm_Result1 = 10
+                msg.rm_Result2 = 0
+            }
+            ReplyMsg((*Message)msg)
+            return Option::None
+        }
+
+        // Extract command string
+        let cmd_argstring = msg.rm_Args[0]
+        var cmd_string = String::new()
+        if cmd_argstring != null {
+            let cmd_len = LengthArgstring(cmd_argstring)
+            let cmd_view = unsafe { Str::borrow_raw(cmd_argstring, cmd_len) }
+            match String::new_from_str(cmd_view) {
+                Result::Ok(value) => { cmd_string = value },
+                Result::Err(_) => {
+                    unsafe {
+                        msg.rm_Result1 = 10
+                        msg.rm_Result2 = 0
+                    }
+                    ReplyMsg((*Message)msg)
+                    return Option::None
+                },
+            }
+        }
+
+        return Option::Some(ARexxCommand {
+            msg: msg,
+            command: cmd_string,
+        })
+    }
+
+    // Wait for next command (blocking)
+    pub fn wait_command(&var self) -> ARexxCommand {
+        let _ = WaitPort(self.port)
+        forever {
+            match self.get_command() {
+                Option::Some(cmd) => return cmd,
+                Option::None => {
+                    let _ = WaitPort(self.port)
+                },
+            }
+        }
+    }
+
+    // Reply to a command with success
+    pub fn reply_ok(&var self, cmd: &var ARexxCommand) {
+        unsafe {
+            cmd.msg.rm_Result1 = 0
+            cmd.msg.rm_Result2 = 0
+        }
+        ReplyMsg((*Message)cmd.msg)
+    }
+
+    // Reply to a command with a result string
+    pub fn reply_result(&var self, cmd: &var ARexxCommand, result: Str) {
+        unsafe {
+            cmd.msg.rm_Result1 = 0
+            if result.len > 0 {
+                let result_argstring = CreateArgstring(result.ptr, result.len)
+                cmd.msg.rm_Result2 = (i32)result_argstring
+            } else {
+                cmd.msg.rm_Result2 = 0
+            }
+        }
+        ReplyMsg((*Message)cmd.msg)
+    }
+
+    // Reply to a command with an error code
+    pub fn reply_error(&var self, cmd: &var ARexxCommand, severity: i32, code: i32) {
+        unsafe {
+            cmd.msg.rm_Result1 = severity
+            cmd.msg.rm_Result2 = code
+        }
+        ReplyMsg((*Message)cmd.msg)
+    }
+
+    // Get raw port pointer
+    pub fn as_ptr(&self) -> *MsgPort {
+        return self.port
+    }
+}
+
+impl Drop for ARexxPort {
+    fn drop(&var self) {
+        // Check if already moved/zeroed - don't call RemPort/DeleteMsgPort with NULL
+        if self.port == null {
+            return
+        }
+        RemPort(self.port)
+        if self.name_ptr != null {
+            unsafe {
+                FreeMem(self.name_ptr, self.name_len)
+            }
+        }
+        DeleteMsgPort(self.port)
+    }
+}
+
+// Check if an application has an ARexx port
+pub fn has_arexx_port(name: Str) -> bool {
+    let port = FindPort(name.ptr)
+    return port != null
+}
+
+// Send a command to an app and get the result
+// Note: rexxsyslib.library is automatically opened by the stubs on first use
+pub fn arexx_call(target: Str, command: Str) -> Result<String, ARexxError> {
+    // Find target port
+    let target_port = FindPort(target.ptr)
+    if target_port == null {
+        return Result::Err(ARexxError::PortNotFound)
+    }
+
+    // Create a temporary reply port
+    let reply_port = CreateMsgPort()
+    if reply_port == null {
+        return Result::Err(ARexxError::OutOfMemory)
+    }
+
+    // Create RexxMsg
+    let rexx_msg = CreateRexxMsg(reply_port, "rexx", target.ptr)
+    if rexx_msg == null {
+        DeleteMsgPort(reply_port)
+        return Result::Err(ARexxError::MessageCreationFailed)
+    }
+
+    // Create command argstring
+    let cmd_argstring = CreateArgstring(command.ptr, command.len)
+    if cmd_argstring == null {
+        DeleteRexxMsg(rexx_msg)
+        DeleteMsgPort(reply_port)
+        return Result::Err(ARexxError::ArgstringCreationFailed)
+    }
+
+    // Set up message
+    unsafe {
+        rexx_msg.rm_Args[0] = cmd_argstring
+        rexx_msg.rm_Action = (i32)RXCOMM | (1 << (i32)RXFB_RESULT)
+    }
+
+    // Send message
+    PutMsg(target_port, (*Message)rexx_msg)
+
+    // Wait for reply
+    WaitPort(reply_port)
+    let reply = (*RexxMsg)GetMsg(reply_port)
+
+    // Get result
+    var result_string = String::new()
+    var error_code: i32 = 0
+    if reply != null {
+        let rc = reply.rm_Result1
+        if rc == 0 {
+            // Success - check for result string
+            let result_ptr = (*u8)reply.rm_Result2
+            if result_ptr != null {
+                let result_len = LengthArgstring(result_ptr)
+                let result_view = unsafe { Str::borrow_raw(result_ptr, result_len) }
+                match String::new_from_str(result_view) {
+                    Result::Ok(value) => { result_string = value },
+                    Result::Err(_) => { error_code = -1 },
+                }
+            }
+        } else {
+            error_code = rc
+        }
+    }
+
+    // Cleanup
+    DeleteArgstring(cmd_argstring)
+    DeleteRexxMsg(rexx_msg)
+    DeleteMsgPort(reply_port)
+
+    if error_code != 0 {
+        return Result::Err(ARexxError::CommandFailed)
+    }
+
+    return Result::Ok(result_string)
+}
+
+// Send a command, ignore response
+pub fn arexx_send(target: Str, command: Str) {
+    // Fire and forget - ignore errors
+    let _ = arexx_call(target, command)
+}

@@ -59,10 +59,10 @@ public class StdlibBorrowContractTests
     [Fact]
     public void StringAndAmigaViewsDoNotEraseOwnersIntoRawFields()
     {
-        var strings = Read("strings/core.novus");
-        var draw = Read("graphics/draw.novus");
-        var area = Read("graphics/area.novus");
-        var args = Read("args/args.novus");
+        var strings = Read("string/core.novus");
+        var draw = Read("amiga/sys/graphics/draw.novus");
+        var area = Read("amiga/sys/graphics/area.novus");
+        var args = Read("amiga/sys/workbench/args.novus");
 
         Assert.Matches(@"pub struct Str\s*\{\s*ptr: &u8,", strings);
         Assert.Contains("@unsafe\n    pub fn new(ptr: &u8, len: u32)", strings);
@@ -111,15 +111,15 @@ public class StdlibBorrowContractTests
         Assert.Contains("insert(&var self, consuming value: T)",
             Read("collections/slotmap.novus"));
         Assert.Contains("send(&self, consuming value: T)",
-            Read("sync/channel.novus"));
+            Read("amiga/sys/exec/channel.novus"));
         Assert.Contains("new(consuming value: T)",
             Read("memory/block.novus"));
         Assert.Contains("new(consuming value: T)",
             Read("async/future.novus"));
-        Assert.Contains("new(consuming memory: MemoryBlock", Read("graphics/bitmap.novus"));
-        Assert.Contains("self.active = false", Read("graphics/bitmap.novus"));
+        Assert.Contains("new(consuming memory: MemoryBlock", Read("amiga/sys/graphics/bitmap.novus"));
+        Assert.Contains("self.active = false", Read("amiga/sys/graphics/bitmap.novus"));
         Assert.Contains("from_sprites(consuming plane01: SpriteData, consuming plane23: SpriteData)",
-            Read("graphics/sprite.novus"));
+            Read("amiga/sys/graphics/sprite.novus"));
         Assert.Contains("connect(&self, consuming tcp: TcpStream", Read("net/tls.novus"));
         Assert.Contains("accept(&self, consuming tcp: TcpStream", Read("net/tls.novus"));
         Assert.Contains("block_on_sleep(consuming sleep_future: Sleep)", Read("async/executor.novus"));
@@ -136,15 +136,15 @@ public class StdlibBorrowContractTests
         var immutableDrops = Directory.EnumerateFiles(stdlib, "*.novus", SearchOption.AllDirectories)
             .Where(file => File.ReadAllText(file).Contains("fn drop(&self)", StringComparison.Ordinal))
             .Select(file => Path.GetRelativePath(stdlib, file));
-        var exec = Read("os/exec.novus");
+        var exec = Read("amiga/sys/exec/exec.novus");
 
         Assert.Empty(immutableDrops);
         Assert.Contains("owner: &SemaphoreHandle", exec);
         Assert.Contains("data: &var T", exec);
         Assert.Contains("data: &T", exec);
-        Assert.Contains("pub fn get_time(&var self)", Read("os/timer.novus"));
-        Assert.Contains("pub fn delay(&var self", Read("os/timer.novus"));
-        Assert.Contains("pub fn play(&var self", Read("audio/device.novus"));
-        Assert.Contains("pub fn stop(&var self)", Read("audio/device.novus"));
+        Assert.Contains("pub fn get_time(&var self)", Read("amiga/sys/timer/device.novus"));
+        Assert.Contains("pub fn delay(&var self", Read("amiga/sys/timer/device.novus"));
+        Assert.Contains("pub fn play(&var self", Read("amiga/sys/device/audio.novus"));
+        Assert.Contains("pub fn stop(&var self)", Read("amiga/sys/device/audio.novus"));
     }
 }

@@ -1,8 +1,8 @@
 // Comprehensive tests for PriorityList<T>
 // Run with: novus test test_priority_list.novus
 
-from std::collections::intrusive_list import PriorityList, init_node
-from std::ffi::amiga_structs import Node
+from amiga::sys::exec::intrusive_list import PriorityList, init_node
+from amiga::raw::structs import Node
 from std::test::test import expect_true, expect_false, expect_eq, expect_eq, fail
 
 // Test struct - Node MUST be the first field for intrusive list compatibility

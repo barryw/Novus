@@ -1,8 +1,8 @@
-// Test suite for std::strings::core path manipulation functions
+// Test suite for std::string::core path manipulation functions
 // Tests AmigaDOS path handling: path_split, path_filename, path_dirname, path_is_absolute, path_join
 
-from std::strings::core import Str, String, StringError, PathComponents
-from std::strings::core import path_split, path_filename, path_dirname, path_is_absolute, path_join
+from std::string::core import Str, String, StringError, PathComponents
+from std::string::core import path_split, path_filename, path_dirname, path_is_absolute, path_join
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
 // =============================================================================

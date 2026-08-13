@@ -255,8 +255,8 @@ Let's look at a program that does more than print a message. This example querie
 \begin{lstlisting}
 // memory_info.novus - Display memory statistics
 from std::io::file import print, println
-from std::ffi::exec import AvailMem
-from std::ffi::amiga_consts import MEMF_CHIP, MEMF_FAST, MEMF_TOTAL
+from amiga::raw::exec import AvailMem
+from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_TOTAL
 
 pub fn main() -> i32 {
     println("Memory Information")
@@ -285,15 +285,15 @@ pub fn main() -> i32 {
 }
 
 fn print_kb(bytes: u32) {
-    let kb = bytes / 1024u32
+    let kb = bytes / 1024
     print_number(kb)
 }
 
 fn print_number(n: u32) {
     if n == 0 { return }
-    if n >= 10 { print_number(n / 10u32) }
-    let digit: u8 = (u8)(n % 10u32) + 48u8
-    var buf = [0u8; 2]
+    if n >= 10 { print_number(n / 10) }
+    let digit: u8 = (u8)(n % 10) + 48
+    var buf: [u8] = [0; 2]
     buf[0] = digit
     print(&buf[0])
 }
@@ -594,12 +594,12 @@ Novus includes a comprehensive standard library:
 \begin{description}
     \item[\texttt{std::core}] Fundamental types: \texttt{Option}, \texttt{Result}, core traits
     \item[\texttt{std::collections}] Data structures: \texttt{Vec}, \texttt{HashMap}, \texttt{HashSet}
-    \item[\texttt{std::strings}] String handling: \texttt{String}, \texttt{Str}, \texttt{StringBuilder}
+    \item[\texttt{std::string}] String handling: \texttt{String}, \texttt{Str}, \texttt{StringBuilder}
     \item[\texttt{std::memory}] Memory management, slices
     \item[\texttt{std::math}] Fixed-point arithmetic, trigonometry
     \item[\texttt{std::io}] File and console I/O
-    \item[\texttt{std::ffi}] AmigaOS bindings (Exec, DOS, Graphics, Intuition)
-    \item[\texttt{std::hardware}] CPU/chipset detection, memory info
+    \item[\texttt{amiga::raw}] AmigaOS bindings (Exec, DOS, Graphics, Intuition)
+    \item[\texttt{amiga::sys::hardware}] CPU/chipset detection, memory info
 \end{description}
 
 Import with \texttt{from}:
@@ -620,15 +620,15 @@ This program demonstrates the concepts from this chapter by querying and display
 // sysinfo.novus - System Information Display
 from std::core import Option
 from std::io::file import print, println
-from std::ffi::exec import AvailMem
-from std::ffi::amiga_consts import MEMF_FAST, MEMF_CHIP
-from std::ffi::amiga_consts import MEMF_TOTAL, MEMF_LARGEST
+from amiga::raw::exec import AvailMem
+from amiga::raw::consts import MEMF_FAST, MEMF_CHIP
+from amiga::raw::consts import MEMF_TOTAL, MEMF_LARGEST
 
 fn print_memory(label: *u8, bytes: u32) {
     print("  ")
     print(label)
     print(": ")
-    let kb: u32 = bytes / 1024u32
+    let kb: u32 = bytes / 1024
     if kb == 0 {
         print("0")
     } else {
@@ -639,9 +639,9 @@ fn print_memory(label: *u8, bytes: u32) {
 
 fn print_number(n: u32) {
     if n == 0 { return }
-    if n >= 10 { print_number(n / 10u32) }
-    let digit: u8 = (u8)(n % 10u32) + 48u8
-    var buf = [0u8; 2]
+    if n >= 10 { print_number(n / 10) }
+    let digit: u8 = (u8)(n % 10) + 48
+    var buf: [u8] = [0; 2]
     buf[0] = digit
     print(&buf[0])
 }

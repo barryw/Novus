@@ -7,8 +7,8 @@
 // Note: This is a compilation test. Running requires an Amiga with a MOD file.
 
 from std::core import Result
-from std::audio::ptplayer import ModPlayer, SfxStructure
-from std::audio::errors import AudioError
+from amiga::sys::hardware::ptplayer import ModPlayer, SfxStructure
+from amiga::sys::audio::errors import AudioError
 
 // Test that we can create types from ptplayer
 fn test_sfx_structure() -> i32 {

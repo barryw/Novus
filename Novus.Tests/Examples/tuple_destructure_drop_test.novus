@@ -21,8 +21,8 @@ impl Drop for TestResource {
 
 // Create a tuple containing resources
 fn create_pair() -> (TestResource, TestResource) {
-    let a = TestResource { name: "first" as *u8, id: 1u32 }
-    let b = TestResource { name: "second" as *u8, id: 2u32 }
+    let a = TestResource { name: "first" as *u8, id: 1 }
+    let b = TestResource { name: "second" as *u8, id: 2 }
     return (a, b)
 }
 

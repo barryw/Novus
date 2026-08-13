@@ -1,0 +1,17 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: misc.resource
+// Base: _MiscBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("misc.resource")
+extern pub fn AllocMiscResource(unitNum: u32, name: *u8) -> *u8
+@library("misc.resource")
+extern pub fn FreeMiscResource(unitNum: u32)

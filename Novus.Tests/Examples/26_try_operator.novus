@@ -3,7 +3,7 @@
 // and propagates errors up the call stack
 
 from std::core import Result
-from std::error::errors import DosError
+from amiga::sys::dos::errors import DosError
 
 // Simulates a file operation that might fail
 fn open_file(valid: bool) -> Result<i32, DosError> {

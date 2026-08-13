@@ -1,13 +1,13 @@
 // Novus File I/O API Showcase
-// Demonstrates the file I/O features in std::os::dos
+// Demonstrates the file I/O features in amiga::sys::dos
 
 from std::core import Result
-from std::strings::core import Str
-from std::ffi::dos import PutStr
-from std::ffi::amiga_consts import MODE_OLDFILE, MODE_NEWFILE
-from std::error::errors import DosError
-from std::os::dos import OwnedFileHandle
-from std::os::dos import file_exists, delete_file, create_dir, file_info
+from std::string::core import Str
+from amiga::raw::dos import PutStr
+from amiga::raw::consts import MODE_OLDFILE, MODE_NEWFILE
+from amiga::sys::dos::errors import DosError
+from amiga::sys::dos import OwnedFileHandle
+from amiga::sys::dos import file_exists, delete_file, create_dir, file_info
 
 fn main() -> i32 {
     PutStr("\n=== Novus File I/O Showcase ===\n\n")
@@ -135,9 +135,9 @@ fn create_test_file() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_NEWFILE)?
 
     // Write some test data
-    file.write_all("Line 1: Hello, Amiga!\n", 22u32)?
-    file.write_all("Line 2: Testing File I/O\n", 25u32)?
-    file.write_all("Line 3: Novus is awesome!\n", 26u32)?
+    file.write_all("Line 1: Hello, Amiga!\n", 22)?
+    file.write_all("Line 2: Testing File I/O\n", 25)?
+    file.write_all("Line 3: Novus is awesome!\n", 26)?
 
     // File is automatically closed when it goes out of scope
     return Result::Ok(())
@@ -147,8 +147,8 @@ fn create_test_file() -> Result<(), DosError> {
 fn read_with_read_all() -> Result<u32, DosError> {
     let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_OLDFILE)?
 
-    var buffer = [0u8; 1024]
-    let bytes_read = file.read_all((*u8)&buffer, 1024u32)?
+    var buffer: [u8] = [0; 1024]
+    let bytes_read = file.read_all((*u8)&buffer, 1024)?
 
     return Result::Ok(bytes_read)
 }
@@ -157,19 +157,19 @@ fn read_with_read_all() -> Result<u32, DosError> {
 fn read_lines() -> Result<(), DosError> {
     let file = OwnedFileHandle::open("RAM:test_file.txt", (i32)MODE_OLDFILE)?
 
-    var buffer = [0u8; 256]
-    var line_count: u32 = 0u32
+    var buffer: [u8] = [0; 256]
+    var line_count: u32 = 0
 
     // Read each line
     while true {
-        let result = file.read_line((*u8)&buffer, 256u32)
+        let result = file.read_line((*u8)&buffer, 256)
         match result {
             Result::Ok(bytes) => {
-                if bytes == 0u32 {
+                if bytes == 0 {
                     // EOF
                     break
                 }
-                line_count = line_count + 1u32
+                line_count = line_count + 1
             },
             Result::Err(e) => {
                 return Result::Err(e)

@@ -1,11 +1,11 @@
 from std::core import Result
-from std::os::block_device import BlockDevice
+from amiga::storage import BlockDevice
 
 @test("opening common device units is Guru-safe")
 pub fn test_device_scan_is_safe() {
     let drivers = ["uaehf.device", "scsi.device", "2nd.scsi.device", "ide.device"]
-    for driver_index in 0u32..4u32 {
-        for unit in 0u32..8u32 {
+    for driver_index in 0..4 {
+        for unit in 0..8 {
             match BlockDevice::open(drivers[driver_index], unit) {
                 Result::Ok(_) => {},
                 Result::Err(_) => {},

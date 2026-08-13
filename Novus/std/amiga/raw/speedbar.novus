@@ -1,0 +1,29 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: speedbar.library
+// Base: _SpeedBarBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("speedbar.library")
+extern pub fn SPEEDBAR_GetClass() -> *u8
+@library("speedbar.library")
+extern pub fn AllocSpeedButtonNodeA(number: u16, tags: *TagItem) -> *Node
+@library("speedbar.library")
+extern pub fn AllocSpeedButtonNode(number: u16, tags: u32, ...args) -> *Node
+@library("speedbar.library")
+extern pub fn FreeSpeedButtonNode(node: *Node)
+@library("speedbar.library")
+extern pub fn SetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
+@library("speedbar.library")
+extern pub fn SetSpeedButtonNodeAttrs(node: *Node, ...args)
+@library("speedbar.library")
+extern pub fn GetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
+@library("speedbar.library")
+extern pub fn GetSpeedButtonNodeAttrs(node: *Node, ...args)

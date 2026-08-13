@@ -1,0 +1,18 @@
+from amiga::sys::graphics::draw import DrawContext as SystemCanvas, DrawMode as SystemDrawMode
+from amiga::sys::graphics::errors import GraphicsError as SystemGraphicsError
+from amiga::sys::graphics::palette import Color as SystemColor
+from amiga::sys::graphics::patterns import FillPattern as SystemFillPattern, LinePattern as SystemLinePattern
+from amiga::sys::graphics::shapes import Ellipse as SystemEllipse, Point as SystemPoint, Rect as SystemRect, Size as SystemSize
+
+// Tier 1 application graphics: bounded drawing concepts. Specialist bitmap,
+// font, sprite, copper, and RastPort APIs remain under amiga::sys::graphics.
+pub type Canvas = SystemCanvas
+pub type DrawMode = SystemDrawMode
+pub type GraphicsError = SystemGraphicsError
+pub type Color = SystemColor
+pub type FillPattern = SystemFillPattern
+pub type LinePattern = SystemLinePattern
+pub type Ellipse = SystemEllipse
+pub type Point = SystemPoint
+pub type Rect = SystemRect
+pub type Size = SystemSize

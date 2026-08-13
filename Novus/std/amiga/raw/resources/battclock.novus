@@ -1,0 +1,19 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: battclock.resource
+// Base: _BattClockBase
+
+from amiga::raw::structs import *
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("battclock.resource")
+extern pub fn ResetBattClock()
+@library("battclock.resource")
+extern pub fn ReadBattClock() -> u32
+@library("battclock.resource")
+extern pub fn WriteBattClock(time: u32)

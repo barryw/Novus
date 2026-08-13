@@ -2,7 +2,7 @@
 
 **Status**: Implemented
 **Target**: Modern Amigas (68040+, 16MB+ RAM)
-**Module**: `std::ui::buffered_window`
+**Module**: `amiga::sys::intuition::buffered_window`
 
 ## Overview
 
@@ -292,7 +292,7 @@ Present() cost per frame (640×480×8):
 **Rationale**:
 - This is the entire point of BufferedWindow
 - 99% of apps just want "content stays visible"
-- Power users can still access window.handle() for custom behavior
+- Power users can still access `window.window_handle().as_raw()` for custom behavior
 
 **Alternative considered**: Return event, require developer to call refresh()
 - More control, but defeats the purpose

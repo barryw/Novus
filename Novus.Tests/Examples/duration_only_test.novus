@@ -1,6 +1,6 @@
 // Test importing just Duration struct
 
-from std::ffi::dos import VPrintf
+from amiga::raw::dos import VPrintf
 
 // Define our own Duration to avoid importing from timer
 struct MyDuration {

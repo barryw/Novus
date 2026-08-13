@@ -133,7 +133,7 @@ impl SpriteHandle {
     pub fn show(&mut self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         // Calculate control words based on position
         let vstart = (u16)(y + (i16)get_vstart_offset())
-        let vstop = vstart + sprite.height() + 1u16
+        let vstop = vstart + sprite.height() + 1
 
         // Write control words to first 4 bytes of sprite data
         unsafe {
@@ -150,7 +150,7 @@ impl SpriteHandle {
 
 ## Unified API for Hardware and OS Sprites
 
-Both `std::graphics::sprite` (hardware) and `std::graphics::os_sprite` (OS) use the **same** `SpriteData` type.
+Both `amiga::sys::graphics::sprite` (hardware) and `amiga::sys::graphics::os_sprite` (OS) use the **same** `SpriteData` type.
 
 ### Hardware API (sprite.novus)
 ```novus

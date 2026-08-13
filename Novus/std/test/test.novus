@@ -9,10 +9,10 @@
 // allowing a single function to handle i32, u32, i16, u16, i8, u8, and bool comparisons.
 
 from std::io::file import write
-from std::core import Eq
-from std::strings::format import Display
-from std::strings::core import Str
-from std::strings::display import *  // Import Display implementations for primitives
+from std::core import Eq, Option, Result
+from std::string::format import Display
+from std::string::core import Str
+from std::string::display import *  // Import Display implementations for primitives
 
 // ============================================================================
 // External Runtime Functions (for should_panic tests)
@@ -86,7 +86,7 @@ pub fn expect_false(condition: bool, message: *u8) {
 ///
 /// Example:
 /// ```novus
-/// expect_eq(42i32, 42i32, "values should match")
+/// expect_eq(42, 42, "values should match")
 /// expect_eq(true, true, "booleans should match")
 /// ```
 pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display {
@@ -97,12 +97,68 @@ pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display 
         while var i < message.len {
             let c = match message.get(i) {
                 Option::Some(byte) => byte,
-                Option::None => 0u8,
+                Option::None => 0,
             }
             write("%c", (c as i32))
-            i = i + 1u32
+            i = i + 1
         }
         write(" - expected {expected}, got {actual}\n")
+    }
+}
+
+/// Concise assertions for the common case. Detailed message overloads remain
+/// available when a test needs more context.
+pub fn expect_eq<T>(actual: T, expected: T) where T: Eq + Display {
+    if actual != expected {
+        __test_record_failure()
+        write("  FAIL: expected {expected}, got {actual}\n")
+    }
+}
+
+pub fn expect_ne<T>(actual: T, expected: T) where T: Eq + Display {
+    if actual == expected {
+        __test_record_failure()
+        write("  FAIL: expected distinct values, got {actual}\n")
+    }
+}
+
+pub fn expect_ok<T, E>(result: Result<T, E>) {
+    match result {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            __test_record_failure()
+            write("  FAIL: expected Ok, got Err\n")
+        },
+    }
+}
+
+pub fn expect_err<T, E>(result: Result<T, E>) {
+    match result {
+        Result::Ok(_) => {
+            __test_record_failure()
+            write("  FAIL: expected Err, got Ok\n")
+        },
+        Result::Err(_) => {},
+    }
+}
+
+pub fn expect_some<T>(value: Option<T>) {
+    match value {
+        Option::Some(_) => {},
+        Option::None => {
+            __test_record_failure()
+            write("  FAIL: expected Some, got None\n")
+        },
+    }
+}
+
+pub fn expect_none<T>(value: Option<T>) {
+    match value {
+        Option::Some(_) => {
+            __test_record_failure()
+            write("  FAIL: expected None, got Some\n")
+        },
+        Option::None => {},
     }
 }
 

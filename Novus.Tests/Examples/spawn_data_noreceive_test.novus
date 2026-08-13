@@ -1,9 +1,9 @@
 // Test spawning with data but worker doesn't receive it
 
 from std::core import Result
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn_with_ptr
-from std::ffi::dos import VPrintf, Delay
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn_with_ptr
+from amiga::raw::dos import VPrintf, Delay
 
 fn worker() -> i32 {
     VPrintf("Worker: running (ignoring data)\n", (*u8)0)

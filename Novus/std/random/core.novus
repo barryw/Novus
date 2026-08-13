@@ -18,7 +18,7 @@
 // let coin = rng.bool()           // Flip a coin
 // ```
 
-from std::hardware::registers import CUSTOM_BASE, VHPOSR
+from amiga::sys::hardware::registers import CUSTOM_BASE, VHPOSR
 
 // ============================================================================
 // Rng - Random Number Generator
@@ -237,27 +237,30 @@ impl Rng {
     /// let buffer: [u8; 64]
     /// rng.fill_bytes(&buffer, 64)
     /// ```
+    @unsafe
     pub fn fill_bytes(&var self, buffer: *u8, len: u32) {
         var i: u32 = 0
 
-        // Fill 4 bytes at a time while we can
-        while i + 4 <= len {
-            let value = self.next_u32()
-            buffer[i] = (u8)((value >> 24) & 255)
-            buffer[i + 1] = (u8)((value >> 16) & 255)
-            buffer[i + 2] = (u8)((value >> 8) & 255)
-            buffer[i + 3] = (u8)(value & 255)
-            i = i + 4
-        }
+        unsafe {
+            // Fill 4 bytes at a time while we can
+            while i + 4 <= len {
+                let value = self.next_u32()
+                buffer[i] = (u8)((value >> 24) & 255)
+                buffer[i + 1] = (u8)((value >> 16) & 255)
+                buffer[i + 2] = (u8)((value >> 8) & 255)
+                buffer[i + 3] = (u8)(value & 255)
+                i = i + 4
+            }
 
-        // Fill remaining bytes
-        if i < len {
-            let rem_value = self.next_u32()
-            var shift: u32 = 24
-            while i < len {
-                buffer[i] = (u8)((rem_value >> shift) & 255)
-                shift = shift - 8
-                i = i + 1
+            // Fill remaining bytes
+            if i < len {
+                let rem_value = self.next_u32()
+                var shift: u32 = 24
+                while i < len {
+                    buffer[i] = (u8)((rem_value >> shift) & 255)
+                    shift = shift - 8
+                    i = i + 1
+                }
             }
         }
     }
@@ -329,6 +332,7 @@ pub fn random_range(min: u32, max: u32) -> u32 {
 /// // ... initialize deck ...
 /// shuffle_u32(&deck, 52, &rng)
 /// ```
+@unsafe
 pub fn shuffle_u32(arr: *u32, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
@@ -338,10 +342,12 @@ pub fn shuffle_u32(arr: *u32, len: u32, rng: &var Rng) {
     while i > 0 {
         let j = rng.random_index(i + 1)
 
-        // Swap arr[i] and arr[j]
-        let tmp = arr[i]
-        arr[i] = arr[j]
-        arr[j] = tmp
+        unsafe {
+            // Swap arr[i] and arr[j]
+            let tmp = arr[i]
+            arr[i] = arr[j]
+            arr[j] = tmp
+        }
 
         i = i - 1
     }
@@ -354,6 +360,7 @@ pub fn shuffle_u32(arr: *u32, len: u32, rng: &var Rng) {
 /// let bytes: [u8; 256]
 /// shuffle_u8(&bytes, 256, &rng)
 /// ```
+@unsafe
 pub fn shuffle_u8(arr: *u8, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
@@ -363,10 +370,12 @@ pub fn shuffle_u8(arr: *u8, len: u32, rng: &var Rng) {
     while i > 0 {
         let j = rng.random_index(i + 1)
 
-        // Swap arr[i] and arr[j]
-        let tmp = arr[i]
-        arr[i] = arr[j]
-        arr[j] = tmp
+        unsafe {
+            // Swap arr[i] and arr[j]
+            let tmp = arr[i]
+            arr[i] = arr[j]
+            arr[j] = tmp
+        }
 
         i = i - 1
     }
@@ -379,6 +388,7 @@ pub fn shuffle_u8(arr: *u8, len: u32, rng: &var Rng) {
 /// let values: [i32; 100]
 /// shuffle_i32(&values, 100, &rng)
 /// ```
+@unsafe
 pub fn shuffle_i32(arr: *i32, len: u32, rng: &var Rng) {
     if len <= 1 {
         return
@@ -388,10 +398,12 @@ pub fn shuffle_i32(arr: *i32, len: u32, rng: &var Rng) {
     while i > 0 {
         let j = rng.random_index(i + 1)
 
-        // Swap arr[i] and arr[j]
-        let tmp = arr[i]
-        arr[i] = arr[j]
-        arr[j] = tmp
+        unsafe {
+            // Swap arr[i] and arr[j]
+            let tmp = arr[i]
+            arr[i] = arr[j]
+            arr[j] = tmp
+        }
 
         i = i - 1
     }
@@ -421,12 +433,13 @@ pub fn random_index(len: u32, rng: &var Rng) -> u32 {
 /// let colors = [0xFF0000, 0x00FF00, 0x0000FF]
 /// let random_color = pick_u32(&colors, 3, &rng)
 /// ```
+@unsafe
 pub fn pick_u32(arr: *u32, len: u32, rng: &var Rng) -> u32 {
     if len == 0 {
         return 0
     }
     let index = rng.range_u32(0, len)
-    return arr[index]
+    unsafe { return arr[index] }
 }
 
 /// Pick a random u8 element from an array
@@ -436,10 +449,11 @@ pub fn pick_u32(arr: *u32, len: u32, rng: &var Rng) -> u32 {
 /// let options = [1, 2, 3, 4, 5, 6]
 /// let roll = pick_u8(&options, 6, &rng)
 /// ```
+@unsafe
 pub fn pick_u8(arr: *u8, len: u32, rng: &var Rng) -> u8 {
     if len == 0 {
         return 0
     }
     let index = rng.range_u32(0, len)
-    return arr[index]
+    unsafe { return arr[index] }
 }

@@ -1,11 +1,11 @@
 // Debug test - narrow down where crash occurs
 
 from std::core import Result
-from std::error::errors import DosError
-from std::os::task import spawn_task_fn
-from std::ffi::dos import VPrintf, Delay
-from std::ffi::exec import AllocMem, FreeMem, MEMF_PUBLIC, MEMF_CLEAR
-from std::ffi::amiga_structs import Process, Message
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec import spawn_task_fn
+from amiga::raw::dos import VPrintf, Delay
+from amiga::raw::exec import AllocMem, FreeMem, MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::structs import Process, Message
 
 fn worker() -> i32 {
     VPrintf("W1\n", (*u8)0)

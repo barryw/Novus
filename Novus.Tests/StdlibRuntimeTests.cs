@@ -47,20 +47,13 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_OpenFile_WithRealPath()
     {
         var code = @"
-            from std::system::dos import open_file, close_file
-            from std::core import Option
-            from std::strings::core import Str
+            from amiga::dos import File
+            from std::core import Result
 
             fn main() -> i32 {
-                let path = ""RAM:test.txt""
-                let result = open_file(path.as_ptr(), 1005)
-
-                match result {
-                    Option::Some(fh) => {
-                        close_file(fh)
-                        return 0
-                    },
-                    Option::None => return 1
+                return match File::open(""RAM:test.txt"") {
+                    Result::Ok(_) => 0,
+                    Result::Err(_) => 1,
                 }
             }
         ";
@@ -73,20 +66,15 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_WriteFile_WithRealString()
     {
         var code = @"
-            from std::system::dos import write_file
-            from std::strings::core import Str
+            from amiga::dos import File
+            from std::core import Result
 
             fn main() -> i32 {
-                let message = ""Hello, Amiga!""
-                let fh: i32 = 0
-
-                let bytes_written = write_file(fh, message.as_ptr(), 13)
-
-                if bytes_written >= 0 {
-                    return 0
-                } else {
-                    return 1
+                let file = match File::create(""RAM:test.txt"") {
+                    Result::Ok(value) => value,
+                    Result::Err(_) => return 1,
                 }
+                return if file.write_all(""Hello, Amiga!"".as_bytes()).is_ok() { 0 } else { 1 }
             }
         ";
 
@@ -98,19 +86,17 @@ public class StdlibRuntimeTests
     public void Stdlib_Dos_ReadFile_WithRealBuffer()
     {
         var code = @"
-            from std::system::dos import read_file
+            from amiga::dos import File
+            from std::core import Result
+            from std::memory import Buffer
 
             fn main() -> i32 {
-                let buffer = [0u8; 256]
-                let fh: i32 = 0
-
-                let bytes_read = read_file(fh, &buffer[0], 256)
-
-                if bytes_read >= 0 {
-                    return 0
-                } else {
-                    return 1
+                let file = match File::open(""RAM:test.txt"") {
+                    Result::Ok(value) => value,
+                    Result::Err(_) => return 1,
                 }
+                let var buffer = Buffer::new(256).unwrap()
+                return if file.read(buffer.as_mut_bytes()).is_ok() { 0 } else { 1 }
             }
         ";
 
@@ -126,18 +112,13 @@ public class StdlibRuntimeTests
     public void Stdlib_Exec_GetCurrentTask_ValidatesTaskPtr()
     {
         var code = @"
-            from std::system::exec import get_current_task
+            from amiga::sys::exec import get_current_task
+            from std::core import Option
 
             fn main() -> i32 {
-                let task = get_current_task()
-
-                match task {
-                    Option::Some(t) => {
-                        // Task pointer should be non-null
-                        // (Can't actually dereference in test, but validates type)
-                        return 0
-                    },
-                    Option::None => return 1
+                return match get_current_task() {
+                    Option::Some(_) => 0,
+                    Option::None => 1,
                 }
             }
         ";
@@ -150,19 +131,13 @@ public class StdlibRuntimeTests
     public void Stdlib_Exec_AllocateAndFreeSignal_RealFlow()
     {
         var code = @"
-            from std::system::exec import allocate_signal, free_signal
-            from std::core import Option
+            from amiga::sys::exec import SignalHandle
+            from std::core import Result
 
             fn main() -> i32 {
-                let signal = allocate_signal(-1)
-
-                match signal {
-                    Option::Some(sig) => {
-                        // Got a valid signal number (0-31)
-                        free_signal(sig)
-                        return 0
-                    },
-                    Option::None => return 1
+                return match SignalHandle::alloc() {
+                    Result::Ok(_) => 0,
+                    Result::Err(_) => 1,
                 }
             }
         ";
@@ -179,7 +154,7 @@ public class StdlibRuntimeTests
     public void Stdlib_Error_ConvertDosErrorToCode()
     {
         var code = @"
-            from std::error::errors import dos_error_from_code, dos_error_to_code
+            from amiga::sys::dos import dos_error_from_code, dos_error_to_code
 
             fn main() -> i32 {
                 let err = dos_error_from_code(103)
@@ -198,17 +173,14 @@ public class StdlibRuntimeTests
     }
 
     [Fact]
-    public void Stdlib_Error_NovusErrorConversion_RealFlow()
+    public void Stdlib_Error_DosErrorConversion_RealFlow()
     {
         var code = @"
-            from std::error::errors import dos_error_from_code, novus_error_from_dos, novus_error_to_code
+            from amiga::sys::dos import dos_error_from_code, dos_error_to_code
 
             fn main() -> i32 {
                 let dos_err = dos_error_from_code(103)
-                let novus_err = novus_error_from_dos(dos_err)
-                let final_code = novus_error_to_code(novus_err)
-
-                return final_code
+                return dos_error_to_code(dos_err)
             }
         ";
 
@@ -224,35 +196,20 @@ public class StdlibRuntimeTests
     public void Integration_FileOperations_OpenReadClose()
     {
         var code = @"
-            from std::system::dos import open_file, read_file, close_file
-            from std::core import Option
-            from std::strings::core import Str
-            from std::error::errors import dos_last_error, dos_error_to_code
+            from amiga::dos import File
+            from std::core import Result
+            from std::memory import Buffer
+            from amiga::sys::dos import dos_error_to_code
 
             fn main() -> i32 {
-                let path = ""RAM:test.txt""
-                let fh = open_file(path.as_ptr(), 1005)
-
-                match fh {
-                    Option::Some(handle) => {
-                        let buffer = [0u8; 256]
-
-                        let bytes_read = read_file(handle, &buffer[0], 256)
-                        close_file(handle)
-
-                        if bytes_read >= 0 {
-                            return 0
-                        } else {
-                            let err = dos_last_error()
-                            let code = dos_error_to_code(err)
-                            return code
-                        }
-                    },
-                    Option::None => {
-                        let err = dos_last_error()
-                        let code = dos_error_to_code(err)
-                        return code
-                    }
+                let file = match File::open(""RAM:test.txt"") {
+                    Result::Ok(value) => value,
+                    Result::Err(error) => return dos_error_to_code(error),
+                }
+                let var buffer = Buffer::new(256).unwrap()
+                return match file.read(buffer.as_mut_bytes()) {
+                    Result::Ok(_) => 0,
+                    Result::Err(error) => dos_error_to_code(error),
                 }
             }
         ";
@@ -265,27 +222,13 @@ public class StdlibRuntimeTests
     public void Integration_SignalAllocationWithErrorHandling()
     {
         var code = @"
-            from std::system::exec import allocate_signal, free_signal
-            from std::core import Option
-            from std::error::errors import novus_error_from_exec, novus_error_to_code
+            from amiga::sys::exec import ExecError, SignalHandle, exec_error_to_code
+            from std::core import Result
 
             fn main() -> i32 {
-                let signal = allocate_signal(-1)
-
-                match signal {
-                    Option::Some(sig) => {
-                        if sig >= 0 && sig < 32 {
-                            free_signal(sig)
-                            return 0
-                        } else {
-                            return 1
-                        }
-                    },
-                    Option::None => {
-                        let err = novus_error_from_exec(ExecError::NoMem)
-                        let code = novus_error_to_code(err)
-                        return code
-                    }
+                return match SignalHandle::alloc() {
+                    Result::Ok(signal) => if signal.bit() >= 0 { 0 } else { 1 },
+                    Result::Err(error) => exec_error_to_code(error),
                 }
             }
         ";
@@ -302,7 +245,7 @@ public class StdlibRuntimeTests
     public void StringLiterals_WorkWithStrImport()
     {
         var code = @"
-            from std::strings::core import Str
+            from std::string import Str
 
             fn main() -> i32 {
                 let s1 = ""Hello""

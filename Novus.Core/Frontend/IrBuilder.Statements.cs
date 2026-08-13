@@ -554,6 +554,82 @@ public partial class IrBuilder
         return new IrVariable(result, type);
     }
 
+    private IrType? GetAssignmentTargetType(
+        string name,
+        int dereferenceCount,
+        NovusParser.LvalueSuffixContext[] suffixes,
+        int suffixesBeforeDereference)
+    {
+        IrType? type = _localVariables.TryGetValue(name, out var local)
+            ? local.Type
+            : _currentFunction?.Parameters.FirstOrDefault(parameter => parameter.Name == name)?.Type
+              ?? _module.StaticVariables.FirstOrDefault(variable => variable.Name == name)?.Type
+              ?? _module.ExternalVariables.FirstOrDefault(variable => variable.Name == name)?.Type;
+
+        for (var suffixIndex = 0; suffixIndex <= suffixes.Length; suffixIndex++)
+        {
+            if (suffixIndex == suffixesBeforeDereference)
+            {
+                for (var index = 0; index < dereferenceCount && type != null; index++)
+                {
+                    type = type switch
+                    {
+                        IrPointerType pointer => pointer.PointeeType,
+                        IrReferenceType reference => reference.PointeeType,
+                        IrMutReferenceType reference => reference.PointeeType,
+                        _ => null
+                    };
+                }
+            }
+
+            if (suffixIndex == suffixes.Length)
+                break;
+
+            var suffix = suffixes[suffixIndex];
+            if (type == null)
+                return null;
+
+            if (suffix.GetChild(0).GetText() == ".")
+            {
+                type = type switch
+                {
+                    IrPointerType memberPointer => memberPointer.PointeeType,
+                    IrReferenceType memberReference => memberReference.PointeeType,
+                    IrMutReferenceType mutableMemberReference => mutableMemberReference.PointeeType,
+                    _ => type
+                };
+                if (type is not IrStructType structure)
+                    return null;
+                type = structure.Fields.FirstOrDefault(field =>
+                    field.Name == suffix.IDENTIFIER().GetText())?.Type;
+                continue;
+            }
+
+            type = type switch
+            {
+                IrReferenceType indexedReference => indexedReference.PointeeType,
+                IrMutReferenceType mutableIndexedReference => mutableIndexedReference.PointeeType,
+                _ => type
+            };
+            type = type switch
+            {
+                IrArrayType array => array.ElementType,
+                IrPointerType indexedPointer => indexedPointer.PointeeType,
+                _ => GetIndexedAssignmentType(type)
+            };
+        }
+
+        return type;
+    }
+
+    private IrType? GetIndexedAssignmentType(IrType type)
+    {
+        var typeName = GetTypeNameForOperator(type);
+        var methodName = _module.FindTraitMethod(typeName, "index_set");
+        var method = methodName == null ? null : _module.GetFunction(methodName);
+        return method?.Parameters.Count >= 3 ? method.Parameters[2].Type : null;
+    }
+
     private object? ProcessAssignmentStatement(NovusParser.AssignmentStatementContext context)
     {
         // Declare errorLocation once at method start to avoid CS0136 errors
@@ -692,6 +768,12 @@ public partial class IrBuilder
         {
             lvalueSuffixes = parenDerefSuffixes.Concat(lvalueSuffixes).ToArray();
         }
+
+        var suffixesBeforeDereference = hasParenDeref
+            ? parenDerefSuffixes.Length
+            : lvalueSuffixes.Length;
+        var assignmentTargetType = GetAssignmentTargetType(
+            name, derefCount, lvalueSuffixes, suffixesBeforeDereference);
 
         // Handle post-increment/decrement statements (no expression)
         if (isPostIncDec)
@@ -849,7 +931,8 @@ public partial class IrBuilder
 
                         // Load the intermediate indexed value
                         var tempName = $"_indexed_{_tempCounter++}";
-                        var loadIndex = new IrIndexAccess(tempName, currentLValue, indexExpr, elementType);
+                        var loadIndex = new IrIndexAccess(
+                            tempName, currentLValue, indexExpr, elementType, IndexBoundsMode(currentLValue));
                         _currentBlock!.AddInstruction(loadIndex);
                         currentLValue = new IrVariable(tempName, elementType);
                     }
@@ -970,7 +1053,8 @@ public partial class IrBuilder
 
                     // Load current value
                     var loadTemp = $"%index_load_{_tempCounter++}";
-                    _currentBlock!.AddInstruction(new IrIndexAccess(loadTemp, currentLValue, indexExpr, elementType));
+                    _currentBlock!.AddInstruction(new IrIndexAccess(
+                        loadTemp, currentLValue, indexExpr, elementType, IndexBoundsMode(currentLValue)));
                     var currentValue = new IrVariable(loadTemp, elementType);
 
                     // Increment/decrement
@@ -981,7 +1065,8 @@ public partial class IrBuilder
 
                     // Store back
                     var newValue = new IrVariable(newValueTemp, elementType);
-                    _currentBlock.AddInstruction(new IrIndexStore(currentLValue, indexExpr, newValue));
+                    _currentBlock.AddInstruction(new IrIndexStore(
+                        currentLValue, indexExpr, newValue, IndexBoundsMode(currentLValue)));
 
                     return null;
                 }
@@ -1068,7 +1153,7 @@ public partial class IrBuilder
         if (lvalueSuffixes.Length > 0)
         {
             // Handle member/index assignments: obj.field = value, arr[index] = value
-            var value = (IrValue?)Visit(context.expression());
+            var value = (IrValue?)VisitWithExpectedType(context.expression(), assignmentTargetType);
             if (value == null)
             {
                 errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
@@ -1121,7 +1206,7 @@ public partial class IrBuilder
             }
 
             // For single member access (e.g., self.value = expr)
-            if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == ".")
+            if (derefCount == 0 && lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == ".")
             {
                 var memberName = lvalueSuffixes[0].IDENTIFIER().GetText();
 
@@ -1188,7 +1273,7 @@ public partial class IrBuilder
             }
 
             // For single index access (e.g., ptr[0] = value, arr[i] = value)
-            if (lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == "[")
+            if (derefCount == 0 && lvalueSuffixes.Length == 1 && lvalueSuffixes[0].GetChild(0).GetText() == "[")
             {
                 // Parse the index expression
                 var indexExpr = (IrValue?)Visit(lvalueSuffixes[0].expression());
@@ -1215,10 +1300,12 @@ public partial class IrBuilder
                             ? pointer.PointeeType
                             : ((IrArrayType)baseVar.Type).ElementType;
                         var loaded = $"%index_load_{_tempCounter++}";
-                        Emit(new IrIndexAccess(loaded, baseVar, indexExpr, elementType));
+                        Emit(new IrIndexAccess(
+                            loaded, baseVar, indexExpr, elementType, IndexBoundsMode(baseVar)));
                         value = LowerCompoundAssignment(op, new IrVariable(loaded, elementType), value, elementType);
                     }
-                    var indexStore = new IrIndexStore(baseVar, indexExpr, value);
+                    var indexStore = new IrIndexStore(
+                        baseVar, indexExpr, value, IndexBoundsMode(baseVar));
                     _currentBlock!.AddInstruction(indexStore);
                     return null;
                 }
@@ -1243,7 +1330,7 @@ public partial class IrBuilder
             // This includes: arr[i].field, base.ptr[i].field, etc.
             // We need to emit IrIndexedFieldStore to write directly to the array element,
             // not create a copy of the struct and then write to it.
-            if (lvalueSuffixes.Length >= 2 &&
+            if (derefCount == 0 && lvalueSuffixes.Length >= 2 &&
                 lvalueSuffixes[lvalueSuffixes.Length - 2].GetChild(0).GetText() == "[" &&
                 lvalueSuffixes[lvalueSuffixes.Length - 1].GetChild(0).GetText() == ".")
             {
@@ -1303,7 +1390,8 @@ public partial class IrBuilder
                                 break; // Error case - will be caught below
 
                             var tempName = $"_indexed_{_tempCounter++}";
-                            var loadIndex = new IrIndexAccess(tempName, arrayBase, idxExpr, elemType);
+                            var loadIndex = new IrIndexAccess(
+                                tempName, arrayBase, idxExpr, elemType, IndexBoundsMode(arrayBase));
                             _currentBlock!.AddInstruction(loadIndex);
                             arrayBase = new IrVariable(tempName, elemType);
                         }
@@ -1378,12 +1466,14 @@ public partial class IrBuilder
                 if (op != "=")
                 {
                     var element = $"%indexed_{_tempCounter++}";
-                    Emit(new IrIndexAccess(element, arrayBase, indexExpr, elementType));
+                    Emit(new IrIndexAccess(
+                        element, arrayBase, indexExpr, elementType, IndexBoundsMode(arrayBase)));
                     var loaded = $"%member_load_{_tempCounter++}";
                     Emit(new IrMemberAccess(loaded, new IrVariable(element, elementType), memberName, field.Type, field.Offset));
                     value = LowerCompoundAssignment(op, new IrVariable(loaded, field.Type), value, field.Type);
                 }
-                var indexedFieldStore = new IrIndexedFieldStore(arrayBase, indexExpr, memberName, field.Offset, value);
+                var indexedFieldStore = new IrIndexedFieldStore(
+                    arrayBase, indexExpr, memberName, field.Offset, value, IndexBoundsMode(arrayBase));
                 _currentBlock!.AddInstruction(indexedFieldStore);
                 return null;
             }
@@ -1391,9 +1481,32 @@ public partial class IrBuilder
             // Handle complex lvalue chains (e.g., self.ptr[index] = value, self.field1.field2 = value)
             // Build up the lvalue by processing each suffix in order
             IrValue currentLValue = baseVar;
+            var storeThroughDereference = derefCount > 0 &&
+                suffixesBeforeDereference == lvalueSuffixes.Length;
 
             for (int i = 0; i < lvalueSuffixes.Length; i++)
             {
+                if (derefCount > 0 && i == suffixesBeforeDereference)
+                {
+                    for (var dereference = 0; dereference < derefCount; dereference++)
+                    {
+                        var pointeeType = currentLValue.Type switch
+                        {
+                            IrPointerType pointer => pointer.PointeeType,
+                            IrReferenceType reference => reference.PointeeType,
+                            IrMutReferenceType reference => reference.PointeeType,
+                            _ => null
+                        };
+                        if (pointeeType == null)
+                        {
+                            _diagnostics.ReportError(ErrorCodes.CannotDereferenceType,
+                                $"Cannot dereference non-pointer type '{currentLValue.Type}'", GetLocation(context));
+                            return null;
+                        }
+                        currentLValue = new IrDereferenceValue(currentLValue, pointeeType);
+                    }
+                }
+
                 var suffix = lvalueSuffixes[i];
                 bool isLastSuffix = (i == lvalueSuffixes.Length - 1);
 
@@ -1445,7 +1558,7 @@ public partial class IrBuilder
                         return null;
                     }
 
-                    if (isLastSuffix)
+                    if (isLastSuffix && !storeThroughDereference)
                     {
                         // This is the final field - emit a store
 
@@ -1486,7 +1599,7 @@ public partial class IrBuilder
                         return null;
                     }
 
-                    if (isLastSuffix)
+                    if (isLastSuffix && !storeThroughDereference)
                     {
                         // This is the final index - emit an index store
 
@@ -1499,10 +1612,12 @@ public partial class IrBuilder
                                 ? pointer.PointeeType
                                 : ((IrArrayType)currentLValue.Type).ElementType;
                             var loaded = $"%index_load_{_tempCounter++}";
-                            Emit(new IrIndexAccess(loaded, currentLValue, indexExpr, elementType));
+                            Emit(new IrIndexAccess(
+                                loaded, currentLValue, indexExpr, elementType, IndexBoundsMode(currentLValue)));
                             value = LowerCompoundAssignment(op, new IrVariable(loaded, elementType), value, elementType);
                         }
-                        var indexStore = new IrIndexStore(currentLValue, indexExpr, value);
+                        var indexStore = new IrIndexStore(
+                            currentLValue, indexExpr, value, IndexBoundsMode(currentLValue));
                         _currentBlock!.AddInstruction(indexStore);
                         return null;
                     }
@@ -1530,7 +1645,8 @@ public partial class IrBuilder
                         }
 
                         var tempName = $"_indexed_{_tempCounter++}";
-                        var loadIndex = new IrIndexAccess(tempName, currentLValue, indexExpr, elementType);
+                        var loadIndex = new IrIndexAccess(
+                            tempName, currentLValue, indexExpr, elementType, IndexBoundsMode(currentLValue));
                         _currentBlock!.AddInstruction(loadIndex);
                         currentLValue = new IrVariable(tempName, elementType);
                     }
@@ -1547,6 +1663,42 @@ public partial class IrBuilder
                 }
             }
 
+            if (storeThroughDereference)
+            {
+                IrValue pointer = currentLValue;
+                var pointerType = currentLValue.Type;
+                for (var dereference = 0; dereference < derefCount - 1; dereference++)
+                {
+                    var pointeeType = pointerType switch
+                    {
+                        IrPointerType rawPointer => rawPointer.PointeeType,
+                        IrReferenceType reference => reference.PointeeType,
+                        IrMutReferenceType reference => reference.PointeeType,
+                        _ => null
+                    };
+                    if (pointeeType == null)
+                    {
+                        _diagnostics.ReportError(ErrorCodes.CannotDereferenceType,
+                            $"Cannot dereference non-pointer type '{pointerType}'", GetLocation(context));
+                        return null;
+                    }
+                    pointer = new IrDereferenceValue(pointer, pointeeType);
+                    pointerType = pointeeType;
+                }
+                var targetType = pointerType switch
+                {
+                    IrPointerType rawPointer => rawPointer.PointeeType,
+                    IrReferenceType reference => reference.PointeeType,
+                    IrMutReferenceType reference => reference.PointeeType,
+                    _ => pointerType
+                };
+                if (op != "=")
+                    value = LowerCompoundAssignment(op, new IrDereferenceValue(pointer, targetType), value, targetType);
+                DeactivateVariableDeferIfMove(value);
+                Emit(new IrDereferenceStore(pointer, value));
+                return null;
+            }
+
             // If we get here, something went wrong
             errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
             _diagnostics.ReportError(
@@ -1560,7 +1712,7 @@ public partial class IrBuilder
         if (derefCount > 0)
         {
             // Dereference assignment: *ptr = value or **ptr = value, etc.
-            var value = (IrValue?)Visit(context.expression());
+            var value = (IrValue?)VisitWithExpectedType(context.expression(), assignmentTargetType);
 
             if (value == null)
             {
@@ -1669,7 +1821,7 @@ public partial class IrBuilder
         else
         {
             // Simple variable assignment or compound operator: x = value or x += value
-            var value = (IrValue?)Visit(context.expression());
+            var value = (IrValue?)VisitWithExpectedType(context.expression(), assignmentTargetType);
 
             if (value == null)
             {
@@ -1738,28 +1890,8 @@ public partial class IrBuilder
                     return null;
                 }
 
-                // Desugar compound operator: x op= y becomes x = x op y
-                var resultTemp = $"%t{_tempCounter++}";
-                IrBinaryOp.OpKind opKind = op switch
-                {
-                    "+=" => IrBinaryOp.OpKind.Add,
-                    "-=" => IrBinaryOp.OpKind.Sub,
-                    "*=" => IrBinaryOp.OpKind.Mul,
-                    "/=" => IrBinaryOp.OpKind.Div,
-                    "%=" => IrBinaryOp.OpKind.Mod,
-                    "&=" => IrBinaryOp.OpKind.And,
-                    "|=" => IrBinaryOp.OpKind.Or,
-                    "^=" => IrBinaryOp.OpKind.Xor,
-                    "<<=" => IrBinaryOp.OpKind.Shl,
-                    ">>=" => IrBinaryOp.OpKind.Shr,
-                    _ => IrBinaryOp.OpKind.Add  // ERROR: $"Unknown compound operator: {op}"
-                };
-
-                var binOp = new IrBinaryOp(resultTemp, opKind, variable, value, varType);
-                _currentBlock!.AddInstruction(binOp);
-
-                // Store the result back
-                _currentBlock.AddInstruction(new IrStore(storageName, new IrVariable(resultTemp, varType)));
+                value = LowerCompoundAssignment(op, variable, value, varType);
+                Emit(new IrStore(storageName, value));
             }
             else
             {
@@ -1956,16 +2088,7 @@ public partial class IrBuilder
 
         var (thenLabel, falseTarget) = _ifLabels.Value;
 
-        // Automatic pointer-to-bool coercion: if ptr { ... }
-        // Convert pointer to bool by comparing with null (ptr != 0)
-        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-        {
-            var resultTemp = $"%t{_tempCounter++}";
-            var zeroValue = new IrConstant(0, IrIntType.U32);
-            var comparison = new IrBinaryOp(resultTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-            _currentBlock!.AddInstruction(comparison);
-            condition = new IrVariable(resultTemp, IrBoolType.Instance);
-        }
+        condition = CoerceConditionToBool(condition);
 
         // Branch based on condition
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, thenLabel, falseTarget));
@@ -2170,15 +2293,7 @@ public partial class IrBuilder
                     return null;
                 }
 
-                // Automatic pointer-to-bool coercion
-                if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-                {
-                    var ptrToBoolTemp = $"%t{_tempCounter++}";
-                    var zeroValue = new IrConstant(0, IrIntType.U32);
-                    var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-                    _currentBlock!.AddInstruction(comparison);
-                    condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-                }
+                condition = CoerceConditionToBool(condition);
 
                 var bodyLabel = $"labeled_{labelName}_body_{_labelCounter - 1}";
                 _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, exitLabel));
@@ -2363,16 +2478,7 @@ public partial class IrBuilder
             return null;
         }
 
-        // Automatic pointer-to-bool coercion: while ptr { ... }
-        // Convert pointer to bool by comparing with null (ptr != 0)
-        if (condition.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
-        {
-            var ptrToBoolTemp = $"%t{_tempCounter++}";
-            var zeroValue = new IrConstant(0, IrIntType.U32);
-            var comparison = new IrBinaryOp(ptrToBoolTemp, IrBinaryOp.OpKind.Ne, condition, zeroValue, IrBoolType.Instance);
-            _currentBlock!.AddInstruction(comparison);
-            condition = new IrVariable(ptrToBoolTemp, IrBoolType.Instance);
-        }
+        condition = CoerceConditionToBool(condition);
 
         _currentBlock!.AddInstruction(new IrConditionalBranch(condition, bodyLabel, endLabel));
 
@@ -2612,15 +2718,30 @@ public partial class IrBuilder
         // Set current statement location for debug symbols
         _currentStatementLocation = GetLocation(context);
 
-        // Check if this is a range expression - handle it specially for efficiency
         var exprCtx = context.expression();
+        var isEnumerated = TryGetEnumeratedSource(exprCtx, out var enumeratedSource);
+        if (isEnumerated)
+            exprCtx = enumeratedSource!;
+
+        var (indexName, itemName) = GetForBindings(context);
+        if ((isEnumerated && indexName == null) || (!isEnumerated && indexName != null))
+        {
+            _diagnostics.ReportError(ErrorCodes.InvalidExpressionType,
+                isEnumerated
+                    ? "enumerate() requires a two-item loop binding"
+                    : "a two-item loop binding requires enumerate()",
+                GetLocation(context));
+            return null;
+        }
+
+        // Check if this is a range expression - handle it specially for efficiency
         if (exprCtx is NovusParser.RangeExprContext rangeExpr)
         {
-            return VisitForInRangeLoop(context, rangeExpr, false);
+            return VisitForInRangeLoop(context, rangeExpr, false, indexName, itemName);
         }
         if (exprCtx is NovusParser.RangeInclusiveExprContext rangeInclusiveExpr)
         {
-            return VisitForInRangeLoop(context, rangeInclusiveExpr, true);
+            return VisitForInRangeLoop(context, rangeInclusiveExpr, true, indexName, itemName);
         }
 
         // Desugar: for item in collection { body }
@@ -2628,15 +2749,11 @@ public partial class IrBuilder
         //          let _idx = 0
         //          let _len = _coll.len()
         //          while _idx < _len {
-        //              let _opt = _coll.get(_idx)
-        //              match _opt {
-        //                  Option::Some(item) => { body }
-        //                  Option::None => break
-        //              }
+        //              let item = _coll.get_unchecked(_idx)
+        //              { body }
         //              _idx = _idx + 1
         //          }
 
-        var itemName = context.IDENTIFIER().GetText();
         var collVarName = $"_for_coll_{_labelCounter}";
         var idxVarName = $"_for_idx_{_labelCounter}";
         var lenVarName = $"_for_len_{_labelCounter}";
@@ -2649,7 +2766,7 @@ public partial class IrBuilder
         _labelCounter++;
 
         // Evaluate the collection expression
-        var collection = (IrValue)Visit(context.expression())!;
+        var collection = (IrValue)Visit(exprCtx)!;
         var collectionType = collection.Type;
 
         // Store the collection in a local variable
@@ -2669,14 +2786,21 @@ public partial class IrBuilder
             _ => collectionType
         };
         var typeName = collectionValueType is IrStructType st ? st.StructName : collectionValueType.Name;
+        var arrayType = collectionValueType as IrArrayType;
+        var collVarRef = new IrVariable(collVarName, collectionType);
 
         // Stateful Iterator<T> values advance with next(). Prefer Iterable<T>
         // when a type deliberately supports both protocols.
-        var iterableLenName = _module.FindTraitMethod(typeName, "Iterable", "len");
-        var iteratorNextName = _module.FindTraitMethod(typeName, "Iterator", "next");
-        if (iterableLenName == null && iteratorNextName != null)
+        var iterableLenName = arrayType == null
+            ? _module.FindTraitMethod(typeName, "Iterable", "len")
+            : null;
+        var iteratorNextName = arrayType == null
+            ? _module.FindTraitMethod(typeName, "Iterator", "next")
+            : null;
+        if (arrayType == null && iterableLenName == null && iteratorNextName != null)
         {
-            var nextMethod = _module.GetFunction(iteratorNextName);
+            var nextMethod = FindOrInstantiateTraitMethod(
+                collVarRef, "Iterator", "next", []);
             if (nextMethod == null)
             {
                 _diagnostics.ReportError(
@@ -2687,41 +2811,16 @@ public partial class IrBuilder
             }
 
             return VisitForInIteratorLoop(
-                context, collVarName, collectionType, nextMethod, iteratorNextName,
-                condLabel, bodyLabel, endLabel, matchSomeLabel, matchNoneLabel);
+                context, collVarName, collectionType, nextMethod, nextMethod.Name,
+                condLabel, bodyLabel, endLabel, matchSomeLabel, matchNoneLabel, indexName, itemName);
         }
 
-        // For-in loops require the Iterable trait (with get() and len() methods)
-        // Priority: 1) Iterable trait methods, 2) regular methods (fallback for backward compatibility)
+        // For-in loops require the Iterable trait (with get_unchecked() and len() methods).
+        var lenMethod = arrayType == null
+            ? FindOrInstantiateTraitMethod(collVarRef, "Iterable", "len", [])
+            : null;
 
-        string? lenMethodName = null;
-        IrFunction? lenMethod = null;
-
-        // First, try to find Iterable trait implementation
-        lenMethodName = _module.FindTraitMethod(typeName, "len");
-        if (lenMethodName != null)
-        {
-            lenMethod = _module.GetFunction(lenMethodName);
-        }
-
-        // If no trait method found, fall back to regular methods for backward compatibility
-        if (lenMethod == null)
-        {
-            lenMethodName = $"{typeName}::len";
-            lenMethod = _module.GetFunction(lenMethodName);
-
-            // If method not found, try to instantiate it for monomorphized structs
-            if (lenMethod == null && collectionValueType is IrStructType collectionStruct && collectionStruct.CacheKey != null)
-            {
-                lenMethod = _genericInstantiator.InstantiateStructMethod(collectionStruct, "len");
-                if (lenMethod != null)
-                {
-                    lenMethodName = lenMethod.Name;
-                }
-            }
-        }
-
-        if (lenMethod == null)
+        if (arrayType == null && lenMethod == null)
         {
             var errorLocation = GetLocation(context);
             _diagnostics.ReportError(
@@ -2732,23 +2831,31 @@ public partial class IrBuilder
             return null;
         }
 
-        // Call len()
-        var collVarRef = new IrVariable(collVarName, collectionType);
-        IrValue lenReceiverArg = collectionType is IrReferenceType or IrMutReferenceType or IrPointerType
-            ? collVarRef
-            : new IrBorrowValue(collVarRef, lenMethod.Parameters[0].Type, false);
-        var lenResultName = $"%t{_tempCounter++}";
-        var lenCall = new IrCall(lenMethodName!, lenMethod.ReturnType, lenResultName);
-        lenCall.Location = GetLocation(context);
-        lenCall.Arguments.Add(lenReceiverArg);
-        _currentBlock!.AddInstruction(lenCall);
+        IrType lenType = IrIntType.U32;
+        IrValue lenResult;
+        if (arrayType != null)
+        {
+            lenResult = new IrConstant(arrayType.Length, IrIntType.U32);
+        }
+        else
+        {
+            lenType = lenMethod!.ReturnType;
+            IrValue lenReceiverArg = collectionType is IrReferenceType or IrMutReferenceType or IrPointerType
+                ? collVarRef
+                : new IrBorrowValue(collVarRef, lenMethod.Parameters[0].Type, false);
+            var lenResultName = $"%t{_tempCounter++}";
+            var lenCall = new IrCall(lenMethod.Name, lenType, lenResultName);
+            lenCall.Location = GetLocation(context);
+            lenCall.Arguments.Add(lenReceiverArg);
+            _currentBlock!.AddInstruction(lenCall);
+            lenResult = new IrVariable(lenResultName, lenType);
+        }
 
         // Store length in local variable
-        var lenVar = new IrLocalVariable(lenVarName, lenMethod.ReturnType, false);
+        var lenVar = new IrLocalVariable(lenVarName, lenType, false);
         _currentFunction!.LocalVariables.Add(lenVar);
         _localVariables[lenVarName] = lenVar;
-        var lenResult = new IrVariable(lenResultName, lenMethod.ReturnType);
-        _currentBlock!.AddInstruction(new IrLocalDecl(lenVarName, lenMethod.ReturnType, false, lenResult));
+        _currentBlock!.AddInstruction(new IrLocalDecl(lenVarName, lenType, false, lenResult));
 
         // Initialize index to 0
         var idxVar = new IrLocalVariable(idxVarName, IrIntType.U32, true);
@@ -2769,7 +2876,7 @@ public partial class IrBuilder
 
         // Check: _idx < _len
         var idxVarRef = new IrVariable(idxVarName, IrIntType.U32);
-        var lenVarRef = new IrVariable(lenVarName, lenMethod.ReturnType);
+        var lenVarRef = new IrVariable(lenVarName, lenType);
         var condResultName = $"%t{_tempCounter++}";
         var condCheck = new IrBinaryOp(condResultName, IrBinaryOp.OpKind.Lt, idxVarRef, lenVarRef, IrBoolType.Instance);
         _currentBlock!.AddInstruction(condCheck);
@@ -2779,139 +2886,81 @@ public partial class IrBuilder
         // Body label
         _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
 
-        // Call get(_idx) to get the item
-        // Priority: 1) Iterable trait methods, 2) regular methods (fallback)
+        // The loop condition proves _idx < _len, so call Iterable's primitive
+        // directly instead of constructing and inspecting an Option each iteration.
+        var getMethod = arrayType == null
+            ? FindOrInstantiateTraitMethod(collVarRef, "Iterable", "get_unchecked", [idxVarRef])
+            : null;
 
-        string? getMethodName = null;
-        IrFunction? getMethod = null;
-
-        // First, try to find Iterable trait implementation
-        getMethodName = _module.FindTraitMethod(typeName, "get");
-        if (getMethodName != null)
+        if (arrayType == null && getMethod == null)
         {
-            getMethod = _module.GetFunction(getMethodName);
+            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
+            _diagnostics.ReportError(
+                ErrorCodes.InvalidExpressionType,
+                $"Type '{typeName}' does not implement Iterable trait (missing get_unchecked() method).",
+                errorLocation
+            );
+            return null;
         }
 
-        // If no trait method found, fall back to regular methods for backward compatibility
-        if (getMethod == null)
+        IrType bindingType;
+        IrValue bindingValue;
+        if (arrayType != null)
         {
-            getMethodName = $"{typeName}::get";
-            getMethod = _module.GetFunction(getMethodName);
-
-            // If method not found, try to instantiate it for monomorphized structs
-            if (getMethod == null && collectionValueType is IrStructType collectionStruct2 && collectionStruct2.CacheKey != null)
+            IrValue arrayBase = collectionType is IrReferenceType or IrMutReferenceType
+                ? new IrDereferenceValue(collVarRef, arrayType)
+                : collVarRef;
+            var elementName = $"%t{_tempCounter++}";
+            Emit(new IrIndexAccess(
+                elementName, arrayBase, idxVarRef, arrayType.ElementType,
+                IrBoundsCheckMode.Proven));
+            bindingType = arrayType.ElementType;
+            bindingValue = new IrVariable(elementName, bindingType);
+            if (!IsCopyIterationType(bindingType))
             {
-                getMethod = _genericInstantiator.InstantiateStructMethod(collectionStruct2, "get");
-                if (getMethod != null)
-                {
-                    getMethodName = getMethod.Name;
-                }
+                bindingType = _typeInterner.GetReferenceType(bindingType);
+                bindingValue = new IrBorrowValue(bindingValue, bindingType, false);
             }
         }
-
-        if (getMethod == null)
+        else
         {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Type '{typeName}' does not implement Iterable trait (missing get() method). For-in loops require types to implement Iterable<T>.",
-                errorLocation
-            );
-            return null;
+            // Call get_unchecked(index); the loop condition above proves this index valid.
+            IrValue getReceiverArg = collectionType is IrReferenceType or IrMutReferenceType or IrPointerType
+                ? collVarRef
+                : new IrBorrowValue(collVarRef, getMethod!.Parameters[0].Type, false);
+            var getResultName = $"%t{_tempCounter++}";
+            var getCall = new IrCall(getMethod!.Name, getMethod.ReturnType, getResultName);
+            getCall.Location = GetLocation(context);
+            getCall.Arguments.Add(getReceiverArg);
+            getCall.Arguments.Add(idxVarRef);
+            _currentBlock!.AddInstruction(getCall);
+            bindingType = getMethod.ReturnType;
+            bindingValue = new IrVariable(getResultName, bindingType);
         }
-
-        // Call get(index)
-        IrValue getReceiverArg = collectionType is IrReferenceType or IrMutReferenceType or IrPointerType
-            ? collVarRef
-            : new IrBorrowValue(collVarRef, getMethod.Parameters[0].Type, false);
-        var getResultName = $"%t{_tempCounter++}";
-        var getCall = new IrCall(getMethodName!, getMethod.ReturnType, getResultName);
-        getCall.Location = GetLocation(context);
-        getCall.Arguments.Add(getReceiverArg);
-        getCall.Arguments.Add(idxVarRef);
-        _currentBlock!.AddInstruction(getCall);
-
-        // Match on the Option result
-        var getResult = new IrVariable(getResultName, getMethod.ReturnType);
-
-        // Get the Option enum type to extract the inner type T
-        if (getMethod.ReturnType is not IrEnumType optionType || optionType.EnumName != "Option")
-        {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                $"Iterator::get must return Option<T>, but returned {getMethod.ReturnType.Name}",
-                errorLocation
-            );
-            return null;
-        }
-
-        // Find the Some variant to get the inner type
-        var someVariant = optionType.Variants.FirstOrDefault(v => v.Name == "Some");
-        if (someVariant == null || someVariant.AssociatedData is [])
-        {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Option::Some variant not found or has no associated data",
-                errorLocation
-            );
-            return null;
-        }
-
-        var innerType = someVariant.AssociatedData[0];
-
-        // Extract the tag and check if it's Some or None
-        var tagResultName = $"%t{_tempCounter++}";
-        var extractTag = new IrExtractTag(tagResultName, getResult);
-        _currentBlock!.AddInstruction(extractTag);
-
-        // Get the Some and None variant tags
-        var noneVariant = optionType.Variants.FirstOrDefault(v => v.Name == "None");
-        if (noneVariant == null)
-        {
-            var errorLocation = new SourceLocation(_inputFilePath ?? "unknown", 0, 0, 0, "");
-            _diagnostics.ReportError(
-                ErrorCodes.InvalidExpressionType,
-                "Option::None variant not found",
-                errorLocation
-            );
-            return null;
-        }
-
-        // Compare tag with None variant tag
-        var tagVar = new IrVariable(tagResultName, IrIntType.I32);
-        var noneTagConst = new IrConstant(noneVariant.Tag, IrIntType.I32);
-        var isNoneResultName = $"%t{_tempCounter++}";
-        var isNoneCheck = new IrBinaryOp(isNoneResultName, IrBinaryOp.OpKind.Eq, tagVar, noneTagConst, IrBoolType.Instance);
-        _currentBlock!.AddInstruction(isNoneCheck);
-
-        // Branch: if None, break; otherwise continue to Some case
-        var isNoneResult = new IrVariable(isNoneResultName, IrBoolType.Instance);
-        _currentBlock!.AddInstruction(new IrConditionalBranch(isNoneResult, matchNoneLabel, matchSomeLabel));
-
-        // None case: break out of loop
-        _currentBlock!.AddInstruction(new IrLabel(matchNoneLabel));
-        _currentBlock!.AddInstruction(new IrBranch(endLabel));
-
-        // Some case: unwrap and bind to item variable
-        _currentBlock!.AddInstruction(new IrLabel(matchSomeLabel));
-
-        // Extract the value from Option::Some
-        var unwrapResultName = $"%t{_tempCounter++}";
-        var unwrapInstr = new IrExtractVariantData(unwrapResultName, getResult, "Some", 0, innerType);
-        _currentBlock!.AddInstruction(unwrapInstr);
 
         // Copy small Copy values for ergonomic loops; keep move-only values borrowed.
-        var bindingType = innerType;
-        IrValue bindingValue = new IrVariable(unwrapResultName, innerType);
-        if (innerType is IrReferenceType itemReference && IsCopyIterationType(itemReference.PointeeType))
+        if (bindingType is IrReferenceType itemReference && IsCopyIterationType(itemReference.PointeeType))
         {
             bindingType = itemReference.PointeeType;
             bindingValue = new IrDereferenceValue(bindingValue, bindingType);
         }
 
         // Bind to item variable
+        if (indexName != null && indexName != "_")
+        {
+            var indexVar = new IrLocalVariable(indexName, IrIntType.U32, false);
+            _currentFunction!.LocalVariables.Add(indexVar);
+            _localVariables[indexName] = indexVar;
+            _currentBlock!.AddInstruction(new IrLocalDecl(indexName, IrIntType.U32, false, idxVarRef));
+        }
+
+        // Bind to item variable
+        if (itemName == "_")
+        {
+            Visit(context.block());
+        }
+        else
+        {
         var itemVar = new IrLocalVariable(itemName, bindingType, context.KW_VAR() != null);
         _currentFunction!.LocalVariables.Add(itemVar);
         _localVariables[itemName] = itemVar;
@@ -2919,6 +2968,7 @@ public partial class IrBuilder
 
         // Visit the loop body
         Visit(context.block());
+        }
 
         // Jump to increment (only if block doesn't end with return/break)
         if (!CurrentBlockHasTerminator())
@@ -2960,7 +3010,9 @@ public partial class IrBuilder
         string bodyLabel,
         string endLabel,
         string someLabel,
-        string noneLabel)
+        string noneLabel,
+        string? enumerateIndexName,
+        string itemName)
     {
         if (nextMethod.ReturnType is not IrEnumType optionType || optionType.EnumName != "Option")
         {
@@ -2982,8 +3034,18 @@ public partial class IrBuilder
             return null;
         }
 
+        var incrementLabel = enumerateIndexName == null ? nextLabel : $"{nextLabel}_enumerate";
         _loopExitLabels.Push(endLabel);
-        _loopContinueLabels.Push(nextLabel);
+        _loopContinueLabels.Push(incrementLabel);
+        var enumerateCounterName = $"_for_enumerate_{_labelCounter++}";
+        if (enumerateIndexName != null)
+        {
+            var counter = new IrLocalVariable(enumerateCounterName, IrIntType.U32, true);
+            _currentFunction!.LocalVariables.Add(counter);
+            _localVariables[enumerateCounterName] = counter;
+            _currentBlock!.AddInstruction(new IrLocalDecl(
+                enumerateCounterName, IrIntType.U32, true, new IrConstant(0, IrIntType.U32)));
+        }
         _currentBlock!.AddInstruction(new IrBranch(nextLabel));
         _currentBlock.AddInstruction(new IrLabel(nextLabel));
 
@@ -3019,17 +3081,39 @@ public partial class IrBuilder
         var itemValueName = $"%t{_tempCounter++}";
         _currentBlock.AddInstruction(new IrExtractVariantData(
             itemValueName, nextResult, "Some", 0, itemType));
-        var itemName = context.IDENTIFIER().GetText();
+        if (enumerateIndexName != null && enumerateIndexName != "_")
+        {
+            var indexVar = new IrLocalVariable(enumerateIndexName, IrIntType.U32, false);
+            _currentFunction!.LocalVariables.Add(indexVar);
+            _localVariables[enumerateIndexName] = indexVar;
+            _currentBlock.AddInstruction(new IrLocalDecl(enumerateIndexName, IrIntType.U32, false,
+                new IrVariable(enumerateCounterName, IrIntType.U32)));
+        }
+
         var isMutable = context.KW_VAR() != null;
-        var itemVar = new IrLocalVariable(itemName, itemType, isMutable);
-        _currentFunction!.LocalVariables.Add(itemVar);
-        _localVariables[itemName] = itemVar;
-        _currentBlock.AddInstruction(new IrLocalDecl(
-            itemName, itemType, isMutable, new IrVariable(itemValueName, itemType)));
+        if (itemName != "_")
+        {
+            var itemVar = new IrLocalVariable(itemName, itemType, isMutable);
+            _currentFunction!.LocalVariables.Add(itemVar);
+            _localVariables[itemName] = itemVar;
+            _currentBlock.AddInstruction(new IrLocalDecl(
+                itemName, itemType, isMutable, new IrVariable(itemValueName, itemType)));
+        }
 
         Visit(context.block());
         if (!CurrentBlockHasTerminator())
-            _currentBlock!.AddInstruction(new IrBranch(nextLabel));
+            _currentBlock!.AddInstruction(new IrBranch(incrementLabel));
+        if (enumerateIndexName != null)
+        {
+            _currentBlock.AddInstruction(new IrLabel(incrementLabel));
+            var nextIndexName = $"%t{_tempCounter++}";
+            _currentBlock.AddInstruction(new IrBinaryOp(nextIndexName, IrBinaryOp.OpKind.Add,
+                new IrVariable(enumerateCounterName, IrIntType.U32),
+                new IrConstant(1, IrIntType.U32), IrIntType.U32));
+            _currentBlock.AddInstruction(new IrStore(enumerateCounterName,
+                new IrVariable(nextIndexName, IrIntType.U32)));
+            _currentBlock.AddInstruction(new IrBranch(nextLabel));
+        }
 
         _currentBlock!.AddInstruction(new IrLabel(endLabel));
         _loopExitLabels.Pop();
@@ -3056,7 +3140,8 @@ public partial class IrBuilder
     /// Handles for-in loops over range expressions (e.g., 0..10 or 1..=5)
     /// Generates efficient counter-based code without needing Iterable trait.
     /// </summary>
-    private object? VisitForInRangeLoop(NovusParser.ForInLoopContext context, NovusParser.ExpressionContext rangeExpr, bool inclusive)
+    private object? VisitForInRangeLoop(NovusParser.ForInLoopContext context, NovusParser.ExpressionContext rangeExpr,
+        bool inclusive, string? enumerateIndexName, string itemName)
     {
         // for i in start..end { body }
         // Desugars to:
@@ -3066,7 +3151,6 @@ public partial class IrBuilder
         //       i = i + 1
         //   }
 
-        var itemName = context.IDENTIFIER().GetText();
         var isMutable = context.KW_VAR() != null;
         var condLabel = $"range_cond_{_labelCounter}";
         var bodyLabel = $"range_body_{_labelCounter}";
@@ -3074,17 +3158,20 @@ public partial class IrBuilder
         var endLabel = $"range_end_{_labelCounter}";
         _labelCounter++;
 
-        // Get the two operands of the range expression
+        // Infer unsuffixed endpoints from one another before materializing the loop.
         IrValue? startValue = null, endValue = null;
+        string endExpressionText;
         if (rangeExpr is NovusParser.RangeExprContext exclusiveRange)
         {
-            startValue = Visit(exclusiveRange.expression(0)) as IrValue;
-            endValue = Visit(exclusiveRange.expression(1)) as IrValue;
+            (startValue, endValue) = VisitBinaryOperands(
+                exclusiveRange.expression(0), exclusiveRange.expression(1));
+            endExpressionText = exclusiveRange.expression(1).GetText();
         }
         else if (rangeExpr is NovusParser.RangeInclusiveExprContext inclusiveRange)
         {
-            startValue = Visit(inclusiveRange.expression(0)) as IrValue;
-            endValue = Visit(inclusiveRange.expression(1)) as IrValue;
+            (startValue, endValue) = VisitBinaryOperands(
+                inclusiveRange.expression(0), inclusiveRange.expression(1));
+            endExpressionText = inclusiveRange.expression(1).GetText();
         }
         else
         {
@@ -3103,19 +3190,9 @@ public partial class IrBuilder
             return null;
         }
 
-        // Determine the type for the loop variable (use the start value's type)
+        // Contextual inference guarantees matching endpoint types unless the source
+        // explicitly forced incompatible suffixes; semantic analysis diagnoses that.
         var rangeType = startValue.Type;
-
-        // Ensure both operands have the same type
-        if (startValue.Type.Name != endValue.Type.Name)
-        {
-            // Try to coerce to a common type
-            if (startValue.Type is IrIntType && endValue.Type is IrIntType)
-            {
-                // Use the larger type
-                rangeType = GetLargerIntType((IrIntType)startValue.Type, (IrIntType)endValue.Type);
-            }
-        }
 
         // Declare the loop variable with the start value
         var loopVar = new IrLocalVariable(itemName, rangeType, true); // Always mutable for incrementing
@@ -3123,12 +3200,26 @@ public partial class IrBuilder
         _localVariables[itemName] = loopVar;
         _currentBlock!.AddInstruction(new IrLocalDecl(itemName, rangeType, true, startValue));
 
+        string? enumerateCounterName = null;
+        if (enumerateIndexName != null)
+        {
+            enumerateCounterName = $"_range_enumerate_{_labelCounter - 1}";
+            var counter = new IrLocalVariable(enumerateCounterName, IrIntType.U32, true);
+            _currentFunction.LocalVariables.Add(counter);
+            _localVariables[enumerateCounterName] = counter;
+            _currentBlock.AddInstruction(new IrLocalDecl(enumerateCounterName, IrIntType.U32, true,
+                new IrConstant(0, IrIntType.U32)));
+        }
+
         // Store the end value in a temp variable to avoid re-evaluating
         var endVarName = $"_range_end_{_labelCounter - 1}";
         var endVar = new IrLocalVariable(endVarName, rangeType, false);
         _currentFunction!.LocalVariables.Add(endVar);
         _localVariables[endVarName] = endVar;
         _currentBlock!.AddInstruction(new IrLocalDecl(endVarName, rangeType, false, endValue));
+        if (!inclusive)
+            _currentBlock.AddInstruction(new IrStructuredForLoopHint(
+                itemName, endVarName, bodyLabel, condLabel, endLabel));
 
         // Push exit and continue labels for break/continue statements
         _loopExitLabels.Push(endLabel);
@@ -3153,8 +3244,25 @@ public partial class IrBuilder
         // Body label
         _currentBlock!.AddInstruction(new IrLabel(bodyLabel));
 
-        // Visit the loop body
-        Visit(context.block());
+        if (enumerateIndexName != null && enumerateIndexName != "_")
+        {
+            var indexVar = new IrLocalVariable(enumerateIndexName, IrIntType.U32, false);
+            _currentFunction.LocalVariables.Add(indexVar);
+            _localVariables[enumerateIndexName] = indexVar;
+            _currentBlock.AddInstruction(new IrLocalDecl(enumerateIndexName, IrIntType.U32, false,
+                new IrVariable(enumerateCounterName!, IrIntType.U32)));
+        }
+
+        // Visit the loop body while retaining the source-level bound relationship.
+        _rangeLoopBounds.Push((itemName, endVarName, endExpressionText, inclusive));
+        try
+        {
+            Visit(context.block());
+        }
+        finally
+        {
+            _rangeLoopBounds.Pop();
+        }
 
         // Increment label (continue jumps here)
         _currentBlock!.AddInstruction(new IrLabel(incrLabel));
@@ -3166,6 +3274,15 @@ public partial class IrBuilder
         _currentBlock!.AddInstruction(incOp);
         var incResult = new IrVariable(incResultName, rangeType);
         _currentBlock!.AddInstruction(new IrStore(itemName, incResult));
+        if (enumerateCounterName != null)
+        {
+            var nextIndexName = $"%t{_tempCounter++}";
+            _currentBlock.AddInstruction(new IrBinaryOp(nextIndexName, IrBinaryOp.OpKind.Add,
+                new IrVariable(enumerateCounterName, IrIntType.U32),
+                new IrConstant(1, IrIntType.U32), IrIntType.U32));
+            _currentBlock.AddInstruction(new IrStore(enumerateCounterName,
+                new IrVariable(nextIndexName, IrIntType.U32)));
+        }
 
         // Jump back to condition
         _currentBlock!.AddInstruction(new IrBranch(condLabel));
@@ -3182,6 +3299,26 @@ public partial class IrBuilder
         _localVariables.Remove(endVarName);
 
         return null;
+    }
+
+    private static bool TryGetEnumeratedSource(NovusParser.ExpressionContext expression,
+        out NovusParser.ExpressionContext? source)
+    {
+        source = null;
+        if (expression is not NovusParser.CallExprContext call || call.argumentList() != null ||
+            call.expression() is not NovusParser.MemberAccessExprContext member ||
+            member.IDENTIFIER().GetText() != "enumerate")
+            return false;
+        source = member.expression();
+        return true;
+    }
+
+    private static (string? Index, string Item) GetForBindings(NovusParser.ForInLoopContext context)
+    {
+        if (context.tuplePattern() == null)
+            return (null, context.IDENTIFIER().GetText());
+        var bindings = context.tuplePattern().GetText()[1..^1].Split(',');
+        return (bindings[0], bindings[1]);
     }
 
     /// <summary>
@@ -4060,6 +4197,10 @@ public partial class IrBuilder
         }
 
         var pattern = context.pattern();
+        var variantPattern = pattern as NovusParser.VariantPatternContext;
+        var contextualOption =
+            (pattern is NovusParser.IdentifierPatternContext or NovusParser.VarIdentifierPatternContext) &&
+            exprIr.Type is IrEnumType { EnumName: "Option" };
 
         // Create labels for pattern match success and failure
         var successLabel = $"let_else_ok_{_labelCounter++}";
@@ -4070,7 +4211,7 @@ public partial class IrBuilder
         // For simple identifier patterns, this is just binding the variable
         // For variant patterns (e.g., Some(x)), we need to check the variant and extract data
 
-        if (pattern is NovusParser.IdentifierPatternContext idPattern)
+        if (pattern is NovusParser.IdentifierPatternContext idPattern && !contextualOption)
         {
             // Simple binding: let x = expr else { ... }
             // This always succeeds, so the else block is unreachable
@@ -4082,7 +4223,7 @@ public partial class IrBuilder
             // Emit the declaration
             Emit(new IrLocalDecl(name, exprIr.Type, false, exprIr));
         }
-        else if (pattern is NovusParser.VarIdentifierPatternContext mutIdPattern)
+        else if (pattern is NovusParser.VarIdentifierPatternContext mutIdPattern && !contextualOption)
         {
             // Mutable binding: let mut x = expr else { ... }
             var name = mutIdPattern.IDENTIFIER().GetText();
@@ -4093,7 +4234,7 @@ public partial class IrBuilder
             // Emit the declaration
             Emit(new IrLocalDecl(name, exprIr.Type, true, exprIr));
         }
-        else if (pattern is NovusParser.VariantPatternContext variantPattern)
+        else if (variantPattern != null || contextualOption)
         {
             // Enum variant pattern: let Some(value) = expr else { ... }
             // Generate: if expr.tag == variant_tag then bind data else diverge
@@ -4122,7 +4263,7 @@ public partial class IrBuilder
             if (matchedValue.Type is IrPointerType or IrReferenceType or IrMutReferenceType)
                 matchedValue = new IrDereferenceValue(matchedValue, enumType!);
 
-            var variantName = variantPattern.variantName().GetText();
+            var variantName = contextualOption ? "Some" : variantPattern!.variantName().GetText();
             var variantNameOnly = variantName.Contains("::") ? variantName.Split("::").Last() : variantName;
 
             // Get the enum type
@@ -4152,10 +4293,11 @@ public partial class IrBuilder
                     // Success block: extract and bind the data
                     _currentBlock = successBlock;
 
-                    var patternList = variantPattern.patternList();
-                    if (patternList != null)
+                    var subPatterns = contextualOption
+                        ? new[] { pattern }
+                        : variantPattern!.patternList()?.pattern() ?? [];
+                    if (subPatterns.Length > 0)
                     {
-                        var subPatterns = patternList.pattern();
                         for (int i = 0; i < subPatterns.Length && i < variant.AssociatedData.Count; i++)
                         {
                             var dataType = variant.AssociatedData[i];
@@ -4169,7 +4311,7 @@ public partial class IrBuilder
 
                     // Else block: execute the diverging code
                     _currentBlock = elseBlock;
-                    Visit(context.block());
+                    Visit(GetLetElseDivergence(context));
                     // The else block must diverge, so no need to branch to continue
 
                     // If else block didn't diverge (error case), add an unreachable marker
@@ -4193,11 +4335,17 @@ public partial class IrBuilder
         else
         {
             // Other patterns - for now, just visit the else block
-            Visit(context.block());
+            Visit(GetLetElseDivergence(context));
         }
 
         return null;
     }
+
+    private static ParserRuleContext GetLetElseDivergence(
+        NovusParser.LetElseStatementContext context) =>
+        context.block() ?? (ParserRuleContext?)context.returnStatement() ??
+        (ParserRuleContext?)context.breakStatement() ??
+        (ParserRuleContext?)context.continueStatement() ?? context.panicStatement()!;
 
     /// <summary>
     /// Helper to bind pattern data from an enum variant.

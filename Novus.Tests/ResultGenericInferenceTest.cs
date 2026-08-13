@@ -26,7 +26,7 @@ public class ResultGenericInferenceTest
     {
         var source = @"
 from std::core import Result
-from std::error::errors import ExecError
+from amiga::sys::exec import ExecError
 
 pub struct TestStruct {
     value: u32,
@@ -75,7 +75,7 @@ pub fn test_error() -> Result<TestStruct, ExecError> {
     {
         var source = @"
 from std::core import Result
-from std::error::errors import ExecError
+from amiga::sys::exec import ExecError
 
 pub fn test_generic<T>(value: T) -> Result<T, ExecError> {
     return Result::Ok(value)

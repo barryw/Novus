@@ -1,11 +1,11 @@
 // Test NP_ExitData without any messaging
 
-from std::ffi::dos import VPrintf, Delay, CreateNewProc, Output, Input
-from std::ffi::exec import AllocMem, FreeMem, FindTask
-from std::ffi::amiga_consts import MEMF_PUBLIC, MEMF_CLEAR
-from std::ffi::amiga_consts import NP_Entry, NP_StackSize, NP_Name, NP_ExitData
-from std::ffi::amiga_consts import NP_Output, NP_Input, NP_CloseOutput, NP_CloseInput
-from std::ffi::amiga_structs import TagItem, Process
+from amiga::raw::dos import VPrintf, Delay, CreateNewProc, Output, Input
+from amiga::raw::exec import AllocMem, FreeMem, FindTask
+from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
+from amiga::raw::consts import NP_Entry, NP_StackSize, NP_Name, NP_ExitData
+from amiga::raw::consts import NP_Output, NP_Input, NP_CloseOutput, NP_CloseInput
+from amiga::raw::structs import TagItem, Process
 
 fn worker() -> i32 {
     VPrintf("W: started\n", (*u8)0)
@@ -36,50 +36,52 @@ pub fn main() -> i32 {
     let tags = (*TagItem)tag_mem
     var idx: u32 = 0
 
-    // NP_Entry - get function address
-    var worker_fn: fn() -> i32 = worker
-    let entry_addr = *(*u32)&worker_fn
-    tags[idx].ti_Tag = NP_Entry
-    tags[idx].ti_Data = entry_addr
-    idx = idx + 1
+    unsafe {
+        // NP_Entry - get function address
+        var worker_fn: fn() -> i32 = worker
+        let entry_addr = *(*u32)&worker_fn
+        tags[idx].ti_Tag = NP_Entry
+        tags[idx].ti_Data = entry_addr
+        idx = idx + 1
 
-    // NP_Name
-    let name: *u8 = "TestWorker\0"
-    tags[idx].ti_Tag = NP_Name
-    tags[idx].ti_Data = (u32)name
-    idx = idx + 1
+        // NP_Name
+        let name: *u8 = "TestWorker\0"
+        tags[idx].ti_Tag = NP_Name
+        tags[idx].ti_Data = (u32)name
+        idx = idx + 1
 
-    // NP_StackSize
-    tags[idx].ti_Tag = NP_StackSize
-    tags[idx].ti_Data = 8192
-    idx = idx + 1
+        // NP_StackSize
+        tags[idx].ti_Tag = NP_StackSize
+        tags[idx].ti_Data = 8192
+        idx = idx + 1
 
-    // Share parent's output
-    tags[idx].ti_Tag = NP_Output
-    tags[idx].ti_Data = (u32)Output()
-    idx = idx + 1
+        // Share parent's output
+        tags[idx].ti_Tag = NP_Output
+        tags[idx].ti_Data = (u32)Output()
+        idx = idx + 1
 
-    tags[idx].ti_Tag = NP_CloseOutput
-    tags[idx].ti_Data = 0
-    idx = idx + 1
+        tags[idx].ti_Tag = NP_CloseOutput
+        tags[idx].ti_Data = 0
+        idx = idx + 1
 
-    // Share parent's input
-    tags[idx].ti_Tag = NP_Input
-    tags[idx].ti_Data = (u32)Input()
-    idx = idx + 1
+        // Share parent's input
+        tags[idx].ti_Tag = NP_Input
+        tags[idx].ti_Data = (u32)Input()
+        idx = idx + 1
 
-    tags[idx].ti_Tag = NP_CloseInput
-    tags[idx].ti_Data = 0
-    idx = idx + 1
+        tags[idx].ti_Tag = NP_CloseInput
+        tags[idx].ti_Data = 0
+        idx = idx + 1
 
-    // NP_ExitData - pass a test value (12345 decimal)
-    tags[idx].ti_Tag = NP_ExitData
-    tags[idx].ti_Data = 12345
-    idx = idx + 1
+        // NP_ExitData - pass a test value (12345 decimal)
+        tags[idx].ti_Tag = NP_ExitData
+        tags[idx].ti_Data = 12345
+        idx = idx + 1
 
-    // End tag
-    tags[idx].ti_Tag = 0
-    tags[idx].ti_Data = 0
+        // End tag
+        tags[idx].ti_Tag = 0
+        tags[idx].ti_Data = 0
+    }
 
     VPrintf("M: creating process\n", (*u8)0)
     let proc = CreateNewProc(tags)

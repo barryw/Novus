@@ -228,7 +228,7 @@ fn process_large(l: Large) {
 
 var tiny = Tiny { x: 42 }
 var medium = Medium { a: 1, b: 2, c: 3, d: 4 }
-var large = Large { data: [0u8; 1024] }
+var large = Large { data: [0; 1024] }
 
 process_tiny(tiny)      // Copy (4 bytes)
 process_medium(medium)  // Copy (16 bytes)
@@ -245,7 +245,7 @@ struct Buffer {
 // Read-only - use implicit reference
 fn compute_checksum(buf: Buffer) -> u32 {
     // buf is implicitly &Buffer (read-only)
-    var sum = 0u32
+    var sum: u32 = 0
     for i in 0..4096 {
         sum = sum + buf.data[i] as u32
     }
@@ -265,7 +265,7 @@ fn copy_buffer(buf: Buffer) -> Buffer {
     return buf
 }
 
-var buffer = Buffer { data: [0u8; 4096] }
+var buffer = Buffer { data: [0; 4096] }
 var checksum = compute_checksum(buffer)  // Auto: &buffer
 zero_buffer(&mut buffer)                 // Explicit: &mut
 var buffer2 = copy_buffer(buffer)        // Explicit: copy

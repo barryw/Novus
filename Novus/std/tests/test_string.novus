@@ -1,7 +1,7 @@
-// Test suite for std::strings::core String type (owned, heap-allocated string)
+// Test suite for std::string::core String type (owned, heap-allocated string)
 // Tests the owned String type methods
 
-from std::strings::core import PathString, String, Str, StringError
+from std::string::core import PathString, String, Str, StringError
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
 @test("PathString::push_str appends and preserves total length")
@@ -9,7 +9,7 @@ pub fn test_path_string_push_str_appends() {
     var path = PathString::new()
     expect_true(path.push_str("L:").is_ok(), "drawer append succeeds")
     expect_true(path.push_str("FastFileSystem").is_ok(), "filename append succeeds")
-    expect_eq(path.len(), 16u32, "path length includes both appends")
+    expect_eq(path.len(), 16, "path length includes both appends")
     expect_true(path.as_str().equals("L:FastFileSystem"), "path contains both appends")
 }
 
@@ -20,7 +20,7 @@ pub fn test_path_string_push_str_appends() {
 @test("String::new creates empty string")
 pub fn test_string_new() {
     var s = String::new()
-    expect_eq(s.len(), 0u32, "new string has len 0")
+    expect_eq(s.len(), 0, "new string has len 0")
     expect_true(s.is_empty(), "new string is empty")
     s.drop()
 }
@@ -31,14 +31,14 @@ pub fn test_string_new() {
 
 @test("String::with_capacity allocates requested capacity")
 pub fn test_string_with_capacity() {
-    let result = String::with_capacity(100u32)
+    let result = String::with_capacity(100)
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq(owned.len(), 0u32, "with_capacity string has len 0")
+            expect_eq(owned.len(), 0, "with_capacity string has len 0")
             expect_true(owned.is_empty(), "with_capacity string is empty")
             // Capacity should be at least what we requested
-            expect_true(owned.capacity() >= 100u32, "capacity >= 100")
+            expect_true(owned.capacity() >= 100, "capacity >= 100")
             owned.drop()
         },
         Err(_) => expect(false, "with_capacity should succeed")
@@ -47,11 +47,11 @@ pub fn test_string_with_capacity() {
 
 @test("String::with_capacity(0) creates empty string")
 pub fn test_string_with_capacity_zero() {
-    let result = String::with_capacity(0u32)
+    let result = String::with_capacity(0)
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq(owned.len(), 0u32, "zero capacity string has len 0")
+            expect_eq(owned.len(), 0, "zero capacity string has len 0")
             owned.drop()
         },
         Err(_) => expect(false, "with_capacity(0) should succeed")
@@ -64,7 +64,7 @@ pub fn test_string_with_capacity_zero() {
 
 @test("Str::from_bytes borrows a complete byte slice")
 pub fn test_str_from_bytes() {
-    let bytes = [72u8, 105u8]
+    let bytes: [u8] = [72, 105]
     let text = Str::from_bytes(&bytes)
     expect_true(text.equals("Hi"), "byte slice becomes owner-tied Str")
 }
@@ -76,7 +76,7 @@ pub fn test_string_new_from_str() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq(owned.len(), 13u32, "copied string has correct len")
+            expect_eq(owned.len(), 13, "copied string has correct len")
             {
                 let converted = owned.as_str()
                 expect_true(converted.equals(original), "content matches original")
@@ -94,7 +94,7 @@ pub fn test_string_new_from_str_empty() {
     match result {
         Ok(s) => {
             var owned = s
-            expect_eq(owned.len(), 0u32, "empty string copy has len 0")
+            expect_eq(owned.len(), 0, "empty string copy has len 0")
             expect_true(owned.is_empty(), "empty string copy is empty")
             owned.drop()
         },
@@ -114,14 +114,14 @@ pub fn test_string_push_str() {
         Ok(_) => expect(true, "first push_str succeeds"),
         Err(_) => expect(false, "first push_str should succeed")
     }
-    expect_eq(s.len(), 5u32, "len after first push")
+    expect_eq(s.len(), 5, "len after first push")
 
     let result2 = s.push_str(", World!")
     match result2 {
         Ok(_) => expect(true, "second push_str succeeds"),
         Err(_) => expect(false, "second push_str should succeed")
     }
-    expect_eq(s.len(), 13u32, "len after second push")
+    expect_eq(s.len(), 13, "len after second push")
 
     {
         let content = s.as_str()
@@ -153,10 +153,10 @@ pub fn test_string_push_str_empty() {
 @test("String::push_byte appends single byte")
 pub fn test_string_push_byte() {
     var s = String::new()
-    let _ = s.push_byte(72u8)  // 'H'
-    let _ = s.push_byte(105u8) // 'i'
+    let _ = s.push_byte(72)  // 'H'
+    let _ = s.push_byte(105) // 'i'
 
-    expect_eq(s.len(), 2u32, "len is 2 after two pushes")
+    expect_eq(s.len(), 2, "len is 2 after two pushes")
     {
         let content = s.as_str()
         let expected: Str = "Hi"
@@ -173,10 +173,10 @@ pub fn test_string_push_byte() {
 pub fn test_string_clear() {
     var s = String::new()
     let _ = s.push_str("Hello, World!")
-    expect_eq(s.len(), 13u32, "len before clear")
+    expect_eq(s.len(), 13, "len before clear")
 
     s.clear()
-    expect_eq(s.len(), 0u32, "len is 0 after clear")
+    expect_eq(s.len(), 0, "len is 0 after clear")
     expect_true(s.is_empty(), "is_empty after clear")
     s.drop()
 }
@@ -185,7 +185,7 @@ pub fn test_string_clear() {
 pub fn test_string_clear_empty() {
     var s = String::new()
     s.clear()
-    expect_eq(s.len(), 0u32, "clear on empty has len 0")
+    expect_eq(s.len(), 0, "clear on empty has len 0")
     expect_true(s.is_empty(), "clear on empty is still empty")
     s.drop()
 }
@@ -199,12 +199,12 @@ pub fn test_string_reserve() {
     var s = String::new()
     let initial_cap = s.capacity()
 
-    let result = s.reserve(1000u32)
+    let result = s.reserve(1000)
     match result {
         Ok(_) => expect(true, "reserve succeeds"),
         Err(_) => expect(false, "reserve should succeed")
     }
-    expect_true(s.capacity() >= initial_cap + 1000u32, "capacity increased by at least 1000")
+    expect_true(s.capacity() >= initial_cap + 1000, "capacity increased by at least 1000")
     s.drop()
 }
 
@@ -219,7 +219,7 @@ pub fn test_string_as_str() {
 
     {
         let slice = s.as_str()
-        expect_eq(slice.len(), 12u32, "slice has correct len")
+        expect_eq(slice.len(), 12, "slice has correct len")
 
         let expected: Str = "Test content"
         expect_true(slice.equals(expected), "slice content matches")
@@ -232,7 +232,7 @@ pub fn test_string_as_str_empty() {
     var s = String::new()
     {
         let slice = s.as_str()
-        expect_eq(slice.len(), 0u32, "empty string slice has len 0")
+        expect_eq(slice.len(), 0, "empty string slice has len 0")
         expect_true(slice.is_empty(), "empty string slice is empty")
     }
     s.drop()
@@ -247,13 +247,13 @@ pub fn test_string_auto_growth() {
     var s = String::new()
 
     // Push enough data to trigger growth
-    while var i < 100u32 {
-        let _ = s.push_byte(65u8)  // 'A'
-        i = i + 1u32
+    while var i < 100 {
+        let _ = s.push_byte(65)  // 'A'
+        i = i + 1
     }
 
-    expect_eq(s.len(), 100u32, "len is 100 after 100 pushes")
-    expect_true(s.capacity() >= 100u32, "capacity >= 100")
+    expect_eq(s.len(), 100, "len is 100 after 100 pushes")
+    expect_true(s.capacity() >= 100, "capacity >= 100")
     s.drop()
 }
 
@@ -264,16 +264,16 @@ pub fn test_string_auto_growth() {
 @test("String::len tracks content length")
 pub fn test_string_len_tracking() {
     var s = String::new()
-    expect_eq(s.len(), 0u32, "initial len is 0")
+    expect_eq(s.len(), 0, "initial len is 0")
 
     let _ = s.push_str("abc")
-    expect_eq(s.len(), 3u32, "len is 3 after 'abc'")
+    expect_eq(s.len(), 3, "len is 3 after 'abc'")
 
     let _ = s.push_str("de")
-    expect_eq(s.len(), 5u32, "len is 5 after 'de'")
+    expect_eq(s.len(), 5, "len is 5 after 'de'")
 
     s.clear()
-    expect_eq(s.len(), 0u32, "len is 0 after clear")
+    expect_eq(s.len(), 0, "len is 0 after clear")
     s.drop()
 }
 
@@ -282,7 +282,7 @@ pub fn test_string_is_empty() {
     var s = String::new()
     expect_true(s.is_empty(), "new string is empty")
 
-    let _ = s.push_byte(65u8)
+    let _ = s.push_byte(65)
     expect_false(s.is_empty(), "string with content not empty")
 
     s.clear()

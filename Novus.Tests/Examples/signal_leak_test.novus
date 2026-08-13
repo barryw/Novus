@@ -1,9 +1,9 @@
 // Test for signal leaks in bounded channel creation/destruction
 
 from std::core import Result, Option
-from std::error::errors import DosError
-from std::sync::channel import bounded_channel, BoundedSender, BoundedReceiver
-from std::ffi::dos import VPrintf
+from amiga::sys::dos::errors import DosError
+from amiga::sys::exec::channel import bounded_channel, BoundedSender, BoundedReceiver
+from amiga::raw::dos import VPrintf
 
 pub fn main() -> i32 {
     VPrintf("Signal leak test - creating/destroying bounded channels\n", null)

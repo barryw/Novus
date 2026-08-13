@@ -2,12 +2,12 @@
 // Tests window creation, manipulation, and cleanup
 
 from std::test::test import expect, expect_true, expect_false, expect_eq
-from std::ui::screen import WindowHandle, open_window
-from std::ffi::amiga_structs import TagItem, Window, MsgPort, Screen
-from std::ffi::amiga_consts import TAG_DONE, WA_Left, WA_Top, WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP
-from std::ffi::amiga_consts import WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_DEPTHGADGET, WFLG_SIZEGADGET, WFLG_BORDERLESS, WFLG_ACTIVATE
-from std::ffi::amiga_consts import IDCMP_CLOSEWINDOW
-from std::error::errors import IntuitionError
+from amiga::sys::intuition import WindowHandle, open_window
+from amiga::raw::structs import TagItem, Window, MsgPort, Screen
+from amiga::raw::consts import TAG_DONE, WA_Left, WA_Top, WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP
+from amiga::raw::consts import WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_DEPTHGADGET, WFLG_SIZEGADGET, WFLG_BORDERLESS, WFLG_ACTIVATE
+from amiga::raw::consts import IDCMP_CLOSEWINDOW
+from amiga::sys::intuition::errors import IntuitionError
 
 // ============================================================================
 // Window Creation Tests
@@ -19,7 +19,7 @@ pub fn test_window_simple_opens() {
     match result {
         Result::Ok(window) => {
             var w = window
-            expect_true(w.handle() != (*Window)0, "window pointer should be non-null")
+            expect_true(w.as_raw() != (*Window)0, "window pointer should be non-null")
             // Window is automatically closed when w goes out of scope (Drop)
         },
         Result::Err(_) => {
@@ -50,7 +50,7 @@ pub fn test_window_borderless_opens() {
     match result {
         Result::Ok(window) => {
             var w = window
-            expect_true(w.handle() != (*Window)0, "borderless window should open")
+            expect_true(w.as_raw() != (*Window)0, "borderless window should open")
             // Borderless windows have exact dimensions
             expect_eq((i32)w.width(), 100, "borderless width exact")
             expect_eq((i32)w.height(), 80, "borderless height exact")
@@ -82,7 +82,7 @@ pub fn test_window_borderless_opens() {
 //     match result {
 //         Result::Ok(window) => {
 //             var w = window
-//             expect_true(w.handle() != (*Window)0, "custom window should open")
+//             expect_true(w.as_raw() != (*Window)0, "custom window should open")
 //         },
 //         Result::Err(_) => {
 //             expect(false, "custom window should open")
@@ -316,8 +316,8 @@ pub fn test_multiple_windows() {
                         Result::Ok(w3) => {
                             var window3 = w3
                             // All three windows should be open
-                            expect_true(window1.handle() != window2.handle(), "windows have different handles")
-                            expect_true(window2.handle() != window3.handle(), "windows have different handles")
+                            expect_true(window1.as_raw() != window2.as_raw(), "windows have different handles")
+                            expect_true(window2.as_raw() != window3.as_raw(), "windows have different handles")
                             expect(true, "all three windows opened")
                         },
                         Result::Err(_) => expect(false, "window 3 should open")

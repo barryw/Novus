@@ -1,10 +1,10 @@
-// Test suite for std::prefs preferences system
+// Test suite for amiga::workbench preferences
 // Tests creation, getters, setters, file I/O, and version handling
 
-from std::prefs::prefs import Prefs, PrefsError
+from amiga::workbench::preferences import Prefs, PrefsError
 from std::test::test import expect, expect_true, expect_false, expect_eq
-from std::strings::core import Str
-from std::ffi::dos import DeleteFile
+from std::string::core import Str
+from amiga::raw::dos import DeleteFile
 
 // =============================================================================
 // Creation Tests

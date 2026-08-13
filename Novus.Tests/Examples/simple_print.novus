@@ -1,6 +1,6 @@
 // Simplest possible print test
 
-from std::ffi::dos import VPrintf
+from amiga::raw::dos import VPrintf
 
 pub fn main() -> i32 {
     VPrintf("Hello World\n", (*u8)0)

@@ -1,7 +1,7 @@
 // Test just importing from task module
 
-from std::ffi::dos import VPrintf
-from std::os::task import spawn_task_fn
+from amiga::raw::dos import VPrintf
+from amiga::sys::exec import spawn_task_fn
 
 pub fn main() -> i32 {
     VPrintf("Before anything\n", (*u8)0)
