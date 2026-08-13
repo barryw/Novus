@@ -39,12 +39,12 @@ impl FileSystemPool {
         return FileSystemPool { entries: ArrayVec::<RdbFileSystem, 8>::new() }
     }
 
-    pub fn len(&self) -> u32 { return self.entries.len() }
+    pub fn len(&self) -> usize { return self.entries.len() }
     pub fn is_empty(&self) -> bool { return self.entries.is_empty() }
     pub fn entries(&self) -> &ArrayVec<RdbFileSystem, 8> { return &self.entries }
-    pub fn get(&self, index: u32) -> Option<&RdbFileSystem> { return self.entries.get(index) }
+    pub fn get(&self, index: usize) -> Option<&RdbFileSystem> { return self.entries.get(index) }
 
-    pub fn add(&var self, consuming file_system: RdbFileSystem) -> Result<u32, RdbError> {
+    pub fn add(&var self, consuming file_system: RdbFileSystem) -> Result<usize, RdbError> {
         for index in 0..self.entries.len() {
             let Option::Some(current) = self.entries.get(index) else { continue }
             return Result::Ok(index) if current.dos_type() == file_system.dos_type()
@@ -63,13 +63,13 @@ impl FileSystemPool {
         return Result::Ok(())
     }
 
-    pub fn set_dos_type(&var self, index: u32, dos_type: u32) -> Result<(), RdbError> {
+    pub fn set_dos_type(&var self, index: usize, dos_type: u32) -> Result<(), RdbError> {
         let file_system = self.entries.get_mut(index).ok_or(RdbError::InvalidRange)?
         file_system.set_dos_type(dos_type)
         return Result::Ok(())
     }
 
-    pub fn remove(&var self, index: u32) -> Result<(), RdbError> {
+    pub fn remove(&var self, index: usize) -> Result<(), RdbError> {
         let removed = self.entries.remove(index)
         return Result::Err(RdbError::InvalidRange) if removed.is_none()
         return Result::Ok(())

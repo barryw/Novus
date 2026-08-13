@@ -29,7 +29,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     private readonly Dictionary<string, VariableSymbol> _variables = new();
     private readonly Dictionary<string, VariableSymbol> _globalVariables = new(); // Module-level extern vars
     private readonly Dictionary<string, string> _importedNames = new(); // Maps imported name -> module name
-    private readonly Dictionary<string, string> _importedFunctionAliases = new();
+    private readonly HashSet<string> _directImportedFunctions = new(StringComparer.Ordinal);
     private readonly HashSet<string> _importedModules = new(); // Track which modules have been imported (by path)
     private FunctionSymbol? _currentFunction;
     private IrWhereClause? _currentStructWhereClause; // Track where clause for current struct/impl block
@@ -154,11 +154,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // only tracks functions that became overloaded during local analysis.
         // By computing from _functionOverloads, we correctly identify ALL functions
         // with multiple overloads, including those imported from other modules.
-        var allOverloadedNames = new HashSet<string>(
-            _functionOverloads
-                .Where(kvp => kvp.Value.Count > 1)
-                .Select(kvp => kvp.Key)
-        );
+        var allOverloadedNames = new HashSet<string>(_overloadedFunctionNames);
+        allOverloadedNames.UnionWith(_functionOverloads
+            .Where(kvp => kvp.Value.Count > 1)
+            .Select(kvp => kvp.Key));
 
         return new AnalysisResult(
             success: !_diagnostics.HasErrors,
@@ -714,21 +713,30 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         ImportModule(moduleNamespace, importAll, importList, location);
     }
 
-    private void RegisterImportFunctionAliases(
-        NovusParser.CompilationUnitContext moduleContext,
-        NovusParser.ImportListContext? importList)
+    private static string ImportedLocalName(
+        NovusParser.ImportListContext? importList,
+        string original)
     {
-        if (importList == null) return;
-        var functions = moduleContext.functionDeclaration()
-            .Select(declaration => declaration.IDENTIFIER().GetText())
-            .ToHashSet(StringComparer.Ordinal);
+        if (importList == null) return original;
         foreach (var imported in importList.importName())
         {
             if (imported.IDENTIFIER().Length < 2) continue;
-            var original = imported.IDENTIFIER(0).GetText();
-            if (functions.Contains(original))
-                _importedFunctionAliases[imported.IDENTIFIER(1).GetText()] = original;
+            if (imported.IDENTIFIER(0).GetText() == original)
+                return imported.IDENTIFIER(1).GetText();
         }
+        return original;
+    }
+
+    private void HideTransitivelyImportedFunctionWhenAliased(string original, string localName)
+    {
+        if (localName == original) return;
+        _overloadedFunctionNames.Add(original);
+        if (_directImportedFunctions.Contains(original)) return;
+        _functionOverloads.Remove(original);
+        _importedNames.Remove(original);
+        // The alias still links to the original external symbol. Keep local
+        // functions with that source name mangled so generated C cannot define
+        // the same symbol as its lower-layer dependency.
     }
 
     private void ImportModuleSpecificSymbols(string moduleNamespace, List<string> symbolNames, SourceLocation? location = null)
@@ -876,8 +884,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     {
                         // For already-processed modules, register the function using the import-friendly
                         // method that silently skips duplicate signatures
-                        RegisterFunction(funcDecl, forImport: true);
-                        _importedNames[funcName] = moduleNamespace;
+                        var localName = ImportedLocalName(importList, funcName);
+                        RegisterFunction(funcDecl, forImport: true, localName);
+                        HideTransitivelyImportedFunctionWhenAliased(funcName, localName);
+                        _directImportedFunctions.Add(localName);
+                        _importedNames[localName] = moduleNamespace;
                     }
                 }
 
@@ -974,10 +985,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     }
                 }
 
+                // A facade's wildcard reexport must preserve the caller's
+                // selective names and aliases. Importing the whole dependency
+                // leaks names that the caller explicitly renamed.
+                foreach (var reexportDecl in moduleContext.reexportDeclaration())
+                {
+                    if (reexportDecl.STAR() != null)
+                        ImportModule(reexportDecl.modulePath().GetText(), importAll, importList, location);
+                }
+
             }
 
             RegisterImportTypeAliases(importList);
-            RegisterImportFunctionAliases(moduleContext, importList);
             return; // Don't reprocess the entire module
         }
 
@@ -1009,8 +1028,9 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
 
                 if (reexportAll)
                 {
-                    // pub use std::error::* - import all symbols
-                    ImportModule(reexportPath, importAll: true, importList: null, location);
+                    // Preserve a selective import (and any aliases) through a
+                    // wildcard facade instead of leaking every reexport.
+                    ImportModule(reexportPath, importAll, importList, location);
                 }
                 else
                 {
@@ -1041,7 +1061,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
             }
         }
-        RegisterImportFunctionAliases(moduleContext, importList);
 
         // Register imported enums using two-pass approach
         // Pass 1: Register stub enum types for ALL enums in the module (even non-imported)
@@ -1259,13 +1278,16 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Use RegisterFunctionForImport to silently skip if same signature already imported
             // (this can happen when importing from multiple modules that re-export the same function)
             var funcLocation = SourceLocationHelper.FromToken(funcDecl.IDENTIFIER().Symbol, modulePath, new string[] { });
+            var localName = ImportedLocalName(importList, funcName);
             var funcSymbol = new FunctionSymbol(
-                funcName, returnType, parameters, funcLocation,
+                localName, returnType, parameters, funcLocation,
                 IsExtern: isExtern,
                 GenericParameters: genericParams.Count > 0 ? genericParams : null,
                 IsVariadic: hasVariadic);
-            RegisterFunctionForImport(funcName, funcSymbol);
-            _importedNames[funcName] = moduleNamespace;
+            RegisterFunctionForImport(localName, funcSymbol);
+            HideTransitivelyImportedFunctionWhenAliased(funcName, localName);
+            _directImportedFunctions.Add(localName);
+            _importedNames[localName] = moduleNamespace;
 
             // Clear generic params from scope after function registration
             foreach (var paramName in genericParams)
@@ -1882,9 +1904,12 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
     /// When forImport is true, silently skips duplicate signatures (for module imports).
     /// When forImport is false, reports errors for duplicate signatures.
     /// </summary>
-    private void RegisterFunction(NovusParser.FunctionDeclarationContext context, bool forImport = false)
+    private void RegisterFunction(
+        NovusParser.FunctionDeclarationContext context,
+        bool forImport = false,
+        string? localName = null)
     {
-        var name = context.IDENTIFIER().GetText();
+        var name = localName ?? context.IDENTIFIER().GetText();
         var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
 
         // Check for reserved keywords
@@ -9133,8 +9158,6 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             return IrVoidType.Instance;
         }
 
-        if (_importedFunctionAliases.TryGetValue(functionName, out var importedFunctionName))
-            functionName = importedFunctionName;
         functionName = ResolveQualifiedAliasName(functionName);
 
         // Check if this is a qualified enum constructor (e.g., Result::Ok)

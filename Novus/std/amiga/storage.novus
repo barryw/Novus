@@ -1,9 +1,9 @@
-from std::collections::arrayvec import ArrayVec, ArrayVecError
+from std::collections import ArrayVec, ArrayVecError
 from std::core import Error, From, Option, Result
 from std::string import FixedCString, FixedString, Str
 from amiga::storage::block_device import BlockDeviceError
 from amiga::sys::device import DriverLoadError, device_is_resident, load_device_driver
-from amiga::sys::dos import DosDeviceList, DosListError
+from amiga::sys::dos import DeviceProcess, DosDeviceList
 
 // Tier 1: safe block storage and owned device discovery for applications.
 pub use amiga::storage::block_device::*
@@ -15,6 +15,13 @@ pub enum StorageError {
     DriverLoadFailed,
     DiscoveryFailed,
     TooManyDevices,
+}
+
+/// How AmigaDOS is currently using a block device.
+pub enum DeviceUse {
+    Clear,
+    Mounted,
+    Boot,
 }
 
 impl From<BlockDeviceError> for StorageError {
@@ -95,11 +102,9 @@ pub fn devices() -> Result<ArrayVec<StorageDevice, 32>, StorageError> {
         Result::Err(_) => return Result::Err(StorageError::DiscoveryFailed),
     }
     var result = ArrayVec::<StorageDevice, 32>::new()
-    var entries = list.iter()
-    forever {
-        let Option::Some(entry) = entries.next() else { break }
-        let Option::Some(startup) = entry.startup() else { continue }
-        let Option::Some(driver) = startup.device_name() else { continue }
+    for entry in list.iter() {
+        let startup = entry.startup() else { continue }
+        let driver = startup.device_name() else { continue }
         continue unless valid_driver_name(driver)
         continue if contains_device(&result, driver, startup.unit())
 
@@ -117,4 +122,65 @@ pub fn devices() -> Result<ArrayVec<StorageDevice, 32>, StorageError> {
         })?
     }
     return Result::Ok(result)
+}
+
+/// Classify a live device without exposing DOS-list locks or handler processes.
+/// Failure is returned explicitly so destructive callers can fail closed.
+pub fn device_use(driver: Str, unit: u32) -> Result<DeviceUse, StorageError> {
+    let sys_name = FixedCString::<4>::new_from_str("SYS:")
+        .or_error(StorageError::DiscoveryFailed)?
+    let boot = DeviceProcess::resolve(sys_name.as_cstr_view())
+        .or_error(StorageError::DiscoveryFailed)?
+    let list = DosDeviceList::lock().or_error(StorageError::DiscoveryFailed)?
+
+    var boot_known = false
+    var mounted = false
+    for entry in list.iter() {
+        let startup = entry.startup() else { continue }
+        let current_driver = startup.device_name() else { continue }
+        continue unless valid_driver_name(current_driver)
+        let same = startup.unit() == unit && current_driver.eq_ignore_case(driver)
+        if entry.is_handled_by(&boot) {
+            boot_known = true
+            return Result::Ok(DeviceUse::Boot) if same
+        }
+        mounted = true if same
+    }
+
+    return Result::Ok(DeviceUse::Mounted) if mounted
+    return Result::Ok(DeviceUse::Clear) if boot_known
+    return Result::Err(StorageError::DiscoveryFailed)
+}
+
+/// Find the mounted volume whose on-disk cylinder range overlaps a partition.
+pub fn mounted_volume_for(
+    driver: Str,
+    unit: u32,
+    low_cylinder: u32,
+    high_cylinder: u32
+) -> Result<Option<FixedString<32>>, StorageError> {
+    let list = DosDeviceList::lock().or_error(StorageError::DiscoveryFailed)?
+    for entry in list.iter() {
+        let startup = entry.startup() else { continue }
+        let current_driver = startup.device_name() else { continue }
+        continue unless startup.unit() == unit && current_driver.eq_ignore_case(driver)
+        let environment = startup.environment() else { continue }
+        continue unless low_cylinder <= environment.de_HighCyl && environment.de_LowCyl <= high_cylinder
+        let name = entry.name() else { continue }
+        return match FixedString::<32>::new_from_str(name) {
+            Result::Ok(value) => Result::Ok(Option::Some(value)),
+            Result::Err(_) => Result::Err(StorageError::DiscoveryFailed),
+        }
+    }
+    return Result::Ok(Option::None)
+}
+
+/// Test a DOS device name while keeping the DOS-list lock inside Tier 1.
+pub fn volume_name_exists(name: Str) -> Result<bool, StorageError> {
+    let list = DosDeviceList::lock().or_error(StorageError::DiscoveryFailed)?
+    for entry in list.iter() {
+        let existing = entry.name() else { continue }
+        return Result::Ok(true) if existing.eq_ignore_case(name)
+    }
+    return Result::Ok(false)
 }

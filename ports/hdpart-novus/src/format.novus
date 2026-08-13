@@ -2,8 +2,8 @@
 
 from std::core import Error, From, Option, Result
 from std::string import Str
-from amiga::dos import FileSystem, FileSystemError, FileSystemImage, Volume, open_volume
-from amiga::sys::dos import DosEnvironment, DosNodeError
+from amiga::dos import EmbeddedFileSystem, FileSystem, FileSystemError, MountSpec, PartitionGeometry, Volume, open_volume
+from amiga::sys::dos import HandlerImage
 from rdb import RdbModel
 from safety import DeviceIdentity, mounted_device_name_exists, mounted_partition_name
 
@@ -44,27 +44,20 @@ impl From<FileSystemError> for FormatError {
     }
 }
 
-impl From<DosNodeError> for FormatError {
-    fn convert(consuming _error: DosNodeError) -> FormatError {
-        return FormatError::InvalidEnvironment
-    }
-}
-
-/// Build the exact typed environment consumed by DosNodeDraft.
-pub fn environment_for(model: &RdbModel, index: u32) -> Result<DosEnvironment, FormatError> {
+/// Describe the partition semantically; Tier 1 creates the NDK environment.
+pub fn geometry_for(model: &RdbModel, index: usize) -> Result<PartitionGeometry, FormatError> {
     let partition = model.partition(index).ok_or(FormatError::MissingPartition)?
-    var environment = DosEnvironment::partition(
+    let geometry = PartitionGeometry::new(
         model.block_bytes(),
         model.heads(),
         model.sectors(),
         partition.low_cylinder(),
         partition.high_cylinder(),
         partition.dos_type()
-    )?
-    environment.set_buffers(partition.buffers(), 0)?
-    environment.set_transfer(partition.max_transfer(), partition.mask())?
-    environment.set_boot_priority(partition.boot_priority())
-    return Result::Ok(environment)
+    )?.with_buffers(partition.buffers())?
+        .with_transfer(partition.max_transfer(), partition.mask())?
+        .with_boot_priority(partition.boot_priority())
+    return Result::Ok(geometry)
 }
 
 fn format_mounted(name: Str, volume_name: Str, dos_type: u32) -> Result<(), FormatError> {
@@ -73,18 +66,15 @@ fn format_mounted(name: Str, volume_name: Str, dos_type: u32) -> Result<(), Form
 }
 
 /// Resolve the best handler source without exposing DOS nodes or segment ownership.
-pub fn file_system_for(model: &RdbModel, index: u32) -> Result<FileSystem, FormatError> {
-    let environment = environment_for(model, index)?
-    let embedded = match model.embedded_file_system(environment.dos_type()) {
-        Option::Some(value) => Option::Some(FileSystemImage::new(
-            value.image(),
-            value.global_vec(),
-            value.stack_size(),
-            value.priority()
-        )),
+pub fn file_system_for(model: &RdbModel, index: usize) -> Result<FileSystem, FormatError> {
+    let partition = model.partition(index).ok_or(FormatError::MissingPartition)?
+    let embedded = match model.embedded_file_system(partition.dos_type()) {
+        Option::Some(value) => Option::Some(EmbeddedFileSystem::from_system(HandlerImage::new(
+            value.image(), value.global_vec(), value.stack_size(), value.priority()
+        ))),
         Option::None => Option::None,
     }
-    return Result::Ok(FileSystem::resolve(environment.dos_type(), embedded)?)
+    return Result::Ok(FileSystem::resolve_embedded(partition.dos_type(), embedded)?)
 }
 
 /// Format one exact partition, reusing its live mount when present.
@@ -92,12 +82,14 @@ pub fn format_partition(
     driver: Str,
     unit: u32,
     model: &RdbModel,
-    index: u32,
+    index: usize,
     volume_name: Str
 ) -> Result<(), FormatError> {
     let partition = model.partition(index).ok_or(FormatError::MissingPartition)?
     let identity = DeviceIdentity { driver: driver, unit: unit }
-    match mounted_partition_name(&identity, partition.low_cylinder(), partition.high_cylinder()) {
+    let mounted_partition = mounted_partition_name(&identity, partition.low_cylinder(), partition.high_cylinder())
+        .or_error(FormatError::MountFailed)?
+    match mounted_partition {
         Option::Some(name) => return format_mounted(name.as_str(), volume_name, partition.dos_type()),
         Option::None => {},
     }
@@ -105,8 +97,8 @@ pub fn format_partition(
         return Result::Err(FormatError::NameConflict)
     }
 
-    let environment = environment_for(model, index)?
+    let geometry = geometry_for(model, index)?
     let file_system = file_system_for(model, index)?
-    let mounted = file_system.mount(partition.name(), driver, unit, &environment)?
+    let mounted = file_system.mount(MountSpec::new(partition.name(), driver, unit, geometry))?
     return Result::Ok(mounted.format(volume_name, partition.dos_type())?)
 }

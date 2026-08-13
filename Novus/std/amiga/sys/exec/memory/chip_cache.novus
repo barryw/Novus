@@ -5,7 +5,7 @@
 // and pinning to protect assets actively used by DMA.
 
 from std::core import Result, Option, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::raw::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, AvailMem
 from amiga::raw::graphics import WaitBlit
 from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, MEMF_LARGEST

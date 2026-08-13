@@ -10,7 +10,7 @@ from std::memory::errors import MemoryError
 /// ```novus
 /// fn sum(numbers: Slice<i32>) -> i32 {
 ///     var total = 0
-///     var i: u32 = 0
+///     var i: usize = 0
 ///     while i < numbers.len {
 ///         total = total + *numbers.get(i).unwrap()
 ///         i = i + 1
@@ -23,14 +23,14 @@ from std::memory::errors import MemoryError
 /// ```
 pub struct Slice<T> {
     ptr: &T,
-    len: u32,
+    len: usize,
 }
 
 impl<T> Iterable<T> for Slice<T> {
-    fn len(&self) -> u32 { return self.len }
+    fn len(&self) -> usize { return self.len }
 
     @unsafe
-    fn get_unchecked(&self, index: u32) -> &T {
+    fn get_unchecked(&self, index: usize) -> &T {
         unsafe { return &((*T)self.ptr)[index] }
     }
 }
@@ -39,12 +39,12 @@ impl<T> Slice<T> {
     /// Create a view from raw contiguous parts.
     /// SAFETY: `ptr` must cover at least `len` consecutive elements.
     @unsafe
-    pub fn new(ptr: &T, len: u32) -> Slice<T> {
+    pub fn new(ptr: &T, len: usize) -> Slice<T> {
         return Slice { ptr: ptr, len: len }
     }
 
     /// Get the length of the slice
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -56,12 +56,12 @@ impl<T> Slice<T> {
     /// Get an element without checking the index.
     /// SAFETY: `index` must be less than `len()`.
     @unsafe
-    pub fn get_unchecked(&self, index: u32) -> &T {
+    pub fn get_unchecked(&self, index: usize) -> &T {
         unsafe { return &((*T)self.ptr)[index] }
     }
 
     /// Get element at index with bounds checking
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
@@ -69,7 +69,7 @@ impl<T> Slice<T> {
     }
 
     /// Borrow the first `count` elements without exposing raw slice parts.
-    pub fn take(&self, count: u32) -> Option<Slice<T>> {
+    pub fn take(&self, count: usize) -> Option<Slice<T>> {
         if count > self.len { return Option::None }
         return Option::Some(Slice { ptr: self.ptr, len: count })
     }
@@ -88,17 +88,17 @@ impl<T> Eq for Slice<T> where T: Eq {
     }
 }
 
-impl<T> Index<u32, &T> for Slice<T> {
-    fn index(&self, consuming index: u32) -> &T {
+impl<T> Index<usize, &T> for Slice<T> {
+    fn index(&self, consuming index: usize) -> &T {
         return self.get(index).unwrap()
     }
 }
 
 impl<T> Iterable<T> for MutSlice<T> {
-    fn len(&self) -> u32 { return self.len }
+    fn len(&self) -> usize { return self.len }
 
     @unsafe
-    fn get_unchecked(&self, index: u32) -> &T {
+    fn get_unchecked(&self, index: usize) -> &T {
         unsafe { return &((*T)self.ptr)[index] }
     }
 }
@@ -107,17 +107,17 @@ impl<T> Iterable<T> for MutSlice<T> {
 /// borrowed through any other mutable or immutable reference.
 pub struct MutSlice<T> {
     ptr: &var T,
-    len: u32,
+    len: usize,
 }
 
 impl<T> MutSlice<T> {
     /// SAFETY: `ptr` must exclusively cover at least `len` elements.
     @unsafe
-    pub fn new(ptr: &var T, len: u32) -> MutSlice<T> {
+    pub fn new(ptr: &var T, len: usize) -> MutSlice<T> {
         return MutSlice { ptr: ptr, len: len }
     }
 
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -125,14 +125,14 @@ impl<T> MutSlice<T> {
         return self.len == 0
     }
 
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
         unsafe { return Option::Some(&((*T)self.ptr)[index]) }
     }
 
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
@@ -142,14 +142,14 @@ impl<T> MutSlice<T> {
     /// Get an element without checking the index.
     /// SAFETY: `index` must be less than `len()`.
     @unsafe
-    pub fn get_unchecked(&self, index: u32) -> &T {
+    pub fn get_unchecked(&self, index: usize) -> &T {
         unsafe { return &((*T)self.ptr)[index] }
     }
 
     /// Replace an element without checking the index.
     /// SAFETY: `index` must be less than `len()`.
     @unsafe
-    pub fn set_unchecked(&var self, index: u32, consuming value: T) {
+    pub fn set_unchecked(&var self, index: usize, consuming value: T) {
         unsafe {
             let raw: *T = (*T)self.ptr
             @drop_in_place(&var raw[index])
@@ -157,7 +157,7 @@ impl<T> MutSlice<T> {
         }
     }
 
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
+    pub fn set(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
         }
@@ -195,14 +195,14 @@ impl<T> MutSlice<T> {
     }
 }
 
-impl<T> Index<u32, &T> for MutSlice<T> {
-    fn index(&self, consuming index: u32) -> &T {
+impl<T> Index<usize, &T> for MutSlice<T> {
+    fn index(&self, consuming index: usize) -> &T {
         return self.get(index).unwrap()
     }
 }
 
-impl<T> IndexMut<u32, T> for MutSlice<T> {
-    fn index_set(&var self, consuming index: u32, consuming value: T) {
+impl<T> IndexMut<usize, T> for MutSlice<T> {
+    fn index_set(&var self, consuming index: usize, consuming value: T) {
         self.set(index, value).unwrap()
     }
 }

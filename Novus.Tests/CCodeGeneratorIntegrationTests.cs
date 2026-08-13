@@ -226,6 +226,82 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_OwningAggregateCallImmediatelyMovedToLocal_WritesLocalDirectly()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::core import Drop
+
+            struct Owned { value: i32 }
+            impl Drop for Owned { fn drop(&var self) {} }
+
+            fn make_owned() -> Owned { return Owned { value: 7 } }
+
+            pub fn use_owned() -> i32 {
+                let owned = make_owned()
+                return owned.value
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "use_owned");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("make_owned(&owned);", code);
+        Assert.DoesNotContain("__novus_memcpy((uint8_t*)&owned", code);
+        Assert.DoesNotContain("_slot_Owned", code);
+        Assert.Contains("Owned_Drop_drop(&owned)", code);
+    }
+
+    [Fact]
+    public void CCodeGen_LocalMayShadowCalledFunction()
+    {
+        var module = BuildIR("""
+            fn devices() -> i32 { return 7 }
+            fn count(devices: i32) -> i32 { return devices }
+
+            pub fn discover() -> i32 {
+                let devices = devices()
+                return devices
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "discover");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.Contains("int32_t __novus_local_devices;", code);
+        Assert.Contains("devices()", code);
+        Assert.Contains("__novus_local_devices =", code);
+
+        var count = module.Functions.Single(candidate => candidate.Name == "count");
+        var countCode = generator.GenerateFunctionFile(count);
+        Assert.Contains("count(int32_t __novus_local_devices)", countCode);
+    }
+
+    [Fact]
+    public void CCodeGen_TryErrorDoesNotMaterializeLargeOkPayload()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::core import Result
+
+            struct Large { bytes: [u8; 1024] }
+
+            fn may_fail() -> Result<i32, i32> {
+                return Result::Err(7)
+            }
+
+            pub fn load() -> Result<Large, i32> {
+                let _ = may_fail()?
+                return Result::Ok(Large { bytes: [0; 1024] })
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var function = module.Functions.Single(candidate => candidate.Name == "load");
+        var code = generator.GenerateFunctionFile(function);
+
+        Assert.DoesNotContain("_slot_Result_Large", code);
+        Assert.Contains("__out->data.Err._0", code);
+    }
+
+    [Fact]
     public void CCodeGen_NonOwningAggregateBuiltForReturn_WritesReturnBufferDirectly()
     {
         var module = BuildIR("""

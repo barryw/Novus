@@ -37,10 +37,11 @@ pub fn test_filesystem_pool() {
 @test("filesystem presets cover native and embedded handlers")
 pub fn test_file_system_presets() {
     let types: [u32] = [$444F5300, $444F5301, $444F5302, $444F5303, $444F5304, $444F5305, $50465303, $50445303, $53465300, $53465302]
-    for index in 0..10 {
-        let dos_type = types[index as u32]
-        expect_true(file_system_preset(dos_type) == index, "preset index matches DosType")
-        expect_true(preset_dos_type(index, 0) == dos_type, "preset restores DosType")
+    var preset: u16 = 0
+    for dos_type in types {
+        expect_true(file_system_preset(dos_type) == preset, "preset index matches DosType")
+        expect_true(preset_dos_type(preset, 0) == dos_type, "preset restores DosType")
+        preset++
     }
     expect_true(file_system_preset($41424344) == 10, "unknown DosType uses Custom")
     expect_true(preset_dos_type(10, $41424344) == $41424344, "Custom preserves DosType")

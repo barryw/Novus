@@ -74,7 +74,7 @@ pub fn main() -> i32 {
     match Timer::microhz() {
         Result::Ok(var timer) => {
             // Get time
-            match timer.get_time() {
+            match timer.time() {
                 Result::Ok(t1) => {
                     write(f"  Time 1: {t1.get_secs()}.{t1.get_micros() / 1000}s\n")
                 },
@@ -94,7 +94,7 @@ pub fn main() -> i32 {
             }
 
             // Get time again
-            match timer.get_time() {
+            match timer.time() {
                 Result::Ok(t2) => {
                     write(f"  Time 2: {t2.get_secs()}.{t2.get_micros() / 1000}s\n")
                 },

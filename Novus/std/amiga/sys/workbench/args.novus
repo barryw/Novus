@@ -20,8 +20,8 @@
 //   "FILES/M"                  - Multiple files
 
 from std::core import Option, Result, Drop, From, Error
-from std::string::core import Str, String
-from std::collections::vec import Vec
+from std::string import Str, String
+from std::collections import Vec
 from amiga::sys::dos::errors import DosError, dos_last_error
 from amiga::raw::structs import RDArgs, WBStartup, WBArg, Process, MsgPort, Message
 from amiga::raw::dos import ReadArgs, FreeArgs, FindArg, GetArgStr, NameFromLock, IoErr

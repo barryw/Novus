@@ -1,7 +1,7 @@
 // Tier 2: safe, non-owning access to Exec resources.
 
 from std::core import Option, Result
-from std::string::core import FixedCString, Str
+from std::string import FixedCString, Str
 from amiga::raw::exec import OpenResource
 
 pub struct Resource {

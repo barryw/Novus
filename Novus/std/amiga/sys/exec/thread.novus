@@ -21,7 +21,7 @@
 //   - Anything needing DOS context
 
 from std::core import Option, Result, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::dos::errors import DosError
 from amiga::raw::structs import Task, MsgPort, List, Node
 from amiga::raw::exec import AllocMem, FreeMem, Wait, Signal, FindTask, SetSignal

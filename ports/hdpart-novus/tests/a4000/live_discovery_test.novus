@@ -12,7 +12,7 @@ fn verify_live_discovery() -> i32 {
     // FileSysStartupMsg. An HDF-backed fixture must additionally require non-empty.
     if devices.len() > 32 { return 2 }
 
-    var index: u32 = 0
+    var index: usize = 0
     while index < devices.len() {
         match devices.get(index) {
             Option::Some(device) => {

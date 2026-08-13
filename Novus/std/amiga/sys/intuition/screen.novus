@@ -6,8 +6,8 @@
 
 from std::core import Option, Result, Drop
 from amiga::sys::intuition::errors import IntuitionError
-from std::string::core import Str
-from std::memory::slice import Slice
+from std::string import Str
+from std::memory import Slice
 from amiga::raw::structs import TagItem, Screen, RastPort, BitMap, ViewPort
 from amiga::raw::intuition import OpenScreenTagList, CloseScreen, ScreenToFront, ScreenToBack, MoveScreen, ShowTitle, OpenWindowTagList
 from amiga::raw::consts import TAG_DONE, SA_*, WA_*, WFLG_*, IDCMP_*, CUSTOMSCREEN, OSCAN_TEXT, HIRES_KEY, LORESLACE_KEY, HIRESLACE_KEY, NTSC_MONITOR_ID, PAL_MONITOR_ID

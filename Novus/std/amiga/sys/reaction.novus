@@ -26,7 +26,7 @@ from amiga::raw::structs import List
 from amiga::raw::structs import IClass
 from amiga::raw::structs import Gadget
 from amiga::raw::structs import Requester
-from std::memory::slice import Slice
+from std::memory import Slice
 from amiga::raw::consts import *
 from amiga::raw::reaction_tags import *
 from amiga::raw::intuition import NewObjectA
@@ -56,7 +56,7 @@ from amiga::raw::exec import GetMsg
 from amiga::raw::exec import ReplyMsg
 from amiga::raw::exec import NewList
 from amiga::raw::exec import AddTail
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::gadtools import GadToolsMenuBuilder, GadToolsMenuStrip
 
 // ============================================================================

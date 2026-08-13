@@ -1,17 +1,17 @@
 from std::core import Result
 from std::test::test import expect_true
-from format import FormatError, environment_for
+from format import FormatError, geometry_for
 from rdb import DOS_TYPE_FFS_INTL, RdbModel
 
 fn format_environment_is_correct() -> bool {
     var model = RdbModel::new(996, 16, 63)
     let Result::Ok(_) = model.add_partition("DH0", 200, DOS_TYPE_FFS_INTL) else { return false }
-    let Result::Ok(environment) = environment_for(&model, 0) else { return false }
-    return false unless environment.block_bytes() == 512 && environment.surfaces() == 16 && environment.blocks_per_track() == 63
-    return false unless environment.low_cylinder() == 2 && environment.high_cylinder() == 408 && environment.buffers() == 30
-    return false unless environment.max_transfer() == $7FFFFFFF && environment.mask() == $7FFFFFFE
-    return false unless environment.boot_priority() == 0 && environment.dos_type() == DOS_TYPE_FFS_INTL
-    return matches!(environment_for(&model, 1), Result::Err(FormatError::MissingPartition))
+    let Result::Ok(geometry) = geometry_for(&model, 0) else { return false }
+    return false unless geometry.block_bytes() == 512 && geometry.surfaces() == 16 && geometry.blocks_per_track() == 63
+    return false unless geometry.low_cylinder() == 2 && geometry.high_cylinder() == 408 && geometry.buffers() == 30
+    return false unless geometry.max_transfer() == $7FFFFFFF && geometry.mask() == $7FFFFFFE
+    return false unless geometry.boot_priority() == 0 && geometry.dos_type() == DOS_TYPE_FFS_INTL
+    return matches!(geometry_for(&model, 1), Result::Err(FormatError::MissingPartition))
 }
 
 @test("partition geometry produces a valid DOS environment")

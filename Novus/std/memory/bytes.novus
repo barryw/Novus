@@ -18,7 +18,7 @@ impl Error for ByteError {
     }
 }
 
-fn contains(len: u32, offset: u32, width: u32) -> bool {
+fn contains(len: usize, offset: usize, width: usize) -> bool {
     return offset <= len && width <= len - offset
 }
 
@@ -32,18 +32,18 @@ impl ByteReader {
         return ByteReader { bytes: bytes }
     }
 
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.bytes.len()
     }
 
-    pub fn read_u8(&self, offset: u32) -> Result<u8, ByteError> {
+    pub fn read_u8(&self, offset: usize) -> Result<u8, ByteError> {
         match self.bytes.get(offset) {
             Option::Some(value) => return Result::Ok(*value),
             Option::None => return Result::Err(ByteError::OutOfBounds),
         }
     }
 
-    pub fn read_be_u16(&self, offset: u32) -> Result<u16, ByteError> {
+    pub fn read_be_u16(&self, offset: usize) -> Result<u16, ByteError> {
         if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
         }
@@ -52,7 +52,7 @@ impl ByteReader {
         return Result::Ok(((u16)high << 8) | (u16)low)
     }
 
-    pub fn read_be_u32(&self, offset: u32) -> Result<u32, ByteError> {
+    pub fn read_be_u32(&self, offset: usize) -> Result<u32, ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
@@ -74,18 +74,18 @@ impl ByteWriter {
         return ByteWriter { bytes: bytes }
     }
 
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.bytes.len()
     }
 
-    pub fn write_u8(&var self, offset: u32, value: u8) -> Result<(), ByteError> {
+    pub fn write_u8(&var self, offset: usize, value: u8) -> Result<(), ByteError> {
         match self.bytes.set(offset, value) {
             Result::Ok(_) => return Result::Ok(()),
             Result::Err(_) => return Result::Err(ByteError::OutOfBounds),
         }
     }
 
-    pub fn read_be_u32(&self, offset: u32) -> Result<u32, ByteError> {
+    pub fn read_be_u32(&self, offset: usize) -> Result<u32, ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
@@ -96,7 +96,7 @@ impl ByteWriter {
         return Result::Ok(((u32)b0 << 24) | ((u32)b1 << 16) | ((u32)b2 << 8) | (u32)b3)
     }
 
-    pub fn write_be_u16(&var self, offset: u32, value: u16) -> Result<(), ByteError> {
+    pub fn write_be_u16(&var self, offset: usize, value: u16) -> Result<(), ByteError> {
         if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
         }
@@ -107,7 +107,7 @@ impl ByteWriter {
         return Result::Ok(())
     }
 
-    pub fn write_be_u32(&var self, offset: u32, value: u32) -> Result<(), ByteError> {
+    pub fn write_be_u32(&var self, offset: usize, value: u32) -> Result<(), ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
         }
@@ -121,7 +121,7 @@ impl ByteWriter {
     }
 
     pub fn fill(&var self, value: u8) -> Result<(), ByteError> {
-        var offset: u32 = 0
+        var offset: usize = 0
         while offset < self.bytes.len() {
             unsafe { self.bytes.set_unchecked(offset, value) }
             offset++

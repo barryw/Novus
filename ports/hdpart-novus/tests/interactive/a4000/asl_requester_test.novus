@@ -1,6 +1,6 @@
 from std::core import Option, Result
 from amiga::raw::asl import AllocFileRequest, FreeFileRequest, RequestFile
-from std::io::file import write
+from std::io import write
 from std::test::test import expect_true
 from amiga::sys::asl import FileRequesterHandle
 from fsload import load_file_system

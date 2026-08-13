@@ -1,14 +1,37 @@
+from std::core import Error, From, Result
+from amiga::ui import ApplicationWindow
 from amiga::sys::graphics::draw import DrawContext as SystemCanvas, DrawMode as SystemDrawMode
 from amiga::sys::graphics::errors import GraphicsError as SystemGraphicsError
 from amiga::sys::graphics::palette import Color as SystemColor
 from amiga::sys::graphics::patterns import FillPattern as SystemFillPattern, LinePattern as SystemLinePattern
 from amiga::sys::graphics::shapes import Ellipse as SystemEllipse, Point as SystemPoint, Rect as SystemRect, Size as SystemSize
 
-// Tier 1 application graphics: bounded drawing concepts. Specialist bitmap,
-// font, sprite, copper, and RastPort APIs remain under amiga::sys::graphics.
-pub type Canvas = SystemCanvas
+/// Failures from application-level drawing operations.
+pub enum ApplicationGraphicsError {
+    Unavailable,
+    OutsideBounds,
+}
+
+impl From<SystemGraphicsError> for ApplicationGraphicsError {
+    fn convert(consuming error: SystemGraphicsError) -> ApplicationGraphicsError {
+        return match error {
+            SystemGraphicsError::InvalidRastPort => ApplicationGraphicsError::OutsideBounds,
+            _ => ApplicationGraphicsError::Unavailable,
+        }
+    }
+}
+
+impl Error for ApplicationGraphicsError {
+    fn message(&self) -> *u8 {
+        return match self {
+            ApplicationGraphicsError::Unavailable => "Drawing is unavailable",
+            ApplicationGraphicsError::OutsideBounds => "The drawing position is outside the window",
+        }
+    }
+}
+
+// Plain graphics values have no ownership or native handles to leak.
 pub type DrawMode = SystemDrawMode
-pub type GraphicsError = SystemGraphicsError
 pub type Color = SystemColor
 pub type FillPattern = SystemFillPattern
 pub type LinePattern = SystemLinePattern
@@ -16,3 +39,40 @@ pub type Ellipse = SystemEllipse
 pub type Point = SystemPoint
 pub type Rect = SystemRect
 pub type Size = SystemSize
+pub type GraphicsError = ApplicationGraphicsError
+
+/// Bounded application drawing tied to its owning window.
+pub struct ApplicationCanvas { system: SystemCanvas }
+
+impl ApplicationCanvas {
+    @borrows(window)
+    pub fn for_window(window: &ApplicationWindow) -> Result<ApplicationCanvas, GraphicsError> {
+        let system = SystemCanvas::from_rastport(window.system().rastport())?
+        return Result::Ok(ApplicationCanvas { system: system })
+    }
+
+    pub fn pen(&self, color: u8) { self.system.pen(color) }
+    pub fn background_pen(&self, color: u8) { self.system.bg_pen(color) }
+    pub fn pens(&self, foreground: u8, background: u8) { self.system.pens(foreground, background) }
+    pub fn mode(&self, mode: DrawMode) { self.system.mode(mode) }
+    pub fn move_to(&self, x: i16, y: i16) { self.system.move_to(x, y) }
+    pub fn line_to(&self, x: i16, y: i16) { self.system.line_to(x, y) }
+    pub fn line(&self, x1: i16, y1: i16, x2: i16, y2: i16) { self.system.line(x1, y1, x2, y2) }
+    pub fn fill(&self, rect: &Rect) { self.system.rect_fill(rect) }
+    pub fn outline(&self, rect: &Rect) { self.system.rect_outline(rect) }
+    pub fn erase(&self, rect: &Rect) { self.system.rect_erase(rect) }
+    pub fn circle(&self, x: i16, y: i16, radius: i16) { self.system.circle(x, y, radius) }
+    pub fn ellipse(&self, shape: &Ellipse) { self.system.ellipse_shape(shape) }
+    pub fn pixel(&self, x: i16, y: i16) -> Result<(), GraphicsError> {
+        self.system.pixel(x, y)?
+        return Result::Ok(())
+    }
+    pub fn pixel_at(&self, point: &Point) -> Result<(), GraphicsError> {
+        self.system.pixel_at(point)?
+        return Result::Ok(())
+    }
+    pub fn clear(&self, color: u8) { self.system.clear(color) }
+    pub fn system(&self) -> &SystemCanvas { return &self.system }
+}
+
+pub type Canvas = ApplicationCanvas

@@ -1,7 +1,7 @@
 // Safe, read-only traversal of AmigaDOS device entries.
 
 from std::core import Drop, Error, Iterator, Option, Result
-from std::string::core import CStr, Str
+from std::string import CStr, Str
 from amiga::sys::dos::bptr import BPtr, BPtrError
 from amiga::raw::consts import LDF_DEVICES, LDF_READ
 from amiga::raw::structs import DeviceNode, DevProc, DosEnvec, DosList, FileSysStartupMsg

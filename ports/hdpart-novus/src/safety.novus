@@ -2,9 +2,8 @@
 
 from std::core import Option, Result
 from std::memory import Slice
-from amiga::sys::dos import DeviceProcess, DosDeviceList
-from std::string import FixedCString, FixedString, Str
-from discovery import is_device_name
+from std::string import FixedString, Str
+from amiga::storage import DeviceUse as StorageDeviceUse, StorageError, device_use, mounted_volume_for, volume_name_exists
 
 pub enum DeviceLiveness {
     Clear,
@@ -59,38 +58,12 @@ pub fn classify_device(
 /// Classify a real Exec device without exposing DOS-list or handler pointers.
 /// Any failure to prove the boot device is known fails closed as Mounted.
 pub fn classify_live_device(target: &DeviceIdentity) -> DeviceLiveness {
-    let sys_name = match FixedCString::<4>::new_from_str("SYS:") {
-        Result::Ok(value) => value,
-        Result::Err(_) => return DeviceLiveness::Mounted,
+    return match device_use(target.driver, target.unit) {
+        Result::Ok(StorageDeviceUse::Clear) => DeviceLiveness::Clear,
+        Result::Ok(StorageDeviceUse::Mounted) => DeviceLiveness::Mounted,
+        Result::Ok(StorageDeviceUse::Boot) => DeviceLiveness::Boot,
+        Result::Err(_) => DeviceLiveness::Mounted,
     }
-    let boot_process = match DeviceProcess::resolve(sys_name.as_cstr_view()) {
-        Result::Ok(value) => value,
-        Result::Err(_) => return DeviceLiveness::Mounted,
-    }
-    let devices = match DosDeviceList::lock() {
-        Result::Ok(value) => value,
-        Result::Err(_) => return DeviceLiveness::Mounted,
-    }
-
-    var entries = devices.iter()
-    var boot_known = false
-    var target_mounted = false
-    forever {
-        let Option::Some(entry) = entries.next() else { break }
-        let Option::Some(startup) = entry.startup() else { continue }
-        let Option::Some(driver) = startup.device_name() else { continue }
-        continue unless is_device_name(driver)
-
-        let entry_device = DeviceIdentity { driver: driver, unit: startup.unit() }
-        if entry.is_handled_by(&boot_process) {
-            boot_known = true
-            return DeviceLiveness::Boot if same_device(target, &entry_device)
-        }
-        target_mounted = true if same_device(target, &entry_device)
-    }
-
-    return DeviceLiveness::Mounted if target_mounted
-    return if boot_known { DeviceLiveness::Clear } else { DeviceLiveness::Mounted }
 }
 
 /// Return the DOS name only when a live mount overlaps this exact device range.
@@ -98,42 +71,17 @@ pub fn mounted_partition_name(
     target: &DeviceIdentity,
     low_cylinder: u32,
     high_cylinder: u32
-) -> Option<FixedString<32>> {
-    let devices = match DosDeviceList::lock() {
-        Result::Ok(value) => value,
-        Result::Err(_) => return Option::None,
-    }
-    var entries = devices.iter()
-    forever {
-        let Option::Some(entry) = entries.next() else { break }
-        let Option::Some(startup) = entry.startup() else { continue }
-        let Option::Some(driver) = startup.device_name() else { continue }
-        continue unless startup.unit() == target.unit && driver.eq_ignore_case(target.driver)
-        let Option::Some(environment) = startup.environment() else { continue }
-        continue unless low_cylinder <= environment.de_HighCyl && environment.de_LowCyl <= high_cylinder
-        let Option::Some(name) = entry.name() else { continue }
-        return match FixedString::<32>::new_from_str(name) {
-            Result::Ok(value) => Option::Some(value),
-            Result::Err(_) => Option::None,
-        }
-    }
-    return Option::None
+) -> Result<Option<FixedString<32>>, StorageError> {
+    return mounted_volume_for(target.driver, target.unit, low_cylinder, high_cylinder)
 }
 
 /// True when DOS already owns this device name. Failure is treated as a
 /// conflict so callers cannot register an ambiguous replacement.
 pub fn mounted_device_name_exists(name: Str) -> bool {
-    let devices = match DosDeviceList::lock() {
-        Result::Ok(value) => value,
-        Result::Err(_) => return true,
+    return match volume_name_exists(name) {
+        Result::Ok(exists) => exists,
+        Result::Err(_) => true,
     }
-    var entries = devices.iter()
-    forever {
-        let Option::Some(entry) = entries.next() else { break }
-        let Option::Some(existing) = entry.name() else { continue }
-        return true if existing.eq_ignore_case(name)
-    }
-    return false
 }
 
 /// Return the live DOS name of the first overlapping mounted partition.

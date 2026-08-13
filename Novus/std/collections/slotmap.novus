@@ -28,7 +28,7 @@ from std::memory::errors import MemoryError
 /// The 16-bit generation provides much better ABA protection than
 /// an 8-bit generation (65536 reuses vs 256 before potential collision).
 pub struct SlotKey {
-    index: u32,
+index: usize,
     generation: u32,
 }
 
@@ -61,7 +61,7 @@ impl SlotKey {
     }
 
     /// Get the index portion of this key
-    pub fn get_index(&self) -> u32 {
+pub fn get_index(&self) -> usize {
         return self.index
     }
 
@@ -123,9 +123,9 @@ struct Slot<T> {
 pub struct SlotMap<T> {
     values: *u8,        // Raw byte storage for values (for CopyMem)
     slots: *Slot<T>,    // Slot metadata (generation, free list, occupied)
-    capacity: u32,
-    len: u32,
-    free_head: u32,     // Index of first free slot, or 0xFFFFFFFF if none
+capacity: usize,
+len: usize,
+free_head: usize,   // Index of first free slot, or 0xFFFFFFFF if none
     value_size: u32,    // Size of T (aligned)
     slot_size: u32,     // Size of Slot<T>
 }
@@ -137,7 +137,7 @@ impl<T> SlotMap<T> {
     }
 
     /// Create a new SlotMap with specified initial capacity
-    pub fn with_capacity(capacity: u32) -> Result<SlotMap<T>, MemoryError> {
+pub fn with_capacity(capacity: usize) -> Result<SlotMap<T>, MemoryError> {
         if capacity == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
@@ -165,7 +165,7 @@ impl<T> SlotMap<T> {
                         slot_block.into_raw()
 
                         // Initialize free list: each slot points to the next
-                        var i: u32 = 0
+var i: usize = 0
                         unsafe {
                             while i < capacity - 1 {
                                 slots[i].occupied = false
@@ -202,7 +202,7 @@ impl<T> SlotMap<T> {
     }
 
     /// Create a new SlotMap, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<SlotMap<T>, MemoryError> {
+pub fn try_with_capacity(capacity: usize) -> Result<SlotMap<T>, MemoryError> {
         return SlotMap::<T>::with_capacity(capacity)
     }
 
@@ -216,7 +216,7 @@ impl<T> SlotMap<T> {
         }
 
         // Pop from free list
-        let index: u32 = self.free_head
+let index: usize = self.free_head
         self.free_head = unsafe { self.slots[index].next_free }
 
         // Copy value using CopyMem
@@ -237,7 +237,7 @@ impl<T> SlotMap<T> {
 
     /// Grow the SlotMap by doubling capacity
     fn grow(&var self) -> Result<(), MemoryError> {
-        let new_capacity: u32 = self.capacity << 1  // Double
+let new_capacity: usize = self.capacity << 1  // Double
         let new_value_bytes: u32 = new_capacity * self.value_size
         let new_slot_bytes: u32 = new_capacity * self.slot_size
 
@@ -262,7 +262,7 @@ impl<T> SlotMap<T> {
                         }
 
                         // Copy existing slots
-                        var i: u32 = 0
+var i: usize = 0
                         unsafe {
                             while i < self.capacity {
                                 new_slots[i].generation = self.slots[i].generation
@@ -414,7 +414,7 @@ impl<T> SlotMap<T> {
     }
 
     /// Get the number of objects in the map
-    pub fn len(&self) -> u32 {
+pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -424,7 +424,7 @@ impl<T> SlotMap<T> {
     }
 
     /// Get the current capacity
-    pub fn capacity(&self) -> u32 {
+pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
@@ -433,7 +433,7 @@ impl<T> SlotMap<T> {
     /// Calls Drop on all contained values.
     /// Increments generations so old keys become invalid.
     pub fn clear(&var self) {
-        var i: u32 = 0
+var i: usize = 0
         while i < self.capacity {
             if unsafe { self.slots[i].occupied } {
                 // Call Drop on the value before releasing the slot
@@ -469,7 +469,7 @@ impl<T> SlotMap<T> {
     /// Get a key for an object at a raw index (for iteration)
     ///
     /// Returns None if the index is out of bounds or unoccupied.
-    pub fn key_at(&self, index: u32) -> Option<SlotKey> {
+pub fn key_at(&self, index: usize) -> Option<SlotKey> {
         if index >= self.capacity {
             return Option::None
         }
@@ -489,7 +489,7 @@ impl<T> Drop for SlotMap<T> {
     fn drop(&var self) {
         if self.values != null {
             // Call Drop on all occupied values before freeing memory
-            var i: u32 = 0
+var i: usize = 0
             while i < self.capacity {
                 if unsafe { self.slots[i].occupied } {
                     let ptr: *T = (*T)(self.values + i * self.value_size)
@@ -515,7 +515,7 @@ impl<T> Drop for SlotMap<T> {
 /// Iterator over SlotMap entries
 pub struct SlotMapIter<T> {
     map: &SlotMap<T>,
-    current: u32,
+current: usize,
 }
 
 /// Key-value pair returned by SlotMap iterator
@@ -528,7 +528,7 @@ impl<T> SlotMapIter<T> {
     /// Get the next occupied entry
     pub fn next(&var self) -> Option<SlotMapEntry<T>> {
         while self.current < self.map.capacity {
-            let idx: u32 = self.current
+let idx: usize = self.current
             self.current = self.current + 1
 
             if unsafe { self.map.slots[idx].occupied } {
@@ -564,15 +564,15 @@ pub struct SlotMapFixed<T> {
     generations: *u32,
     next_free: *u32,        // Free list linkage
     occupied: *bool,
-    capacity: u32,
-    len: u32,
-    free_head: u32,
+capacity: usize,
+len: usize,
+free_head: usize,
     value_size: u32,
 }
 
 impl<T> SlotMapFixed<T> {
     /// Create a new fixed-capacity SlotMap
-    pub fn with_capacity(capacity: u32) -> Result<SlotMapFixed<T>, MemoryError> {
+pub fn with_capacity(capacity: usize) -> Result<SlotMapFixed<T>, MemoryError> {
         if capacity == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
@@ -613,7 +613,7 @@ impl<T> SlotMapFixed<T> {
                                         occ_block.into_raw()
 
                                         // Initialize free list
-                                        var i: u32 = 0
+var i: usize = 0
                                         unsafe {
                                             while i < capacity - 1 {
                                                 next_free[i] = i + 1
@@ -665,7 +665,7 @@ impl<T> SlotMapFixed<T> {
     }
 
     /// Create a new SlotMapFixed, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<SlotMapFixed<T>, MemoryError> {
+pub fn try_with_capacity(capacity: usize) -> Result<SlotMapFixed<T>, MemoryError> {
         return SlotMapFixed::<T>::with_capacity(capacity)
     }
 
@@ -678,7 +678,7 @@ impl<T> SlotMapFixed<T> {
         }
 
         // Pop from free list
-        let index: u32 = self.free_head
+let index: usize = self.free_head
         self.free_head = unsafe { self.next_free[index] }
 
         // Copy value using CopyMem
@@ -755,7 +755,7 @@ impl<T> SlotMapFixed<T> {
     }
 
     /// Get number of objects
-    pub fn len(&self) -> u32 {
+pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -765,7 +765,7 @@ impl<T> SlotMapFixed<T> {
     }
 
     /// Get capacity
-    pub fn capacity(&self) -> u32 {
+pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
@@ -774,7 +774,7 @@ impl<T> SlotMapFixed<T> {
     /// Calls Drop on all contained values.
     /// Increments generations so old keys become invalid.
     pub fn clear(&var self) {
-        var i: u32 = 0
+        var i: usize = 0
         while i < self.capacity {
             if unsafe { self.occupied[i] } {
                 // Call Drop on the value before releasing the slot
@@ -804,7 +804,7 @@ impl<T> Drop for SlotMapFixed<T> {
     fn drop(&var self) {
         if self.values != null {
             // Call Drop on all occupied values before freeing memory
-            var i: u32 = 0
+            var i: usize = 0
             while i < self.capacity {
                 if unsafe { self.occupied[i] } {
                     let ptr: *T = (*T)(self.values + i * self.value_size)

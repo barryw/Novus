@@ -50,7 +50,7 @@ from amiga::raw::consts import *
 from amiga::raw::graphics import AllocBitMap, FreeBitMap, BltBitMapRastPort, WaitBlit, InitRastPort
 from amiga::raw::intuition import BeginRefresh, EndRefresh
 from amiga::raw::exec import FreeVec, AllocVec
-from std::string::core import Str
+from std::string import Str
 
 // Minterm for straight copy (D = S)
 const BLIT_COPY: u8 = $C0

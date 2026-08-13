@@ -4,11 +4,11 @@ from std::core import Error, Result
 from amiga::raw::consts import ADNF_STARTPROC, MEMF_CLEAR, MEMF_PUBLIC
 from amiga::raw::structs import DeviceNode, DosEnvec, FileSysStartupMsg
 from amiga::raw::expansion import AddDosNode
-from std::memory::block import MemoryBlock
+from std::memory import MemoryBlock
 from amiga::sys::dos::bptr import BPtr
 from amiga::sys::dos::filesystem import FileSystemHandler
 from amiga::sys::dos::segment import LoadedSegment
-from std::string::core import BStr, Str
+from std::string import BStr, Str
 
 pub enum DosNodeError {
     InvalidName,

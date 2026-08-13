@@ -60,10 +60,10 @@ from std::memory::errors import MemoryError
 /// ```
 pub struct RingBuffer<T> {
     data: *u8,          // Raw byte storage for CopyMem compatibility
-    capacity: u32,
-    head: u32,          // Index of first element (read position)
-    tail: u32,          // Index of next write position
-    len: u32,           // Current number of elements
+    capacity: usize,
+    head: usize,        // Index of first element (read position)
+    tail: usize,        // Index of next write position
+    len: usize,         // Current number of elements
     element_size: u32,  // Size of T in bytes
 }
 
@@ -72,7 +72,7 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns a typed error if allocation fails.
     /// For best performance, use RingBufferPow2 with a power-of-2 capacity.
-    pub fn with_capacity(capacity: u32) -> Result<RingBuffer<T>, MemoryError> {
+    pub fn with_capacity(capacity: usize) -> Result<RingBuffer<T>, MemoryError> {
         if capacity == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
@@ -103,7 +103,7 @@ impl<T> RingBuffer<T> {
     }
 
     /// Create a new ring buffer, returning a Result for detailed error handling
-    pub fn try_with_capacity(capacity: u32) -> Result<RingBuffer<T>, MemoryError> {
+    pub fn try_with_capacity(capacity: usize) -> Result<RingBuffer<T>, MemoryError> {
         if capacity == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
@@ -145,17 +145,17 @@ impl<T> RingBuffer<T> {
     }
 
     /// Get the current number of elements
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
     /// Get the total capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
     /// Get available space for new elements
-    pub fn available(&self) -> u32 {
+    pub fn available(&self) -> usize {
         return self.capacity - self.len
     }
 
@@ -214,7 +214,7 @@ impl<T> RingBuffer<T> {
             return Option::None
         }
         // Back is at tail - 1, with wrap-around
-        let back_idx: u32 = if self.tail == 0 { self.capacity - 1 } else { self.tail - 1 }
+        let back_idx: usize = if self.tail == 0 { self.capacity - 1 } else { self.tail - 1 }
         let ptr: *T = (*T)(self.data + back_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
@@ -237,21 +237,21 @@ impl<T> RingBuffer<T> {
     /// Get element at logical index (0 = front)
     ///
     /// Returns None if index is out of bounds.
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
-        let actual_idx: u32 = (self.head + index) % self.capacity
+        let actual_idx: usize = (self.head + index) % self.capacity
         let ptr: *T = (*T)(self.data + actual_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
 
     /// Mutably borrow the element at logical index (0 = front).
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
-        let actual_idx: u32 = (self.head + index) % self.capacity
+        let actual_idx: usize = (self.head + index) % self.capacity
         let ptr: *T = (*T)(self.data + actual_idx * self.element_size)
         return Option::Some(unsafe { &var *ptr })
     }
@@ -273,11 +273,11 @@ impl<T> RingBuffer<T> {
     ///
     /// Returns the number of elements actually skipped.
     /// Calls Drop on each discarded element if T implements Drop.
-    pub fn skip(&var self, n: u32) -> u32 {
-        let to_skip: u32 = if n > self.len { self.len } else { n }
+    pub fn skip(&var self, n: usize) -> usize {
+        let to_skip: usize = if n > self.len { self.len } else { n }
 
         // Drop each element being skipped
-        var i: u32 = 0
+        var i: usize = 0
         while i < to_skip {
             let ptr: *T = (*T)(self.data + ((self.head + i) % self.capacity) * self.element_size)
             @drop_in_place(ptr)
@@ -333,11 +333,11 @@ impl<T> Drop for RingBuffer<T> {
 /// ```
 pub struct RingBufferPow2<T> {
     data: *u8,          // Raw byte storage for CopyMem compatibility
-    capacity: u32,
-    mask: u32,          // capacity - 1, for fast modulo
-    head: u32,
-    tail: u32,
-    len: u32,
+    capacity: usize,
+    mask: usize,        // capacity - 1, for fast modulo
+    head: usize,
+    tail: usize,
+    len: usize,
     element_size: u32,
 }
 
@@ -346,13 +346,13 @@ impl<T> RingBufferPow2<T> {
     ///
     /// Capacity will be rounded up to the next power of 2.
     /// Returns a typed error if allocation fails.
-    pub fn with_capacity(requested: u32) -> Result<RingBufferPow2<T>, MemoryError> {
+    pub fn with_capacity(requested: usize) -> Result<RingBufferPow2<T>, MemoryError> {
         if requested == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
 
         // Round up to next power of 2
-        let capacity: u32 = RingBufferPow2::<T>::next_power_of_two(requested)
+        let capacity: usize = RingBufferPow2::<T>::next_power_of_two(requested)
 
         let element_size: u32 = @sizeof(T)
         // Align element size to 4 bytes for 68k efficiency
@@ -381,12 +381,12 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Create a new ring buffer, returning a Result for detailed error handling
-    pub fn try_with_capacity(requested: u32) -> Result<RingBufferPow2<T>, MemoryError> {
+    pub fn try_with_capacity(requested: usize) -> Result<RingBufferPow2<T>, MemoryError> {
         if requested == 0 {
             return Result::Err(MemoryError::InvalidCapacity)
         }
 
-        let capacity: u32 = RingBufferPow2::<T>::next_power_of_two(requested)
+        let capacity: usize = RingBufferPow2::<T>::next_power_of_two(requested)
 
         let element_size: u32 = @sizeof(T)
         let aligned_size: u32 = (element_size + 3) & 0xFFFFFFFC
@@ -416,11 +416,11 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Round up to next power of 2
-    fn next_power_of_two(n: u32) -> u32 {
+    fn next_power_of_two(n: usize) -> usize {
         if n == 0 {
             return 1
         }
-        var v: u32 = n - 1
+        var v: usize = n - 1
         v = v | (v >> 1)
         v = v | (v >> 2)
         v = v | (v >> 4)
@@ -440,17 +440,17 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Get the current number of elements
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
     /// Get the total capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
     /// Get available space for new elements
-    pub fn available(&self) -> u32 {
+    pub fn available(&self) -> usize {
         return self.capacity - self.len
     }
 
@@ -498,7 +498,7 @@ impl<T> RingBufferPow2<T> {
             return Option::None
         }
         // When tail==0, underflow wraps to 0xFFFFFFFF, mask produces capacity-1 (correct!)
-        let back_idx: u32 = (self.tail - 1) & self.mask
+        let back_idx: usize = (self.tail - 1) & self.mask
         let ptr: *T = (*T)(self.data + back_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
@@ -519,21 +519,21 @@ impl<T> RingBufferPow2<T> {
     }
 
     /// Get element at logical index
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
-        let actual_idx: u32 = (self.head + index) & self.mask
+        let actual_idx: usize = (self.head + index) & self.mask
         let ptr: *T = (*T)(self.data + actual_idx * self.element_size)
         return Option::Some(unsafe { &*ptr })
     }
 
     /// Mutably borrow the element at logical index.
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
-        let actual_idx: u32 = (self.head + index) & self.mask
+        let actual_idx: usize = (self.head + index) & self.mask
         let ptr: *T = (*T)(self.data + actual_idx * self.element_size)
         return Option::Some(unsafe { &var *ptr })
     }
@@ -542,11 +542,11 @@ impl<T> RingBufferPow2<T> {
     ///
     /// Returns the number of elements actually skipped.
     /// Calls Drop on each discarded element if T implements Drop.
-    pub fn skip(&var self, n: u32) -> u32 {
-        let to_skip: u32 = if n > self.len { self.len } else { n }
+    pub fn skip(&var self, n: usize) -> usize {
+        let to_skip: usize = if n > self.len { self.len } else { n }
 
         // Drop each element being skipped
-        var i: u32 = 0
+        var i: usize = 0
         while i < to_skip {
             let ptr: *T = (*T)(self.data + ((self.head + i) & self.mask) * self.element_size)
             @drop_in_place(ptr)

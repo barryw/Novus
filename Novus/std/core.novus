@@ -334,20 +334,20 @@ impl LibraryVersion {
 // Types implementing this trait can be iterated over with: for item in collection { ... }
 //
 // Requirements:
-// - get_unchecked(index: u32) -> &T: compiler-only primitive used after index < len
-// - len() -> u32: Total number of elements in the collection
+// - get_unchecked(index: usize) -> &T: compiler-only primitive used after index < len
+// - len() -> usize: Total number of elements in the collection
 //
 // Example implementation:
 // ```novus
 // impl<T> Iterable<T> for Vec<T> {
-//     @unsafe fn get_unchecked(&self, index: u32) -> &T { ... }
-//     fn len(&self) -> u32 { ... }
+//     @unsafe fn get_unchecked(&self, index: usize) -> &T { ... }
+//     fn len(&self) -> usize { ... }
 // }
 // ```
 pub trait Iterable<T> {
     @unsafe
-    fn get_unchecked(&self, index: u32) -> &T
-    fn len(&self) -> u32
+    fn get_unchecked(&self, index: usize) -> &T
+    fn len(&self) -> usize
 }
 
 // ============================================================================
@@ -952,7 +952,7 @@ pub trait Iterator<T> {
 /// Example implementation:
 /// ```novus
 /// impl Write for StringBuilder {
-///     fn write_bytes(&var self, ptr: *u8, len: u32) -> bool {
+///     fn write_bytes(&var self, ptr: *u8, len: usize) -> bool {
 ///         // Copy bytes from ptr
 ///     }
 ///
@@ -973,7 +973,7 @@ pub trait Iterator<T> {
 pub trait Write {
     /// Write bytes from a pointer to this output.
     /// Returns true on success, false on failure (e.g., buffer full).
-    fn write_bytes(&var self, ptr: *u8, len: u32) -> bool
+    fn write_bytes(&var self, ptr: *u8, len: usize) -> bool
 
     /// Write a single byte to this output.
     /// Returns true on success, false on failure.

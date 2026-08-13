@@ -11,21 +11,21 @@ impl Error for ArrayVecError {
     fn message(&self) -> *u8 { return "ArrayVec is full" }
 }
 
-pub struct ArrayVec<T, const N: u32> {
+pub struct ArrayVec<T, const N: usize> {
     items: [Option<T>; N],
-    len: u32,
+    len: usize,
 }
 
-impl<T, const N: u32> ArrayVec<T, N> {
+impl<T, const N: usize> ArrayVec<T, N> {
     pub fn new() -> ArrayVec<T, N> {
         return ArrayVec { items: [Option::None; N], len: 0 }
     }
 
     @inline
-    pub fn len(&self) -> u32 { return self.len }
+    pub fn len(&self) -> usize { return self.len }
 
     @inline
-    pub fn capacity(&self) -> u32 { return N }
+    pub fn capacity(&self) -> usize { return N }
 
     @inline
     pub fn is_empty(&self) -> bool { return self.len == 0 }
@@ -44,7 +44,7 @@ impl<T, const N: u32> ArrayVec<T, N> {
         return Result::Ok(())
     }
 
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len { return Option::None }
         return match &self.items[index] {
             Option::Some(&value) => Option::Some(value),
@@ -52,7 +52,7 @@ impl<T, const N: u32> ArrayVec<T, N> {
         }
     }
 
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len { return Option::None }
         return match &var self.items[index] {
             Option::Some(&var value) => Option::Some(value),
@@ -62,7 +62,7 @@ impl<T, const N: u32> ArrayVec<T, N> {
 
     /// Remove one value while preserving order. Ownership transfers to the
     /// caller; every shifted slot is cleared so Drop still runs exactly once.
-    pub fn remove(&var self, index: u32) -> Option<T> {
+    pub fn remove(&var self, index: usize) -> Option<T> {
         if index >= self.len { return Option::None }
         let removed: Option<T> = self.items[index]
         var current = index
@@ -75,11 +75,11 @@ impl<T, const N: u32> ArrayVec<T, N> {
     }
 }
 
-impl<T, const N: u32> Iterable<T> for ArrayVec<T, N> {
-    fn len(&self) -> u32 { return self.len }
+impl<T, const N: usize> Iterable<T> for ArrayVec<T, N> {
+    fn len(&self) -> usize { return self.len }
 
     @unsafe
-    fn get_unchecked(&self, index: u32) -> &T {
+    fn get_unchecked(&self, index: usize) -> &T {
         return match &self.items[index] {
             Option::Some(&value) => value,
             Option::None => { panic!("ArrayVec invariant violated") },
@@ -87,7 +87,7 @@ impl<T, const N: u32> Iterable<T> for ArrayVec<T, N> {
     }
 }
 
-impl<T, const N: u32> Drop for ArrayVec<T, N> {
+impl<T, const N: usize> Drop for ArrayVec<T, N> {
     fn drop(&var self) {
         while self.len > 0 {
             self.len--

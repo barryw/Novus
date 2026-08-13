@@ -27,7 +27,7 @@
 from std::core import Result, Option, Drop
 from amiga::sys::exec::errors import ExecError
 from std::core import Error
-from std::string::core import Str, String
+from std::string import Str, String
 from amiga::raw::structs import MsgPort, RexxMsg, Message, Node
 from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg, WaitPort, FindPort, PutMsg, AllocMem, FreeMem, AddPort, RemPort
 from amiga::raw::rexxsyslib import CreateArgstring, DeleteArgstring, LengthArgstring, CreateRexxMsg, DeleteRexxMsg, IsRexxMsg

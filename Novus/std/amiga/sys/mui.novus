@@ -26,7 +26,7 @@ from amiga::raw::structs import Screen, Window, TagItem
 from amiga::raw::consts import *
 from amiga::raw::intuition import LockPubScreen, UnlockPubScreen
 from amiga::raw::exec import AllocVec, FreeVec, CopyMem, Wait
-from std::string::core import Str
+from std::string import Str
 from amiga::raw::mui_tags import *
 
 // ============================================================================

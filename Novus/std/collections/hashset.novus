@@ -55,7 +55,7 @@ impl<T> HashSet<T> where T: Hash + Eq {
 
     /// Create a HashSet with specified initial capacity
     /// Returns MemoryError::OutOfMemory if memory allocation fails
-    pub fn with_capacity(capacity: u32) -> Result<HashSet<T>, MemoryError> {
+    pub fn with_capacity(capacity: usize) -> Result<HashSet<T>, MemoryError> {
         match HashMap::<T, ()>::with_capacity(capacity) {
             Result::Ok(map) => return Result::Ok(HashSet { map: map }),
             Result::Err(err) => return Result::Err(err),
@@ -105,7 +105,7 @@ impl<T> HashSet<T> where T: Hash + Eq {
     }
 
     /// Get the number of elements in the set
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.map.len()
     }
 
@@ -115,7 +115,7 @@ impl<T> HashSet<T> where T: Hash + Eq {
     }
 
     /// Get the current capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.map.capacity()
     }
 

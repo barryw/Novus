@@ -7,9 +7,9 @@
 from std::core import Option, Result, Drop
 from amiga::sys::intuition::errors import IntuitionError
 from amiga::sys::utility import make_tags
-from std::string::core import Str
+from std::string import Str
 from std::string::format import Display, Formatter
-from std::memory::slice import Slice
+from std::memory import Slice
 from amiga::raw::structs import TagItem, Window, Screen, NewWindow, NewScreen, IntuiMessage, Message, MsgPort, RastPort
 from amiga::raw::intuition import OpenWindowTagList, OpenScreenTagList, CloseWindow, CloseScreen, BeginRefresh, EndRefresh, MoveWindow, SizeWindow, ChangeWindowBox, WindowLimits, ZipWindow, WindowToFront, WindowToBack, MoveWindowInFrontOf, ModifyIDCMP, SetWindowTitles, ActivateWindow, RefreshWindowFrame, SetMouseQueue, ClearMenuStrip
 from amiga::raw::consts import TAG_DONE, IDCMP_*, WA_*, WFLG_*, FALSE, NULL

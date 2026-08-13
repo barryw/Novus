@@ -9,7 +9,7 @@ from amiga::sys::graphics::errors import GraphicsError
 from amiga::sys::hardware::chipset import CHIPSET, SystemChipset
 from amiga::raw::structs import ViewPort, ColorMap
 from amiga::raw::graphics import LoadRGB4, SetRGB4, GetRGB4, LoadRGB32, SetRGB32, GetRGB32
-from std::memory::block import MemoryBlock
+from std::memory import MemoryBlock
 
 // ============================================================================
 // Color Structure (8-bit RGB)

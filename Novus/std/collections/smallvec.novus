@@ -27,13 +27,13 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 ///
 /// NOTE: This is a simplified version. True inline storage requires
 /// array types with const generic sizes, which is not yet implemented.
-pub struct SmallVec<T, const N: u32> {
+pub struct SmallVec<T, const N: usize> {
     ptr: *T,            // Heap pointer (null when empty)
-    len: u32,           // Current number of elements
-    capacity: u32,      // Current capacity
+    len: usize,         // Current number of elements
+    capacity: usize,    // Current capacity
 }
 
-impl<T, const N: u32> SmallVec<T, N> {
+impl<T, const N: usize> SmallVec<T, N> {
     /// Create a new empty SmallVec
     /// First push will allocate N elements of capacity
     pub fn new() -> SmallVec<T, N> {
@@ -54,8 +54,8 @@ impl<T, const N: u32> SmallVec<T, N> {
 
         match block_opt {
             Result::Ok(var block) => {
-                let (raw_ptr, _size) = block.into_raw()
-                let ptr: *T = (*T)raw_ptr
+                let raw = block.into_raw()
+                let ptr: *T = (*T)raw.ptr()
                 return Result::Ok(SmallVec {
                     ptr: ptr,
                     len: 0,
@@ -69,7 +69,7 @@ impl<T, const N: u32> SmallVec<T, N> {
     }
 
     /// Returns the number of elements in the SmallVec
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -79,12 +79,12 @@ impl<T, const N: u32> SmallVec<T, N> {
     }
 
     /// Returns the current capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
     /// Returns the default initial capacity (const generic N)
-    pub fn default_capacity() -> u32 {
+    pub fn default_capacity() -> usize {
         return N
     }
 
@@ -119,7 +119,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Get a reference to an element by index
     /// Returns None if index is out of bounds
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
@@ -128,7 +128,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Get a mutable reference to an element by index
     /// Returns None if index is out of bounds
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
@@ -137,7 +137,7 @@ impl<T, const N: u32> SmallVec<T, N> {
 
     /// Set an element at the given index
     /// Returns Err(MemoryError::IndexOutOfBounds) if index is out of bounds
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
+    pub fn set(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
         }
@@ -157,7 +157,7 @@ impl<T, const N: u32> SmallVec<T, N> {
     }
 
     /// Internal: grow the storage to at least new_capacity
-    fn grow(&var self, new_capacity: u32) -> Result<(), MemoryError> {
+    fn grow(&var self, new_capacity: usize) -> Result<(), MemoryError> {
         let element_size: u32 = @sizeof(T)
         let bytes_needed: u32 = new_capacity * element_size
 
@@ -166,8 +166,8 @@ impl<T, const N: u32> SmallVec<T, N> {
 
         match block_opt {
             Result::Ok(var block) => {
-                let (new_ptr, _size) = block.into_raw()
-                let typed_ptr: *T = (*T)new_ptr
+                let raw = block.into_raw()
+                let typed_ptr: *T = (*T)raw.ptr()
 
                 // Copy existing elements if any
                 if self.len > 0 && self.ptr != null {
@@ -192,7 +192,7 @@ impl<T, const N: u32> SmallVec<T, N> {
     }
 }
 
-impl<T, const N: u32> Drop for SmallVec<T, N> {
+impl<T, const N: usize> Drop for SmallVec<T, N> {
     fn drop(&var self) {
         if self.ptr != null {
             self.clear()

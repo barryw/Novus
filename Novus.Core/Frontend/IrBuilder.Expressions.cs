@@ -3760,15 +3760,13 @@ public partial class IrBuilder
                 finalError = errVar;
             }
 
-            // Construct Result::Err(finalError) and return it
+            // Return Result::Err(finalError) directly. Materializing the whole
+            // Result here can reserve and copy the Ok payload even on the error
+            // path, which is disastrous when Ok is a large value.
             var resultReturnType = (IrEnumType)_currentFunction.ReturnType;
-            var returnErrTemp = $"%try_return_err_{_tempCounter++}";
-            var returnErrLocal = new IrLocalVariable(returnErrTemp, resultReturnType, false);
-            _currentFunction.LocalVariables.Add(returnErrLocal);
             var funcErrTag = funcErrVariant!.Tag;
             var returnErrValue = new IrEnumValue(resultReturnType, "Err", funcErrTag, new List<IrValue> { finalError });
-            errBlock.AddInstruction(new IrLocalDecl(returnErrTemp, resultReturnType, false, returnErrValue));
-            errBlock.AddInstruction(new IrReturn(new IrVariable(returnErrTemp, resultReturnType)));
+            errBlock.AddInstruction(new IrReturn(returnErrValue));
         }
 
         // Continue block: the value from Ok is the result of this expression

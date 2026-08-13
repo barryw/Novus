@@ -1,23 +1,23 @@
 from std::core import Error, From, Option, Result
+from std::memory import Slice
 from std::string import PathString, Str
+from amiga::sys::asl::requester import AslError, FileRequesterHandle
+from amiga::sys::gadtools::builder import CheckboxControl, CycleControl, GadgetBounds, GadToolsBuilder, GadToolsControl, GadToolsEvent, GadToolsWindow, IntegerControl, ListViewControl, StaticGadget, StaticGadToolsUi, StaticMenuEntry, StringControl, TextControl
+from amiga::sys::gadtools::menu import GadToolsMenuBuilder, GadToolsMenuStrip, MenuHandle, MenuItemHandle
+from amiga::sys::intuition::screen import ScreenHandle
 from amiga::sys::intuition::dialog import alert_on, choice_on, confirm_on
 from amiga::sys::intuition::errors import IntuitionError
-from amiga::sys::asl import AslError, FileRequesterHandle
-from amiga::sys::gadtools import GadgetBounds, GadToolsBuilder, GadToolsEvent, GadToolsWindow, StaticGadget, StaticGadToolsUi, StaticMenuEntry
-from amiga::sys::intuition import ScreenHandle
 
 // Tier 1: application windows, controls, dialogs, screens, and requesters.
 pub use amiga::ui::dialog::*
 
-pub type Window = GadToolsWindow
-pub type WindowBuilder = GadToolsBuilder
-pub type Event = GadToolsEvent
+// These are application configuration/value types; unlike owning handles they
+// do not expose resource-management mechanics by being aliases.
 pub type Bounds = GadgetBounds
 pub type StaticControl = StaticGadget
 pub type StaticUi = StaticGadToolsUi
 pub type StaticMenu = StaticMenuEntry
-pub type FileRequester = FileRequesterHandle
-pub type Screen = ScreenHandle
+
 pub enum UiError {
     WindowFailed,
     ScreenFailed,
@@ -57,33 +57,338 @@ impl Error for UiError {
     fn message(&self) -> *u8 { return UiError::message(self) }
 }
 
-impl GadToolsWindow {
-    pub fn alert(&self, title: Str, message: Str) {
-        alert_on(self.as_raw(), title.as_cstr(), message.as_cstr())
-    }
+/// Stable application events independent of the underlying UI toolkit.
+pub enum ApplicationEvent {
+    Close,
+    Refresh,
+    MenuPick(u16, u16),
+    MenuSubPick(u16, u16, u16),
+    GadgetUp(u16, u16),
+    GadgetDown(u16, u16),
+    MouseButton(i16, i16, bool),
+    Unknown(u32),
+}
 
-    pub fn alert_error<E>(&self, title: Str, consuming error: E) where E: Error {
-        alert_on(self.as_raw(), title.as_cstr(), error.message())
-    }
-
-    pub fn confirm(&self, title: Str, message: Str) -> bool {
-        return confirm_on(self.as_raw(), title.as_cstr(), message.as_cstr())
-    }
-
-    pub fn choice(&self, title: Str, message: Str, buttons: Str) -> i32 {
-        return choice_on(self.as_raw(), title.as_cstr(), message.as_cstr(), buttons.as_cstr())
+fn application_event(consuming event: GadToolsEvent) -> ApplicationEvent {
+    return match event {
+        GadToolsEvent::Close => ApplicationEvent::Close,
+        GadToolsEvent::Refresh => ApplicationEvent::Refresh,
+        GadToolsEvent::MenuPick(menu, item) => ApplicationEvent::MenuPick(menu, item),
+        GadToolsEvent::MenuSubPick(menu, item, sub) => ApplicationEvent::MenuSubPick(menu, item, sub),
+        GadToolsEvent::GadgetUp(id, code) => ApplicationEvent::GadgetUp(id, code),
+        GadToolsEvent::GadgetDown(id, code) => ApplicationEvent::GadgetDown(id, code),
+        GadToolsEvent::MouseButton(x, y, pressed) => ApplicationEvent::MouseButton(x, y, pressed),
+        GadToolsEvent::Unknown(class) => ApplicationEvent::Unknown(class),
     }
 }
 
-impl FileRequesterHandle {
-    /// Show a requester owned by an application window without exposing Intuition handles.
+/// Application-level menu construction. Native arrays remain in Tier 2.
+pub struct ApplicationMenuBuilder { system: GadToolsMenuBuilder }
+pub struct ApplicationMenu { system: MenuHandle }
+pub struct ApplicationMenuItem { system: MenuItemHandle }
+pub struct ApplicationMenuStrip { system: GadToolsMenuStrip }
+
+impl ApplicationMenuBuilder {
+    pub fn add_menu(&var self, title: Str) -> ApplicationMenu {
+        return ApplicationMenu { system: self.system.add_menu(title) }
+    }
+
+    pub fn build(&var self) -> Result<ApplicationMenuStrip, UiError> {
+        return Result::Ok(ApplicationMenuStrip { system: self.system.build()? })
+    }
+
+    pub fn system(&self) -> &GadToolsMenuBuilder { return &self.system }
+}
+
+impl ApplicationMenu {
+    pub fn add_item(&var self, label: Str) -> ApplicationMenuItem {
+        return ApplicationMenuItem { system: self.system.add_item(label) }
+    }
+
+    pub fn add_separator(&var self) { self.system.add_separator() }
+
+    pub fn system(&self) -> &MenuHandle { return &self.system }
+}
+
+impl ApplicationMenuItem {
+    pub fn with_command_key(&var self, key: u8) -> ApplicationMenuItem {
+        return ApplicationMenuItem { system: self.system.with_command_key(key) }
+    }
+
+    pub fn with_checkmark(&var self) -> ApplicationMenuItem {
+        return ApplicationMenuItem { system: self.system.with_checkmark() }
+    }
+
+    pub fn checked(&var self) -> ApplicationMenuItem {
+        return ApplicationMenuItem { system: self.system.checked() }
+    }
+
+    pub fn system(&self) -> &MenuItemHandle { return &self.system }
+}
+
+/// Application control views remain tied to their owning window.
+pub struct ApplicationControl { system: GadToolsControl<GadToolsWindow> }
+pub struct ApplicationCycle { system: CycleControl<GadToolsWindow> }
+pub struct ApplicationListView { system: ListViewControl<GadToolsWindow> }
+pub struct ApplicationCheckbox { system: CheckboxControl<GadToolsWindow> }
+pub struct ApplicationTextInput { system: StringControl<GadToolsWindow> }
+pub struct ApplicationIntegerInput { system: IntegerControl<GadToolsWindow> }
+pub struct ApplicationText { system: TextControl<GadToolsWindow> }
+
+impl ApplicationControl {
+    pub fn id(&self) -> u16 { return self.system.id() }
+    pub fn set_enabled(&self, enabled: bool) { self.system.set_enabled(enabled) }
+    pub fn system(&self) -> &GadToolsControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationCycle {
+    pub fn set_active(&self, active: u16) { self.system.set_active(active) }
+    pub fn system(&self) -> &CycleControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationListView {
+    pub fn set_selected(&self, selected: Option<u16>) { self.system.set_selected(selected) }
+    pub fn system(&self) -> &ListViewControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationCheckbox {
+    pub fn checked(&self) -> bool { return self.system.checked() }
+    pub fn set_checked(&self, checked: bool) { self.system.set_checked(checked) }
+    pub fn system(&self) -> &CheckboxControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationTextInput {
+    pub fn value(&self) -> Option<Str> { return self.system.value() }
+    pub fn set_value(&self, value: Str) -> Result<(), UiError> {
+        self.system.set_value(value)?
+        return Result::Ok(())
+    }
+    pub fn system(&self) -> &StringControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationIntegerInput {
+    pub fn value(&self) -> Option<i32> { return self.system.value() }
+    pub fn set_value(&self, value: i32) { self.system.set_value(value) }
+    pub fn set_u32_saturating(&self, value: u32) { self.system.set_u32_saturating(value) }
+    pub fn u32_value(&self) -> Option<u32> { return self.system.u32_value() }
+    pub fn system(&self) -> &IntegerControl<GadToolsWindow> { return &self.system }
+}
+
+impl ApplicationText {
+    pub fn set_text(&self, value: Str) -> Result<(), UiError> {
+        self.system.set_text(value)?
+        return Result::Ok(())
+    }
+    pub fn system(&self) -> &TextControl<GadToolsWindow> { return &self.system }
+}
+
+/// Controlled application window over one owning systems-layer window.
+pub struct ApplicationWindow { system: GadToolsWindow }
+
+impl ApplicationWindow {
+    pub fn system(&self) -> &GadToolsWindow { return &self.system }
+
+    pub fn child_builder(&self) -> Result<ApplicationWindowBuilder, UiError> {
+        return Result::Ok(ApplicationWindowBuilder { system: self.system.child_builder()? })
+    }
+
+    pub fn alert(&self, title: Str, message: Str) {
+        alert_on(self.system.as_raw(), title.as_cstr(), message.as_cstr())
+    }
+
+    pub fn alert_error<E>(&self, title: Str, consuming error: E) where E: Error {
+        alert_on(self.system.as_raw(), title.as_cstr(), error.message())
+    }
+
+    pub fn confirm(&self, title: Str, message: Str) -> bool {
+        return confirm_on(self.system.as_raw(), title.as_cstr(), message.as_cstr())
+    }
+
+    pub fn choice(&self, title: Str, message: Str, buttons: Str) -> i32 {
+        return choice_on(self.system.as_raw(), title.as_cstr(), message.as_cstr(), buttons.as_cstr())
+    }
+
+    pub fn fill_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
+        self.system.fill_rect(pen, left, top, right, bottom)
+    }
+
+    pub fn outline_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
+        self.system.outline_rect(pen, left, top, right, bottom)
+    }
+
+    pub fn set_menu_enabled(&self, menu: u16, item: u16, enabled: bool) {
+        self.system.set_menu_enabled(menu, item, enabled)
+    }
+
+    pub fn control(&self, id: u16) -> Option<ApplicationControl> {
+        let Option::Some(system) = self.system.control(id) else { return Option::None }
+        return Option::Some(ApplicationControl { system: system })
+    }
+
+    pub fn cycle(&self, id: u16) -> Option<ApplicationCycle> {
+        let Option::Some(system) = self.system.cycle(id) else { return Option::None }
+        return Option::Some(ApplicationCycle { system: system })
+    }
+
+    pub fn list_view(&self, id: u16) -> Option<ApplicationListView> {
+        let Option::Some(system) = self.system.list_view(id) else { return Option::None }
+        return Option::Some(ApplicationListView { system: system })
+    }
+
+    pub fn checkbox(&self, id: u16) -> Option<ApplicationCheckbox> {
+        let Option::Some(system) = self.system.checkbox(id) else { return Option::None }
+        return Option::Some(ApplicationCheckbox { system: system })
+    }
+
+    pub fn string(&self, id: u16) -> Option<ApplicationTextInput> {
+        let Option::Some(system) = self.system.string(id) else { return Option::None }
+        return Option::Some(ApplicationTextInput { system: system })
+    }
+
+    pub fn integer(&self, id: u16) -> Option<ApplicationIntegerInput> {
+        let Option::Some(system) = self.system.integer(id) else { return Option::None }
+        return Option::Some(ApplicationIntegerInput { system: system })
+    }
+
+    pub fn text(&self, id: u16) -> Option<ApplicationText> {
+        let Option::Some(system) = self.system.text(id) else { return Option::None }
+        return Option::Some(ApplicationText { system: system })
+    }
+
+    pub fn replace_cycle(&var self, id: u16, choices: Slice<Str>, active: u16) -> Result<(), UiError> {
+        self.system.replace_cycle(id, choices, active)?
+        return Result::Ok(())
+    }
+
+    pub fn replace_list(&var self, id: u16, rows: Slice<Str>, selected: Option<usize>) -> Result<(), UiError> {
+        self.system.replace_list(id, rows, selected)?
+        return Result::Ok(())
+    }
+
+    pub fn wait_event(&self) -> ApplicationEvent { return application_event(self.system.wait_event()) }
+    pub fn refresh(&self) { self.system.refresh() }
+}
+
+/// Application UI builder; NDK tags and pointer arrays remain below it.
+pub struct ApplicationWindowBuilder { system: GadToolsBuilder }
+
+impl ApplicationWindowBuilder {
+    pub fn workbench() -> Result<ApplicationWindowBuilder, UiError> {
+        return Result::Ok(ApplicationWindowBuilder { system: GadToolsBuilder::workbench()? })
+    }
+
+    pub fn workbench_or_own() -> Result<ApplicationWindowBuilder, UiError> {
+        return Result::Ok(ApplicationWindowBuilder { system: GadToolsBuilder::workbench_or_own()? })
+    }
+
+    pub fn menu_builder(&self) -> ApplicationMenuBuilder {
+        return ApplicationMenuBuilder { system: self.system.menu_builder() }
+    }
+
+    pub fn add_checkbox(&var self, id: u16, label: Str, bounds: Bounds, checked: bool) -> Result<(), UiError> {
+        self.system.add_checkbox(id, label, bounds, checked)?
+        return Result::Ok(())
+    }
+
+    pub fn add_integer(&var self, id: u16, label: Str, bounds: Bounds, value: i32, max_chars: u16) -> Result<(), UiError> {
+        self.system.add_integer(id, label, bounds, value, max_chars)?
+        return Result::Ok(())
+    }
+
+    pub fn add_button(&var self, id: u16, label: Str, bounds: Bounds) -> Result<(), UiError> {
+        self.system.add_button(id, label, bounds)?
+        return Result::Ok(())
+    }
+
+    pub fn add_cycle(&var self, id: u16, label: Str, bounds: Bounds, choices: Slice<Str>, active: u16) -> Result<(), UiError> {
+        self.system.add_cycle(id, label, bounds, choices, active)?
+        return Result::Ok(())
+    }
+
+    pub fn add_list_view(&var self, id: u16, bounds: Bounds, rows: Slice<Str>, selected: Option<u16>) -> Result<(), UiError> {
+        self.system.add_list_view(id, bounds, rows, selected)?
+        return Result::Ok(())
+    }
+
+    pub fn add_string(&var self, id: u16, label: Str, bounds: Bounds, value: Str, max_chars: u16) -> Result<(), UiError> {
+        self.system.add_string(id, label, bounds, value, max_chars)?
+        return Result::Ok(())
+    }
+
+    pub fn add_text(&var self, id: u16, bounds: Bounds, text: Str) -> Result<(), UiError> {
+        self.system.add_text(id, bounds, text)?
+        return Result::Ok(())
+    }
+
+    pub fn build(&var self, title: Str, bounds: Bounds, consuming menu: ApplicationMenuStrip) -> Result<ApplicationWindow, UiError> {
+        return Result::Ok(ApplicationWindow { system: self.system.build(title, bounds, menu.system)? })
+    }
+
+    pub fn system(&self) -> &GadToolsBuilder { return &self.system }
+}
+
+/// Owning application requester with a Tier-1 error contract.
+pub struct ApplicationFileRequester { system: FileRequesterHandle }
+
+impl ApplicationFileRequester {
+    pub fn new() -> Result<ApplicationFileRequester, UiError> {
+        return Result::Ok(ApplicationFileRequester { system: FileRequesterHandle::new()? })
+    }
+
     pub fn choose_for(&self,
-        parent: &GadToolsWindow,
+        parent: &ApplicationWindow,
         title: Str,
         initial_drawer: Str,
         initial_file: Str,
         save: bool
-    ) -> Result<Option<PathString>, AslError> {
-        return self.choose(parent.as_raw(), title, initial_drawer, initial_file, save)
+    ) -> Result<Option<PathString>, UiError> {
+        return Result::Ok(self.system.choose(parent.system.as_raw(), title, initial_drawer, initial_file, save)?)
     }
+
+    pub fn system(&self) -> &FileRequesterHandle { return &self.system }
 }
+
+/// Owning application screen with a deliberately small public surface.
+pub struct ApplicationScreen { system: ScreenHandle }
+
+impl ApplicationScreen {
+    pub fn lores(title: Str, depth: i16) -> Result<ApplicationScreen, UiError> {
+        return Result::Ok(ApplicationScreen { system: ScreenHandle::lores(title, depth)? })
+    }
+
+    pub fn hires(title: Str, depth: i16) -> Result<ApplicationScreen, UiError> {
+        return Result::Ok(ApplicationScreen { system: ScreenHandle::hires(title, depth)? })
+    }
+
+    pub fn custom(title: Str, width: i16, height: i16, depth: i16) -> Result<ApplicationScreen, UiError> {
+        return Result::Ok(ApplicationScreen { system: ScreenHandle::custom(title, width, height, depth)? })
+    }
+
+    pub fn width(&self) -> i16 { return self.system.width() }
+    pub fn height(&self) -> i16 { return self.system.height() }
+    pub fn to_front(&self) { self.system.to_front() }
+    pub fn to_back(&self) { self.system.to_back() }
+    pub fn move_by(&self, dx: i16, dy: i16) { self.system.move_by(dx, dy) }
+    pub fn show_title(&self, show: bool) { self.system.show_title(show) }
+    pub fn system(&self) -> &ScreenHandle { return &self.system }
+}
+
+// Canonical Tier-1 names alias only controlled application wrappers, never
+// systems-layer owners. Unique implementation names avoid transitive NDK name
+// collisions while Novus module identity is still being made fully qualified.
+pub type Event = ApplicationEvent
+pub type MenuBuilder = ApplicationMenuBuilder
+pub type Menu = ApplicationMenu
+pub type MenuItem = ApplicationMenuItem
+pub type MenuStrip = ApplicationMenuStrip
+pub type Control = ApplicationControl
+pub type Cycle = ApplicationCycle
+pub type ListView = ApplicationListView
+pub type Checkbox = ApplicationCheckbox
+pub type TextInput = ApplicationTextInput
+pub type IntegerInput = ApplicationIntegerInput
+pub type Text = ApplicationText
+pub type Window = ApplicationWindow
+pub type WindowBuilder = ApplicationWindowBuilder
+pub type FileRequester = ApplicationFileRequester
+pub type Screen = ApplicationScreen

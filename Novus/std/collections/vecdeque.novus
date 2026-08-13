@@ -42,9 +42,9 @@ from std::memory::errors import MemoryError
 /// ```
 pub struct VecDeque<T> {
     ptr: *T,
-    head: u32,      // Index of first element
-    len: u32,       // Number of elements
-    capacity: u32,  // Total capacity
+    head: usize,      // Index of first element
+    len: usize,       // Number of elements
+    capacity: usize,  // Total capacity
 }
 
 impl<T> VecDeque<T> {
@@ -55,7 +55,7 @@ impl<T> VecDeque<T> {
 
     /// Create a VecDeque with specified initial capacity
     /// Returns MemoryError::OutOfMemory if memory allocation fails
-    pub fn with_capacity(capacity: u32) -> Result<VecDeque<T>, MemoryError> {
+    pub fn with_capacity(capacity: usize) -> Result<VecDeque<T>, MemoryError> {
         if capacity == 0 {
             return Result::Ok(@zeroed(VecDeque<T>))
         }
@@ -67,8 +67,8 @@ impl<T> VecDeque<T> {
 
         match block_opt {
             Result::Ok(var block) => {
-                let (raw_ptr, _size) = block.into_raw()
-                let ptr: *T = (*T)raw_ptr
+                let raw = block.into_raw()
+                let ptr: *T = (*T)raw.ptr()
                 return Result::Ok(VecDeque {
                     ptr: ptr,
                     head: 0,
@@ -81,7 +81,7 @@ impl<T> VecDeque<T> {
     }
 
     /// Get the number of elements
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -91,7 +91,7 @@ impl<T> VecDeque<T> {
     }
 
     /// Get the current capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
@@ -109,7 +109,7 @@ impl<T> VecDeque<T> {
         }
 
         // Calculate the index for the new element (one past the last)
-        let index: u32 = self.wrap_index(self.head + self.len)
+        let index: usize = self.wrap_index(self.head + self.len)
         unsafe { self.ptr[index] = value }
         self.len = self.len + 1
         return Result::Ok(())
@@ -147,7 +147,7 @@ impl<T> VecDeque<T> {
         }
 
         // Calculate the index of the last element
-        let last_index: u32 = self.wrap_index(self.head + self.len - 1)
+        let last_index: usize = self.wrap_index(self.head + self.len - 1)
         let value: T = unsafe { self.ptr[last_index] }
         self.len = self.len - 1
 
@@ -180,41 +180,41 @@ impl<T> VecDeque<T> {
         if self.len == 0 {
             return Option::None
         }
-        let last_index: u32 = self.wrap_index(self.head + self.len - 1)
+        let last_index: usize = self.wrap_index(self.head + self.len - 1)
         return Option::Some(unsafe { &self.ptr[last_index] })
     }
 
     /// Get element at index (0 = front)
     ///
     /// Returns None if index is out of bounds.
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
 
-        let actual_index: u32 = self.wrap_index(self.head + index)
+        let actual_index: usize = self.wrap_index(self.head + index)
         return Option::Some(unsafe { &self.ptr[actual_index] })
     }
 
     /// Mutably borrow the element at index (0 = front).
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
 
-        let actual_index: u32 = self.wrap_index(self.head + index)
+        let actual_index: usize = self.wrap_index(self.head + index)
         return Option::Some(unsafe { &var self.ptr[actual_index] })
     }
 
     /// Set element at index
     ///
     /// Returns MemoryError::IndexOutOfBounds if index is out of bounds.
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
+    pub fn set(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
         }
 
-        let actual_index: u32 = self.wrap_index(self.head + index)
+        let actual_index: usize = self.wrap_index(self.head + index)
         unsafe {
             @drop_in_place(&var self.ptr[actual_index])
             self.ptr[actual_index] = value
@@ -235,8 +235,8 @@ impl<T> VecDeque<T> {
     /// Reserve additional capacity
     ///
     /// Returns MemoryError::OutOfMemory if allocation fails.
-    pub fn reserve(&var self, additional: u32) -> Result<(), MemoryError> {
-        let needed_capacity: u32 = self.len + additional
+    pub fn reserve(&var self, additional: usize) -> Result<(), MemoryError> {
+        let needed_capacity: usize = self.len + additional
         if needed_capacity <= self.capacity {
             return Result::Ok(())
         }
@@ -248,22 +248,22 @@ impl<T> VecDeque<T> {
     ///
     /// The element at the front moves to the back.
     /// rotate_left(1) is equivalent to: let x = pop_front(); push_back(x)
-    pub fn rotate_left(&var self, n: u32) {
+    pub fn rotate_left(&var self, n: usize) {
         if self.len == 0 || n == 0 {
             return
         }
 
         // Normalize rotation amount
-        let rotation: u32 = n % self.len
+        let rotation: usize = n % self.len
         if rotation == 0 {
             return
         }
 
-        var count: u32 = 0
+        var count: usize = 0
         while count < rotation {
             let value: T = unsafe { self.ptr[self.head] }
             self.head = self.wrap_index(self.head + 1)
-            let tail: u32 = self.wrap_index(self.head + self.len - 1)
+            let tail: usize = self.wrap_index(self.head + self.len - 1)
             unsafe { self.ptr[tail] = value }
             count = count + 1
         }
@@ -273,20 +273,20 @@ impl<T> VecDeque<T> {
     ///
     /// The element at the back moves to the front.
     /// rotate_right(1) is equivalent to: let x = pop_back(); push_front(x)
-    pub fn rotate_right(&var self, n: u32) {
+    pub fn rotate_right(&var self, n: usize) {
         if self.len == 0 || n == 0 {
             return
         }
 
         // Normalize rotation amount
-        let rotation: u32 = n % self.len
+        let rotation: usize = n % self.len
         if rotation == 0 {
             return
         }
 
-        var count: u32 = 0
+        var count: usize = 0
         while count < rotation {
-            let last: u32 = self.wrap_index(self.head + self.len - 1)
+            let last: usize = self.wrap_index(self.head + self.len - 1)
             let value: T = unsafe { self.ptr[last] }
             if self.head == 0 {
                 self.head = self.capacity - 1
@@ -324,7 +324,7 @@ impl<T> VecDeque<T> {
     }
 
     // Internal: wrap index around the buffer
-    fn wrap_index(&self, index: u32) -> u32 {
+    fn wrap_index(&self, index: usize) -> usize {
         if self.capacity == 0 {
             return 0
         }
@@ -333,7 +333,7 @@ impl<T> VecDeque<T> {
 
     // Internal: grow the buffer (double capacity, min 4)
     fn grow(&var self) -> Result<(), MemoryError> {
-        var new_capacity: u32 = self.capacity * 2
+        var new_capacity: usize = self.capacity * 2
         if new_capacity < 4 {
             new_capacity = 4
         }
@@ -341,7 +341,7 @@ impl<T> VecDeque<T> {
     }
 
     // Internal: resize to a specific capacity
-    fn resize_to(&var self, new_capacity: u32) -> Result<(), MemoryError> {
+    fn resize_to(&var self, new_capacity: usize) -> Result<(), MemoryError> {
         let element_size: u32 = @sizeof(T)
         let new_bytes: u32 = new_capacity * element_size
 
@@ -349,13 +349,13 @@ impl<T> VecDeque<T> {
 
         match block_opt {
             Result::Ok(var block) => {
-                let (raw_ptr, _size) = block.into_raw()
-                let new_ptr: *T = (*T)raw_ptr
+                let raw = block.into_raw()
+                let new_ptr: *T = (*T)raw.ptr()
 
                 // Copy elements in order (unwrapping the ring buffer)
-                var i: u32 = 0
+                var i: usize = 0
                 while i < self.len {
-                    let old_index: u32 = self.wrap_index(self.head + i)
+                    let old_index: usize = self.wrap_index(self.head + i)
                     unsafe { new_ptr[i] = self.ptr[old_index] }
                     i = i + 1
                 }

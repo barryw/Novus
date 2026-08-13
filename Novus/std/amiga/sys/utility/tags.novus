@@ -7,7 +7,7 @@
 
 from std::core import Result
 from std::memory import MemoryError
-from std::collections::vec import Vec
+from std::collections import Vec
 from amiga::raw::structs import TagItem
 from amiga::raw::consts import TAG_DONE
 

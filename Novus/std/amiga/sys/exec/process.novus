@@ -6,7 +6,7 @@
 // manually dealing with tag lists.
 
 from std::core import Option, Result, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::dos::errors import DosError
 from amiga::raw::structs import Process, MsgPort, Task, TagItem
 from amiga::raw::dos import CreateNewProc

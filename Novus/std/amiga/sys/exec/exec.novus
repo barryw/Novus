@@ -7,7 +7,7 @@
 // NOTE: For memory management, prefer using std::mem::MemoryBlock instead of AllocMem/FreeMem directly
 
 from std::core import Option, Result, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::exec::errors import ExecError
 from amiga::raw::structs import *
 from amiga::raw::exec import AllocMem, FreeMem, AllocVec, FreeVec, CopyMem
@@ -977,6 +977,16 @@ impl LibraryHandle {
     /// Get the minimum version that was requested when opening
     pub fn version(&self) -> u32 {
         return self.version
+    }
+
+    /// Get the version of the library that Exec actually opened.
+    pub fn installed_version(&self) -> u16 {
+        return unsafe { (*self.base).lib_Version }
+    }
+
+    /// Get the revision of the library that Exec actually opened.
+    pub fn installed_revision(&self) -> u16 {
+        return unsafe { (*self.base).lib_Revision }
     }
 
     /// Create LibraryHandle from raw pointer (takes ownership)

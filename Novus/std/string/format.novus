@@ -12,7 +12,7 @@ extern fn __novus_memcpy(dest: *u8, src: *u8, n: u32)
 // Perfect for embedded systems like Amiga where malloc/free are expensive
 pub struct StackFormatter {
     buf: [u8; 256],
-    len: u32,
+    len: usize,
 }
 
 impl StackFormatter {
@@ -79,7 +79,7 @@ impl Formatter {
     }
 
     /// Create a formatter with specific capacity
-    pub fn with_capacity(capacity: u32) -> Result<Formatter, StringError> {
+    pub fn with_capacity(capacity: usize) -> Result<Formatter, StringError> {
         match String::with_capacity(capacity) {
             Result::Ok(s) => Result::Ok(Formatter { buffer: s }),
             Result::Err(e) => Result::Err(e),

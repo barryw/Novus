@@ -49,7 +49,7 @@ from amiga::sys::hardware::audio import ChannelMask
 from amiga::sys::exec::memory::chip import is_chip_ram
 from amiga::sys::exec::memory::chip_pool import ChipPool
 from amiga::sys::hardware::chipset import DISPLAY, DisplayType
-from std::io::file import write
+from std::io import write
 
 // ============================================================================
 // Constants

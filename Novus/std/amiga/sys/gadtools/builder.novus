@@ -8,8 +8,8 @@ from amiga::raw::exec import AddTail, AllocVec, CopyMem, FreeVec, WaitPort
 from amiga::raw::gadtools import CreateContext, CreateGadgetA, CreateMenusA, FreeGadgets, FreeMenus, FreeVisualInfo, GetVisualInfoA, GT_GetIMsg, GT_RefreshWindow, GT_ReplyIMsg, GT_SetGadgetAttrsA, LayoutMenusA, NewMenu
 from amiga::raw::graphics import Draw, Move, RectFill, SetAPen
 from amiga::raw::intuition import ClearMenuStrip, CloseScreen, CloseWindow, LockPubScreen, OffMenu, OnMenu, OpenScreenTagList, OpenWindowTagList, SetMenuStrip, UnlockPubScreen
-from std::string::core import Str
-from std::memory::slice import Slice
+from std::string import Str
+from std::memory import Slice
 from amiga::sys::gadtools::menu import GadToolsMenuBuilder, GadToolsMenuStrip
 from amiga::sys::intuition::window import WindowRef
 

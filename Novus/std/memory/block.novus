@@ -39,12 +39,24 @@ from std::memory::slice import Slice, MutSlice
 /// ```
 pub struct MemoryBlock {
     ptr: *u8,
-    size: u32,
+    size: usize,
+}
+
+/// Named ownership state returned when an allocation crosses into a lower
+/// layer. The pair cannot be accidentally reordered like a tuple.
+pub struct RawMemoryBlock {
+    ptr: *u8
+    size: usize
+}
+
+impl RawMemoryBlock {
+    pub fn ptr(&self) -> *u8 { return self.ptr }
+    pub fn size(&self) -> usize { return self.size }
 }
 
 impl MemoryBlock {
     /// Allocate zero-initialized application memory without exposing Exec flags.
-    pub fn new(size: u32) -> Result<MemoryBlock, MemoryError> {
+    pub fn new(size: usize) -> Result<MemoryBlock, MemoryError> {
         return MemoryBlock::alloc(size, MEMF_PUBLIC | MEMF_CLEAR)
     }
 
@@ -64,7 +76,7 @@ impl MemoryBlock {
     ///     Result::Err(_) => { /* failed */ }
     /// }
     /// ```
-    pub fn alloc(size: u32, flags: u32) -> Result<MemoryBlock, MemoryError> {
+    pub fn alloc(size: usize, flags: u32) -> Result<MemoryBlock, MemoryError> {
         if size == 0 {
             // Zero-size allocation returns valid empty block
             return Result::Ok(MemoryBlock { ptr: null, size: 0 })
@@ -92,7 +104,7 @@ impl MemoryBlock {
     ///     block.free()
     /// }
     /// ```
-    pub fn try_alloc(size: u32, flags: u32) -> Result<MemoryBlock, MemoryError> {
+    pub fn try_alloc(size: usize, flags: u32) -> Result<MemoryBlock, MemoryError> {
         return MemoryBlock::alloc(size, flags)
     }
 
@@ -102,7 +114,7 @@ impl MemoryBlock {
     }
 
     /// Get size of allocated memory in bytes
-    pub fn size(&self) -> u32 {
+    pub fn size(&self) -> usize {
         return self.size
     }
 
@@ -131,7 +143,7 @@ impl MemoryBlock {
     ///
     /// This "leaks" the memory from the MemoryBlock's perspective - the caller
     /// is now responsible for freeing the memory manually via FreeMem.
-    /// Returns a tuple of (pointer, size).
+    /// Returns a named raw allocation state.
     ///
     /// Use this when you need to store the raw pointer elsewhere (e.g., in a
     /// struct that manages its own memory) without triggering double-free.
@@ -139,17 +151,24 @@ impl MemoryBlock {
     /// Example:
     /// ```novus
     /// let block = MemoryBlock::alloc(1024, MEMF_FAST)?
-    /// let (ptr, size) = block.into_raw()
+    /// let raw = block.into_raw()
     /// // block is now "empty" - Drop won't free anything
-    /// // caller must manually: FreeMem(ptr, size)
+    /// // caller must manually: FreeMem(raw.ptr(), raw.size())
     /// ```
-    pub fn into_raw(consuming self) -> (*u8, u32) {
+    pub fn into_raw(consuming self) -> RawMemoryBlock {
         let ptr = self.ptr
         let size = self.size
         // Clear our fields so Drop won't free
         self.ptr = null
         self.size = 0
-        return (ptr, size)
+        return RawMemoryBlock { ptr: ptr, size: size }
+    }
+
+    /// Adopt an explicitly owned raw allocation.
+    @unsafe
+    pub fn from_raw(consuming raw: RawMemoryBlock) -> Result<MemoryBlock, MemoryError> {
+        return Result::Err(MemoryError::InvalidAddress) if raw.size > 0 && raw.ptr == null
+        return Result::Ok(MemoryBlock { ptr: raw.ptr, size: raw.size })
     }
 
     /// Free the memory block
@@ -167,7 +186,7 @@ impl MemoryBlock {
     /// Resize the memory block (realloc equivalent)
     /// Returns Ok on success or the allocation error.
     /// On failure, original block is unchanged
-    pub fn resize(&var self, new_size: u32, flags: u32) -> Result<(), MemoryError> {
+    pub fn resize(&var self, new_size: usize, flags: u32) -> Result<(), MemoryError> {
         if new_size == self.size {
             return Result::Ok(())
         }
@@ -176,7 +195,7 @@ impl MemoryBlock {
         match new_block_opt {
             Result::Ok(var new_block) => {
                 // Copy old data to new block
-                var copy_size: u32 = self.size
+                var copy_size: usize = self.size
                 if new_size < self.size {
                     copy_size = new_size
                 }
@@ -190,9 +209,9 @@ impl MemoryBlock {
                 self.free()
 
                 // Take ownership of new block's memory (prevents double-free)
-                let (ptr, size) = new_block.into_raw()
-                self.ptr = ptr
-                self.size = size
+                let raw = new_block.into_raw()
+                self.ptr = raw.ptr()
+                self.size = raw.size()
 
                 return Result::Ok(())
             },
@@ -235,13 +254,13 @@ impl Drop for MemoryBlock {
 /// ```
 pub struct Allocation<T> {
     block: MemoryBlock,
-    count: u32,
+    count: usize,
 }
 
 impl<T> Allocation<T> {
     /// Allocate memory for `count` elements of type T
     /// Returns an error if allocation fails.
-    pub fn new(count: u32, flags: u32) -> Result<Allocation<T>, MemoryError> {
+    pub fn new(count: usize, flags: u32) -> Result<Allocation<T>, MemoryError> {
         if count == 0 {
             return Result::Ok(Allocation {
                 block: MemoryBlock { ptr: null, size: 0 },
@@ -249,14 +268,14 @@ impl<T> Allocation<T> {
             })
         }
 
-        let element_size: u32 = @sizeof(T)
+        let element_size: usize = @sizeof(T)
 
         // Check for overflow: count * element_size
         if element_size > ($FFFFFFFF / count) {
             return Result::Err(MemoryError::OutOfMemory)  // Would overflow
         }
 
-        let total_bytes: u32 = count * element_size
+        let total_bytes: usize = count * element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
             Result::Ok(block) => {
@@ -270,17 +289,17 @@ impl<T> Allocation<T> {
     }
 
     /// Allocate and return Result with typed error
-    pub fn try_new(count: u32, flags: u32) -> Result<Allocation<T>, MemoryError> {
+    pub fn try_new(count: usize, flags: u32) -> Result<Allocation<T>, MemoryError> {
         return Allocation::<T>::new(count, flags)
     }
 
     /// Get number of elements
-    pub fn count(&self) -> u32 {
+    pub fn count(&self) -> usize {
         return self.count
     }
 
     /// Get total size in bytes
-    pub fn size_bytes(&self) -> u32 {
+    pub fn size_bytes(&self) -> usize {
         return self.block.size()
     }
 
@@ -307,15 +326,15 @@ impl<T> Allocation<T> {
     }
 
     /// Resize allocation to new element count
-    pub fn resize(&var self, new_count: u32, flags: u32) -> Result<(), MemoryError> {
-        let element_size: u32 = @sizeof(T)
+    pub fn resize(&var self, new_count: usize, flags: u32) -> Result<(), MemoryError> {
+        let element_size: usize = @sizeof(T)
 
         // Check for overflow: new_count * element_size
         if new_count > 0 && element_size > ($FFFFFFFF / new_count) {
             return Result::Err(MemoryError::OutOfMemory)  // Would overflow
         }
 
-        let new_bytes: u32 = new_count * element_size
+        let new_bytes: usize = new_count * element_size
 
         self.block.resize(new_bytes, flags)?
         self.count = new_count
@@ -372,8 +391,8 @@ impl<T> Box<T> {
 
     /// Allocate with specific memory flags
     pub fn new_in(consuming value: T, flags: u32) -> Result<Box<T>, MemoryError> {
-        let element_size: u32 = @sizeof(T)
-        let total_bytes: u32 = element_size
+        let element_size: usize = @sizeof(T)
+        let total_bytes: usize = element_size
 
         match MemoryBlock::alloc(total_bytes, flags) {
             Result::Ok(block) => {

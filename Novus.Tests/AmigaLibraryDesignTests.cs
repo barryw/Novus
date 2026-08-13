@@ -106,27 +106,36 @@ public class AmigaLibraryDesignTests
     {
         var sourcePath = Path.Combine(Path.GetTempPath(), $"novus-amiga-api-{Guid.NewGuid():N}.novus");
         await File.WriteAllTextAsync(sourcePath, """
-            from std::core import Option, Result
+            from std::core import Result
             from std::memory import Buffer, MemoryError
             from std::string import Str
+            from amiga::capabilities import CapabilityError, SystemLibrary, library_available
             from amiga::dos import DosError, File, FileSystem, FileSystemError
             from amiga::storage import BlockDevice, devices
             from amiga::sys::device import DeviceRequest
             from amiga::sys::dos import OwnedFileHandle
-            from amiga::sys::intuition import WindowRef
+            from amiga::sys::gadtools import GadToolsWindow
             from amiga::ui import Window
 
-            fn file_size(path: Str) -> Result<u32, DosError> {
+            fn file_size(path: Str) -> Result<usize, DosError> {
                 let file = File::open(path)?
                 return file.len()
             }
 
             fn storage_is_available() -> bool { return devices().is_ok() }
 
-            fn allocate(size: u32) -> Result<Buffer, MemoryError> { return Buffer::new(size) }
+            fn allocate(size: usize) -> Result<Buffer, MemoryError> { return Buffer::new(size) }
 
             fn resolve_file_system(dos_type: u32) -> Result<FileSystem, FileSystemError> {
-                return FileSystem::resolve(dos_type, Option::None)
+                return FileSystem::resolve(dos_type)
+            }
+
+            fn has_optional_library(name: Str, version: u32) -> bool {
+                return library_available(name, version)
+            }
+
+            fn open_optional_library(name: Str, version: u32) -> Result<SystemLibrary, CapabilityError> {
+                return SystemLibrary::open(name, version)
             }
 
             fn show_problem(window: &Window) {
@@ -134,7 +143,7 @@ public class AmigaLibraryDesignTests
             }
 
             fn block_system(device: &BlockDevice) -> &DeviceRequest { return device.system() }
-            fn window_system(window: &Window) -> WindowRef { return window.system() }
+            fn window_system(window: &Window) -> &GadToolsWindow { return window.system() }
             fn file_system(consuming file: File) -> OwnedFileHandle { return file.into_system() }
             fn adopt_file(consuming file: OwnedFileHandle) -> File { return File::from_system(file) }
             """);
@@ -152,8 +161,8 @@ public class AmigaLibraryDesignTests
     [Theory]
     [InlineData("""
         from amiga::ui import Window
-        from amiga::sys::intuition import WindowRef
-        fn escape(consuming window: Window) -> WindowRef { return window.system() }
+        from amiga::sys::gadtools import GadToolsWindow
+        fn escape(consuming window: Window) -> &GadToolsWindow { return window.system() }
         """)]
     [InlineData("""
         from std::core import Option
@@ -251,9 +260,8 @@ public class AmigaLibraryDesignTests
         var sourcePath = Path.Combine(Path.GetTempPath(), $"novus-amiga-specialists-{Guid.NewGuid():N}.novus");
         await File.WriteAllTextAsync(sourcePath, """
             from amiga::audio import AudioError, Device, Sample
-            from amiga::graphics import DrawMode, Point
-            from amiga::input import GadToolsEvent
-            from amiga::ui import Bounds, Event, UiError, WindowBuilder
+            from amiga::graphics import Canvas, DrawMode, GraphicsError, Point
+            from amiga::ui import Bounds, Event, UiError, Window, WindowBuilder
             from amiga::workbench import Prefs
             from amiga::sys::resources import Resource
 
@@ -264,6 +272,11 @@ public class AmigaLibraryDesignTests
             fn ui_error() -> UiError { return UiError::WindowFailed }
             fn event() -> Event { return Event::Close }
             fn builder() -> Result<WindowBuilder, UiError> { return Result::Ok(WindowBuilder::workbench()?) }
+            fn draw(window: &Window) -> Result<(), GraphicsError> {
+                let canvas = Canvas::for_window(window)?
+                canvas.line(0, 0, 10, 10)
+                return Result::Ok(())
+            }
             """);
         try
         {

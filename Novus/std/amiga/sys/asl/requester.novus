@@ -4,7 +4,7 @@ from std::core import Error, Option, Result
 from amiga::raw::consts import ASLFR_DoSaveMode, ASLFR_InitialDrawer, ASLFR_InitialFile, ASLFR_TitleText, ASLFR_Window, ASL_FileRequest, TAG_DONE
 from amiga::raw::structs import FileRequester, TagItem, Window
 from amiga::raw::asl import AllocAslRequest, AslRequest, FreeAslRequest
-from std::string::core import PathString, Str
+from std::string import PathString, Str
 
 pub enum AslError {
     AllocationFailed,

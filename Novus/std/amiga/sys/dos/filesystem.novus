@@ -7,7 +7,7 @@ from amiga::raw::dos import DoPkt, Inhibit, IoErr
 from amiga::raw::exec import OpenResource, TypeOfMem
 from amiga::sys::dos::bptr import BPtr
 from amiga::sys::dos::list import DeviceProcess, DosDeviceEntry, DosDeviceList
-from std::string::core import BStr, FixedCString, Str
+from std::string import BStr, FixedCString, Str
 from amiga::sys::exec::critical import CriticalSection
 
 // FileSysEntry is variable-length. These are the documented 32-bit NDK

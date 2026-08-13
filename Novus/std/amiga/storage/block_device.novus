@@ -13,8 +13,8 @@ pub enum BlockDeviceError {
     InvalidBufferLength,
     OutOfRange,
     OffsetTooLarge,
-    ShortRead(u32),
-    ShortWrite(u32),
+    ShortRead(usize),
+    ShortWrite(usize),
 }
 
 impl From<DeviceError> for BlockDeviceError {
@@ -110,7 +110,7 @@ impl BlockDevice {
     }
 
     /// Read whole blocks into a bounded mutable buffer.
-    pub fn read_blocks(&var self, start_block: u32, consuming buffer: MutSlice<u8>) -> Result<u32, BlockDeviceError> {
+    pub fn read_blocks(&var self, start_block: usize, consuming buffer: MutSlice<u8>) -> Result<usize, BlockDeviceError> {
         let length = buffer.len()
         if length == 0 {
             return Result::Ok(0)
@@ -121,14 +121,15 @@ impl BlockDevice {
             return Result::Err(BlockDeviceError::InvalidBufferLength)
         }
         let block_count = length / block_bytes
-        if start_block > self.geometry.total_blocks || block_count > self.geometry.total_blocks - start_block {
+        let total_blocks = (usize)self.geometry.total_blocks
+        if start_block > total_blocks || block_count > total_blocks - start_block {
             return Result::Err(BlockDeviceError::OutOfRange)
         }
-        if start_block > $FFFFFFFF / block_bytes {
+        if start_block > (usize)($FFFFFFFF / block_bytes) {
             return Result::Err(BlockDeviceError::OffsetTooLarge)
         }
 
-        let actual = self.request.read_at(start_block * block_bytes, buffer)?
+        let actual = (usize)self.request.read_at((u32)start_block * block_bytes, buffer)?
         if actual != length {
             return Result::Err(BlockDeviceError::ShortRead(actual))
         }
@@ -136,7 +137,7 @@ impl BlockDevice {
     }
 
     /// Write whole blocks from a bounded immutable buffer.
-    pub fn write_blocks(&var self, start_block: u32, consuming buffer: Slice<u8>) -> Result<u32, BlockDeviceError> {
+    pub fn write_blocks(&var self, start_block: usize, consuming buffer: Slice<u8>) -> Result<usize, BlockDeviceError> {
         let length = buffer.len()
         if length == 0 {
             return Result::Ok(0)
@@ -147,14 +148,15 @@ impl BlockDevice {
             return Result::Err(BlockDeviceError::InvalidBufferLength)
         }
         let block_count = length / block_bytes
-        if start_block > self.geometry.total_blocks || block_count > self.geometry.total_blocks - start_block {
+        let total_blocks = (usize)self.geometry.total_blocks
+        if start_block > total_blocks || block_count > total_blocks - start_block {
             return Result::Err(BlockDeviceError::OutOfRange)
         }
-        if start_block > $FFFFFFFF / block_bytes {
+        if start_block > (usize)($FFFFFFFF / block_bytes) {
             return Result::Err(BlockDeviceError::OffsetTooLarge)
         }
 
-        let actual = self.request.write_at(start_block * block_bytes, buffer)?
+        let actual = (usize)self.request.write_at((u32)start_block * block_bytes, buffer)?
         if actual != length {
             return Result::Err(BlockDeviceError::ShortWrite(actual))
         }

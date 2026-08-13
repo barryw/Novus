@@ -6,7 +6,7 @@
 // that automatically responds to break signals.
 
 from std::core import Option, Result, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::dos::errors import DosError
 from amiga::sys::timer::device import TimerHandle, Duration
 from amiga::raw::structs import Task, MsgPort, TagItem, Message, Process

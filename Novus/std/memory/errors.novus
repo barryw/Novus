@@ -4,6 +4,7 @@ pub enum MemoryError {
     OutOfMemory,
     IndexOutOfBounds,
     LengthMismatch,
+    InvalidAddress,
     InvalidCapacity,
     CapacityExceeded,
 }
@@ -14,6 +15,7 @@ impl MemoryError {
             MemoryError::OutOfMemory => "Memory allocation failed",
             MemoryError::IndexOutOfBounds => "Index out of bounds",
             MemoryError::LengthMismatch => "Slice lengths do not match",
+            MemoryError::InvalidAddress => "Invalid memory address",
             MemoryError::InvalidCapacity => "Invalid capacity",
             MemoryError::CapacityExceeded => "Capacity exceeded",
         }

@@ -1,8 +1,8 @@
 // Tier 2 block-device commands over an owned DeviceRequest.
 
 from std::core import Option, Result
-from std::memory::slice import MutSlice, Slice
-from std::string::core import Str
+from std::memory import MutSlice, Slice
+from std::string import Str
 from amiga::sys::device::request import DeviceError, DeviceRequest
 from amiga::raw::consts import CMD_READ, CMD_WRITE, TD_GETGEOMETRY
 from amiga::raw::structs import DriveGeometry, IOStdReq

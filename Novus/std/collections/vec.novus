@@ -5,7 +5,7 @@
 // Import core types and memory management
 from std::core import Option, Result, Iterable, From, Drop, Clone
 from std::memory::block import MemoryBlock
-from std::memory::slice import Slice, MutSlice
+from std::memory import Slice, MutSlice
 from std::memory::errors import MemoryError
 from amiga::raw::exec import CopyMem, FreeMem
 from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
@@ -39,8 +39,8 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 /// ```
 pub struct Vec<T> {
     ptr: *T,
-    len: u32,
-    capacity: u32,
+    len: usize,
+    capacity: usize,
 }
 
 impl<T> Vec<T> {
@@ -57,7 +57,7 @@ impl<T> Vec<T> {
     /// ```novus
     /// let vec = Vec::<u32>::with_capacity(100)?
     /// ```
-    pub fn with_capacity(capacity: u32) -> Result<Vec<T>, MemoryError> {
+    pub fn with_capacity(capacity: usize) -> Result<Vec<T>, MemoryError> {
         if capacity == 0 {
             return Result::Ok(@zeroed(Vec<T>))
         }
@@ -71,9 +71,9 @@ impl<T> Vec<T> {
         match block_opt {
             Result::Ok(var block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
-                let (raw_ptr, _size) = block.into_raw()
+                let raw = block.into_raw()
                 // Explicit pointer cast from *u8 to *T
-                let ptr: *T = (*T)raw_ptr
+                let ptr: *T = (*T)raw.ptr()
                 return Result::Ok(Vec {
                     ptr: ptr,
                     len: 0,
@@ -93,12 +93,12 @@ impl<T> Vec<T> {
     }
 
     // Get the number of elements in the vector
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
     // Get the capacity of the vector
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
@@ -111,13 +111,13 @@ impl<T> Vec<T> {
     /// var vec = Vec::<u32>::new()
     /// vec.reserve(100)?
     /// ```
-    pub fn reserve(&var self, additional: u32) -> Result<(), MemoryError> {
-        let needed_capacity: u32 = self.len + additional
+    pub fn reserve(&var self, additional: usize) -> Result<(), MemoryError> {
+        let needed_capacity: usize = self.len + additional
 
         // Only grow if we need more capacity
         if needed_capacity > self.capacity {
             // Calculate new capacity (double current or use needed, whichever is larger)
-            var new_capacity: u32 = self.capacity * 2
+            var new_capacity: usize = self.capacity * 2
             if new_capacity < needed_capacity {
                 new_capacity = needed_capacity
             }
@@ -136,9 +136,9 @@ impl<T> Vec<T> {
             match new_block_opt {
                 Result::Ok(var new_block) => {
                     // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
-                    let (raw_ptr, _size) = new_block.into_raw()
+                    let raw = new_block.into_raw()
                     // Explicit pointer cast from *u8 to *T
-                    let new_ptr: *T = (*T)raw_ptr
+                    let new_ptr: *T = (*T)raw.ptr()
 
                     // Copy existing elements to new allocation
                     unsafe {
@@ -214,7 +214,7 @@ impl<T> Vec<T> {
     /// vec.push(1)?
     /// vec.set(0, 42)?
     /// ```
-    pub fn set(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
+    pub fn set(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
         }
@@ -227,7 +227,7 @@ impl<T> Vec<T> {
     }
 
     // Get element at index (returns Option)
-    pub fn get(&self, index: u32) -> Option<&T> {
+    pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
         }
@@ -236,7 +236,7 @@ impl<T> Vec<T> {
     }
 
     /// Mutably borrow the element at index.
-    pub fn get_mut(&var self, index: u32) -> Option<&var T> {
+    pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
         }
@@ -290,7 +290,7 @@ impl<T> Vec<T> {
     /// vec.push(3)?
     /// vec.insert(1, 2)?  // vec is now [1, 2, 3]
     /// ```
-    pub fn insert(&var self, index: u32, consuming value: T) -> Result<(), MemoryError> {
+    pub fn insert(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         // Check bounds - can insert at len (append position)
         if index > self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
@@ -302,7 +302,7 @@ impl<T> Vec<T> {
         }
 
         // Shift elements right to make room
-        var i: u32 = self.len
+        var i: usize = self.len
         unsafe {
             while i > index {
                 self.ptr[i] = self.ptr[i - 1]
@@ -328,7 +328,7 @@ impl<T> Vec<T> {
     /// vec.push(3)?
     /// let removed = vec.remove(1)?  // Returns 2, vec is now [1, 3]
     /// ```
-    pub fn remove(&var self, index: u32) -> Result<T, MemoryError> {
+    pub fn remove(&var self, index: usize) -> Result<T, MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)
         }
@@ -337,7 +337,7 @@ impl<T> Vec<T> {
         let value: T = unsafe { self.ptr[index] }
 
         // Shift elements left
-        var i: u32 = index
+        var i: usize = index
         unsafe {
             while i < self.len - 1 {
                 self.ptr[i] = self.ptr[i + 1]
@@ -362,7 +362,7 @@ impl<T> Vec<T> {
     /// vec.push(3)
     /// vec.truncate(1)  // vec is now [1]
     /// ```
-    pub fn truncate(&var self, new_len: u32) {
+    pub fn truncate(&var self, new_len: usize) {
         while self.len > new_len {
             self.len--
             unsafe { @drop_in_place(&var self.ptr[self.len]) }
@@ -411,8 +411,8 @@ impl<T> Vec<T> {
         match new_block_opt {
             Result::Ok(var new_block) => {
                 // Take ownership of the raw pointer so MemoryBlock's Drop won't free it
-                let (raw_ptr, _size) = new_block.into_raw()
-                let new_ptr: *T = (*T)raw_ptr
+                let raw = new_block.into_raw()
+                let new_ptr: *T = (*T)raw.ptr()
 
                 // Copy existing elements to new allocation
                 unsafe {
@@ -463,12 +463,12 @@ impl<T> Vec<T> {
 // Vec<T> implements Iterable<T> - allows use in for-in loops
 impl<T> Iterable<T> for Vec<T> {
     // Get the number of elements in the vector
-    fn len(&self) -> u32 {
+    fn len(&self) -> usize {
         return self.len
     }
 
     @unsafe
-    fn get_unchecked(&self, index: u32) -> &T {
+    fn get_unchecked(&self, index: usize) -> &T {
         unsafe { return &self.ptr[index] }
     }
 }

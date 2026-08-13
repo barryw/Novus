@@ -31,7 +31,7 @@
 // ```
 
 from std::core import Option, Result, Drop
-from std::string::core import Str
+from std::string import Str
 from amiga::raw::exec import AllocVec, FreeVec, CopyMem, FreeMem
 from amiga::raw::graphics import WaitBlit
 from amiga::sys::exec::critical import CriticalSection

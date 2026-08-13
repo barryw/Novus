@@ -4,13 +4,38 @@ from std::core import Drop, Error, Result
 from amiga::raw::consts import MEMF_CLEAR, MEMF_PUBLIC
 from amiga::raw::dos import InternalLoadSeg, InternalUnLoadSeg, LoadSeg, UnLoadSeg
 from amiga::raw::exec import AllocMem, FreeMem
-from std::memory::slice import Slice
+from std::memory import Slice
 from amiga::sys::dos::bptr import BPtr
-from std::string::core import FixedCString, Str
+from std::string import FixedCString, Str
 
 pub enum SegmentError {
     EmptyImage,
     LoadFailed,
+}
+
+/// NDK-level launch metadata for an in-memory filesystem handler. Application
+/// code normally receives an `amiga::dos::EmbeddedFileSystem` instead.
+pub struct HandlerImage {
+    image: Slice<u8>
+    global_vec: i32
+    stack_size: u32
+    priority: i32
+}
+
+impl HandlerImage {
+    pub fn new(image: Slice<u8>, global_vec: i32, stack_size: u32, priority: i32) -> HandlerImage {
+        return HandlerImage {
+            image: image,
+            global_vec: global_vec,
+            stack_size: stack_size,
+            priority: priority,
+        }
+    }
+
+    pub fn image(&self) -> Slice<u8> { return self.image }
+    pub fn global_vec(&self) -> i32 { return self.global_vec }
+    pub fn stack_size(&self) -> u32 { return self.stack_size }
+    pub fn priority(&self) -> i32 { return self.priority }
 }
 
 impl SegmentError {

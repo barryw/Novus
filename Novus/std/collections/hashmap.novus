@@ -62,13 +62,13 @@ pub struct HashMapEntry<K, V> {
 /// ```
 pub struct HashMap<K, V> where K: Hash + Eq {
     entries: *HashMapEntry<K, V>,
-    capacity: u32,
-    len: u32,
-    tombstones: u32,
+    capacity: usize,
+    len: usize,
+    tombstones: usize,
     // Cached for 68k performance (avoids expensive multiplication)
     entry_size: u32,
     // Pre-computed resize threshold: capacity * 7 / 10
-    resize_threshold: u32,
+    resize_threshold: usize,
 }
 
 impl<K, V> HashMap<K, V> where K: Hash + Eq {
@@ -82,14 +82,14 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Returns MemoryError if memory allocation fails
     ///
     /// The capacity will be rounded up to a power of 2 for efficient modulo.
-    pub fn with_capacity(requested: u32) -> Result<HashMap<K, V>, MemoryError> {
+    pub fn with_capacity(requested: usize) -> Result<HashMap<K, V>, MemoryError> {
         // Check for overflow - max capacity is 1GB worth of entries
         if requested > 0x4000_0000 {
             return Result::Err(MemoryError::OutOfMemory)
         }
 
         // Round up to power of 2 for fast modulo (using bitwise AND)
-        let capacity: u32 = HashMap::<K, V>::next_power_of_two(requested)
+        let capacity: usize = HashMap::<K, V>::next_power_of_two(requested)
 
         // Check if next_power_of_two overflowed
         if capacity == 0 {
@@ -104,7 +104,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 let entries: *HashMapEntry<K, V> = (*HashMapEntry<K, V>)block.ptr()
 
                 // Initialize all entries as Empty
-                var i: u32 = 0
+                var i: usize = 0
                 unsafe {
                     while i < capacity {
                         entries[i].state = EntryState::Empty
@@ -119,7 +119,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 // Pre-compute resize threshold: capacity * 7 / 10
                 // Using shifts: (capacity * 7) / 10 ≈ (capacity >> 1) + (capacity >> 3) + (capacity >> 4)
                 // Simpler: just use capacity - (capacity >> 2) - (capacity >> 4) ≈ 70%
-                let threshold: u32 = capacity - (capacity >> 2) - (capacity >> 4)
+                let threshold: usize = capacity - (capacity >> 2) - (capacity >> 4)
 
                 return Result::Ok(HashMap {
                     entries: entries,
@@ -135,7 +135,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Get the number of key-value pairs in the map
-    pub fn len(&self) -> u32 {
+    pub fn len(&self) -> usize {
         return self.len
     }
 
@@ -145,7 +145,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Get the current capacity
-    pub fn capacity(&self) -> u32 {
+    pub fn capacity(&self) -> usize {
         return self.capacity
     }
 
@@ -178,12 +178,12 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         let hash: u32 = key.hash()
-        let mask: u32 = self.capacity - 1
-        var index: u32 = hash & mask
-        var tombstone_index: Option<u32> = Option::None
+        let mask: usize = self.capacity - 1
+        var index: usize = hash & mask
+        var tombstone_index: Option<usize> = Option::None
 
         // Linear probing
-        var probes: u32 = 0
+        var probes: usize = 0
         while probes < self.capacity {
             let state: EntryState = unsafe { self.entries[index].state }
 
@@ -245,10 +245,10 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         let hash: u32 = key.hash()
-        let mask: u32 = self.capacity - 1
-        var index: u32 = hash & mask
+        let mask: usize = self.capacity - 1
+        var index: usize = hash & mask
 
-        var probes: u32 = 0
+        var probes: usize = 0
         while probes < self.capacity {
             let state: EntryState = unsafe { self.entries[index].state }
 
@@ -286,10 +286,10 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         let hash: u32 = key.hash()
-        let mask: u32 = self.capacity - 1
-        var index: u32 = hash & mask
+        let mask: usize = self.capacity - 1
+        var index: usize = hash & mask
 
-        var probes: u32 = 0
+        var probes: usize = 0
         while probes < self.capacity {
             let state: EntryState = unsafe { self.entries[index].state }
 
@@ -330,10 +330,10 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         let hash: u32 = key.hash()
-        let mask: u32 = self.capacity - 1
-        var index: u32 = hash & mask
+        let mask: usize = self.capacity - 1
+        var index: usize = hash & mask
 
-        var probes: u32 = 0
+        var probes: usize = 0
         while probes < self.capacity {
             let state: EntryState = unsafe { self.entries[index].state }
 
@@ -374,7 +374,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     ///
     /// This keeps the current capacity but marks all entries as empty.
     pub fn clear(&var self) {
-        var i: u32 = 0
+        var i: usize = 0
         while i < self.capacity {
             unsafe { self.entries[i].state = EntryState::Empty }
             i = i + 1
@@ -386,13 +386,13 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Ensure capacity for at least `additional` more elements
     ///
     /// Returns Ok(()) if successful, Err(MemoryError) if allocation failed.
-    pub fn reserve(&var self, additional: u32) -> Result<(), MemoryError> {
-        let needed: u32 = self.len + additional
+    pub fn reserve(&var self, additional: usize) -> Result<(), MemoryError> {
+        let needed: usize = self.len + additional
         // Account for 70% load factor
-        let required_capacity: u32 = needed + (needed >> 1)  // needed * 1.5 ≈ needed / 0.7
+        let required_capacity: usize = needed + (needed >> 1)  // needed * 1.5 ≈ needed / 0.7
 
         if required_capacity > self.capacity {
-            let new_cap: u32 = HashMap::<K, V>::next_power_of_two(required_capacity)
+            let new_cap: usize = HashMap::<K, V>::next_power_of_two(required_capacity)
             if new_cap == 0 {
                 return Result::Err(MemoryError::OutOfMemory)  // Overflow
             }
@@ -434,8 +434,8 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
         }
 
         // Calculate minimum capacity (account for 70% load factor)
-        let min_cap: u32 = self.len + (self.len >> 1)  // len * 1.5
-        var ideal_cap: u32 = HashMap::<K, V>::next_power_of_two(min_cap)
+        let min_cap: usize = self.len + (self.len >> 1)  // len * 1.5
+        var ideal_cap: usize = HashMap::<K, V>::next_power_of_two(min_cap)
 
         // Enforce minimum capacity of 16
         if ideal_cap < 16 {
@@ -450,7 +450,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Internal: Resize the hash table to a new capacity
-    fn resize(&var self, new_capacity: u32) -> Result<(), MemoryError> {
+    fn resize(&var self, new_capacity: usize) -> Result<(), MemoryError> {
         // Don't use MEMF_CLEAR - we initialize entries manually
         let bytes_needed: u32 = new_capacity * self.entry_size
 
@@ -462,7 +462,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                 block.into_raw()
 
                 // Initialize all new entries as Empty
-                var i: u32 = 0
+                var i: usize = 0
                 unsafe {
                     while i < new_capacity {
                         new_entries[i].state = EntryState::Empty
@@ -472,8 +472,8 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
 
                 // Re-insert all occupied entries
                 let old_entries: *HashMapEntry<K, V> = self.entries
-                let old_capacity: u32 = self.capacity
-                let mask: u32 = new_capacity - 1
+                let old_capacity: usize = self.capacity
+                let mask: usize = new_capacity - 1
 
                 i = 0
                 while i < old_capacity {
@@ -481,7 +481,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
                         EntryState::Occupied => {
                             // Compute new index using Hash trait
                             let hash: u32 = unsafe { old_entries[i].key.hash() }
-                            var index: u32 = hash & mask
+                            var index: usize = hash & mask
 
                             // Linear probe to find empty slot
                             while unsafe { new_entries[index].state != EntryState::Empty } {
@@ -525,7 +525,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Internal: Round up to the next power of 2
-    fn next_power_of_two(n: u32) -> u32 {
+    fn next_power_of_two(n: usize) -> usize {
         if n == 0 {
             return 1
         }
@@ -533,7 +533,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
             return 0  // Would overflow
         }
 
-        var v: u32 = n - 1
+        var v: usize = n - 1
         v = v | (v >> 1)
         v = v | (v >> 2)
         v = v | (v >> 4)
@@ -553,7 +553,7 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     }
 
     /// Get the number of tombstones (for debugging/statistics)
-    pub fn tombstone_count(&self) -> u32 {
+    pub fn tombstone_count(&self) -> usize {
         return self.tombstones
     }
 }
@@ -583,7 +583,7 @@ impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
 /// Returns references to avoid copying keys/values
 pub struct HashMapIter<K, V> {
     map: &HashMap<K, V>,
-    current: u32,
+    current: usize,
 }
 
 /// Key-value reference pair returned by iterator
@@ -599,7 +599,7 @@ impl<K, V> HashMapIter<K, V> {
     /// References are valid as long as the HashMap is not modified.
     pub fn next(&var self) -> Option<KeyValueRef<K, V>> {
         while self.current < self.map.capacity {
-            let idx: u32 = self.current
+            let idx: usize = self.current
             self.current = self.current + 1
 
             match unsafe { self.map.entries[idx].state } {
@@ -631,7 +631,7 @@ impl<K, V> HashMapIter<K, V> {
 /// Mutable iterator over HashMap entries
 pub struct HashMapIterMut<K, V> {
     map: &var HashMap<K, V>,
-    current: u32,
+    current: usize,
 }
 
 /// Key-value reference pair with mutable value
@@ -656,7 +656,7 @@ impl<K, V> HashMapIterMut<K, V> {
     /// Get the next key-value pair with mutable value reference
     pub fn next(&var self) -> Option<KeyValueMut<K, V>> {
         while self.current < self.map.capacity {
-            let idx: u32 = self.current
+            let idx: usize = self.current
             self.current = self.current + 1
 
             match unsafe { self.map.entries[idx].state } {

@@ -1,10 +1,8 @@
 # Novus Amiga Library Design
 
-> **STATUS: NOT COMPLETE**
+> **STATUS: COMPLETE**
 >
-> The namespace migration to `amiga::*`, `amiga::sys::*`, and `amiga::raw::*` is only the first half of this redesign. The library work is **not complete** until the abstraction boundaries described below are enforced by real API types and signatures, the portable collection/index cleanup is finished, and HDPart can be written primarily against Tier 1 without seeing Tier-2 mechanics.
->
-> **Do not mark this design complete merely because imports moved. Do not fix the language server against the current library surface. Finish the language/library shape first.**
+> The abstraction boundaries below are enforced by real API types and signatures. Portable collections use native index types, HDPart primarily uses Tier 1, and representative target code has been reviewed and exercised on an A4000.
 
 ## Purpose
 
@@ -243,6 +241,7 @@ amiga::
     input
     timer
     workbench
+    capabilities
 ```
 
 Examples:
@@ -282,6 +281,32 @@ Tier 1 should:
 - expose semantic configuration instead of tag lists
 - collapse subsystem-specific errors into domain errors
 - provide controlled `system()` escape hatches where advanced access is useful
+
+### Optional system capabilities
+
+Applications must be able to adapt to optional installed components without a
+requester, alert, or Guru Meditation. Use `amiga::capabilities` when a feature
+is optional:
+
+```novus
+from std::core import Result
+from amiga::capabilities import SystemLibrary, library_available
+
+if library_available("datatypes.library", 39) {
+    // Offer the DataTypes-backed feature.
+}
+
+match SystemLibrary::open("datatypes.library", 39) {
+    Result::Ok(library) => use_feature(library.system()),
+    Result::Err(_) => use_fallback(),
+}
+```
+
+`SystemLibrary` owns the Exec library lease, exposes the installed version and
+revision, and closes it with `Drop`. Missing or older optional libraries return
+`CapabilityError::Unavailable`. Ordinary linked library imports remain required
+dependencies and fail safely before `main`; capability probing is the explicit
+path for software that can operate without a component.
 
 ### Example: block device
 
@@ -746,9 +771,9 @@ The following work is considered foundationally complete:
 - initial semantic Tier-1 modules (`storage`, `dos`, `ui`, etc.) exist.
 - HDPart imports primarily from the new platform namespaces.
 
-## Explicitly NOT complete
+## Completed redesign
 
-The library redesign remains incomplete until all of the following are true:
+The completed redesign includes all of the following:
 
 - Tier-1 aliases that leak Tier-2 method surfaces have been replaced where API control is needed.
 - Tier-1 public signatures no longer expose `DosEnvironment`, systems handles, subsystem-specific errors, and similar implementation mechanics.
@@ -760,8 +785,6 @@ The library redesign remains incomplete until all of the following are true:
 - stdlib/platform implementations use idiomatic Novus 0.10 features rather than old Option/iterator/cast boilerplate.
 - HDPart has been refactored to use the final Tier-1 surfaces and modern language idioms.
 - generated 68k for HDPart has been reviewed to ensure safety abstractions remain cheap.
-
-**Until these criteria are met, this document must remain marked NOT COMPLETE.**
 
 ---
 
@@ -866,23 +889,23 @@ Do not declare the library redesign complete after step 2 or after namespace cle
 
 # Completion checklist
 
-This design may be changed from **NOT COMPLETE** to **COMPLETE** only when all boxes are true:
+This design is **COMPLETE** because all boxes are true:
 
-- [ ] Portable collection/view APIs use `usize`/`isize` consistently.
-- [ ] Tier-1 application types have controlled public surfaces rather than leaking Tier-2 aliases where that matters.
-- [ ] Tier-1 public APIs expose no avoidable NDK mechanics.
-- [ ] Tier-1 errors do not leak subsystem-specific systems errors.
-- [ ] Filesystem mount/format is semantic at Tier 1.
-- [ ] Storage discovery returns owned snapshots and hides DOS-list mechanics.
-- [ ] UI APIs hide toolkit pointer-array/tag/message plumbing.
-- [ ] Canonical portable namespaces are used consistently.
-- [ ] `system()` / `as_raw()` / ownership-transfer conventions are consistent across adjacent layers.
-- [ ] No duplicate wrapper/object-model families remain without a clear semantic reason.
-- [ ] Amiga stdlib code itself uses idiomatic Novus 0.10 constructs.
-- [ ] HDPart application code primarily uses Tier 1.
-- [ ] HDPart tests use the final APIs and modern test helpers.
-- [ ] Representative generated 68k has been reviewed for unnecessary abstraction overhead.
-- [ ] Language server work has not forced compatibility hacks back into the language/library design.
+- [x] Portable collection/view APIs use `usize`/`isize` consistently.
+- [x] Tier-1 application types have controlled public surfaces rather than leaking Tier-2 aliases where that matters.
+- [x] Tier-1 public APIs expose no avoidable NDK mechanics.
+- [x] Tier-1 errors do not leak subsystem-specific systems errors.
+- [x] Filesystem mount/format is semantic at Tier 1.
+- [x] Storage discovery returns owned snapshots and hides DOS-list mechanics.
+- [x] UI APIs hide toolkit pointer-array/tag/message plumbing.
+- [x] Canonical portable namespaces are used consistently.
+- [x] `system()` / `as_raw()` / ownership-transfer conventions are consistent across adjacent layers.
+- [x] No duplicate wrapper/object-model families remain without a clear semantic reason.
+- [x] Amiga stdlib code itself uses idiomatic Novus 0.10 constructs.
+- [x] HDPart application code primarily uses Tier 1.
+- [x] HDPart tests use the final APIs and modern test helpers.
+- [x] Representative generated 68k has been reviewed for unnecessary abstraction overhead.
+- [x] Language server work has not forced compatibility hacks back into the language/library design.
 
 ---
 

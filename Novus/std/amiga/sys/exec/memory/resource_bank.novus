@@ -12,10 +12,10 @@
 // - Budget tracking and will_fit() checks
 
 from std::core import Result, Option, Drop, Error
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::exec::memory::chip import Priority, ChipAsset, ChipCacheError
 from amiga::sys::exec::memory::chip_cache import ChipCache
-from std::collections::vec import Vec
+from std::collections import Vec
 
 // ============================================================================
 // Bank State

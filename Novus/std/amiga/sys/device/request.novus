@@ -1,7 +1,7 @@
 // Owning access to an AmigaOS Exec device request.
 
 from std::core import Drop, Error, From, Option, Result
-from std::string::core import FixedCString, Str
+from std::string import FixedCString, Str
 from amiga::sys::exec::errors import ExecError
 from amiga::sys::exec::exec import MsgPortHandle
 from amiga::raw::consts import NT_DEVICE, RTC_MATCHWORD

@@ -15,8 +15,8 @@
 //   ENVARC:<app_name>.prefs   - Persistent (disk)
 
 from std::core import Option, Result, Drop, Error, From
-from std::collections::vec import Vec
-from std::string::core import Str, String, PathString
+from std::collections import Vec
+from std::string import Str, String, PathString
 from amiga::sys::dos::errors import DosError
 from amiga::sys::dos import OwnedFileHandle, file_exists
 

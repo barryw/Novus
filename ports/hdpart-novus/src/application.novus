@@ -13,8 +13,6 @@ from rdb import DOS_TYPE_FFS_INTL, PartitionSettings, RdbModel, cylinders_to_mb,
 from rdb_io import load_rdb, write_rdb
 from safety import DeviceIdentity, DeviceLiveness, classify_live_device, mounted_device_name_exists, mounted_partition_name
 
-type FileRequesterHandle = FileRequester
-
 const DEVICE: u16 = 1
 const PARTITIONS: u16 = 2
 const NAME: u16 = 3
@@ -132,9 +130,9 @@ fn append(out: &var FixedString<80>, value: Str) -> bool {
 }
 
 @suppress("W0002", "GadTools indices come from fixed collections capped below 65536 entries")
-fn gadget_index(value: u32) -> u16 { return (u16)value }
+fn gadget_index(value: usize) -> u16 { return (u16)value }
 
-fn prefix(rows: Slice<Str>, count: u32) -> Option<Slice<Str>> {
+fn prefix(rows: Slice<Str>, count: usize) -> Option<Slice<Str>> {
     return rows.take(count)
 }
 
@@ -173,7 +171,7 @@ fn known_drivers() -> ArrayVec<FixedCString<60>, 16> {
     return drivers
 }
 
-fn add_driver(drivers: &var ArrayVec<FixedCString<60>, 16>, consuming name: FixedCString<60>) -> u32 {
+fn add_driver(drivers: &var ArrayVec<FixedCString<60>, 16>, consuming name: FixedCString<60>) -> usize {
     for index in 0..drivers.len() {
         let Option::Some(current) = drivers.get(index) else { continue }
         return index if current.as_str().equals(name.as_str())
@@ -311,7 +309,7 @@ fn refresh_unit_choices(window: &var Window, disks: &ArrayVec<DiskEntry, 32>) ->
     return Result::Ok(())
 }
 
-fn refresh_partitions(window: &var Window, model: &RdbModel, selected: Option<u32>) -> Result<(), UiError> {
+fn refresh_partitions(window: &var Window, model: &RdbModel, selected: Option<usize>) -> Result<(), UiError> {
     if model.partition_count() == 0 {
         let empty = ["No partitions on this disk"]
         window.replace_list(PARTITIONS, &empty, Option::None)?
@@ -363,7 +361,7 @@ fn clear_disk_map(window: &Window) {
 }
 
 @suppress("W0002", "The disk-map coordinates are bounded by the 630-pixel window")
-fn draw_disk_map(window: &Window, model: &RdbModel, selected: Option<u32>) {
+fn draw_disk_map(window: &Window, model: &RdbModel, selected: Option<usize>) {
     clear_disk_map(window)
     return if model.cylinders() == 0
     for index in 0..model.partition_count() {
@@ -385,7 +383,7 @@ fn draw_disk_map(window: &Window, model: &RdbModel, selected: Option<u32>) {
 }
 
 @suppress("W0002", "Bounds checks prove the mouse coordinate and partition index fit their target types")
-fn partition_at(model: &RdbModel, x: i16, y: i16) -> Option<u32> {
+fn partition_at(model: &RdbModel, x: i16, y: i16) -> Option<usize> {
     return Option::None unless x >= 18 && x < 612 && y >= 82 && y < 98 && model.cylinders() > 0
     let position = (u32)(x - 18)
     for index in 0..model.partition_count() {
@@ -399,9 +397,9 @@ fn partition_at(model: &RdbModel, x: i16, y: i16) -> Option<u32> {
 }
 
 @suppress("W0002", "RDB supports at most 32 partitions")
-fn partition_event_code(index: u32) -> u16 { return (u16)index }
+fn partition_event_code(index: usize) -> u16 { return (u16)index }
 
-fn select_partition(window: &Window, model: &RdbModel, index: u32) {
+fn select_partition(window: &Window, model: &RdbModel, index: usize) {
     let Option::Some(partition) = model.partition(index) else { return }
     match window.string(NAME) {
         Option::Some(control) => { let _ = control.set_value(partition.name()) },
@@ -454,7 +452,7 @@ fn selected_dos_type(choice: u16, current: u32, window: &Window, pool: &FileSyst
         if cache.checked() { value = value | 4 }
         return value
     }
-    let pool_index = (u32)choice - 2
+    let pool_index = (usize)choice - 2
     match pool.get(pool_index) {
         Option::Some(file_system) => return file_system.dos_type(),
         Option::None => {},
@@ -499,7 +497,7 @@ fn refresh_partition_file_systems(window: &var Window, pool: &FileSystemPool, cu
     return Result::Ok(active)
 }
 
-fn set_partition_controls(window: &var Window, model: &RdbModel, index: u32, pool: &FileSystemPool) -> u16 {
+fn set_partition_controls(window: &var Window, model: &RdbModel, index: usize, pool: &FileSystemPool) -> u16 {
     let Option::Some(partition) = model.partition(index) else { return 0 }
     match window.string(NAME) {
         Option::Some(control) => { let _ = control.set_value(partition.name()) },
@@ -543,7 +541,7 @@ fn set_partition_controls(window: &var Window, model: &RdbModel, index: u32, poo
     return choice
 }
 
-fn edit_partition(window: &Window, model: &var RdbModel, index: u32, file_system_choice: u16, pool: &FileSystemPool) -> bool {
+fn edit_partition(window: &Window, model: &var RdbModel, index: usize, file_system_choice: u16, pool: &FileSystemPool) -> bool {
     let Option::Some(previous) = model.partition(index) else { return false }
     let Option::Some(name) = current_name(window) else { return false }
     let Option::Some(size) = current_size(window) else { return false }
@@ -636,7 +634,7 @@ fn partition_size_input(value: u32) -> i32 { return (i32)value }
 fn partition_editor(
     parent: &Window,
     model: &var RdbModel,
-    index: u32,
+    index: usize,
     pool: &FileSystemPool
 ) -> Result<bool, UiError> {
     let Option::Some(partition) = model.partition(index) else { return Result::Ok(false) }
@@ -722,7 +720,7 @@ fn partition_editor(
     }
 }
 
-fn resize_plan(window: &Window, model: &RdbModel, index: u32, anchor: u16) -> Option<ResizePlan> {
+fn resize_plan(window: &Window, model: &RdbModel, index: usize, anchor: u16) -> Option<ResizePlan> {
     let Option::Some(partition) = model.partition(index) else { return Option::None }
     let Option::Some(requested_mb) = current_size(window) else { return Option::None }
     let maximum_cylinders = if anchor == 0 {
@@ -755,7 +753,7 @@ fn resize_plan(window: &Window, model: &RdbModel, index: u32, anchor: u16) -> Op
     }
 }
 
-fn refresh_resize_preview(window: &Window, model: &RdbModel, index: u32, anchor: u16) -> Option<ResizePlan> {
+fn refresh_resize_preview(window: &Window, model: &RdbModel, index: usize, anchor: u16) -> Option<ResizePlan> {
     let Option::Some(partition) = model.partition(index) else { return Option::None }
     let maximum_cylinders = if anchor == 0 {
         model.gap_end_after(index).unwrap_or(partition.high_cylinder()) - partition.low_cylinder() + 1
@@ -785,7 +783,7 @@ fn refresh_resize_preview(window: &Window, model: &RdbModel, index: u32, anchor:
     return Option::Some(plan)
 }
 
-fn resize_partition_dialog(parent: &Window, model: &var RdbModel, index: u32) -> Result<bool, UiError> {
+fn resize_partition_dialog(parent: &Window, model: &var RdbModel, index: usize) -> Result<bool, UiError> {
     let Option::Some(partition) = model.partition(index) else { return Result::Ok(false) }
     var size = cylinders_to_mb(
         partition.high_cylinder() - partition.low_cylinder() + 1,
@@ -842,17 +840,17 @@ fn resize_partition_dialog(parent: &Window, model: &var RdbModel, index: u32) ->
     }
 }
 
-fn refresh_split_preview(window: &Window, count: u32, span: u32, model: &RdbModel) {
+fn refresh_split_preview(window: &Window, count: usize, span: u32, model: &RdbModel) {
     var count_text = FixedString::<8>::new()
-    let _ = count_text.push_u32(count)
+    let _ = count_text.push_u32((u32)count)
     match window.text(SPLIT_COUNT) {
         Option::Some(control) => { let _ = control.set_text(count_text.as_str()) },
         Option::None => {},
     }
     var preview = FixedString::<48>::new()
-    let _ = preview.push_u32(count)
+    let _ = preview.push_u32((u32)count)
     let _ = preview.push_str(" x ~")
-    let _ = preview.push_u32(cylinders_to_mb(span / count, model.cylinder_blocks(), model.block_bytes()))
+    let _ = preview.push_u32(cylinders_to_mb(span / (u32)count, model.cylinder_blocks(), model.block_bytes()))
     let _ = preview.push_str(" MB each")
     match window.text(SPLIT_PREVIEW) {
         Option::Some(control) => { let _ = control.set_text(preview.as_str()) },
@@ -860,13 +858,13 @@ fn refresh_split_preview(window: &Window, count: u32, span: u32, model: &RdbMode
     }
 }
 
-fn split_dialog(parent: &Window, model: &RdbModel) -> Result<Option<u32>, UiError> {
+fn split_dialog(parent: &Window, model: &RdbModel) -> Result<Option<usize>, UiError> {
     let Option::Some(gap) = model.largest_free_gap() else {
         parent.alert("Split", "There is no free space on this disk.")
         return Result::Ok(Option::None)
     }
-    var maximum = gap.cylinders()
-    let slots: u32 = 32 - model.partition_count()
+    var maximum = (usize)gap.cylinders()
+    let slots: usize = 32 - model.partition_count()
     if maximum > slots { maximum = slots }
     if maximum > 20 { maximum = 20 }
     if maximum == 0 {
@@ -911,7 +909,7 @@ fn set_control_enabled(window: &Window, id: u16, enabled: bool) {
     control.set_enabled(enabled)
 }
 
-fn refresh_file_system_rows(window: &var Window, pool: &FileSystemPool, selected: Option<u32>) -> Result<(), UiError> {
+fn refresh_file_system_rows(window: &var Window, pool: &FileSystemPool, selected: Option<usize>) -> Result<(), UiError> {
     if pool.is_empty() {
         let empty = ["No filesystem handlers in this session"]
         window.replace_list(FS_LIST, &empty, Option::None)?
@@ -937,7 +935,7 @@ fn refresh_file_system_rows(window: &var Window, pool: &FileSystemPool, selected
     return Result::Ok(())
 }
 
-fn set_file_system_editor(window: &Window, pool: &FileSystemPool, selected: Option<u32>) {
+fn set_file_system_editor(window: &Window, pool: &FileSystemPool, selected: Option<usize>) {
     let enabled = selected.is_some()
     set_control_enabled(window, FS_DOS_TYPE, enabled)
     set_control_enabled(window, FS_PRESET, enabled)
@@ -995,7 +993,7 @@ fn choose_file(
     title: Str,
     initial_drawer: Str
 ) -> Result<Option<FixedString<256>>, UiError> {
-    let requester = match FileRequesterHandle::new() {
+    let requester = match FileRequester::new() {
         Result::Ok(value) => value,
         Result::Err(_) => return text_dialog(parent, title, "Full path", initial_drawer, 255),
     }
@@ -1054,8 +1052,8 @@ fn manage_file_systems(parent: &Window, pool: &var FileSystemPool, drivers: &Arr
     let menu = menus.build()?
     var window = ui.build("Filesystems", Bounds::new(0, 24, 630, 208), menu)?
 
-    var selected: Option<u32> = if pool.is_empty() { Option::None } else { Option::Some(0) }
-    var source_driver: u32 = 0
+    var selected: Option<usize> = if pool.is_empty() { Option::None } else { Option::Some(0) }
+    var source_driver: usize = 0
     var source_unit: u32 = 0
     var changed = false
     refresh_file_system_rows(&var window, pool, selected)?
@@ -1068,11 +1066,11 @@ fn manage_file_systems(parent: &Window, pool: &var FileSystemPool, drivers: &Arr
             Event::MenuPick(0, 0) => { break },
             Event::Refresh => window.refresh(),
             Event::GadgetUp(FS_DONE, _) => { break },
-            Event::GadgetUp(FS_SOURCE_DRIVER, value) => { source_driver = (u32)value },
+            Event::GadgetUp(FS_SOURCE_DRIVER, value) => { source_driver = (usize)value },
             Event::GadgetUp(FS_SOURCE_UNIT, value) => { source_unit = (u32)value },
             Event::GadgetUp(FS_LIST, value) => {
-                if (u32)value < pool.len() {
-                    selected = Option::Some((u32)value)
+                if (usize)value < pool.len() {
+                    selected = Option::Some((usize)value)
                     refresh_file_system_rows(&var window, pool, selected)?
                     set_file_system_editor(&window, pool, selected)
                 }
@@ -1183,7 +1181,7 @@ fn manage_file_systems(parent: &Window, pool: &var FileSystemPool, drivers: &Arr
     return Result::Ok(changed)
 }
 
-fn save_model(window: &Window, disks: &ArrayVec<DiskEntry, 32>, disk_index: u32, model: &var RdbModel, pool: &FileSystemPool) -> bool {
+fn save_model(window: &Window, disks: &ArrayVec<DiskEntry, 32>, disk_index: usize, model: &var RdbModel, pool: &FileSystemPool) -> bool {
     let Option::Some(disk) = disks.get(disk_index) else { return false }
     let identity = DeviceIdentity { driver: disk.driver.as_str(), unit: disk.unit }
     match classify_live_device(&identity) {
@@ -1312,12 +1310,12 @@ fn build_window() -> Result<Window, UiError> {
 fn run() -> Result<(), UiError> {
     var window = build_window()?
     var drivers = known_drivers()
-    var selected_driver: u32 = 0
+    var selected_driver: usize = 0
     var disks = ArrayVec::<DiskEntry, 32>::new()
     refresh_driver_choices(&var window, &drivers, 0)?
     refresh_unit_choices(&var window, &disks)?
-    var selected_disk: u32 = 0
-    var selected_partition: Option<u32> = Option::None
+    var selected_disk: usize = 0
+    var selected_partition: Option<usize> = Option::None
     var model: Option<RdbModel> = Option::None
     var file_system_pool = FileSystemPool::new()
     var dirty = false
@@ -1386,8 +1384,8 @@ fn run() -> Result<(), UiError> {
         }
 
         let discards_model = action == SCAN || action == LOAD_DRIVER ||
-            (action == DEVICE && (u32)code != selected_driver) ||
-            (action == UNIT && (u32)code != selected_disk)
+            (action == DEVICE && (usize)code != selected_driver) ||
+            (action == UNIT && (usize)code != selected_disk)
         if dirty && discards_model && !window.confirm("Unsaved Changes", "Discard unsaved changes and switch disks?") {
             match window.cycle(if action == DEVICE { DEVICE } else { UNIT }) {
                 Option::Some(control) => control.set_active(gadget_index(if action == DEVICE { selected_driver } else { selected_disk })),
@@ -1397,7 +1395,7 @@ fn run() -> Result<(), UiError> {
         }
 
         if action == DEVICE {
-            selected_driver = (u32)code
+            selected_driver = (usize)code
             disks = ArrayVec::<DiskEntry, 32>::new()
             refresh_unit_choices(&var window, &disks)?
             selected_disk = 0
@@ -1433,7 +1431,7 @@ fn run() -> Result<(), UiError> {
         }
 
         if action == UNIT {
-            selected_disk = (u32)code
+            selected_disk = (usize)code
             selected_partition = Option::None
             dirty = false
             let Option::Some(disk) = disks.get(selected_disk) else { continue }
@@ -1487,7 +1485,7 @@ fn run() -> Result<(), UiError> {
                         window.alert("New Partition", "No unused DOS device name is available.")
                         continue
                     }
-                    let previous_selection: Option<u32> = match &selected_partition {
+            let previous_selection: Option<usize> = match &selected_partition {
                         Option::Some(&value) => Option::Some(*value),
                         Option::None => Option::None,
                     }
@@ -1580,7 +1578,14 @@ fn run() -> Result<(), UiError> {
             let _ = warning.push_str("Format ")
             let _ = warning.push_str(partition.name())
             let _ = warning.push_str(" into an empty volume?")
-            match mounted_partition_name(&identity, partition.low_cylinder(), partition.high_cylinder()) {
+            let mounted_partition = match mounted_partition_name(&identity, partition.low_cylinder(), partition.high_cylinder()) {
+                Result::Ok(value) => value,
+                Result::Err(_) => {
+                    window.alert("Format", "Could not verify whether this partition is mounted.")
+                    continue
+                },
+            }
+            match mounted_partition {
                 Option::Some(name) => {
                     let _ = warning.push_str("\nIt is mounted as ")
                     let _ = warning.push_str(name.as_str())

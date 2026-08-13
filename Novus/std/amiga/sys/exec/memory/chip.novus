@@ -12,7 +12,7 @@
 // - Pooled allocation to reduce fragmentation
 
 from std::core import Result, Option, Drop, Error
-from std::string::core import Str
+from std::string import Str
 from amiga::raw::exec import AllocMem, FreeMem, CopyMem, TypeOfMem, Forbid, Permit, CacheClearE, CachePreDMA, CachePostDMA
 from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, CACRF_ClearI, CACRF_ClearD, DMA_ReadFromRAM, DMA_Continue
 

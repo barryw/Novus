@@ -8,7 +8,7 @@ from std::core import Option, Result, Drop
 from amiga::sys::graphics::errors import GraphicsError
 from amiga::raw::structs import *
 from amiga::raw::graphics import AllocBitMap, FreeBitMap, WaitBlit, LoadView, WaitTOF
-from std::memory::block import MemoryBlock
+from std::memory import MemoryBlock
 
 // ============================================================================
 // RAII Resource Wrappers (Automatic Cleanup)

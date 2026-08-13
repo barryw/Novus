@@ -1,12 +1,104 @@
-from amiga::sys::timer import TimerHandle
+from std::core import Error, From, Result
+from amiga::sys::timer import AsyncTimer as SystemAsyncTimer, Duration as SystemDuration
+from amiga::sys::timer import Interval as SystemInterval, TimerError as SystemTimerError
+from amiga::sys::timer import TimerHandle, WaitResult as SystemWaitResult
+from amiga::sys::timer import delay as system_delay, elapsed_since as system_elapsed_since, now as system_now
 
-// Tier 1: application timers and durations.
-pub use amiga::sys::timer::AsyncTimer
-pub use amiga::sys::timer::Duration
-pub use amiga::sys::timer::Interval
-pub use amiga::sys::timer::TimerError
-pub use amiga::sys::timer::WaitResult
-pub use amiga::sys::timer::delay
-pub use amiga::sys::timer::elapsed_since
-pub use amiga::sys::timer::now
-pub type Timer = TimerHandle
+/// Application timer failures without exposing timer.device mechanics.
+pub enum ApplicationTimerError {
+    OpenFailed,
+    NoMemory,
+    CommandFailed(i8),
+}
+
+impl From<SystemTimerError> for ApplicationTimerError {
+    fn convert(consuming error: SystemTimerError) -> ApplicationTimerError {
+        return match error {
+            SystemTimerError::OpenFailed => ApplicationTimerError::OpenFailed,
+            SystemTimerError::NoMemory => ApplicationTimerError::NoMemory,
+            SystemTimerError::CommandFailed(code) => ApplicationTimerError::CommandFailed(code),
+        }
+    }
+}
+
+impl Error for ApplicationTimerError {
+    fn message(&self) -> *u8 {
+        return match *self {
+            ApplicationTimerError::OpenFailed => "The system timer is unavailable",
+            ApplicationTimerError::NoMemory => "There is not enough memory for a timer",
+            ApplicationTimerError::CommandFailed(_) => "The timer operation failed",
+        }
+    }
+}
+
+// These are semantic value types; aliasing them cannot leak ownership APIs.
+pub type Duration = SystemDuration
+pub type WaitResult = SystemWaitResult
+pub type TimerError = ApplicationTimerError
+
+/// Reusable application timer over one owned timer.device request.
+pub struct ApplicationTimer { system: TimerHandle }
+
+impl ApplicationTimer {
+    pub fn microhz() -> Result<ApplicationTimer, TimerError> {
+        return Result::Ok(ApplicationTimer { system: TimerHandle::microhz()? })
+    }
+
+    pub fn vblank() -> Result<ApplicationTimer, TimerError> {
+        return Result::Ok(ApplicationTimer { system: TimerHandle::vblank()? })
+    }
+
+    pub fn eclock() -> Result<ApplicationTimer, TimerError> {
+        return Result::Ok(ApplicationTimer { system: TimerHandle::eclock()? })
+    }
+
+    pub fn time(&var self) -> Result<Duration, TimerError> { return Result::Ok(self.system.get_time()?) }
+    pub fn micros(&var self) -> u32 { return self.system.get_micros() }
+    pub fn delay(&var self, duration: Duration) -> Result<(), TimerError> { return Result::Ok(self.system.delay(duration)?) }
+    pub fn wait_until(&var self, time: Duration) -> Result<(), TimerError> { return Result::Ok(self.system.wait_until(time)?) }
+    pub fn wait_frames(&var self, count: u32) -> Result<(), TimerError> { return Result::Ok(self.system.wait_frames(count)?) }
+    pub fn system(&self) -> &TimerHandle { return &self.system }
+}
+
+/// Application interval timer with the systems owner kept private.
+pub struct ApplicationInterval { system: SystemInterval }
+
+impl ApplicationInterval {
+    pub fn new(interval: Duration) -> Result<ApplicationInterval, TimerError> {
+        return Result::Ok(ApplicationInterval { system: SystemInterval::new(interval)? })
+    }
+
+    pub fn tick(&var self) -> Result<bool, TimerError> { return Result::Ok(self.system.tick()?) }
+    pub fn reset(&var self) -> Result<(), TimerError> { return Result::Ok(self.system.reset()?) }
+    pub fn elapsed(&var self) -> Result<Duration, TimerError> { return Result::Ok(self.system.elapsed()?) }
+    pub fn system(&self) -> &SystemInterval { return &self.system }
+}
+
+/// Signal-aware application timer without exposing its port or IORequest.
+pub struct ApplicationAsyncTimer { system: SystemAsyncTimer }
+
+impl ApplicationAsyncTimer {
+    pub fn new() -> Result<ApplicationAsyncTimer, TimerError> {
+        return Result::Ok(ApplicationAsyncTimer { system: SystemAsyncTimer::new()? })
+    }
+
+    pub fn vblank() -> Result<ApplicationAsyncTimer, TimerError> {
+        return Result::Ok(ApplicationAsyncTimer { system: SystemAsyncTimer::vblank()? })
+    }
+
+    pub fn start(&var self, duration: Duration) { self.system.start(duration) }
+    pub fn check(&var self) -> bool { return self.system.check() }
+    pub fn wait(&var self) { self.system.wait() }
+    pub fn wait_or_break(&var self, duration: Duration) -> WaitResult { return self.system.wait_or_break(duration) }
+    pub fn system(&self) -> &SystemAsyncTimer { return &self.system }
+}
+
+pub fn delay(duration: Duration) -> Result<(), TimerError> { return Result::Ok(system_delay(duration)?) }
+pub fn now() -> Result<Duration, TimerError> { return Result::Ok(system_now()?) }
+pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
+    return Result::Ok(system_elapsed_since(start)?)
+}
+
+pub type Timer = ApplicationTimer
+pub type Interval = ApplicationInterval
+pub type AsyncTimer = ApplicationAsyncTimer

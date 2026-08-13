@@ -1,0 +1,16 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::capabilities import SystemLibrary, library_available
+
+@test("installed libraries report their actual version")
+pub fn installed_library_is_available() {
+    match SystemLibrary::open("dos.library", 36) {
+        Result::Ok(library) => expect(library.version() >= 36, "DOS 2.0+ is installed"),
+        Result::Err(_) => expect(false, "DOS library opens"),
+    }
+}
+
+@test("missing optional libraries are recoverable")
+pub fn missing_library_is_unavailable() {
+    expect(!library_available("novus-missing.library", 1), "missing library returns false")
+}

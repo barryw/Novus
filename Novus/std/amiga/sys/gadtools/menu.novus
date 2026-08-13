@@ -16,14 +16,14 @@
 
 from std::core import Option, Result, Vec
 from amiga::sys::intuition::errors import IntuitionError
-from std::string::core import StringError
+from std::string import StringError
 from amiga::raw::structs import Menu, MenuItem, Window, Screen, TagItem
 from amiga::raw::gadtools import NewMenu
 from amiga::raw::consts import *
 from amiga::raw::intuition import SetMenuStrip, ClearMenuStrip, ItemAddress
 from amiga::raw::gadtools import CreateMenusA, LayoutMenusA, FreeMenus, GetVisualInfoA, FreeVisualInfo
 from amiga::raw::exec import AllocVec, FreeVec, CopyMem
-from std::string::core import Str, String
+from std::string import Str, String
 
 // ============================================================================
 // GadTools Library - Auto-opened by VBCC

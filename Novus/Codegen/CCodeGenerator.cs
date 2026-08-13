@@ -70,6 +70,7 @@ public partial class CCodeGenerator
     private readonly bool _preservePublicFunctions;
     private readonly BuildMode _buildMode;
     private readonly SafetyLevel _safetyLevel;
+    private readonly HashSet<string> _cFunctionIdentifiers;
 
     // Track which variables have been declared in the current function
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
@@ -567,6 +568,9 @@ public partial class CCodeGenerator
         _projectVersion = projectVersion;
         _useSharedTypesHeader = useSharedTypesHeader;
         _preservePublicFunctions = preservePublicFunctions;
+        _cFunctionIdentifiers = module.Functions
+            .Select(MangleFunctionName)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -1849,6 +1853,10 @@ public partial class CCodeGenerator
         var (variableToSlot, slotTypes) = livenessAnalysis.Analyze();
         _variableToSlot = variableToSlot;
         _slotTypes = slotTypes;
+        var coalescedCallResults = _coalescedAggregateCallDestinations.Keys
+            .Select(call => call.ResultName!)
+            .ToHashSet();
+        var variablesBySlot = variableToSlot.ToLookup(pair => pair.Value, pair => pair.Key);
 
         // Pre-scan function for address-only struct member accesses (VBCC 68K fix)
         // IMPORTANT: This must be called AFTER liveness analysis sets up _variableToSlot,
@@ -1900,6 +1908,11 @@ public partial class CCodeGenerator
         // These are declared at function scope since they may be reused across the function
         foreach (var (slotName, slotType) in slotTypes)
         {
+            // A coalesced aggregate call writes directly into its destination. If every
+            // value assigned to this slot was such a call result, the slot is dead.
+            if (variablesBySlot[slotName].All(coalescedCallResults.Contains))
+                continue;
+
             // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
             if (slotType is IrVoidType)
                 continue;
@@ -2157,8 +2170,7 @@ public partial class CCodeGenerator
                     {
                         ResultName: not null,
                         ReturnType: IrStructType or IrEnumType or IrTupleType
-                    } call ||
-                    TypeContainsDroppableContent(call.ReturnType))
+                    } call)
                 {
                     continue;
                 }
@@ -7707,7 +7719,7 @@ public partial class CCodeGenerator
                                             // we need to copy field-by-field instead of assigning the pointer
                                             if (kvp.Value is IrVariable fieldVar &&
                                                 kvp.Value.Type is IrStructType fieldStructType &&
-                                                _pointerConvertedParameters.Contains(SanitizeVariableName(fieldVar.Name)))
+                                                _pointerConvertedParameters.Contains(fieldVar.Name))
                                             {
                                                 // This is a by-value parameter that was converted to a pointer
                                                 // Copy each field of the struct
@@ -11122,7 +11134,10 @@ public partial class CCodeGenerator
             return "_" + name.Substring(1);
         }
 
-        return name;
+        // C puts local variables and functions in the same identifier namespace.
+        // Novus permits the natural `let devices = devices()` shadowing pattern,
+        // so keep the local distinct without changing source semantics.
+        return _cFunctionIdentifiers.Contains(name) ? "__novus_local_" + name : name;
     }
 
     internal string GetBinaryOperator(IrBinaryOp.OpKind operation)
@@ -11695,7 +11710,7 @@ public partial class CCodeGenerator
 
         // Add regular parameters
         parameters.AddRange(function.Parameters
-            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, p.Name, p.Register)));
+            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, SanitizeVariableName(p.Name), p.Register)));
 
         return parameters.Count > 0 ? string.Join(", ", parameters) : "void";
     }

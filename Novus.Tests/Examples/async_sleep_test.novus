@@ -34,7 +34,7 @@ fn main() -> i32 {
         Result::Ok(_) => {}
     }
     var timer = timer_result.unwrap()
-    let start = timer.get_time().unwrap()
+    let start = timer.time().unwrap()
 
     // Allocate a signal for the executor
     let signal_bit = AllocSignal(-1)
@@ -83,7 +83,7 @@ fn main() -> i32 {
     FreeSignal(signal_bit)
 
     // Get end time and report
-    let end = timer.get_time().unwrap()
+    let end = timer.time().unwrap()
     let elapsed = end.sub(start)
     write("Total time: %lu.%03lu seconds\n",
         elapsed.get_secs(),

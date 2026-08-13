@@ -1,10 +1,10 @@
 from std::core import Error, Option, Result
 from std::memory import Buffer, Slice
-from std::string import Str
+from std::string import Str, path_filename
 from amiga::dos import File
 from rdb import RdbFileSystem
 
-const MAX_HANDLER_BYTES: u32 = 512 * 1024
+const MAX_HANDLER_BYTES: usize = 512 * 1024
 const PFS3: u32 = $50465303
 const PDS3: u32 = $50445303
 const SFS2: u32 = $53465302
@@ -34,7 +34,7 @@ impl Error for FsLoadError {
     fn message(&self) -> *u8 { return FsLoadError::message(self) }
 }
 
-fn byte(image: &Slice<u8>, index: u32) -> u8 {
+fn byte(image: &Slice<u8>, index: usize) -> u8 {
     return match image.get(index) {
         Option::Some(value) => *value,
         Option::None => 0,
@@ -47,7 +47,7 @@ pub fn is_hunk_file(image: Slice<u8>) -> bool {
         byte(&image, 2) == 3 && byte(&image, 3) == $F3
 }
 
-fn parse_number_pair(image: &Slice<u8>, start: u32, end: u32) -> Option<(u32, u32)> {
+fn parse_number_pair(image: &Slice<u8>, start: usize, end: usize) -> Option<(u32, usize)> {
     var cursor = start
     return Option::None unless cursor < end && byte(image, cursor) >= (u8)'0' && byte(image, cursor) <= (u8)'9'
     var major: u32 = 0
@@ -147,7 +147,15 @@ pub fn load_file_system(path: Str) -> Result<RdbFileSystem, FsLoadError> {
     }
     let image = storage.as_bytes()
     return Result::Err(FsLoadError::NotLoadFile) unless is_hunk_file(image)
-    let dos_type = detect_dos_type(image)
+    var dos_type = detect_dos_type(image)
+    if dos_type == 0 {
+        match path_filename(path) {
+            Option::Some(name) => {
+                if name.eq_ignore_case("FastFileSystem") { dos_type = DOS3 }
+            },
+            Option::None => {},
+        }
+    }
     return match RdbFileSystem::embedded(dos_type, parse_version(image), $1B0, 4096, 10, -1, image) {
         Result::Ok(value) => Result::Ok(value),
         Result::Err(_) => Result::Err(FsLoadError::OutOfMemory),

@@ -2,12 +2,12 @@
 // This deliberately does not use ByteWriter to build the expected blocks.
 
 from std::core import Option, Result
-from std::memory::slice import MutSlice
+from std::memory import MutSlice
 from std::test::test import expect_true
 from rdb import DOS_TYPE_FFS_INTL, RdbFileSystem, RdbModel, RdbPartition
 
 @suppress("W0002", "fixture helper intentionally selects individual bytes")
-fn put_be_u32(consuming bytes: MutSlice<u8>, offset: u32, value: u32) {
+fn put_be_u32(consuming bytes: MutSlice<u8>, offset: usize, value: u32) {
     var data = bytes
     let _b0 = data.set(offset, (u8)(value >> 24))
     let _b1 = data.set(offset + 1, (u8)(value >> 16))
@@ -16,7 +16,7 @@ fn put_be_u32(consuming bytes: MutSlice<u8>, offset: u32, value: u32) {
 }
 
 fn blocks_equal(left: &[u8; 512], right: &[u8; 512]) -> bool {
-    var index: u32 = 0
+    var index: usize = 0
     while index < 512 {
         if left[index] != right[index] { return false }
         index++
@@ -26,7 +26,7 @@ fn blocks_equal(left: &[u8; 512], right: &[u8; 512]) -> bool {
 
 fn copy_block(consuming image: MutSlice<u8>, block_number: u32, block: &[u8; 512]) {
     var target = image
-    var index: u32 = 0
+    var index: usize = 0
     while index < 512 {
         let _ = target.set(block_number * 512 + index, block[index])
         index++
@@ -110,7 +110,7 @@ fn upstream_load_segment() -> [u8; 512] {
     put_be_u32(&var block, 12, 7)
     put_be_u32(&var block, 16, $FFFFFFFF)
     let image = minimal_hunk()
-    var index: u32 = 0
+    var index: usize = 0
     while index < 40 {
         block[20 + index] = image[index]
         index++
@@ -144,6 +144,7 @@ fn upstream_partition(name_last: u8, checksum: u32, next: u32, low: u32, high: u
     return block
 }
 
+#[stack_size(60000)]
 fn fixtures_are_compatible() -> bool {
     let expected_header = upstream_header()
     let expected_part0 = upstream_partition(48, $682B113F, 2, 8, 23)
@@ -288,7 +289,7 @@ fn fixtures_are_compatible() -> bool {
     return true
 }
 
-#[stack_size(32768)]
+#[stack_size(60000)]
 @test("RDB blocks match pinned upstream fixtures")
 pub fn test_rdb_fixtures() {
     expect_true(fixtures_are_compatible(), "RDSK, PART, FSHD, and LSEG bytes match")

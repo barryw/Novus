@@ -5,7 +5,7 @@
 // For low-level FFI access, use amiga::raw::devices::timer
 
 from std::core import Option, Result, Drop, Error
-from std::string::core import Str
+from std::string import Str
 from amiga::sys::exec::errors import ExecError
 from amiga::raw::structs import timeval, timerequest, IORequest, MsgPort, Message, IOStdReq
 from amiga::raw::devices::timer import AddTime, SubTime, CmpTime, GetSysTime

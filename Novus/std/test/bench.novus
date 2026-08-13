@@ -126,7 +126,7 @@ impl BenchRunner {
 
     /// Get current time in microseconds
     fn now_us(&var self) -> u32 {
-        match self.timer.get_time() {
+        match self.timer.time() {
             Result::Ok(d) => {
                 let micros = d.as_micros()
                 return micros
