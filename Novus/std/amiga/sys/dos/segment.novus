@@ -8,21 +8,38 @@ from std::memory import Slice
 from amiga::sys::dos::bptr import BPtr
 from std::string import FixedCString, Str
 
+/// Reports failures from segment operations.
 pub enum SegmentError {
+    /// Indicates empty image.
     EmptyImage,
+    /// Indicates load failed.
     LoadFailed,
 }
 
 /// NDK-level launch metadata for an in-memory filesystem handler. Application
 /// code normally receives an `amiga::dos::EmbeddedFileSystem` instead.
 pub struct HandlerImage {
+    /// The image value stored by `HandlerImage`.
     image: Slice<u8>
+    /// The global vec value stored by `HandlerImage`.
     global_vec: i32
+    /// The stack size value stored by `HandlerImage`.
     stack_size: u32
+    /// The priority value stored by `HandlerImage`.
     priority: i32
 }
 
 impl HandlerImage {
+    /// Creates a new `HandlerImage` value.
+    ///
+    /// # Parameters
+    /// * `image` - The `Slice<u8>` value used as image.
+    /// * `global_vec` - The `i32` value used as global vec.
+    /// * `stack_size` - The `u32` value used as stack size.
+    /// * `priority` - The priority value.
+    ///
+    /// # Returns
+    /// The resulting `HandlerImage` value.
     pub fn new(image: Slice<u8>, global_vec: i32, stack_size: u32, priority: i32) -> HandlerImage {
         return HandlerImage {
             image: image,
@@ -32,13 +49,33 @@ impl HandlerImage {
         }
     }
 
+    /// Returns the image value associated with `HandlerImage`.
+    ///
+    /// # Returns
+    /// The resulting `Slice<u8>` value.
     pub fn image(&self) -> Slice<u8> { return self.image }
+    /// Returns the global vec value associated with `HandlerImage`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn global_vec(&self) -> i32 { return self.global_vec }
+    /// Returns the stack size value associated with `HandlerImage`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn stack_size(&self) -> u32 { return self.stack_size }
+    /// Returns the priority value associated with `HandlerImage`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn priority(&self) -> i32 { return self.priority }
 }
 
 impl SegmentError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             SegmentError::EmptyImage => "The HUNK image is empty",
@@ -93,13 +130,23 @@ amiga fn segment_free(memory: *u8 in a1, size: u32 in d0) {
 
 /// Owns every hunk allocated by InternalLoadSeg until explicitly transferred.
 pub struct LoadedSegment {
+    /// The segment value stored by `LoadedSegment`.
     segment: BPtr<u8>
+    /// The active value stored by `LoadedSegment`.
     active: bool
+    /// The file backed value stored by `LoadedSegment`.
     file_backed: bool
 }
 
 impl LoadedSegment {
     @suppress("W0002", "InternalLoadSeg uses a pointer-sized BPTR handle and callback table")
+    /// Creates `LoadedSegment` from hunk.
+    ///
+    /// # Parameters
+    /// * `image` - The `Slice<u8>` value used as image.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_hunk(image: Slice<u8>) -> Result<LoadedSegment, SegmentError> {
         if image.is_empty() { return Result::Err(SegmentError::EmptyImage) }
 
@@ -145,6 +192,10 @@ impl LoadedSegment {
         return Result::Ok(LoadedSegment { segment: segment, active: true, file_backed: true })
     }
 
+    /// Returns the segment value associated with `LoadedSegment`.
+    ///
+    /// # Returns
+    /// A shared borrow of `BPtr<u8>` tied to the receiver.
     pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
 
     /// Transfer the segment to a permanent DOS owner.
@@ -170,11 +221,20 @@ impl Drop for LoadedSegment {
 
 /// Owns a segment list loaded from an AmigaDOS file.
 pub struct LoadedFileSegment {
+    /// The segment value stored by `LoadedFileSegment`.
     segment: BPtr<u8>
+    /// The active value stored by `LoadedFileSegment`.
     active: bool
 }
 
 impl LoadedFileSegment {
+    /// Opens `LoadedFileSegment`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(path: Str) -> Result<LoadedFileSegment, SegmentError> {
         let c_path = match FixedCString::<255>::new_from_str(path) {
             Result::Ok(value) => value,
@@ -189,6 +249,10 @@ impl LoadedFileSegment {
         return Result::Ok(LoadedFileSegment { segment: segment, active: true })
     }
 
+    /// Returns the segment value associated with `LoadedFileSegment`.
+    ///
+    /// # Returns
+    /// A shared borrow of `BPtr<u8>` tied to the receiver.
     pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
 
     /// Transfer the loaded image to an operating-system resident.

@@ -17,8 +17,14 @@ from amiga::raw::structs import IntuiText, NewScreen, NewWindow, RastPort
 // ============================================================================
 
 @library("intuition.library")
+/// Legacy Intuition initialization entry point.
+/// Applications do not normally call this; opening intuition.library performs
+/// the required initialization.
 extern pub fn OpenIntuition()
 @library("intuition.library")
+/// Legacy internal Intuition input-event entry point.
+/// Applications should send input through input.device; `iEvent` is borrowed
+/// only for this call and must describe a valid InputEvent chain.
 extern pub fn Intuition(iEvent: *InputEvent)
 /// Add a gadget to the gadget list of a window.
 ///

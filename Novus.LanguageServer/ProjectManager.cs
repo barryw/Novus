@@ -104,6 +104,9 @@ public class ProjectManager
             var tomlTable = Toml.ToModel(state.Text);
             state.TomlModel = tomlTable;
             state.ParseError = null;
+            state.TargetCpu = null;
+            state.Fpu = null;
+            state.Chipset = null;
 
             // Extract target_cpu from [build] section if present
             if (tomlTable.TryGetValue("build", out var buildObj) && buildObj is TomlTable buildTable)
@@ -113,6 +116,8 @@ public class ProjectManager
                     state.TargetCpu = cpuValue;
                     Console.Error.WriteLine($"[LSP] Extracted target_cpu: {cpuValue} from {UriToFilePath(state.Uri)}");
                 }
+                state.Fpu = buildTable.TryGetValue("fpu", out var fpuObj) ? fpuObj as string : null;
+                state.Chipset = buildTable.TryGetValue("chipset", out var chipsetObj) ? chipsetObj as string : null;
             }
 
             // Also check [workspace.build] for workspace.toml files
@@ -125,6 +130,8 @@ public class ProjectManager
                         state.TargetCpu = cpuValue;
                         Console.Error.WriteLine($"[LSP] Extracted workspace target_cpu: {cpuValue} from {UriToFilePath(state.Uri)}");
                     }
+                    state.Fpu = wsBuildTable.TryGetValue("fpu", out var fpuObj) ? fpuObj as string : null;
+                    state.Chipset = wsBuildTable.TryGetValue("chipset", out var chipsetObj) ? chipsetObj as string : null;
                 }
             }
 
@@ -145,37 +152,28 @@ public class ProjectManager
     /// <param name="documentUri">The URI of the document to find the project for</param>
     /// <returns>The target CPU string (e.g., "68020"), or null if not specified</returns>
     public string? GetTargetCpuForDocument(string documentUri)
+        => GetTargetConfigurationForDocument(documentUri)?.Cpu;
+
+    /// <summary>
+    /// Gets the nearest open project or workspace hardware target for a source document.
+    /// </summary>
+    public (string Cpu, string Fpu, string Chipset)? GetTargetConfigurationForDocument(string documentUri)
     {
-        // First try to find a project.toml in the same directory or parent directories
         var documentPath = UriToFilePath(documentUri);
         var directory = System.IO.Path.GetDirectoryName(documentPath);
 
         while (!string.IsNullOrEmpty(directory))
         {
-            // Check for project.toml
-            var projectTomlPath = System.IO.Path.Combine(directory, "project.toml");
-            var projectTomlUri = $"file://{projectTomlPath}";
-
-            foreach (var project in _projects.Values)
+            foreach (var fileName in new[] { "project.toml", "novus.toml", "workspace.toml" })
             {
-                if (UriToFilePath(project.Uri) == projectTomlPath && project.TargetCpu != null)
+                var configPath = System.IO.Path.Combine(directory, fileName);
+                foreach (var project in _projects.Values)
                 {
-                    return project.TargetCpu;
+                    if (UriToFilePath(project.Uri) == configPath && project.TargetCpu != null)
+                        return (project.TargetCpu, project.Fpu ?? "auto", project.Chipset ?? "auto");
                 }
             }
 
-            // Check for workspace.toml
-            var workspaceTomlPath = System.IO.Path.Combine(directory, "workspace.toml");
-
-            foreach (var project in _projects.Values)
-            {
-                if (UriToFilePath(project.Uri) == workspaceTomlPath && project.TargetCpu != null)
-                {
-                    return project.TargetCpu;
-                }
-            }
-
-            // Move to parent directory
             directory = System.IO.Path.GetDirectoryName(directory);
         }
 
@@ -233,6 +231,12 @@ public class TomlProjectState
     /// Null if not specified.
     /// </summary>
     public string? TargetCpu { get; set; }
+
+    /// <summary>Gets or sets the configured FPU target.</summary>
+    public string? Fpu { get; set; }
+
+    /// <summary>Gets or sets the configured chipset target.</summary>
+    public string? Chipset { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TomlProjectState"/> class.

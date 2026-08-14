@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Update Novus FFI files with NDK autodoc documentation.
+Update Novus FFI files with complete NDK autodoc documentation.
 
 This script reads Novus FFI files, finds extern fn declarations,
 and adds documentation comments from the NDK autodocs.
@@ -64,36 +64,30 @@ class FFIUpdater:
                 func_name = match.group(2)
                 self.stats['functions_found'] += 1
 
-                # Check if there's already a doc comment before this line
+                attributes = []
+                while new_lines and new_lines[-1].strip().startswith('@'):
+                    attributes.insert(0, new_lines.pop())
                 has_existing_docs = self._has_doc_comment_before(new_lines)
+                doc = self.autodoc_parser.get_function(func_name)
 
                 if has_existing_docs and not self.force_update:
                     self.stats['functions_already_documented'] += 1
-                    new_lines.append(line)
-                else:
-                    # If force_update, remove existing doc comments
-                    if has_existing_docs and self.force_update:
-                        # Remove trailing doc comments from new_lines
-                        while new_lines and new_lines[-1].strip().startswith('///'):
-                            new_lines.pop()
-                        # Also remove trailing blank lines after removing docs
+                elif doc:
+                    if has_existing_docs:
                         while new_lines and not new_lines[-1].strip():
                             new_lines.pop()
-                    # Try to find autodoc for this function
-                    doc = self.autodoc_parser.get_function(func_name)
-
-                    if doc:
-                        # Generate Novus doc comments
-                        novus_doc = self._generate_compact_doc(doc, indent)
-                        if novus_doc:
-                            new_lines.append(novus_doc)
-                            self.stats['functions_documented'] += 1
-                        else:
-                            self.stats['functions_no_autodoc'] += 1
+                        while new_lines and new_lines[-1].strip().startswith('///'):
+                            new_lines.pop()
+                    novus_doc = self._generate_compact_doc(doc, indent)
+                    if novus_doc:
+                        new_lines.append(novus_doc)
+                        self.stats['functions_documented'] += 1
                     else:
                         self.stats['functions_no_autodoc'] += 1
-
-                    new_lines.append(line)
+                else:
+                    self.stats['functions_no_autodoc'] += 1
+                new_lines.extend(attributes)
+                new_lines.append(line)
             else:
                 new_lines.append(line)
 
@@ -119,113 +113,9 @@ class FFIUpdater:
         return False
 
     def _generate_compact_doc(self, doc: FunctionDoc, indent: str = "") -> Optional[str]:
-        """Generate compact Novus doc comment (summary + key info only)"""
-        lines = []
-
-        # Summary line (required)
-        if doc.summary:
-            summary = doc.summary[0].upper() + doc.summary[1:] if doc.summary else ""
-            lines.append(f"{indent}/// {summary}")
-        else:
-            return None
-
-        # Add abbreviated function description (first 2 sentences max)
-        if doc.function_desc:
-            desc = doc.function_desc.strip()
-            # Get first two sentences
-            sentences = re.split(r'(?<=[.!?])\s+', desc)
-            short_desc = ' '.join(sentences[:2])
-            if short_desc and short_desc != doc.summary:
-                lines.append(f"{indent}///")
-                # Wrap at ~80 chars
-                words = short_desc.split()
-                current_line = f"{indent}///"
-                for word in words:
-                    if len(current_line) + len(word) + 1 > 80:
-                        lines.append(current_line)
-                        current_line = f"{indent}/// {word}"
-                    else:
-                        current_line += f" {word}"
-                if current_line.strip() != f"{indent}///".strip():
-                    lines.append(current_line)
-
-        # Add inputs summary if present
-        if doc.inputs and len(doc.inputs) > 0:
-            lines.append(f"{indent}///")
-            lines.append(f"{indent}/// # Arguments")
-            for inp in doc.inputs[:8]:  # Max 8 params
-                inp = inp.strip()
-                if ' - ' in inp:
-                    param, desc = inp.split(' - ', 1)
-                    param = param.strip()
-                    desc = desc.strip()
-                    # Full description, wrapped at 76 chars for readability
-                    first_line = f"{indent}/// * `{param}` - "
-                    remaining_width = 76 - len(first_line)
-                    if len(desc) <= remaining_width:
-                        lines.append(f"{first_line}{desc}")
-                    else:
-                        # Wrap to multiple lines
-                        words = desc.split()
-                        current_line = first_line
-                        continuation_indent = f"{indent}///   "
-                        for word in words:
-                            if len(current_line) + len(word) + 1 <= 76:
-                                current_line += word + " "
-                            else:
-                                lines.append(current_line.rstrip())
-                                current_line = continuation_indent + word + " "
-                        if current_line.strip() != continuation_indent.strip():
-                            lines.append(current_line.rstrip())
-
-        # Add return info if present
-        if doc.result:
-            # Get first paragraph (up to blank line)
-            result_lines = doc.result.strip().split('\n')
-            result_paragraphs = []
-            current_para = []
-            for line in result_lines:
-                if line.strip():
-                    current_para.append(line.strip())
-                elif current_para:
-                    result_paragraphs.append(' '.join(current_para))
-                    current_para = []
-            if current_para:
-                result_paragraphs.append(' '.join(current_para))
-
-            if result_paragraphs:
-                lines.append(f"{indent}///")
-                lines.append(f"{indent}/// # Returns")
-                # Use first paragraph, wrapped
-                result_text = result_paragraphs[0]
-                words = result_text.split()
-                current_line = f"{indent}/// "
-                for word in words:
-                    if len(current_line) + len(word) + 1 <= 76:
-                        current_line += word + " "
-                    else:
-                        lines.append(current_line.rstrip())
-                        current_line = f"{indent}/// " + word + " "
-                if current_line.strip() != f"{indent}///".strip():
-                    lines.append(current_line.rstrip())
-
-        # Add warning if present (abbreviated)
-        if doc.warning:
-            warning = doc.warning.strip().split('\n')[0]
-            if warning:
-                lines.append(f"{indent}///")
-                lines.append(f"{indent}/// # Warning")
-                if len(warning) > 70:
-                    warning = warning[:67] + "..."
-                lines.append(f"{indent}/// {warning}")
-
-        # Add see also
-        if doc.see_also:
-            see_also = ', '.join(doc.see_also[:5])  # Max 5 references
-            lines.append(f"{indent}///")
-            lines.append(f"{indent}/// See also: {see_also}")
-
-        return '\n'.join(lines) if lines else None
+        """Generate the complete structured autodoc as Novus doc comments."""
+        rendered = doc.to_novus_doc()
+        return '\n'.join(indent + line for line in rendered.splitlines()) if rendered else None
 
 
 def main():
@@ -249,12 +139,13 @@ def main():
         print(f"Error: {ffi_path} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Updating {ffi_path}...", file=sys.stderr)
     updater = FFIUpdater(autodoc_parser, force_update=args.force)
-    result = updater.update_file(ffi_path, dry_run=args.dry_run)
-
-    if args.dry_run:
-        print(result)
+    files = sorted(ffi_path.rglob('*.novus')) if ffi_path.is_dir() else [ffi_path]
+    for path in files:
+        print(f"Updating {path}...", file=sys.stderr)
+        result = updater.update_file(path, dry_run=args.dry_run)
+        if args.dry_run:
+            print(result)
 
     # Print statistics
     print(f"\nStatistics:", file=sys.stderr)

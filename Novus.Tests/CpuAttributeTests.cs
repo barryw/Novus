@@ -217,6 +217,20 @@ fn main() -> i32 {
 /// </summary>
 public class CpuPreprocessorConstantsTests
 {
+    [Fact]
+    public void GetPreprocessorConstantsForTarget_IncludesFpuChipsetAndBuildMode()
+    {
+        var constants = IrBuilderConfiguration.GetPreprocessorConstantsForTarget(
+            "68040", "68040", "AGA", debug: false);
+
+        Assert.True(constants["M68040"]);
+        Assert.True(constants["FPU_68040"]);
+        Assert.True(constants["AGA"]);
+        Assert.True(constants["ECS_PLUS"]);
+        Assert.True(constants["RELEASE"]);
+        Assert.False(constants["DEBUG"]);
+    }
+
     [Theory]
     [InlineData("68000")]
     [InlineData("68010")]

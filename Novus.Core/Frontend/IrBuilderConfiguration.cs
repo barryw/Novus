@@ -178,25 +178,7 @@ public class IrBuilderConfiguration
     /// </summary>
     public static Dictionary<string, bool> GetDefaultPreprocessorConstants()
     {
-        return new Dictionary<string, bool>
-        {
-            // Build mode - default to debug for tests
-            ["DEBUG"] = true,
-            ["RELEASE"] = false,
-
-            // CPU-specific constants - default to 68020 as recommended target
-            ["M68020"] = true,
-            ["M68030"] = false,
-            ["M68040"] = false,
-            ["M68060"] = false,
-
-            // CPU hierarchy constants - 68020+ is default
-            ["M68020_PLUS"] = true,
-            ["M68030_PLUS"] = false,
-            ["M68040_PLUS"] = false,
-            ["M68060_PLUS"] = false,
-            ["M68080"] = false,  // Apollo Vampire FPGA (AMMX)
-        };
+        return GetPreprocessorConstantsForTarget("68020", "auto", "auto", debug: true);
     }
 
     /// <summary>
@@ -207,14 +189,26 @@ public class IrBuilderConfiguration
     /// <returns>Dictionary of preprocessor constants configured for the target CPU</returns>
     public static Dictionary<string, bool> GetPreprocessorConstantsForCpu(string? targetCpu)
     {
+        return GetPreprocessorConstantsForTarget(targetCpu, "auto", "auto", debug: true);
+    }
+
+    /// <summary>
+    /// Creates the complete compiler/LSP preprocessor environment for a hardware target.
+    /// </summary>
+    public static Dictionary<string, bool> GetPreprocessorConstantsForTarget(
+        string? targetCpu, string? fpu, string? chipset, bool debug)
+    {
         if (targetCpu is not (null or "auto" or "68020" or "68030" or "68040" or "68060" or "68080"))
             throw new ArgumentException($"Unsupported CPU '{targetCpu}'; Novus requires 68020 or newer.", nameof(targetCpu));
 
+        var cpu = targetCpu is null or "auto" ? "68020" : targetCpu;
+        fpu ??= "auto";
+        chipset ??= "auto";
+
         var constants = new Dictionary<string, bool>
         {
-            // Build mode - default to debug
-            ["DEBUG"] = true,
-            ["RELEASE"] = false,
+            ["DEBUG"] = debug,
+            ["RELEASE"] = !debug,
 
             // Initialize all CPU flags to false
             ["M68020"] = false,
@@ -228,14 +222,27 @@ public class IrBuilderConfiguration
             ["M68030_PLUS"] = false,
             ["M68040_PLUS"] = false,
             ["M68060_PLUS"] = false,
+            ["M68080_PLUS"] = false,
+
+            ["FPU_NONE"] = fpu is "none" or "soft",
+            ["FPU_SOFT"] = fpu == "soft",
+            ["FPU_68881"] = fpu == "68881",
+            ["FPU_68882"] = fpu == "68882",
+            ["FPU_68040"] = fpu == "68040" || (cpu == "68040" && fpu is not ("none" or "soft")),
+            ["FPU_68060"] = fpu == "68060" || (cpu == "68060" && fpu is not ("none" or "soft")),
+            ["HAS_FPU"] = fpu is not ("none" or "soft" or "auto"),
+
+            ["OCS"] = chipset == "OCS",
+            ["ECS"] = chipset == "ECS",
+            ["AGA"] = chipset == "AGA",
+            ["ECS_PLUS"] = chipset is "ECS" or "AGA",
+            ["AGA_PLUS"] = chipset == "AGA",
         };
 
         // Set CPU-specific and hierarchy flags based on target
-        switch (targetCpu)
+        switch (cpu)
         {
             case "68020":
-            case "auto":  // Default to 68020
-            case null:    // No CPU specified - use default
                 constants["M68020"] = true;
                 constants["M68020_PLUS"] = true;
                 break;
@@ -268,6 +275,7 @@ public class IrBuilderConfiguration
                 constants["M68030_PLUS"] = true;
                 constants["M68040_PLUS"] = true;
                 constants["M68060_PLUS"] = true;
+                constants["M68080_PLUS"] = true;
                 break;
         }
 

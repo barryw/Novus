@@ -111,6 +111,7 @@ impl Waker {
 /// When a future returns Poll::Pending, it must have arranged for
 /// the waker to be signaled when it's ready to make progress.
 pub struct Context {
+    /// The waker value stored by `Context`.
     waker: Waker,
 }
 
@@ -200,11 +201,23 @@ pub trait Future<T> {
 /// }
 /// ```
 pub struct Ready<T> {
+    /// The value value stored by `Ready`.
     value: Option<T>,
+    /// The completed value stored by `Ready`.
     completed: bool,
 }
 
 impl<T> Ready<T> {
+    /// Creates a new `Ready` value.
+    ///
+    /// # Parameters
+    /// * `value` - The value; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `Ready<T>` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn new(consuming value: T) -> Ready<T> {
         return Ready { value: Option::Some(value), completed: false }
     }
@@ -238,10 +251,15 @@ pub fn ready<T>(consuming value: T) -> Ready<T> {
 ///
 /// Useful as a placeholder or in select! when you want to disable a branch.
 pub struct Pending<T> {
+    /// The  phantom value stored by `Pending`.
     _phantom: u8,  // Zero-sized placeholder
 }
 
 impl<T> Pending<T> {
+    /// Creates a new `Pending` value.
+    ///
+    /// # Returns
+    /// The resulting `Pending<T>` value.
     pub fn new() -> Pending<T> {
         return Pending { _phantom: 0 }
     }

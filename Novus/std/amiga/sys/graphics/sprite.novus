@@ -31,6 +31,7 @@ static var DMA_ENABLED: bool = false
 
 // Initialize the sprite system - enables sprite DMA
 // PAL/NTSC detection is handled automatically by amiga::sys::hardware::chipset::DISPLAY()
+/// Applies init sprite system to the module.
 pub fn init_sprite_system() {
     unsafe {
         if DMA_ENABLED {
@@ -48,6 +49,7 @@ pub fn init_sprite_system() {
 }
 
 // Deprecated: Use init_sprite_system() instead
+/// Detects display mode for the module.
 pub fn detect_display_mode() {
     init_sprite_system()
 }
@@ -67,10 +69,15 @@ fn get_vstart_offset() -> u16 {
 //   [0-3]   Control words (POS/CTL) - filled at runtime based on position
 //   [4...]  Pixel data: plane0_row0, plane1_row0, plane0_row1, plane1_row1, ...
 //   [end]   Terminator: 0x0000, 0x0000
+/// Represents a sprite data value.
 pub struct SpriteData {
+    /// The data ptr value stored by `SpriteData`.
     data_ptr: *u16,      // Points to sprite data in CHIP RAM
+    /// The owns memory value stored by `SpriteData`.
     owns_memory: bool,   // true = runtime allocated, false = compile-time const (future)
+    /// The height value stored by `SpriteData`.
     height: u16,         // Sprite height in scanlines
+    /// The width value stored by `SpriteData`.
     width: u16,          // Always 16 for regular sprites
 }
 
@@ -80,6 +87,14 @@ impl SpriteData {
     // Minimum 4 words required (control + 1 line + terminator)
     //
     // Note: Control words at offset 0-3 will be overwritten at runtime when sprite is shown
+    /// Wraps a raw representation as `SpriteData`.
+    ///
+    /// # Parameters
+    /// * `data` - The data used by the operation.
+    /// * `len` - The requested len.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw(data: *u16, len: u32) -> Result<SpriteData, GraphicsError> {
         if len < 4 {
             return Result::Err(GraphicsError::InvalidSpriteData)
@@ -130,16 +145,28 @@ impl SpriteData {
     // }
 
     // Get pointer to sprite data (for hardware/OS use)
+    /// Borrows `SpriteData` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*u16` value.
     pub fn as_ptr(&self) -> *u16 {
         return self.data_ptr
     }
 
     // Get sprite height in scanlines
+    /// Returns the height value associated with `SpriteData`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn height(&self) -> u16 {
         return self.height
     }
 
     // Get sprite width (always 16 pixels)
+    /// Returns the width value associated with `SpriteData`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn width(&self) -> u16 {
         return self.width
     }
@@ -163,18 +190,33 @@ impl Drop for SpriteData {
 static var SPRITE_CHANNELS_ALLOCATED: u8 = 0
 
 // Manages a single hardware sprite channel (0-7)
+/// Owns a sprite handle and releases its resources when dropped.
 pub struct SpriteHandle {
+    /// The channel value stored by `SpriteHandle`.
     channel: u8,         // 0-7
+    /// The is allocated value stored by `SpriteHandle`.
     is_allocated: bool,
+    /// The custom value stored by `SpriteHandle`.
     custom: *u8,  // Pointer to Custom chipset registers at $DFF000
+    /// The visible value stored by `SpriteHandle`.
     visible: bool,       // Track visibility state
+    /// The pos x value stored by `SpriteHandle`.
     pos_x: i16,          // Current X position
+    /// The pos y value stored by `SpriteHandle`.
     pos_y: i16,          // Current Y position
+    /// The sprite height value stored by `SpriteHandle`.
     sprite_height: u16,  // Current sprite height (for vstop calculation)
 }
 
 impl SpriteHandle {
     // Allocate a sprite channel
+    /// Allocates `SpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `channel` - The `u8` value used as channel.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn alloc(channel: u8) -> Result<SpriteHandle, GraphicsError> {
         if channel > 7 {
             return Result::Err(GraphicsError::InvalidSpriteChannel)
@@ -204,6 +246,15 @@ impl SpriteHandle {
 
     // Show sprite at position
     // WARNING: sprite must remain valid (not dropped) while in use by hardware
+    /// Makes `SpriteHandle` visible.
+    ///
+    /// # Parameters
+    /// * `sprite` - The `&SpriteData` value used as sprite.
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, sprite: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -243,6 +294,14 @@ impl SpriteHandle {
     }
 
     // Move sprite to new position
+    /// Moves `SpriteHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -291,6 +350,10 @@ impl SpriteHandle {
     }
 
     // Hide sprite (move offscreen)
+    /// Hides `SpriteHandle`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self) -> Result<(), GraphicsError> {
         self.visible = false
         self.move_to(-100, -100)?
@@ -298,16 +361,32 @@ impl SpriteHandle {
     }
 
     // Query if sprite is visible
+    /// Returns whether visible for `SpriteHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_visible(&self) -> bool {
         return self.visible
     }
 
     // Get current position
+    /// Returns the position value associated with `SpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn position(&self) -> (i16, i16) {
         return (self.pos_x, self.pos_y)
     }
 
     // Move sprite by relative offset
+    /// Moves `SpriteHandle` by a relative offset.
+    ///
+    /// # Parameters
+    /// * `dx` - The `i16` value used as dx.
+    /// * `dy` - The `i16` value used as dy.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn move_by(&var self, dx: i16, dy: i16) -> Result<(), GraphicsError> {
         let new_x = self.pos_x + dx
         let new_y = self.pos_y + dy
@@ -316,6 +395,10 @@ impl SpriteHandle {
 
     // Check if sprite position is within screen bounds
     // Assumes standard screen size (320x256 for PAL, 320x200 for NTSC)
+    /// Returns whether on screen for `SpriteHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_on_screen(&self) -> bool {
         if self.pos_x < -16 || self.pos_x > 320 {
             return false
@@ -332,6 +415,13 @@ impl SpriteHandle {
 
     // Change sprite image (for animation)
     // WARNING: sprite must remain valid (not dropped) while in use by hardware
+    /// Sets image for `SpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `sprite` - The `&SpriteData` value used as sprite.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_image(&var self, sprite: &SpriteData) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -373,6 +463,13 @@ impl SpriteHandle {
     //
     // Setting colors for sprite 0 will affect sprite 1, and vice versa.
     // Same applies to all other pairs (2+3, 4+5, 6+7).
+    /// Sets colors for `SpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `colors` - The `&[Color; 3]` value used as colors.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_colors(&var self, colors: &[Color; 3]) -> Result<(), GraphicsError> {
 
         let base_color: i32 = match self.channel {
@@ -404,6 +501,13 @@ impl SpriteHandle {
 
     // Check if this sprite has collided with another sprite channel
     // Returns true if a collision was detected since the last clear
+    /// Checks collision with for `SpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `other_channel` - The `u8` value used as other channel.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn check_collision_with(&self, other_channel: u8) -> bool {
         if other_channel > 7 {
             return false
@@ -485,6 +589,14 @@ impl SpriteHandle {
     // Get list of all sprite channels that this sprite has collided with
     // Returns array of channel numbers (0-7) that collided
     // Note: The caller must allocate the array and pass in the size
+    /// Computes get collisions for `SpriteHandle` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `out_channels` - The `*u8` value used as out channels.
+    /// * `max_channels` - The `u32` value used as max channels.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn get_collisions(&self, out_channels: *u8, max_channels: u32) -> u32 {
         let clxdat = read_sprite_collisions()
         var count: u32 = 0
@@ -569,6 +681,7 @@ impl SpriteHandle {
     }
 
     // Release the sprite channel
+    /// Releases the operating-system resource owned by `SpriteHandle`.
     pub fn release(&var self) {
         if self.is_allocated {
             let _ = self.hide()
@@ -591,15 +704,26 @@ impl Drop for SpriteHandle {
 }
 
 // Attached sprite handle (for 15-color sprites using 2 channels)
+/// Owns a attached sprite handle and releases its resources when dropped.
 pub struct AttachedSpriteHandle {
+    /// The channel value stored by `AttachedSpriteHandle`.
     channel: u8,  // Must be even (0, 2, 4, 6)
+    /// The sprite0 value stored by `AttachedSpriteHandle`.
     sprite0: SpriteHandle,
+    /// The sprite1 value stored by `AttachedSpriteHandle`.
     sprite1: SpriteHandle,
 }
 
 impl AttachedSpriteHandle {
     // Allocate an attached sprite pair
     // channel must be even (0, 2, 4, 6) and will use channel+1 as well
+    /// Allocates an attached pair of `AttachedSpriteHandle` values.
+    ///
+    /// # Parameters
+    /// * `channel` - The `u8` value used as channel.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn alloc_pair(channel: u8) -> Result<AttachedSpriteHandle, GraphicsError> {
         if channel % 2 != 0 || channel > 6 {
             return Result::Err(GraphicsError::InvalidAttachedSpriteChannel)
@@ -616,6 +740,15 @@ impl AttachedSpriteHandle {
     }
 
     // Show attached sprite at position
+    /// Makes `AttachedSpriteHandle` visible.
+    ///
+    /// # Parameters
+    /// * `sprite` - The `&AttachedSpriteData` value used as sprite.
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, sprite: &AttachedSpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         // Show even sprite (planes 0 and 1)
         self.sprite0.show(&sprite.plane01, x, y)?
@@ -637,6 +770,14 @@ impl AttachedSpriteHandle {
     }
 
     // Move attached sprite
+    /// Moves `AttachedSpriteHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         self.sprite0.move_to(x, y)?
         self.sprite1.move_to(x, y)?
@@ -644,6 +785,10 @@ impl AttachedSpriteHandle {
     }
 
     // Hide attached sprite
+    /// Hides `AttachedSpriteHandle`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self) -> Result<(), GraphicsError> {
         self.sprite0.hide()?
         self.sprite1.hide()?
@@ -651,11 +796,22 @@ impl AttachedSpriteHandle {
     }
 
     // Get the two channel numbers used
+    /// Returns the channels value associated with `AttachedSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(u8, u8)` value.
     pub fn channels(&self) -> (u8, u8) {
         return (self.channel, self.channel + 1)
     }
 
     // Change sprite image (for animation)
+    /// Sets image for `AttachedSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `sprite` - The `&AttachedSpriteData` value used as sprite.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_image(&var self, sprite: &AttachedSpriteData) -> Result<(), GraphicsError> {
         self.sprite0.set_image(&sprite.plane01)?
         self.sprite1.set_image(&sprite.plane23)?
@@ -663,6 +819,13 @@ impl AttachedSpriteHandle {
     }
 
     // Set colors (15 colors + transparent)
+    /// Sets colors for `AttachedSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `colors` - The `&[Color; 15]` value used as colors.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_colors(&var self, colors: &[Color; 15]) -> Result<(), GraphicsError> {
         // Attached sprites use colors 16-31
         // Convert reference to pointer so we can index it
@@ -685,14 +848,28 @@ impl AttachedSpriteHandle {
 }
 
 // Attached sprite data (4 bitplanes, 16 colors)
+/// Represents a attached sprite data value.
 pub struct AttachedSpriteData {
+    /// The plane01 value stored by `AttachedSpriteData`.
     plane01: SpriteData,  // Bitplanes 0 and 1
+    /// The plane23 value stored by `AttachedSpriteData`.
     plane23: SpriteData,  // Bitplanes 2 and 3
 }
 
 impl AttachedSpriteData {
     // Create attached sprite data from two sprite data structures
     // Both must have the same height
+    /// Creates `AttachedSpriteData` from sprites.
+    ///
+    /// # Parameters
+    /// * `plane01` - The plane01; ownership transfers to this call.
+    /// * `plane23` - The plane23; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_sprites(consuming plane01: SpriteData, consuming plane23: SpriteData) -> Result<AttachedSpriteData, GraphicsError> {
         if plane01.height() != plane23.height() {
             return Result::Err(GraphicsError::InvalidSpriteData)
@@ -706,6 +883,14 @@ impl AttachedSpriteData {
 
     // Create attached sprite data from raw 4-bitplane data
     // Data format: control words, then 4 words per scanline (plane0, plane1, plane2, plane3), then terminator
+    /// Wraps a raw representation as `AttachedSpriteData`.
+    ///
+    /// # Parameters
+    /// * `data` - The data used by the operation.
+    /// * `len` - The requested len.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw(data: *u16, len: u32) -> Result<AttachedSpriteData, GraphicsError> {
         if len < 6 {
             return Result::Err(GraphicsError::InvalidSpriteData)
@@ -779,6 +964,10 @@ impl AttachedSpriteData {
     }
 
     // Get sprite height
+    /// Returns the height value associated with `AttachedSpriteData`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn height(&self) -> u16 {
         return self.plane01.height()
     }
@@ -786,6 +975,10 @@ impl AttachedSpriteData {
 
 // Read hardware sprite collision register
 // Returns bitmask of which sprites collided
+/// Reads sprite collisions for the module.
+///
+/// # Returns
+/// The resulting `u16` value.
 pub fn read_sprite_collisions() -> u16 {
     let custom = (*u16)$DFF00E  // CLXDAT register
     unsafe {
@@ -795,6 +988,7 @@ pub fn read_sprite_collisions() -> u16 {
 
 // Clear collision detection latches
 // Collisions are cleared by writing to the CLXDAT register
+/// Applies clear sprite collisions to the module.
 pub fn clear_sprite_collisions() {
     unsafe {
         let clxdat = (*u16)$DFF00E
@@ -803,6 +997,13 @@ pub fn clear_sprite_collisions() {
 }
 
 // Check if a specific sprite channel is free
+/// Returns whether channel free for the module.
+///
+/// # Parameters
+/// * `channel` - The `u8` value used as channel.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn is_channel_free(channel: u8) -> bool {
     if channel > 7 {
         return false
@@ -815,6 +1016,7 @@ pub fn is_channel_free(channel: u8) -> bool {
 
 // Release all allocated sprite channels
 // Useful for cleanup or resetting sprite system
+/// Releases all sprites for the module.
 pub fn release_all_sprites() {
     unsafe {
         SPRITE_CHANNELS_ALLOCATED = 0

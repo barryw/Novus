@@ -13,16 +13,26 @@ pub use amiga::ui::dialog::*
 
 // These are application configuration/value types; unlike owning handles they
 // do not expose resource-management mechanics by being aliases.
+/// Aliases `Bounds` to `GadgetBounds`.
 pub type Bounds = GadgetBounds
+/// Aliases `StaticControl` to `StaticGadget`.
 pub type StaticControl = StaticGadget
+/// Aliases `StaticUi` to `StaticGadToolsUi`.
 pub type StaticUi = StaticGadToolsUi
+/// Aliases `StaticMenu` to `StaticMenuEntry`.
 pub type StaticMenu = StaticMenuEntry
 
+/// Reports failures from ui operations.
 pub enum UiError {
+    /// Indicates window failed.
     WindowFailed,
+    /// Indicates screen failed.
     ScreenFailed,
+    /// Indicates control failed.
     ControlFailed,
+    /// Indicates menu failed.
     MenuFailed,
+    /// Indicates requester failed.
     RequesterFailed,
 }
 
@@ -42,6 +52,10 @@ impl From<AslError> for UiError {
 }
 
 impl UiError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             UiError::WindowFailed => "Could not open or manage the window",
@@ -59,13 +73,21 @@ impl Error for UiError {
 
 /// Stable application events independent of the underlying UI toolkit.
 pub enum ApplicationEvent {
+    /// Indicates close.
     Close,
+    /// Indicates refresh.
     Refresh,
+    /// Indicates menu pick.
     MenuPick(u16, u16),
+    /// Indicates menu sub pick.
     MenuSubPick(u16, u16, u16),
+    /// Indicates gadget up.
     GadgetUp(u16, u16),
+    /// Indicates gadget down.
     GadgetDown(u16, u16),
+    /// Indicates mouse button.
     MouseButton(i16, i16, bool),
+    /// Indicates unknown.
     Unknown(u32),
 }
 
@@ -84,101 +106,242 @@ fn application_event(consuming event: GadToolsEvent) -> ApplicationEvent {
 
 /// Application-level menu construction. Native arrays remain in Tier 2.
 pub struct ApplicationMenuBuilder { system: GadToolsMenuBuilder }
+/// Represents a application menu value.
 pub struct ApplicationMenu { system: MenuHandle }
+/// Represents a application menu item value.
 pub struct ApplicationMenuItem { system: MenuItemHandle }
+/// Represents a application menu strip value.
 pub struct ApplicationMenuStrip { system: GadToolsMenuStrip }
 
 impl ApplicationMenuBuilder {
+    /// Adds menu for `ApplicationMenuBuilder`.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenu` value.
     pub fn add_menu(&var self, title: Str) -> ApplicationMenu {
         return ApplicationMenu { system: self.system.add_menu(title) }
     }
 
+    /// Builds the configured `ApplicationMenuBuilder` value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn build(&var self) -> Result<ApplicationMenuStrip, UiError> {
         return Result::Ok(ApplicationMenuStrip { system: self.system.build()? })
     }
 
+    /// Borrows the system-level value wrapped by `ApplicationMenuBuilder`.
+    ///
+    /// # Returns
+    /// A shared borrow of `GadToolsMenuBuilder` tied to the receiver.
     pub fn system(&self) -> &GadToolsMenuBuilder { return &self.system }
 }
 
 impl ApplicationMenu {
+    /// Adds item for `ApplicationMenu`.
+    ///
+    /// # Parameters
+    /// * `label` - The label to use.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenuItem` value.
     pub fn add_item(&var self, label: Str) -> ApplicationMenuItem {
         return ApplicationMenuItem { system: self.system.add_item(label) }
     }
 
+    /// Adds separator for `ApplicationMenu`.
     pub fn add_separator(&var self) { self.system.add_separator() }
 
+    /// Borrows the system-level value wrapped by `ApplicationMenu`.
+    ///
+    /// # Returns
+    /// A shared borrow of `MenuHandle` tied to the receiver.
     pub fn system(&self) -> &MenuHandle { return &self.system }
 }
 
 impl ApplicationMenuItem {
+    /// Returns a copy configured with command key for `ApplicationMenuItem`.
+    ///
+    /// # Parameters
+    /// * `key` - The `u8` value used as key.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenuItem` value.
     pub fn with_command_key(&var self, key: u8) -> ApplicationMenuItem {
         return ApplicationMenuItem { system: self.system.with_command_key(key) }
     }
 
+    /// Returns a copy configured with checkmark for `ApplicationMenuItem`.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenuItem` value.
     pub fn with_checkmark(&var self) -> ApplicationMenuItem {
         return ApplicationMenuItem { system: self.system.with_checkmark() }
     }
 
+    /// Marks `ApplicationMenuItem` as initially checked.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenuItem` value.
     pub fn checked(&var self) -> ApplicationMenuItem {
         return ApplicationMenuItem { system: self.system.checked() }
     }
 
+    /// Borrows the system-level value wrapped by `ApplicationMenuItem`.
+    ///
+    /// # Returns
+    /// A shared borrow of `MenuItemHandle` tied to the receiver.
     pub fn system(&self) -> &MenuItemHandle { return &self.system }
 }
 
 /// Application control views remain tied to their owning window.
 pub struct ApplicationControl { system: GadToolsControl<GadToolsWindow> }
+/// Represents a application cycle value.
 pub struct ApplicationCycle { system: CycleControl<GadToolsWindow> }
+/// Represents a application list view value.
 pub struct ApplicationListView { system: ListViewControl<GadToolsWindow> }
+/// Represents a application checkbox value.
 pub struct ApplicationCheckbox { system: CheckboxControl<GadToolsWindow> }
+/// Represents a application text input value.
 pub struct ApplicationTextInput { system: StringControl<GadToolsWindow> }
+/// Represents a application integer input value.
 pub struct ApplicationIntegerInput { system: IntegerControl<GadToolsWindow> }
+/// Represents a application text value.
 pub struct ApplicationText { system: TextControl<GadToolsWindow> }
 
 impl ApplicationControl {
+    /// Returns the stable identifier associated with `ApplicationControl`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn id(&self) -> u16 { return self.system.id() }
+    /// Sets enabled for `ApplicationControl`.
+    ///
+    /// # Parameters
+    /// * `enabled` - The `bool` value used as enabled.
     pub fn set_enabled(&self, enabled: bool) { self.system.set_enabled(enabled) }
+    /// Borrows the system-level value wrapped by `ApplicationControl`.
+    ///
+    /// # Returns
+    /// A shared borrow of `GadToolsControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &GadToolsControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationCycle {
+    /// Sets active for `ApplicationCycle`.
+    ///
+    /// # Parameters
+    /// * `active` - The `u16` value used as active.
     pub fn set_active(&self, active: u16) { self.system.set_active(active) }
+    /// Borrows the system-level value wrapped by `ApplicationCycle`.
+    ///
+    /// # Returns
+    /// A shared borrow of `CycleControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &CycleControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationListView {
+    /// Sets selected for `ApplicationListView`.
+    ///
+    /// # Parameters
+    /// * `selected` - The `Option<u16>` value used as selected.
     pub fn set_selected(&self, selected: Option<u16>) { self.system.set_selected(selected) }
+    /// Borrows the system-level value wrapped by `ApplicationListView`.
+    ///
+    /// # Returns
+    /// A shared borrow of `ListViewControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &ListViewControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationCheckbox {
+    /// Marks `ApplicationCheckbox` as initially checked.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn checked(&self) -> bool { return self.system.checked() }
+    /// Sets checked for `ApplicationCheckbox`.
+    ///
+    /// # Parameters
+    /// * `checked` - The `bool` value used as checked.
     pub fn set_checked(&self, checked: bool) { self.system.set_checked(checked) }
+    /// Borrows the system-level value wrapped by `ApplicationCheckbox`.
+    ///
+    /// # Returns
+    /// A shared borrow of `CheckboxControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &CheckboxControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationTextInput {
+    /// Returns the value value associated with `ApplicationTextInput`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn value(&self) -> Option<Str> { return self.system.value() }
+    /// Sets value for `ApplicationTextInput`.
+    ///
+    /// # Parameters
+    /// * `value` - The `Str` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_value(&self, value: Str) -> Result<(), UiError> {
         self.system.set_value(value)?
         return Result::Ok(())
     }
+    /// Borrows the system-level value wrapped by `ApplicationTextInput`.
+    ///
+    /// # Returns
+    /// A shared borrow of `StringControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &StringControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationIntegerInput {
+    /// Returns the value value associated with `ApplicationIntegerInput`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn value(&self) -> Option<i32> { return self.system.value() }
+    /// Sets value for `ApplicationIntegerInput`.
+    ///
+    /// # Parameters
+    /// * `value` - The `i32` value used as value.
     pub fn set_value(&self, value: i32) { self.system.set_value(value) }
+    /// Sets u32 saturating for `ApplicationIntegerInput`.
+    ///
+    /// # Parameters
+    /// * `value` - The `u32` value used as value.
     pub fn set_u32_saturating(&self, value: u32) { self.system.set_u32_saturating(value) }
+    /// Returns the u32 value value associated with `ApplicationIntegerInput`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn u32_value(&self) -> Option<u32> { return self.system.u32_value() }
+    /// Borrows the system-level value wrapped by `ApplicationIntegerInput`.
+    ///
+    /// # Returns
+    /// A shared borrow of `IntegerControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &IntegerControl<GadToolsWindow> { return &self.system }
 }
 
 impl ApplicationText {
+    /// Sets text for `ApplicationText`.
+    ///
+    /// # Parameters
+    /// * `value` - The `Str` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_text(&self, value: Str) -> Result<(), UiError> {
         self.system.set_text(value)?
         return Result::Ok(())
     }
+    /// Borrows the system-level value wrapped by `ApplicationText`.
+    ///
+    /// # Returns
+    /// A shared borrow of `TextControl<GadToolsWindow>` tied to the receiver.
     pub fn system(&self) -> &TextControl<GadToolsWindow> { return &self.system }
 }
 
@@ -186,86 +349,214 @@ impl ApplicationText {
 pub struct ApplicationWindow { system: GadToolsWindow }
 
 impl ApplicationWindow {
+    /// Borrows the system-level value wrapped by `ApplicationWindow`.
+    ///
+    /// # Returns
+    /// A shared borrow of `GadToolsWindow` tied to the receiver.
     pub fn system(&self) -> &GadToolsWindow { return &self.system }
 
+    /// Returns the child builder value associated with `ApplicationWindow`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn child_builder(&self) -> Result<ApplicationWindowBuilder, UiError> {
         return Result::Ok(ApplicationWindowBuilder { system: self.system.child_builder()? })
     }
 
+    /// Displays an alert using `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `message` - The `Str` value used as message.
     pub fn alert(&self, title: Str, message: Str) {
         alert_on(self.system.as_raw(), title.as_cstr(), message.as_cstr())
     }
 
+    /// Applies alert error to `ApplicationWindow`.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn alert_error<E>(&self, title: Str, consuming error: E) where E: Error {
         alert_on(self.system.as_raw(), title.as_cstr(), error.message())
     }
 
+    /// Displays a confirmation request using `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `message` - The `Str` value used as message.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn confirm(&self, title: Str, message: Str) -> bool {
         return confirm_on(self.system.as_raw(), title.as_cstr(), message.as_cstr())
     }
 
+    /// Displays a choice request using `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `message` - The `Str` value used as message.
+    /// * `buttons` - The `Str` value used as buttons.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn choice(&self, title: Str, message: Str, buttons: Str) -> i32 {
         return choice_on(self.system.as_raw(), title.as_cstr(), message.as_cstr(), buttons.as_cstr())
     }
 
+    /// Fills rect for `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `pen` - The `u8` value used as pen.
+    /// * `left` - The `i16` value used as left.
+    /// * `top` - The `i16` value used as top.
+    /// * `right` - The `i16` value used as right.
+    /// * `bottom` - The `i16` value used as bottom.
     pub fn fill_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
         self.system.fill_rect(pen, left, top, right, bottom)
     }
 
+    /// Outlines rect for `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `pen` - The `u8` value used as pen.
+    /// * `left` - The `i16` value used as left.
+    /// * `top` - The `i16` value used as top.
+    /// * `right` - The `i16` value used as right.
+    /// * `bottom` - The `i16` value used as bottom.
     pub fn outline_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
         self.system.outline_rect(pen, left, top, right, bottom)
     }
 
+    /// Sets menu enabled for `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `menu` - The `u16` value used as menu.
+    /// * `item` - The `u16` value used as item.
+    /// * `enabled` - The `bool` value used as enabled.
     pub fn set_menu_enabled(&self, menu: u16, item: u16, enabled: bool) {
         self.system.set_menu_enabled(menu, item, enabled)
     }
 
+    /// Returns a generic control view owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn control(&self, id: u16) -> Option<ApplicationControl> {
         let Option::Some(system) = self.system.control(id) else { return Option::None }
         return Option::Some(ApplicationControl { system: system })
     }
 
+    /// Returns a cycle control view owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn cycle(&self, id: u16) -> Option<ApplicationCycle> {
         let Option::Some(system) = self.system.cycle(id) else { return Option::None }
         return Option::Some(ApplicationCycle { system: system })
     }
 
+    /// Returns a list-view control owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn list_view(&self, id: u16) -> Option<ApplicationListView> {
         let Option::Some(system) = self.system.list_view(id) else { return Option::None }
         return Option::Some(ApplicationListView { system: system })
     }
 
+    /// Returns a checkbox control owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn checkbox(&self, id: u16) -> Option<ApplicationCheckbox> {
         let Option::Some(system) = self.system.checkbox(id) else { return Option::None }
         return Option::Some(ApplicationCheckbox { system: system })
     }
 
+    /// Returns a string control owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn string(&self, id: u16) -> Option<ApplicationTextInput> {
         let Option::Some(system) = self.system.string(id) else { return Option::None }
         return Option::Some(ApplicationTextInput { system: system })
     }
 
+    /// Returns an integer control owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn integer(&self, id: u16) -> Option<ApplicationIntegerInput> {
         let Option::Some(system) = self.system.integer(id) else { return Option::None }
         return Option::Some(ApplicationIntegerInput { system: system })
     }
 
+    /// Returns a text control owned by `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn text(&self, id: u16) -> Option<ApplicationText> {
         let Option::Some(system) = self.system.text(id) else { return Option::None }
         return Option::Some(ApplicationText { system: system })
     }
 
+    /// Replaces cycle for `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `choices` - The `Slice<Str>` value used as choices.
+    /// * `active` - The `u16` value used as active.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn replace_cycle(&var self, id: u16, choices: Slice<Str>, active: u16) -> Result<(), UiError> {
         self.system.replace_cycle(id, choices, active)?
         return Result::Ok(())
     }
 
+    /// Replaces list for `ApplicationWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `rows` - The `Slice<Str>` value used as rows.
+    /// * `selected` - The `Option<usize>` value used as selected.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn replace_list(&var self, id: u16, rows: Slice<Str>, selected: Option<usize>) -> Result<(), UiError> {
         self.system.replace_list(id, rows, selected)?
         return Result::Ok(())
     }
 
+    /// Waits for event for `ApplicationWindow`.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationEvent` value.
     pub fn wait_event(&self) -> ApplicationEvent { return application_event(self.system.wait_event()) }
+    /// Refreshes the visible contents of `ApplicationWindow`.
     pub fn refresh(&self) { self.system.refresh() }
 }
 
@@ -273,57 +564,156 @@ impl ApplicationWindow {
 pub struct ApplicationWindowBuilder { system: GadToolsBuilder }
 
 impl ApplicationWindowBuilder {
+    /// Returns the workbench value associated with `ApplicationWindowBuilder`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn workbench() -> Result<ApplicationWindowBuilder, UiError> {
         return Result::Ok(ApplicationWindowBuilder { system: GadToolsBuilder::workbench()? })
     }
 
+    /// Returns the workbench or own value associated with `ApplicationWindowBuilder`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn workbench_or_own() -> Result<ApplicationWindowBuilder, UiError> {
         return Result::Ok(ApplicationWindowBuilder { system: GadToolsBuilder::workbench_or_own()? })
     }
 
+    /// Returns the menu builder value associated with `ApplicationWindowBuilder`.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationMenuBuilder` value.
     pub fn menu_builder(&self) -> ApplicationMenuBuilder {
         return ApplicationMenuBuilder { system: self.system.menu_builder() }
     }
 
+    /// Adds checkbox for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `checked` - The `bool` value used as checked.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_checkbox(&var self, id: u16, label: Str, bounds: Bounds, checked: bool) -> Result<(), UiError> {
         self.system.add_checkbox(id, label, bounds, checked)?
         return Result::Ok(())
     }
 
+    /// Adds integer for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `value` - The `i32` value used as value.
+    /// * `max_chars` - The `u16` value used as max chars.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_integer(&var self, id: u16, label: Str, bounds: Bounds, value: i32, max_chars: u16) -> Result<(), UiError> {
         self.system.add_integer(id, label, bounds, value, max_chars)?
         return Result::Ok(())
     }
 
+    /// Adds button for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_button(&var self, id: u16, label: Str, bounds: Bounds) -> Result<(), UiError> {
         self.system.add_button(id, label, bounds)?
         return Result::Ok(())
     }
 
+    /// Adds cycle for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `choices` - The `Slice<Str>` value used as choices.
+    /// * `active` - The `u16` value used as active.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_cycle(&var self, id: u16, label: Str, bounds: Bounds, choices: Slice<Str>, active: u16) -> Result<(), UiError> {
         self.system.add_cycle(id, label, bounds, choices, active)?
         return Result::Ok(())
     }
 
+    /// Adds list view for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `rows` - The `Slice<Str>` value used as rows.
+    /// * `selected` - The `Option<u16>` value used as selected.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_list_view(&var self, id: u16, bounds: Bounds, rows: Slice<Str>, selected: Option<u16>) -> Result<(), UiError> {
         self.system.add_list_view(id, bounds, rows, selected)?
         return Result::Ok(())
     }
 
+    /// Adds string for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `value` - The `Str` value used as value.
+    /// * `max_chars` - The `u16` value used as max chars.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_string(&var self, id: u16, label: Str, bounds: Bounds, value: Str, max_chars: u16) -> Result<(), UiError> {
         self.system.add_string(id, label, bounds, value, max_chars)?
         return Result::Ok(())
     }
 
+    /// Adds text for `ApplicationWindowBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `text` - The `Str` value used as text.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_text(&var self, id: u16, bounds: Bounds, text: Str) -> Result<(), UiError> {
         self.system.add_text(id, bounds, text)?
         return Result::Ok(())
     }
 
+    /// Builds the configured `ApplicationWindowBuilder` value.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `bounds` - The `Bounds` value used as bounds.
+    /// * `menu` - The menu; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn build(&var self, title: Str, bounds: Bounds, consuming menu: ApplicationMenuStrip) -> Result<ApplicationWindow, UiError> {
         return Result::Ok(ApplicationWindow { system: self.system.build(title, bounds, menu.system)? })
     }
 
+    /// Borrows the system-level value wrapped by `ApplicationWindowBuilder`.
+    ///
+    /// # Returns
+    /// A shared borrow of `GadToolsBuilder` tied to the receiver.
     pub fn system(&self) -> &GadToolsBuilder { return &self.system }
 }
 
@@ -331,10 +721,25 @@ impl ApplicationWindowBuilder {
 pub struct ApplicationFileRequester { system: FileRequesterHandle }
 
 impl ApplicationFileRequester {
+    /// Creates a new `ApplicationFileRequester` value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new() -> Result<ApplicationFileRequester, UiError> {
         return Result::Ok(ApplicationFileRequester { system: FileRequesterHandle::new()? })
     }
 
+    /// Chooses for for `ApplicationFileRequester`.
+    ///
+    /// # Parameters
+    /// * `parent` - The `&ApplicationWindow` value used as parent.
+    /// * `title` - The title to use.
+    /// * `initial_drawer` - The `Str` value used as initial drawer.
+    /// * `initial_file` - The `Str` value used as initial file.
+    /// * `save` - The `bool` value used as save.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn choose_for(&self,
         parent: &ApplicationWindow,
         title: Str,
@@ -345,6 +750,10 @@ impl ApplicationFileRequester {
         return Result::Ok(self.system.choose(parent.system.as_raw(), title, initial_drawer, initial_file, save)?)
     }
 
+    /// Borrows the system-level value wrapped by `ApplicationFileRequester`.
+    ///
+    /// # Returns
+    /// A shared borrow of `FileRequesterHandle` tied to the receiver.
     pub fn system(&self) -> &FileRequesterHandle { return &self.system }
 }
 
@@ -352,43 +761,108 @@ impl ApplicationFileRequester {
 pub struct ApplicationScreen { system: ScreenHandle }
 
 impl ApplicationScreen {
+    /// Computes lores for `ApplicationScreen` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `depth` - The `i16` value used as depth.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn lores(title: Str, depth: i16) -> Result<ApplicationScreen, UiError> {
         return Result::Ok(ApplicationScreen { system: ScreenHandle::lores(title, depth)? })
     }
 
+    /// Computes hires for `ApplicationScreen` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `depth` - The `i16` value used as depth.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn hires(title: Str, depth: i16) -> Result<ApplicationScreen, UiError> {
         return Result::Ok(ApplicationScreen { system: ScreenHandle::hires(title, depth)? })
     }
 
+    /// Computes custom for `ApplicationScreen` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `width` - The `i16` value used as width.
+    /// * `height` - The `i16` value used as height.
+    /// * `depth` - The `i16` value used as depth.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn custom(title: Str, width: i16, height: i16, depth: i16) -> Result<ApplicationScreen, UiError> {
         return Result::Ok(ApplicationScreen { system: ScreenHandle::custom(title, width, height, depth)? })
     }
 
+    /// Returns the width value associated with `ApplicationScreen`.
+    ///
+    /// # Returns
+    /// The resulting `i16` value.
     pub fn width(&self) -> i16 { return self.system.width() }
+    /// Returns the height value associated with `ApplicationScreen`.
+    ///
+    /// # Returns
+    /// The resulting `i16` value.
     pub fn height(&self) -> i16 { return self.system.height() }
+    /// Converts `ApplicationScreen` to front.
     pub fn to_front(&self) { self.system.to_front() }
+    /// Converts `ApplicationScreen` to back.
     pub fn to_back(&self) { self.system.to_back() }
+    /// Moves `ApplicationScreen` by a relative offset.
+    ///
+    /// # Parameters
+    /// * `dx` - The `i16` value used as dx.
+    /// * `dy` - The `i16` value used as dy.
     pub fn move_by(&self, dx: i16, dy: i16) { self.system.move_by(dx, dy) }
+    /// Shows title for `ApplicationScreen`.
+    ///
+    /// # Parameters
+    /// * `show` - The `bool` value used as show.
     pub fn show_title(&self, show: bool) { self.system.show_title(show) }
+    /// Borrows the system-level value wrapped by `ApplicationScreen`.
+    ///
+    /// # Returns
+    /// A shared borrow of `ScreenHandle` tied to the receiver.
     pub fn system(&self) -> &ScreenHandle { return &self.system }
 }
 
 // Canonical Tier-1 names alias only controlled application wrappers, never
 // systems-layer owners. Unique implementation names avoid transitive NDK name
 // collisions while Novus module identity is still being made fully qualified.
+/// Aliases `Event` to `ApplicationEvent`.
 pub type Event = ApplicationEvent
+/// Aliases `MenuBuilder` to `ApplicationMenuBuilder`.
 pub type MenuBuilder = ApplicationMenuBuilder
+/// Aliases `Menu` to `ApplicationMenu`.
 pub type Menu = ApplicationMenu
+/// Aliases `MenuItem` to `ApplicationMenuItem`.
 pub type MenuItem = ApplicationMenuItem
+/// Aliases `MenuStrip` to `ApplicationMenuStrip`.
 pub type MenuStrip = ApplicationMenuStrip
+/// Aliases `Control` to `ApplicationControl`.
 pub type Control = ApplicationControl
+/// Aliases `Cycle` to `ApplicationCycle`.
 pub type Cycle = ApplicationCycle
+/// Aliases `ListView` to `ApplicationListView`.
 pub type ListView = ApplicationListView
+/// Aliases `Checkbox` to `ApplicationCheckbox`.
 pub type Checkbox = ApplicationCheckbox
+/// Aliases `TextInput` to `ApplicationTextInput`.
 pub type TextInput = ApplicationTextInput
+/// Aliases `IntegerInput` to `ApplicationIntegerInput`.
 pub type IntegerInput = ApplicationIntegerInput
+/// Aliases `Text` to `ApplicationText`.
 pub type Text = ApplicationText
+/// Aliases `Window` to `ApplicationWindow`.
 pub type Window = ApplicationWindow
+/// Aliases `WindowBuilder` to `ApplicationWindowBuilder`.
 pub type WindowBuilder = ApplicationWindowBuilder
+/// Aliases `FileRequester` to `ApplicationFileRequester`.
 pub type FileRequester = ApplicationFileRequester
+/// Aliases `Screen` to `ApplicationScreen`.
 pub type Screen = ApplicationScreen

@@ -185,9 +185,22 @@ public class TomlCompletionHandler : ICompletionHandler
             Documentation = new MarkupContent
             {
                 Kind = MarkupKind.Markdown,
-                Value = "FPU configuration: soft, 68881, 68040, or auto"
+                Value = "FPU configuration: soft, none, 68881, 68882, 68040, 68060, or auto"
             },
             InsertText = "fpu = \"$1\"",
+            InsertTextFormat = InsertTextFormat.Snippet
+        },
+        new CompletionItem
+        {
+            Label = "chipset",
+            Kind = CompletionItemKind.Property,
+            Detail = "string",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Target chipset: OCS, ECS, AGA, or auto"
+            },
+            InsertText = "chipset = \"$1\"",
             InsertTextFormat = InsertTextFormat.Snippet
         },
         new CompletionItem
@@ -210,9 +223,9 @@ public class TomlCompletionHandler : ICompletionHandler
             Documentation = new MarkupContent
             {
                 Kind = MarkupKind.Markdown,
-                Value = "Optimization level (0-3). Default is 2."
+                Value = "Optimization level (0-3). Default is 1."
             },
-            InsertText = "optimization_level = 2",
+            InsertText = "optimization_level = 1",
         },
         new CompletionItem
         {
@@ -451,6 +464,17 @@ public class TomlCompletionHandler : ICompletionHandler
         },
         new CompletionItem
         {
+            Label = "\"68030\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "68030",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Motorola 68030 CPU"
+            }
+        },
+        new CompletionItem
+        {
             Label = "\"68060\"",
             Kind = CompletionItemKind.Value,
             Detail = "68060",
@@ -458,6 +482,17 @@ public class TomlCompletionHandler : ICompletionHandler
             {
                 Kind = MarkupKind.Markdown,
                 Value = "Motorola 68060 CPU (optimized)"
+            }
+        },
+        new CompletionItem
+        {
+            Label = "\"68080\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "68080",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Apollo 68080-compatible FPGA CPU"
             }
         },
         new CompletionItem
@@ -476,6 +511,17 @@ public class TomlCompletionHandler : ICompletionHandler
     // FPU values
     private static readonly CompletionItem[] FpuValues = new[]
     {
+        new CompletionItem
+        {
+            Label = "\"none\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "No FPU",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Do not emit hardware floating-point instructions"
+            }
+        },
         new CompletionItem
         {
             Label = "\"soft\"",
@@ -511,6 +557,28 @@ public class TomlCompletionHandler : ICompletionHandler
         },
         new CompletionItem
         {
+            Label = "\"68882\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "68882 FPU",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Motorola 68882 floating-point coprocessor"
+            }
+        },
+        new CompletionItem
+        {
+            Label = "\"68060\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "68060 FPU",
+            Documentation = new MarkupContent
+            {
+                Kind = MarkupKind.Markdown,
+                Value = "Built-in 68060 FPU"
+            }
+        },
+        new CompletionItem
+        {
             Label = "\"auto\"",
             Kind = CompletionItemKind.Value,
             Detail = "Auto-detect",
@@ -521,6 +589,14 @@ public class TomlCompletionHandler : ICompletionHandler
             }
         }
     };
+
+    private static readonly CompletionItem[] ChipsetValues =
+        TomlSchemaValidator.ValidChipsets.Select(value => new CompletionItem
+        {
+            Label = $"\"{value}\"",
+            Kind = CompletionItemKind.Value,
+            Detail = "Amiga chipset target"
+        }).ToArray();
 
     // Boolean values
     private static readonly CompletionItem[] BooleanValues = new[]
@@ -698,6 +774,10 @@ public class TomlCompletionHandler : ICompletionHandler
             if (keyLower == "fpu")
             {
                 return FpuValues;
+            }
+            if (keyLower == "chipset")
+            {
+                return ChipsetValues;
             }
             if (keyLower == "emit_asm")
             {

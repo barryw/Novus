@@ -41,9 +41,13 @@ from std::memory::errors import MemoryError
 /// }
 /// ```
 pub struct VecDeque<T> {
+    /// The ptr value stored by `VecDeque`.
     ptr: *T,
+    /// The head value stored by `VecDeque`.
     head: usize,      // Index of first element
+    /// The len value stored by `VecDeque`.
     len: usize,       // Number of elements
+    /// The capacity value stored by `VecDeque`.
     capacity: usize,  // Total capacity
 }
 

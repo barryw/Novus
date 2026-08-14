@@ -15,46 +15,76 @@ from amiga::sys::intuition::window import WindowRef
 
 /// Events enabled by GadToolsWindow's fixed IDCMP mask.
 pub enum GadToolsEvent {
+    /// Indicates close.
     Close,
+    /// Indicates refresh.
     Refresh,
+    /// Indicates menu pick.
     MenuPick(u16, u16),
+    /// Indicates menu sub pick.
     MenuSubPick(u16, u16, u16),
+    /// Indicates gadget up.
     GadgetUp(u16, u16),
+    /// Indicates gadget down.
     GadgetDown(u16, u16),
+    /// Indicates mouse button.
     MouseButton(i16, i16, bool),
+    /// Indicates unknown.
     Unknown(u32),
 }
 
+/// Represents a gadget bounds value.
 pub struct GadgetBounds {
+    /// The x value stored by `GadgetBounds`.
     x: i16
+    /// The y value stored by `GadgetBounds`.
     y: i16
+    /// The width value stored by `GadgetBounds`.
     width: i16
+    /// The height value stored by `GadgetBounds`.
     height: i16
 }
 
 /// Compile-time UI descriptions use static string data and fixed-size arrays.
 /// Use GadToolsBuilder instead when controls or menus are created at runtime.
 pub struct StaticGadget {
+    /// The kind value stored by `StaticGadget`.
     kind: u32
+    /// The id value stored by `StaticGadget`.
     id: u16
+    /// The label value stored by `StaticGadget`.
     label: *u8
+    /// The x value stored by `StaticGadget`.
     x: i16
+    /// The y value stored by `StaticGadget`.
     y: i16
+    /// The width value stored by `StaticGadget`.
     width: i16
+    /// The height value stored by `StaticGadget`.
     height: i16
+    /// The placement value stored by `StaticGadget`.
     placement: u32
+    /// The tags value stored by `StaticGadget`.
     tags: [TagItem; 3]
 }
 
+/// Represents a static menu entry value.
 pub struct StaticMenuEntry {
+    /// The raw value stored by `StaticMenuEntry`.
     raw: NewMenu
 }
 
+/// Represents a static gad tools ui value.
 pub struct StaticGadToolsUi {
+    /// The title value stored by `StaticGadToolsUi`.
     title: *u8
+    /// The bounds value stored by `StaticGadToolsUi`.
     bounds: GadgetBounds
+    /// The gadgets value stored by `StaticGadToolsUi`.
     gadgets: *StaticGadget
+    /// The gadget count value stored by `StaticGadToolsUi`.
     gadget_count: u32
+    /// The menus value stored by `StaticGadToolsUi`.
     menus: *StaticMenuEntry
 }
 
@@ -65,12 +95,14 @@ struct GadgetModelSlot {
 }
 
 impl GadgetBounds {
+    /// Defines `fn`, the fn value.
     pub const fn new(x: i16, y: i16, width: i16, height: i16) -> GadgetBounds {
         return GadgetBounds { x: x, y: y, width: width, height: height }
     }
 }
 
 impl StaticGadget {
+    /// Defines `fn`, the fn value.
     pub const fn checkbox(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16, checked: bool) -> StaticGadget {
         return StaticGadget {
             kind: CHECKBOX_KIND, id: id, label: label,
@@ -85,6 +117,7 @@ impl StaticGadget {
     }
 
     @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    /// Defines `fn`, the fn value.
     pub const fn integer(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16, value: i32, max_chars: u16) -> StaticGadget {
         return StaticGadget {
             kind: INTEGER_KIND, id: id, label: label,
@@ -98,6 +131,7 @@ impl StaticGadget {
         }
     }
 
+    /// Defines `fn`, the fn value.
     pub const fn button(id: u16, label: *u8, x: i16, y: i16, width: i16, height: i16) -> StaticGadget {
         return StaticGadget {
             kind: BUTTON_KIND, id: id, label: label,
@@ -127,6 +161,7 @@ impl StaticGadget {
 }
 
 impl StaticMenuEntry {
+    /// Defines `fn`, the fn value.
     pub const fn title(label: *u8) -> StaticMenuEntry {
         return StaticMenuEntry { raw: NewMenu {
             nm_Type: (u8)NM_TITLE, nm_Label: label, nm_CommKey: null,
@@ -134,6 +169,7 @@ impl StaticMenuEntry {
         } }
     }
 
+    /// Defines `fn`, the fn value.
     pub const fn item(label: *u8, key: *u8) -> StaticMenuEntry {
         return StaticMenuEntry { raw: NewMenu {
             nm_Type: (u8)NM_ITEM, nm_Label: label, nm_CommKey: key,
@@ -141,6 +177,7 @@ impl StaticMenuEntry {
         } }
     }
 
+    /// Defines `fn`, the fn value.
     pub const fn sub_item(label: *u8, key: *u8) -> StaticMenuEntry {
         return StaticMenuEntry { raw: NewMenu {
             nm_Type: (u8)NM_SUB, nm_Label: label, nm_CommKey: key,
@@ -148,6 +185,7 @@ impl StaticMenuEntry {
         } }
     }
 
+    /// Defines `fn`, the fn value.
     pub const fn separator() -> StaticMenuEntry {
         return StaticMenuEntry { raw: NewMenu {
             nm_Type: (u8)NM_ITEM, nm_Label: (*u8)(-1), nm_CommKey: null,
@@ -155,6 +193,7 @@ impl StaticMenuEntry {
         } }
     }
 
+    /// Defines `fn`, the fn value.
     pub const fn end() -> StaticMenuEntry {
         return StaticMenuEntry { raw: NewMenu {
             nm_Type: (u8)NM_END, nm_Label: null, nm_CommKey: null,
@@ -163,18 +202,31 @@ impl StaticMenuEntry {
     }
 }
 
+/// Builds a configured gad tools value.
 pub struct GadToolsBuilder {
+    /// The screen value stored by `GadToolsBuilder`.
     screen: *Screen
+    /// The owns screen value stored by `GadToolsBuilder`.
     owns_screen: bool
+    /// The releases screen value stored by `GadToolsBuilder`.
     releases_screen: bool
+    /// The visual info value stored by `GadToolsBuilder`.
     visual_info: *u8
+    /// The gadgets value stored by `GadToolsBuilder`.
     gadgets: *Gadget
+    /// The previous value stored by `GadToolsBuilder`.
     previous: *Gadget
+    /// The labels value stored by `GadToolsBuilder`.
     labels: **u8
+    /// The label count value stored by `GadToolsBuilder`.
     label_count: u32
+    /// The label capacity value stored by `GadToolsBuilder`.
     label_capacity: u32
+    /// The models value stored by `GadToolsBuilder`.
     models: *GadgetModelSlot
+    /// The model count value stored by `GadToolsBuilder`.
     model_count: u32
+    /// The model capacity value stored by `GadToolsBuilder`.
     model_capacity: u32
 }
 
@@ -332,10 +384,24 @@ impl GadToolsBuilder {
         }
     }
 
+    /// Returns the menu builder value associated with `GadToolsBuilder`.
+    ///
+    /// # Returns
+    /// The resulting `GadToolsMenuBuilder` value.
     pub fn menu_builder(&self) -> GadToolsMenuBuilder {
         return GadToolsMenuBuilder::new(self.screen)
     }
 
+    /// Adds checkbox for `GadToolsBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `GadgetBounds` value used as bounds.
+    /// * `checked` - The `bool` value used as checked.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_checkbox(&var self, id: u16, label: Str, bounds: GadgetBounds, checked: bool) -> Result<(), IntuitionError> {
         let tags = [
             TagItem { ti_Tag: GTCB_Checked, ti_Data: if checked { 1 } else { 0 } },
@@ -345,6 +411,17 @@ impl GadToolsBuilder {
     }
 
     @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    /// Adds integer for `GadToolsBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `GadgetBounds` value used as bounds.
+    /// * `value` - The `i32` value used as value.
+    /// * `max_chars` - The `u16` value used as max chars.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_integer(&var self, id: u16, label: Str, bounds: GadgetBounds, value: i32, max_chars: u16) -> Result<(), IntuitionError> {
         let tags = [
             TagItem { ti_Tag: GTIN_Number, ti_Data: (u32)value },
@@ -354,6 +431,15 @@ impl GadToolsBuilder {
         return self.add_gadget(INTEGER_KIND, id, label, self.fit_string_bounds(bounds), PLACETEXT_LEFT, &tags[0])
     }
 
+    /// Adds button for `GadToolsBuilder`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    /// * `label` - The label to use.
+    /// * `bounds` - The `GadgetBounds` value used as bounds.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn add_button(&var self, id: u16, label: Str, bounds: GadgetBounds) -> Result<(), IntuitionError> {
         return self.add_gadget(BUTTON_KIND, id, label, bounds, PLACETEXT_IN, null)
     }
@@ -476,6 +562,18 @@ impl GadToolsBuilder {
     }
 
     @suppress("W0002", "Amiga window tags carry signed coordinates as u32")
+    /// Builds the configured `GadToolsBuilder` value.
+    ///
+    /// # Parameters
+    /// * `title` - The title to use.
+    /// * `bounds` - The `GadgetBounds` value used as bounds.
+    /// * `menu_strip` - The menu strip; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn build(&var self, title: Str, bounds: GadgetBounds, consuming menu_strip: GadToolsMenuStrip) -> Result<GadToolsWindow, IntuitionError> {
         let title_ptr = self.alloc_label(title)
         if !title_ptr {
@@ -794,34 +892,55 @@ impl StaticGadToolsUi {
 
 /// Zero-allocation owner returned by StaticGadToolsUi.
 pub struct StaticGadToolsWindow {
+    /// The window value stored by `StaticGadToolsWindow`.
     window: *Window
+    /// The screen value stored by `StaticGadToolsWindow`.
     screen: *Screen
+    /// The visual info value stored by `StaticGadToolsWindow`.
     visual_info: *u8
+    /// The gadgets value stored by `StaticGadToolsWindow`.
     gadgets: *Gadget
+    /// The menu value stored by `StaticGadToolsWindow`.
     menu: *Menu
 }
 
 /// Owner-tied access to one native gadget. The window remains responsible for
 /// cleanup; `as_raw()` is the explicit escape hatch for uncommon native calls.
 pub struct GadToolsControl<Owner> {
+    /// The owner value stored by `GadToolsControl`.
     owner: &Owner
+    /// The window value stored by `GadToolsControl`.
     window: *Window
+    /// The gadget value stored by `GadToolsControl`.
     gadget: *Gadget
 }
 
 /// Kind-checked GadTools controls expose only the state valid for that kind.
 pub struct CycleControl<Owner> { control: GadToolsControl<Owner> }
+/// Represents a list view control value.
 pub struct ListViewControl<Owner> { control: GadToolsControl<Owner> }
+/// Represents a checkbox control value.
 pub struct CheckboxControl<Owner> { control: GadToolsControl<Owner> }
+/// Represents a string control value.
 pub struct StringControl<Owner> { control: GadToolsControl<Owner> }
+/// Represents a integer control value.
 pub struct IntegerControl<Owner> { control: GadToolsControl<Owner> }
+/// Represents a text control value.
 pub struct TextControl<Owner> { control: GadToolsControl<Owner> }
 
 impl<Owner> GadToolsControl<Owner> {
+    /// Returns the stable identifier associated with `GadToolsControl`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn id(&self) -> u16 {
         return unsafe { (*self.gadget).GadgetID }
     }
 
+    /// Sets enabled for `GadToolsControl`.
+    ///
+    /// # Parameters
+    /// * `enabled` - The `bool` value used as enabled.
     pub fn set_enabled(&self, enabled: bool) {
         let tags = [
             TagItem { ti_Tag: GA_Disabled, ti_Data: if enabled { 0 } else { 1 } },
@@ -830,6 +949,10 @@ impl<Owner> GadToolsControl<Owner> {
         GT_SetGadgetAttrsA(self.gadget, self.window, null, &tags[0])
     }
 
+    /// Returns the raw representation wrapped by `GadToolsControl` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*Gadget` value.
     pub fn as_raw(&self) -> *Gadget {
         return self.gadget
     }
@@ -870,10 +993,18 @@ impl<Owner> ListViewControl<Owner> {
 }
 
 impl<Owner> CheckboxControl<Owner> {
+    /// Marks `CheckboxControl` as initially checked.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn checked(&self) -> bool {
         return unsafe { ((*self.control.gadget).Flags & GFLG_SELECTED) != 0 }
     }
 
+    /// Sets checked for `CheckboxControl`.
+    ///
+    /// # Parameters
+    /// * `checked` - The `bool` value used as checked.
     pub fn set_checked(&self, checked: bool) {
         self.control.set_u32(GTCB_Checked, if checked { 1 } else { 0 })
     }
@@ -889,12 +1020,23 @@ impl<Owner> StringControl<Owner> {
         }
     }
 
+    /// Sets value for `StringControl`.
+    ///
+    /// # Parameters
+    /// * `value` - The `Str` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_value(&self, value: Str) -> Result<(), IntuitionError> {
         return self.control.set_string(GTST_String, value)
     }
 }
 
 impl<Owner> IntegerControl<Owner> {
+    /// Returns the value value associated with `IntegerControl`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn value(&self) -> Option<i32> {
         unsafe {
             let info = (*StringInfo)(*self.control.gadget).SpecialInfo
@@ -904,17 +1046,29 @@ impl<Owner> IntegerControl<Owner> {
     }
 
     @suppress("W0002", "GTIN_Number stores a signed 32-bit value in tag data")
+    /// Sets value for `IntegerControl`.
+    ///
+    /// # Parameters
+    /// * `value` - The `i32` value used as value.
     pub fn set_value(&self, value: i32) {
         self.control.set_u32(GTIN_Number, (u32)value)
     }
 
     @suppress("W0002", "the range check makes this signed conversion lossless")
+    /// Sets u32 saturating for `IntegerControl`.
+    ///
+    /// # Parameters
+    /// * `value` - The `u32` value used as value.
     pub fn set_u32_saturating(&self, value: u32) {
         let display = if value > 2147483647 { 2147483647 } else { (i32)value }
         self.set_value(display)
     }
 
     @suppress("W0002", "negative values are rejected before converting to unsigned")
+    /// Returns the u32 value value associated with `IntegerControl`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn u32_value(&self) -> Option<u32> {
         let Option::Some(value) = self.value() else { return Option::None }
         return Option::None if value < 0
@@ -923,6 +1077,13 @@ impl<Owner> IntegerControl<Owner> {
 }
 
 impl<Owner> TextControl<Owner> {
+    /// Sets text for `TextControl`.
+    ///
+    /// # Parameters
+    /// * `value` - The `Str` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_text(&self, value: Str) -> Result<(), IntuitionError> {
         return self.control.set_string(GTTX_Text, value)
     }
@@ -960,51 +1121,112 @@ fn model_gadget(slot: *GadgetModelSlot) -> *Gadget {
 }
 
 impl StaticGadToolsWindow {
+    /// Borrows the system-level value wrapped by `StaticGadToolsWindow`.
+    ///
+    /// # Returns
+    /// The resulting `WindowRef` value.
     pub fn system(&self) -> WindowRef { return WindowRef::borrow(unsafe { &*self.window }) }
+    /// Returns the raw representation wrapped by `StaticGadToolsWindow` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*Window` value.
     pub fn as_raw(&self) -> *Window { return self.window }
 
+    /// Returns a generic control view owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn control(&self, id: u16) -> Option<GadToolsControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if gadget == null { return Option::None }
         return Option::Some(GadToolsControl { owner: self, window: self.window, gadget: gadget })
     }
 
+    /// Returns a cycle control view owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn cycle(&self, id: u16) -> Option<CycleControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, CYCLE_KIND) { return Option::None }
         return Option::Some(CycleControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a list-view control owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn list_view(&self, id: u16) -> Option<ListViewControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, LISTVIEW_KIND) { return Option::None }
         return Option::Some(ListViewControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a checkbox control owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn checkbox(&self, id: u16) -> Option<CheckboxControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, CHECKBOX_KIND) { return Option::None }
         return Option::Some(CheckboxControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a string control owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn string(&self, id: u16) -> Option<StringControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, STRING_KIND) { return Option::None }
         return Option::Some(StringControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns an integer control owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn integer(&self, id: u16) -> Option<IntegerControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, INTEGER_KIND) { return Option::None }
         return Option::Some(IntegerControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a text control owned by `StaticGadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn text(&self, id: u16) -> Option<TextControl<StaticGadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, TEXT_KIND) { return Option::None }
         return Option::Some(TextControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Waits for event for `StaticGadToolsWindow`.
+    ///
+    /// # Returns
+    /// The resulting `GadToolsEvent` value.
     pub fn wait_event(&self) -> GadToolsEvent {
         unsafe {
             let port = (*self.window).UserPort
@@ -1079,18 +1301,31 @@ impl Drop for GadToolsBuilder {
     }
 }
 
+/// Represents a gad tools window value.
 pub struct GadToolsWindow {
+    /// The window value stored by `GadToolsWindow`.
     window: *Window
+    /// The screen value stored by `GadToolsWindow`.
     screen: *Screen
+    /// The owns screen value stored by `GadToolsWindow`.
     owns_screen: bool
+    /// The releases screen value stored by `GadToolsWindow`.
     releases_screen: bool
+    /// The visual info value stored by `GadToolsWindow`.
     visual_info: *u8
+    /// The gadgets value stored by `GadToolsWindow`.
     gadgets: *Gadget
+    /// The labels value stored by `GadToolsWindow`.
     labels: **u8
+    /// The label count value stored by `GadToolsWindow`.
     label_count: u32
+    /// The label capacity value stored by `GadToolsWindow`.
     label_capacity: u32
+    /// The models value stored by `GadToolsWindow`.
     models: *GadgetModelSlot
+    /// The model count value stored by `GadToolsWindow`.
     model_count: u32
+    /// The menu strip value stored by `GadToolsWindow`.
     menu_strip: Option<GadToolsMenuStrip>
 }
 
@@ -1114,6 +1349,10 @@ impl GadToolsWindow {
 
     /// Borrow the native window for drawing, requesters, or uncommon OS calls.
     pub fn system(&self) -> WindowRef { return WindowRef::borrow(unsafe { &*self.window }) }
+    /// Returns the raw representation wrapped by `GadToolsWindow` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*Window` value.
     pub fn as_raw(&self) -> *Window { return self.window }
     /// Create another GadTools window on this window's screen. The parent must
     /// remain alive until the child is closed.
@@ -1142,48 +1381,103 @@ impl GadToolsWindow {
         Draw(rastport, left, top)
     }
 
+    /// Sets menu enabled for `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `menu` - The `u16` value used as menu.
+    /// * `item` - The `u16` value used as item.
+    /// * `enabled` - The `bool` value used as enabled.
     pub fn set_menu_enabled(&self, menu: u16, item: u16, enabled: bool) {
         let number = (menu & $001F) | ((item & $003F) << 5) | ($001F << 11)
         if enabled { OnMenu(self.window, number) }
         if !enabled { OffMenu(self.window, number) }
     }
 
+    /// Returns a generic control view owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn control(&self, id: u16) -> Option<GadToolsControl<GadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if gadget == null { return Option::None }
         return Option::Some(GadToolsControl { owner: self, window: self.window, gadget: gadget })
     }
 
+    /// Returns a cycle control view owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn cycle(&self, id: u16) -> Option<CycleControl<GadToolsWindow>> {
         let gadget = model_gadget(find_model_slot(self.models, self.model_count, id))
         if !is_gadget_kind(gadget, CYCLE_KIND) { return Option::None }
         return Option::Some(CycleControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a list-view control owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn list_view(&self, id: u16) -> Option<ListViewControl<GadToolsWindow>> {
         let gadget = model_gadget(find_model_slot(self.models, self.model_count, id))
         if !is_gadget_kind(gadget, LISTVIEW_KIND) { return Option::None }
         return Option::Some(ListViewControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a checkbox control owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn checkbox(&self, id: u16) -> Option<CheckboxControl<GadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, CHECKBOX_KIND) { return Option::None }
         return Option::Some(CheckboxControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a string control owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn string(&self, id: u16) -> Option<StringControl<GadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, STRING_KIND) { return Option::None }
         return Option::Some(StringControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns an integer control owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn integer(&self, id: u16) -> Option<IntegerControl<GadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, INTEGER_KIND) { return Option::None }
         return Option::Some(IntegerControl { control: GadToolsControl { owner: self, window: self.window, gadget: gadget } })
     }
 
+    /// Returns a text control owned by `GadToolsWindow`.
+    ///
+    /// # Parameters
+    /// * `id` - The `u16` value used as id.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn text(&self, id: u16) -> Option<TextControl<GadToolsWindow>> {
         let gadget = find_gadget(self.gadgets, id)
         if !is_gadget_kind(gadget, TEXT_KIND) { return Option::None }
@@ -1250,6 +1544,10 @@ impl GadToolsWindow {
         return Result::Ok(())
     }
 
+    /// Waits for event for `GadToolsWindow`.
+    ///
+    /// # Returns
+    /// The resulting `GadToolsEvent` value.
     pub fn wait_event(&self) -> GadToolsEvent {
         unsafe {
             let port = (*self.window).UserPort

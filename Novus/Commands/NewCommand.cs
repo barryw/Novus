@@ -375,6 +375,7 @@ public static class NewCommand
             "library" => ("lib.novus", LoadBundledSource("library", "library", "lib.novus", projectName)),
             "device" => ("dev.novus", LoadBundledSource("device", "device", "dev.novus", projectName)),
             "resource" => ("resource.novus", LoadBundledSource("resource", "resource", "resource.novus", projectName)),
+            "handler" => ("main.novus", LoadBundledSource("handler", "handler", "main.novus", projectName)),
             _ => ("main.novus", LoadBundledSource("cli", "cli", "main.novus", projectName))
         };
     }

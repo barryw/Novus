@@ -1,0 +1,11 @@
+from amiga::raw::amiga_lib import FastRand, RangeRand
+from amiga::raw::hdwrench import QueryCapacity
+
+pub fn main() -> i32 {
+    var blocks: u32 = 0
+    var block_bytes: u32 = 0
+    let random = unsafe { FastRand(1) }
+    let ranged = unsafe { RangeRand(2) }
+    let capacity = unsafe { QueryCapacity(&blocks, &block_bytes) }
+    return 0
+}

@@ -73,9 +73,13 @@ pub trait Streamable {
 ///
 /// Managed by StreamBufferSet for coordinated streaming operations.
 pub struct StreamBuffer {
+    /// The chip ptr value stored by `StreamBuffer`.
     chip_ptr: *u8,          // Pointer to chip RAM buffer
+    /// The size value stored by `StreamBuffer`.
     size: u32,              // Allocated size
+    /// The filled value stored by `StreamBuffer`.
     filled: u32,            // How much valid data is in the buffer
+    /// The source offset value stored by `StreamBuffer`.
     source_offset: u32,     // Offset in source this buffer represents
 }
 
@@ -123,8 +127,11 @@ const MAX_STREAM_BUFFERS: u32 = 4
 /// Use this when you need low-level control over buffering, or use
 /// the higher-level ChipStream for common streaming patterns.
 pub struct StreamBufferSet {
+    /// The buffers value stored by `StreamBufferSet`.
     buffers: [StreamBuffer; 4],
+    /// The buffer count value stored by `StreamBufferSet`.
     buffer_count: u8,
+    /// The buffer size value stored by `StreamBufferSet`.
     buffer_size: u32,
 }
 
@@ -322,12 +329,19 @@ impl Drop for StreamBufferSet {
 /// stream.advance()?  // Move to next buffer, refill previous
 /// ```
 pub struct ChipStream {
+    /// The buffers value stored by `ChipStream`.
     buffers: StreamBufferSet,
+    /// The source ptr value stored by `ChipStream`.
     source_ptr: *u8,
+    /// The source size value stored by `ChipStream`.
     source_size: u32,
+    /// The current idx value stored by `ChipStream`.
     current_idx: u8,        // Current buffer for playback (0, 1, or 2)
+    /// The fill offset value stored by `ChipStream`.
     fill_offset: u32,       // Next offset to fill from source
+    /// The play offset value stored by `ChipStream`.
     play_offset: u32,       // How much has been played (buffer granularity)
+    /// The looping value stored by `ChipStream`.
     looping: bool,
 }
 

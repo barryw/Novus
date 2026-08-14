@@ -1274,7 +1274,9 @@ pub struct VecInfo {
     reserved: [u32; 2],
 }
 
-pub struct Custom__anonymous0 {
+/// One Paula audio DMA channel embedded in the custom-chip register block.
+#[extern_type]
+pub struct AudChannel {
     ac_ptr: *u16,
     ac_len: u16,
     ac_per: u16,
@@ -1283,7 +1285,9 @@ pub struct Custom__anonymous0 {
     ac_pad: [u16; 2],
 }
 
-pub struct Custom__anonymous1 {
+/// One hardware sprite register group embedded in the custom-chip register block.
+#[extern_type]
+pub struct SpriteDef {
     pos: u16,
     ctl: u16,
     dataa: u16,
@@ -1361,7 +1365,7 @@ pub struct Custom {
     intena: u16,
     intreq: u16,
     adkcon: u16,
-    _anonymous0: Custom__anonymous0,
+    aud: [AudChannel; 4],
     bplpt: [*u8; 8],
     bplcon0: u16,
     bplcon1: u16,
@@ -1373,7 +1377,7 @@ pub struct Custom {
     clxcon2: u16,
     bpldat: [u16; 8],
     sprpt: [*u8; 8],
-    _anonymous1: Custom__anonymous1,
+    spr: [SpriteDef; 8],
     color: [u16; 32],
     htotal: u16,
     hsstop: u16,

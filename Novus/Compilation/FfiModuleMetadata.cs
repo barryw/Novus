@@ -18,6 +18,7 @@ public sealed record FfiModuleMetadata(
     FfiModuleKind Kind,
     int MinimumVersion)
 {
+    public bool Optional { get; init; }
     public IReadOnlyList<string> Headers { get; init; } = [];
     public IReadOnlyDictionary<string, int> FunctionVersions { get; init; } =
         new Dictionary<string, int>(StringComparer.Ordinal);
@@ -118,7 +119,7 @@ public sealed record FfiModuleMetadata(
             isClass ? classOpenName! : libraryName,
             baseSymbol,
             kind,
-            isClass ? 44 : 0)
+            Math.Max(isClass ? 44 : 0, functionVersions.Values.DefaultIfEmpty(0).Min()))
         {
             Headers = headers,
             FunctionVersions = functionVersions

@@ -4,10 +4,15 @@ from amiga::sys::exec import ExecError, LibraryHandle
 
 /// A system component is absent or older than the requested version.
 pub enum CapabilityError {
+    /// Indicates that the requested service is unavailable.
     Unavailable,
 }
 
 impl CapabilityError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return "The requested system library is unavailable"
     }
@@ -26,6 +31,7 @@ impl From<ExecError> for CapabilityError {
 /// An optional AmigaOS library kept open for the lifetime of this value.
 /// Dropping it closes the library automatically.
 pub struct SystemLibrary {
+    /// The handle value stored by `SystemLibrary`.
     handle: LibraryHandle,
 }
 
@@ -37,7 +43,15 @@ impl SystemLibrary {
         })
     }
 
+    /// Returns the version value associated with `SystemLibrary`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn version(&self) -> u16 { return self.handle.installed_version() }
+    /// Returns the revision value associated with `SystemLibrary`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn revision(&self) -> u16 { return self.handle.installed_revision() }
 
     /// Drop to Tier 2 without surrendering ownership of the open library.

@@ -4,6 +4,7 @@ from std::core import Drop, Error, Iterable, Option, Result
 
 /// Returned by `ArrayVec::push` when the inline capacity is exhausted.
 pub enum ArrayVecError {
+    /// Indicates full.
     Full,
 }
 
@@ -11,26 +12,49 @@ impl Error for ArrayVecError {
     fn message(&self) -> *u8 { return "ArrayVec is full" }
 }
 
+/// Represents a array vec value.
 pub struct ArrayVec<T, const N: usize> {
+    /// The items value stored by `ArrayVec`.
     items: [Option<T>; N],
+    /// The len value stored by `ArrayVec`.
     len: usize,
 }
 
 impl<T, const N: usize> ArrayVec<T, N> {
+    /// Creates a new `ArrayVec` value.
+    ///
+    /// # Returns
+    /// The resulting `ArrayVec<T, N>` value.
     pub fn new() -> ArrayVec<T, N> {
         return ArrayVec { items: [Option::None; N], len: 0 }
     }
 
     @inline
+    /// Returns the number of items currently stored by `ArrayVec`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize { return self.len }
 
     @inline
+    /// Returns the maximum number of items `ArrayVec` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize { return N }
 
     @inline
+    /// Returns whether `ArrayVec` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool { return self.len == 0 }
 
     @inline
+    /// Returns whether `ArrayVec` has reached its capacity.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_full(&self) -> bool { return self.len == N }
 
     /// Append a value. A value rejected because the vector is full is consumed
@@ -44,6 +68,13 @@ impl<T, const N: usize> ArrayVec<T, N> {
         return Result::Ok(())
     }
 
+    /// Returns the requested item from `ArrayVec`, when it exists.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len { return Option::None }
         return match &self.items[index] {
@@ -52,6 +83,13 @@ impl<T, const N: usize> ArrayVec<T, N> {
         }
     }
 
+    /// Returns a mutable borrow of the requested item from `ArrayVec`, when it exists.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len { return Option::None }
         return match &var self.items[index] {

@@ -71,8 +71,11 @@ extern fn DoMethodA(object: *u8, message: *u32) -> u32
 // Orientation Enum
 // ============================================================================
 
+/// Identifies the possible layout orientation values.
 pub enum LayoutOrientation {
+    /// Indicates horizontal.
     Horizontal,
+    /// Indicates vertical.
     Vertical,
 }
 
@@ -80,11 +83,17 @@ pub enum LayoutOrientation {
 // Bevel Style Enum
 // ============================================================================
 
+/// Identifies the possible bevel style values.
 pub enum BevelStyle {
+    /// Contains no value.
     None,
+    /// Indicates thin.
     Thin,
+    /// Indicates button.
     Button,
+    /// Indicates group.
     Group,
+    /// Indicates field.
     Field,
 }
 
@@ -94,12 +103,19 @@ pub enum BevelStyle {
 
 // Type of gadget/layout being tracked
 // Note: pub required to work around codegen bug with private enum variants
+/// Identifies the possible gadget type values.
 pub enum GadgetType {
+    /// Indicates layout.
     Layout,
+    /// Indicates button.
     Button,
+    /// Indicates checkbox.
     Checkbox,
+    /// Indicates integer.
     Integer,
+    /// Indicates radio button.
     RadioButton,
+    /// Indicates label.
     Label,
 }
 
@@ -119,25 +135,41 @@ struct GadgetEntry {
 // ReActionBuilder - Main Builder
 // ============================================================================
 
+/// Builds a configured re action value.
 pub struct ReActionBuilder {
+    /// The screen value stored by `ReActionBuilder`.
     screen: *Screen
+    /// The draw info value stored by `ReActionBuilder`.
     draw_info: *DrawInfo
+    /// The owns screen value stored by `ReActionBuilder`.
     owns_screen: bool
     // Gadget/layout entries
+    /// The entries value stored by `ReActionBuilder`.
     entries: *GadgetEntry
+    /// The entry count value stored by `ReActionBuilder`.
     entry_count: u32
+    /// The entry capacity value stored by `ReActionBuilder`.
     entry_capacity: u32
     // String allocations tracking
+    /// The labels value stored by `ReActionBuilder`.
     labels: **u8
+    /// The label count value stored by `ReActionBuilder`.
     label_count: u32
+    /// The label capacity value stored by `ReActionBuilder`.
     label_capacity: u32
     // RadioButton node tracking
+    /// The radio nodes value stored by `ReActionBuilder`.
     radio_nodes: **Node
+    /// The radio node count value stored by `ReActionBuilder`.
     radio_node_count: u32
+    /// The radio node capacity value stored by `ReActionBuilder`.
     radio_node_capacity: u32
     // Radio button list headers
+    /// The radio lists value stored by `ReActionBuilder`.
     radio_lists: **List
+    /// The radio list count value stored by `ReActionBuilder`.
     radio_list_count: u32
+    /// The radio list capacity value stored by `ReActionBuilder`.
     radio_list_capacity: u32
 }
 
@@ -766,8 +798,11 @@ impl Drop for ReActionBuilder {
 // LayoutHandle - Handle for adding children to a layout
 // ============================================================================
 
+/// Owns a layout handle and releases its resources when dropped.
 pub struct LayoutHandle {
+    /// The builder value stored by `LayoutHandle`.
     builder: *ReActionBuilder
+    /// The entry index value stored by `LayoutHandle`.
     entry_index: u32
 }
 
@@ -966,8 +1001,11 @@ impl LayoutHandle {
 // GadgetHandle - Handle for configuring a gadget
 // ============================================================================
 
+/// Owns a gadget handle and releases its resources when dropped.
 pub struct GadgetHandle {
+    /// The builder value stored by `GadgetHandle`.
     builder: *ReActionBuilder
+    /// The entry index value stored by `GadgetHandle`.
     entry_index: u32
 }
 
@@ -1032,16 +1070,27 @@ impl GadgetHandle {
 // ReActionEvent - Event from ReAction window
 // ============================================================================
 
+/// Identifies the possible re action event values.
 pub enum ReActionEvent {
+    /// Indicates close.
     Close,
+    /// Indicates gadget up.
     GadgetUp(u32),          // Gadget ID
+    /// Indicates gadget down.
     GadgetDown(u32),        // Gadget ID
+    /// Indicates active.
     Active,
+    /// Indicates inactive.
     Inactive,
+    /// Indicates new size.
     NewSize,
+    /// Indicates menu pick.
     MenuPick(u16),          // Menu selection code
+    /// Indicates iconify.
     Iconify,
+    /// Indicates uniconify.
     Uniconify,
+    /// Indicates unknown.
     Unknown(u32),
 }
 
@@ -1049,19 +1098,33 @@ pub enum ReActionEvent {
 // ReActionWindow - RAII wrapper for the window
 // ============================================================================
 
+/// Represents a re action window value.
 pub struct ReActionWindow {
+    /// The window obj value stored by `ReActionWindow`.
     window_obj: *u8         // BOOPSI window object
+    /// The window value stored by `ReActionWindow`.
     window: *Window         // Opened window pointer
+    /// The sig mask value stored by `ReActionWindow`.
     sig_mask: u32           // Signal mask for waiting
+    /// The screen value stored by `ReActionWindow`.
     screen: *Screen
+    /// The draw info value stored by `ReActionWindow`.
     draw_info: *DrawInfo
+    /// The owns screen value stored by `ReActionWindow`.
     owns_screen: bool
+    /// The menu strip value stored by `ReActionWindow`.
     menu_strip: Option<GadToolsMenuStrip>
+    /// The labels value stored by `ReActionWindow`.
     labels: **u8
+    /// The label count value stored by `ReActionWindow`.
     label_count: u32
+    /// The radio nodes value stored by `ReActionWindow`.
     radio_nodes: **Node
+    /// The radio node count value stored by `ReActionWindow`.
     radio_node_count: u32
+    /// The radio lists value stored by `ReActionWindow`.
     radio_lists: **List
+    /// The radio list count value stored by `ReActionWindow`.
     radio_list_count: u32
 }
 

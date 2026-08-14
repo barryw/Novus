@@ -18,10 +18,13 @@ impl MyLib {
         return a * b
     }
 
-    // Optional lifecycle hooks receive the persistent state. The generated
-    // lifecycle code still maintains Exec's Library header and delayed expunge.
+    pub fn Next(&var self) -> u32 {
+        self.counter++
+        return self.counter
+    }
 
-    /*
+    // Optional lifecycle hooks receive persistent state. Remove any hook the
+    // library does not need; Exec bookkeeping remains compiler-owned.
     @libinit
     pub fn loaded(state: *MyLib) -> bool {
         unsafe {
@@ -45,5 +48,4 @@ impl MyLib {
         // Release resources created by loaded(). The generated code then
         // unlinks and frees the library base and returns its segment list.
     }
-    */
 }

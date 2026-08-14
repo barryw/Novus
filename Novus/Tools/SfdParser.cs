@@ -438,14 +438,20 @@ public class SfdParser
         {
             var returnType = MapAmigaTypeToNovus(callback.Groups[1].Value.Trim());
             var parameterText = callback.Groups[2].Value.Trim();
-            var parameterTypes = parameterText is "" or "void" or "VOID"
+            var callbackParameters = parameterText is "" or "void" or "VOID"
                 ? []
-                : SplitParameters(parameterText)
-                    .Select(StripParameterName)
-                    .Select(MapAmigaTypeToNovus)
-                    .ToList();
-            return $"fn({string.Join(", ", parameterTypes)})" +
-                   (returnType == "void" ? "" : $" -> {returnType}");
+                : SplitParameters(parameterText).ToList();
+            var registerAbi = callbackParameters.Any(parameter =>
+                Regex.IsMatch(parameter, @"\bregister\s+__[ad][0-7]\b", RegexOptions.IgnoreCase));
+            var parameterTypes = callbackParameters.Select(parameter =>
+            {
+                var register = Regex.Match(parameter, @"\bregister\s+__([ad][0-7])\b", RegexOptions.IgnoreCase);
+                var type = MapAmigaTypeToNovus(StripParameterName(
+                    Regex.Replace(parameter, @"\bregister\s+__[ad][0-7]\s*", "", RegexOptions.IgnoreCase)));
+                return register.Success ? $"{type} in {register.Groups[1].Value.ToLowerInvariant()}" : type;
+            });
+            return $"{(registerAbi ? "amiga " : "")}fn({string.Join(", ", parameterTypes)})" +
+                   (returnType == "void" ? "" : $" -> {returnType}{(registerAbi ? " in d0" : "")}");
         }
 
         var typedPointer = Regex.Match(cleanType, @"^(.+?)\s*(\*+)$");

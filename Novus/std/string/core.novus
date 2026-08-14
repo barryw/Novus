@@ -30,6 +30,10 @@ pub enum StringError {
 }
 
 impl StringError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             StringError::OutOfBounds(_, _) => return "Index out of bounds",
@@ -72,7 +76,9 @@ impl Error for StringError {
 /// greet(s)  // Zero-cost pass
 /// ```
 pub struct Str {
+    /// The ptr value stored by `Str`.
     ptr: &u8,
+    /// The len value stored by `Str`.
     len: usize,
 }
 
@@ -555,6 +561,7 @@ impl Str {
 /// s.push_str(", World!")
 /// ```
 pub struct String {
+    /// The vec value stored by `String`.
     vec: Vec<u8>,
 }
 
@@ -724,6 +731,7 @@ impl Drop for String {
 
 /// Borrowed view of a NUL-terminated string for operating-system APIs.
 pub struct CStr {
+    /// The ptr value stored by `CStr`.
     ptr: &u8,
 }
 
@@ -736,15 +744,28 @@ impl CStr {
 
 /// Stack-allocated string with exactly `N` bytes of capacity.
 pub struct FixedString<const N: usize> {
+    /// The buf value stored by `FixedString`.
     buf: [u8; N],
+    /// The len value stored by `FixedString`.
     len: usize,
 }
 
 impl<const N: usize> FixedString<N> {
+    /// Creates a new `FixedString` value.
+    ///
+    /// # Returns
+    /// The resulting `FixedString<N>` value.
     pub fn new() -> FixedString<N> {
         return FixedString { buf: [0; N], len: 0 }
     }
 
+    /// Computes new from str for `FixedString` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new_from_str(s: Str) -> Result<FixedString<N>, StringError> {
         var value = FixedString::<N>::new()
         match value.push_str(s) {
@@ -753,15 +774,38 @@ impl<const N: usize> FixedString<N> {
         }
     }
 
+    /// Returns the number of items currently stored by `FixedString`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize { return self.len }
+    /// Returns whether `FixedString` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool { return self.len == 0 }
+    /// Returns the maximum number of items `FixedString` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize { return N }
 
+    /// Borrows `FixedString` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         if self.len == 0 { return "" }
         return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
+    /// Appends str for `FixedString`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         let required = self.len + s.len()
         if required > N { return Result::Err(StringError::TooLong(required)) }
@@ -773,6 +817,13 @@ impl<const N: usize> FixedString<N> {
         return Result::Ok(())
     }
 
+    /// Appends byte for `FixedString`.
+    ///
+    /// # Parameters
+    /// * `byte` - The `u8` value used as byte.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= N { return Result::Err(StringError::TooLong(self.len + 1)) }
         self.buf[self.len] = byte
@@ -780,6 +831,13 @@ impl<const N: usize> FixedString<N> {
         return Result::Ok(())
     }
 
+    /// Appends u32 for `FixedString`.
+    ///
+    /// # Parameters
+    /// * `value` - The `u32` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_u32(&var self, value: u32) -> Result<(), StringError> {
         if value == 0 { return self.push_byte((u8)'0') }
         var digits: [u8] = [0; 10]
@@ -797,22 +855,37 @@ impl<const N: usize> FixedString<N> {
         return Result::Ok(())
     }
 
+    /// Removes all items from `FixedString`.
     pub fn clear(&var self) { self.len = 0 }
 }
 
 /// Stack-allocated C string with `N` bytes of content capacity.
 /// A dedicated trailing byte keeps the pointer NUL-terminated even when full.
 pub struct FixedCString<const N: usize> {
+    /// The buf value stored by `FixedCString`.
     buf: [u8; N],
+    /// The terminator value stored by `FixedCString`.
     terminator: u8,
+    /// The len value stored by `FixedCString`.
     len: usize,
 }
 
 impl<const N: usize> FixedCString<N> {
+    /// Creates a new `FixedCString` value.
+    ///
+    /// # Returns
+    /// The resulting `FixedCString<N>` value.
     pub fn new() -> FixedCString<N> {
         return FixedCString { buf: [0; N], terminator: 0, len: 0 }
     }
 
+    /// Computes new from str for `FixedCString` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new_from_str(s: Str) -> Result<FixedCString<N>, StringError> {
         var value = FixedCString::<N>::new()
         match value.push_str(s) {
@@ -821,25 +894,56 @@ impl<const N: usize> FixedCString<N> {
         }
     }
 
+    /// Returns the number of items currently stored by `FixedCString`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize { return self.len }
+    /// Returns whether `FixedCString` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool { return self.len == 0 }
+    /// Returns the maximum number of items `FixedCString` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize { return N }
 
+    /// Borrows `FixedCString` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         if self.len == 0 { return "" }
         return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
+    /// Borrows `FixedCString` as cstr.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn as_cstr(&self) -> *u8 {
         if N == 0 { return (*u8)&self.terminator }
         return (*u8)&self.buf[0]
     }
 
+    /// Borrows `FixedCString` as cstr view.
+    ///
+    /// # Returns
+    /// The resulting `CStr` value.
     pub fn as_cstr_view(&self) -> CStr {
         if N == 0 { return CStr { ptr: &self.terminator } }
         return CStr { ptr: &self.buf[0] }
     }
 
+    /// Appends str for `FixedCString`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         let required = self.len + s.len()
         if required > N { return Result::Err(StringError::TooLong(required)) }
@@ -852,6 +956,13 @@ impl<const N: usize> FixedCString<N> {
         return Result::Ok(())
     }
 
+    /// Appends byte for `FixedCString`.
+    ///
+    /// # Parameters
+    /// * `byte` - The `u8` value used as byte.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= N { return Result::Err(StringError::TooLong(self.len + 1)) }
         self.buf[self.len] = byte
@@ -860,6 +971,7 @@ impl<const N: usize> FixedCString<N> {
         return Result::Ok(())
     }
 
+    /// Removes all items from `FixedCString`.
     pub fn clear(&var self) {
         self.len = 0
         self.terminate()
@@ -873,35 +985,68 @@ impl<const N: usize> FixedCString<N> {
 
 /// 32-byte fixed string for short names
 pub struct NameString {
+    /// The buf value stored by `NameString`.
     buf: [u8; 32],
+    /// The len value stored by `NameString`.
     len: usize,
 }
 
 impl NameString {
+    /// Creates a new `NameString` value.
+    ///
+    /// # Returns
+    /// The resulting `NameString` value.
     pub fn new() -> NameString {
         return NameString { buf: [0; 32], len: 0 }
     }
 
+    /// Returns the number of items currently stored by `NameString`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.len
     }
 
+    /// Returns whether `NameString` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool {
         return self.len == 0
     }
 
+    /// Returns the maximum number of items `NameString` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize {
         return 32
     }
 
+    /// Borrows `NameString` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
+    /// Borrows `NameString` as mut ptr.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
+    /// Appends str for `NameString`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 32 {
             return Result::Err(StringError::TooLong(self.len + s.len()))
@@ -916,6 +1061,13 @@ impl NameString {
         return Result::Ok(())
     }
 
+    /// Appends byte for `NameString`.
+    ///
+    /// # Parameters
+    /// * `byte` - The `u8` value used as byte.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 32 {
             return Result::Err(StringError::TooLong(self.len + 1))
@@ -926,6 +1078,7 @@ impl NameString {
         return Result::Ok(())
     }
 
+    /// Removes all items from `NameString`.
     pub fn clear(&var self) {
         self.len = 0
     }
@@ -933,35 +1086,68 @@ impl NameString {
 
 /// 128-byte fixed string for gadget buffers
 pub struct GadgetString {
+    /// The buf value stored by `GadgetString`.
     buf: [u8; 128],
+    /// The len value stored by `GadgetString`.
     len: usize,
 }
 
 impl GadgetString {
+    /// Creates a new `GadgetString` value.
+    ///
+    /// # Returns
+    /// The resulting `GadgetString` value.
     pub fn new() -> GadgetString {
         return GadgetString { buf: [0; 128], len: 0 }
     }
 
+    /// Returns the number of items currently stored by `GadgetString`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.len
     }
 
+    /// Returns whether `GadgetString` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool {
         return self.len == 0
     }
 
+    /// Returns the maximum number of items `GadgetString` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize {
         return 128
     }
 
+    /// Borrows `GadgetString` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
+    /// Borrows `GadgetString` as mut ptr.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
+    /// Appends str for `GadgetString`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 128 {
             return Result::Err(StringError::TooLong(self.len + s.len()))
@@ -976,6 +1162,13 @@ impl GadgetString {
         return Result::Ok(())
     }
 
+    /// Appends byte for `GadgetString`.
+    ///
+    /// # Parameters
+    /// * `byte` - The `u8` value used as byte.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 128 {
             return Result::Err(StringError::TooLong(self.len + 1))
@@ -986,6 +1179,7 @@ impl GadgetString {
         return Result::Ok(())
     }
 
+    /// Removes all items from `GadgetString`.
     pub fn clear(&var self) {
         self.len = 0
     }
@@ -993,35 +1187,68 @@ impl GadgetString {
 
 /// 256-byte fixed string for file paths
 pub struct PathString {
+    /// The buf value stored by `PathString`.
     buf: [u8; 256],
+    /// The len value stored by `PathString`.
     len: usize,
 }
 
 impl PathString {
+    /// Creates a new `PathString` value.
+    ///
+    /// # Returns
+    /// The resulting `PathString` value.
     pub fn new() -> PathString {
         return PathString { buf: [0; 256], len: 0 }
     }
 
+    /// Returns the number of items currently stored by `PathString`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.len
     }
 
+    /// Returns whether `PathString` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool {
         return self.len == 0
     }
 
+    /// Returns the maximum number of items `PathString` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize {
         return 256
     }
 
+    /// Borrows `PathString` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         return unsafe { Str::new(&self.buf[0], self.len) }
     }
 
+    /// Borrows `PathString` as mut ptr.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn as_mut_ptr(&var self) -> *u8 {
         return (*u8)(&self.buf)
     }
 
+    /// Appends str for `PathString`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_str(&var self, s: Str) -> Result<(), StringError> {
         if self.len + s.len() > 256 {
             return Result::Err(StringError::TooLong(self.len + s.len()))
@@ -1036,6 +1263,13 @@ impl PathString {
         return Result::Ok(())
     }
 
+    /// Appends byte for `PathString`.
+    ///
+    /// # Parameters
+    /// * `byte` - The `u8` value used as byte.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn push_byte(&var self, byte: u8) -> Result<(), StringError> {
         if self.len >= 256 {
             return Result::Err(StringError::TooLong(self.len + 1))
@@ -1046,6 +1280,7 @@ impl PathString {
         return Result::Ok(())
     }
 
+    /// Removes all items from `PathString`.
     pub fn clear(&var self) {
         self.len = 0
     }
@@ -1060,6 +1295,7 @@ impl PathString {
 /// Maximum length: 255 bytes
 /// BPTR = address / 4
 pub struct BStr {
+    /// The bptr value stored by `BStr`.
     bptr: u32,  // BPTR (address divided by 4)
 }
 
@@ -1190,6 +1426,10 @@ pub enum ParseError {
 }
 
 impl ParseError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             ParseError::Empty => return "Empty string",
@@ -1445,8 +1685,11 @@ impl Str {
 /// }
 /// ```
 pub struct SplitIter {
+    /// The remaining value stored by `SplitIter`.
     remaining: Str,
+    /// The delimiter value stored by `SplitIter`.
     delimiter: u8,
+    /// The done value stored by `SplitIter`.
     done: bool,
 }
 
@@ -1498,7 +1741,9 @@ impl SplitIter {
 
 /// Iterator over lines in a string (splits by LF, CR, or CRLF)
 pub struct LinesIter {
+    /// The remaining value stored by `LinesIter`.
     remaining: Str,
+    /// The done value stored by `LinesIter`.
     done: bool,
 }
 
@@ -1722,6 +1967,7 @@ pub fn str_join(parts: *Str, count: usize, separator: Str) -> Result<String, Str
 /// let result: String = builder.build()
 /// ```
 pub struct StringBuilder {
+    /// The string value stored by `StringBuilder`.
     string: String,
 }
 
@@ -1981,8 +2227,11 @@ impl StringBuilder {
 /// // parts.filename = Some("main.novus")
 /// ```
 pub struct PathComponents {
+    /// The volume value stored by `PathComponents`.
     volume: Option<Str>,      // "SYS:", "RAM:", etc.
+    /// The directory value stored by `PathComponents`.
     directory: Option<Str>,   // parent directories
+    /// The filename value stored by `PathComponents`.
     filename: Option<Str>,    // final component
 }
 

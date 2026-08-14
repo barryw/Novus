@@ -1,5 +1,6 @@
 using CommandLine;
 using System.Diagnostics.CodeAnalysis;
+using Novus.Compilation;
 
 namespace Novus;
 
@@ -152,6 +153,9 @@ public class CompilerOptions
     /// Additional assembly files to assemble and link (e.g., library wrappers)
     /// </summary>
     public List<string> AdditionalAsmFiles { get; set; } = new();
+
+    /// <summary>FFI lifecycles contributed by workspace library dependencies.</summary>
+    public List<FfiModuleMetadata> AdditionalFfiModules { get; set; } = new();
 
     /// <summary>
     /// Additional Novus modules compiled into the target without importing their symbols.

@@ -68,10 +68,15 @@ from std::memory::errors import MemoryError
 /// - Do NOT double-free objects
 /// - Do NOT use objects after freeing them
 pub struct ObjectPool<T> {
+    /// The data value stored by `ObjectPool`.
     data: *u8,              // Raw memory block
+    /// The capacity value stored by `ObjectPool`.
     capacity: usize,        // Total number of slots
+    /// The free head value stored by `ObjectPool`.
     free_head: *FreeNode,   // Head of free list
+    /// The allocated value stored by `ObjectPool`.
     allocated: usize,       // Number of currently allocated objects
+    /// The slot size value stored by `ObjectPool`.
     slot_size: u32,         // Size of each slot (4-byte aligned)
 }
 
@@ -357,11 +362,17 @@ impl<T> Drop for ObjectPool<T> {
 /// }
 /// ```
 pub struct ObjectPoolFixed<T> {
+    /// The data value stored by `ObjectPoolFixed`.
     data: *u8,               // Raw byte storage for CopyMem compatibility
+    /// The free indices value stored by `ObjectPoolFixed`.
     free_indices: *usize,    // Stack of free indices
+    /// The allocated flags value stored by `ObjectPoolFixed`.
     allocated_flags: *bool,  // Track which slots are allocated (for Drop)
+    /// The capacity value stored by `ObjectPoolFixed`.
     capacity: usize,
+    /// The free top value stored by `ObjectPoolFixed`.
     free_top: usize,         // Number of free slots (top of stack)
+    /// The element size value stored by `ObjectPoolFixed`.
     element_size: u32,
 }
 

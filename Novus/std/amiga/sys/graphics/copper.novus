@@ -29,6 +29,7 @@ from amiga::sys::hardware::registers import is_register_safe_for_copper, color_r
 from amiga::sys::hardware::chipset import SystemChipset
 
 // Copper control registers
+/// Defines `COPJMP1`, the copjmp1 value.
 pub const COPJMP1: u32 = $088  // Copper jump strobe register
 
 /// Copper list construction errors
@@ -44,6 +45,10 @@ pub enum CopperError {
 }
 
 impl CopperError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             CopperError::InvalidWaitPosition => return "Invalid wait position",
@@ -71,11 +76,17 @@ impl Error for CopperError {
 ///
 /// The builder cannot be modified after calling build().
 pub struct CopperListBuilder {
+    /// The instructions value stored by `CopperListBuilder`.
     instructions: *u32,      // Pointer to instruction array in chip RAM
+    /// The count value stored by `CopperListBuilder`.
     count: u32,              // Number of instructions
+    /// The capacity value stored by `CopperListBuilder`.
     capacity: u32,           // Current capacity in instructions
+    /// The last vpos value stored by `CopperListBuilder`.
     last_vpos: u16,          // Last vertical position for ordering check
+    /// The last hpos value stored by `CopperListBuilder`.
     last_hpos: u16,          // Last horizontal position for ordering check
+    /// The finalized value stored by `CopperListBuilder`.
     finalized: bool,         // Prevent modifications after build()
 }
 
@@ -583,9 +594,13 @@ impl Drop for CopperListBuilder {
 /// This ensures you can never leak copper lists or leave the hardware
 /// in an inconsistent state.
 pub struct CopperListHandle {
+    /// The memory value stored by `CopperListHandle`.
     memory: *u32,      // Chip RAM containing copper instructions
+    /// The size value stored by `CopperListHandle`.
     size: u32,         // Size in bytes
+    /// The active value stored by `CopperListHandle`.
     active: bool,      // Is this list currently active?
+    /// The saved view value stored by `CopperListHandle`.
     saved_view: *View, // Saved system view to restore later
 }
 

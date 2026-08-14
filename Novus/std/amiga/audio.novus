@@ -7,14 +7,21 @@ from amiga::sys::hardware::audio import SampleHandle as SystemSample, is_pal_sys
 // Tier 1: ordinary PCM playback without chip-RAM, pointer, or audio.device mechanics.
 pub use amiga::sys::device::audio::ChannelPreference
 
+/// Reports failures from playback operations.
 pub enum PlaybackError {
+    /// Indicates that the requested service is unavailable.
     Unavailable,
+    /// Indicates that the audio sample is invalid.
     InvalidSample,
+    /// Indicates that the playback settings are invalid.
     InvalidPlayback,
+    /// Indicates that memory allocation failed.
     OutOfMemory,
+    /// Indicates playback failed.
     PlaybackFailed,
 }
 
+/// Aliases `AudioError` to `PlaybackError`.
 pub type AudioError = PlaybackError
 
 impl Error for PlaybackError {
@@ -42,7 +49,9 @@ impl From<SystemAudioError> for PlaybackError {
     }
 }
 
+/// Represents a sample value.
 pub struct Sample {
+    /// The sample value stored by `Sample`.
     sample: SystemSample,
 }
 
@@ -56,21 +65,59 @@ impl Sample {
         return Result::Ok(Sample { sample: sample })
     }
 
+    /// Borrows the system-level value wrapped by `Sample`.
+    ///
+    /// # Returns
+    /// A shared borrow of `SystemSample` tied to the receiver.
     pub fn system(&self) -> &SystemSample { return &self.sample }
+    /// Wraps an owned system-level value as `Sample`.
+    ///
+    /// # Parameters
+    /// * `sample` - The sample; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `Sample` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming sample: SystemSample) -> Sample { return Sample { sample: sample } }
+    /// Consumes `Sample` and returns its system-level value.
+    ///
+    /// # Returns
+    /// The resulting `SystemSample` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn into_system(consuming self) -> SystemSample { return self.sample }
 }
 
+/// Represents a device value.
 pub struct Device {
+    /// The device value stored by `Device`.
     device: SystemDevice,
 }
 
 impl Device {
+    /// Opens `Device`.
+    ///
+    /// # Parameters
+    /// * `preference` - The `ChannelPreference` value used as preference.
+    /// * `priority` - The priority value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(preference: ChannelPreference, priority: i8) -> Result<Device, AudioError> {
         let device = SystemDevice::open(preference, priority)?
         return Result::Ok(Device { device: device })
     }
 
+    /// Opens `Device` using any available system resource.
+    ///
+    /// # Parameters
+    /// * `priority` - The priority value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open_any(priority: i8) -> Result<Device, AudioError> {
         return Device::open(ChannelPreference::Any, priority)
     }
@@ -81,22 +128,59 @@ impl Device {
         return Result::Ok(())
     }
 
+    /// Starts looped playback on `Device`.
+    ///
+    /// # Parameters
+    /// * `sample` - The `&Sample` value used as sample.
+    /// * `volume` - The `u16` value used as volume.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn play_looped(&var self, sample: &Sample, volume: u16) -> Result<(), AudioError> {
         self.device.play_native(sample.system(), volume, 0, is_pal_system())?
         return Result::Ok(())
     }
 
+    /// Stops the active operation on `Device`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn stop(&var self) -> Result<(), AudioError> {
         self.device.stop()?
         return Result::Ok(())
     }
 
+    /// Resumes the paused operation on `Device`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn resume(&var self) -> Result<(), AudioError> {
         self.device.start()?
         return Result::Ok(())
     }
 
+    /// Borrows the system-level value wrapped by `Device`.
+    ///
+    /// # Returns
+    /// A shared borrow of `SystemDevice` tied to the receiver.
     pub fn system(&self) -> &SystemDevice { return &self.device }
+    /// Wraps an owned system-level value as `Device`.
+    ///
+    /// # Parameters
+    /// * `device` - The device; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `Device` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming device: SystemDevice) -> Device { return Device { device: device } }
+    /// Consumes `Device` and returns its system-level value.
+    ///
+    /// # Returns
+    /// The resulting `SystemDevice` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn into_system(consuming self) -> SystemDevice { return self.device }
 }

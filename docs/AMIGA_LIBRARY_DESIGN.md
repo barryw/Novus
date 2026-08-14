@@ -407,6 +407,11 @@ TD_GETGEOMETRY
 
 This is the direct Amiga NDK surface.
 
+Its formal baseline is the classic 68k AmigaOS NDK 3.9 distribution. Every
+public interface and symbol is accounted for by the checked-in manifest and
+`novusc verify-ndk`; exact scope and extension exclusions are documented in
+[`NDK_COVERAGE.md`](NDK_COVERAGE.md).
+
 The old Amiga contents of `std::ffi` belong here. `ffi` describes implementation technique; `amiga::raw` describes what the API actually is.
 
 Generic language FFI support, if any, may remain under portable `std::ffi`.

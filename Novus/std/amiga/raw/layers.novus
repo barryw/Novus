@@ -395,6 +395,9 @@ extern pub fn InstallLayerHook(layer: *Layer, hook: *Hook) -> *Hook
 @library("layers.library")
 extern pub fn InstallLayerInfoHook(li: *Layer_Info, hook: *Hook) -> *Hook
 @library("layers.library")
+/// Reorders a layer's ClipRect list after movement by `dx`,`dy`.
+/// This internal layers operation requires the relevant layer information to
+/// be locked; `layer` remains owned by layers.library.
 extern pub fn SortLayerCR(layer: *Layer, dx: i16, dy: i16)
 /// Do the given hook for each of the ClipRects    (V39)
 ///

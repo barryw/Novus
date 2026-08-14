@@ -37,7 +37,9 @@ from std::memory import MemoryBlock
 /// }
 /// ```
 pub struct BitMapHandle {
+    /// The bitmap value stored by `BitMapHandle`.
     bitmap: *BitMap,  // Pointer to BitMap struct (null = invalid)
+    /// The owns blitter value stored by `BitMapHandle`.
     owns_blitter: bool,  // Track if blitter operations pending
 }
 
@@ -162,7 +164,9 @@ impl Drop for BitMapHandle {
 /// }
 /// ```
 pub struct CopperListHandle {
+    /// The memory value stored by `CopperListHandle`.
     memory: MemoryBlock,  // Copper list memory (must be CHIP RAM)
+    /// The active value stored by `CopperListHandle`.
     active: bool,  // Is this copper list currently active?
 }
 

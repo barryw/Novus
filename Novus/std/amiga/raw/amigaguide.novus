@@ -130,8 +130,13 @@ extern pub fn SetAmigaGuideAttrs(cl: *u8, attrs: u32, ...args) -> i32
 @library("amigaguide.library")
 extern pub fn GetAmigaGuideAttr(tag: u32, cl: *u8, storage: *u32) -> i32
 @library("amigaguide.library")
+/// Loads the named cross-reference file relative to `lock`.
+///
+/// Returns zero on success or an AmigaGuide error code. The loaded references
+/// remain owned by AmigaGuide until ExpungeXRef is called.
 extern pub fn LoadXRef(lock: i32, name: *u8) -> i32
 @library("amigaguide.library")
+/// Releases all cross-reference data previously loaded by LoadXRef.
 extern pub fn ExpungeXRef()
 /// Add a dynamic node host.           (V34)
 ///

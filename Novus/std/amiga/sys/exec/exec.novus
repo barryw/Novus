@@ -254,6 +254,7 @@ pub fn enable() {
 /// }
 /// ```
 pub struct SignalHandle {
+    /// The sigbit value stored by `SignalHandle`.
     sigbit: i8,  // Signal bit number (-1 = invalid)
 }
 
@@ -358,6 +359,7 @@ impl Drop for SignalHandle {
 /// }
 /// ```
 pub struct MsgPortHandle {
+    /// The port value stored by `MsgPortHandle`.
     port: *MsgPort,  // Pointer to FFI MsgPort struct (null = invalid)
 }
 
@@ -523,8 +525,11 @@ impl Drop for MsgPortHandle {
 /// }
 /// ```
 pub struct SemaphoreHandle {
+    /// The sem value stored by `SemaphoreHandle`.
     sem: *u8,       // Pointer to allocated semaphore (void* to avoid FFI type in header)
+    /// The is public value stored by `SemaphoreHandle`.
     is_public: bool, // Whether this is a public (named) semaphore
+    /// The owns memory value stored by `SemaphoreHandle`.
     owns_memory: bool, // Whether we should free the memory on drop
 }
 
@@ -703,7 +708,9 @@ impl Drop for SemaphoreHandle {
 /// When dropped, automatically releases the semaphore.
 /// This ensures you can't forget to release the semaphore.
 pub struct SemaphoreGuard {
+    /// The sem value stored by `SemaphoreGuard`.
     sem: *u8,  // Pointer to semaphore (non-owning, void* to avoid FFI type in header)
+    /// The owner value stored by `SemaphoreGuard`.
     owner: &SemaphoreHandle,
 }
 
@@ -727,7 +734,9 @@ impl Drop for SemaphoreGuard {
 /// This is a separate type from SemaphoreGuard for type safety - you can't
 /// accidentally treat shared access as exclusive access.
 pub struct SharedSemaphoreGuard {
+    /// The sem value stored by `SharedSemaphoreGuard`.
     sem: *u8,  // Pointer to semaphore (non-owning)
+    /// The owner value stored by `SharedSemaphoreGuard`.
     owner: &SemaphoreHandle,
 }
 
@@ -772,7 +781,9 @@ impl Drop for SharedSemaphoreGuard {
 /// }
 /// ```
 pub struct ScopedData<T> {
+    /// The sem value stored by `ScopedData`.
     sem: *u8,    // Semaphore protecting the data
+    /// The data value stored by `ScopedData`.
     data: T,     // The protected data
 }
 
@@ -862,7 +873,9 @@ impl<T> Drop for ScopedData<T> {
 
 /// Guard for exclusive access to ScopedData
 pub struct ScopedDataGuard<T> {
+    /// The sem value stored by `ScopedDataGuard`.
     sem: *u8,
+    /// The data value stored by `ScopedDataGuard`.
     data: &var T,
 }
 
@@ -892,7 +905,9 @@ impl<T> Drop for ScopedDataGuard<T> {
 
 /// Guard for shared (read-only) access to ScopedData
 pub struct SharedScopedDataGuard<T> {
+    /// The sem value stored by `SharedScopedDataGuard`.
     sem: *u8,
+    /// The data value stored by `SharedScopedDataGuard`.
     data: &T,
 }
 
@@ -936,7 +951,9 @@ impl<T> Drop for SharedScopedDataGuard<T> {
 /// }
 /// ```
 pub struct LibraryHandle {
+    /// The base value stored by `LibraryHandle`.
     base: *Library,
+    /// The version value stored by `LibraryHandle`.
     version: u32
 }
 

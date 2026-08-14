@@ -27,8 +27,11 @@ from std::memory import MemoryBlock
 /// let custom = Color { r: 128, g: 64, b: 192 }
 /// ```
 pub struct Color {
+    /// The r value stored by `Color`.
     r: u8,  // Red (0-255)
+    /// The g value stored by `Color`.
     g: u8,  // Green (0-255)
+    /// The b value stored by `Color`.
     b: u8,  // Blue (0-255)
 }
 
@@ -414,16 +417,27 @@ pub fn get_color(cm: *ColorMap, index: u8) -> Result<Color, GraphicsError> {
 
 /// Standard Amiga Workbench 1.x/2.x colors
 pub const BLACK: Color = Color { r: 0, g: 0, b: 0 }
+/// Defines `WHITE`, the white value.
 pub const WHITE: Color = Color { r: 255, g: 255, b: 255 }
+/// Defines `RED`, the red value.
 pub const RED: Color = Color { r: 255, g: 0, b: 0 }
+/// Defines `GREEN`, the green value.
 pub const GREEN: Color = Color { r: 0, g: 255, b: 0 }
+/// Defines `BLUE`, the blue value.
 pub const BLUE: Color = Color { r: 0, g: 0, b: 255 }
+/// Defines `YELLOW`, the yellow value.
 pub const YELLOW: Color = Color { r: 255, g: 255, b: 0 }
+/// Defines `MAGENTA`, the magenta value.
 pub const MAGENTA: Color = Color { r: 255, g: 0, b: 255 }
+/// Defines `CYAN`, the cyan value.
 pub const CYAN: Color = Color { r: 0, g: 255, b: 255 }
 
 // Classic Workbench colors (approximations in 8-bit)
+/// Defines `WB_BLUE`, the wb blue value.
 pub const WB_BLUE: Color = Color { r: 170, g: 170, b: 170 }      // WB background blue
+/// Defines `WB_ORANGE`, the wb orange value.
 pub const WB_ORANGE: Color = Color { r: 255, g: 136, b: 0 }      // WB orange
+/// Defines `WB_LTGREY`, the wb ltgrey value.
 pub const WB_LTGREY: Color = Color { r: 187, g: 187, b: 187 }    // Light grey
+/// Defines `WB_DKGREY`, the wb dkgrey value.
 pub const WB_DKGREY: Color = Color { r: 85, g: 85, b: 85 }       // Dark grey

@@ -8,12 +8,19 @@ from amiga::raw::structs import DeviceNode, DevProc, DosEnvec, DosList, FileSysS
 from amiga::raw::dos import FreeDeviceProc, GetDeviceProc, LockDosList, NextDosEntry, UnLockDosList
 from amiga::raw::exec import TypeOfMem
 
+/// Reports failures from dos list operations.
 pub enum DosListError {
+    /// Indicates lock failed.
     LockFailed,
+    /// Indicates resolve failed.
     ResolveFailed,
 }
 
 impl DosListError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             DosListError::LockFailed => "Could not lock the AmigaDOS device list",
@@ -30,11 +37,17 @@ impl Error for DosListError {
 
 /// Owns a read lock on the DOS device list.
 pub struct DosDeviceList {
+    /// The head value stored by `DosDeviceList`.
     head: *DosList,
+    /// The flags value stored by `DosDeviceList`.
     flags: u32,
 }
 
 impl DosDeviceList {
+    /// Returns the lock value associated with `DosDeviceList`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn lock() -> Result<DosDeviceList, DosListError> {
         let flags = LDF_DEVICES | LDF_READ
         let head = LockDosList(flags)
@@ -44,6 +57,10 @@ impl DosDeviceList {
         return Result::Ok(DosDeviceList { head: head, flags: flags })
     }
 
+    /// Returns an iterator over the items in `DosDeviceList`.
+    ///
+    /// # Returns
+    /// The resulting `DosDeviceIter` value.
     pub fn iter(&self) -> DosDeviceIter {
         return DosDeviceIter { owner: self, cursor: self.head, visited: 0 }
     }
@@ -58,18 +75,29 @@ impl Drop for DosDeviceList {
     }
 }
 
+/// Iterates over dos device values.
 pub struct DosDeviceIter {
+    /// The owner value stored by `DosDeviceIter`.
     owner: &DosDeviceList,
+    /// The cursor value stored by `DosDeviceIter`.
     cursor: *DosList,
+    /// The visited value stored by `DosDeviceIter`.
     visited: u32,
 }
 
+/// Represents a dos device entry value.
 pub struct DosDeviceEntry {
+    /// The owner value stored by `DosDeviceEntry`.
     owner: &DosDeviceList,
+    /// The entry value stored by `DosDeviceEntry`.
     entry: &DosList,
 }
 
 impl DosDeviceIter {
+    /// Advances `DosDeviceIter` and returns the next item, when one remains.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn next(&var self) -> Option<DosDeviceEntry> {
         // A corrupt list must not trap callers in an infinite traversal.
         if self.visited >= 256 { return Option::None }
@@ -93,10 +121,21 @@ impl Iterator<DosDeviceEntry> for DosDeviceIter {
 }
 
 impl DosDeviceEntry {
+    /// Returns whether handled by for `DosDeviceEntry`.
+    ///
+    /// # Parameters
+    /// * `process` - The `&DeviceProcess` value used as process.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_handled_by(&self, process: &DeviceProcess) -> bool {
         return self.entry.dol_Task != null && self.entry.dol_Task == process.process.dvp_Port
     }
 
+    /// Returns the name value associated with `DosDeviceEntry`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn name(&self) -> Option<Str> {
         let bptr = match BPtr::<u8>::from_raw(self.entry.dol_Name) {
             Result::Ok(value) => value,
@@ -113,6 +152,10 @@ impl DosDeviceEntry {
         return Option::Some(unsafe { Str::new(&ptr[1], len) })
     }
 
+    /// Starts up for `DosDeviceEntry`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn startup(&self) -> Option<FileSystemStartup> {
         // A DLT_DEVICE DosList entry has the public DeviceNode layout.
         let node = unsafe { &*((*DeviceNode)self.entry) }
@@ -137,10 +180,18 @@ impl DosDeviceEntry {
 
 /// Owns the temporary DOS resources returned by GetDeviceProc().
 pub struct DeviceProcess {
+    /// The process value stored by `DeviceProcess`.
     process: *DevProc,
 }
 
 impl DeviceProcess {
+    /// Resolves `DeviceProcess` to its underlying operating-system object.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn resolve(name: CStr) -> Result<DeviceProcess, DosListError> {
         let process = GetDeviceProc(name.as_ptr(), null)
         if process == null {
@@ -165,19 +216,33 @@ impl Drop for DeviceProcess {
 
 /// Borrowed, typed view of a DOS FileSysStartupMsg.
 pub struct FileSystemStartup {
+    /// The owner value stored by `FileSystemStartup`.
     owner: &DosDeviceList,
+    /// The message value stored by `FileSystemStartup`.
     message: &FileSysStartupMsg,
 }
 
 impl FileSystemStartup {
+    /// Returns the unit value associated with `FileSystemStartup`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn unit(&self) -> u32 {
         return self.message.fssm_Unit
     }
 
+    /// Returns the flags value associated with `FileSystemStartup`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn flags(&self) -> u32 {
         return self.message.fssm_Flags
     }
 
+    /// Returns the device name value associated with `FileSystemStartup`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn device_name(&self) -> Option<Str> {
         let bptr = match BPtr::<u8>::from_raw(self.message.fssm_Device) {
             Result::Ok(value) => value,
@@ -194,6 +259,10 @@ impl FileSystemStartup {
         return Option::Some(unsafe { Str::new(&ptr[1], len) })
     }
 
+    /// Returns the environment value associated with `FileSystemStartup`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn environment(&self) -> Option<&DosEnvec> {
         let bptr = match BPtr::<DosEnvec>::from_raw(self.message.fssm_Environ) {
             Result::Ok(value) => value,

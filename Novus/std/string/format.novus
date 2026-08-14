@@ -10,13 +10,20 @@ extern fn __novus_memcpy(dest: *u8, src: *u8, n: u32)
 // StackFormatter - stack-allocated formatter for string interpolation
 // Uses a fixed 256-byte buffer to avoid heap allocations entirely
 // Perfect for embedded systems like Amiga where malloc/free are expensive
+/// Represents a stack formatter value.
 pub struct StackFormatter {
+    /// The buf value stored by `StackFormatter`.
     buf: [u8; 256],
+    /// The len value stored by `StackFormatter`.
     len: usize,
 }
 
 impl StackFormatter {
     // Create a new stack formatter (always succeeds - no allocation)
+    /// Creates a new `StackFormatter` value.
+    ///
+    /// # Returns
+    /// The resulting `StackFormatter` value.
     pub fn new() -> StackFormatter {
         StackFormatter {
             buf: [0; 256],
@@ -26,6 +33,13 @@ impl StackFormatter {
 
     // Write a string slice to the formatter
     // Returns true on success, false if buffer is full
+    /// Writes str for `StackFormatter`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn write_str(&var self, s: Str) -> bool {
         let bytes_needed = s.len
         if self.len + bytes_needed > 256 {
@@ -44,6 +58,13 @@ impl StackFormatter {
 
     // Write a single character to the formatter
     // Returns true on success, false if buffer is full
+    /// Writes char for `StackFormatter`.
+    ///
+    /// # Parameters
+    /// * `c` - The `u8` value used as c.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn write_char(&var self, c: u8) -> bool {
         if self.len >= 256 {
             return false  // Buffer full
@@ -55,6 +76,10 @@ impl StackFormatter {
 
     // Get the formatted result as a Str (pointer into our stack buffer)
     // IMPORTANT: The returned Str is only valid while this StackFormatter is in scope!
+    /// Borrows `StackFormatter` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         Str {
             ptr: &self.buf[0],
@@ -65,7 +90,9 @@ impl StackFormatter {
 
 // Formatter - builds formatted output efficiently without intermediate allocations
 // NOTE: This heap-allocates and should be avoided for f-strings. Use StackFormatter instead.
+/// Represents a formatter value.
 pub struct Formatter {
+    /// The buffer value stored by `Formatter`.
     buffer: String,
 }
 
@@ -88,6 +115,13 @@ impl Formatter {
 
     // Write a string slice to the formatter
     // Returns true on success, false on allocation failure
+    /// Writes str for `Formatter`.
+    ///
+    /// # Parameters
+    /// * `s` - The `Str` value used as s.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn write_str(&var self, s: Str) -> bool {
         match self.buffer.push_str(s) {
             Result::Ok(_) => true,
@@ -97,6 +131,13 @@ impl Formatter {
 
     // Write a single character to the formatter
     // Returns true on success, false on allocation failure
+    /// Writes char for `Formatter`.
+    ///
+    /// # Parameters
+    /// * `c` - The `u8` value used as c.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn write_char(&var self, c: u8) -> bool {
         match self.buffer.push_byte(c) {
             Result::Ok(_) => true,
@@ -105,11 +146,22 @@ impl Formatter {
     }
 
     // Get the formatted result as a String
+    /// Returns the finish value associated with `Formatter`.
+    ///
+    /// # Returns
+    /// The resulting `String` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn finish(consuming self) -> String {
         self.buffer
     }
 
     // Get the current contents as a Str
+    /// Borrows `Formatter` as str.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn as_str(&self) -> Str {
         self.buffer.as_str()
     }
@@ -118,13 +170,29 @@ impl Formatter {
 // Display trait - for user-facing formatted output
 // Types should implement Display for how they want to appear to end users
 // Returns true on success, false on allocation failure
+/// Defines the behavior required by display implementations.
 pub trait Display {
+    /// Formats the value through `Display`.
+    ///
+    /// # Parameters
+    /// * `f` - The `&var Formatter` value used as f.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn fmt(&self, f: &var Formatter) -> bool
 }
 
 // Debug trait - for programmer-facing debug output
 // Types should implement Debug for detailed inspection/debugging
 // Returns true on success, false on allocation failure
+/// Defines the behavior required by debug implementations.
 pub trait Debug {
+    /// Formats the value through `Debug`.
+    ///
+    /// # Parameters
+    /// * `f` - The `&var Formatter` value used as f.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn fmt(&self, f: &var Formatter) -> bool
 }

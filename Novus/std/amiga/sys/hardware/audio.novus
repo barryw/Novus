@@ -108,12 +108,19 @@ pub enum PlaybackMode {
 /// // Sample memory automatically freed when handle goes out of scope
 /// ```
 pub struct SampleHandle {
+    /// The data value stored by `SampleHandle`.
     data: *u8,            // Pointer to sample data in chip RAM
+    /// The length bytes value stored by `SampleHandle`.
     length_bytes: u32,    // Length in bytes
+    /// The length words value stored by `SampleHandle`.
     length_words: u16,    // Length in words (for hardware register)
+    /// The sample rate value stored by `SampleHandle`.
     sample_rate: u32,     // Original sample rate in Hz (0 if unknown)
+    /// The period pal value stored by `SampleHandle`.
     period_pal: u16,      // Pre-calculated period for PAL playback
+    /// The period ntsc value stored by `SampleHandle`.
     period_ntsc: u16,     // Pre-calculated period for NTSC playback
+    /// The owns data value stored by `SampleHandle`.
     owns_data: bool,      // True if we allocated data and should free on drop
 }
 
@@ -376,11 +383,16 @@ impl Drop for SampleHandle {
 /// // Or just let it drop - channel stops automatically
 /// ```
 pub struct AudioChannel {
+    /// The channel value stored by `AudioChannel`.
     channel: u8,       // Channel number (0-3)
+    /// The period value stored by `AudioChannel`.
     period: u16,       // Current period setting
+    /// The volume value stored by `AudioChannel`.
     volume: u16,       // Current volume setting
+    /// The active value stored by `AudioChannel`.
     active: bool,      // Is DMA enabled for this channel?
     // ChipCache asset ID for the currently playing sample (0 if none)
+    /// The cache asset id value stored by `AudioChannel`.
     cache_asset_id: u32,
 }
 
@@ -1105,6 +1117,7 @@ pub fn init_channel(channel: u8) -> Result<AudioChannel, AudioError> {
 /// let all = ChannelMask::all()
 /// ```
 pub struct ChannelMask {
+    /// The mask value stored by `ChannelMask`.
     mask: u8,  // Bits 0-3 correspond to channels 0-3
 }
 
@@ -1268,18 +1281,25 @@ impl ChannelMask {
 /// ```
 pub struct MultiChannel {
     // audio.device resources for allocation
+    /// The io audio value stored by `MultiChannel`.
     io_audio: *IOAudio,
+    /// The port value stored by `MultiChannel`.
     port: *MsgPort,
+    /// The alloc key value stored by `MultiChannel`.
     alloc_key: i16,
 
     // Which channels we actually got allocated
+    /// The allocated mask value stored by `MultiChannel`.
     allocated_mask: ChannelMask,
 
     // Per-channel state (indexed by channel number 0-3)
+    /// The periods value stored by `MultiChannel`.
     periods: [u16; 4],
+    /// The volumes value stored by `MultiChannel`.
     volumes: [u16; 4],
 
     // Playback state
+    /// The active value stored by `MultiChannel`.
     active: bool,
 }
 

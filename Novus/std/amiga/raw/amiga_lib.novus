@@ -1,0 +1,101 @@
+// Static support routines supplied by the NDK's amiga.lib.
+//
+// These functions have no library base and add no startup dependency. The
+// linker extracts only the referenced routines from amiga.lib.
+
+from amiga::raw::structs import *
+
+/// Starts processing an initialized I/O request without waiting for completion.
+extern pub fn BeginIO(io_req: *IORequest)
+/// Allocates an extended I/O request associated with a message port.
+extern pub fn CreateExtIO(port: *MsgPort, io_size: i32) -> *IORequest
+/// Creates and registers a message port.
+extern pub fn CreatePort(name: *u8, priority: i32) -> *MsgPort
+/// Allocates a standard I/O request associated with a message port.
+extern pub fn CreateStdIO(port: *MsgPort) -> *IOStdReq
+/// Creates a task with the requested entry point and stack size.
+extern pub fn CreateTask(name: *u8, priority: i32, init_pc: *u8, stack_size: u32) -> *Task
+/// Releases an extended I/O request created by CreateExtIO.
+extern pub fn DeleteExtIO(io_req: *IORequest)
+/// Removes and releases a message port created by CreatePort.
+extern pub fn DeletePort(port: *MsgPort)
+/// Releases a standard I/O request created by CreateStdIO.
+extern pub fn DeleteStdIO(io_req: *IOStdReq)
+/// Removes and releases a task created by CreateTask.
+extern pub fn DeleteTask(task: *Task)
+/// Initializes an Exec list header.
+extern pub fn NewList(list: *List)
+/// Allocates memory from an amiga.lib-compatible pool.
+extern pub fn LibAllocPooled(pool_header: *u8, mem_size: u32) -> *u8
+/// Creates an amiga.lib-compatible memory pool.
+extern pub fn LibCreatePool(mem_flags: u32, puddle_size: u32, threshold_size: u32) -> *u8
+/// Deletes an amiga.lib-compatible memory pool.
+extern pub fn LibDeletePool(pool_header: *u8)
+/// Returns a pooled allocation to its pool.
+extern pub fn LibFreePooled(pool_header: *u8, memory: *u8, mem_size: u32)
+/// Returns the next value from the fast pseudo-random generator.
+extern pub fn FastRand(seed: u32) -> u32
+/// Returns a pseudo-random value in the requested range.
+extern pub fn RangeRand(max_value: u32) -> u16
+/// Adds a vertical-blank callback to a graphics interrupt server.
+extern pub fn AddTOF(interrupt: *Isrvstr, callback: fn(*u8) -> i32, data: *u8)
+/// Removes a callback previously installed by AddTOF.
+extern pub fn RemTOF(interrupt: *Isrvstr)
+/// Waits for the requested beam position.
+extern pub fn waitbeam(beam: i32)
+/// Converts an ASCII floating-point string to FFP format.
+extern pub fn afp(string: *u8) -> f32
+/// Rounds an ASCII floating-point representation in place.
+extern pub fn arnd(place: i32, exponent: i32, string: *u8)
+/// Constructs an FFP value from exponent and mantissa fields.
+extern pub fn dbf(exponent: u32, mantissa: u32) -> f32
+/// Converts an FFP value to ASCII.
+extern pub fn fpa(value: f32, string: *i8) -> i32
+/// Converts an FFP value to packed BCD.
+extern pub fn fpbcd(value: f32, string: *i8)
+/// Waits for a timer.device delay and returns its I/O status.
+extern pub fn TimeDelay(unit: i32, seconds: u32, microseconds: u32) -> i32
+/// Performs a synchronous timer.device command.
+extern pub fn DoTimer(time: *timeval, unit: i32, command: i32) -> i32
+/// Releases an argument array returned by ArgArrayInit.
+extern pub fn ArgArrayDone()
+/// Converts Workbench or CLI arguments into a tool-type-style array.
+extern pub fn ArgArrayInit(argc: i32, argv: **u8) -> **u8
+/// Reads an integer argument from a tool-type-style array.
+extern pub fn ArgInt(tool_types: **u8, entry: *u8, default_value: i32) -> i32
+/// Reads a string argument from a tool-type-style array.
+extern pub fn ArgString(tool_types: **u8, entry: *u8, default_string: *u8) -> *u8
+/// Creates a commodities hot-key object.
+extern pub fn HotKey(description: *u8, port: *MsgPort, id: i32) -> *u8
+/// Converts an input-description string into an InputEvent chain.
+extern pub fn InvertString(string: *u8, key_map: *KeyMap) -> *InputEvent
+/// Releases an InputEvent chain returned by InvertString.
+extern pub fn FreeIEvents(events: *InputEvent)
+/// Tests whether a Rexx message is a valid command message.
+extern pub fn CheckRexxMsg(message: *RexxMsg) -> bool
+/// Reads a variable from a Rexx message's environment.
+extern pub fn GetRexxVar(message: *RexxMsg, name: *u8, result: **u8) -> i32
+/// Sets a variable in a Rexx message's environment.
+extern pub fn SetRexxVar(message: *RexxMsg, name: *u8, value: *u8, length: i32) -> i32
+/// Calls a Hook using an explicit message pointer.
+extern pub fn CallHookA(hook: *Hook, object: *u8, message: *u8) -> u32
+/// Calls a Hook using inline message arguments.
+extern pub fn CallHook(hook: *Hook, object: *u8, ...args) -> u32
+/// Invokes a BOOPSI method using an explicit message pointer.
+extern pub fn DoMethodA(object: *u8, message: *u8) -> u32
+/// Invokes a BOOPSI method using inline message arguments.
+extern pub fn DoMethod(object: *u8, method_id: u32, ...args) -> u32
+/// Invokes a superclass method using an explicit message pointer.
+extern pub fn DoSuperMethodA(class: *IClass, object: *u8, message: *u8) -> u32
+/// Invokes a superclass method using inline message arguments.
+extern pub fn DoSuperMethod(class: *IClass, object: *u8, method_id: u32, ...args) -> u32
+/// Coerces an object method call using an explicit message pointer.
+extern pub fn CoerceMethodA(class: *IClass, object: *u8, message: *u8) -> u32
+/// Coerces an object method call using inline message arguments.
+extern pub fn CoerceMethod(class: *IClass, object: *u8, method_id: u32, ...args) -> u32
+/// Default native entry point for a Novus-compatible Hook.
+extern pub fn HookEntry(hook: *Hook, object: *u8, message: *u8) -> u32
+/// Sets superclass attributes from an inline tag list.
+extern pub fn SetSuperAttrs(class: *IClass, object: *u8, first_tag: u32, ...args) -> u32
+/// Hashes a password using the Amiga networking crypt format.
+extern pub fn ACrypt(buffer: *u8, password: *u8, username: *u8) -> *u8

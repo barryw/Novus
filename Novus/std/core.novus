@@ -4,8 +4,11 @@
 
 // Option<T> - represents an optional value
 // Use this instead of null pointers!
+/// Identifies the possible option values.
 pub enum Option<T> {
+    /// Contains a value.
     Some(T),
+    /// Contains no value.
     None,
 }
 
@@ -29,6 +32,10 @@ impl<T> Option<T> {
     }
 
     @inline
+    /// Returns whether `Option` contains a value.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_some(&self) -> bool {
         match self {
             Some(_) => return true,
@@ -37,6 +44,10 @@ impl<T> Option<T> {
     }
 
     @inline
+    /// Returns whether `Option` contains no value.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_none(&self) -> bool {
         match self {
             Some(_) => return false,
@@ -157,13 +168,20 @@ impl<T> Option<T> {
 
 // Result<T, E> - represents success or failure
 // Use this for functions that can fail!
+/// Identifies the possible result values.
 pub enum Result<T, E> {
+    /// Contains a successful value.
     Ok(T),
+    /// Contains an error value.
     Err(E),
 }
 
 impl<T, E> Result<T, E> {
     @inline
+    /// Returns whether `Result` contains a successful result.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_ok(&self) -> bool {
         match self {
             Ok(_) => return true,
@@ -172,6 +190,10 @@ impl<T, E> Result<T, E> {
     }
 
     @inline
+    /// Returns whether `Result` contains an error.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_err(&self) -> bool {
         match self {
             Ok(_) => return false,
@@ -277,9 +299,13 @@ impl<T, E> Result<T, E> {
 
 // LibraryVersion - semantic version information for AmigaOS libraries
 // Represents a version in major.minor.patch format (semver)
+/// Represents a library version value.
 pub struct LibraryVersion {
+    /// The major value stored by `LibraryVersion`.
     major: u16,
+    /// The minor value stored by `LibraryVersion`.
     minor: u16,
+    /// The patch value stored by `LibraryVersion`.
     patch: u16,
 }
 
@@ -344,9 +370,21 @@ impl LibraryVersion {
 //     fn len(&self) -> usize { ... }
 // }
 // ```
+/// Defines the behavior required by iterable implementations.
 pub trait Iterable<T> {
     @unsafe
+    /// Returns the requested item from `Iterable` without a bounds check.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// A shared borrow of `T` tied to the receiver.
     fn get_unchecked(&self, index: usize) -> &T
+    /// Returns the number of items currently stored by `Iterable`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     fn len(&self) -> usize
 }
 
@@ -380,6 +418,7 @@ pub trait Iterable<T> {
 //
 // Note: The compiler automatically considers primitive types (i32, u32, bool, etc.)
 // and pointer types as Copy without requiring explicit impl.
+/// Defines the behavior required by copy implementations.
 pub trait Copy {}
 
 // ============================================================================
@@ -414,7 +453,18 @@ pub trait Copy {}
 //     return Ok(42)
 // }
 // ```
+/// Defines the behavior required by from implementations.
 pub trait From<T> {
+    /// Converts the supplied value into `From`.
+    ///
+    /// # Parameters
+    /// * `value` - The value; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     fn convert(consuming value: T) -> Self
 }
 
@@ -474,7 +524,9 @@ pub trait From<T> {
 // - drop() must not panic or fail
 // - Use unsafe for operations that cannot fail
 // - Avoid cyclic references (future: use weak references)
+/// Defines the behavior required by drop implementations.
 pub trait Drop {
+    /// Releases the resources owned by `Drop`.
     fn drop(&var self)
 }
 
@@ -503,7 +555,12 @@ pub trait Drop {
 //     }
 // }
 // ```
+/// Defines the behavior required by hash implementations.
 pub trait Hash {
+    /// Returns the hash value associated with `Hash`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     fn hash(&self) -> u32
 }
 
@@ -532,7 +589,15 @@ pub trait Hash {
 //     }
 // }
 // ```
+/// Defines the behavior required by eq implementations.
 pub trait Eq {
+    /// Returns whether the two values are equal according to `Eq`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn eq(&self, other: &Self) -> bool
 }
 
@@ -550,32 +615,77 @@ pub trait Eq {
 //     }
 // }
 // ```
+/// Defines the behavior required by add implementations.
 pub trait Add {
+    /// Adds the supplied value using `Add`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn add(&self, other: &Self) -> Self
 }
 
 // Sub - enables the - operator for custom types
+/// Defines the behavior required by sub implementations.
 pub trait Sub {
+    /// Subtracts the supplied value using `Sub`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn sub(&self, other: &Self) -> Self
 }
 
 // Mul - enables the * operator for custom types
+/// Defines the behavior required by mul implementations.
 pub trait Mul {
+    /// Multiplies by the supplied value using `Mul`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn mul(&self, other: &Self) -> Self
 }
 
 // Div - enables the / operator for custom types
+/// Defines the behavior required by div implementations.
 pub trait Div {
+    /// Divides by the supplied value using `Div`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn div(&self, other: &Self) -> Self
 }
 
 // Rem - enables the % operator for custom types (remainder/modulo)
+/// Defines the behavior required by rem implementations.
 pub trait Rem {
+    /// Returns the remainder after division using `Rem`.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn rem(&self, other: &Self) -> Self
 }
 
 // Neg - enables unary - operator for custom types
+/// Defines the behavior required by neg implementations.
 pub trait Neg {
+    /// Returns the neg value associated with `Neg`.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn neg(&self) -> Self
 }
 
@@ -595,10 +705,39 @@ pub trait Neg {
 //     fn ge(&self, other: &Version) -> bool { return other.le(self) }
 // }
 // ```
+/// Defines the behavior required by partial ord implementations.
 pub trait PartialOrd {
+    /// Returns whether the receiver sorts before the supplied value.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn lt(&self, other: &Self) -> bool
+    /// Returns whether the receiver sorts before or equal to the supplied value.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn le(&self, other: &Self) -> bool
+    /// Returns whether the receiver sorts after the supplied value.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn gt(&self, other: &Self) -> bool
+    /// Returns whether the receiver sorts after or equal to the supplied value.
+    ///
+    /// # Parameters
+    /// * `other` - The `&Self` value used as other.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn ge(&self, other: &Self) -> bool
 }
 
@@ -612,7 +751,18 @@ pub trait PartialOrd {
 //     }
 // }
 // ```
+/// Defines the behavior required by index implementations.
 pub trait Index<I, T> {
+    /// Returns the item selected by an index from `Index`.
+    ///
+    /// # Parameters
+    /// * `idx` - The idx; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `T` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     fn index(&self, consuming idx: I) -> T
 }
 
@@ -626,7 +776,16 @@ pub trait Index<I, T> {
 //     }
 // }
 // ```
+/// Defines the behavior required by index mut implementations.
 pub trait IndexMut<I, T> {
+    /// Replaces the item selected by an index in `IndexMut`.
+    ///
+    /// # Parameters
+    /// * `idx` - The idx; ownership transfers to this call.
+    /// * `value` - The value; ownership transfers to this call.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     fn index_set(&var self, consuming idx: I, consuming value: T)
 }
 
@@ -1128,6 +1287,10 @@ impl Ord for LibraryVersion {
 /// let config = MyConfig::default()
 /// ```
 pub trait Default {
+    /// Creates the default `Default` value.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn default() -> Self
 }
 
@@ -1188,6 +1351,13 @@ impl<T> Default for Option<T> {
 /// takes_string(my_str.into())  // Converts via Into
 /// ```
 pub trait Into<T> {
+    /// Returns the into value associated with `Into`.
+    ///
+    /// # Returns
+    /// The resulting `T` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     fn into(consuming self) -> T
 }
 
@@ -1208,7 +1378,15 @@ pub trait Into<T> {
 /// }
 /// ```
 pub trait Zero {
+    /// Returns the zero value associated with `Zero`.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn zero() -> Self
+    /// Returns whether zero for `Zero`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     fn is_zero(&self) -> bool
 }
 
@@ -1225,6 +1403,10 @@ pub trait Zero {
 /// }
 /// ```
 pub trait One {
+    /// Returns the one value associated with `One`.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn one() -> Self
 }
 
@@ -1304,7 +1486,15 @@ impl One for i32 {
 /// }
 /// ```
 pub trait Bounded {
+    /// Returns the min value value associated with `Bounded`.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn min_value() -> Self
+    /// Returns the max value value associated with `Bounded`.
+    ///
+    /// # Returns
+    /// The resulting `Self` value.
     fn max_value() -> Self
 }
 

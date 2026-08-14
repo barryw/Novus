@@ -67,7 +67,9 @@ pub trait ChipAsset {
 /// Use this for fine-grained control over chip RAM allocation.
 /// The memory is automatically freed when the ChipBuffer is dropped.
 pub struct ChipBuffer {
+    /// The ptr value stored by `ChipBuffer`.
     ptr: *u8,
+    /// The size value stored by `ChipBuffer`.
     size: u32,
 }
 
@@ -149,6 +151,7 @@ pub fn is_chip_ram(ptr: *u8) -> bool {
 // Cache errors
 // ============================================================================
 
+/// Reports failures from chip cache operations.
 pub enum ChipCacheError {
     /// A zero-sized allocation was requested
     InvalidSize,
@@ -167,6 +170,10 @@ pub enum ChipCacheError {
 }
 
 impl ChipCacheError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             ChipCacheError::InvalidSize => return "Chip allocation size must be greater than zero",

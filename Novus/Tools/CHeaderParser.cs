@@ -345,10 +345,10 @@ public class CHeaderParser
                  (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("{"))))
             {
                 var nested = ParseNestedAggregate(lines, ref index, structDef.Name,
-                    structDef.NestedTypes.Count, out var fieldName);
+                    structDef.NestedTypes.Count, out var field);
                 structDef.HasUnion |= nested.IsUnion;
                 structDef.NestedTypes.Add(nested);
-                structDef.Fields.Add(new CField { Name = fieldName, Type = nested.Name });
+                structDef.Fields.Add(field);
                 index++;
                 continue;
             }
@@ -369,7 +369,7 @@ public class CHeaderParser
         ref int index,
         string parentName,
         int ordinal,
-        out string fieldName)
+        out CField field)
     {
         var declaration = lines[index].Trim();
         var isUnion = declaration.StartsWith("union", StringComparison.Ordinal);
@@ -379,6 +379,13 @@ public class CHeaderParser
             IsUnion = isUnion,
             IsSynthetic = true
         };
+        var tag = Regex.Match(declaration, @"^(?:struct|union)\s+([A-Za-z_][A-Za-z0-9_]*)");
+        if (tag.Success)
+        {
+            aggregate.Name = tag.Groups[1].Value;
+            aggregate.TagName = aggregate.Name;
+            aggregate.IsSynthetic = false;
+        }
 
         if (!declaration.Contains('{'))
             index++;
@@ -389,9 +396,14 @@ public class CHeaderParser
             var line = lines[index].Trim();
             if (line.StartsWith("}"))
             {
-                var match = Regex.Match(line, @"}\s*([A-Za-z_][A-Za-z0-9_]*)\s*;");
-                fieldName = match.Success ? match.Groups[1].Value : $"_anonymous{ordinal}";
-                aggregate.Name = $"{parentName}_{fieldName}";
+                var match = Regex.Match(line, @"}\s*([A-Za-z_][A-Za-z0-9_]*)(?:\s*\[([^\]]+)\])?\s*;");
+                var fieldName = match.Success ? match.Groups[1].Value : $"_anonymous{ordinal}";
+                if (!tag.Success) aggregate.Name = $"{parentName}_{fieldName}";
+                field = new CField
+                {
+                    Name = fieldName, Type = aggregate.Name,
+                    IsArray = match.Groups[2].Success, ArraySize = match.Groups[2].Value
+                };
                 return aggregate;
             }
 
@@ -400,10 +412,10 @@ public class CHeaderParser
                  (index + 1 < lines.Count && lines[index + 1].TrimStart().StartsWith("{"))))
             {
                 var nested = ParseNestedAggregate(lines, ref index, aggregate.Name,
-                    aggregate.NestedTypes.Count, out var nestedFieldName);
+                    aggregate.NestedTypes.Count, out var nestedField);
                 aggregate.HasUnion |= nested.IsUnion;
                 aggregate.NestedTypes.Add(nested);
-                aggregate.Fields.Add(new CField { Name = nestedFieldName, Type = nested.Name });
+                aggregate.Fields.Add(nestedField);
                 index++;
                 continue;
             }
@@ -412,7 +424,7 @@ public class CHeaderParser
             index++;
         }
 
-        fieldName = $"_anonymous{ordinal}";
+        field = new CField { Name = $"_anonymous{ordinal}", Type = aggregate.Name };
         return aggregate;
     }
 

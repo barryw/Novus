@@ -91,16 +91,24 @@ impl NewMenu {
 // GadTools Menu Builder - Top Level
 // ============================================================================
 
+/// Builds a configured gad tools menu value.
 pub struct GadToolsMenuBuilder {
     // Store menu entries as a word-aligned array of NewMenu structs
     // Using direct pointer allocation ensures proper alignment for 68k
+    /// The entries value stored by `GadToolsMenuBuilder`.
     entries: *NewMenu
+    /// The entry count value stored by `GadToolsMenuBuilder`.
     entry_count: u32
+    /// The entry capacity value stored by `GadToolsMenuBuilder`.
     entry_capacity: u32
+    /// The screen value stored by `GadToolsMenuBuilder`.
     screen: *Screen
     // Track allocated label pointers so we can free them properly
+    /// The labels value stored by `GadToolsMenuBuilder`.
     labels: **u8
+    /// The label count value stored by `GadToolsMenuBuilder`.
     label_count: u32
+    /// The label capacity value stored by `GadToolsMenuBuilder`.
     label_capacity: u32
 }
 
@@ -393,7 +401,9 @@ impl Drop for GadToolsMenuBuilder {
 // MenuHandle - Handle to a menu (lets you add items)
 // ============================================================================
 
+/// Owns a menu handle and releases its resources when dropped.
 pub struct MenuHandle {
+    /// The builder value stored by `MenuHandle`.
     builder: *GadToolsMenuBuilder
 }
 
@@ -426,7 +436,9 @@ impl MenuHandle {
 // MenuItemHandle - Handle to a menu item (lets you add sub-items or modifiers)
 // ============================================================================
 
+/// Owns a menu item handle and releases its resources when dropped.
 pub struct MenuItemHandle {
+    /// The builder value stored by `MenuItemHandle`.
     builder: *GadToolsMenuBuilder
 }
 
@@ -515,13 +527,20 @@ impl MenuItemHandle {
 // GadToolsMenuStrip - RAII wrapper for created menus
 // ============================================================================
 
+/// Represents a gad tools menu strip value.
 pub struct GadToolsMenuStrip {
+    /// The menu value stored by `GadToolsMenuStrip`.
     menu: *Menu
+    /// The visual info value stored by `GadToolsMenuStrip`.
     visual_info: *u8
+    /// The screen value stored by `GadToolsMenuStrip`.
     screen: *Screen
+    /// The menu array value stored by `GadToolsMenuStrip`.
     menu_array: *NewMenu
     // Track allocated label pointers for cleanup
+    /// The labels value stored by `GadToolsMenuStrip`.
     labels: **u8
+    /// The label count value stored by `GadToolsMenuStrip`.
     label_count: u32
 }
 
@@ -607,10 +626,15 @@ impl Drop for GadToolsMenuStrip {
 // MenuSelection - Decoded menu event
 // ============================================================================
 
+/// Represents a menu selection value.
 pub struct MenuSelection {
+    /// The menu value stored by `MenuSelection`.
     menu: u16
+    /// The item value stored by `MenuSelection`.
     item: u16
+    /// The sub value stored by `MenuSelection`.
     sub: u16
+    /// The encoded value stored by `MenuSelection`.
     encoded: u16
 }
 

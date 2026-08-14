@@ -40,6 +40,7 @@ from std::memory::errors import MemoryError
 /// }
 /// ```
 pub struct HashSet<T> where T: Hash + Eq {
+    /// The map value stored by `HashSet`.
     map: HashMap<T, ()>,
 }
 
@@ -216,6 +217,7 @@ impl<T> Drop for HashSet<T> where T: Hash + Eq {
 
 /// Iterator over HashSet elements
 pub struct HashSetIter<T> {
+    /// The map iter value stored by `HashSetIter`.
     map_iter: HashMapIter<T, ()>,
 }
 

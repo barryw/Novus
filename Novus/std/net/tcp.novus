@@ -53,8 +53,11 @@ from std::core import Option, Result
 /// Provides read/write operations on an established TCP connection.
 /// The socket is automatically closed when dropped.
 pub struct TcpStream {
+    /// The fd value stored by `TcpStream`.
     fd: i32,
+    /// The local addr value stored by `TcpStream`.
     local_addr: Option<SocketAddrV4>,
+    /// The peer addr value stored by `TcpStream`.
     peer_addr: Option<SocketAddrV4>,
 }
 
@@ -381,7 +384,9 @@ impl Drop for TcpStream {
 /// Binds to a local address and listens for incoming connections.
 /// Each accepted connection returns a new TcpStream.
 pub struct TcpListener {
+    /// The fd value stored by `TcpListener`.
     fd: i32,
+    /// The local addr value stored by `TcpListener`.
     local_addr: SocketAddrV4,
 }
 

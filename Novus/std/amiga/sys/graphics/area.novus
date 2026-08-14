@@ -56,12 +56,19 @@ from amiga::raw::consts import BMA_WIDTH, BMA_HEIGHT
 /// Do NOT destroy the RastPort while an AreaContext is attached to it.
 /// Drop the AreaContext first.
 pub struct AreaContext {
+    /// The rp value stored by `AreaContext`.
     rp: &RastPort,
+    /// The area info mem value stored by `AreaContext`.
     area_info_mem: MemHandle,
+    /// The tmp ras mem value stored by `AreaContext`.
     tmp_ras_mem: MemHandle,
+    /// The vector buffer value stored by `AreaContext`.
     vector_buffer: MemHandle,
+    /// The ras buffer value stored by `AreaContext`.
     ras_buffer: MemHandle,
+    /// The max vertices value stored by `AreaContext`.
     max_vertices: i16,
+    /// The attached value stored by `AreaContext`.
     attached: bool,
 }
 

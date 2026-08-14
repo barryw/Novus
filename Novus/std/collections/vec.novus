@@ -38,13 +38,20 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 /// // Memory automatically freed here
 /// ```
 pub struct Vec<T> {
+    /// The ptr value stored by `Vec`.
     ptr: *T,
+    /// The len value stored by `Vec`.
     len: usize,
+    /// The capacity value stored by `Vec`.
     capacity: usize,
 }
 
 impl<T> Vec<T> {
     // Create an empty vector with zero capacity
+    /// Creates a new `Vec` value.
+    ///
+    /// # Returns
+    /// The resulting `Vec<T>` value.
     pub fn new() -> Vec<T> {
         return @zeroed(Vec<T>)
     }
@@ -88,16 +95,28 @@ impl<T> Vec<T> {
     }
 
     // Check if the vector is empty
+    /// Returns whether `Vec` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool {
         return self.len == 0
     }
 
     // Get the number of elements in the vector
+    /// Returns the number of items currently stored by `Vec`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.len
     }
 
     // Get the capacity of the vector
+    /// Returns the maximum number of items `Vec` can store without growing.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn capacity(&self) -> usize {
         return self.capacity
     }
@@ -194,6 +213,10 @@ impl<T> Vec<T> {
     }
 
     // Remove and return the last element (returns Option<T>)
+    /// Removes and returns `Vec`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn pop(&var self) -> Option<T> {
         if self.len == 0 {
             return Option::None
@@ -227,6 +250,13 @@ impl<T> Vec<T> {
     }
 
     // Get element at index (returns Option)
+    /// Returns the requested item from `Vec`, when it exists.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
@@ -245,6 +275,7 @@ impl<T> Vec<T> {
     }
 
     // Remove all elements (keeps capacity)
+    /// Removes all items from `Vec`.
     pub fn clear(&var self) {
         while self.len > 0 {
             self.len--
@@ -253,15 +284,27 @@ impl<T> Vec<T> {
     }
 
     // Get immutable pointer to the underlying buffer
+    /// Borrows `Vec` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*T` value.
     pub fn as_ptr(&self) -> *T {
         return self.ptr
     }
 
     // Get mutable pointer to the underlying buffer
+    /// Borrows `Vec` as mut ptr.
+    ///
+    /// # Returns
+    /// The resulting `*T` value.
     pub fn as_mut_ptr(&var self) -> *T {
         return self.ptr
     }
 
+    /// Borrows `Vec` as slice.
+    ///
+    /// # Returns
+    /// The resulting `Slice<T>` value.
     pub fn as_slice(&self) -> Slice<T> {
         if self.len == 0 {
             // References are non-null; use the Vec object's aligned address as
@@ -271,6 +314,10 @@ impl<T> Vec<T> {
         return unsafe { Slice::<T>::new(&self.ptr[0], self.len) }
     }
 
+    /// Borrows `Vec` as mut slice.
+    ///
+    /// # Returns
+    /// The resulting `MutSlice<T>` value.
     pub fn as_mut_slice(&var self) -> MutSlice<T> {
         if self.len == 0 {
             unsafe { return MutSlice::<T>::new(&var *((*T)self), 0) }
@@ -442,6 +489,7 @@ impl<T> Vec<T> {
     }
 
     // Free the vector's memory
+    /// Releases the resources owned by `Vec`.
     pub fn drop(&var self) {
         if self.capacity > 0 {
             self.clear()

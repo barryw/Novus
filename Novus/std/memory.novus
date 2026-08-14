@@ -9,17 +9,42 @@ pub use std::memory::bytes::*
 pub use std::memory::block::*
 pub use std::memory::errors::MemoryError
 
+/// Represents a buffer value.
 pub struct Buffer {
+    /// The memory value stored by `Buffer`.
     memory: MemoryBlock,
 }
 
 impl Buffer {
+    /// Creates a new `Buffer` value.
+    ///
+    /// # Parameters
+    /// * `size` - The requested size.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(size: usize) -> Result<Buffer, MemoryError> {
         return Result::Ok(Buffer { memory: MemoryBlock::new(size)? })
     }
 
+    /// Returns the number of items currently stored by `Buffer`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize { return self.memory.size() }
+    /// Returns whether `Buffer` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool { return self.memory.is_empty() }
+    /// Borrows `Buffer` as bytes.
+    ///
+    /// # Returns
+    /// The resulting `Slice<u8>` value.
     pub fn as_bytes(&self) -> Slice<u8> { return self.memory.as_bytes() }
+    /// Borrows `Buffer` as mut bytes.
+    ///
+    /// # Returns
+    /// The resulting `MutSlice<u8>` value.
     pub fn as_mut_bytes(&var self) -> MutSlice<u8> { return self.memory.as_mut_bytes() }
 }

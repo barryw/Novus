@@ -32,10 +32,15 @@ from amiga::raw::consts import UNIT_MICROHZ, TR_ADDREQUEST
 /// }
 /// ```
 pub struct Sleep {
+    /// The duration value stored by `Sleep`.
     duration: Duration,
+    /// The unit value stored by `Sleep`.
     unit: u32,
+    /// The timereq value stored by `Sleep`.
     timereq: *timerequest,
+    /// The port value stored by `Sleep`.
     port: *MsgPort,
+    /// The state value stored by `Sleep`.
     state: SleepState,
 }
 

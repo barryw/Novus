@@ -3,11 +3,17 @@
 from std::core import Error, Option, Result
 from amiga::raw::exec import TypeOfMem
 
+/// Reports failures from bptr operations.
 pub enum BPtrError {
+    /// Indicates out of range.
     OutOfRange,
 }
 
 impl BPtrError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return "Invalid BCPL pointer"
     }
@@ -22,11 +28,20 @@ impl Error for BPtrError {
 /// A typed, non-owning AmigaDOS pointer. Dereferencing remains an explicit
 /// unsafe boundary because the operating system owns the pointed-to memory.
 pub struct BPtr<T> {
+    /// The raw value stored by `BPtr`.
     raw: u32,
+    /// The  marker value stored by `BPtr`.
     _marker: u8,
 }
 
 impl<T> BPtr<T> {
+    /// Wraps a raw representation as `BPtr`.
+    ///
+    /// # Parameters
+    /// * `raw` - The `i32` value used as raw.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw(raw: i32) -> Result<BPtr<T>, BPtrError> {
         if raw < 0 {
             return Result::Err(BPtrError::OutOfRange)
@@ -34,6 +49,13 @@ impl<T> BPtr<T> {
         return BPtr::<T>::from_raw_u32((u32)raw)
     }
 
+    /// Creates `BPtr` from raw u32.
+    ///
+    /// # Parameters
+    /// * `raw` - The `u32` value used as raw.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn from_raw_u32(raw: u32) -> Result<BPtr<T>, BPtrError> {
         if raw > $3FFFFFFF {
             return Result::Err(BPtrError::OutOfRange)
@@ -54,14 +76,26 @@ impl<T> BPtr<T> {
         return Result::Ok(value)
     }
 
+    /// Returns the raw representation wrapped by `BPtr` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn as_raw(&self) -> u32 {
         return self.raw
     }
 
+    /// Returns whether null for `BPtr`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_null(&self) -> bool {
         return self.raw == 0
     }
 
+    /// Returns the address value associated with `BPtr`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn address(&self) -> u32 {
         return self.raw << 2
     }

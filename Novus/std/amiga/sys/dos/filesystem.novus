@@ -19,11 +19,17 @@ const FSEF_PRIORITY: u32 = $20
 const FSEF_SEG_LIST: u32 = $80
 const FSEF_GLOBAL_VEC: u32 = $100
 
+/// Reports failures from file system registry operations.
 pub enum FileSystemRegistryError {
+    /// Indicates resource unavailable.
     ResourceUnavailable,
 }
 
 impl FileSystemRegistryError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return "FileSystem.resource is unavailable"
     }
@@ -37,24 +43,66 @@ impl Error for FileSystemRegistryError {
 
 /// A copied handler registration. It never borrows the resource list.
 pub struct FileSystemHandler {
+    /// The dos type value stored by `FileSystemHandler`.
     dos_type: u32
+    /// The version value stored by `FileSystemHandler`.
     version: u32
+    /// The patch flags value stored by `FileSystemHandler`.
     patch_flags: u32
+    /// The segment value stored by `FileSystemHandler`.
     segment: BPtr<u8>
+    /// The global vec value stored by `FileSystemHandler`.
     global_vec: i32
+    /// The stack size value stored by `FileSystemHandler`.
     stack_size: u32
+    /// The priority value stored by `FileSystemHandler`.
     priority: i32
 }
 
 impl FileSystemHandler {
+    /// Returns the dos type value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn dos_type(&self) -> u32 { return self.dos_type }
+    /// Returns the version value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn version(&self) -> u32 { return self.version }
+    /// Returns the patch flags value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn patch_flags(&self) -> u32 { return self.patch_flags }
+    /// Returns the segment value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// A shared borrow of `BPtr<u8>` tied to the receiver.
     pub fn segment(&self) -> &BPtr<u8> { return &self.segment }
+    /// Returns the global vec value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn global_vec(&self) -> i32 { return self.global_vec }
+    /// Returns the stack size value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn stack_size(&self) -> u32 { return self.stack_size }
+    /// Returns the priority value associated with `FileSystemHandler`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn priority(&self) -> i32 { return self.priority }
 
+    /// Returns whether matches family applies to `FileSystemHandler`.
+    ///
+    /// # Parameters
+    /// * `dos_type` - The `u32` value used as dos type.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn matches_family(&self, dos_type: u32) -> bool {
         return (self.dos_type & $FFFFFF00) == (dos_type & $FFFFFF00)
     }
@@ -111,10 +159,15 @@ impl FileSystemHandler {
 /// Non-owning handle to the permanent Exec resource. Each query copies its
 /// result while task switching is forbidden; callers never retain list nodes.
 pub struct FileSystemRegistry {
+    /// The resource value stored by `FileSystemRegistry`.
     resource: *FileSysResource
 }
 
 impl FileSystemRegistry {
+    /// Opens `FileSystemRegistry`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open() -> Result<FileSystemRegistry, FileSystemRegistryError> {
         let resource = (*FileSysResource)OpenResource(FSRNAME)
         if !known_memory((*u8)resource, @sizeof(FileSysResource)) {
@@ -151,6 +204,10 @@ impl FileSystemRegistry {
         return fallback
     }
 
+    /// Returns the entry count value associated with `FileSystemRegistry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn entry_count(&self) -> u32 {
         let _guard = CriticalSection::enter()
         var node = unsafe { (*self.resource).fsr_FileSysEntries.lh_Head }
@@ -171,14 +228,23 @@ impl FileSystemRegistry {
 
 }
 
+/// Reports failures from file system operation operations.
 pub enum FileSystemOperationError {
+    /// Indicates invalid name.
     InvalidName,
+    /// Indicates resolve failed.
     ResolveFailed,
+    /// Indicates inhibit failed.
     InhibitFailed(i32),
+    /// Indicates format failed.
     FormatFailed(i32),
 }
 
 impl FileSystemOperationError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             FileSystemOperationError::InvalidName => "Filesystem names must end in ':'",
@@ -195,11 +261,20 @@ impl Error for FileSystemOperationError {
 
 /// Owns a resolved filesystem process. Its DeviceProcess is released on every exit.
 pub struct MountedFileSystem {
+    /// The name value stored by `MountedFileSystem`.
     name: FixedCString<255>
+    /// The process value stored by `MountedFileSystem`.
     process: DeviceProcess
 }
 
 impl MountedFileSystem {
+    /// Opens `MountedFileSystem`.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(name: Str) -> Result<MountedFileSystem, FileSystemOperationError> {
         if name.is_empty() || !name.ends_with(":") {
             return Result::Err(FileSystemOperationError::InvalidName)
@@ -215,8 +290,20 @@ impl MountedFileSystem {
         return Result::Ok(MountedFileSystem { name: owned_name, process: process })
     }
 
+    /// Returns the name value associated with `MountedFileSystem`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn name(&self) -> Str { return self.name.as_str() }
+    /// Borrows the system-level value wrapped by `MountedFileSystem`.
+    ///
+    /// # Returns
+    /// A shared borrow of `DeviceProcess` tied to the receiver.
     pub fn system(&self) -> &DeviceProcess { return &self.process }
+    /// Returns the inhibit value associated with `MountedFileSystem`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn inhibit(&self) -> Result<InhibitedFileSystem, FileSystemOperationError> {
         if Inhibit(self.name.as_cstr(), -1) == 0 {
             return Result::Err(FileSystemOperationError::InhibitFailed(IoErr()))
@@ -227,7 +314,9 @@ impl MountedFileSystem {
 
 /// Proof that a mounted filesystem is inhibited. Drop always attempts to resume it.
 pub struct InhibitedFileSystem {
+    /// The owner value stored by `InhibitedFileSystem`.
     owner: &MountedFileSystem
+    /// The active value stored by `InhibitedFileSystem`.
     active: bool
 }
 
@@ -250,6 +339,10 @@ impl InhibitedFileSystem {
         return Result::Ok(())
     }
 
+    /// Releases the operating-system resource owned by `InhibitedFileSystem`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn release(&var self) -> Result<(), FileSystemOperationError> {
         if !self.active { return Result::Ok(()) }
         if Inhibit(self.owner.name.as_cstr(), 0) == 0 {

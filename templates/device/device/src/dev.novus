@@ -6,6 +6,7 @@
 
 from amiga::raw::structs import IORequest, IOStdReq
 from amiga::raw::consts import CMD_RESET
+from amiga::raw::exec import ReplyMsg
 
 @device(name = "{{PROJECT_NAME}}.device", units = 1)
 pub struct DeviceState {
@@ -41,35 +42,38 @@ pub fn configure(io_req: *IORequest, state: *DeviceState) -> i8 {
     return 0
 }
 
-// Optional lifecycle hooks keep Exec bookkeeping in generated code while
-// letting the device initialize and release its own state:
-//
-// @deviceinit
-// pub fn loaded(state: *DeviceState) -> bool { return true }
-//
-// @deviceopen
-// pub fn opening(io_req: *IORequest, state: *DeviceState,
-//                unit: u32, flags: u32) -> bool { return true }
-//
-// @deviceclose
-// pub fn closing(io_req: *IORequest, state: *DeviceState) {}
-//
-// @deviceexpunge
-// pub fn unloading(state: *DeviceState) {}
+// Optional lifecycle hooks. Remove any hook the device does not need; Exec's
+// open counts, delayed expunge, and base allocation remain compiler-owned.
+@deviceinit
+pub fn loaded(state: *DeviceState) -> bool { return true }
 
-// Deferred commands are real asynchronous device I/O. The generated BeginIO
-// leaves IOF_QUICK clear and does not reply; the handler owns the request until
-// it later calls ReplyMsg(). Protect your pending queue against interrupts.
-//
-// @devicecmd(cmd = 11, deferred = true)
-// pub fn start_async(io_req: *IORequest, state: *DeviceState) -> i8 {
-//     // Add io_req to a queue serviced by your task or interrupt server.
-//     return 0
-// }
-//
-// @abortio
-// pub fn abort_pending(io_req: *IORequest, state: *DeviceState) -> bool {
-//     // Atomically remove io_req from your pending queue. Return true only
-//     // when ownership was recovered; generated code replies IOERR_ABORTED.
-//     return false
-// }
+@deviceopen
+pub fn opening(io_req: *IORequest, state: *DeviceState,
+               unit: u32, flags: u32) -> bool { return true }
+
+@deviceclose
+pub fn closing(io_req: *IORequest, state: *DeviceState) {}
+
+@deviceexpunge
+pub fn unloading(state: *DeviceState) {}
+
+// A deferred handler owns its request and must eventually reply. Real devices
+// normally do that from a worker task or interrupt; this tiny command completes
+// immediately while exercising the same SendIO/WaitIO ownership contract.
+@devicecmd(cmd = 11, deferred = true)
+pub fn async_ping(io_req: *IORequest, state: *DeviceState) -> i8 {
+    unsafe { ReplyMsg(&var (*io_req).io_Message) }
+    return 0
+}
+
+// This command deliberately remains pending until AbortIO. It gives generated
+// projects a runnable cancellation example without inventing a worker task.
+@devicecmd(cmd = 12, deferred = true)
+pub fn wait_for_abort(io_req: *IORequest, state: *DeviceState) -> i8 {
+    return 0
+}
+
+@abortio
+pub fn abort_pending(io_req: *IORequest, state: *DeviceState) -> bool {
+    return true
+}

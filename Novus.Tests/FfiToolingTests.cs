@@ -28,6 +28,9 @@ public class FfiToolingTests
                     } choice;
                     ULONG after;
                     union Named *named;
+                    struct Channel {
+                        UWORD data;
+                    } channels[4];
                     ULONG *buffers[9];
                     char languages[10][30];
                     UWORD cylinders; // inline comment must not become a field
@@ -55,7 +58,7 @@ public class FfiToolingTests
             var fields = example.Fields;
 
             Assert.Equal(
-                ["left", "right", "first", "second", "red", "green", "callback", "handler", "handlers", "choice", "after", "named", "buffers", "languages", "cylinders"],
+                ["left", "right", "first", "second", "red", "green", "callback", "handler", "handlers", "choice", "after", "named", "channels", "buffers", "languages", "cylinders"],
                 fields.Select(field => field.Name));
             Assert.Equal("struct Interrupt", fields[2].Type);
             Assert.Equal("UBYTE *", fields[5].Type);
@@ -63,13 +66,19 @@ public class FfiToolingTests
             Assert.True(fields[8].IsArray);
             Assert.Equal("16", fields[8].ArraySize);
             Assert.Equal("Example_choice", fields[9].Type);
-            Assert.Equal("ULONG *", fields[12].Type);
-            Assert.Equal("10][30", fields[13].ArraySize);
+            Assert.Equal("Channel", fields[12].Type);
+            Assert.True(fields[12].IsArray);
+            Assert.Equal("4", fields[12].ArraySize);
+            Assert.Equal("ULONG *", fields[13].Type);
+            Assert.Equal("10][30", fields[14].ArraySize);
             Assert.True(example.HasUnion);
             var nestedUnion = Assert.Single(structs, value => value.Name == "Example_choice");
             Assert.True(nestedUnion.IsUnion);
             Assert.True(nestedUnion.IsSynthetic);
             Assert.Equal(["value", "bytes"], nestedUnion.Fields.Select(field => field.Name));
+            var channel = Assert.Single(structs, value => value.Name == "Channel");
+            Assert.False(channel.IsSynthetic);
+            Assert.Equal(["data"], channel.Fields.Select(field => field.Name));
             Assert.Equal(["x", "y"], Assert.Single(structs, value => value.Name == "Point").Fields.Select(field => field.Name));
             Assert.Empty(Assert.Single(structs, value => value.Name == "tPoint").Fields);
             Assert.Equal("4", Assert.Single(header.Constants, value => value.Name == "RESULT_OK").Value);
@@ -157,6 +166,19 @@ public class FfiToolingTests
         {
             File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void FfiRuntime_OptionalLibraryLeavesNullBaseAndContinuesStartup()
+    {
+        var binding = new FfiModuleMetadata("client.novus", "client", "client.library",
+            "client.library", "_ClientBase", FfiModuleKind.Library, 1) { Optional = true };
+
+        var assembly = FfiRuntimeGenerator.Generate([binding]);
+
+        Assert.Contains("move.l\td0,_ClientBase", assembly);
+        Assert.Contains("beq.s\t.__novus_client_ready", assembly);
+        Assert.DoesNotContain("__novus_ffi_table:", assembly);
     }
 
     [Fact]
@@ -271,6 +293,8 @@ public class FfiToolingTests
             Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("Msg"));
             Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("ULONG *"));
             Assert.Equal("*u8", SfdParser.MapAmigaTypeToNovus("void *"));
+            Assert.Equal("amiga fn(*HDWCallbackMsg in a0) -> i32 in d0",
+                SfdParser.MapAmigaTypeToNovus("LONG (*Callback)(register __a0 struct HDWCallbackMsg *msg)"));
             Assert.Contains("pub const POINTERSIZE: u32 = (1 + 16 + 1) * 2", constants);
             Assert.Contains("pub const ALIAS_TAG: u32 = (BASE_TAG + $01)", constants);
             Assert.Contains("pub const TAG_USER: u32 = ((1 << 31))", constants);

@@ -12,6 +12,10 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("aml.library")
+/// Dispatches an ARexx message to AML's registered command handlers.
+///
+/// `rxm` must remain valid for the call. The return value is the command's
+/// ARexx result code; message ownership remains with the caller.
 extern pub fn RexxDispatcher(rxm: *RexxMsg) -> i32
 @library("aml.library")
 extern pub fn CreateServerA(tags: *TagItem) -> *u8
@@ -66,8 +70,14 @@ extern pub fn ScanFolderIndex(folder: *u8, hook: *Hook, flags: u32) -> u32
 @library("aml.library")
 extern pub fn ExpungeFolder(folder: *u8, trash: *u8, hook: *Hook) -> i16
 @library("aml.library")
+/// Builds the folder's searchable article index.
+///
+/// Returns an AML status value. The folder remains owned by its server.
 extern pub fn CreateFolderIndex(folder: *u8) -> u32
 @library("aml.library")
+/// Sorts an existing folder index by the requested AML field identifier.
+///
+/// Returns an AML status value and does not transfer folder ownership.
 extern pub fn SortFolderIndex(folder: *u8, field: u32) -> u32
 @library("aml.library")
 extern pub fn CreateArticleA(folder: *u8, tags: *TagItem) -> *u8
@@ -78,6 +88,10 @@ extern pub fn DisposeArticle(article: *u8) -> i16
 @library("aml.library")
 extern pub fn OpenArticle(server: *u8, folder: *u8, MsgID: u32, Flags: u32) -> *u8
 @library("aml.library")
+/// Copies an article into `folder`.
+///
+/// Returns true on success. AML owns the created copy; the source article is
+/// unchanged and remains owned by its caller.
 extern pub fn CopyArticle(folder: *u8, article: *u8) -> i16
 @library("aml.library")
 extern pub fn SetArticleAttrsA(article: *u8, tags: *TagItem) -> u32
@@ -94,16 +108,25 @@ extern pub fn AddArticlePartA(article: *u8, part: *u8, tags: *TagItem) -> i16
 @library("aml.library")
 extern pub fn AddArticlePart(article: *u8, part: *u8, ...args) -> i16
 @library("aml.library")
+/// Removes `part` from `article` without disposing either object.
 extern pub fn RemArticlePart(article: *u8, part: *u8)
 @library("aml.library")
+/// Returns the zero-based article part, or null when `partnum` is out of range.
+/// The returned part is borrowed from the article and must not be freed directly.
 extern pub fn GetArticlePart(article: *u8, partnum: u32) -> *u8
 @library("aml.library")
+/// Reads article-part attributes through a terminated TagItem list.
+/// Tag data pointers must be writable for attributes that return values.
 extern pub fn GetArticlePartAttrsA(part: *u8, tags: *TagItem) -> u32
 @library("aml.library")
+/// Varargs form of GetArticlePartAttrsA; terminate the tag arguments with TAG_DONE.
 extern pub fn GetArticlePartAttrs(part: *u8, ...args) -> u32
 @library("aml.library")
+/// Updates article-part attributes from a terminated TagItem list.
+/// Returns the number of attributes processed or an AML status value.
 extern pub fn SetArticlePartAttrsA(part: *u8, tags: *TagItem) -> u32
 @library("aml.library")
+/// Varargs form of SetArticlePartAttrsA; terminate the tag arguments with TAG_DONE.
 extern pub fn SetArticlePartAttrs(part: *u8, ...args) -> u32
 @library("aml.library")
 extern pub fn CreateArticlePartA(article: *u8, tags: *TagItem) -> *u8
@@ -140,8 +163,11 @@ extern pub fn SetAddressEntryAttrsA(addr: *u8, tags: *TagItem) -> u32
 @library("aml.library")
 extern pub fn SetAddressEntryAttrs(addr: *u8, ...args) -> u32
 @library("aml.library")
+/// Tests an address object against the supplied AML match tags.
+/// Returns true when every requested criterion matches.
 extern pub fn MatchAddressA(addr: *u8, tags: *TagItem) -> i16
 @library("aml.library")
+/// Varargs form of MatchAddressA; terminate the tag arguments with TAG_DONE.
 extern pub fn MatchAddress(addr: *u8, ...args) -> i16
 @library("aml.library")
 extern pub fn FindAddressEntryA(server: *u8, tags: *TagItem) -> *u8
@@ -152,6 +178,10 @@ extern pub fn HuntAddressEntryA(server: *u8, tags: *TagItem) -> *u8
 @library("aml.library")
 extern pub fn HuntAddressEntry(server: *u8, ...args) -> *u8
 @library("aml.library")
+/// Visits address-index entries by invoking `hook` for each selected entry.
+///
+/// `_type` and `flags` select entries. The index owns every pointer supplied to
+/// the hook; callbacks must not retain or free them unless the AML contract says so.
 extern pub fn ScanAddressIndex(server: *u8, hook: *Hook, _type: u32, flags: u32) -> u32
 @library("aml.library")
 extern pub fn AddCustomField(addr: *u8, field: *u8, data: *u8) -> i16

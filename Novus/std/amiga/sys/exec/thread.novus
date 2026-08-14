@@ -70,11 +70,17 @@ const THREAD_COMM_SIZE: u32 = 8
 /// let code = handle.wait()
 /// ```
 pub struct ThreadHandle {
+    /// The task value stored by `ThreadHandle`.
     task: *Task,
+    /// The stack mem value stored by `ThreadHandle`.
     stack_mem: *u8,
+    /// The stack size value stored by `ThreadHandle`.
     stack_size: u32,
+    /// The comm value stored by `ThreadHandle`.
     comm: *u8,               // Communication data (ThreadComm*, opaque to importers)
+    /// The death signal value stored by `ThreadHandle`.
     death_signal: i8,        // Our allocated signal number
+    /// The is running value stored by `ThreadHandle`.
     is_running: bool,
 }
 

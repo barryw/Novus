@@ -4,11 +4,20 @@ from std::core import Option, Result
 from std::string import FixedCString, Str
 from amiga::raw::exec import OpenResource
 
+/// Represents a resource value.
 pub struct Resource {
+    /// The handle value stored by `Resource`.
     handle: *u8,
 }
 
 impl Resource {
+    /// Opens `Resource`.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn open(name: Str) -> Option<Resource> {
         let c_name = match FixedCString::<128>::new_from_str(name) {
             Result::Ok(value) => value,

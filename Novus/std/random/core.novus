@@ -38,6 +38,7 @@ from amiga::sys::hardware::registers import CUSTOM_BASE, VHPOSR
 /// let d = rng.range_u32(1, 7)     // Get 1-6 (dice roll)
 /// ```
 pub struct Rng {
+    /// The state value stored by `Rng`.
     state: u32,
 }
 

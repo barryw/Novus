@@ -19,6 +19,10 @@ pub enum AddrParseError {
 }
 
 impl AddrParseError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             AddrParseError::InvalidAddress => "Invalid IPv4 address",
@@ -53,6 +57,7 @@ fn ntohs(net: u16) -> u16 {
 
 /// IPv4 address (32-bit)
 pub struct Ipv4Addr {
+    /// The octets value stored by `Ipv4Addr`.
     octets: [u8; 4],
 }
 
@@ -354,7 +359,9 @@ fn write_u8_to_buf(val: u8, buf: *u8, pos: i32) -> i32 {
 
 /// Socket address for IPv4
 pub struct SocketAddrV4 {
+    /// The ip value stored by `SocketAddrV4`.
     ip: Ipv4Addr,
+    /// The port value stored by `SocketAddrV4`.
     port: u16,
 }
 
@@ -473,7 +480,9 @@ fn write_u16_to_buf(val: u16, buf: *u8, pos: i32) -> i32 {
 /// CIDR block (IPv4 address with prefix length)
 /// Used for representing network ranges like 192.168.1.0/24
 pub struct Cidr {
+    /// The ip value stored by `Cidr`.
     ip: Ipv4Addr,
+    /// The prefix len value stored by `Cidr`.
     prefix_len: u8,
 }
 
@@ -563,18 +572,34 @@ impl Cidr {
         return Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 8)
     }
 
+    /// Returns the private class b value associated with `Cidr`.
+    ///
+    /// # Returns
+    /// The resulting `Cidr` value.
     pub fn private_class_b() -> Cidr {
         return Cidr::new(Ipv4Addr::new(172, 16, 0, 0), 12)
     }
 
+    /// Returns the private class c value associated with `Cidr`.
+    ///
+    /// # Returns
+    /// The resulting `Cidr` value.
     pub fn private_class_c() -> Cidr {
         return Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 16)
     }
 
+    /// Returns the loopback value associated with `Cidr`.
+    ///
+    /// # Returns
+    /// The resulting `Cidr` value.
     pub fn loopback() -> Cidr {
         return Cidr::new(Ipv4Addr::new(127, 0, 0, 0), 8)
     }
 
+    /// Returns the link local value associated with `Cidr`.
+    ///
+    /// # Returns
+    /// The resulting `Cidr` value.
     pub fn link_local() -> Cidr {
         return Cidr::new(Ipv4Addr::new(169, 254, 0, 0), 16)
     }
@@ -601,6 +626,7 @@ impl Display for Cidr {
 
 /// Generic socket address enum (for future IPv6 support)
 pub enum SocketAddr {
+    /// Indicates v4.
     V4(SocketAddrV4),
 }
 

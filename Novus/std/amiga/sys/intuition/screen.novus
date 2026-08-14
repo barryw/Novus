@@ -32,6 +32,7 @@ from amiga::sys::hardware::chipset import DISPLAY, DisplayType
 /// // Screen automatically closed when handle goes out of scope
 /// ```
 pub struct ScreenHandle {
+    /// The screen value stored by `ScreenHandle`.
     screen: *Screen,
 }
 
@@ -417,15 +418,25 @@ impl Drop for ScreenHandle {
 ///     .build()?
 /// ```
 pub struct ScreenBuilder {
+    /// The width value stored by `ScreenBuilder`.
     width: i16,
+    /// The height value stored by `ScreenBuilder`.
     height: i16,
+    /// The depth value stored by `ScreenBuilder`.
     depth: i16,
+    /// The title ptr value stored by `ScreenBuilder`.
     title_ptr: *u8,
+    /// The behind value stored by `ScreenBuilder`.
     behind: bool,
+    /// The quiet value stored by `ScreenBuilder`.
     quiet: bool,
+    /// The show title value stored by `ScreenBuilder`.
     show_title: bool,
+    /// The autoscroll value stored by `ScreenBuilder`.
     autoscroll: bool,
+    /// The display id value stored by `ScreenBuilder`.
     display_id: u32,
+    /// The overscan value stored by `ScreenBuilder`.
     overscan: u32,
 }
 

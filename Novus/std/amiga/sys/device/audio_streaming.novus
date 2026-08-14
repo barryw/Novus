@@ -98,61 +98,95 @@ const NUM_BUFFERS: u32 = 3
 pub struct AudioStreamer {
     // Audio.device resources - LEFT channel (or mono)
     // (all pointers - 4 bytes each, naturally aligned)
+    /// The io audio 0 value stored by `AudioStreamer`.
     io_audio_0: *IOAudio,    // IORequest for buffer 0, left/mono channel
+    /// The io audio 1 value stored by `AudioStreamer`.
     io_audio_1: *IOAudio,    // IORequest for buffer 1, left/mono channel
+    /// The io audio 2 value stored by `AudioStreamer`.
     io_audio_2: *IOAudio,    // IORequest for buffer 2, left/mono channel
 
     // Audio.device resources - RIGHT channel (stereo only)
+    /// The io audio 0 r value stored by `AudioStreamer`.
     io_audio_0_r: *IOAudio,  // IORequest for buffer 0, right channel
+    /// The io audio 1 r value stored by `AudioStreamer`.
     io_audio_1_r: *IOAudio,  // IORequest for buffer 1, right channel
+    /// The io audio 2 r value stored by `AudioStreamer`.
     io_audio_2_r: *IOAudio,  // IORequest for buffer 2, right channel
 
+    /// The port value stored by `AudioStreamer`.
     port: *MsgPort,          // Message port for I/O completion
 
     // Triple buffers in chip RAM (all pointers - 4 bytes each)
+    /// The buffer 0 value stored by `AudioStreamer`.
     buffer_0: *u8,
+    /// The buffer 1 value stored by `AudioStreamer`.
     buffer_1: *u8,
+    /// The buffer 2 value stored by `AudioStreamer`.
     buffer_2: *u8,
 
     // Source data (pointer then u32s - all 4-byte aligned)
+    /// The source ptr value stored by `AudioStreamer`.
     source_ptr: *u8,
+    /// The source size value stored by `AudioStreamer`.
     source_size: u32,
+    /// The source offset value stored by `AudioStreamer`.
     source_offset: u32,      // Current read position (how much we've loaded)
+    /// The played bytes value stored by `AudioStreamer`.
     played_bytes: u32,       // How much has actually been played (buffer granularity)
+    /// The buffer size value stored by `AudioStreamer`.
     buffer_size: u32,
 
     // Time-based position tracking (all u32 - 4-byte aligned)
+    /// The sample rate value stored by `AudioStreamer`.
     sample_rate: u32,        // Samples per second (for position calculation)
+    /// The frames elapsed value stored by `AudioStreamer`.
     frames_elapsed: u32,     // VBlank frames since playback started
 
     // 16-bit values grouped together (2-byte aligned)
+    /// The alloc key value stored by `AudioStreamer`.
     alloc_key: i16,          // Allocation key from device
+    /// The period value stored by `AudioStreamer`.
     period: u16,
+    /// The volume value stored by `AudioStreamer`.
     volume: u16,
 
     // Channel selection using unified ChannelMask
+    /// The channels value stored by `AudioStreamer`.
     channels: ChannelMask,   // Which channels we have allocated (1 for mono, 2 for stereo)
 
     // Individual channel masks for CMD_WRITE (derived from channels)
+    /// The left channel mask value stored by `AudioStreamer`.
     left_channel_mask: u8,   // Single channel bit for left (e.g., $01 for channel 0)
+    /// The right channel mask value stored by `AudioStreamer`.
     right_channel_mask: u8,  // Single channel bit for right (e.g., $02 for channel 1)
 
     // 8-bit values grouped together at the end
+    /// The pending count value stored by `AudioStreamer`.
     pending_count: u8,       // How many buffers are currently queued (0-3 for mono, 0-6 for stereo)
+    /// The is pal value stored by `AudioStreamer`.
     is_pal: bool,            // PAL (50Hz) or NTSC (60Hz)
+    /// The is playing value stored by `AudioStreamer`.
     is_playing: bool,
+    /// The loop playback value stored by `AudioStreamer`.
     loop_playback: bool,
+    /// The reached end value stored by `AudioStreamer`.
     reached_end: bool,
 
     // Per-buffer completion tracking for stereo
     // For stereo, we need BOTH left and right to complete before refilling
     // These flags track if left channel has completed for each buffer
+    /// The buf0 left done value stored by `AudioStreamer`.
     buf0_left_done: bool,
+    /// The buf1 left done value stored by `AudioStreamer`.
     buf1_left_done: bool,
+    /// The buf2 left done value stored by `AudioStreamer`.
     buf2_left_done: bool,
     // These flags track if right channel has completed for each buffer
+    /// The buf0 right done value stored by `AudioStreamer`.
     buf0_right_done: bool,
+    /// The buf1 right done value stored by `AudioStreamer`.
     buf1_right_done: bool,
+    /// The buf2 right done value stored by `AudioStreamer`.
     buf2_right_done: bool,
 }
 

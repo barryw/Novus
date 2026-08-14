@@ -36,8 +36,12 @@ public class SfdGenerator
 
         var sfdFiles = Directory.GetFiles(sfdPath, "*_lib.sfd")
             .OrderBy(path => path, StringComparer.Ordinal)
-            .ToArray();
-        Console.WriteLine($"Found {sfdFiles.Length} SFD files");
+            .ToList();
+        var overlay = Path.Combine(AppContext.BaseDirectory, "ndk_overlays", "hdwrench_lib.sfd");
+        if (File.Exists(Path.Combine(_ndkPath, "Include", "fd", "hdwrench.fd")) && File.Exists(overlay))
+            sfdFiles.Add(overlay);
+        sfdFiles = sfdFiles.Order(StringComparer.Ordinal).ToList();
+        Console.WriteLine($"Found {sfdFiles.Count} SFD files");
 
         // First pass: collect all includes from all SFD files
         var allIncludes = new HashSet<string>();
@@ -91,8 +95,7 @@ public class SfdGenerator
                 var headers = library.Includes
                     .Select(include => include.Trim('<', '>', '"'))
                     .Where(include => File.Exists(Path.Combine(_ndkPath, "Include", "include_h", include)))
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(include => include, StringComparer.Ordinal);
+                    .Distinct(StringComparer.Ordinal);
                 return $"{moduleName}|{string.Join(',', headers)}";
             })
             .OrderBy(line => line, StringComparer.Ordinal);
@@ -435,10 +438,13 @@ public class SfdGenerator
 
         var unsupportedOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_unsupported_macros.txt");
         var includedNames = convertedConstants.Keys.Concat(stringConstants.Keys).ToHashSet(StringComparer.Ordinal);
-        File.WriteAllLines(unsupportedOutputFile, allConstants.Values
+        File.WriteAllLines(unsupportedOutputFile, new[]
+        {
+            "# Generator conversion diagnostics; coverage status is authoritative in ndk_coverage.json."
+        }.Concat(allConstants.Values
             .Where(constant => !includedNames.Contains(constant.Name))
             .OrderBy(constant => constant.Name, StringComparer.Ordinal)
-            .Select(constant => $"{constant.Name} = {constant.Value}"));
+            .Select(constant => $"{constant.Name} = {constant.Value}")));
 
         // Generate amiga_structs.novus (structs only)
         var structsSb = new StringBuilder();

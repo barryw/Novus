@@ -67,14 +67,21 @@ public class TomlHoverHandler : IHoverHandler
             "Target Motorola 68k CPU architecture.",
             "string",
             "68020",
-            new[] { "68020", "68030", "68040", "68060", "68080", "auto" }
+            TomlSchemaValidator.ValidTargetCpus
         ),
         ["build.fpu"] = new TomlKeyInfo(
             "Floating Point Unit",
             "FPU configuration for floating-point operations.",
             "string",
             "auto",
-            new[] { "soft", "68881", "68040", "auto" }
+            TomlSchemaValidator.ValidFpuModes
+        ),
+        ["build.chipset"] = new TomlKeyInfo(
+            "Target Chipset",
+            "Amiga custom-chip target used for compile-time validation.",
+            "string",
+            "auto",
+            TomlSchemaValidator.ValidChipsets
         ),
         ["build.output"] = new TomlKeyInfo(
             "Output Directory",
@@ -84,9 +91,9 @@ public class TomlHoverHandler : IHoverHandler
         ),
         ["build.optimization_level"] = new TomlKeyInfo(
             "Optimization Level",
-            "Compiler optimization level (0-3). Default is 2.",
+            "Compiler optimization level (0-3). Default is 1.",
             "integer",
-            "2"
+            "1"
         ),
         ["build.emit_asm"] = new TomlKeyInfo(
             "Emit Assembly",

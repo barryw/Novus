@@ -3,8 +3,11 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "docs": "python3 ../tools/generate_api_docs.py ../Novus/std/amiga/raw --output public/api --check",
+    "docs:all": "python3 ../tools/generate_api_docs.py ../Novus/std --output public/api --check",
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "npm run docs:all",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

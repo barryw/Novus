@@ -47,28 +47,45 @@ extern fn DoMethodA(object: *u8, message: *u32) -> u32
 // These follow a convention: File menu 100-199, Edit menu 200-299, Help menu 900-999
 
 // File/Project menu
+/// Defines `MENU_NEW`, the menu new value.
 pub const MENU_NEW: u32 = 100
+/// Defines `MENU_OPEN`, the menu open value.
 pub const MENU_OPEN: u32 = 101
+/// Defines `MENU_SAVE`, the menu save value.
 pub const MENU_SAVE: u32 = 102
+/// Defines `MENU_SAVE_AS`, the menu save as value.
 pub const MENU_SAVE_AS: u32 = 103
+/// Defines `MENU_CLOSE`, the menu close value.
 pub const MENU_CLOSE: u32 = 104
+/// Defines `MENU_QUIT`, the menu quit value.
 pub const MENU_QUIT: u32 = 110
 
 // Edit menu
+/// Defines `MENU_CUT`, the menu cut value.
 pub const MENU_CUT: u32 = 200
+/// Defines `MENU_COPY`, the menu copy value.
 pub const MENU_COPY: u32 = 201
+/// Defines `MENU_PASTE`, the menu paste value.
 pub const MENU_PASTE: u32 = 202
+/// Defines `MENU_UNDO`, the menu undo value.
 pub const MENU_UNDO: u32 = 203
+/// Defines `MENU_REDO`, the menu redo value.
 pub const MENU_REDO: u32 = 204
+/// Defines `MENU_SELECT_ALL`, the menu select all value.
 pub const MENU_SELECT_ALL: u32 = 205
+/// Defines `MENU_CLEAR`, the menu clear value.
 pub const MENU_CLEAR: u32 = 206
 
 // Settings menu
+/// Defines `MENU_PREFS`, the menu prefs value.
 pub const MENU_PREFS: u32 = 300
+/// Defines `MENU_MUI_PREFS`, the menu mui prefs value.
 pub const MENU_MUI_PREFS: u32 = 301
 
 // Help menu
+/// Defines `MENU_ABOUT`, the menu about value.
 pub const MENU_ABOUT: u32 = 900
+/// Defines `MENU_HELP`, the menu help value.
 pub const MENU_HELP: u32 = 901
 
 // ============================================================================
@@ -146,18 +163,31 @@ impl Drop for TagBuilder {
 // MUI Application Builder
 // ============================================================================
 
+/// Builds a configured muiapp value.
 pub struct MUIAppBuilder {
+    /// The title value stored by `MUIAppBuilder`.
     title: *u8
+    /// The author value stored by `MUIAppBuilder`.
     author: *u8
+    /// The description value stored by `MUIAppBuilder`.
     description: *u8
+    /// The version value stored by `MUIAppBuilder`.
     version: *u8
+    /// The base value stored by `MUIAppBuilder`.
     base: *u8
+    /// The menustrip obj value stored by `MUIAppBuilder`.
     menustrip_obj: *u8    // Optional menustrip object
+    /// The windows value stored by `MUIAppBuilder`.
     windows: **u8         // Array of window objects
+    /// The window count value stored by `MUIAppBuilder`.
     window_count: u32
+    /// The window capacity value stored by `MUIAppBuilder`.
     window_capacity: u32
+    /// The labels value stored by `MUIAppBuilder`.
     labels: **u8          // Tracked string allocations
+    /// The label count value stored by `MUIAppBuilder`.
     label_count: u32
+    /// The label capacity value stored by `MUIAppBuilder`.
     label_capacity: u32
 }
 
@@ -420,14 +450,23 @@ impl Drop for MUIAppBuilder {
 // MUI Window Builder
 // ============================================================================
 
+/// Builds a configured muiwindow value.
 pub struct MUIWindowBuilder {
+    /// The app builder value stored by `MUIWindowBuilder`.
     app_builder: *MUIAppBuilder
+    /// The title value stored by `MUIWindowBuilder`.
     title: *u8
+    /// The root group value stored by `MUIWindowBuilder`.
     root_group: *u8
+    /// The id value stored by `MUIWindowBuilder`.
     id: u32
+    /// The close gadget value stored by `MUIWindowBuilder`.
     close_gadget: bool
+    /// The size gadget value stored by `MUIWindowBuilder`.
     size_gadget: bool
+    /// The drag bar value stored by `MUIWindowBuilder`.
     drag_bar: bool
+    /// The depth gadget value stored by `MUIWindowBuilder`.
     depth_gadget: bool
 }
 
@@ -518,15 +557,25 @@ impl MUIWindowBuilder {
 // MUI Group Builder
 // ============================================================================
 
+/// Builds a configured muigroup value.
 pub struct MUIGroupBuilder {
+    /// The app builder value stored by `MUIGroupBuilder`.
     app_builder: *MUIAppBuilder
+    /// The horizontal value stored by `MUIGroupBuilder`.
     horizontal: bool
+    /// The children value stored by `MUIGroupBuilder`.
     children: **u8
+    /// The child count value stored by `MUIGroupBuilder`.
     child_count: u32
+    /// The child capacity value stored by `MUIGroupBuilder`.
     child_capacity: u32
+    /// The frame value stored by `MUIGroupBuilder`.
     frame: i32
+    /// The frame title value stored by `MUIGroupBuilder`.
     frame_title: *u8
+    /// The same size value stored by `MUIGroupBuilder`.
     same_size: bool
+    /// The spacing value stored by `MUIGroupBuilder`.
     spacing: i32
 }
 
@@ -884,9 +933,13 @@ impl Drop for MUIGroupBuilder {
 // MUI Application - Running Application
 // ============================================================================
 
+/// Represents a muiapp value.
 pub struct MUIApp {
+    /// The app value stored by `MUIApp`.
     app: *u8
+    /// The labels value stored by `MUIApp`.
     labels: **u8
+    /// The label count value stored by `MUIApp`.
     label_count: u32
 }
 
@@ -1234,7 +1287,9 @@ pub fn list_redraw(list: *u8, entry: i32) {
 
 /// Menu item builder - accumulates items for a single menu
 pub struct MenuItemBuilder {
+    /// The menu obj value stored by `MenuItemBuilder`.
     menu_obj: *u8           // The Menu object we're adding items to
+    /// The parent value stored by `MenuItemBuilder`.
     parent: *MenuBuilder    // Parent menu builder that tracks labels
 }
 
@@ -1336,11 +1391,17 @@ const NM_BARLABEL: u32 = $FFFFFFFF
 
 /// Menu strip builder - creates the full menu bar
 pub struct MenuBuilder {
+    /// The menus value stored by `MenuBuilder`.
     menus: **u8             // Array of Menu objects
+    /// The menu count value stored by `MenuBuilder`.
     menu_count: u32
+    /// The menu capacity value stored by `MenuBuilder`.
     menu_capacity: u32
+    /// The labels value stored by `MenuBuilder`.
     labels: **u8            // Track all allocated labels
+    /// The label count value stored by `MenuBuilder`.
     label_count: u32
+    /// The label capacity value stored by `MenuBuilder`.
     label_capacity: u32
 }
 
@@ -1444,8 +1505,11 @@ impl MenuBuilder {
 /// Wrapper for MUI menustrip that owns allocated label strings
 /// Drop frees the labels when the menustrip is no longer needed
 pub struct MenuStrip {
+    /// The obj value stored by `MenuStrip`.
     obj: *u8
+    /// The labels value stored by `MenuStrip`.
     labels: **u8
+    /// The label count value stored by `MenuStrip`.
     label_count: u32
 }
 
@@ -1481,8 +1545,11 @@ impl Drop for MenuStrip {
 }
 
 // Add MUIM_Family methods we need
+/// Defines `MUIM_Family_AddTail`, the muim family add tail value.
 pub const MUIM_Family_AddTail: u32 = $8042d752
+/// Defines `MUIM_Family_AddHead`, the muim family add head value.
 pub const MUIM_Family_AddHead: u32 = $8042e200
+/// Defines `MUIM_Family_Remove`, the muim family remove value.
 pub const MUIM_Family_Remove: u32 = $8042f8a9
 
 // ============================================================================
@@ -1504,13 +1571,21 @@ pub const MUIM_Family_Remove: u32 = $8042f8a9
 
 /// Builder for MUI tabbed interfaces (Register class)
 pub struct MUITabsBuilder {
+    /// The app builder value stored by `MUITabsBuilder`.
     app_builder: *MUIAppBuilder
+    /// The titles value stored by `MUITabsBuilder`.
     titles: **u8           // NULL-terminated array of title strings
+    /// The title count value stored by `MUITabsBuilder`.
     title_count: u32
+    /// The title capacity value stored by `MUITabsBuilder`.
     title_capacity: u32
+    /// The pages value stored by `MUITabsBuilder`.
     pages: **u8            // Array of page group objects
+    /// The page count value stored by `MUITabsBuilder`.
     page_count: u32
+    /// The page capacity value stored by `MUITabsBuilder`.
     page_capacity: u32
+    /// The frame value stored by `MUITabsBuilder`.
     frame: bool            // Whether to draw a frame around the register
 }
 

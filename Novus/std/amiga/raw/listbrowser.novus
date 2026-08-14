@@ -40,18 +40,29 @@ extern pub fn HideAllListBrowserChildren(list: *List)
 @library("listbrowser.library")
 extern pub fn FreeListBrowserList(list: *List)
 @library("listbrowser.library")
+/// Allocates column metadata for `columns` ListBrowser columns using `tags`.
+/// Free the returned library-owned allocation with FreeLBColumnInfo.
 extern pub fn AllocLBColumnInfoA(columns: u16, tags: *TagItem) -> *ColumnInfo
 @library("listbrowser.library")
+/// Varargs form of AllocLBColumnInfoA; terminate the tag arguments with TAG_DONE.
 extern pub fn AllocLBColumnInfo(columns: u16, ...args) -> *ColumnInfo
 @library("listbrowser.library")
+/// Updates column metadata from a terminated TagItem list.
+/// Returns zero on success or a ListBrowser error/status value.
 extern pub fn SetLBColumnInfoAttrsA(columninfo: *ColumnInfo, tags: *TagItem) -> i32
 @library("listbrowser.library")
+/// Varargs form of SetLBColumnInfoAttrsA; terminate arguments with TAG_DONE.
 extern pub fn SetLBColumnInfoAttrs(columninfo: *ColumnInfo, ...args) -> i32
 @library("listbrowser.library")
+/// Reads column metadata through a terminated TagItem list.
+/// Output tag data must point to writable storage of the documented width.
 extern pub fn GetLBColumnInfoAttrsA(columninfo: *ColumnInfo, tags: *TagItem) -> i32
 @library("listbrowser.library")
+/// Varargs form of GetLBColumnInfoAttrsA; terminate arguments with TAG_DONE.
 extern pub fn GetLBColumnInfoAttrs(columninfo: *ColumnInfo, ...args) -> i32
 @library("listbrowser.library")
+/// Frees ColumnInfo returned by AllocLBColumnInfoA.
+/// The pointer must not be used after this call.
 extern pub fn FreeLBColumnInfo(columninfo: *ColumnInfo)
 @library("listbrowser.library")
 extern pub fn ListBrowserClearAll(list: *List)

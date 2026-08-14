@@ -22,6 +22,7 @@ typedef struct ArticleDisposition ArticleDisposition;
 typedef struct AslPrefs AslPrefs;
 typedef struct AslSemaphore AslSemaphore;
 typedef struct AssignList AssignList;
+typedef struct AudChannel AudChannel;
 typedef struct AvailFontsHeader AvailFontsHeader;
 typedef struct BadBlockBlock BadBlockBlock;
 typedef struct BadBlockEntry BadBlockEntry;

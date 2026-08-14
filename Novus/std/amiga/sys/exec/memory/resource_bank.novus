@@ -100,6 +100,10 @@ pub enum BankError {
 }
 
 impl BankError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             BankError::OutOfMemory => return "Out of chip RAM",
@@ -148,12 +152,19 @@ const MAX_BANK_ENTRIES: u32 = 64
 /// level1.unload()
 /// ```
 pub struct ResourceBank {
+    /// The name value stored by `ResourceBank`.
     name: [u8; 32],
+    /// The name len value stored by `ResourceBank`.
     name_len: u8,
+    /// The entries value stored by `ResourceBank`.
     entries: [BankEntry; 64],
+    /// The entry count value stored by `ResourceBank`.
     entry_count: u32,
+    /// The state value stored by `ResourceBank`.
     state: BankState,
+    /// The total size value stored by `ResourceBank`.
     total_size: u32,
+    /// The persistent value stored by `ResourceBank`.
     persistent: bool,       // If true, never auto-unload
 }
 
@@ -399,7 +410,9 @@ impl Drop for ResourceBank {
 ///     .build()?
 /// ```
 pub struct BankBuilder {
+    /// The bank value stored by `BankBuilder`.
     bank: ResourceBank,
+    /// The default priority value stored by `BankBuilder`.
     default_priority: Priority,
 }
 
@@ -476,9 +489,13 @@ impl BankBuilder {
 ///
 /// Helps plan memory usage across different asset categories.
 pub struct ChipBudget {
+    /// The total value stored by `ChipBudget`.
     total: u32,             // Total chip RAM available
+    /// The persistent value stored by `ChipBudget`.
     persistent: u32,        // Reserved for always-loaded (persistent) banks
+    /// The level value stored by `ChipBudget`.
     level: u32,             // Reserved for level-specific assets
+    /// The streaming value stored by `ChipBudget`.
     streaming: u32,         // Reserved for audio streaming buffers
 }
 
@@ -530,8 +547,12 @@ impl ChipBudget {
 
 /// Statistics about loaded banks
 pub struct BankStats {
+    /// The loaded banks value stored by `BankStats`.
     loaded_banks: u32,      // Number of loaded banks
+    /// The total loaded value stored by `BankStats`.
     total_loaded: u32,      // Total bytes in loaded banks
+    /// The persistent banks value stored by `BankStats`.
     persistent_banks: u32,  // Number of persistent banks
+    /// The persistent bytes value stored by `BankStats`.
     persistent_bytes: u32,  // Bytes in persistent banks
 }

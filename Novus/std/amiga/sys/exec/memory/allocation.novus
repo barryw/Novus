@@ -33,7 +33,9 @@ from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC, ME
 /// let any_mem = MemHandle::new_with_flags(512, MEMF_ANY | MEMF_CLEAR)?
 /// ```
 pub struct MemHandle {
+    /// The ptr value stored by `MemHandle`.
     ptr: *u8,
+    /// The size value stored by `MemHandle`.
     size: u32
 }
 

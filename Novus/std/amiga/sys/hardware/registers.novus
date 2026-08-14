@@ -8,159 +8,263 @@
 // or through the safe wrapper APIs in amiga::sys::graphics::copper
 
 // Custom chip base address
+/// Defines `CUSTOM_BASE`, the custom base value.
 pub const CUSTOM_BASE: u32 = $DFF000
 
 //
 // Copper Registers
 //
 
+/// Defines `COP1LC`, the cop1 lc value.
 pub const COP1LC: u32 = $080   // Copper list 1 location (pointer)
+/// Defines `COP2LC`, the cop2 lc value.
 pub const COP2LC: u32 = $084   // Copper list 2 location (pointer)
+/// Defines `COPJMP1`, the copjmp1 value.
 pub const COPJMP1: u32 = $088  // Copper jump 1 (strobe)
+/// Defines `COPJMP2`, the copjmp2 value.
 pub const COPJMP2: u32 = $08A  // Copper jump 2 (strobe)
 
 //
 // Display Control Registers
 //
 
+/// Defines `BPLCON0`, the bplcon0 value.
 pub const BPLCON0: u32 = $100  // Bitplane control register 0
+/// Defines `BPLCON1`, the bplcon1 value.
 pub const BPLCON1: u32 = $102  // Bitplane control register 1
+/// Defines `BPLCON2`, the bplcon2 value.
 pub const BPLCON2: u32 = $104  // Bitplane control register 2
+/// Defines `BPL1MOD`, the bpl1 mod value.
 pub const BPL1MOD: u32 = $108  // Bitplane modulo (odd planes)
+/// Defines `BPL2MOD`, the bpl2 mod value.
 pub const BPL2MOD: u32 = $10A  // Bitplane modulo (even planes)
 
 //
 // Bitplane Pointer Registers
 //
 
+/// Defines `BPL1PTH`, the bpl1 pth value.
 pub const BPL1PTH: u32 = $0E0  // Bitplane 1 pointer (high 3 bits)
+/// Defines `BPL1PTL`, the bpl1 ptl value.
 pub const BPL1PTL: u32 = $0E2  // Bitplane 1 pointer (low 15 bits)
+/// Defines `BPL2PTH`, the bpl2 pth value.
 pub const BPL2PTH: u32 = $0E4  // Bitplane 2 pointer (high 3 bits)
+/// Defines `BPL2PTL`, the bpl2 ptl value.
 pub const BPL2PTL: u32 = $0E6  // Bitplane 2 pointer (low 15 bits)
+/// Defines `BPL3PTH`, the bpl3 pth value.
 pub const BPL3PTH: u32 = $0E8  // Bitplane 3 pointer (high 3 bits)
+/// Defines `BPL3PTL`, the bpl3 ptl value.
 pub const BPL3PTL: u32 = $0EA  // Bitplane 3 pointer (low 15 bits)
+/// Defines `BPL4PTH`, the bpl4 pth value.
 pub const BPL4PTH: u32 = $0EC  // Bitplane 4 pointer (high 3 bits)
+/// Defines `BPL4PTL`, the bpl4 ptl value.
 pub const BPL4PTL: u32 = $0EE  // Bitplane 4 pointer (low 15 bits)
+/// Defines `BPL5PTH`, the bpl5 pth value.
 pub const BPL5PTH: u32 = $0F0  // Bitplane 5 pointer (high 3 bits)
+/// Defines `BPL5PTL`, the bpl5 ptl value.
 pub const BPL5PTL: u32 = $0F2  // Bitplane 5 pointer (low 15 bits)
+/// Defines `BPL6PTH`, the bpl6 pth value.
 pub const BPL6PTH: u32 = $0F4  // Bitplane 6 pointer (high 3 bits)
+/// Defines `BPL6PTL`, the bpl6 ptl value.
 pub const BPL6PTL: u32 = $0F6  // Bitplane 6 pointer (low 15 bits)
+/// Defines `BPL7PTH`, the bpl7 pth value.
 pub const BPL7PTH: u32 = $0F8  // Bitplane 7 pointer (high 3 bits) [AGA only]
+/// Defines `BPL7PTL`, the bpl7 ptl value.
 pub const BPL7PTL: u32 = $0FA  // Bitplane 7 pointer (low 15 bits) [AGA only]
+/// Defines `BPL8PTH`, the bpl8 pth value.
 pub const BPL8PTH: u32 = $0FC  // Bitplane 8 pointer (high 3 bits) [AGA only]
+/// Defines `BPL8PTL`, the bpl8 ptl value.
 pub const BPL8PTL: u32 = $0FE  // Bitplane 8 pointer (low 15 bits) [AGA only]
 
 //
 // Display Window Registers
 //
 
+/// Defines `DIWSTRT`, the diwstrt value.
 pub const DIWSTRT: u32 = $08E  // Display window start
+/// Defines `DIWSTOP`, the diwstop value.
 pub const DIWSTOP: u32 = $090  // Display window stop
+/// Defines `DDFSTRT`, the ddfstrt value.
 pub const DDFSTRT: u32 = $092  // Display data fetch start
+/// Defines `DDFSTOP`, the ddfstop value.
 pub const DDFSTOP: u32 = $094  // Display data fetch stop
 
 //
 // Sprite Registers
 //
 
+/// Defines `SPR0PTH`, the spr0 pth value.
 pub const SPR0PTH: u32 = $120  // Sprite 0 pointer (high 3 bits)
+/// Defines `SPR0PTL`, the spr0 ptl value.
 pub const SPR0PTL: u32 = $122  // Sprite 0 pointer (low 15 bits)
+/// Defines `SPR1PTH`, the spr1 pth value.
 pub const SPR1PTH: u32 = $124  // Sprite 1 pointer (high 3 bits)
+/// Defines `SPR1PTL`, the spr1 ptl value.
 pub const SPR1PTL: u32 = $126  // Sprite 1 pointer (low 15 bits)
+/// Defines `SPR2PTH`, the spr2 pth value.
 pub const SPR2PTH: u32 = $128  // Sprite 2 pointer (high 3 bits)
+/// Defines `SPR2PTL`, the spr2 ptl value.
 pub const SPR2PTL: u32 = $12A  // Sprite 2 pointer (low 15 bits)
+/// Defines `SPR3PTH`, the spr3 pth value.
 pub const SPR3PTH: u32 = $12C  // Sprite 3 pointer (high 3 bits)
+/// Defines `SPR3PTL`, the spr3 ptl value.
 pub const SPR3PTL: u32 = $12E  // Sprite 3 pointer (low 15 bits)
+/// Defines `SPR4PTH`, the spr4 pth value.
 pub const SPR4PTH: u32 = $130  // Sprite 4 pointer (high 3 bits)
+/// Defines `SPR4PTL`, the spr4 ptl value.
 pub const SPR4PTL: u32 = $132  // Sprite 4 pointer (low 15 bits)
+/// Defines `SPR5PTH`, the spr5 pth value.
 pub const SPR5PTH: u32 = $134  // Sprite 5 pointer (high 3 bits)
+/// Defines `SPR5PTL`, the spr5 ptl value.
 pub const SPR5PTL: u32 = $136  // Sprite 5 pointer (low 15 bits)
+/// Defines `SPR6PTH`, the spr6 pth value.
 pub const SPR6PTH: u32 = $138  // Sprite 6 pointer (high 3 bits)
+/// Defines `SPR6PTL`, the spr6 ptl value.
 pub const SPR6PTL: u32 = $13A  // Sprite 6 pointer (low 15 bits)
+/// Defines `SPR7PTH`, the spr7 pth value.
 pub const SPR7PTH: u32 = $13C  // Sprite 7 pointer (high 3 bits)
+/// Defines `SPR7PTL`, the spr7 ptl value.
 pub const SPR7PTL: u32 = $13E  // Sprite 7 pointer (low 15 bits)
 
 //
 // Color Registers (32 colors in OCS/ECS, 256 in AGA)
 //
 
+/// Defines `COLOR00`, the color00 value.
 pub const COLOR00: u32 = $180  // Color 0 (background)
+/// Defines `COLOR01`, the color01 value.
 pub const COLOR01: u32 = $182  // Color 1
+/// Defines `COLOR02`, the color02 value.
 pub const COLOR02: u32 = $184  // Color 2
+/// Defines `COLOR03`, the color03 value.
 pub const COLOR03: u32 = $186  // Color 3
+/// Defines `COLOR04`, the color04 value.
 pub const COLOR04: u32 = $188  // Color 4
+/// Defines `COLOR05`, the color05 value.
 pub const COLOR05: u32 = $18A  // Color 5
+/// Defines `COLOR06`, the color06 value.
 pub const COLOR06: u32 = $18C  // Color 6
+/// Defines `COLOR07`, the color07 value.
 pub const COLOR07: u32 = $18E  // Color 7
+/// Defines `COLOR08`, the color08 value.
 pub const COLOR08: u32 = $190  // Color 8
+/// Defines `COLOR09`, the color09 value.
 pub const COLOR09: u32 = $192  // Color 9
+/// Defines `COLOR10`, the color10 value.
 pub const COLOR10: u32 = $194  // Color 10
+/// Defines `COLOR11`, the color11 value.
 pub const COLOR11: u32 = $196  // Color 11
+/// Defines `COLOR12`, the color12 value.
 pub const COLOR12: u32 = $198  // Color 12
+/// Defines `COLOR13`, the color13 value.
 pub const COLOR13: u32 = $19A  // Color 13
+/// Defines `COLOR14`, the color14 value.
 pub const COLOR14: u32 = $19C  // Color 14
+/// Defines `COLOR15`, the color15 value.
 pub const COLOR15: u32 = $19E  // Color 15
+/// Defines `COLOR16`, the color16 value.
 pub const COLOR16: u32 = $1A0  // Color 16
+/// Defines `COLOR17`, the color17 value.
 pub const COLOR17: u32 = $1A2  // Color 17
+/// Defines `COLOR18`, the color18 value.
 pub const COLOR18: u32 = $1A4  // Color 18
+/// Defines `COLOR19`, the color19 value.
 pub const COLOR19: u32 = $1A6  // Color 19
+/// Defines `COLOR20`, the color20 value.
 pub const COLOR20: u32 = $1A8  // Color 20
+/// Defines `COLOR21`, the color21 value.
 pub const COLOR21: u32 = $1AA  // Color 21
+/// Defines `COLOR22`, the color22 value.
 pub const COLOR22: u32 = $1AC  // Color 22
+/// Defines `COLOR23`, the color23 value.
 pub const COLOR23: u32 = $1AE  // Color 23
+/// Defines `COLOR24`, the color24 value.
 pub const COLOR24: u32 = $1B0  // Color 24
+/// Defines `COLOR25`, the color25 value.
 pub const COLOR25: u32 = $1B2  // Color 25
+/// Defines `COLOR26`, the color26 value.
 pub const COLOR26: u32 = $1B4  // Color 26
+/// Defines `COLOR27`, the color27 value.
 pub const COLOR27: u32 = $1B6  // Color 27
+/// Defines `COLOR28`, the color28 value.
 pub const COLOR28: u32 = $1B8  // Color 28
+/// Defines `COLOR29`, the color29 value.
 pub const COLOR29: u32 = $1BA  // Color 29
+/// Defines `COLOR30`, the color30 value.
 pub const COLOR30: u32 = $1BC  // Color 30
+/// Defines `COLOR31`, the color31 value.
 pub const COLOR31: u32 = $1BE  // Color 31
 
 //
 // Blitter Registers
 //
 
+/// Defines `BLTCON0`, the bltcon0 value.
 pub const BLTCON0: u32 = $040  // Blitter control register 0
+/// Defines `BLTCON1`, the bltcon1 value.
 pub const BLTCON1: u32 = $042  // Blitter control register 1
+/// Defines `BLTAFWM`, the bltafwm value.
 pub const BLTAFWM: u32 = $044  // Blitter first word mask for source A
+/// Defines `BLTALWM`, the bltalwm value.
 pub const BLTALWM: u32 = $046  // Blitter last word mask for source A
+/// Defines `BLTAPT`, the bltapt value.
 pub const BLTAPT: u32 = $050   // Blitter pointer to source A (32-bit)
+/// Defines `BLTBPT`, the bltbpt value.
 pub const BLTBPT: u32 = $04C   // Blitter pointer to source B (32-bit)
+/// Defines `BLTCPT`, the bltcpt value.
 pub const BLTCPT: u32 = $048   // Blitter pointer to source C (32-bit)
+/// Defines `BLTDPT`, the bltdpt value.
 pub const BLTDPT: u32 = $054   // Blitter pointer to destination D (32-bit)
+/// Defines `BLTSIZE`, the bltsize value.
 pub const BLTSIZE: u32 = $058  // Blitter start and size
+/// Defines `BLTAMOD`, the bltamod value.
 pub const BLTAMOD: u32 = $064  // Blitter modulo for source A
+/// Defines `BLTBMOD`, the bltbmod value.
 pub const BLTBMOD: u32 = $062  // Blitter modulo for source B
+/// Defines `BLTCMOD`, the bltcmod value.
 pub const BLTCMOD: u32 = $060  // Blitter modulo for source C
+/// Defines `BLTDMOD`, the bltdmod value.
 pub const BLTDMOD: u32 = $066  // Blitter modulo for destination D
+/// Defines `BLTADAT`, the bltadat value.
 pub const BLTADAT: u32 = $074  // Blitter source A data register
+/// Defines `BLTBDAT`, the bltbdat value.
 pub const BLTBDAT: u32 = $072  // Blitter source B data register
+/// Defines `BLTCDAT`, the bltcdat value.
 pub const BLTCDAT: u32 = $070  // Blitter source C data register
 
 //
 // DMA Control
 //
 
+/// Defines `DMACON`, the dmacon value.
 pub const DMACON: u32 = $096   // DMA control write (clear or set)
+/// Defines `DMACONR`, the dmaconr value.
 pub const DMACONR: u32 = $002  // DMA control read
+/// Defines `INTENA`, the intena value.
 pub const INTENA: u32 = $09A   // Interrupt enable bits (clear or set)
+/// Defines `INTENAR`, the intenar value.
 pub const INTENAR: u32 = $01C  // Interrupt enable bits (read)
+/// Defines `INTREQ`, the intreq value.
 pub const INTREQ: u32 = $09C   // Interrupt request bits (clear or set)
+/// Defines `INTREQR`, the intreqr value.
 pub const INTREQR: u32 = $01E  // Interrupt request bits (read)
 
 //
 // Audio/Disk Control
 //
 
+/// Defines `ADKCON`, the adkcon value.
 pub const ADKCON: u32 = $09E   // Audio/disk control write (clear or set)
+/// Defines `ADKCONR`, the adkconr value.
 pub const ADKCONR: u32 = $010  // Audio/disk control read
 
 //
 // System Status
 //
 
+/// Defines `VPOSR`, the vposr value.
 pub const VPOSR: u32 = $004    // Vertical beam position (and target ID)
+/// Defines `VHPOSR`, the vhposr value.
 pub const VHPOSR: u32 = $006   // Vertical/horizontal beam position
 
 //

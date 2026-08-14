@@ -35,16 +35,25 @@ static var __test_failures: u32 = 0
 static var __test_current_name: *u8 = null
 
 // Called by generated test runner before each test
+/// Applies  test begin to the module.
+///
+/// # Parameters
+/// * `name` - The name to use.
 pub fn __test_begin(name: *u8) {
     __test_current_name = name
 }
 
 // Called by generated test runner to get failure count
+/// Returns the  test get failures value associated with the module.
+///
+/// # Returns
+/// The resulting `u32` value.
 pub fn __test_get_failures() -> u32 {
     return __test_failures
 }
 
 // Reset failure count (called at start of test run)
+/// Applies  test reset to the module.
 pub fn __test_reset() {
     __test_failures = 0
 }
@@ -115,6 +124,7 @@ pub fn expect_eq<T>(actual: T, expected: T) where T: Eq + Display {
     }
 }
 
+/// Asserts ne for the module.
 pub fn expect_ne<T>(actual: T, expected: T) where T: Eq + Display {
     if actual == expected {
         __test_record_failure()
@@ -122,6 +132,7 @@ pub fn expect_ne<T>(actual: T, expected: T) where T: Eq + Display {
     }
 }
 
+/// Asserts ok for the module.
 pub fn expect_ok<T, E>(result: Result<T, E>) {
     match result {
         Result::Ok(_) => {},
@@ -132,6 +143,7 @@ pub fn expect_ok<T, E>(result: Result<T, E>) {
     }
 }
 
+/// Asserts err for the module.
 pub fn expect_err<T, E>(result: Result<T, E>) {
     match result {
         Result::Ok(_) => {
@@ -142,6 +154,7 @@ pub fn expect_err<T, E>(result: Result<T, E>) {
     }
 }
 
+/// Asserts some for the module.
 pub fn expect_some<T>(value: Option<T>) {
     match value {
         Option::Some(_) => {},
@@ -152,6 +165,7 @@ pub fn expect_some<T>(value: Option<T>) {
     }
 }
 
+/// Asserts none for the module.
 pub fn expect_none<T>(value: Option<T>) {
     match value {
         Option::Some(_) => {

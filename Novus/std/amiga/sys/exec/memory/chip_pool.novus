@@ -27,9 +27,13 @@ pub enum PoolSizeClass {
 }
 
 // Size constants for each class
+/// Defines `POOL_SMALL_SIZE`, the pool small size value.
 pub const POOL_SMALL_SIZE: u32 = 4096      // 4KB
+/// Defines `POOL_MEDIUM_SIZE`, the pool medium size value.
 pub const POOL_MEDIUM_SIZE: u32 = 8192     // 8KB
+/// Defines `POOL_LARGE_SIZE`, the pool large size value.
 pub const POOL_LARGE_SIZE: u32 = 16384     // 16KB
+/// Defines `POOL_HUGE_SIZE`, the pool huge size value.
 pub const POOL_HUGE_SIZE: u32 = 32768      // 32KB
 
 // Puddle sizes - how much memory Exec allocates at a time for each pool
@@ -182,10 +186,15 @@ impl SizePool {
 ///
 /// For allocations larger than 32KB, use direct AllocMem.
 pub struct ChipPool {
+    /// The small pool value stored by `ChipPool`.
     small_pool: SizePool,
+    /// The medium pool value stored by `ChipPool`.
     medium_pool: SizePool,
+    /// The large pool value stored by `ChipPool`.
     large_pool: SizePool,
+    /// The huge pool value stored by `ChipPool`.
     huge_pool: SizePool,
+    /// The initialized value stored by `ChipPool`.
     initialized: bool,
 }
 
@@ -400,15 +409,25 @@ impl ChipPool {
 
 /// Statistics about pool usage
 pub struct PoolStats {
+    /// The small count value stored by `PoolStats`.
     small_count: u32,       // Active small allocations
+    /// The small bytes value stored by `PoolStats`.
     small_bytes: u32,       // Bytes in small pool
+    /// The medium count value stored by `PoolStats`.
     medium_count: u32,      // Active medium allocations
+    /// The medium bytes value stored by `PoolStats`.
     medium_bytes: u32,      // Bytes in medium pool
+    /// The large count value stored by `PoolStats`.
     large_count: u32,       // Active large allocations
+    /// The large bytes value stored by `PoolStats`.
     large_bytes: u32,       // Bytes in large pool
+    /// The huge count value stored by `PoolStats`.
     huge_count: u32,        // Active huge allocations
+    /// The huge bytes value stored by `PoolStats`.
     huge_bytes: u32,        // Bytes in huge pool
+    /// The chip available value stored by `PoolStats`.
     chip_available: u32,    // Available chip RAM
+    /// The chip largest value stored by `PoolStats`.
     chip_largest: u32,      // Largest contiguous chip block
 }
 

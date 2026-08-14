@@ -53,7 +53,9 @@ from std::core import Option, Result
 /// Provides send/receive operations for UDP datagrams.
 /// The socket is automatically closed when dropped.
 pub struct UdpSocket {
+    /// The fd value stored by `UdpSocket`.
     fd: i32,
+    /// The local addr value stored by `UdpSocket`.
     local_addr: SocketAddrV4,
 }
 

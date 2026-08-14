@@ -86,6 +86,7 @@ from amiga::raw::structs import Task
 /// ```
 pub struct CriticalSection {
     // No fields needed - Drop trait handles cleanup
+    /// The  private value stored by `CriticalSection`.
     _private: u8
 }
 
@@ -172,6 +173,7 @@ impl Drop for CriticalSection {
 /// ```
 pub struct InterruptSection {
     // No fields needed - Drop trait handles cleanup
+    /// The  private value stored by `InterruptSection`.
     _private: u8
 }
 

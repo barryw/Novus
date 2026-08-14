@@ -73,14 +73,23 @@ impl CacheEntry {
 
 /// Statistics about cache usage
 pub struct CacheStats {
+    /// The entries value stored by `CacheStats`.
     entries: u32,           // Number of cached assets
+    /// The pinned entries value stored by `CacheStats`.
     pinned_entries: u32,    // Number of pinned assets
+    /// The total cached value stored by `CacheStats`.
     total_cached: u32,      // Total bytes in cache
+    /// The pinned bytes value stored by `CacheStats`.
     pinned_bytes: u32,      // Bytes that are pinned
+    /// The chip available value stored by `CacheStats`.
     chip_available: u32,    // Available chip RAM
+    /// The chip largest value stored by `CacheStats`.
     chip_largest: u32,      // Largest contiguous chip RAM block
+    /// The cache hits value stored by `CacheStats`.
     cache_hits: u32,        // Number of cache hits
+    /// The cache misses value stored by `CacheStats`.
     cache_misses: u32,      // Number of cache misses
+    /// The evictions value stored by `CacheStats`.
     evictions: u32,         // Number of evictions performed
 }
 
@@ -99,12 +108,19 @@ const MAX_CACHE_ENTRIES: u32 = 128
 /// - Pinning to protect assets during DMA
 /// - Debug names for troubleshooting
 pub struct ChipCache {
+    /// The entries value stored by `ChipCache`.
     entries: [CacheEntry; 128],
+    /// The entry count value stored by `ChipCache`.
     entry_count: u32,
+    /// The frame counter value stored by `ChipCache`.
     frame_counter: u32,         // For LRU tracking
+    /// The cache hits value stored by `ChipCache`.
     cache_hits: u32,
+    /// The cache misses value stored by `ChipCache`.
     cache_misses: u32,
+    /// The evictions value stored by `ChipCache`.
     evictions: u32,
+    /// The initialized value stored by `ChipCache`.
     initialized: bool,
 }
 

@@ -6,12 +6,19 @@ from amiga::raw::structs import FileRequester, TagItem, Window
 from amiga::raw::asl import AllocAslRequest, AslRequest, FreeAslRequest
 from std::string import PathString, Str
 
+/// Reports failures from asl operations.
 pub enum AslError {
+    /// Indicates allocation failed.
     AllocationFailed,
+    /// Indicates path too long.
     PathTooLong,
 }
 
 impl AslError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             AslError::AllocationFailed => "Could not create the file requester",
@@ -24,11 +31,17 @@ impl Error for AslError {
     fn message(&self) -> *u8 { return AslError::message(self) }
 }
 
+/// Owns a file requester handle and releases its resources when dropped.
 pub struct FileRequesterHandle {
+    /// The requester value stored by `FileRequesterHandle`.
     requester: *FileRequester,
 }
 
 impl FileRequesterHandle {
+    /// Creates a new `FileRequesterHandle` value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new() -> Result<FileRequesterHandle, AslError> {
         let requester = AllocAslRequest(ASL_FileRequest, null)
         return Result::Err(AslError::AllocationFailed) if requester == null
@@ -79,6 +92,10 @@ impl FileRequesterHandle {
         return Result::Ok(Option::Some(path))
     }
 
+    /// Returns the raw representation wrapped by `FileRequesterHandle` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*FileRequester` value.
     pub fn as_raw(&self) -> *FileRequester { return self.requester }
 }
 

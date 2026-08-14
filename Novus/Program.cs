@@ -135,7 +135,9 @@ public class Program
         var mode = options.BuildMode == BuildMode.Release ? "release" : "debug";
         var codegen = string.Join('|', mode, options.GetSafetyLevel(), options.Backend,
             options.Chipset, options.ProjectType, options.PackageName, options.PackageVersion,
-            options.PgoGenerate, options.PgoUse);
+            options.PgoGenerate, options.PgoUse,
+            string.Join(',', options.AdditionalFfiModules.Select(module =>
+                $"{module.LibraryName}:{module.BaseSymbol}:{module.MinimumVersion}:{module.Optional}")));
         return CompilationCache.ComputeConfigHash(
             options.Cpu, options.Fpu, options.OptimizationLevel, codegen);
     }
@@ -175,60 +177,8 @@ public class Program
     /// </summary>
     internal static Dictionary<string, bool> GetPreprocessorConstants(CompilerOptions options)
     {
-        // Determine effective CPU for "auto" mode
-        var cpu = options.Cpu == "auto" ? "68020" : options.Cpu;
-
-        // CPU hierarchy: Novus supports 68020 and newer.
-        var cpuLevel = cpu switch
-        {
-            "68020" => 2,
-            "68030" => 3,
-            "68040" => 4,
-            "68060" => 5,
-            "68080" => 6,
-            _ => 2 // default to 68020
-        };
-
-        return new Dictionary<string, bool>
-        {
-            ["DEBUG"] = options.BuildMode == BuildMode.Debug,
-            ["RELEASE"] = options.BuildMode == BuildMode.Release,
-
-            // Exact CPU target constants
-            ["M68020"] = cpu == "68020",
-            ["M68030"] = cpu == "68030",
-            ["M68040"] = cpu == "68040",
-            ["M68060"] = cpu == "68060",
-            ["M68080"] = cpu == "68080",
-
-            // "At least" CPU constants - true if target CPU is this level or higher
-            // Useful for: #if M68020_PLUS to use 68020+ instructions like BFFFO, MULS.L
-            ["M68020_PLUS"] = cpuLevel >= 2,
-            ["M68030_PLUS"] = cpuLevel >= 3,
-            ["M68040_PLUS"] = cpuLevel >= 4,
-            ["M68060_PLUS"] = cpuLevel >= 5,
-            ["M68080_PLUS"] = cpuLevel >= 6,
-
-            // FPU target constants
-            ["FPU_NONE"] = options.Fpu == "none" || options.Fpu == "soft",
-            ["FPU_SOFT"] = options.Fpu == "soft",
-            ["FPU_68881"] = options.Fpu == "68881",
-            ["FPU_68882"] = options.Fpu == "68882",
-            ["FPU_68040"] = options.Fpu == "68040" || (cpu == "68040" && options.Fpu != "none" && options.Fpu != "soft"),
-            ["FPU_68060"] = options.Fpu == "68060" || (cpu == "68060" && options.Fpu != "none" && options.Fpu != "soft"),
-
-            // "Has FPU" - true if any hardware FPU is available
-            ["HAS_FPU"] = options.Fpu != "none" && options.Fpu != "soft" && options.Fpu != "auto",
-
-            // Chipset target constants
-            ["OCS"] = options.Chipset == "OCS",
-            ["ECS"] = options.Chipset == "ECS",
-            ["AGA"] = options.Chipset == "AGA",
-
-            // "At least" chipset constants
-            ["ECS_PLUS"] = options.Chipset == "ECS" || options.Chipset == "AGA",
-            ["AGA_PLUS"] = options.Chipset == "AGA"
-        };
+        return IrBuilderConfiguration.GetPreprocessorConstantsForTarget(
+            options.Cpu, options.Fpu, options.Chipset, options.BuildMode == BuildMode.Debug);
     }
 
     static async Task<int> Main(string[] args)
@@ -241,7 +191,7 @@ public class Program
         if (versionExit.HasValue)
             return versionExit.Value;
 
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions, ConfigOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions, VerifyNdkOptions, ConfigOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
@@ -253,6 +203,7 @@ public class Program
                 (TestOptions options) => Commands.TestCommand.Run(options),
                 (BenchOptions options) => Commands.BenchCommand.Run(options),
                 (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
+                (VerifyNdkOptions options) => Task.FromResult(Commands.VerifyNdkCommand.Run(options)),
                 (ConfigOptions options) => Task.FromResult(Commands.ConfigCommand.Run(options)),
                 // Parse failures (unknown verb, bad/missing flags) are usage errors.
                 errors => Task.FromResult(EXIT_USAGE)
@@ -1426,9 +1377,14 @@ public class Program
                 .Select(metadata => metadata!)
                 .DistinctBy(metadata => metadata.ModuleName)
                 .ToList();
-            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values, linkedFunctions).ToList();
+            var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values, linkedFunctions)
+                .Concat(options.AdditionalFfiModules)
+                .DistinctBy(metadata => metadata.BaseSymbol)
+                .ToList();
             var dosMetadata = FfiModuleMetadata.TryRead(Path.Combine(stdLibPath, "amiga", "raw", "dos.novus"));
-            if (dosMetadata != null && requiredFfiModules.All(item => item.ModuleName != "dos"))
+            var needsDosStartup = !new[] { "library", "device", "resource" }
+                .Contains(options.ProjectType, StringComparer.OrdinalIgnoreCase);
+            if (needsDosStartup && dosMetadata != null && requiredFfiModules.All(item => item.ModuleName != "dos"))
                 requiredFfiModules.Add(dosMetadata);
             var usesNativeFloat = UsesNativeFloat(allModulesIR.Values.Prepend(mainIR), linkedFunctions);
             if (options.Fpu is "none" or "soft" && usesNativeFloat)
@@ -1940,8 +1896,15 @@ public class Program
                     Console.Error.WriteLine("The Novus installation is incomplete: the 'runtime' directory must sit beside the compiler binary.");
                     return 1;
                 }
-                cFiles.Add(runtimeCFile);
+                // VBCC creates intermediate assembly beside each C input even with
+                // -notmpfile. Never point concurrent builds at the installed runtime.
+                var localRuntimeCFile = Path.Combine(outputDir, runtimeFile);
+                File.Copy(runtimeCFile, localRuntimeCFile, overwrite: true);
+                cFiles.Add(localRuntimeCFile);
             }
+            var runtimeHeader = PathUtility.FindRuntimeFile("novus_runtime.h");
+            if (runtimeHeader != null)
+                File.Copy(runtimeHeader, Path.Combine(outputDir, "novus_runtime.h"), overwrite: true);
             Console.WriteLine($"  → {runtimeFiles.Count} runtime modules (split for DCE)");
 
             // Handle emit-only mode (just generate C files and stop)
@@ -2076,15 +2039,14 @@ ___stack:
             objectFiles.Add(ffiRuntimeObj);
 
             // Assemble runtime library assembly files (needed for all project types)
-            var runtimeAsmFiles = new[] { "novus_io", "runtime_mem", "runtime_library_error" };
+            var runtimeAsmFiles = new List<string> { "runtime_mem", "runtime_library_error" };
+            if (linkedFunctions.Contains("write") || linkedFunctions.Contains("_write"))
+                runtimeAsmFiles.Insert(0, "novus_io");
             foreach (var runtimeFile in runtimeAsmFiles)
             {
                 var runtimeSource = PathUtility.FindRuntimeFile($"{runtimeFile}.s");
                 if (runtimeSource == null)
                 {
-                    // Never skip: novus_io.s provides _write, which std::io::file declares
-                    // as extern. Omitting it links a program that fails on an undefined
-                    // symbol in generated C instead of reporting a Novus-level error.
                     Console.Error.WriteLine($"error: runtime file '{runtimeFile}.s' not found in {PathUtility.GetRuntimeDir()}");
                     Console.Error.WriteLine("The Novus installation is incomplete: the 'runtime' directory must sit beside the compiler binary.");
                     return 1;

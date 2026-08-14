@@ -28,8 +28,11 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 /// NOTE: This is a simplified version. True inline storage requires
 /// array types with const generic sizes, which is not yet implemented.
 pub struct SmallVec<T, const N: usize> {
+    /// The ptr value stored by `SmallVec`.
     ptr: *T,            // Heap pointer (null when empty)
+    /// The len value stored by `SmallVec`.
     len: usize,         // Current number of elements
+    /// The capacity value stored by `SmallVec`.
     capacity: usize,    // Current capacity
 }
 

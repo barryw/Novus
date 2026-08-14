@@ -29,6 +29,7 @@ from std::math::fixed import Fixed32
 /// Motorola Fast Floating Point value
 /// This is NOT the same as IEEE 754 float!
 pub struct FFP {
+    /// The raw value stored by `FFP`.
     raw: u32,
 }
 
@@ -141,12 +142,19 @@ extern fn SPLog10(parm: u32) -> u32
 // Library Initialization
 // ============================================================================
 
+/// Reports failures from ffp operations.
 pub enum FfpError {
+    /// Indicates math ffp library not found.
     MathFfpLibraryNotFound,
+    /// Indicates math trans library not found.
     MathTransLibraryNotFound,
 }
 
 impl FfpError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             FfpError::MathFfpLibraryNotFound => "mathffp.library could not be opened",

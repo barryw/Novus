@@ -1,0 +1,8 @@
+from amiga::raw::structs import SCSICmd, IOExtTD, FileSysResource
+
+pub fn main() -> i32 {
+    let scsi_size = @sizeof(SCSICmd)
+    let trackdisk_size = @sizeof(IOExtTD)
+    let filesystem_resource_size = @sizeof(FileSysResource)
+    return 0
+}

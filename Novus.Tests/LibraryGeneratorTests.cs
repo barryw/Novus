@@ -221,6 +221,7 @@ pub struct TestLibrary {
 }
 
 @libvec(offset = -30)
+@libfunc
 pub fn add(a: i32, b: i32) -> i32 {
     return a + b
 }";
@@ -245,6 +246,7 @@ pub struct TestLibrary {
     lib_version: u32,
 }
 
+@libfunc
 pub fn get_value() -> i32 {
     return 42
 }";
@@ -269,6 +271,7 @@ pub struct TestLibrary {
     lib_version: u32,
 }
 
+@libfunc
 pub fn get_value() -> i32 {
     return 42
 }";
@@ -278,10 +281,14 @@ pub fn get_value() -> i32 {
         var generator = new LibraryGenerator(module);
         var ffi = generator.GenerateNovusFFI();
 
-        // Verify Novus FFI bindings
-        Assert.Contains("pub struct TestLibraryBase", ffi); // Library base struct
-        Assert.Contains("pub fn get_value", ffi); // Safe wrapper function
-        Assert.Contains("extern fn", ffi); // FFI declarations
+        Assert.Contains("pub enum TestLibraryError", ffi);
+        Assert.Contains("// Library: test.library", ffi);
+        Assert.Contains("// Base: _TestLibraryBase", ffi);
+        Assert.Contains("pub fn available() -> bool", ffi);
+        Assert.Contains("pub fn get_value() -> Result<i32, TestLibraryError>", ffi);
+        Assert.Contains("return Result::Err(TestLibraryError::Unavailable) unless available()", ffi);
+        Assert.DoesNotContain("static mut", ffi);
+        Assert.DoesNotContain("OpenLibrary", ffi);
     }
 
     [Fact]
@@ -294,6 +301,7 @@ pub struct TestLibrary {
 }
 
 @libvec(offset = -30)
+@libfunc
 pub fn add(a: i32, b: i32) -> i32 {
     return a + b
 }";
@@ -339,6 +347,7 @@ pub struct TestLibrary {
 }
 
 @libvec(offset = -30)
+@libfunc
 pub fn get_value() -> i32 {
     return 42
 }";
@@ -353,6 +362,38 @@ pub fn get_value() -> i32 {
         Assert.Contains("_TestLibraryBase", stubs); // Uses library base
         Assert.Contains("move.l  a6,-(sp)", stubs);
         Assert.Contains("movea.l (sp)+,a6", stubs);
+    }
+
+    [Fact]
+    public void LibraryGenerator_StatefulMethodsHideReceiverAndImportedPublicFunctions()
+    {
+        var module = BuildIR("""
+            @library(name = "test.library")
+            pub struct TestLibrary { counter: u32 }
+
+            impl TestLibrary {
+                pub fn next(&var self) -> u32 {
+                    self.counter++
+                    return self.counter
+                }
+            }
+
+            pub fn unrelated() -> u32 { return 99 }
+            """);
+
+        var generator = new LibraryGenerator(module);
+        var wrappers = generator.GenerateA6Wrappers();
+        var lifecycle = generator.GenerateDefaultLifecycleFunctions();
+        var header = generator.GenerateCHeader();
+        var stubs = generator.GenerateClientCallStubs();
+
+        Assert.Contains("_TestLibrary_next_LibraryThunk", wrappers);
+        Assert.Contains("TestLibrary_next(&base->state)", lifecycle);
+        Assert.Contains("uint32_t TestLibrary_next(void)", header);
+        Assert.DoesNotContain("unrelated", wrappers);
+        Assert.Contains("_is_TestLibrary_available", stubs);
+        Assert.Contains("XREF    _TestLibraryBase", stubs);
+        Assert.DoesNotContain("OpenLib:", stubs);
     }
 
     [Fact]
@@ -402,16 +443,19 @@ pub struct MathLib {
 }
 
 @libvec(offset = -30)
+@libfunc
 pub fn add(a: i32, b: i32) -> i32 {
     return a + b
 }
 
 @libvec(offset = -36)
+@libfunc
 pub fn subtract(a: i32, b: i32) -> i32 {
     return a - b
 }
 
 @libvec(offset = -42)
+@libfunc
 pub fn multiply(a: i32, b: i32) -> i32 {
     return a * b
 }";
@@ -437,6 +481,7 @@ pub struct TestLib {
 }
 
 @libvec(offset = -30)
+@libfunc
 pub fn process(a: i32, b: u32, c: i32) -> i32 {
     return a
 }";

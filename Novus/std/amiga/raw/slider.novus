@@ -12,4 +12,6 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("slider.library")
+/// Returns the ReAction slider BOOPSI class pointer, or null if unavailable.
+/// The pointer is library-owned and valid only while slider.library is open.
 extern pub fn SLIDER_GetClass() -> *u8

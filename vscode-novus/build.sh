@@ -133,6 +133,15 @@ else
     exit 1
 fi
 
+echo "  Running repository language corpus tests..."
+if dotnet test -c Release "$PROJECT_ROOT/Novus.Tests/Novus.Tests.csproj" --nologo --verbosity quiet \
+    --filter FullyQualifiedName~RepositoryCorpusTests; then
+    echo -e "${GREEN}  ✓ Repository Novus/TOML corpus passed${NC}"
+else
+    echo -e "${RED}  ✗ Repository Novus/TOML corpus failed${NC}"
+    exit 1
+fi
+
 # Bundle the matching server, dependencies, and standard library. Letting an
 # installed extension discover an arbitrary old development build makes valid
 # current syntax look broken in the editor.

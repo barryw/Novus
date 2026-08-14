@@ -50,7 +50,9 @@ pub static var _net_task_errno: i32 = 0
 /// This type manages the per-task bsdsocket.library initialization.
 /// When dropped, it properly cleans up the socket library resources.
 pub struct SocketLibrary {
+    /// The base value stored by `SocketLibrary`.
     base: *Library,
+    /// The initialized value stored by `SocketLibrary`.
     initialized: bool,
 }
 

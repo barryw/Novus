@@ -1,40 +1,81 @@
 from std::core import Error
 from amiga::raw::dos import IoErr
 
+/// Reports failures from dos operations.
 pub enum DosError {
+    /// Indicates that the requested item was not found.
     NotFound,
+    /// Indicates already exists.
     AlreadyExists,
+    /// Indicates dir not found.
     DirNotFound,
+    /// Indicates directory not empty.
     DirectoryNotEmpty,
+    /// Indicates permission denied.
     PermissionDenied,
+    /// Indicates write protected.
     WriteProtected,
+    /// Indicates read protected.
     ReadProtected,
+    /// Indicates delete protected.
     DeleteProtected,
+    /// Indicates disk full.
     DiskFull,
+    /// Indicates disk not validated.
     DiskNotValidated,
+    /// Indicates disk write protected.
     DiskWriteProtected,
+    /// Indicates no disk.
     NoDisk,
+    /// Indicates not ados disk.
     NotADosDisk,
+    /// Indicates device not mounted.
     DeviceNotMounted,
+    /// Indicates seek error.
     SeekError,
+    /// Indicates buffer overflow.
     BufferOverflow,
+    /// Indicates bad stream name.
     BadStreamName,
+    /// Indicates no free store.
     NoFreeStore,
+    /// Indicates object in use.
     ObjectInUse,
+    /// Indicates object too large.
     ObjectTooLarge,
+    /// Indicates too many levels.
     TooManyLevels,
+    /// Indicates invalid lock.
     InvalidLock,
+    /// Indicates record not locked.
     RecordNotLocked,
+    /// Indicates lock collision.
     LockCollision,
+    /// Indicates lock timeout.
     LockTimeout,
+    /// Indicates not implemented.
     NotImplemented,
+    /// Indicates bad number.
     BadNumber,
+    /// Indicates invalid input.
     InvalidInput,
+    /// Indicates unknown.
     Unknown,
 }
 
+/// Returns the dos last error value associated with the module.
+///
+/// # Returns
+/// The resulting `DosError` value.
 pub fn dos_last_error() -> DosError { return dos_error_from_code(IoErr()) }
 
+/// Computes dos error from code for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `code` - The `i32` value used as code.
+///
+/// # Returns
+/// The resulting `DosError` value.
 pub fn dos_error_from_code(code: i32) -> DosError {
     return match code {
         103 => DosError::NoFreeStore,
@@ -67,6 +108,13 @@ pub fn dos_error_from_code(code: i32) -> DosError {
     }
 }
 
+/// Computes dos error to code for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `error` - The `DosError` value used as error.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn dos_error_to_code(error: DosError) -> i32 {
     return match error {
         DosError::NotFound => 205,
@@ -102,6 +150,10 @@ pub fn dos_error_to_code(error: DosError) -> i32 {
 }
 
 impl DosError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             DosError::NotFound => "Object not found",

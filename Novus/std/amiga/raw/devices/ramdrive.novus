@@ -12,6 +12,10 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("ramdrive.device")
+/// Removes the legacy RAD: unit zero and returns its detached segment list.
+/// A null result means the unit could not be removed.
 extern pub fn KillRAD0() -> *u8
 @library("ramdrive.device")
+/// Removes the requested RAD: unit and returns its detached segment list.
+/// The caller becomes responsible for the returned segment list; null means failure.
 extern pub fn KillRAD(unit: u32) -> *u8

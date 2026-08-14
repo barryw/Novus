@@ -113,6 +113,65 @@ public class TemplateScaffoldingTests : IDisposable
         Assert.True(File.Exists(Path.Combine(templates, "resource", "resource", "src", "resource.novus")));
     }
 
+    [Fact]
+    public async Task EveryBundledProjectCompilesThroughCCodegen()
+    {
+        var templates = FindTemplatesDirectory();
+        if (templates == null) return;
+
+        var root = Directory.GetParent(templates)!.FullName;
+        var compiler = new InProcessCompiler(Path.Combine(root, "Novus", "std"));
+        foreach (var projectFile in Directory.GetFiles(templates, "project.toml", SearchOption.AllDirectories))
+        {
+            var project = File.ReadAllText(projectFile);
+            var entryLine = project.Split('\n').Single(line => line.TrimStart().StartsWith("entry =", StringComparison.Ordinal));
+            var entry = entryLine.Split('=', 2)[1].Trim().Trim('"');
+            var source = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(projectFile)!, entry));
+            Directory.CreateDirectory(_root);
+            var generatedSource = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".novus");
+            File.WriteAllText(generatedSource, File.ReadAllText(source).Replace("{{PROJECT_NAME}}", "TemplateAudit"));
+            var result = await compiler.CompileToCAsync(generatedSource, buildMode: Novus.BuildMode.Release);
+            Assert.True(result.Success, $"{source}: {result.ErrorMessage}");
+        }
+    }
+
+    [Fact]
+    public void DeviceAndLibraryTemplatesShipSafeOptionalAndAsyncPaths()
+    {
+        var templates = FindTemplatesDirectory();
+        if (templates == null) return;
+
+        var request = File.ReadAllText(Path.Combine(templates, "..", "Novus", "std", "amiga", "sys", "device", "request.novus"));
+        var device = File.ReadAllText(Path.Combine(templates, "device", "device", "src", "dev.novus"));
+        var deviceClient = File.ReadAllText(Path.Combine(templates, "device", "example", "src", "main.novus"));
+        var libraryClient = File.ReadAllText(Path.Combine(templates, "library", "example", "src", "main.novus"));
+
+        Assert.Contains("pub fn send(&var self", request);
+        Assert.Contains("pub fn abort(&var self", request);
+        Assert.Contains("deferred = true", device);
+        Assert.Contains("@abortio", device);
+        Assert.Contains("device.send(", deviceClient);
+        Assert.Contains("device.abort()", deviceClient);
+        Assert.Contains("Result::Err(LibraryError::Unavailable) unless is_MyLib_available()", libraryClient);
+    }
+
+    [Fact]
+    public void BundledTemplatesUseTheCurrentNumericAndCpuSyntax()
+    {
+        var templates = FindTemplatesDirectory();
+        if (templates == null) return;
+
+        foreach (var project in Directory.GetFiles(templates, "project.toml", SearchOption.AllDirectories))
+        {
+            var projectSettings = File.ReadAllText(project);
+            var workspace = Path.Combine(Directory.GetParent(Path.GetDirectoryName(project)!)!.FullName, "workspace.toml");
+            var inheritedSettings = File.Exists(workspace) ? File.ReadAllText(workspace) : "";
+            Assert.Contains("target_cpu = \"68020\"", projectSettings + inheritedSettings);
+        }
+        foreach (var source in Directory.GetFiles(templates, "*.novus", SearchOption.AllDirectories))
+            Assert.DoesNotMatch(@"\b\d+[ui](8|16|32|64)\b", File.ReadAllText(source));
+    }
+
     private static string? FindTemplatesDirectory()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

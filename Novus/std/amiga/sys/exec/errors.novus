@@ -1,19 +1,38 @@
 from std::core import Error
 
+/// Reports failures from exec operations.
 pub enum ExecError {
+    /// Indicates no mem.
     NoMem,
+    /// Indicates bad signal.
     BadSignal,
+    /// Indicates null return.
     NullReturn,
+    /// Indicates bad task.
     BadTask,
+    /// Indicates bad node.
     BadNode,
+    /// Indicates bad port.
     BadPort,
+    /// Indicates signal in use.
     SignalInUse,
+    /// Indicates task not found.
     TaskNotFound,
+    /// Indicates library not found.
     LibraryNotFound,
+    /// Indicates invalid address.
     InvalidAddress,
+    /// Indicates alignment error.
     AlignmentError,
 }
 
+/// Computes exec error to code for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `error` - The `ExecError` value used as error.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn exec_error_to_code(error: ExecError) -> i32 {
     return match error {
         ExecError::NoMem => -100,
@@ -31,6 +50,10 @@ pub fn exec_error_to_code(error: ExecError) -> i32 {
 }
 
 impl ExecError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             ExecError::NoMem => "Memory allocation failed",

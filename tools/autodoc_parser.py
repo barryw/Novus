@@ -37,6 +37,8 @@ class FunctionDoc:
     notes: List[str] = field(default_factory=list)
     examples: List[str] = field(default_factory=list)
     see_also: List[str] = field(default_factory=list)
+    tags: str = ""
+    bugs: str = ""
 
     def to_novus_doc(self) -> str:
         """Convert to Novus /// doc comment format"""
@@ -53,6 +55,13 @@ class FunctionDoc:
                 line = line.strip()
                 if line:
                     lines.append(f"/// {line}")
+            lines.append("///")
+
+        if self.synopsis:
+            lines.append("/// # Synopsis")
+            lines.append("///")
+            for line in self.synopsis.strip().split('\n'):
+                lines.append(f"/// {line.rstrip()}")
             lines.append("///")
 
         # Inputs (parameters)
@@ -89,6 +98,20 @@ class FunctionDoc:
                     lines.append(f"/// {line}")
             lines.append("///")
 
+        if self.tags:
+            lines.append("/// # Tags")
+            lines.append("///")
+            for line in self.tags.strip().split('\n'):
+                lines.append(f"/// {line.rstrip()}")
+            lines.append("///")
+
+        if self.bugs:
+            lines.append("/// # Bugs")
+            lines.append("///")
+            for line in self.bugs.strip().split('\n'):
+                lines.append(f"/// {line.rstrip()}")
+            lines.append("///")
+
         # Notes
         if self.notes:
             lines.append("/// # Notes")
@@ -101,6 +124,14 @@ class FunctionDoc:
             lines.append("///")
 
         # See Also
+        if self.examples:
+            lines.append("/// # Examples")
+            lines.append("///")
+            for example in self.examples:
+                for line in example.strip().split('\n'):
+                    lines.append(f"/// {line.rstrip()}")
+            lines.append("///")
+
         if self.see_also:
             see_also_str = ", ".join(self.see_also)
             lines.append(f"/// # See Also")
@@ -117,17 +148,20 @@ class FunctionDoc:
 class AutodocParser:
     """Parser for AmigaOS NDK autodoc files"""
 
-    # Pattern to match function headers like "exec.library/AllocMem"
-    FUNC_HEADER_PATTERN = re.compile(r'^(\w+(?:\.\w+)?)/(\w+)\s+\1/\2\s*$')
+    # Normal page headers repeat library/function. Some official NDK 3.9
+    # autodocs accidentally concatenate the two copies; form-feed still marks
+    # the page and the last slash still gives the authoritative function name.
+    FUNC_HEADER_PATTERN = re.compile(r'^([\w.]+)/([\w-]+)\s+\1/\2\s*$')
 
     # Section markers
-    SECTIONS = ['NAME', 'SYNOPSIS', 'FUNCTION', 'INPUTS', 'RESULT', 'RESULTS',
+    SECTIONS = ['NAME', 'SYNOPSIS', 'FUNCTION', 'INPUTS', 'RESULT', 'RESULTS', 'RETURNS',
                 'WARNING', 'NOTE', 'NOTES', 'EXAMPLE', 'EXAMPLES', 'SEE ALSO',
                 'TAGS', 'BUGS']
 
     def __init__(self, autodocs_dir: str):
         self.autodocs_dir = Path(autodocs_dir)
         self.functions: Dict[str, FunctionDoc] = {}
+        self.functions_lower: Dict[str, FunctionDoc] = {}
 
     def parse_all(self) -> Dict[str, FunctionDoc]:
         """Parse all .doc files in the autodocs directory"""
@@ -167,17 +201,16 @@ class AutodocParser:
 
             # Look for function header pattern (repeated name on same line)
             # e.g., "exec.library/AllocMem                                   exec.library/AllocMem"
-            match = self.FUNC_HEADER_PATTERN.match(line.strip())
+            match = self._match_header(line)
             if match:
-                lib = match.group(1)
-                func_name = match.group(2)
+                lib, func_name = match
 
                 # Find the end of this function's documentation
                 end_i = i + 1
                 while end_i < len(lines):
                     next_line = lines[end_i]
                     # Check if we hit another function header
-                    if self.FUNC_HEADER_PATTERN.match(next_line.strip()):
+                    if self._match_header(next_line):
                         break
                     # Also check for TABLE OF CONTENTS which appears at start
                     if next_line.strip() == 'TABLE OF CONTENTS':
@@ -192,10 +225,22 @@ class AutodocParser:
                     self.functions[key] = func_doc
                     # Also store by just function name for easier lookup
                     self.functions[func_name] = func_doc
+                    self.functions_lower[key.casefold()] = func_doc
+                    self.functions_lower[func_name.casefold()] = func_doc
 
                 i = end_i
             else:
                 i += 1
+
+    def _match_header(self, line: str):
+        if '\f' in line and '/' in line:
+            text = line.split('\f', 1)[1].strip()
+            library = text.split('/', 1)[0]
+            name = text.rsplit('/', 1)[-1].strip().split()[0]
+            if re.fullmatch(r'[\w-]+', name):
+                return (library, name)
+        match = self.FUNC_HEADER_PATTERN.match(line.strip())
+        return match.groups() if match else None
 
     def _parse_function(self, library: str, name: str, lines: List[str]) -> Optional[FunctionDoc]:
         """Parse the documentation for a single function"""
@@ -253,7 +298,7 @@ class AutodocParser:
         elif section == 'INPUTS':
             doc.inputs = self._parse_inputs(lines)
 
-        elif section in ('RESULT', 'RESULTS'):
+        elif section in ('RESULT', 'RESULTS', 'RETURNS'):
             doc.result = self._dedent(content)
 
         elif section == 'WARNING':
@@ -264,6 +309,12 @@ class AutodocParser:
 
         elif section in ('EXAMPLE', 'EXAMPLES'):
             doc.examples.append(self._dedent(content))
+
+        elif section == 'TAGS':
+            doc.tags = self._dedent(content)
+
+        elif section == 'BUGS':
+            doc.bugs = self._dedent(content)
 
         elif section == 'SEE ALSO':
             # Parse comma-separated function names
@@ -316,9 +367,18 @@ class AutodocParser:
             for line in lines
         )
 
-    def get_function(self, name: str) -> Optional[FunctionDoc]:
+    def get_function(self, name: str, library: str = "") -> Optional[FunctionDoc]:
         """Get documentation for a specific function"""
-        return self.functions.get(name)
+        if library:
+            key = f"{library}/{name}"
+            return self.functions.get(key) or self.functions_lower.get(key.casefold())
+        return self.functions.get(name) or self.functions_lower.get(name.casefold())
+
+    def get_unique_function(self, name: str) -> Optional[FunctionDoc]:
+        """Return a name-only match only when it is unambiguous across libraries."""
+        matches = [doc for key, doc in self.functions.items()
+                   if '/' in key and doc.name.casefold() == name.casefold()]
+        return matches[0] if len(matches) == 1 else None
 
     def get_library_functions(self, library: str) -> Dict[str, FunctionDoc]:
         """Get all functions for a specific library"""

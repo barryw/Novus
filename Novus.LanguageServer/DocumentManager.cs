@@ -54,16 +54,15 @@ public class DocumentManager
     /// </summary>
     private Dictionary<string, bool> GetPreprocessorConstantsForDocument(string uri)
     {
-        // Try to get target CPU from project configuration
-        var targetCpu = _projectManager?.GetTargetCpuForDocument(uri);
-
-        if (targetCpu != null)
+        var target = _projectManager?.GetTargetConfigurationForDocument(uri);
+        if (target is { } configured)
         {
-            Console.Error.WriteLine($"[LSP] Using target_cpu '{targetCpu}' from project config for {uri}");
-            return IrBuilderConfiguration.GetPreprocessorConstantsForCpu(targetCpu);
+            Console.Error.WriteLine(
+                $"[LSP] Using target_cpu '{configured.Cpu}', fpu '{configured.Fpu}', chipset '{configured.Chipset}' for {uri}");
+            return IrBuilderConfiguration.GetPreprocessorConstantsForTarget(
+                configured.Cpu, configured.Fpu, configured.Chipset, debug: true);
         }
 
-        // Fall back to default (68020)
         return _defaultPreprocessorConstants;
     }
 

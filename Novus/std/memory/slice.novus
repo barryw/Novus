@@ -22,7 +22,9 @@ from std::memory::errors import MemoryError
 /// let result = sum(&arr)  // Array coerces to an owner-tied slice
 /// ```
 pub struct Slice<T> {
+    /// The ptr value stored by `Slice`.
     ptr: &T,
+    /// The len value stored by `Slice`.
     len: usize,
 }
 
@@ -106,7 +108,9 @@ impl<T> Iterable<T> for MutSlice<T> {
 /// Mutable owner-tied slice. While this view is live, the source cannot be
 /// borrowed through any other mutable or immutable reference.
 pub struct MutSlice<T> {
+    /// The ptr value stored by `MutSlice`.
     ptr: &var T,
+    /// The len value stored by `MutSlice`.
     len: usize,
 }
 
@@ -117,14 +121,29 @@ impl<T> MutSlice<T> {
         return MutSlice { ptr: ptr, len: len }
     }
 
+    /// Returns the number of items currently stored by `MutSlice`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.len
     }
 
+    /// Returns whether `MutSlice` contains no items.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_empty(&self) -> bool {
         return self.len == 0
     }
 
+    /// Returns the requested item from `MutSlice`, when it exists.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.len {
             return Option::None
@@ -132,6 +151,13 @@ impl<T> MutSlice<T> {
         unsafe { return Option::Some(&((*T)self.ptr)[index]) }
     }
 
+    /// Returns a mutable borrow of the requested item from `MutSlice`, when it exists.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get_mut(&var self, index: usize) -> Option<&var T> {
         if index >= self.len {
             return Option::None
@@ -157,6 +183,17 @@ impl<T> MutSlice<T> {
         }
     }
 
+    /// Computes set for `MutSlice` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    /// * `value` - The value; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn set(&var self, index: usize, consuming value: T) -> Result<(), MemoryError> {
         if index >= self.len {
             return Result::Err(MemoryError::IndexOutOfBounds)

@@ -40,6 +40,8 @@ extern pub fn AddConfigDev(configDev: *ConfigDev)
 @library("expansion.library")
 extern pub fn AddBootNode(bootPri: i32, flags: u32, deviceNode: *DeviceNode, configDev: *ConfigDev) -> i16
 @library("expansion.library")
+/// Marks the expansion slots described by `slotSpec` as allocated.
+/// This obsolete low-level call is for expansion configuration tools only.
 extern pub fn AllocBoardMem(slotSpec: u32)
 /// Allocate a ConfigDev structure
 ///
@@ -84,6 +86,9 @@ extern pub fn AllocExpansionMem(numSlots: u32, slotAlign: u32) -> *u8
 @library("expansion.library")
 extern pub fn ConfigBoard(board: *u8, configDev: *ConfigDev)
 @library("expansion.library")
+/// Configures the expansion-board chain beginning at `baseAddr`.
+/// This obsolete low-level call mutates expansion hardware state and must only
+/// be used during the system's expansion configuration phase.
 extern pub fn ConfigChain(baseAddr: *u8)
 /// Find a matching ConfigDev entry
 ///
@@ -100,6 +105,8 @@ extern pub fn ConfigChain(baseAddr: *u8)
 @library("expansion.library")
 extern pub fn FindConfigDev(oldConfigDev: *ConfigDev, manufacturer: i32, product: i32) -> *ConfigDev
 @library("expansion.library")
+/// Releases slots previously reserved with AllocBoardMem.
+/// `startSlot` and `slotSpec` must describe the original allocation exactly.
 extern pub fn FreeBoardMem(startSlot: u32, slotSpec: u32)
 /// Free a ConfigDev structure
 ///

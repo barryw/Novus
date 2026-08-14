@@ -29,8 +29,11 @@ pub enum EntryState {
 
 /// Internal entry structure for HashMap buckets
 pub struct HashMapEntry<K, V> {
+    /// The state value stored by `HashMapEntry`.
     state: EntryState,
+    /// The key value stored by `HashMapEntry`.
     key: K,
+    /// The value value stored by `HashMapEntry`.
     value: V,
 }
 
@@ -61,13 +64,19 @@ pub struct HashMapEntry<K, V> {
 /// }
 /// ```
 pub struct HashMap<K, V> where K: Hash + Eq {
+    /// The entries value stored by `HashMap`.
     entries: *HashMapEntry<K, V>,
+    /// The capacity value stored by `HashMap`.
     capacity: usize,
+    /// The len value stored by `HashMap`.
     len: usize,
+    /// The tombstones value stored by `HashMap`.
     tombstones: usize,
     // Cached for 68k performance (avoids expensive multiplication)
+    /// The entry size value stored by `HashMap`.
     entry_size: u32,
     // Pre-computed resize threshold: capacity * 7 / 10
+    /// The resize threshold value stored by `HashMap`.
     resize_threshold: usize,
 }
 
@@ -582,13 +591,17 @@ impl<K, V> Drop for HashMap<K, V> where K: Hash + Eq {
 /// Iterator over HashMap entries
 /// Returns references to avoid copying keys/values
 pub struct HashMapIter<K, V> {
+    /// The map value stored by `HashMapIter`.
     map: &HashMap<K, V>,
+    /// The current value stored by `HashMapIter`.
     current: usize,
 }
 
 /// Key-value reference pair returned by iterator
 pub struct KeyValueRef<K, V> {
+    /// The key value stored by `KeyValueRef`.
     key: &K,
+    /// The value value stored by `KeyValueRef`.
     value: &V,
 }
 
@@ -630,13 +643,17 @@ impl<K, V> HashMapIter<K, V> {
 
 /// Mutable iterator over HashMap entries
 pub struct HashMapIterMut<K, V> {
+    /// The map value stored by `HashMapIterMut`.
     map: &var HashMap<K, V>,
+    /// The current value stored by `HashMapIterMut`.
     current: usize,
 }
 
 /// Key-value reference pair with mutable value
 pub struct KeyValueMut<K, V> {
+    /// The key value stored by `KeyValueMut`.
     key: &K,
+    /// The value value stored by `KeyValueMut`.
     value: &var V,
 }
 

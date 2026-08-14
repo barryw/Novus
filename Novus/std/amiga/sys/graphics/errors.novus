@@ -1,23 +1,46 @@
 from std::core import Error
 
+/// Reports failures from graphics operations.
 pub enum GraphicsError {
+    /// Indicates bit map alloc failed.
     BitMapAllocFailed,
+    /// Indicates rast port init failed.
     RastPortInitFailed,
+    /// Indicates font open failed.
     FontOpenFailed,
+    /// Indicates invalid bit map.
     InvalidBitMap,
+    /// Indicates invalid rast port.
     InvalidRastPort,
+    /// Indicates bad display mode.
     BadDisplayMode,
+    /// Indicates copper list failed.
     CopperListFailed,
+    /// Indicates invalid sprite data.
     InvalidSpriteData,
+    /// Indicates invalid sprite channel.
     InvalidSpriteChannel,
+    /// Indicates invalid attached sprite channel.
     InvalidAttachedSpriteChannel,
+    /// Indicates sprite not allocated.
     SpriteNotAllocated,
+    /// Indicates sprite channel in use.
     SpriteChannelInUse,
+    /// Indicates invalid color count.
     InvalidColorCount,
+    /// Indicates no sprites available.
     NoSpritesAvailable,
+    /// Indicates invalid view port.
     InvalidViewPort,
 }
 
+/// Computes graphics error to code for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `error` - The `GraphicsError` value used as error.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn graphics_error_to_code(error: GraphicsError) -> i32 {
     return match error {
         GraphicsError::BitMapAllocFailed => -300,
@@ -39,6 +62,10 @@ pub fn graphics_error_to_code(error: GraphicsError) -> i32 {
 }
 
 impl GraphicsError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             GraphicsError::BitMapAllocFailed => "BitMap allocation failed",

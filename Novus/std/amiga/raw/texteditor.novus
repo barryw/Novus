@@ -12,4 +12,6 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("texteditor.library")
+/// Returns the ReAction TextEditor BOOPSI class pointer, or null if unavailable.
+/// The pointer is library-owned and valid only while texteditor.library is open.
 extern pub fn TEXTEDITOR_GetClass() -> *u8

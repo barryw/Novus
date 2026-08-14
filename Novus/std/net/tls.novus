@@ -68,9 +68,13 @@ const AMISSL_MASTER_VERSION: u32 = 4
 /// Holds the SSL_CTX which can be reused for multiple connections.
 /// Create one TlsConfig and use it for all connections of the same type.
 pub struct TlsConfig {
+    /// The ctx value stored by `TlsConfig`.
     ctx: *SSL_CTX,
+    /// The master base value stored by `TlsConfig`.
     master_base: *Library,
+    /// The ssl base value stored by `TlsConfig`.
     ssl_base: *u8,
+    /// The is client value stored by `TlsConfig`.
     is_client: bool,
 }
 
@@ -324,7 +328,9 @@ impl Drop for TlsConfig {
 /// Wraps a TCP stream with TLS encryption.
 /// All read/write operations are transparently encrypted.
 pub struct TlsStream {
+    /// The ssl value stored by `TlsStream`.
     ssl: *SSL,
+    /// The tcp value stored by `TlsStream`.
     tcp: TcpStream,
 }
 

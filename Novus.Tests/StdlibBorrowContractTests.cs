@@ -64,7 +64,7 @@ public class StdlibBorrowContractTests
         var area = Read("amiga/sys/graphics/area.novus");
         var args = Read("amiga/sys/workbench/args.novus");
 
-        Assert.Matches(@"pub struct Str\s*\{\s*ptr: &u8,", strings);
+        Assert.Matches(@"pub struct Str\s*\{(?:\s*///[^\r\n]*)*\s*ptr: &u8,", strings);
         Assert.Contains("@unsafe\n    pub fn new(ptr: &u8, len: usize)", strings);
         Assert.Contains("pub fn borrow_raw(ptr: *u8, len: usize)", strings);
         Assert.Contains("pub fn borrow_raw(rp: *RastPort)", draw);

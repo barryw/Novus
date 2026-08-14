@@ -32,6 +32,14 @@ extern fn write(format: *u8, ...args) -> i32
 //   let args: [i32] = [version.major() as i32, version.minor() as i32, version.patch() as i32]
 //   write_array("Version: %ld.%ld.%ld\n", &args)
 //
+/// Writes array for the module.
+///
+/// # Parameters
+/// * `format` - The `*u8` value used as format.
+/// * `args` - The `*i32` value used as args.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn write_array(format: *u8, args: *i32) -> i32 {
     var result: i32 = 0
     unsafe {

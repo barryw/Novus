@@ -37,8 +37,11 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 /// let count = flags.count_ones()  // Returns 2
 /// ```
 pub struct BitSet {
+    /// The data value stored by `BitSet`.
     data: *u32,      // Array of u32 words (32 bits each)
+    /// The num bits value stored by `BitSet`.
     num_bits: usize,   // Total number of bits
+    /// The num words value stored by `BitSet`.
     num_words: usize,  // Number of u32 words
 }
 

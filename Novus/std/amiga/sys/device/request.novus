@@ -4,20 +4,30 @@ from std::core import Drop, Error, From, Option, Result
 from std::string import FixedCString, Str
 from amiga::sys::exec::errors import ExecError
 from amiga::sys::exec::exec import MsgPortHandle
-from amiga::raw::consts import NT_DEVICE, RTC_MATCHWORD
-from amiga::raw::structs import IORequest, List, Resident
-from amiga::raw::exec import CloseDevice, CreateIORequest, DeleteIORequest, DoIO, FindName, Forbid, InitResident, OpenDevice, Permit, TypeOfMem
+from amiga::raw::consts import IOERR_ABORTED, NT_DEVICE, NT_MESSAGE, RTC_MATCHWORD
+from amiga::raw::structs import IORequest, IOStdReq, List, Resident
+from amiga::raw::exec import AbortIO, CheckIO, CloseDevice, CreateIORequest, DeleteIORequest, DoIO, FindName, Forbid, InitResident, OpenDevice, Permit, SendIO, TypeOfMem, WaitIO
 from amiga::sys::dos::segment import LoadedFileSegment
 
+/// Reports failures from driver load operations.
 pub enum DriverLoadError {
+    /// Indicates load failed.
     LoadFailed,
+    /// Indicates no resident.
     NoResident,
+    /// Indicates not device.
     NotDevice,
+    /// Indicates invalid name.
     InvalidName,
+    /// Indicates init failed.
     InitFailed,
 }
 
 impl DriverLoadError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             DriverLoadError::LoadFailed => "Could not load that file",
@@ -33,6 +43,13 @@ impl Error for DriverLoadError {
     fn message(&self) -> *u8 { return DriverLoadError::message(self) }
 }
 
+/// Returns whether device is resident applies to the module.
+///
+/// # Parameters
+/// * `name` - The name to use.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn device_is_resident(name: Str) -> bool {
     let Result::Ok(owned_name) = FixedCString::<60>::new_from_str(name) else { return false }
     unsafe {
@@ -122,20 +139,35 @@ pub fn load_device_driver(path: Str) -> Result<FixedCString<40>, DriverLoadError
     return Result::Ok(name)
 }
 
+/// Reports failures from device operations.
 pub enum DeviceError {
+    /// Indicates no memory.
     NoMemory,
+    /// Indicates invalid request size.
     InvalidRequestSize,
+    /// Indicates open failed.
     OpenFailed(i8),
+    /// Indicates command failed.
     CommandFailed(i8),
+    /// Indicates request pending.
+    RequestPending,
+    /// Indicates no request pending.
+    NoRequestPending,
 }
 
 impl DeviceError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             DeviceError::NoMemory => return "Out of memory",
             DeviceError::InvalidRequestSize => return "I/O request is too small",
             DeviceError::OpenFailed(_) => return "Could not open device",
             DeviceError::CommandFailed(_) => return "Device command failed",
+            DeviceError::RequestPending => return "An asynchronous command is already pending",
+            DeviceError::NoRequestPending => return "No asynchronous command is pending",
         }
     }
 }
@@ -154,12 +186,22 @@ impl From<ExecError> for DeviceError {
 
 /// Owns the reply port, request allocation, and open device.
 pub struct DeviceRequest {
+    /// The request value stored by `DeviceRequest`.
     request: *u8,
+    /// The request size value stored by `DeviceRequest`.
     request_size: u32,
+    /// The port value stored by `DeviceRequest`.
     port: MsgPortHandle,
+    /// The pending value stored by `DeviceRequest`.
+    pending: bool,
 }
 
 impl DeviceRequest {
+    /// Open a device that uses Exec's standard IOStdReq request shape.
+    pub fn open_standard(name: Str, unit: u32) -> Result<DeviceRequest, DeviceError> {
+        return DeviceRequest::open(name, unit, @sizeof(IOStdReq))
+    }
+
     /// Open any Exec device with the request size required by that device.
     pub fn open(name: Str, unit: u32, request_size: u32) -> Result<DeviceRequest, DeviceError> {
         if request_size < @sizeof(IORequest) {
@@ -185,6 +227,7 @@ impl DeviceRequest {
             request: request,
             request_size: request_size,
             port: port,
+            pending: false,
         })
     }
 
@@ -193,18 +236,72 @@ impl DeviceRequest {
         return (*IORequest)self.request
     }
 
+    /// Returns the size value associated with `DeviceRequest`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn size(&self) -> u32 {
         return self.request_size
     }
 
     /// Execute the configured request synchronously.
     pub fn command(&var self, command: u16) -> Result<(), DeviceError> {
+        return Result::Err(DeviceError::RequestPending) if self.pending
         let request = (*IORequest)self.request
         request.io_Command = command
         let error = DoIO(request)
         if error != 0 {
             return Result::Err(DeviceError::CommandFailed(error))
         }
+        return Result::Ok(())
+    }
+
+    /// Execute a standard request and return its io_Actual result.
+    pub fn command_actual(&var self, command: u16) -> Result<u32, DeviceError> {
+        return Result::Err(DeviceError::InvalidRequestSize) if self.request_size < @sizeof(IOStdReq)
+        let request = (*IOStdReq)self.request
+        request.io_Actual = 0
+        self.command(command)?
+        return Result::Ok(request.io_Actual)
+    }
+
+    /// Start an asynchronous command. The request remains owned by this value.
+    pub fn send(&var self, command: u16) -> Result<(), DeviceError> {
+        return Result::Err(DeviceError::RequestPending) if self.pending
+        let request = (*IORequest)self.request
+        request.io_Command = command
+        request.io_Message.mn_Node.ln_Type = (u8)NT_MESSAGE
+        SendIO(request)
+        self.pending = true
+        return Result::Ok(())
+    }
+
+    /// Returns whether pending for `DeviceRequest`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
+    pub fn is_pending(&self) -> bool {
+        return false unless self.pending
+        return CheckIO((*IORequest)self.request) == null
+    }
+
+    /// Collect a completed asynchronous command, waiting when necessary.
+    pub fn wait(&var self) -> Result<(), DeviceError> {
+        return Result::Err(DeviceError::NoRequestPending) unless self.pending
+        let error = WaitIO((*IORequest)self.request)
+        self.pending = false
+        return Result::Err(DeviceError::CommandFailed(error)) if error != 0
+        return Result::Ok(())
+    }
+
+    /// Abort a pending command when it has not already completed, then collect it.
+    pub fn abort(&var self) -> Result<(), DeviceError> {
+        return Result::Err(DeviceError::NoRequestPending) unless self.pending
+        let request = (*IORequest)self.request
+        AbortIO(request) if CheckIO(request) == null
+        let error = WaitIO(request)
+        self.pending = false
+        return Result::Err(DeviceError::CommandFailed(error)) if error != 0 && error != (i8)IOERR_ABORTED
         return Result::Ok(())
     }
 }
@@ -215,6 +312,12 @@ impl Drop for DeviceRequest {
             let allocation = self.request
             self.request = null
             unsafe {
+                if self.pending {
+                    let request = (*IORequest)allocation
+                    AbortIO(request) if CheckIO(request) == null
+                    WaitIO(request)
+                    self.pending = false
+                }
                 CloseDevice((*IORequest)allocation)
             }
             DeleteIORequest(allocation)

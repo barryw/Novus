@@ -35,6 +35,30 @@ public class DocumentManagerTests
     private static readonly string TestStdLibPath = GetTestStdLibPath();
 
     [Fact]
+    public void ProjectManager_ReadsWorkspaceHardwareTarget()
+    {
+        var manager = new ProjectManager();
+        var root = Path.Combine(Path.GetTempPath(), "novus-lsp-workspace");
+        var workspace = Path.Combine(root, "workspace.toml");
+        manager.RegisterProject(new Uri(workspace).AbsoluteUri, """
+            [workspace]
+            members = ["app"]
+            [workspace.build]
+            target_cpu = "68040"
+            fpu = "68040"
+            chipset = "AGA"
+            """, 1);
+
+        var target = manager.GetTargetConfigurationForDocument(
+            new Uri(Path.Combine(root, "app", "src", "main.novus")).AbsoluteUri);
+
+        Assert.NotNull(target);
+        Assert.Equal("68040", target.Value.Cpu);
+        Assert.Equal("68040", target.Value.Fpu);
+        Assert.Equal("AGA", target.Value.Chipset);
+    }
+
+    [Fact]
     public void DocumentHandlers_OnlyAcceptTheirOwnFileType()
     {
         const string novus = "file:///workspace/main.novus";

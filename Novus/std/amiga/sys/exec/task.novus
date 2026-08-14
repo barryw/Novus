@@ -96,7 +96,9 @@ pub trait TaskRunner {
 /// let code = handle.wait()
 /// ```
 pub struct ProcessHandle {
+    /// The process value stored by `ProcessHandle`.
     process: *u8,   // Raw pointer to Process (use *u8 to avoid struct generation issues)
+    /// The is running value stored by `ProcessHandle`.
     is_running: bool,
 }
 

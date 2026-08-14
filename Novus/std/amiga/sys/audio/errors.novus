@@ -119,6 +119,10 @@ pub enum AudioError {
 // ============================================================================
 
 impl AudioError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             AudioError::InvalidChannel => return "Invalid channel (must be 0-3)",

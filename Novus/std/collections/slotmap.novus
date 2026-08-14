@@ -28,7 +28,9 @@ from std::memory::errors import MemoryError
 /// The 16-bit generation provides much better ABA protection than
 /// an 8-bit generation (65536 reuses vs 256 before potential collision).
 pub struct SlotKey {
+    /// The index value stored by `SlotKey`.
 index: usize,
+    /// The generation value stored by `SlotKey`.
     generation: u32,
 }
 
@@ -121,12 +123,19 @@ struct Slot<T> {
 /// }
 /// ```
 pub struct SlotMap<T> {
+    /// The values value stored by `SlotMap`.
     values: *u8,        // Raw byte storage for values (for CopyMem)
+    /// The slots value stored by `SlotMap`.
     slots: *Slot<T>,    // Slot metadata (generation, free list, occupied)
+    /// The capacity value stored by `SlotMap`.
 capacity: usize,
+    /// The len value stored by `SlotMap`.
 len: usize,
+    /// The free head value stored by `SlotMap`.
 free_head: usize,   // Index of first free slot, or 0xFFFFFFFF if none
+    /// The value size value stored by `SlotMap`.
     value_size: u32,    // Size of T (aligned)
+    /// The slot size value stored by `SlotMap`.
     slot_size: u32,     // Size of Slot<T>
 }
 
@@ -514,13 +523,17 @@ var i: usize = 0
 
 /// Iterator over SlotMap entries
 pub struct SlotMapIter<T> {
+    /// The map value stored by `SlotMapIter`.
     map: &SlotMap<T>,
+    /// The current value stored by `SlotMapIter`.
 current: usize,
 }
 
 /// Key-value pair returned by SlotMap iterator
 pub struct SlotMapEntry<T> {
+    /// The key value stored by `SlotMapEntry`.
     key: SlotKey,
+    /// The value value stored by `SlotMapEntry`.
     value: &T,
 }
 
@@ -560,13 +573,21 @@ let idx: usize = self.current
 /// Like SlotMap but with fixed capacity that never grows.
 /// Uses separate arrays for better cache behavior during iteration.
 pub struct SlotMapFixed<T> {
+    /// The values value stored by `SlotMapFixed`.
     values: *u8,            // Raw byte storage for values
+    /// The generations value stored by `SlotMapFixed`.
     generations: *u32,
+    /// The next free value stored by `SlotMapFixed`.
     next_free: *u32,        // Free list linkage
+    /// The occupied value stored by `SlotMapFixed`.
     occupied: *bool,
+    /// The capacity value stored by `SlotMapFixed`.
 capacity: usize,
+    /// The len value stored by `SlotMapFixed`.
 len: usize,
+    /// The free head value stored by `SlotMapFixed`.
 free_head: usize,
+    /// The value size value stored by `SlotMapFixed`.
     value_size: u32,
 }
 

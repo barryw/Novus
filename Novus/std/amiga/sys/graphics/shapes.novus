@@ -13,7 +13,9 @@ from std::core import Option
 /// A 2D point with x and y coordinates.
 /// Uses i16 to match AmigaOS graphics functions.
 pub struct Point {
+    /// The x value stored by `Point`.
     x: i16,
+    /// The y value stored by `Point`.
     y: i16,
 }
 
@@ -57,9 +59,13 @@ impl Point {
 /// Uses the same convention as AmigaOS Rectangle struct:
 /// (x_min, y_min) is top-left, (x_max, y_max) is bottom-right (inclusive).
 pub struct Rect {
+    /// The x min value stored by `Rect`.
     x_min: i16,
+    /// The y min value stored by `Rect`.
     y_min: i16,
+    /// The x max value stored by `Rect`.
     x_max: i16,
+    /// The y max value stored by `Rect`.
     y_max: i16,
 }
 
@@ -251,8 +257,11 @@ impl Rect {
 /// When radius_x == radius_y, this represents a circle.
 /// Radii are in pixels and must be >= 0.
 pub struct Ellipse {
+    /// The center value stored by `Ellipse`.
     center: Point,
+    /// The radius x value stored by `Ellipse`.
     radius_x: i16,
+    /// The radius y value stored by `Ellipse`.
     radius_y: i16,
 }
 
@@ -347,7 +356,9 @@ impl Ellipse {
 /// A size (width, height) pair.
 /// Useful for representing dimensions separately from position.
 pub struct Size {
+    /// The width value stored by `Size`.
     width: i16,
+    /// The height value stored by `Size`.
     height: i16,
 }
 

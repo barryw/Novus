@@ -29,6 +29,10 @@ pub enum TimerError {
 }
 
 impl TimerError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             TimerError::OpenFailed => return "Failed to open timer.device",
@@ -60,7 +64,9 @@ impl Error for TimerError {
 /// let precise = Duration::micros(1500)  // 1.5ms
 /// ```
 pub struct Duration {
+    /// The secs value stored by `Duration`.
     secs: u32,
+    /// The micros value stored by `Duration`.
     micros: u32,
 }
 
@@ -221,7 +227,9 @@ impl Duration {
 /// // Timer automatically closed and freed here
 /// ```
 pub struct TimerHandle {
+    /// The timereq value stored by `TimerHandle`.
     timereq: *timerequest,
+    /// The port value stored by `TimerHandle`.
     port: *MsgPort,
 }
 
@@ -491,8 +499,11 @@ pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
 /// }
 /// ```
 pub struct Interval {
+    /// The timer value stored by `Interval`.
     timer: TimerHandle,
+    /// The interval value stored by `Interval`.
     interval: Duration,
+    /// The last tick value stored by `Interval`.
     last_tick: Duration,
 }
 
@@ -593,8 +604,11 @@ pub enum WaitResult {
 /// }
 /// ```
 pub struct AsyncTimer {
+    /// The timereq value stored by `AsyncTimer`.
     timereq: *timerequest,
+    /// The port value stored by `AsyncTimer`.
     port: *MsgPort,
+    /// The pending value stored by `AsyncTimer`.
     pending: bool,  // Is there an outstanding IO request?
 }
 

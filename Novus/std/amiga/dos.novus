@@ -15,14 +15,23 @@ const DOS_FAMILY: u32 = $444F5300
 const DEFAULT_HANDLER_STACK: u32 = 4096
 const DEFAULT_HANDLER_PRIORITY: i32 = 10
 
+/// Reports failures from file system operations.
 pub enum FileSystemError {
+    /// Indicates handler unavailable.
     HandlerUnavailable,
+    /// Indicates invalid environment.
     InvalidEnvironment,
+    /// Indicates mount failed.
     MountFailed,
+    /// Indicates format failed.
     FormatFailed,
 }
 
 impl FileSystemError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             FileSystemError::HandlerUnavailable => "No compatible filesystem handler is available",
@@ -61,20 +70,43 @@ impl From<FileSystemOperationError> for FileSystemError {
 /// Semantic partition geometry used to mount a filesystem. Tier 1 owns the
 /// translation to the NDK DosEnvec/DosEnvironment representation.
 pub struct PartitionGeometry {
+    /// The block bytes value stored by `PartitionGeometry`.
     block_bytes: u32
+    /// The surfaces value stored by `PartitionGeometry`.
     surfaces: u32
+    /// The blocks per track value stored by `PartitionGeometry`.
     blocks_per_track: u32
+    /// The low cylinder value stored by `PartitionGeometry`.
     low_cylinder: u32
+    /// The high cylinder value stored by `PartitionGeometry`.
     high_cylinder: u32
+    /// The dos type value stored by `PartitionGeometry`.
     dos_type: u32
+    /// The buffers value stored by `PartitionGeometry`.
     buffers: u32
+    /// The buffer memory value stored by `PartitionGeometry`.
     buffer_memory: u32
+    /// The max transfer value stored by `PartitionGeometry`.
     max_transfer: u32
+    /// The mask value stored by `PartitionGeometry`.
     mask: u32
+    /// The boot priority value stored by `PartitionGeometry`.
     boot_priority: i32
 }
 
 impl PartitionGeometry {
+    /// Creates a new `PartitionGeometry` value.
+    ///
+    /// # Parameters
+    /// * `block_bytes` - The `u32` value used as block bytes.
+    /// * `surfaces` - The `u32` value used as surfaces.
+    /// * `blocks_per_track` - The `u32` value used as blocks per track.
+    /// * `low_cylinder` - The `u32` value used as low cylinder.
+    /// * `high_cylinder` - The `u32` value used as high cylinder.
+    /// * `dos_type` - The `u32` value used as dos type.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(
         block_bytes: u32,
         surfaces: u32,
@@ -100,12 +132,33 @@ impl PartitionGeometry {
         })
     }
 
+    /// Returns a copy configured with buffers for `PartitionGeometry`.
+    ///
+    /// # Parameters
+    /// * `count` - The requested count.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn with_buffers(consuming self, count: u32) -> Result<PartitionGeometry, FileSystemError> {
         return Result::Err(FileSystemError::InvalidEnvironment) if count == 0
         self.buffers = count
         return Result::Ok(self)
     }
 
+    /// Returns a copy configured with transfer for `PartitionGeometry`.
+    ///
+    /// # Parameters
+    /// * `maximum` - The `u32` value used as maximum.
+    /// * `mask` - The `u32` value used as mask.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn with_transfer(consuming self, maximum: u32, mask: u32) -> Result<PartitionGeometry, FileSystemError> {
         return Result::Err(FileSystemError::InvalidEnvironment) if maximum == 0 || mask == 0
         self.max_transfer = maximum
@@ -113,20 +166,70 @@ impl PartitionGeometry {
         return Result::Ok(self)
     }
 
+    /// Returns a copy configured with boot priority for `PartitionGeometry`.
+    ///
+    /// # Parameters
+    /// * `priority` - The priority value.
+    ///
+    /// # Returns
+    /// The resulting `PartitionGeometry` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn with_boot_priority(consuming self, priority: i32) -> PartitionGeometry {
         self.boot_priority = priority
         return self
     }
 
+    /// Returns the block bytes value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn block_bytes(&self) -> u32 { return self.block_bytes }
+    /// Returns the surfaces value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn surfaces(&self) -> u32 { return self.surfaces }
+    /// Returns the blocks per track value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn blocks_per_track(&self) -> u32 { return self.blocks_per_track }
+    /// Returns the low cylinder value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn low_cylinder(&self) -> u32 { return self.low_cylinder }
+    /// Returns the high cylinder value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn high_cylinder(&self) -> u32 { return self.high_cylinder }
+    /// Returns the buffers value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn buffers(&self) -> u32 { return self.buffers }
+    /// Returns the max transfer value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn max_transfer(&self) -> u32 { return self.max_transfer }
+    /// Returns the mask value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn mask(&self) -> u32 { return self.mask }
+    /// Returns the boot priority value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn boot_priority(&self) -> i32 { return self.boot_priority }
+    /// Returns the dos type value associated with `PartitionGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn dos_type(&self) -> u32 { return self.dos_type }
 
     fn environment(&self) -> Result<DosEnvironment, FileSystemError> {
@@ -147,18 +250,46 @@ impl PartitionGeometry {
 
 /// Everything an application means when it asks DOS to mount a partition.
 pub struct MountSpec {
+    /// The name value stored by `MountSpec`.
     name: Str
+    /// The driver value stored by `MountSpec`.
     driver: Str
+    /// The unit value stored by `MountSpec`.
     unit: u32
+    /// The open flags value stored by `MountSpec`.
     open_flags: u32
+    /// The partition value stored by `MountSpec`.
     partition: PartitionGeometry
 }
 
 impl MountSpec {
+    /// Creates a new `MountSpec` value.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    /// * `driver` - The `Str` value used as driver.
+    /// * `unit` - The unit value.
+    /// * `partition` - The partition; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `MountSpec` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn new(name: Str, driver: Str, unit: u32, consuming partition: PartitionGeometry) -> MountSpec {
         return MountSpec { name: name, driver: driver, unit: unit, open_flags: 0, partition: partition }
     }
 
+    /// Returns a copy configured with open flags for `MountSpec`.
+    ///
+    /// # Parameters
+    /// * `flags` - The flags value.
+    ///
+    /// # Returns
+    /// The resulting `MountSpec` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn with_open_flags(consuming self, flags: u32) -> MountSpec {
         self.open_flags = flags
         return self
@@ -170,10 +301,24 @@ impl MountSpec {
 pub struct EmbeddedFileSystem { system: HandlerImage }
 
 impl EmbeddedFileSystem {
+    /// Wraps an owned system-level value as `EmbeddedFileSystem`.
+    ///
+    /// # Parameters
+    /// * `image` - The image; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `EmbeddedFileSystem` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming image: HandlerImage) -> EmbeddedFileSystem {
         return EmbeddedFileSystem { system: image }
     }
 
+    /// Borrows the system-level value wrapped by `EmbeddedFileSystem`.
+    ///
+    /// # Returns
+    /// A shared borrow of `HandlerImage` tied to the receiver.
     pub fn system(&self) -> &HandlerImage { return &self.system }
 }
 
@@ -191,6 +336,7 @@ enum FileSystemSource {
 
 /// A resolved handler ready to mount a DOS environment.
 pub struct FileSystem {
+    /// The source value stored by `FileSystem`.
     source: FileSystemSource,
 }
 
@@ -270,11 +416,32 @@ impl FileSystem {
 pub struct ApplicationDirectory { system: DirLockHandle }
 
 impl ApplicationDirectory {
+    /// Opens `ApplicationDirectory`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(path: Str) -> Result<ApplicationDirectory, DosError> {
         return Result::Ok(ApplicationDirectory { system: DirLockHandle::lock(path, -2)? })
     }
 
+    /// Borrows the system-level value wrapped by `ApplicationDirectory`.
+    ///
+    /// # Returns
+    /// A shared borrow of `DirLockHandle` tied to the receiver.
     pub fn system(&self) -> &DirLockHandle { return &self.system }
+    /// Wraps an owned system-level value as `ApplicationDirectory`.
+    ///
+    /// # Parameters
+    /// * `directory` - The directory; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationDirectory` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming directory: DirLockHandle) -> ApplicationDirectory {
         return ApplicationDirectory { system: directory }
     }
@@ -284,8 +451,26 @@ impl ApplicationDirectory {
 pub struct ApplicationVolume { system: MountedFileSystem }
 
 impl ApplicationVolume {
+    /// Returns the name value associated with `ApplicationVolume`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn name(&self) -> Str { return self.system.name() }
+    /// Borrows the system-level value wrapped by `ApplicationVolume`.
+    ///
+    /// # Returns
+    /// A shared borrow of `MountedFileSystem` tied to the receiver.
     pub fn system(&self) -> &MountedFileSystem { return &self.system }
+    /// Wraps an owned system-level value as `ApplicationVolume`.
+    ///
+    /// # Parameters
+    /// * `volume` - The volume; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `ApplicationVolume` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming volume: MountedFileSystem) -> ApplicationVolume {
         return ApplicationVolume { system: volume }
     }
@@ -299,6 +484,13 @@ impl ApplicationVolume {
     }
 }
 
+/// Opens volume for the module.
+///
+/// # Parameters
+/// * `name` - The name to use.
+///
+/// # Returns
+/// The requested value on success; the error value explains why the operation could not complete.
 pub fn open_volume(name: Str) -> Result<ApplicationVolume, FileSystemError> {
     if name.ends_with(":") {
         return Result::Ok(ApplicationVolume { system: MountedFileSystem::open(name)? })
@@ -320,15 +512,25 @@ fn wait_for_volume(name: Str) -> Result<ApplicationVolume, FileSystemError> {
     return Result::Err(FileSystemError::MountFailed)
 }
 
+/// Aliases `Directory` to `ApplicationDirectory`.
 pub type Directory = ApplicationDirectory
+/// Aliases `Volume` to `ApplicationVolume`.
 pub type Volume = ApplicationVolume
 
 /// Owned file with semantic open/create operations and bounded I/O.
 pub struct File {
+    /// The file value stored by `File`.
     file: OwnedFileHandle,
 }
 
 impl File {
+    /// Opens `File`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(path: Str) -> Result<File, DosError> {
         return match OwnedFileHandle::open_existing(path) {
             Result::Ok(file) => Result::Ok(File { file: file }),
@@ -336,6 +538,13 @@ impl File {
         }
     }
 
+    /// Creates `File`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn create(path: Str) -> Result<File, DosError> {
         return match OwnedFileHandle::create(path) {
             Result::Ok(file) => Result::Ok(File { file: file }),
@@ -343,24 +552,58 @@ impl File {
         }
     }
 
+    /// Reads `File`.
+    ///
+    /// # Parameters
+    /// * `buffer` - The buffer; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn read(&self, consuming buffer: MutSlice<u8>) -> Result<usize, DosError> {
         if buffer.is_empty() { return Result::Ok(0) }
         let Option::Some(first) = buffer.get_mut(0) else { return Result::Ok(0) }
         return Result::Ok((usize)self.file.read(unsafe { (*u8)first }, buffer.len())?)
     }
 
+    /// Reads all for `File`.
+    ///
+    /// # Parameters
+    /// * `buffer` - The buffer; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn read_all(&self, consuming buffer: MutSlice<u8>) -> Result<usize, DosError> {
         if buffer.is_empty() { return Result::Ok(0) }
         let Option::Some(first) = buffer.get_mut(0) else { return Result::Ok(0) }
         return Result::Ok((usize)self.file.read_all(unsafe { (*u8)first }, buffer.len())?)
     }
 
+    /// Writes `File`.
+    ///
+    /// # Parameters
+    /// * `buffer` - The buffer used by the operation.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn write(&self, buffer: Slice<u8>) -> Result<usize, DosError> {
         if buffer.is_empty() { return Result::Ok(0) }
         let Option::Some(first) = buffer.get(0) else { return Result::Ok(0) }
         return Result::Ok((usize)self.file.write(unsafe { (*u8)first }, buffer.len())?)
     }
 
+    /// Writes all for `File`.
+    ///
+    /// # Parameters
+    /// * `buffer` - The buffer used by the operation.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn write_all(&self, buffer: Slice<u8>) -> Result<(), DosError> {
         if buffer.is_empty() { return Result::Ok(()) }
         let Option::Some(first) = buffer.get(0) else { return Result::Ok(()) }
@@ -378,16 +621,41 @@ impl File {
     }
 
     @suppress("W0002", "AmigaDOS seek mode constants are signed LONG values")
+    /// Returns the rewind value associated with `File`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn rewind(&self) -> Result<(), DosError> {
         let _ = self.file.seek_from_start(0)?
         return Result::Ok(())
     }
 
+    /// Borrows the system-level value wrapped by `File`.
+    ///
+    /// # Returns
+    /// A shared borrow of `OwnedFileHandle` tied to the receiver.
     pub fn system(&self) -> &OwnedFileHandle { return &self.file }
 
+    /// Wraps an owned system-level value as `File`.
+    ///
+    /// # Parameters
+    /// * `file` - The file; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `File` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn from_system(consuming file: OwnedFileHandle) -> File {
         return File { file: file }
     }
 
+    /// Consumes `File` and returns its system-level value.
+    ///
+    /// # Returns
+    /// The resulting `OwnedFileHandle` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn into_system(consuming self) -> OwnedFileHandle { return self.file }
 }

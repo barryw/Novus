@@ -73,11 +73,17 @@ const BLIT_COPY: u8 = $C0
 /// Memory usage: width × height × depth bytes (e.g., 640×480×8 = 300KB)
 /// Optimized for modern Amigas with 16MB+ RAM.
 pub struct BufferedWindow {
+    /// The window value stored by `BufferedWindow`.
     window: WindowHandle,      // RAII window wrapper
+    /// The buffer value stored by `BufferedWindow`.
     buffer: *BitMap,            // Off-screen bitmap (owned)
+    /// The buffer rp value stored by `BufferedWindow`.
     buffer_rp: *RastPort,       // RastPort for drawing to buffer (owned)
+    /// The width value stored by `BufferedWindow`.
     width: i16,                 // Current buffer width
+    /// The height value stored by `BufferedWindow`.
     height: i16,                // Current buffer height
+    /// The depth value stored by `BufferedWindow`.
     depth: u8,                  // Bitmap depth (from screen)
 }
 

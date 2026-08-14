@@ -6,5 +6,7 @@ pub use amiga::sys::intuition::screen::*
 pub use amiga::sys::intuition::window::*
 pub use amiga::sys::intuition::errors::*
 
+/// Aliases `IntuitionWindow` to `WindowHandle`.
 pub type IntuitionWindow = WindowHandle
+/// Aliases `IntuitionScreen` to `ScreenHandle`.
 pub type IntuitionScreen = ScreenHandle

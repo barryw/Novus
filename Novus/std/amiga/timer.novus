@@ -6,8 +6,11 @@ from amiga::sys::timer import delay as system_delay, elapsed_since as system_ela
 
 /// Application timer failures without exposing timer.device mechanics.
 pub enum ApplicationTimerError {
+    /// Indicates open failed.
     OpenFailed,
+    /// Indicates no memory.
     NoMemory,
+    /// Indicates command failed.
     CommandFailed(i8),
 }
 
@@ -32,31 +35,79 @@ impl Error for ApplicationTimerError {
 }
 
 // These are semantic value types; aliasing them cannot leak ownership APIs.
+/// Aliases `Duration` to `SystemDuration`.
 pub type Duration = SystemDuration
+/// Aliases `WaitResult` to `SystemWaitResult`.
 pub type WaitResult = SystemWaitResult
+/// Aliases `TimerError` to `ApplicationTimerError`.
 pub type TimerError = ApplicationTimerError
 
 /// Reusable application timer over one owned timer.device request.
 pub struct ApplicationTimer { system: TimerHandle }
 
 impl ApplicationTimer {
+    /// Returns the microhz value associated with `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn microhz() -> Result<ApplicationTimer, TimerError> {
         return Result::Ok(ApplicationTimer { system: TimerHandle::microhz()? })
     }
 
+    /// Returns the vblank value associated with `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn vblank() -> Result<ApplicationTimer, TimerError> {
         return Result::Ok(ApplicationTimer { system: TimerHandle::vblank()? })
     }
 
+    /// Returns the eclock value associated with `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn eclock() -> Result<ApplicationTimer, TimerError> {
         return Result::Ok(ApplicationTimer { system: TimerHandle::eclock()? })
     }
 
+    /// Returns the time value associated with `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn time(&var self) -> Result<Duration, TimerError> { return Result::Ok(self.system.get_time()?) }
+    /// Returns the micros value associated with `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn micros(&var self) -> u32 { return self.system.get_micros() }
+    /// Waits for the requested duration using `ApplicationTimer`.
+    ///
+    /// # Parameters
+    /// * `duration` - The `Duration` value used as duration.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn delay(&var self, duration: Duration) -> Result<(), TimerError> { return Result::Ok(self.system.delay(duration)?) }
+    /// Waits for until for `ApplicationTimer`.
+    ///
+    /// # Parameters
+    /// * `time` - The `Duration` value used as time.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn wait_until(&var self, time: Duration) -> Result<(), TimerError> { return Result::Ok(self.system.wait_until(time)?) }
+    /// Waits for frames for `ApplicationTimer`.
+    ///
+    /// # Parameters
+    /// * `count` - The requested count.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn wait_frames(&var self, count: u32) -> Result<(), TimerError> { return Result::Ok(self.system.wait_frames(count)?) }
+    /// Borrows the system-level value wrapped by `ApplicationTimer`.
+    ///
+    /// # Returns
+    /// A shared borrow of `TimerHandle` tied to the receiver.
     pub fn system(&self) -> &TimerHandle { return &self.system }
 }
 
@@ -64,13 +115,36 @@ impl ApplicationTimer {
 pub struct ApplicationInterval { system: SystemInterval }
 
 impl ApplicationInterval {
+    /// Creates a new `ApplicationInterval` value.
+    ///
+    /// # Parameters
+    /// * `interval` - The `Duration` value used as interval.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(interval: Duration) -> Result<ApplicationInterval, TimerError> {
         return Result::Ok(ApplicationInterval { system: SystemInterval::new(interval)? })
     }
 
+    /// Returns the tick value associated with `ApplicationInterval`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn tick(&var self) -> Result<bool, TimerError> { return Result::Ok(self.system.tick()?) }
+    /// Restores `ApplicationInterval` to its initial state.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn reset(&var self) -> Result<(), TimerError> { return Result::Ok(self.system.reset()?) }
+    /// Returns the elapsed value associated with `ApplicationInterval`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn elapsed(&var self) -> Result<Duration, TimerError> { return Result::Ok(self.system.elapsed()?) }
+    /// Borrows the system-level value wrapped by `ApplicationInterval`.
+    ///
+    /// # Returns
+    /// A shared borrow of `SystemInterval` tied to the receiver.
     pub fn system(&self) -> &SystemInterval { return &self.system }
 }
 
@@ -78,27 +152,76 @@ impl ApplicationInterval {
 pub struct ApplicationAsyncTimer { system: SystemAsyncTimer }
 
 impl ApplicationAsyncTimer {
+    /// Creates a new `ApplicationAsyncTimer` value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new() -> Result<ApplicationAsyncTimer, TimerError> {
         return Result::Ok(ApplicationAsyncTimer { system: SystemAsyncTimer::new()? })
     }
 
+    /// Returns the vblank value associated with `ApplicationAsyncTimer`.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn vblank() -> Result<ApplicationAsyncTimer, TimerError> {
         return Result::Ok(ApplicationAsyncTimer { system: SystemAsyncTimer::vblank()? })
     }
 
+    /// Starts `ApplicationAsyncTimer`.
+    ///
+    /// # Parameters
+    /// * `duration` - The `Duration` value used as duration.
     pub fn start(&var self, duration: Duration) { self.system.start(duration) }
+    /// Returns whether check applies to `ApplicationAsyncTimer`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn check(&var self) -> bool { return self.system.check() }
+    /// Waits for `ApplicationAsyncTimer`.
     pub fn wait(&var self) { self.system.wait() }
+    /// Waits for or break for `ApplicationAsyncTimer`.
+    ///
+    /// # Parameters
+    /// * `duration` - The `Duration` value used as duration.
+    ///
+    /// # Returns
+    /// The resulting `WaitResult` value.
     pub fn wait_or_break(&var self, duration: Duration) -> WaitResult { return self.system.wait_or_break(duration) }
+    /// Borrows the system-level value wrapped by `ApplicationAsyncTimer`.
+    ///
+    /// # Returns
+    /// A shared borrow of `SystemAsyncTimer` tied to the receiver.
     pub fn system(&self) -> &SystemAsyncTimer { return &self.system }
 }
 
+/// Waits for the requested duration using the module.
+///
+/// # Parameters
+/// * `duration` - The `Duration` value used as duration.
+///
+/// # Returns
+/// `Result::Ok(())` on success; the error value explains why the operation could not complete.
 pub fn delay(duration: Duration) -> Result<(), TimerError> { return Result::Ok(system_delay(duration)?) }
+/// Returns the now value associated with the module.
+///
+/// # Returns
+/// The requested value on success; the error value explains why the operation could not complete.
 pub fn now() -> Result<Duration, TimerError> { return Result::Ok(system_now()?) }
+/// Returns the elapsed time since the supplied timestamp.
+///
+/// # Parameters
+/// * `start` - The `Duration` value used as start.
+///
+/// # Returns
+/// The requested value on success; the error value explains why the operation could not complete.
 pub fn elapsed_since(start: Duration) -> Result<Duration, TimerError> {
     return Result::Ok(system_elapsed_since(start)?)
 }
 
+/// Aliases `Timer` to `ApplicationTimer`.
 pub type Timer = ApplicationTimer
+/// Aliases `Interval` to `ApplicationInterval`.
 pub type Interval = ApplicationInterval
+/// Aliases `AsyncTimer` to `ApplicationAsyncTimer`.
 pub type AsyncTimer = ApplicationAsyncTimer

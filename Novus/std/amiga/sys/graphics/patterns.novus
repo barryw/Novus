@@ -24,6 +24,7 @@ from amiga::raw::structs import RastPort
 /// A 16-bit line pattern for dotted/dashed lines.
 /// Each bit represents whether a pixel is drawn (1) or skipped (0).
 pub struct LinePattern {
+    /// The pattern value stored by `LinePattern`.
     pattern: u16,
 }
 
@@ -71,11 +72,17 @@ impl LinePattern {
 }
 
 // Pre-defined line pattern constants
+/// Defines `LINE_SOLID`, the line solid value.
 pub const LINE_SOLID: u16 = $FFFF
+/// Defines `LINE_DOTTED`, the line dotted value.
 pub const LINE_DOTTED: u16 = $AAAA
+/// Defines `LINE_DASHED`, the line dashed value.
 pub const LINE_DASHED: u16 = $F0F0
+/// Defines `LINE_LONG_DASH`, the line long dash value.
 pub const LINE_LONG_DASH: u16 = $FF00
+/// Defines `LINE_DASH_DOT`, the line dash dot value.
 pub const LINE_DASH_DOT: u16 = $FC48
+/// Defines `LINE_SPARSE_DOT`, the line sparse dot value.
 pub const LINE_SPARSE_DOT: u16 = $8888
 
 // ============================================================================
@@ -87,18 +94,22 @@ pub const LINE_SPARSE_DOT: u16 = $8888
 
 /// Checkerboard pattern row values
 pub const CHECKERBOARD_ROW0: u16 = $AAAA
+/// Defines `CHECKERBOARD_ROW1`, the checkerboard row1 value.
 pub const CHECKERBOARD_ROW1: u16 = $5555
 
 /// Gray 50% is same as checkerboard
 pub const GRAY_50_ROW0: u16 = $AAAA
+/// Defines `GRAY_50_ROW1`, the gray 50 row1 value.
 pub const GRAY_50_ROW1: u16 = $5555
 
 /// Horizontal lines pattern row values
 pub const HLINES_ROW0: u16 = $FFFF
+/// Defines `HLINES_ROW1`, the hlines row1 value.
 pub const HLINES_ROW1: u16 = $0000
 
 /// Vertical lines pattern row values
 pub const VLINES_ROW0: u16 = $AAAA
+/// Defines `VLINES_ROW1`, the vlines row1 value.
 pub const VLINES_ROW1: u16 = $AAAA
 
 // ============================================================================
@@ -200,7 +211,9 @@ pub fn has_fill_pattern(rp: *RastPort) -> bool {
 /// Builder for creating custom fill patterns at runtime.
 /// Allocates pattern data in chip memory (required for some blitter operations).
 pub struct FillPattern {
+    /// The data value stored by `FillPattern`.
     data: MemHandle,
+    /// The height power value stored by `FillPattern`.
     height_power: i8,
 }
 

@@ -342,14 +342,3 @@ extern pub fn FreeVisualInfo(vi: *u8)
 extern pub fn GT_GetGadgetAttrsA(gad: *Gadget, win: *Window, req: *Requester, taglist: *TagItem) -> i32
 @library("gadtools.library")
 extern pub fn GT_GetGadgetAttrs(gad: *Gadget, win: *Window, req: *Requester, taglist: u32, ...args) -> i32
-
-// GadTools NewMenu struct (from NDK headers)
-// Fields match NDK definition - VBCC handles layout and padding
-pub struct NewMenu {
-    nm_Type: u8,
-    nm_Label: *u8,
-    nm_CommKey: *u8,
-    nm_Flags: u16,
-    nm_MutualExclude: i32,
-    nm_UserData: *u8
-}

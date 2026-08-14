@@ -43,6 +43,10 @@ pub enum PrefsError {
 }
 
 impl PrefsError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             PrefsError::NotFound => return "Preferences file not found",
@@ -124,9 +128,13 @@ impl Drop for PrefsEntry {
 /// }
 /// ```
 pub struct Prefs {
+    /// The app name value stored by `Prefs`.
     app_name: PathString,
+    /// The version value stored by `Prefs`.
     version: u32,
+    /// The entries value stored by `Prefs`.
     entries: Vec<PrefsEntry>,
+    /// The dirty value stored by `Prefs`.
     dirty: bool,
 }
 

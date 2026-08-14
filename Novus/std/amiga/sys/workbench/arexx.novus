@@ -34,19 +34,33 @@ from amiga::raw::rexxsyslib import CreateArgstring, DeleteArgstring, LengthArgst
 from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, RXCOMM, RXFB_RESULT, RXARGMASK, RXCODEMASK
 
 // ARexx-specific error types
+/// Reports failures from arexx operations.
 pub enum ARexxError {
+    /// Indicates that memory allocation failed.
     OutOfMemory,
+    /// Indicates port already exists.
     PortAlreadyExists,
+    /// Indicates port not found.
     PortNotFound,
+    /// Indicates message creation failed.
     MessageCreationFailed,
+    /// Indicates argstring creation failed.
     ArgstringCreationFailed,
+    /// Indicates send failed.
     SendFailed,
+    /// Indicates invalid message.
     InvalidMessage,
+    /// Indicates command failed.
     CommandFailed,
+    /// Indicates library not available.
     LibraryNotAvailable,
 }
 
 impl ARexxError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             ARexxError::OutOfMemory => return "Out of memory",
@@ -69,12 +83,19 @@ impl Error for ARexxError {
 }
 
 // Result of an ARexx command
+/// Identifies the possible arexx result values.
 pub enum ARexxResult {
+    /// Contains a successful value.
     Ok(Str),        // Command succeeded with optional result string
+    /// Contains an error value.
     Err(i32),       // Command failed with error code
 }
 
 impl ARexxResult {
+    /// Returns whether `ARexxResult` contains a successful result.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_ok(&self) -> bool {
         match *self {
             ARexxResult::Ok(_) => return true,
@@ -82,6 +103,10 @@ impl ARexxResult {
         }
     }
 
+    /// Returns whether `ARexxResult` contains an error.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_err(&self) -> bool {
         match *self {
             ARexxResult::Ok(_) => return false,
@@ -89,6 +114,10 @@ impl ARexxResult {
         }
     }
 
+    /// Returns the error code value associated with `ARexxResult`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn error_code(&self) -> i32 {
         match *self {
             ARexxResult::Ok(_) => return 0,
@@ -98,33 +127,55 @@ impl ARexxResult {
 }
 
 // Received ARexx command (for hosts)
+/// Represents a arexx command value.
 pub struct ARexxCommand {
+    /// The msg value stored by `ARexxCommand`.
     msg: *RexxMsg,              // The original message (for replying)
+    /// The command value stored by `ARexxCommand`.
     command: String,            // Owned copy; the incoming message may be replied independently
 }
 
 impl ARexxCommand {
     // Get the command string
+    /// Returns the command value associated with `ARexxCommand`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn command(&self) -> Str {
         return self.command.as_str()
     }
 
     // Get raw message pointer (for advanced use)
+    /// Returns the raw msg value associated with `ARexxCommand`.
+    ///
+    /// # Returns
+    /// The resulting `*RexxMsg` value.
     pub fn raw_msg(&self) -> *RexxMsg {
         return self.msg
     }
 }
 
 // ARexxPort - RAII handle for an ARexx message port
+/// Represents a arexx port value.
 pub struct ARexxPort {
+    /// The port value stored by `ARexxPort`.
     port: *MsgPort,             // The message port
+    /// The name ptr value stored by `ARexxPort`.
     name_ptr: *u8,              // Port name (allocated)
+    /// The name len value stored by `ARexxPort`.
     name_len: u32,              // Length including null terminator
 }
 
 impl ARexxPort {
     // Create a new ARexx port with the given name
     // Note: rexxsyslib.library is automatically opened by the stubs on first use
+    /// Creates `ARexxPort`.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn create(name: Str) -> Result<ARexxPort, ARexxError> {
         // Check if port already exists
         let existing = FindPort(name.ptr)
@@ -169,6 +220,10 @@ impl ARexxPort {
     }
 
     // Get the port's signal bit for use with Wait()
+    /// Returns the signal bit value associated with `ARexxPort`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn signal_bit(&self) -> u32 {
         unsafe {
             return 1 << (u32)self.port.mp_SigBit
@@ -176,6 +231,10 @@ impl ARexxPort {
     }
 
     // Get next command (non-blocking)
+    /// Returns the get command value associated with `ARexxPort`.
+    ///
+    /// # Returns
+    /// The requested value, or `Option::None` when it is unavailable.
     pub fn get_command(&var self) -> Option<ARexxCommand> {
         let msg = (*RexxMsg)GetMsg(self.port)
         if msg == null {
@@ -230,6 +289,10 @@ impl ARexxPort {
     }
 
     // Wait for next command (blocking)
+    /// Waits for command for `ARexxPort`.
+    ///
+    /// # Returns
+    /// The resulting `ARexxCommand` value.
     pub fn wait_command(&var self) -> ARexxCommand {
         let _ = WaitPort(self.port)
         forever {
@@ -243,6 +306,10 @@ impl ARexxPort {
     }
 
     // Reply to a command with success
+    /// Replies with ok for `ARexxPort`.
+    ///
+    /// # Parameters
+    /// * `cmd` - The `&var ARexxCommand` value used as cmd.
     pub fn reply_ok(&var self, cmd: &var ARexxCommand) {
         unsafe {
             cmd.msg.rm_Result1 = 0
@@ -252,6 +319,11 @@ impl ARexxPort {
     }
 
     // Reply to a command with a result string
+    /// Replies with result for `ARexxPort`.
+    ///
+    /// # Parameters
+    /// * `cmd` - The `&var ARexxCommand` value used as cmd.
+    /// * `result` - The `Str` value used as result.
     pub fn reply_result(&var self, cmd: &var ARexxCommand, result: Str) {
         unsafe {
             cmd.msg.rm_Result1 = 0
@@ -266,6 +338,12 @@ impl ARexxPort {
     }
 
     // Reply to a command with an error code
+    /// Replies with error for `ARexxPort`.
+    ///
+    /// # Parameters
+    /// * `cmd` - The `&var ARexxCommand` value used as cmd.
+    /// * `severity` - The `i32` value used as severity.
+    /// * `code` - The `i32` value used as code.
     pub fn reply_error(&var self, cmd: &var ARexxCommand, severity: i32, code: i32) {
         unsafe {
             cmd.msg.rm_Result1 = severity
@@ -275,6 +353,10 @@ impl ARexxPort {
     }
 
     // Get raw port pointer
+    /// Borrows `ARexxPort` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*MsgPort` value.
     pub fn as_ptr(&self) -> *MsgPort {
         return self.port
     }
@@ -297,6 +379,13 @@ impl Drop for ARexxPort {
 }
 
 // Check if an application has an ARexx port
+/// Returns whether arexx port for the module.
+///
+/// # Parameters
+/// * `name` - The name to use.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn has_arexx_port(name: Str) -> bool {
     let port = FindPort(name.ptr)
     return port != null
@@ -304,6 +393,14 @@ pub fn has_arexx_port(name: Str) -> bool {
 
 // Send a command to an app and get the result
 // Note: rexxsyslib.library is automatically opened by the stubs on first use
+/// Computes arexx call for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `target` - The `Str` value used as target.
+/// * `command` - The `Str` value used as command.
+///
+/// # Returns
+/// The requested value on success; the error value explains why the operation could not complete.
 pub fn arexx_call(target: Str, command: Str) -> Result<String, ARexxError> {
     // Find target port
     let target_port = FindPort(target.ptr)
@@ -379,6 +476,11 @@ pub fn arexx_call(target: Str, command: Str) -> Result<String, ARexxError> {
 }
 
 // Send a command, ignore response
+/// Applies arexx send to the module.
+///
+/// # Parameters
+/// * `target` - The `Str` value used as target.
+/// * `command` - The `Str` value used as command.
 pub fn arexx_send(target: Str, command: Str) {
     // Fire and forget - ignore errors
     let _ = arexx_call(target, command)

@@ -21,38 +21,63 @@ from amiga::sys::hardware::registers import CUSTOM_BASE
 // ============================================================================
 
 // Channel 0 registers (left speaker)
+/// Defines `AUD0LCH`, the aud0 lch value.
 pub const AUD0LCH: u32 = $0A0   // Location pointer high word (bits 16-20)
+/// Defines `AUD0LCL`, the aud0 lcl value.
 pub const AUD0LCL: u32 = $0A2   // Location pointer low word (bits 0-15)
+/// Defines `AUD0LEN`, the aud0 len value.
 pub const AUD0LEN: u32 = $0A4   // Length in words (1-65535)
+/// Defines `AUD0PER`, the aud0 per value.
 pub const AUD0PER: u32 = $0A6   // Period - sample rate divisor (124-65535)
+/// Defines `AUD0VOL`, the aud0 vol value.
 pub const AUD0VOL: u32 = $0A8   // Volume (0-64)
+/// Defines `AUD0DAT`, the aud0 dat value.
 pub const AUD0DAT: u32 = $0AA   // Data register (write triggers DMA reload)
 
 // Channel 1 registers (right speaker) - +$10 from channel 0
+/// Defines `AUD1LCH`, the aud1 lch value.
 pub const AUD1LCH: u32 = $0B0
+/// Defines `AUD1LCL`, the aud1 lcl value.
 pub const AUD1LCL: u32 = $0B2
+/// Defines `AUD1LEN`, the aud1 len value.
 pub const AUD1LEN: u32 = $0B4
+/// Defines `AUD1PER`, the aud1 per value.
 pub const AUD1PER: u32 = $0B6
+/// Defines `AUD1VOL`, the aud1 vol value.
 pub const AUD1VOL: u32 = $0B8
+/// Defines `AUD1DAT`, the aud1 dat value.
 pub const AUD1DAT: u32 = $0BA
 
 // Channel 2 registers (right speaker) - +$20 from channel 0
+/// Defines `AUD2LCH`, the aud2 lch value.
 pub const AUD2LCH: u32 = $0C0
+/// Defines `AUD2LCL`, the aud2 lcl value.
 pub const AUD2LCL: u32 = $0C2
+/// Defines `AUD2LEN`, the aud2 len value.
 pub const AUD2LEN: u32 = $0C4
+/// Defines `AUD2PER`, the aud2 per value.
 pub const AUD2PER: u32 = $0C6
+/// Defines `AUD2VOL`, the aud2 vol value.
 pub const AUD2VOL: u32 = $0C8
+/// Defines `AUD2DAT`, the aud2 dat value.
 pub const AUD2DAT: u32 = $0CA
 
 // Channel 3 registers (left speaker) - +$30 from channel 0
+/// Defines `AUD3LCH`, the aud3 lch value.
 pub const AUD3LCH: u32 = $0D0
+/// Defines `AUD3LCL`, the aud3 lcl value.
 pub const AUD3LCL: u32 = $0D2
+/// Defines `AUD3LEN`, the aud3 len value.
 pub const AUD3LEN: u32 = $0D4
+/// Defines `AUD3PER`, the aud3 per value.
 pub const AUD3PER: u32 = $0D6
+/// Defines `AUD3VOL`, the aud3 vol value.
 pub const AUD3VOL: u32 = $0D8
+/// Defines `AUD3DAT`, the aud3 dat value.
 pub const AUD3DAT: u32 = $0DA
 
 // ADKCON register (audio/disk control)
+/// Defines `ADKCON`, the adkcon value.
 pub const ADKCON: u32 = $09E
 
 // ============================================================================
@@ -99,29 +124,47 @@ pub const PAULA_MAX_LENGTH_BYTES: u32 = 131070
 // ============================================================================
 
 // PAL periods for common sample rates
+/// Defines `PERIOD_8000_PAL`, the period 8000 pal value.
 pub const PERIOD_8000_PAL: u16 = 443     // 8000 Hz (telephone quality)
+/// Defines `PERIOD_11025_PAL`, the period 11025 pal value.
 pub const PERIOD_11025_PAL: u16 = 322    // 11025 Hz (quarter CD rate)
+/// Defines `PERIOD_16000_PAL`, the period 16000 pal value.
 pub const PERIOD_16000_PAL: u16 = 222    // 16000 Hz
+/// Defines `PERIOD_22050_PAL`, the period 22050 pal value.
 pub const PERIOD_22050_PAL: u16 = 161    // 22050 Hz (half CD rate)
+/// Defines `PERIOD_28000_PAL`, the period 28000 pal value.
 pub const PERIOD_28000_PAL: u16 = 127    // ~28 kHz (near max quality)
 
 // NTSC periods for common sample rates
+/// Defines `PERIOD_8000_NTSC`, the period 8000 ntsc value.
 pub const PERIOD_8000_NTSC: u16 = 447
+/// Defines `PERIOD_11025_NTSC`, the period 11025 ntsc value.
 pub const PERIOD_11025_NTSC: u16 = 325
+/// Defines `PERIOD_16000_NTSC`, the period 16000 ntsc value.
 pub const PERIOD_16000_NTSC: u16 = 224
+/// Defines `PERIOD_22050_NTSC`, the period 22050 ntsc value.
 pub const PERIOD_22050_NTSC: u16 = 162
+/// Defines `PERIOD_28000_NTSC`, the period 28000 ntsc value.
 pub const PERIOD_28000_NTSC: u16 = 128
 
 // Musical note periods (based on PAL, middle octave, A4 = 440Hz)
 // These assume samples are recorded at a specific base rate
 // For samples recorded at 8363 Hz (standard MOD rate):
+/// Defines `PERIOD_C4`, the period c4 value.
 pub const PERIOD_C4: u16 = 428   // C-4 (261.63 Hz)
+/// Defines `PERIOD_D4`, the period d4 value.
 pub const PERIOD_D4: u16 = 381   // D-4 (293.66 Hz)
+/// Defines `PERIOD_E4`, the period e4 value.
 pub const PERIOD_E4: u16 = 340   // E-4 (329.63 Hz)
+/// Defines `PERIOD_F4`, the period f4 value.
 pub const PERIOD_F4: u16 = 320   // F-4 (349.23 Hz)
+/// Defines `PERIOD_G4`, the period g4 value.
 pub const PERIOD_G4: u16 = 286   // G-4 (392.00 Hz)
+/// Defines `PERIOD_A4`, the period a4 value.
 pub const PERIOD_A4: u16 = 254   // A-4 (440.00 Hz)
+/// Defines `PERIOD_B4`, the period b4 value.
 pub const PERIOD_B4: u16 = 227   // B-4 (493.88 Hz)
+/// Defines `PERIOD_C5`, the period c5 value.
 pub const PERIOD_C5: u16 = 214   // C-5 (523.25 Hz)
 
 // ============================================================================

@@ -89,15 +89,25 @@ from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, PutMsg, GetMsg, Reply
 from amiga::raw::exec import AllocMem, FreeMem, FindTask, AllocSignal, FreeSignal
 from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_FAST
 
+/// Reports failures from channel operations.
 pub enum ChannelError {
+    /// Indicates no memory.
     NoMemory,
+    /// Indicates no signal.
     NoSignal,
+    /// Indicates already sent.
     AlreadySent,
+    /// Indicates already received.
     AlreadyReceived,
+    /// Indicates missing reply.
     MissingReply,
 }
 
 impl ChannelError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             ChannelError::NoMemory => "Channel message allocation failed",
@@ -418,6 +428,7 @@ pub fn complete_handoff(handoff: *PortHandoff) -> Result<PortOwnership, ChannelE
 /// Senders do NOT own the message port - they just hold a pointer to it.
 /// The Receiver owns the port and must outlive all Senders.
 pub struct Sender<T> {
+    /// The port value stored by `Sender`.
     port: *MsgPort,      // Destination port (owned by Receiver)
 }
 
@@ -506,7 +517,9 @@ impl<T> Sender<T> {
 /// The receiver can be combined with other signal sources in Wait()
 /// for efficient event-driven programming.
 pub struct Receiver<T> {
+    /// The port value stored by `Receiver`.
     port: *MsgPort,      // Our message port (owned)
+    /// The signal mask value stored by `Receiver`.
     signal_mask: u32,    // Precomputed signal mask for Wait()
 }
 
@@ -688,8 +701,11 @@ pub fn channel<T>() -> Result<(Sender<T>, Receiver<T>), ChannelError> {
 /// This uses a reply port mechanism: sender waits for acknowledgment
 /// from the receiver before returning from send().
 pub struct BoundedSender<T> {
+    /// The port value stored by `BoundedSender`.
     port: *MsgPort,          // Destination port (owned by Receiver)
+    /// The reply port value stored by `BoundedSender`.
     reply_port: *MsgPort,    // Our reply port for acks
+    /// The reply signal value stored by `BoundedSender`.
     reply_signal: u32,       // Signal mask for reply port
 }
 
@@ -814,7 +830,9 @@ impl<T> Drop for BoundedSender<T> {
 /// Works with BoundedSender to provide backpressure.
 /// Each recv() automatically acknowledges the message, unblocking the sender.
 pub struct BoundedReceiver<T> {
+    /// The port value stored by `BoundedReceiver`.
     port: *MsgPort,      // Our message port (owned)
+    /// The signal mask value stored by `BoundedReceiver`.
     signal_mask: u32,    // Precomputed signal mask for Wait()
 }
 
@@ -1028,7 +1046,9 @@ pub fn bounded_channel<T>() -> Result<(BoundedSender<T>, BoundedReceiver<T>), Ch
 /// After sending, the sender is consumed and cannot be used again.
 /// This is useful for returning results from async operations.
 pub struct OneshotSender<T> {
+    /// The port value stored by `OneshotSender`.
     port: *MsgPort,      // Destination port (owned by Receiver)
+    /// The sent value stored by `OneshotSender`.
     sent: bool,          // Track if already sent
 }
 
@@ -1084,8 +1104,11 @@ impl<T> OneshotSender<T> {
 ///
 /// Blocks until the value arrives, then the channel is complete.
 pub struct OneshotReceiver<T> {
+    /// The port value stored by `OneshotReceiver`.
     port: *MsgPort,      // Our message port (owned)
+    /// The signal mask value stored by `OneshotReceiver`.
     signal_mask: u32,
+    /// The received value stored by `OneshotReceiver`.
     received: bool,
 }
 

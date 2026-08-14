@@ -44,14 +44,23 @@ fn no_anim_ob_callback(_object: *AnimOb) -> i16 { return 0 }
 fn no_anim_comp_callback(_component: *AnimComp) -> i16 { return 0 }
 
 // GEL-specific error types
+/// Reports failures from gel operations.
 pub enum GelError {
+    /// Indicates that memory allocation failed.
     OutOfMemory,
+    /// Indicates chip ram exhausted.
     ChipRamExhausted,
+    /// Indicates invalid dimensions.
     InvalidDimensions,
+    /// Indicates already active.
     AlreadyActive,
+    /// Indicates not active.
     NotActive,
+    /// Indicates invalid collision type.
     InvalidCollisionType,
+    /// Indicates gels not initialized.
     GelsNotInitialized,
+    /// Indicates sentinel creation failed.
     SentinelCreationFailed,
     // Animation-specific errors
     NoFramesProvided,       // build() called with no frames
@@ -62,6 +71,10 @@ pub enum GelError {
 }
 
 impl GelError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             GelError::OutOfMemory => return "Out of memory",
@@ -81,6 +94,10 @@ impl GelError {
     }
 
     // Convert GelError to GraphicsError for unified error handling
+    /// Converts `GelError` to graphics error.
+    ///
+    /// # Returns
+    /// The resulting `GraphicsError` value.
     pub fn to_graphics_error(&self) -> GraphicsError {
         match *self {
             GelError::OutOfMemory => GraphicsError::BitMapAllocFailed,
@@ -107,28 +124,49 @@ impl Error for GelError {
 }
 
 // Collision types (0-15) - games can define their own semantics
+/// Defines `COLL_TYPE_0`, the coll type 0 value.
 pub const COLL_TYPE_0: u8 = 0
+/// Defines `COLL_TYPE_1`, the coll type 1 value.
 pub const COLL_TYPE_1: u8 = 1
+/// Defines `COLL_TYPE_2`, the coll type 2 value.
 pub const COLL_TYPE_2: u8 = 2
+/// Defines `COLL_TYPE_3`, the coll type 3 value.
 pub const COLL_TYPE_3: u8 = 3
+/// Defines `COLL_TYPE_4`, the coll type 4 value.
 pub const COLL_TYPE_4: u8 = 4
+/// Defines `COLL_TYPE_5`, the coll type 5 value.
 pub const COLL_TYPE_5: u8 = 5
+/// Defines `COLL_TYPE_6`, the coll type 6 value.
 pub const COLL_TYPE_6: u8 = 6
+/// Defines `COLL_TYPE_7`, the coll type 7 value.
 pub const COLL_TYPE_7: u8 = 7
+/// Defines `COLL_TYPE_8`, the coll type 8 value.
 pub const COLL_TYPE_8: u8 = 8
+/// Defines `COLL_TYPE_9`, the coll type 9 value.
 pub const COLL_TYPE_9: u8 = 9
+/// Defines `COLL_TYPE_10`, the coll type 10 value.
 pub const COLL_TYPE_10: u8 = 10
+/// Defines `COLL_TYPE_11`, the coll type 11 value.
 pub const COLL_TYPE_11: u8 = 11
+/// Defines `COLL_TYPE_12`, the coll type 12 value.
 pub const COLL_TYPE_12: u8 = 12
+/// Defines `COLL_TYPE_13`, the coll type 13 value.
 pub const COLL_TYPE_13: u8 = 13
+/// Defines `COLL_TYPE_14`, the coll type 14 value.
 pub const COLL_TYPE_14: u8 = 14
+/// Defines `COLL_TYPE_15`, the coll type 15 value.
 pub const COLL_TYPE_15: u8 = 15
 
 // Example collision type aliases - games can define their own
+/// Defines `COLL_PLAYER`, the coll player value.
 pub const COLL_PLAYER: u8 = 0
+/// Defines `COLL_ENEMY`, the coll enemy value.
 pub const COLL_ENEMY: u8 = 1
+/// Defines `COLL_BULLET`, the coll bullet value.
 pub const COLL_BULLET: u8 = 2
+/// Defines `COLL_WALL`, the coll wall value.
 pub const COLL_WALL: u8 = 3
+/// Defines `COLL_POWERUP`, the coll powerup value.
 pub const COLL_POWERUP: u8 = 4
 
 // GelsSystem - Manages the entire GEL system
@@ -136,15 +174,25 @@ pub const COLL_POWERUP: u8 = 4
 // Must be initialized before creating any VSprites or BOBs.
 // Owns the GelsInfo structure and sentinel VSprites.
 // Attach to RastPort for rendering.
+/// Represents a gels system value.
 pub struct GelsSystem {
+    /// The gels info value stored by `GelsSystem`.
     gels_info: *GelsInfo,         // GelsInfo structure (owned)
+    /// The head sprite value stored by `GelsSystem`.
     head_sprite: *VSprite,        // Head sentinel VSprite (Y = -32767)
+    /// The tail sprite value stored by `GelsSystem`.
     tail_sprite: *VSprite,        // Tail sentinel VSprite (Y = 32767)
+    /// The coll table value stored by `GelsSystem`.
     coll_table: *collTable,       // Collision callback table
+    /// The rast port value stored by `GelsSystem`.
     rast_port: *RastPort,         // RastPort for rendering
+    /// The view port value stored by `GelsSystem`.
     view_port: *ViewPort,         // ViewPort for display
+    /// The active count value stored by `GelsSystem`.
     active_count: u32,            // Number of active VSprites/BOBs
+    /// The anim key value stored by `GelsSystem`.
     anim_key: *AnimOb,            // Animation list head (for Animate())
+    /// The initialized value stored by `GelsSystem`.
     initialized: bool,            // System is ready
 }
 
@@ -153,6 +201,14 @@ impl GelsSystem {
     //
     // Creates GelsInfo, sentinel VSprites, and attaches to RastPort.
     // The RastPort must be valid for the lifetime of the GelsSystem.
+    /// Initializes `GelsSystem` and its required resources.
+    ///
+    /// # Parameters
+    /// * `rp` - The `*RastPort` value used as rp.
+    /// * `vp` - The `*ViewPort` value used as vp.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn init(rp: *RastPort, vp: *ViewPort) -> Result<GelsSystem, GelError> {
         // Allocate GelsInfo structure
         let gels_info_size: u32 = 40  // sizeof(GelsInfo)
@@ -245,11 +301,19 @@ impl GelsSystem {
     }
 
     // Check if system is initialized
+    /// Returns whether initialized for `GelsSystem`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_initialized(&self) -> bool {
         return self.initialized
     }
 
     // Get count of active VSprites/BOBs
+    /// Returns the active count value associated with `GelsSystem`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn active_count(&self) -> u32 {
         return self.active_count
     }
@@ -260,6 +324,14 @@ impl GelsSystem {
     // the callback registered for type A is called.
     //
     // Callback signature: fn(sprite_a: *VSprite, sprite_b: *VSprite)
+    /// Sets collision for `GelsSystem`.
+    ///
+    /// # Parameters
+    /// * `type_num` - The `u8` value used as type num.
+    /// * `callback` - The callback invoked by the operation.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_collision(&var self, type_num: u8, callback: fn(*VSprite, *VSprite)) -> Result<(), GelError> {
         if !self.initialized {
             return Result::Err(GelError::GelsNotInitialized)
@@ -276,6 +348,7 @@ impl GelsSystem {
 
     // Sort GEL list by Y position
     // Called automatically by render_frame()
+    /// Sorts the active objects managed by `GelsSystem` into rendering order.
     pub fn sort(&var self) {
         if !self.initialized {
             return
@@ -285,6 +358,7 @@ impl GelsSystem {
 
     // Draw all VSprites and BOBs
     // Called automatically by render_frame()
+    /// Draws `GelsSystem`.
     pub fn draw(&var self) {
         if !self.initialized {
             return
@@ -296,6 +370,7 @@ impl GelsSystem {
 
     // Check for collisions and call registered callbacks
     // Called automatically by render_frame()
+    /// Runs collision detection for the active objects in `GelsSystem`.
     pub fn do_collision(&var self) {
         if !self.initialized {
             return
@@ -305,6 +380,7 @@ impl GelsSystem {
 
     // Complete render frame: sort, draw, animate, and check collisions
     // Call this once per frame in your game loop
+    /// Sorts, renders, and checks collisions for one `GelsSystem` frame.
     pub fn render_frame(&var self) {
         if !self.initialized {
             return
@@ -316,21 +392,40 @@ impl GelsSystem {
     }
 
     // Get the GelsInfo pointer (for advanced use)
+    /// Returns the gels info value associated with `GelsSystem`.
+    ///
+    /// # Returns
+    /// The resulting `*GelsInfo` value.
     pub fn gels_info(&self) -> *GelsInfo {
         return self.gels_info
     }
 
     // Get the RastPort pointer
+    /// Returns the rast port value associated with `GelsSystem`.
+    ///
+    /// # Returns
+    /// The resulting `*RastPort` value.
     pub fn rast_port(&self) -> *RastPort {
         return self.rast_port
     }
 
     // Get the ViewPort pointer
+    /// Returns the view port value associated with `GelsSystem`.
+    ///
+    /// # Returns
+    /// The resulting `*ViewPort` value.
     pub fn view_port(&self) -> *ViewPort {
         return self.view_port
     }
 
     // Set clipping boundaries for collision detection
+    /// Sets bounds for `GelsSystem`.
+    ///
+    /// # Parameters
+    /// * `left` - The `i16` value used as left.
+    /// * `right` - The `i16` value used as right.
+    /// * `top` - The `i16` value used as top.
+    /// * `bottom` - The `i16` value used as bottom.
     pub fn set_bounds(&var self, left: i16, right: i16, top: i16, bottom: i16) {
         if !self.initialized {
             return
@@ -351,6 +446,17 @@ impl GelsSystem {
     // image_data: Pointer to image data in CHIP RAM
     //
     // This is a convenience wrapper around VSpriteHandle::new()
+    /// Creates vsprite for `GelsSystem`.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&GelsSystem` value used as gels.
+    /// * `width_pixels` - The `u16` value used as width pixels.
+    /// * `height` - The `u16` value used as height.
+    /// * `depth` - The `u16` value used as depth.
+    /// * `image_data` - The `*u8` value used as image data.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn create_vsprite(
         gels: &GelsSystem,
         width_pixels: u16,
@@ -370,6 +476,18 @@ impl GelsSystem {
     // image_shadow: Pointer to shadow mask (null for no transparency)
     //
     // This is a convenience wrapper around BobHandle::new()
+    /// Creates bob for `GelsSystem`.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&GelsSystem` value used as gels.
+    /// * `width_pixels` - The `u16` value used as width pixels.
+    /// * `height` - The `u16` value used as height.
+    /// * `depth` - The `u16` value used as depth.
+    /// * `image_data` - The `*u8` value used as image data.
+    /// * `image_shadow` - The `*u8` value used as image shadow.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn create_bob(
         gels: &GelsSystem,
         width_pixels: u16,
@@ -382,11 +500,13 @@ impl GelsSystem {
     }
 
     // Internal: increment active count (called by VSpriteHandle)
+    /// Applies inc active to `GelsSystem`.
     pub fn inc_active(&var self) {
         self.active_count++
     }
 
     // Internal: decrement active count (called by VSpriteHandle)
+    /// Applies dec active to `GelsSystem`.
     pub fn dec_active(&var self) {
         if self.active_count > 0 {
             self.active_count--
@@ -429,6 +549,7 @@ impl Drop for GelsSystem {
 }
 
 // VSprite state machine
+/// Identifies the possible vsprite state values.
 pub enum VSpriteState {
     Created,    // VSprite allocated but not in GEL list
     Active,     // VSprite in GEL list and being rendered
@@ -441,13 +562,21 @@ pub enum VSpriteState {
 //
 // Note: The show/hide methods take &var GelsSystem because method calls
 // through raw pointers are not supported in Novus.
+/// Owns a vsprite handle and releases its resources when dropped.
 pub struct VSpriteHandle {
+    /// The vsprite value stored by `VSpriteHandle`.
     vsprite: *VSprite,            // VSprite structure (CHIP RAM)
+    /// The image data value stored by `VSpriteHandle`.
     image_data: *u8,              // Image data (CHIP RAM, owned)
+    /// The coll mask value stored by `VSpriteHandle`.
     coll_mask: *u8,               // Collision mask (CHIP RAM, owned, optional)
+    /// The rast port value stored by `VSpriteHandle`.
     rast_port: *RastPort,         // RastPort (cached from GelsSystem)
+    /// The state value stored by `VSpriteHandle`.
     state: VSpriteState,          // Current state
+    /// The owns image value stored by `VSpriteHandle`.
     owns_image: bool,             // Whether we own image_data
+    /// The owns mask value stored by `VSpriteHandle`.
     owns_mask: bool,              // Whether we own coll_mask
 }
 
@@ -459,6 +588,17 @@ impl VSpriteHandle {
     // depth: Number of bitplanes (1-8)
     // image_data: Pointer to image data in CHIP RAM
     //             Format: interleaved bitplanes, width_words * depth * 2 bytes per line
+    /// Creates a new `VSpriteHandle` value.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&GelsSystem` value used as gels.
+    /// * `width_pixels` - The `u16` value used as width pixels.
+    /// * `height` - The `u16` value used as height.
+    /// * `depth` - The `u16` value used as depth.
+    /// * `image_data` - The `*u8` value used as image data.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(
         gels: &GelsSystem,
         width_pixels: u16,
@@ -517,6 +657,13 @@ impl VSpriteHandle {
     }
 
     // Add VSprite to GEL list (make it visible)
+    /// Makes `VSpriteHandle` visible.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             VSpriteState::Active => return Result::Err(GelError::AlreadyActive),
@@ -531,6 +678,13 @@ impl VSpriteHandle {
     }
 
     // Remove VSprite from GEL list (make it invisible)
+    /// Hides `VSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             VSpriteState::Created => return Result::Err(GelError::NotActive),
@@ -545,6 +699,11 @@ impl VSpriteHandle {
     }
 
     // Move VSprite to absolute position
+    /// Moves `VSpriteHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn move_to(&var self, x: i16, y: i16) {
         unsafe {
             self.vsprite.X = x
@@ -553,11 +712,20 @@ impl VSpriteHandle {
     }
 
     // Get current position
+    /// Returns the position value associated with `VSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn position(&self) -> (i16, i16) {
         return (self.vsprite.X, self.vsprite.Y)
     }
 
     // Move by relative offset
+    /// Moves `VSpriteHandle` by a relative offset.
+    ///
+    /// # Parameters
+    /// * `dx` - The `i16` value used as dx.
+    /// * `dy` - The `i16` value used as dy.
     pub fn move_by(&var self, dx: i16, dy: i16) {
         unsafe {
             self.vsprite.X = self.vsprite.X + dx
@@ -573,6 +741,11 @@ impl VSpriteHandle {
     // Example:
     //   // This is a player (type 0), it detects enemies (type 1) and bullets (type 2)
     //   sprite.set_collision_masks(1 << COLL_PLAYER, (1 << COLL_ENEMY) | (1 << COLL_BULLET))
+    /// Sets collision masks for `VSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `me_mask` - The `u16` value used as me mask.
+    /// * `hit_mask` - The `u16` value used as hit mask.
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         unsafe {
             self.vsprite.MeMask = me_mask
@@ -581,11 +754,19 @@ impl VSpriteHandle {
     }
 
     // Get collision masks
+    /// Returns the collision masks value associated with `VSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn collision_masks(&self) -> (i16, i16) {
         return (self.vsprite.MeMask, self.vsprite.HitMask)
     }
 
     // Check if VSprite is active (in GEL list)
+    /// Returns whether active for `VSpriteHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_active(&self) -> bool {
         match self.state {
             VSpriteState::Active => return true,
@@ -595,11 +776,19 @@ impl VSpriteHandle {
     }
 
     // Get raw VSprite pointer (for advanced use)
+    /// Borrows `VSpriteHandle` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*VSprite` value.
     pub fn as_ptr(&self) -> *VSprite {
         return self.vsprite
     }
 
     // Set image data pointer (for animation)
+    /// Sets image for `VSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `image_data` - The `*u8` value used as image data.
     pub fn set_image(&var self, image_data: *u8) {
         self.image_data = image_data
         unsafe {
@@ -608,6 +797,10 @@ impl VSpriteHandle {
     }
 
     // Set collision mask data (for pixel-perfect collision)
+    /// Sets collision mask for `VSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `mask_data` - The `*u8` value used as mask data.
     pub fn set_collision_mask(&var self, mask_data: *u8) {
         self.coll_mask = mask_data
         unsafe {
@@ -616,6 +809,10 @@ impl VSpriteHandle {
     }
 
     // Set flags
+    /// Sets flags for `VSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `flags` - The flags value.
     pub fn set_flags(&var self, flags: i16) {
         unsafe {
             self.vsprite.Flags = flags
@@ -623,6 +820,10 @@ impl VSpriteHandle {
     }
 
     // Get flags
+    /// Returns the flags value associated with `VSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `i16` value.
     pub fn flags(&self) -> i16 {
         return self.vsprite.Flags
     }
@@ -663,6 +864,7 @@ impl Drop for VSpriteHandle {
 // ============================================================================
 
 // BOB state machine (same as VSprite)
+/// Identifies the possible bob state values.
 pub enum BobState {
     Created,    // BOB allocated but not in GEL list
     Active,     // BOB in GEL list and being rendered
@@ -678,19 +880,33 @@ pub enum BobState {
 // - Cookie-cut overlay (OVERLAY flag) for transparency
 // - Arbitrary width (not limited to 16 pixels)
 // - Z-ordering via Before/After links
+/// Owns a bob handle and releases its resources when dropped.
 pub struct BobHandle {
+    /// The bob value stored by `BobHandle`.
     bob: *Bob,                    // Bob structure (any memory)
+    /// The vsprite value stored by `BobHandle`.
     vsprite: *VSprite,            // Associated VSprite (CHIP RAM)
+    /// The save buffer value stored by `BobHandle`.
     save_buffer: *u8,             // Background save buffer (CHIP RAM)
+    /// The image shadow value stored by `BobHandle`.
     image_shadow: *u8,            // Shadow mask for cookie-cut (CHIP RAM)
+    /// The image data value stored by `BobHandle`.
     image_data: *u8,              // Image data (CHIP RAM)
+    /// The rast port value stored by `BobHandle`.
     rast_port: *RastPort,         // RastPort (cached from GelsSystem)
+    /// The view port value stored by `BobHandle`.
     view_port: *ViewPort,         // ViewPort (cached from GelsSystem)
+    /// The state value stored by `BobHandle`.
     state: BobState,              // Current state
+    /// The width words value stored by `BobHandle`.
     width_words: u16,             // Width in words (16-pixel units)
+    /// The height value stored by `BobHandle`.
     height: u16,                  // Height in scanlines
+    /// The depth value stored by `BobHandle`.
     depth: u16,                   // Number of bitplanes
+    /// The owns image value stored by `BobHandle`.
     owns_image: bool,             // Whether we own image_data
+    /// The owns shadow value stored by `BobHandle`.
     owns_shadow: bool,            // Whether we own image_shadow
 }
 
@@ -705,6 +921,18 @@ impl BobHandle {
     //
     // Image data format: interleaved bitplanes, (width_words * depth * 2) bytes per line
     // Shadow mask format: 1 bitplane, width_words * 2 bytes per line
+    /// Creates a new `BobHandle` value.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&GelsSystem` value used as gels.
+    /// * `width_pixels` - The `u16` value used as width pixels.
+    /// * `height` - The `u16` value used as height.
+    /// * `depth` - The `u16` value used as depth.
+    /// * `image_data` - The `*u8` value used as image data.
+    /// * `image_shadow` - The `*u8` value used as image shadow.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(
         gels: &GelsSystem,
         width_pixels: u16,
@@ -809,6 +1037,13 @@ impl BobHandle {
     }
 
     // Add BOB to GEL list (make it visible)
+    /// Makes `BobHandle` visible.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             BobState::Active => return Result::Err(GelError::AlreadyActive),
@@ -824,6 +1059,13 @@ impl BobHandle {
 
     // Remove BOB from GEL list (make it invisible)
     // Unlike VSprites, BOBs require WaitBlit for background restore
+    /// Hides `BobHandle`.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             BobState::Created => return Result::Err(GelError::NotActive),
@@ -839,6 +1081,11 @@ impl BobHandle {
     }
 
     // Move BOB to absolute position
+    /// Moves `BobHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn move_to(&var self, x: i16, y: i16) {
         unsafe {
             self.vsprite.X = x
@@ -847,11 +1094,20 @@ impl BobHandle {
     }
 
     // Get current position
+    /// Returns the position value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn position(&self) -> (i16, i16) {
         return (self.vsprite.X, self.vsprite.Y)
     }
 
     // Move by relative offset
+    /// Moves `BobHandle` by a relative offset.
+    ///
+    /// # Parameters
+    /// * `dx` - The `i16` value used as dx.
+    /// * `dy` - The `i16` value used as dy.
     pub fn move_by(&var self, dx: i16, dy: i16) {
         unsafe {
             self.vsprite.X = self.vsprite.X + dx
@@ -860,6 +1116,11 @@ impl BobHandle {
     }
 
     // Set collision masks
+    /// Sets collision masks for `BobHandle`.
+    ///
+    /// # Parameters
+    /// * `me_mask` - The `u16` value used as me mask.
+    /// * `hit_mask` - The `u16` value used as hit mask.
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         unsafe {
             self.vsprite.MeMask = me_mask
@@ -868,11 +1129,19 @@ impl BobHandle {
     }
 
     // Get collision masks
+    /// Returns the collision masks value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn collision_masks(&self) -> (i16, i16) {
         return (self.vsprite.MeMask, self.vsprite.HitMask)
     }
 
     // Check if BOB is active (in GEL list)
+    /// Returns whether active for `BobHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_active(&self) -> bool {
         match self.state {
             BobState::Active => return true,
@@ -882,16 +1151,28 @@ impl BobHandle {
     }
 
     // Get raw Bob pointer (for advanced use)
+    /// Borrows `BobHandle` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*Bob` value.
     pub fn as_ptr(&self) -> *Bob {
         return self.bob
     }
 
     // Get raw VSprite pointer (for advanced use)
+    /// Returns the vsprite ptr value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `*VSprite` value.
     pub fn vsprite_ptr(&self) -> *VSprite {
         return self.vsprite
     }
 
     // Set image data pointer (for animation)
+    /// Sets image for `BobHandle`.
+    ///
+    /// # Parameters
+    /// * `image_data` - The `*u8` value used as image data.
     pub fn set_image(&var self, image_data: *u8) {
         self.image_data = image_data
         unsafe {
@@ -900,6 +1181,10 @@ impl BobHandle {
     }
 
     // Set shadow mask pointer (for animation with different masks)
+    /// Sets shadow for `BobHandle`.
+    ///
+    /// # Parameters
+    /// * `image_shadow` - The `*u8` value used as image shadow.
     pub fn set_shadow(&var self, image_shadow: *u8) {
         self.image_shadow = image_shadow
         unsafe {
@@ -908,14 +1193,26 @@ impl BobHandle {
     }
 
     // Get dimensions
+    /// Returns the width value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn width(&self) -> u16 {
         return (self.width_words - 1) * 16  // Subtract the extra word
     }
 
+    /// Returns the height value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn height(&self) -> u16 {
         return self.height
     }
 
+    /// Returns the depth value associated with `BobHandle`.
+    ///
+    /// # Returns
+    /// The resulting `u16` value.
     pub fn depth(&self) -> u16 {
         return self.depth
     }
@@ -964,6 +1261,7 @@ impl Drop for BobHandle {
 // ============================================================================
 
 // AnimOb state machine
+/// Identifies the possible anim ob state values.
 pub enum AnimObState {
     Building,   // Being constructed via builder
     Ready,      // Built, not yet in GEL list
@@ -1004,19 +1302,31 @@ struct AnimCompOwned {
 
 // AnimObBuilder - Fluent builder for animations
 // NOTE: Must be defined before SequenceHandle/FrameHandle which reference it
+/// Builds a configured anim ob value.
 pub struct AnimObBuilder {
+    /// The gels value stored by `AnimObBuilder`.
     gels: *GelsSystem,
     // AnimOb configuration
+    /// The x value stored by `AnimObBuilder`.
     x: i16,
+    /// The y value stored by `AnimObBuilder`.
     y: i16,
+    /// The x vel value stored by `AnimObBuilder`.
     x_vel: i16,
+    /// The y vel value stored by `AnimObBuilder`.
     y_vel: i16,
+    /// The x accel value stored by `AnimObBuilder`.
     x_accel: i16,
+    /// The y accel value stored by `AnimObBuilder`.
     y_accel: i16,
+    /// The ob routine value stored by `AnimObBuilder`.
     ob_routine: fn(*AnimOb) -> i16,
     // Sequences
+    /// The sequences value stored by `AnimObBuilder`.
     sequences: *SequenceData,
+    /// The sequence count value stored by `AnimObBuilder`.
     sequence_count: u32,
+    /// The sequence capacity value stored by `AnimObBuilder`.
     sequence_capacity: u32,
 }
 
@@ -1025,13 +1335,27 @@ const MAX_FRAMES_PER_SEQUENCE: u32 = 64
 const MAX_SEQUENCES: u32 = 16
 
 // SequenceHandle - Handle for configuring a sequence during building
+/// Owns a sequence handle and releases its resources when dropped.
 pub struct SequenceHandle {
+    /// The builder value stored by `SequenceHandle`.
     builder: *AnimObBuilder,
+    /// The sequence idx value stored by `SequenceHandle`.
     sequence_idx: u32,
 }
 
 impl SequenceHandle {
     // Add a frame to this sequence
+    /// Adds frame for `SequenceHandle`.
+    ///
+    /// # Parameters
+    /// * `width_pixels` - The `u16` value used as width pixels.
+    /// * `height` - The `u16` value used as height.
+    /// * `depth` - The `u16` value used as depth.
+    /// * `image_data` - The `*u8` value used as image data.
+    /// * `shadow_mask` - The `*u8` value used as shadow mask.
+    ///
+    /// # Returns
+    /// The resulting `FrameHandle` value.
     pub fn add_frame(&var self, width_pixels: u16, height: u16, depth: u16, image_data: *u8, shadow_mask: *u8) -> FrameHandle {
         // Get sequence data pointer
         let builder_ptr = self.builder
@@ -1082,6 +1406,7 @@ impl SequenceHandle {
 
     // Make this sequence loop back to first frame
     @chain
+    /// Sets looping for `SequenceHandle`.
     pub fn set_looping(&var self) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1094,6 +1419,10 @@ impl SequenceHandle {
 
     // Chain to another sequence when this completes
     @chain
+    /// Sets chain to for `SequenceHandle`.
+    ///
+    /// # Parameters
+    /// * `target_sequence` - The `u32` value used as target sequence.
     pub fn set_chain_to(&var self, target_sequence: u32) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1106,15 +1435,23 @@ impl SequenceHandle {
 }
 
 // FrameHandle - Handle for configuring a frame during building
+/// Owns a frame handle and releases its resources when dropped.
 pub struct FrameHandle {
+    /// The builder value stored by `FrameHandle`.
     builder: *AnimObBuilder,
+    /// The sequence idx value stored by `FrameHandle`.
     sequence_idx: u32,
+    /// The frame idx value stored by `FrameHandle`.
     frame_idx: u32,
 }
 
 impl FrameHandle {
     // Set frame duration in ticks
     @chain
+    /// Sets duration for `FrameHandle`.
+    ///
+    /// # Parameters
+    /// * `ticks` - The `i16` value used as ticks.
     pub fn set_duration(&var self, ticks: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1130,6 +1467,11 @@ impl FrameHandle {
 
     // Set position offset from AnimOb
     @chain
+    /// Sets offset for `FrameHandle`.
+    ///
+    /// # Parameters
+    /// * `x_trans` - The `i16` value used as x trans.
+    /// * `y_trans` - The `i16` value used as y trans.
     pub fn set_offset(&var self, x_trans: i16, y_trans: i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1146,6 +1488,10 @@ impl FrameHandle {
 
     // Set AnimCRoutine callback
     @chain
+    /// Sets on enter for `FrameHandle`.
+    ///
+    /// # Parameters
+    /// * `routine` - The callback invoked by the operation.
     pub fn set_on_enter(&var self, routine: fn(*AnimComp) -> i16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1161,6 +1507,11 @@ impl FrameHandle {
 
     // Set collision masks for this frame
     @chain
+    /// Sets collision masks for `FrameHandle`.
+    ///
+    /// # Parameters
+    /// * `me_mask` - The `u16` value used as me mask.
+    /// * `hit_mask` - The `u16` value used as hit mask.
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         let builder_ptr = self.builder
         let seq_idx = self.sequence_idx
@@ -1178,6 +1529,13 @@ impl FrameHandle {
 
 impl AnimObBuilder {
     // Create a new animation builder
+    /// Creates a new `AnimObBuilder` value.
+    ///
+    /// # Parameters
+    /// * `gels` - The `*GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// The resulting `AnimObBuilder` value.
     pub fn new(gels: *GelsSystem) -> AnimObBuilder {
         // Allocate sequence array
         let seq_size: u32 = 24 * MAX_SEQUENCES  // sizeof(SequenceData) ~= 24 bytes
@@ -1200,6 +1558,11 @@ impl AnimObBuilder {
 
     // Set initial position (pixels)
     @chain
+    /// Sets position for `AnimObBuilder`.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn set_position(&var self, x: i16, y: i16) {
         self.x = x
         self.y = y
@@ -1207,6 +1570,11 @@ impl AnimObBuilder {
 
     // Set velocity (raw 6.10 fixed-point)
     @chain
+    /// Sets velocity for `AnimObBuilder`.
+    ///
+    /// # Parameters
+    /// * `x_vel` - The `i16` value used as x vel.
+    /// * `y_vel` - The `i16` value used as y vel.
     pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         self.x_vel = x_vel
         self.y_vel = y_vel
@@ -1214,6 +1582,11 @@ impl AnimObBuilder {
 
     // Set acceleration
     @chain
+    /// Sets acceleration for `AnimObBuilder`.
+    ///
+    /// # Parameters
+    /// * `x_accel` - The `i16` value used as x accel.
+    /// * `y_accel` - The `i16` value used as y accel.
     pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         self.x_accel = x_accel
         self.y_accel = y_accel
@@ -1221,11 +1594,19 @@ impl AnimObBuilder {
 
     // Set AnimORoutine callback
     @chain
+    /// Sets on animate for `AnimObBuilder`.
+    ///
+    /// # Parameters
+    /// * `routine` - The callback invoked by the operation.
     pub fn set_on_animate(&var self, routine: fn(*AnimOb) -> i16) {
         self.ob_routine = routine
     }
 
     // Add a new sequence
+    /// Adds sequence for `AnimObBuilder`.
+    ///
+    /// # Returns
+    /// The resulting `SequenceHandle` value.
     pub fn add_sequence(&var self) -> SequenceHandle {
         if self.sequence_count >= self.sequence_capacity {
             // Return handle to last sequence if at capacity
@@ -1260,6 +1641,10 @@ impl AnimObBuilder {
     }
 
     // Build the AnimOb
+    /// Builds the configured `AnimObBuilder` value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn build(&var self) -> Result<AnimObHandle, GelError> {
         // Count total frames across all sequences
         var total_frames: u32 = 0
@@ -1553,21 +1938,39 @@ impl AnimObBuilder {
 }
 
 // AnimObHandle - RAII handle for an animation
+/// Owns a anim ob handle and releases its resources when dropped.
 pub struct AnimObHandle {
+    /// The anim ob value stored by `AnimObHandle`.
     anim_ob: *AnimOb,
+    /// The comp data value stored by `AnimObHandle`.
     comp_data: *AnimCompOwned,
+    /// The comp count value stored by `AnimObHandle`.
     comp_count: u32,
+    /// The all comps value stored by `AnimObHandle`.
     all_comps: *u8,
+    /// The all bobs value stored by `AnimObHandle`.
     all_bobs: *u8,
+    /// The all vsprites value stored by `AnimObHandle`.
     all_vsprites: *u8,
+    /// The rast port value stored by `AnimObHandle`.
     rast_port: *RastPort,
+    /// The view port value stored by `AnimObHandle`.
     view_port: *ViewPort,
+    /// The state value stored by `AnimObHandle`.
     state: AnimObState,
+    /// The buffers allocated value stored by `AnimObHandle`.
     buffers_allocated: bool,
 }
 
 impl AnimObHandle {
     // Add to GEL list and start animating
+    /// Makes `AnimObHandle` visible.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             AnimObState::Active => return Result::Err(GelError::AlreadyActive),
@@ -1596,6 +1999,13 @@ impl AnimObHandle {
     }
 
     // Remove from GEL list
+    /// Hides `AnimObHandle`.
+    ///
+    /// # Parameters
+    /// * `gels` - The `&var GelsSystem` value used as gels.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self, gels: &var GelsSystem) -> Result<(), GelError> {
         match self.state {
             AnimObState::Ready => return Result::Err(GelError::NotActive),
@@ -1638,6 +2048,11 @@ impl AnimObHandle {
 
     // Move to absolute pixel position
     @chain
+    /// Moves `AnimObHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn move_to(&var self, x: i16, y: i16) {
         let fp_shift = 6
         unsafe {
@@ -1647,6 +2062,10 @@ impl AnimObHandle {
     }
 
     // Get current pixel position
+    /// Returns the position value associated with `AnimObHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn position(&self) -> (i16, i16) {
         let fp_shift = 6
         let x = self.anim_ob.AnX >> fp_shift
@@ -1656,6 +2075,11 @@ impl AnimObHandle {
 
     // Move by relative offset
     @chain
+    /// Moves `AnimObHandle` by a relative offset.
+    ///
+    /// # Parameters
+    /// * `dx` - The `i16` value used as dx.
+    /// * `dy` - The `i16` value used as dy.
     pub fn move_by(&var self, dx: i16, dy: i16) {
         let fp_shift = 6
         unsafe {
@@ -1666,6 +2090,11 @@ impl AnimObHandle {
 
     // Set velocity (raw fixed-point)
     @chain
+    /// Sets velocity for `AnimObHandle`.
+    ///
+    /// # Parameters
+    /// * `x_vel` - The `i16` value used as x vel.
+    /// * `y_vel` - The `i16` value used as y vel.
     pub fn set_velocity(&var self, x_vel: i16, y_vel: i16) {
         unsafe {
             self.anim_ob.XVel = x_vel
@@ -1675,18 +2104,32 @@ impl AnimObHandle {
 
     // Set velocity in pixels per frame (convenience)
     @chain
+    /// Sets velocity pixels for `AnimObHandle`.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn set_velocity_pixels(&var self, x: i16, y: i16) {
         let fp_shift = 6
         self.set_velocity(x << fp_shift, y << fp_shift)
     }
 
     // Get velocity
+    /// Returns the velocity value associated with `AnimObHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn velocity(&self) -> (i16, i16) {
         return (self.anim_ob.XVel, self.anim_ob.YVel)
     }
 
     // Set acceleration
     @chain
+    /// Sets acceleration for `AnimObHandle`.
+    ///
+    /// # Parameters
+    /// * `x_accel` - The `i16` value used as x accel.
+    /// * `y_accel` - The `i16` value used as y accel.
     pub fn set_acceleration(&var self, x_accel: i16, y_accel: i16) {
         unsafe {
             self.anim_ob.XAccel = x_accel
@@ -1695,12 +2138,21 @@ impl AnimObHandle {
     }
 
     // Get acceleration
+    /// Returns the acceleration value associated with `AnimObHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn acceleration(&self) -> (i16, i16) {
         return (self.anim_ob.XAccel, self.anim_ob.YAccel)
     }
 
     // Set collision masks for all components
     @chain
+    /// Sets collision masks for `AnimObHandle`.
+    ///
+    /// # Parameters
+    /// * `me_mask` - The `u16` value used as me mask.
+    /// * `hit_mask` - The `u16` value used as hit mask.
     pub fn set_collision_masks(&var self, me_mask: u16, hit_mask: u16) {
         for i in 0..self.comp_count {
             unsafe {
@@ -1711,6 +2163,10 @@ impl AnimObHandle {
     }
 
     // Get collision masks (from first component)
+    /// Returns the collision masks value associated with `AnimObHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn collision_masks(&self) -> (i16, i16) {
         if self.comp_count > 0 {
             unsafe {
@@ -1721,6 +2177,10 @@ impl AnimObHandle {
     }
 
     // Check if active
+    /// Returns whether active for `AnimObHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_active(&self) -> bool {
         match self.state {
             AnimObState::Active => return true,
@@ -1730,11 +2190,19 @@ impl AnimObHandle {
     }
 
     // Get frame count
+    /// Returns the frame count value associated with `AnimObHandle`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn frame_count(&self) -> u32 {
         return self.comp_count
     }
 
     // Get raw AnimOb pointer
+    /// Borrows `AnimObHandle` as ptr.
+    ///
+    /// # Returns
+    /// The resulting `*AnimOb` value.
     pub fn as_ptr(&self) -> *AnimOb {
         return self.anim_ob
     }
@@ -1792,11 +2260,16 @@ impl Drop for AnimObHandle {
 // GelsSystem animation extensions
 impl GelsSystem {
     // Create a new animation builder
+    /// Creates anim builder for `GelsSystem`.
+    ///
+    /// # Returns
+    /// The resulting `AnimObBuilder` value.
     pub fn create_anim_builder(&var self) -> AnimObBuilder {
         return AnimObBuilder::new(self)
     }
 
     // Advance all animations (called by render_frame)
+    /// Advances and renders animations managed by `GelsSystem`.
     pub fn animate(&var self) {
         if !self.initialized {
             return

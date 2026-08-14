@@ -75,6 +75,7 @@ impl DrawMode {
 pub struct DrawContext {
     // AmigaOS RastPorts are interior-mutable handles; the reference protects
     // lifetime while graphics.library serializes the actual state changes.
+    /// The rp value stored by `DrawContext`.
     rp: &RastPort,
 }
 

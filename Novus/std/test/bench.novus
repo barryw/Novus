@@ -114,6 +114,7 @@ impl BenchStats {
 
 /// Benchmark runner that measures function execution time
 pub struct BenchRunner {
+    /// The timer value stored by `BenchRunner`.
     timer: Timer,
 }
 
@@ -242,16 +243,37 @@ pub fn black_box_i32(value: i32) -> i32 {
 }
 
 @noinline
+/// Hides u32 for the module.
+///
+/// # Parameters
+/// * `value` - The `u32` value used as value.
+///
+/// # Returns
+/// The resulting `u32` value.
 pub fn black_box_u32(value: u32) -> u32 {
     return value
 }
 
 @noinline
+/// Hides bool for the module.
+///
+/// # Parameters
+/// * `value` - The `bool` value used as value.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn black_box_bool(value: bool) -> bool {
     return value
 }
 
 @noinline
+/// Hides ptr for the module.
+///
+/// # Parameters
+/// * `value` - The `*u8` value used as value.
+///
+/// # Returns
+/// The resulting `*u8` value.
 pub fn black_box_ptr(value: *u8) -> *u8 {
     return value
 }

@@ -41,6 +41,10 @@ impl From<TimerError> for ExecutorError {
 }
 
 impl ExecutorError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             ExecutorError::NoSignal => return "Failed to allocate signal",

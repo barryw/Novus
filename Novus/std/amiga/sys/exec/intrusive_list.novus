@@ -40,6 +40,7 @@ from amiga::raw::exec import AddHead, AddTail, Remove, RemHead, RemTail, Insert,
 /// - A node is not added to multiple lists simultaneously
 /// - Nodes are removed before being freed
 pub struct IntrusiveList<T> {
+    /// The list value stored by `IntrusiveList`.
     list: MinList,
 }
 
@@ -263,6 +264,7 @@ pub fn init_min_node(node: *MinNode) {
 /// Higher priority values are closer to the head of the list.
 /// Nodes with equal priority maintain FIFO order.
 pub struct PriorityList<T> {
+    /// The list value stored by `PriorityList`.
     list: List,
 }
 

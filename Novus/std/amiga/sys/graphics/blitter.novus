@@ -148,6 +148,10 @@ pub enum BlitterError {
 }
 
 impl BlitterError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             BlitterError::NotChipRam => return "Pointer is not in chip RAM",
@@ -213,6 +217,7 @@ pub enum BlitOp {
 /// This guard calls WaitBlit() before releasing the blitter to ensure all
 /// operations complete before ownership is transferred back to the system.
 pub struct BlitterGuard {
+    /// The acquired value stored by `BlitterGuard`.
     acquired: bool,
 }
 

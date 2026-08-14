@@ -43,6 +43,7 @@ extern fn fixed16_div(a: i16, b: i16) -> i16
 /// The most common fixed-point format for Amiga development.
 /// Uses a 32-bit integer where the lower 16 bits are the fractional part.
 pub struct Fixed32 {
+    /// The raw value stored by `Fixed32`.
     raw: i32,
 }
 
@@ -310,6 +311,7 @@ impl Fixed32 {
 /// Smaller range but uses 16-bit operations which can be faster.
 /// Good for normalized values, color components, etc.
 pub struct Fixed16 {
+    /// The raw value stored by `Fixed16`.
     raw: i16,
 }
 

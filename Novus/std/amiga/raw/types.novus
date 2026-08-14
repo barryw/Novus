@@ -40,10 +40,6 @@ pub type BPTR = i32
 // Constants
 // ============================================================================
 
-pub const TRUE: i16 = 1
-pub const FALSE: i16 = 0
-pub const NULL: u32 = 0
-
 // Memory allocation flags - import from amiga::raw::structs (source of truth)
 
 // ============================================================================

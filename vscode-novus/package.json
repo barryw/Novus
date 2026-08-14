@@ -11,7 +11,11 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:novus"
+    "onLanguage:novus",
+    "onLanguage:toml",
+    "workspaceContains:**/project.toml",
+    "workspaceContains:**/workspace.toml",
+    "workspaceContains:**/novus.toml"
   ],
   "main": "./out/extension.js",
   "contributes": {

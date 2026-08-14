@@ -234,6 +234,13 @@ public class LibraryGenerator
             if (function.Attributes?.Has(KnownAttributes.LibClose) == true) { _closeHook = function; continue; }
             if (function.Attributes?.Has(KnownAttributes.LibExpunge) == true) { _expungeHook = function; continue; }
 
+            var explicitlyExported = function.Attributes?.Has(
+                _isResource ? KnownAttributes.ResourceFunc : KnownAttributes.LibFunc) == true;
+            var libraryMethod = function.Name.StartsWith(structName + "_", StringComparison.Ordinal) ||
+                                function.Name.StartsWith(structName + "::", StringComparison.Ordinal);
+            if (!explicitlyExported && !libraryMethod)
+                continue;
+
             if (_isResource && (function.Parameters.Count == 0 ||
                 function.Parameters[0].Type is not IrPointerType pointer ||
                 pointer.PointeeType is not IrStructType state ||
@@ -445,6 +452,8 @@ public class LibraryGenerator
                 : $"uint{intType.SizeInBytes * 8}_t",
             IrBoolType => "bool",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
+            IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",
+            IrMutReferenceType refType => $"{GetCType(refType.PointeeType)}*",
             IrStructType structType => structType.StructName,
             _ => throw new InvalidOperationException($"Cannot generate C type for unsupported IR type: {type.GetType().Name}")
         };
@@ -544,6 +553,26 @@ public class LibraryGenerator
         sb.AppendLine("extern void __novus_ffi_cleanup(void);");
         sb.AppendLine($"__entry BPTR LibExpunge(struct {structName}* base);");
         sb.AppendLine();
+
+        foreach (var function in _libraryFunctions.Where(HasStateReceiver))
+        {
+            var returnType = GetCType(function.Function.ReturnType);
+            var originalParameters = string.Join(", ", function.Function.Parameters.Select(parameter =>
+                $"{GetCType(parameter.Type)} {parameter.Name}"));
+            var clientParameters = GetClientParameters(function);
+            var thunkParameters = string.Concat(clientParameters.Select(parameter =>
+                $", {GetCType(parameter.Type)} {parameter.Name}"));
+            var arguments = string.Concat(clientParameters.Select(parameter => $", {parameter.Name}"));
+            sb.AppendLine($"extern {returnType} {function.CName}({originalParameters});");
+            sb.AppendLine($"__entry {returnType} {function.CName}_LibraryThunk(struct {structName}* base{thunkParameters}) {{");
+            sb.Append("    ");
+            if (function.Function.ReturnType is not IrVoidType)
+                sb.Append("return ");
+            sb.AppendLine($"{function.CName}(&base->state{arguments});");
+            sb.AppendLine("}");
+        }
+        if (_libraryFunctions.Any(HasStateReceiver))
+            sb.AppendLine();
 
         sb.AppendLine("// ============================================================================");
         sb.AppendLine("// Lifecycle Functions");
@@ -937,11 +966,11 @@ public class LibraryGenerator
     private void GenerateUserFunctionWrapper(StringBuilder sb, LibraryFunction func)
     {
         var wrapperName = $"_{func.CName}_Wrapper";
-        var cFuncName = $"_{func.CName}";
+        var targetName = HasStateReceiver(func) ? $"_{func.CName}_LibraryThunk" : $"_{func.CName}";
 
         sb.AppendLine($"; Wrapper for {func.CName}");
         sb.AppendLine($"        XDEF    {wrapperName}");
-        sb.AppendLine($"        XREF    {cFuncName}");
+        sb.AppendLine($"        XREF    {targetName}");
         sb.AppendLine($"        XREF    _{_libraryStruct!.StructName}_IncrementCallCount");
         sb.AppendLine($"{wrapperName}:");
 
@@ -958,12 +987,16 @@ public class LibraryGenerator
         // Amiga library ABI uses: D0, D1, D2, D3 for integer/data parameters
         //                         A0, A1, A2, A3 for pointer/address parameters
         // Parameters are pushed right-to-left for C calling convention
-        var parameters = func.Function.Parameters;
+        var parameters = GetClientParameters(func);
 
         if (parameters is [])
         {
             // No parameters - just call the function directly
-            sb.AppendLine($"        jsr     {cFuncName}");
+            if (HasStateReceiver(func))
+                sb.AppendLine("        move.l  a6,-(sp)");
+            sb.AppendLine($"        jsr     {targetName}");
+            if (HasStateReceiver(func))
+                sb.AppendLine("        addq.l  #4,sp");
         }
         else
         {
@@ -1012,10 +1045,12 @@ public class LibraryGenerator
                 sb.AppendLine($"        move.l  {reg},-(sp)");
             }
 
-            sb.AppendLine($"        jsr     {cFuncName}");
+            if (HasStateReceiver(func))
+                sb.AppendLine("        move.l  a6,-(sp)");
+            sb.AppendLine($"        jsr     {targetName}");
 
             // Clean up stack (4 bytes per parameter)
-            int stackCleanup = parameters.Count * 4;
+            int stackCleanup = (parameters.Count + (HasStateReceiver(func) ? 1 : 0)) * 4;
             if (stackCleanup <= 8)
                 sb.AppendLine($"        addq.l  #{stackCleanup},sp");
             else
@@ -1031,7 +1066,35 @@ public class LibraryGenerator
     /// </summary>
     private bool IsPointerType(IrType type)
     {
-        return type is IrPointerType;
+        return type is IrPointerType or IrReferenceType or IrMutReferenceType;
+    }
+
+    private bool HasStateReceiver(LibraryFunction function)
+    {
+        if (_libraryStruct == null || function.Function.Parameters.Count == 0)
+            return false;
+
+        var pointee = function.Function.Parameters[0].Type switch
+        {
+            IrPointerType pointer => pointer.PointeeType,
+            IrReferenceType reference => reference.PointeeType,
+            IrMutReferenceType reference => reference.PointeeType,
+            _ => null
+        };
+        return pointee is IrStructType state && state.StructName == _libraryStruct.StructName;
+    }
+
+    private List<IrParameter> GetClientParameters(LibraryFunction function) =>
+        (HasStateReceiver(function)
+            ? function.Function.Parameters.Skip(1)
+            : function.Function.Parameters).ToList();
+
+    private string GetClientFunctionName(LibraryFunction function)
+    {
+        var methodPrefix = _libraryStruct!.StructName + "_";
+        return function.Name.StartsWith(methodPrefix, StringComparison.Ordinal)
+            ? function.Name[methodPrefix.Length..]
+            : function.Name.Contains("::") ? function.Name.Split("::")[^1] : function.Name;
     }
 
     /// <summary>
@@ -1061,24 +1124,8 @@ public class LibraryGenerator
         sb.AppendLine("#include <exec/libraries.h>");
         sb.AppendLine();
 
-        // Library base structure
-        sb.AppendLine("/* Library base structure */");
-        sb.AppendLine($"struct {structName} {{");
-        sb.AppendLine("    struct Library lib;");
-
-        // Always add call_count field for automatic tracking (reserved field)
-        sb.AppendLine("    ULONG __call_count;  /* Auto-generated: total library function calls */");
-
-        // Add custom fields (skip call_count if user defined it - we use __call_count instead)
-        foreach (var field in _libraryStruct.Fields)
-        {
-            if (field.Name == "call_count")
-                continue;  // Skip user-defined call_count - we provide it automatically
-
-            var cType = GetCType(field.Type);
-            sb.AppendLine($"    {cType} {field.Name};");
-        }
-        sb.AppendLine("};");
+        // The compiler owns this layout; clients only need the pointer type.
+        sb.AppendLine($"struct {structName};");
         sb.AppendLine();
 
         // Library base pointer (auto-opened by linker stub)
@@ -1097,7 +1144,7 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var returnType = GetCType(func.Function.ReturnType);
-                var parameters = _isResource ? func.Function.Parameters.Skip(1) : func.Function.Parameters;
+                var parameters = GetClientParameters(func);
                 var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
 
@@ -1117,7 +1164,7 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var returnType = GetCType(func.Function.ReturnType);
-                var parameters = _isResource ? func.Function.Parameters.Skip(1) : func.Function.Parameters;
+                var parameters = GetClientParameters(func);
                 var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
 
@@ -1148,112 +1195,57 @@ public class LibraryGenerator
 
         var sb = new StringBuilder();
         var libName = GetLibraryName();
-        var moduleName = _libraryStruct.StructName.ToLower();
+        var errorName = $"{_libraryStruct.StructName}Error";
 
-        sb.AppendLine("//");
-        sb.AppendLine($"// {libName} - Novus FFI Binding");
-        sb.AppendLine("// Generated by Novus compiler");
-        sb.AppendLine($"// Version: {GetLibraryVersion()}.{GetLibraryRevision()}");
-        sb.AppendLine("//");
+        sb.AppendLine($"// Library: {libName}");
+        sb.AppendLine($"// Base: _{_libraryStruct.StructName}Base");
+        sb.AppendLine($"// Safe generated client for {libName} {GetLibraryVersion()}.{GetLibraryRevision()}");
+        sb.AppendLine("// The linked dependency stub owns the library lease for the process lifetime.");
+        sb.AppendLine("from std::core import Error, Result");
         sb.AppendLine();
-        sb.AppendLine("from amiga::raw::exec import Library, OpenLibrary, CloseLibrary");
+        sb.AppendLine($"pub enum {errorName} {{ Unavailable }}");
+        sb.AppendLine($"impl Error for {errorName} {{");
+        sb.AppendLine("    fn message(&self) -> *u8 { return \"Required library is not installed\" }");
+        sb.AppendLine("}");
         sb.AppendLine();
-
-        // Library base type
-        sb.AppendLine("// Library base structure");
-        sb.AppendLine($"pub struct {_libraryStruct.StructName}Base {{");
-        sb.AppendLine("    lib_node: Library,");
-
-        // Add custom fields with Novus types
-        foreach (var field in _libraryStruct.Fields)
+        sb.AppendLine($"extern fn is_{_libraryStruct.StructName}_available() -> bool");
+        foreach (var func in _libraryFunctions.Where(function => !function.IsLifecycleFunction))
         {
-            var novusType = GetNovusType(field.Type);
-            sb.AppendLine($"    {field.Name}: {novusType},");
-        }
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        // Library handle
-        sb.AppendLine("// Global library base (initialized via open_library)");
-        sb.AppendLine($"static mut {_libraryStruct.StructName}_BASE: *{_libraryStruct.StructName}Base = 0 as *{_libraryStruct.StructName}Base;");
-        sb.AppendLine();
-
-        // Open library function
-        sb.AppendLine("// Open the library");
-        sb.AppendLine($"pub fn open_{moduleName}(version: u32) -> bool {{");
-        sb.AppendLine($"    unsafe {{");
-        sb.AppendLine($"        {_libraryStruct.StructName}_BASE = OpenLibrary(\"{libName}\", version) as *{_libraryStruct.StructName}Base;");
-        sb.AppendLine($"        return {_libraryStruct.StructName}_BASE != 0 as *{_libraryStruct.StructName}Base;");
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        // Close library function
-        sb.AppendLine("// Close the library");
-        sb.AppendLine($"pub fn close_{moduleName}() {{");
-        sb.AppendLine("    unsafe {");
-        sb.AppendLine($"        if {_libraryStruct.StructName}_BASE != 0 as *{_libraryStruct.StructName}Base {{");
-        sb.AppendLine($"            CloseLibrary({_libraryStruct.StructName}_BASE as *Library);");
-        sb.AppendLine($"            {_libraryStruct.StructName}_BASE = 0 as *{_libraryStruct.StructName}Base;");
-        sb.AppendLine("        }");
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-        sb.AppendLine();
-
-        // FFI function declarations
-        sb.AppendLine("// Library functions (FFI declarations)");
-        foreach (var func in _libraryFunctions)
-        {
-            if (!func.IsLifecycleFunction)
-            {
-                var returnType = GetNovusType(func.Function.ReturnType);
-                var offset = Math.Abs(func.VectorOffset);
-                var cleanName = func.Function.Name.Replace("::", "_");
-
-                sb.AppendLine($"#[link_name = \"@{offset}\"]");
-                sb.Append($"extern fn {cleanName}_ffi(base: *{_libraryStruct.StructName}Base");
-
-                foreach (var param in func.Function.Parameters)
-                {
-                    sb.Append($", {param.Name}: {GetNovusType(param.Type)}");
-                }
-
-                sb.AppendLine($") -> {returnType};");
-                sb.AppendLine();
-            }
+            var parameters = GetClientParameters(func);
+            var parameterList = string.Join(", ", parameters.Select(parameter =>
+                $"{parameter.Name}: {GetNovusType(parameter.Type)}"));
+            var returnSuffix = func.Function.ReturnType is IrVoidType
+                ? ""
+                : $" -> {GetNovusType(func.Function.ReturnType)}";
+            sb.AppendLine($"extern fn call_{_libraryStruct.StructName}_{GetClientFunctionName(func)}({parameterList}){returnSuffix}");
         }
         sb.AppendLine();
+        sb.AppendLine($"pub fn available() -> bool {{ return is_{_libraryStruct.StructName}_available() }}");
+        sb.AppendLine();
 
-        // Safe wrapper functions
-        sb.AppendLine("// Safe wrapper functions");
-        foreach (var func in _libraryFunctions)
+        foreach (var func in _libraryFunctions.Where(function => !function.IsLifecycleFunction))
         {
-            if (!func.IsLifecycleFunction)
+            var parameters = GetClientParameters(func);
+            var parameterList = string.Join(", ", parameters.Select(parameter =>
+                $"{parameter.Name}: {GetNovusType(parameter.Type)}"));
+            var arguments = string.Join(", ", parameters.Select(parameter => parameter.Name));
+            var returnType = func.Function.ReturnType is IrVoidType
+                ? "()"
+                : GetNovusType(func.Function.ReturnType);
+            var clientName = GetClientFunctionName(func);
+            sb.AppendLine($"pub fn {clientName}({parameterList}) -> Result<{returnType}, {errorName}> {{");
+            sb.AppendLine($"    return Result::Err({errorName}::Unavailable) unless available()");
+            if (func.Function.ReturnType is IrVoidType)
             {
-                var returnType = GetNovusType(func.Function.ReturnType);
-                var cleanName = func.Function.Name.Replace("::", "_");
-
-                sb.Append($"pub fn {cleanName}(");
-
-                var paramList = string.Join(", ", func.Function.Parameters.Select(p =>
-                    $"{p.Name}: {GetNovusType(p.Type)}"));
-
-                sb.Append(paramList);
-                sb.AppendLine($") -> {returnType} {{");
-                sb.AppendLine("    unsafe {");
-
-                sb.Append($"        return {cleanName}_ffi({_libraryStruct.StructName}_BASE");
-
-                foreach (var param in func.Function.Parameters)
-                {
-                    sb.Append($", {param.Name}");
-                }
-
-                sb.AppendLine(");");
-                sb.AppendLine("    }");
-                sb.AppendLine("}");
-                sb.AppendLine();
+                sb.AppendLine($"    call_{_libraryStruct.StructName}_{clientName}({arguments})");
+                sb.AppendLine("    return Result::Ok(())");
             }
+            else
+            {
+                sb.AppendLine($"    return Result::Ok(call_{_libraryStruct.StructName}_{clientName}({arguments}))");
+            }
+            sb.AppendLine("}");
+            sb.AppendLine();
         }
 
         return sb.ToString();
@@ -1281,7 +1273,7 @@ public class LibraryGenerator
             if (!func.IsLifecycleFunction)
             {
                 var funcName = func.CName;
-                var parameters = _isResource ? func.Function.Parameters.Skip(1).ToList() : func.Function.Parameters;
+                var parameters = GetClientParameters(func);
 
                 // Build parameter list
                 var paramNames = string.Join(",", parameters.Select(p => p.Name));
@@ -1410,23 +1402,17 @@ public class LibraryGenerator
         var baseName = $"_{_libraryStruct.StructName}Base";
 
         sb.AppendLine($"; Auto-generated client call stubs for {libName}");
-        sb.AppendLine("; These allow Novus programs to call library functions");
+        sb.AppendLine("; The companion library stub owns the optional library lease");
         sb.AppendLine();
         sb.AppendLine("        SECTION CODE");
         sb.AppendLine();
-        sb.AppendLine("; Open library (called before first use)");
-        sb.AppendLine("OpenLib:");
+        sb.AppendLine($"        XREF    {baseName}");
+        sb.AppendLine($"        XDEF    _is_{_libraryStruct.StructName}_available");
+        sb.AppendLine($"_is_{_libraryStruct.StructName}_available:");
+        sb.AppendLine("        moveq   #0,d0");
         sb.AppendLine($"        tst.l   {baseName}.l");
-        sb.AppendLine("        bne.s   .already_open");
-        sb.AppendLine();
-        sb.AppendLine("        movem.l d0-d1/a0-a1/a6,-(sp)");
-        sb.AppendLine("        move.l  4.w,a6                  ; ExecBase");
-        sb.AppendLine("        lea     LibName,a1              ; Library name");
-        sb.AppendLine($"        moveq   #{GetLibraryVersion()},d0           ; Min version");
-        sb.AppendLine("        jsr     -552(a6)                ; OpenLibrary");
-        sb.AppendLine($"        move.l  d0,{baseName}.l         ; Store with absolute addressing");
-        sb.AppendLine("        movem.l (sp)+,d0-d1/a0-a1/a6");
-        sb.AppendLine(".already_open:");
+        sb.AppendLine("        sne     d0");
+        sb.AppendLine("        and.l   #1,d0");
         sb.AppendLine("        rts");
         sb.AppendLine();
 
@@ -1434,8 +1420,7 @@ public class LibraryGenerator
         // Only skip Open, Close, Expunge, Reserved (true lifecycle functions)
         foreach (var func in _libraryFunctions.Where(f => !f.IsLifecycleFunction))
         {
-            // Strip namespace prefix if present (e.g., "GreetingLibrary::Add" -> "Add")
-            var funcName = func.Name.Contains("::") ? func.Name.Split("::")[^1] : func.Name;
+            var funcName = GetClientFunctionName(func);
             var callName = $"_call_{_libraryStruct.StructName}_{funcName}";
             var returnType = func.Function.ReturnType;
             var isStructReturn = returnType is IrStructType;
@@ -1443,7 +1428,6 @@ public class LibraryGenerator
             sb.AppendLine($"; {func.Name}");
             sb.AppendLine($"        XDEF    {callName}");
             sb.AppendLine($"{callName}:");
-            sb.AppendLine("        jsr     OpenLib");
             sb.AppendLine($"        tst.l   {baseName}.l             ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
@@ -1453,10 +1437,10 @@ public class LibraryGenerator
                 sb.AppendLine("        move.l  4(sp),a0                 ; A0 = result pointer passed by VBCC");
             }
             // Load parameters into registers for simple functions
-            else if (func.Function.Parameters.Count > 0)
+            else if (GetClientParameters(func).Count > 0)
             {
                 var stackOffset = 4;
-                for (int i = 0; i < func.Function.Parameters.Count && i < 2; i++)
+                for (int i = 0; i < GetClientParameters(func).Count && i < 2; i++)
                 {
                     var reg = i == 0 ? "d0" : "d1";
                     sb.AppendLine($"        move.l  {stackOffset}(sp),{reg}       ; Parameter {i + 1}");
@@ -1502,7 +1486,6 @@ public class LibraryGenerator
             sb.AppendLine($"; {autoFunc.Name} (auto-generated)");
             sb.AppendLine($"        XDEF    _call_{_libraryStruct.StructName}_{autoFunc.Name}");
             sb.AppendLine($"_call_{_libraryStruct.StructName}_{autoFunc.Name}:");
-            sb.AppendLine("        jsr     OpenLib");
             sb.AppendLine($"        tst.l   {baseName}.l             ; Check if library opened");
             sb.AppendLine("        beq.s   .fail");
 
@@ -1537,17 +1520,6 @@ public class LibraryGenerator
             autoGenOffset -= 6;  // Next function offset
         }
 
-        // Data section
-        sb.AppendLine("        SECTION DATA");
-        sb.AppendLine();
-        sb.AppendLine("        EVEN");
-        sb.AppendLine($"{baseName}:");
-        sb.AppendLine("        dc.l    0");
-        sb.AppendLine();
-        sb.AppendLine("LibName:");
-        sb.AppendLine($"        dc.b    '{libName}',0");
-        sb.AppendLine("        EVEN");
-        sb.AppendLine();
         sb.AppendLine("        END");
 
         return sb.ToString();
@@ -1758,6 +1730,8 @@ struct {structName} {{
             IrBoolType => "bool",
             IrVoidType => "()",
             IrPointerType pt => $"*{GetNovusType(pt.PointeeType)}",
+            IrReferenceType reference => $"&{GetNovusType(reference.PointeeType)}",
+            IrMutReferenceType reference => $"&var {GetNovusType(reference.PointeeType)}",
             IrStructType st => st.Name,
             _ => "i32"
         };

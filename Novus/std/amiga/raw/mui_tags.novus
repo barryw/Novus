@@ -628,7 +628,4 @@ pub const MUIA_Popasl_StartHook: u32 = $8042b703
 pub const MUIA_Popasl_StopHook: u32 = $8042d8d2
 pub const MUIA_Popasl_Type: u32 = $8042df3d
 
-// ASL requester types for PopAsl
-pub const ASL_FileRequest: u32 = 0
-pub const ASL_FontRequest: u32 = 1
-pub const ASL_ScreenModeRequest: u32 = 2
+// ASL requester types for PopAsl live in amiga::raw::consts.

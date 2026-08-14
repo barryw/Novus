@@ -15,7 +15,7 @@ public static class FfiRuntimeGenerator
             .OrderBy(m => m.ModuleName == "dos" ? 0 : m.ModuleName == "intuition" ? 1 : 2)
             .ThenBy(m => m.ModuleName, StringComparer.Ordinal)
             .ToList();
-        var useCompactLibraryTable = bindings.Count >= 3 &&
+        var useCompactLibraryTable = bindings.Count >= 3 && bindings.All(binding => !binding.Optional) &&
                                      bindings.All(binding => binding.Kind == FfiModuleKind.Library);
         var sb = new StringBuilder();
 
@@ -112,7 +112,9 @@ public static class FfiRuntimeGenerator
                         sb.AppendLine("\tmove.l\td1,d0");
                         sb.AppendLine("\tjsr\t-552(a6)\t; OpenLibrary");
                         sb.AppendLine($"\tmove.l\td0,{binding.BaseSymbol}");
-                        sb.AppendLine("\tbeq\t.__novus_ffi_failed");
+                        sb.AppendLine(binding.Optional
+                            ? $"\tbeq.s\t.__novus_{binding.ModuleName}_ready"
+                            : "\tbeq\t.__novus_ffi_failed");
                         break;
                     case FfiModuleKind.Resource:
                         sb.AppendLine("\tmove.l\ta0,a1");

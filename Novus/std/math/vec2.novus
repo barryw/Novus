@@ -75,7 +75,9 @@ fn unpack_vec2i(packed: i64) -> Vec2i {
 /// 2D vector with Fixed32 components
 /// Ideal for sub-pixel positioning, velocity, and smooth movement
 pub struct Vec2 {
+    /// The x value stored by `Vec2`.
     x: Fixed32,
+    /// The y value stored by `Vec2`.
     y: Fixed32,
 }
 
@@ -348,7 +350,9 @@ impl Vec2 {
 /// 2D vector with i32 components
 /// Use for pixel-perfect operations, tile coordinates, etc.
 pub struct Vec2i {
+    /// The x value stored by `Vec2i`.
     x: i32,
+    /// The y value stored by `Vec2i`.
     y: i32,
 }
 

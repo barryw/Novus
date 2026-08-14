@@ -33,6 +33,7 @@ from amiga::raw::consts import FPF_ROMFONT, FPF_DISKFONT, FPF_PROPORTIONAL, FPF_
 ///   // ... use font for drawing ...
 ///   // font automatically closed here
 pub struct FontHandle {
+    /// The font value stored by `FontHandle`.
     font: *TextFont,
 }
 
@@ -301,13 +302,21 @@ impl Drop for FontHandle {
 ///
 /// Use FontMetrics::from_font() to get this from an opened font.
 pub struct FontMetrics {
+    /// The height value stored by `FontMetrics`.
     height: u16,        // Y size in pixels
+    /// The width value stored by `FontMetrics`.
     width: u16,         // Nominal X size (for fixed-width)
+    /// The baseline value stored by `FontMetrics`.
     baseline: u16,      // Distance from top to baseline
+    /// The bold smear value stored by `FontMetrics`.
     bold_smear: u16,    // Bold smear amount
+    /// The low char value stored by `FontMetrics`.
     low_char: u8,       // Lowest character code
+    /// The high char value stored by `FontMetrics`.
     high_char: u8,      // Highest character code
+    /// The style value stored by `FontMetrics`.
     style: u8,          // Actual style flags
+    /// The flags value stored by `FontMetrics`.
     flags: u8,          // Font flags
 }
 

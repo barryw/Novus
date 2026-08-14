@@ -15,9 +15,36 @@ public class NdkSurfaceTests
             .Select(CanonicalModule)
             .Append("consts")
             .Append("structs")
+            .Append("amiga_lib")
+            .Append("hdwrench")
             .Distinct(StringComparer.Ordinal)
             .OrderBy(name => name, StringComparer.Ordinal)
             .Select(name => new object[] { name });
+    }
+
+    [Fact]
+    public void CriticalDeviceAndResourceAbiIsPresent()
+    {
+        var raw = Path.Combine(ProjectRoot, "Novus", "std", "amiga", "raw");
+        var structs = File.ReadAllText(Path.Combine(raw, "structs.novus"));
+        var constants = File.ReadAllText(Path.Combine(raw, "consts.novus"));
+
+        foreach (var type in new[] { "IOClipReq", "IOExtPar", "IOExtSer", "GamePortTrigger", "narrator_rb", "SCSICmd", "IOExtTD", "FileSysResource" })
+            Assert.Contains($"pub struct {type}", structs);
+        foreach (var constant in new[] { "CBD_CHANGEHOOK", "CD_READ", "CMD_READ", "CMD_WRITE", "GPD_READEVENT", "HD_SCSICMD", "PRD_QUERY", "SDCMD_QUERY", "TD_GETGEOMETRY" })
+            Assert.Contains($"pub const {constant}:", constants);
+    }
+
+    [Fact]
+    public void HdwrenchMetadataRequiresV44WithoutIncludingItsBrokenPrototypeHeader()
+    {
+        var raw = Path.Combine(ProjectRoot, "Novus", "std", "amiga", "raw");
+        var metadata = Assert.IsType<Compilation.FfiModuleMetadata>(
+            Compilation.FfiModuleMetadata.TryRead(Path.Combine(raw, "hdwrench.novus")));
+
+        Assert.Equal(44, metadata.MinimumVersion);
+        Assert.Equal(44, metadata.FunctionVersions["QueryCapacity"]);
+        Assert.DoesNotContain("libraries/hdwrench.h", metadata.Headers);
     }
 
     private static string CanonicalModule(string module) => module switch

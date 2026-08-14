@@ -6,6 +6,7 @@ from std::string::format import Display, Formatter
 from std::string import Str
 
 // CPU types detected via ExecBase->AttnFlags
+/// Identifies the possible system cpu values.
 pub enum SystemCPU {
     M68020,    // Minimum supported CPU
     M68030,    // 68030 (25-50 MHz on accelerators)
@@ -14,6 +15,7 @@ pub enum SystemCPU {
 }
 
 // FPU types detected via ExecBase->AttnFlags
+/// Identifies the possible system fpu values.
 pub enum SystemFPU {
     None,      // No FPU present
     M68881,    // 68881 coprocessor (separate chip)
@@ -23,6 +25,7 @@ pub enum SystemFPU {
 }
 
 // Chipset types detected via GfxBase->ChipRevBits0
+/// Identifies the possible system chipset values.
 pub enum SystemChipset {
     OCS,       // Original Chip Set (A500/A1000/A2000)
     ECS,       // Enhanced Chip Set (A500+/A600/A2000)
@@ -30,9 +33,13 @@ pub enum SystemChipset {
 }
 
 // Memory information structure
+/// Represents a memory info value.
 pub struct MemoryInfo {
+    /// The total value stored by `MemoryInfo`.
     total: u32,    // Total bytes
+    /// The free value stored by `MemoryInfo`.
     free: u32,     // Free bytes
+    /// The largest value stored by `MemoryInfo`.
     largest: u32,  // Largest free block
 }
 
@@ -47,18 +54,34 @@ extern fn __get_chip_ram_largest() -> u32
 
 // Global accessors for hardware detection
 // These call the runtime's extern detection functions
+/// Returns the cpu value associated with the module.
+///
+/// # Returns
+/// The resulting `SystemCPU` value.
 pub fn CPU() -> SystemCPU {
     return __detect_cpu()
 }
 
+/// Returns the fpu value associated with the module.
+///
+/// # Returns
+/// The resulting `SystemFPU` value.
 pub fn FPU() -> SystemFPU {
     return __detect_fpu()
 }
 
+/// Returns the chipset value associated with the module.
+///
+/// # Returns
+/// The resulting `SystemChipset` value.
 pub fn CHIPSET() -> SystemChipset {
     return __detect_chipset()
 }
 
+/// Returns the chip ram value associated with the module.
+///
+/// # Returns
+/// The resulting `MemoryInfo` value.
 pub fn CHIP_RAM() -> MemoryInfo {
     let total = __get_chip_ram_total()
     let free = __get_chip_ram_free()

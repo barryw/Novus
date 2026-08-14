@@ -6,14 +6,23 @@ from std::memory import MutSlice, Slice
 from amiga::sys::device import DeviceError, DeviceRequest
 from amiga::sys::device::block import SystemBlockGeometry
 
+/// Reports failures from block device operations.
 pub enum BlockDeviceError {
+    /// Indicates open failed.
     OpenFailed,
+    /// Indicates command failed.
     CommandFailed,
+    /// Indicates invalid geometry.
     InvalidGeometry,
+    /// Indicates invalid buffer length.
     InvalidBufferLength,
+    /// Indicates out of range.
     OutOfRange,
+    /// Indicates offset too large.
     OffsetTooLarge,
+    /// Indicates short read.
     ShortRead(usize),
+    /// Indicates short write.
     ShortWrite(usize),
 }
 
@@ -27,6 +36,10 @@ impl From<DeviceError> for BlockDeviceError {
 }
 
 impl BlockDeviceError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             BlockDeviceError::OpenFailed => return "Could not open block device",
@@ -47,28 +60,65 @@ impl Error for BlockDeviceError {
     }
 }
 
+/// Represents a block geometry value.
 pub struct BlockGeometry {
+    /// The block bytes value stored by `BlockGeometry`.
     block_bytes: u32,
+    /// The total blocks value stored by `BlockGeometry`.
     total_blocks: u32,
+    /// The cylinders value stored by `BlockGeometry`.
     cylinders: u32,
+    /// The heads value stored by `BlockGeometry`.
     heads: u32,
+    /// The blocks per track value stored by `BlockGeometry`.
     blocks_per_track: u32,
 }
 
 impl BlockGeometry {
+    /// Returns the block bytes value associated with `BlockGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn block_bytes(&self) -> u32 { return self.block_bytes }
+    /// Returns the total blocks value associated with `BlockGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn total_blocks(&self) -> u32 { return self.total_blocks }
+    /// Returns the cylinders value associated with `BlockGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn cylinders(&self) -> u32 { return self.cylinders }
+    /// Returns the heads value associated with `BlockGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn heads(&self) -> u32 { return self.heads }
+    /// Returns the blocks per track value associated with `BlockGeometry`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn blocks_per_track(&self) -> u32 { return self.blocks_per_track }
 }
 
+/// Represents a block device value.
 pub struct BlockDevice {
+    /// The request value stored by `BlockDevice`.
     request: DeviceRequest,
+    /// The geometry value stored by `BlockDevice`.
     geometry: BlockGeometry,
 }
 
 impl BlockDevice {
+    /// Opens `BlockDevice`.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    /// * `unit` - The unit value.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open(name: Str, unit: u32) -> Result<BlockDevice, BlockDeviceError> {
         let request = DeviceRequest::open_block(name, unit)?
         var device = BlockDevice {
@@ -90,6 +140,10 @@ impl BlockDevice {
         return &self.request
     }
 
+    /// Returns the geometry value associated with `BlockDevice`.
+    ///
+    /// # Returns
+    /// A shared borrow of `BlockGeometry` tied to the receiver.
     pub fn geometry(&self) -> &BlockGeometry {
         return &self.geometry
     }

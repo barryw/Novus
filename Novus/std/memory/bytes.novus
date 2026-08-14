@@ -3,10 +3,15 @@ from std::memory::slice import Slice, MutSlice
 
 /// Error returned when a byte access would cross the buffer boundary.
 pub enum ByteError {
+    /// Indicates out of bounds.
     OutOfBounds,
 }
 
 impl ByteError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return "Byte access is out of bounds"
     }
@@ -24,18 +29,37 @@ fn contains(len: usize, offset: usize, width: usize) -> bool {
 
 /// Bounds-checked, offset-based access to encoded bytes.
 pub struct ByteReader {
+    /// The bytes value stored by `ByteReader`.
     bytes: Slice<u8>,
 }
 
 impl ByteReader {
+    /// Creates a new `ByteReader` value.
+    ///
+    /// # Parameters
+    /// * `bytes` - The bytes used by the operation.
+    ///
+    /// # Returns
+    /// The resulting `ByteReader` value.
     pub fn new(bytes: Slice<u8>) -> ByteReader {
         return ByteReader { bytes: bytes }
     }
 
+    /// Returns the number of items currently stored by `ByteReader`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.bytes.len()
     }
 
+    /// Reads u8 for `ByteReader`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn read_u8(&self, offset: usize) -> Result<u8, ByteError> {
         match self.bytes.get(offset) {
             Option::Some(value) => return Result::Ok(*value),
@@ -43,6 +67,13 @@ impl ByteReader {
         }
     }
 
+    /// Reads be u16 for `ByteReader`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn read_be_u16(&self, offset: usize) -> Result<u16, ByteError> {
         if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
@@ -52,6 +83,13 @@ impl ByteReader {
         return Result::Ok(((u16)high << 8) | (u16)low)
     }
 
+    /// Reads be u32 for `ByteReader`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn read_be_u32(&self, offset: usize) -> Result<u32, ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
@@ -66,18 +104,41 @@ impl ByteReader {
 
 /// Bounds-checked, offset-based mutation of encoded bytes.
 pub struct ByteWriter {
+    /// The bytes value stored by `ByteWriter`.
     bytes: MutSlice<u8>,
 }
 
 impl ByteWriter {
+    /// Creates a new `ByteWriter` value.
+    ///
+    /// # Parameters
+    /// * `bytes` - The bytes; ownership transfers to this call.
+    ///
+    /// # Returns
+    /// The resulting `ByteWriter` value.
+    ///
+    /// # Ownership
+    /// Arguments marked `consuming` transfer ownership to this call.
     pub fn new(consuming bytes: MutSlice<u8>) -> ByteWriter {
         return ByteWriter { bytes: bytes }
     }
 
+    /// Returns the number of items currently stored by `ByteWriter`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn len(&self) -> usize {
         return self.bytes.len()
     }
 
+    /// Writes u8 for `ByteWriter`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    /// * `value` - The `u8` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn write_u8(&var self, offset: usize, value: u8) -> Result<(), ByteError> {
         match self.bytes.set(offset, value) {
             Result::Ok(_) => return Result::Ok(()),
@@ -85,6 +146,13 @@ impl ByteWriter {
         }
     }
 
+    /// Reads be u32 for `ByteWriter`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn read_be_u32(&self, offset: usize) -> Result<u32, ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
@@ -96,6 +164,14 @@ impl ByteWriter {
         return Result::Ok(((u32)b0 << 24) | ((u32)b1 << 16) | ((u32)b2 << 8) | (u32)b3)
     }
 
+    /// Writes be u16 for `ByteWriter`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    /// * `value` - The `u16` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn write_be_u16(&var self, offset: usize, value: u16) -> Result<(), ByteError> {
         if !contains(self.bytes.len(), offset, 2) {
             return Result::Err(ByteError::OutOfBounds)
@@ -107,6 +183,14 @@ impl ByteWriter {
         return Result::Ok(())
     }
 
+    /// Writes be u32 for `ByteWriter`.
+    ///
+    /// # Parameters
+    /// * `offset` - The zero-based offset.
+    /// * `value` - The `u32` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn write_be_u32(&var self, offset: usize, value: u32) -> Result<(), ByteError> {
         if !contains(self.bytes.len(), offset, 4) {
             return Result::Err(ByteError::OutOfBounds)
@@ -120,6 +204,13 @@ impl ByteWriter {
         return Result::Ok(())
     }
 
+    /// Fills the selected region of `ByteWriter`.
+    ///
+    /// # Parameters
+    /// * `value` - The `u8` value used as value.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn fill(&var self, value: u8) -> Result<(), ByteError> {
         var offset: usize = 0
         while offset < self.bytes.len() {

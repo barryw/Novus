@@ -39,7 +39,7 @@
         <None Include="std/**/*.novus">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
-        <None Include="std/amiga/raw/ndk_headers.txt">
+        <None Include="std/amiga/raw/ndk_headers.txt;std/amiga/raw/ndk_versions.txt;std/amiga/raw/ndk_unsupported_macros.txt;std/amiga/raw/ndk_coverage.json">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Include="std/amiga/raw/ndk_types.h">
@@ -49,6 +49,9 @@
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Include="stubs/**/*.s">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Include="ndk_overlays/**/*.sfd">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Include="runtime/**/*.c">

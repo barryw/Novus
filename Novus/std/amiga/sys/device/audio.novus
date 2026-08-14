@@ -132,9 +132,13 @@ impl ChannelPreference {
 /// // Channels released when handle drops
 /// ```
 pub struct AudioDeviceHandle {
+    /// The io audio value stored by `AudioDeviceHandle`.
     io_audio: *IOAudio,      // IORequest for audio commands
+    /// The port value stored by `AudioDeviceHandle`.
     port: *MsgPort,          // Message port for I/O completion
+    /// The allocated channels value stored by `AudioDeviceHandle`.
     allocated_channels: u8,  // Bitmask of channels we own
+    /// The alloc key value stored by `AudioDeviceHandle`.
     alloc_key: i16,          // Allocation key from audio.device
 }
 

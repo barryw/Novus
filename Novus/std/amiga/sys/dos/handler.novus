@@ -5,8 +5,11 @@ from amiga::raw::dos import WaitPkt, ReplyPkt
 from amiga::raw::structs import DosPacket
 from amiga::raw::consts import ERROR_ACTION_NOT_KNOWN
 
+/// Represents a packet value.
 pub struct Packet {
+    /// The raw value stored by `Packet`.
     raw: *DosPacket,
+    /// The replied value stored by `Packet`.
     replied: bool,
 }
 
@@ -16,10 +19,21 @@ impl Packet {
         return Packet { raw: WaitPkt(), replied: false }
     }
 
+    /// Returns the action value associated with `Packet`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn action(&self) -> i32 {
         return unsafe { (*self.raw).dp_Type }
     }
 
+    /// Computes arg for `Packet` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `index` - The zero-based index.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn arg(&self, index: u8) -> i32 {
         return unsafe {
             match index {

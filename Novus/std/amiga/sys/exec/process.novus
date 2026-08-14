@@ -57,33 +57,51 @@ from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR
 /// ```
 pub struct ProcessBuilder {
     // Required
+    /// The entry value stored by `ProcessBuilder`.
     entry: u32,           // Entry point function pointer
 
     // Optional settings with defaults
+    /// The name value stored by `ProcessBuilder`.
     name: *u8,            // Process name (null = unnamed)
+    /// The stack size value stored by `ProcessBuilder`.
     stack_size: u32,      // Stack size (0 = default 4096)
+    /// The priority value stored by `ProcessBuilder`.
     priority: i8,         // Task priority (0 = default)
 
     // I/O handles (0 = inherit)
+    /// The input value stored by `ProcessBuilder`.
     input: i32,
+    /// The output value stored by `ProcessBuilder`.
     output: i32,
+    /// The error value stored by `ProcessBuilder`.
     error: i32,
+    /// The close input value stored by `ProcessBuilder`.
     close_input: bool,
+    /// The close output value stored by `ProcessBuilder`.
     close_output: bool,
+    /// The close error value stored by `ProcessBuilder`.
     close_error: bool,
 
     // Directory locks (0 = inherit)
+    /// The current dir value stored by `ProcessBuilder`.
     current_dir: i32,
+    /// The home dir value stored by `ProcessBuilder`.
     home_dir: i32,
 
     // Misc options
+    /// The copy vars value stored by `ProcessBuilder`.
     copy_vars: bool,      // Copy local shell variables
+    /// The is cli value stored by `ProcessBuilder`.
     is_cli: bool,         // Create as CLI process
+    /// The window ptr value stored by `ProcessBuilder`.
     window_ptr: *u8,      // Window for requesters
+    /// The console task value stored by `ProcessBuilder`.
     console_task: *u8,    // Console handler
 
     // Exit notification
+    /// The notify on death value stored by `ProcessBuilder`.
     notify_on_death: bool,
+    /// The synchronous value stored by `ProcessBuilder`.
     synchronous: bool,
 }
 

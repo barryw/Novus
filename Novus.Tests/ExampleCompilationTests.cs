@@ -28,6 +28,8 @@ public abstract class ExampleCompilationTestBase
         "ffi_cia_resource_smoke",   // Caller-supplied A6 resource ABI
         "ffi_device_resource_smoke",// Device/resource lifecycle generation
         "ffi_mathffp_smoke",        // Generated floating-point FFI
+        "ffi_ndk_completeness_smoke", // Static amiga.lib plus FD-only hdwrench.library
+        "ffi_ndk_contract_layout_smoke", // Device/resource aggregate layouts reach VBCC
         "idiomatic_gui",            // Tier-1 facade must link at non-DCE optimization levels
         "mem_block_demo",           // Memory management
         "operator_overload_test",   // Trait-based operators

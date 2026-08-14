@@ -158,7 +158,7 @@ public static class BuildCommand
         }
 
         // Create build context for tracking outputs
-        var buildContext = new BuildContext(workspaceDir, projects);
+        var buildContext = new BuildContext(projects);
 
         // Check if a specific project was requested via the --project option
         if (!string.IsNullOrEmpty(buildOptions.ProjectPath) &&
@@ -221,7 +221,7 @@ public static class BuildCommand
                 var typeSubdir = (project.Package.Type ?? "cli").ToLowerInvariant() switch
                 {
                     "library" => "libs",
-                    "device" => "libs",
+                    "device" => "devs",
                     "handler" => "libs",
                     "test" => "tests",
                     _ => "bins"
@@ -318,13 +318,11 @@ public static class BuildCommand
     /// </summary>
     private class BuildContext
     {
-        private readonly string _workspaceDir;
         private readonly Dictionary<string, NovusProject> _projects;
         private readonly Dictionary<string, string> _buildOutputs = new();
 
-        public BuildContext(string workspaceDir, Dictionary<string, NovusProject> projects)
+        public BuildContext(Dictionary<string, NovusProject> projects)
         {
-            _workspaceDir = workspaceDir;
             _projects = projects;
         }
 
@@ -333,40 +331,21 @@ public static class BuildCommand
             _buildOutputs[projectName] = outputDir;
         }
 
-        public List<string> GetDependencyLibraryPaths(NovusProject project)
+        public List<Compilation.FfiModuleMetadata> GetDependencyFfiModules(NovusProject project)
         {
-            var libraryPaths = new List<string>();
-
+            var modules = new List<Compilation.FfiModuleMetadata>();
             foreach (var (depName, depInfo) in project.Dependencies)
             {
-                // Only handle workspace-internal dependencies
-                if (depInfo.Path != null && _projects.ContainsKey(depName))
-                {
-                    if (_buildOutputs.TryGetValue(depName, out var outputDir))
-                    {
-                        var depProject = _projects[depName];
+                if (depInfo.Path == null || !_projects.TryGetValue(depName, out var dependency) ||
+                    dependency.Package.Type != "library" || !_buildOutputs.TryGetValue(depName, out var outputDir))
+                    continue;
 
-                        // For library projects, add path to the library artifact
-                        if (depProject.Package.Type == "library")
-                        {
-                            // The outputDir for libraries already points to the .library directory
-                            // (e.g., "/path/to/project/greeting.library")
-                            var libName = depProject.Package.Name;
-                            var libFile = Path.Combine(outputDir, $"{libName}_lib.o");
-
-                            Console.WriteLine($"  DEBUG: Checking for lib stub: {libFile}");
-                            Console.WriteLine($"  DEBUG: File exists: {File.Exists(libFile)}");
-
-                            if (File.Exists(libFile))
-                            {
-                                libraryPaths.Add(libFile);
-                            }
-                        }
-                    }
-                }
+                var binding = Path.Combine(outputDir, $"{dependency.Package.Name}.novus");
+                var metadata = Compilation.FfiModuleMetadata.TryRead(binding);
+                if (metadata != null)
+                    modules.Add(metadata with { Optional = true });
             }
-
-            return libraryPaths;
+            return modules;
         }
 
         /// <summary>
@@ -390,7 +369,6 @@ public static class BuildCommand
                         {
                             var libName = depProject.Package.Name;
                             var callStubsFile = Path.Combine(outputDir, $"{libName}_calls.s");
-                            var libStubFile = Path.Combine(outputDir, $"{libName}_lib.s");
 
                             if (File.Exists(callStubsFile))
                             {
@@ -398,11 +376,6 @@ public static class BuildCommand
                                 asmFiles.Add(callStubsFile);
                             }
 
-                            if (File.Exists(libStubFile))
-                            {
-                                Console.WriteLine($"  ✓ Found library stub: {Path.GetFileName(libStubFile)}");
-                                asmFiles.Add(libStubFile);
-                            }
                         }
                     }
                 }
@@ -538,7 +511,7 @@ public static class BuildCommand
             var typeSubdir = projectType.ToLowerInvariant() switch
             {
                 "library" => "libs",
-                "device" => "libs",
+                "device" => "devs",
                 "handler" => "libs",
                 "test" => "tests",
                 _ => "bins"
@@ -610,13 +583,10 @@ public static class BuildCommand
 
         // Get dependency library paths if in workspace build
         var additionalLibraries = new List<string>();
+        var additionalFfiModules = new List<Compilation.FfiModuleMetadata>();
         if (buildContext != null)
         {
-            additionalLibraries = buildContext.GetDependencyLibraryPaths(project);
-            if (additionalLibraries.Count > 0)
-            {
-                Console.WriteLine($"  Dependencies: {string.Join(", ", additionalLibraries.Select(Path.GetFileName))}");
-            }
+            additionalFfiModules = buildContext.GetDependencyFfiModules(project);
         }
 
         // Find any additional C files in the project directory (for library wrappers, etc.)
@@ -734,6 +704,7 @@ public static class BuildCommand
             AdditionalLibraries = additionalLibraries,
             AdditionalCFiles = additionalCFiles,
             AdditionalAsmFiles = additionalAsmFiles,
+            AdditionalFfiModules = additionalFfiModules,
             // Forward safety level flags from BuildOptions (critical fix - was missing!)
             SafetyLevelOption = buildOptions.SafetyLevel,
             UnsafeMode = buildOptions.UnsafeMode,

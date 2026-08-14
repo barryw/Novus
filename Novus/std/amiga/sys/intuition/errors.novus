@@ -1,18 +1,36 @@
 from std::core import Error
 
+/// Reports failures from intuition operations.
 pub enum IntuitionError {
+    /// Indicates window open failed.
     WindowOpenFailed,
+    /// Indicates screen open failed.
     ScreenOpenFailed,
+    /// Indicates gadget create failed.
     GadgetCreateFailed,
+    /// Indicates menu create failed.
     MenuCreateFailed,
+    /// Indicates invalid window.
     InvalidWindow,
+    /// Indicates invalid screen.
     InvalidScreen,
+    /// Indicates no idcmp.
     NoIDCMP,
+    /// Indicates bad display mode.
     BadDisplayMode,
+    /// Indicates modify idcmpfailed.
     ModifyIDCMPFailed,
+    /// Indicates library open failed.
     LibraryOpenFailed,
 }
 
+/// Computes intuition error to code for the module from the supplied inputs.
+///
+/// # Parameters
+/// * `error` - The `IntuitionError` value used as error.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn intuition_error_to_code(error: IntuitionError) -> i32 {
     return match error {
         IntuitionError::WindowOpenFailed => -200,
@@ -29,6 +47,10 @@ pub fn intuition_error_to_code(error: IntuitionError) -> i32 {
 }
 
 impl IntuitionError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             IntuitionError::WindowOpenFailed => "Failed to open window",

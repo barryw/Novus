@@ -5,4 +5,3 @@ type = "workbench"
 entry = "src/main.novus"
 
 [build]
-output_name = "{{PROJECT_NAME}}-traditional"

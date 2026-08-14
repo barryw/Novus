@@ -38,19 +38,31 @@ from std::memory::slice import Slice, MutSlice
 /// }
 /// ```
 pub struct MemoryBlock {
+    /// The ptr value stored by `MemoryBlock`.
     ptr: *u8,
+    /// The size value stored by `MemoryBlock`.
     size: usize,
 }
 
 /// Named ownership state returned when an allocation crosses into a lower
 /// layer. The pair cannot be accidentally reordered like a tuple.
 pub struct RawMemoryBlock {
+    /// The ptr value stored by `RawMemoryBlock`.
     ptr: *u8
+    /// The size value stored by `RawMemoryBlock`.
     size: usize
 }
 
 impl RawMemoryBlock {
+    /// Returns the ptr value associated with `RawMemoryBlock`.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn ptr(&self) -> *u8 { return self.ptr }
+    /// Returns the size value associated with `RawMemoryBlock`.
+    ///
+    /// # Returns
+    /// The resulting `usize` value.
     pub fn size(&self) -> usize { return self.size }
 }
 
@@ -253,7 +265,9 @@ impl Drop for MemoryBlock {
 /// }
 /// ```
 pub struct Allocation<T> {
+    /// The block value stored by `Allocation`.
     block: MemoryBlock,
+    /// The count value stored by `Allocation`.
     count: usize,
 }
 
@@ -379,6 +393,7 @@ impl<T> Drop for Allocation<T> {
 /// }
 /// ```
 pub struct Box<T> {
+    /// The alloc value stored by `Box`.
     alloc: Allocation<T>,
 }
 

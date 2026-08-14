@@ -8,7 +8,9 @@ from amiga::sys::graphics::shapes import Ellipse as SystemEllipse, Point as Syst
 
 /// Failures from application-level drawing operations.
 pub enum ApplicationGraphicsError {
+    /// Indicates that the requested service is unavailable.
     Unavailable,
+    /// Indicates outside bounds.
     OutsideBounds,
 }
 
@@ -31,14 +33,23 @@ impl Error for ApplicationGraphicsError {
 }
 
 // Plain graphics values have no ownership or native handles to leak.
+/// Aliases `DrawMode` to `SystemDrawMode`.
 pub type DrawMode = SystemDrawMode
+/// Aliases `Color` to `SystemColor`.
 pub type Color = SystemColor
+/// Aliases `FillPattern` to `SystemFillPattern`.
 pub type FillPattern = SystemFillPattern
+/// Aliases `LinePattern` to `SystemLinePattern`.
 pub type LinePattern = SystemLinePattern
+/// Aliases `Ellipse` to `SystemEllipse`.
 pub type Ellipse = SystemEllipse
+/// Aliases `Point` to `SystemPoint`.
 pub type Point = SystemPoint
+/// Aliases `Rect` to `SystemRect`.
 pub type Rect = SystemRect
+/// Aliases `Size` to `SystemSize`.
 pub type Size = SystemSize
+/// Aliases `GraphicsError` to `ApplicationGraphicsError`.
 pub type GraphicsError = ApplicationGraphicsError
 
 /// Bounded application drawing tied to its owning window.
@@ -46,33 +57,120 @@ pub struct ApplicationCanvas { system: SystemCanvas }
 
 impl ApplicationCanvas {
     @borrows(window)
+    /// Computes for window for `ApplicationCanvas` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `window` - The `&ApplicationWindow` value used as window.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn for_window(window: &ApplicationWindow) -> Result<ApplicationCanvas, GraphicsError> {
         let system = SystemCanvas::from_rastport(window.system().rastport())?
         return Result::Ok(ApplicationCanvas { system: system })
     }
 
+    /// Applies pen to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `color` - The `u8` value used as color.
     pub fn pen(&self, color: u8) { self.system.pen(color) }
+    /// Applies background pen to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `color` - The `u8` value used as color.
     pub fn background_pen(&self, color: u8) { self.system.bg_pen(color) }
+    /// Applies pens to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `foreground` - The `u8` value used as foreground.
+    /// * `background` - The `u8` value used as background.
     pub fn pens(&self, foreground: u8, background: u8) { self.system.pens(foreground, background) }
+    /// Applies mode to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `mode` - The mode value.
     pub fn mode(&self, mode: DrawMode) { self.system.mode(mode) }
+    /// Moves `ApplicationCanvas` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn move_to(&self, x: i16, y: i16) { self.system.move_to(x, y) }
+    /// Applies line to to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
     pub fn line_to(&self, x: i16, y: i16) { self.system.line_to(x, y) }
+    /// Applies line to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `x1` - The `i16` value used as x1.
+    /// * `y1` - The `i16` value used as y1.
+    /// * `x2` - The `i16` value used as x2.
+    /// * `y2` - The `i16` value used as y2.
     pub fn line(&self, x1: i16, y1: i16, x2: i16, y2: i16) { self.system.line(x1, y1, x2, y2) }
+    /// Fills the selected region of `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `rect` - The `&Rect` value used as rect.
     pub fn fill(&self, rect: &Rect) { self.system.rect_fill(rect) }
+    /// Applies outline to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `rect` - The `&Rect` value used as rect.
     pub fn outline(&self, rect: &Rect) { self.system.rect_outline(rect) }
+    /// Applies erase to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `rect` - The `&Rect` value used as rect.
     pub fn erase(&self, rect: &Rect) { self.system.rect_erase(rect) }
+    /// Applies circle to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    /// * `radius` - The `i16` value used as radius.
     pub fn circle(&self, x: i16, y: i16, radius: i16) { self.system.circle(x, y, radius) }
+    /// Applies ellipse to `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `shape` - The `&Ellipse` value used as shape.
     pub fn ellipse(&self, shape: &Ellipse) { self.system.ellipse_shape(shape) }
+    /// Computes pixel for `ApplicationCanvas` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn pixel(&self, x: i16, y: i16) -> Result<(), GraphicsError> {
         self.system.pixel(x, y)?
         return Result::Ok(())
     }
+    /// Computes pixel at for `ApplicationCanvas` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `point` - The `&Point` value used as point.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn pixel_at(&self, point: &Point) -> Result<(), GraphicsError> {
         self.system.pixel_at(point)?
         return Result::Ok(())
     }
+    /// Removes all items from `ApplicationCanvas`.
+    ///
+    /// # Parameters
+    /// * `color` - The `u8` value used as color.
     pub fn clear(&self, color: u8) { self.system.clear(color) }
+    /// Borrows the system-level value wrapped by `ApplicationCanvas`.
+    ///
+    /// # Returns
+    /// A shared borrow of `SystemCanvas` tied to the receiver.
     pub fn system(&self) -> &SystemCanvas { return &self.system }
 }
 
+/// Aliases `Canvas` to `ApplicationCanvas`.
 pub type Canvas = ApplicationCanvas

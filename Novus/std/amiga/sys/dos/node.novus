@@ -10,16 +10,27 @@ from amiga::sys::dos::filesystem import FileSystemHandler
 from amiga::sys::dos::segment import LoadedSegment
 from std::string import BStr, Str
 
+/// Reports failures from dos node operations.
 pub enum DosNodeError {
+    /// Indicates invalid name.
     InvalidName,
+    /// Indicates invalid environment.
     InvalidEnvironment,
+    /// Indicates allocation failed.
     AllocationFailed,
+    /// Indicates missing handler.
     MissingHandler,
+    /// Indicates invalid handler.
     InvalidHandler,
+    /// Indicates registration failed.
     RegistrationFailed,
 }
 
 impl DosNodeError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             DosNodeError::InvalidName => "Invalid DOS node name",
@@ -38,21 +49,45 @@ impl Error for DosNodeError {
 
 /// Typed form of the standard 17-longword partition environment.
 pub struct DosEnvironment {
+    /// The block bytes value stored by `DosEnvironment`.
     block_bytes: u32
+    /// The surfaces value stored by `DosEnvironment`.
     surfaces: u32
+    /// The blocks per track value stored by `DosEnvironment`.
     blocks_per_track: u32
+    /// The reserved blocks value stored by `DosEnvironment`.
     reserved_blocks: u32
+    /// The low cylinder value stored by `DosEnvironment`.
     low_cylinder: u32
+    /// The high cylinder value stored by `DosEnvironment`.
     high_cylinder: u32
+    /// The buffers value stored by `DosEnvironment`.
     buffers: u32
+    /// The buffer memory value stored by `DosEnvironment`.
     buffer_memory: u32
+    /// The max transfer value stored by `DosEnvironment`.
     max_transfer: u32
+    /// The mask value stored by `DosEnvironment`.
     mask: u32
+    /// The boot priority value stored by `DosEnvironment`.
     boot_priority: i32
+    /// The dos type value stored by `DosEnvironment`.
     dos_type: u32
 }
 
 impl DosEnvironment {
+    /// Computes partition for `DosEnvironment` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `block_bytes` - The `u32` value used as block bytes.
+    /// * `surfaces` - The `u32` value used as surfaces.
+    /// * `blocks_per_track` - The `u32` value used as blocks per track.
+    /// * `low_cylinder` - The `u32` value used as low cylinder.
+    /// * `high_cylinder` - The `u32` value used as high cylinder.
+    /// * `dos_type` - The `u32` value used as dos type.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn partition(
         block_bytes: u32,
         surfaces: u32,
@@ -83,6 +118,14 @@ impl DosEnvironment {
         })
     }
 
+    /// Sets buffers for `DosEnvironment`.
+    ///
+    /// # Parameters
+    /// * `count` - The requested count.
+    /// * `memory_type` - The `u32` value used as memory type.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_buffers(&var self, count: u32, memory_type: u32) -> Result<(), DosNodeError> {
         if count == 0 { return Result::Err(DosNodeError::InvalidEnvironment) }
         self.buffers = count
@@ -90,6 +133,14 @@ impl DosEnvironment {
         return Result::Ok(())
     }
 
+    /// Sets transfer for `DosEnvironment`.
+    ///
+    /// # Parameters
+    /// * `maximum` - The `u32` value used as maximum.
+    /// * `mask` - The `u32` value used as mask.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_transfer(&var self, maximum: u32, mask: u32) -> Result<(), DosNodeError> {
         if maximum == 0 || mask == 0 {
             return Result::Err(DosNodeError::InvalidEnvironment)
@@ -99,18 +150,66 @@ impl DosEnvironment {
         return Result::Ok(())
     }
 
+    /// Sets reserved blocks for `DosEnvironment`.
+    ///
+    /// # Parameters
+    /// * `count` - The requested count.
     pub fn set_reserved_blocks(&var self, count: u32) { self.reserved_blocks = count }
+    /// Sets boot priority for `DosEnvironment`.
+    ///
+    /// # Parameters
+    /// * `priority` - The priority value.
     pub fn set_boot_priority(&var self, priority: i32) { self.boot_priority = priority }
 
+    /// Returns the block bytes value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn block_bytes(&self) -> u32 { return self.block_bytes }
+    /// Returns the surfaces value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn surfaces(&self) -> u32 { return self.surfaces }
+    /// Returns the blocks per track value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn blocks_per_track(&self) -> u32 { return self.blocks_per_track }
+    /// Returns the low cylinder value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn low_cylinder(&self) -> u32 { return self.low_cylinder }
+    /// Returns the high cylinder value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn high_cylinder(&self) -> u32 { return self.high_cylinder }
+    /// Returns the dos type value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn dos_type(&self) -> u32 { return self.dos_type }
+    /// Returns the buffers value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn buffers(&self) -> u32 { return self.buffers }
+    /// Returns the max transfer value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn max_transfer(&self) -> u32 { return self.max_transfer }
+    /// Returns the mask value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn mask(&self) -> u32 { return self.mask }
+    /// Returns the boot priority value associated with `DosEnvironment`.
+    ///
+    /// # Returns
+    /// The resulting `i32` value.
     pub fn boot_priority(&self) -> i32 { return self.boot_priority }
 
     @unsafe
@@ -137,13 +236,27 @@ impl DosEnvironment {
 
 /// Owns every allocation referenced by a DeviceNode until registration succeeds.
 pub struct DosNodeDraft {
+    /// The storage value stored by `DosNodeDraft`.
     storage: MemoryBlock
+    /// The name value stored by `DosNodeDraft`.
     name: BStr
+    /// The driver value stored by `DosNodeDraft`.
     driver: BStr
 }
 
 impl DosNodeDraft {
     @suppress("W0002", "Validated aligned allocations are encoded as Amiga BPTRs")
+    /// Creates a new `DosNodeDraft` value.
+    ///
+    /// # Parameters
+    /// * `name` - The name to use.
+    /// * `driver` - The `Str` value used as driver.
+    /// * `unit` - The unit value.
+    /// * `open_flags` - The `u32` value used as open flags.
+    /// * `environment` - The `&DosEnvironment` value used as environment.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn new(
         name: Str,
         driver: Str,
@@ -200,14 +313,45 @@ impl DosNodeDraft {
         })
     }
 
+    /// Returns the name value associated with `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn name(&self) -> Str { return self.name.as_str() }
+    /// Returns the driver value associated with `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn driver(&self) -> Str { return self.driver.as_str() }
+    /// Returns the unit value associated with `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn unit(&self) -> u32 { return unsafe { (*self.startup()).fssm_Unit } }
+    /// Opens flags for `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn open_flags(&self) -> u32 { return unsafe { (*self.startup()).fssm_Flags } }
+    /// Returns the dos type value associated with `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn dos_type(&self) -> u32 { return unsafe { (*self.envec()).de_DosType } }
+    /// Returns the block bytes value associated with `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn block_bytes(&self) -> u32 { return unsafe { (*self.envec()).de_SizeBlock * 4 } }
 
     @suppress("W0002", "Validated filesystem metadata is copied into NDK ABI fields")
+    /// Binds registered for `DosNodeDraft`.
+    ///
+    /// # Parameters
+    /// * `handler` - The `&FileSystemHandler` value used as handler.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn bind_registered(&var self, handler: &FileSystemHandler) -> Result<(), DosNodeError> {
         if !handler.segment().is_addressable() {
             return Result::Err(DosNodeError::InvalidHandler)
@@ -224,6 +368,10 @@ impl DosNodeDraft {
         return Result::Ok(())
     }
 
+    /// Returns whether handler for `DosNodeDraft`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn has_handler(&self) -> bool {
         return unsafe { (*self.as_raw()).dn_SegList != 0 }
     }
@@ -286,10 +434,15 @@ impl DosNodeDraft {
 
 /// Non-owning proof that DOS accepted and now retains a device node.
 pub struct RegisteredDosNode {
+    /// The node value stored by `RegisteredDosNode`.
     node: *DeviceNode
 }
 
 impl RegisteredDosNode {
+    /// Returns the raw representation wrapped by `RegisteredDosNode` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*DeviceNode` value.
     pub fn as_raw(&self) -> *DeviceNode { return self.node }
 }
 

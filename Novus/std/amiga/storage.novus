@@ -8,19 +8,28 @@ from amiga::sys::dos import DeviceProcess, DosDeviceList
 // Tier 1: safe block storage and owned device discovery for applications.
 pub use amiga::storage::block_device::*
 
+/// Defines `MAX_DEVICES`, the max devices value.
 pub const MAX_DEVICES: u32 = 32
 
+/// Reports failures from storage operations.
 pub enum StorageError {
+    /// Indicates device unavailable.
     DeviceUnavailable,
+    /// Indicates driver load failed.
     DriverLoadFailed,
+    /// Indicates discovery failed.
     DiscoveryFailed,
+    /// Indicates too many devices.
     TooManyDevices,
 }
 
 /// How AmigaDOS is currently using a block device.
 pub enum DeviceUse {
+    /// Indicates clear.
     Clear,
+    /// Indicates mounted.
     Mounted,
+    /// Indicates boot.
     Boot,
 }
 
@@ -37,6 +46,10 @@ impl From<ArrayVecError> for StorageError {
 }
 
 impl StorageError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match self {
             StorageError::DeviceUnavailable => "The storage device is unavailable",
@@ -53,10 +66,24 @@ impl From<DriverLoadError> for StorageError {
     }
 }
 
+/// Returns whether driver is loaded applies to the module.
+///
+/// # Parameters
+/// * `name` - The name to use.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn driver_is_loaded(name: Str) -> bool {
     return device_is_resident(name)
 }
 
+/// Loads driver for the module.
+///
+/// # Parameters
+/// * `path` - The path to use.
+///
+/// # Returns
+/// The requested value on success; the error value explains why the operation could not complete.
 pub fn load_driver(path: Str) -> Result<FixedCString<40>, StorageError> {
     return Result::Ok(load_device_driver(path)?)
 }
@@ -67,16 +94,36 @@ impl Error for StorageError {
 
 /// Owner-independent identity copied while the DOS list is locked.
 pub struct StorageDevice {
+    /// The driver value stored by `StorageDevice`.
     driver: FixedCString<60>,
+    /// The name value stored by `StorageDevice`.
     name: FixedString<32>,
+    /// The unit value stored by `StorageDevice`.
     unit: u32,
+    /// The flags value stored by `StorageDevice`.
     flags: u32,
 }
 
 impl StorageDevice {
+    /// Returns the driver value associated with `StorageDevice`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn driver(&self) -> Str { return self.driver.as_str() }
+    /// Returns the name value associated with `StorageDevice`.
+    ///
+    /// # Returns
+    /// The resulting `Str` value.
     pub fn name(&self) -> Str { return self.name.as_str() }
+    /// Returns the unit value associated with `StorageDevice`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn unit(&self) -> u32 { return self.unit }
+    /// Returns the flags value associated with `StorageDevice`.
+    ///
+    /// # Returns
+    /// The resulting `u32` value.
     pub fn flags(&self) -> u32 { return self.flags }
 }
 

@@ -1983,6 +1983,8 @@ extern pub fn GetBPen(rp: *RastPort) -> u32
 @library("graphics.library")
 extern pub fn GetDrMd(rp: *RastPort) -> u32
 @library("graphics.library")
+/// Returns the RastPort outline pen as an unsigned pen index.
+/// The RastPort is borrowed and is not modified.
 extern pub fn GetOutlinePen(rp: *RastPort) -> u32
 /// Set a series of color registers for this Viewport. (V39)
 ///

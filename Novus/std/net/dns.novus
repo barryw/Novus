@@ -188,7 +188,9 @@ pub fn get_local_hostname(buf: *u8, len: i32) -> Result<(), NetError> {
 
 /// Protocol information
 pub struct Protocol {
+    /// The name value stored by `Protocol`.
     name: *u8,
+    /// The number value stored by `Protocol`.
     number: i32,
 }
 
@@ -248,8 +250,11 @@ pub fn lookup_protocol_by_number(number: i32) -> Result<Protocol, NetError> {
 
 /// Service information
 pub struct Service {
+    /// The name value stored by `Service`.
     name: *u8,
+    /// The port value stored by `Service`.
     port: i32,
+    /// The protocol value stored by `Service`.
     protocol: *u8,
 }
 

@@ -1,0 +1,65 @@
+// Generated from SFD file by Novus SFD Parser
+// Library: hdwrench.library
+// Base: _HDWBase
+//
+// NOTE: Constants are in amiga::raw::consts
+// NOTE: Structs are in amiga::raw::structs
+
+from amiga::raw::structs import *
+
+// ============================================================================
+// Library Functions
+// ============================================================================
+
+@library("hdwrench.library")
+extern pub fn HDWOpenDevice(DevName: *i8, unit: u32) -> i16
+@library("hdwrench.library")
+extern pub fn HDWCloseDevice()
+@library("hdwrench.library")
+extern pub fn RawRead(bbk: *BootBlock, size: u16) -> u16
+@library("hdwrench.library")
+extern pub fn RawWrite(bb: *BootBlock) -> u16
+@library("hdwrench.library")
+extern pub fn WriteBlock(bb: *BootBlock) -> u16
+@library("hdwrench.library")
+extern pub fn ReadRDBs() -> u16
+@library("hdwrench.library")
+extern pub fn WriteRDBs() -> u16
+@library("hdwrench.library")
+extern pub fn QueryReady(errorcode: *i32) -> i16
+@library("hdwrench.library")
+extern pub fn QueryInquiry(inqbuf: *i8, errorcode: *i32) -> i16
+@library("hdwrench.library")
+extern pub fn QueryModeSense(page: i8, msbsize: i32, msbuf: *i8, errorcode: *i32) -> i16
+@library("hdwrench.library")
+extern pub fn QueryFindValid(ValidIDs: *ValidIDstruct, devicename: *i8, board: i32, types: u32, wide_scsi: i16, Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0)
+@library("hdwrench.library")
+extern pub fn QueryCapacity(totalblocks: *u32, blocksize: *u32) -> i16
+@library("hdwrench.library")
+extern pub fn ReadMountfile(unit: u32, filename: *i8, controller: *i8) -> u32
+@library("hdwrench.library")
+extern pub fn ReadRDBStructs(filename: *i8, unit: u32) -> u32
+@library("hdwrench.library")
+extern pub fn WriteMountfile(filename: *i8, ldir: *i8, unit: u32) -> u32
+@library("hdwrench.library")
+extern pub fn WriteRDBStructs(filename: *i8) -> u32
+@library("hdwrench.library")
+extern pub fn InMemMountfile(unit: u32, mfdata: *i8, controller: *i8) -> u32
+@library("hdwrench.library")
+extern pub fn InMemRDBStructs(rdbp: *i8, sizerdb: u32, unit: u32) -> u32
+@library("hdwrench.library")
+extern pub fn OutMemMountfile(mfp: *i8, sizew: *u32, sizeb: u32, unit: u32) -> u32
+@library("hdwrench.library")
+extern pub fn OutMemRDBStructs(rdbp: *i8, sizew: *u32, sizeb: u32) -> u32
+@library("hdwrench.library")
+extern pub fn FindDiskName(diskname: *i8) -> i16
+@library("hdwrench.library")
+extern pub fn FindControllerID(devname: *i8, selfid: *u32) -> i16
+@library("hdwrench.library")
+extern pub fn FindLastSector() -> u32
+@library("hdwrench.library")
+extern pub fn FindDefaults(Optimize: u16, Return: *DefaultsArray) -> u32
+@library("hdwrench.library")
+extern pub fn LowlevelFormat(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0) -> u32
+@library("hdwrench.library")
+extern pub fn VerifyDrive(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0) -> u32

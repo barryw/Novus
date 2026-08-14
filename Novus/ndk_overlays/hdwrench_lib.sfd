@@ -1,0 +1,38 @@
+* Typed SFD overlay for the NDK 3.9 FD-only hdwrench.library interface.
+* Authoritative ABI sources: Include/fd/hdwrench.fd,
+* Include/include_h/libraries/hdwrench.h, and hdwrench_pragmas.h.
+==base _HDWBase
+==basetype struct HDWLibrary *
+==libname hdwrench.library
+==bias 30
+==version 44
+==public
+==include <exec/types.h>
+==include <exec/libraries.h>
+==include <devices/hardblocks.h>
+BOOL HDWOpenDevice(char *DevName, ULONG unit) (a0,d0)
+VOID HDWCloseDevice() ()
+USHORT RawRead(struct BootBlock *bbk, USHORT size) (a0,d0)
+USHORT RawWrite(struct BootBlock *bb) (a0)
+USHORT WriteBlock(struct BootBlock *bb) (a0)
+USHORT ReadRDBs() ()
+USHORT WriteRDBs() ()
+BOOL QueryReady(int *errorcode) (a0)
+BOOL QueryInquiry(BYTE *inqbuf, int *errorcode) (a0,a1)
+BOOL QueryModeSense(BYTE page, int msbsize, BYTE *msbuf, int *errorcode) (d0,d1,a0,a1)
+VOID QueryFindValid(struct ValidIDstruct *ValidIDs, char *devicename, int board, ULONG types, BOOL wide_scsi, LONG (*Callback)(register __a0 struct HDWCallbackMsg *msg)) (a0,a1,d0,d1,d2,a2)
+BOOL QueryCapacity(ULONG *totalblocks, ULONG *blocksize) (a0,a1)
+ULONG ReadMountfile(ULONG unit, char *filename, char *controller) (d0,a0,a1)
+ULONG ReadRDBStructs(char *filename, ULONG unit) (a0,d0)
+ULONG WriteMountfile(char *filename, char *ldir, ULONG unit) (a0,a1,d0)
+ULONG WriteRDBStructs(char *filename) (a0)
+ULONG InMemMountfile(ULONG unit, char *mfdata, char *controller) (d0,a0,a1)
+ULONG InMemRDBStructs(char *rdbp, ULONG sizerdb, ULONG unit) (a0,d0,d1)
+ULONG OutMemMountfile(char *mfp, ULONG *sizew, ULONG sizeb, ULONG unit) (a0,a1,d0,d1)
+ULONG OutMemRDBStructs(char *rdbp, ULONG *sizew, ULONG sizeb) (a0,a1,d0)
+BOOL FindDiskName(char *diskname) (a0)
+BOOL FindControllerID(char *devname, ULONG *selfid) (a0,a1)
+ULONG FindLastSector() ()
+ULONG FindDefaults(USHORT Optimize, struct DefaultsArray *Return) (d0,a0)
+ULONG LowlevelFormat(LONG (*Callback)(register __a0 struct HDWCallbackMsg *msg)) (a0)
+ULONG VerifyDrive(LONG (*Callback)(register __a0 struct HDWCallbackMsg *msg)) (a0)

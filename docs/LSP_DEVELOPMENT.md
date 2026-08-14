@@ -32,7 +32,7 @@ Novus/
 
 1. **.NET 10.0 SDK**
    ```bash
-   dotnet --version  # Should be 9.0.x
+   dotnet --version  # Should be 10.0.x
    ```
 
 2. **Node.js 18+** and **npm**
@@ -274,35 +274,21 @@ After making changes, verify these scenarios:
   - Lists all errors
   - Clicking error jumps to location
 
-### Unit Testing (Future)
+### Automated testing
 
-We'll add unit tests using xUnit:
+Run the focused language-server tests and the repository source corpus:
 
 ```bash
-# Create test project
-dotnet new xunit -n Novus.LanguageServer.Tests
-
-# Add reference to language server
-cd Novus.LanguageServer.Tests
-dotnet add reference ../Novus.LanguageServer/Novus.LanguageServer.csproj
-
-# Run tests
-dotnet test
+dotnet test Novus.LanguageServer.Tests/Novus.LanguageServer.Tests.csproj
+dotnet test Novus.Tests/Novus.Tests.csproj \
+  --filter FullyQualifiedName~RepositoryCorpusTests
 ```
 
-**Test Coverage Targets**:
-- DocumentManager: Open, Update, Close operations
-- TextDocumentHandler: didOpen, didChange, didSave, didClose
-- Diagnostic conversion: Novus format → LSP format
-- Range validation: No negative line/column numbers
-
-### Integration Testing (Future)
-
-End-to-end tests that:
-1. Launch language server
-2. Send LSP messages (didOpen, didChange, etc.)
-3. Verify diagnostic responses
-4. Test with known-good and known-bad files
+The corpus gate parses every repository Novus source through the LSP parser,
+validates every TOML file, requires all project/workspace TOML files to be
+diagnostic-free, and semantically analyzes the hdpart application sources.
+The compiler and language server share the same CPU/FPU/chipset preprocessor
+environment.
 
 ## Common Issues and Solutions
 
@@ -321,7 +307,7 @@ End-to-end tests that:
 **Fix**:
 - Ensure `package.json` has correct `activationEvents`:
   ```json
-  "activationEvents": ["onLanguage:novus"]
+  "activationEvents": ["onLanguage:novus", "onLanguage:toml"]
   ```
 - Reload window
 

@@ -1,15 +1,26 @@
 from std::core import Error
 
+/// Reports failures from memory operations.
 pub enum MemoryError {
+    /// Indicates that memory allocation failed.
     OutOfMemory,
+    /// Indicates index out of bounds.
     IndexOutOfBounds,
+    /// Indicates length mismatch.
     LengthMismatch,
+    /// Indicates invalid address.
     InvalidAddress,
+    /// Indicates invalid capacity.
     InvalidCapacity,
+    /// Indicates capacity exceeded.
     CapacityExceeded,
 }
 
 impl MemoryError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         return match *self {
             MemoryError::OutOfMemory => "Memory allocation failed",

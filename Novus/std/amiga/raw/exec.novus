@@ -18,6 +18,13 @@ from amiga::raw::structs import StackSwapStruct
 // ============================================================================
 // Library Functions
 // ============================================================================
+/// Compatibility declaration for amiga.lib/BeginIO.
+///
+/// Starts an initialized device request asynchronously. The request and all
+/// referenced buffers must remain valid until WaitIO or GetMsg reports
+/// completion. New code may import the canonical declaration from
+/// `amiga::raw::amiga_lib`.
+extern pub fn BeginIO(io_req: *IORequest)
 /// Trap to a short supervisor mode function
 ///
 /// Allow a normal user-mode program to execute a short assembly language
@@ -984,21 +991,6 @@ extern pub fn DoIO(ioRequest: *IORequest) -> i8
 /// See also: DoIO, CheckIO, WaitIO, AbortIO
 @library("exec.library")
 extern pub fn SendIO(ioRequest: *IORequest)
-/// Start up an I/O process
-///
-/// This is a direct function call to the device. It is intended for more
-/// advanced programmers.
-///
-/// # Arguments
-///
-/// # Returns
-/// io_Error -- if the BeginIO succeded, then Error will be null. If the
-/// BeginIO failed, then the Error will be non-zero. I/O errors won't be
-/// reported until the io completes.
-///
-/// See also: devices/serial.h
-@library("exec.library")
-extern pub fn BeginIO(ioRequest: *IORequest)
 /// Get the status of an IORequest
 ///
 /// This function determines the current state of an I/O request and returns
@@ -1636,6 +1628,8 @@ extern pub fn RemMemHandler(memhand: *Interrupt)
 @library("exec.library")
 extern pub fn ObtainQuickVector(interruptCode: *u8) -> u32
 @library("exec.library")
+/// Initializes a MinList header to the empty-list sentinel layout expected by Exec.
+/// The caller owns `minlist` and must keep it valid while any nodes are linked.
 extern pub fn NewMinList(minlist: *MinList)
 /// Add node to the tree (V45)
 ///

@@ -8,36 +8,102 @@ from amiga::sys::intuition::dialog import confirm_with_buttons as system_confirm
 from amiga::sys::intuition::dialog import retry_dialog as system_retry
 from amiga::sys::intuition::dialog import save_dialog as system_save
 
+/// Aliases `Retry` to `RetryChoice`.
 pub type Retry = RetryChoice
 
+/// Displays an alert using the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
 pub fn alert(title: Str, message: Str) {
     system_alert(title.as_cstr(), message.as_cstr())
 }
 
+/// Applies alert with button to the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+/// * `button` - The `Str` value used as button.
 pub fn alert_with_button(title: Str, message: Str, button: Str) {
     system_alert_with_button(title.as_cstr(), message.as_cstr(), button.as_cstr())
 }
 
+/// Displays a confirmation request using the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn confirm(title: Str, message: Str) -> bool {
     return system_confirm(title.as_cstr(), message.as_cstr())
 }
 
+/// Returns whether confirm with buttons applies to the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+/// * `buttons` - The `Str` value used as buttons.
+///
+/// # Returns
+/// `true` when the stated condition holds; otherwise `false`.
 pub fn confirm_with_buttons(title: Str, message: Str, buttons: Str) -> bool {
     return system_confirm_with_buttons(title.as_cstr(), message.as_cstr(), buttons.as_cstr())
 }
 
+/// Displays a choice request using the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+/// * `buttons` - The `Str` value used as buttons.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn choice(title: Str, message: Str, buttons: Str) -> i32 {
     return system_choice(title.as_cstr(), message.as_cstr(), buttons.as_cstr())
 }
 
+/// Saves dialog for the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+///
+/// # Returns
+/// The resulting `i32` value.
 pub fn save_dialog(title: Str, message: Str) -> i32 {
     return system_save(title.as_cstr(), message.as_cstr())
 }
 
+/// Displays a retry-or-cancel request using the module.
+///
+/// # Parameters
+/// * `title` - The title to use.
+/// * `message` - The `Str` value used as message.
+///
+/// # Returns
+/// The resulting `Retry` value.
 pub fn retry(title: Str, message: Str) -> Retry {
     return system_retry(title.as_cstr(), message.as_cstr())
 }
 
+/// Applies error to the module.
+///
+/// # Parameters
+/// * `message` - The `Str` value used as message.
 pub fn error(message: Str) { alert("Error", message) }
+/// Applies warning to the module.
+///
+/// # Parameters
+/// * `message` - The `Str` value used as message.
 pub fn warning(message: Str) { alert("Warning", message) }
+/// Applies info to the module.
+///
+/// # Parameters
+/// * `message` - The `Str` value used as message.
 pub fn info(message: Str) { alert("Information", message) }

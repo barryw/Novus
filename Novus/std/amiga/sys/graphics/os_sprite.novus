@@ -37,11 +37,17 @@ from amiga::raw::graphics import GetSprite, FreeSprite, MoveSprite, ChangeSprite
 // Automatically frees sprite on drop (RAII)
 //
 // Uses the unified SpriteData type from amiga::sys::graphics::sprite
+/// Owns a os sprite handle and releases its resources when dropped.
 pub struct OsSpriteHandle {
+    /// The sprite num value stored by `OsSpriteHandle`.
     sprite_num: i16,              // Sprite number allocated by OS (-1 if none)
+    /// The simple sprite value stored by `OsSpriteHandle`.
     simple_sprite: SimpleSprite,  // OS SimpleSprite structure
+    /// The viewport value stored by `OsSpriteHandle`.
     viewport: *ViewPort,          // ViewPort this sprite is attached to
+    /// The is allocated value stored by `OsSpriteHandle`.
     is_allocated: bool,           // Track allocation state
+    /// The current data value stored by `OsSpriteHandle`.
     current_data: Option<*u16>,   // Current sprite data pointer
 }
 
@@ -53,6 +59,14 @@ impl OsSpriteHandle {
     // Example:
     //   let sprite = OsSpriteHandle::alloc(screen.viewport(), -1)?  // Any sprite
     //   let sprite0 = OsSpriteHandle::alloc(screen.viewport(), 0)?  // Prefer sprite 0
+    /// Allocates `OsSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `viewport` - The `*ViewPort` value used as viewport.
+    /// * `preference` - The `i16` value used as preference.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn alloc(viewport: *ViewPort, preference: i16) -> Result<OsSpriteHandle, GraphicsError> {
         if (u32)viewport == 0 {
             return Result::Err(GraphicsError::InvalidViewPort)
@@ -90,6 +104,15 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.show(&sprite_data, 100, 50)?
+    /// Makes `OsSpriteHandle` visible.
+    ///
+    /// # Parameters
+    /// * `sprite_data` - The `&SpriteData` value used as sprite data.
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn show(&var self, sprite_data: &SpriteData, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -127,6 +150,14 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.move_to(200, 100)?
+    /// Moves `OsSpriteHandle` to an absolute position.
+    ///
+    /// # Parameters
+    /// * `x` - The `i16` value used as x.
+    /// * `y` - The `i16` value used as y.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn move_to(&var self, x: i16, y: i16) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -151,6 +182,10 @@ impl OsSpriteHandle {
 
     // Hide sprite by moving it offscreen
     // More efficient than freeing and reallocating
+    /// Hides `OsSpriteHandle`.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn hide(&var self) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -171,6 +206,13 @@ impl OsSpriteHandle {
     //
     // Example:
     //   sprite.set_image(&frame2)?  // Animate to next frame
+    /// Sets image for `OsSpriteHandle`.
+    ///
+    /// # Parameters
+    /// * `sprite_data` - The `&SpriteData` value used as sprite data.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` on success; the error value explains why the operation could not complete.
     pub fn set_image(&var self, sprite_data: &SpriteData) -> Result<(), GraphicsError> {
         if !self.is_allocated {
             return Result::Err(GraphicsError::SpriteNotAllocated)
@@ -201,23 +243,36 @@ impl OsSpriteHandle {
     // Get allocated sprite number (0-7)
     // Returns the actual sprite number allocated by OS
     // (may differ from preference passed to alloc)
+    /// Returns the sprite num value associated with `OsSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `i16` value.
     pub fn sprite_num(&self) -> i16 {
         return self.sprite_num
     }
 
     // Get current position (ViewPort-relative)
     // Returns (x, y) coordinates
+    /// Returns the position value associated with `OsSpriteHandle`.
+    ///
+    /// # Returns
+    /// The resulting `(i16, i16)` value.
     pub fn position(&self) -> (i16, i16) {
         return ((i16)self.simple_sprite.x, (i16)self.simple_sprite.y)
     }
 
     // Check if sprite is allocated
+    /// Returns whether allocated for `OsSpriteHandle`.
+    ///
+    /// # Returns
+    /// `true` when the stated condition holds; otherwise `false`.
     pub fn is_allocated(&self) -> bool {
         return self.is_allocated
     }
 
     // Manually release sprite back to OS
     // Called automatically by Drop, but can be called early if needed
+    /// Releases the operating-system resource owned by `OsSpriteHandle`.
     pub fn release(&var self) {
         if self.is_allocated {
             // Hide sprite before freeing

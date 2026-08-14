@@ -1,142 +1,55 @@
-// {{PROJECT_NAME}}-example - Example program using {{PROJECT_NAME}}.device
-//
-// This demonstrates how to:
-//   - Open a device with OpenDevice()
-//   - Send commands using DoIO()
-//   - Close the device with CloseDevice()
-//   - Properly manage IOStdReq and MsgPort resources
+// Safe client for {{PROJECT_NAME}}.device.
+// DeviceRequest owns the reply port, I/O request, device lease, and pending I/O.
 
-from std::io::file import println, print
-from amiga::raw::exec import OpenDevice, CloseDevice, DoIO
-from amiga::raw::exec import SendIO, CheckIO, WaitIO, AbortIO
-from amiga::raw::exec import CreateMsgPort, DeleteMsgPort
-from amiga::raw::exec import CreateIORequest, DeleteIORequest
-from amiga::raw::structs import IORequest, IOStdReq, MsgPort
-from amiga::raw::consts import CMD_RESET
+from std::core import Result
+from std::io::file import println
+from amiga::sys::device import DeviceRequest, load_device_driver
 
-// Device command constants (match those in dev.novus)
-const NOVUS_CMD_STATUS: u16 = 9
-const NOVUS_CMD_CONFIG: u16 = 10
+const RESET: u16 = 1
+const STATUS: u16 = 9
+const CONFIGURE: u16 = 10
+const ASYNC_PING: u16 = 11
+const WAIT_FOR_ABORT: u16 = 12
 
 pub fn main() -> i32 {
-    println("{{PROJECT_NAME}}.device Example")
-    println("================================")
-    println("")
-
-    // Step 1: Create a message port for device replies
-    print("Creating message port... ")
-    let port = CreateMsgPort()
-    if (u32)port == 0 {
-        println("FAILED!")
-        return 1
-    }
-    println("OK")
-
-    // Step 2: Create an IOStdReq for communicating with the device
-    // IOStdReq is the standard I/O request with io_Data, io_Length, io_Actual
-    print("Creating IOStdReq... ")
-    let req = CreateIORequest(port, @sizeof(IOStdReq))
-    if (u32)req == 0 {
-        println("FAILED!")
-        DeleteMsgPort(port)
-        return 1
-    }
-    let ioReq = (*IOStdReq)req
-    let baseReq = (*IORequest)req
-    println("OK")
-
-    // Step 3: Open the device (unit 0)
-    print("Opening {{PROJECT_NAME}}.device unit 0... ")
-    let error = unsafe { OpenDevice("{{PROJECT_NAME}}.device", 0, baseReq, 0) }
-    if error != 0 {
-        println("FAILED!")
-        println("Make sure {{PROJECT_NAME}}.device is in DEVS:")
-        DeleteIORequest(req)
-        DeleteMsgPort(port)
-        return 1
-    }
-    println("OK")
-
-    // Step 4: Send commands to the device
-    println("")
-    println("Sending commands:")
-
-    // Reset the device
-    print("  CMD_RESET... ")
-    unsafe {
-        (*ioReq).io_Command = CMD_RESET
-    }
-    let result = unsafe { DoIO(baseReq) }
-    if result == 0 {
-        println("OK")
-    } else {
-        println("FAILED")
-    }
-
-    // Configure the device
-    print("  CMD_CONFIG... ")
-    unsafe {
-        (*ioReq).io_Command = NOVUS_CMD_CONFIG
-        (*ioReq).io_Data = null
-        (*ioReq).io_Length = 0
-    }
-    let result2 = unsafe { DoIO(baseReq) }
-    if result2 == 0 {
-        println("OK")
-    } else {
-        println("FAILED")
-    }
-
-    // Get device status
-    print("  CMD_STATUS... ")
-    unsafe {
-        (*ioReq).io_Command = NOVUS_CMD_STATUS
-    }
-    let result3 = unsafe { DoIO(baseReq) }
-    if result3 == 0 {
-        print("OK (status = ")
-        unsafe {
-            if (*ioReq).io_Actual == 1 {
-                print("initialized")
-            } else {
-                print("not initialized")
+    var device = match DeviceRequest::open_standard("{{PROJECT_NAME}}.device", 0) {
+        Result::Ok(request) => request,
+        Result::Err(_) => {
+            // Custom devices are not loaded automatically by OpenDevice. Try
+            // the installed driver, then a side-by-side development build.
+            if load_device_driver("DEVS:{{PROJECT_NAME}}.device").is_err() &&
+                load_device_driver("PROGDIR:{{PROJECT_NAME}}.device").is_err() {
+                println("{{PROJECT_NAME}}.device is not installed")
+                return 5
             }
-        }
-        println(")")
-    } else {
-        println("FAILED")
+            match DeviceRequest::open_standard("{{PROJECT_NAME}}.device", 0) {
+                Result::Ok(request) => request,
+                Result::Err(_) => return 5,
+            }
+        },
     }
 
-    // Step 5: Close the device
-    println("")
-    print("Closing device... ")
-    unsafe { CloseDevice(baseReq) }
-    println("OK")
+    return 10 unless device.command(RESET).is_ok()
+    return 10 unless device.command(CONFIGURE).is_ok()
 
-    // Step 6: Clean up resources
-    print("Cleaning up... ")
-    DeleteIORequest(req)
-    DeleteMsgPort(port)
-    println("OK")
+    let status = match device.command_actual(STATUS) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return 10,
+    }
+    return 10 unless status == 1
 
-    println("")
-    println("Example completed successfully!")
+    // SendIO lets the application keep working before it collects completion.
+    return 10 unless device.send(ASYNC_PING).is_ok()
+    let completed_early = !device.is_pending()
+    return 10 unless device.wait().is_ok()
+
+    // A request can also be cancelled safely. abort() waits until the driver
+    // has relinquished it, so neither the request nor its reply port can dangle.
+    return 10 unless device.send(WAIT_FOR_ABORT).is_ok()
+    return 10 unless device.is_pending()
+    return 10 unless device.abort().is_ok()
+
+    println("{{PROJECT_NAME}}.device is working")
+    println("async completion and cancellation are working") if completed_early
     return 0
 }
-
-// For a deferred command, use the same request asynchronously:
-//
-// unsafe {
-//     (*ioReq).io_Command = 11
-//     SendIO(baseReq)
-// }
-//
-// // Do unrelated work here. CheckIO never waits.
-// if (u32)CheckIO(baseReq) == 0 {
-//     println("command is still pending")
-// }
-//
-// // Every SendIO must eventually be collected, even after AbortIO.
-// // let error = WaitIO(baseReq)
-// // unsafe { AbortIO(baseReq) }
-// // let aborted = WaitIO(baseReq)

@@ -39,6 +39,7 @@ from amiga::raw::exec import GetMsg, ReplyMsg, WaitPort
 /// }
 /// ```
 pub struct RefreshGuard {
+    /// The window value stored by `RefreshGuard`.
     window: &Window,
 }
 
@@ -257,21 +258,35 @@ pub fn open_screen(tags_ptr: *TagItem) -> Result<*Screen, IntuitionError> {
 /// ```
 /// Owner-tied systems view used when an application window steps down one layer.
 pub struct WindowRef {
+    /// The window value stored by `WindowRef`.
     window: &Window
 }
 
 impl WindowRef {
+    /// Computes borrow for `WindowRef` from the supplied inputs.
+    ///
+    /// # Parameters
+    /// * `window` - The `&Window` value used as window.
+    ///
+    /// # Returns
+    /// The resulting `WindowRef` value.
     pub fn borrow(window: &Window) -> WindowRef {
         return WindowRef { window: window }
     }
 
     @unsafe
+    /// Returns the raw representation wrapped by `WindowRef` without transferring ownership.
+    ///
+    /// # Returns
+    /// The resulting `*Window` value.
     pub fn as_raw(&self) -> *Window {
         return unsafe { (*Window)self.window }
     }
 }
 
+/// Owns a window handle and releases its resources when dropped.
 pub struct WindowHandle {
+    /// The window value stored by `WindowHandle`.
     window: *Window,  // Pointer to FFI Window struct (null = invalid)
 }
 
@@ -894,20 +909,35 @@ fn parse_intui_message(msg: *IntuiMessage, owner: &Window) -> WindowEvent {
 ///     .build()?
 /// ```
 pub struct WindowBuilder {
+    /// The left value stored by `WindowBuilder`.
     left: i16,
+    /// The top value stored by `WindowBuilder`.
     top: i16,
+    /// The width value stored by `WindowBuilder`.
     width: i16,
+    /// The height value stored by `WindowBuilder`.
     height: i16,
+    /// The min width value stored by `WindowBuilder`.
     min_width: i16,
+    /// The min height value stored by `WindowBuilder`.
     min_height: i16,
+    /// The max width value stored by `WindowBuilder`.
     max_width: i16,
+    /// The max height value stored by `WindowBuilder`.
     max_height: i16,
+    /// The title ptr value stored by `WindowBuilder`.
     title_ptr: *u8,
+    /// The screen ptr value stored by `WindowBuilder`.
     screen_ptr: *Screen,
+    /// The flags value stored by `WindowBuilder`.
     flags: u32,
+    /// The idcmp value stored by `WindowBuilder`.
     idcmp: u32,
+    /// The borderless value stored by `WindowBuilder`.
     borderless: bool,
+    /// The backdrop value stored by `WindowBuilder`.
     backdrop: bool,
+    /// The activate value stored by `WindowBuilder`.
     activate: bool,
 }
 

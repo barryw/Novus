@@ -12,18 +12,29 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("popcycle.library")
+/// Returns the PopCycle BOOPSI class pointer, or null if unavailable.
+/// The class is library-owned and valid only while popcycle.library is open.
 extern pub fn POPCYCLE_GetClass() -> *u8
 @library("popcycle.library")
+/// Allocates a PopCycle label node from a terminated TagItem list.
+/// Release the returned node with FreePopCycleNode.
 extern pub fn AllocPopCycleNodeA(tags: *TagItem) -> *Node
 @library("popcycle.library")
+/// Varargs form of AllocPopCycleNodeA; terminate arguments with TAG_DONE.
 extern pub fn AllocPopCycleNode(tags: u32, ...args) -> *Node
 @library("popcycle.library")
+/// Frees a node returned by AllocPopCycleNodeA.
 extern pub fn FreePopCycleNode(node: *Node)
 @library("popcycle.library")
+/// Updates PopCycle node attributes from a terminated TagItem list.
 extern pub fn SetPopCycleNodeAttrsA(node: *Node, tags: *TagItem)
 @library("popcycle.library")
+/// Varargs form of SetPopCycleNodeAttrsA; terminate arguments with TAG_DONE.
 extern pub fn SetPopCycleNodeAttrs(node: *Node, ...args)
 @library("popcycle.library")
+/// Reads PopCycle node attributes through a terminated TagItem list.
+/// Output tag data must point to writable storage of the documented width.
 extern pub fn GetPopCycleNodeAttrsA(node: *Node, tags: *TagItem)
 @library("popcycle.library")
+/// Varargs form of GetPopCycleNodeAttrsA; terminate arguments with TAG_DONE.
 extern pub fn GetPopCycleNodeAttrs(node: *Node, ...args)

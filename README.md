@@ -62,13 +62,13 @@ This compiles to clean 68k assembly that runs natively on any Amiga.
 - `std::io` — File I/O with RAII handles
 - `std::net` — TCP/UDP networking via bsdsocket.library
 - `amiga::audio` — Paula audio and ProTracker module playback
-- `amiga::raw` — Complete AmigaOS FFI bindings (Exec, DOS, Intuition, Graphics...)
+- `amiga::raw` — Complete raw bindings for the pinned classic 68k AmigaOS NDK 3.9 baseline; symbol coverage is verified by `novusc verify-ndk`
 
 ## Quick Start
 
 ### Prerequisites
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - VBCC toolchain (for assembly and linking)
 
 ### Build & Run
@@ -98,8 +98,9 @@ pub fn main() -> i32 {
 ## Documentation
 
 - **[novuslang.com](https://novuslang.com)** — Official website with guides and examples
+- **[API documentation](docs/API_DOCUMENTATION.md)** — Source comments, machine-readable JSON, and website generation
 - **[Ownership and Memory Safety](website/src/content/docs/guide/memory.md)** — Canonical rules for moves, borrows, views, and raw access
-- **[Language Design Doc](LanguageDesignDoc.md)** — Complete language specification
+- **[Language Design Doc](docs/LanguageDesignDoc.md)** — Complete language specification
 - **[Programmer's Guide](guide/)** — Comprehensive reference (PDF)
 
 ## Architecture

@@ -275,8 +275,11 @@ pub fn choice_on(window: *Window, title: *u8, message: *u8, buttons: *u8) -> i32
 
 /// Result from a retry dialog
 pub enum RetryChoice {
+    /// Indicates retry.
     Retry,
+    /// Indicates abort.
     Abort,
+    /// Indicates ignore.
     Ignore,
 }
 

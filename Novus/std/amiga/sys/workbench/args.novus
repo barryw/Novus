@@ -60,6 +60,10 @@ impl From<DosError> for ArgsError {
 
 // Error message helper
 impl ArgsError {
+    /// Returns a human-readable description of this error.
+    ///
+    /// # Returns
+    /// The resulting `*u8` value.
     pub fn message(&self) -> *u8 {
         match *self {
             ArgsError::Dos(err) => return err.message(),
@@ -84,6 +88,7 @@ impl Error for ArgsError {
 // ============================================================================
 
 // Maximum number of arguments supported
+/// Defines `MAX_ARGS`, the max args value.
 pub const MAX_ARGS: u32 = 32
 
 /// Parsed command-line arguments
@@ -113,6 +118,7 @@ pub const MAX_ARGS: u32 = 32
 /// ```
 pub struct Args {
     // Pointer to RDArgs (owned, must be freed)
+    /// The rdargs value stored by `Args`.
     rdargs: *RDArgs,
     // Result array (one slot per template argument)
     // Each slot is i32:
@@ -120,10 +126,13 @@ pub struct Args {
     //   - For switches: 0 or non-zero
     //   - For numbers: pointer to i32
     //   - For multi: pointer to array of pointers
+    /// The results value stored by `Args`.
     results: [i32; 32],
     // Number of arguments in template
+    /// The arg count value stored by `Args`.
     arg_count: u32,
     // Template string (null-terminated)
+    /// The template value stored by `Args`.
     template: [u8; 256],
 }
 
@@ -420,8 +429,11 @@ pub enum ArgType {
 /// let args = parser.parse()?
 /// ```
 pub struct ArgParser {
+    /// The template value stored by `ArgParser`.
     template: [u8; 256],
+    /// The len value stored by `ArgParser`.
     len: u32,
+    /// The arg count value stored by `ArgParser`.
     arg_count: u32,
 }
 
@@ -565,6 +577,7 @@ pub fn command_line() -> Str {
 /// IMPORTANT: The startup message must NOT be replied until the program exits.
 /// This struct borrows the message, it does NOT own it.
 pub struct WorkbenchStartup {
+    /// The msg value stored by `WorkbenchStartup`.
     msg: &WBStartup,
 }
 
@@ -734,6 +747,10 @@ impl WBArgument {
 extern fn __get_wb_startup_msg() -> *WBStartup
 
 @borrows(static)
+/// Returns the get workbench startup value associated with the module.
+///
+/// # Returns
+/// The requested value, or `Option::None` when it is unavailable.
 pub fn get_workbench_startup() -> Option<WorkbenchStartup> {
     // Get the message pointer (already retrieved by startup code)
     let wb_msg = __get_wb_startup_msg()

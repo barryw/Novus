@@ -25,8 +25,7 @@ public class TomlDocumentHandler
     {
         Console.Error.WriteLine($"[LSP] TOML document opened: {uri}");
 
-        // Register as a project if it's a project.toml file
-        if (IsProjectToml(uri))
+        if (IsNovusConfigToml(uri))
         {
             _projectManager.RegisterProject(uri, text, version);
         }
@@ -38,7 +37,7 @@ public class TomlDocumentHandler
 
     public void Update(string uri, string text, int version)
     {
-        if (IsProjectToml(uri))
+        if (IsNovusConfigToml(uri))
         {
             _projectManager.UpdateProject(uri, text, version);
         }
@@ -53,8 +52,7 @@ public class TomlDocumentHandler
 
     public void Close(string uri)
     {
-        // Unregister project if it's a project.toml
-        if (IsProjectToml(uri))
+        if (IsNovusConfigToml(uri))
         {
             _projectManager.UnregisterProject(uri);
         }
@@ -143,10 +141,10 @@ public class TomlDocumentHandler
     /// <summary>
     /// Checks if the URI represents a project.toml or novus.toml file.
     /// </summary>
-    private static bool IsProjectToml(string uri)
+    private static bool IsNovusConfigToml(string uri)
     {
         var fileName = System.IO.Path.GetFileName(UriToFilePath(uri)).ToLowerInvariant();
-        return fileName == "project.toml" || fileName == "novus.toml";
+        return fileName is "project.toml" or "novus.toml" or "workspace.toml";
     }
 
     /// <summary>

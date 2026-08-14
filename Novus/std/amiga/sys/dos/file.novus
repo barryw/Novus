@@ -288,14 +288,29 @@ pub fn seek_file(fh: i32, position: i32, offset: i32) -> Result<i32, DosError> {
 /// }
 /// ```
 pub struct OwnedFileHandle {
+    /// The fh value stored by `OwnedFileHandle`.
     fh: i32,  // BPTR file handle (0 = invalid)
 }
 
 impl OwnedFileHandle {
+    /// Opens existing for `OwnedFileHandle`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn open_existing(path: Str) -> Result<OwnedFileHandle, DosError> {
         return OwnedFileHandle::open(path, (i32)MODE_OLDFILE)
     }
 
+    /// Creates `OwnedFileHandle`.
+    ///
+    /// # Parameters
+    /// * `path` - The path to use.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn create(path: Str) -> Result<OwnedFileHandle, DosError> {
         return OwnedFileHandle::open(path, (i32)MODE_NEWFILE)
     }
@@ -372,14 +387,35 @@ impl OwnedFileHandle {
         return if result == -1 { Result::Err(dos_last_error()) } else { Result::Ok(result) }
     }
 
+    /// Seeks from start for `OwnedFileHandle`.
+    ///
+    /// # Parameters
+    /// * `position` - The `i32` value used as position.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn seek_from_start(&self, position: i32) -> Result<i32, DosError> {
         return self.seek(position, (i32)OFFSET_BEGINNING)
     }
 
+    /// Seeks from current for `OwnedFileHandle`.
+    ///
+    /// # Parameters
+    /// * `position` - The `i32` value used as position.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn seek_from_current(&self, position: i32) -> Result<i32, DosError> {
         return self.seek(position, (i32)OFFSET_CURRENT)
     }
 
+    /// Seeks from end for `OwnedFileHandle`.
+    ///
+    /// # Parameters
+    /// * `position` - The `i32` value used as position.
+    ///
+    /// # Returns
+    /// The requested value on success; the error value explains why the operation could not complete.
     pub fn seek_from_end(&self, position: i32) -> Result<i32, DosError> {
         return self.seek(position, (i32)OFFSET_END)
     }
@@ -485,6 +521,7 @@ impl Drop for OwnedFileHandle {
 /// }
 /// ```
 pub struct DirLockHandle {
+    /// The lock value stored by `DirLockHandle`.
     lock: i32,  // BPTR lock (0 = invalid)
 }
 
@@ -545,9 +582,13 @@ impl Drop for DirLockHandle {
 
 /// Information about a file or directory
 pub struct FileInfo {
+    /// The is file value stored by `FileInfo`.
     is_file: bool,
+    /// The is directory value stored by `FileInfo`.
     is_directory: bool,
+    /// The size value stored by `FileInfo`.
     size: i32,
+    /// The protection value stored by `FileInfo`.
     protection: i32,
 }
 

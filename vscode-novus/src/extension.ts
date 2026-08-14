@@ -31,9 +31,12 @@ export function activate(context: ExtensionContext) {
 
     // Configure client options
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'novus' }],
+        documentSelector: [
+            { scheme: 'file', language: 'novus' },
+            { scheme: 'file', pattern: '**/*.toml' }
+        ],
         synchronize: {
-            fileEvents: workspace.createFileSystemWatcher('**/*.novus')
+            fileEvents: workspace.createFileSystemWatcher('**/*.{novus,toml}')
         }
     };
 

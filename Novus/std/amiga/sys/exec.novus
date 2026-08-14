@@ -7,4 +7,5 @@ pub use amiga::sys::exec::task::*
 pub use amiga::sys::exec::errors::*
 pub use amiga::sys::exec::intrusive_list::*
 
+/// Aliases `MessagePort` to `MsgPortHandle`.
 pub type MessagePort = MsgPortHandle

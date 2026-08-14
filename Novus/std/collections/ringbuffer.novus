@@ -59,11 +59,17 @@ from std::memory::errors import MemoryError
 /// }
 /// ```
 pub struct RingBuffer<T> {
+    /// The data value stored by `RingBuffer`.
     data: *u8,          // Raw byte storage for CopyMem compatibility
+    /// The capacity value stored by `RingBuffer`.
     capacity: usize,
+    /// The head value stored by `RingBuffer`.
     head: usize,        // Index of first element (read position)
+    /// The tail value stored by `RingBuffer`.
     tail: usize,        // Index of next write position
+    /// The len value stored by `RingBuffer`.
     len: usize,         // Current number of elements
+    /// The element size value stored by `RingBuffer`.
     element_size: u32,  // Size of T in bytes
 }
 
@@ -332,12 +338,19 @@ impl<T> Drop for RingBuffer<T> {
 /// }
 /// ```
 pub struct RingBufferPow2<T> {
+    /// The data value stored by `RingBufferPow2`.
     data: *u8,          // Raw byte storage for CopyMem compatibility
+    /// The capacity value stored by `RingBufferPow2`.
     capacity: usize,
+    /// The mask value stored by `RingBufferPow2`.
     mask: usize,        // capacity - 1, for fast modulo
+    /// The head value stored by `RingBufferPow2`.
     head: usize,
+    /// The tail value stored by `RingBufferPow2`.
     tail: usize,
+    /// The len value stored by `RingBufferPow2`.
     len: usize,
+    /// The element size value stored by `RingBufferPow2`.
     element_size: u32,
 }
 
