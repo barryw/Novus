@@ -320,7 +320,7 @@ public class SfdGenerator
     private static int GetStackSize(string amigaType)
     {
         var type = amigaType.Replace("const ", "", StringComparison.OrdinalIgnoreCase).Trim();
-        return type is "DOUBLE" or "QUAD" or "UQUAD" ? 8 : 4;
+        return type is "DOUBLE" or "QUAD" or "UQUAD" or "int64_t" or "uint64_t" ? 8 : 4;
     }
 
     private static bool RegisterSpecContains(string spec, string register) =>

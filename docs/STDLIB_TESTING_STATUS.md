@@ -7,6 +7,12 @@ The standard library is checked at four boundaries:
 3. Full-link tests exercise representative programs through VBCC and enforce the idiomatic GUI size budget.
 4. `tools/amiga/run_runtime_suite.py` executes behavior on the A4000 guest and reports program failures and Gurus.
 
+`tools/verify_stdlib_tests.py --require-runtime` inventories public portable
+`std` callables and fails when any callable lacks both an `@covers` annotation
+and an executable runtime test. The optional `stdlib-tls-live` suite provisions
+AmiSSL in guest RAM and supplies the cooperating client/server fixture required
+to exercise TLS without changing the saved A4000 configuration.
+
 The canonical library-architecture checks live in `Novus.Tests/AmigaLibraryDesignTests.cs`. Borrow and ownership conventions are checked by `StdlibBorrowContractTests.cs`, while `Novus.Tests/AmigaRuntime/interop_ownership.novus` exercises application → systems → raw borrowing and ownership round trips on AmigaOS.
 
 Do not add compile-only probes at the repository root. Add focused C# compiler tests or Novus `@test` cases to the appropriate runtime suite.
@@ -17,4 +23,7 @@ Run the focused acceptance checks with:
 dotnet test Novus.Tests/Novus.Tests.csproj --filter FullyQualifiedName~AmigaLibraryDesignTests
 dotnet test Novus.Tests/Novus.Tests.csproj --filter FullyQualifiedName~StdlibBorrowContractTests
 python3 tools/amiga/run_runtime_suite.py --suite interop-ownership --profile release-o1
+python3 tools/verify_stdlib_tests.py --require-runtime
+python3 tools/amiga/run_runtime_suite.py --layer stdlib --profile release-o1 --benchmark
+python3 tools/amiga/run_runtime_suite.py --suite stdlib-tls-live --profile release-o1 --benchmark --amissl-dir /path/to/extracted/AmiSSL
 ```

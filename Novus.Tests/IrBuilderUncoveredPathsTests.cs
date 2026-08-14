@@ -10,6 +10,7 @@ namespace Novus.Tests;
 /// Tests targeting specific uncovered code paths in IrBuilder identified from coverage analysis.
 /// Focus areas: interpolated strings, generic resolution, module imports, struct array init, external variables.
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class IrBuilderUncoveredPathsTests
 {
     private IrModule BuildIr(string source)

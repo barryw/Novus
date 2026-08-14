@@ -2,6 +2,12 @@ from std::core import Result
 from std::memory::bytes import ByteError, ByteReader, ByteWriter
 from std::test::test import expect
 
+// @covers std::memory::bytes::ByteReader::new(Slice<u8>)
+// @covers std::memory::bytes::ByteReader::read_be_u16(usize)
+// @covers std::memory::bytes::ByteReader::read_be_u32(usize)
+// @covers std::memory::bytes::ByteWriter::new(MutSlice<u8>)
+// @covers std::memory::bytes::ByteWriter::write_be_u16(usize, u16)
+// @covers std::memory::bytes::ByteWriter::write_be_u32(usize, u32)
 @test("big-endian byte access is bounds checked")
 pub fn foundation_bytes() {
     var bytes: [u8] = [0; 8]

@@ -117,6 +117,10 @@ public class DefUseAnalysis
 
         switch (instruction)
         {
+            case IrPhi phi:
+                defined.Add(phi.Destination.Name);
+                break;
+
             case IrLocalDecl localDecl:
                 defined.Add(localDecl.Name);
                 break;
@@ -151,6 +155,26 @@ public class DefUseAnalysis
 
             case IrExtractVariantData extractData:
                 defined.Add(extractData.ResultName);
+                break;
+
+            case IrCreateClosure createClosure:
+                defined.Add(createClosure.ResultName);
+                break;
+
+            case IrInvokeClosure invokeClosure when invokeClosure.ResultName != null:
+                defined.Add(invokeClosure.ResultName);
+                break;
+
+            case IrLoadCapture loadCapture:
+                defined.Add(loadCapture.ResultName);
+                break;
+
+            case IrHardwareRead hardwareRead:
+                defined.Add(hardwareRead.ResultName);
+                break;
+
+            case IrInlineAsm inlineAsm when inlineAsm.ResultName != null:
+                defined.Add(inlineAsm.ResultName);
                 break;
         }
 
@@ -217,6 +241,10 @@ public class DefUseAnalysis
                 derefStore.Value = ReplaceInValue(derefStore.Value, oldName, newValue);
                 break;
 
+            case IrDropInPlace dropInPlace:
+                dropInPlace.Pointer = ReplaceInValue(dropInPlace.Pointer, oldName, newValue);
+                break;
+
             case IrConditionalBranch condBranch:
                 condBranch.Condition = ReplaceInValue(condBranch.Condition, oldName, newValue);
                 break;
@@ -272,6 +300,42 @@ public class DefUseAnalysis
 
             case IrExtractVariantData extractData:
                 extractData.EnumValue = ReplaceInValue(extractData.EnumValue, oldName, newValue);
+                break;
+
+            case IrCreateClosure createClosure:
+                for (int i = 0; i < createClosure.CapturedValues.Count; i++)
+                {
+                    var capture = createClosure.CapturedValues[i];
+                    createClosure.CapturedValues[i] =
+                        (capture.VarName, ReplaceInValue(capture.Value, oldName, newValue), capture.Mode);
+                }
+                break;
+
+            case IrInvokeClosure invokeClosure:
+                invokeClosure.Closure = ReplaceInValue(invokeClosure.Closure, oldName, newValue);
+                for (int i = 0; i < invokeClosure.Arguments.Count; i++)
+                    invokeClosure.Arguments[i] = ReplaceInValue(invokeClosure.Arguments[i], oldName, newValue);
+                break;
+
+            case IrStoreCapture storeCapture:
+                storeCapture.Value = ReplaceInValue(storeCapture.Value, oldName, newValue);
+                break;
+
+            case IrIndexedFieldStore indexedFieldStore:
+                indexedFieldStore.Array = ReplaceInValue(indexedFieldStore.Array, oldName, newValue);
+                indexedFieldStore.Index = ReplaceInValue(indexedFieldStore.Index, oldName, newValue);
+                indexedFieldStore.Value = ReplaceInValue(indexedFieldStore.Value, oldName, newValue);
+                if (indexedFieldStore.Length != null)
+                    indexedFieldStore.Length = ReplaceInValue(indexedFieldStore.Length, oldName, newValue);
+                break;
+
+            case IrHardwareWrite hardwareWrite:
+                hardwareWrite.Value = ReplaceInValue(hardwareWrite.Value, oldName, newValue);
+                break;
+
+            case IrInlineAsm inlineAsm:
+                foreach (var input in inlineAsm.Inputs)
+                    input.Value = ReplaceInValue(input.Value, oldName, newValue);
                 break;
         }
     }

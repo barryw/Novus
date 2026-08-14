@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class VariadicFunctionTests
 {
     private IrModule BuildIr(string source)

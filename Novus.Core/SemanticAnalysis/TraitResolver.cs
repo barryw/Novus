@@ -1,5 +1,6 @@
 using Novus.Diagnostics;
 using Novus.Frontend;
+using Novus.Frontend.Generics;
 using Novus.IR;
 
 namespace Novus.SemanticAnalysis;
@@ -322,8 +323,12 @@ public class TraitResolver
             var trait = _symbols.LookupTrait(baseTraitName);
             if (trait != null && trait.GetMethod(methodName) != null)
             {
-                // Return the mangled name: Type_Trait_method
-                return $"{typeName}_{traitImpl.TraitName}_{methodName}";
+                return InstantiationKeyBuilder.BuildMethodMangledName(
+                    typeName,
+                    methodName,
+                    isTraitImpl: true,
+                    traitName: baseTraitName,
+                    traitTypeArgs: traitImpl.TraitTypeArgs);
             }
         }
 

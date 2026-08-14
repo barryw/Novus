@@ -44,6 +44,9 @@ public class TestOptions
     [Option('b', "benchmark", Required = false, HelpText = "Enable timing for each test, showing duration in microseconds")]
     public bool Benchmark { get; set; }
 
+    [Option("memory-check", Required = false, HelpText = "Fail tests that leak Novus allocations or AmigaOS memory")]
+    public bool MemoryCheck { get; set; }
+
     [Option("run", Required = false, HelpText = "Run the test executable with vamos after building")]
     public bool RunWithVamos { get; set; }
 
@@ -55,6 +58,9 @@ public class TestOptions
 
     [Option("ndk-path", Required = false, HelpText = "Path to your Amiga NDK 3.9 (default: $NDK, then 'novus config set ndk-path')")]
     public string NdkPath { get; set; } = UserConfig.ResolveNdkPath() ?? "";
+
+    [Option("cache-dir", Required = false, HelpText = "Shared persistent IR cache directory")]
+    public string? CacheDirectory { get; set; }
 
     public int GetOptimizationLevel()
     {

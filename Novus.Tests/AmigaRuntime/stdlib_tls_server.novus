@@ -1,0 +1,115 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import SocketLibrary
+from std::net::tcp import TcpListener
+from std::net::tls import TlsConfig
+from amiga::raw::dos import Open, Write, Close
+from amiga::raw::consts import MODE_NEWFILE
+from std::test::test import expect
+
+@suppress("W0002", "AmigaDOS Open takes an i32 mode")
+fn marker(path: *u8) {
+    let file = unsafe { Open(path, MODE_NEWFILE as i32) }
+    if file != 0 {
+        unsafe { Write(file, "ok", 2) }
+        unsafe { Close(file) }
+    }
+}
+
+// @covers std::net::tls::TlsConfig::accept(TcpStream)
+// @covers std::net::tls::TlsConfig::server()
+// @covers std::net::tls::TlsConfig::set_certificate(*u8)
+// @covers std::net::tls::TlsConfig::set_private_key(*u8)
+@test("AmiSSL server round trip")
+pub fn test_amissl_server_round_trip() {
+    let _sockets = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "bsdsocket.library opens")
+            return
+        }
+    }
+    let config = match TlsConfig::server() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "AmiSSL server context initializes")
+            return
+        }
+    }
+    match config.set_certificate("MCP:ntcert") {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "server certificate loads")
+            return
+        }
+    }
+    match config.set_private_key("MCP:ntkey") {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "matching private key loads")
+            return
+        }
+    }
+    let listener = match TcpListener::bind(SocketAddrV4::new(Ipv4Addr::localhost(), 8444)) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "TLS listener binds")
+            return
+        }
+    }
+    marker("RAM:novus-tls-ready")
+    let pair = match listener.accept() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "TCP client connects")
+            return
+        }
+    }
+    let (tcp, _peer) = pair
+    let stream = match config.accept(tcp) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "TLS server handshake succeeds")
+            return
+        }
+    }
+
+    var request: [u8] = [0; 8]
+    var received: i32 = 0
+    while received < 6 {
+        match stream.read((*u8)&request[received], 6 - received) {
+            Result::Ok(count) => {
+                if count <= 0 {
+                    expect(false, "server receives complete request")
+                    return
+                }
+                received = received + count
+            },
+            Result::Err(_) => {
+                expect(false, "server TLS read succeeds")
+                return
+            }
+        }
+    }
+    if !(request[0] == 'h' && request[1] == 'e' && request[2] == 'l' &&
+         request[3] == 'l' && request[4] == 'o' && request[5] == '\n') {
+        expect(false, "server receives expected bytes")
+        return
+    }
+    match stream.write_all("world\n", 6) {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "server TLS write_all succeeds")
+            return
+        }
+    }
+    match stream.shutdown() {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "server TLS shutdown succeeds")
+            return
+        }
+    }
+    expect(true, "server TLS round trip succeeds")
+    marker("RAM:novus-tls-passed")
+}

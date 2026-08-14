@@ -1,0 +1,203 @@
+from std::collections::freelist import ObjectPool, ObjectPoolFixed
+from std::collections::hashmap import HashMap
+from std::core import Option, Result
+from std::memory::errors import MemoryError
+from std::test::test import expect
+
+struct PoolItem {
+    value: u32,
+}
+
+// @covers std::collections::hashmap::HashMap::new()
+// @covers std::collections::hashmap::HashMap::with_capacity(usize)
+// @covers std::collections::hashmap::HashMap::len()
+// @covers std::collections::hashmap::HashMap::is_empty()
+// @covers std::collections::hashmap::HashMap::capacity()
+// @covers std::collections::hashmap::HashMap::load_factor()
+// @covers std::collections::hashmap::HashMap::insert(K, V)
+// @covers std::collections::hashmap::HashMap::get(&K)
+// @covers std::collections::hashmap::HashMap::get_mut(&K)
+// @covers std::collections::hashmap::HashMap::contains_key(&K)
+// @covers std::collections::hashmap::HashMap::remove(&K)
+// @covers std::collections::hashmap::HashMap::clear()
+// @covers std::collections::hashmap::HashMap::reserve(usize)
+// @covers std::collections::hashmap::HashMap::compact()
+// @covers std::collections::hashmap::HashMap::shrink_to_fit()
+// @covers std::collections::hashmap::HashMap::iter()
+// @covers std::collections::hashmap::HashMap::iter_mut()
+// @covers std::collections::hashmap::HashMap::tombstone_count()
+// @covers std::collections::hashmap::HashMapIter::next()
+// @covers std::collections::hashmap::HashMapIter::reset()
+// @covers std::collections::hashmap::HashMapIterMut::next()
+// @covers std::collections::hashmap::HashMapIterMut::reset()
+@test("HashMap supports mutation, iteration, compaction, and reuse")
+pub fn test_hashmap() {
+    match HashMap::<u32, u32>::new() {
+        Result::Ok(var map) => {
+            expect(map.is_empty() && map.len() == 0, "new map")
+            expect(map.capacity() >= 16 && map.load_factor() == 0, "initial capacity")
+            expect(map.insert(1, 10).is_ok() && map.insert(2, 20).is_ok(), "insert")
+            expect(map.contains_key(&1), "contains key")
+            match map.insert(1, 11) {
+                Result::Ok(previous) => match previous {
+                    Option::Some(old_value) => expect(old_value == 10, "replace returns old value"),
+                    Option::None => expect(false, "replace lost old value"),
+                },
+                Result::Err(_) => expect(false, "replace failed"),
+            }
+            match map.get_mut(&2) {
+                Option::Some(value) => { *value = 22 },
+                Option::None => expect(false, "mutable get failed"),
+            }
+            match map.get(&2) {
+                Option::Some(value) => expect(*value == 22, "updated value"),
+                Option::None => expect(false, "get failed"),
+            }
+
+            var iterator = map.iter()
+            var seen: usize = 0
+            while iterator.next().is_some() { seen++ }
+            expect(seen == 2, "immutable iteration")
+            iterator.reset()
+            expect(iterator.next().is_some(), "iterator reset")
+
+            {
+                var iterator_mut = map.iter_mut()
+                expect(iterator_mut.next().is_some(), "mutable iteration")
+                iterator_mut.reset()
+                expect(iterator_mut.next().is_some(), "mutable iterator reset")
+            }
+
+            match map.remove(&1) {
+                Option::Some(value) => expect(value == 11, "removed value"),
+                Option::None => expect(false, "remove failed"),
+            }
+            expect(map.tombstone_count() == 1, "tombstone tracked")
+            expect(map.compact().is_ok() && map.tombstone_count() == 0, "compact")
+            let old_capacity = map.capacity()
+            expect(map.reserve(old_capacity).is_ok(), "reserve")
+            expect(map.capacity() > old_capacity, "reserve grows")
+            map.clear()
+            expect(map.is_empty(), "clear")
+            expect(map.shrink_to_fit().is_ok() && map.capacity() == 0, "empty shrink")
+            expect(map.insert(3, 30).is_ok(), "insert after empty shrink")
+            expect(map.contains_key(&3), "reused map")
+        },
+        Result::Err(_) => expect(false, "map allocation failed"),
+    }
+    match HashMap::<u32, u32>::with_capacity(3) {
+        Result::Ok(map) => expect(map.capacity() == 4, "capacity rounds to power of two"),
+        Result::Err(_) => expect(false, "with_capacity failed"),
+    }
+}
+
+// @covers std::collections::freelist::ObjectPool::with_capacity(usize)
+// @covers std::collections::freelist::ObjectPool::try_with_capacity(usize)
+// @covers std::collections::freelist::ObjectPool::alloc()
+// @covers std::collections::freelist::ObjectPool::alloc_zeroed()
+// @covers std::collections::freelist::ObjectPool::free(*T)
+// @covers std::collections::freelist::ObjectPool::capacity()
+// @covers std::collections::freelist::ObjectPool::allocated()
+// @covers std::collections::freelist::ObjectPool::available()
+// @covers std::collections::freelist::ObjectPool::is_empty()
+// @covers std::collections::freelist::ObjectPool::is_full()
+// @covers std::collections::freelist::ObjectPool::reset()
+// @covers std::collections::freelist::ObjectPool::contains(*T)
+@test("ObjectPool reuses fixed storage without allocation")
+pub fn test_object_pool() {
+    match ObjectPool::<PoolItem>::with_capacity(2) {
+        Result::Ok(var pool) => {
+            expect(pool.capacity() == 2 && pool.available() == 2, "pool capacity")
+            expect(pool.is_full() && !pool.is_empty(), "fresh pool")
+            var first: *PoolItem = null
+            match pool.alloc_zeroed() {
+                Result::Ok(ptr) => {
+                    first = ptr
+                    expect(pool.contains(ptr), "pool contains allocation")
+                    unsafe { expect(ptr.value == 0, "zeroed allocation") }
+                    unsafe { ptr.value = 10 }
+                },
+                Result::Err(_) => expect(false, "zeroed allocation failed"),
+            }
+            var second: *PoolItem = null
+            match pool.alloc() {
+                Result::Ok(ptr) => {
+                    second = ptr
+                    unsafe { ptr.value = 20 }
+                },
+                Result::Err(_) => expect(false, "allocation failed"),
+            }
+            expect(pool.allocated() == 2 && pool.is_empty(), "pool exhausted")
+            match pool.alloc() {
+                Result::Err(MemoryError::CapacityExceeded) => {},
+                _ => expect(false, "exhaustion rejected"),
+            }
+            expect(pool.free(first).is_ok(), "free allocation")
+            expect(pool.allocated() == 1 && pool.available() == 1, "free updates counts")
+            pool.reset()
+            expect(pool.allocated() == 0 && pool.is_full(), "reset")
+            let _ = second
+        },
+        Result::Err(_) => expect(false, "pool allocation failed"),
+    }
+    match ObjectPool::<u32>::try_with_capacity(1) {
+        Result::Ok(pool) => expect(pool.capacity() == 1, "try capacity"),
+        Result::Err(_) => expect(false, "try_with_capacity failed"),
+    }
+}
+
+// @covers std::collections::freelist::ObjectPoolFixed::with_capacity(usize)
+// @covers std::collections::freelist::ObjectPoolFixed::try_with_capacity(usize)
+// @covers std::collections::freelist::ObjectPoolFixed::alloc()
+// @covers std::collections::freelist::ObjectPoolFixed::alloc_zeroed()
+// @covers std::collections::freelist::ObjectPoolFixed::free(*T)
+// @covers std::collections::freelist::ObjectPoolFixed::free_index(usize)
+// @covers std::collections::freelist::ObjectPoolFixed::capacity()
+// @covers std::collections::freelist::ObjectPoolFixed::allocated()
+// @covers std::collections::freelist::ObjectPoolFixed::available()
+// @covers std::collections::freelist::ObjectPoolFixed::is_empty()
+// @covers std::collections::freelist::ObjectPoolFixed::reset()
+// @covers std::collections::freelist::ObjectPoolFixed::is_allocated(usize)
+// @covers std::collections::freelist::ObjectPoolFixed::get(usize)
+// @covers std::collections::freelist::ObjectPoolFixed::get_mut(usize)
+@test("ObjectPoolFixed tracks every allocated slot")
+pub fn test_object_pool_fixed() {
+    match ObjectPoolFixed::<PoolItem>::with_capacity(2) {
+        Result::Ok(var pool) => {
+            expect(pool.capacity() == 2 && pool.available() == 2, "fixed capacity")
+            var last: *PoolItem = null
+            match pool.alloc_zeroed() {
+                Result::Ok(ptr) => {
+                    last = ptr
+                    unsafe { expect(ptr.value == 0, "fixed zeroed allocation") }
+                },
+                Result::Err(_) => expect(false, "fixed allocation failed"),
+            }
+            expect(pool.is_allocated(1), "last index allocated first")
+            match pool.get_mut(1) {
+                Option::Some(value) => { value.value = 42 },
+                Option::None => expect(false, "fixed mutable get failed"),
+            }
+            match pool.get(1) {
+                Option::Some(value) => expect(value.value == 42, "fixed get"),
+                Option::None => expect(false, "fixed get failed"),
+            }
+            match pool.alloc() {
+                Result::Ok(ptr) => unsafe { ptr.value = 10 },
+                Result::Err(_) => expect(false, "second fixed allocation failed"),
+            }
+            expect(pool.allocated() == 2 && pool.is_empty(), "fixed pool exhausted")
+            expect(pool.free(last).is_ok(), "fixed pointer free")
+            expect(pool.free_index(0).is_ok(), "fixed index free")
+            expect(pool.allocated() == 0, "fixed frees tracked")
+            let _ = pool.alloc()
+            pool.reset()
+            expect(pool.available() == 2 && !pool.is_allocated(1), "fixed reset")
+        },
+        Result::Err(_) => expect(false, "fixed pool allocation failed"),
+    }
+    match ObjectPoolFixed::<u32>::try_with_capacity(1) {
+        Result::Ok(pool) => expect(pool.capacity() == 1, "fixed try capacity"),
+        Result::Err(_) => expect(false, "fixed try_with_capacity failed"),
+    }
+}

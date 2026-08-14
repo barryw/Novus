@@ -11,6 +11,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // Creation Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::new()
 @test("Vec::new creates empty vector")
 pub fn test_vec_new() {
     let v = Vec::<i32>::new()
@@ -23,6 +24,7 @@ pub fn test_vec_new() {
 // Push Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::push(T)
 @test("Vec::push adds elements")
 pub fn test_vec_push() {
     var v = Vec::<i32>::new()
@@ -51,6 +53,7 @@ pub fn test_vec_push() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::push(T)
 @test("Vec::push grows capacity automatically")
 pub fn test_vec_push_grows() {
     var v = Vec::<i32>::new()
@@ -76,6 +79,7 @@ pub fn test_vec_push_grows() {
 // Pop Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::pop()
 @test("Vec::pop removes and returns last element")
 pub fn test_vec_pop() {
     var v = Vec::<i32>::new()
@@ -100,6 +104,7 @@ pub fn test_vec_pop() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::pop()
 @test("Vec::pop returns None on empty vec")
 pub fn test_vec_pop_empty() {
     var v = Vec::<i32>::new()
@@ -111,6 +116,7 @@ pub fn test_vec_pop_empty() {
     }
 }
 
+// @covers std::collections::vec::Vec::pop()
 @test("Vec::pop after push/pop cycles")
 pub fn test_vec_pop_push_cycle() {
     var v = Vec::<i32>::new()
@@ -135,6 +141,7 @@ pub fn test_vec_pop_push_cycle() {
 // Get Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::get(usize)
 @test("Vec::get returns correct element")
 pub fn test_vec_get() {
     var v = Vec::<i32>::new()
@@ -160,6 +167,7 @@ pub fn test_vec_get() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::get(usize)
 @test("Vec::get returns None for out of bounds")
 pub fn test_vec_get_oob() {
     var v = Vec::<i32>::new()
@@ -179,6 +187,7 @@ pub fn test_vec_get_oob() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::get(usize)
 @test("Vec::get on empty vec returns None")
 pub fn test_vec_get_empty() {
     let v = Vec::<i32>::new()
@@ -193,6 +202,7 @@ pub fn test_vec_get_empty() {
 // Set Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::set(usize, T)
 @test("Vec::set updates element")
 pub fn test_vec_set() {
     var v = Vec::<i32>::new()
@@ -214,6 +224,7 @@ pub fn test_vec_set() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::set(usize, T)
 @test("Vec::set returns false for out of bounds")
 pub fn test_vec_set_oob() {
     var v = Vec::<i32>::new()
@@ -228,6 +239,7 @@ pub fn test_vec_set_oob() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::get_mut(usize)
 @test("Vec::get_mut updates in place")
 pub fn test_vec_get_mut() {
     var v = Vec::<i32>::new()
@@ -249,6 +261,7 @@ pub fn test_vec_get_mut() {
 // Insert Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::insert(usize, T)
 @test("Vec::insert at beginning")
 pub fn test_vec_insert_beginning() {
     var v = Vec::<i32>::new()
@@ -280,6 +293,7 @@ pub fn test_vec_insert_beginning() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::insert(usize, T)
 @test("Vec::insert in middle")
 pub fn test_vec_insert_middle() {
     var v = Vec::<i32>::new()
@@ -311,6 +325,7 @@ pub fn test_vec_insert_middle() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::insert(usize, T)
 @test("Vec::insert at end (append)")
 pub fn test_vec_insert_end() {
     var v = Vec::<i32>::new()
@@ -332,6 +347,7 @@ pub fn test_vec_insert_end() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::insert(usize, T)
 @test("Vec::insert returns false for out of bounds")
 pub fn test_vec_insert_oob() {
     var v = Vec::<i32>::new()
@@ -351,6 +367,7 @@ pub fn test_vec_insert_oob() {
 // Remove Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::remove(usize)
 @test("Vec::remove from beginning")
 pub fn test_vec_remove_beginning() {
     var v = Vec::<i32>::new()
@@ -379,6 +396,7 @@ pub fn test_vec_remove_beginning() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::remove(usize)
 @test("Vec::remove from middle")
 pub fn test_vec_remove_middle() {
     var v = Vec::<i32>::new()
@@ -407,6 +425,7 @@ pub fn test_vec_remove_middle() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::remove(usize)
 @test("Vec::remove from end")
 pub fn test_vec_remove_end() {
     var v = Vec::<i32>::new()
@@ -425,6 +444,7 @@ pub fn test_vec_remove_end() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::remove(usize)
 @test("Vec::remove returns None for out of bounds")
 pub fn test_vec_remove_oob() {
     var v = Vec::<i32>::new()
@@ -445,6 +465,7 @@ pub fn test_vec_remove_oob() {
 // Clear and Truncate Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::clear()
 @test("Vec::clear removes all elements")
 pub fn test_vec_clear() {
     var v = Vec::<i32>::new()
@@ -462,6 +483,7 @@ pub fn test_vec_clear() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::truncate(usize)
 @test("Vec::truncate shortens vector")
 pub fn test_vec_truncate() {
     var v = Vec::<i32>::new()
@@ -488,6 +510,7 @@ pub fn test_vec_truncate() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::truncate(usize)
 @test("Vec::truncate to 0 clears")
 pub fn test_vec_truncate_zero() {
     var v = Vec::<i32>::new()
@@ -502,6 +525,7 @@ pub fn test_vec_truncate_zero() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::truncate(usize)
 @test("Vec::truncate with len >= current does nothing")
 pub fn test_vec_truncate_noop() {
     var v = Vec::<i32>::new()
@@ -519,6 +543,7 @@ pub fn test_vec_truncate_noop() {
 // Reserve and Capacity Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::reserve(usize)
 @test("Vec::reserve increases capacity")
 pub fn test_vec_reserve() {
     var v = Vec::<i32>::new()
@@ -539,12 +564,14 @@ pub fn test_vec_reserve() {
 // is_empty Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::is_empty()
 @test("Vec::is_empty true for new vec")
 pub fn test_vec_is_empty_new() {
     let v = Vec::<i32>::new()
     expect_true(v.is_empty(), "new vec is empty")
 }
 
+// @covers std::collections::vec::Vec::is_empty()
 @test("Vec::is_empty false after push")
 pub fn test_vec_is_empty_after_push() {
     var v = Vec::<i32>::new()
@@ -553,6 +580,7 @@ pub fn test_vec_is_empty_after_push() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::is_empty()
 @test("Vec::is_empty true after clearing")
 pub fn test_vec_is_empty_after_clear() {
     var v = Vec::<i32>::new()
@@ -562,6 +590,7 @@ pub fn test_vec_is_empty_after_clear() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::is_empty()
 @test("Vec::is_empty true after popping all")
 pub fn test_vec_is_empty_after_pop_all() {
     var v = Vec::<i32>::new()
@@ -574,6 +603,7 @@ pub fn test_vec_is_empty_after_pop_all() {
 // len and capacity Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::len()
 @test("Vec::len tracks element count")
 pub fn test_vec_len_tracking() {
     var v = Vec::<i32>::new()
@@ -595,6 +625,7 @@ pub fn test_vec_len_tracking() {
     v.drop()
 }
 
+// @covers std::collections::vec::Vec::capacity()
 @test("Vec::capacity grows as needed")
 pub fn test_vec_capacity_grows() {
     var v = Vec::<i32>::new()
@@ -616,6 +647,7 @@ pub fn test_vec_capacity_grows() {
 // with_capacity Tests
 // ============================================================================
 
+// @covers std::collections::vec::Vec::with_capacity(usize)
 @test("Vec::with_capacity allocates capacity")
 pub fn test_vec_with_capacity() {
     match Vec::<i32>::with_capacity(10) {
@@ -629,6 +661,7 @@ pub fn test_vec_with_capacity() {
     }
 }
 
+// @covers std::collections::vec::Vec::with_capacity(usize)
 @test("Vec::with_capacity zero returns empty vec")
 pub fn test_vec_with_capacity_zero() {
     match Vec::<i32>::with_capacity(0) {
@@ -640,6 +673,7 @@ pub fn test_vec_with_capacity_zero() {
     }
 }
 
+// @covers std::collections::vec::Vec::with_capacity(usize)
 @test("Vec::with_capacity can push elements")
 pub fn test_vec_with_capacity_push() {
     match Vec::<i32>::with_capacity(5) {
@@ -725,6 +759,7 @@ pub fn test_vec_bool() {
 // with_capacity in match arms (regression test for compiler bug)
 // ============================================================================
 
+// @covers std::collections::vec::Vec::with_capacity(usize)
 @test("Vec::with_capacity works inside match arms")
 pub fn test_vec_with_capacity_in_match() {
     let x: i32 = 5
@@ -740,5 +775,35 @@ pub fn test_vec_with_capacity_in_match() {
             }
         },
         _ => expect(false, "should match 5")
+    }
+}
+
+// @covers std::collections::vec::Vec::as_ptr()
+// @covers std::collections::vec::Vec::as_mut_ptr()
+// @covers std::collections::vec::Vec::as_slice()
+// @covers std::collections::vec::Vec::as_mut_slice()
+// @covers std::collections::vec::Vec::shrink_to_fit()
+// @covers std::collections::vec::Vec::drop()
+@test("Vec exposes bounded views and can release spare capacity")
+pub fn test_vec_views_and_shrink() {
+    match Vec::<i32>::with_capacity(8) {
+        Ok(var v) => {
+            let _ = v.push(10)
+            let _ = v.push(20)
+            unsafe { expect_eq(v.as_ptr()[0], 10, "immutable pointer") }
+            {
+                var values = v.as_mut_slice()
+                expect_true(values.set(0, 11).is_ok(), "mutable slice")
+            }
+            expect_eq(*v.as_slice().get(0).unwrap(), 11, "immutable slice")
+            let values = v.as_mut_ptr()
+            unsafe { values[1] = 22 }
+            expect_eq(*v.as_slice().get(1).unwrap(), 22, "mutable pointer")
+            expect_true(v.shrink_to_fit().is_ok(), "shrink succeeds")
+            expect_eq(v.capacity(), v.len(), "capacity fits length")
+            v.drop()
+            expect_true(v.is_empty(), "drop clears vector")
+        },
+        Err(_) => expect(false, "with_capacity should succeed"),
     }
 }

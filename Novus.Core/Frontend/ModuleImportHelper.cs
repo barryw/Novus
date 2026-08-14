@@ -19,6 +19,31 @@ public static class ModuleImportHelper
     private static readonly ConcurrentDictionary<string, CachedModule> ParseCache = new();
 
     /// <summary>
+    /// Returns the stable prefix used for generated files and private Novus link symbols.
+    /// Standard-library paths remain reproducible across installations; user modules include
+    /// a short path hash so same-named files in different directories cannot collide.
+    /// </summary>
+    public static string GetGeneratedModulePrefix(string modulePath, string? fallback = null)
+    {
+        var normalized = modulePath.Replace('\\', '/');
+        var stdMarker = normalized.LastIndexOf("/std/", StringComparison.Ordinal);
+        if (stdMarker >= 0)
+        {
+            var relative = Path.ChangeExtension(normalized[(stdMarker + 5)..], null)!;
+            return relative.Replace('/', '_');
+        }
+
+        fallback ??= Path.GetFileNameWithoutExtension(modulePath);
+        var hash = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes(Path.GetFullPath(modulePath))))[..8].ToLowerInvariant();
+        return $"{fallback}_{hash}";
+    }
+
+    /// <summary>Returns the C-link symbol for a non-exported Novus function.</summary>
+    public static string GetFunctionLinkName(string modulePath, string functionName) =>
+        $"novus_mod_{GetGeneratedModulePrefix(modulePath)}_{functionName}";
+
+    /// <summary>
     /// Resolve a module namespace to a file path
     /// amiga::dos → std/amiga/dos.novus
     /// amiga::raw::exec → std/amiga/raw/exec.novus

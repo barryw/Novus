@@ -1,0 +1,300 @@
+from std::core import Add, AsMut, AsRef, Bounded, Clone, Default, Div, Drop, Eq, Error, Extend, Fn, FnMut, FnOnce, From, FromIterator, Hash, Index, IndexMut, Into, Iterable, Iterator, LibraryVersion, Mul, Neg, One, Option, Ord, PartialOrd, Rem, Result, Sub, TryFrom, TryInto, Write, Zero
+from std::test::test import expect
+
+struct Number { value: i32 }
+
+impl Add for Number { fn add(&self, other: &Number) -> Number { return Number { value: self.value + other.value } } }
+impl Sub for Number { fn sub(&self, other: &Number) -> Number { return Number { value: self.value - other.value } } }
+impl Mul for Number { fn mul(&self, other: &Number) -> Number { return Number { value: self.value * other.value } } }
+impl Div for Number { fn div(&self, other: &Number) -> Number { return Number { value: self.value / other.value } } }
+impl Rem for Number { fn rem(&self, other: &Number) -> Number { return Number { value: self.value % other.value } } }
+impl Neg for Number { fn neg(&self) -> Number { return Number { value: -self.value } } }
+impl Eq for Number { fn eq(&self, other: &Number) -> bool { return self.value == other.value } }
+impl Hash for Number { fn hash(&self) -> u32 { return self.value as u32 } }
+impl Ord for Number { fn cmp(&self, other: &Number) -> i32 { return self.value - other.value } }
+impl PartialOrd for Number {
+    fn lt(&self, other: &Number) -> bool { return self.value < other.value }
+    fn le(&self, other: &Number) -> bool { return self.value <= other.value }
+    fn gt(&self, other: &Number) -> bool { return self.value > other.value }
+    fn ge(&self, other: &Number) -> bool { return self.value >= other.value }
+}
+impl Clone for Number { fn clone(&self) -> Option<Number> { return Option::Some(Number { value: self.value }) } }
+impl Default for Number { fn default() -> Number { return Number { value: 7 } } }
+impl Zero for Number {
+    fn zero() -> Number { return Number { value: 0 } }
+    fn is_zero(&self) -> bool { return self.value == 0 }
+}
+impl One for Number { fn one() -> Number { return Number { value: 1 } } }
+impl Bounded for Number {
+    fn min_value() -> Number { return Number { value: -100 } }
+    fn max_value() -> Number { return Number { value: 100 } }
+}
+impl AsRef<i32> for Number { fn as_ref(&self) -> i32 { return self.value } }
+impl AsMut<i32> for Number { fn as_mut(&var self) -> i32 { return self.value } }
+
+struct Wrapper { value: i32 }
+impl From<Number> for Wrapper { fn convert(consuming value: Number) -> Wrapper { return Wrapper { value: value.value } } }
+impl Into<Wrapper> for Number { fn into(consuming self) -> Wrapper { return Wrapper { value: self.value } } }
+impl TryFrom<i32, u8> for Wrapper {
+    fn try_from(consuming value: i32) -> Result<Wrapper, u8> {
+        return Result::Ok(Wrapper { value: value }) if value >= 0
+        return Result::Err(1)
+    }
+}
+impl TryInto<Wrapper, u8> for Number {
+    fn try_into(consuming self) -> Result<Wrapper, u8> {
+        return Result::Ok(Wrapper { value: self.value }) if self.value >= 0
+        return Result::Err(1)
+    }
+}
+
+struct TinyCollection { values: [i32; 3], len: u32 }
+impl Index<u32, i32> for TinyCollection { fn index(&self, consuming idx: u32) -> i32 { return self.values[idx] } }
+impl IndexMut<u32, i32> for TinyCollection { fn index_set(&var self, consuming idx: u32, consuming value: i32) { self.values[idx] = value } }
+impl Iterable<i32> for TinyCollection {
+    @unsafe fn get_unchecked(&self, index: usize) -> &i32 { unsafe { return &self.values[index] } }
+    fn len(&self) -> usize { return self.len }
+}
+impl Extend<i32> for TinyCollection {
+    fn extend_from_ptr(&var self, source: *i32, count: u32) -> bool {
+        return false if self.len + count > 3
+        var i: u32 = 0
+        while i < count {
+            unsafe { self.values[self.len + i] = source[i] }
+            i++
+        }
+        self.len = self.len + count
+        return true
+    }
+}
+impl FromIterator<i32> for TinyCollection {
+    fn from_slice(ptr: *i32, count: u32) -> Option<TinyCollection> {
+        return Option::None if count > 3
+        var result = TinyCollection { values: [0; 3], len: 0 }
+        return Option::Some(result) if result.extend_from_ptr(ptr, count)
+        return Option::None
+    }
+}
+
+struct Counter { next_value: i32, end: i32 }
+impl Iterator<i32> for Counter {
+    fn next(&var self) -> Option<i32> {
+        return Option::None if self.next_value >= self.end
+        let value = self.next_value
+        self.next_value++
+        return Option::Some(value)
+    }
+}
+
+struct ByteSink { bytes: [u8; 4], len: u32 }
+impl Write for ByteSink {
+    fn write_bytes(&var self, ptr: *u8, len: usize) -> bool {
+        return false if self.len + len > 4
+        var i: u32 = 0
+        while i < len {
+            unsafe { self.bytes[self.len + i] = ptr[i] }
+            i++
+        }
+        self.len = self.len + len
+        return true
+    }
+    fn write_byte(&var self, value: u8) -> bool {
+        return false if self.len == 4
+        self.bytes[self.len] = value
+        self.len++
+        return true
+    }
+}
+
+enum TinyError { Bad }
+impl Error for TinyError { fn message(&self) -> *u8 { return "bad" } }
+
+static var DROPS: u32 = 0
+struct Droppable { value: u8 }
+impl Drop for Droppable { fn drop(&var self) { DROPS++ } }
+fn create_droppable() { let dropped = Droppable { value: 0 } }
+
+struct Callable { base: i32 }
+impl FnOnce<i32, i32> for Callable { fn call_once(consuming self, consuming args: i32) -> i32 { return self.base + args } }
+impl FnMut<i32, i32> for Callable {
+    fn call_mut(&var self, consuming args: i32) -> i32 {
+        self.base += args
+        return self.base
+    }
+}
+impl Fn<i32, i32> for Callable { fn call(&self, consuming args: i32) -> i32 { return self.base + args } }
+
+// @covers std::core::Option::FromPointer(*T)
+// @covers std::core::Option::is_some()
+// @covers std::core::Option::is_none()
+// @covers std::core::Option::as_ref()
+// @covers std::core::Option::as_mut()
+// @covers std::core::Option::unwrap_or(T)
+// @covers std::core::Option::unwrap()
+// @covers std::core::Option::unwrap_or_else(T)
+// @covers std::core::Option::or(Option<T>)
+// @covers std::core::Option::contains(&T)
+// @covers std::core::Option::ok_or(E)
+@test("Option covers borrowing, fallback, conversion, and pointer safety")
+pub fn test_core_option() {
+    var value = 4
+    let pointer: Option<*i32> = Option::FromPointer(&var value)
+    let null_pointer: Option<*i32> = Option::FromPointer((*i32)0)
+    expect(pointer.is_some(), "non-null pointer")
+    expect(null_pointer.is_none(), "null pointer")
+    let present: Option<i32> = Option::Some(4)
+    expect(present.as_ref().is_some(), "shared borrow")
+    var mutable: Option<i32> = Option::Some(5)
+    match mutable.as_mut() { Option::Some(item) => { *item = 6 }, Option::None => {} }
+    expect(mutable.contains(&6), "mutable borrow and contains")
+    expect(Option::Some(7).unwrap_or(0) == 7, "unwrap or present")
+    let absent_fallback: Option<i32> = Option::None
+    expect(absent_fallback.unwrap_or(8) == 8, "unwrap or absent")
+    expect(Option::Some(9).unwrap() == 9, "unwrap")
+    let absent_else: Option<i32> = Option::None
+    expect(absent_else.unwrap_or_else(10) == 10, "lazy fallback")
+    let absent_or: Option<i32> = Option::None
+    let alternate: Option<i32> = Option::Some(11)
+    expect(absent_or.or(alternate).unwrap() == 11, "or")
+    expect(Option::Some(12).ok_or(1).is_ok(), "ok or")
+}
+
+// @covers std::core::Result::is_ok()
+// @covers std::core::Result::is_err()
+// @covers std::core::Result::unwrap_or(T)
+// @covers std::core::Result::unwrap()
+// @covers std::core::Result::unwrap_err()
+// @covers std::core::Result::or(Result<T, E>)
+// @covers std::core::Result::ok()
+// @covers std::core::Result::err()
+// @covers std::core::Result::or_error(F)
+@test("Result covers success, error, fallback, and conversion paths")
+pub fn test_core_result() {
+    let ok: Result<i32, u8> = Result::Ok(3)
+    let err: Result<i32, u8> = Result::Err(4)
+    expect(ok.is_ok() && err.is_err(), "state")
+    let fallback: Result<i32, u8> = Result::Err(1)
+    expect(fallback.unwrap_or(5) == 5, "fallback")
+    expect(Result::<i32, u8>::Ok(6).unwrap() == 6, "unwrap")
+    expect(Result::<i32, u8>::Err(7).unwrap_err() == 7, "unwrap error")
+    let first_error: Result<i32, u8> = Result::Err(1)
+    let alternate: Result<i32, u8> = Result::Ok(8)
+    expect(first_error.or(alternate).unwrap() == 8, "or")
+    expect(Result::<i32, u8>::Ok(9).ok().unwrap() == 9, "ok option")
+    expect(Result::<i32, u8>::Err(10).err().unwrap() == 10, "error option")
+    expect(Result::<i32, u8>::Err(1).or_error(11).unwrap_err() == 11, "replace error")
+}
+
+// @covers std::core::LibraryVersion::new(u16, u16, u16)
+// @covers std::core::LibraryVersion::major()
+// @covers std::core::LibraryVersion::minor()
+// @covers std::core::LibraryVersion::patch()
+// @covers std::core::LibraryVersion::cmp(&LibraryVersion)
+// @covers std::core::Ord::cmp(&Self)
+@test("LibraryVersion exposes components and semantic ordering")
+pub fn test_core_library_version() {
+    let first = LibraryVersion::new(3, 2, 1)
+    let second = LibraryVersion::new(3, 2, 2)
+    expect(first.major() == 3 && first.minor() == 2 && first.patch() == 1, "components")
+    expect(first.cmp(&second) < 0 && second.cmp(&first) > 0, "ordering")
+}
+
+// @covers std::core::Add::add(&Self)
+// @covers std::core::Sub::sub(&Self)
+// @covers std::core::Mul::mul(&Self)
+// @covers std::core::Div::div(&Self)
+// @covers std::core::Rem::rem(&Self)
+// @covers std::core::Neg::neg()
+// @covers std::core::Eq::eq(&Self)
+// @covers std::core::Hash::hash()
+// @covers std::core::PartialOrd::lt(&Self)
+// @covers std::core::PartialOrd::le(&Self)
+// @covers std::core::PartialOrd::gt(&Self)
+// @covers std::core::PartialOrd::ge(&Self)
+// @covers std::core::Clone::clone()
+// @covers std::core::Default::default()
+// @covers std::core::Zero::zero()
+// @covers std::core::Zero::is_zero()
+// @covers std::core::One::one()
+// @covers std::core::Bounded::min_value()
+// @covers std::core::Bounded::max_value()
+// @covers std::core::AsRef::as_ref()
+// @covers std::core::AsMut::as_mut()
+@test("core value traits dispatch consistently")
+pub fn test_core_value_traits() {
+    let six = Number { value: 6 }
+    let two = Number { value: 2 }
+    expect(six.add(&two).value == 8 && six.sub(&two).value == 4, "add sub")
+    expect(six.mul(&two).value == 12 && six.div(&two).value == 3 && six.rem(&two).value == 0, "mul div rem")
+    expect(two.neg().value == -2 && two.eq(&Number { value: 2 }) && two.hash() == 2, "neg eq hash")
+    expect(two.lt(&six) && two.le(&two) && six.gt(&two) && six.ge(&six), "partial order")
+    expect(two.clone().unwrap().value == 2, "clone")
+    expect(Number::default().value == 7, "default")
+    expect(Number::zero().is_zero() && Number::one().value == 1, "identities")
+    expect(Number::min_value().value == -100 && Number::max_value().value == 100, "bounds")
+    expect(six.as_ref() == 6, "as ref")
+    var mutable = Number { value: 8 }
+    expect(mutable.as_mut() == 8, "as mut")
+}
+
+// @covers std::core::From::convert(T)
+// @covers std::core::Into::into()
+// @covers std::core::TryFrom::try_from(T)
+// @covers std::core::TryInto::try_into()
+@test("conversion traits preserve values and errors")
+pub fn test_core_conversion_traits() {
+    expect(Wrapper::convert(Number { value: 3 }).value == 3, "from")
+    expect(Number { value: 4 }.into().value == 4, "into")
+    expect(Wrapper::try_from(5).unwrap().value == 5, "try from")
+    expect(Number { value: -1 }.try_into().is_err(), "try into error")
+}
+
+// @covers std::core::Index::index(I)
+// @covers std::core::IndexMut::index_set(I, T)
+// @covers std::core::Iterable::get_unchecked(usize)
+// @covers std::core::Iterable::len()
+// @covers std::core::Extend::extend_from_ptr(*T, u32)
+// @covers std::core::FromIterator::from_slice(*T, u32)
+// @covers std::core::Iterator::next()
+@test("collection protocol traits expose safe iteration and extension")
+pub fn test_core_collection_traits() {
+    var collection = TinyCollection { values: [1, 2, 0], len: 2 }
+    expect(collection.index(1) == 2, "index")
+    collection.index_set(1, 4)
+    expect(unsafe { *collection.get_unchecked(1) } == 4 && collection.len() == 2, "iterable")
+    var extra: [i32] = [5]
+    expect(collection.extend_from_ptr((*i32)&extra, 1), "extend")
+    var source: [i32] = [7, 8]
+    expect(TinyCollection::from_slice((*i32)&source, 2).unwrap().len == 2, "from slice")
+    var counter = Counter { next_value: 1, end: 2 }
+    expect(counter.next().unwrap() == 1 && counter.next().is_none(), "iterator")
+}
+
+// @covers std::core::Write::write_bytes(*u8, usize)
+// @covers std::core::Write::write_byte(u8)
+// @covers std::core::Error::message()
+// @covers std::core::Drop::drop()
+@test("write, error, and drop protocols work")
+pub fn test_core_resource_traits() {
+    var sink = ByteSink { bytes: [0; 4], len: 0 }
+    let text: [u8] = [(u8)'a', (u8)'b']
+    expect(sink.write_bytes((*u8)&text, 2) && sink.write_byte((u8)'c'), "write")
+    expect(sink.len == 3 && sink.bytes[2] == (u8)'c', "written bytes")
+    let error = TinyError::Bad
+    expect(unsafe { error.message()[0] } == (u8)'b', "error message")
+    DROPS = 0
+    create_droppable()
+    expect(DROPS == 1, "automatic drop")
+}
+
+// @covers std::core::FnOnce::call_once(Args)
+// @covers std::core::FnMut::call_mut(Args)
+// @covers std::core::Fn::call(Args)
+@test("callable traits preserve ownership and mutation semantics")
+pub fn test_core_callable_traits() {
+    expect(Callable { base: 1 }.call_once(2) == 3, "once")
+    var mutable = Callable { base: 3 }
+    expect(mutable.call_mut(4) == 7, "mutable")
+    let shared = Callable { base: 5 }
+    expect(shared.call(6) == 11, "shared")
+}

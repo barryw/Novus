@@ -142,6 +142,67 @@ public class ResultMainTests
     }
 
     [Fact]
+    public void ThrowawayBinding_DropsOwnedResult()
+    {
+        var source = """
+            from std::core import Drop
+
+            struct Guard { value: i32 }
+            impl Drop for Guard {
+                fn drop(&var self) { self.value = 0 }
+            }
+
+            fn make() -> Guard { Guard { value: 42 } }
+            fn discard() { let _ = make() }
+            """;
+
+        var (module, builder) = Build(source);
+        var function = module.GetFunction("discard");
+
+        Assert.False(builder.Diagnostics.HasErrors);
+        Assert.Contains(function!.BasicBlocks.SelectMany(block => block.Instructions),
+            instruction => instruction is IrDropInPlace { ElementType: IrStructType { StructName: "Guard" } });
+    }
+
+    [Fact]
+    public void BorrowedMethodOnOwnedTemporary_PreservesDropCleanup()
+    {
+        var source = """
+            from std::core import Drop
+
+            struct Guard { value: i32 }
+            impl Guard {
+                fn read(&self) -> i32 { self.value }
+                fn add(&var self, value: i32) { self.value = self.value + value }
+            }
+            impl Drop for Guard {
+                fn drop(&var self) { self.value = 0 }
+            }
+
+            fn make() -> Guard { Guard { value: 42 } }
+            fn inspect() -> i32 { make().read() }
+            struct Bucket { guard: Guard }
+            fn mutate(bucket: &var Bucket, other: &Guard) {
+                bucket.guard.add(other.read())
+            }
+            """;
+
+        var (module, builder) = Build(source);
+        var function = module.GetFunction("inspect");
+
+        Assert.False(builder.Diagnostics.HasErrors);
+        Assert.Contains(function!.LocalVariables, local => local.Name.StartsWith("_borrowed_temp_"));
+        Assert.Contains(function.DeferredBlocks.SelectMany(block => block.Instructions),
+            instruction => instruction is IrDropInPlace { ElementType: IrStructType { StructName: "Guard" } });
+
+        var mutate = module.GetFunction("mutate")!;
+        Assert.DoesNotContain(mutate.LocalVariables, local => local.Name.StartsWith("_borrowed_temp_"));
+        Assert.Contains(mutate.BasicBlocks.SelectMany(block => block.Instructions).OfType<IrCall>(),
+            call => call.Arguments.Any(argument =>
+                argument is IrBorrowValue { BorrowedValue: IrFieldReference { FieldName: "guard" } }));
+    }
+
+    [Fact]
     public void ResultMatch_MovesOwnedPayloadWithoutDroppingSourceTwice()
     {
         var source = """

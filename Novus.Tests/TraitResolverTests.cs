@@ -20,7 +20,10 @@ public class TraitResolverTests
         symbols.RegisterTrait("Copy", new IrTrait("Copy", new List<IrTraitMethod>()));
         symbols.RegisterTrait("Clone", new IrTrait("Clone", new List<IrTraitMethod>()));
         symbols.RegisterTrait("From", new IrTrait("From", new List<IrTraitMethod>(), new List<string> { "T" }));
-        symbols.RegisterTrait("Iterator", new IrTrait("Iterator", new List<IrTraitMethod>(), new List<string> { "Item" }));
+        symbols.RegisterTrait("Iterator", new IrTrait("Iterator", new List<IrTraitMethod>
+        {
+            new("next", new List<IrParameter>(), IrIntType.I32)
+        }, new List<string> { "Item" }));
         symbols.RegisterTrait("Add", new IrTrait("Add", new List<IrTraitMethod>()));
 
         return new TraitResolver(symbols)
@@ -436,6 +439,16 @@ public class TraitResolverTests
     }
 
     #endregion
+
+    [Fact]
+    public void FindTraitMethod_GenericTrait_IncludesTypeArgumentsInMangledName()
+    {
+        var resolver = CreateResolver();
+        resolver.RegisterTraitImpl(
+            "Counter", "Iterator", new List<IrType> { IrIntType.I32 }, new List<string>(), TestLocation);
+
+        Assert.Equal("Counter_Iterator_i32_next", resolver.FindTraitMethod("Counter", "next"));
+    }
 
     #region Clear Tests
 

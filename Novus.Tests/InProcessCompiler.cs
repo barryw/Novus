@@ -1,4 +1,6 @@
 using Antlr4.Runtime;
+using System.Security.Cryptography;
+using System.Text;
 using Novus.Codegen;
 using Novus.Compilation;
 using Novus.Diagnostics;
@@ -18,10 +20,39 @@ namespace Novus.Tests;
 public class InProcessCompiler
 {
     private readonly string _stdLibPath;
+    private readonly CompilationCache _compilationCache;
+    private readonly string _stdLibFingerprint;
 
-    public InProcessCompiler(string stdLibPath)
+    public InProcessCompiler(string stdLibPath, string? cacheDirectory = null)
     {
-        _stdLibPath = stdLibPath;
+        _stdLibPath = Path.GetFullPath(stdLibPath);
+        var projectRoot = Path.GetFullPath(Path.Combine(_stdLibPath, "..", ".."));
+        var compilerVersion =
+            BitConverter.ToInt32(typeof(IrBuilder).Assembly.ManifestModule.ModuleVersionId.ToByteArray());
+        _compilationCache = new CompilationCache(
+            projectRoot,
+            compilerVersion,
+            cacheDirectory ?? Path.Combine(projectRoot, ".novus-cache", "in-process-tests"));
+        _compilationCache.BeginBuild();
+        _stdLibFingerprint = ComputeStdLibFingerprint(_stdLibPath);
+    }
+
+    private static string ComputeStdLibFingerprint(string stdLibPath)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var path in Directory.EnumerateFiles(stdLibPath, "*.novus", SearchOption.AllDirectories)
+                     .OrderBy(path => path, StringComparer.Ordinal))
+        {
+            hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(stdLibPath, path)));
+            hash.AppendData(File.ReadAllBytes(path));
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private string GetConfigHash(string cpu, string fpu, BuildMode buildMode)
+    {
+        var value = $"{cpu}|{fpu}|{buildMode}|full|{_stdLibFingerprint}";
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16].ToLowerInvariant();
     }
 
     /// <summary>
@@ -69,6 +100,11 @@ public class InProcessCompiler
                     ErrorMessage = $"Input file not found: {inputFile}"
                 };
             }
+
+            var configHash = GetConfigHash(cpu, fpu, buildMode);
+            var (cachedModule, cachedStrings, _) = _compilationCache.GetCachedIrModule(inputFile, configHash);
+            if (cachedModule != null && cachedStrings != null)
+                return GenerateC(cachedModule, cachedStrings, cpu, fpu, buildMode);
 
             var source = await File.ReadAllTextAsync(inputFile);
             var diagnostics = new DiagnosticBag();
@@ -143,36 +179,17 @@ public class InProcessCompiler
                 };
             }
 
-            // PHASE 5: C Code Generation
-            var typeRegistry = new TypeRegistry();
-            typeRegistry.RegisterModule(module);
-
-            var allFunctions = module.Functions.ToList();
-            var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctions);
-
-            // Generate C code for all non-extern functions
-            var codeGenerator = new CCodeGenerator(
+            _compilationCache.CacheCompilationResult(
+                inputFile,
+                compilationUnit,
                 module,
                 irBuilder.StringLiterals,
-                cpu,
-                fpu,
-                buildMode,
-                safetyLevel: SafetyLevel.Full,
-                explicitEntryPoints: null,
-                useSharedTypesHeader: true,
-                projectVersion: null);
+                irBuilder.GetImportedModules(),
+                configHash,
+                dependencyModules: Array.Empty<string>());
+            await _compilationCache.FlushAsync();
 
-            var cCode = codeGenerator.Generate();
-
-            return new CompilationResult
-            {
-                Success = true,
-                IrModule = module,
-                StringLiterals = irBuilder.StringLiterals,
-                CCode = cCode,
-                TypesHeader = sharedTypesHeader,
-                Diagnostics = irBuilder.Diagnostics
-            };
+            return GenerateC(module, irBuilder.StringLiterals, cpu, fpu, buildMode, irBuilder.Diagnostics);
         }
         catch (Exception ex)
         {
@@ -182,6 +199,44 @@ public class InProcessCompiler
                 ErrorMessage = $"Unexpected error: {ex.Message}\n{ex.StackTrace}"
             };
         }
+    }
+
+    private static CompilationResult GenerateC(
+        IrModule module,
+        List<IrStringLiteral> stringLiterals,
+        string cpu,
+        string fpu,
+        BuildMode buildMode,
+        DiagnosticBag? diagnostics = null)
+    {
+        var typeRegistry = new TypeRegistry();
+        typeRegistry.RegisterModule(module);
+
+        var allFunctions = module.Functions.ToList();
+        var sharedTypesHeader = CCodeGenerator.GenerateSharedTypesHeader(typeRegistry, allFunctions);
+
+        var codeGenerator = new CCodeGenerator(
+            module,
+            stringLiterals,
+            cpu,
+            fpu,
+            buildMode,
+            safetyLevel: SafetyLevel.Full,
+            explicitEntryPoints: null,
+            useSharedTypesHeader: true,
+            projectVersion: null);
+
+        var cCode = codeGenerator.Generate();
+
+        return new CompilationResult
+        {
+            Success = true,
+            IrModule = module,
+            StringLiterals = stringLiterals,
+            CCode = cCode,
+            TypesHeader = sharedTypesHeader,
+            Diagnostics = diagnostics ?? new DiagnosticBag()
+        };
     }
 
     /// <summary>

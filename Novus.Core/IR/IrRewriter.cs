@@ -103,6 +103,7 @@ public abstract class IrRewriter
             IrReturn ret => RewriteReturn(ret),
             IrStore store => RewriteStore(store),
             IrDereferenceStore derefStore => RewriteDereferenceStore(derefStore),
+            IrDropInPlace dropInPlace => RewriteDropInPlace(dropInPlace),
             IrLabel label => RewriteLabel(label),
             IrBranch branch => RewriteBranch(branch),
             IrConditionalBranch condBranch => RewriteConditionalBranch(condBranch),
@@ -119,6 +120,14 @@ public abstract class IrRewriter
             IrMatch match => RewriteMatch(match),
             IrExtractTag extractTag => RewriteExtractTag(extractTag),
             IrExtractVariantData extractData => RewriteExtractVariantData(extractData),
+            IrCreateClosure createClosure => RewriteCreateClosure(createClosure),
+            IrInvokeClosure invokeClosure => RewriteInvokeClosure(invokeClosure),
+            IrLoadCapture loadCapture => RewriteLoadCapture(loadCapture),
+            IrStoreCapture storeCapture => RewriteStoreCapture(storeCapture),
+            IrIndexedFieldStore indexedFieldStore => RewriteIndexedFieldStore(indexedFieldStore),
+            IrHardwareWrite hardwareWrite => RewriteHardwareWrite(hardwareWrite),
+            IrHardwareRead hardwareRead => RewriteHardwareRead(hardwareRead),
+            IrInlineAsm inlineAsm => RewriteInlineAsm(inlineAsm),
             _ => instruction
         };
     }
@@ -132,14 +141,19 @@ public abstract class IrRewriter
         return value switch
         {
             IrConstant constant => RewriteConstant(constant),
+            IrSizeOf sizeOf => RewriteSizeOf(sizeOf),
+            IrZeroed zeroed => RewriteZeroed(zeroed),
             IrBoolConstant boolConstant => RewriteBoolConstant(boolConstant),
+            IrConstGenericParamRef constGeneric => RewriteConstGenericParamRef(constGeneric),
             IrFloatConstant floatConstant => RewriteFloatConstant(floatConstant),
             IrFixedConstant fixedConstant => RewriteFixedConstant(fixedConstant),
             IrStringLiteral stringLiteral => RewriteStringLiteral(stringLiteral),
             IrVariable variable => RewriteVariable(variable),
             IrGlobalVariable globalVar => RewriteGlobalVariable(globalVar),
             IrStructLiteral structLiteral => RewriteStructLiteral(structLiteral),
+            IrTupleLiteral tupleLiteral => RewriteTupleLiteral(tupleLiteral),
             IrArrayLiteral arrayLiteral => RewriteArrayLiteral(arrayLiteral),
+            IrNever never => RewriteNever(never),
             IrDereferenceValue derefValue => RewriteDereferenceValue(derefValue),
             IrBorrowValue borrowValue => RewriteBorrowValue(borrowValue),
             IrFieldReference fieldRef => RewriteFieldReference(fieldRef),
@@ -153,6 +167,10 @@ public abstract class IrRewriter
             IrTurboFishType turboFish => RewriteTurboFishType(turboFish),
             IrGenericAssociatedFunction genAssocFunc => RewriteGenericAssociatedFunction(genAssocFunc),
             IrFunctionRef funcRef => RewriteFunctionRef(funcRef),
+            IrCopperListData copperList => RewriteCopperListData(copperList),
+            IrBlitterOpData blitterOp => RewriteBlitterOpData(blitterOp),
+            IrEnumTagAccess enumTag => RewriteEnumTagAccess(enumTag),
+            IrEnumPayloadAccess enumPayload => RewriteEnumPayloadAccess(enumPayload),
             _ => value
         };
     }
@@ -236,6 +254,12 @@ public abstract class IrRewriter
         derefStore.Pointer = RewriteValue(derefStore.Pointer);
         derefStore.Value = RewriteValue(derefStore.Value);
         return derefStore;
+    }
+
+    public virtual IrInstruction? RewriteDropInPlace(IrDropInPlace dropInPlace)
+    {
+        dropInPlace.Pointer = RewriteValue(dropInPlace.Pointer);
+        return dropInPlace;
     }
 
     /// <summary>
@@ -440,6 +464,58 @@ public abstract class IrRewriter
         return extractData;
     }
 
+    public virtual IrInstruction? RewriteCreateClosure(IrCreateClosure createClosure)
+    {
+        for (var i = 0; i < createClosure.CapturedValues.Count; i++)
+        {
+            var capture = createClosure.CapturedValues[i];
+            createClosure.CapturedValues[i] =
+                (capture.VarName, RewriteValue(capture.Value), capture.Mode);
+        }
+        return createClosure;
+    }
+
+    public virtual IrInstruction? RewriteInvokeClosure(IrInvokeClosure invokeClosure)
+    {
+        invokeClosure.Closure = RewriteValue(invokeClosure.Closure);
+        for (var i = 0; i < invokeClosure.Arguments.Count; i++)
+            invokeClosure.Arguments[i] = RewriteValue(invokeClosure.Arguments[i]);
+        return invokeClosure;
+    }
+
+    public virtual IrInstruction? RewriteLoadCapture(IrLoadCapture loadCapture) => loadCapture;
+
+    public virtual IrInstruction? RewriteStoreCapture(IrStoreCapture storeCapture)
+    {
+        storeCapture.Value = RewriteValue(storeCapture.Value);
+        return storeCapture;
+    }
+
+    public virtual IrInstruction? RewriteIndexedFieldStore(IrIndexedFieldStore store)
+    {
+        store.Array = RewriteValue(store.Array);
+        store.Index = RewriteValue(store.Index);
+        store.Value = RewriteValue(store.Value);
+        if (store.Length != null)
+            store.Length = RewriteValue(store.Length);
+        return store;
+    }
+
+    public virtual IrInstruction? RewriteHardwareWrite(IrHardwareWrite hardwareWrite)
+    {
+        hardwareWrite.Value = RewriteValue(hardwareWrite.Value);
+        return hardwareWrite;
+    }
+
+    public virtual IrInstruction? RewriteHardwareRead(IrHardwareRead hardwareRead) => hardwareRead;
+
+    public virtual IrInstruction? RewriteInlineAsm(IrInlineAsm inlineAsm)
+    {
+        foreach (var input in inlineAsm.Inputs)
+            input.Value = RewriteValue(input.Value);
+        return inlineAsm;
+    }
+
     // Value rewrite methods (default: return unmodified)
 
     /// <summary>
@@ -449,6 +525,12 @@ public abstract class IrRewriter
     {
         return constant;
     }
+
+    public virtual IrValue RewriteSizeOf(IrSizeOf sizeOf) => sizeOf;
+
+    public virtual IrValue RewriteZeroed(IrZeroed zeroed) => zeroed;
+
+    public virtual IrValue RewriteConstGenericParamRef(IrConstGenericParamRef constGeneric) => constGeneric;
 
     /// <summary>
     /// Rewrite a boolean constant value
@@ -512,6 +594,13 @@ public abstract class IrRewriter
         return structLiteral;
     }
 
+    public virtual IrValue RewriteTupleLiteral(IrTupleLiteral tupleLiteral)
+    {
+        for (var i = 0; i < tupleLiteral.Elements.Count; i++)
+            tupleLiteral.Elements[i] = RewriteValue(tupleLiteral.Elements[i]);
+        return tupleLiteral;
+    }
+
     /// <summary>
     /// Rewrite an array literal value
     /// </summary>
@@ -523,6 +612,8 @@ public abstract class IrRewriter
         }
         return arrayLiteral;
     }
+
+    public virtual IrValue RewriteNever(IrNever never) => never;
 
     /// <summary>
     /// Rewrite a dereference value
@@ -632,6 +723,33 @@ public abstract class IrRewriter
     public virtual IrValue RewriteFunctionRef(IrFunctionRef funcRef)
     {
         return funcRef;
+    }
+
+    public virtual IrValue RewriteCopperListData(IrCopperListData copperList) => copperList;
+
+    public virtual IrValue RewriteBlitterOpData(IrBlitterOpData blitterOp)
+    {
+        if (blitterOp.SourceA != null)
+            blitterOp.SourceA = RewriteValue(blitterOp.SourceA);
+        if (blitterOp.SourceB != null)
+            blitterOp.SourceB = RewriteValue(blitterOp.SourceB);
+        if (blitterOp.SourceC != null)
+            blitterOp.SourceC = RewriteValue(blitterOp.SourceC);
+        if (blitterOp.Destination != null)
+            blitterOp.Destination = RewriteValue(blitterOp.Destination);
+        return blitterOp;
+    }
+
+    public virtual IrValue RewriteEnumTagAccess(IrEnumTagAccess enumTag)
+    {
+        enumTag.EnumValue = RewriteValue(enumTag.EnumValue);
+        return enumTag;
+    }
+
+    public virtual IrValue RewriteEnumPayloadAccess(IrEnumPayloadAccess enumPayload)
+    {
+        enumPayload.EnumValue = RewriteValue(enumPayload.EnumValue);
+        return enumPayload;
     }
 
     /// <summary>

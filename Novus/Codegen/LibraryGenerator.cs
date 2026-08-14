@@ -435,6 +435,7 @@ public class LibraryGenerator
             IrIntType intType => intType.SizeInBytes,
             IrPointerType => 4, // 32-bit pointers on 68k
             IrBoolType => 1,
+            IrTupleType { ElementTypes.Count: 0 } => 1,
             _ => throw new InvalidOperationException($"Cannot determine field size for unsupported IR type: {type.GetType().Name}")
         };
     }
@@ -451,6 +452,7 @@ public class LibraryGenerator
                 ? $"int{intType.SizeInBytes * 8}_t"
                 : $"uint{intType.SizeInBytes * 8}_t",
             IrBoolType => "bool",
+            IrTupleType { ElementTypes.Count: 0 } => "uint8_t",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
             IrReferenceType refType => $"{GetCType(refType.PointeeType)}*",
             IrMutReferenceType refType => $"{GetCType(refType.PointeeType)}*",
@@ -458,6 +460,9 @@ public class LibraryGenerator
             _ => throw new InvalidOperationException($"Cannot generate C type for unsupported IR type: {type.GetType().Name}")
         };
     }
+
+    private string GetCReturnType(IrType type) =>
+        type is IrTupleType { ElementTypes.Count: 0 } ? "void" : GetCType(type);
 
     /// <summary>
     /// Generate the library base structure definition.
@@ -556,7 +561,7 @@ public class LibraryGenerator
 
         foreach (var function in _libraryFunctions.Where(HasStateReceiver))
         {
-            var returnType = GetCType(function.Function.ReturnType);
+            var returnType = GetCReturnType(function.Function.ReturnType);
             var originalParameters = string.Join(", ", function.Function.Parameters.Select(parameter =>
                 $"{GetCType(parameter.Type)} {parameter.Name}"));
             var clientParameters = GetClientParameters(function);
@@ -1143,7 +1148,7 @@ public class LibraryGenerator
         {
             if (!func.IsLifecycleFunction)
             {
-                var returnType = GetCType(func.Function.ReturnType);
+                var returnType = GetCReturnType(func.Function.ReturnType);
                 var parameters = GetClientParameters(func);
                 var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
@@ -1163,7 +1168,7 @@ public class LibraryGenerator
         {
             if (!func.IsLifecycleFunction)
             {
-                var returnType = GetCType(func.Function.ReturnType);
+                var returnType = GetCReturnType(func.Function.ReturnType);
                 var parameters = GetClientParameters(func);
                 var paramList = string.Join(", ", parameters.Select(p =>
                     $"{GetCType(p.Type)} {p.Name}"));
@@ -1577,7 +1582,7 @@ struct {structName} {{
         sb.AppendLine("extern struct ExecBase* SysBase;");
         sb.AppendLine("extern int __novus_ffi_init(void);");
         if (_initHook != null)
-            sb.AppendLine($"extern {GetCType(_initHook.ReturnType)} {MangleName(_initHook.Name)}({GetCType(_initHook.Parameters[0].Type)} state);");
+            sb.AppendLine($"extern {GetCReturnType(_initHook.ReturnType)} {MangleName(_initHook.Name)}({GetCType(_initHook.Parameters[0].Type)} state);");
         foreach (var function in _libraryFunctions)
         {
             var parameters = function.Function.Parameters.Skip(1).ToList();
@@ -1586,7 +1591,7 @@ struct {structName} {{
             if (declaration.Length > 0)
                 declaration = ", " + declaration;
             var arguments = string.Concat(parameters.Select(parameter => $", {parameter.Name}"));
-            var returnType = GetCType(function.Function.ReturnType);
+            var returnType = GetCReturnType(function.Function.ReturnType);
             var originalDeclaration = string.Join(", ", function.Function.Parameters.Select(parameter =>
                 $"{GetCType(parameter.Type)} {parameter.Name}"));
             sb.AppendLine($"extern {returnType} {function.CName}({originalDeclaration});");

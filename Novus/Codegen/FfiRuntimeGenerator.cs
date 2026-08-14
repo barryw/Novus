@@ -28,7 +28,7 @@ public static class FfiRuntimeGenerator
             sb.AppendLine("\txdef\t_WBStartupMsg");
             sb.AppendLine("_WBStartupMsg:\tds.l\t1");
         }
-        foreach (var binding in bindings)
+        foreach (var binding in bindings.Where(binding => binding.Kind != FfiModuleKind.LazyLibrary))
         {
             sb.AppendLine($"\txdef\t{binding.BaseSymbol}");
             sb.AppendLine($"{binding.BaseSymbol}:\tds.l\t1");
@@ -37,7 +37,7 @@ public static class FfiRuntimeGenerator
             sb.AppendLine($"__novus_{binding.ModuleName}_ioreq:\tds.b\t32");
 
         sb.AppendLine("\tsection\t__MERGED,data");
-        foreach (var binding in bindings)
+        foreach (var binding in bindings.Where(binding => binding.Kind != FfiModuleKind.LazyLibrary))
         {
             sb.AppendLine($"__novus_{binding.ModuleName}_name:");
             sb.AppendLine($"\tdc.b\t'{binding.OpenName}',0");
@@ -59,6 +59,7 @@ public static class FfiRuntimeGenerator
         sb.AppendLine("\tsection\tCODE,code");
         sb.AppendLine("\txdef\t___novus_ffi_init");
         sb.AppendLine("\txdef\t___novus_ffi_cleanup");
+        sb.AppendLine("\txdef\t___novus_ffi_cleanup_lazy");
         sb.AppendLine("\txref\t___novus_library_not_found");
         sb.AppendLine("___novus_ffi_init:");
         if (useCompactLibraryTable)
@@ -99,6 +100,8 @@ public static class FfiRuntimeGenerator
             sb.AppendLine("\tmove.l\t4.w,a6");
             foreach (var binding in bindings)
             {
+                if (binding.Kind == FfiModuleKind.LazyLibrary)
+                    continue;
                 sb.AppendLine($"\ttst.l\t{binding.BaseSymbol}");
                 sb.AppendLine($"\tbne.s\t.__novus_{binding.ModuleName}_ready");
                 sb.AppendLine($"\tlea\t__novus_{binding.ModuleName}_name,a0");
@@ -155,6 +158,7 @@ public static class FfiRuntimeGenerator
         }
 
         sb.AppendLine("___novus_ffi_cleanup:");
+        sb.AppendLine("\tbsr\t___novus_ffi_cleanup_lazy");
         if (useCompactLibraryTable)
         {
             sb.AppendLine("\tmovem.l\td4/a2/a4/a6,-(sp)");
@@ -178,7 +182,7 @@ public static class FfiRuntimeGenerator
         {
             sb.AppendLine("\tmovem.l\td0/a1/a6,-(sp)");
             sb.AppendLine("\tmove.l\t4.w,a6");
-            foreach (var binding in bindings.AsEnumerable().Reverse())
+            foreach (var binding in bindings.Where(binding => binding.Kind != FfiModuleKind.LazyLibrary).Reverse())
             {
                 if (binding.Kind == FfiModuleKind.Resource)
                     continue;
@@ -200,6 +204,24 @@ public static class FfiRuntimeGenerator
             sb.AppendLine("\tmovem.l\t(sp)+,d0/a1/a6");
             sb.AppendLine("\trts");
         }
+        sb.AppendLine("___novus_ffi_cleanup_lazy:");
+        var lazyBindings = bindings.Where(binding => binding.Kind == FfiModuleKind.LazyLibrary).ToList();
+        if (lazyBindings.Count > 0)
+        {
+            sb.AppendLine("\tmovem.l\td0/a1/a6,-(sp)");
+            sb.AppendLine("\tmove.l\t4.w,a6");
+            foreach (var binding in lazyBindings.AsEnumerable().Reverse())
+            {
+                sb.AppendLine($"\tmove.l\t{binding.BaseSymbol},d0");
+                sb.AppendLine($"\tbeq.s\t.__novus_{binding.ModuleName}_lazy_closed");
+                sb.AppendLine("\tmove.l\td0,a1");
+                sb.AppendLine("\tjsr\t-414(a6)\t; CloseLibrary");
+                sb.AppendLine($"\tclr.l\t{binding.BaseSymbol}");
+                sb.AppendLine($".__novus_{binding.ModuleName}_lazy_closed:");
+            }
+            sb.AppendLine("\tmovem.l\t(sp)+,d0/a1/a6");
+        }
+        sb.AppendLine("\trts");
         if (includeWorkbenchStartup)
         {
             sb.AppendLine("\tsection\t___get_wb_startup_msg,code");

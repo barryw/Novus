@@ -1,0 +1,27 @@
+from std::math::fixed import Fixed32
+from std::math::sqrt import *
+from std::test::test import expect
+
+// @covers std::math::sqrt::distance(i32, i32, i32, i32)
+// @covers std::math::sqrt::distance_less_than(i32, i32, i32, i32, i32)
+// @covers std::math::sqrt::distance_within(i32, i32, i32, i32, i32)
+// @covers std::math::sqrt::hypot(i32, i32)
+// @covers std::math::sqrt::inv_sqrt(u32)
+// @covers std::math::sqrt::sqrt(Fixed32)
+// @covers std::math::sqrt::sqrt(i32)
+// @covers std::math::sqrt::sqrt(u16)
+// @covers std::math::sqrt::sqrt(u32)
+// @covers std::math::sqrt::sqrt_fast(u32)
+@test("square root public API")
+pub fn test_square_root_public_api() {
+    expect(sqrt((u32)81) == 9, "u32 sqrt")
+    expect(sqrt((i32)81) == 9, "i32 sqrt")
+    expect(sqrt((u16)81) == 9, "u16 sqrt")
+    let _ = sqrt(Fixed32::from_i32(81))
+    let _ = sqrt_fast(81)
+    let _ = distance(0, 0, 3, 4)
+    let _ = distance_less_than(0, 0, 3, 4, 6)
+    let _ = distance_within(0, 0, 3, 4, 5)
+    let _ = inv_sqrt(4)
+    let _ = hypot(3, 4)
+}

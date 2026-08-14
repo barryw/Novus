@@ -3,6 +3,7 @@ using Novus.Codegen;
 using Novus.Frontend;
 using Novus.IR;
 using Novus.Parser;
+using Novus.SemanticAnalysis;
 using Xunit;
 
 namespace Novus.Tests;
@@ -35,6 +36,38 @@ public class CCodeGeneratorIntegrationTests
         var tree = parser.compilationUnit();
 
         return new IrBuilder(skipAutoImports: false).BuildModule(tree);
+    }
+
+    private IrModule BuildIRAtPath(string source, string path)
+    {
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+
+        var builder = new IrBuilder(skipAutoImports: true);
+        builder.SetInputFilePath(path);
+        return builder.BuildModule(tree);
+    }
+
+    private IrModule BuildAnalyzedIRAtPath(string source, string path)
+    {
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var tree = parser.compilationUnit();
+        var stdlib = Path.Combine(AppContext.BaseDirectory, "std");
+        var analyzer = new SemanticAnalyzer(path, source, stdlib);
+        Assert.True(analyzer.Analyze(tree), analyzer.Diagnostics.FormatDiagnostics());
+
+        var builder = new IrBuilder(analyzer.GetResult(), skipAutoImports: true);
+        builder.SetStdLibPath(stdlib);
+        builder.SetInputFilePath(path);
+        var module = builder.BuildModule(tree);
+        Assert.False(builder.Diagnostics.HasErrors, builder.Diagnostics.FormatDiagnostics());
+        return module;
     }
 
     private string GenerateCCode(IrModule module, BuildMode buildMode = BuildMode.Debug)
@@ -492,6 +525,7 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public void CCodeGen_ManglesGenericStructuralDropNames()
     {
         var module = BuildIRWithStdlib("""
@@ -802,6 +836,7 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public void CCodeGen_ImportedGenericConsumingParameterDropsOnErrorPaths()
     {
         var module = BuildIRWithStdlib("""
@@ -823,6 +858,145 @@ pub fn clear() -> i32 {
 
         Assert.True(push.Parameters.Single(parameter => parameter.Name == "value").IsConsuming);
         Assert.Contains("String_Drop_drop(value);", code);
+    }
+
+    [Fact]
+    [Trait("Category", "CompilerIntegration")]
+    public void BuildIR_WidenedImportRegistersGenericFunctionTemplate()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::async::executor import ExecutorError
+            from std::async::future import Ready, ready
+
+            pub fn run() -> Ready<i32> {
+                return ready(7)
+            }
+            """);
+
+        Assert.Contains(module.Functions, function => function.Name == "ready__i32");
+    }
+
+    [Fact]
+    public void CCodeGen_SameNamedFunctionsInDifferentModulesUseDifferentLinkSymbols()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"novus-link-names-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var firstPath = Path.Combine(root, "first.novus");
+            var secondPath = Path.Combine(root, "second.novus");
+            var callerPath = Path.Combine(root, "caller.novus");
+            const string firstSource = "pub fn now() -> i32 { return 1 }";
+            const string secondSource = "pub fn now() -> i32 { return 2 }";
+            const string callerSource = """
+                from first import now as first_now
+                from second import now as second_now
+
+                pub fn sum() -> i32 {
+                    return first_now() + second_now()
+                }
+                """;
+            File.WriteAllText(firstPath, firstSource);
+            File.WriteAllText(secondPath, secondSource);
+
+            var first = BuildIRAtPath(firstSource, firstPath);
+            var second = BuildIRAtPath(secondSource, secondPath);
+            var caller = BuildIRAtPath(callerSource, callerPath);
+            var firstLink = first.Functions.Single(function => function.Name == "now").LinkName;
+            var secondLink = second.Functions.Single(function => function.Name == "now").LinkName;
+
+            Assert.NotNull(firstLink);
+            Assert.NotNull(secondLink);
+            Assert.NotEqual(firstLink, secondLink);
+            Assert.Equal(firstLink, caller.Functions.Single(function => function.Name == "first_now").LinkName);
+            Assert.Equal(secondLink, caller.Functions.Single(function => function.Name == "second_now").LinkName);
+
+            var callerGenerator = new CCodeGenerator(caller, [], "68020", "soft");
+            var callerCode = callerGenerator
+                .GenerateFunctionFile(caller.Functions.Single(function => function.Name == "sum"));
+            Assert.Contains($"{firstLink}()", callerCode);
+            Assert.Contains($"{secondLink}()", callerCode);
+            Assert.Equal(firstLink, callerGenerator.EmitValue(new IrFunctionAddress(
+                "first_now", new IrFunctionPointerType([], IrIntType.I32))));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CCodeGen_ReexportedFunctionLinkNameDoesNotDependOnCallerOverloads()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"novus-reexport-link-name-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var leafPath = Path.Combine(root, "leaf.novus");
+            var facadePath = Path.Combine(root, "facade.novus");
+            var callerPath = Path.Combine(root, "caller.novus");
+            const string leafSource = "pub fn delay(duration: i32) -> i32 { return duration }";
+            const string callerSource = """
+                from facade import delay as system_delay
+
+                pub fn delay(duration: i32) -> i32 {
+                    return system_delay(duration)
+                }
+                """;
+            File.WriteAllText(leafPath, leafSource);
+            File.WriteAllText(facadePath, "pub use leaf::*");
+
+            var leaf = BuildAnalyzedIRAtPath(leafSource, leafPath);
+            var caller = BuildAnalyzedIRAtPath(callerSource, callerPath);
+            var definition = leaf.Functions.Single(function => function.Name == "delay");
+            var imported = caller.Functions.Single(function => function.Name == "system_delay");
+
+            Assert.Equal(definition.LinkName, imported.LinkName);
+            Assert.EndsWith("_delay__i32", definition.LinkName);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CCodeGen_ExplicitAmigaExternUsesRequestedRegisters()
+    {
+        var module = BuildIR("""
+            extern amiga fn asm_div_ceil_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+
+            pub fn divide(a: u32, b: u32) -> u32 {
+                return asm_div_ceil_u32(a, b)
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(function => function.Name == "divide"));
+
+        Assert.Contains("extern __reg(\"d0\") uint32_t asm_div_ceil_u32(__reg(\"d0\") uint32_t a, __reg(\"d1\") uint32_t b);", code);
+        Assert.DoesNotContain("__regargs asm_div_ceil_u32", code);
+    }
+
+    [Fact]
+    public void CCodeGen_UnsafeBlockTailPreservesIfExpressionPointerType()
+    {
+        var module = BuildIR("""
+            struct Handle { value: i32 }
+            extern fn acquire() -> *Handle
+
+            pub fn choose(first: bool) -> *Handle {
+                return if first {
+                    unsafe { acquire() }
+                } else {
+                    unsafe { acquire() }
+                }
+            }
+            """);
+        var code = GenerateCCode(module);
+
+        Assert.Contains("Handle* choose", code);
+        Assert.DoesNotContain("int32_t _slot_ptr_Handle", code);
     }
 
     [Fact]

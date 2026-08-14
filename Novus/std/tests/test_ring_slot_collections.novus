@@ -1,0 +1,280 @@
+from std::collections::ringbuffer import RingBuffer, RingBufferPow2
+from std::collections::slotmap import SlotKey, SlotMap, SlotMapFixed
+from std::core import Option, Result
+from std::memory::errors import MemoryError
+from std::test::test import expect
+
+struct SlotValue {
+    number: i32,
+}
+
+// @covers std::collections::ringbuffer::RingBuffer::with_capacity(usize)
+// @covers std::collections::ringbuffer::RingBuffer::try_with_capacity(usize)
+// @covers std::collections::ringbuffer::RingBuffer::is_empty()
+// @covers std::collections::ringbuffer::RingBuffer::is_full()
+// @covers std::collections::ringbuffer::RingBuffer::len()
+// @covers std::collections::ringbuffer::RingBuffer::capacity()
+// @covers std::collections::ringbuffer::RingBuffer::available()
+// @covers std::collections::ringbuffer::RingBuffer::push_back(T)
+// @covers std::collections::ringbuffer::RingBuffer::pop_front()
+// @covers std::collections::ringbuffer::RingBuffer::front()
+// @covers std::collections::ringbuffer::RingBuffer::back()
+// @covers std::collections::ringbuffer::RingBuffer::clear()
+// @covers std::collections::ringbuffer::RingBuffer::get(usize)
+// @covers std::collections::ringbuffer::RingBuffer::get_mut(usize)
+// @covers std::collections::ringbuffer::RingBuffer::set_front(T)
+// @covers std::collections::ringbuffer::RingBuffer::skip(usize)
+@test("RingBuffer preserves FIFO order through wrap-around")
+pub fn test_ring_buffer() {
+    match RingBuffer::<i32>::with_capacity(3) {
+        Result::Ok(var buffer) => {
+            expect(buffer.is_empty() && buffer.capacity() == 3, "empty buffer")
+            expect(buffer.available() == 3, "available capacity")
+            expect(buffer.push_back(1).is_ok(), "push one")
+            expect(buffer.push_back(2).is_ok(), "push two")
+            expect(buffer.push_back(3).is_ok(), "push three")
+            expect(buffer.is_full() && buffer.len() == 3, "full buffer")
+            match buffer.push_back(4) {
+                Result::Err(MemoryError::CapacityExceeded) => {},
+                _ => expect(false, "full push rejected"),
+            }
+            match buffer.front() {
+                Option::Some(value) => expect(*value == 1, "front"),
+                Option::None => expect(false, "front missing"),
+            }
+            match buffer.back() {
+                Option::Some(value) => expect(*value == 3, "back"),
+                Option::None => expect(false, "back missing"),
+            }
+            match buffer.get_mut(1) {
+                Option::Some(value) => { *value = 20 },
+                Option::None => expect(false, "mutable get failed"),
+            }
+            match buffer.get(1) {
+                Option::Some(value) => expect(*value == 20, "logical get"),
+                Option::None => expect(false, "get failed"),
+            }
+            expect(buffer.set_front(10).is_ok(), "replace front")
+            match buffer.pop_front() {
+                Option::Some(value) => expect(value == 10, "pop front"),
+                Option::None => expect(false, "pop failed"),
+            }
+            expect(buffer.push_back(4).is_ok(), "wrap push")
+            expect(buffer.skip(2) == 2, "skip values")
+            match buffer.front() {
+                Option::Some(value) => expect(*value == 4, "wrapped remainder"),
+                Option::None => expect(false, "wrapped remainder missing"),
+            }
+            buffer.clear()
+            expect(buffer.is_empty(), "clear")
+        },
+        Result::Err(_) => expect(false, "buffer allocation failed"),
+    }
+    match RingBuffer::<u8>::try_with_capacity(2) {
+        Result::Ok(buffer) => expect(buffer.capacity() == 2, "try capacity"),
+        Result::Err(_) => expect(false, "try_with_capacity failed"),
+    }
+}
+
+// @covers std::collections::ringbuffer::RingBufferPow2::with_capacity(usize)
+// @covers std::collections::ringbuffer::RingBufferPow2::try_with_capacity(usize)
+// @covers std::collections::ringbuffer::RingBufferPow2::is_empty()
+// @covers std::collections::ringbuffer::RingBufferPow2::is_full()
+// @covers std::collections::ringbuffer::RingBufferPow2::len()
+// @covers std::collections::ringbuffer::RingBufferPow2::capacity()
+// @covers std::collections::ringbuffer::RingBufferPow2::available()
+// @covers std::collections::ringbuffer::RingBufferPow2::push_back(T)
+// @covers std::collections::ringbuffer::RingBufferPow2::pop_front()
+// @covers std::collections::ringbuffer::RingBufferPow2::front()
+// @covers std::collections::ringbuffer::RingBufferPow2::back()
+// @covers std::collections::ringbuffer::RingBufferPow2::clear()
+// @covers std::collections::ringbuffer::RingBufferPow2::get(usize)
+// @covers std::collections::ringbuffer::RingBufferPow2::get_mut(usize)
+// @covers std::collections::ringbuffer::RingBufferPow2::skip(usize)
+@test("RingBufferPow2 rounds capacity and wraps by mask")
+pub fn test_ring_buffer_pow2() {
+    match RingBufferPow2::<i32>::with_capacity(3) {
+        Result::Ok(var buffer) => {
+            expect(buffer.capacity() == 4 && buffer.available() == 4, "rounded capacity")
+            expect(buffer.is_empty(), "new buffer")
+            let _ = buffer.push_back(1)
+            let _ = buffer.push_back(2)
+            let _ = buffer.push_back(3)
+            let _ = buffer.push_back(4)
+            expect(buffer.is_full() && buffer.len() == 4, "full buffer")
+            match buffer.front() {
+                Option::Some(value) => expect(*value == 1, "front"),
+                Option::None => expect(false, "front missing"),
+            }
+            match buffer.back() {
+                Option::Some(value) => expect(*value == 4, "wrapped back"),
+                Option::None => expect(false, "back missing"),
+            }
+            let _ = buffer.pop_front()
+            let _ = buffer.push_back(5)
+            match buffer.get_mut(0) {
+                Option::Some(value) => { *value = 20 },
+                Option::None => expect(false, "mutable get failed"),
+            }
+            match buffer.get(0) {
+                Option::Some(value) => expect(*value == 20, "wrapped get"),
+                Option::None => expect(false, "get failed"),
+            }
+            expect(buffer.skip(3) == 3, "skip")
+            match buffer.front() {
+                Option::Some(value) => expect(*value == 5, "remaining value"),
+                Option::None => expect(false, "remaining value missing"),
+            }
+            buffer.clear()
+            expect(buffer.is_empty(), "clear")
+        },
+        Result::Err(_) => expect(false, "pow2 allocation failed"),
+    }
+    match RingBufferPow2::<u8>::try_with_capacity(5) {
+        Result::Ok(buffer) => expect(buffer.capacity() == 8, "try rounded capacity"),
+        Result::Err(_) => expect(false, "pow2 try_with_capacity failed"),
+    }
+}
+
+// @covers std::collections::slotmap::SlotKey::sentinel()
+// @covers std::collections::slotmap::SlotKey::is_sentinel()
+// @covers std::collections::slotmap::SlotKey::pack()
+// @covers std::collections::slotmap::SlotKey::unpack(u32)
+// @covers std::collections::slotmap::SlotKey::get_index()
+// @covers std::collections::slotmap::SlotKey::get_generation()
+@test("SlotKey has a stable packed representation")
+pub fn test_slot_key() {
+    let sentinel = SlotKey::sentinel()
+    expect(sentinel.is_sentinel(), "sentinel")
+    let key = SlotKey::unpack($1234002A)
+    expect(key.get_index() == 42, "unpacked index")
+    expect(key.get_generation() == $1234, "unpacked generation")
+    expect(key.pack() == $1234002A, "packed key")
+}
+
+// @covers std::collections::slotmap::SlotMap::new()
+// @covers std::collections::slotmap::SlotMap::with_capacity(usize)
+// @covers std::collections::slotmap::SlotMap::try_with_capacity(usize)
+// @covers std::collections::slotmap::SlotMap::insert(T)
+// @covers std::collections::slotmap::SlotMap::get(SlotKey)
+// @covers std::collections::slotmap::SlotMap::get_mut(SlotKey)
+// @covers std::collections::slotmap::SlotMap::contains(SlotKey)
+// @covers std::collections::slotmap::SlotMap::remove(SlotKey)
+// @covers std::collections::slotmap::SlotMap::take(SlotKey)
+// @covers std::collections::slotmap::SlotMap::len()
+// @covers std::collections::slotmap::SlotMap::is_empty()
+// @covers std::collections::slotmap::SlotMap::capacity()
+// @covers std::collections::slotmap::SlotMap::clear()
+// @covers std::collections::slotmap::SlotMap::iter()
+// @covers std::collections::slotmap::SlotMap::key_at(usize)
+// @covers std::collections::slotmap::SlotMapIter::next()
+// @covers std::collections::slotmap::SlotMapIter::reset()
+@test("SlotMap rejects stale generational keys")
+pub fn test_slot_map() {
+    match SlotMap::<SlotValue>::new() {
+        Result::Ok(var map) => {
+            expect(map.is_empty() && map.capacity() == 16, "new map")
+            var first = SlotKey::sentinel()
+            match map.insert(SlotValue { number: 10 }) {
+                Result::Ok(key) => { first = key },
+                Result::Err(_) => expect(false, "first insert failed"),
+            }
+            var second = SlotKey::sentinel()
+            match map.insert(SlotValue { number: 20 }) {
+                Result::Ok(key) => { second = key },
+                Result::Err(_) => expect(false, "second insert failed"),
+            }
+            expect(map.len() == 2 && map.contains(first), "live key")
+            match map.get_mut(first) {
+                Option::Some(value) => { value.number = 11 },
+                Option::None => expect(false, "mutable get failed"),
+            }
+            match map.get(first) {
+                Option::Some(value) => expect(value.number == 11, "updated value"),
+                Option::None => expect(false, "get failed"),
+            }
+            expect(map.key_at(first.get_index()).is_some(), "key at occupied index")
+            var iterator = map.iter()
+            var seen: usize = 0
+            while iterator.next().is_some() { seen++ }
+            expect(seen == 2, "iteration")
+            iterator.reset()
+            expect(iterator.next().is_some(), "iterator reset")
+            match map.take(second) {
+                Option::Some(value) => expect(value.number == 20, "take transfers value"),
+                Option::None => expect(false, "take failed"),
+            }
+            expect(map.remove(first), "remove")
+            expect(!map.contains(first) && map.get(first).is_none(), "stale key rejected")
+            match map.insert(SlotValue { number: 30 }) {
+                Result::Ok(reused) => {
+                    expect(reused.get_index() == first.get_index(), "slot reused")
+                    expect(reused.get_generation() != first.get_generation(), "generation advanced")
+                },
+                Result::Err(_) => expect(false, "reuse insert failed"),
+            }
+            map.clear()
+            expect(map.is_empty(), "clear")
+        },
+        Result::Err(_) => expect(false, "slot map allocation failed"),
+    }
+    match SlotMap::<u32>::with_capacity(1) {
+        Result::Ok(var map) => {
+            let _ = map.insert(1)
+            expect(map.insert(2).is_ok() && map.capacity() == 2, "dynamic growth")
+        },
+        Result::Err(_) => expect(false, "small slot map failed"),
+    }
+    match SlotMap::<u32>::try_with_capacity(2) {
+        Result::Ok(map) => expect(map.capacity() == 2, "try capacity"),
+        Result::Err(_) => expect(false, "try_with_capacity failed"),
+    }
+}
+
+// @covers std::collections::slotmap::SlotMapFixed::with_capacity(usize)
+// @covers std::collections::slotmap::SlotMapFixed::try_with_capacity(usize)
+// @covers std::collections::slotmap::SlotMapFixed::insert(T)
+// @covers std::collections::slotmap::SlotMapFixed::get(SlotKey)
+// @covers std::collections::slotmap::SlotMapFixed::get_mut(SlotKey)
+// @covers std::collections::slotmap::SlotMapFixed::contains(SlotKey)
+// @covers std::collections::slotmap::SlotMapFixed::remove(SlotKey)
+// @covers std::collections::slotmap::SlotMapFixed::len()
+// @covers std::collections::slotmap::SlotMapFixed::is_empty()
+// @covers std::collections::slotmap::SlotMapFixed::capacity()
+// @covers std::collections::slotmap::SlotMapFixed::clear()
+@test("SlotMapFixed enforces its capacity and stale keys")
+pub fn test_slot_map_fixed() {
+    match SlotMapFixed::<SlotValue>::with_capacity(2) {
+        Result::Ok(var map) => {
+            expect(map.capacity() == 2 && map.is_empty(), "fixed map")
+            var first = SlotKey::sentinel()
+            match map.insert(SlotValue { number: 1 }) {
+                Result::Ok(key) => { first = key },
+                Result::Err(_) => expect(false, "fixed insert failed"),
+            }
+            let _ = map.insert(SlotValue { number: 2 })
+            match map.insert(SlotValue { number: 3 }) {
+                Result::Err(MemoryError::CapacityExceeded) => {},
+                _ => expect(false, "fixed capacity enforced"),
+            }
+            expect(map.len() == 2 && map.contains(first), "fixed live key")
+            match map.get_mut(first) {
+                Option::Some(value) => { value.number = 11 },
+                Option::None => expect(false, "fixed mutable get failed"),
+            }
+            match map.get(first) {
+                Option::Some(value) => expect(value.number == 11, "fixed get"),
+                Option::None => expect(false, "fixed get failed"),
+            }
+            expect(map.remove(first), "fixed remove")
+            expect(!map.contains(first), "fixed stale key")
+            map.clear()
+            expect(map.is_empty(), "fixed clear")
+        },
+        Result::Err(_) => expect(false, "fixed map allocation failed"),
+    }
+    match SlotMapFixed::<u32>::try_with_capacity(1) {
+        Result::Ok(map) => expect(map.capacity() == 1, "fixed try capacity"),
+        Result::Err(_) => expect(false, "fixed try_with_capacity failed"),
+    }
+}

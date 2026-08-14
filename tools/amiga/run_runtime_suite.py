@@ -37,6 +37,19 @@ FOUNDATION_SUITES = {
     "fixed32": "Novus.Tests/Examples/test_fixed32_asm.novus",
 }
 FOUNDATION_ALL = {"foundation-all": "Novus.Tests/AmigaRuntime"}
+STDLIB_ALL = {"stdlib-all": "Novus/std/tests"}
+STDLIB_SUITES = {
+    f"stdlib-{path.stem.removeprefix('test_').replace('_', '-')}": str(path.relative_to(ROOT))
+    for path in sorted((ROOT / "Novus/std/tests").glob("test_*.novus"))
+}
+STDLIB_FIXTURE_SUITES = {
+    "stdlib-io-blocking": "Novus.Tests/AmigaRuntime/stdlib_io_blocking.novus",
+}
+TLS_LIVE_SUITE = "stdlib-tls-live"
+TLS_SERVER_SOURCE = "Novus.Tests/AmigaRuntime/stdlib_tls_server.novus"
+STDLIB_OPTIONAL_SUITES = {
+    TLS_LIVE_SUITE: "Novus.Tests/AmigaRuntime/stdlib_tls_peer.novus",
+}
 FOUNDATION_STANDALONE = {
     name: FOUNDATION_SUITES[name] for name in ("const-fn", "intrinsics", "fixed32")
 }
@@ -74,12 +87,16 @@ AMIGA_SUITES = {
     "result-contracts": "Novus.Tests/AmigaRuntime/result_contract_failures.novus",
     "channel": "Novus.Tests/Examples/channel_comprehensive_test.novus",
 }
-ALL_SUITES = FOUNDATION_ALL | FOUNDATION_SUITES | AMIGA_SUITES
+STDIN_FIXTURES = {"stdlib-io-blocking": b"ab"}
+ALL_SUITES = (FOUNDATION_ALL | STDLIB_ALL | STDLIB_SUITES | STDLIB_FIXTURE_SUITES |
+              STDLIB_OPTIONAL_SUITES |
+              FOUNDATION_SUITES | AMIGA_SUITES)
 PROFILES = {
     "debug": (0, 2, False),
     "release-o1": (1, 1, True),
     "release-o3": (3, 1, True),
 }
+PROCESS_MEMORY_TOLERANCE = 256
 
 
 class McpError(RuntimeError):
@@ -193,7 +210,7 @@ def compiler_path(explicit: str | None) -> Path:
 
 def build_suite(
     compiler: Path, build_root: Path, suite: str, source: Path, profile: str,
-    test_filter: str | None,
+    test_filter: str | None, benchmark: bool, memory_check: bool, cache_dir: Path,
 ) -> tuple[Path | None, dict[str, Any]]:
     optimize, safety, release = PROFILES[profile]
     output_dir = build_root / profile / suite
@@ -201,11 +218,16 @@ def build_suite(
         "dotnet", str(compiler), "test", str(source),
         "-o", str(output_dir), "--cpu", "68020",
         "--safety-level", str(safety), "-O", str(optimize),
+        "--cache-dir", str(cache_dir),
     ]
     if release:
         command.append("--release")
     if test_filter:
         command.extend(("--filter", test_filter))
+    if benchmark:
+        command.append("--benchmark")
+    if memory_check:
+        command.append("--memory-check")
     started = time.monotonic()
     process = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
     record = {
@@ -238,6 +260,16 @@ def diagnostic_summary(diagnostics: dict[str, Any]) -> str:
     return str(diagnostics.get("status", "no structured crash data"))
 
 
+def available_memory(machine: Machine) -> int | None:
+    samples = []
+    for _ in range(3):
+        result = guest_command(machine, "Avail FLUSH", required=False)
+        match = re.search(r"(?im)^total\s+(\d+)", result.get("output", ""))
+        if match:
+            samples.append(int(match.group(1)))
+    return max(samples) if samples else None
+
+
 def run_suite(
     machine: Machine, executable: Path, suite: str, profile: str, timeout: int, index: int
 ) -> dict[str, Any]:
@@ -248,16 +280,46 @@ def run_suite(
         "name": amiga_name,
         "data_base64": base64.b64encode(executable.read_bytes()).decode(),
     })
+    output_name = f"{amiga_name}out"
+    command = f"MCP:{amiga_name}"
+    if fixture := STDIN_FIXTURES.get(suite):
+        fixture_name = f"{amiga_name}in"
+        machine.client.call("fsuae_exchange_put", {
+            "machine_id": machine.id,
+            "name": fixture_name,
+            "data_base64": base64.b64encode(fixture).decode(),
+        })
+        command += f" <MCP:{fixture_name}"
+    command += f" >MCP:{output_name}"
     started = time.monotonic()
     record: dict[str, Any] = {"suite": suite, "profile": profile}
     try:
+        record["memory_before"] = available_memory(machine)
         result = machine.client.call("fsuae_command_execute", {
             "machine_id": machine.id,
-            "command": f"MCP:{amiga_name}",
+            "command": command,
             "timeout_seconds": timeout,
         }, timeout=timeout + 15)
-        record["result"] = result
         output = result.get("output", "") if isinstance(result, dict) else str(result)
+        record["memory_after_command"] = available_memory(machine)
+        if record["memory_before"] is not None and record["memory_after_command"] is not None:
+            record["memory_delta_command"] = record["memory_after_command"] - record["memory_before"]
+        try:
+            exchange = machine.client.call("fsuae_exchange_get", {
+                "machine_id": machine.id,
+                "name": output_name,
+            })
+            output = base64.b64decode(exchange["data_base64"]).decode("latin-1")
+            if isinstance(result, dict):
+                result["output"] = output
+                result["output_base64"] = exchange["data_base64"]
+        except Exception as error:
+            record["output_fetch_error"] = str(error)
+        guest_command(machine, f"Delete MCP:{output_name} >NIL:", required=False)
+        record["memory_after"] = available_memory(machine)
+        if record["memory_before"] is not None and record["memory_after"] is not None:
+            record["memory_delta"] = record["memory_after"] - record["memory_before"]
+        record["result"] = result
         passed = (
             isinstance(result, dict)
             and result.get("status") == "completed"
@@ -283,6 +345,136 @@ def run_suite(
     return record
 
 
+def put_file(machine: Machine, name: str, path: Path) -> None:
+    assert machine.id
+    machine.client.call("fsuae_exchange_put", {
+        "machine_id": machine.id,
+        "name": name,
+        "data_base64": base64.b64encode(path.read_bytes()).decode(),
+    })
+
+
+def guest_command(
+    machine: Machine, command: str, timeout: int = 120, required: bool = True,
+) -> dict[str, Any]:
+    assert machine.id
+    result = machine.client.call("fsuae_command_execute", {
+        "machine_id": machine.id,
+        "command": command,
+        "timeout_seconds": timeout,
+    }, timeout=timeout + 15)
+    if required and (not isinstance(result, dict) or not result.get("succeeded")):
+        raise McpError(f"guest command failed: {command}: {result}")
+    return result
+
+
+def amissl_files(root: Path) -> dict[str, Path]:
+    files = {
+        "library": root / "Libs/AmigaOS3/AmiSSL/68020-40/amissl_v362.library",
+        "master": root / "Libs/AmigaOS3/amisslmaster.library",
+    }
+    missing = [str(path) for path in files.values() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError("missing AmiSSL live-test file(s): " + ", ".join(missing))
+    return files
+
+
+def tls_credentials(build_root: Path) -> tuple[Path, Path]:
+    directory = build_root / "tls-fixture"
+    certificate, private_key = directory / "certificate.pem", directory / "private-key.pem"
+    if certificate.is_file() and private_key.is_file():
+        return certificate, private_key
+    directory.mkdir(parents=True, exist_ok=True)
+    process = subprocess.run([
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-subj", "/CN=localhost", "-days", "1",
+        "-keyout", str(private_key), "-out", str(certificate),
+    ], text=True, capture_output=True)
+    if process.returncode != 0:
+        raise RuntimeError("failed to generate TLS fixture: " + process.stderr.strip())
+    return certificate, private_key
+
+
+def provision_amissl(machine: Machine, root: Path, build_root: Path) -> dict[str, Any]:
+    files = amissl_files(root)
+    files["certificate"], files["private_key"] = tls_credentials(build_root)
+    for name, key in (("namissl", "library"), ("nmaster", "master"),
+                      ("ntcert", "certificate"), ("ntkey", "private_key")):
+        put_file(machine, name, files[key])
+    for command in (
+        "MakeDir RAM:NovusAmiSSL",
+        "MakeDir RAM:NovusAmiSSL/Libs",
+        "MakeDir RAM:NovusAmiSSL/Libs/AmiSSL",
+        "Copy MCP:namissl RAM:NovusAmiSSL/Libs/AmiSSL/amissl_v362.library",
+        "Copy MCP:nmaster RAM:NovusAmiSSL/Libs/amisslmaster.library",
+        "Assign AmiSSL: RAM:NovusAmiSSL",
+        "Assign LIBS: RAM:NovusAmiSSL/Libs ADD",
+    ):
+        guest_command(machine, command)
+    version = guest_command(machine, "Version LIBS:amisslmaster.library FULL")
+    return {
+        "root": str(root),
+        "master_version": version.get("output", "").strip(),
+        "library_bytes": files["library"].stat().st_size,
+        "master_bytes": files["master"].stat().st_size,
+    }
+
+
+def wait_for_marker(machine: Machine, path: str, timeout: int) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = guest_command(machine, f"Type {path}", required=False)
+        if result.get("succeeded"):
+            return result
+        time.sleep(0.5)
+    raise McpError(f"timed out waiting for {path}")
+
+
+def run_tls_suite(
+    machine: Machine, peer: Path, server: Path, profile: str, timeout: int, index: int,
+) -> dict[str, Any]:
+    started = time.monotonic()
+    record: dict[str, Any] = {"suite": TLS_LIVE_SUITE, "profile": profile}
+    peer_name, server_name = f"ntp{index:x}", f"nts{index:x}"
+    try:
+        put_file(machine, peer_name, peer)
+        put_file(machine, server_name, server)
+        guest_command(machine, "Delete RAM:novus-tls-ready RAM:novus-tls-passed QUIET", required=False)
+        guest_command(machine, f"Run >RAM:novus-tls-server.out MCP:{server_name}")
+        ready = wait_for_marker(machine, "RAM:novus-tls-ready", timeout)
+        peer_result = guest_command(machine, f"MCP:{peer_name}", timeout)
+        passed_marker = wait_for_marker(machine, "RAM:novus-tls-passed", timeout)
+        status = guest_command(machine, "Status")
+        output = peer_result.get("output", "")
+        passed = (
+            "ok" in ready.get("output", "")
+            and "*** ALL TESTS PASSED ***" in output
+            and "ok" in passed_marker.get("output", "")
+            and f"MCP:{server_name}" not in status.get("output", "")
+        )
+        record["result"] = {
+            "peer": peer_result,
+            "server_ready": ready,
+            "server_passed": passed_marker,
+            "status": status,
+        }
+        record["status"] = "passed" if passed else "failed"
+        if not passed:
+            record["diagnostics"] = machine.diagnostics()
+    except Exception as error:
+        record.update(status="infrastructure_failed", error=str(error))
+        record["ram"] = guest_command(machine, "List RAM:", required=False)
+        diagnostics = machine.diagnostics()
+        record["diagnostics"] = diagnostics
+        if (
+            diagnostics.get("status") in {"guest_crashed", "guest_command_timed_out", "guruing"}
+            or diagnostics.get("guest_control_ready") is False
+        ):
+            record["recovery"] = machine.recover()
+    record["seconds"] = round(time.monotonic() - started, 3)
+    return record
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mcp-url", default="http://localhost:6800/mcp")
@@ -292,13 +484,19 @@ def parse_args() -> argparse.Namespace:
                         default=ROOT / ".novus-cache/amiga-runtime-suite")
     parser.add_argument("--profile", action="append", choices=PROFILES,
                         help="repeat for a matrix; default: release-o1")
-    parser.add_argument("--layer", choices=("foundation", "amiga", "all"),
+    parser.add_argument("--layer", choices=("foundation", "stdlib", "amiga", "all"),
                         default="foundation", help="default suite layer")
     parser.add_argument("--suite", action="append", choices=ALL_SUITES,
                         help="repeat to select explicit suites")
     parser.add_argument("--timeout", type=int, default=120,
                         help="seconds allowed for each Amiga test executable")
     parser.add_argument("--filter", help="test-name filter passed to novus test")
+    parser.add_argument("--benchmark", action="store_true",
+                        help="record per-test runtime on the guest")
+    parser.add_argument("--memory-check", action="store_true",
+                        help="fail tests that leak Novus allocations or AmigaOS memory")
+    parser.add_argument("--amissl-dir", type=Path,
+                        help="extracted AmiSSL v5 AmiSSL/ directory for stdlib-tls-live")
     parser.add_argument("--list", action="store_true")
     return parser.parse_args()
 
@@ -307,50 +505,99 @@ def main() -> int:
     args = parse_args()
     if args.list:
         for name, path in ALL_SUITES.items():
-            layer = "foundation" if name in FOUNDATION_ALL or name in FOUNDATION_SUITES else "amiga"
+            layer = "foundation" if name in FOUNDATION_ALL or name in FOUNDATION_SUITES else \
+                "stdlib" if name in STDLIB_ALL or name in STDLIB_SUITES or name in STDLIB_FIXTURE_SUITES or name in STDLIB_OPTIONAL_SUITES else "amiga"
             print(f"{layer:10} {name:28} {path}")
         return 0
     profiles = args.profile or ["release-o1"]
     layer_suites = {
         "foundation": FOUNDATION_ALL | FOUNDATION_STANDALONE,
+        "stdlib": STDLIB_ALL | STDLIB_FIXTURE_SUITES,
         "amiga": AMIGA_SUITES,
-        "all": FOUNDATION_ALL | FOUNDATION_STANDALONE | AMIGA_SUITES,
+        "all": FOUNDATION_ALL | STDLIB_ALL | STDLIB_FIXTURE_SUITES | FOUNDATION_STANDALONE | AMIGA_SUITES,
     }
     suites = args.suite or list(layer_suites[args.layer])
+    if TLS_LIVE_SUITE in suites:
+        if args.amissl_dir is None:
+            print("stdlib-tls-live requires --amissl-dir PATH", file=sys.stderr)
+            return 2
+        try:
+            amissl_files(args.amissl_dir)
+        except FileNotFoundError as error:
+            print(error, file=sys.stderr)
+            return 2
     compiler = compiler_path(args.compiler)
     args.build_dir.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {
         "configuration": args.configuration,
         "compiler": str(compiler),
         "profiles": profiles,
+        "benchmark": args.benchmark,
+        "memory_check": args.memory_check,
         "tests": [],
     }
 
-    builds: list[tuple[str, str, Path]] = []
+    builds: list[tuple[str, str, Path, Path | None]] = []
     for profile in profiles:
         for suite in suites:
             print(f"BUILD {profile:10} {suite}...", end=" ", flush=True)
             executable, build = build_suite(
                 compiler, args.build_dir, suite, ROOT / ALL_SUITES[suite], profile,
-                args.filter,
+                args.filter, args.benchmark, args.memory_check,
+                args.build_dir / ".shared-cache" / profile,
             )
             build.update(suite=suite, profile=profile)
             report["tests"].append({"build": build})
             print(f"{build['status']} ({build['seconds']}s)")
-            if executable:
-                builds.append((profile, suite, executable))
+            server_executable = None
+            if executable and suite == TLS_LIVE_SUITE:
+                print(f"BUILD {profile:10} {suite}-server...", end=" ", flush=True)
+                server_executable, server_build = build_suite(
+                    compiler, args.build_dir, f"{suite}-server",
+                    ROOT / TLS_SERVER_SOURCE, profile, args.filter, False, args.memory_check,
+                    args.build_dir / ".shared-cache" / profile,
+                )
+                server_build.update(suite=f"{suite}-server", profile=profile)
+                report["tests"].append({"build": server_build})
+                print(f"{server_build['status']} ({server_build['seconds']}s)")
+            if executable and (suite != TLS_LIVE_SUITE or server_executable):
+                builds.append((profile, suite, executable, server_executable))
 
     machine = Machine(McpClient(args.mcp_url), args.configuration)
     try:
         machine.start()
-        for index, (profile, suite, executable) in enumerate(builds):
+        if TLS_LIVE_SUITE in suites:
+            report["amissl"] = provision_amissl(machine, args.amissl_dir, args.build_dir)
+        for index, (profile, suite, executable, server_executable) in enumerate(builds):
             print(f"RUN   {profile:10} {suite}...", end=" ", flush=True)
-            result = run_suite(machine, executable, suite, profile, args.timeout, index)
+            result = run_tls_suite(
+                machine, executable, server_executable, profile, args.timeout, index,
+            ) if server_executable else run_suite(
+                machine, executable, suite, profile, args.timeout, index,
+            )
+            if (args.memory_check and not server_executable and
+                    result.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE):
+                confirmation = run_suite(
+                    machine, executable, suite, profile, args.timeout, index + len(builds),
+                )
+                result["memory_confirmation"] = {
+                    key: confirmation.get(key) for key in (
+                        "memory_before", "memory_after_command", "memory_delta_command",
+                        "memory_after", "memory_delta", "status",
+                    )
+                }
+                if confirmation.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE:
+                    result["status"] = "failed"
+                    result["process_memory_leak"] = -confirmation["memory_delta"]
             report["tests"].append({"run": result})
             detail = ""
             if "diagnostics" in result:
                 detail = f" — {diagnostic_summary(result['diagnostics'])}"
+            if "process_memory_leak" in result:
+                detail = f" — repeatable process teardown leak: {result['process_memory_leak']} bytes"
             print(f"{result['status']} ({result['seconds']}s){detail}")
+    except Exception as error:
+        report["infrastructure_error"] = str(error)
     finally:
         machine.stop()
 
@@ -360,9 +607,10 @@ def main() -> int:
         item for item in report["tests"]
         if next(iter(item.values())).get("status") not in {"built", "passed"}
     ]
+    failure_count = len(failures) + int("infrastructure_error" in report)
     print(f"\nReport: {report_path}")
-    print(f"Result: {len(report['tests']) - len(failures)} passed records, {len(failures)} failed")
-    return 1 if failures else 0
+    print(f"Result: {len(report['tests']) - len(failures)} passed records, {failure_count} failed")
+    return 1 if failure_count else 0
 
 
 if __name__ == "__main__":

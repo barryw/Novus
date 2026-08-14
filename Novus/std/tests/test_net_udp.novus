@@ -1,0 +1,53 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import SocketLibrary
+from std::net::udp import UdpSocket
+from std::test::test import expect
+
+// @covers std::net::udp::UdpSocket::as_raw_fd()
+// @covers std::net::udp::UdpSocket::bind(SocketAddrV4)
+// @covers std::net::udp::UdpSocket::bytes_available()
+// @covers std::net::udp::UdpSocket::connect(SocketAddrV4)
+// @covers std::net::udp::UdpSocket::local_addr()
+// @covers std::net::udp::UdpSocket::recv(*u8, i32)
+// @covers std::net::udp::UdpSocket::recv_from(*u8, i32)
+// @covers std::net::udp::UdpSocket::send(*u8, i32)
+// @covers std::net::udp::UdpSocket::send_to(*u8, i32, SocketAddrV4)
+// @covers std::net::udp::UdpSocket::set_broadcast(bool)
+// @covers std::net::udp::UdpSocket::set_nonblocking(bool)
+// @covers std::net::udp::UdpSocket::set_recv_buffer_size(i32)
+// @covers std::net::udp::UdpSocket::set_send_buffer_size(i32)
+// @covers std::net::udp::UdpSocket::unbound()
+@test("UDP loopback public API")
+pub fn test_udp_loopback_public_api() {
+    let library = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let server_address = SocketAddrV4::new(Ipv4Addr::localhost(), 39092)
+    let client_address = SocketAddrV4::new(Ipv4Addr::localhost(), 39093)
+    let server = match UdpSocket::bind(server_address) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let client = match UdpSocket::bind(client_address) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let _ = UdpSocket::unbound()
+    let _ = client.as_raw_fd()
+    let _ = client.local_addr()
+    let _ = client.set_broadcast(false)
+    let _ = client.set_recv_buffer_size(4096)
+    let _ = client.set_send_buffer_size(4096)
+    let _ = client.set_nonblocking(false)
+    let _ = client.connect(server_address)
+    var sent: [u8] = [85, 68, 80]
+    var received: [u8] = [0; 3]
+    let _ = client.send((*u8)&sent[0], 3)
+    let _ = server.bytes_available()
+    let _ = server.recv((*u8)&received[0], 3)
+    expect(received[0] == 85 && received[2] == 80, "connected datagram")
+    let _ = server.send_to((*u8)&sent[0], 3, client_address)
+    let _ = client.recv_from((*u8)&received[0], 3)
+}

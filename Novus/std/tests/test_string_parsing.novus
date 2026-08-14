@@ -8,6 +8,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // parse_i32 tests - positive numbers
 // =============================================================================
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 parses positive number")
 pub fn test_parse_i32_positive() {
     let s: Str = "42"
@@ -18,6 +19,7 @@ pub fn test_parse_i32_positive() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 parses large positive number")
 pub fn test_parse_i32_large_positive() {
     let s: Str = "1000000"
@@ -28,6 +30,7 @@ pub fn test_parse_i32_large_positive() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 parses zero")
 pub fn test_parse_i32_zero() {
     let s: Str = "0"
@@ -42,6 +45,7 @@ pub fn test_parse_i32_zero() {
 // parse_i32 tests - negative numbers
 // =============================================================================
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 parses negative number")
 pub fn test_parse_i32_negative() {
     let s: Str = "-123"
@@ -52,6 +56,7 @@ pub fn test_parse_i32_negative() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 parses negative one")
 pub fn test_parse_i32_negative_one() {
     let s: Str = "-1"
@@ -66,6 +71,7 @@ pub fn test_parse_i32_negative_one() {
 // parse_i32 tests - error cases
 // =============================================================================
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 fails on empty string")
 pub fn test_parse_i32_empty() {
     let s: Str = ""
@@ -76,6 +82,7 @@ pub fn test_parse_i32_empty() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 fails on invalid characters")
 pub fn test_parse_i32_invalid_chars() {
     let s: Str = "12a34"
@@ -86,6 +93,7 @@ pub fn test_parse_i32_invalid_chars() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 fails on letters only")
 pub fn test_parse_i32_letters() {
     let s: Str = "abc"
@@ -96,6 +104,7 @@ pub fn test_parse_i32_letters() {
     }
 }
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 fails on just minus sign")
 pub fn test_parse_i32_just_minus() {
     let s: Str = "-"
@@ -110,6 +119,7 @@ pub fn test_parse_i32_just_minus() {
 // parse_u32 tests - valid numbers
 // =============================================================================
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 parses positive number")
 pub fn test_parse_u32_positive() {
     let s: Str = "12345"
@@ -120,6 +130,7 @@ pub fn test_parse_u32_positive() {
     }
 }
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 parses zero")
 pub fn test_parse_u32_zero() {
     let s: Str = "0"
@@ -130,6 +141,7 @@ pub fn test_parse_u32_zero() {
     }
 }
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 parses large number")
 pub fn test_parse_u32_large() {
     let s: Str = "4000000000"
@@ -144,6 +156,7 @@ pub fn test_parse_u32_large() {
 // parse_u32 tests - error cases
 // =============================================================================
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 fails on empty string")
 pub fn test_parse_u32_empty() {
     let s: Str = ""
@@ -154,6 +167,7 @@ pub fn test_parse_u32_empty() {
     }
 }
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 fails on negative sign")
 pub fn test_parse_u32_negative() {
     let s: Str = "-42"
@@ -164,6 +178,7 @@ pub fn test_parse_u32_negative() {
     }
 }
 
+// @covers std::string::core::Str::parse_u32()
 @test("parse_u32 fails on invalid characters")
 pub fn test_parse_u32_invalid() {
     let s: Str = "123abc"
@@ -178,6 +193,7 @@ pub fn test_parse_u32_invalid() {
 // parse_hex tests - valid hex strings
 // =============================================================================
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses lowercase hex")
 pub fn test_parse_hex_lowercase() {
     let s: Str = "ff"
@@ -188,6 +204,7 @@ pub fn test_parse_hex_lowercase() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses uppercase hex")
 pub fn test_parse_hex_uppercase() {
     let s: Str = "FF"
@@ -198,6 +215,7 @@ pub fn test_parse_hex_uppercase() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses mixed case hex")
 pub fn test_parse_hex_mixed_case() {
     let s: Str = "aAbB"
@@ -208,6 +226,7 @@ pub fn test_parse_hex_mixed_case() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses with 0x prefix")
 pub fn test_parse_hex_with_prefix() {
     let s: Str = "0xff"
@@ -218,6 +237,7 @@ pub fn test_parse_hex_with_prefix() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses with 0X prefix")
 pub fn test_parse_hex_with_upper_prefix() {
     let s: Str = "0XFF"
@@ -228,6 +248,7 @@ pub fn test_parse_hex_with_upper_prefix() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses zero")
 pub fn test_parse_hex_zero() {
     let s: Str = "0"
@@ -238,6 +259,7 @@ pub fn test_parse_hex_zero() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex parses large value")
 pub fn test_parse_hex_large() {
     let s: Str = "deadbeef"
@@ -252,6 +274,7 @@ pub fn test_parse_hex_large() {
 // parse_hex tests - error cases
 // =============================================================================
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex fails on empty string")
 pub fn test_parse_hex_empty() {
     let s: Str = ""
@@ -262,6 +285,7 @@ pub fn test_parse_hex_empty() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex fails on invalid hex chars")
 pub fn test_parse_hex_invalid() {
     let s: Str = "xyz"
@@ -272,6 +296,7 @@ pub fn test_parse_hex_invalid() {
     }
 }
 
+// @covers std::string::core::Str::parse_hex()
 @test("parse_hex fails on just 0x prefix")
 pub fn test_parse_hex_just_prefix() {
     let s: Str = "0x"
@@ -286,6 +311,7 @@ pub fn test_parse_hex_just_prefix() {
 // parse_bool tests - valid booleans
 // =============================================================================
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses 'true'")
 pub fn test_parse_bool_true() {
     let s: Str = "true"
@@ -296,6 +322,7 @@ pub fn test_parse_bool_true() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses 'false'")
 pub fn test_parse_bool_false() {
     let s: Str = "false"
@@ -306,6 +333,7 @@ pub fn test_parse_bool_false() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses 'TRUE'")
 pub fn test_parse_bool_upper_true() {
     let s: Str = "TRUE"
@@ -316,6 +344,7 @@ pub fn test_parse_bool_upper_true() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses 'FALSE'")
 pub fn test_parse_bool_upper_false() {
     let s: Str = "FALSE"
@@ -326,6 +355,7 @@ pub fn test_parse_bool_upper_false() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses '1'")
 pub fn test_parse_bool_one() {
     let s: Str = "1"
@@ -336,6 +366,7 @@ pub fn test_parse_bool_one() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool parses '0'")
 pub fn test_parse_bool_zero() {
     let s: Str = "0"
@@ -350,6 +381,7 @@ pub fn test_parse_bool_zero() {
 // parse_bool tests - error cases
 // =============================================================================
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool fails on empty string")
 pub fn test_parse_bool_empty() {
     let s: Str = ""
@@ -360,6 +392,7 @@ pub fn test_parse_bool_empty() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool fails on invalid string")
 pub fn test_parse_bool_invalid() {
     let s: Str = "yes"
@@ -370,6 +403,7 @@ pub fn test_parse_bool_invalid() {
     }
 }
 
+// @covers std::string::core::Str::parse_bool()
 @test("parse_bool fails on number other than 0/1")
 pub fn test_parse_bool_other_number() {
     let s: Str = "2"
@@ -384,6 +418,7 @@ pub fn test_parse_bool_other_number() {
 // parse_i32 with whitespace tests
 // =============================================================================
 
+// @covers std::string::core::Str::parse_i32()
 @test("parse_i32 handles leading spaces")
 pub fn test_parse_i32_leading_spaces() {
     let s: Str = "  42"

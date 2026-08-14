@@ -8,6 +8,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class LanguageRoadmapTests
 {
     private static readonly Regex NumericTypeSuffix = new(

@@ -1,0 +1,31 @@
+from std::math::fixed import Fixed32
+from std::math::trig import *
+from std::test::test import expect
+
+// @covers std::math::trig::angle_to_degrees(u16)
+// @covers std::math::trig::angle_to_radians(u16)
+// @covers std::math::trig::atan2_angle(i32, i32)
+// @covers std::math::trig::cos_fixed32(u16)
+// @covers std::math::trig::cos_fixed32_interp(u16)
+// @covers std::math::trig::cos_i16(u16)
+// @covers std::math::trig::degrees_to_angle(i16)
+// @covers std::math::trig::radians_to_angle(Fixed32)
+// @covers std::math::trig::sin_fixed32(u16)
+// @covers std::math::trig::sin_fixed32_interp(u16)
+// @covers std::math::trig::sin_i16(u16)
+// @covers std::math::trig::tan_fixed32(u16)
+@test("trigonometry public API")
+pub fn test_trigonometry_public_api() {
+    expect(degrees_to_angle(90) == ANGLE_QUARTER, "degrees")
+    let _ = angle_to_degrees(ANGLE_QUARTER)
+    let _ = sin_fixed32(0)
+    let _ = cos_fixed32(0)
+    let _ = sin_i16(0)
+    let _ = cos_i16(0)
+    let radians = angle_to_radians(ANGLE_QUARTER)
+    let _ = radians_to_angle(radians)
+    let _ = tan_fixed32(0)
+    let _ = atan2_angle(1, 1)
+    let _ = sin_fixed32_interp(1)
+    let _ = cos_fixed32_interp(1)
+}

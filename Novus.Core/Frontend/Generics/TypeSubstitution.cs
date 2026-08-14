@@ -370,16 +370,16 @@ public static class InstantiationKeyBuilder
         string functionName,
         Dictionary<string, IrType> typeSubstitutions)
     {
-        var mangledName = functionName;
+        var mangledName = functionName + "__";
         foreach (var kvp in typeSubstitutions.OrderBy(kv => kv.Key))
         {
-            mangledName += "_" + kvp.Value.Name
+            mangledName += kvp.Value.Name
                 .Replace("*", "ptr")
                 .Replace("&", "ref")
                 .Replace("[", "arr")
-                .Replace("]", "");
+                .Replace("]", "") + "_";
         }
-        return mangledName;
+        return mangledName.TrimEnd('_');
     }
 
     /// <summary>

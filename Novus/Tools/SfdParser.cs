@@ -192,58 +192,50 @@ public class SfdParser
 
     private static (string returnType, string name, string parameters, string registers)? ParseFunctionSignature(string line)
     {
-        // Format: RETURNTYPE FunctionName(params) (registers)
-        // We need to find the function name, then match parentheses carefully
-
-        // Find the first '(' - this starts the parameters
-        var firstParen = line.IndexOf('(');
-        if (firstParen < 0)
+        // Parse from the right because a return type may itself be a function
+        // pointer, for example: int (*)(int, APTR) GetHook(APTR obj) (a0).
+        var registerEnd = line.LastIndexOf(')');
+        if (registerEnd < 0)
             return null;
-
-        // Everything before the first '(' is return type + function name
-        var beforeParams = line.Substring(0, firstParen).Trim();
-        var parts = beforeParams.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
-            return null;
-
-        // Last part is function name, everything else is return type
-        var functionName = parts[^1];
-        var returnType = string.Join(" ", parts.Take(parts.Length - 1));
-
-        // Now extract parameters - match parentheses from firstParen
-        int depth = 0;
-        int paramStart = firstParen + 1;
-        int paramEnd = -1;
-
-        for (int i = firstParen; i < line.Length; i++)
-        {
-            if (line[i] == '(') depth++;
-            if (line[i] == ')') {
-                depth--;
-                if (depth == 0) {
-                    paramEnd = i;
-                    break;
-                }
-            }
-        }
-
-        if (paramEnd < 0)
-            return null;
-
-        var parameters = line.Substring(paramStart, paramEnd - paramStart).Trim();
-
-        // Now find the register list - it's the next (...) after the parameters
-        var registerStart = line.IndexOf('(', paramEnd + 1);
+        var registerStart = FindMatchingOpenParen(line, registerEnd);
         if (registerStart < 0)
             return null;
 
-        var registerEnd = line.IndexOf(')', registerStart + 1);
-        if (registerEnd < 0)
+        var parameterEnd = registerStart - 1;
+        while (parameterEnd >= 0 && char.IsWhiteSpace(line[parameterEnd]))
+            parameterEnd--;
+        if (parameterEnd < 0 || line[parameterEnd] != ')')
+            return null;
+        var parameterStart = FindMatchingOpenParen(line, parameterEnd);
+        if (parameterStart < 0)
             return null;
 
-        var registers = line.Substring(registerStart + 1, registerEnd - registerStart - 1).Trim();
+        var declaration = line[..parameterStart].TrimEnd();
+        var functionNameMatch = Regex.Match(declaration, @"([A-Za-z_][A-Za-z0-9_]*)$");
+        if (!functionNameMatch.Success)
+            return null;
+        var functionName = functionNameMatch.Groups[1].Value;
+        var returnType = declaration[..functionNameMatch.Index].Trim();
+        if (returnType.Length == 0)
+            return null;
 
+        var parameters = line[(parameterStart + 1)..parameterEnd].Trim();
+        var registers = line[(registerStart + 1)..registerEnd].Trim();
         return (returnType, functionName, parameters, registers);
+    }
+
+    private static int FindMatchingOpenParen(string text, int closeIndex)
+    {
+        var depth = 0;
+        for (var i = closeIndex; i >= 0; i--)
+        {
+            if (text[i] == ')')
+                depth++;
+            else if (text[i] == '(' && --depth == 0)
+                return i;
+        }
+
+        return -1;
     }
 
     private static List<SfdParameter> ParseParameters(string paramText)
@@ -379,6 +371,16 @@ public class SfdParser
             ["long"] = "i32",
             ["signed long"] = "i32",
             ["unsigned long"] = "u32",
+            ["int8_t"] = "i8",
+            ["uint8_t"] = "u8",
+            ["int16_t"] = "i16",
+            ["uint16_t"] = "u16",
+            ["int32_t"] = "i32",
+            ["uint32_t"] = "u32",
+            ["int64_t"] = "i64",
+            ["uint64_t"] = "u64",
+            ["size_t"] = "u32",
+            ["ptrdiff_t"] = "i32",
             ["QUAD"] = "i64",
             ["UQUAD"] = "u64",
             ["BSTR"] = "i32",
@@ -432,7 +434,7 @@ public class SfdParser
 
         // Preserve callback signatures so NDK hooks can be implemented in Novus.
         var callback = Regex.Match(amigaType,
-            @"^(.+?)\s*\(\s*\*\s*(?:CONST\s+)?[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\((.*?)\)$",
+            @"^(.+?)\s*\(\s*\*\s*(?:(?:CONST\s+)?[A-Za-z_][A-Za-z0-9_]*)?\s*\)\s*\((.*?)\)$",
             RegexOptions.IgnoreCase);
         if (callback.Success)
         {

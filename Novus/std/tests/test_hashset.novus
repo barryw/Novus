@@ -12,6 +12,9 @@ from amiga::sys::exec::errors import ExecError
 // Creation Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::new()
+// @covers std::collections::hashset::HashSet::len()
+// @covers std::collections::hashset::HashSet::is_empty()
 @test("HashSet::new creates empty set")
 pub fn test_hashset_new() {
     match HashSet::<u32>::new() {
@@ -23,6 +26,8 @@ pub fn test_hashset_new() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::with_capacity(usize)
+// @covers std::collections::hashset::HashSet::capacity()
 @test("HashSet::with_capacity allocates capacity")
 pub fn test_hashset_with_capacity() {
     match HashSet::<u32>::with_capacity(32) {
@@ -38,6 +43,7 @@ pub fn test_hashset_with_capacity() {
 // Insert Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::insert(T)
 @test("HashSet::insert adds new values")
 pub fn test_hashset_insert() {
     match HashSet::<u32>::new() {
@@ -70,6 +76,7 @@ pub fn test_hashset_insert() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::insert(T)
 @test("HashSet::insert returns false for duplicates")
 pub fn test_hashset_insert_duplicate() {
     match HashSet::<u32>::new() {
@@ -95,6 +102,7 @@ pub fn test_hashset_insert_duplicate() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::insert(T)
 @test("HashSet::insert many values")
 pub fn test_hashset_insert_many() {
     match HashSet::<u32>::new() {
@@ -130,6 +138,7 @@ pub fn test_hashset_insert_many() {
 // Contains Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::contains(&T)
 @test("HashSet::contains finds inserted values")
 pub fn test_hashset_contains() {
     match HashSet::<u32>::new() {
@@ -155,6 +164,7 @@ pub fn test_hashset_contains() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::contains(&T)
 @test("HashSet::contains returns false for missing values")
 pub fn test_hashset_contains_missing() {
     match HashSet::<u32>::new() {
@@ -176,6 +186,7 @@ pub fn test_hashset_contains_missing() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::contains(&T)
 @test("HashSet::contains on empty set")
 pub fn test_hashset_contains_empty() {
     match HashSet::<u32>::new() {
@@ -190,6 +201,7 @@ pub fn test_hashset_contains_empty() {
 // Remove Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::remove(&T)
 @test("HashSet::remove removes existing values")
 pub fn test_hashset_remove() {
     match HashSet::<u32>::new() {
@@ -218,6 +230,7 @@ pub fn test_hashset_remove() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::remove(&T)
 @test("HashSet::remove returns false for missing values")
 pub fn test_hashset_remove_missing() {
     match HashSet::<u32>::new() {
@@ -239,6 +252,7 @@ pub fn test_hashset_remove_missing() {
 // Clear Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::clear()
 @test("HashSet::clear removes all elements")
 pub fn test_hashset_clear() {
     match HashSet::<u32>::new() {
@@ -270,6 +284,7 @@ pub fn test_hashset_clear() {
 // Set Operation Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::is_subset(&HashSet<T>)
 @test("HashSet::is_subset works correctly")
 pub fn test_hashset_is_subset() {
     match HashSet::<u32>::new() {
@@ -324,6 +339,7 @@ pub fn test_hashset_is_subset() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::is_superset(&HashSet<T>)
 @test("HashSet::is_superset works correctly")
 pub fn test_hashset_is_superset() {
     match HashSet::<u32>::new() {
@@ -362,6 +378,7 @@ pub fn test_hashset_is_superset() {
     }
 }
 
+// @covers std::collections::hashset::HashSet::intersects(&HashSet<T>)
 @test("HashSet::intersects works correctly")
 pub fn test_hashset_intersects() {
     match HashSet::<u32>::new() {
@@ -410,6 +427,8 @@ pub fn test_hashset_intersects() {
 // Iterator Tests
 // ============================================================================
 
+// @covers std::collections::hashset::HashSet::iter()
+// @covers std::collections::hashset::HashSetIter::next()
 @test("HashSet::iter iterates over all elements")
 pub fn test_hashset_iter() {
     match HashSet::<u32>::new() {

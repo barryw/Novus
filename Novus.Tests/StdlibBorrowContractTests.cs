@@ -149,6 +149,7 @@ public class StdlibBorrowContractTests
     }
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public async Task NativeIndexTypesCompileAcrossCanonicalPortableSurfaces()
     {
         var stdlib = PathUtility.FindStdLibPath()

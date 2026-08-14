@@ -92,6 +92,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrReturn ret => VisitReturn(ret, context),
             IrStore store => VisitStore(store, context),
             IrDereferenceStore derefStore => VisitDereferenceStore(derefStore, context),
+            IrDropInPlace dropInPlace => VisitDropInPlace(dropInPlace, context),
             IrLabel label => VisitLabel(label, context),
             IrBranch branch => VisitBranch(branch, context),
             IrConditionalBranch condBranch => VisitConditionalBranch(condBranch, context),
@@ -108,6 +109,14 @@ public abstract class IrVisitor<TResult, TContext>
             IrMatch match => VisitMatch(match, context),
             IrExtractTag extractTag => VisitExtractTag(extractTag, context),
             IrExtractVariantData extractData => VisitExtractVariantData(extractData, context),
+            IrCreateClosure createClosure => VisitCreateClosure(createClosure, context),
+            IrInvokeClosure invokeClosure => VisitInvokeClosure(invokeClosure, context),
+            IrLoadCapture loadCapture => VisitLoadCapture(loadCapture, context),
+            IrStoreCapture storeCapture => VisitStoreCapture(storeCapture, context),
+            IrIndexedFieldStore indexedFieldStore => VisitIndexedFieldStore(indexedFieldStore, context),
+            IrHardwareWrite hardwareWrite => VisitHardwareWrite(hardwareWrite, context),
+            IrHardwareRead hardwareRead => VisitHardwareRead(hardwareRead, context),
+            IrInlineAsm inlineAsm => VisitInlineAsm(inlineAsm, context),
             _ => VisitUnknownInstruction(instruction, context)
         };
     }
@@ -120,7 +129,10 @@ public abstract class IrVisitor<TResult, TContext>
         return value switch
         {
             IrConstant constant => VisitConstant(constant, context),
+            IrSizeOf sizeOf => VisitSizeOf(sizeOf, context),
+            IrZeroed zeroed => VisitZeroed(zeroed, context),
             IrBoolConstant boolConstant => VisitBoolConstant(boolConstant, context),
+            IrConstGenericParamRef constGeneric => VisitConstGenericParamRef(constGeneric, context),
             IrFloatConstant floatConstant => VisitFloatConstant(floatConstant, context),
             IrFixedConstant fixedConstant => VisitFixedConstant(fixedConstant, context),
             IrStringLiteral stringLiteral => VisitStringLiteral(stringLiteral, context),
@@ -129,6 +141,7 @@ public abstract class IrVisitor<TResult, TContext>
             IrStructLiteral structLiteral => VisitStructLiteral(structLiteral, context),
             IrTupleLiteral tupleLiteral => VisitTupleLiteral(tupleLiteral, context),
             IrArrayLiteral arrayLiteral => VisitArrayLiteral(arrayLiteral, context),
+            IrNever never => VisitNever(never, context),
             IrDereferenceValue derefValue => VisitDereferenceValue(derefValue, context),
             IrBorrowValue borrowValue => VisitBorrowValue(borrowValue, context),
             IrFieldReference fieldRef => VisitFieldReference(fieldRef, context),
@@ -144,6 +157,8 @@ public abstract class IrVisitor<TResult, TContext>
             IrTurboFishType turboFish => VisitTurboFishType(turboFish, context),
             IrGenericAssociatedFunction genAssocFunc => VisitGenericAssociatedFunction(genAssocFunc, context),
             IrFunctionRef funcRef => VisitFunctionRef(funcRef, context),
+            IrCopperListData copperList => VisitCopperListData(copperList, context),
+            IrBlitterOpData blitterOp => VisitBlitterOpData(blitterOp, context),
             _ => VisitUnknownValue(value, context)
         };
     }
@@ -213,6 +228,12 @@ public abstract class IrVisitor<TResult, TContext>
     {
         VisitValue(derefStore.Pointer, context);
         VisitValue(derefStore.Value, context);
+        return default!;
+    }
+
+    public virtual TResult VisitDropInPlace(IrDropInPlace dropInPlace, TContext context)
+    {
+        VisitValue(dropInPlace.Pointer, context);
         return default!;
     }
 
@@ -429,6 +450,53 @@ public abstract class IrVisitor<TResult, TContext>
         return default!;
     }
 
+    public virtual TResult VisitCreateClosure(IrCreateClosure createClosure, TContext context)
+    {
+        foreach (var capture in createClosure.CapturedValues)
+            VisitValue(capture.Value, context);
+        return default!;
+    }
+
+    public virtual TResult VisitInvokeClosure(IrInvokeClosure invokeClosure, TContext context)
+    {
+        VisitValue(invokeClosure.Closure, context);
+        foreach (var argument in invokeClosure.Arguments)
+            VisitValue(argument, context);
+        return default!;
+    }
+
+    public virtual TResult VisitLoadCapture(IrLoadCapture loadCapture, TContext context) => default!;
+
+    public virtual TResult VisitStoreCapture(IrStoreCapture storeCapture, TContext context)
+    {
+        VisitValue(storeCapture.Value, context);
+        return default!;
+    }
+
+    public virtual TResult VisitIndexedFieldStore(IrIndexedFieldStore store, TContext context)
+    {
+        VisitValue(store.Array, context);
+        VisitValue(store.Index, context);
+        VisitValue(store.Value, context);
+        if (store.Length != null) VisitValue(store.Length, context);
+        return default!;
+    }
+
+    public virtual TResult VisitHardwareWrite(IrHardwareWrite hardwareWrite, TContext context)
+    {
+        VisitValue(hardwareWrite.Value, context);
+        return default!;
+    }
+
+    public virtual TResult VisitHardwareRead(IrHardwareRead hardwareRead, TContext context) => default!;
+
+    public virtual TResult VisitInlineAsm(IrInlineAsm inlineAsm, TContext context)
+    {
+        foreach (var input in inlineAsm.Inputs)
+            VisitValue(input.Value, context);
+        return default!;
+    }
+
     /// <summary>
     /// Visit an unknown instruction (fallback)
     /// </summary>
@@ -446,6 +514,12 @@ public abstract class IrVisitor<TResult, TContext>
     {
         return default!;
     }
+
+    public virtual TResult VisitSizeOf(IrSizeOf sizeOf, TContext context) => default!;
+
+    public virtual TResult VisitZeroed(IrZeroed zeroed, TContext context) => default!;
+
+    public virtual TResult VisitConstGenericParamRef(IrConstGenericParamRef constGeneric, TContext context) => default!;
 
     /// <summary>
     /// Visit a boolean constant value
@@ -527,6 +601,8 @@ public abstract class IrVisitor<TResult, TContext>
         }
         return default!;
     }
+
+    public virtual TResult VisitNever(IrNever never, TContext context) => default!;
 
     /// <summary>
     /// Visit a dereference value
@@ -649,6 +725,17 @@ public abstract class IrVisitor<TResult, TContext>
     /// </summary>
     public virtual TResult VisitFunctionRef(IrFunctionRef funcRef, TContext context)
     {
+        return default!;
+    }
+
+    public virtual TResult VisitCopperListData(IrCopperListData copperList, TContext context) => default!;
+
+    public virtual TResult VisitBlitterOpData(IrBlitterOpData blitterOp, TContext context)
+    {
+        if (blitterOp.SourceA != null) VisitValue(blitterOp.SourceA, context);
+        if (blitterOp.SourceB != null) VisitValue(blitterOp.SourceB, context);
+        if (blitterOp.SourceC != null) VisitValue(blitterOp.SourceC, context);
+        if (blitterOp.Destination != null) VisitValue(blitterOp.Destination, context);
         return default!;
     }
 

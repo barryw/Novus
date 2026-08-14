@@ -156,6 +156,12 @@ double __novus_f64_from_bits(uint64_t bits);
 // Use for stdlib internals where tracking would interfere
 void* __novus_alloc_raw(uint32_t size, uint32_t flags);
 void __novus_free_raw(void* ptr, uint32_t size);
+void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line, int32_t paranoid);
+void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line);
+uint32_t __novus_memory_active_allocations(void);
+uint32_t __novus_memory_active_bytes(void);
+void __novus_memory_checkpoint(void);
+void __novus_memory_test_reset(void);
 
 // Error display (shared by error handlers)
 extern char error_buffer[512];

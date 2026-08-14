@@ -4,12 +4,14 @@
 from std::memory::block import MemoryBlock, Allocation, Box
 from amiga::raw::consts import MEMF_PUBLIC, MEMF_CLEAR, MEMF_ANY
 from amiga::raw::exec import FreeMem
-from std::test::test import expect, expect_true, expect_false, expect_eq
+from std::test::test import expect, expect_true, expect_false, expect_eq, expect_not_null
 
 // =============================================================================
 // MemoryBlock::alloc tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::alloc(usize, u32)
+// @covers std::test::test::expect_eq(T, T, Str)
 @test("MemoryBlock::alloc allocates memory")
 pub fn test_memblock_alloc() {
     let opt = MemoryBlock::alloc(1024, MEMF_PUBLIC)
@@ -23,6 +25,7 @@ pub fn test_memblock_alloc() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::alloc(usize, u32)
 @test("MemoryBlock::alloc with zero size")
 pub fn test_memblock_alloc_zero() {
     let opt = MemoryBlock::alloc(0, MEMF_PUBLIC)
@@ -38,6 +41,7 @@ pub fn test_memblock_alloc_zero() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::alloc(usize, u32)
 @test("MemoryBlock::alloc with MEMF_CLEAR zeros memory")
 pub fn test_memblock_alloc_clear() {
     let opt = MemoryBlock::alloc(100, MEMF_PUBLIC | MEMF_CLEAR)
@@ -63,6 +67,7 @@ pub fn test_memblock_alloc_clear() {
 // MemoryBlock::try_alloc tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::try_alloc(usize, u32)
 @test("MemoryBlock::try_alloc returns Result")
 pub fn test_memblock_try_alloc() {
     let result = MemoryBlock::try_alloc(512, MEMF_PUBLIC)
@@ -79,6 +84,7 @@ pub fn test_memblock_try_alloc() {
 // MemoryBlock::ptr and MemoryBlock::size tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::ptr()
 @test("MemoryBlock::ptr returns valid pointer")
 pub fn test_memblock_ptr() {
     let opt = MemoryBlock::alloc(64, MEMF_PUBLIC)
@@ -98,6 +104,7 @@ pub fn test_memblock_ptr() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::size()
 @test("MemoryBlock::size returns allocation size")
 pub fn test_memblock_size() {
     let opt = MemoryBlock::alloc(256, MEMF_PUBLIC)
@@ -114,6 +121,7 @@ pub fn test_memblock_size() {
 // MemoryBlock::is_empty tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::is_empty()
 @test("MemoryBlock::is_empty false for allocated block")
 pub fn test_memblock_is_empty_false() {
     let opt = MemoryBlock::alloc(100, MEMF_PUBLIC)
@@ -126,6 +134,7 @@ pub fn test_memblock_is_empty_false() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::is_empty()
 @test("MemoryBlock::is_empty true for zero-size block")
 pub fn test_memblock_is_empty_true() {
     let opt = MemoryBlock::alloc(0, MEMF_PUBLIC)
@@ -142,6 +151,7 @@ pub fn test_memblock_is_empty_true() {
 // MemoryBlock::into_raw tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::into_raw()
 @test("MemoryBlock::into_raw transfers ownership")
 pub fn test_memblock_into_raw() {
     let opt = MemoryBlock::alloc(128, MEMF_PUBLIC)
@@ -172,6 +182,7 @@ pub fn test_memblock_into_raw() {
 // MemoryBlock::free tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::free()
 @test("MemoryBlock::free clears the block")
 pub fn test_memblock_free() {
     let opt = MemoryBlock::alloc(64, MEMF_PUBLIC)
@@ -189,6 +200,7 @@ pub fn test_memblock_free() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::free()
 @test("MemoryBlock::free is safe to call twice")
 pub fn test_memblock_free_twice() {
     let opt = MemoryBlock::alloc(32, MEMF_PUBLIC)
@@ -207,6 +219,7 @@ pub fn test_memblock_free_twice() {
 // MemoryBlock::resize tests
 // =============================================================================
 
+// @covers std::memory::block::MemoryBlock::resize(usize, u32)
 @test("MemoryBlock::resize grows block")
 pub fn test_memblock_resize_grow() {
     let opt = MemoryBlock::alloc(64, MEMF_PUBLIC)
@@ -239,6 +252,7 @@ pub fn test_memblock_resize_grow() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::resize(usize, u32)
 @test("MemoryBlock::resize shrinks block")
 pub fn test_memblock_resize_shrink() {
     let opt = MemoryBlock::alloc(256, MEMF_PUBLIC)
@@ -263,6 +277,7 @@ pub fn test_memblock_resize_shrink() {
     }
 }
 
+// @covers std::memory::block::MemoryBlock::resize(usize, u32)
 @test("MemoryBlock::resize to same size is no-op")
 pub fn test_memblock_resize_same() {
     let opt = MemoryBlock::alloc(100, MEMF_PUBLIC)
@@ -277,8 +292,106 @@ pub fn test_memblock_resize_same() {
     }
 }
 
-// =============================================================================
-// NOTE: Allocation<T> and Box<T> tests are commented out because
-// generic type parameters are not fully supported by the current compiler.
-// These tests can be added back when generics are fully working.
-// =============================================================================
+// @covers std::memory::block::MemoryBlock::new(usize)
+// @covers std::memory::block::MemoryBlock::as_bytes()
+// @covers std::memory::block::MemoryBlock::as_mut_bytes()
+@test("MemoryBlock::new provides zeroed bounded views")
+pub fn test_memblock_bounded_views() {
+    match MemoryBlock::new(4) {
+        Result::Ok(var block) => {
+            expect_eq(block.as_bytes().len(), 4, "byte view length")
+            {
+                var bytes = block.as_mut_bytes()
+                expect_true(bytes.set(1, 42).is_ok(), "bounded mutation")
+            }
+            expect_eq(*block.as_bytes().get(0).unwrap(), 0, "new block is zeroed")
+            expect_eq(*block.as_bytes().get(1).unwrap(), 42, "mutation persisted")
+        },
+        Result::Err(_) => expect(false, "allocation should succeed"),
+    }
+}
+
+// @covers std::memory::block::RawMemoryBlock::ptr()
+// @covers std::memory::block::RawMemoryBlock::size()
+// @covers std::memory::block::MemoryBlock::from_raw(RawMemoryBlock)
+@test("MemoryBlock raw ownership round-trips")
+pub fn test_memblock_raw_roundtrip() {
+    match MemoryBlock::new(16) {
+        Result::Ok(block) => {
+            let raw = block.into_raw()
+            expect_not_null(raw.ptr(), "raw pointer")
+            expect_eq(raw.size(), 16, "raw size")
+            match unsafe { MemoryBlock::from_raw(raw) } {
+                Result::Ok(restored) => expect_eq(restored.size(), 16, "restored block"),
+                Result::Err(_) => expect(false, "valid raw block rejected"),
+            }
+        },
+        Result::Err(_) => expect(false, "allocation should succeed"),
+    }
+}
+
+// @covers std::memory::block::Allocation::new(usize, u32)
+// @covers std::memory::block::Allocation::try_new(usize, u32)
+// @covers std::memory::block::Allocation::count()
+// @covers std::memory::block::Allocation::size_bytes()
+// @covers std::memory::block::Allocation::as_ptr()
+// @covers std::memory::block::Allocation::as_mut_ptr()
+// @covers std::memory::block::Allocation::is_empty()
+// @covers std::memory::block::Allocation::free()
+// @covers std::memory::block::Allocation::resize(usize, u32)
+@test("Allocation tracks typed capacity and ownership")
+pub fn test_typed_allocation() {
+    match Allocation::<u32>::new(3, MEMF_PUBLIC | MEMF_CLEAR) {
+        Result::Ok(var allocation) => {
+            expect_eq(allocation.count(), 3, "element count")
+            expect_eq(allocation.size_bytes(), 12, "byte count")
+            expect_false(allocation.is_empty(), "allocation is nonempty")
+            let writable = allocation.as_mut_ptr()
+            unsafe { writable[1] = 42 }
+            let readable = allocation.as_ptr()
+            unsafe { expect_eq(readable[1], 42, "typed pointer roundtrip") }
+            expect_true(allocation.resize(5, MEMF_PUBLIC).is_ok(), "resize succeeds")
+            expect_eq(allocation.count(), 5, "resized count")
+            allocation.free()
+            expect_true(allocation.is_empty(), "free clears count")
+        },
+        Result::Err(_) => expect(false, "allocation should succeed"),
+    }
+    match Allocation::<u16>::try_new(2, MEMF_PUBLIC) {
+        Result::Ok(allocation) => expect_eq(allocation.count(), 2, "try_new count"),
+        Result::Err(_) => expect(false, "try_new should succeed"),
+    }
+}
+
+// @covers std::memory::block::Box::new(T)
+// @covers std::memory::block::Box::new_in(T, u32)
+// @covers std::memory::block::Box::try_new(T)
+// @covers std::memory::block::Box::try_new_in(T, u32)
+// @covers std::memory::block::Box::get()
+// @covers std::memory::block::Box::get_mut()
+// @covers std::memory::block::Box::free()
+@test("Box owns and mutates one typed value")
+pub fn test_box() {
+    match Box::<u32>::new(10) {
+        Result::Ok(var boxed) => {
+            expect_eq(*boxed.get(), 10, "initial value")
+            let value = boxed.get_mut()
+            *value = 42
+            expect_eq(*boxed.get(), 42, "mutated value")
+            boxed.free()
+        },
+        Result::Err(_) => expect(false, "box allocation should succeed"),
+    }
+    match Box::<u16>::new_in(1, MEMF_PUBLIC) {
+        Result::Ok(boxed) => expect_eq(*boxed.get(), 1, "new_in value"),
+        Result::Err(_) => expect(false, "new_in should succeed"),
+    }
+    match Box::<u8>::try_new(2) {
+        Result::Ok(boxed) => expect_eq(*boxed.get(), 2, "try_new value"),
+        Result::Err(_) => expect(false, "try_new should succeed"),
+    }
+    match Box::<i32>::try_new_in(-3, MEMF_PUBLIC) {
+        Result::Ok(boxed) => expect_eq(*boxed.get(), -3, "try_new_in value"),
+        Result::Err(_) => expect(false, "try_new_in should succeed"),
+    }
+}

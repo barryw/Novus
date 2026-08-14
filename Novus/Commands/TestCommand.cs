@@ -116,12 +116,15 @@ public static class TestCommand
 
             sourceFiles.Sort(StringComparer.Ordinal);
             var outputDir = Path.GetFullPath(options.OutputDir ?? Directory.GetCurrentDirectory());
+            if (!string.IsNullOrEmpty(options.CacheDirectory))
+                options.CacheDirectory = Path.GetFullPath(options.CacheDirectory);
             Directory.CreateDirectory(outputDir);
             var projectDir = FindProjectDirectory(targetPath);
             var supportFiles = projectDir == null
                 ? new List<string>()
                 : Directory.EnumerateFiles(Path.Combine(projectDir, "src"), "*.novus", SearchOption.AllDirectories).ToList();
             var testRunnerPath = Path.Combine(outputDir, "_test_runner.novus");
+            var outputExe = Path.Combine(outputDir, "tests");
 
             Console.WriteLine($"Scanning {sourceFiles.Count} file(s) for tests...");
 
@@ -174,6 +177,9 @@ public static class TestCommand
 
             if (activeTests.Count == 0)
             {
+                File.Delete(testRunnerPath);
+                File.Delete(outputExe);
+                File.Delete(outputExe + ".novus-build");
                 Console.WriteLine("\nNo active tests to run");
                 return 0;
             }
@@ -193,7 +199,6 @@ public static class TestCommand
             // Change to the output directory so imports resolve correctly
             Console.WriteLine("\nCompiling test runner...");
 
-            var outputExe = Path.Combine(outputDir, "tests");
             var originalDir = Directory.GetCurrentDirectory();
 
             try
@@ -292,6 +297,7 @@ public static class TestCommand
         OptimizationLevel = options.GetOptimizationLevel(),
         SafetyLevelOption = options.SafetyLevel,
         UseStdlibCache = true,
+        CompilationCacheDirectory = options.CacheDirectory,
         AdditionalSourceFiles = sourceFiles.Select(Path.GetFullPath).ToList()
     };
 
@@ -495,6 +501,17 @@ public static class TestCommand
         {
             sb.AppendLine("from amiga::timer import TimerHandle");
         }
+        if (options.MemoryCheck)
+        {
+            sb.AppendLine("from amiga::raw::consts import MEMF_ANY");
+            sb.AppendLine("from amiga::raw::dos import Delay");
+            sb.AppendLine("from amiga::raw::exec import AvailMem");
+            sb.AppendLine("extern fn __novus_memory_active_allocations() -> u32");
+            sb.AppendLine("extern fn __novus_memory_active_bytes() -> u32");
+            sb.AppendLine("extern fn __novus_memory_checkpoint()");
+            sb.AppendLine("extern fn __novus_memory_test_reset()");
+            sb.AppendLine("extern fn __novus_ffi_cleanup_lazy()");
+        }
         sb.AppendLine();
 
         // Test modules are compiled separately; the runner only needs their entry-point signatures.
@@ -505,6 +522,22 @@ public static class TestCommand
             sb.AppendLine($"extern fn {test.FunctionName}()");
         }
         sb.AppendLine();
+
+        if (options.MemoryCheck)
+        {
+            sb.AppendLine("fn __test_wait_for_memory(target: u32) -> u32 {");
+            sb.AppendLine("    var available = AvailMem(MEMF_ANY)");
+            sb.AppendLine("    var attempts: u32 = 0");
+            sb.AppendLine("    while available < target && attempts < 25 {");
+            sb.AppendLine("        Delay(1)");
+            sb.AppendLine("        let current = AvailMem(MEMF_ANY)");
+            sb.AppendLine("        if current > available { available = current }");
+            sb.AppendLine("        attempts++");
+            sb.AppendLine("    }");
+            sb.AppendLine("    return available");
+            sb.AppendLine("}");
+            sb.AppendLine();
+        }
 
         // Generate main function
         sb.AppendLine("pub fn main() -> i32 {");
@@ -530,6 +563,15 @@ public static class TestCommand
             sb.AppendLine("            return 1");
             sb.AppendLine("        },");
             sb.AppendLine("    }");
+        }
+        if (options.MemoryCheck)
+        {
+            sb.AppendLine("    var memory_before: u32 = 0");
+            sb.AppendLine("    var memory_after: u32 = 0");
+            sb.AppendLine("    var allocations_before: u32 = 0");
+            sb.AppendLine("    var allocations_after: u32 = 0");
+            sb.AppendLine("    var allocated_bytes_before: u32 = 0");
+            sb.AppendLine("    var allocated_bytes_after: u32 = 0");
         }
         sb.AppendLine();
 
@@ -610,13 +652,75 @@ public static class TestCommand
                     sb.AppendLine($"    start_us = timer.get_micros()");
                 }
 
+                if (options.MemoryCheck)
+                {
+                    sb.AppendLine("    __novus_memory_checkpoint()");
+                    sb.AppendLine("    memory_before = AvailMem(MEMF_ANY)");
+                    sb.AppendLine("    allocations_before = __novus_memory_active_allocations()");
+                    sb.AppendLine("    allocated_bytes_before = __novus_memory_active_bytes()");
+                }
+
                 sb.AppendLine($"    {testName}()");
+
+                if (options.MemoryCheck)
+                {
+                    sb.AppendLine("    // Release process-wide libraries opened lazily by the test.");
+                    sb.AppendLine("    __novus_ffi_cleanup_lazy()");
+                }
 
                 // Calculate elapsed time for benchmark mode
                 if (options.Benchmark)
                 {
                     sb.AppendLine($"    elapsed_us = timer.get_micros() - start_us");
                     sb.AppendLine($"    total_time_us = total_time_us + elapsed_us");
+                }
+
+                if (options.MemoryCheck)
+                {
+                    sb.AppendLine("    allocations_after = __novus_memory_active_allocations()");
+                    sb.AppendLine("    allocated_bytes_after = __novus_memory_active_bytes()");
+                    sb.AppendLine("    __novus_memory_checkpoint()");
+                    sb.AppendLine("    memory_after = AvailMem(MEMF_ANY)");
+                    sb.AppendLine("    if allocations_after > allocations_before || allocated_bytes_after > allocated_bytes_before {");
+                    sb.AppendLine("        write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
+                    sb.AppendLine("        fail(\"Novus allocation leak\")");
+                    sb.AppendLine("        __novus_memory_test_reset()");
+                    sb.AppendLine("    } else if memory_after < memory_before {");
+                    sb.AppendLine("        // AmigaOS subsystems allocate lazy process-wide state on first use.");
+                    sb.AppendLine("        // Give asynchronous OS cleanup one tick, then retry once against");
+                    sb.AppendLine("        // the warmed baseline before calling a persistent drop a leak.");
+                    sb.AppendLine("        memory_after = __test_wait_for_memory(memory_before)");
+                    sb.AppendLine("        if memory_after < memory_before {");
+                    sb.AppendLine("            memory_before = memory_after");
+                    sb.AppendLine($"            {testName}()");
+                    sb.AppendLine("            allocations_after = __novus_memory_active_allocations()");
+                    sb.AppendLine("            allocated_bytes_after = __novus_memory_active_bytes()");
+                    sb.AppendLine("            __novus_memory_checkpoint()");
+                    sb.AppendLine("            memory_after = __test_wait_for_memory(memory_before)");
+                    sb.AppendLine("            if allocations_after > allocations_before || allocated_bytes_after > allocated_bytes_before {");
+                    sb.AppendLine("                write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
+                    sb.AppendLine("                fail(\"Novus allocation leak\")");
+                    sb.AppendLine("                __novus_memory_test_reset()");
+                    sb.AppendLine("            } else if memory_after < memory_before {");
+                    sb.AppendLine("                // Confirm linear growth once more; finite subsystem caches");
+                    sb.AppendLine("                // may need more than one call to reach steady state.");
+                    sb.AppendLine("                memory_before = memory_after");
+                    sb.AppendLine($"                {testName}()");
+                    sb.AppendLine("                allocations_after = __novus_memory_active_allocations()");
+                    sb.AppendLine("                allocated_bytes_after = __novus_memory_active_bytes()");
+                    sb.AppendLine("                __novus_memory_checkpoint()");
+                    sb.AppendLine("                memory_after = __test_wait_for_memory(memory_before)");
+                    sb.AppendLine("                if allocations_after > allocations_before || allocated_bytes_after > allocated_bytes_before {");
+                    sb.AppendLine("                    write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
+                    sb.AppendLine("                    fail(\"Novus allocation leak\")");
+                    sb.AppendLine("                    __novus_memory_test_reset()");
+                    sb.AppendLine("                } else if memory_after < memory_before {");
+                    sb.AppendLine("                    write(\"MEMORY LEAK: %lu AmigaOS byte(s) not returned. \", memory_before - memory_after)");
+                    sb.AppendLine("                    fail(\"AmigaOS resource leak\")");
+                    sb.AppendLine("                }");
+                    sb.AppendLine("            }");
+                    sb.AppendLine("        }");
+                    sb.AppendLine("    }");
                 }
 
                 sb.AppendLine($"    if __test_get_failures() == 0 {{");

@@ -39,11 +39,13 @@
 // ```
 
 from amiga::raw::exec import OpenLibrary, CloseLibrary, Library
-from amiga::raw::amissl import AmiSSLMasterBase, AmiSSLBase, InitAmiSSLMaster, OpenAmiSSL, CloseAmiSSL
+from amiga::raw::amissl import AmiSSLMasterBase, AmiSSLBase, OpenAmiSSLTagList, CloseAmiSSL
 from amiga::raw::amissl import OPENSSL_init_ssl, OPENSSL_init_crypto, SSL_CTX, SSL, SSL_METHOD
 from amiga::raw::amissl import SSL_CTX_new, SSL_CTX_free, SSL_CTX_set_verify, SSL_CTX_set_verify_depth
 from amiga::raw::amissl import SSL_CTX_set_default_verify_paths, SSL_CTX_load_verify_locations
 from amiga::raw::amissl import SSL_CTX_set_min_proto_version, SSL_CTX_set_options
+from amiga::raw::amissl import SSL_CTX_use_certificate_chain_file, SSL_CTX_use_PrivateKey_file
+from amiga::raw::amissl import SSL_CTX_check_private_key, SSL_FILETYPE_PEM
 from amiga::raw::amissl import SSL_new, SSL_free, SSL_set_fd, SSL_connect, SSL_accept, SSL_do_handshake
 from amiga::raw::amissl import SSL_read, SSL_write, SSL_peek, SSL_shutdown, SSL_pending
 from amiga::raw::amissl import SSL_get_error, SSL_get_verify_result, SSL_get_peer_certificate
@@ -54,14 +56,15 @@ from amiga::raw::amissl import SSL_ERROR_NONE, SSL_ERROR_WANT_READ, SSL_ERROR_WA
 from amiga::raw::amissl import SSL_ERROR_ZERO_RETURN, SSL_ERROR_SYSCALL, SSL_ERROR_SSL
 from amiga::raw::amissl import SSL_VERIFY_NONE, SSL_VERIFY_PEER, TLS1_2_VERSION, TLS1_3_VERSION
 from amiga::raw::amissl import SSL_OP_NO_SSLv3, SSL_OP_NO_TLSv1, SSL_OP_NO_TLSv1_1, SSL_OP_NO_COMPRESSION
-from amiga::raw::amissl import X509_V_OK, AMISSL_CURRENT_VERSION
+from amiga::raw::amissl import X509_V_OK, AMISSL_CURRENT_VERSION, AMISSLMASTER_MIN_VERSION
+from amiga::raw::amissl import AmiSSL_SocketBase, AmiSSL_ErrNoPtr, AmiSSL_UsesOpenSSLStructs, AmiSSL_GetAmiSSLBase
 from amiga::raw::amissl import OPENSSL_INIT_LOAD_SSL_STRINGS, OPENSSL_INIT_LOAD_CRYPTO_STRINGS
+from amiga::raw::bsdsocket import SocketBase
+from amiga::raw::consts import TAG_DONE
+from amiga::raw::structs import TagItem
 from std::net::tcp import TcpStream
 from std::net::errors import NetError
 from std::core import Option
-
-// AmiSSL library version required
-const AMISSL_MASTER_VERSION: u32 = 4
 
 /// TLS configuration and context
 ///
@@ -76,6 +79,8 @@ pub struct TlsConfig {
     ssl_base: *u8,
     /// The is client value stored by `TlsConfig`.
     is_client: bool,
+    /// Whether peer certificates must pass verification.
+    verify_certs: bool,
 }
 
 impl TlsConfig {
@@ -110,10 +115,36 @@ impl TlsConfig {
         return TlsConfig::new_internal(false, false)
     }
 
+    /// Load a PEM certificate chain for this client or server configuration.
+    pub fn set_certificate(&self, path: *u8) -> Result<(), NetError> {
+        return Result::Err(NetError::InvalidArg) unless path
+        return if unsafe { SSL_CTX_use_certificate_chain_file(self.ctx, path) } == 1 {
+            Result::Ok(())
+        } else {
+            Result::Err(NetError::TlsProtocolError)
+        }
+    }
+
+    /// Load a PEM private key and verify that it matches the configured certificate.
+    pub fn set_private_key(&self, path: *u8) -> Result<(), NetError> {
+        return Result::Err(NetError::InvalidArg) unless path
+        if unsafe { SSL_CTX_use_PrivateKey_file(self.ctx, path, SSL_FILETYPE_PEM) } != 1 {
+            return Result::Err(NetError::TlsProtocolError)
+        }
+        return if unsafe { SSL_CTX_check_private_key(self.ctx) } == 1 {
+            Result::Ok(())
+        } else {
+            Result::Err(NetError::TlsProtocolError)
+        }
+    }
+
     /// Internal initialization
     fn new_internal(is_client: bool, verify_certs: bool) -> Result<TlsConfig, NetError> {
         // Open amisslmaster.library
-        let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSL_MASTER_VERSION) }
+        let socket_base = unsafe { SocketBase }
+        return Result::Err(NetError::NotInitialized) unless socket_base
+
+        let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSLMASTER_MIN_VERSION) }
         if !master_base {
             return Result::Err(NetError::NotInitialized)
         }
@@ -123,24 +154,22 @@ impl TlsConfig {
             AmiSSLMasterBase = master_base as *u8
         }
 
-        // Initialize AmiSSL master
-        let init_result = unsafe { InitAmiSSLMaster(AMISSL_CURRENT_VERSION, 1) }
-        if init_result == 0 {
+        // AmiSSL v5 initializes its per-task state and returns its library base
+        // through this tag list. Passing SocketBase and errno is mandatory on OS3.
+        let tags = [
+            TagItem { ti_Tag: AmiSSL_UsesOpenSSLStructs, ti_Data: 0 },
+            TagItem { ti_Tag: AmiSSL_GetAmiSSLBase, ti_Data: (u32)(**u8)&AmiSSLBase },
+            TagItem { ti_Tag: AmiSSL_SocketBase, ti_Data: (u32)socket_base },
+            TagItem { ti_Tag: AmiSSL_ErrNoPtr, ti_Data: (u32)SocketLibrary::errno_ptr() },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        ]
+        let open_result = unsafe { OpenAmiSSLTagList(AMISSL_CURRENT_VERSION, &tags[0]) }
+        if open_result != 0 {
+            unsafe { AmiSSLMasterBase = 0 as *u8 }
             unsafe { CloseLibrary(master_base) }
             return Result::Err(NetError::NotInitialized)
         }
-
-        // Open AmiSSL
-        let ssl_base = unsafe { OpenAmiSSL() }
-        if !ssl_base {
-            unsafe { CloseLibrary(master_base) }
-            return Result::Err(NetError::NotInitialized)
-        }
-
-        // Set global base
-        unsafe {
-            AmiSSLBase = ssl_base
-        }
+        let ssl_base = unsafe { AmiSSLBase }
 
         // Initialize OpenSSL
         let ssl_init = unsafe {
@@ -151,6 +180,8 @@ impl TlsConfig {
         }
         if ssl_init == 0 {
             unsafe { CloseAmiSSL() }
+            unsafe { AmiSSLBase = 0 as *u8 }
+            unsafe { AmiSSLMasterBase = 0 as *u8 }
             unsafe { CloseLibrary(master_base) }
             return Result::Err(NetError::TlsProtocolError)
         }
@@ -165,6 +196,8 @@ impl TlsConfig {
         let ctx = unsafe { SSL_CTX_new(method) }
         if !ctx {
             unsafe { CloseAmiSSL() }
+            unsafe { AmiSSLBase = 0 as *u8 }
+            unsafe { AmiSSLMasterBase = 0 as *u8 }
             unsafe { CloseLibrary(master_base) }
             return Result::Err(NetError::TlsProtocolError)
         }
@@ -202,6 +235,7 @@ impl TlsConfig {
             master_base: master_base,
             ssl_base: ssl_base,
             is_client: is_client,
+            verify_certs: verify_certs,
         })
     }
 
@@ -246,20 +280,19 @@ impl TlsConfig {
             return Result::Err(TlsStream::ssl_error_to_net_error(err))
         }
 
-        // Verify certificate (if verification is enabled)
-        let verify_result = unsafe { SSL_get_verify_result(ssl) }
+        if self.verify_certs {
+            let verify_result = unsafe { SSL_get_verify_result(ssl) }
 
-        // Always get and free the peer certificate to prevent memory leak
-        // SSL_get_peer_certificate() increments the reference count, so we must
-        // call X509_free() to decrement it, regardless of verification result
-        let cert = unsafe { SSL_get_peer_certificate(ssl) }
-        if cert as u32 != 0 {
-            unsafe { X509_free(cert) }
-        }
+            // SSL_get_peer_certificate() increments the reference count.
+            let cert = unsafe { SSL_get_peer_certificate(ssl) }
+            if cert as u32 != 0 {
+                unsafe { X509_free(cert) }
+            }
 
-        if verify_result != X509_V_OK as i32 {
-            unsafe { SSL_free(ssl) }
-            return Result::Err(NetError::TlsCertificateError)
+            if verify_result != X509_V_OK as i32 {
+                unsafe { SSL_free(ssl) }
+                return Result::Err(NetError::TlsCertificateError)
+            }
         }
 
         return Result::Ok(TlsStream {
@@ -316,8 +349,10 @@ impl Drop for TlsConfig {
         }
         if self.ssl_base as u32 != 0 {
             unsafe { CloseAmiSSL() }
+            unsafe { AmiSSLBase = 0 as *u8 }
         }
         if self.master_base as u32 != 0 {
+            unsafe { AmiSSLMasterBase = 0 as *u8 }
             unsafe { CloseLibrary(self.master_base) }
         }
     }
@@ -465,7 +500,7 @@ impl Drop for TlsStream {
 ///
 /// Returns true if AmiSSL is installed and can be initialized.
 pub fn is_tls_available() -> bool {
-    let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSL_MASTER_VERSION) }
+    let master_base = unsafe { OpenLibrary("amisslmaster.library", AMISSLMASTER_MIN_VERSION) }
     if master_base as u32 != 0 {
         unsafe { CloseLibrary(master_base) }
         return true

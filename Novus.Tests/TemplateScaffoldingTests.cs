@@ -114,6 +114,7 @@ public class TemplateScaffoldingTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public async Task EveryBundledProjectCompilesThroughCCodegen()
     {
         var templates = FindTemplatesDirectory();

@@ -18,6 +18,7 @@ namespace Novus.Tests;
 /// - Types are well-formed
 /// - Impl blocks are valid
 /// </summary>
+[Trait("Category", "CorpusCompilation")]
 public class StandardLibraryTests
 {
     private static string GetProjectRoot()

@@ -112,6 +112,7 @@ public class ExampleAsmTests : ExampleCompilationTestBase
     /// These tests run in PARALLEL for maximum performance.
     /// </summary>
     [Theory]
+    [Trait("Category", "CorpusCompilation")]
     [MemberData(nameof(GetExampleFilesForAsmTest))]
     public async Task Example_ShouldGenerateAssembly(string exampleName)
     {

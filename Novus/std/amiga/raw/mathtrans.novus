@@ -11,37 +11,40 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Runtime-managed mathtrans.library base used by the raw call stubs.
+extern var MathTransBase: *Library
+
 @library("mathtrans.library")
-extern pub fn SPAtan(parm: f32) -> f32
+extern pub fn SPAtan(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPSin(parm: f32) -> f32
+extern pub fn SPSin(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPCos(parm: f32) -> f32
+extern pub fn SPCos(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPTan(parm: f32) -> f32
+extern pub fn SPTan(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPSincos(cosResult: *u8, parm: f32) -> f32
+extern pub fn SPSincos(cosResult: *u32, parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPSinh(parm: f32) -> f32
+extern pub fn SPSinh(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPCosh(parm: f32) -> f32
+extern pub fn SPCosh(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPTanh(parm: f32) -> f32
+extern pub fn SPTanh(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPExp(parm: f32) -> f32
+extern pub fn SPExp(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPLog(parm: f32) -> f32
+extern pub fn SPLog(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPPow(power: f32, arg: f32) -> f32
+extern pub fn SPPow(power: u32, arg: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPSqrt(parm: f32) -> f32
+extern pub fn SPSqrt(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPTieee(parm: f32) -> f32
+extern pub fn SPTieee(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPFieee(parm: f32) -> f32
+extern pub fn SPFieee(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPAsin(parm: f32) -> f32
+extern pub fn SPAsin(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPAcos(parm: f32) -> f32
+extern pub fn SPAcos(parm: u32) -> u32
 @library("mathtrans.library")
-extern pub fn SPLog10(parm: f32) -> f32
+extern pub fn SPLog10(parm: u32) -> u32

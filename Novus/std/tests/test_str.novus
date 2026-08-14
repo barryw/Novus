@@ -10,6 +10,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // Basic Properties Tests
 // ============================================================================
 
+// @covers std::string::core::Str::len()
 @test("Str::len returns correct length")
 pub fn test_str_len() {
     let empty: Str = ""
@@ -21,12 +22,14 @@ pub fn test_str_len() {
     expect_eq(longer.len(), 13, "longer string length")
 }
 
+// @covers std::string::core::Str::is_empty()
 @test("Str::is_empty returns true for empty strings")
 pub fn test_str_is_empty_true() {
     let empty: Str = ""
     expect_true(empty.is_empty(), "empty string is_empty")
 }
 
+// @covers std::string::core::Str::is_empty()
 @test("Str::is_empty returns false for non-empty strings")
 pub fn test_str_is_empty_false() {
     let hello: Str = "Hello"
@@ -40,6 +43,7 @@ pub fn test_str_is_empty_false() {
 // Equality Tests
 // ============================================================================
 
+// @covers std::string::core::Str::equals(Str)
 @test("Str::equals - identical strings are equal")
 pub fn test_str_equals_identical() {
     let s1: Str = "Hello"
@@ -47,6 +51,7 @@ pub fn test_str_equals_identical() {
     expect_true(s1.equals(s2), "identical strings")
 }
 
+// @covers std::string::core::Str::equals(Str)
 @test("Str::equals - empty strings are equal")
 pub fn test_str_equals_empty() {
     let e1: Str = ""
@@ -54,6 +59,7 @@ pub fn test_str_equals_empty() {
     expect_true(e1.equals(e2), "empty strings equal")
 }
 
+// @covers std::string::core::Str::equals(Str)
 @test("Str::equals - different lengths are not equal")
 pub fn test_str_equals_diff_length() {
     let s1: Str = "Hi"
@@ -61,6 +67,7 @@ pub fn test_str_equals_diff_length() {
     expect_false(s1.equals(s2), "different lengths not equal")
 }
 
+// @covers std::string::core::Str::equals(Str)
 @test("Str::equals - different content not equal")
 pub fn test_str_equals_diff_content() {
     let s1: Str = "Hello"
@@ -68,6 +75,7 @@ pub fn test_str_equals_diff_content() {
     expect_false(s1.equals(s2), "different content not equal")
 }
 
+// @covers std::string::core::Str::equals(Str)
 @test("Str::equals - single char difference detected")
 pub fn test_str_equals_single_diff() {
     let s1: Str = "Hello"
@@ -79,6 +87,7 @@ pub fn test_str_equals_single_diff() {
 // Compare Tests (Lexicographic Ordering)
 // ============================================================================
 
+// @covers std::string::core::Str::compare(Str)
 @test("Str::compare - equal strings return 0")
 pub fn test_str_compare_equal() {
     let s1: Str = "Hello"
@@ -86,6 +95,7 @@ pub fn test_str_compare_equal() {
     expect_eq(s1.compare(s2), 0, "equal strings compare to 0")
 }
 
+// @covers std::string::core::Str::compare(Str)
 @test("Str::compare - less than returns negative")
 pub fn test_str_compare_less() {
     let apple: Str = "Apple"
@@ -93,6 +103,7 @@ pub fn test_str_compare_less() {
     expect_true(apple.compare(banana) < 0, "Apple < Banana")
 }
 
+// @covers std::string::core::Str::compare(Str)
 @test("Str::compare - greater than returns positive")
 pub fn test_str_compare_greater() {
     let zebra: Str = "Zebra"
@@ -100,6 +111,7 @@ pub fn test_str_compare_greater() {
     expect_true(zebra.compare(apple) > 0, "Zebra > Apple")
 }
 
+// @covers std::string::core::Str::compare(Str)
 @test("Str::compare - shorter prefix is less")
 pub fn test_str_compare_prefix() {
     let hello: Str = "Hello"
@@ -107,6 +119,7 @@ pub fn test_str_compare_prefix() {
     expect_true(hello.compare(hello_world) < 0, "Hello < Hello, World")
 }
 
+// @covers std::string::core::Str::compare(Str)
 @test("Str::compare - empty vs non-empty")
 pub fn test_str_compare_empty() {
     let empty: Str = ""
@@ -119,6 +132,7 @@ pub fn test_str_compare_empty() {
 // starts_with / ends_with Tests
 // ============================================================================
 
+// @covers std::string::core::Str::starts_with(Str)
 @test("Str::starts_with - true for valid prefix")
 pub fn test_str_starts_with_true() {
     let s: Str = "Hello, World!"
@@ -126,6 +140,7 @@ pub fn test_str_starts_with_true() {
     expect_true(s.starts_with(prefix), "starts with Hello")
 }
 
+// @covers std::string::core::Str::starts_with(Str)
 @test("Str::starts_with - false for invalid prefix")
 pub fn test_str_starts_with_false() {
     let s: Str = "Hello, World!"
@@ -133,6 +148,7 @@ pub fn test_str_starts_with_false() {
     expect_false(s.starts_with(prefix), "does not start with World")
 }
 
+// @covers std::string::core::Str::starts_with(Str)
 @test("Str::starts_with - empty prefix always true")
 pub fn test_str_starts_with_empty() {
     let s: Str = "Hello"
@@ -140,6 +156,7 @@ pub fn test_str_starts_with_empty() {
     expect_true(s.starts_with(empty), "starts with empty")
 }
 
+// @covers std::string::core::Str::starts_with(Str)
 @test("Str::starts_with - prefix longer than string")
 pub fn test_str_starts_with_longer() {
     let s: Str = "Hi"
@@ -147,6 +164,7 @@ pub fn test_str_starts_with_longer() {
     expect_false(s.starts_with(prefix), "prefix longer than string")
 }
 
+// @covers std::string::core::Str::ends_with(Str)
 @test("Str::ends_with - true for valid suffix")
 pub fn test_str_ends_with_true() {
     let s: Str = "Hello, World!"
@@ -154,6 +172,7 @@ pub fn test_str_ends_with_true() {
     expect_true(s.ends_with(suffix), "ends with World!")
 }
 
+// @covers std::string::core::Str::ends_with(Str)
 @test("Str::ends_with - false for invalid suffix")
 pub fn test_str_ends_with_false() {
     let s: Str = "Hello, World!"
@@ -161,6 +180,7 @@ pub fn test_str_ends_with_false() {
     expect_false(s.ends_with(suffix), "does not end with Hello")
 }
 
+// @covers std::string::core::Str::ends_with(Str)
 @test("Str::ends_with - empty suffix always true")
 pub fn test_str_ends_with_empty() {
     let s: Str = "Hello"
@@ -172,6 +192,7 @@ pub fn test_str_ends_with_empty() {
 // contains / find Tests
 // ============================================================================
 
+// @covers std::string::core::Str::contains(Str)
 @test("Str::contains - true for substring")
 pub fn test_str_contains_true() {
     let s: Str = "Hello, World!"
@@ -179,6 +200,7 @@ pub fn test_str_contains_true() {
     expect_true(s.contains(needle), "contains World")
 }
 
+// @covers std::string::core::Str::contains(Str)
 @test("Str::contains - false for non-substring")
 pub fn test_str_contains_false() {
     let s: Str = "Hello, World!"
@@ -186,6 +208,7 @@ pub fn test_str_contains_false() {
     expect_false(s.contains(needle), "does not contain Foo")
 }
 
+// @covers std::string::core::Str::contains(Str)
 @test("Str::contains - empty needle always found")
 pub fn test_str_contains_empty() {
     let s: Str = "Hello"
@@ -193,6 +216,7 @@ pub fn test_str_contains_empty() {
     expect_true(s.contains(empty), "contains empty")
 }
 
+// @covers std::string::core::Str::find(Str)
 @test("Str::find - returns correct index")
 pub fn test_str_find_found() {
     let s: Str = "Hello, World!"
@@ -204,6 +228,7 @@ pub fn test_str_find_found() {
     }
 }
 
+// @covers std::string::core::Str::find(Str)
 @test("Str::find - returns None for not found")
 pub fn test_str_find_not_found() {
     let s: Str = "Hello, World!"
@@ -215,6 +240,7 @@ pub fn test_str_find_not_found() {
     }
 }
 
+// @covers std::string::core::Str::find(Str)
 @test("Str::find - finds at beginning")
 pub fn test_str_find_beginning() {
     let s: Str = "Hello, World!"
@@ -226,6 +252,7 @@ pub fn test_str_find_beginning() {
     }
 }
 
+// @covers std::string::core::Str::find(Str)
 @test("Str::find - finds at end")
 pub fn test_str_find_end() {
     let s: Str = "Hello, World!"
@@ -237,6 +264,7 @@ pub fn test_str_find_end() {
     }
 }
 
+// @covers std::string::core::Str::find_byte(u8)
 @test("Str::find_byte - finds byte")
 pub fn test_str_find_byte() {
     let s: Str = "Hello, World!"
@@ -247,6 +275,7 @@ pub fn test_str_find_byte() {
     }
 }
 
+// @covers std::string::core::Str::find_byte(u8)
 @test("Str::find_byte - returns None for not found")
 pub fn test_str_find_byte_not_found() {
     let s: Str = "Hello"
@@ -257,6 +286,7 @@ pub fn test_str_find_byte_not_found() {
     }
 }
 
+// @covers std::string::core::Str::rfind_byte(u8)
 @test("Str::rfind_byte - finds last occurrence")
 pub fn test_str_rfind_byte() {
     let s: Str = "a/b/c/d"
@@ -271,6 +301,7 @@ pub fn test_str_rfind_byte() {
 // Slicing Tests
 // ============================================================================
 
+// @covers std::string::core::Str::slice(usize, usize)
 @test("Str::slice - basic slice")
 pub fn test_str_slice_basic() {
     let s: Str = "Hello, World!"
@@ -284,6 +315,7 @@ pub fn test_str_slice_basic() {
     }
 }
 
+// @covers std::string::core::Str::slice(usize, usize)
 @test("Str::slice - middle slice")
 pub fn test_str_slice_middle() {
     let s: Str = "Hello, World!"
@@ -297,6 +329,7 @@ pub fn test_str_slice_middle() {
     }
 }
 
+// @covers std::string::core::Str::slice(usize, usize)
 @test("Str::slice - empty slice")
 pub fn test_str_slice_empty() {
     let s: Str = "Hello"
@@ -307,6 +340,7 @@ pub fn test_str_slice_empty() {
     }
 }
 
+// @covers std::string::core::Str::slice(usize, usize)
 @test("Str::slice - out of bounds returns error")
 pub fn test_str_slice_oob() {
     let s: Str = "Hello"
@@ -317,6 +351,7 @@ pub fn test_str_slice_oob() {
     }
 }
 
+// @covers std::string::core::Str::slice(usize, usize)
 @test("Str::slice - start > end returns error")
 pub fn test_str_slice_invalid_range() {
     let s: Str = "Hello"
@@ -327,6 +362,7 @@ pub fn test_str_slice_invalid_range() {
     }
 }
 
+// @covers std::string::core::Str::slice_from(usize)
 @test("Str::slice_from - basic usage")
 pub fn test_str_slice_from() {
     let s: Str = "Hello, World!"
@@ -340,6 +376,7 @@ pub fn test_str_slice_from() {
     }
 }
 
+// @covers std::string::core::Str::slice_to(usize)
 @test("Str::slice_to - basic usage")
 pub fn test_str_slice_to() {
     let s: Str = "Hello, World!"
@@ -357,6 +394,7 @@ pub fn test_str_slice_to() {
 // Trim Tests
 // ============================================================================
 
+// @covers std::string::core::Str::trim()
 @test("Str::trim - removes leading and trailing spaces")
 pub fn test_str_trim_spaces() {
     let s: Str = "  Hello  "
@@ -365,6 +403,7 @@ pub fn test_str_trim_spaces() {
     expect_true(trimmed.equals(expected), "trimmed spaces")
 }
 
+// @covers std::string::core::Str::trim()
 @test("Str::trim - handles tabs and newlines")
 pub fn test_str_trim_whitespace() {
     let s: Str = "\t\nHello\r\n"
@@ -373,6 +412,7 @@ pub fn test_str_trim_whitespace() {
     expect_true(trimmed.equals(expected), "trimmed whitespace")
 }
 
+// @covers std::string::core::Str::trim()
 @test("Str::trim - no change for no whitespace")
 pub fn test_str_trim_no_change() {
     let s: Str = "Hello"
@@ -380,6 +420,7 @@ pub fn test_str_trim_no_change() {
     expect_true(trimmed.equals(s), "no whitespace to trim")
 }
 
+// @covers std::string::core::Str::trim()
 @test("Str::trim - all whitespace becomes empty")
 pub fn test_str_trim_all_whitespace() {
     let s: Str = "   \t\n   "
@@ -387,6 +428,7 @@ pub fn test_str_trim_all_whitespace() {
     expect_true(trimmed.is_empty(), "all whitespace becomes empty")
 }
 
+// @covers std::string::core::Str::trim_start()
 @test("Str::trim_start - only removes leading")
 pub fn test_str_trim_start() {
     let s: Str = "  Hello  "
@@ -395,6 +437,7 @@ pub fn test_str_trim_start() {
     expect_true(trimmed.equals(expected), "only leading trimmed")
 }
 
+// @covers std::string::core::Str::trim_end()
 @test("Str::trim_end - only removes trailing")
 pub fn test_str_trim_end() {
     let s: Str = "  Hello  "
@@ -407,6 +450,9 @@ pub fn test_str_trim_end() {
 // Split Iterator Tests
 // ============================================================================
 
+// @covers std::string::core::Str::split(u8)
+// @covers std::string::core::SplitIter::new(Str, u8)
+// @covers std::string::core::SplitIter::next()
 @test("Str::split - splits on delimiter")
 pub fn test_str_split_basic() {
     let s: Str = "a/b/c"
@@ -442,6 +488,7 @@ pub fn test_str_split_basic() {
     }
 }
 
+// @covers std::string::core::Str::split(u8)
 @test("Str::split - no delimiter returns whole string")
 pub fn test_str_split_no_delimiter() {
     let s: Str = "Hello"
@@ -458,6 +505,7 @@ pub fn test_str_split_no_delimiter() {
     }
 }
 
+// @covers std::string::core::Str::split(u8)
 @test("Str::split - empty parts handled")
 pub fn test_str_split_empty_parts() {
     let s: Str = "a//b"
@@ -489,6 +537,9 @@ pub fn test_str_split_empty_parts() {
 // Lines Iterator Tests
 // ============================================================================
 
+// @covers std::string::core::Str::lines()
+// @covers std::string::core::LinesIter::new(Str)
+// @covers std::string::core::LinesIter::next()
 @test("Str::lines - splits on LF")
 pub fn test_str_lines_lf() {
     let s: Str = "line1\nline2\nline3"
@@ -524,6 +575,7 @@ pub fn test_str_lines_lf() {
     }
 }
 
+// @covers std::string::core::Str::lines()
 @test("Str::lines - handles CR")
 pub fn test_str_lines_cr() {
     let s: Str = "line1\rline2"
@@ -546,6 +598,7 @@ pub fn test_str_lines_cr() {
     }
 }
 
+// @covers std::string::core::Str::lines()
 @test("Str::lines - handles CRLF")
 pub fn test_str_lines_crlf() {
     let s: Str = "line1\r\nline2"
@@ -572,6 +625,7 @@ pub fn test_str_lines_crlf() {
 // Get (byte access) Tests
 // ============================================================================
 
+// @covers std::string::core::Str::get(usize)
 @test("Str::get - returns correct byte")
 pub fn test_str_get_valid() {
     let s: Str = "Hello"
@@ -587,6 +641,7 @@ pub fn test_str_get_valid() {
     }
 }
 
+// @covers std::string::core::Str::get(usize)
 @test("Str::get - out of bounds returns None")
 pub fn test_str_get_oob() {
     let s: Str = "Hello"
@@ -602,6 +657,7 @@ pub fn test_str_get_oob() {
     }
 }
 
+// @covers std::string::core::Str::get(usize)
 @test("Str::get - empty string always returns None")
 pub fn test_str_get_empty() {
     let s: Str = ""

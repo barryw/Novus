@@ -12,6 +12,10 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // Creation Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::new()
+// @covers std::collections::vecdeque::VecDeque::len()
+// @covers std::collections::vecdeque::VecDeque::capacity()
+// @covers std::collections::vecdeque::VecDeque::is_empty()
 @test("VecDeque::new creates empty deque")
 pub fn test_vecdeque_new() {
     let deque = VecDeque::<i32>::new()
@@ -20,6 +24,7 @@ pub fn test_vecdeque_new() {
     expect_true(deque.is_empty(), "new deque is empty")
 }
 
+// @covers std::collections::vecdeque::VecDeque::with_capacity(usize)
 @test("VecDeque::with_capacity allocates capacity")
 pub fn test_vecdeque_with_capacity() {
     match VecDeque::<i32>::with_capacity(10) {
@@ -36,6 +41,7 @@ pub fn test_vecdeque_with_capacity() {
 // Push/Pop Back Tests (Queue behavior)
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::push_back(T)
 @test("VecDeque::push_back adds to end")
 pub fn test_vecdeque_push_back() {
     var deque = VecDeque::<i32>::new()
@@ -59,6 +65,7 @@ pub fn test_vecdeque_push_back() {
     expect_eq(deque.len(), 3, "len is 3")
 }
 
+// @covers std::collections::vecdeque::VecDeque::pop_back()
 @test("VecDeque::pop_back removes from end")
 pub fn test_vecdeque_pop_back() {
     var deque = VecDeque::<i32>::new()
@@ -83,6 +90,7 @@ pub fn test_vecdeque_pop_back() {
 // Push/Pop Front Tests (Stack behavior)
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::push_front(T)
 @test("VecDeque::push_front adds to front")
 pub fn test_vecdeque_push_front() {
     var deque = VecDeque::<i32>::new()
@@ -100,6 +108,7 @@ pub fn test_vecdeque_push_front() {
     }
 }
 
+// @covers std::collections::vecdeque::VecDeque::pop_front()
 @test("VecDeque::pop_front removes from front")
 pub fn test_vecdeque_pop_front() {
     var deque = VecDeque::<i32>::new()
@@ -156,6 +165,7 @@ pub fn test_vecdeque_fifo() {
 // Front/Back Access Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::front()
 @test("VecDeque::front returns front element")
 pub fn test_vecdeque_front() {
     var deque = VecDeque::<i32>::new()
@@ -172,6 +182,7 @@ pub fn test_vecdeque_front() {
     expect_eq(deque.len(), 3, "len unchanged")
 }
 
+// @covers std::collections::vecdeque::VecDeque::back()
 @test("VecDeque::back returns back element")
 pub fn test_vecdeque_back() {
     var deque = VecDeque::<i32>::new()
@@ -188,6 +199,7 @@ pub fn test_vecdeque_back() {
     expect_eq(deque.len(), 3, "len unchanged")
 }
 
+// @covers std::collections::vecdeque::VecDeque::front()
 @test("VecDeque::front/back on empty returns None")
 pub fn test_vecdeque_front_back_empty() {
     let deque = VecDeque::<i32>::new()
@@ -207,6 +219,7 @@ pub fn test_vecdeque_front_back_empty() {
 // Get/Set Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::get(usize)
 @test("VecDeque::get returns correct element")
 pub fn test_vecdeque_get() {
     var deque = VecDeque::<i32>::new()
@@ -230,6 +243,7 @@ pub fn test_vecdeque_get() {
     }
 }
 
+// @covers std::collections::vecdeque::VecDeque::get(usize)
 @test("VecDeque::get returns None for out of bounds")
 pub fn test_vecdeque_get_oob() {
     var deque = VecDeque::<i32>::new()
@@ -241,6 +255,7 @@ pub fn test_vecdeque_get_oob() {
     }
 }
 
+// @covers std::collections::vecdeque::VecDeque::set(usize, T)
 @test("VecDeque::set updates element")
 pub fn test_vecdeque_set() {
     var deque = VecDeque::<i32>::new()
@@ -263,6 +278,7 @@ pub fn test_vecdeque_set() {
 // Clear Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::clear()
 @test("VecDeque::clear removes all elements")
 pub fn test_vecdeque_clear() {
     var deque = VecDeque::<i32>::new()
@@ -276,6 +292,7 @@ pub fn test_vecdeque_clear() {
     expect_true(deque.is_empty(), "deque is empty")
 }
 
+// @covers std::collections::vecdeque::VecDeque::get_mut(usize)
 @test("VecDeque::get_mut uses logical wrapped index")
 pub fn test_vecdeque_get_mut() {
     var deque = VecDeque::<i32>::new()
@@ -299,6 +316,7 @@ pub fn test_vecdeque_get_mut() {
 // Rotation Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::rotate_left(usize)
 @test("VecDeque::rotate_left rotates elements")
 pub fn test_vecdeque_rotate_left() {
     var deque = VecDeque::<i32>::new()
@@ -321,6 +339,7 @@ pub fn test_vecdeque_rotate_left() {
     }
 }
 
+// @covers std::collections::vecdeque::VecDeque::rotate_right(usize)
 @test("VecDeque::rotate_right rotates elements")
 pub fn test_vecdeque_rotate_right() {
     var deque = VecDeque::<i32>::new()
@@ -423,6 +442,7 @@ pub fn test_vecdeque_grows() {
 // Empty Deque Tests
 // ============================================================================
 
+// @covers std::collections::vecdeque::VecDeque::pop_front()
 @test("VecDeque::pop_front on empty returns None")
 pub fn test_vecdeque_pop_front_empty() {
     var deque = VecDeque::<i32>::new()
@@ -433,6 +453,7 @@ pub fn test_vecdeque_pop_front_empty() {
     }
 }
 
+// @covers std::collections::vecdeque::VecDeque::pop_back()
 @test("VecDeque::pop_back on empty returns None")
 pub fn test_vecdeque_pop_back_empty() {
     var deque = VecDeque::<i32>::new()
@@ -440,5 +461,22 @@ pub fn test_vecdeque_pop_back_empty() {
     match deque.pop_back() {
         Option::Some(_) => expect(false, "should return None"),
         Option::None => expect(true, "correctly returned None")
+    }
+}
+
+// @covers std::collections::vecdeque::VecDeque::reserve(usize)
+// @covers std::collections::vecdeque::VecDeque::shrink_to_fit()
+@test("VecDeque reserve and shrink preserve contents")
+pub fn test_vecdeque_reserve_and_shrink() {
+    var deque = VecDeque::<i32>::new()
+    expect_true(deque.reserve(8).is_ok(), "reserve succeeds")
+    expect_true(deque.capacity() >= 8, "capacity reserved")
+    let _ = deque.push_back(10)
+    let _ = deque.push_back(20)
+    expect_true(deque.shrink_to_fit().is_ok(), "shrink succeeds")
+    expect_eq(deque.capacity(), 2, "capacity fits length")
+    match deque.pop_front() {
+        Option::Some(value) => expect_eq(value, 10, "front preserved"),
+        Option::None => expect(false, "front missing"),
     }
 }

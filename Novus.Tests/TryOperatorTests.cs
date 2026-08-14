@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class TryOperatorTests
 {
     private IrModule BuildIr(string source)

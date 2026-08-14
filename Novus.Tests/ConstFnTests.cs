@@ -311,6 +311,7 @@ pub fn main() -> i32 {
     }
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public void ConstFnConstant_IsResolvedBeforeOrdinaryFunctionBody()
     {
         var projectRoot = Directory.GetCurrentDirectory();

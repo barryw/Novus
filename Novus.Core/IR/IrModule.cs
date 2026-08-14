@@ -1600,11 +1600,12 @@ public class IrTupleType : IrType
             if (_cachedSize.HasValue)
                 return _cachedSize.Value;
 
-            // Unit type () has size 0
+            // Unit has no information, but stored/addressable unit values need one byte in
+            // the C backend (C cannot represent void fields or parameters).
             if (ElementTypes is [])
             {
-                _cachedSize = 0;
-                return 0;
+                _cachedSize = 1;
+                return 1;
             }
 
             // Calculate total size with alignment

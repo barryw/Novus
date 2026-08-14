@@ -1041,7 +1041,7 @@ public partial class CCodeGenerator
             sb.AppendLine();
             foreach (var closureFunc in closureFunctions)
             {
-                var returnType = codegen.GetCType(closureFunc.ReturnType);
+                var returnType = codegen.GetCReturnType(closureFunc.ReturnType);
                 // For forward declaration, use void* for env parameter to match closure struct's fn_ptr type
                 var paramParts = new List<string>();
                 foreach (var param in closureFunc.Parameters)
@@ -1146,7 +1146,7 @@ public partial class CCodeGenerator
 
         // Memory tracking and MMU protection functions (always declared, only linked when used)
         sb.AppendLine("// Memory tracking runtime functions (linked when NOVUS_MEMORY_DEBUG is enabled)");
-        sb.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line);");
+        sb.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line, int32_t paranoid);");
         sb.AppendLine("extern void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line);");
         sb.AppendLine("extern void __novus_memory_report(void);");
         sb.AppendLine();
@@ -1471,7 +1471,7 @@ public partial class CCodeGenerator
             stubSb.AppendLine();
 
             // Generate a stub function signature
-            var returnType = GetCType(function.ReturnType);
+            var returnType = GetCReturnType(function.ReturnType);
             var isVoidReturn = returnType == "void";
             var paramList = string.Join(", ", function.Parameters.Select(p => $"{GetCType(p.Type)} {p.Name}"));
             var mangledName = MangleName(function);
@@ -1700,15 +1700,12 @@ public partial class CCodeGenerator
                         // CRITICAL: Assembly functions must use __regargs calling convention.
                         // VBCC's default extern calling convention is stack-based, but our assembly
                         // functions expect arguments in registers (d0, d1, a0, a1) per VBCC's register ABI.
-                        // Functions starting with "math_", "fixed32_", "fixed16_" or ending with "_asm" use __regargs.
+                        // Legacy assembly entry points with known prefixes use __regargs.
+                        // Other assembly functions declare explicit Amiga register bindings in Novus.
                         // Standard C library functions (write, strlen, etc.) use stack convention.
-                        var returnTypeStr = AddRegisterBinding(GetCType(funcObj.ReturnType), funcObj.ReturnRegister);
+                        var returnTypeStr = AddRegisterBinding(GetCReturnType(funcObj.ReturnType), funcObj.ReturnRegister);
                         var parameters = GetParameterList(funcObj, false);
-                        var isAsmFunction = funcName.StartsWith("math_") || funcName.StartsWith("fixed32_") ||
-                                           funcName.StartsWith("fixed16_") || funcName.StartsWith("trig_") ||
-                                           funcName.StartsWith("vec2_") || funcName.StartsWith("vec2i_") ||
-                                           funcName.EndsWith("_asm");
-                        var callingConv = isAsmFunction ? " __regargs " : " ";
+                        var callingConv = UsesRegisterArgumentConvention(funcName) ? " __regargs " : " ";
                         sb.AppendLine($"extern {returnTypeStr}{callingConv}{funcName}({parameters});");
                         continue;
                     }
@@ -1718,13 +1715,12 @@ public partial class CCodeGenerator
                     var isStructOrEnumReturn = RequiresOutputParameter(funcObj.ReturnType);
                     var shouldUseOutParam = isStructOrEnumReturn && !funcObj.IsExtern;
                     var returnTypeStr2 = AddRegisterBinding(
-                        shouldUseOutParam ? "void" : GetCType(funcObj.ReturnType), funcObj.ReturnRegister);
+                        shouldUseOutParam ? "void" : GetCReturnType(funcObj.ReturnType), funcObj.ReturnRegister);
                     var parameters2 = GetParameterList(funcObj, shouldUseOutParam);
 
-                    // Don't mangle public cross-module function names - use the plain name
-                    // MangleName adds type suffixes for monomorphization, but public functions
-                    // have stable names across modules
-                    var exportedFuncName = funcObj.IsPublic ? MangleName(funcName) : MangleName(funcObj);
+                    var exportedFuncName = funcObj.IsExported
+                        ? MangleName(funcObj.Name)
+                        : MangleName(funcObj);
                     sb.AppendLine($"extern {returnTypeStr2} {exportedFuncName}({parameters2});");
                 }
                 else
@@ -1773,7 +1769,7 @@ public partial class CCodeGenerator
 
                     // Apply VBCC out-parameter workaround for struct/enum returns
                     var isStructOrEnumReturn = RequiresOutputParameter(returnType);
-                    var returnTypeStr = isStructOrEnumReturn ? "void" : GetCType(returnType);
+                    var returnTypeStr = isStructOrEnumReturn ? "void" : GetCReturnType(returnType);
                     var paramTypes = arguments.Select(arg => GetCType(arg.Type)).ToList();
 
                     // If using out-parameter, add output parameter as first parameter
@@ -1875,7 +1871,7 @@ public partial class CCodeGenerator
         // VBCC can't reliably return structs/arrays by value on 68k
         var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
         var shouldUseOutParam = isStructOrEnumReturn;
-        var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+        var returnType = shouldUseOutParam ? "void" : GetCReturnType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
         var funcName = MangleName(function);
 
@@ -2717,7 +2713,7 @@ public partial class CCodeGenerator
 
         // Generate function pointer type string for the closure's function
         // The closure function takes (void* env, param1, param2, ...) and returns the closure's return type
-        var returnType = GetCType(closureType.ReturnType);
+        var returnType = GetCReturnType(closureType.ReturnType);
         var paramsWithEnv = new List<string> { "void*" };
         paramsWithEnv.AddRange(closureType.ParameterTypes.Select(GetCType));
         var paramStr = string.Join(", ", paramsWithEnv);
@@ -3450,7 +3446,9 @@ public partial class CCodeGenerator
         string GetEnumName(IrEnumType et) => et.CacheKey ?? MangleName(et);
 
         // Build a name-to-type map for efficient lookup
-        var enumByName = enumTypes.ToDictionary(e => GetEnumName(e), e => e);
+        var enumByName = enumTypes
+            .GroupBy(GetEnumName)
+            .ToDictionary(group => group.Key, group => group.First());
 
         // DFS visit function
         void Visit(IrEnumType enumType)
@@ -3520,7 +3518,9 @@ public partial class CCodeGenerator
         }
 
         // Build a name-to-type map for efficient lookup
-        var structByName = structTypes.ToDictionary(s => GetStructName(s), s => s);
+        var structByName = structTypes
+            .GroupBy(GetStructName)
+            .ToDictionary(group => group.Key, group => group.First());
 
         // DFS visit function
         void Visit(IrStructType structType)
@@ -4009,7 +4009,7 @@ public partial class CCodeGenerator
 
             foreach (var function in exportedFunctions)
             {
-                var returnType = AddRegisterBinding(GetCType(function.ReturnType), function.ReturnRegister);
+                var returnType = AddRegisterBinding(GetCReturnType(function.ReturnType), function.ReturnRegister);
                 var funcName = function.Name;  // Don't mangle exported names
                 var parameters = GetParameterList(function, hasOutputParameter: false);
 
@@ -4349,7 +4349,7 @@ public partial class CCodeGenerator
 
             _output.AppendLine();
             _output.AppendLine("// Memory tracking runtime functions");
-            _output.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line);");
+            _output.AppendLine("extern void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line, int32_t paranoid);");
             _output.AppendLine("extern void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t line);");
             _output.AppendLine("extern void __novus_memory_report(void);");
             _output.AppendLine();
@@ -4793,7 +4793,7 @@ public partial class CCodeGenerator
             {
                 // Extern functions use their actual C signatures - no VBCC output parameter workaround
                 // The runtime implements these functions with direct return values
-                var returnType = AddRegisterBinding(GetCType(function.ReturnType), function.ReturnRegister);
+                var returnType = AddRegisterBinding(GetCReturnType(function.ReturnType), function.ReturnRegister);
                 var parameters = GetParameterList(function);
 
                 // CRITICAL: Assembly functions must use __regargs calling convention
@@ -4801,14 +4801,11 @@ public partial class CCodeGenerator
                 // functions expect arguments in registers (d0, d1, a0, a1) per VBCC's register ABI.
                 // The __regargs attribute tells VBCC to pass args in registers instead of stack.
                 // Without this, VBCC will push args onto the stack and the assembly will read garbage from d0.
-                // Functions starting with "math_", "fixed32_", "fixed16_" or ending with "_asm" use __regargs.
+                // Legacy assembly entry points with known prefixes use __regargs.
+                // Other assembly functions declare explicit Amiga register bindings in Novus.
                 // Standard C library functions (write, strlen, etc.) use stack convention.
                 var funcName = MangleName(function);
-                var isAsmFunction = funcName.StartsWith("math_") || funcName.StartsWith("fixed32_") ||
-                                   funcName.StartsWith("fixed16_") || funcName.StartsWith("trig_") ||
-                                   funcName.StartsWith("vec2_") || funcName.StartsWith("vec2i_") ||
-                                   funcName.EndsWith("_asm");
-                var callingConv = isAsmFunction ? " __regargs " : " ";
+                var callingConv = UsesRegisterArgumentConvention(funcName) ? " __regargs " : " ";
                 _output.AppendLine($"extern {returnType}{callingConv}{funcName}({parameters});");
             }
             _output.AppendLine();
@@ -4966,7 +4963,7 @@ public partial class CCodeGenerator
             {
                 // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
                 var isStructOrEnumReturn = RequiresOutputParameter(returnType);
-                var cReturnType = isStructOrEnumReturn ? "void" : GetCType(returnType);
+                var cReturnType = isStructOrEnumReturn ? "void" : GetCReturnType(returnType);
 
                 // Build parameter list with __out if needed
                 var paramList = new List<string>();
@@ -4981,7 +4978,7 @@ public partial class CCodeGenerator
                 paramList.AddRange(paramTypes.Select((type, index) => $"{GetCType(type)} p{index}"));
 
                 var parameters = paramList is [] ? "void" : string.Join(", ", paramList);
-                _output.AppendLine($"{cReturnType} {MangleName(funcName)}({parameters});");
+                _output.AppendLine($"{cReturnType} {ResolveFunctionLinkName(funcName)}({parameters});");
             }
             _output.AppendLine();
         }
@@ -5004,7 +5001,7 @@ public partial class CCodeGenerator
             // VBCC FIX: Match function definition signature (use void + __out for struct/enum/array returns)
             var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
             var shouldUseOutParam = isStructOrEnumReturn;
-            var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+            var returnType = shouldUseOutParam ? "void" : GetCReturnType(function.ReturnType);
             var parameters = GetParameterList(function, shouldUseOutParam);
 
             // Special case: main returns int, not int32_t
@@ -5305,7 +5302,7 @@ public partial class CCodeGenerator
         // VBCC can't reliably return structs/arrays by value on 68k
         var isStructOrEnumReturn = RequiresOutputParameter(function.ReturnType);
         var shouldUseOutParam = isStructOrEnumReturn;
-        var returnType = shouldUseOutParam ? "void" : GetCType(function.ReturnType);
+        var returnType = shouldUseOutParam ? "void" : GetCReturnType(function.ReturnType);
         var parameters = GetParameterList(function, shouldUseOutParam);
 
         // Don't mangle exported functions - use original name for C linkage
@@ -7074,7 +7071,8 @@ public partial class CCodeGenerator
                 var fileName = call.Location?.FilePath ?? "unknown";
                 var lineNumber = call.Location?.Line ?? 0;
 
-                var callExpr = $"__novus_tracked_alloc({sizeArg}, {flagsArg}, \"{fileName}\", {lineNumber})";
+                var paranoid = _safetyLevel.EnableMemoryPoisoning() ? 1 : 0;
+                var callExpr = $"__novus_tracked_alloc({sizeArg}, {flagsArg}, \"{fileName}\", {lineNumber}, {paranoid})";
 
                 if (call.ResultName != null)
                 {
@@ -9493,8 +9491,8 @@ public partial class CCodeGenerator
             }
         }
 
-        // Store the array and index expressions for later use when taking address
-        _indexAccessInfo[resultName] = (arrayValue, indexValue);
+        // Provenance belongs to the IR value, not its reusable liveness slot.
+        _indexAccessInfo[indexAccess.ResultName] = (arrayValue, indexValue);
 
         // Get source location if available
         var filePath = indexAccess.Location?.FilePath ?? "<unknown>";
@@ -9862,10 +9860,7 @@ public partial class CCodeGenerator
         // If so, reconstruct the lvalue expression (&array[index]) instead of taking address of temporary
         if (borrowValue.BorrowedValue is IrVariable indexVar)
         {
-            // Sanitize the variable name to match how it was stored in the dictionary
-            var sanitizedName = SanitizeVariableName(indexVar.Name);
-
-            if (_indexAccessInfo.TryGetValue(sanitizedName, out var indexInfo))
+            if (_indexAccessInfo.TryGetValue(indexVar.Name, out var indexInfo))
             {
                 var (arrayExpr, indexExpr) = indexInfo;
                 return $"&{arrayExpr}[{indexExpr}]";
@@ -9912,6 +9907,21 @@ public partial class CCodeGenerator
             }
         }
 
+        // C cannot take the address of a scalar rvalue such as a literal or cast. Materialize
+        // one stable temporary for implicit borrows (`contains(10)` for a `&T` parameter).
+        if (borrowValue.BorrowedValue.Type is IrIntType or IrBoolType or IrFloatType or IrFixedType
+            or IrPointerType or IrReferenceType or IrMutReferenceType or IrFunctionPointerType
+            or IrEnumType
+            or IrTupleType { ElementTypes.Count: 0 }
+            && borrowValue.BorrowedValue is not (IrVariable or IrGlobalVariable or IrDereferenceValue
+                or IrFieldReference or IrIndexedFieldAccess or IrTupleElementAccess or IrEnumPayloadAccess))
+        {
+            var tempVarName = $"_borrow_tmp_{_tempCounter++}";
+            var value = EmitValue(borrowValue.BorrowedValue);
+            _output.AppendLine($"    {GetCVariableDeclaration(borrowValue.BorrowedValue.Type, tempVarName, $"= {value}")};");
+            return $"&{tempVarName}";
+        }
+
         // Normal case: add & to create a pointer
         return $"&{EmitValue(borrowValue.BorrowedValue)}";
     }
@@ -9944,8 +9954,10 @@ public partial class CCodeGenerator
             IrEnumTagAccess enumTagAccess => EmitEnumTagAccess(enumTagAccess),
             IrEnumPayloadAccess enumPayloadAccess => EmitEnumPayloadAccess(enumPayloadAccess),
             IrArrayLiteral arrayLit => EmitArrayLiteral(arrayLit),
-            IrFunctionAddress funcAddr => funcAddr.FunctionName,  // Function name IS its address in C
-            IrFunctionRef funcRef => funcRef.Function.Name,  // Function reference - emit function name
+            IrFunctionAddress funcAddr => ResolveFunctionLinkName(funcAddr.FunctionName),
+            IrFunctionRef funcRef => funcRef.Function.IsExported
+                ? MangleName(funcRef.Function.Name)
+                : MangleName(funcRef.Function),
             IrFieldReference fieldRef => EmitFieldReference(fieldRef),  // Field reference for borrowing
             IrIndexedFieldAccess indexedField => EmitIndexedFieldAccess(indexedField),
             IrGenericAssociatedFunction genericFunc => throw new InvalidOperationException($"Generic associated function '{genericFunc.TypeName}::{genericFunc.MethodName}' must be monomorphized to a concrete function before code generation"),
@@ -10459,9 +10471,9 @@ public partial class CCodeGenerator
         if (tupleType == null)
             throw new InvalidOperationException("TupleLiteral must have IrTupleType");
 
-        // Unit type () - no value needed
+        // Unit carries no information; zero is its addressable C representation.
         if (tupleType.ElementTypes is [])
-            return "/* unit */";
+            return "0";
 
         var typeName = GetCType(tupleType);
         var elements = tupleLit.Elements
@@ -11032,16 +11044,14 @@ public partial class CCodeGenerator
         if (castValue.Value is IrBorrowValue borrowValue &&
             borrowValue.BorrowedValue is IrVariable indexVar)
         {
-            // Sanitize the variable name to match how it was stored in the dictionary
-            var sanitizedName = SanitizeVariableName(indexVar.Name);
-
-            if (_indexAccessInfo.TryGetValue(sanitizedName, out var indexInfo))
+            if (_indexAccessInfo.TryGetValue(indexVar.Name, out var indexInfo))
             {
                 var (arrayExpr, indexExpr) = indexInfo;
                 return $"({targetType})&{arrayExpr}[{indexExpr}]";
             }
 
             // Also check for field access chains
+            var sanitizedName = SanitizeVariableName(indexVar.Name);
             if (_fieldAccessChainInfo.ContainsKey(sanitizedName))
             {
                 var fullChain = ReconstructFieldAccessChain(indexVar.Name);
@@ -11199,6 +11209,7 @@ public partial class CCodeGenerator
             IrMutReferenceType mutRefType => $"{GetCType(mutRefType.PointeeType)}*",  // Mut references as pointers
             IrFunctionPointerType fpType => GetFunctionPointerType(fpType),
             IrClosureType closureType => GetClosureTypeName(closureType),
+            IrTupleType { ElementTypes.Count: 0 } => "uint8_t",
             IrTupleType tupleType => GetTupleTypeName(tupleType),
             IrGenericType genericType => throw new InvalidOperationException($"Generic type parameter '{genericType.ParameterName}' in {(_currentEmittingStruct != null ? $"struct '{_currentEmittingStruct}'" : _currentEmittingFunction != null ? $"function '{_currentEmittingFunction.Name}'" : "unknown context")} was not substituted during monomorphization. Stack trace will show where this type is being used."),
             IrUnresolvedGenericType unresolvedGeneric => throw new InvalidOperationException($"Unresolved generic type '{unresolvedGeneric.Name}' must be monomorphized before code generation"),
@@ -11206,6 +11217,9 @@ public partial class CCodeGenerator
             _ => throw new NotSupportedException($"Unsupported type: {type.GetType().Name}")
         };
     }
+
+    internal string GetCReturnType(IrType type) =>
+        type is IrTupleType { ElementTypes.Count: 0 } ? "void" : GetCType(type);
 
     /// <summary>
     /// Get the correct sizeof expression for a type.
@@ -11226,7 +11240,7 @@ public partial class CCodeGenerator
     internal string GetFunctionPointerType(IrFunctionPointerType fpType)
     {
         // Generate C function pointer type: return_type (*)(param1_type, param2_type, ...)
-        var returnType = GetCType(fpType.ReturnType);
+        var returnType = GetCReturnType(fpType.ReturnType);
         var paramTypes = fpType.ParameterTypes.Count > 0
             ? string.Join(", ", fpType.ParameterTypes.Select((type, index) =>
                 AddRegisterBinding(GetCType(type), fpType.ParameterRegisters[index])))
@@ -11301,7 +11315,7 @@ public partial class CCodeGenerator
             case IrFunctionPointerType fpType:
             {
                 // Function pointer: return_type (*declarator)(params)
-                var returnType = GetCType(fpType.ReturnType);
+                var returnType = GetCReturnType(fpType.ReturnType);
                 var paramTypes = fpType.ParameterTypes.Count > 0
                     ? string.Join(", ", fpType.ParameterTypes.Select((type, index) =>
                         AddRegisterBinding(GetCType(type), fpType.ParameterRegisters[index])))
@@ -11698,12 +11712,12 @@ public partial class CCodeGenerator
             // For structs/enums, GetCType returns the struct name, so we add * for pointer-to-struct.
             if (function.ReturnType is IrArrayType)
             {
-                var returnType = GetCType(function.ReturnType);
+                var returnType = GetCReturnType(function.ReturnType);
                 parameters.Add($"{returnType} __out");
             }
             else
             {
-                var returnType = GetCType(function.ReturnType);
+                var returnType = GetCReturnType(function.ReturnType);
                 parameters.Add($"{returnType}* __out");
             }
         }
@@ -11729,7 +11743,7 @@ public partial class CCodeGenerator
         if (type is IrFunctionPointerType fpType)
         {
             // Special handling for function pointer parameters
-            var returnType = GetCType(fpType.ReturnType);
+            var returnType = GetCReturnType(fpType.ReturnType);
             var paramTypes = fpType.ParameterTypes.Count > 0
                 ? string.Join(", ", fpType.ParameterTypes.Select((parameterType, index) =>
                     AddRegisterBinding(GetCType(parameterType), fpType.ParameterRegisters[index])))
@@ -11777,6 +11791,20 @@ public partial class CCodeGenerator
     private IrFunction? FindFunction(string name) =>
         _module.Functions.FirstOrDefault(function => function.Name == name) ??
         _module.Functions.FirstOrDefault(function => MangleName(function) == name);
+
+    private string ResolveFunctionLinkName(string name)
+    {
+        var function = FindFunction(name);
+        return function?.IsExported == true
+            ? MangleName(function.Name)
+            : function != null ? MangleName(function) : MangleName(name);
+    }
+
+    private static bool UsesRegisterArgumentConvention(string functionName) =>
+        functionName.StartsWith("math_") ||
+        functionName.StartsWith("fixed32_") || functionName.StartsWith("fixed16_") ||
+        functionName.StartsWith("trig_") || functionName.StartsWith("vec2_") ||
+        functionName.StartsWith("vec2i_") || functionName.EndsWith("_asm");
 
     /// <summary>
     /// Mangle a function name, including type parameters for generic functions.

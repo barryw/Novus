@@ -1,0 +1,131 @@
+from std::collections::bitset import BitSet
+from std::collections::smallvec import SmallVec
+from std::core import Option, Result
+from std::memory::errors import MemoryError
+from std::test::test import expect
+
+// @covers std::collections::smallvec::SmallVec::new()
+// @covers std::collections::smallvec::SmallVec::with_capacity()
+// @covers std::collections::smallvec::SmallVec::len()
+// @covers std::collections::smallvec::SmallVec::is_empty()
+// @covers std::collections::smallvec::SmallVec::capacity()
+// @covers std::collections::smallvec::SmallVec::default_capacity()
+// @covers std::collections::smallvec::SmallVec::push(T)
+// @covers std::collections::smallvec::SmallVec::pop()
+// @covers std::collections::smallvec::SmallVec::get(usize)
+// @covers std::collections::smallvec::SmallVec::get_mut(usize)
+// @covers std::collections::smallvec::SmallVec::set(usize, T)
+// @covers std::collections::smallvec::SmallVec::clear()
+@test("SmallVec grows from its configured initial capacity")
+pub fn test_smallvec() {
+    var values = SmallVec::<i32, 2>::new()
+    expect(values.len() == 0 && values.is_empty(), "new vector is empty")
+    expect(values.capacity() == 0, "new vector allocates lazily")
+    expect(SmallVec::<i32, 2>::default_capacity() == 2, "default capacity")
+    expect(values.push(10).is_ok(), "first push")
+    expect(values.push(20).is_ok(), "second push")
+    expect(values.push(30).is_ok(), "growth push")
+    expect(values.capacity() >= 3 && values.len() == 3, "vector grew")
+    match values.get_mut(0) {
+        Option::Some(value) => { *value = 11 },
+        Option::None => expect(false, "mutable get failed"),
+    }
+    expect(values.set(1, 22).is_ok(), "bounded set")
+    expect(values.set(3, 0).is_err(), "out-of-bounds set")
+    match values.get(1) {
+        Option::Some(value) => expect(*value == 22, "get updated value"),
+        Option::None => expect(false, "get failed"),
+    }
+    match values.pop() {
+        Option::Some(value) => expect(value == 30, "pop last value"),
+        Option::None => expect(false, "pop failed"),
+    }
+    values.clear()
+    expect(values.is_empty(), "clear empties vector")
+    match SmallVec::<u8, 4>::with_capacity() {
+        Result::Ok(preallocated) => expect(preallocated.capacity() == 4, "preallocated capacity"),
+        Result::Err(_) => expect(false, "preallocation failed"),
+    }
+}
+
+// @covers std::collections::bitset::BitSet::new()
+// @covers std::collections::bitset::BitSet::with_capacity(usize)
+// @covers std::collections::bitset::BitSet::len()
+// @covers std::collections::bitset::BitSet::is_empty()
+// @covers std::collections::bitset::BitSet::set(usize)
+// @covers std::collections::bitset::BitSet::clear(usize)
+// @covers std::collections::bitset::BitSet::set_value(usize, bool)
+// @covers std::collections::bitset::BitSet::get(usize)
+// @covers std::collections::bitset::BitSet::toggle(usize)
+// @covers std::collections::bitset::BitSet::set_all()
+// @covers std::collections::bitset::BitSet::clear_all()
+// @covers std::collections::bitset::BitSet::count_ones()
+// @covers std::collections::bitset::BitSet::count_zeros()
+// @covers std::collections::bitset::BitSet::find_first_set()
+// @covers std::collections::bitset::BitSet::find_first_clear()
+// @covers std::collections::bitset::BitSet::and(&BitSet)
+// @covers std::collections::bitset::BitSet::or(&BitSet)
+// @covers std::collections::bitset::BitSet::xor(&BitSet)
+// @covers std::collections::bitset::BitSet::not()
+// @covers std::collections::bitset::BitSet::all()
+// @covers std::collections::bitset::BitSet::any()
+// @covers std::collections::bitset::BitSet::none()
+@test("BitSet bounds bits and implements boolean algebra")
+pub fn test_bitset() {
+    let empty = BitSet::new()
+    expect(empty.len() == 0 && empty.is_empty() && empty.none(), "empty set")
+
+    match BitSet::with_capacity(10) {
+        Result::Ok(var left) => match BitSet::with_capacity(10) {
+            Result::Ok(var right) => {
+                expect(left.set(1).is_ok() && left.set(3).is_ok(), "set bits")
+                expect(right.set(3).is_ok() && right.set(4).is_ok(), "set other bits")
+                expect(left.any() && !left.all(), "some bits set")
+                expect(left.count_ones() == 2 && left.count_zeros() == 8, "bit counts")
+                match left.find_first_set() {
+                    Option::Some(index) => expect(index == 1, "first set bit"),
+                    Option::None => expect(false, "set bit not found"),
+                }
+                match left.find_first_clear() {
+                    Option::Some(index) => expect(index == 0, "first clear bit"),
+                    Option::None => expect(false, "clear bit not found"),
+                }
+                expect(left.and(&right).is_ok(), "and")
+                expect(left.count_ones() == 1, "and result")
+
+                left.clear_all()
+                right.clear_all()
+                let _ = left.set(1)
+                let _ = right.set(3)
+                expect(left.or(&right).is_ok() && left.count_ones() == 2, "or result")
+                expect(left.xor(&right).is_ok() && left.count_ones() == 1, "xor result")
+                left.not()
+                expect(left.count_ones() == 9, "not masks unused bits")
+
+                left.set_all()
+                expect(left.all() && left.find_first_clear().is_none(), "all bits set")
+                expect(left.clear(5).is_ok(), "clear bit")
+                expect(left.toggle(5).is_ok(), "toggle bit")
+                expect(left.set_value(5, false).is_ok(), "set false")
+                match left.get(5) {
+                    Result::Ok(value) => expect(!value, "bit is clear"),
+                    Result::Err(_) => expect(false, "get failed"),
+                }
+                expect(left.get(10).is_err(), "get checks bounds")
+            },
+            Result::Err(_) => expect(false, "right allocation failed"),
+        },
+        Result::Err(_) => expect(false, "left allocation failed"),
+    }
+
+    match BitSet::with_capacity(3) {
+        Result::Ok(var short_set) => match BitSet::with_capacity(4) {
+            Result::Ok(long_set) => match short_set.and(&long_set) {
+                Result::Err(MemoryError::CapacityExceeded) => {},
+                _ => expect(false, "mismatched sizes rejected"),
+            },
+            Result::Err(_) => expect(false, "long allocation failed"),
+        },
+        Result::Err(_) => expect(false, "short allocation failed"),
+    }
+}

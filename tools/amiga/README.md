@@ -50,18 +50,41 @@ python3 tools/amiga/run_runtime_suite.py --layer foundation
 python3 tools/amiga/run_runtime_suite.py --profile debug --profile release-o1 --profile release-o3 --layer foundation
 python3 tools/amiga/run_runtime_suite.py --suite foundation-primitives
 python3 tools/amiga/run_runtime_suite.py --suite foundation-aggregates --filter foundation_nested_arrays
+python3 tools/amiga/run_runtime_suite.py --layer stdlib --benchmark
+python3 tools/amiga/run_runtime_suite.py --layer stdlib --memory-check
+python3 tools/amiga/run_runtime_suite.py --suite stdlib-tls-live --benchmark \
+  --amissl-dir /path/to/extracted/AmiSSL
 ```
 
 The default endpoint is `http://localhost:6800/mcp`; results are written to
 `.novus-cache/amiga-runtime-suite/report.json`. The foundation layer compiles
 its foundational tests into one executable per profile so unchanged reruns hit the
-compiler's build stamp and stdlib is compiled once. Three existing const-fn,
+compiler's build stamp and stdlib is compiled once. The stdlib layer does the same:
+one `stdlib-all` executable plus the redirected-input fixture. Every individual
+`stdlib-*` suite remains selectable when isolating a failure. Three existing const-fn,
 intrinsics, and fixed32 probes remain standalone; named suites remain available
 for isolating crashes. Coverage includes primitives and numerics, control flow,
 functions, aggregates, modules, generics/traits, errors/patterns, ownership/Drop,
 strings, intrinsics, const functions, fixed point, inline assembly, native
 unions, volatile memory, Amiga register callbacks, and interrupt entries. NDK,
 Exec/DOS, GUI, ports, tasks, and other Amiga integrations remain separate.
+
+`--memory-check` snapshots each test before and after execution. It fails on
+outstanding Novus allocations and on raw AmigaOS memory that was not returned,
+then reclaims tracked test allocations so one failure cannot poison later tests.
+Owned values discarded with `let _ = value` are dropped normally. Lazily opened
+runtime libraries are closed at test boundaries, and OS memory is retried against
+a warmed baseline so one-time subsystem caches are not reported as leaks. The JSON
+report also records memory immediately after the program exits and after its output
+is fetched, which keeps guest-service overhead separate from test failures. A
+whole-process drop larger than 256 bytes is rerun once on the same machine; a
+second drop fails the suite as a repeatable teardown leak.
+
+`stdlib-tls-live` is explicit because AmiSSL is a third-party extension. Point
+`--amissl-dir` at the `AmiSSL/` directory extracted from the OS3 AmiSSL v5
+archive. The runner installs the 68020 library and its master library only in
+RAM, assigns them for that disposable machine, and runs a Novus TLS client and
+server against each other with a generated one-day self-signed certificate.
 
 The runner deliberately refuses to take over an already-running machine. A
 failed command is reset or restarted; if the service retains an uncollected

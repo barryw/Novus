@@ -9,6 +9,7 @@ using System.Linq;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class ResultGenericInferenceTest
 {
     private static string GetProjectRoot()

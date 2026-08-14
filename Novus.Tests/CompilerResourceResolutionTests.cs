@@ -13,7 +13,6 @@ namespace Novus.Tests;
 /// These tests pin the resolution to the binary's own directory and prove a compiler
 /// still works when its directory sits at a different depth.
 /// </summary>
-[Collection("SequentialCompilation")]
 public class CompilerResourceResolutionTests
 {
     [Fact]
@@ -78,6 +77,7 @@ public class CompilerResourceResolutionTests
     /// with no toolchain on the machine and no NDK.
     /// </summary>
     [Fact]
+    [Trait("Category", "FullCompilation")]
     public void CompilerRelocatedToDifferentDepth_StillLinks()
     {
         var projectRoot = GetProjectRoot();

@@ -19,6 +19,8 @@
 
 from amiga::raw::exec import OpenLibrary, CloseLibrary
 from amiga::raw::structs import Library
+from amiga::raw::mathffp import MathBase, SPFix, SPFlt, SPCmp, SPTst, SPAbs, SPNeg, SPAdd, SPSub, SPMul, SPDiv, SPFloor, SPCeil
+from amiga::raw::mathtrans import MathTransBase, SPAtan, SPSin, SPCos, SPTan, SPSinh, SPCosh, SPTanh, SPExp, SPLog, SPPow, SPSqrt, SPTieee, SPFieee, SPAsin, SPAcos, SPLog10
 from std::core import Result, Error
 from std::math::fixed import Fixed32
 
@@ -32,111 +34,6 @@ pub struct FFP {
     /// The raw value stored by `FFP`.
     raw: u32,
 }
-
-// ============================================================================
-// Library Bases
-// ============================================================================
-
-static var mathffp_base: *Library = null
-static var mathtrans_base: *Library = null
-
-// ============================================================================
-// Library Functions (from mathffp.library)
-// ============================================================================
-
-// Declare the library functions as extern
-// These use the Amiga library calling convention
-
-@amiga_lib("mathffp.library", -36)
-extern fn SPFix(parm: u32) -> i32
-
-@amiga_lib("mathffp.library", -42)
-extern fn SPFlt(integer: i32) -> u32
-
-@amiga_lib("mathffp.library", -48)
-extern fn SPCmp(leftParm: u32, rightParm: u32) -> i32
-
-@amiga_lib("mathffp.library", -54)
-extern fn SPTst(parm: u32) -> i32
-
-@amiga_lib("mathffp.library", -60)
-extern fn SPAbs(parm: u32) -> u32
-
-@amiga_lib("mathffp.library", -66)
-extern fn SPNeg(parm: u32) -> u32
-
-@amiga_lib("mathffp.library", -72)
-extern fn SPAdd(leftParm: u32, rightParm: u32) -> u32
-
-@amiga_lib("mathffp.library", -78)
-extern fn SPSub(leftParm: u32, rightParm: u32) -> u32
-
-@amiga_lib("mathffp.library", -84)
-extern fn SPMul(leftParm: u32, rightParm: u32) -> u32
-
-@amiga_lib("mathffp.library", -90)
-extern fn SPDiv(dividend: u32, divisor: u32) -> u32
-
-@amiga_lib("mathffp.library", -96)
-extern fn SPFloor(parm: u32) -> u32
-
-@amiga_lib("mathffp.library", -102)
-extern fn SPCeil(parm: u32) -> u32
-
-// ============================================================================
-// Transcendental Functions (from mathtrans.library)
-// ============================================================================
-
-@amiga_lib("mathtrans.library", -30)
-extern fn SPAtan(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -36)
-extern fn SPSin(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -42)
-extern fn SPCos(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -48)
-extern fn SPTan(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -54)
-extern fn SPSincos(parm: u32, cosResult: **u32) -> u32
-
-@amiga_lib("mathtrans.library", -60)
-extern fn SPSinh(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -66)
-extern fn SPCosh(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -72)
-extern fn SPTanh(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -78)
-extern fn SPExp(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -84)
-extern fn SPLog(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -90)
-extern fn SPPow(power: u32, parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -96)
-extern fn SPSqrt(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -102)
-extern fn SPTieee(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -108)
-extern fn SPFieee(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -114)
-extern fn SPAsin(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -120)
-extern fn SPAcos(parm: u32) -> u32
-
-@amiga_lib("mathtrans.library", -126)
-extern fn SPLog10(parm: u32) -> u32
 
 // ============================================================================
 // Library Initialization
@@ -174,18 +71,18 @@ impl Error for FfpError {
 /// Returns Err if libraries cannot be opened
 pub fn open_ffp_libraries() -> Result<(), FfpError> {
     unsafe {
-        if mathffp_base == null {
-            mathffp_base = OpenLibrary("mathffp.library", 33)
-            if mathffp_base == null {
+        if MathBase == null {
+            MathBase = OpenLibrary("mathffp.library", 33)
+            if MathBase == null {
                 return Result::Err(FfpError::MathFfpLibraryNotFound)
             }
         }
 
-        if mathtrans_base == null {
-            mathtrans_base = OpenLibrary("mathtrans.library", 33)
-            if mathtrans_base == null {
-                CloseLibrary(mathffp_base)
-                mathffp_base = (*Library)null
+        if MathTransBase == null {
+            MathTransBase = OpenLibrary("mathtrans.library", 33)
+            if MathTransBase == null {
+                CloseLibrary(MathBase)
+                MathBase = (*Library)null
                 return Result::Err(FfpError::MathTransLibraryNotFound)
             }
         }
@@ -198,13 +95,13 @@ pub fn open_ffp_libraries() -> Result<(), FfpError> {
 /// Should be called when done with FFP operations
 pub fn close_ffp_libraries() {
     unsafe {
-        if mathtrans_base != null {
-            CloseLibrary(mathtrans_base)
-            mathtrans_base = (*Library)null
+        if MathTransBase != null {
+            CloseLibrary(MathTransBase)
+            MathTransBase = (*Library)null
         }
-        if mathffp_base != null {
-            CloseLibrary(mathffp_base)
-            mathffp_base = (*Library)null
+        if MathBase != null {
+            CloseLibrary(MathBase)
+            MathBase = (*Library)null
         }
     }
 }
@@ -212,7 +109,7 @@ pub fn close_ffp_libraries() {
 /// Check if FFP libraries are open
 @inline
 pub fn ffp_libraries_open() -> bool {
-    return mathffp_base != null && mathtrans_base != null
+    return MathBase != null && MathTransBase != null
 }
 
 // ============================================================================

@@ -254,21 +254,15 @@ sine_table:
 ; Input: d0.w = degrees (0-359)
 ; Output: d0.w = angle (0-65535)
 ;
-; angle = degrees * 65536 / 360 ≈ degrees * 182 + degrees * 11 / 256
+; angle = degrees * 65536 / 360
 
 	xdef	@trig_degrees_to_angle
 @trig_degrees_to_angle:
 	ext.l	d0		; Sign-extend degrees
-	move.l	d0,d1		; d1 = degrees
-
-	; base = degrees * 182
-	muls.w	#182,d0		; d0 = degrees * 182
-
-	; correction = degrees * 11 / 256
-	muls.w	#11,d1		; d1 = degrees * 11
-	asr.l	#8,d1		; d1 = degrees * 11 / 256
-
-	add.l	d1,d0		; d0 = base + correction
+	asl.l	#8,d0
+	asl.l	#8,d0		; d0 = degrees * 65536
+	move.l	#360,d1
+	divs.l	d1,d0
 	rts
 
 ; ============================================================================

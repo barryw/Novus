@@ -1087,6 +1087,7 @@ fn main() {}
     // ===== TASK 8: ScreenHandle::rastport() Returns Reference =====
 
     [Fact]
+    [Trait("Category", "CompilerIntegration")]
     public void ScreenHandle_RastPort_ReferenceLifetime_Compiles()
     {
         // This is the homepage example - should compile

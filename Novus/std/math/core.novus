@@ -11,62 +11,62 @@
 // ============================================================================
 
 // Absolute value
-extern fn asm_abs_i32(x: i32) -> i32
-extern fn asm_abs_i16(x: i16) -> i16
-extern fn asm_abs_i8(x: i8) -> i8
+extern amiga fn asm_abs_i32(x: i32 in d0) -> i32 in d0
+extern amiga fn asm_abs_i16(x: i16 in d0) -> i16 in d0
+extern amiga fn asm_abs_i8(x: i8 in d0) -> i8 in d0
 
 // Minimum (signed)
-extern fn asm_min_i32(a: i32, b: i32) -> i32
-extern fn asm_min_i16(a: i16, b: i16) -> i16
-extern fn asm_min_i8(a: i8, b: i8) -> i8
+extern amiga fn asm_min_i32(a: i32 in d0, b: i32 in d1) -> i32 in d0
+extern amiga fn asm_min_i16(a: i16 in d0, b: i16 in d1) -> i16 in d0
+extern amiga fn asm_min_i8(a: i8 in d0, b: i8 in d1) -> i8 in d0
 
 // Minimum (unsigned)
-extern fn asm_min_u32(a: u32, b: u32) -> u32
-extern fn asm_min_u16(a: u16, b: u16) -> u16
-extern fn asm_min_u8(a: u8, b: u8) -> u8
+extern amiga fn asm_min_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+extern amiga fn asm_min_u16(a: u16 in d0, b: u16 in d1) -> u16 in d0
+extern amiga fn asm_min_u8(a: u8 in d0, b: u8 in d1) -> u8 in d0
 
 // Maximum (signed)
-extern fn asm_max_i32(a: i32, b: i32) -> i32
-extern fn asm_max_i16(a: i16, b: i16) -> i16
-extern fn asm_max_i8(a: i8, b: i8) -> i8
+extern amiga fn asm_max_i32(a: i32 in d0, b: i32 in d1) -> i32 in d0
+extern amiga fn asm_max_i16(a: i16 in d0, b: i16 in d1) -> i16 in d0
+extern amiga fn asm_max_i8(a: i8 in d0, b: i8 in d1) -> i8 in d0
 
 // Maximum (unsigned)
-extern fn asm_max_u32(a: u32, b: u32) -> u32
-extern fn asm_max_u16(a: u16, b: u16) -> u16
-extern fn asm_max_u8(a: u8, b: u8) -> u8
+extern amiga fn asm_max_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+extern amiga fn asm_max_u16(a: u16 in d0, b: u16 in d1) -> u16 in d0
+extern amiga fn asm_max_u8(a: u8 in d0, b: u8 in d1) -> u8 in d0
 
 // Clamp (signed)
-extern fn asm_clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32
-extern fn asm_clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16
-extern fn asm_clamp_i8(val: i8, min_val: i8, max_val: i8) -> i8
+extern amiga fn asm_clamp_i32(val: i32 in d0, min_val: i32 in d1, max_val: i32 in d2) -> i32 in d0
+extern amiga fn asm_clamp_i16(val: i16 in d0, min_val: i16 in d1, max_val: i16 in d2) -> i16 in d0
+extern amiga fn asm_clamp_i8(val: i8 in d0, min_val: i8 in d1, max_val: i8 in d2) -> i8 in d0
 
 // Clamp (unsigned)
-extern fn asm_clamp_u32(val: u32, min_val: u32, max_val: u32) -> u32
-extern fn asm_clamp_u16(val: u16, min_val: u16, max_val: u16) -> u16
-extern fn asm_clamp_u8(val: u8, min_val: u8, max_val: u8) -> u8
+extern amiga fn asm_clamp_u32(val: u32 in d0, min_val: u32 in d1, max_val: u32 in d2) -> u32 in d0
+extern amiga fn asm_clamp_u16(val: u16 in d0, min_val: u16 in d1, max_val: u16 in d2) -> u16 in d0
+extern amiga fn asm_clamp_u8(val: u8 in d0, min_val: u8 in d1, max_val: u8 in d2) -> u8 in d0
 
 // Sign
-extern fn asm_sign_i32(x: i32) -> i32
-extern fn asm_sign_i16(x: i16) -> i16
-extern fn asm_sign_i8(x: i8) -> i8
+extern amiga fn asm_sign_i32(x: i32 in d0) -> i32 in d0
+extern amiga fn asm_sign_i16(x: i16 in d0) -> i16 in d0
+extern amiga fn asm_sign_i8(x: i8 in d0) -> i8 in d0
 
 // Power of two
-extern fn asm_is_power_of_two_u32(x: u32) -> bool
-extern fn asm_is_power_of_two_u16(x: u16) -> bool
-extern fn asm_next_power_of_two_u32(x: u32) -> u32
-extern fn asm_next_power_of_two_u16(x: u16) -> u16
+extern amiga fn asm_is_power_of_two_u32(x: u32 in d0) -> bool in d0
+extern amiga fn asm_is_power_of_two_u16(x: u16 in d0) -> bool in d0
+extern amiga fn asm_next_power_of_two_u32(x: u32 in d0) -> u32 in d0
+extern amiga fn asm_next_power_of_two_u16(x: u16 in d0) -> u16 in d0
 
 // Division with rounding
-extern fn asm_div_ceil_u32(a: u32, b: u32) -> u32
-extern fn asm_div_ceil_u16(a: u16, b: u16) -> u16
-extern fn asm_div_round_u32(a: u32, b: u32) -> u32
-extern fn asm_div_round_u16(a: u16, b: u16) -> u16
+extern amiga fn asm_div_ceil_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+extern amiga fn asm_div_ceil_u16(a: u16 in d0, b: u16 in d1) -> u16 in d0
+extern amiga fn asm_div_round_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+extern amiga fn asm_div_round_u16(a: u16 in d0, b: u16 in d1) -> u16 in d0
 
 // Difference (absolute)
-extern fn asm_diff_u32(a: u32, b: u32) -> u32
-extern fn asm_diff_u16(a: u16, b: u16) -> u16
-extern fn asm_diff_i32(a: i32, b: i32) -> i32
-extern fn asm_diff_i16(a: i16, b: i16) -> i16
+extern amiga fn asm_diff_u32(a: u32 in d0, b: u32 in d1) -> u32 in d0
+extern amiga fn asm_diff_u16(a: u16 in d0, b: u16 in d1) -> u16 in d0
+extern amiga fn asm_diff_i32(a: i32 in d0, b: i32 in d1) -> i32 in d0
+extern amiga fn asm_diff_i16(a: i16 in d0, b: i16 in d1) -> i16 in d0
 
 // ============================================================================
 // Public API - Thin wrappers around assembly functions

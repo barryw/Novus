@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class AmigaLibraryDesignTests
 {
     private static readonly string ProjectRoot = Path.GetFullPath(
@@ -67,10 +68,16 @@ public class AmigaLibraryDesignTests
         Assert.Contains(module.Functions.SelectMany(function => function.BasicBlocks)
                 .SelectMany(block => block.Instructions).OfType<IrCall>(),
             call => call.FunctionName == "system_alert");
-        Assert.Contains(module.Functions,
-            function => function.Name == "system_alert" && function.LinkName == "alert");
-        Assert.Contains(module.Functions,
-            function => function.OriginalName == "alert" && function.LinkName == null && function.BasicBlocks.Count > 0);
+        var dialogPath = Path.Combine(StdLibPath, "amiga", "sys", "intuition", "dialog.novus");
+        var importedAlias = Assert.Single(module.Functions,
+            function => function.Name == "system_alert");
+        var expectedLinkName = ModuleImportHelper.GetFunctionLinkName(
+            dialogPath, "alert" + OverloadResolution.GetOverloadSuffix(importedAlias));
+        Assert.Equal(expectedLinkName, importedAlias.LinkName);
+        var wrapper = Assert.Single(module.Functions,
+            function => function.OriginalName == "alert" && function.BasicBlocks.Count > 0);
+        Assert.Equal(ModuleImportHelper.GetFunctionLinkName(
+            "test.novus", "alert" + OverloadResolution.GetOverloadSuffix(wrapper)), wrapper.LinkName);
     }
 
     [Fact]

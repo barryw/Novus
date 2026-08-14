@@ -168,7 +168,7 @@ _asm_max_u8:
 ; ============================================================================
 
 ; clamp_i32(val: i32, min_val: i32, max_val: i32) -> i32
-; Args: d0 = val, d1 = min_val, a0 = max_val (as i32 in address reg)
+; Args: d0 = val, d1 = min_val, d2 = max_val
     xdef _asm_clamp_i32
 _asm_clamp_i32:
     ; First clamp to min
@@ -177,16 +177,15 @@ _asm_clamp_i32:
     move.l  d1,d0           ; val < min, return min
     rts
 .check_max:
-    ; Now clamp to max (a0 contains max as pointer, need to load it)
-    move.l  a0,d1           ; get max_val from a0
-    cmp.l   d1,d0
+    ; Now clamp to max
+    cmp.l   d2,d0
     ble.s   .done
-    move.l  d1,d0           ; val > max, return max
+    move.l  d2,d0           ; val > max, return max
 .done:
     rts
 
 ; clamp_i16(val: i16, min_val: i16, max_val: i16) -> i16
-; For smaller types, all 3 args fit in d0, d1, and lower bits of a0
+; All three integer arguments use data registers.
     xdef _asm_clamp_i16
 _asm_clamp_i16:
     cmp.w   d1,d0
@@ -194,10 +193,9 @@ _asm_clamp_i16:
     move.w  d1,d0
     rts
 .check_max:
-    move.l  a0,d1
-    cmp.w   d1,d0
+    cmp.w   d2,d0
     ble.s   .done
-    move.w  d1,d0
+    move.w  d2,d0
 .done:
     rts
 
@@ -209,10 +207,9 @@ _asm_clamp_i8:
     move.b  d1,d0
     rts
 .check_max:
-    move.l  a0,d1
-    cmp.b   d1,d0
+    cmp.b   d2,d0
     ble.s   .done
-    move.b  d1,d0
+    move.b  d2,d0
 .done:
     rts
 
@@ -228,10 +225,9 @@ _asm_clamp_u32:
     move.l  d1,d0
     rts
 .check_max:
-    move.l  a0,d1
-    cmp.l   d1,d0
+    cmp.l   d2,d0
     bls.s   .done           ; unsigned: lower or same
-    move.l  d1,d0
+    move.l  d2,d0
 .done:
     rts
 
@@ -243,10 +239,9 @@ _asm_clamp_u16:
     move.w  d1,d0
     rts
 .check_max:
-    move.l  a0,d1
-    cmp.w   d1,d0
+    cmp.w   d2,d0
     bls.s   .done
-    move.w  d1,d0
+    move.w  d2,d0
 .done:
     rts
 
@@ -258,10 +253,9 @@ _asm_clamp_u8:
     move.b  d1,d0
     rts
 .check_max:
-    move.l  a0,d1
-    cmp.b   d1,d0
+    cmp.b   d2,d0
     bls.s   .done
-    move.b  d1,d0
+    move.b  d2,d0
 .done:
     rts
 

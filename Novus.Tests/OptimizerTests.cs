@@ -128,6 +128,26 @@ public class OptimizerTests
     }
 
     [Fact]
+    public void DeadCodeElimination_IndexedFieldStoreUse_KeepsInstruction()
+    {
+        var module = new IrModule();
+        var function = new IrFunction("test", IrVoidType.Instance);
+        module.AddFunction(function);
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrBinaryOp("%value", IrBinaryOp.OpKind.Add,
+            new IrConstant(2, IrIntType.I32), new IrConstant(3, IrIntType.I32), IrIntType.I32));
+        block.AddInstruction(new IrIndexedFieldStore(
+            new IrVariable("items", new IrPointerType(IrIntType.I32)),
+            new IrConstant(0, IrIntType.U32), "value", 0,
+            new IrVariable("%value", IrIntType.I32), IrBoundsCheckMode.Unchecked));
+
+        var changed = new DeadCodeEliminationPass().Run(module);
+
+        Assert.False(changed);
+        Assert.Equal(2, block.Instructions.Count);
+    }
+
+    [Fact]
     public void StrengthReduction_MultiplyByPowerOfTwo_ConvertToShift()
     {
         var module = new IrModule();
@@ -518,5 +538,49 @@ public class OptimizerTests
         Assert.True(new CommonSubexpressionEliminationPass().Run(module));
         var indexed = Assert.IsType<IrIndexedFieldAccess>(Assert.IsType<IrReturn>(block.Instructions[1]).Value);
         Assert.Equal("%first", Assert.IsType<IrVariable>(indexed.Array).Name);
+    }
+
+    [Fact]
+    public void CommonSubexpressionElimination_DoesNotLeakDeferredMemberLoads()
+    {
+        var module = new IrModule();
+        var type = new IrStructType("State", [new IrStructField("value", IrIntType.I32)]);
+        var function = new IrFunction("test", IrIntType.I32);
+        module.AddFunction(function);
+        var state = new IrDereferenceValue(
+            new IrVariable("state", new IrPointerType(type)), type);
+        var deferred = new IrBasicBlock("deferred");
+        deferred.AddInstruction(new IrMemberAccess("%deferred", state, "value", IrIntType.I32, 0));
+        var block = function.CreateBasicBlock("entry");
+        block.AddInstruction(new IrDefer(deferred));
+        block.AddInstruction(new IrMemberAccess("%outer", state, "value", IrIntType.I32, 0));
+        block.AddInstruction(new IrReturn(new IrVariable("%outer", IrIntType.I32)));
+
+        Assert.False(new CommonSubexpressionEliminationPass().Run(module));
+        Assert.IsType<IrMemberAccess>(block.Instructions[1]);
+        Assert.Equal("%outer", Assert.IsType<IrVariable>(Assert.IsType<IrReturn>(block.Instructions[2]).Value).Name);
+    }
+
+    [Fact]
+    public void CommonSubexpressionElimination_RewritesIndexedFieldStoreUses()
+    {
+        var module = new IrModule();
+        var item = new IrStructType("Item", [new IrStructField("value", IrIntType.I32)]);
+        var items = new IrPointerType(item);
+        var container = new IrStructType("Container", [new IrStructField("items", items)]);
+        var function = new IrFunction("test", IrVoidType.Instance);
+        module.AddFunction(function);
+        var block = function.CreateBasicBlock("entry");
+        var source = new IrDereferenceValue(
+            new IrVariable("source", new IrPointerType(container)), container);
+        block.AddInstruction(new IrMemberAccess("%first", source, "items", items, 0));
+        block.AddInstruction(new IrMemberAccess("%second", source, "items", items, 0));
+        block.AddInstruction(new IrIndexedFieldStore(
+            new IrVariable("%second", items), new IrConstant(0, IrIntType.U32),
+            "value", 0, new IrConstant(1, IrIntType.I32), IrBoundsCheckMode.Unchecked));
+
+        Assert.True(new CommonSubexpressionEliminationPass().Run(module));
+        var store = Assert.IsType<IrIndexedFieldStore>(block.Instructions[1]);
+        Assert.Equal("%first", Assert.IsType<IrVariable>(store.Array).Name);
     }
 }

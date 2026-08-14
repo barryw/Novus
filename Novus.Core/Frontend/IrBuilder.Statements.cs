@@ -128,10 +128,19 @@ public partial class IrBuilder
         }
 
         IrValue? lastValue = null;
+        var statements = context.statement();
+        var blockProducesValue = _preserveExpressionResult ||
+            context.Parent is NovusParser.MatchArmContext or NovusParser.IfExprContext or
+                NovusParser.IfElseChainContext ||
+            context.Parent is NovusParser.FunctionDeclarationContext &&
+                _currentFunction?.ReturnType is not IrVoidType;
 
-        foreach (var stmt in context.statement())
+        for (var index = 0; index < statements.Length; index++)
         {
-            var result = Visit(stmt);
+            var savedPreserveExpressionResult = _preserveExpressionResult;
+            _preserveExpressionResult = blockProducesValue && index == statements.Length - 1;
+            var result = Visit(statements[index]);
+            _preserveExpressionResult = savedPreserveExpressionResult;
             // Track the last expression value for implicit returns
             if (result is IrValue value)
             {
@@ -241,9 +250,8 @@ public partial class IrBuilder
         // and discard the result - don't create a variable
         if (isThrowaway)
         {
-            // The expression has been evaluated - if it was a function call,
-            // the IrCall instruction was already added to the block.
-            // We just discard the result variable and don't create a local.
+            if (_module.TypeImplementsDrop(value.Type))
+                InjectDropForTemporary(value);
             return null;
         }
 
@@ -1927,7 +1935,7 @@ public partial class IrBuilder
         // CRITICAL: If the expression result is a value with a Drop type and it's not being
         // assigned to anything (i.e., the result is discarded), we must inject cleanup code.
         // This prevents memory leaks when ignoring return values like Option<T> where T has Drop.
-        if (result is IrValue irValue && _module.TypeImplementsDrop(irValue.Type))
+        if (!_preserveExpressionResult && result is IrValue irValue && _module.TypeImplementsDrop(irValue.Type))
         {
             InjectDropForTemporary(irValue);
         }

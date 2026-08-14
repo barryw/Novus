@@ -47,11 +47,17 @@ from amiga::raw::bsdsocket import hostent, protoent, servent, AF_INET, h_errno
 from amiga::raw::bsdsocket import HOST_NOT_FOUND, TRY_AGAIN, NO_RECOVERY, NO_DATA
 from std::net::addr import Ipv4Addr
 from std::net::errors import NetError
+from std::net::socket import ensure_initialized
 from std::core import Option, Result
 from std::collections::vec import Vec
 
 /// Maximum number of addresses to return from DNS lookup
 const MAX_DNS_RESULTS: i32 = 16
+
+fn require_socket_library() -> Result<(), NetError> {
+    return Result::Err(NetError::NotInitialized) unless ensure_initialized()
+    return Result::Ok(())
+}
 
 /// Resolve a hostname to IPv4 addresses
 ///
@@ -64,6 +70,7 @@ const MAX_DNS_RESULTS: i32 = 16
 /// let first_addr = addrs.get(0).unwrap()
 /// ```
 pub fn resolve_hostname(hostname: *u8) -> Result<Vec<Ipv4Addr>, NetError> {
+    require_socket_library()?
     let he = unsafe { gethostbyname(hostname) }
 
     if !he {
@@ -118,6 +125,7 @@ pub fn resolve_hostname(hostname: *u8) -> Result<Vec<Ipv4Addr>, NetError> {
 /// let addr = resolve_hostname_one("www.example.com")?
 /// ```
 pub fn resolve_hostname_one(hostname: *u8) -> Result<Ipv4Addr, NetError> {
+    require_socket_library()?
     let he = unsafe { gethostbyname(hostname) }
 
     if !he {
@@ -153,6 +161,7 @@ pub fn resolve_hostname_one(hostname: *u8) -> Result<Ipv4Addr, NetError> {
 /// println(hostname)  // "dns.google"
 /// ```
 pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
+    require_socket_library()?
     let octets = addr.octets()
     let addr_bytes: [u8] = [octets[0], octets[1], octets[2], octets[3]]
     let addr_ptr: *u8 = (*u8)&addr_bytes
@@ -179,6 +188,7 @@ pub fn reverse_lookup(addr: Ipv4Addr) -> Result<*u8, NetError> {
 /// println((*u8)&buf)
 /// ```
 pub fn get_local_hostname(buf: *u8, len: i32) -> Result<(), NetError> {
+    require_socket_library()?
     let result = unsafe { gethostname(buf, len) }
     if result < 0 {
         return Result::Err(NetError::last())
@@ -216,6 +226,7 @@ impl Protocol {
 /// println(proto.number())  // 6
 /// ```
 pub fn lookup_protocol_by_name(name: *u8) -> Result<Protocol, NetError> {
+    require_socket_library()?
     let pe = unsafe { getprotobyname(name) }
 
     if !pe {
@@ -236,6 +247,7 @@ pub fn lookup_protocol_by_name(name: *u8) -> Result<Protocol, NetError> {
 /// println(proto.name())  // "tcp"
 /// ```
 pub fn lookup_protocol_by_number(number: i32) -> Result<Protocol, NetError> {
+    require_socket_library()?
     let pe = unsafe { getprotobynumber(number) }
 
     if !pe {
@@ -286,6 +298,7 @@ impl Service {
 /// println(svc.port())  // 80
 /// ```
 pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError> {
+    require_socket_library()?
     let se = unsafe { getservbyname(name, proto) }
 
     if !se {
@@ -315,6 +328,7 @@ pub fn lookup_service_by_name(name: *u8, proto: *u8) -> Result<Service, NetError
 /// println(svc.name())  // "http"
 /// ```
 pub fn lookup_service_by_port(port: i32, proto: *u8) -> Result<Service, NetError> {
+    require_socket_library()?
     // On big-endian 68k Amiga, host byte order == network byte order
     // so the port value can be passed directly
     let se = unsafe { getservbyport(port, proto) }

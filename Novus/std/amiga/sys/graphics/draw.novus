@@ -316,7 +316,25 @@ impl DrawContext {
     /// Returns -1 if the coordinates are outside the bitmap.
     pub fn get_pixel(&self, x: i16, y: i16) -> i32 {
         let result: u32 = ReadPixel(self.rp, x, y)
-        return (i32)result
+        if result == 0xFFFFFFFF {
+            return -1
+        }
+
+        // graphics.library only guarantees the active bitplanes in D0; some
+        // implementations leave the upper bits unchanged.
+        let bitmap = unsafe { (*self.rp).BitMap }
+        if !bitmap {
+            return -1
+        }
+        let depth: u32 = (u32)unsafe { (*bitmap).Depth }
+        if depth == 0 {
+            return 0
+        }
+        if depth >= 32 {
+            return (i32)result
+        }
+        let color_mask: u32 = ((u32)1 << depth) - 1
+        return (i32)(result & color_mask)
     }
 
     /// Read the pixel color at a Point.

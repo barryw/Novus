@@ -1,0 +1,98 @@
+from std::random::core import Rng, pick_u32, pick_u8, random_index, random_range, random_rng, random_u32, shuffle_i32, shuffle_u32, shuffle_u8
+from std::test::test import expect
+
+// @covers std::random::core::Rng::new(u32)
+// @covers std::random::core::Rng::next_u32()
+// @covers std::random::core::Rng::next_u16()
+// @covers std::random::core::Rng::next_u8()
+// @covers std::random::core::Rng::next_i32()
+// @covers std::random::core::Rng::next_bool()
+@test("Rng produces a deterministic non-zero sequence")
+pub fn test_rng_sequence() {
+    var first = Rng::new(1)
+    var second = Rng::new(1)
+    expect(first.next_u32() == second.next_u32(), "same seed")
+    let value16 = first.next_u16()
+    let value8 = first.next_u8()
+    let value32 = first.next_i32()
+    let value_bool = first.next_bool()
+    expect(value16 <= 65535 && value8 <= 255, "narrow values")
+    expect(value32 == value32 && (value_bool || !value_bool), "typed values")
+
+    var zero_seed = Rng::new(0)
+    expect(zero_seed.next_u32() != 0, "zero seed is repaired")
+}
+
+// @covers std::random::core::Rng::range_u32(u32, u32)
+// @covers std::random::core::Rng::range_i32(i32, i32)
+// @covers std::random::core::Rng::fill_bytes(*u8, u32)
+@test("Rng ranges and byte filling honor their bounds")
+pub fn test_rng_ranges_and_fill() {
+    var rng = Rng::new(42)
+    var i: u32 = 0
+    while i < 64 {
+        let ranged_u32 = rng.range_u32(3, 11)
+        let ranged_i32 = rng.range_i32(-4, 5)
+        expect(ranged_u32 >= 3 && ranged_u32 < 11, "u32 range")
+        expect(ranged_i32 >= -4 && ranged_i32 < 5, "i32 range")
+        i = i + 1
+    }
+    expect(rng.range_u32(9, 2) == 9, "invalid u32 range")
+    expect(rng.range_i32(7, 7) == 7, "empty i32 range")
+
+    var bytes: [u8] = [0; 7]
+    unsafe { rng.fill_bytes((*u8)&bytes, 7) }
+    var any_non_zero = false
+    i = 0
+    while i < 7 {
+        any_non_zero = any_non_zero || bytes[i] != 0
+        i = i + 1
+    }
+    expect(any_non_zero, "buffer filled")
+}
+
+// @covers std::random::core::shuffle_u32(*u32, u32, &var Rng)
+// @covers std::random::core::shuffle_u8(*u8, u32, &var Rng)
+// @covers std::random::core::shuffle_i32(*i32, u32, &var Rng)
+// @covers std::random::core::random_index(u32, &var Rng)
+// @covers std::random::core::pick_u32(*u32, u32, &var Rng)
+// @covers std::random::core::pick_u8(*u8, u32, &var Rng)
+@test("random collection helpers preserve values and bounds")
+pub fn test_random_collection_helpers() {
+    var rng = Rng::new(99)
+    var u32s: [u32] = [1, 2, 3, 4]
+    var u8s: [u8] = [1, 2, 3, 4]
+    var i32s: [i32] = [-2, -1, 1, 2]
+    unsafe {
+        shuffle_u32((*u32)&u32s, 4, &var rng)
+        shuffle_u8((*u8)&u8s, 4, &var rng)
+        shuffle_i32((*i32)&i32s, 4, &var rng)
+    }
+    let sum32 = u32s[0] + u32s[1] + u32s[2] + u32s[3]
+    let sum8 = (u32)u8s[0] + (u32)u8s[1] + (u32)u8s[2] + (u32)u8s[3]
+    let sumi = i32s[0] + i32s[1] + i32s[2] + i32s[3]
+    expect(sum32 == 10 && sum8 == 10 && sumi == 0, "shuffles preserve elements")
+    expect(random_index(4, &var rng) < 4, "random index")
+    let chosen32 = unsafe { pick_u32((*u32)&u32s, 4, &var rng) }
+    let chosen8 = unsafe { pick_u8((*u8)&u8s, 4, &var rng) }
+    expect(chosen32 >= 1 && chosen32 <= 4, "pick u32")
+    expect(chosen8 >= 1 && chosen8 <= 4, "pick u8")
+    expect(unsafe { pick_u32((*u32)&u32s, 0, &var rng) } == 0, "empty pick u32")
+    expect(unsafe { pick_u8((*u8)&u8s, 0, &var rng) } == 0, "empty pick u8")
+}
+
+// @covers std::random::core::Rng::from_time()
+// @covers std::random::core::random_rng()
+// @covers std::random::core::random_u32()
+// @covers std::random::core::random_range(u32, u32)
+@test("hardware-seeded random conveniences are callable")
+pub fn test_hardware_seeded_random() {
+    var rng = Rng::from_time()
+    let first = rng.next_u32()
+    var convenience = random_rng()
+    let second = convenience.next_u32()
+    let third = random_u32()
+    let ranged = random_range(10, 20)
+    expect(first == first && second == second && third == third, "random values returned")
+    expect(ranged >= 10 && ranged < 20, "random range")
+}

@@ -55,6 +55,7 @@ public class NdkSurfaceTests
     };
 
     [Theory]
+    [Trait("Category", "CorpusCompilation")]
     [MemberData(nameof(GeneratedModules))]
     public async Task EveryGeneratedNdkModuleIsImportable(string moduleName)
     {

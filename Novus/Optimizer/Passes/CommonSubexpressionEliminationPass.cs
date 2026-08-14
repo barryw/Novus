@@ -109,6 +109,31 @@ public class CommonSubexpressionEliminationPass : BasicBlockPassBase
             return memberAccess;
         }
 
+        public override IrInstruction? RewriteDefer(IrDefer defer)
+        {
+            // Deferred code is a separate execution region. Its available values must not
+            // leak into the registering block (or vice versa), but outer replacements still
+            // need to be visible while rewriting references captured by the defer.
+            var outerExpressions = new Dictionary<string, string>(_expressions);
+            var outerMemberLoads = new Dictionary<string, string>(_memberLoads);
+            var outerReplacements = new Dictionary<string, IrValue>(_replacements);
+            _expressions.Clear();
+            _memberLoads.Clear();
+
+            defer.DeferredBlock = RewriteBasicBlock(defer.DeferredBlock);
+
+            _expressions.Clear();
+            _memberLoads.Clear();
+            _replacements.Clear();
+            foreach (var pair in outerExpressions)
+                _expressions.Add(pair.Key, pair.Value);
+            foreach (var pair in outerMemberLoads)
+                _memberLoads.Add(pair.Key, pair.Value);
+            foreach (var pair in outerReplacements)
+                _replacements.Add(pair.Key, pair.Value);
+            return defer;
+        }
+
         private static bool IsScalar(IrType type) => type is IrBoolType or IrIntType
             or IrFloatType or IrFixedType or IrPointerType or IrReferenceType or IrMutReferenceType;
 

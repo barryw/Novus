@@ -28,6 +28,7 @@ public class SequentialCompilationCollection : ICollectionFixture<StdlibCacheFix
 public class CompilationTests
 {
     [Theory]
+    [Trait("Category", "FullCompilation")]
     [InlineData("02_arithmetic")]
     [InlineData("04_optimization")]
     [InlineData("12_control_flow")]

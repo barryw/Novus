@@ -11,27 +11,30 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Runtime-managed mathffp.library base used by the raw call stubs.
+extern var MathBase: *Library
+
 @library("mathffp.library")
-extern pub fn SPFix(parm: f32) -> i32
+extern pub fn SPFix(parm: u32) -> i32
 @library("mathffp.library")
-extern pub fn SPFlt(integer: i32) -> f32
+extern pub fn SPFlt(integer: i32) -> u32
 @library("mathffp.library")
-extern pub fn SPCmp(leftParm: f32, rightParm: f32) -> i32
+extern pub fn SPCmp(leftParm: u32, rightParm: u32) -> i32
 @library("mathffp.library")
-extern pub fn SPTst(parm: f32) -> i32
+extern pub fn SPTst(parm: u32) -> i32
 @library("mathffp.library")
-extern pub fn SPAbs(parm: f32) -> f32
+extern pub fn SPAbs(parm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPNeg(parm: f32) -> f32
+extern pub fn SPNeg(parm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPAdd(leftParm: f32, rightParm: f32) -> f32
+extern pub fn SPAdd(leftParm: u32, rightParm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPSub(leftParm: f32, rightParm: f32) -> f32
+extern pub fn SPSub(leftParm: u32, rightParm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPMul(leftParm: f32, rightParm: f32) -> f32
+extern pub fn SPMul(leftParm: u32, rightParm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPDiv(leftParm: f32, rightParm: f32) -> f32
+extern pub fn SPDiv(leftParm: u32, rightParm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPFloor(parm: f32) -> f32
+extern pub fn SPFloor(parm: u32) -> u32
 @library("mathffp.library")
-extern pub fn SPCeil(parm: f32) -> f32
+extern pub fn SPCeil(parm: u32) -> u32

@@ -11,6 +11,7 @@ namespace Novus.Tests;
 /// <summary>
 /// Tests for unsafe block expressions (unsafe { expr } returning a value)
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class UnsafeExpressionTests
 {
     private (DiagnosticBag Diagnostics, SemanticAnalyzer Analyzer) Analyze(string source)

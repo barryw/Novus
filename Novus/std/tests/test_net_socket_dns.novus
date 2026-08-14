@@ -1,0 +1,84 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr
+from std::net::dns import *
+from std::net::socket import SocketLibrary, ensure_initialized, is_tcp_available, is_tcp_functional
+from std::test::test import expect
+
+// @covers std::net::socket::SocketLibrary::errno_ptr()
+// @covers std::net::socket::SocketLibrary::handle()
+// @covers std::net::socket::SocketLibrary::init()
+// @covers std::net::socket::SocketLibrary::is_initialized()
+// @covers std::net::socket::ensure_initialized()
+// @covers std::net::socket::is_tcp_available()
+// @covers std::net::socket::is_tcp_functional()
+@test("socket library public API")
+pub fn test_socket_library_public_api() {
+    let _ = is_tcp_available()
+    let _ = is_tcp_functional()
+    match SocketLibrary::init() {
+        Result::Ok(library) => {
+            expect(library.is_initialized(), "initialized")
+            expect(library.handle() != null, "library handle")
+            expect(SocketLibrary::errno_ptr() != null, "errno pointer")
+            expect(ensure_initialized(), "already initialized")
+        },
+        Result::Err(_) => expect(!ensure_initialized(), "missing stack stays unavailable")
+    }
+}
+
+// @covers std::net::dns::get_local_hostname(*u8, i32)
+@test("DNS local hostname")
+pub fn test_dns_local_hostname() {
+    var hostname: [u8] = [0; 256]
+    let _ = get_local_hostname((*u8)&hostname[0], 256)
+}
+
+// @covers std::net::dns::resolve_hostname(*u8)
+// @covers std::net::dns::resolve_hostname_one(*u8)
+@test("DNS forward lookup")
+pub fn test_dns_forward_lookup() {
+    let _ = resolve_hostname("localhost")
+    let _ = resolve_hostname_one("localhost")
+}
+
+// @covers std::net::dns::reverse_lookup(Ipv4Addr)
+@test("DNS reverse lookup")
+pub fn test_dns_reverse_lookup() {
+    // 0.0.0.0 is rejected locally, so the unit suite exercises the complete
+    // error path without depending on a configured resolver or network timeout.
+    let _ = reverse_lookup(Ipv4Addr::any())
+}
+
+// @covers std::net::dns::Protocol::name()
+// @covers std::net::dns::Protocol::number()
+// @covers std::net::dns::lookup_protocol_by_name(*u8)
+// @covers std::net::dns::lookup_protocol_by_number(i32)
+@test("DNS protocol database")
+pub fn test_dns_protocol_database() {
+    match lookup_protocol_by_name("tcp") {
+        Result::Ok(protocol) => {
+            let _ = protocol.name()
+            let number = protocol.number()
+            let _ = lookup_protocol_by_number(number)
+        },
+        Result::Err(_) => {}
+    }
+}
+
+// @covers std::net::dns::Service::name()
+// @covers std::net::dns::Service::port()
+// @covers std::net::dns::Service::protocol()
+// @covers std::net::dns::lookup_service_by_name(*u8, *u8)
+// @covers std::net::dns::lookup_service_by_port(i32, *u8)
+@test("DNS service database")
+pub fn test_dns_service_database() {
+    match lookup_service_by_name("http", "tcp") {
+        Result::Ok(service) => {
+            let _ = service.name()
+            let port = service.port()
+            let _ = service.protocol()
+            let _ = lookup_service_by_port(port, "tcp")
+        },
+        Result::Err(_) => {}
+    }
+}

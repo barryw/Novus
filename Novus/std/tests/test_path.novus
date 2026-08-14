@@ -9,6 +9,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // path_split tests - full paths
 // =============================================================================
 
+// @covers std::string::core::path_split(Str)
 @test("path_split parses full path with volume")
 pub fn test_path_split_full() {
     let path: Str = "Work:Projects/Novus/main.novus"
@@ -42,6 +43,7 @@ pub fn test_path_split_full() {
     }
 }
 
+// @covers std::string::core::path_split(Str)
 @test("path_split parses volume-only path")
 pub fn test_path_split_volume_only() {
     let path: Str = "RAM:"
@@ -66,6 +68,7 @@ pub fn test_path_split_volume_only() {
     }
 }
 
+// @covers std::string::core::path_split(Str)
 @test("path_split parses volume with file")
 pub fn test_path_split_volume_file() {
     let path: Str = "SYS:Startup-Sequence"
@@ -93,6 +96,7 @@ pub fn test_path_split_volume_file() {
     }
 }
 
+// @covers std::string::core::path_split(Str)
 @test("path_split parses relative path")
 pub fn test_path_split_relative() {
     let path: Str = "src/main.novus"
@@ -120,6 +124,7 @@ pub fn test_path_split_relative() {
     }
 }
 
+// @covers std::string::core::path_split(Str)
 @test("path_split parses filename only")
 pub fn test_path_split_filename_only() {
     let path: Str = "readme.txt"
@@ -144,6 +149,7 @@ pub fn test_path_split_filename_only() {
     }
 }
 
+// @covers std::string::core::path_split(Str)
 @test("path_split handles empty string")
 pub fn test_path_split_empty() {
     let path: Str = ""
@@ -169,6 +175,7 @@ pub fn test_path_split_empty() {
 // path_filename tests
 // =============================================================================
 
+// @covers std::string::core::path_filename(Str)
 @test("path_filename extracts filename from full path")
 pub fn test_path_filename_full() {
     let path: Str = "Work:Projects/file.txt"
@@ -181,6 +188,7 @@ pub fn test_path_filename_full() {
     }
 }
 
+// @covers std::string::core::path_filename(Str)
 @test("path_filename extracts filename from relative path")
 pub fn test_path_filename_relative() {
     let path: Str = "src/lib/module.novus"
@@ -193,6 +201,7 @@ pub fn test_path_filename_relative() {
     }
 }
 
+// @covers std::string::core::path_filename(Str)
 @test("path_filename returns filename when no path")
 pub fn test_path_filename_bare() {
     let path: Str = "standalone.bin"
@@ -205,6 +214,7 @@ pub fn test_path_filename_bare() {
     }
 }
 
+// @covers std::string::core::path_filename(Str)
 @test("path_filename returns None for volume only")
 pub fn test_path_filename_volume_only() {
     let path: Str = "DH0:"
@@ -218,6 +228,7 @@ pub fn test_path_filename_volume_only() {
 // path_dirname tests
 // =============================================================================
 
+// @covers std::string::core::path_dirname(Str)
 @test("path_dirname extracts directory from full path")
 pub fn test_path_dirname_full() {
     let path: Str = "Work:Projects/src/main.novus"
@@ -230,6 +241,7 @@ pub fn test_path_dirname_full() {
     }
 }
 
+// @covers std::string::core::path_dirname(Str)
 @test("path_dirname extracts directory from relative path")
 pub fn test_path_dirname_relative() {
     let path: Str = "src/module.novus"
@@ -242,6 +254,7 @@ pub fn test_path_dirname_relative() {
     }
 }
 
+// @covers std::string::core::path_dirname(Str)
 @test("path_dirname returns volume for volume/file")
 pub fn test_path_dirname_volume_file() {
     let path: Str = "RAM:temp.txt"
@@ -254,6 +267,7 @@ pub fn test_path_dirname_volume_file() {
     }
 }
 
+// @covers std::string::core::path_dirname(Str)
 @test("path_dirname returns None for filename only")
 pub fn test_path_dirname_filename_only() {
     let path: Str = "file.txt"
@@ -267,30 +281,35 @@ pub fn test_path_dirname_filename_only() {
 // path_is_absolute tests
 // =============================================================================
 
+// @covers std::string::core::path_is_absolute(Str)
 @test("path_is_absolute returns true for volume paths")
 pub fn test_path_is_absolute_volume() {
     let path: Str = "SYS:Startup-Sequence"
     expect_true(path_is_absolute(path), "volume path is absolute")
 }
 
+// @covers std::string::core::path_is_absolute(Str)
 @test("path_is_absolute returns true for volume only")
 pub fn test_path_is_absolute_volume_only() {
     let path: Str = "RAM:"
     expect_true(path_is_absolute(path), "volume-only is absolute")
 }
 
+// @covers std::string::core::path_is_absolute(Str)
 @test("path_is_absolute returns false for relative path")
 pub fn test_path_is_absolute_relative() {
     let path: Str = "src/main.novus"
     expect_false(path_is_absolute(path), "relative path not absolute")
 }
 
+// @covers std::string::core::path_is_absolute(Str)
 @test("path_is_absolute returns false for filename only")
 pub fn test_path_is_absolute_filename() {
     let path: Str = "readme.txt"
     expect_false(path_is_absolute(path), "filename not absolute")
 }
 
+// @covers std::string::core::path_is_absolute(Str)
 @test("path_is_absolute returns false for empty")
 pub fn test_path_is_absolute_empty() {
     let path: Str = ""
@@ -301,6 +320,7 @@ pub fn test_path_is_absolute_empty() {
 // path_join tests
 // =============================================================================
 
+// @covers std::string::core::path_join(Str, Str)
 @test("path_join combines volume and filename")
 pub fn test_path_join_volume_file() {
     let base: Str = "Work:"
@@ -317,6 +337,7 @@ pub fn test_path_join_volume_file() {
     }
 }
 
+// @covers std::string::core::path_join(Str, Str)
 @test("path_join combines path and filename")
 pub fn test_path_join_path_file() {
     let base: Str = "Work:Projects"
@@ -333,6 +354,7 @@ pub fn test_path_join_path_file() {
     }
 }
 
+// @covers std::string::core::path_join(Str, Str)
 @test("path_join handles trailing slash")
 pub fn test_path_join_trailing_slash() {
     let base: Str = "Work:Projects/"
@@ -350,6 +372,7 @@ pub fn test_path_join_trailing_slash() {
     }
 }
 
+// @covers std::string::core::path_join(Str, Str)
 @test("path_join combines relative paths")
 pub fn test_path_join_relative() {
     let base: Str = "src"

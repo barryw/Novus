@@ -8,6 +8,7 @@ from std::test::test import expect, expect_true, expect_false, expect_eq
 // StringBuilder::new tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::new()
 @test("StringBuilder::new creates empty builder")
 pub fn test_sb_new() {
     let result = StringBuilder::new()
@@ -26,6 +27,7 @@ pub fn test_sb_new() {
 // StringBuilder::with_capacity tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::with_capacity(usize)
 @test("StringBuilder::with_capacity allocates correctly")
 pub fn test_sb_with_capacity() {
     let result = StringBuilder::with_capacity(256)
@@ -44,6 +46,7 @@ pub fn test_sb_with_capacity() {
 // StringBuilder::push_str tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_str(Str)
 @test("StringBuilder::push_str appends strings")
 pub fn test_sb_push_str() {
     let result = StringBuilder::new()
@@ -66,6 +69,7 @@ pub fn test_sb_push_str() {
 // StringBuilder::push_byte tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_byte(u8)
 @test("StringBuilder::push_byte appends single bytes")
 pub fn test_sb_push_byte() {
     let result = StringBuilder::new()
@@ -86,6 +90,7 @@ pub fn test_sb_push_byte() {
 // StringBuilder::push_i32 tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_i32(i32)
 @test("StringBuilder::push_i32 formats positive numbers")
 pub fn test_sb_push_i32_positive() {
     let result = StringBuilder::new()
@@ -100,6 +105,7 @@ pub fn test_sb_push_i32_positive() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_i32(i32)
 @test("StringBuilder::push_i32 formats negative numbers")
 pub fn test_sb_push_i32_negative() {
     let result = StringBuilder::new()
@@ -114,6 +120,7 @@ pub fn test_sb_push_i32_negative() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_i32(i32)
 @test("StringBuilder::push_i32 formats zero")
 pub fn test_sb_push_i32_zero() {
     let result = StringBuilder::new()
@@ -128,6 +135,7 @@ pub fn test_sb_push_i32_zero() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_i32(i32)
 @test("StringBuilder::push_i32 formats large numbers")
 pub fn test_sb_push_i32_large() {
     let result = StringBuilder::new()
@@ -146,6 +154,7 @@ pub fn test_sb_push_i32_large() {
 // StringBuilder::push_u32 tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_u32(u32)
 @test("StringBuilder::push_u32 formats unsigned numbers")
 pub fn test_sb_push_u32() {
     let result = StringBuilder::new()
@@ -160,6 +169,7 @@ pub fn test_sb_push_u32() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_u32(u32)
 @test("StringBuilder::push_u32 formats zero")
 pub fn test_sb_push_u32_zero() {
     let result = StringBuilder::new()
@@ -178,6 +188,7 @@ pub fn test_sb_push_u32_zero() {
 // StringBuilder::push_hex tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_hex(u32)
 @test("StringBuilder::push_hex formats lowercase hex")
 pub fn test_sb_push_hex() {
     let result = StringBuilder::new()
@@ -193,6 +204,7 @@ pub fn test_sb_push_hex() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_hex(u32)
 @test("StringBuilder::push_hex formats zero")
 pub fn test_sb_push_hex_zero() {
     let result = StringBuilder::new()
@@ -207,6 +219,7 @@ pub fn test_sb_push_hex_zero() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_hex(u32)
 @test("StringBuilder::push_hex formats large value")
 pub fn test_sb_push_hex_large() {
     let result = StringBuilder::new()
@@ -226,6 +239,7 @@ pub fn test_sb_push_hex_large() {
 // StringBuilder::push_hex_upper tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_hex_upper(u32)
 @test("StringBuilder::push_hex_upper formats uppercase hex")
 pub fn test_sb_push_hex_upper() {
     let result = StringBuilder::new()
@@ -245,6 +259,7 @@ pub fn test_sb_push_hex_upper() {
 // StringBuilder::push_bool tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::push_bool(bool)
 @test("StringBuilder::push_bool formats true")
 pub fn test_sb_push_bool_true() {
     let result = StringBuilder::new()
@@ -259,6 +274,7 @@ pub fn test_sb_push_bool_true() {
     }
 }
 
+// @covers std::string::core::StringBuilder::push_bool(bool)
 @test("StringBuilder::push_bool formats false")
 pub fn test_sb_push_bool_false() {
     let result = StringBuilder::new()
@@ -303,6 +319,7 @@ pub fn test_sb_complex_build() {
 // StringBuilder::len and is_empty tests
 // =============================================================================
 
+// @covers std::string::core::StringBuilder::len()
 @test("StringBuilder::len tracks content")
 pub fn test_sb_len() {
     let result = StringBuilder::new()
@@ -322,6 +339,7 @@ pub fn test_sb_len() {
     }
 }
 
+// @covers std::string::core::StringBuilder::is_empty()
 @test("StringBuilder::is_empty reflects state")
 pub fn test_sb_is_empty() {
     let result = StringBuilder::new()

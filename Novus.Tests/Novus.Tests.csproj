@@ -5,6 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPackable>false</IsPackable>
+        <VSTestTestCaseFilter Condition="'$(VSTestTestCaseFilter)' == ''">Category!=CompilerIntegration&amp;Category!=CorpusCompilation&amp;Category!=FullCompilation</VSTestTestCaseFilter>
     </PropertyGroup>
 
     <ItemGroup>

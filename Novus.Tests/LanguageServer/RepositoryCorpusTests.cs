@@ -9,6 +9,7 @@ using Xunit;
 
 namespace Novus.Tests.LanguageServer;
 
+[Trait("Category", "CorpusCompilation")]
 public class RepositoryCorpusTests
 {
     private static readonly string Root = FindRoot();

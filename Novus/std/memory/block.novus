@@ -401,7 +401,7 @@ impl<T> Box<T> {
     /// Allocate and initialize a Box with the given value
     /// Uses MEMF_PUBLIC by default
     pub fn new(consuming value: T) -> Result<Box<T>, MemoryError> {
-        return Box::new_in(value, MEMF_PUBLIC)
+        return Box::<T>::new_in(value, MEMF_PUBLIC)
     }
 
     /// Allocate with specific memory flags
@@ -425,12 +425,12 @@ impl<T> Box<T> {
 
     /// Try allocate with Result
     pub fn try_new(consuming value: T) -> Result<Box<T>, MemoryError> {
-        return Box::new(value)
+        return Box::<T>::new(value)
     }
 
     /// Try allocate with specific flags
     pub fn try_new_in(consuming value: T, flags: u32) -> Result<Box<T>, MemoryError> {
-        return Box::new_in(value, flags)
+        return Box::<T>::new_in(value, flags)
     }
 
     /// Get immutable reference

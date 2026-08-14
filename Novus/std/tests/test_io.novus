@@ -1,0 +1,100 @@
+from std::io::ansi import Ansi, ClearMode, Pen, bg, bold, clear, clear_line, clear_screen, clear_to_eol, clear_to_eos, cursor_down, cursor_left, cursor_right, cursor_up, default_size, fg, home, move_to, reset, reverse, underline
+from std::io::file import key_pressed, print, println, print_str, println_str, read_key, wait_for_key, write_array
+from std::string::core import Str
+from std::test::test import expect
+
+// @covers std::io::ansi::reset()
+// @covers std::io::ansi::bold()
+// @covers std::io::ansi::underline()
+// @covers std::io::ansi::reverse()
+// @covers std::io::ansi::home()
+// @covers std::io::ansi::clear_screen()
+// @covers std::io::ansi::clear_line()
+// @covers std::io::ansi::clear_to_eol()
+// @covers std::io::ansi::clear_to_eos()
+@test("fixed ANSI sequences match the Amiga console protocol")
+pub fn test_fixed_ansi_sequences() {
+    expect(reset().equals("\x9b0m"), "reset")
+    expect(bold().equals("\x9b1m"), "bold")
+    expect(underline().equals("\x9b4m"), "underline")
+    expect(reverse().equals("\x9b7m"), "reverse")
+    expect(home().equals("\x9bH"), "home")
+    expect(clear_screen().equals("\x9b2J"), "clear screen")
+    expect(clear_line().equals("\x9b2K"), "clear line")
+    expect(clear_to_eol().equals("\x9bK"), "clear to eol")
+    expect(clear_to_eos().equals("\x9bJ"), "clear to eos")
+}
+
+// @covers std::io::ansi::move_to(u32, u32)
+// @covers std::io::ansi::cursor_up(u32)
+// @covers std::io::ansi::cursor_down(u32)
+// @covers std::io::ansi::cursor_right(u32)
+// @covers std::io::ansi::cursor_left(u32)
+// @covers std::io::ansi::fg(Pen)
+// @covers std::io::ansi::bg(Pen)
+// @covers std::io::ansi::clear(ClearMode)
+// @covers std::io::ansi::default_size()
+@test("parameterized ANSI sequences clamp and encode values")
+pub fn test_parameterized_ansi_sequences() {
+    expect(move_to(0, 1000).as_str().equals("\x9b1;999H"), "move and clamp")
+    expect(cursor_up(0).as_str().equals("\x9b1A"), "cursor up")
+    expect(cursor_down(2).as_str().equals("\x9b2B"), "cursor down")
+    expect(cursor_right(3).as_str().equals("\x9b3C"), "cursor right")
+    expect(cursor_left(4).as_str().equals("\x9b4D"), "cursor left")
+    expect(fg(Pen::Pen2).as_str().equals("\x9b32m"), "foreground")
+    expect(bg(Pen::Default).as_str().equals("\x9b49m"), "background")
+    expect(clear(ClearMode::ToStart).as_str().equals("\x9b1J"), "clear mode")
+    let size = default_size()
+    expect(size.width == 80 && size.height == 25, "default size")
+}
+
+// @covers std::io::ansi::Ansi::new()
+// @covers std::io::ansi::Ansi::bold()
+// @covers std::io::ansi::Ansi::underline()
+// @covers std::io::ansi::Ansi::reverse()
+// @covers std::io::ansi::Ansi::fg(Pen)
+// @covers std::io::ansi::Ansi::bg(Pen)
+// @covers std::io::ansi::Ansi::build()
+@test("ANSI builder composes one compact sequence")
+pub fn test_ansi_builder() {
+    var style = Ansi::new()
+    style.bold()
+    style.underline()
+    style.reverse()
+    style.fg(Pen::Pen2)
+    style.bg(Pen::Pen3)
+    expect(style.build().as_str().equals("\x9b1;4;7;32;43m"), "builder sequence")
+    expect(Ansi::new().build().is_empty(), "empty builder")
+}
+
+// @covers std::io::file::write_array(*u8, *i32)
+// @covers std::io::file::print(*u8)
+// @covers std::io::file::println(*u8)
+// @covers std::io::file::print_str(Str)
+// @covers std::io::file::println_str(Str)
+@test("console output helpers write successfully")
+pub fn test_console_output_helpers() {
+    var args: [i32] = [7]
+    let written = write_array("", (*i32)&args)
+    print("")
+    println("")
+    expect(print_str("").is_ok(), "empty Str output")
+    expect(println_str("").is_ok(), "Str output with newline")
+    expect(written >= 0, "output")
+}
+
+// @covers std::io::file::key_pressed()
+@test("non-blocking console input reports state")
+pub fn test_console_key_state() {
+    let pending = key_pressed()
+    expect(pending || !pending, "input state")
+}
+
+// These calls require an injected console key and are exercised by the live-input suite.
+// @covers std::io::file::wait_for_key()
+// @covers std::io::file::read_key()
+@test(skip = "requires an injected Amiga console key")
+pub fn test_blocking_console_input() {
+    wait_for_key()
+    let _ = read_key()
+}

@@ -13,6 +13,7 @@ namespace Novus.Tests;
 /// Regression test for mem.novus Result variant construction in generic functions.
 /// This tests the actual failing code patterns from mem.novus lines 228, 235, 246, 248, 370, 371.
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class MemNovusRegressionTest
 {
     private static string GetProjectRoot()

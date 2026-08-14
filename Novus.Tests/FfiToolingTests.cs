@@ -182,6 +182,39 @@ public class FfiToolingTests
     }
 
     [Fact]
+    public void FfiRuntime_LazyLibraryIsClosedButNotOpenedAtStartup()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"novus-ffi-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "bsdsocket.novus");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(path, """
+                // Generated binding
+                // Library: bsdsocket.library
+                // Base: _SocketBase
+                // Lifecycle: lazy
+                """);
+
+            var binding = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(path));
+            var assembly = FfiRuntimeGenerator.Generate([binding]);
+
+            Assert.Equal(FfiModuleKind.LazyLibrary, binding.Kind);
+            Assert.DoesNotContain("_SocketBase:\tds.l\t1", assembly);
+            Assert.DoesNotContain("__novus_bsdsocket_name:", assembly);
+            Assert.DoesNotContain("OpenLibrary", assembly);
+            Assert.Contains("move.l\t_SocketBase,d0", assembly);
+            Assert.Contains("jsr\t-414(a6)\t; CloseLibrary", assembly);
+            Assert.Contains("clr.l\t_SocketBase", assembly);
+            Assert.Contains("___novus_ffi_cleanup_lazy:", assembly);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SfdGenerator_PreservesCallbacksAndDoubleRegisterPairs()
     {
         var root = Path.Combine(Path.GetTempPath(), $"novus-sfd-{Guid.NewGuid():N}");
@@ -240,6 +273,7 @@ public class FfiToolingTests
                 ==bias 30
                 ==include <test.h>
                 DOUBLE AddDouble(DOUBLE left, DOUBLE right)(d0-d1,d2-d3)
+                int InitWide(uint64_t opts, const void * settings)(d0-d1,a0)
                 struct Missing * FindMissing(void)()
                 struct PointerData * CreateContext(struct PointerData **glistptr)(a0)
                 ==version 39
@@ -252,6 +286,9 @@ public class FfiToolingTests
                 ==alias
                 ULONG PrintArgsAlias(ULONG object, APTR args)(d2,d3)
                 ULONG SetHook(ULONG (*hook)(APTR object, APTR message))(a0)
+                ==reserve 2
+                int (*)(int, APTR) GetHook(APTR object)(a0)
+                ULONG AfterHook(ULONG object)(d0)
                 """);
             File.WriteAllText(Path.Combine(sfdDirectory, "cia_lib.sfd"), """
                 ==bias 6
@@ -282,10 +319,17 @@ public class FfiToolingTests
             Assert.Contains("extern pub fn OpenTags(object: u32, first: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgs(object: u32, ...args) -> u32", binding);
             Assert.Contains("extern pub fn PrintArgsAlias(object: u32, args: *u8) -> u32", binding);
+            Assert.Contains("extern pub fn GetHook(object: *u8) -> fn(i32, *u8) -> i32", binding);
+            Assert.Contains("_GetHook:", stub);
+            Assert.Contains("\tjsr\t-84(a6)", stub);
+            Assert.Contains("_AfterHook:", stub);
+            Assert.Contains("\tjsr\t-90(a6)", stub);
             Assert.Equal("i8", SfdParser.MapAmigaTypeToNovus("char"));
             Assert.Equal("i32", SfdParser.MapAmigaTypeToNovus("BSTR"));
             Assert.Equal("i64", SfdParser.MapAmigaTypeToNovus("QUAD"));
             Assert.Equal("u64", SfdParser.MapAmigaTypeToNovus("UQUAD"));
+            Assert.Equal("u64", SfdParser.MapAmigaTypeToNovus("uint64_t"));
+            Assert.Equal("u32", SfdParser.MapAmigaTypeToNovus("size_t"));
             Assert.Equal("u16", SfdParser.MapAmigaTypeToNovus("USHORT"));
             Assert.Equal("u32", SfdParser.MapAmigaTypeToNovus("CPTR"));
             Assert.Equal("u32", SfdParser.MapAmigaTypeToNovus("RESOURCEID"));
@@ -332,6 +376,7 @@ public class FfiToolingTests
             Assert.Contains("movem.l\td2/d3/a6,-(sp)", stub);
             Assert.Contains("movem.l\t16(sp),d0-d1", stub);
             Assert.Contains("movem.l\t24(sp),d2-d3", stub);
+            Assert.Contains("movem.l\t8(sp),d0-d1\n\tmovea.l\t16(sp),a0", stub);
             Assert.Contains("jsr\t-30(a6)\n\tmovem.l\t(sp)+,d2/d3/a6", stub);
             Assert.Contains("jsr\t-36(a6)", stub);
             Assert.Contains("lea\t12(sp),a1", stub);

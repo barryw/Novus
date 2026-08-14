@@ -1,0 +1,111 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import SocketLibrary
+from std::net::tcp import TcpStream
+from std::net::tls import TlsConfig, is_tls_available
+from std::test::test import expect
+
+// @covers std::net::tls::TlsConfig::client()
+// @covers std::net::tls::TlsConfig::client_insecure()
+// @covers std::net::tls::TlsConfig::connect(TcpStream, *u8)
+// @covers std::net::tls::TlsStream::as_raw_fd()
+// @covers std::net::tls::TlsStream::peek(*u8, i32)
+// @covers std::net::tls::TlsStream::pending()
+// @covers std::net::tls::TlsStream::read(*u8, i32)
+// @covers std::net::tls::TlsStream::shutdown()
+// @covers std::net::tls::TlsStream::version()
+// @covers std::net::tls::TlsStream::write(*u8, i32)
+// @covers std::net::tls::TlsStream::write_all(*u8, i32)
+// @covers std::net::tls::is_tls_available()
+@test("AmiSSL client round trip")
+pub fn test_amissl_client_round_trip() {
+    let _sockets = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "bsdsocket.library opens")
+            return
+        }
+    }
+    expect(is_tls_available(), "AmiSSL is available")
+    match TlsConfig::client() {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "verified client context initializes")
+            return
+        }
+    }
+    let tcp = match TcpStream::connect(SocketAddrV4::new(Ipv4Addr::localhost(), 8444)) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "Novus TLS server accepts TCP")
+            return
+        }
+    }
+    let config = match TlsConfig::client_insecure() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "AmiSSL client context initializes")
+            return
+        }
+    }
+    let stream = match config.connect(tcp, "localhost") {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "client TLS handshake succeeds")
+            return
+        }
+    }
+    expect(stream.as_raw_fd() >= 0, "TLS stream exposes its socket")
+    expect(stream.version() as u32 != 0, "TLS version is available")
+
+    match stream.write("he", 2) {
+        Result::Ok(count) => expect(count == 2, "TLS write sends first fragment"),
+        Result::Err(_) => {
+            expect(false, "TLS write succeeds")
+            return
+        }
+    }
+    match stream.write_all("llo\n", 4) {
+        Result::Ok(_) => {},
+        Result::Err(_) => {
+            expect(false, "TLS write_all succeeds")
+            return
+        }
+    }
+
+    var peeked: [u8] = [0; 8]
+    match stream.peek((*u8)&peeked[0], 8) {
+        Result::Ok(count) => {
+            if count != 6 {
+                expect(false, "TLS peek sees complete reply")
+                return
+            }
+        },
+        Result::Err(_) => {
+            expect(false, "TLS peek succeeds")
+            return
+        }
+    }
+    expect(stream.pending() >= 6, "peeked TLS bytes remain pending")
+
+    var reply: [u8] = [0; 8]
+    match stream.read((*u8)&reply[0], 8) {
+        Result::Ok(count) => {
+            if count != 6 {
+                expect(false, "TLS read receives complete reply")
+                return
+            }
+        },
+        Result::Err(_) => {
+            expect(false, "TLS read succeeds")
+            return
+        }
+    }
+    expect(reply[0] == 'w' && reply[1] == 'o' && reply[2] == 'r' &&
+           reply[3] == 'l' && reply[4] == 'd' && reply[5] == '\n',
+           "TLS read receives expected bytes")
+    match stream.shutdown() {
+        Result::Ok(_) => expect(true, "TLS shutdown succeeds"),
+        Result::Err(_) => expect(false, "TLS shutdown succeeds")
+    }
+}

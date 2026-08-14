@@ -4,6 +4,7 @@
 from std::string::core import PathString, String, Str, StringError
 from std::test::test import expect, expect_true, expect_false, expect_eq
 
+// @covers std::string::core::PathString::push_str(Str)
 @test("PathString::push_str appends and preserves total length")
 pub fn test_path_string_push_str_appends() {
     var path = PathString::new()
@@ -17,6 +18,7 @@ pub fn test_path_string_push_str_appends() {
 // String::new tests
 // =============================================================================
 
+// @covers std::string::core::String::new()
 @test("String::new creates empty string")
 pub fn test_string_new() {
     var s = String::new()
@@ -29,6 +31,7 @@ pub fn test_string_new() {
 // String::with_capacity tests
 // =============================================================================
 
+// @covers std::string::core::String::with_capacity(usize)
 @test("String::with_capacity allocates requested capacity")
 pub fn test_string_with_capacity() {
     let result = String::with_capacity(100)
@@ -45,6 +48,7 @@ pub fn test_string_with_capacity() {
     }
 }
 
+// @covers std::string::core::String::with_capacity(usize)
 @test("String::with_capacity(0) creates empty string")
 pub fn test_string_with_capacity_zero() {
     let result = String::with_capacity(0)
@@ -62,6 +66,7 @@ pub fn test_string_with_capacity_zero() {
 // String::new_from_str tests
 // =============================================================================
 
+// @covers std::string::core::Str::from_bytes(Slice<u8>)
 @test("Str::from_bytes borrows a complete byte slice")
 pub fn test_str_from_bytes() {
     let bytes: [u8] = [72, 105]
@@ -69,6 +74,7 @@ pub fn test_str_from_bytes() {
     expect_true(text.equals("Hi"), "byte slice becomes owner-tied Str")
 }
 
+// @covers std::string::core::String::new_from_str(Str)
 @test("String::new_from_str copies string content")
 pub fn test_string_new_from_str() {
     let original: Str = "Hello, World!"
@@ -87,6 +93,7 @@ pub fn test_string_new_from_str() {
     }
 }
 
+// @covers std::string::core::String::new_from_str(Str)
 @test("String::new_from_str with empty string")
 pub fn test_string_new_from_str_empty() {
     let original: Str = ""
@@ -106,6 +113,7 @@ pub fn test_string_new_from_str_empty() {
 // String::push_str tests
 // =============================================================================
 
+// @covers std::string::core::String::push_str(Str)
 @test("String::push_str appends content")
 pub fn test_string_push_str() {
     var s = String::new()
@@ -131,6 +139,7 @@ pub fn test_string_push_str() {
     s.drop()
 }
 
+// @covers std::string::core::String::push_str(Str)
 @test("String::push_str with empty string does nothing")
 pub fn test_string_push_str_empty() {
     var s = String::new()
@@ -150,6 +159,7 @@ pub fn test_string_push_str_empty() {
 // String::push_byte tests
 // =============================================================================
 
+// @covers std::string::core::String::push_byte(u8)
 @test("String::push_byte appends single byte")
 pub fn test_string_push_byte() {
     var s = String::new()
@@ -169,6 +179,7 @@ pub fn test_string_push_byte() {
 // String::clear tests
 // =============================================================================
 
+// @covers std::string::core::String::clear()
 @test("String::clear empties the string")
 pub fn test_string_clear() {
     var s = String::new()
@@ -181,6 +192,7 @@ pub fn test_string_clear() {
     s.drop()
 }
 
+// @covers std::string::core::String::clear()
 @test("String::clear on empty string is no-op")
 pub fn test_string_clear_empty() {
     var s = String::new()
@@ -194,6 +206,7 @@ pub fn test_string_clear_empty() {
 // String::reserve tests
 // =============================================================================
 
+// @covers std::string::core::String::reserve(usize)
 @test("String::reserve increases capacity")
 pub fn test_string_reserve() {
     var s = String::new()
@@ -212,6 +225,7 @@ pub fn test_string_reserve() {
 // String::as_str tests
 // =============================================================================
 
+// @covers std::string::core::String::as_str()
 @test("String::as_str returns correct slice")
 pub fn test_string_as_str() {
     var s = String::new()
@@ -227,6 +241,7 @@ pub fn test_string_as_str() {
     s.drop()
 }
 
+// @covers std::string::core::String::as_str()
 @test("String::as_str on empty string")
 pub fn test_string_as_str_empty() {
     var s = String::new()
@@ -261,6 +276,7 @@ pub fn test_string_auto_growth() {
 // String::len and String::is_empty tests
 // =============================================================================
 
+// @covers std::string::core::String::len()
 @test("String::len tracks content length")
 pub fn test_string_len_tracking() {
     var s = String::new()
@@ -277,6 +293,7 @@ pub fn test_string_len_tracking() {
     s.drop()
 }
 
+// @covers std::string::core::String::is_empty()
 @test("String::is_empty reflects content state")
 pub fn test_string_is_empty() {
     var s = String::new()

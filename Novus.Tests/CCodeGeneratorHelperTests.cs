@@ -584,6 +584,39 @@ public class CCodeGeneratorHelperTests
     }
 
     [Fact]
+    public void UnitType_UsesByteStorageAndVoidReturn()
+    {
+        var gen = CreateGenerator();
+        var unit = new IrTupleType([]);
+
+        Assert.Equal(1, unit.SizeInBytes);
+        Assert.Equal("uint8_t", gen.GetCType(unit));
+        Assert.Equal("void", gen.GetCReturnType(unit));
+        Assert.Equal("0", gen.EmitTupleLiteral(new IrTupleLiteral(unit, [])));
+    }
+
+    [Fact]
+    public void EmitBorrowValue_ScalarLiteralUsesAddressableTemporary()
+    {
+        var gen = CreateGenerator();
+        var borrowed = new IrBorrowValue(
+            new IrConstant(42, IrIntType.I32), new IrReferenceType(IrIntType.I32), false);
+
+        Assert.StartsWith("&_borrow_tmp_", gen.EmitBorrowValue(borrowed));
+    }
+
+    [Fact]
+    public void EmitBorrowValue_EnumLiteralUsesAddressableTemporary()
+    {
+        var gen = CreateGenerator();
+        var type = new IrEnumType("Status", [new IrEnumVariant("Ready", 0)]);
+        var borrowed = new IrBorrowValue(
+            new IrEnumValue(type, "Ready", 0), new IrReferenceType(type), false);
+
+        Assert.StartsWith("&_borrow_tmp_", gen.EmitBorrowValue(borrowed));
+    }
+
+    [Fact]
     public void GetTupleTypeName_TwoInts_ReturnsTupleTypeName()
     {
         var gen = CreateGenerator();

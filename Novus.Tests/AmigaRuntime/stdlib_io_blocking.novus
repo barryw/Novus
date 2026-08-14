@@ -1,0 +1,10 @@
+from std::io::file import read_key, wait_for_key
+from std::test::test import expect_eq
+
+// @covers std::io::file::wait_for_key()
+// @covers std::io::file::read_key()
+@test("blocking console input reads redirected bytes")
+pub fn test_blocking_console_input() {
+    wait_for_key()
+    expect_eq(read_key(), $62, "second redirected byte is b")
+}

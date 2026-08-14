@@ -174,6 +174,15 @@ pub fn foundation_derive() {
     expect(a.hash() != c.hash(), "different values hash differently")
 }
 
+// @covers std::collections::arrayvec::ArrayVec::new()
+// @covers std::collections::arrayvec::ArrayVec::len()
+// @covers std::collections::arrayvec::ArrayVec::capacity()
+// @covers std::collections::arrayvec::ArrayVec::is_empty()
+// @covers std::collections::arrayvec::ArrayVec::is_full()
+// @covers std::collections::arrayvec::ArrayVec::push(T)
+// @covers std::collections::arrayvec::ArrayVec::get(usize)
+// @covers std::collections::arrayvec::ArrayVec::get_mut(usize)
+// @covers std::collections::arrayvec::ArrayVec::remove(usize)
 @test("inline bounded vectors borrow, mutate, bound, and drop")
 pub fn foundation_arrayvec() {
     ARRAYVEC_DROPS = 0
@@ -184,6 +193,7 @@ pub fn foundation_arrayvec() {
     expect(items.capacity() == 2 && items.is_empty(), "inline capacity")
     expect(items.push(InlineItem { value: 10 }).is_ok(), "first push")
     expect(items.push(InlineItem { value: 20 }).is_ok(), "second push")
+    expect(items.len() == 2 && items.is_full(), "full inline vector")
     match items.push(InlineItem { value: 30 }) {
         Result::Err(ArrayVecError::Full) => {},
         Result::Ok(_) => expect(false, "capacity bound"),
@@ -203,6 +213,11 @@ pub fn foundation_arrayvec() {
     var total: u32 = 0
     for item in items { total += item.value }
     expect(total == 31, "inline iteration")
+    match items.remove(0) {
+        Option::Some(item) => expect(item.value == 11, "ordered removal"),
+        Option::None => expect(false, "remove failed"),
+    }
+    expect(items.len() == 1 && !items.is_full(), "removal updates length")
 
     var nested = InlineItems { items: ArrayVec::<InlineItem, 2>::new() }
     expect(nested.items.push(InlineItem { value: 12 }).is_ok(), "nested first push")

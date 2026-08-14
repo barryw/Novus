@@ -4,7 +4,7 @@
 // High-level benchmarking utilities for measuring code performance.
 // Uses timer.device for microsecond-precision timing.
 
-from amiga::timer import Timer, Duration, TimerError
+from amiga::sys::timer import Duration, TimerError, TimerHandle as Timer
 from std::io::file import write
 
 // ============================================================================
@@ -127,20 +127,12 @@ impl BenchRunner {
 
     /// Get current time in microseconds
     fn now_us(&var self) -> u32 {
-        match self.timer.time() {
+        match self.timer.get_time() {
             Result::Ok(d) => {
                 let micros = d.as_micros()
                 return micros
             },
-            Result::Err(e) => {
-                // Debug: print error
-                match e {
-                    TimerError::OpenFailed => write("[timer:OpenFailed]"),
-                    TimerError::NoMemory => write("[timer:NoMemory]"),
-                    TimerError::CommandFailed(code) => write("[timer:CmdFail=%ld]", code),
-                }
-                return 0
-            },
+            Result::Err(_) => return 0,
         }
     }
 

@@ -1,0 +1,286 @@
+from amiga::raw::exec import FreeMem
+from std::core import Option, Result
+from std::string::core import BStr, FixedCString, FixedString, GadgetString, NameString, ParseError, PathString, Str, String, StringBuilder, StringError, str_join
+from std::string::format import Debug, Display, Formatter, StackFormatter
+from std::test::test import expect
+
+struct Shown { marker: u8 }
+
+impl Display for Shown {
+    fn fmt(&self, f: &var Formatter) -> bool { return f.write_str("shown") }
+}
+
+struct Inspected { marker: u8 }
+
+impl Debug for Inspected {
+    fn fmt(&self, f: &var Formatter) -> bool { return f.write_str("debug") }
+}
+
+// @covers std::string::core::FixedString::new()
+// @covers std::string::core::FixedString::new_from_str(Str)
+// @covers std::string::core::FixedString::len()
+// @covers std::string::core::FixedString::is_empty()
+// @covers std::string::core::FixedString::capacity()
+// @covers std::string::core::FixedString::as_str()
+// @covers std::string::core::FixedString::push_str(Str)
+// @covers std::string::core::FixedString::push_byte(u8)
+// @covers std::string::core::FixedString::push_u32(u32)
+// @covers std::string::core::FixedString::clear()
+// @covers std::string::core::FixedCString::new()
+// @covers std::string::core::FixedCString::new_from_str(Str)
+// @covers std::string::core::FixedCString::len()
+// @covers std::string::core::FixedCString::is_empty()
+// @covers std::string::core::FixedCString::capacity()
+// @covers std::string::core::FixedCString::as_str()
+// @covers std::string::core::FixedCString::as_cstr()
+// @covers std::string::core::FixedCString::as_cstr_view()
+// @covers std::string::core::FixedCString::push_str(Str)
+// @covers std::string::core::FixedCString::push_byte(u8)
+// @covers std::string::core::FixedCString::clear()
+// @covers std::string::core::CStr::as_ptr()
+@test("fixed strings enforce capacity without allocation")
+pub fn test_fixed_strings() {
+    var text = FixedString::<8>::new()
+    expect(text.is_empty() && text.capacity() == 8, "empty fixed string")
+    expect(text.push_str("A").is_ok(), "push text")
+    expect(text.push_byte((u8)'B').is_ok(), "push byte")
+    expect(text.push_u32(42).is_ok(), "push number")
+    expect(text.as_str().equals("AB42") && text.len() == 4, "fixed content")
+    text.clear()
+    expect(text.is_empty(), "fixed clear")
+    match FixedString::<3>::new_from_str("toolong") {
+        Result::Err(StringError::TooLong(_)) => {},
+        _ => expect(false, "fixed overflow rejected"),
+    }
+
+    var ctext = FixedCString::<4>::new()
+    expect(ctext.is_empty() && ctext.capacity() == 4, "empty fixed c string")
+    expect(ctext.push_str("abc").is_ok() && ctext.push_byte((u8)'d').is_ok(), "full c string")
+    expect(ctext.len() == 4 && ctext.as_str().equals("abcd"), "c string content")
+    unsafe { expect(ctext.as_cstr()[4] == 0, "dedicated terminator") }
+    {
+        let view = ctext.as_cstr_view()
+        expect(view.as_ptr() == ctext.as_cstr(), "c string view")
+    }
+    ctext.clear()
+    unsafe { expect(ctext.as_cstr()[0] == 0, "clear terminates") }
+    match FixedCString::<4>::new_from_str("ok") {
+        Result::Ok(value) => expect(value.as_str().equals("ok"), "new from string"),
+        Result::Err(_) => expect(false, "fixed c construction failed"),
+    }
+}
+
+// @covers std::string::core::NameString::new()
+// @covers std::string::core::NameString::len()
+// @covers std::string::core::NameString::is_empty()
+// @covers std::string::core::NameString::capacity()
+// @covers std::string::core::NameString::as_str()
+// @covers std::string::core::NameString::as_mut_ptr()
+// @covers std::string::core::NameString::push_str(Str)
+// @covers std::string::core::NameString::push_byte(u8)
+// @covers std::string::core::NameString::clear()
+// @covers std::string::core::GadgetString::new()
+// @covers std::string::core::GadgetString::len()
+// @covers std::string::core::GadgetString::is_empty()
+// @covers std::string::core::GadgetString::capacity()
+// @covers std::string::core::GadgetString::as_str()
+// @covers std::string::core::GadgetString::as_mut_ptr()
+// @covers std::string::core::GadgetString::push_str(Str)
+// @covers std::string::core::GadgetString::push_byte(u8)
+// @covers std::string::core::GadgetString::clear()
+// @covers std::string::core::PathString::new()
+// @covers std::string::core::PathString::len()
+// @covers std::string::core::PathString::is_empty()
+// @covers std::string::core::PathString::capacity()
+// @covers std::string::core::PathString::as_str()
+// @covers std::string::core::PathString::as_mut_ptr()
+// @covers std::string::core::PathString::push_byte(u8)
+// @covers std::string::core::PathString::clear()
+@test("named fixed strings expose bounded mutable storage")
+pub fn test_named_strings() {
+    var name = NameString::new()
+    expect(name.is_empty() && name.capacity() == 32, "name shape")
+    let _ = name.push_str("No")
+    let _ = name.push_byte((u8)'v')
+    let name_ptr = name.as_mut_ptr()
+    unsafe { name_ptr[2] = (u8)'x' }
+    expect(name.len() == 3 && name.as_str().equals("Nox"), "name mutation")
+    name.clear()
+
+    var gadget = GadgetString::new()
+    expect(gadget.is_empty() && gadget.capacity() == 128, "gadget shape")
+    let _ = gadget.push_str("O")
+    let _ = gadget.push_byte((u8)'K')
+    let gadget_ptr = gadget.as_mut_ptr()
+    unsafe { gadget_ptr[1] = (u8)'!' }
+    expect(gadget.len() == 2 && gadget.as_str().equals("O!"), "gadget mutation")
+    gadget.clear()
+
+    var path = PathString::new()
+    expect(path.is_empty() && path.capacity() == 256, "path shape")
+    let _ = path.push_str("SYS:")
+    let _ = path.push_byte((u8)'T')
+    let path_ptr = path.as_mut_ptr()
+    unsafe { path_ptr[4] = (u8)'C' }
+    expect(path.len() == 5 && path.as_str().equals("SYS:C"), "path mutation")
+    path.clear()
+}
+
+// @covers std::string::core::Str::new(&u8, usize)
+// @covers std::string::core::Str::borrow_raw(*u8, usize)
+// @covers std::string::core::Str::from_cstr(*u8)
+// @covers std::string::core::Str::as_bytes()
+// @covers std::string::core::Str::as_ptr()
+// @covers std::string::core::Str::as_cstr()
+// @covers std::string::core::Str::eq_ignore_case(Str)
+// @covers std::string::core::Str::starts_with_ignore_case(Str)
+// @covers std::string::core::Str::to_string()
+// @covers std::string::core::Str::to_uppercase()
+// @covers std::string::core::Str::to_lowercase()
+// @covers std::string::core::Str::replace(Str, Str)
+// @covers std::string::core::str_join(*Str, usize, Str)
+// @covers std::string::core::StringError::message()
+// @covers std::string::core::ParseError::message()
+@test("Str conversions preserve bytes and case semantics")
+pub fn test_str_remaining() {
+    let literal: Str = "Hello"
+    let explicit = unsafe { Str::new(&literal.as_ptr()[0], 5) }
+    let raw = unsafe { Str::borrow_raw(literal.as_ptr(), 5) }
+    expect(explicit.equals(raw), "raw views")
+    expect(raw.as_bytes().len() == 5 && raw.as_cstr() == literal.as_ptr(), "raw access")
+    match unsafe { Str::from_cstr(literal.as_ptr()) } {
+        Option::Some(value) => expect(value.equals("Hello"), "c string import"),
+        Option::None => expect(false, "c string rejected"),
+    }
+    expect(literal.eq_ignore_case("hELLo"), "case-insensitive equality")
+    expect(literal.starts_with_ignore_case("he"), "case-insensitive prefix")
+    match literal.to_string() {
+        Result::Ok(value) => expect(value.as_str().equals(literal), "owned conversion"),
+        Result::Err(_) => expect(false, "owned conversion failed"),
+    }
+    match literal.to_uppercase() {
+        Result::Ok(value) => expect(value.as_str().equals("HELLO"), "uppercase"),
+        Result::Err(_) => expect(false, "uppercase failed"),
+    }
+    match literal.to_lowercase() {
+        Result::Ok(value) => expect(value.as_str().equals("hello"), "lowercase"),
+        Result::Err(_) => expect(false, "lowercase failed"),
+    }
+    match literal.replace("ll", "yy") {
+        Result::Ok(value) => expect(value.as_str().equals("Heyyo"), "replace"),
+        Result::Err(_) => expect(false, "replace failed"),
+    }
+    let parts: [Str] = ["one", "two", "three"]
+    match str_join((*Str)&parts[0], 3, ",") {
+        Result::Ok(value) => expect(value.as_str().equals("one,two,three"), "join"),
+        Result::Err(_) => expect(false, "join failed"),
+    }
+    let string_message = StringError::AllocationFailed.message()
+    let parse_message = ParseError::Empty.message()
+    unsafe { expect(string_message[0] == (u8)'S' && parse_message[0] == (u8)'E', "error messages") }
+}
+
+// @covers std::string::core::BStr::new_from_str(Str)
+// @covers std::string::core::BStr::as_bptr()
+// @covers std::string::core::BStr::as_ptr()
+// @covers std::string::core::BStr::len()
+// @covers std::string::core::BStr::as_str()
+// @covers std::string::core::BStr::into_raw()
+@test("BStr owns an AmigaDOS length-prefixed string")
+pub fn test_bstr() {
+    match BStr::new_from_str("hello") {
+        Result::Ok(value) => {
+            expect(value.as_bptr() != 0 && value.len() == 5, "bstr shape")
+            expect(value.as_str().equals("hello"), "bstr content")
+            let ptr = value.as_ptr()
+            let raw = value.into_raw()
+            expect(raw != 0, "raw bptr")
+            unsafe { FreeMem(ptr, 6) }
+        },
+        Result::Err(_) => expect(false, "bstr allocation failed"),
+    }
+}
+
+// @covers std::string::core::String::capacity()
+// @covers std::string::core::String::as_ptr()
+// @covers std::string::core::String::as_mut_ptr()
+// @covers std::string::core::String::drop()
+// @covers std::string::core::StringBuilder::push_char(u8)
+// @covers std::string::core::StringBuilder::as_str()
+// @covers std::string::core::StringBuilder::clear()
+// @covers std::string::core::StringBuilder::build()
+// @covers std::string::core::StringBuilder::drop()
+@test("owned string escape hatches retain explicit lifetimes")
+pub fn test_owned_string_remaining() {
+    match String::with_capacity(8) {
+        Result::Ok(var value) => {
+            let _ = value.push_str("abc")
+            expect(value.capacity() >= 8, "string capacity")
+            expect(value.as_ptr() != null, "string pointer")
+            let ptr = value.as_mut_ptr()
+            unsafe { ptr[1] = (u8)'x' }
+            expect(value.as_str().equals("axc"), "mutable string pointer")
+            value.drop()
+            expect(value.is_empty(), "manual drop")
+        },
+        Result::Err(_) => expect(false, "string allocation failed"),
+    }
+    match StringBuilder::new() {
+        Result::Ok(var builder) => {
+            let _ = builder.push_char((u8)'A')
+            expect(builder.as_str().equals("A"), "builder char")
+            builder.clear()
+            expect(builder.as_str().is_empty(), "builder clear")
+            let _ = builder.push_str("done")
+            let built = builder.build()
+            expect(built.as_str().equals("done"), "builder build")
+        },
+        Result::Err(_) => expect(false, "builder allocation failed"),
+    }
+    match StringBuilder::new() {
+        Result::Ok(var builder) => {
+            builder.drop()
+            expect(builder.is_empty(), "builder manual drop")
+        },
+        Result::Err(_) => expect(false, "builder allocation failed"),
+    }
+}
+
+// @covers std::string::format::StackFormatter::new()
+// @covers std::string::format::StackFormatter::write_str(Str)
+// @covers std::string::format::StackFormatter::write_char(u8)
+// @covers std::string::format::StackFormatter::as_str()
+// @covers std::string::format::Formatter::new()
+// @covers std::string::format::Formatter::with_capacity(usize)
+// @covers std::string::format::Formatter::write_str(Str)
+// @covers std::string::format::Formatter::write_char(u8)
+// @covers std::string::format::Formatter::as_str()
+// @covers std::string::format::Formatter::finish()
+// @covers std::string::format::Display::fmt(&var Formatter)
+// @covers std::string::format::Debug::fmt(&var Formatter)
+@test("formatters support stack and owned output")
+pub fn test_formatters() {
+    var stack = StackFormatter::new()
+    expect(stack.write_str("Hi") && stack.write_char((u8)'!'), "stack writes")
+    expect(stack.as_str().equals("Hi!"), "stack output")
+
+    match Formatter::new() {
+        Result::Ok(var formatter) => {
+            expect(formatter.write_str("A") && formatter.write_char((u8)'B'), "formatter writes")
+            expect(formatter.as_str().equals("AB"), "formatter view")
+            let output = formatter.finish()
+            expect(output.as_str().equals("AB"), "formatter finish")
+        },
+        Result::Err(_) => expect(false, "formatter allocation failed"),
+    }
+    match Formatter::with_capacity(16) {
+        Result::Ok(var formatter) => {
+            let shown = Shown { marker: 0 }
+            expect(shown.fmt(&var formatter), "display format")
+            let inspected = Inspected { marker: 0 }
+            expect(inspected.fmt(&var formatter), "debug format")
+            expect(formatter.as_str().equals("showndebug"), "trait output")
+        },
+        Result::Err(_) => expect(false, "formatter capacity failed"),
+    }
+}

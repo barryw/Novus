@@ -11,6 +11,8 @@
 //
 // For high-level TLS, use std::net::tls instead.
 
+from amiga::raw::structs import TagItem
+
 // ============================================================================
 // Library Bases
 // ============================================================================
@@ -35,11 +37,15 @@ extern fn OpenAmiSSL() -> *u8
 
 /// Open AmiSSL with tags for version control
 @library("amisslmaster.library")
-extern fn OpenAmiSSLTags(...tags) -> *u8
+extern fn OpenAmiSSLTagList(api_version: u32, tags: *TagItem) -> i32
+
+/// Varargs form of OpenAmiSSLTagList
+@library("amisslmaster.library")
+extern fn OpenAmiSSLTags(api_version: u32, first_tag: u32, ...tags) -> i32
 
 /// Close AmiSSL library
 @library("amisslmaster.library")
-extern fn CloseAmiSSL() -> i32
+extern fn CloseAmiSSL()
 
 // ============================================================================
 // SSL Library Initialization (OpenSSL 3.x API)
@@ -124,20 +130,30 @@ extern fn SSL_CTX_set_cipher_list(ctx: *SSL_CTX, str: *u8) -> i32
 @library("amissl.library")
 extern fn SSL_CTX_set_ciphersuites(ctx: *SSL_CTX, str: *u8) -> i32
 
+/// Invoke an SSL_CTX control operation. Most OpenSSL SSL_CTX helpers are C macros over this vector.
+@library("amissl.library")
+extern fn SSL_CTX_ctrl(ctx: *SSL_CTX, command: i32, value: i32, data: *u8) -> i32
+
 /// Set minimum protocol version
 /// Returns: 1 on success, 0 on failure
-@library("amissl.library")
-extern fn SSL_CTX_set_min_proto_version(ctx: *SSL_CTX, version: i32) -> i32
+@unsafe
+pub fn SSL_CTX_set_min_proto_version(ctx: *SSL_CTX, version: i32) -> i32 {
+    return unsafe { SSL_CTX_ctrl(ctx, SSL_CTRL_SET_MIN_PROTO_VERSION, version, 0 as *u8) }
+}
 
 /// Set maximum protocol version
 /// Returns: 1 on success, 0 on failure
-@library("amissl.library")
-extern fn SSL_CTX_set_max_proto_version(ctx: *SSL_CTX, version: i32) -> i32
+@unsafe
+pub fn SSL_CTX_set_max_proto_version(ctx: *SSL_CTX, version: i32) -> i32 {
+    return unsafe { SSL_CTX_ctrl(ctx, SSL_CTRL_SET_MAX_PROTO_VERSION, version, 0 as *u8) }
+}
 
 /// Set session cache mode
 /// Returns: Previous mode
-@library("amissl.library")
-extern fn SSL_CTX_set_session_cache_mode(ctx: *SSL_CTX, mode: i32) -> i32
+@unsafe
+pub fn SSL_CTX_set_session_cache_mode(ctx: *SSL_CTX, mode: i32) -> i32 {
+    return unsafe { SSL_CTX_ctrl(ctx, SSL_CTRL_SET_SESS_CACHE_MODE, mode, 0 as *u8) }
+}
 
 /// Set options
 /// Returns: New options value
@@ -235,6 +251,10 @@ extern fn SSL_get_shutdown(ssl: *SSL) -> i32
 @library("amissl.library")
 extern fn SSL_set_shutdown(ssl: *SSL, mode: i32)
 
+/// Invoke an SSL control operation. Most OpenSSL SSL helpers are C macros over this vector.
+@library("amissl.library")
+extern fn SSL_ctrl(ssl: *SSL, command: i32, value: i32, data: *u8) -> i32
+
 // ============================================================================
 // Error Handling
 // ============================================================================
@@ -281,7 +301,12 @@ extern fn ERR_print_errors(bp: *BIO)
 /// Get peer certificate
 /// Returns: X509 pointer (must be freed with X509_free) or null
 @library("amissl.library")
-extern fn SSL_get_peer_certificate(ssl: *SSL) -> *X509
+extern fn SSL_get1_peer_certificate(ssl: *SSL) -> *X509
+
+@unsafe
+pub fn SSL_get_peer_certificate(ssl: *SSL) -> *X509 {
+    return unsafe { SSL_get1_peer_certificate(ssl) }
+}
 
 /// Get certificate verification result
 /// Returns: X509_V_OK on success, or error code
@@ -306,11 +331,21 @@ extern fn X509_NAME_oneline(name: *X509_NAME, buf: *u8, size: i32) -> *u8
 
 /// Get certificate not-before time
 @library("amissl.library")
-extern fn X509_get_notBefore(cert: *X509) -> *ASN1_TIME
+extern fn X509_getm_notBefore(cert: *X509) -> *ASN1_TIME
+
+@unsafe
+pub fn X509_get_notBefore(cert: *X509) -> *ASN1_TIME {
+    return unsafe { X509_getm_notBefore(cert) }
+}
 
 /// Get certificate not-after time
 @library("amissl.library")
-extern fn X509_get_notAfter(cert: *X509) -> *ASN1_TIME
+extern fn X509_getm_notAfter(cert: *X509) -> *ASN1_TIME
+
+@unsafe
+pub fn X509_get_notAfter(cert: *X509) -> *ASN1_TIME {
+    return unsafe { X509_getm_notAfter(cert) }
+}
 
 /// Check if certificate is self-signed
 @library("amissl.library")
@@ -322,8 +357,10 @@ extern fn X509_check_issued(issuer: *X509, subject: *X509) -> i32
 
 /// Set hostname for SNI (REQUIRED for modern HTTPS)
 /// Returns: 1 on success, 0 on failure
-@library("amissl.library")
-extern fn SSL_set_tlsext_host_name(ssl: *SSL, name: *u8) -> i32
+@unsafe
+pub fn SSL_set_tlsext_host_name(ssl: *SSL, name: *u8) -> i32 {
+    return unsafe { SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, name) }
+}
 
 /// Get hostname from SNI
 @library("amissl.library")
@@ -344,13 +381,6 @@ extern fn TLS_server_method() -> *SSL_METHOD
 /// General TLS method (client or server)
 @library("amissl.library")
 extern fn TLS_method() -> *SSL_METHOD
-
-// Legacy methods (avoid if possible)
-@library("amissl.library")
-extern fn TLSv1_2_client_method() -> *SSL_METHOD
-
-@library("amissl.library")
-extern fn TLSv1_2_server_method() -> *SSL_METHOD
 
 // ============================================================================
 // Session Management
@@ -437,9 +467,19 @@ extern fn BIO_new_socket(sock: i32, close_flag: i32) -> *BIO
 @library("amissl.library")
 extern fn BIO_new_mem_buf(buf: *u8, len: i32) -> *BIO
 
-/// Set SSL for BIO
+/// Invoke a BIO control operation. Several OpenSSL BIO helpers are C macros over this vector.
 @library("amissl.library")
-extern fn BIO_set_ssl(bio: *BIO, ssl: *SSL, close_flag: i32) -> i32
+extern fn BIO_ctrl(bio: *BIO, command: i32, value: i32, data: *u8) -> i32
+
+/// Test BIO state flags.
+@library("amissl.library")
+extern fn BIO_test_flags(bio: *BIO, flags: i32) -> i32
+
+/// Set SSL for BIO
+@unsafe
+pub fn BIO_set_ssl(bio: *BIO, ssl: *SSL, close_flag: i32) -> i32 {
+    return unsafe { BIO_ctrl(bio, BIO_C_SET_SSL, close_flag, ssl as *u8) }
+}
 
 /// Read from BIO
 @library("amissl.library")
@@ -450,20 +490,28 @@ extern fn BIO_read(bio: *BIO, buf: *u8, len: i32) -> i32
 extern fn BIO_write(bio: *BIO, buf: *u8, len: i32) -> i32
 
 /// Flush BIO
-@library("amissl.library")
-extern fn BIO_flush(bio: *BIO) -> i32
+@unsafe
+pub fn BIO_flush(bio: *BIO) -> i32 {
+    return unsafe { BIO_ctrl(bio, BIO_CTRL_FLUSH, 0, 0 as *u8) }
+}
 
 /// Check if BIO should retry
-@library("amissl.library")
-extern fn BIO_should_retry(bio: *BIO) -> i32
+@unsafe
+pub fn BIO_should_retry(bio: *BIO) -> i32 {
+    return unsafe { BIO_test_flags(bio, BIO_FLAGS_SHOULD_RETRY) }
+}
 
 /// Check if BIO should read
-@library("amissl.library")
-extern fn BIO_should_read(bio: *BIO) -> i32
+@unsafe
+pub fn BIO_should_read(bio: *BIO) -> i32 {
+    return unsafe { BIO_test_flags(bio, BIO_FLAGS_READ) }
+}
 
 /// Check if BIO should write
-@library("amissl.library")
-extern fn BIO_should_write(bio: *BIO) -> i32
+@unsafe
+pub fn BIO_should_write(bio: *BIO) -> i32 {
+    return unsafe { BIO_test_flags(bio, BIO_FLAGS_WRITE) }
+}
 
 // ============================================================================
 // Random Number Generation
@@ -582,6 +630,10 @@ pub const X509_V_ERR_HOSTNAME_MISMATCH: i32 = 62            // Hostname mismatch
 // ============================================================================
 
 pub const TLSEXT_NAMETYPE_host_name: i32 = 0
+pub const SSL_CTRL_SET_SESS_CACHE_MODE: i32 = 44
+pub const SSL_CTRL_SET_TLSEXT_HOSTNAME: i32 = 55
+pub const SSL_CTRL_SET_MIN_PROTO_VERSION: i32 = 123
+pub const SSL_CTRL_SET_MAX_PROTO_VERSION: i32 = 124
 
 // ============================================================================
 // Constants - BIO Close Flags
@@ -589,6 +641,11 @@ pub const TLSEXT_NAMETYPE_host_name: i32 = 0
 
 pub const BIO_NOCLOSE: i32 = 0   // Don't close underlying I/O on BIO_free
 pub const BIO_CLOSE: i32 = 1     // Close underlying I/O on BIO_free
+pub const BIO_FLAGS_READ: i32 = 0x01
+pub const BIO_FLAGS_WRITE: i32 = 0x02
+pub const BIO_FLAGS_SHOULD_RETRY: i32 = 0x08
+pub const BIO_CTRL_FLUSH: i32 = 11
+pub const BIO_C_SET_SSL: i32 = 109
 
 // ============================================================================
 // Constants - OpenSSL Init Flags
@@ -609,14 +666,13 @@ pub const OPENSSL_INIT_LOAD_SSL_STRINGS: u64 = 0x00200000
 // Constants - AmiSSL Specific
 // ============================================================================
 
-// AmiSSL API version constants
-pub const AMISSL_V3: u32 = 3   // AmiSSL v3 (OpenSSL 1.0.x)
-pub const AMISSL_V4: u32 = 4   // AmiSSL v4 (OpenSSL 1.1.x)
-pub const AMISSL_V5: u32 = 5   // AmiSSL v5 (OpenSSL 3.x)
-
-// Current AmiSSL API version to request (v5 for OpenSSL 3.x API)
-// Note: Using literal 5 because constant-to-constant references aren't supported yet
-pub const AMISSL_CURRENT_VERSION: u32 = 5
+// AmiSSL v5.27 / OpenSSL 3.6.2 SDK ABI (AMISSL_V362).
+pub const AMISSL_CURRENT_VERSION: u32 = 46
+pub const AMISSLMASTER_MIN_VERSION: u32 = 5
+pub const AmiSSL_SocketBase: u32 = 0x80000001
+pub const AmiSSL_ErrNoPtr: u32 = 0x8000000B
+pub const AmiSSL_UsesOpenSSLStructs: u32 = 0x8000000C
+pub const AmiSSL_GetAmiSSLBase: u32 = 0x8000000D
 
 // AmiSSL certificate paths
 // These are the default locations on AmigaOS

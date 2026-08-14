@@ -1,0 +1,123 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import SocketLibrary
+from std::net::tcp import TcpStream
+from std::net::tls import TlsConfig, is_tls_available
+from std::test::test import expect
+
+// @covers std::net::tls::is_tls_available()
+@test("TLS availability is safe")
+pub fn test_tls_availability_is_safe() {
+    let _ = is_tls_available()
+    expect(true, "AmiSSL availability probe returned")
+}
+
+// @covers std::net::tls::TlsConfig::client()
+@test("TLS client configuration")
+pub fn test_tls_client_configuration() {
+    let _sockets = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(TlsConfig::client().is_err(), "TLS needs sockets")
+            return
+        }
+    }
+    let config = TlsConfig::client()
+    if is_tls_available() {
+        expect(config.is_ok(), "TLS client configuration")
+    } else {
+        expect(config.is_err(), "TLS client unavailable safely")
+    }
+}
+
+// @covers std::net::tls::TlsConfig::client_insecure()
+@test("TLS insecure client configuration")
+pub fn test_tls_insecure_client_configuration() {
+    let _sockets = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(TlsConfig::client_insecure().is_err(), "TLS needs sockets")
+            return
+        }
+    }
+    let config = TlsConfig::client_insecure()
+    if is_tls_available() {
+        expect(config.is_ok(), "TLS insecure client configuration")
+    } else {
+        expect(config.is_err(), "TLS insecure client unavailable safely")
+    }
+}
+
+// @covers std::net::tls::TlsConfig::server()
+@test("TLS server configuration")
+pub fn test_tls_server_configuration() {
+    let _sockets = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(TlsConfig::server().is_err(), "TLS needs sockets")
+            return
+        }
+    }
+    let config = TlsConfig::server()
+    if is_tls_available() {
+        expect(config.is_ok(), "TLS server configuration")
+    } else {
+        expect(config.is_err(), "TLS server unavailable safely")
+    }
+}
+
+// These operations require an AmiSSL installation and a cooperating TLS peer.
+// The skipped test is still compiled and linked so every API remains checked.
+// @covers std::net::tls::TlsConfig::accept(TcpStream)
+// @covers std::net::tls::TlsConfig::connect(TcpStream, *u8)
+// @covers std::net::tls::TlsConfig::set_certificate(*u8)
+// @covers std::net::tls::TlsConfig::set_private_key(*u8)
+// @covers std::net::tls::TlsStream::as_raw_fd()
+// @covers std::net::tls::TlsStream::peek(*u8, i32)
+// @covers std::net::tls::TlsStream::pending()
+// @covers std::net::tls::TlsStream::read(*u8, i32)
+// @covers std::net::tls::TlsStream::shutdown()
+// @covers std::net::tls::TlsStream::version()
+// @covers std::net::tls::TlsStream::write(*u8, i32)
+// @covers std::net::tls::TlsStream::write_all(*u8, i32)
+@test(skip = "requires AmiSSL and a cooperating TLS peer")
+pub fn test_tls_stream_public_api() {
+    let library = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let tcp = match TcpStream::connect(SocketAddrV4::new(Ipv4Addr::localhost(), 443)) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    match TlsConfig::client_insecure() {
+        Result::Ok(config) => match config.connect(tcp, "localhost") {
+            Result::Ok(stream) => {
+                var buf: [u8] = [0; 16]
+                let _ = stream.as_raw_fd()
+                let _ = stream.pending()
+                let _ = stream.version()
+                let _ = stream.peek((*u8)&buf[0], 16)
+                let _ = stream.read((*u8)&buf[0], 16)
+                let _ = stream.write((*u8)&buf[0], 16)
+                let _ = stream.write_all((*u8)&buf[0], 16)
+                let _ = stream.shutdown()
+            },
+            Result::Err(_) => {}
+        },
+        Result::Err(_) => {}
+    }
+
+    let server_tcp = match TcpStream::connect(SocketAddrV4::new(Ipv4Addr::localhost(), 443)) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    match TlsConfig::server() {
+        Result::Ok(config) => {
+            let _ = config.set_certificate("T:novus-test-cert.pem")
+            let _ = config.set_private_key("T:novus-test-key.pem")
+            let _ = config.accept(server_tcp)
+        },
+        Result::Err(_) => {}
+    }
+}

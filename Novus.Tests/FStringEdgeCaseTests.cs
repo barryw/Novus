@@ -20,6 +20,7 @@ namespace Novus.Tests;
 /// - Adjacent interpolations: f"{a}{b}"
 /// - Complex expressions: f"{if cond { a } else { b }}"
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class FStringEdgeCaseTests
 {
     private (IrBuilder builder, DiagnosticBag diagnostics) BuildModule(string code)

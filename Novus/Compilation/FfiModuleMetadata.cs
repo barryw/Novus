@@ -3,6 +3,7 @@ namespace Novus.Compilation;
 public enum FfiModuleKind
 {
     Library,
+    LazyLibrary,
     Device,
     Resource,
     CallerSupplied
@@ -59,6 +60,7 @@ public sealed record FfiModuleMetadata(
     {
         string? libraryName = null;
         string? baseSymbol = null;
+        var lazy = false;
 
         foreach (var line in File.ReadLines(modulePath).Take(12))
         {
@@ -66,6 +68,8 @@ public sealed record FfiModuleMetadata(
                 libraryName = line[11..].Trim();
             else if (line.StartsWith("// Base:", StringComparison.Ordinal))
                 baseSymbol = line[8..].Trim();
+            else if (line.Equals("// Lifecycle: lazy", StringComparison.OrdinalIgnoreCase))
+                lazy = true;
         }
 
         if (string.IsNullOrWhiteSpace(libraryName) || string.IsNullOrWhiteSpace(baseSymbol))
@@ -76,6 +80,8 @@ public sealed record FfiModuleMetadata(
             .Replace('.', '_');
         var kind = baseSymbol.Equals("caller-supplied", StringComparison.OrdinalIgnoreCase)
             ? FfiModuleKind.CallerSupplied
+            : lazy
+            ? FfiModuleKind.LazyLibrary
             : libraryName.EndsWith(".device", StringComparison.OrdinalIgnoreCase)
             ? FfiModuleKind.Device
             : libraryName.EndsWith(".resource", StringComparison.OrdinalIgnoreCase)

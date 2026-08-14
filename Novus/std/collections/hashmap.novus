@@ -172,6 +172,11 @@ impl<K, V> HashMap<K, V> where K: Hash + Eq {
     /// Returns Ok(None) if this is a new key.
     /// Returns Err(MemoryError) on allocation failure during resize (map unchanged).
     pub fn insert(&var self, consuming key: K, consuming value: V) -> Result<Option<V>, MemoryError> {
+        // An empty map may have released its storage through shrink_to_fit().
+        if self.capacity == 0 {
+            self.resize(16)?
+        }
+
         // Check if we need to resize using pre-computed threshold
         if self.len + self.tombstones + 1 > self.resize_threshold {
             let resize_result: Result<(), MemoryError> = self.resize(self.capacity << 1)  // Shift instead of multiply

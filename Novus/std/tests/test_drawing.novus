@@ -2,7 +2,7 @@
 // Tests graphics primitives by drawing and reading back pixels
 
 from std::test::test import expect, expect_true, expect_false, expect_eq
-from amiga::sys::intuition import WindowHandle
+from amiga::sys::intuition import ScreenHandle, WindowHandle
 from amiga::sys::graphics::draw import DrawContext, DrawMode
 from amiga::sys::graphics::shapes import Point, Rect
 from amiga::raw::structs import Window, RastPort
@@ -123,7 +123,7 @@ pub fn test_draw_mode_get_set() {
 
 @test("DrawContext::pixel writes and can be read back")
 pub fn test_draw_pixel_readback() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -154,7 +154,7 @@ pub fn test_draw_pixel_readback() {
 
 @test("DrawContext::pixel_at works with Point")
 pub fn test_draw_pixel_at() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -183,7 +183,7 @@ pub fn test_draw_pixel_at() {
 
 @test("DrawContext::line draws a horizontal line")
 pub fn test_draw_line_horizontal() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -213,7 +213,7 @@ pub fn test_draw_line_horizontal() {
 
 @test("DrawContext::line draws a vertical line")
 pub fn test_draw_line_vertical() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -244,7 +244,7 @@ pub fn test_draw_line_vertical() {
 
 @test("DrawContext::rect_fill fills a rectangle")
 pub fn test_draw_rect_fill() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -280,7 +280,7 @@ pub fn test_draw_rect_fill() {
 
 @test("DrawContext::fill_rect works with coordinates")
 pub fn test_draw_fill_rect() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -309,7 +309,7 @@ pub fn test_draw_fill_rect() {
 
 @test("DrawContext::clear fills entire window")
 pub fn test_draw_clear() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -337,7 +337,7 @@ pub fn test_draw_clear() {
 
 @test("DrawContext::rect_erase erases a region")
 pub fn test_draw_rect_erase() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -371,7 +371,7 @@ pub fn test_draw_rect_erase() {
 
 @test("DrawContext::move_to and line_to work together")
 pub fn test_draw_move_line_to() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window
@@ -441,7 +441,7 @@ pub fn test_rect_operations() {
 
 @test("DrawMode::Complement XORs pixels")
 pub fn test_draw_mode_complement() {
-    let win_result = WindowHandle::borderless(100, 80)
+    let win_result = ScreenHandle::lores("Drawing Test", 2)
     match win_result {
         Result::Ok(window) => {
             var w = window

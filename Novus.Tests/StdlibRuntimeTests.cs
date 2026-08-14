@@ -18,6 +18,7 @@ namespace Novus.Tests;
 /// Note: These are still compilation tests (not executing on hardware), but they use
 /// real data that would work at runtime, unlike the null-pointer smoke tests.
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class StdlibRuntimeTests
 {
     private static string GetProjectRoot()

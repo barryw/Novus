@@ -14,6 +14,7 @@ namespace Novus.Tests;
 /// code path as the language server - both parsing AND semantic analysis.
 /// This is CRITICAL for editor/compiler consistency.
 /// </summary>
+[Trait("Category", "CorpusCompilation")]
 public class LanguageServerIntegrationTests
 {
     private static string GetProjectRoot()

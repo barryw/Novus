@@ -67,10 +67,10 @@ public partial class CompilationCache
     {
     }
 
-    public CompilationCache(string projectRoot, int compilerVersion)
+    public CompilationCache(string projectRoot, int compilerVersion, string? cacheDirectory = null)
     {
         _compilerVersion = compilerVersion;
-        _cacheDirectory = Path.Combine(projectRoot, ".novus-cache");
+        _cacheDirectory = cacheDirectory ?? Path.Combine(projectRoot, ".novus-cache");
 
         // Create cache directory if it doesn't exist
         Directory.CreateDirectory(_cacheDirectory);

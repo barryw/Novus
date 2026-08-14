@@ -6,7 +6,7 @@
 
 from std::core import Option, Result, Drop
 from std::async::future import Future, Poll, Context, Waker
-from amiga::timer import Duration, TimerError
+from amiga::sys::timer import Duration, TimerError
 from amiga::raw::structs import timeval, timerequest, IORequest, MsgPort
 from amiga::raw::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
 from amiga::raw::exec import OpenDevice, CloseDevice, SendIO, CheckIO, WaitIO, AbortIO, Signal

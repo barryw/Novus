@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class StringToReferenceCoercionTests
 {
     private (IrModule module, IrBuilder builder) BuildIr(string source)

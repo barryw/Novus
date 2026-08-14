@@ -27,6 +27,7 @@ typedef struct AllocationRecord {
     const char* file;               // Source file
     int32_t line;                   // Line number
     uint32_t sequence;              // Allocation sequence number
+    uint8_t paranoid;               // Guard/poison/retain freed memory
     uint8_t freed;                  // 0 = active, 1 = freed (for double-free detection)
     const char* free_file;          // File where freed (for double-free reporting)
     int32_t free_line;              // Line where freed
@@ -68,15 +69,11 @@ static void ptr_to_hex(char* buf, void* ptr) {
  * @param line Line number
  * @return Allocated pointer or NULL on failure
  */
-void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line)
+void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int32_t line, int32_t paranoid)
 {
-    uint32_t actual_size = size;
+    uint32_t actual_size = paranoid ? size + (GUARD_SIZE * 2) : size;
     void* actual_ptr;
     void* user_ptr;
-
-    // Add space for guard bytes: 4 bytes before + 4 bytes after
-    // Guard bytes help detect buffer overflows when memory is freed
-    actual_size = size + (GUARD_SIZE * 2);
 
     // Allocate the memory
     actual_ptr = AllocMem(actual_size, flags);
@@ -84,10 +81,12 @@ void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int
         return NULL;
     }
 
-    // Write guard patterns
-    *(uint32_t*)actual_ptr = GUARD_PATTERN_START;
-    user_ptr = (uint8_t*)actual_ptr + GUARD_SIZE;
-    *(uint32_t*)((uint8_t*)user_ptr + size) = GUARD_PATTERN_END;
+    user_ptr = actual_ptr;
+    if (paranoid) {
+        *(uint32_t*)actual_ptr = GUARD_PATTERN_START;
+        user_ptr = (uint8_t*)actual_ptr + GUARD_SIZE;
+        *(uint32_t*)((uint8_t*)user_ptr + size) = GUARD_PATTERN_END;
+    }
 
     // Create allocation record (allocate from public memory to avoid affecting user's chip mem)
     AllocationRecord* record = (AllocationRecord*)AllocMem(sizeof(AllocationRecord), MEMF_PUBLIC | MEMF_CLEAR);
@@ -103,6 +102,7 @@ void* __novus_tracked_alloc(uint32_t size, uint32_t flags, const char* file, int
     record->actual_size = actual_size;
     record->file = file;
     record->line = line;
+    record->paranoid = paranoid != 0;
     record->freed = 0;
     record->free_file = NULL;
     record->free_line = 0;
@@ -181,8 +181,8 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
                 return;  // Don't actually free - it's already freed
             }
 
-            // Check guard bytes for buffer overflow
-            {
+            // Guard bytes and poisoning are paranoid-only checks.
+            if (record->paranoid) {
                 uint32_t* start_guard = (uint32_t*)record->actual_ptr;
                 uint32_t* end_guard = (uint32_t*)((uint8_t*)record->ptr + record->size);
 
@@ -222,30 +222,22 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
                 }
             }
 
-            // Poison the user memory to detect use-after-free
-            // Fill with 0xDE pattern - reads after free will get garbage
-            __novus_memset(record->ptr, POISON_BYTE, record->size);
-
             // Mark as freed and record where
             record->freed = 1;
             record->free_file = file;
             record->free_line = line;
             _total_freed += record->size;
 
-            // USE-AFTER-FREE DETECTION STRATEGY:
-            // We do NOT free the memory here. Instead we keep it allocated
-            // but poisoned. This allows us to:
-            // 1. Detect when the program reads from freed memory (gets poison)
-            // 2. Detect when the program writes to freed memory (overwrites poison)
-            // 3. Most importantly: detect when they try to FREE it again
-            //    (we catch this as use-after-free, not just double-free)
-            //
-            // The memory will be properly freed in __novus_memory_report() at exit.
-            // This trades memory for better debugging - acceptable in debug builds.
-            //
-            // With MMU (future): Mark pages as MAPP_INVALID for immediate detection
-
-            // DON'T free: FreeMem(record->actual_ptr, record->actual_size);
+            if (record->paranoid) {
+                __novus_memset(record->ptr, POISON_BYTE, record->size);
+            } else {
+                void* actual_ptr = record->actual_ptr;
+                uint32_t actual_size = record->actual_size;
+                record->actual_ptr = NULL;
+                Permit();
+                FreeMem(actual_ptr, actual_size);
+                return;
+            }
             Permit();  // Release task switching before returning
             return;
         }
@@ -257,6 +249,79 @@ void __novus_tracked_free(void* ptr, uint32_t size, const char* file, int32_t li
     // Just free it normally to avoid a leak
     Permit();  // Release task switching before freeing
     FreeMem(ptr, size);
+}
+
+uint32_t __novus_memory_active_allocations(void)
+{
+    AllocationRecord* record;
+    uint32_t count = 0;
+    Forbid();
+    for (record = _alloc_list_head; record != NULL; record = record->next) {
+        if (!record->freed) count++;
+    }
+    Permit();
+    return count;
+}
+
+uint32_t __novus_memory_active_bytes(void)
+{
+    AllocationRecord* record;
+    uint32_t bytes = 0;
+    Forbid();
+    for (record = _alloc_list_head; record != NULL; record = record->next) {
+        if (!record->freed) bytes += record->size;
+    }
+    Permit();
+    return bytes;
+}
+
+/* Release debug records between tests without hiding active allocations. */
+void __novus_memory_checkpoint(void)
+{
+    AllocationRecord* record;
+    AllocationRecord* next;
+    AllocationRecord* freed = NULL;
+    AllocationRecord** link;
+
+    Forbid();
+    link = &_alloc_list_head;
+    while ((record = *link) != NULL) {
+        if (!record->freed) {
+            link = &record->next;
+            continue;
+        }
+        *link = record->next;
+        record->next = freed;
+        freed = record;
+    }
+    Permit();
+
+    for (record = freed; record != NULL; record = next) {
+        next = record->next;
+        if (record->actual_ptr != NULL)
+            FreeMem(record->actual_ptr, record->actual_size);
+        FreeMem(record, sizeof(AllocationRecord));
+    }
+}
+
+/* Test runners already reported the leak; reclaim it without a modal requester. */
+void __novus_memory_test_reset(void)
+{
+    AllocationRecord* record;
+    AllocationRecord* next;
+
+    Forbid();
+    record = _alloc_list_head;
+    _alloc_list_head = NULL;
+    Permit();
+
+    while (record != NULL) {
+        next = record->next;
+        if (record->actual_ptr != NULL)
+            FreeMem(record->actual_ptr, record->actual_size);
+        FreeMem(record, sizeof(AllocationRecord));
+        record = next;
+    }
 }
 
 /**

@@ -6948,6 +6948,11 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     lastType = Visit(expr) as IrType;
                 }
             }
+            else if (stmt.unsafeBlock() != null)
+            {
+                using var _ = BeginUnsafeAnalysis();
+                lastType = AnalyzeBlockAsExpression(stmt.unsafeBlock().block());
+            }
             else
             {
                 // Non-expression statements don't contribute a value
@@ -8625,7 +8630,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         // Create mangled name: OriginalName_TypeArg1_TypeArg2
         var typeArgNames = genericFunc.GenericParameters!.Select(p =>
             substitutions.ContainsKey(p) ? substitutions[p].Name.Replace("<", "_").Replace(">", "_").Replace("*", "ptr_") : p);
-        var mangledName = $"{genericFunc.Name}_{string.Join("_", typeArgNames)}";
+        var mangledName = $"{genericFunc.Name}__{string.Join("_", typeArgNames)}";
 
         // Create monomorphized function
         var monomorphizedFunc = new FunctionSymbol(
@@ -9522,6 +9527,18 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                 }
 
                 return closureType.ReturnType;
+            }
+        }
+
+        if (!HasFunction(functionName))
+        {
+            var qualified = functionName.Split("::");
+            if (qualified.Length == 2)
+            {
+                var traitMethodName = _traitResolver.FindTraitMethod(
+                    ResolveAliasTypeName(qualified[0]), qualified[1]);
+                if (traitMethodName != null)
+                    functionName = traitMethodName;
             }
         }
 
@@ -12452,40 +12469,48 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         {
             // Check if the variant exists
             var variant = enumType.GetVariant(memberName);
-            if (variant == null)
+            if (variant != null)
             {
-                var location = SourceLocationHelper.FromToken(context.IDENTIFIER().Symbol, _filePath, _sourceLines);
-                _diagnostics.ReportError(
-                    "E0034",
-                    $"enum '{typeName}' has no variant '{memberName}'",
-                    location,
-                    helpTexts: new List<string>
+                if (explicitTypeArgs is { Count: > 0 })
+                {
+                    if (explicitTypeArgs.Count != enumType.GenericParameters.Count)
                     {
-                        $"available variants: {string.Join(", ", enumType.Variants.Select(v => v.Name))}"
+                        _diagnostics.ReportError(
+                            "E0050",
+                            $"wrong number of type arguments for '{typeName}': expected {enumType.GenericParameters.Count}, got {explicitTypeArgs.Count}",
+                            SourceLocationHelper.FromContext(context, _filePath, _sourceLines));
+                        return null;
                     }
-                );
-                return null;
-            }
+                    var substitutions = enumType.GenericParameters
+                        .Select((parameter, index) => (parameter, type: explicitTypeArgs[index]))
+                        .ToDictionary(item => item.parameter, item => item.type);
+                    return _typeParser.SubstituteGenericTypes(enumType, substitutions);
+                }
 
-            // If we have an expected type that's a monomorphized version of this enum,
-            // and this is a unit variant (no associated data), use the expected type
-            if (variant.AssociatedData is [] &&
-                _expectedType is IrEnumType expectedEnumType &&
-                expectedEnumType.EnumName == enumType.EnumName &&
-                expectedEnumType.GenericParameters is [])
-            {
-                // Return the expected monomorphized type
-                return expectedEnumType;
-            }
+                // If we have an expected type that's a monomorphized version of this enum,
+                // and this is a unit variant (no associated data), use the expected type
+                if (variant.AssociatedData is [] &&
+                    _expectedType is IrEnumType expectedEnumType &&
+                    expectedEnumType.EnumName == enumType.EnumName &&
+                    expectedEnumType.GenericParameters is [])
+                {
+                    return expectedEnumType;
+                }
 
-            // Return the enum type - this will be used when constructing the variant
-            return enumType;
+                return enumType;
+            }
         }
 
         // Try associated function (struct method without self parameter)
         var mangledName = $"{resolvedTypeName}::{memberName}";
 
         var funcSymbol = GetFunction(mangledName);
+        if (funcSymbol == null)
+        {
+            var traitMethodName = _traitResolver.FindTraitMethod(resolvedTypeName, memberName);
+            if (traitMethodName != null)
+                funcSymbol = GetFunction(traitMethodName);
+        }
         if (funcSymbol != null)
         {
 

@@ -1,0 +1,148 @@
+from std::core import Option, Result
+from std::memory import Buffer
+from std::memory::bytes import ByteError, ByteReader, ByteWriter
+from std::memory::errors import MemoryError
+from std::memory::slice import MutSlice, Slice
+from std::test::test import expect
+
+// @covers std::memory::slice::Slice::new(&T, usize)
+// @covers std::memory::slice::Slice::len()
+// @covers std::memory::slice::Slice::is_empty()
+// @covers std::memory::slice::Slice::get_unchecked(usize)
+// @covers std::memory::slice::Slice::get(usize)
+// @covers std::memory::slice::Slice::take(usize)
+@test("Slice provides bounded immutable views")
+pub fn test_slice() {
+    let values: [i32] = [10, 20, 30]
+    let view = unsafe { Slice::<i32>::new(&values[0], 3) }
+    expect(view.len() == 3 && !view.is_empty(), "slice shape")
+    match view.get(1) {
+        Option::Some(value) => expect(*value == 20, "bounded get"),
+        Option::None => expect(false, "bounded get failed"),
+    }
+    expect(view.get(3).is_none(), "out-of-bounds get")
+    unsafe { expect(*view.get_unchecked(2) == 30, "unchecked get") }
+    match view.take(2) {
+        Option::Some(prefix) => expect(prefix.len() == 2, "prefix length"),
+        Option::None => expect(false, "valid prefix rejected"),
+    }
+    expect(view.take(4).is_none(), "oversized prefix rejected")
+}
+
+// @covers std::memory::slice::MutSlice::new(&var T, usize)
+// @covers std::memory::slice::MutSlice::len()
+// @covers std::memory::slice::MutSlice::is_empty()
+// @covers std::memory::slice::MutSlice::get(usize)
+// @covers std::memory::slice::MutSlice::get_mut(usize)
+// @covers std::memory::slice::MutSlice::get_unchecked(usize)
+// @covers std::memory::slice::MutSlice::set_unchecked(usize, T)
+// @covers std::memory::slice::MutSlice::set(usize, T)
+// @covers std::memory::slice::MutSlice::copy_from(Slice<T>)
+// @covers std::memory::slice::MutSlice::fill(T)
+@test("MutSlice bounds mutations and bulk operations")
+pub fn test_mut_slice() {
+    var values: [i32] = [1, 2, 3]
+    var view = unsafe { MutSlice::<i32>::new(&var values[0], 3) }
+    expect(view.len() == 3 && !view.is_empty(), "mutable slice shape")
+    expect(view.set(1, 20).is_ok(), "bounded set")
+    expect(view.set(3, 40).is_err(), "out-of-bounds set")
+    match view.get_mut(0) {
+        Option::Some(value) => { *value = 10 },
+        Option::None => expect(false, "mutable get failed"),
+    }
+    match view.get(1) {
+        Option::Some(value) => expect(*value == 20, "immutable get"),
+        Option::None => expect(false, "immutable get failed"),
+    }
+    unsafe {
+        view.set_unchecked(2, 30)
+        expect(*view.get_unchecked(2) == 30, "unchecked access")
+    }
+
+    let source_values: [i32] = [4, 5, 6]
+    let source = unsafe { Slice::<i32>::new(&source_values[0], 3) }
+    expect(view.copy_from(source).is_ok(), "equal-size copy")
+    view.fill(7)
+    expect(*view.get(0).unwrap() == 7 && *view.get(2).unwrap() == 7, "fill")
+
+    let short_values: [i32] = [1, 2]
+    let shorter = unsafe { Slice::<i32>::new(&short_values[0], 2) }
+    match view.copy_from(shorter) {
+        Result::Err(MemoryError::LengthMismatch) => {},
+        _ => expect(false, "length mismatch rejected"),
+    }
+}
+
+// @covers std::memory::bytes::ByteError::message()
+// @covers std::memory::bytes::ByteReader::new(Slice<u8>)
+// @covers std::memory::bytes::ByteReader::len()
+// @covers std::memory::bytes::ByteReader::read_u8(usize)
+// @covers std::memory::bytes::ByteReader::read_be_u16(usize)
+// @covers std::memory::bytes::ByteReader::read_be_u32(usize)
+// @covers std::memory::bytes::ByteWriter::new(MutSlice<u8>)
+// @covers std::memory::bytes::ByteWriter::len()
+// @covers std::memory::bytes::ByteWriter::write_u8(usize, u8)
+// @covers std::memory::bytes::ByteWriter::read_be_u32(usize)
+// @covers std::memory::bytes::ByteWriter::write_be_u16(usize, u16)
+// @covers std::memory::bytes::ByteWriter::write_be_u32(usize, u32)
+// @covers std::memory::bytes::ByteWriter::fill(u8)
+@test("byte readers and writers check every boundary")
+pub fn test_bytes() {
+    var bytes: [u8] = [0; 8]
+    {
+        var writer = ByteWriter::new(&var bytes)
+        expect(writer.len() == 8, "writer length")
+        expect(writer.fill($AA).is_ok(), "fill bytes")
+        expect(writer.write_u8(0, $11).is_ok(), "write byte")
+        expect(writer.write_be_u16(1, $2233).is_ok(), "write u16")
+        expect(writer.write_be_u32(3, $44556677).is_ok(), "write u32")
+        expect(writer.write_u8(8, 0).is_err(), "reject byte past end")
+        match writer.read_be_u32(3) {
+            Result::Ok(value) => expect(value == $44556677, "writer readback"),
+            Result::Err(_) => expect(false, "writer readback failed"),
+        }
+    }
+
+    let reader = ByteReader::new(&bytes)
+    expect(reader.len() == 8, "reader length")
+    match reader.read_u8(0) {
+        Result::Ok(value) => expect(value == $11, "read byte"),
+        Result::Err(_) => expect(false, "read byte failed"),
+    }
+    match reader.read_be_u16(1) {
+        Result::Ok(value) => expect(value == $2233, "read u16"),
+        Result::Err(_) => expect(false, "read u16 failed"),
+    }
+    match reader.read_be_u32(3) {
+        Result::Ok(value) => expect(value == $44556677, "read u32"),
+        Result::Err(_) => expect(false, "read u32 failed"),
+    }
+    expect(reader.read_be_u32(5).is_err(), "reject crossing end")
+    let message = ByteError::OutOfBounds.message()
+    unsafe { expect(message[0] == (u8)'B', "error message") }
+}
+
+// @covers std::memory::Buffer::new(usize)
+// @covers std::memory::Buffer::len()
+// @covers std::memory::Buffer::is_empty()
+// @covers std::memory::Buffer::as_mut_bytes()
+// @covers std::memory::Buffer::as_bytes()
+// @covers std::memory::errors::MemoryError::message()
+@test("Buffer owns zeroed, bounded bytes")
+pub fn test_buffer() {
+    match Buffer::new(4) {
+        Result::Ok(var buffer) => {
+            expect(buffer.len() == 4 && !buffer.is_empty(), "buffer shape")
+            {
+                var bytes = buffer.as_mut_bytes()
+                expect(bytes.set(2, $42).is_ok(), "mutate buffer")
+            }
+            let bytes = buffer.as_bytes()
+            expect(*bytes.get(0).unwrap() == 0, "buffer is zeroed")
+            expect(*bytes.get(2).unwrap() == $42, "buffer mutation persisted")
+        },
+        Result::Err(_) => expect(false, "buffer allocation failed"),
+    }
+    let message = MemoryError::IndexOutOfBounds.message()
+    unsafe { expect(message[0] == (u8)'I', "memory error message") }
+}

@@ -1689,6 +1689,14 @@ public partial class IrBuilder
             return null;
         }
 
+        // Capture a field-producing instruction before method arguments add calls
+        // that would otherwise hide it from the later borrow rewrite.
+        var receiverMemberBlock = _currentBlock;
+        var receiverMemberAccess = receiver is IrVariable receiverVariable
+            ? receiverMemberBlock?.Instructions.OfType<IrMemberAccess>()
+                .LastOrDefault(access => access.ResultName == receiverVariable.Name)
+            : null;
+
         if (receiver.Type is IrArrayType fillArray && methodName == "fill")
             return LowerArrayFill(callCtx, receiver, fillArray);
 
@@ -2168,34 +2176,28 @@ public partial class IrBuilder
                 // Check if the last instruction is a member access that produced this receiver variable.
                 IrValue valueToBoflow = receiver;
 
-                if (receiver is IrVariable receiverVar && _currentBlock != null)
+                if (receiverMemberAccess != null && receiverMemberBlock != null &&
+                    receiverMemberBlock.Instructions.Remove(receiverMemberAccess))
                 {
-                    // Look for the member access instruction that produced this variable
-                    // Search backwards through the block's instructions
-                    IrMemberAccess? foundMemberAccess = null;
-                    for (int i = _currentBlock.Instructions.Count - 1; i >= 0; i--)
-                    {
-                        var inst = _currentBlock.Instructions[i];
-                        if (inst is IrMemberAccess memberAccess &&
-                            memberAccess.ResultName == receiverVar.Name)
-                        {
-                            foundMemberAccess = memberAccess;
-                            _currentBlock.Instructions.RemoveAt(i);
-                            break;
-                        }
-                        // Stop searching if we hit an instruction that might use this variable
-                        // (this avoids removing a member access that was already used)
-                        if (inst is IrCall || inst is IrStore)
-                        {
-                            break;
-                        }
-                    }
+                    valueToBoflow = new IrFieldReference(
+                        receiverMemberAccess.Struct, receiverMemberAccess.FieldName, receiver.Type);
+                }
 
-                    if (foundMemberAccess != null)
-                    {
-                        // Found it! Create a field reference instead of using the loaded value
-                        valueToBoflow = new IrFieldReference(foundMemberAccess.Struct, foundMemberAccess.FieldName, receiver.Type);
-                    }
+                // A borrowed method can outlive this nested expression (for example,
+                // String-returning-call().as_str()). Give an owned temporary normal
+                // scope cleanup. Field accesses were rewritten above and remain borrows.
+                if (ReferenceEquals(valueToBoflow, receiver) &&
+                    receiver is IrVariable temporary && temporary.Name.StartsWith("%t", StringComparison.Ordinal) &&
+                    EnsureDropMethodInstantiated(receiver.Type))
+                {
+                    var ownerName = $"_borrowed_temp_{_labelCounter++}";
+                    var owner = new IrLocalVariable(ownerName, receiver.Type, isMutable: true);
+                    _currentFunction!.LocalVariables.Add(owner);
+                    _localVariables[ownerName] = owner;
+                    _currentBlock!.AddInstruction(new IrLocalDecl(ownerName, receiver.Type, isMutable: true, receiver));
+                    InjectAutomaticDrop(ownerName, receiver.Type);
+                    receiver = new IrVariable(ownerName, receiver.Type);
+                    valueToBoflow = receiver;
                 }
 
                 // Wrap receiver in IrBorrowValue to take its address
@@ -4524,6 +4526,18 @@ public partial class IrBuilder
             }
             return new IrConstant(0, IrIntType.I32);
         }
+        else if (lastStmt.unsafeBlock() != null)
+        {
+            _unsafeDepth++;
+            try
+            {
+                return VisitBlockAsExpression(lastStmt.unsafeBlock().block());
+            }
+            finally
+            {
+                _unsafeDepth--;
+            }
+        }
         else
         {
             // Not an expression statement - visit it and return a default value
@@ -5007,6 +5021,12 @@ public partial class IrBuilder
 
                 // Try to find the function in the module
                 var function = _module.GetFunction(mangledName);
+                if (function == null)
+                {
+                    var traitMethodName = _module.FindTraitMethod(resolvedTypeName, memberName);
+                    if (traitMethodName != null)
+                        function = _module.GetFunction(traitMethodName);
+                }
                 if (function != null)
                 {
                     // Check if this is an associated function (no self parameter)
@@ -5949,36 +5969,30 @@ public partial class IrBuilder
         {
             var enumType = RequireEnum(resolvedTypeName);
             var variant = enumType.GetVariant(memberName);
-
-            if (variant == null)
+            if (variant != null)
             {
-                errorLocation = GetLocation(context);
-                _diagnostics.ReportError(
-                    ErrorCodes.InvalidExpressionType,
-                    $"Enum '{typeName}' has no variant '{memberName}'",
-                    errorLocation
-                );
-                return null;
-            }
+                // Use expected type if it's a more specific (concrete) version of this enum
+                var concreteEnumType = enumType;
+                if (explicitTypeArgs is { Count: > 0 } &&
+                    explicitTypeArgs.Count == enumType.GenericParameters.Count)
+                {
+                    var substitutions = enumType.GenericParameters
+                        .Select((parameter, index) => (parameter, type: explicitTypeArgs[index]))
+                        .ToDictionary(item => item.parameter, item => item.type);
+                    concreteEnumType = (IrEnumType)_typeParser.SubstituteGenericTypes(enumType, substitutions);
+                }
+                else if (_expectedType is IrEnumType expectedEnum &&
+                    expectedEnum.EnumName == enumType.EnumName &&
+                    expectedEnum.CacheKey != null)
+                {
+                    concreteEnumType = expectedEnum;
+                }
 
-            // Use expected type if it's a more specific (concrete) version of this enum
-            var concreteEnumType = enumType;
-            if (_expectedType is IrEnumType expectedEnum &&
-                expectedEnum.EnumName == enumType.EnumName &&
-                expectedEnum.CacheKey != null)
-            {
-                // Use the concrete type from context (e.g., Option<MemoryBlock> instead of Option<T>)
-                concreteEnumType = expectedEnum;
-            }
+                if (variant.AssociatedData is [])
+                    return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
 
-            // For unit variants (no associated data), create the enum value directly
-            if (variant.AssociatedData is [])
-            {
-                return new IrEnumValue(concreteEnumType, memberName, variant.Tag, new List<IrValue>());
+                return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
             }
-
-            // Return enum constructor for variants with data
-            return new IrEnumConstructor(concreteEnumType, memberName, variant.Tag);
         }
 
         // Try associated function (struct method without self parameter)
@@ -6004,6 +6018,12 @@ public partial class IrBuilder
 
         // Try to find the function in the module
         var function = _module.GetFunction(mangledName);
+        if (function == null)
+        {
+            var traitMethodName = _module.FindTraitMethod(resolvedTypeName, memberName);
+            if (traitMethodName != null)
+                function = _module.GetFunction(traitMethodName);
+        }
         if (function != null)
         {
             // Check if this is an associated function (no self parameter)

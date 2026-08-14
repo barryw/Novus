@@ -1,0 +1,74 @@
+from std::core import Result
+from std::net::addr import Ipv4Addr, SocketAddrV4
+from std::net::socket import SocketLibrary
+from std::net::tcp import TcpListener, TcpStream
+from std::test::test import expect
+
+// @covers std::net::tcp::TcpListener::accept()
+// @covers std::net::tcp::TcpListener::as_raw_fd()
+// @covers std::net::tcp::TcpListener::bind(SocketAddrV4)
+// @covers std::net::tcp::TcpListener::bind_with_backlog(SocketAddrV4, i32)
+// @covers std::net::tcp::TcpListener::local_addr()
+// @covers std::net::tcp::TcpListener::set_nonblocking(bool)
+// @covers std::net::tcp::TcpStream::as_raw_fd()
+// @covers std::net::tcp::TcpStream::bytes_available()
+// @covers std::net::tcp::TcpStream::connect(SocketAddrV4)
+// @covers std::net::tcp::TcpStream::connect_timeout(SocketAddrV4, u32)
+// @covers std::net::tcp::TcpStream::peek(*u8, i32)
+// @covers std::net::tcp::TcpStream::peer_addr()
+// @covers std::net::tcp::TcpStream::read(*u8, i32)
+// @covers std::net::tcp::TcpStream::read_exact(*u8, i32)
+// @covers std::net::tcp::TcpStream::set_keepalive(bool)
+// @covers std::net::tcp::TcpStream::set_nodelay(bool)
+// @covers std::net::tcp::TcpStream::set_nonblocking(bool)
+// @covers std::net::tcp::TcpStream::shutdown(i32)
+// @covers std::net::tcp::TcpStream::write(*u8, i32)
+// @covers std::net::tcp::TcpStream::write_all(*u8, i32)
+@test("TCP loopback public API")
+pub fn test_tcp_loopback_public_api() {
+    let library = match SocketLibrary::init() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let address = SocketAddrV4::new(Ipv4Addr::localhost(), 39091)
+    let listener = match TcpListener::bind_with_backlog(address, 4) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let _ = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::localhost(), 39094))
+    let client = match TcpStream::connect(address) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let pair = match listener.accept() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return
+    }
+    let (accepted, _peer) = pair
+    let _ = listener.local_addr()
+    let _ = listener.as_raw_fd()
+    let _ = listener.set_nonblocking(false)
+    let _ = client.as_raw_fd()
+    let _ = client.peer_addr()
+    let _ = client.set_nodelay(true)
+    let _ = client.set_keepalive(true)
+    let _ = client.set_nonblocking(false)
+    var sent: [u8] = [65, 66, 67, 68]
+    var received: [u8] = [0; 4]
+    let _ = client.write((*u8)&sent[0], 1)
+    let _ = client.write_all((*u8)&sent[1], 3)
+    let _ = accepted.bytes_available()
+    let _ = accepted.peek((*u8)&received[0], 1)
+    let _ = accepted.read((*u8)&received[0], 1)
+    let _ = accepted.read_exact((*u8)&received[1], 3)
+    expect(received[0] == 65 && received[3] == 68, "loopback payload")
+    let _ = client.shutdown(2)
+
+    match TcpStream::connect_timeout(address, 1000) {
+        Result::Ok(second) => {
+            let _ = listener.accept()
+            let _ = second.shutdown(2)
+        },
+        Result::Err(_) => {}
+    }
+}

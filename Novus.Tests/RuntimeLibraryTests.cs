@@ -9,6 +9,7 @@ namespace Novus.Tests;
 /// <summary>
 /// Tests for runtime library integration (novus_io.c, startup code, etc.)
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class RuntimeLibraryTests
 {
     private IrModule BuildIr(string source)

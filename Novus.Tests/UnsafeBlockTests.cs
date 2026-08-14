@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class UnsafeBlockTests
 {
     private (DiagnosticBag Diagnostics, SemanticAnalyzer Analyzer) Analyze(string source)

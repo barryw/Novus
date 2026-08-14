@@ -97,6 +97,7 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
     private readonly IGenericInstantiator _genericInstantiator;
 
     private IrType? _expectedType = null; // Expected type for bidirectional type checking
+    private bool _preserveExpressionResult;
     public readonly List<IrStringLiteral> StringLiterals = new(); // Track all string literals for data section
     private string _stdLibPath = "std"; // Path to standard library
     private string? _inputFilePath = null; // Path to the file being compiled
@@ -1177,6 +1178,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 ParseVariadicParameter(funcContext.parameterList(), function);
             }
 
+            if (_inputFilePath != null)
+                AssignModuleLinkName(function, _inputFilePath);
             _module.AddFunction(function);
         }
 

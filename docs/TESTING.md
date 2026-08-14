@@ -173,10 +173,30 @@ public void Compile_ComplexExpression_Success()
 
 ## Running Tests
 
-### Run All Tests
+### Run Fast Unit Tests
 ```bash
 dotnet test
 ```
+
+Whole-program corpus and VBCC link tests are cached but intentionally separate from the
+default unit-test loop:
+
+```bash
+dotnet test --filter "Category=CorpusCompilation"
+dotnet test --filter "Category=CompilerIntegration"
+dotnet test --filter "Category=FullCompilation"
+```
+
+Amiga test executables can also check allocation and OS-resource leaks around
+each test:
+
+```bash
+novus test path/to/tests --memory-check
+```
+
+The check is exact for Novus allocations and confirms raw AmigaOS memory drops
+against a warmed baseline. Runtime libraries opened lazily are closed between
+tests, and a failing test's tracked allocations are reset before the next test.
 
 ### Run Specific Test Class
 ```bash

@@ -83,11 +83,14 @@ public class Program
     public const int EXIT_USAGE = 1;
     public const int EXIT_COMPILE_ERROR = 2;
 
-    // Generated IR and objects must change whenever either compiler assembly
-    // changes. Deterministic module IDs remove manual cache-version bumps.
+    // IR depends on Novus.Core only. CLI/test-runner edits must not evict every
+    // parsed stdlib module; generated C/object caches retain the broader key.
+    private static int IrCacheVersion =>
+        BitConverter.ToInt32(typeof(IrBuilder).Assembly.ManifestModule.ModuleVersionId.ToByteArray());
+
     private static int CompilerCacheVersion =>
         BitConverter.ToInt32(typeof(Program).Assembly.ManifestModule.ModuleVersionId.ToByteArray()) ^
-        BitConverter.ToInt32(typeof(IrBuilder).Assembly.ManifestModule.ModuleVersionId.ToByteArray());
+        IrCacheVersion;
 
     internal static string? ResolveGeneratedSourcePath(
         string cFileName,
@@ -101,19 +104,7 @@ public class Program
     }
 
     internal static string GetGeneratedModulePrefix(string modulePath, string fallback)
-    {
-        var normalized = modulePath.Replace('\\', '/');
-        var stdMarker = normalized.LastIndexOf("/std/", StringComparison.Ordinal);
-        if (stdMarker >= 0)
-        {
-            var relative = Path.ChangeExtension(normalized[(stdMarker + 5)..], null)!;
-            return relative.Replace('/', '_');
-        }
-
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(modulePath))))[..8].ToLowerInvariant();
-        return $"{fallback}_{hash}";
-    }
+        => ModuleImportHelper.GetGeneratedModulePrefix(modulePath, fallback);
 
     internal static string ComputeWholeProgramCacheKey(
         IEnumerable<(string Path, string ContentHash)> inputs,
@@ -1091,7 +1082,8 @@ public class Program
             if (!options.NoCache)
             {
                 var projectRoot = Path.GetDirectoryName(Path.GetFullPath(options.InputFile)) ?? ".";
-                compilationCache = new CompilationCache(projectRoot, CompilerCacheVersion);
+                compilationCache = new CompilationCache(
+                    projectRoot, IrCacheVersion, options.CompilationCacheDirectory);
                 compilationCache.BeginBuild();
             }
 
@@ -1371,6 +1363,9 @@ public class Program
             var linkedFunctions = options.BuildMode == BuildMode.Release && options.OptimizationLevel == 3
                 ? reachableFunctions
                 : FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions, includeAllDefinitions: true);
+            var usesAmiSsl = allModulesIR.Values.Prepend(mainIR).Any(module =>
+                module.ModuleName.Equals("amissl", StringComparison.OrdinalIgnoreCase) ||
+                Path.GetFileName(module.ModulePath).Equals("amissl.novus", StringComparison.OrdinalIgnoreCase));
             var ffiCompileModules = allModulesIR.Values.Prepend(mainIR)
                 .Select(module => FfiModuleMetadata.TryRead(module.ModulePath))
                 .Where(metadata => metadata != null)
@@ -1378,6 +1373,7 @@ public class Program
                 .DistinctBy(metadata => metadata.ModuleName)
                 .ToList();
             var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values, linkedFunctions)
+                .Concat(ffiCompileModules.Where(metadata => metadata.Kind == FfiModuleKind.LazyLibrary))
                 .Concat(options.AdditionalFfiModules)
                 .DistinctBy(metadata => metadata.BaseSymbol)
                 .ToList();
@@ -1981,6 +1977,11 @@ public class Program
                 // Only executables need startup code and library initialization
                 var startup = GetStartupStub(options.ProjectType);
                 var coreFiles = new List<string> { startup, "debug_gfxbase", "math_sqrt", "math_fixed", "math_trig", "math_vec2", "math_core", "math_angle", "math_interp" };
+                if (allModulesIR.Values.Any(module =>
+                        Path.GetFileName(module.ModulePath).Equals("bsdsocket.novus", StringComparison.OrdinalIgnoreCase)))
+                    coreFiles.Add("bsdsocket_bases");
+                if (usesAmiSsl)
+                    coreFiles.Add("amissl_bases");
                 if (options.ProjectType.Equals("handler", StringComparison.OrdinalIgnoreCase))
                     coreFiles.Add("dos_init");
                 if (requiredFfiModules.Any(module => module.BaseSymbol == "_MUIMasterBase"))
@@ -2157,8 +2158,7 @@ ___stack:
             bool needsRebuild = forceRebuildAndCache
                 || !useCache
                 || !Directory.Exists(stdlibPrecompiledDir)
-                || !AtomicCacheWriter.IsCacheComplete(stdlibPrecompiledDir)  // Check completion marker
-                || Commands.StdlibBuildCommand.NeedsRebuild(compilerDir, assemblyCpu, options.BuildMode, CompilerCacheVersion, out cacheInvalidReason, stdlibPrecompiledDir);
+                || !AtomicCacheWriter.IsCacheComplete(stdlibPrecompiledDir);
 
             // CRITICAL FIX: If stdlib cache is stale, delete ALL cached .o files
             // This prevents using stale object files with old constant values
@@ -2386,8 +2386,11 @@ ___stack:
                     {
                         var cFileName = Path.GetFileNameWithoutExtension(cFile);
                         var precompiledObj = Path.Combine(stdlibPrecompiledDir, $"{cFileName}.o");
+                        var cachedHashPath = precompiledObj + ".hash";
+                        var generatedHash = cFileToSource[cFile].hash;
 
-                        if (File.Exists(precompiledObj))
+                        if (File.Exists(precompiledObj) && File.Exists(cachedHashPath) &&
+                            (await File.ReadAllTextAsync(cachedHashPath)).Trim() == generatedHash)
                         {
                             objectFiles.Add(precompiledObj);
                             precompiledFiles.Add(cFileName);
@@ -2401,23 +2404,30 @@ ___stack:
                     {
                         Console.WriteLine($"  → Compiling {stdlibCFiles.Count - precompiledFiles.Count} missing stdlib files...");
 
-                        // Compile missing stdlib files
-                        foreach (var cFile in stdlibCFiles)
+                        var missingFiles = stdlibCFiles
+                            .Where(cFile => !precompiledFiles.Contains(Path.GetFileNameWithoutExtension(cFile)))
+                            .ToList();
+                        foreach (var batch in missingFiles.Chunk(Math.Max(1, Environment.ProcessorCount)))
                         {
-                            var cFileName = Path.GetFileNameWithoutExtension(cFile);
-                            if (!precompiledFiles.Contains(cFileName))
+                            var results = await Task.WhenAll(batch.Select(async cFile =>
                             {
-                                var objFile = Path.Combine(outputDir, cFileName + ".o");
-                                Console.WriteLine($"    → {Path.GetFileName(cFile)}");
+                                var objFile = Path.Combine(outputDir, Path.GetFileNameWithoutExtension(cFile) + ".o");
+                                var success = await toolchain.CompileToObject(cFile, objFile, assemblyCpu,
+                                    options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu);
+                                return (cFile, objFile, success);
+                            }));
 
-                                if (!await toolchain.CompileToObject(cFile, objFile, assemblyCpu, options.OptimizationLevel, options.BuildMode, enableFpu: enableFpu))
+                            foreach (var result in results)
+                            {
+                                if (!result.success)
                                 {
-                                    Console.Error.WriteLine($"\n✗ Failed to compile {Path.GetFileName(cFile)}");
+                                    Console.Error.WriteLine($"\n✗ Failed to compile {Path.GetFileName(result.cFile)}");
                                     return EXIT_COMPILE_ERROR;
                                 }
 
-                                objectFiles.Add(objFile);
-                                stdlibOFilesToCache.Add((cFile, objFile));  // Mark for caching
+                                Console.WriteLine($"    → {Path.GetFileName(result.cFile)}");
+                                objectFiles.Add(result.objFile);
+                                stdlibOFilesToCache.Add((result.cFile, result.objFile));
                             }
                         }
                     }
@@ -2476,6 +2486,9 @@ ___stack:
                         foreach (var obj in existingStdlibObjects)
                         {
                             File.Copy(obj, Path.Combine(tempDir, Path.GetFileName(obj)), overwrite: true);
+                            var hashPath = obj + ".hash";
+                            if (File.Exists(hashPath))
+                                File.Copy(hashPath, Path.Combine(tempDir, Path.GetFileName(hashPath)), overwrite: true);
                         }
 
                         // Copy all object files to temp directory
@@ -2483,6 +2496,7 @@ ___stack:
                         {
                             var cachedPath = Path.Combine(tempDir, Path.GetFileName(obj));
                             File.Copy(obj, cachedPath, overwrite: true);
+                            await File.WriteAllTextAsync(cachedPath + ".hash", cFileToSource[source].hash);
                         }
 
                         // CRITICAL: Store the types header with the cache
@@ -2496,7 +2510,13 @@ ___stack:
 
                         // Write manifest with source file hashes for cache invalidation
                         var stdlibSourcePaths = allModulesIR
-                            .Where(kvp => kvp.Key.Contains("/std/"))
+                            .Where(kvp =>
+                            {
+                                var relative = Path.GetRelativePath(stdLibPath, kvp.Key);
+                                return relative != ".." &&
+                                       !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                                       !relative.StartsWith($"tests{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+                            })
                             .Select(kvp => kvp.Key)
                             .ToList();
 
@@ -2516,6 +2536,7 @@ ___stack:
             var requiredStubModules = requiredFfiModules
                 .Select(binding => binding.ModuleName)
                 .Append("exec")
+                .Concat(usesAmiSsl ? ["amissl"] : [])
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();

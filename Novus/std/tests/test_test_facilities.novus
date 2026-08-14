@@ -1,0 +1,228 @@
+from amiga::raw::consts import MEMF_CHIP, MEMF_CLEAR, MEMF_FAST
+from amiga::raw::exec import AllocMem, FreeMem
+from std::core import Option, Result
+from std::test::assertions import *
+from std::test::bench import BenchRunner, BenchStats, __bench_cleanup, __bench_init, __bench_run, black_box_bool, black_box_i32, black_box_ptr, black_box_u32
+from std::test::test import __test_begin, __test_get_failures, __test_record_failure, __test_reset, expect, expect_eq, expect_err, expect_false, expect_ne, expect_none, expect_not_null, expect_null, expect_ok, expect_some, expect_true, fail
+
+// @covers std::test::assertions::expect_str_eq(Str, Str, *u8)
+// @covers std::test::assertions::expect_str_ne(Str, Str, *u8)
+// @covers std::test::assertions::expect_cstr_eq(*u8, *u8, *u8)
+// @covers std::test::assertions::expect_str_contains(Str, Str, *u8)
+// @covers std::test::assertions::expect_str_not_contains(Str, Str, *u8)
+// @covers std::test::assertions::expect_str_starts_with(Str, Str, *u8)
+// @covers std::test::assertions::expect_str_ends_with(Str, Str, *u8)
+// @covers std::test::assertions::expect_str_empty(Str, *u8)
+// @covers std::test::assertions::expect_str_not_empty(Str, *u8)
+// @covers std::test::assertions::expect_str_len(Str, u32, *u8)
+@test("extended string assertions accept valid values")
+pub fn test_extended_string_assertions() {
+    expect_str_eq("hello", "hello", "equal")
+    expect_str_ne("hello", "world", "not equal")
+    expect_cstr_eq("hello", "hello", "C strings")
+    expect_str_contains("hello world", "world", "contains")
+    expect_str_not_contains("hello", "world", "not contains")
+    expect_str_starts_with("hello", "he", "starts")
+    expect_str_ends_with("hello", "lo", "ends")
+    expect_str_empty("", "empty")
+    expect_str_not_empty("x", "not empty")
+    expect_str_len("hello", 5, "length")
+}
+
+// @covers std::test::assertions::expect_ok_i32(Result<i32, i32>, *u8)
+// @covers std::test::assertions::expect_err_i32(Result<i32, i32>, *u8)
+// @covers std::test::assertions::expect_ok_u32(Result<u32, u32>, *u8)
+// @covers std::test::assertions::expect_err_u32(Result<u32, u32>, *u8)
+// @covers std::test::assertions::expect_ok_bool(Result<bool, i32>, *u8)
+// @covers std::test::assertions::expect_ok_unit(Result<(), i32>, *u8)
+// @covers std::test::assertions::expect_ok_eq_i32(Result<i32, i32>, i32, *u8)
+// @covers std::test::assertions::expect_ok_eq_u32(Result<u32, u32>, u32, *u8)
+// @covers std::test::assertions::expect_some_i32(Option<i32>, *u8)
+// @covers std::test::assertions::expect_none_i32(Option<i32>, *u8)
+// @covers std::test::assertions::expect_some_u32(Option<u32>, *u8)
+// @covers std::test::assertions::expect_none_u32(Option<u32>, *u8)
+// @covers std::test::assertions::expect_some_bool(Option<bool>, *u8)
+// @covers std::test::assertions::expect_none_bool(Option<bool>, *u8)
+// @covers std::test::assertions::expect_some_eq_i32(Option<i32>, i32, *u8)
+// @covers std::test::assertions::expect_some_eq_u32(Option<u32>, u32, *u8)
+@test("extended Result and Option assertions accept valid variants")
+pub fn test_extended_sum_type_assertions() {
+    expect_ok_i32(Result::Ok(1), "ok i32")
+    expect_err_i32(Result::Err(1), "err i32")
+    expect_ok_u32(Result::Ok(1), "ok u32")
+    expect_err_u32(Result::Err(1), "err u32")
+    expect_ok_bool(Result::Ok(true), "ok bool")
+    expect_ok_unit(Result::Ok(()), "ok unit")
+    expect_ok_eq_i32(Result::Ok(2), 2, "ok equals i32")
+    expect_ok_eq_u32(Result::Ok(2), 2, "ok equals u32")
+    expect_some_i32(Option::Some(3), "some i32")
+    let none_i32: Option<i32> = Option::None
+    expect_none_i32(none_i32, "none i32")
+    expect_some_u32(Option::Some(3), "some u32")
+    let none_u32: Option<u32> = Option::None
+    expect_none_u32(none_u32, "none u32")
+    expect_some_bool(Option::Some(true), "some bool")
+    let none_bool: Option<bool> = Option::None
+    expect_none_bool(none_bool, "none bool")
+    expect_some_eq_i32(Option::Some(4), 4, "some equals i32")
+    expect_some_eq_u32(Option::Some(4), 4, "some equals u32")
+}
+
+// @covers std::test::assertions::expect_gt_i32(i32, i32, *u8)
+// @covers std::test::assertions::expect_lt_i32(i32, i32, *u8)
+// @covers std::test::assertions::expect_gte_i32(i32, i32, *u8)
+// @covers std::test::assertions::expect_lte_i32(i32, i32, *u8)
+// @covers std::test::assertions::expect_gt_u32(u32, u32, *u8)
+// @covers std::test::assertions::expect_lt_u32(u32, u32, *u8)
+// @covers std::test::assertions::expect_gte_u32(u32, u32, *u8)
+// @covers std::test::assertions::expect_lte_u32(u32, u32, *u8)
+// @covers std::test::assertions::expect_ne_i32(i32, i32, *u8)
+// @covers std::test::assertions::expect_ne_u32(u32, u32, *u8)
+// @covers std::test::assertions::expect_in_range_i32(i32, i32, i32, *u8)
+// @covers std::test::assertions::expect_in_range_u32(u32, u32, u32, *u8)
+// @covers std::test::assertions::expect_not_in_range_i32(i32, i32, i32, *u8)
+// @covers std::test::assertions::expect_approx_eq_fixed(i32, i32, i32, *u8)
+// @covers std::test::assertions::expect_approx_eq_u32(u32, u32, u32, *u8)
+@test("extended numeric assertions accept boundaries")
+pub fn test_extended_numeric_assertions() {
+    expect_gt_i32(2, 1, "gt")
+    expect_lt_i32(1, 2, "lt")
+    expect_gte_i32(2, 2, "gte")
+    expect_lte_i32(2, 2, "lte")
+    expect_gt_u32(2, 1, "gt u32")
+    expect_lt_u32(1, 2, "lt u32")
+    expect_gte_u32(2, 2, "gte u32")
+    expect_lte_u32(2, 2, "lte u32")
+    expect_ne_i32(1, 2, "ne")
+    expect_ne_u32(1, 2, "ne u32")
+    expect_in_range_i32(2, 1, 3, "range")
+    expect_in_range_u32(2, 1, 3, "range u32")
+    expect_not_in_range_i32(4, 1, 3, "outside")
+    expect_approx_eq_fixed(101, 100, 1, "approx")
+    expect_approx_eq_u32(101, 100, 1, "approx u32")
+}
+
+// @covers std::test::assertions::expect_array_eq_i32(*i32, u32, *i32, u32, *u8)
+// @covers std::test::assertions::expect_array_eq_u32(*u32, u32, *u32, u32, *u8)
+// @covers std::test::assertions::expect_array_eq_u8(*u8, u32, *u8, u32, *u8)
+// @covers std::test::assertions::expect_array_contains_i32(*i32, u32, i32, *u8)
+// @covers std::test::assertions::expect_array_not_contains_i32(*i32, u32, i32, *u8)
+// @covers std::test::assertions::expect_array_len(u32, u32, *u8)
+// @covers std::test::assertions::expect_array_empty(u32, *u8)
+// @covers std::test::assertions::expect_array_not_empty(u32, *u8)
+@test("extended array assertions compare contents and lengths")
+pub fn test_extended_array_assertions() {
+    let i32s: [i32] = [1, 2]
+    let u32s: [u32] = [1, 2]
+    let u8s: [u8] = [1, 2]
+    expect_array_eq_i32((*i32)&i32s, 2, (*i32)&i32s, 2, "i32 array")
+    expect_array_eq_u32((*u32)&u32s, 2, (*u32)&u32s, 2, "u32 array")
+    expect_array_eq_u8((*u8)&u8s, 2, (*u8)&u8s, 2, "u8 array")
+    expect_array_contains_i32((*i32)&i32s, 2, 2, "contains")
+    expect_array_not_contains_i32((*i32)&i32s, 2, 3, "not contains")
+    expect_array_len(2, 2, "length")
+    expect_array_empty(0, "empty")
+    expect_array_not_empty(2, "not empty")
+}
+
+// @covers std::test::assertions::expect_chip_mem(*u8, *u8)
+// @covers std::test::assertions::expect_fast_mem(*u8, *u8)
+// @covers std::test::assertions::expect_valid_mem(*u8, *u8)
+// @covers std::test::assertions::expect_chip_available(u32, *u8)
+// @covers std::test::assertions::expect_fast_available(u32, *u8)
+@test("Amiga memory assertions recognize allocated memory")
+pub fn test_amiga_memory_assertions() {
+    let chip = unsafe { AllocMem(16, MEMF_CHIP | MEMF_CLEAR) }
+    let fast = unsafe { AllocMem(16, MEMF_FAST | MEMF_CLEAR) }
+    expect_not_null(chip, "chip allocation")
+    expect_not_null(fast, "fast allocation")
+    expect_chip_mem(chip, "chip type")
+    expect_fast_mem(fast, "fast type")
+    expect_valid_mem(chip, "valid memory")
+    expect_chip_available(0, "chip available")
+    expect_fast_available(0, "fast available")
+    unsafe {
+        FreeMem(chip, 16)
+        FreeMem(fast, 16)
+    }
+}
+
+// @covers std::test::test::__test_begin(*u8)
+// @covers std::test::test::__test_get_failures()
+// @covers std::test::test::__test_reset()
+// @covers std::test::test::__test_record_failure()
+// @covers std::test::test::expect(bool, *u8)
+// @covers std::test::test::expect_true(bool, *u8)
+// @covers std::test::test::expect_false(bool, *u8)
+// @covers std::test::test::expect_eq(T, T)
+// @covers std::test::test::expect_ne(T, T)
+// @covers std::test::test::expect_ok(Result<T, E>)
+// @covers std::test::test::expect_err(Result<T, E>)
+// @covers std::test::test::expect_some(Option<T>)
+// @covers std::test::test::expect_none(Option<T>)
+// @covers std::test::test::expect_null(*u8, *u8)
+// @covers std::test::test::expect_not_null(*u8, *u8)
+// @covers std::test::test::fail(*u8)
+@test("base test framework tracks and clears failures")
+pub fn test_base_test_framework() {
+    __test_reset()
+    __test_begin("framework self-test")
+    expect(true, "expect")
+    expect_true(true, "true")
+    expect_false(false, "false")
+    expect_eq(1, 1)
+    expect_ne(1, 2)
+    let ok: Result<i32, i32> = Result::Ok(1)
+    let err: Result<i32, i32> = Result::Err(1)
+    expect_ok(ok)
+    expect_err(err)
+    expect_some(Option::Some(1))
+    let none: Option<i32> = Option::None
+    expect_none(none)
+    expect_null((*u8)0, "null")
+    expect_not_null("x", "not null")
+    __test_record_failure()
+    expect(__test_get_failures() == 1, "record failure")
+    __test_reset()
+    fail("intentional self-test failure")
+    expect(__test_get_failures() == 1, "fail helper")
+    __test_reset()
+}
+
+fn bench_noop() {}
+
+// @covers std::test::bench::BenchStats::new()
+// @covers std::test::bench::BenchStats::ops_per_sec()
+// @covers std::test::bench::BenchStats::print(*u8)
+// @covers std::test::bench::BenchRunner::new()
+// @covers std::test::bench::BenchRunner::run_fixed(fn(), u32)
+// @covers std::test::bench::BenchRunner::run_auto(fn())
+// @covers std::test::bench::black_box_i32(i32)
+// @covers std::test::bench::black_box_u32(u32)
+// @covers std::test::bench::black_box_bool(bool)
+// @covers std::test::bench::black_box_ptr(*u8)
+// @covers std::test::bench::__bench_init()
+// @covers std::test::bench::__bench_run(*u8, fn(), u32)
+// @covers std::test::bench::__bench_cleanup()
+@test("benchmark facilities measure and retain opaque values")
+pub fn test_benchmark_facilities() {
+    let empty = BenchStats::new()
+    expect(empty.ops_per_sec() == 0, "empty throughput")
+    empty.print("empty benchmark")
+    expect(black_box_i32(-1) == -1, "black box i32")
+    expect(black_box_u32(2) == 2, "black box u32")
+    expect(black_box_bool(true), "black box bool")
+    expect(black_box_ptr("x") != null, "black box pointer")
+    expect(__bench_init() == 0, "benchmark init")
+    __bench_run("uninitialized benchmark", bench_noop, 1)
+    __bench_cleanup()
+    match BenchRunner::new() {
+        Result::Ok(var runner) => {
+            let fixed = runner.run_fixed(bench_noop, 2)
+            let automatic = runner.run_auto(bench_noop)
+            expect(fixed.ops_per_sec() == fixed.ops_per_sec(), "fixed benchmark")
+            expect(automatic.ops_per_sec() == automatic.ops_per_sec(), "automatic benchmark")
+        },
+        Result::Err(_) => expect(false, "timer opens")
+    }
+}

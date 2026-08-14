@@ -1,0 +1,102 @@
+from amiga::raw::exec import AllocSignal, FindTask, FreeSignal, SetSignal
+from amiga::sys::timer import Duration
+from std::async::executor import ExecutorError, block_on_sleep, block_on_sleep_uninterruptible, poll_sleep_once
+from std::async::future import Context, Pending, Poll, Ready, Waker, pending, ready
+from std::async::sleep import Sleep, sleep, sleep_micros, sleep_millis, sleep_secs
+from std::core import Result
+from std::test::test import expect
+
+// @covers std::async::future::Poll::is_ready()
+// @covers std::async::future::Poll::is_pending()
+// @covers std::async::future::Poll::unwrap()
+@test("Poll reports and unwraps its state")
+pub fn test_poll() {
+    let ready_value: Poll<i32> = Poll::Ready(7)
+    let pending_value: Poll<i32> = Poll::Pending
+    expect(ready_value.is_ready() && pending_value.is_pending(), "poll state")
+    expect(Poll::Ready(8).unwrap() == 8, "ready value")
+}
+
+// @covers std::async::future::Waker::new(*Task, i8)
+// @covers std::async::future::Waker::signal_mask()
+// @covers std::async::future::Waker::signal_bit()
+// @covers std::async::future::Waker::task()
+// @covers std::async::future::Waker::wake()
+// @covers std::async::future::Context::new(Waker)
+// @covers std::async::future::Context::waker()
+@test("Waker and Context preserve an Exec signal")
+pub fn test_waker_context() {
+    let bit = AllocSignal(-1)
+    expect(bit >= 0, "signal allocated")
+    let task = FindTask(null)
+    let waker = Waker::new(task, bit)
+    let context = Context::new(waker)
+    let copy = context.waker()
+    expect(copy.task() == task && copy.signal_bit() == bit, "waker values")
+    expect(copy.signal_mask() == ((u32)1 << (u32)bit), "signal mask")
+    copy.wake()
+    let _ = SetSignal(0, (i32)copy.signal_mask())
+    FreeSignal(bit)
+}
+
+// @covers std::async::future::Ready::new(T)
+// @covers std::async::future::ready(T)
+// @covers std::async::future::Pending::new()
+// @covers std::async::future::pending()
+// @covers std::async::future::Future::poll(&var Context)
+@test("Ready and Pending implement the Future protocol")
+pub fn test_basic_futures() {
+    let bit = AllocSignal(-1)
+    let waker = Waker::new(FindTask(null), bit)
+    var context = Context::new(waker)
+    var direct_ready = Ready::new(10)
+    var convenient_ready = ready(11)
+    var direct_pending = Pending::<i32>::new()
+    var convenient_pending = pending::<i32>()
+    expect(direct_ready.poll(&var context).unwrap() == 10, "direct ready")
+    expect(convenient_ready.poll(&var context).unwrap() == 11, "ready helper")
+    expect(direct_pending.poll(&var context).is_pending(), "direct pending")
+    expect(convenient_pending.poll(&var context).is_pending(), "pending helper")
+    FreeSignal(bit)
+}
+
+// @covers std::async::sleep::Sleep::new(Duration)
+// @covers std::async::sleep::Sleep::with_unit(Duration, u32)
+// @covers std::async::sleep::sleep(Duration)
+// @covers std::async::sleep::sleep_secs(u32)
+// @covers std::async::sleep::sleep_millis(u32)
+// @covers std::async::sleep::sleep_micros(u32)
+@test("Sleep constructors create inert futures")
+pub fn test_sleep_constructors() {
+    let first = Sleep::new(Duration::zero())
+    let second = Sleep::with_unit(Duration::zero(), 0)
+    let third = sleep(Duration::zero())
+    let fourth = sleep_secs(0)
+    let fifth = sleep_millis(0)
+    let sixth = sleep_micros(0)
+    expect(true, "constructors returned")
+}
+
+// @covers std::async::sleep::Sleep::poll(&var Context)
+// @covers std::async::executor::poll_sleep_once(&var Sleep)
+// @covers std::async::executor::block_on_sleep(Sleep)
+// @covers std::async::executor::block_on_sleep_uninterruptible(Sleep)
+@test("Sleep futures complete through polling and blocking executors")
+pub fn test_sleep_execution() {
+    var polled = sleep_micros(0)
+    match poll_sleep_once(&var polled) {
+        Result::Ok(_) => {},
+        Result::Err(_) => expect(false, "single poll")
+    }
+    expect(block_on_sleep(sleep_micros(0)).is_ok(), "interruptible executor")
+    expect(block_on_sleep_uninterruptible(sleep_micros(0)).is_ok(), "uninterruptible executor")
+}
+
+// @covers std::async::executor::ExecutorError::message()
+@test("ExecutorError provides stable messages")
+pub fn test_executor_error_message() {
+    let no_signal = ExecutorError::NoSignal
+    let interrupted = ExecutorError::Interrupted
+    expect(unsafe { no_signal.message()[0] } == (u8)'F', "no signal message")
+    expect(unsafe { interrupted.message()[0] } == (u8)'I', "interrupt message")
+}

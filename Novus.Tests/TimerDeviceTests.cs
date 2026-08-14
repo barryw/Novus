@@ -13,6 +13,7 @@ namespace Novus.Tests;
 /// Comprehensive tests for the timer device integration (amiga::timer).
 /// Tests both positive cases (valid usage) and negative cases (error detection).
 /// </summary>
+[Trait("Category", "CompilerIntegration")]
 public class TimerDeviceTests
 {
     private static string GetProjectRoot()

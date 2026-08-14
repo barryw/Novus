@@ -15,7 +15,7 @@
 from std::core import Option, Result, Drop, Error, From
 from std::async::future import Future, Poll, Context, Waker
 from std::async::sleep import Sleep
-from amiga::timer import TimerError
+from amiga::sys::timer import TimerError
 from amiga::raw::exec import FindTask, Wait, SetSignal, AllocSignal, FreeSignal
 from amiga::raw::structs import Task
 from amiga::raw::consts import SIGBREAKF_CTRL_C

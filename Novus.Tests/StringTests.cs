@@ -6,6 +6,7 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[Trait("Category", "CompilerIntegration")]
 public class StringTests
 {
     private IrModule BuildIr(string source)

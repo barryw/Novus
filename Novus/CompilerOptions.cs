@@ -198,6 +198,9 @@ public class CompilerOptions
     [Option("cache-stats", Required = false, HelpText = "Display cache hit/miss statistics after compilation")]
     public bool CacheStats { get; set; }
 
+    /// <summary>Override the persistent IR cache directory.</summary>
+    public string? CompilationCacheDirectory { get; set; }
+
     /// <summary>
     /// Code generation backend: c (VBCC) or m68k (direct assembly - EXPERIMENTAL)
     /// </summary>

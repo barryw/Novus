@@ -11,6 +11,19 @@ namespace Novus.Frontend;
 /// </summary>
 public partial class IrBuilder
 {
+    private static void AssignModuleLinkName(IrFunction function, string modulePath)
+    {
+        function.IsExported |= function.Attributes?.Has("export") == true;
+        if (!function.IsExtern && !function.IsExported && function.Name != "main" &&
+            function.Attributes?.Has(SemanticAnalysis.KnownAttributes.Test) != true &&
+            !function.Name.StartsWith("__", StringComparison.Ordinal))
+        {
+            var baseName = function.OriginalName ?? function.Name;
+            var signatureName = baseName + OverloadResolution.GetOverloadSuffix(function);
+            function.LinkName = ModuleImportHelper.GetFunctionLinkName(modulePath, signatureName);
+        }
+    }
+
     private void BuildImportedConstFunctionBodies()
     {
         if (_deferredStaticInitializers is [] || _importedConstFunctionBodies is [])
@@ -435,71 +448,10 @@ public partial class IrBuilder
                 // Step 6: Register traits
                 RegisterTraitsForImport(moduleContext, selectiveImports);
 
-                // Step 7: NOW register functions - all type stubs are registered
-                // so function signatures can reference any type
-                foreach (var funcDecl in moduleContext.functionDeclaration())
-                {
-                    var baseFuncName = funcDecl.IDENTIFIER().GetText();
-                    if (selectiveImports.Contains(baseFuncName))
-                    {
-                        // Check if this is a generic function - skip for now, they're handled as templates
-                        // Generic functions have type parameters like T that can't be parsed without context
-                        var genericParams = AstParsingHelpers.ParseGenericParameters(funcDecl.genericParams(), _symbols, registerInSymbolTable: false);
-                        if (genericParams.Count > 0 || funcDecl.genericParams() != null)
-                        {
-                            // For generic functions, just register the template (they'll be instantiated on use)
-                            // Note: We can't compute mangled names for generics since param types contain T
-                            continue;
-                        }
-
-                        // Parse and add the function
-                        var returnType = ParseReturnType(funcDecl.type());
-
-                        var (visibility, isExtern, _, isConstFn) = AstModifierHelper.ParseModifiers(funcDecl, 5);
-
-                        // Parse parameters first to compute mangled name for overloaded functions
-                        var parameters = new List<IrParameter>();
-                        if (funcDecl.parameterList() != null)
-                        {
-                            ParseRegularParameters(funcDecl.parameterList(), parameters);
-                        }
-
-                        // Compute mangled name if this function is overloaded
-                        var paramTypes = parameters.Select(p => p.Type).ToList();
-                        var mangledName = GetMangledFunctionName(baseFuncName, paramTypes);
-
-                        // Check if not already imported (use mangled name for uniqueness)
-                        if (!_module.Functions.Any(f => f.Name == mangledName))
-                        {
-                            var function = new IrFunction(mangledName, returnType, visibility, isExtern);
-                            function.IsConstFn = isConstFn;
-
-                            // Store original name if mangled
-                            if (mangledName != baseFuncName)
-                            {
-                                function.OriginalName = baseFuncName;
-                            }
-
-                            // Parse and store function attributes (for @library, etc.)
-                            // This is CRITICAL for FFI functions that use @library("bsdsocket.library") etc.
-                            var attributes = ProcessAndFilterModuleAttributes(funcDecl.attribute());
-                            function.Attributes = attributes;
-
-                            // Add already-parsed parameters
-                            function.Parameters.AddRange(parameters);
-
-                            // Add variadic parameter if present
-                            if (funcDecl.parameterList()?.variadicParameter() != null)
-                            {
-                                ParseVariadicParameter(funcDecl.parameterList(), function);
-                            }
-
-                            _module.AddFunction(function);
-                            if (isConstFn)
-                                _importedConstFunctionBodies.Add((function, funcDecl, null));
-                        }
-                    }
-                }
+                // Step 7: NOW register functions - all type stubs are registered.
+                // Use the shared path so widening a previous import also registers
+                // generic function templates.
+                RegisterFunctionsForImport(moduleContext, selectiveImports, moduleNamespace, modulePath);
 
                 // Register impl blocks for ALL types (not just selective imports)
                 // This is critical: when you import a type, you also need its methods!
@@ -1003,7 +955,7 @@ public partial class IrBuilder
                              function.BasicBlocks.Count == 0 &&
                              !string.Equals(function.Location?.FilePath, _inputFilePath, StringComparison.Ordinal)))
                 {
-                    function.LinkName = original;
+                    function.LinkName ??= original;
                     _module.RenameFunction(function, alias);
                 }
             }
@@ -1489,12 +1441,7 @@ public partial class IrBuilder
     /// </summary>
     private string BuildGenericFunctionMangledName(string functionName, Dictionary<string, IrType> typeSubstitutions)
     {
-        var mangledName = functionName;
-        foreach (var kvp in typeSubstitutions.OrderBy(kv => kv.Key))
-        {
-            mangledName += "_" + kvp.Value.Name.Replace("*", "ptr").Replace("&", "ref").Replace("[", "arr").Replace("]", "");
-        }
-        return mangledName;
+        return Generics.InstantiationKeyBuilder.BuildGenericFunctionMangledName(functionName, typeSubstitutions);
     }
 
     /// <summary>
@@ -2040,6 +1987,8 @@ public partial class IrBuilder
             {
                 ParseVariadicParameter(funcDecl.parameterList(), function);
             }
+
+            AssignModuleLinkName(function, modulePath);
 
             _module.AddFunction(function);
             if (isConstFn)

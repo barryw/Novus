@@ -1,5 +1,8 @@
 // Novus Standard Library - BSD Socket FFI Bindings
 // Namespace: amiga::raw::bsdsocket
+// Library: bsdsocket.library
+// Base: _SocketBase
+// Lifecycle: lazy
 //
 // Low-level FFI bindings for AmigaOS bsdsocket.library.
 // This API is compatible with AmiTCP, Miami, and Roadshow TCP/IP stacks.
@@ -15,7 +18,8 @@
 
 // The socket library base - must be opened per-task
 // This is handled automatically by std::net, but exposed for advanced use
-// NOTE: Storage for this variable is provided by bsdsocket_bases.s
+// Storage is provided by bsdsocket_bases.s; compiler teardown closes an
+// automatically opened base if it is still owned by this task.
 extern var SocketBase: *u8
 
 // ============================================================================

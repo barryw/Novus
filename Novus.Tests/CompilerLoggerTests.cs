@@ -4,9 +4,13 @@ using Xunit;
 
 namespace Novus.Tests;
 
+[CollectionDefinition("CompilerLogger", DisableParallelization = true)]
+public sealed class CompilerLoggerCollection;
+
 /// <summary>
 /// Tests for the CompilerLogger infrastructure.
 /// </summary>
+[Collection("CompilerLogger")]
 public class CompilerLoggerTests : IDisposable
 {
     private readonly StringWriter _output;
