@@ -1,6 +1,7 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: translator.library
 // Base: _TranslatorBase
+// Lifecycle: optional
 
 from amiga::raw::structs import *
 //

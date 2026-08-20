@@ -1,10 +1,15 @@
 from std::test::test import expect
+from amiga::capabilities import library_available
 from amiga::raw::translator import Translate
 
 // @covers-ndk function|translator.library|Translate
 // @ndk-side-effects Converts a complete English phrase into a bounded NUL-terminated phoneme buffer, then forces documented word-boundary overflow without writing beyond the supplied capacity
 @test("translator.library Translate produces bounded phonemes and reports overflow")
 pub fn translator_translate_phonemes() {
+    // translator.library ships with the speech subsystem, not with the ROM, so a
+    // machine may not have it: present on the A4000 image, absent on the A1200.
+    // The binding is optional, so the base stays null instead of aborting startup.
+    if !library_available("translator.library", 0) { return }
     var output: [u8] = [$A5; 64]
     let complete = unsafe { Translate("hello world", 11, (*u8)&var output[0], 63) }
     var written: u32 = 0
