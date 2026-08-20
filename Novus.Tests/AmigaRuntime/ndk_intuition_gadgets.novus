@@ -113,7 +113,7 @@ pub fn intuition_add_glist() {
 }
 
 // @covers-ndk function|intuition.library|RemoveGList
-// @ndk-side-effects Attaches three linked gadgets, removes only the first two, verifies returned ordinal and that the third becomes the exact window-list head, checks the V36+ removed-tail termination contract or the documented 47.53 defect, then removes the remaining gadget
+// @ndk-side-effects Attaches three linked gadgets, removes only the first two, verifies returned ordinal and that the third becomes the exact window-list head, checks the V36+ removed-tail termination contract or the measured Intuition 47 stale-link defect, then removes the remaining gadget
 @test("intuition.library RemoveGList removes the requested count")
 pub fn intuition_remove_glist() {
     var state = match fixture() {
@@ -140,10 +140,15 @@ pub fn intuition_remove_glist() {
     expect(position == 0, "removed prefix reports original ordinal zero")
     expect(head_is_tail, "untouched third gadget becomes the exact window-list head")
     expect(first_chain, "first removed gadget remains linked to the second removed gadget")
+    // V36+ documents the removed tail as terminated. Measured on two machines, the
+    // installed Intuition does not do that: 47.53 and 47.51 both leave the last
+    // removed gadget pointing at the first gadget still in the window. Pinning the
+    // defect to a single revision was wrong - accept it across Intuition 47, while
+    // still rejecting a link that is neither terminated nor that exact pointer.
     let installed_link_bug = IntuitionBase != null && IntuitionBase.lib_Version == 47 &&
-        IntuitionBase.lib_Revision == 53 && second.NextGadget == third_ptr
+        second.NextGadget == third_ptr
     expect(terminated || installed_link_bug,
-        "last removed gadget is terminated or exhibits the documented Intuition 47.53 stale link")
+        "last removed gadget is terminated or exhibits the Intuition 47 stale link")
 }
 
 // @covers-ndk function|intuition.library|OffGadget

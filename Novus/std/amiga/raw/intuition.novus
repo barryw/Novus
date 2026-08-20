@@ -3452,10 +3452,11 @@ extern pub fn AddGList(window: *Window, gadget: *Gadget, position: u16, numGad: 
 /// is the active gadget, this routine will wait for the user
 /// to release the mouse button before deactivating and removing
 /// the gadget.
-/// Intuition 47.53 on the verified A4000 violates the V36 contract when
-/// removing a prefix: the last removed gadget remains linked to the first
-/// retained gadget. Treat the removed chain as borrowed until you explicitly
-/// clear that stale link; see `docs/NDK_BUGS.md`.
+/// The installed Intuition violates the V36 contract when removing a prefix: the last
+/// removed gadget remains linked to the first retained gadget. Measured on both verified
+/// machines - 47.53 on the A4000 and 47.51 on the A1200 - so this is not confined to a
+/// single revision. Treat the removed chain as borrowed until you explicitly clear that
+/// stale link; see `docs/NDK_BUGS.md`.
 ///
 /// # See Also
 ///

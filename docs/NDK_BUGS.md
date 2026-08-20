@@ -73,18 +73,23 @@ Tier 3 preserves the documented numeric contract and records the installed
 library defect. The runtime test accepts the wrong duplicate result only for
 version 45.7; other versions must return `2`.
 
-## intuition.library 47.53 RemoveGList stale link
+## intuition.library 47 RemoveGList stale link
 
 The pinned autodoc says that, since V36, `RemoveGList` clears the
-`NextGadget` field of the last gadget removed. Live A4000 testing against
-intuition.library 47.53 attached three linked gadgets and removed the first
-two. The function returned ordinal zero and correctly made the third gadget
-the window-list head, but the second removed gadget remained linked to that
-retained third gadget.
+`NextGadget` field of the last gadget removed. Live testing attached three
+linked gadgets and removed the first two. The function returned ordinal zero
+and correctly made the third gadget the window-list head, but the second
+removed gadget remained linked to that retained third gadget.
+
+Measured on both verified machines: intuition.library 47.53 on the A4000 and
+47.51 on the A1200 behave identically, so the defect is not confined to one
+revision. An earlier version of this note claimed 47.53 only, and the runtime
+test pinned that exact revision - which failed as soon as a second machine ran
+it.
 
 Tier 3 preserves the ABI and documents the installed-library defect. The
-runtime test accepts the stale link only for exactly version 47.53; every other
-version must honor the V36 termination contract. Callers should explicitly
+runtime test accepts the stale link across Intuition 47 while still rejecting a
+link that is neither terminated nor the retained head. Callers should explicitly
 clear the removed tail's `NextGadget` before treating the detached chain as an
 independently terminated list.
 
