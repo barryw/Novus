@@ -8,7 +8,7 @@
         <PublishAot>true</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
         <TrimMode>partial</TrimMode>
-        <Version>0.11.0</Version>
+        <Version>0.11.1</Version>
         <Copyright>Copyright (c) 2026 Barry Walker</Copyright>
         <Authors>Barry Walker</Authors>
         <Product>Novus</Product>
