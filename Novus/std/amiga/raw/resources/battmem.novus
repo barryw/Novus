@@ -93,5 +93,14 @@ extern pub fn ReadBattMem(buffer: *u8, offset: u32, length: u32) -> u32
 /// silently set to zero.
 /// Partial byte writes (less than 8 bits) result in the bits
 /// written being read from the low-order bits of the source byte.
+///
+/// # Bugs
+///
+/// Whether a write is observable depends on the machine backing battmem, not on the call.
+/// Measured on two emulated machines writing the three-bit SCSI host-ID field at offset 65:
+/// the A4000 reads the written value back, while the A1200 returns success and discards it,
+/// reading back the original. Every step reports error 0 on both. Treat a zero return as
+/// "the resource accepted the request", not as proof the bits were stored, and read back if
+/// the stored value matters.
 @library("battmem.resource")
 extern pub fn WriteBattMem(buffer: *u8, offset: u32, length: u32) -> u32
