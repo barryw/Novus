@@ -102,32 +102,35 @@ pub fn nonvolatile_delete() {
     expect(missing == null && second == 0, "deleted item is absent and cannot be deleted twice")
 }
 
-// GetNVInfo describes a hardware nonvolatile medium, and this machine has none.
-// Measured on the live A4000: the call returns a valid owned NVInfo block whose
-// MaxStorage and FreeStorage both read zero, for either killRequesters value.
-// Every other entry point in this suite still works, because the library falls
-// back to the NVDISK location in ENV:Sys/nv_location. So assert the response the
-// machine actually gives - an owned block reporting no medium - rather than a
-// capacity it cannot have. The binding records the same finding under `# Bugs`.
+// GetNVInfo reports on whichever medium nonvolatile.library selected, and what
+// that is depends on the machine, not on the call. Measured with identical
+// provisioning and the same library binary: the A4000 answers 0/0, while the
+// A1200 answers MaxStorage=6709145 FreeStorage=6706892 - the free space of the
+// NVDISK volume named by ENV:Sys/nv_location. An earlier version of this test
+// asserted zero because that is what the A4000 gave, and it broke the moment a
+// second machine ran it. So assert the invariants the autodoc actually promises
+// and that hold on any medium: an owned block, free storage within capacity, and
+// the same answer whichever way system requesters are configured.
 
 // @covers-ndk function|nonvolatile.library|GetNVInfo
-// @ndk-side-effects Obtains the selected nonvolatile medium's owned information block for both killRequesters values, verifies the capacity invariant holds, and consumes each block with FreeNVData
-@test("nonvolatile.library GetNVInfo reports the absent hardware medium")
+// @ndk-side-effects Obtains the selected nonvolatile medium's owned information block for both killRequesters values, verifies the capacity invariant and that both values agree, and consumes each block with FreeNVData
+@test("nonvolatile.library GetNVInfo reports the selected medium")
 pub fn nonvolatile_info() {
     let info = GetNVInfo(1)
     let allocated = info != null
     let bounded = info != null && (*info).nvi_FreeStorage <= (*info).nvi_MaxStorage
-    let absent = info != null && (*info).nvi_MaxStorage == 0 && (*info).nvi_FreeStorage == 0
+    let max_storage = if info != null { (*info).nvi_MaxStorage } else { 0 }
+    let free_storage = if info != null { (*info).nvi_FreeStorage } else { 0 }
     if info != null { FreeNVData((*u8)info) }
 
     let permitted = GetNVInfo(0)
-    let permitted_absent = permitted != null && (*permitted).nvi_MaxStorage == 0 &&
-        (*permitted).nvi_FreeStorage == 0
+    let permitted_allocated = permitted != null
+    let agrees = permitted != null && (*permitted).nvi_MaxStorage == max_storage &&
+        (*permitted).nvi_FreeStorage == free_storage
     if permitted != null { FreeNVData((*u8)permitted) }
 
     expect(allocated && bounded, "the selected medium returns an owned block with free storage within capacity")
-    expect(absent, "no hardware nonvolatile medium reports any capacity")
-    expect(permitted_absent, "allowing system requesters reports the same absent medium")
+    expect(permitted_allocated && agrees, "both killRequesters values report the same medium")
 }
 
 // @covers-ndk function|nonvolatile.library|GetNVList

@@ -174,13 +174,16 @@ extern pub fn DeleteNV(appName: *u8, itemName: *u8, killRequesters: i16) -> i16
 ///
 /// # Bugs
 ///
-/// `GetNVInfo` reports on a hardware nonvolatile medium, and the emulated A4000 used for
-/// verification has none. Live verification shows it returning a valid owned NVInfo block
-/// whose `nvi_MaxStorage` and `nvi_FreeStorage` both read zero, for either value of
-/// `killRequesters`. Storage itself still works there because the library falls back to the
-/// NVDISK location named by `ENV:Sys/nv_location`: `StoreNV`, `GetCopyNV`, `DeleteNV`,
-/// `GetNVList` and `SetNVProtection` all behave normally against that volume. Read a
-/// zero capacity as "no nonvolatile medium present", not as a failed call.
+/// The reported capacity depends on which medium the library selected, and that varies by
+/// machine rather than by argument. Measured on two emulated machines with identical
+/// provisioning and the same library binary: the A4000 returns a valid owned NVInfo block
+/// whose `nvi_MaxStorage` and `nvi_FreeStorage` both read zero, while the A1200 returns the
+/// free space of the NVDISK volume named by `ENV:Sys/nv_location` (6709145 / 6706892 bytes).
+/// Both answers are legitimate. Read a zero capacity as "no nonvolatile medium selected",
+/// not as a failed call, and do not treat any particular capacity as portable.
+///
+/// Storage itself works in either case: `StoreNV`, `GetCopyNV`, `DeleteNV`, `GetNVList` and
+/// `SetNVProtection` all behave normally against the NVDISK location.
 @library("nonvolatile.library")
 extern pub fn GetNVInfo(killRequesters: i16) -> *NVInfo
 /// return a list of the items stored in nonvolatile

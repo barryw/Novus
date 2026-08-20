@@ -473,22 +473,7 @@ Expected: PASS, 2 tests. If `EnumerateModules` misses a tier, fix the filtering 
 
 - [ ] **Step 5: Run the spike and record what breaks**
 
-```bash
-export NOVUS_NDK_CACHE=$(mktemp -d)
-dotnet build Novus/Novus.csproj -c Debug
-dotnet fsi --use:/dev/null 2>/dev/null || true   # not needed; generate via a scratch program instead
-```
-
-Generate the root and compile it:
-
-```bash
-cat > /tmp/gen-root.csx <<'EOF'
-EOF
-# Simplest path: add a temporary hidden switch is NOT needed — call the generator from a test.
-dotnet test Novus.Tests/Novus.Tests.csproj -c Debug --filter "FullyQualifiedName~GenerateRoot_ImportsEveryModuleAndDeclaresMain" -v n
-```
-
-Then write the generated root to disk from a scratch xUnit fact (delete afterwards) or, more simply, compile it through the command once Task 4 exists. For the spike, add this temporary test to `NdkCacheBuildTests.cs`, run it, then remove it:
+Add this temporary test to `NdkCacheBuildTests.cs` to write the generated root to disk, run it, then compile that root by hand and read the output:
 
 ```csharp
     [Fact]
@@ -499,6 +484,8 @@ Then write the generated root to disk from a scratch xUnit fact (delete afterwar
 ```
 
 ```bash
+export NOVUS_NDK_CACHE=$(mktemp -d)
+dotnet build Novus/Novus.csproj -c Debug
 dotnet test Novus.Tests/Novus.Tests.csproj -c Debug --filter "FullyQualifiedName~Spike_WriteGeneratedRoot"
 dotnet Novus/bin/Debug/net10.0/Novus.dll compile /tmp/ndk-root.novus -o /tmp/ndk-root.out 2>&1 | tail -40
 ```
