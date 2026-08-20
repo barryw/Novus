@@ -1,7 +1,7 @@
 from std::string import Str
 from std::test::test import expect
-from amiga::raw::consts import DOS_FIB
-from amiga::raw::dos import AllocDosObject, Close, DeleteFile, DeviceProc, Examine, FreeDosObject, Lock, MakeLink, Open, Read, ReadLink, SetOwner, SetProtection, UnLock, Write
+from amiga::raw::consts import DOS_FIB, ERROR_ACTION_NOT_KNOWN
+from amiga::raw::dos import AllocDosObject, Close, DeleteFile, DeviceProc, Examine, FreeDosObject, IoErr, Lock, MakeLink, Open, Read, ReadLink, SetOwner, SetProtection, UnLock, Write
 from amiga::raw::structs import FileInfoBlock, MsgPort
 
 fn c_equals(actual: *u8, expected: Str) -> bool {
@@ -90,6 +90,14 @@ pub fn dos_read_link() {
     expect(cleaned, "manual-read link and target are both removed")
 }
 
+// ACTION_SET_OWNER is optional, and whether a handler implements it varies by
+// machine and by volume rather than by call. Measured writing uid $1234 / gid
+// $5678: the A4000 stores them on RAM: and T: but refuses on SYS:, while every
+// volume on the A1200 refuses. A refusal is always the documented pair - a zero
+// return with ERROR_ACTION_NOT_KNOWN - never a different error and never a
+// partial write. So require one of exactly those two outcomes, and demand the
+// exact identifiers back whenever the handler claimed to store them.
+
 // @covers-ndk function|dos.library|SetOwner
 // @ndk-side-effects Stores exact 16-bit user and group identifiers on a real RAM: file, verifies both through Examine, restores neutral ownership, and deletes the fixture
 @test("dos.library SetOwner persists user and group identifiers")
@@ -98,15 +106,21 @@ pub fn dos_set_owner() {
     let handle = Open("RAM:novus_ndk_link_target", 1006)
     if handle != 0 { Close(handle) }
     let changed = handle != 0 && SetOwner("RAM:novus_ndk_link_target", $12345678) != 0
-    let lock = if changed { Lock("RAM:novus_ndk_link_target", -2) } else { 0 }
+    let set_error = IoErr()
+    let lock = if handle != 0 { Lock("RAM:novus_ndk_link_target", -2) } else { 0 }
     let raw = if lock != 0 { AllocDosObject(DOS_FIB, null) } else { null }
     let fib = (*FileInfoBlock)raw
     let examined = lock != 0 && fib != null && Examine(lock, fib) != 0
     let exact = examined && fib.fib_OwnerUID == $1234 && fib.fib_OwnerGID == $5678
+    let untouched = examined && fib.fib_OwnerUID == 0 && fib.fib_OwnerGID == 0
     if raw != null { FreeDosObject(DOS_FIB, raw) }
     if lock != 0 { UnLock(lock) }
     if changed { SetOwner("RAM:novus_ndk_link_target", 0) }
     cleanup_links()
-    expect(changed, "filesystem accepts owner metadata")
-    expect(exact, "Examine returns the exact user and group identifiers")
+    expect(handle != 0, "the ownership fixture is created")
+    expect(changed || set_error == (i32)ERROR_ACTION_NOT_KNOWN,
+        "the handler either accepts owner metadata or reports the action as unknown")
+    let expected_metadata = if changed { exact } else { untouched }
+    expect(examined && expected_metadata,
+        "Examine returns the exact identifiers when stored, and neutral ownership when refused")
 }

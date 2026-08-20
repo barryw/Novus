@@ -5702,6 +5702,14 @@ extern pub fn ExAllEnd(lock: i32, buffer: *ExAllData, size: i32, data: i32, cont
 /// # See Also
 ///
 /// SetProtect(), Examine(), ExNext(), ExAll(), <dos/dos.h>
+///
+/// # Bugs
+///
+/// `ACTION_SET_OWNER` is optional, and whether a handler implements it varies by machine and
+/// by volume. Measured writing uid `$1234` / gid `$5678`: the A4000 stores them on `RAM:` and
+/// `T:` but refuses on `SYS:`, while every volume tried on the A1200 refuses. A refusal is the
+/// documented pair - a zero return with `ERROR_ACTION_NOT_KNOWN` (209) - and leaves the
+/// existing ownership untouched. Check the return before relying on the identifiers.
 @library("dos.library")
 extern pub fn SetOwner(name: *u8, owner_info: i32) -> i16
 
