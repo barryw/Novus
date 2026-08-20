@@ -37,7 +37,8 @@ public class GenericInstantiatorImpl : IGenericInstantiator
         List<IrValue>? arguments = null)
     {
         var baseTypeName = monomorphizedStruct.StructName;
-        var templateKey = InstantiationKeyBuilder.BuildMethodTemplateKey(baseTypeName, methodName);
+        var templateKey = InstantiationKeyBuilder.BuildMethodTemplateKey(
+            baseTypeName, methodName, isTraitImpl, traitName);
 
         // Check if we have a template for this method
         if (!_cache.TryGetMethodTemplate(templateKey, out var template) || template == null)

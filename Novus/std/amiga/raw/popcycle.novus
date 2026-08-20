@@ -13,8 +13,8 @@ from amiga::raw::structs import *
 
 @library("popcycle.library")
 /// Returns the PopCycle BOOPSI class pointer, or null if unavailable.
-/// The class is library-owned and valid only while popcycle.library is open.
-extern pub fn POPCYCLE_GetClass() -> *u8
+/// The class is owned by gadgets/popcycle.gadget and remains valid only while that class is open.
+extern pub fn POPCYCLE_GetClass() -> *IClass
 @library("popcycle.library")
 /// Allocates a PopCycle label node from a terminated TagItem list.
 /// Release the returned node with FreePopCycleNode.

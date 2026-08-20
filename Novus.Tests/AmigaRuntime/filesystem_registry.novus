@@ -1,5 +1,5 @@
 from std::core import Option, Result
-from amiga::raw::exec import FindTask
+from amiga::raw::structs import ExecBase
 from amiga::sys::dos import FileSystemRegistry, MountedFileSystem
 from std::test::test import expect
 
@@ -47,7 +47,7 @@ fn invalid_mount_name_rejected() -> bool {
 }
 
 fn task_nest_count() -> i8 {
-    let task = FindTask(null)
-    if task == null { return -128 }
-    return unsafe { (*task).tc_TDNestCnt }
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    if exec == null { return -128 }
+    return unsafe { (*exec).TDNestCnt }
 }

@@ -1,0 +1,503 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::sys::dos import BPtr
+from amiga::raw::consts import CDF_PROCESSED, E_EXPANSIONBASE, E_EXPANSIONSIZE, E_SLOTSIZE, ERT_ZORROII, LDF_DEVICES, LDF_READ, LDF_WRITE, MEMF_PUBLIC
+from amiga::raw::dos import Delay, FindDosEntry, LockDosList, RemDosEntry, UnLockDosList
+from amiga::raw::exec import FindTask, Forbid, FreeMem, Permit, Signal, Wait
+from amiga::raw::expansion import AddBootNode, AddConfigDev, AddDosNode, AllocBoardMem, AllocConfigDev, AllocExpansionMem, ConfigBoard, ConfigChain, FindConfigDev, FreeBoardMem, FreeConfigDev, FreeExpansionMem, GetCurrentBinding, MakeDosNode, ObtainConfigBinding, ReadExpansionByte, ReadExpansionRom, ReleaseConfigBinding, RemConfigDev, SetCurrentBinding, WriteExpansionByte
+from amiga::raw::structs import ConfigDev, CurrentBinding, DeviceNode, DosList, FileSysStartupMsg, Task
+from amiga::sys::exec import SignalHandle
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+const EXPANSION_WORK: u32 = 1 << 18
+const TEST_MANUFACTURER: u16 = 32766
+const TEST_PRODUCT: u8 = 239
+
+static var EXPANSION_PARENT: *Task = null
+static var EXPANSION_STARTED: u32 = 0
+static var EXPANSION_PHASE: u32 = 0
+
+fn make_config(product: u8) -> *ConfigDev {
+    let config = AllocConfigDev()
+    if config != null {
+        config.cd_Flags = (u8)CDF_PROCESSED
+        config.cd_Rom.er_Type = (u8)(ERT_ZORROII | 1)
+        config.cd_Rom.er_Manufacturer = TEST_MANUFACTURER
+        config.cd_Rom.er_Product = product
+        config.cd_Rom.er_SerialNumber = $4E4F5655
+        config.cd_BoardSize = E_SLOTSIZE
+        config.cd_SlotSize = 1
+    }
+    return config
+}
+
+fn expansion_contender_tick(_state: *u8) -> bool {
+    EXPANSION_PHASE = 1
+    Signal(EXPANSION_PARENT, EXPANSION_STARTED)
+    ObtainConfigBinding()
+    EXPANSION_PHASE = 2
+    ReleaseConfigBinding()
+    EXPANSION_PHASE = 3
+    return false
+}
+
+fn expansion_contender() -> i32 {
+    return run_thread_loop(EXPANSION_WORK, null, expansion_contender_tick)
+}
+
+fn binding_excludes_contender() -> bool {
+    let started = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    EXPANSION_PARENT = FindTask(null)
+    EXPANSION_STARTED = started.mask()
+    EXPANSION_PHASE = 0
+    ObtainConfigBinding()
+    var contender = match spawn_thread("Expansion contender", expansion_contender, 4096) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            ReleaseConfigBinding()
+            return false
+        },
+    }
+    let sent = contender.signal(EXPANSION_WORK)
+    let received = if sent { Wait(EXPANSION_STARTED) } else { 0 }
+    Delay(2)
+    let blocked = received == EXPANSION_STARTED && EXPANSION_PHASE == 1
+    ReleaseConfigBinding()
+    if !sent { contender.break_ctrl_c() }
+    contender.wait()
+    return sent && blocked && EXPANSION_PHASE == 3
+}
+
+fn binding_roundtrip() -> bool {
+    var original: CurrentBinding = @zeroed(CurrentBinding)
+    var restored: CurrentBinding = @zeroed(CurrentBinding)
+    var observed: CurrentBinding = @zeroed(CurrentBinding)
+    var tools: [*u8] = ["NOVUS", (*u8)null]
+    let tools_ptr: **u8 = &var tools[0]
+    let config = make_config(TEST_PRODUCT)
+    let filename: *u8 = "RAM:NovusExpansion"
+    let product: *u8 = "Novus expansion test"
+    let size: u32 = @sizeof(CurrentBinding)
+    ObtainConfigBinding()
+    let original_size = GetCurrentBinding(&var original, size)
+    var replacement = CurrentBinding {
+        cb_ConfigDev: config,
+        cb_FileName: filename,
+        cb_ProductString: product,
+        cb_ToolTypes: tools_ptr,
+    }
+    SetCurrentBinding(&var replacement, size)
+    let observed_size = GetCurrentBinding(&var observed, size)
+    SetCurrentBinding(&var original, size)
+    let restored_size = GetCurrentBinding(&var restored, size)
+    ReleaseConfigBinding()
+    let exact = original_size == size && observed_size == size && observed.cb_ConfigDev == config && observed.cb_FileName == filename && observed.cb_ProductString == product && observed.cb_ToolTypes == tools_ptr
+    let restore_exact = restored_size == size && restored.cb_ConfigDev == original.cb_ConfigDev && restored.cb_FileName == original.cb_FileName && restored.cb_ProductString == original.cb_ProductString && restored.cb_ToolTypes == original.cb_ToolTypes
+    if config != null { FreeConfigDev(config) }
+    return exact && restore_exact
+}
+
+fn config_list_roundtrip(product: u8) -> bool {
+    let config = make_config(product)
+    return false if config == null
+    let absent_before = FindConfigDev(null, (i32)TEST_MANUFACTURER, (i32)product) == null
+    Forbid()
+    AddConfigDev(config)
+    let inserted = FindConfigDev(null, (i32)TEST_MANUFACTURER, (i32)product) == config
+    RemConfigDev(config)
+    let absent_after = FindConfigDev(null, (i32)TEST_MANUFACTURER, (i32)product) == null
+    Permit()
+    FreeConfigDev(config)
+    return absent_before && inserted && absent_after
+}
+
+fn encode_rom_byte(registers: *u16, offset: i32, value: u8) {
+    let encoded = if offset == 0 { value } else { ~value }
+    unsafe {
+        registers[offset * 2] = (u16)(encoded & $F0) << 8
+        registers[offset * 2 + 1] = (u16)(encoded & $0F) << 12
+    }
+}
+
+fn prepare_rom(registers: *u16, config: *ConfigDev) {
+    encode_rom_byte(registers, 0, (u8)(ERT_ZORROII | 1))
+    encode_rom_byte(registers, 1, TEST_PRODUCT)
+    encode_rom_byte(registers, 2, 0)
+    encode_rom_byte(registers, 3, 0)
+    encode_rom_byte(registers, 4, $07)
+    encode_rom_byte(registers, 5, $DB)
+    encode_rom_byte(registers, 6, $11)
+    encode_rom_byte(registers, 7, $22)
+    encode_rom_byte(registers, 8, $33)
+    encode_rom_byte(registers, 9, $44)
+    encode_rom_byte(registers, 10, $12)
+    encode_rom_byte(registers, 11, $34)
+    encode_rom_byte(registers, 12, 0)
+    encode_rom_byte(registers, 13, 0)
+    encode_rom_byte(registers, 14, 0)
+    encode_rom_byte(registers, 15, 0)
+    ReadExpansionRom((*u8)registers, config)
+}
+
+fn config_count() -> i32 {
+    var count: i32 = 0
+    var config = FindConfigDev(null, -1, -1)
+    while config != null && count < 256 {
+        count++
+        config = FindConfigDev(config, -1, -1)
+    }
+    return count
+}
+
+fn bstr_equals(pointer: i32, text: *u8, length: u8) -> bool {
+    let bytes = match BPtr::<u8>::from_raw(pointer) {
+        Result::Ok(value) => if value.is_addressable() { unsafe { value.as_ptr() } } else { (*u8)null },
+        Result::Err(_) => (*u8)null,
+    }
+    return false if bytes == null
+    return false if unsafe { bytes[0] != length }
+    var index: i32 = 0
+    while index < (i32)length {
+        return false if unsafe { bytes[index + 1] != text[index] }
+        index++
+    }
+    return true
+}
+
+fn bstr_pointer(pointer: i32) -> *u8 {
+    match BPtr::<u8>::from_raw(pointer) {
+        Result::Ok(value) => {
+            return unsafe { value.as_ptr() } if value.is_addressable()
+            return null
+        },
+        Result::Err(_) => return null,
+    }
+}
+
+fn startup_pointer(node: *DeviceNode) -> *FileSysStartupMsg {
+    return null if node == null
+    match BPtr::<FileSysStartupMsg>::from_raw(node.dn_Startup) {
+        Result::Ok(value) => { if value.is_addressable() { return unsafe { value.as_ptr() } } },
+        Result::Err(_) => {},
+    }
+    return null
+}
+
+fn environment_pointer(startup: *FileSysStartupMsg) -> *u32 {
+    return null if startup == null
+    match BPtr::<u32>::from_raw(unsafe { (*startup).fssm_Environ }) {
+        Result::Ok(value) => { if value.is_addressable() { return unsafe { value.as_ptr() } } },
+        Result::Err(_) => {},
+    }
+    return null
+}
+
+fn free_dos_node(node: *DeviceNode) -> bool {
+    return false if node == null
+    let startup = startup_pointer(node)
+    return false if startup == null
+    let environment = environment_pointer(startup)
+    let name = bstr_pointer(node.dn_Name)
+    let device = bstr_pointer(unsafe { (*startup).fssm_Device })
+    return false if environment == null || name == null || device == null
+
+    // Classic expansion.library allocates these five blocks separately through
+    // AllocEntry.  The DOS-name length excludes NUL; the exec-device length
+    // includes it, hence the intentionally different byte counts below.
+    let name_bytes = unsafe { (u32)name[0] } + 2
+    let device_bytes = unsafe { (u32)device[0] } + 1
+    let environment_bytes = unsafe { (environment[0] + 1) * 4 }
+    unsafe {
+        FreeMem(name, name_bytes)
+        FreeMem(device, device_bytes)
+        FreeMem((*u8)environment, environment_bytes)
+        FreeMem((*u8)startup, @sizeof(FileSysStartupMsg))
+        FreeMem((*u8)node, @sizeof(DeviceNode))
+    }
+    return true
+}
+
+fn make_test_dos_node(dos_name: *u8) -> *DeviceNode {
+    let exec_name = "trackdisk.device".as_cstr()
+    var packet = [
+        unsafe { (u32)dos_name }, unsafe { (u32)exec_name }, 0, 0,
+        16, 128, 0, 2, 1, 11, 2, 0, 0, 0, 79, 5, MEMF_PUBLIC,
+        $7FFFFFFF, $FFFFFFFE, 0, $444F5300,
+    ]
+    return MakeDosNode((*u8)&var packet[0])
+}
+
+fn dos_node_matches(node: *DeviceNode, dos_name: *u8) -> bool {
+    let exec_name = "trackdisk.device".as_cstr()
+    let startup = startup_pointer(node)
+    let environment = environment_pointer(startup)
+    return node != null && bstr_equals(node.dn_Name, dos_name, 4) && startup != null &&
+        unsafe { (*startup).fssm_Unit == 0 && (*startup).fssm_Flags == 0 } &&
+        bstr_equals(unsafe { (*startup).fssm_Device }, exec_name, 17) &&
+        environment != null && unsafe {
+            environment[0] == 16 && environment[1] == 128 && environment[3] == 2 &&
+                environment[10] == 79 && environment[16] == $444F5300
+        }
+}
+
+fn dos_node_publish_roundtrip(dos_name: *u8, boot_node: bool) -> bool {
+    let node = make_test_dos_node(dos_name)
+    return false if node == null
+    let exact = dos_node_matches(node, dos_name)
+    let added = if boot_node {
+        AddBootNode(-128, 0, node, null)
+    } else {
+        AddDosNode(-128, 0, node)
+    }
+
+    let read_flags = LDF_DEVICES | LDF_READ
+    let read = if added != 0 { LockDosList(read_flags) } else { (*DosList)null }
+    let found = if read != null { FindDosEntry(read, dos_name, LDF_DEVICES) } else { (*DosList)null }
+    let published = found == (*DosList)node
+    if read != null { UnLockDosList(read_flags) }
+
+    let write_flags = LDF_DEVICES | LDF_WRITE
+    let write = if added != 0 { LockDosList(write_flags) } else { (*DosList)null }
+    let attached = if write != null { FindDosEntry(write, dos_name, LDF_DEVICES) } else { (*DosList)null }
+    let removed = attached == (*DosList)node && RemDosEntry(attached) != 0
+    if write != null { UnLockDosList(write_flags) }
+
+    let verify = if removed { LockDosList(read_flags) } else { (*DosList)null }
+    let absent = verify != null && FindDosEntry(verify, dos_name, LDF_DEVICES) == null
+    if verify != null { UnLockDosList(read_flags) }
+    let released = if added == 0 || removed { free_dos_node(node) } else { false }
+    return exact && added != 0 && published && removed && absent && released
+}
+
+fn board_mem_roundtrip() -> bool {
+    let baseline = (u32)AllocExpansionMem(1, 0)
+    return false if baseline == $FFFFFFFF
+    FreeExpansionMem(baseline, 1)
+
+    // slotSpec 1 is the ROM table's one-slot, zero-offset entry.
+    AllocBoardMem(1)
+    let while_reserved = (u32)AllocExpansionMem(1, 0)
+    if while_reserved == baseline {
+        FreeExpansionMem(while_reserved, 1)
+        return false
+    }
+
+    FreeBoardMem(baseline, 1)
+    let after_release = (u32)AllocExpansionMem(1, 0)
+    if while_reserved != $FFFFFFFF { FreeExpansionMem(while_reserved, 1) }
+    if after_release != $FFFFFFFF { FreeExpansionMem(after_release, 1) }
+    return while_reserved != $FFFFFFFF && after_release == baseline
+}
+
+// @covers-ndk function|expansion.library|AddConfigDev
+// @ndk-side-effects Inserts one uniquely identified library-allocated ConfigDev into the real system configuration list, resolves that exact node independently, removes it, proves absence, and frees it
+@test("expansion.library AddConfigDev inserts an exact temporary board")
+pub fn expansion_add_config() {
+    expect(config_list_roundtrip(TEST_PRODUCT - 1), "temporary ConfigDev is findable only while linked")
+}
+
+// @covers-ndk function|expansion.library|RemConfigDev
+// @ndk-side-effects Removes one uniquely identified ConfigDev from the real system configuration list, proves it can no longer be resolved, and frees the detached library allocation
+@test("expansion.library RemConfigDev detaches an exact temporary board")
+pub fn expansion_remove_config() {
+    expect(config_list_roundtrip(TEST_PRODUCT - 2), "removed ConfigDev is absent and safely freed")
+}
+
+// @covers-ndk function|expansion.library|AllocConfigDev
+// @ndk-side-effects Allocates a library-sized ConfigDev, verifies documented clearing across representative pointer/scalar fields, then frees it
+@test("expansion.library AllocConfigDev returns a cleared structure")
+pub fn expansion_alloc_config() {
+    let config = AllocConfigDev()
+    let cleared = config != null && config.cd_Flags == 0 && config.cd_BoardAddr == null && config.cd_BoardSize == 0 && config.cd_Driver == null && config.cd_NextCD == null
+    if config != null { FreeConfigDev(config) }
+    expect(cleared, "allocated ConfigDev is non-null and cleared")
+}
+
+// @covers-ndk function|expansion.library|FreeConfigDev
+// @ndk-side-effects Allocates and frees one ConfigDev, immediately allocates a second library-owned structure, and frees the replacement; the A4000 memory gate verifies both allocations return
+@test("expansion.library FreeConfigDev completes repeated lifecycles")
+pub fn expansion_free_config() {
+    let first = AllocConfigDev()
+    if first != null { FreeConfigDev(first) }
+    let second = if first != null { AllocConfigDev() } else { (*ConfigDev)null }
+    if second != null { FreeConfigDev(second) }
+    expect(first != null && second != null, "two complete ConfigDev lifecycles succeed")
+}
+
+// @covers-ndk function|expansion.library|FindConfigDev
+// @ndk-side-effects Reads the real system-owned ConfigDev list, resolves the first entry again by its exact manufacturer/product IDs, and verifies start-after traversal never returns the same node
+@test("expansion.library FindConfigDev resolves and advances through real boards")
+pub fn expansion_find_config() {
+    let first = FindConfigDev(null, -1, -1)
+    let exact = if first != null { FindConfigDev(null, (i32)first.cd_Rom.er_Manufacturer, (i32)first.cd_Rom.er_Product) } else { (*ConfigDev)null }
+    let next = if first != null { FindConfigDev(first, -1, -1) } else { (*ConfigDev)null }
+    expect(first != null && exact == first, "exact IDs resolve the same first real ConfigDev")
+    expect(next != first, "start-after traversal does not repeat its cursor")
+}
+
+// @covers-ndk function|expansion.library|AllocExpansionMem
+// @ndk-side-effects Allocates one real 64-KiB AutoConfig slot, verifies its index maps into the documented 0xE80000 expansion window, and frees that exact slot
+@test("expansion.library AllocExpansionMem reserves one expansion slot")
+pub fn expansion_alloc_memory() {
+    let start = (u32)AllocExpansionMem(1, 0)
+    if start != $FFFFFFFF { FreeExpansionMem(start, 1) }
+    let first_slot = E_EXPANSIONBASE / E_SLOTSIZE
+    let slot_limit = (E_EXPANSIONBASE + E_EXPANSIONSIZE) / E_SLOTSIZE
+    expect(start != $FFFFFFFF && start >= first_slot && start < slot_limit, "allocated slot maps into the AutoConfig expansion window")
+}
+
+// @covers-ndk function|expansion.library|FreeExpansionMem
+// @ndk-side-effects Allocates and frees one real AutoConfig slot, immediately reallocates the same-size slot, then frees the replacement without double-freeing either range
+@test("expansion.library FreeExpansionMem makes capacity reusable")
+pub fn expansion_free_memory() {
+    let first = (u32)AllocExpansionMem(1, 0)
+    if first != $FFFFFFFF { FreeExpansionMem(first, 1) }
+    let second: u32 = if first != $FFFFFFFF { (u32)AllocExpansionMem(1, 0) } else { $FFFFFFFF }
+    if second != $FFFFFFFF { FreeExpansionMem(second, 1) }
+    expect(first != $FFFFFFFF && second != $FFFFFFFF, "freed expansion capacity can be allocated again")
+}
+
+// @covers-ndk function|expansion.library|AllocBoardMem
+// @ndk-side-effects Records the first free one-slot expansion position, asks the obsolete board-size wrapper to reserve that slot, proves a direct allocation must move elsewhere, then releases every reservation
+@test("expansion.library AllocBoardMem reserves its decoded board size")
+pub fn expansion_alloc_board_memory() {
+    expect(board_mem_roundtrip(),
+        "slotSpec 1 reserves the deterministic first free slot until its paired release")
+}
+
+// @covers-ndk function|expansion.library|FreeBoardMem
+// @ndk-side-effects Reserves the deterministic first one-slot board position through AllocBoardMem, proves it unavailable, frees it through the matching obsolete wrapper, proves the exact slot becomes first-fit again, and returns all capacity
+@test("expansion.library FreeBoardMem restores its exact board slot")
+pub fn expansion_free_board_memory() {
+    expect(board_mem_roundtrip(),
+        "FreeBoardMem returns the exact slot selected from slotSpec 1")
+}
+
+// @covers-ndk function|expansion.library|ReadExpansionByte
+// @ndk-side-effects Reads a synthetic aligned new-style AutoConfig register image whose high nybbles encode exact byte 0xAB without touching hardware
+@test("expansion.library ReadExpansionByte decodes two nybbles")
+pub fn expansion_read_byte() {
+    var registers: [u16] = [$A000, $B000]
+    let value = ReadExpansionByte((*u8)&var registers[0], 0)
+    expect(value == $AB, "high nybbles decode to exact byte 0xAB")
+}
+
+// @covers-ndk function|expansion.library|WriteExpansionByte
+// @ndk-side-effects Writes exact byte 0xAB to a synthetic aligned AutoConfig register image and verifies the documented full-byte and latched-low-nybble bus writes without touching hardware
+@test("expansion.library WriteExpansionByte emits compatible bus writes")
+pub fn expansion_write_byte() {
+    var registers: [u16] = [$5555, $5555]
+    WriteExpansionByte((*u8)&var registers[0], 0, $AB)
+    expect(registers[0] == $AB55, "primary register receives the complete byte in its high lane")
+    expect(registers[1] == $B055, "latch byte receives the low nybble in its high lane")
+}
+
+// @covers-ndk function|expansion.library|ReadExpansionRom
+// @ndk-side-effects Decodes a complete synthetic new-style AutoConfig ROM image, including the non-inverted type byte and ones-complemented manufacturer/product/serial fields, into an exact caller-owned ConfigDev without touching hardware
+@test("expansion.library ReadExpansionRom decodes a valid ROM image")
+pub fn expansion_read_rom() {
+    var registers: [u16] = [0; 32]
+    var config: ConfigDev = @zeroed(ConfigDev)
+    prepare_rom(&var registers[0], &var config)
+    expect(config.cd_Rom.er_Type == (u8)(ERT_ZORROII | 1), "type byte is decoded without complementing")
+    expect(config.cd_Rom.er_Product == TEST_PRODUCT && config.cd_Rom.er_Manufacturer == $07DB,
+        "product and official test manufacturer decode exactly")
+    expect(config.cd_Rom.er_SerialNumber == $11223344 && config.cd_Rom.er_InitDiagVec == $1234,
+        "serial and diagnostic vector decode in big-endian field order")
+}
+
+// @covers-ndk function|expansion.library|ConfigBoard
+// @ndk-side-effects Configures a complete synthetic 64-KiB Zorro II ROM image, verifies the allocated slot/address and exact base-register write, then returns the reserved expansion slot
+@test("expansion.library ConfigBoard assigns and releases a synthetic board slot")
+pub fn expansion_config_board() {
+    var registers: [u16] = [0; 64]
+    var config: ConfigDev = @zeroed(ConfigDev)
+    prepare_rom(&var registers[0], &var config)
+    ConfigBoard((*u8)&var registers[0], &var config)
+    let address = unsafe { (u32)config.cd_BoardAddr }
+    let slot = (u32)config.cd_SlotAddr
+    let slots = (u32)config.cd_SlotSize
+    let programmed = ReadExpansionByte((*u8)&var registers[0], 18)
+    let exact = address != 0 && config.cd_BoardSize == E_SLOTSIZE && slots == 1 &&
+        slot == (address >> 16) && programmed == (u8)(address >> 16)
+    if slots != 0 { FreeExpansionMem(slot, slots) }
+    expect(exact, "one slot is allocated and its base byte is programmed exactly")
+}
+
+// @covers-ndk function|expansion.library|ConfigChain
+// @ndk-side-effects Rescans the real post-boot Zorro II AutoConfig address after every board has moved away, verifies the empty chain terminates, and proves the system ConfigDev list remains byte-for-byte anchored with the same count and first node
+@test("expansion.library ConfigChain leaves an empty post-boot chain unchanged")
+pub fn expansion_config_chain_empty() {
+    let first_before = FindConfigDev(null, -1, -1)
+    let count_before = config_count()
+    ConfigChain((*u8)E_EXPANSIONBASE)
+    let first_after = FindConfigDev(null, -1, -1)
+    let count_after = config_count()
+    expect(first_before != null && first_after == first_before && count_after == count_before,
+        "empty AutoConfig chain terminates without changing configured boards")
+}
+
+// @covers-ndk function|expansion.library|MakeDosNode
+// @ndk-side-effects Builds a complete disk DeviceNode graph from C strings and a 17-longword environment, verifies its BCPL name/device/environment links and exact geometry, then releases the unattached DOS entry
+@test("expansion.library MakeDosNode builds a complete device graph")
+pub fn expansion_make_dos_node() {
+    let dos_name = "NVT0".as_cstr()
+    let first = make_test_dos_node(dos_name)
+    let first_exact = dos_node_matches(first, dos_name)
+    let first_released = free_dos_node(first)
+    let second = make_test_dos_node(dos_name)
+    let second_exact = dos_node_matches(second, dos_name)
+    let second_released = free_dos_node(second)
+    expect(first_exact && second_exact, "two DeviceNode graphs exactly match the packet")
+    expect(first_released && second_released,
+        "both five-block AllocEntry graphs are released and immediately reusable")
+}
+
+// @covers-ndk function|expansion.library|AddDosNode
+// @ndk-side-effects Publishes one complete caller-owned disk DeviceNode into the live DOS device list without starting its handler, proves exact discoverability, removes it under the write lock, proves absence, and releases all five MakeDosNode allocations
+@test("expansion.library AddDosNode publishes and removes a disk device")
+pub fn expansion_add_dos_node() {
+    let dos_name = "NVA0".as_cstr()
+    expect(dos_node_publish_roundtrip(dos_name, false),
+        "AddDosNode transfers the exact node through a complete reversible DOS-list lifecycle")
+}
+
+// @covers-ndk function|expansion.library|AddBootNode
+// @ndk-side-effects Publishes one non-bootable complete DeviceNode through the live-DOS AddBootNode path at priority -128 without starting its handler, proves exact discoverability, removes it under the write lock, proves absence, and releases all five allocations
+@test("expansion.library AddBootNode publishes and removes a live-DOS node")
+pub fn expansion_add_boot_node() {
+    let dos_name = "NVB0".as_cstr()
+    expect(dos_node_publish_roundtrip(dos_name, true),
+        "AddBootNode transfers the exact node through the active-DOS path without orphaning it")
+}
+
+// @covers-ndk function|expansion.library|ObtainConfigBinding
+// @ndk-side-effects Holds the global binding semaphore while a competing Exec task blocks in ObtainConfigBinding, then releases and waits until the contender acquires and releases it
+@test("expansion.library ObtainConfigBinding excludes a competing binder")
+pub fn expansion_obtain_binding() {
+    expect(binding_excludes_contender(), "competing binder remains blocked until ownership is released")
+}
+
+// @covers-ndk function|expansion.library|ReleaseConfigBinding
+// @ndk-side-effects Holds the global binding semaphore while a competing Exec task blocks, calls ReleaseConfigBinding, and proves the contender subsequently acquires and releases the same semaphore
+@test("expansion.library ReleaseConfigBinding wakes a competing binder")
+pub fn expansion_release_binding() {
+    expect(binding_excludes_contender(), "release transfers binding access to the waiting task")
+}
+
+// @covers-ndk function|expansion.library|SetCurrentBinding
+// @ndk-side-effects Saves the global CurrentBinding under exclusion, stores exact caller pointers, reads them back, restores and verifies the original binding, then frees the fixture ConfigDev
+@test("expansion.library SetCurrentBinding stores and restores exact pointers")
+pub fn expansion_set_binding() {
+    expect(binding_roundtrip(), "setter round-trips exact binding fields and restores global state")
+}
+
+// @covers-ndk function|expansion.library|GetCurrentBinding
+// @ndk-side-effects Saves the global CurrentBinding under exclusion, installs known pointers, verifies the getter's exact size and fields, restores and verifies the original binding, then frees the fixture ConfigDev
+@test("expansion.library GetCurrentBinding returns complete binding state")
+pub fn expansion_get_binding() {
+    expect(binding_roundtrip(), "getter returns full exact binding state and original state is restored")
+}

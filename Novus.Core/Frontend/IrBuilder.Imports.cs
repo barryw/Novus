@@ -159,7 +159,8 @@ public partial class IrBuilder
                     if (!_symbols.HasStruct(symbolName))
                     {
                         var genericParams = AstParsingHelpers.ParseGenericParameters(structDecl.genericParams());
-                        var placeholderStruct = new IrStructType(symbolName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
+                        var placeholderStruct = new IrStructType(symbolName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null,
+                            null, null, isUnion: structDecl.KW_UNION() != null);
                         _symbols.RegisterStruct(symbolName, placeholderStruct);
                     }
                 }
@@ -337,7 +338,8 @@ public partial class IrBuilder
                         // For generic impl blocks, store as templates
                         if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                         {
-                            StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
+                            StoreGenericMethodTemplate(
+                                typeName!, methodName, genericParams, funcDecl, isTraitImpl, traitName);
                             continue;
                         }
 
@@ -517,7 +519,8 @@ public partial class IrBuilder
                         // For generic impl blocks, store as templates
                         if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                         {
-                            StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
+                            StoreGenericMethodTemplate(
+                                typeName!, methodName, genericParams, funcDecl, isTraitImpl, traitName);
                             continue;
                         }
 
@@ -782,7 +785,8 @@ public partial class IrBuilder
                 // because instantiating one method may need to call private helper methods
                 if (genericParams.Count > 0 || funcDecl.genericParams() != null)
                 {
-                    StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
+                    StoreGenericMethodTemplate(
+                        typeName!, methodName, genericParams, funcDecl, isTraitImpl, traitName);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }
@@ -1595,7 +1599,16 @@ public partial class IrBuilder
         {
             var enumName = enumDecl.IDENTIFIER().GetText();
             var existingEnum = _symbols.LookupEnum(enumName);
-            if (existingEnum != null && existingEnum.Variants is [])
+            if (existingEnum == null)
+                continue;
+
+            // Registration must also run when the symbol-table entry is already filled but
+            // this module's enum table has no usable copy: a nested import can fill the
+            // shared symbol while leaving the module table empty. Drop analysis resolves
+            // layouts through the module, so an enum that is missing or variant-less there
+            // reads as "no payload to clean up" and every value of it leaks.
+            var registered = _module.GetEnum(enumName);
+            if (existingEnum.Variants is [] || registered == null || registered.Variants is [])
             {
                 RegisterEnum(enumDecl);
             }
@@ -1754,7 +1767,8 @@ public partial class IrBuilder
 
             // Register placeholder struct in symbol table (but NOT in module.Structs yet)
             // The struct will be filled in later only if it's in the import list
-            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
+            var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null,
+                null, null, isUnion: structDecl.KW_UNION() != null);
             _symbols.RegisterStruct(structName, placeholderStruct);
         }
     }
@@ -1780,7 +1794,8 @@ public partial class IrBuilder
                 {
                     // Parse generic parameters for placeholder so type checking works correctly
                     var genericParams = AstParsingHelpers.ParseGenericParameters(structDecl.genericParams());
-                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null, null, null);
+                    var placeholderStruct = new IrStructType(structName, new List<IrStructField>(), genericParams.Count > 0 ? genericParams : null,
+                        null, null, isUnion: structDecl.KW_UNION() != null);
                     _symbols.RegisterStruct(structName, placeholderStruct);
                 }
             }

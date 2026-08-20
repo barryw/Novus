@@ -1240,7 +1240,8 @@ public partial class IrBuilder : NovusParserBaseVisitor<object?>
                 // For generic impl blocks, store methods as templates for later instantiation
                 if (genericParams.Count > 0 || methodGenericParams.Count > 0)
                 {
-                    StoreGenericMethodTemplate(typeName!, methodName, genericParams, funcDecl);
+                    StoreGenericMethodTemplate(
+                        typeName!, methodName, genericParams, funcDecl, isTraitImpl, traitName);
                     // Don't create function yet - it will be instantiated when called with concrete types
                     continue;
                 }

@@ -1,7 +1,7 @@
 from amiga::raw::exec import AllocSignal, FindTask, FreeSignal, SetSignal
 from amiga::sys::timer import Duration
 from std::async::executor import ExecutorError, block_on_sleep, block_on_sleep_uninterruptible, poll_sleep_once
-from std::async::future import Context, Pending, Poll, Ready, Waker, pending, ready
+from std::async::future import Context, Future, Pending, Poll, Ready, Waker, pending, ready
 from std::async::sleep import Sleep, sleep, sleep_micros, sleep_millis, sleep_secs
 from std::core import Result
 from std::test::test import expect

@@ -97,7 +97,7 @@ pub trait TaskRunner {
 /// ```
 pub struct ProcessHandle {
     /// The process value stored by `ProcessHandle`.
-    process: *u8,   // Raw pointer to Process (use *u8 to avoid struct generation issues)
+    process: *Process,
     /// The is running value stored by `ProcessHandle`.
     is_running: bool,
 }
@@ -149,7 +149,7 @@ impl ProcessHandle {
 
     /// Get raw process pointer
     /// WARNING: Only valid while is_running() returns true
-    pub fn as_raw(&self) -> *u8 {
+    pub fn as_raw(&self) -> *Process {
         return self.process
     }
 }

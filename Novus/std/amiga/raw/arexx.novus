@@ -13,5 +13,5 @@ from amiga::raw::structs import *
 
 @library("arexx.library")
 /// Returns the ReAction ARexx BOOPSI class pointer, or null if unavailable.
-/// The class is library-owned and remains valid only while arexx.library is open.
-extern pub fn AREXX_GetClass() -> *u8
+/// The class is owned by arexx.class and remains valid only while that class is open.
+extern pub fn AREXX_GetClass() -> *IClass

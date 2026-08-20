@@ -1,0 +1,273 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::structs import BitMap, Bob, GelsInfo, RastPort, VSprite, ViewPort, collTable
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::graphics import AddBob, AddVSprite, AllocBitMap, DoCollision, DrawGList, FreeBitMap, FreeVPortCopLists, InitGels, InitRastPort, ReadPixel, RemIBob, RemVSprite, SetCollision, SortGList, WaitBlit
+
+struct BobStorage {
+    bitmap: *BitMap,
+    image: *u8,
+    save: *u8,
+}
+
+static var RENDER_COLLISION_CALLS: u32 = 0
+static var RENDER_COLLISION_INVALID_PAIR: bool = false
+static var RENDER_COLLISION_FIRST: *VSprite = null
+static var RENDER_COLLISION_SECOND: *VSprite = null
+
+fn collision_probe(first: *VSprite, second: *VSprite) {
+    let forward = first == RENDER_COLLISION_FIRST && second == RENDER_COLLISION_SECOND
+    let reverse = first == RENDER_COLLISION_SECOND && second == RENDER_COLLISION_FIRST
+    if forward || reverse {
+        RENDER_COLLISION_CALLS++
+    } else {
+        RENDER_COLLISION_INVALID_PAIR = true
+    }
+}
+
+fn initialize_gels(
+    head: *VSprite,
+    tail: *VSprite,
+    info: *GelsInfo,
+    table: *collTable,
+    rast_port: *RastPort
+) {
+    unsafe {
+        (*head).Y = -32767
+        (*head).Flags = 1
+        (*tail).Y = 32767
+        (*tail).Flags = 1
+        (*info).collHandler = table
+        (*info).leftmost = 0
+        (*info).rightmost = 63
+        (*info).topmost = 0
+        (*info).bottommost = 31
+        (*rast_port).GelsInfo = info
+    }
+    InitGels(head, tail, info)
+}
+
+fn prepare_bob(
+    head: *VSprite,
+    tail: *VSprite,
+    info: *GelsInfo,
+    table: *collTable,
+    rast_port: *RastPort,
+    sprite: *VSprite,
+    bob: *Bob
+) -> BobStorage {
+    let bitmap = AllocBitMap(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null)
+    let image = unsafe { AllocMem(4, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC) }
+    let save = unsafe { AllocMem(16, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC) }
+    if bitmap == null || image == null || save == null {
+        if save != null { unsafe { FreeMem(save, 16) } }
+        if image != null { unsafe { FreeMem(image, 4) } }
+        if bitmap != null { FreeBitMap(bitmap) }
+        return BobStorage { bitmap: null, image: null, save: null }
+    }
+
+    InitRastPort(rast_port)
+    unsafe {
+        (*rast_port).BitMap = bitmap
+    }
+    initialize_gels(head, tail, info, table, rast_port)
+
+    let image_words = (*i16)image
+    unsafe {
+        image_words[0] = -1
+        image_words[1] = -1
+        (*sprite).Flags = 2
+        (*sprite).Y = 8
+        (*sprite).X = 16
+        (*sprite).Height = 2
+        (*sprite).Width = 1
+        (*sprite).Depth = 1
+        (*sprite).ImageData = (*i16)image
+        (*sprite).VSBob = bob
+        (*sprite).PlanePick = 1
+        (*sprite).PlaneOnOff = 0
+        (*bob).Flags = 0
+        (*bob).SaveBuffer = (*i16)save
+        (*bob).ImageShadow = null
+        (*bob).BobVSprite = sprite
+    }
+    return BobStorage { bitmap: bitmap, image: image, save: save }
+}
+
+fn release_bob(storage: &BobStorage) {
+    if storage.save != null { unsafe { FreeMem(storage.save, 16) } }
+    if storage.image != null { unsafe { FreeMem(storage.image, 4) } }
+    if storage.bitmap != null { FreeBitMap(storage.bitmap) }
+}
+
+fn ready(storage: &BobStorage) -> bool {
+    return storage.bitmap != null && storage.image != null && storage.save != null
+}
+
+// @covers-ndk function|graphics.library|AddBob
+// @ndk-side-effects AddBob links the caller-owned Bob's VSprite into the initialized GEL list at its exact Y,X position and preserves the bidirectional Bob/VSprite identity links without allocating memory
+@test("graphics.library AddBob links one complete blitter object")
+pub fn graphics_add_bob() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var sprite: VSprite = @zeroed(VSprite)
+    var bob: Bob = @zeroed(Bob)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    let sprite_ptr = (*VSprite)&var sprite
+    let bob_ptr = (*Bob)&var bob
+    let storage = prepare_bob(head_ptr, tail_ptr, &var info, &var table,
+        &var rast_port, sprite_ptr, bob_ptr)
+    expect(ready(&storage), "Bob fixture allocated CHIP memory")
+    if !ready(&storage) { return }
+
+    AddBob(bob_ptr, &var rast_port)
+    expect(head.NextVSprite == sprite_ptr && sprite.PrevVSprite == head_ptr &&
+        sprite.NextVSprite == tail_ptr && tail.PrevVSprite == sprite_ptr,
+        "Bob VSprite is linked between both sentinels")
+    expect(sprite.VSBob == bob_ptr && bob.BobVSprite == sprite_ptr,
+        "Bob and VSprite retain exact reciprocal identities")
+    RemVSprite(sprite_ptr)
+    release_bob(&storage)
+}
+
+// @covers-ndk function|graphics.library|DrawGList
+// @ndk-side-effects DrawGList submits a real caller-owned Bob to the A4000 blitter, writes its exact two-row 16-pixel image into a displayable CHIP bitmap, saves the zero background, commits its old position, and installs a ViewPort copper list that cleanup releases
+@test("graphics.library DrawGList renders exact Bob pixels")
+pub fn graphics_draw_gels() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var sprite: VSprite = @zeroed(VSprite)
+    var bob: Bob = @zeroed(Bob)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    let storage = prepare_bob(&var head, &var tail, &var info, &var table,
+        &var rast_port, &var sprite, &var bob)
+    expect(ready(&storage), "Bob fixture allocated CHIP memory")
+    if !ready(&storage) { return }
+
+    AddBob(&var bob, &var rast_port)
+    SortGList(&var rast_port)
+    DrawGList(&var rast_port, &var viewport)
+    WaitBlit()
+    expect(ReadPixel(&var rast_port, 16, 8) == 1 &&
+        ReadPixel(&var rast_port, 31, 8) == 1 &&
+        ReadPixel(&var rast_port, 16, 9) == 1 &&
+        ReadPixel(&var rast_port, 15, 8) == 0 &&
+        ReadPixel(&var rast_port, 32, 8) == 0,
+        "only the requested 16 by 2 Bob rectangle is set")
+    expect(sprite.OldX == 16 && sprite.OldY == 8,
+        "draw pass commits the rendered position")
+    expect(viewport.SprIns != null, "draw pass installs its owned ViewPort sprite list")
+    RemIBob(&var bob, &var rast_port, &var viewport)
+    WaitBlit()
+    FreeVPortCopLists(&var viewport)
+    release_bob(&storage)
+}
+
+// @covers-ndk function|graphics.library|RemIBob
+// @ndk-side-effects RemIBob immediately unlinks a previously drawn Bob, restores every sampled background pixel through the A4000 blitter, and reconnects the exact GEL sentinels before owned CHIP memory is released
+@test("graphics.library RemIBob erases and unlinks a drawn Bob")
+pub fn graphics_remove_immediate_bob() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var sprite: VSprite = @zeroed(VSprite)
+    var bob: Bob = @zeroed(Bob)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    let storage = prepare_bob(head_ptr, tail_ptr, &var info, &var table,
+        &var rast_port, &var sprite, &var bob)
+    expect(ready(&storage), "Bob fixture allocated CHIP memory")
+    if !ready(&storage) { return }
+
+    AddBob(&var bob, &var rast_port)
+    DrawGList(&var rast_port, &var viewport)
+    WaitBlit()
+    expect(ReadPixel(&var rast_port, 16, 8) == 1, "Bob is visible before removal")
+    RemIBob(&var bob, &var rast_port, &var viewport)
+    WaitBlit()
+    expect(ReadPixel(&var rast_port, 16, 8) == 0 &&
+        ReadPixel(&var rast_port, 31, 9) == 0,
+        "saved zero background is restored across the Bob")
+    expect(head.NextVSprite == tail_ptr && tail.PrevVSprite == head_ptr,
+        "sentinels reconnect after immediate removal")
+    FreeVPortCopLists(&var viewport)
+    release_bob(&storage)
+}
+
+// @covers-ndk function|graphics.library|DoCollision
+// @ndk-side-effects DoCollision examines two sorted overlapping caller-owned VSprites with complete CHIP-resident border/collision masks and invokes the installed handler once with those two identities while ignoring unrelated collision slots
+@test("graphics.library DoCollision invokes the overlapping pair handler")
+pub fn graphics_do_collision() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var first: VSprite = @zeroed(VSprite)
+    var second: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let first_ptr = (*VSprite)&var first
+    let second_ptr = (*VSprite)&var second
+    let masks = unsafe { AllocMem(12, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC) }
+    expect(masks != null, "collision fixture allocated CHIP masks")
+    if masks == null { return }
+    let mask_words = (*i16)masks
+    unsafe {
+        mask_words[0] = -1
+        mask_words[1] = -1
+        mask_words[2] = -1
+        mask_words[3] = -1
+        mask_words[4] = -1
+        mask_words[5] = -1
+    }
+    initialize_gels(&var head, &var tail, &var info, &var table, &var rast_port)
+    first.Flags = 1
+    first.X = 20
+    first.Y = 10
+    first.Width = 1
+    first.Height = 2
+    first.Depth = 1
+    first.MeMask = 2
+    first.HitMask = 2
+    unsafe {
+        first.BorderLine = &mask_words[0]
+        first.CollMask = &mask_words[1]
+    }
+    second.Flags = 1
+    // Keep callback ordering deterministic while retaining a 15-pixel overlap.
+    second.X = 21
+    second.Y = 10
+    second.Width = 1
+    second.Height = 2
+    second.Depth = 1
+    second.MeMask = 2
+    second.HitMask = 2
+    unsafe {
+        second.BorderLine = &mask_words[3]
+        second.CollMask = &mask_words[4]
+    }
+    RENDER_COLLISION_CALLS = 0
+    RENDER_COLLISION_INVALID_PAIR = false
+    RENDER_COLLISION_FIRST = first_ptr
+    RENDER_COLLISION_SECOND = second_ptr
+    SetCollision(1, collision_probe, &var info)
+    AddVSprite(first_ptr, &var rast_port)
+    AddVSprite(second_ptr, &var rast_port)
+    SortGList(&var rast_port)
+
+    DoCollision(&var rast_port)
+    expect_eq(RENDER_COLLISION_CALLS, 1, "one mask intersection invokes one handler")
+    expect(!RENDER_COLLISION_INVALID_PAIR, "callback receives only the two overlapping sprite identities")
+    RemVSprite(first_ptr)
+    RemVSprite(second_ptr)
+    unsafe { FreeMem(masks, 12) }
+}

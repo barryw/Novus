@@ -1,0 +1,454 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import IECLASS_RAWKEY, IND_WRITEEVENT, ISMACTION_Stop, SHARED_LOCK, TAG_DONE, WA_Activate, WA_AutoAdjust, WA_Height, WA_Left, WA_Top, WA_Width, WBCTRLA_GetDefaultStackSize, WBCTRLA_IsOpen, WBDZA_Height, WBDZA_Left, WBDZA_Top, WBDZA_Width
+from amiga::raw::dos import Delay, Lock, UnLock
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, DoIO, OpenDevice
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::icon import FreeDiskObject, GetDefDiskObject
+from amiga::raw::intuition import CloseWindow, OpenWindowTagList
+from amiga::raw::structs import AppIcon, AppMenuItem, AppWindow, AppWindowDropZone, Hook, IconSelectMsg, InputEvent, IORequest, IOStdReq, MinNode, TagItem, Window
+from amiga::raw::workbench import AddAppIcon, AddAppIconA, AddAppMenuItem, AddAppMenuItemA, AddAppWindow, AddAppWindowA, AddAppWindowDropZone, AddAppWindowDropZoneA, ChangeWorkbenchSelection, ChangeWorkbenchSelectionA, CloseWorkbenchObject, CloseWorkbenchObjectA, MakeWorkbenchObjectVisible, MakeWorkbenchObjectVisibleA, OpenWorkbenchObject, OpenWorkbenchObjectA, RemoveAppIcon, RemoveAppMenuItem, RemoveAppWindow, RemoveAppWindowDropZone, WBInfo, WorkbenchControl, WorkbenchControlA
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+const WBINFO_CLOSE_WORK: u32 = 1 << 17
+
+static var SELECTION_CALLBACKS: u32 = 0
+static var SELECTION_MESSAGE_VALID: bool = false
+static var WBINFO_ESCAPE_WRITTEN: bool = false
+
+fn open_test_window() -> *Window {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WA_Left, ti_Data: 24 },
+        TagItem { ti_Tag: WA_Top, ti_Data: 24 },
+        TagItem { ti_Tag: WA_Width, ti_Data: 180 },
+        TagItem { ti_Tag: WA_Height, ti_Data: 70 },
+        TagItem { ti_Tag: WA_AutoAdjust, ti_Data: 1 },
+        TagItem { ti_Tag: WA_Activate, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return OpenWindowTagList(null, &var tags[0])
+}
+
+fn settle_display() {
+    Delay(50)
+}
+
+fn query_drawer_open(name: *u8) -> bool {
+    var open: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WBCTRLA_IsOpen, ti_Data: (u32)(*u32)&var open },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return WorkbenchControlA(name, &var tags[0]) != 0 && open != 0
+}
+
+fn wait_for_drawer(name: *u8, expected: bool) -> bool {
+    for var attempt: u32 = 0; attempt < 100; attempt++ {
+        if query_drawer_open(name) == expected { return true }
+        Delay(1)
+    }
+    return false
+}
+
+fn ensure_drawer_open(name: *u8) -> bool {
+    return true if query_drawer_open(name)
+    return OpenWorkbenchObject(name, TAG_DONE) != 0 && wait_for_drawer(name, true)
+}
+
+@suppress("W0002", "The pinned NDK command and event-class constants fit their exact ABI fields")
+fn inject_raw_key(code: u16) -> bool {
+    let port = CreateMsgPort()
+    if port == null { return false }
+    let request = CreateIORequest(port, @sizeof(IOStdReq))
+    if request == null {
+        DeleteMsgPort(port)
+        return false
+    }
+    let opened = unsafe { OpenDevice("input.device", 0, (*IORequest)request, 0) } == 0
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = code
+    let io = (*IOStdReq)request
+    io.io_Command = (u16)IND_WRITEEVENT
+    io.io_Length = @sizeof(InputEvent)
+    io.io_Data = (*u8)&var event
+    let written = opened && unsafe { DoIO((*IORequest)request) } == 0
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    DeleteIORequest(request)
+    DeleteMsgPort(port)
+    return written
+}
+
+fn wbinfo_close_tick(_state: *u8) -> bool {
+    for var frame: u32 = 0; frame < 50; frame++ { WaitTOF() }
+    let down = inject_raw_key($45)
+    let up = inject_raw_key($C5)
+    WBINFO_ESCAPE_WRITTEN = down && up
+    return false
+}
+
+fn wbinfo_closer() -> i32 {
+    return run_thread_loop(WBINFO_CLOSE_WORK, null, wbinfo_close_tick)
+}
+
+amiga fn selection_hook(_hook: *Hook in a0, _reserved: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    if message != null {
+        let icon = (*IconSelectMsg)message
+        SELECTION_CALLBACKS++
+        SELECTION_MESSAGE_VALID = icon.ism_Length >= @sizeof(IconSelectMsg) && icon.ism_Name != null && icon.ism_ParentWindow != null
+    }
+    return ISMACTION_Stop
+}
+
+fn make_selection_hook() -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: selection_hook,
+        h_SubEntry: selection_hook,
+        h_Data: null,
+    }
+}
+
+// @covers-ndk function|workbench.library|AddAppWindowA
+// @ndk-side-effects Opens a real Intuition window and message port, registers and removes the AppWindow, then closes and frees every owned resource
+@test("workbench.library AddAppWindowA registers a real window")
+pub fn workbench_add_window_a() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindowA(101, $4E4F5655, window, port, null) } else { (*AppWindow)null }
+    let removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(app != null && removed != 0, "real window registration is accepted and removed")
+}
+
+// @covers-ndk function|workbench.library|RemoveAppWindow
+// @ndk-side-effects Creates a real AppWindow registration as its fixture, removes it through the target call, then closes the window and deletes the message port
+@test("workbench.library RemoveAppWindow releases a registration")
+pub fn workbench_remove_window() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindowA(111, $4E4F565D, window, port, null) } else { (*AppWindow)null }
+    let removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(app != null && removed != 0, "owned AppWindow registration is accepted and released")
+}
+
+// @covers-ndk function|workbench.library|AddAppWindow
+// @ndk-side-effects Exercises the varargs entry point with a real Intuition window and message port, removes the registration, then closes and frees every owned resource
+@test("workbench.library AddAppWindow varargs registers a real window")
+pub fn workbench_add_window_varargs() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindow(102, $4E4F5656, window, port, TAG_DONE) } else { (*AppWindow)null }
+    let removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(app != null && removed != 0, "varargs window registration is accepted and removed")
+}
+
+// @covers-ndk function|workbench.library|AddAppIconA
+// @ndk-side-effects Allocates a valid icon.library default tool icon and message port, adds and removes an AppIcon, frees both caller-owned resources, and waits for asynchronous Workbench teardown
+@test("workbench.library AddAppIconA registers a valid icon")
+pub fn workbench_add_icon_a() {
+    let port = CreateMsgPort()
+    let icon = GetDefDiskObject(3)
+    let app = if port != null && icon != null { AddAppIconA(103, $4E4F5657, "Novus A", port, 0, icon, null) } else { (*AppIcon)null }
+    let removed = if app != null { RemoveAppIcon(app) } else { 0 }
+    if icon != null { FreeDiskObject(icon) }
+    if port != null { DeleteMsgPort(port) }
+    settle_display()
+    expect(app != null && removed != 0, "valid default icon is displayed and removed")
+}
+
+// @covers-ndk function|workbench.library|RemoveAppIcon
+// @ndk-side-effects Creates a valid AppIcon fixture, removes it through the target call, frees the icon.library object and message port, and waits for asynchronous Workbench teardown
+@test("workbench.library RemoveAppIcon releases a registration")
+pub fn workbench_remove_icon() {
+    let port = CreateMsgPort()
+    let icon = GetDefDiskObject(3)
+    let app = if port != null && icon != null { AddAppIconA(112, $4E4F565E, "Novus remove", port, 0, icon, null) } else { (*AppIcon)null }
+    let removed = if app != null { RemoveAppIcon(app) } else { 0 }
+    if icon != null { FreeDiskObject(icon) }
+    if port != null { DeleteMsgPort(port) }
+    settle_display()
+    expect(app != null && removed != 0, "owned AppIcon registration is accepted and released")
+}
+
+// @covers-ndk function|workbench.library|AddAppIcon
+// @ndk-side-effects Exercises the varargs entry point with a valid icon.library default tool icon and message port, removes it, frees caller-owned resources, and waits for asynchronous Workbench teardown
+@test("workbench.library AddAppIcon varargs registers a valid icon")
+pub fn workbench_add_icon_varargs() {
+    let port = CreateMsgPort()
+    let icon = GetDefDiskObject(3)
+    let app = if port != null && icon != null { AddAppIcon(104, $4E4F5658, "Novus V", port, 0, icon, TAG_DONE) } else { (*AppIcon)null }
+    let removed = if app != null { RemoveAppIcon(app) } else { 0 }
+    if icon != null { FreeDiskObject(icon) }
+    if port != null { DeleteMsgPort(port) }
+    settle_display()
+    expect(app != null && removed != 0, "varargs valid default icon is displayed and removed")
+}
+
+// @covers-ndk function|workbench.library|AddAppMenuItemA
+// @ndk-side-effects Adds a real Workbench Tools menu item backed by a message port, removes it, and deletes the port
+@test("workbench.library AddAppMenuItemA registers a Tools item")
+pub fn workbench_add_menu_a() {
+    let port = CreateMsgPort()
+    let item = if port != null { AddAppMenuItemA(105, $4E4F5659, "Novus A item", port, null) } else { (*AppMenuItem)null }
+    let removed = if item != null { RemoveAppMenuItem(item) } else { 0 }
+    if port != null { DeleteMsgPort(port) }
+    expect(item != null && removed != 0, "Tools menu item is added and removed")
+}
+
+// @covers-ndk function|workbench.library|RemoveAppMenuItem
+// @ndk-side-effects Creates a real Tools menu item as its fixture, removes it through the target call, and deletes the message port
+@test("workbench.library RemoveAppMenuItem releases a Tools item")
+pub fn workbench_remove_menu() {
+    let port = CreateMsgPort()
+    let item = if port != null { AddAppMenuItemA(113, $4E4F565F, "Novus remove item", port, null) } else { (*AppMenuItem)null }
+    let removed = if item != null { RemoveAppMenuItem(item) } else { 0 }
+    if port != null { DeleteMsgPort(port) }
+    expect(item != null && removed != 0, "owned Tools menu registration is accepted and released")
+}
+
+// @covers-ndk function|workbench.library|AddAppMenuItem
+// @ndk-side-effects Exercises the varargs entry point with a real Workbench Tools menu item and message port, removes it, and deletes the port
+@test("workbench.library AddAppMenuItem varargs registers a Tools item")
+pub fn workbench_add_menu_varargs() {
+    let port = CreateMsgPort()
+    let item = if port != null { AddAppMenuItem(106, $4E4F565A, "Novus V item", port, TAG_DONE) } else { (*AppMenuItem)null }
+    let removed = if item != null { RemoveAppMenuItem(item) } else { 0 }
+    if port != null { DeleteMsgPort(port) }
+    expect(item != null && removed != 0, "varargs Tools menu item is added and removed")
+}
+
+// @covers-ndk function|workbench.library|OpenWorkbenchObjectA
+// @ndk-side-effects Forces the RAM drawer closed, opens it through the A entry point, verifies asynchronous visible state through WorkbenchControlA, closes it, verifies closure, and restores its original state
+@test("workbench.library A entry points open and close a drawer")
+pub fn workbench_open_close_a() {
+    let name: *u8 = "RAM:"
+    let initially_open = query_drawer_open(name)
+    if initially_open {
+        CloseWorkbenchObjectA(name, null)
+        wait_for_drawer(name, false)
+    }
+    let opened = OpenWorkbenchObjectA(name, null)
+    let became_open = opened != 0 && wait_for_drawer(name, true)
+    let closed = if became_open { CloseWorkbenchObjectA(name, null) } else { 0 }
+    let became_closed = closed != 0 && wait_for_drawer(name, false)
+    if initially_open {
+        OpenWorkbenchObjectA(name, null)
+        wait_for_drawer(name, true)
+    }
+    expect(became_open && became_closed, "RAM drawer reaches both requested asynchronous states")
+}
+
+// @covers-ndk function|workbench.library|CloseWorkbenchObjectA
+// @ndk-side-effects Opens the RAM drawer as a fixture, closes it through the A entry point, verifies the asynchronous closed state, and restores the original state
+@test("workbench.library CloseWorkbenchObjectA closes a drawer")
+pub fn workbench_close_a() {
+    let name: *u8 = "RAM:"
+    let initially_open = query_drawer_open(name)
+    let ready = ensure_drawer_open(name)
+    let closed = if ready { CloseWorkbenchObjectA(name, null) } else { 0 }
+    let became_closed = closed != 0 && wait_for_drawer(name, false)
+    if initially_open {
+        OpenWorkbenchObjectA(name, null)
+        wait_for_drawer(name, true)
+    }
+    expect(ready && became_closed, "A entry point drives the open RAM drawer to closed state")
+}
+
+// @covers-ndk function|workbench.library|OpenWorkbenchObject
+// @ndk-side-effects Repeats a complete RAM drawer open/close lifecycle through both varargs entry points, verifies asynchronous state, and restores the original state
+@test("workbench.library varargs entry points open and close a drawer")
+pub fn workbench_open_close_varargs() {
+    let name: *u8 = "RAM:"
+    let initially_open = query_drawer_open(name)
+    if initially_open {
+        CloseWorkbenchObject(name, TAG_DONE)
+        wait_for_drawer(name, false)
+    }
+    let opened = OpenWorkbenchObject(name, TAG_DONE)
+    let became_open = opened != 0 && wait_for_drawer(name, true)
+    let closed = if became_open { CloseWorkbenchObject(name, TAG_DONE) } else { 0 }
+    let became_closed = closed != 0 && wait_for_drawer(name, false)
+    if initially_open {
+        OpenWorkbenchObject(name, TAG_DONE)
+        wait_for_drawer(name, true)
+    }
+    expect(became_open && became_closed, "varargs RAM drawer lifecycle reaches both requested states")
+}
+
+// @covers-ndk function|workbench.library|CloseWorkbenchObject
+// @ndk-side-effects Opens the RAM drawer as a fixture, closes it through the varargs entry point, verifies the asynchronous closed state, and restores the original state
+@test("workbench.library CloseWorkbenchObject varargs closes a drawer")
+pub fn workbench_close_varargs() {
+    let name: *u8 = "RAM:"
+    let initially_open = query_drawer_open(name)
+    let ready = ensure_drawer_open(name)
+    let closed = if ready { CloseWorkbenchObject(name, TAG_DONE) } else { 0 }
+    let became_closed = closed != 0 && wait_for_drawer(name, false)
+    if initially_open {
+        OpenWorkbenchObject(name, TAG_DONE)
+        wait_for_drawer(name, true)
+    }
+    expect(ready && became_closed, "varargs entry point drives the open RAM drawer to closed state")
+}
+
+// @covers-ndk function|workbench.library|WorkbenchControlA
+// @ndk-side-effects Queries the live global default stack size through the A entry point without changing Workbench state
+@test("workbench.library WorkbenchControlA queries global state")
+pub fn workbench_control_a() {
+    var from_a: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WBCTRLA_GetDefaultStackSize, ti_Data: (u32)(*u32)&var from_a },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let a_ok = WorkbenchControlA(null, &var tags[0])
+    expect(a_ok != 0 && from_a >= 4096, "A entry point returns a valid default stack size")
+}
+
+// @covers-ndk function|workbench.library|WorkbenchControl
+// @ndk-side-effects Queries the live global default stack size through the varargs entry point without changing Workbench state
+@test("workbench.library WorkbenchControl varargs queries global state")
+pub fn workbench_control_varargs() {
+    var from_varargs: u32 = 0
+    let varargs_ok = WorkbenchControl(null, WBCTRLA_GetDefaultStackSize, &var from_varargs, TAG_DONE)
+    expect(varargs_ok != 0 && from_varargs >= 4096, "varargs entry point returns a valid default stack size")
+}
+
+// @covers-ndk function|workbench.library|AddAppWindowDropZoneA
+// @ndk-side-effects Creates a real AppWindow, adds and removes a bounded drop zone, removes the AppWindow, then closes and frees all resources
+@test("workbench.library AddAppWindowDropZoneA registers a bounded zone")
+pub fn workbench_drop_zone_a() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindowA(107, 0, window, port, null) } else { (*AppWindow)null }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WBDZA_Left, ti_Data: 4 },
+        TagItem { ti_Tag: WBDZA_Top, ti_Data: 4 },
+        TagItem { ti_Tag: WBDZA_Width, ti_Data: 40 },
+        TagItem { ti_Tag: WBDZA_Height, ti_Data: 30 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let zone = if app != null { AddAppWindowDropZoneA(app, 108, $4E4F565B, &var tags[0]) } else { (*AppWindowDropZone)null }
+    let zone_removed = if zone != null { RemoveAppWindowDropZone(app, zone) } else { 0 }
+    let app_removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(zone != null && zone_removed != 0 && app_removed != 0, "bounded drop zone and parent registration are removed")
+}
+
+// @covers-ndk function|workbench.library|RemoveAppWindowDropZone
+// @ndk-side-effects Creates a real AppWindow and bounded drop-zone fixture, removes the zone through the target call, removes the parent registration, then closes and frees all resources
+@test("workbench.library RemoveAppWindowDropZone releases a bounded zone")
+pub fn workbench_remove_drop_zone() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindowA(114, 0, window, port, null) } else { (*AppWindow)null }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WBDZA_Left, ti_Data: 6 },
+        TagItem { ti_Tag: WBDZA_Top, ti_Data: 6 },
+        TagItem { ti_Tag: WBDZA_Width, ti_Data: 44 },
+        TagItem { ti_Tag: WBDZA_Height, ti_Data: 26 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let zone = if app != null { AddAppWindowDropZoneA(app, 115, $4E4F5660, &var tags[0]) } else { (*AppWindowDropZone)null }
+    let zone_removed = if zone != null { RemoveAppWindowDropZone(app, zone) } else { 0 }
+    let app_removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(zone != null && zone_removed != 0 && app_removed != 0, "owned drop zone and parent registration are released")
+}
+
+// @covers-ndk function|workbench.library|AddAppWindowDropZone
+// @ndk-side-effects Exercises the varargs drop-zone entry point on a real AppWindow, removes both registrations, then closes and frees all resources
+@test("workbench.library AddAppWindowDropZone varargs registers a bounded zone")
+pub fn workbench_drop_zone_varargs() {
+    let port = CreateMsgPort()
+    let window = open_test_window()
+    let app = if port != null && window != null { AddAppWindow(109, 0, window, port, TAG_DONE) } else { (*AppWindow)null }
+    let zone = if app != null { AddAppWindowDropZone(app, 110, $4E4F565C, WBDZA_Left, 5, WBDZA_Top, 5, WBDZA_Width, 42, WBDZA_Height, 28, TAG_DONE) } else { (*AppWindowDropZone)null }
+    let zone_removed = if zone != null { RemoveAppWindowDropZone(app, zone) } else { 0 }
+    let app_removed = if app != null { RemoveAppWindow(app) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if port != null { DeleteMsgPort(port) }
+    expect(zone != null && zone_removed != 0 && app_removed != 0, "varargs bounded drop zone and parent registration are removed")
+}
+
+// @covers-ndk function|workbench.library|ChangeWorkbenchSelectionA
+// @ndk-side-effects Opens SYS if needed, submits real icons to a stop-without-changing callback, validates the callback message shape, and restores the drawer's original state
+@test("workbench.library ChangeWorkbenchSelectionA visits a real icon")
+pub fn workbench_selection_a() {
+    let name: *u8 = "SYS:"
+    let initially_open = query_drawer_open(name)
+    let ready = ensure_drawer_open(name)
+    SELECTION_CALLBACKS = 0
+    SELECTION_MESSAGE_VALID = false
+    var hook = make_selection_hook()
+    let changed = if ready { ChangeWorkbenchSelectionA(name, &var hook, null) } else { 0 }
+    if !initially_open && ready {
+        CloseWorkbenchObject(name, TAG_DONE)
+        wait_for_drawer(name, false)
+    }
+    expect(changed != 0 && SELECTION_CALLBACKS == 1 && SELECTION_MESSAGE_VALID, "callback receives one complete real icon message and stops without mutation")
+}
+
+// @covers-ndk function|workbench.library|ChangeWorkbenchSelection
+// @ndk-side-effects Repeats the real SYS icon callback contract through the varargs entry point without changing selection and restores the drawer's original state
+@test("workbench.library ChangeWorkbenchSelection varargs visits a real icon")
+pub fn workbench_selection_varargs() {
+    let name: *u8 = "SYS:"
+    let initially_open = query_drawer_open(name)
+    let ready = ensure_drawer_open(name)
+    SELECTION_CALLBACKS = 0
+    SELECTION_MESSAGE_VALID = false
+    var hook = make_selection_hook()
+    let changed = if ready { ChangeWorkbenchSelection(name, &var hook, TAG_DONE) } else { 0 }
+    if !initially_open && ready {
+        CloseWorkbenchObject(name, TAG_DONE)
+        wait_for_drawer(name, false)
+    }
+    expect(changed != 0 && SELECTION_CALLBACKS == 1 && SELECTION_MESSAGE_VALID, "varargs callback receives one complete real icon message and stops without mutation")
+}
+
+// @covers-ndk function|workbench.library|MakeWorkbenchObjectVisibleA
+// @ndk-side-effects Requests the real SYS disk icon on the Workbench backdrop be scrolled into view without changing filesystem or selection state
+@test("workbench.library MakeWorkbenchObjectVisibleA finds SYS")
+pub fn workbench_visible_a() {
+    expect(MakeWorkbenchObjectVisibleA("SYS:", null) != 0, "documented SYS disk object is found and made visible")
+}
+
+// @covers-ndk function|workbench.library|MakeWorkbenchObjectVisible
+// @ndk-side-effects Repeats the real SYS disk visibility request through the varargs entry point without changing filesystem or selection state
+@test("workbench.library MakeWorkbenchObjectVisible varargs finds SYS")
+pub fn workbench_visible_varargs() {
+    expect(MakeWorkbenchObjectVisible("SYS:", TAG_DONE) != 0, "varargs entry point finds and makes the SYS disk object visible")
+}
+
+// @covers-ndk function|workbench.library|WBInfo
+// @ndk-side-effects Locks the real SYS parent, opens the Prefs Information requester, closes it with a real input.device Escape down/up pair from a short-lived Exec task, unlocks SYS, and joins/frees the task
+@test("workbench.library WBInfo opens and closes a real requester")
+pub fn workbench_info() {
+    let lock = Lock("SYS:", SHARED_LOCK)
+    WBINFO_ESCAPE_WRITTEN = false
+    if lock == 0 {
+        expect(false, "SYS parent lock is available")
+        return
+    }
+    var closer = match spawn_thread("WBInfo closer", wbinfo_closer, 4096) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            UnLock(lock)
+            expect(false, "requester closer task starts")
+            return
+        },
+    }
+    let started = closer.signal(WBINFO_CLOSE_WORK)
+    if started { WBInfo(lock, "Prefs", null) }
+    closer.wait()
+    UnLock(lock)
+    expect(started && WBINFO_ESCAPE_WRITTEN, "valid requester returns after input.device delivers Escape down and up")
+}

@@ -204,12 +204,10 @@ pub fn test_bstr() {
 // @covers std::string::core::String::capacity()
 // @covers std::string::core::String::as_ptr()
 // @covers std::string::core::String::as_mut_ptr()
-// @covers std::string::core::String::drop()
 // @covers std::string::core::StringBuilder::push_char(u8)
 // @covers std::string::core::StringBuilder::as_str()
 // @covers std::string::core::StringBuilder::clear()
 // @covers std::string::core::StringBuilder::build()
-// @covers std::string::core::StringBuilder::drop()
 @test("owned string escape hatches retain explicit lifetimes")
 pub fn test_owned_string_remaining() {
     match String::with_capacity(8) {
@@ -220,8 +218,8 @@ pub fn test_owned_string_remaining() {
             let ptr = value.as_mut_ptr()
             unsafe { ptr[1] = (u8)'x' }
             expect(value.as_str().equals("axc"), "mutable string pointer")
-            value.drop()
-            expect(value.is_empty(), "manual drop")
+            @drop_in_place(&var value)
+            expect(value.is_empty(), "drop_in_place releases the string early")
         },
         Result::Err(_) => expect(false, "string allocation failed"),
     }
@@ -239,8 +237,9 @@ pub fn test_owned_string_remaining() {
     }
     match StringBuilder::new() {
         Result::Ok(var builder) => {
-            builder.drop()
-            expect(builder.is_empty(), "builder manual drop")
+            let _ = builder.push_str("early")
+            @drop_in_place(&var builder)
+            expect(builder.is_empty(), "drop_in_place releases the builder early")
         },
         Result::Err(_) => expect(false, "builder allocation failed"),
     }

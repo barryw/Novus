@@ -1,4 +1,5 @@
 using Antlr4.Runtime;
+using Novus.Codegen;
 using Novus.Diagnostics;
 using Novus.Frontend;
 using Novus.IR;
@@ -121,6 +122,50 @@ pub struct AlignedStruct {
         var (diagnostics, _) = Analyze(source);
 
         Assert.False(diagnostics.HasErrors);
+    }
+
+    [Fact]
+    public void AlignAttribute_UsesAlignedAutomaticStorage()
+    {
+        var source = @"
+@align(4)
+pub struct InfoData {
+    blocks: i32,
+}
+
+extern fn consume(info: *InfoData)
+
+pub fn probe() -> i32 {
+    var info = InfoData { blocks: 7 }
+    consume(&var info)
+    return info.blocks
+}";
+        var inputStream = new AntlrInputStream(source);
+        var lexer = new NovusLexer(inputStream);
+        var tokenStream = new AngleBracketTokenStream(lexer);
+        var parser = new NovusParser(tokenStream);
+        var builder = new IrBuilder(skipAutoImports: true);
+        var module = builder.BuildModule(parser.compilationUnit());
+        var code = new CCodeGenerator(module, builder.StringLiterals, "68020", "soft", BuildMode.Debug).Generate();
+
+        Assert.Contains("uint8_t info__aligned_storage[sizeof(InfoData) + 3]", code);
+        Assert.Contains("InfoData *info = (InfoData*)(((uint32_t)info__aligned_storage + 3) & 0xFFFFFFFCUL)", code);
+        Assert.Contains("info->blocks = (int32_t)7", code);
+        Assert.Contains("consume(info)", code);
+    }
+
+    [Fact]
+    public void AlignAttribute_RejectsNonPowerOfTwo()
+    {
+        var (diagnostics, _) = Analyze(@"
+@align(3)
+pub struct Broken {
+    value: i32,
+}");
+
+        Assert.Contains(diagnostics.Diagnostics, diagnostic =>
+            diagnostic.Code == ErrorCodes.InvalidAttribute &&
+            diagnostic.Message.Contains("power-of-two"));
     }
 
     [Fact]

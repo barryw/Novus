@@ -1,0 +1,171 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import ERROR_LOCK_COLLISION, REC_EXCLUSIVE_IMMED
+from amiga::raw::dos import Close, DateToStr, DeleteFile, IoErr, LockRecord, LockRecords, Open, SetProtection, StrToDate, UnLockRecord, UnLockRecords, Write
+from amiga::raw::structs import DateStamp, DateTime, RecordLock
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn remove_file(path: Str) {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+}
+
+fn create_file(path: Str) -> bool {
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, "0123456789abcdef", 16)
+    let closed = Close(handle)
+    return written == 16 && closed != 0
+}
+
+// @covers-ndk function|dos.library|DateToStr
+// @ndk-side-effects Converts a fixed caller-owned DateStamp into bounded day, date, and time buffers, then round-trips those strings to prove every emitted field represents the original timestamp
+@test("dos.library DateToStr emits a reversible timestamp")
+pub fn dos_date_to_str() {
+    var day: [u8] = [0; 16]
+    var date: [u8] = [0; 16]
+    var time: [u8] = [0; 16]
+    var value = DateTime {
+        dat_Stamp: DateStamp { ds_Days: 10000, ds_Minute: 754, ds_Tick: 1150 },
+        dat_Format: 3,
+        dat_Flags: 0,
+        dat_StrDay: unsafe { (*u8)&var day[0] },
+        dat_StrDate: unsafe { (*u8)&var date[0] },
+        dat_StrTime: unsafe { (*u8)&var time[0] },
+    }
+    let converted = DateToStr(&var value)
+    let strings_ok = day[0] != 0 && date[0] != 0 && c_equals(unsafe { (*u8)&var time[0] }, "12:34:23")
+    value.dat_Stamp = DateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 }
+    let parsed = StrToDate(&var value)
+    expect(converted != 0 && strings_ok && parsed != 0, "all three bounded strings are emitted and accepted")
+    expect(value.dat_Stamp.ds_Days == 10000 && value.dat_Stamp.ds_Minute == 754 && value.dat_Stamp.ds_Tick == 1150, "emitted strings reconstruct the exact DateStamp")
+}
+
+// @covers-ndk function|dos.library|StrToDate
+// @ndk-side-effects Parses fixed-format caller-owned date and time strings into a DateStamp and is checked against the timestamp that generated those same strings
+@test("dos.library StrToDate reconstructs date and time fields")
+pub fn dos_str_to_date() {
+    var date: [u8] = [0; 16]
+    var time: [u8] = [0; 16]
+    var source = DateTime {
+        dat_Stamp: DateStamp { ds_Days: 12000, ds_Minute: 61, ds_Tick: 2250 },
+        dat_Format: 3,
+        dat_Flags: 0,
+        dat_StrDay: null,
+        dat_StrDate: unsafe { (*u8)&var date[0] },
+        dat_StrTime: unsafe { (*u8)&var time[0] },
+    }
+    let formatted = DateToStr(&var source)
+    var parsed = DateTime {
+        dat_Stamp: DateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 },
+        dat_Format: 3,
+        dat_Flags: 0,
+        dat_StrDay: null,
+        dat_StrDate: unsafe { (*u8)&var date[0] },
+        dat_StrTime: unsafe { (*u8)&var time[0] },
+    }
+    let converted = if formatted != 0 { StrToDate(&var parsed) } else { 0 }
+    expect(formatted != 0 && converted != 0, "fixed date and time strings convert successfully")
+    expect(parsed.dat_Stamp.ds_Days == 12000 && parsed.dat_Stamp.ds_Minute == 61 && parsed.dat_Stamp.ds_Tick == 2250, "days, minutes, and ticks are reconstructed exactly")
+}
+
+// @covers-ndk function|dos.library|LockRecord
+// @ndk-side-effects Acquires an exclusive cooperative byte-range lock on one file handle, proves an independent handle receives ERROR_LOCK_COLLISION, then balances and reacquires the lock before cleanup
+@test("dos.library LockRecord excludes a competing file handle")
+pub fn dos_lock_record() {
+    let path: Str = "RAM:novus_ndk_record"
+    expect(create_file(path), "fixture created")
+    let owner = Open(path.as_cstr(), 1005)
+    let contender = Open(path.as_cstr(), 1005)
+    let locked = if owner != 0 { LockRecord(owner, 0, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    let collided = if contender != 0 { LockRecord(contender, 0, 4, REC_EXCLUSIVE_IMMED, 0) } else { 1 }
+    let collision_error = IoErr()
+    let released = if locked != 0 { UnLockRecord(owner, 0, 4) } else { 0 }
+    let reacquired = if contender != 0 { LockRecord(contender, 0, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    if reacquired != 0 { UnLockRecord(contender, 0, 4) }
+    if contender != 0 { Close(contender) }
+    if owner != 0 { Close(owner) }
+    expect(owner != 0 && contender != 0 && locked != 0 && collided == 0 && collision_error == (i32)ERROR_LOCK_COLLISION && released != 0 && reacquired != 0, "exclusive collision and post-release acquisition are observable")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|UnLockRecord
+// @ndk-side-effects Releases exactly the matching byte range from its owning file handle and proves a previously blocked independent handle can immediately acquire that range
+@test("dos.library UnLockRecord releases the matching range")
+pub fn dos_unlock_record() {
+    let path: Str = "RAM:novus_ndk_record"
+    expect(create_file(path), "fixture created")
+    let owner = Open(path.as_cstr(), 1005)
+    let contender = Open(path.as_cstr(), 1005)
+    let locked = if owner != 0 { LockRecord(owner, 4, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    let blocked = if contender != 0 { LockRecord(contender, 4, 4, REC_EXCLUSIVE_IMMED, 0) } else { 1 }
+    let released = if locked != 0 { UnLockRecord(owner, 4, 4) } else { 0 }
+    let acquired = if contender != 0 { LockRecord(contender, 4, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    if acquired != 0 { UnLockRecord(contender, 4, 4) }
+    if contender != 0 { Close(contender) }
+    if owner != 0 { Close(owner) }
+    expect(locked != 0 && blocked == 0 && released != 0 && acquired != 0, "the exact unlock makes the range immediately available")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|LockRecords
+// @ndk-side-effects Atomically acquires two terminated RecordLock entries, proves both ranges exclude an independent handle, then balances the array lock and closes every handle
+@test("dos.library LockRecords acquires every listed range")
+pub fn dos_lock_records() {
+    let path: Str = "RAM:novus_ndk_record"
+    expect(create_file(path), "fixture created")
+    let owner = Open(path.as_cstr(), 1005)
+    let contender = Open(path.as_cstr(), 1005)
+    var records: [RecordLock] = [
+        RecordLock { rec_FH: owner, rec_Offset: 0, rec_Length: 4, rec_Mode: REC_EXCLUSIVE_IMMED },
+        RecordLock { rec_FH: owner, rec_Offset: 8, rec_Length: 4, rec_Mode: REC_EXCLUSIVE_IMMED },
+        RecordLock { rec_FH: 0, rec_Offset: 0, rec_Length: 0, rec_Mode: 0 },
+    ]
+    let pointer = unsafe { (*RecordLock)&var records[0] }
+    let locked = if owner != 0 { LockRecords(pointer, 0) } else { 0 }
+    let first_blocked = if contender != 0 { LockRecord(contender, 0, 4, REC_EXCLUSIVE_IMMED, 0) } else { 1 }
+    let second_blocked = if contender != 0 { LockRecord(contender, 8, 4, REC_EXCLUSIVE_IMMED, 0) } else { 1 }
+    let released = if locked != 0 { UnLockRecords(pointer) } else { 0 }
+    if contender != 0 { Close(contender) }
+    if owner != 0 { Close(owner) }
+    expect(locked != 0 && first_blocked == 0 && second_blocked == 0 && released != 0, "both listed ranges exclude the competing handle")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|UnLockRecords
+// @ndk-side-effects Releases every range in the unchanged terminated RecordLock array and proves an independent handle can immediately acquire both ranges afterward
+@test("dos.library UnLockRecords releases every listed range")
+pub fn dos_unlock_records() {
+    let path: Str = "RAM:novus_ndk_record"
+    expect(create_file(path), "fixture created")
+    let owner = Open(path.as_cstr(), 1005)
+    let contender = Open(path.as_cstr(), 1005)
+    var records: [RecordLock] = [
+        RecordLock { rec_FH: owner, rec_Offset: 0, rec_Length: 4, rec_Mode: REC_EXCLUSIVE_IMMED },
+        RecordLock { rec_FH: owner, rec_Offset: 8, rec_Length: 4, rec_Mode: REC_EXCLUSIVE_IMMED },
+        RecordLock { rec_FH: 0, rec_Offset: 0, rec_Length: 0, rec_Mode: 0 },
+    ]
+    let pointer = unsafe { (*RecordLock)&var records[0] }
+    let locked = if owner != 0 { LockRecords(pointer, 0) } else { 0 }
+    let released = if locked != 0 { UnLockRecords(pointer) } else { 0 }
+    let first = if contender != 0 { LockRecord(contender, 0, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    let second = if contender != 0 { LockRecord(contender, 8, 4, REC_EXCLUSIVE_IMMED, 0) } else { 0 }
+    if second != 0 { UnLockRecord(contender, 8, 4) }
+    if first != 0 { UnLockRecord(contender, 0, 4) }
+    if contender != 0 { Close(contender) }
+    if owner != 0 { Close(owner) }
+    expect(locked != 0 && released != 0 && first != 0 && second != 0, "both released ranges can be reacquired independently")
+    remove_file(path)
+}

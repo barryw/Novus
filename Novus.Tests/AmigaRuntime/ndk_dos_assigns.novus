@@ -1,0 +1,180 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::dos import AssignAdd, AssignLate, AssignLock, AssignPath, Close, CreateDir, DeleteFile, Lock, Open, RemAssignList, SameLock, SetProtection, UnLock, Write
+
+fn remove_file(path: Str) {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+}
+
+fn create_file(path: Str, value: Str) -> bool {
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, value.as_ptr(), (i32)value.len())
+    let closed = Close(handle)
+    return written == (i32)value.len() && closed != 0
+}
+
+fn create_directory(path: Str) -> bool {
+    DeleteFile(path.as_cstr())
+    let lock = CreateDir(path.as_cstr())
+    if lock == 0 { return false }
+    UnLock(lock)
+    return true
+}
+
+// The assign name must not collide with any mounted volume. NOVUSNDK is the
+// label of the disposable NDK0 partition, so an assign of that name is refused
+// whenever that partition is attached.
+fn clear_assign() {
+    AssignLock("NOVUSASSIGN", 0)
+}
+
+fn same_target(first: i32, second: i32) -> bool {
+    return first != 0 && second != 0 && SameLock(first, second) == 0
+}
+
+fn cleanup_lock(lock: i32) {
+    if lock != 0 { UnLock(lock) }
+}
+
+// @covers-ndk function|dos.library|AssignLock
+// @ndk-side-effects Transfers one RAM: lock into a uniquely named global assign, proves the assigned name resolves to the same object, then removes the assign so DOS releases its owned lock
+@test("dos.library AssignLock creates and removes a locked assign")
+pub fn dos_assign_lock() {
+    clear_assign()
+    let source = Lock("RAM:", -2)
+    let assigned = if source != 0 { AssignLock("NOVUSASSIGN", source) } else { 0 }
+    if source != 0 && assigned == 0 { UnLock(source) }
+    let alias = if assigned != 0 { Lock("NOVUSASSIGN:", -2) } else { 0 }
+    let direct = Lock("RAM:", -2)
+    let resolved = same_target(alias, direct)
+    cleanup_lock(alias)
+    cleanup_lock(direct)
+    let removed = AssignLock("NOVUSASSIGN", 0)
+    let absent = Lock("NOVUSASSIGN:", -2)
+    cleanup_lock(absent)
+    expect(assigned != 0, "AssignLock accepts the transferred lock")
+    expect(alias != 0, "the assigned name is lockable")
+    expect(resolved, "the assigned name resolves to the same object")
+    expect(removed != 0, "AssignLock with a null lock removes the assign")
+    expect(absent == 0, "the assigned name stops resolving after removal")
+    clear_assign()
+}
+
+// @covers-ndk function|dos.library|AssignLate
+// @ndk-side-effects Creates a uniquely named path-backed assign, triggers its one-time resolution through Lock, compares the resulting object, and removes the resolved assign
+@test("dos.library AssignLate resolves on first reference")
+pub fn dos_assign_late() {
+    clear_assign()
+    let assigned = AssignLate("NOVUSASSIGN", "RAM:")
+    let alias = if assigned != 0 { Lock("NOVUSASSIGN:", -2) } else { 0 }
+    let direct = Lock("RAM:", -2)
+    let resolved = same_target(alias, direct)
+    cleanup_lock(alias)
+    cleanup_lock(direct)
+    let removed = AssignLock("NOVUSASSIGN", 0)
+    expect(assigned != 0, "AssignLate creates the deferred assign")
+    expect(alias != 0, "the deferred assign resolves on first reference")
+    expect(resolved, "the resolved assign points at RAM:")
+    expect(removed != 0, "the resolved assign is removable")
+    clear_assign()
+}
+
+// @covers-ndk function|dos.library|AssignPath
+// @ndk-side-effects Creates a uniquely named nonbinding path assign, resolves repeated references to the configured path without transferring caller locks, then removes the assign
+@test("dos.library AssignPath resolves each reference")
+pub fn dos_assign_path() {
+    clear_assign()
+    let assigned = AssignPath("NOVUSASSIGN", "RAM:")
+    let first = if assigned != 0 { Lock("NOVUSASSIGN:", -2) } else { 0 }
+    let second = if assigned != 0 { Lock("NOVUSASSIGN:", -2) } else { 0 }
+    let direct = Lock("RAM:", -2)
+    let resolved = same_target(first, direct) && same_target(second, direct)
+    cleanup_lock(first)
+    cleanup_lock(second)
+    cleanup_lock(direct)
+    let removed = AssignLock("NOVUSASSIGN", 0)
+    expect(assigned != 0, "AssignPath creates the path assign")
+    expect(first != 0 && second != 0, "both references are lockable")
+    expect(resolved, "both references resolve to the configured path")
+    expect(removed != 0, "the path assign is removable")
+    clear_assign()
+}
+
+// @covers-ndk function|dos.library|AssignAdd
+// @ndk-side-effects Transfers two directory locks into a multi-directory assign, proves lookup searches both entries using distinct files, then removes the assign and all fixtures
+@test("dos.library AssignAdd extends a multi-directory assign")
+pub fn dos_assign_add() {
+    let first_dir: Str = "RAM:novus_ndk_assign_a"
+    let second_dir: Str = "RAM:novus_ndk_assign_b"
+    let first_file: Str = "RAM:novus_ndk_assign_a/first"
+    let second_file: Str = "RAM:novus_ndk_assign_b/second"
+    clear_assign()
+    expect(create_directory(first_dir) && create_directory(second_dir), "fixture directories created")
+    expect(create_file(first_file, "a") && create_file(second_file, "b"), "fixture files created")
+    let first_lock = Lock(first_dir.as_cstr(), -2)
+    let second_lock = Lock(second_dir.as_cstr(), -2)
+    let assigned = if first_lock != 0 { AssignLock("NOVUSASSIGN", first_lock) } else { 0 }
+    if first_lock != 0 && assigned == 0 { UnLock(first_lock) }
+    let added = if assigned != 0 && second_lock != 0 { AssignAdd("NOVUSASSIGN", second_lock) } else { 0 }
+    if second_lock != 0 && added == 0 { UnLock(second_lock) }
+    let first = if added != 0 { Lock("NOVUSASSIGN:first", -2) } else { 0 }
+    let second = if added != 0 { Lock("NOVUSASSIGN:second", -2) } else { 0 }
+    let direct_first = Lock(first_file.as_cstr(), -2)
+    let direct_second = Lock(second_file.as_cstr(), -2)
+    let resolved = same_target(first, direct_first) && same_target(second, direct_second)
+    cleanup_lock(first)
+    cleanup_lock(second)
+    cleanup_lock(direct_first)
+    cleanup_lock(direct_second)
+    clear_assign()
+    remove_file(first_file)
+    remove_file(second_file)
+    DeleteFile(first_dir.as_cstr())
+    DeleteFile(second_dir.as_cstr())
+    expect(assigned != 0, "the first directory becomes the assign")
+    expect(added != 0, "AssignAdd accepts the second directory")
+    expect(first != 0 && second != 0, "both member files are lockable through the assign")
+    expect(resolved, "multi-assign searches both directory entries")
+}
+
+// @covers-ndk function|dos.library|RemAssignList
+// @ndk-side-effects Removes the matching secondary lock from a multi-directory assign, proves its unique file stops resolving while the primary entry remains, then removes all remaining state
+@test("dos.library RemAssignList removes one multi-assign entry")
+pub fn dos_rem_assign_list() {
+    let first_dir: Str = "RAM:novus_ndk_assign_a"
+    let second_dir: Str = "RAM:novus_ndk_assign_b"
+    let first_file: Str = "RAM:novus_ndk_assign_a/first"
+    let second_file: Str = "RAM:novus_ndk_assign_b/second"
+    clear_assign()
+    expect(create_directory(first_dir) && create_directory(second_dir), "fixture directories created")
+    expect(create_file(first_file, "a") && create_file(second_file, "b"), "fixture files created")
+    let first_lock = Lock(first_dir.as_cstr(), -2)
+    let second_lock = Lock(second_dir.as_cstr(), -2)
+    let comparison = Lock(second_dir.as_cstr(), -2)
+    let assigned = if first_lock != 0 { AssignLock("NOVUSASSIGN", first_lock) } else { 0 }
+    if first_lock != 0 && assigned == 0 { UnLock(first_lock) }
+    let added = if assigned != 0 && second_lock != 0 { AssignAdd("NOVUSASSIGN", second_lock) } else { 0 }
+    if second_lock != 0 && added == 0 { UnLock(second_lock) }
+    let removed = if added != 0 && comparison != 0 { RemAssignList("NOVUSASSIGN", comparison) } else { 0 }
+    cleanup_lock(comparison)
+    let primary = if removed != 0 { Lock("NOVUSASSIGN:first", -2) } else { 0 }
+    let secondary = if removed != 0 { Lock("NOVUSASSIGN:second", -2) } else { 0 }
+    let primary_direct = Lock(first_file.as_cstr(), -2)
+    let primary_remains = same_target(primary, primary_direct)
+    cleanup_lock(primary)
+    cleanup_lock(secondary)
+    cleanup_lock(primary_direct)
+    clear_assign()
+    remove_file(first_file)
+    remove_file(second_file)
+    DeleteFile(first_dir.as_cstr())
+    DeleteFile(second_dir.as_cstr())
+    expect(assigned != 0, "the first directory becomes the assign")
+    expect(added != 0, "AssignAdd accepts the second directory")
+    expect(removed != 0, "RemAssignList removes the matching entry")
+    expect(primary_remains, "the primary assign entry still resolves")
+    expect(secondary == 0, "the removed entry no longer resolves")
+}

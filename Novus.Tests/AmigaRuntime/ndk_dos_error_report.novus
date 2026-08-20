@@ -1,0 +1,25 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import ERROR_NO_DISK, REPORT_INSERT
+from amiga::raw::dos import ErrorReport, IoErr
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import Process
+
+// @covers-ndk function|dos.library|ErrorReport
+// @ndk-side-effects Uses the documented pr_WindowPtr=-1 suppression path in the current Process, verifies ErrorReport returns Cancel without opening a requester, verifies IoErr receives the exact error code, and restores the original window pointer
+@test("dos.library ErrorReport honors requester suppression")
+@suppress("W0002", "REPORT_INSERT carries a static C-string pointer through the classic 32-bit ULONG slot")
+pub fn dos_error_report() {
+    let process = (*Process)FindTask(null)
+    expect(process != null, "the test runs in a DOS Process")
+    if process == null { return }
+    let original = process.pr_WindowPtr
+    process.pr_WindowPtr = (*u8)-1
+    let volume: Str = "NOVUSMISSING:"
+    let cancelled = ErrorReport((i32)ERROR_NO_DISK, (i32)REPORT_INSERT, (u32)volume.as_cstr(), null)
+    let error = IoErr()
+    process.pr_WindowPtr = original
+    expect(cancelled != 0, "suppression returns the documented Cancel result without a requester")
+    expect(error == (i32)ERROR_NO_DISK, "IoErr receives the exact reported error")
+    expect(process.pr_WindowPtr == original, "the caller restores its process window policy")
+}

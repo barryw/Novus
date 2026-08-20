@@ -236,7 +236,11 @@ pub fn main() -> i32 {
         Assert.Contains("move.l\t#$7f00000d,d7", libraryReporter);
         Assert.Contains("'Novus'", libraryReporter);
         Assert.Contains("'Need %s v%ld+.'", libraryReporter);
+        Assert.Contains("'Novus: need %s v%ld+'", libraryReporter);
         Assert.Contains("%ld+", libraryReporter);
+        Assert.Contains("xref\t_DOSBase", libraryReporter);
+        Assert.Contains("jsr\t-60(a6)", libraryReporter);
+        Assert.Contains("jsr\t-354(a6)", libraryReporter);
         Assert.Equal(1, libraryReporter.Split("jsr\t-588(a6)", StringSplitOptions.None).Length - 1);
         Assert.Contains("NOVUS_RUNTIME_SECTION(__novus_panic)",
             File.ReadAllText(Path.Combine(runtimeDir, "runtime_errors.c")));

@@ -1,0 +1,115 @@
+from std::test::test import expect_eq
+from amiga::raw::consts import CLEANUP
+from amiga::raw::graphics import AllocRaster, FreeRaster, QBlit, QBSBlit, WaitTOF
+from amiga::raw::structs import bltnode
+from amiga::sys::hardware::registers import BLTCON0, BLTCON1, BLTDPT, BLTDMOD, BLTSIZE
+
+struct QueuedClear {
+    node: bltnode,
+    destination: *u16,
+}
+
+struct QueueResult {
+    word: u16,
+    starts: u32,
+    cleanups: u32,
+}
+
+type QueuedClearRoutine = amiga fn(*u8 in a0, *QueuedClear in a1) -> i32 in d0
+
+union QueuedClearAddress {
+    entry: QueuedClearRoutine,
+    raw: fn() -> i32,
+}
+
+static var QUEUED_BLIT_STARTS: u32 = 0
+static var QUEUED_BLIT_CLEANUPS: u32 = 0
+
+@interrupt
+amiga fn queued_clear(custom: *u8 in a0, job: *QueuedClear in a1) -> i32 in d0 {
+    unsafe {
+        write_volatile((*u32)((u32)custom + BLTDPT), (u32)(*job).destination)
+        write_volatile((*u16)((u32)custom + BLTDMOD), 0)
+        write_volatile((*u16)((u32)custom + BLTCON0), $0100)
+        write_volatile((*u16)((u32)custom + BLTCON1), 0)
+        write_volatile((*u16)((u32)custom + BLTSIZE), $0041)
+        write_volatile((*u32)&var QUEUED_BLIT_STARTS,
+            read_volatile((*u32)&QUEUED_BLIT_STARTS) + 1)
+    }
+    return 0
+}
+
+@interrupt
+fn queued_clear_cleanup() -> i32 {
+    unsafe {
+        write_volatile((*u32)&var QUEUED_BLIT_CLEANUPS,
+            read_volatile((*u32)&QUEUED_BLIT_CLEANUPS) + 1)
+    }
+    return 0
+}
+
+fn run_queued_clear(beam_sync: bool) -> QueueResult {
+    let raster = AllocRaster(16, 1)
+    if raster == null {
+        return QueueResult { word: $FFFF, starts: 0, cleanups: 0 }
+    }
+
+    unsafe {
+        write_volatile((*u16)raster, $FFFF)
+        write_volatile((*u32)&var QUEUED_BLIT_STARTS, 0)
+        write_volatile((*u32)&var QUEUED_BLIT_CLEANUPS, 0)
+    }
+
+    let entry = QueuedClearAddress { entry: queued_clear }
+    var job = QueuedClear {
+        node: bltnode {
+            n: null,
+            function: unsafe { entry.raw },
+            stat: (i8)CLEANUP,
+            blitsize: 1,
+            beamsync: if beam_sync { 100 } else { 0 },
+            cleanup: queued_clear_cleanup,
+        },
+        destination: (*u16)raster,
+    }
+
+    if beam_sync {
+        QBSBlit((*bltnode)&var job)
+    } else {
+        QBlit((*bltnode)&var job)
+    }
+
+    var frames: u32 = 0
+    while unsafe { read_volatile((*u32)&QUEUED_BLIT_CLEANUPS) } == 0 && frames < 8 {
+        WaitTOF()
+        frames += 1
+    }
+
+    let result = QueueResult {
+        word: unsafe { read_volatile((*u16)raster) },
+        starts: unsafe { read_volatile((*u32)&QUEUED_BLIT_STARTS) },
+        cleanups: unsafe { read_volatile((*u32)&QUEUED_BLIT_CLEANUPS) },
+    }
+    FreeRaster(raster, 16, 1)
+    return result
+}
+
+// @covers-ndk function|graphics.library|QBlit
+// @ndk-side-effects Queues one real custom-chip clear, proves the interrupt-context callback starts exactly one blit, waits for the documented cleanup callback rather than WaitBlit, and observes the exact cleared chip-RAM word before freeing it
+@test("graphics.library QBlit executes and cleans up one queued blit")
+pub fn graphics_qblit_executes() {
+    let result = run_queued_clear(false)
+    expect_eq(result.word, 0, "queued blitter clears the exact chip-RAM word")
+    expect_eq(result.starts, 1, "queued function starts exactly one hardware blit")
+    expect_eq(result.cleanups, 1, "cleanup proves the queued blit completed")
+}
+
+// @covers-ndk function|graphics.library|QBSBlit
+// @ndk-side-effects Queues the same real custom-chip clear at vertical beam position 100, proves its callback starts exactly once, waits for the interrupt-context cleanup callback, and observes the exact cleared chip-RAM word before freeing it
+@test("graphics.library QBSBlit executes one beam-synchronized blit")
+pub fn graphics_qbsblit_executes() {
+    let result = run_queued_clear(true)
+    expect_eq(result.word, 0, "beam-synchronized blitter clears the exact chip-RAM word")
+    expect_eq(result.starts, 1, "beam-synchronized function starts exactly one hardware blit")
+    expect_eq(result.cleanups, 1, "cleanup proves the beam-synchronized blit completed")
+}

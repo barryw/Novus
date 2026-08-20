@@ -20,18 +20,21 @@ public sealed record FfiModuleMetadata(
     int MinimumVersion)
 {
     public bool Optional { get; init; }
+    public int DeviceUnit { get; init; }
     public IReadOnlyList<string> Headers { get; init; } = [];
     public IReadOnlyDictionary<string, int> FunctionVersions { get; init; } =
         new Dictionary<string, int>(StringComparer.Ordinal);
 
     private static readonly Dictionary<string, string> ClassOpenNames = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["arexx"] = "arexx.class",
         ["bevel"] = "images/bevel.image",
         ["bitmap"] = "images/bitmap.image",
         ["button"] = "gadgets/button.gadget",
         ["checkbox"] = "gadgets/checkbox.gadget",
         ["chooser"] = "gadgets/chooser.gadget",
         ["clicktab"] = "gadgets/clicktab.gadget",
+        ["colorwheel"] = "gadgets/colorwheel.gadget",
         ["datebrowser"] = "gadgets/datebrowser.gadget",
         ["drawlist"] = "images/drawlist.image",
         ["fuelgauge"] = "gadgets/fuelgauge.gadget",
@@ -45,7 +48,9 @@ public sealed record FfiModuleMetadata(
         ["listbrowser"] = "gadgets/listbrowser.gadget",
         ["palette"] = "gadgets/palette.gadget",
         ["penmap"] = "images/penmap.image",
+        ["popcycle"] = "gadgets/popcycle.gadget",
         ["radiobutton"] = "gadgets/radiobutton.gadget",
+        ["requester"] = "requester.class",
         ["scroller"] = "gadgets/scroller.gadget",
         ["slider"] = "gadgets/slider.gadget",
         ["space"] = "gadgets/space.gadget",
@@ -60,7 +65,9 @@ public sealed record FfiModuleMetadata(
     {
         string? libraryName = null;
         string? baseSymbol = null;
+        var deviceUnit = 0;
         var lazy = false;
+        var optional = false;
 
         foreach (var line in File.ReadLines(modulePath).Take(12))
         {
@@ -68,8 +75,15 @@ public sealed record FfiModuleMetadata(
                 libraryName = line[11..].Trim();
             else if (line.StartsWith("// Base:", StringComparison.Ordinal))
                 baseSymbol = line[8..].Trim();
+            else if (line.StartsWith("// Unit:", StringComparison.Ordinal) &&
+                     int.TryParse(line[8..].Trim(), out var parsedUnit))
+                deviceUnit = parsedUnit;
             else if (line.Equals("// Lifecycle: lazy", StringComparison.OrdinalIgnoreCase))
                 lazy = true;
+            // An optional interface is absent from some supported systems. Startup records a
+            // null base instead of aborting, so callers can probe for it and degrade.
+            else if (line.Equals("// Lifecycle: optional", StringComparison.OrdinalIgnoreCase))
+                optional = true;
         }
 
         if (string.IsNullOrWhiteSpace(libraryName) || string.IsNullOrWhiteSpace(baseSymbol))
@@ -127,8 +141,25 @@ public sealed record FfiModuleMetadata(
             kind,
             Math.Max(isClass ? 44 : 0, functionVersions.Values.DefaultIfEmpty(0).Min()))
         {
+            DeviceUnit = deviceUnit,
             Headers = headers,
-            FunctionVersions = functionVersions
+            FunctionVersions = functionVersions,
+            Optional = optional
         };
+    }
+
+    public static IEnumerable<FfiModuleMetadata> ReadMappedFunctionDependencies(
+        string rawDirectory, IReadOnlySet<string> reachableFunctions)
+    {
+        var mapPath = Path.Combine(rawDirectory, "ndk_dependencies.txt");
+        if (!File.Exists(mapPath)) yield break;
+
+        foreach (var parts in File.ReadLines(mapPath)
+                     .Select(line => line.Split('|', StringSplitOptions.TrimEntries)))
+        {
+            if (parts.Length != 3 || !reachableFunctions.Contains(parts[1])) continue;
+            var dependency = TryRead(Path.Combine(rawDirectory, parts[2] + ".novus"));
+            if (dependency != null) yield return dependency;
+        }
     }
 }

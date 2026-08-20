@@ -1,0 +1,143 @@
+from std::test::test import expect
+from amiga::raw::consts import SBNA_Spacing, SBNA_UserData, TAG_DONE
+from amiga::raw::speedbar import AllocSpeedButtonNode, AllocSpeedButtonNodeA, FreeSpeedButtonNode, GetSpeedButtonNodeAttrs, GetSpeedButtonNodeAttrsA, SPEEDBAR_GetClass, SetSpeedButtonNodeAttrs, SetSpeedButtonNodeAttrsA
+from amiga::raw::structs import Node, TagItem
+
+fn alloc_a(user_data: u32, spacing: i16) -> *Node {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SBNA_UserData, ti_Data: user_data },
+        TagItem { ti_Tag: SBNA_Spacing, ti_Data: (u32)spacing },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocSpeedButtonNodeA(1, &var tags[0])
+}
+
+// @covers-ndk function|speedbar.library|SPEEDBAR_GetClass
+// @ndk-side-effects Opens the installed SpeedBar gadget class and verifies its runtime class pointer is available without constructing an object
+@test("speedbar.library SPEEDBAR_GetClass returns the installed class")
+pub fn speedbar_get_class() {
+    expect(SPEEDBAR_GetClass() != null, "SpeedBar runtime class pointer is non-null")
+}
+
+// @covers-ndk function|speedbar.library|AllocSpeedButtonNodeA
+// @ndk-side-effects Allocates a private SpeedBar node from a terminated tag list, reads back its exact user-data and spacing values through 32-bit destinations, and frees the node
+@test("speedbar.library AllocSpeedButtonNodeA creates an attributed node")
+pub fn speedbar_alloc_a() {
+    let node = alloc_a(11, 3)
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    if node != null { GetSpeedButtonNodeAttrs(node, SBNA_UserData, &var user_data, SBNA_Spacing, &var spacing, TAG_DONE) }
+    let has_node = node != null
+    let user_data_valid = user_data == 11
+    let spacing_valid = spacing == 3
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "tag-list allocation returns a real node")
+    expect(user_data_valid, "tag-list allocation preserves user data 11")
+    expect(spacing_valid, "tag-list allocation preserves spacing 3")
+}
+
+// @covers-ndk function|speedbar.library|AllocSpeedButtonNode
+// @ndk-side-effects Allocates a private SpeedBar node through varargs, reads back its exact user-data and spacing values through 32-bit destinations, and frees the node
+@test("speedbar.library AllocSpeedButtonNode creates a varargs node")
+pub fn speedbar_alloc() {
+    let node = AllocSpeedButtonNode(2, SBNA_UserData, $12345678, SBNA_Spacing, 4, TAG_DONE)
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    if node != null { GetSpeedButtonNodeAttrs(node, SBNA_UserData, &var user_data, SBNA_Spacing, &var spacing, TAG_DONE) }
+    let has_node = node != null
+    let user_data_valid = user_data == $12345678
+    let spacing_valid = spacing == 4
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "varargs allocation returns a real node")
+    expect(user_data_valid, "varargs allocation preserves exact user data")
+    expect(spacing_valid, "varargs allocation preserves spacing 4")
+}
+
+// @covers-ndk function|speedbar.library|FreeSpeedButtonNode
+// @ndk-side-effects Frees the exact private node returned by AllocSpeedButtonNodeA; the per-test A4000 memory gate verifies that its allocation is returned
+@test("speedbar.library FreeSpeedButtonNode releases its exact node")
+pub fn speedbar_free() {
+    let node = alloc_a(33, 5)
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(node != null, "a real SpeedBar node was allocated and released")
+}
+
+// @covers-ndk function|speedbar.library|SetSpeedButtonNodeAttrsA
+// @ndk-side-effects Replaces a detached private node's user-data and spacing values through a terminated tag list, reads both through 32-bit destinations, and frees the node
+@test("speedbar.library SetSpeedButtonNodeAttrsA updates detached attributes")
+pub fn speedbar_set_a() {
+    let node = alloc_a(44, 6)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SBNA_UserData, ti_Data: 55 },
+        TagItem { ti_Tag: SBNA_Spacing, ti_Data: 7 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { SetSpeedButtonNodeAttrsA(node, &var tags[0]) }
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    if node != null { GetSpeedButtonNodeAttrs(node, SBNA_UserData, &var user_data, SBNA_Spacing, &var spacing, TAG_DONE) }
+    let has_node = node != null
+    let user_data_valid = user_data == 55
+    let spacing_valid = spacing == 7
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "tag-list setter receives a real node")
+    expect(user_data_valid, "tag-list setter stores user data 55")
+    expect(spacing_valid, "tag-list setter stores spacing 7")
+}
+
+// @covers-ndk function|speedbar.library|SetSpeedButtonNodeAttrs
+// @ndk-side-effects Replaces a detached private node's user-data and spacing values through varargs, reads both through 32-bit destinations, and frees the node
+@test("speedbar.library SetSpeedButtonNodeAttrs updates detached attributes")
+pub fn speedbar_set() {
+    let node = alloc_a(66, 8)
+    if node != null { SetSpeedButtonNodeAttrs(node, SBNA_UserData, 77, SBNA_Spacing, 9, TAG_DONE) }
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    if node != null { GetSpeedButtonNodeAttrs(node, SBNA_UserData, &var user_data, SBNA_Spacing, &var spacing, TAG_DONE) }
+    let has_node = node != null
+    let user_data_valid = user_data == 77
+    let spacing_valid = spacing == 9
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "varargs setter receives a real node")
+    expect(user_data_valid, "varargs setter stores user data 77")
+    expect(spacing_valid, "varargs setter stores spacing 9")
+}
+
+// @covers-ndk function|speedbar.library|GetSpeedButtonNodeAttrsA
+// @ndk-side-effects Reads the exact user-data and spacing values from a real private node through 32-bit destination pointers in a terminated TagItem list, then frees the node
+@test("speedbar.library GetSpeedButtonNodeAttrsA reads private attributes")
+pub fn speedbar_get_a() {
+    let node = alloc_a($CAFEBABE, 10)
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SBNA_UserData, ti_Data: (u32)(*u32)&var user_data },
+        TagItem { ti_Tag: SBNA_Spacing, ti_Data: (u32)(*u32)&var spacing },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { GetSpeedButtonNodeAttrsA(node, &var tags[0]) }
+    let has_node = node != null
+    let user_data_valid = user_data == $CAFEBABE
+    let spacing_valid = spacing == 10
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "tag-list getter receives a real node")
+    expect(user_data_valid, "tag-list getter returns exact user data")
+    expect(spacing_valid, "tag-list getter returns spacing 10")
+}
+
+// @covers-ndk function|speedbar.library|GetSpeedButtonNodeAttrs
+// @ndk-side-effects Reads the exact user-data and spacing values from a real private node through 32-bit varargs destination pointers, then frees the node
+@test("speedbar.library GetSpeedButtonNodeAttrs reads private attributes")
+pub fn speedbar_get() {
+    let node = alloc_a(99, 11)
+    var user_data: u32 = 0
+    var spacing: u32 = $FFFFFFFF
+    if node != null { GetSpeedButtonNodeAttrs(node, SBNA_UserData, &var user_data, SBNA_Spacing, &var spacing, TAG_DONE) }
+    let has_node = node != null
+    let user_data_valid = user_data == 99
+    let spacing_valid = spacing == 11
+    if node != null { FreeSpeedButtonNode(node) }
+    expect(has_node, "varargs getter receives a real node")
+    expect(user_data_valid, "varargs getter returns user data 99")
+    expect(spacing_valid, "varargs getter returns spacing 11")
+}

@@ -1,0 +1,740 @@
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, LAYERS_NOBACKFILL, MEMF_ANY
+from amiga::raw::exec import AvailMem, FindTask
+from amiga::raw::graphics import AllocBitMap, DisposeRegion, FreeBitMap, InitRastPort, NewRegion
+from amiga::raw::graphics import OrRectRegion, ReadPixel, SetAPen, WaitBlit, WritePixel
+from amiga::raw::layers import BeginUpdate, BehindLayer, CreateBehindHookLayer, CreateBehindLayer
+from amiga::raw::layers import CreateUpfrontHookLayer, CreateUpfrontLayer, DeleteLayer, DisposeLayerInfo
+from amiga::raw::layers import DoHookClipRects, EndUpdate, FattenLayerInfo, InitLayers
+from amiga::raw::layers import InstallClipRegion, InstallLayerHook, InstallLayerInfoHook, LockLayer, LockLayerInfo, LockLayers
+from amiga::raw::layers import MoveLayer, MoveLayerInFrontOf, MoveSizeLayer, NewLayerInfo, ScrollLayer
+from amiga::raw::layers import SizeLayer, SortLayerCR, SwapBitsRastPortClipRect, ThinLayerInfo
+from amiga::raw::layers import UnlockLayer, UnlockLayerInfo, UnlockLayers, UpfrontLayer
+from amiga::raw::layers import WhichLayer
+from amiga::raw::structs import BitMap, ClipRect, Hook, Layer, Layer_Info, MinNode, RastPort, Rectangle
+
+const WIDTH: u32 = 96
+const HEIGHT: u32 = 64
+const SMART_LAYER: i32 = 2
+const UPDATING_FLAG: u16 = $10
+
+struct LayerWorld {
+    bitmap: *BitMap,
+    info: *Layer_Info,
+    first: *Layer,
+    second: *Layer,
+    third: *Layer,
+}
+
+struct HookMessage {
+    layer: *Layer,
+    bounds: Rectangle,
+    offset_x: i32,
+    offset_y: i32,
+}
+
+struct HookState {
+    calls: u32,
+    object: *u8,
+    layer: *Layer,
+    bounds: Rectangle,
+}
+
+fn empty_world() -> LayerWorld {
+    let bitmap = AllocBitMap(WIDTH, HEIGHT, 1, BMF_CLEAR | BMF_DISPLAYABLE, null)
+    let info = NewLayerInfo()
+    if bitmap == null || info == null {
+        if info != null { DisposeLayerInfo(info) }
+        if bitmap != null { FreeBitMap(bitmap) }
+        return LayerWorld { bitmap: null, info: null, first: null, second: null, third: null }
+    }
+    return LayerWorld { bitmap: bitmap, info: info, first: null, second: null, third: null }
+}
+
+fn world_ready(world: &LayerWorld) -> bool {
+    return world.bitmap != null && world.info != null
+}
+
+fn add_upfront(world: &var LayerWorld, x0: i32, y0: i32, x1: i32, y1: i32) -> *Layer {
+    return CreateUpfrontLayer(world.info, world.bitmap, x0, y0, x1, y1, SMART_LAYER, null)
+}
+
+fn release_world(world: &var LayerWorld) {
+    if world.third != null {
+        let _ = DeleteLayer(0, world.third)
+        world.third = null
+    }
+    if world.second != null {
+        let _ = DeleteLayer(0, world.second)
+        world.second = null
+    }
+    if world.first != null {
+        let _ = DeleteLayer(0, world.first)
+        world.first = null
+    }
+    WaitBlit()
+    if world.info != null {
+        DisposeLayerInfo(world.info)
+        world.info = null
+    }
+    if world.bitmap != null {
+        FreeBitMap(world.bitmap)
+        world.bitmap = null
+    }
+}
+
+fn one_layer_world() -> LayerWorld {
+    var world = empty_world()
+    if world_ready(&world) {
+        world.first = add_upfront(&var world, 10, 8, 39, 31)
+        if world.first == null { release_world(&var world) }
+    }
+    return world
+}
+
+fn two_layer_world() -> LayerWorld {
+    var world = empty_world()
+    if world_ready(&world) {
+        world.first = add_upfront(&var world, 4, 4, 47, 39)
+        world.second = add_upfront(&var world, 20, 12, 63, 47)
+        if world.first == null || world.second == null { release_world(&var world) }
+    }
+    return world
+}
+
+fn port(bitmap: *BitMap) -> RastPort {
+    var result: RastPort = @zeroed(RastPort)
+    InitRastPort(&var result)
+    result.BitMap = bitmap
+    SetAPen(&var result, 1)
+    return result
+}
+
+fn first_saved_clip(layer: *Layer) -> *ClipRect {
+    var clip = unsafe { (*layer).ClipRect }
+    while clip != null {
+        if unsafe { (*clip).BitMap != null } { return clip }
+        clip = unsafe { (*clip).Next }
+    }
+    return null
+}
+
+fn noop_hook(state: *HookState) -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: layer_hook,
+        h_SubEntry: layer_hook,
+        h_Data: unsafe { (*u8)state },
+    }
+}
+
+amiga fn layer_hook(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    if hook == null || message == null { return 0 }
+    unsafe {
+        let state = (*HookState)(*hook).h_Data
+        let details = (*HookMessage)message
+        if state != null {
+            (*state).calls += 1
+            (*state).object = object
+            (*state).layer = (*details).layer
+            (*state).bounds = (*details).bounds
+        }
+    }
+    return 0
+}
+
+// @covers-ndk function|layers.library|InitLayers
+// @ndk-side-effects Initializes caller-owned zeroed Layer_Info storage with an empty layer list and a usable recursive semaphore; balanced lock/unlock proves the initialized synchronization state without allocating persistent storage
+@test("layers.library InitLayers initializes caller storage")
+pub fn layers_init_layers() {
+    var info: Layer_Info = @zeroed(Layer_Info)
+    InitLayers(&var info)
+    let owner = FindTask(null)
+    LockLayerInfo(&var info)
+    expect(info.top_layer == null, "initialized layer list is empty")
+    expect(info.Lock.ss_Owner == owner, "initialized semaphore records its owner")
+    UnlockLayerInfo(&var info)
+    expect(info.Lock.ss_Owner == null, "balanced unlock restores the open semaphore")
+}
+
+// @covers-ndk function|layers.library|CreateBehindLayer
+// @ndk-side-effects Creates a second smart layer behind an existing layer on a real common bitmap and proves the exact top/front/back links before deleting both layers and releasing the bitmap and Layer_Info
+@test("layers.library CreateBehindLayer inserts behind")
+pub fn layers_create_behind() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.second = CreateBehindLayer(world.info, world.bitmap, 12, 10, 41, 33, SMART_LAYER, null)
+    expect(world.second != null, "behind layer allocated")
+    if world.second != null {
+        unsafe {
+            expect((*world.info).top_layer == world.first, "existing layer stays topmost")
+            expect((*world.first).back == world.second, "top layer links backward to new layer")
+            expect((*world.second).front == world.first, "new layer links forward to top layer")
+        }
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|UpfrontLayer
+// @ndk-side-effects Moves the lower of two overlapping smart layers to the top, swaps the required saved pixels, and proves the resulting Layer_Info and reciprocal layer ordering before complete teardown
+@test("layers.library UpfrontLayer raises an exact layer")
+pub fn layers_upfront() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    let moved = UpfrontLayer(0, world.first)
+    WaitBlit()
+    unsafe {
+        expect(moved != 0, "layer moves upfront")
+        expect((*world.info).top_layer == world.first, "requested layer becomes topmost")
+        expect((*world.first).back == world.second && (*world.second).front == world.first,
+            "front/back links reflect the move")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|BehindLayer
+// @ndk-side-effects Moves the top of two overlapping smart layers behind its peer, waits for saved-pixel swaps, and proves exact Layer_Info and reciprocal ordering before complete teardown
+@test("layers.library BehindLayer lowers an exact layer")
+pub fn layers_behind() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    let moved = BehindLayer(0, world.second)
+    WaitBlit()
+    unsafe {
+        expect(moved != 0, "layer moves behind")
+        expect((*world.info).top_layer == world.first, "other layer becomes topmost")
+        expect((*world.first).back == world.second && (*world.second).front == world.first,
+            "front/back links reflect the move")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|MoveLayer
+// @ndk-side-effects Moves a real smart layer by (+7,+5), proving every inclusive bound, cached width/height, and WhichLayer hit changes while preserved dimensions and all allocations are released
+@test("layers.library MoveLayer changes only position")
+pub fn layers_move() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let moved = MoveLayer(0, world.first, 7, 5)
+    WaitBlit()
+    unsafe {
+        expect(moved != 0, "move succeeds")
+        expect((*world.first).bounds.MinX == 17 && (*world.first).bounds.MinY == 13,
+            "minimum bounds move exactly")
+        expect((*world.first).bounds.MaxX == 46 && (*world.first).bounds.MaxY == 36,
+            "maximum bounds move exactly")
+        expect((*world.first).Width == 30 && (*world.first).Height == 24,
+            "move preserves dimensions")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|SizeLayer
+// @ndk-side-effects Extends a real smart layer by (+6,+4), proving the fixed upper-left bound, exact lower-right bound, and cached dimensions before teardown
+@test("layers.library SizeLayer changes only dimensions")
+pub fn layers_size() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let sized = SizeLayer(0, world.first, 6, 4)
+    WaitBlit()
+    unsafe {
+        expect(sized != 0, "size succeeds")
+        expect((*world.first).bounds.MinX == 10 && (*world.first).bounds.MinY == 8,
+            "upper-left bound stays fixed")
+        expect((*world.first).bounds.MaxX == 45 && (*world.first).bounds.MaxY == 35,
+            "lower-right bound extends exactly")
+        expect((*world.first).Width == 36 && (*world.first).Height == 28,
+            "cached dimensions extend exactly")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|ScrollLayer
+// @ndk-side-effects Applies (+3,-2) coordinate translation to a real non-SuperBitMap smart layer and proves the exact signed scroll accumulators without moving its screen bounds
+@test("layers.library ScrollLayer accumulates signed translation")
+pub fn layers_scroll() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    ScrollLayer(0, world.first, 3, -2)
+    WaitBlit()
+    unsafe {
+        expect((*world.first).Scroll_X == 3 && (*world.first).Scroll_Y == -2,
+            "scroll accumulators preserve signs")
+        expect((*world.first).bounds.MinX == 10 && (*world.first).bounds.MinY == 8,
+            "scroll leaves layer bounds fixed")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|BeginUpdate
+// @ndk-side-effects Begins an update on a real layer, proves success, the live LAYERUPDATING flag, and current-task lock ownership, then balances it with EndUpdate before teardown
+@test("layers.library BeginUpdate enters update state")
+pub fn layers_begin_update() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let begun = BeginUpdate(world.first)
+    unsafe {
+        expect(begun != 0, "update begins")
+        expect(((*world.first).Flags & UPDATING_FLAG) != 0, "updating flag is set")
+        expect((*world.first).Lock.ss_Owner == FindTask(null), "update owns the layer lock")
+    }
+    EndUpdate(world.first, 1)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|EndUpdate
+// @ndk-side-effects Ends a successfully begun complete update and proves the updating flag and recursive lock ownership both return to their exact pre-update state before teardown
+@test("layers.library EndUpdate restores normal state")
+pub fn layers_end_update() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let original_owner = unsafe { (*world.first).Lock.ss_Owner }
+    let original_nesting = unsafe { (*world.first).Lock.ss_NestCount }
+    let begun = BeginUpdate(world.first)
+    expect(begun != 0, "update begins")
+    EndUpdate(world.first, 1)
+    unsafe {
+        expect(((*world.first).Flags & UPDATING_FLAG) == 0, "updating flag is cleared")
+        expect((*world.first).Lock.ss_Owner == original_owner, "lock owner is restored")
+        expect((*world.first).Lock.ss_NestCount == original_nesting, "lock nesting is restored")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|LockLayer
+// @ndk-side-effects Acquires a real layer's recursive semaphore, proves the current owner and exact one-level nesting increment, then balances the lock before deleting the layer
+@test("layers.library LockLayer acquires exact semaphore state")
+pub fn layers_lock_layer() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let original = unsafe { (*world.first).Lock.ss_NestCount }
+    LockLayer(0, world.first)
+    unsafe {
+        expect((*world.first).Lock.ss_Owner == FindTask(null), "current task owns layer")
+        expect((*world.first).Lock.ss_NestCount == original + 1, "nesting increments once")
+    }
+    UnlockLayer(world.first)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|UnlockLayer
+// @ndk-side-effects Releases one of two recursive acquisitions while preserving current ownership, then a cleanup release restores the original owner and nesting before layer deletion
+@test("layers.library UnlockLayer unwinds one recursive level")
+pub fn layers_unlock_layer() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let original = unsafe { (*world.first).Lock.ss_NestCount }
+    LockLayer(0, world.first)
+    LockLayer(0, world.first)
+    UnlockLayer(world.first)
+    unsafe {
+        expect((*world.first).Lock.ss_Owner == FindTask(null), "recursive owner remains")
+        expect((*world.first).Lock.ss_NestCount == original + 1, "one level remains")
+    }
+    UnlockLayer(world.first)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|LockLayers
+// @ndk-side-effects Atomically locks Layer_Info and both live layers, proving all three semaphore owners and the public LockLayersCount before balanced UnlockLayers and teardown
+@test("layers.library LockLayers owns the whole layer family")
+pub fn layers_lock_layers() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    LockLayers(world.info)
+    let owner = FindTask(null)
+    unsafe {
+        expect((*world.info).Lock.ss_Owner == owner, "Layer_Info is owned")
+        expect((*world.first).Lock.ss_Owner == owner && (*world.second).Lock.ss_Owner == owner,
+            "every layer is owned")
+        expect((*world.info).LockLayersCount > 0, "family lock count is active")
+    }
+    UnlockLayers(world.info)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|UnlockLayers
+// @ndk-side-effects Releases an atomic two-layer family lock and proves Layer_Info, both layer owners, and LockLayersCount return to their exact original open state before teardown
+@test("layers.library UnlockLayers releases the whole layer family")
+pub fn layers_unlock_layers() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    LockLayers(world.info)
+    UnlockLayers(world.info)
+    unsafe {
+        expect((*world.info).Lock.ss_Owner == null, "Layer_Info is unlocked")
+        expect((*world.first).Lock.ss_Owner == null && (*world.second).Lock.ss_Owner == null,
+            "every layer is unlocked")
+        expect((*world.info).LockLayersCount == 0, "family lock count returns to zero")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|LockLayerInfo
+// @ndk-side-effects Acquires the real Layer_Info recursive semaphore and proves current-task ownership plus an exact one-level nesting increment before balanced release and disposal
+@test("layers.library LockLayerInfo acquires metadata")
+pub fn layers_lock_info() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let original = unsafe { (*world.info).Lock.ss_NestCount }
+    LockLayerInfo(world.info)
+    unsafe {
+        expect((*world.info).Lock.ss_Owner == FindTask(null), "current task owns Layer_Info")
+        expect((*world.info).Lock.ss_NestCount == original + 1, "nesting increments once")
+    }
+    UnlockLayerInfo(world.info)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|SwapBitsRastPortClipRect
+// @ndk-side-effects Uses a real smart layer's occluded ClipRect bitmap, exchanges one exact saved pixel with the common bitmap, waits for the asynchronous blit, and proves both sides changed before all layer storage is released
+@test("layers.library SwapBitsRastPortClipRect exchanges exact pixels")
+pub fn layers_swap_clip_bits() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.first = add_upfront(&var world, 0, 0, 63, 31)
+    world.second = add_upfront(&var world, 16, 0, 31, 31)
+    let clip = if world.first != null { first_saved_clip(world.first) } else { (*ClipRect)null }
+    expect(clip != null, "occluded smart layer owns a saved ClipRect bitmap")
+    if clip != null {
+        let x = unsafe { (*clip).bounds.MinX }
+        let y = unsafe { (*clip).bounds.MinY }
+        let local_x = x & 15
+        var common = port(world.bitmap)
+        var saved = port(unsafe { (*clip).BitMap })
+        WritePixel(&var saved, local_x, 0)
+        WaitBlit()
+        expect(ReadPixel(&var common, x, y) == 0 && ReadPixel(&var saved, local_x, 0) == 1,
+            "fixture starts with opposite exact pixels")
+        SwapBitsRastPortClipRect(&var common, clip)
+        WaitBlit()
+        saved.BitMap = unsafe { (*clip).BitMap }
+        expect(ReadPixel(&var common, x, y) == 1, "saved pixel reaches common bitmap")
+        expect(ReadPixel(&var saved, local_x, 0) == 0, "old common pixel reaches saved bitmap")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|UnlockLayerInfo
+// @ndk-side-effects Releases one of two recursive Layer_Info acquisitions, proves current ownership and one nesting level remain, then balances the final acquisition before disposal
+@test("layers.library UnlockLayerInfo unwinds metadata recursion")
+pub fn layers_unlock_info() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let original = unsafe { (*world.info).Lock.ss_NestCount }
+    LockLayerInfo(world.info)
+    LockLayerInfo(world.info)
+    UnlockLayerInfo(world.info)
+    unsafe {
+        expect((*world.info).Lock.ss_Owner == FindTask(null), "recursive owner remains")
+        expect((*world.info).Lock.ss_NestCount == original + 1, "one metadata level remains")
+    }
+    UnlockLayerInfo(world.info)
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|FattenLayerInfo
+// @ndk-side-effects Calls the obsolete compatibility entry on a full public Layer_Info, proving it reports success while preserving free memory, flags, and the extension pointer before balanced ThinLayerInfo
+@test("layers.library FattenLayerInfo is a modern compatibility no-op")
+pub fn layers_fatten_info() {
+    var info: Layer_Info = @zeroed(Layer_Info)
+    InitLayers(&var info)
+    let before = unsafe { AvailMem(MEMF_ANY) }
+    let fattened = FattenLayerInfo(&var info)
+    let allocated = unsafe { AvailMem(MEMF_ANY) }
+    expect(fattened != 0, "legacy Layer_Info fattens")
+    expect(allocated == before, "modern compatibility call allocates no hidden storage")
+    expect(info.Flags == 0 && info.LayerInfo_extra == null, "published state remains unchanged")
+    ThinLayerInfo(&var info)
+}
+
+// @covers-ndk function|layers.library|ThinLayerInfo
+// @ndk-side-effects Balances a successful obsolete FattenLayerInfo call and proves the modern compatibility path preserves free memory and the complete published legacy state
+@test("layers.library ThinLayerInfo balances the compatibility no-op")
+pub fn layers_thin_info() {
+    var info: Layer_Info = @zeroed(Layer_Info)
+    InitLayers(&var info)
+    let fattened = FattenLayerInfo(&var info)
+    let allocated = unsafe { AvailMem(MEMF_ANY) }
+    expect(fattened != 0, "legacy extension allocated")
+    ThinLayerInfo(&var info)
+    let released = unsafe { AvailMem(MEMF_ANY) }
+    expect(released == allocated, "modern compatibility call has no hidden storage to release")
+    expect(info.Flags == 0 && info.LayerInfo_extra == null, "published state remains unchanged")
+}
+
+// @covers-ndk function|layers.library|MoveLayerInFrontOf
+// @ndk-side-effects Moves the lower of two overlapping layers immediately in front of its peer, waits for saved-pixel swaps, and proves exact top and reciprocal ordering before teardown
+@test("layers.library MoveLayerInFrontOf orders exact peers")
+pub fn layers_move_in_front() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    let moved = MoveLayerInFrontOf(world.first, world.second)
+    WaitBlit()
+    unsafe {
+        expect(moved != 0, "relative move succeeds")
+        expect((*world.info).top_layer == world.first, "moved layer is topmost")
+        expect((*world.first).back == world.second && (*world.second).front == world.first,
+            "relative links are exact")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|MoveSizeLayer
+// @ndk-side-effects Moves a smart layer by (+4,+3) while extending it by (+5,+2), proving all four inclusive bounds and both cached dimensions before teardown
+@test("layers.library MoveSizeLayer changes position and size")
+pub fn layers_move_size() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let changed = MoveSizeLayer(world.first, 4, 3, 5, 2)
+    WaitBlit()
+    unsafe {
+        expect(changed != 0, "combined move and size succeeds")
+        expect((*world.first).bounds.MinX == 14 && (*world.first).bounds.MinY == 11,
+            "upper-left bound moves exactly")
+        expect((*world.first).bounds.MaxX == 48 && (*world.first).bounds.MaxY == 36,
+            "lower-right bound combines deltas")
+        expect((*world.first).Width == 35 && (*world.first).Height == 26,
+            "cached dimensions combine deltas")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|CreateUpfrontHookLayer
+// @ndk-side-effects Creates a top smart layer with the documented no-backfill sentinel, then InstallLayerHook returns that exact sentinel while restoring the default before layer deletion
+@test("layers.library CreateUpfrontHookLayer installs requested hook")
+pub fn layers_create_upfront_hook() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.first = CreateUpfrontHookLayer(world.info, world.bitmap, 2, 2, 31, 21,
+        SMART_LAYER, (*Hook)LAYERS_NOBACKFILL, null)
+    expect(world.first != null, "hook layer allocated")
+    if world.first != null {
+        let installed = InstallLayerHook(world.first, null)
+        expect((u32)installed == LAYERS_NOBACKFILL, "no-backfill sentinel was active")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|CreateBehindHookLayer
+// @ndk-side-effects Creates a hooked smart layer behind an existing peer and proves both exact ordering and the no-backfill sentinel before restoring the default and tearing down
+@test("layers.library CreateBehindHookLayer inserts hooked layer behind")
+pub fn layers_create_behind_hook() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.second = CreateBehindHookLayer(world.info, world.bitmap, 12, 10, 41, 33,
+        SMART_LAYER, (*Hook)LAYERS_NOBACKFILL, null)
+    expect(world.second != null, "behind hook layer allocated")
+    if world.second != null {
+        unsafe { expect((*world.info).top_layer == world.first, "existing layer remains topmost") }
+        let installed = InstallLayerHook(world.second, null)
+        expect((u32)installed == LAYERS_NOBACKFILL, "no-backfill sentinel was active")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|InstallLayerHook
+// @ndk-side-effects Replaces a real layer's default backfill with a caller-owned Hook, proves the live field identity, then restoring the default returns that exact Hook pointer before teardown
+@test("layers.library InstallLayerHook round trips identity")
+pub fn layers_install_hook() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    var state: HookState = @zeroed(HookState)
+    var hook = noop_hook(&var state)
+    let hook_ptr: *Hook = &var hook
+    let _ = InstallLayerHook(world.first, hook_ptr)
+    unsafe { expect((*world.first).BackFill == hook_ptr, "custom hook becomes live") }
+    let removed = InstallLayerHook(world.first, null)
+    expect(removed == hook_ptr, "restoring default returns exact custom hook")
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|InstallLayerInfoHook
+// @ndk-side-effects Installs a caller-owned background Hook in real Layer_Info storage, proves its exact published field identity, then restoring the default returns the exact custom pointer before disposal
+@test("layers.library InstallLayerInfoHook round trips identity")
+pub fn layers_install_info_hook() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    var state: HookState = @zeroed(HookState)
+    var hook = noop_hook(&var state)
+    let hook_ptr: *Hook = &var hook
+    let _ = InstallLayerInfoHook(world.info, hook_ptr)
+    unsafe { expect((*world.info).BlankHook == (*u8)hook_ptr, "custom info hook becomes live") }
+    let removed = InstallLayerInfoHook(world.info, null)
+    expect(removed == hook_ptr, "restoring default returns exact custom hook")
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|SortLayerCR
+// @ndk-side-effects Fragments a real smart layer with an overlapping peer, locks the metadata and layer, sorts its ClipRects toward positive X, and proves every resulting minimum-X value is nondecreasing without losing a node
+@test("layers.library SortLayerCR orders real clip rectangles")
+pub fn layers_sort_clip_rects() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.first = add_upfront(&var world, 0, 0, 63, 31)
+    world.second = add_upfront(&var world, 20, 0, 39, 31)
+    LockLayerInfo(world.info)
+    LockLayer(0, world.first)
+    SortLayerCR(world.first, 1, 0)
+    var count: u32 = 0
+    var ordered = true
+    var previous: i16 = -32768
+    var clip = unsafe { (*world.first).ClipRect }
+    while clip != null {
+        let current = unsafe { (*clip).bounds.MinX }
+        if current < previous { ordered = false }
+        previous = current
+        count += 1
+        clip = unsafe { (*clip).Next }
+    }
+    UnlockLayer(world.first)
+    UnlockLayerInfo(world.info)
+    expect(count >= 2, "overlap creates multiple clip rectangles")
+    expect(ordered, "positive-X sort is nondecreasing")
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|DoHookClipRects
+// @ndk-side-effects Calls a register-ABI Hook for every renderable ClipRect intersecting an exact bounding rectangle and proves the RastPort object, Layer pointer, callback count, and returned clipped bounds
+@test("layers.library DoHookClipRects dispatches exact clipped messages")
+pub fn layers_do_hook_clip_rects() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    var state: HookState = @zeroed(HookState)
+    var hook = noop_hook(&var state)
+    var bounds = Rectangle { MinX: 4, MinY: 4, MaxX: 11, MaxY: 11 }
+    let rp = unsafe { (*world.first).rp }
+    DoHookClipRects(&var hook, rp, &var bounds)
+    expect(state.calls > 0, "at least one renderable ClipRect is dispatched")
+    expect(state.object == (*u8)rp, "hook object is the exact layer RastPort")
+    expect(state.layer == world.first, "hook message identifies the exact layer")
+    unsafe {
+        expect(state.bounds.MinX == bounds.MinX + (*world.first).bounds.MinX &&
+            state.bounds.MinY == bounds.MinY + (*world.first).bounds.MinY &&
+            state.bounds.MaxX == bounds.MaxX + (*world.first).bounds.MinX &&
+            state.bounds.MaxY == bounds.MaxY + (*world.first).bounds.MinY,
+            "layer-local request becomes the exact bitmap-space callback bounds")
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|NewLayerInfo
+// @ndk-side-effects Allocates one complete Layer_Info, proves its layer list and semaphore begin open, then DisposeLayerInfo releases the allocation before process leak measurement
+@test("layers.library NewLayerInfo allocates initialized metadata")
+pub fn layers_new_info_exclusive() {
+    let info = NewLayerInfo()
+    expect(info != null, "Layer_Info allocated")
+    if info != null {
+        unsafe {
+            expect((*info).top_layer == null, "new layer list is empty")
+            expect((*info).Lock.ss_Owner == null, "new metadata semaphore is open")
+        }
+        DisposeLayerInfo(info)
+    }
+}
+
+// @covers-ndk function|layers.library|DisposeLayerInfo
+// @ndk-side-effects Releases one empty allocated Layer_Info, then a second successful allocation and release proves the allocator remains usable while process memory measurement verifies balance
+@test("layers.library DisposeLayerInfo releases reusable metadata")
+pub fn layers_dispose_info_exclusive() {
+    let first = NewLayerInfo()
+    expect(first != null, "first Layer_Info allocated")
+    if first != null { DisposeLayerInfo(first) }
+    let second = NewLayerInfo()
+    expect(second != null, "Layer_Info allocation succeeds after disposal")
+    if second != null { DisposeLayerInfo(second) }
+}
+
+// @covers-ndk function|layers.library|CreateUpfrontLayer
+// @ndk-side-effects Creates a smart layer at exact inclusive bounds on a real common bitmap and proves it becomes the sole top layer with the expected cached dimensions before complete teardown
+@test("layers.library CreateUpfrontLayer creates exact top layer")
+pub fn layers_create_upfront_exclusive() {
+    var world = empty_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    world.first = CreateUpfrontLayer(world.info, world.bitmap, 7, 9, 30, 26, SMART_LAYER, null)
+    expect(world.first != null, "upfront layer allocated")
+    if world.first != null {
+        unsafe {
+            expect((*world.info).top_layer == world.first, "new layer is topmost")
+            expect((*world.first).bounds.MinX == 7 && (*world.first).bounds.MaxY == 26,
+                "inclusive bounds are exact")
+            expect((*world.first).Width == 24 && (*world.first).Height == 18,
+                "cached dimensions are exact")
+        }
+    }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|DeleteLayer
+// @ndk-side-effects Deletes the sole smart layer, waits for asynchronous restoration, and proves Layer_Info becomes empty before its metadata and common bitmap are released
+@test("layers.library DeleteLayer removes exact list member")
+pub fn layers_delete_exclusive() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let deleted = DeleteLayer(0, world.first)
+    world.first = null
+    WaitBlit()
+    expect(deleted != 0, "layer deletion succeeds")
+    unsafe { expect((*world.info).top_layer == null, "layer list becomes empty") }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|InstallClipRegion
+// @ndk-side-effects Installs a caller-owned exact rectangle Region on a real layer, proves published identity, removes it and receives the same pointer back, then releases region and layer ownership in order
+@test("layers.library InstallClipRegion round trips ownership")
+pub fn layers_install_clip_region_exclusive() {
+    var world = one_layer_world()
+    expect(world_ready(&world), "layer world created")
+    if !world_ready(&world) { return }
+    let region = NewRegion()
+    var bounds = Rectangle { MinX: 2, MinY: 3, MaxX: 12, MaxY: 13 }
+    let shaped = region != null && OrRectRegion(region, &var bounds) != 0
+    expect(shaped, "exact region allocated")
+    if shaped {
+        let old = InstallClipRegion(world.first, region)
+        expect(old == null, "layer begins without clip region")
+        unsafe { expect((*world.first).ClipRegion == region, "caller region becomes live") }
+        let removed = InstallClipRegion(world.first, null)
+        expect(removed == region, "removal returns exact caller region")
+    }
+    if region != null { DisposeRegion(region) }
+    release_world(&var world)
+}
+
+// @covers-ndk function|layers.library|WhichLayer
+// @ndk-side-effects Queries two overlapping real layers and proves the overlap resolves to the topmost layer, an exposed point resolves to the lower layer, and an outside point returns null before teardown
+@test("layers.library WhichLayer resolves exact stacking")
+pub fn layers_which_exclusive() {
+    var world = two_layer_world()
+    expect(world_ready(&world), "two-layer world created")
+    if !world_ready(&world) { return }
+    expect(WhichLayer(world.info, 25, 20) == world.second, "overlap resolves to top layer")
+    expect(WhichLayer(world.info, 8, 8) == world.first, "exposed point resolves to lower layer")
+    expect(WhichLayer(world.info, 90, 60) == null, "outside point resolves to no layer")
+    release_world(&var world)
+}

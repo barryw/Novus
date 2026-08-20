@@ -1,0 +1,10 @@
+from std::test::test import expect
+from amiga::raw::requester import REQUESTER_GetClass
+
+// @covers-ndk function|requester.library|REQUESTER_GetClass
+// @ndk-side-effects Returns the class-owned shared pointer without transferring ownership; startup reports a controlled missing-class error when requester.class is not installed
+@test("requester.class returns a stable class when installed")
+pub fn reaction_requester_class() {
+    let first = REQUESTER_GetClass()
+    expect(first != null && REQUESTER_GetClass() == first, "class pointer is non-null and stable")
+}

@@ -678,6 +678,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         ValidateCopyImplementations(context.implDeclaration());
+        ValidateDropImplementations(context.implDeclaration());
 
         // Eighth pass: collect all function declarations
         foreach (var funcDecl in context.functionDeclaration())
@@ -2247,6 +2248,40 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     "remove the Copy implementation and let assignments move the value",
                     "only resource-free values with Copy fields may implement Copy"
                 });
+        }
+    }
+
+    /// <summary>
+    /// `drop` belongs to the Drop trait and nowhere else. An inherent `fn drop` beside a
+    /// `Drop` impl compiles to a second cleanup entry point, so scope exit and an explicit
+    /// call can run different code for the same type.
+    /// </summary>
+    private void ValidateDropImplementations(
+        IEnumerable<NovusParser.ImplDeclarationContext> declarations)
+    {
+        foreach (var declaration in declarations)
+        {
+            var info = ParseImplBlockInfo(declaration);
+            ClearImplGenericParams(info.GenericParams);
+            if (info.ParseError || info.IsTraitImpl)
+                continue;
+
+            foreach (var implItem in declaration.implItem())
+            {
+                var function = implItem.functionDeclaration();
+                if (function == null || function.IDENTIFIER().GetText() != "drop")
+                    continue;
+
+                _diagnostics.ReportError(
+                    "E0205",
+                    $"type `{info.ImplTypeName}` declares an inherent `drop` method",
+                    SourceLocationHelper.FromToken(function.IDENTIFIER().Symbol, _filePath, _sourceLines),
+                    helpTexts: new List<string>
+                    {
+                        "move the body into `impl Drop for " + info.ImplTypeName + "` so scope exit runs it",
+                        "values are released when they go out of scope; use `@drop_in_place` to release one early"
+                    });
+            }
         }
     }
 
@@ -4299,12 +4334,36 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Parse the type annotation (explicit array sizes are allowed and validated against initializer)
             varType = ParseType(context.type());
 
+            if (exprCtx == null)
+            {
+                // `var buffer: [u8; N]` reserves fixed-size storage the caller fills in later.
+                // Every other annotated type still needs a value: an uninitialized scalar,
+                // pointer, or handle is exactly the runtime surprise this language avoids.
+                if (varType is not IrArrayType { Length: >= 0 })
+                {
+                    _diagnostics.ReportError(
+                        ErrorCodes.MissingInitializer,
+                        "variable must have an initial value",
+                        location,
+                        helpTexts: new List<string>
+                        {
+                            $"'{TypeToString(varType)}' has no implicit initial value",
+                            "assign a value here, or declare a sized array such as '[u8; 16]' to reserve storage"
+                        }
+                    );
+                    return null;
+                }
+
+                DeclareUninitializedVariable(name, varType, isMutable, location, isThrowaway);
+                return null;
+            }
+
             // Set expected type for bidirectional type checking
             var previousExpectedType = _expectedType;
             _expectedType = varType;
 
             // Analyze the initializer expression with expected type context
-            var exprType = Visit(context.expression());
+            var exprType = Visit(exprCtx);
 
             // Restore previous expected type
             _expectedType = previousExpectedType;
@@ -4346,6 +4405,21 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         else
         {
             // No type annotation - infer type from initializer
+            if (context.expression() == null)
+            {
+                _diagnostics.ReportError(
+                    ErrorCodes.MissingInitializer,
+                    "variable must have an initial value",
+                    location,
+                    helpTexts: new List<string>
+                    {
+                        "a declaration without a value needs a type annotation to size its storage",
+                        "assign a value here, or annotate a sized array such as '[u8; 16]'"
+                    }
+                );
+                return null;
+            }
+
             var exprType = Visit(context.expression());
             if (exprType == null)
                 return null;
@@ -4468,6 +4542,38 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Registers a declaration that reserves storage without an initializer, such as
+    /// `var buffer: [u8; 16]`. There is no initializer to move from or borrow through,
+    /// so only the symbol, its lifetime, and its drop tracking need recording.
+    /// </summary>
+    private void DeclareUninitializedVariable(
+        string name, IrType varType, bool isMutable, SourceLocation location, bool isThrowaway)
+    {
+        if (isThrowaway)
+            return;
+
+        var variableSymbol = new VariableSymbol(name, varType, isMutable, location, Id: _nextVariableId++);
+        _variables[name] = variableSymbol;
+        _borrowChecker.BorrowGraph.RegisterVariable(variableSymbol.Id, name, _scopeDepth, location);
+
+        if (IsCopyType(varType))
+            return;
+
+        var dropInfo = new DropInfo
+        {
+            VariableId = variableSymbol.Id,
+            VariableName = name,
+            VariableType = varType,
+            DeclLocation = location,
+            WasMoved = false,
+            MovedFields = null
+        };
+        _dropInfo[variableSymbol.Id] = dropInfo;
+        if (_dropScopes.Count > 0)
+            _dropScopes.Peek().VariablesToDrop.Add(dropInfo);
     }
 
     private IrType? HandleTupleDestructuring(
@@ -7094,6 +7200,19 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                             : EvaluateConstantExpression(argCtx.expression());
                         attr.PositionalArgs.Add(value ?? "null");
                     }
+                }
+            }
+
+            if (attrName == KnownAttributes.Align)
+            {
+                var alignment = attr.GetPositionalArg<int>(0);
+                if (attr.PositionalArgs.Count != 1 || alignment <= 0 ||
+                    (alignment & (alignment - 1)) != 0)
+                {
+                    _diagnostics.ReportError(
+                        ErrorCodes.InvalidAttribute,
+                        "@align requires one positive power-of-two byte alignment",
+                        location);
                 }
             }
 
@@ -12517,7 +12636,10 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
             // Check if this is an associated function (no self parameter)
             var hasSelf = funcSymbol.Parameters.Count > 0 && funcSymbol.Parameters[0].Name == "self";
 
-            if (hasSelf)
+            // Uniform call syntax passes the receiver as the first argument, so
+            // `Type::method(value, ...)` is a complete call. Only a path that names the
+            // method without supplying a receiver is missing an instance.
+            if (hasSelf && !IsUniformCallReceiverSupplied(context))
             {
                 var location = SourceLocationHelper.FromContext(context, _filePath, _sourceLines);
                 _diagnostics.ReportError(
@@ -12527,7 +12649,7 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
                     helpTexts: new List<string>
                     {
                         "use an instance: let v = ...; v.method()",
-                        "or create an instance first"
+                        $"or pass the receiver explicitly: {typeName}::{memberName}(&value)"
                     }
                 );
                 return null;
@@ -12599,6 +12721,15 @@ public class SemanticAnalyzer : NovusParserBaseVisitor<IrType?>
         }
         return null;
     }
+
+    /// <summary>
+    /// True when this path expression is the callee of a call that supplies at least one
+    /// argument, which is the receiver a `self` method needs under uniform call syntax.
+    /// </summary>
+    private static bool IsUniformCallReceiverSupplied(NovusParser.PathExprContext context) =>
+        context.Parent is NovusParser.CallExprContext call &&
+        ReferenceEquals(call.expression(), context) &&
+        (call.argumentList()?.expression().Length ?? 0) > 0;
 
     public override IrType? VisitArrayLiteral([NotNull] NovusParser.ArrayLiteralContext context)
     {

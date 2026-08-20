@@ -98,6 +98,12 @@ public class CHeaderParser
                 }
             }
 
+            if (line.StartsWith("#undef", StringComparison.Ordinal))
+            {
+                var name = Regex.Match(line, @"#undef\s+([A-Za-z_][A-Za-z0-9_]*)").Groups[1].Value;
+                header.Constants.RemoveAll(value => value.Name == name);
+            }
+
             // Parse struct definitions
             if ((line.StartsWith("struct") || line.StartsWith("typedef struct") ||
                  line.StartsWith("union") || line.StartsWith("typedef union")) &&
@@ -113,7 +119,10 @@ public class CHeaderParser
                         header.Structs.Add(new CStruct
                         {
                             Name = structDef.TagName,
-                            TagName = structDef.TagName
+                            TagName = structDef.TagName,
+                            Fields = structDef.Fields.ToList(),
+                            HasUnion = structDef.HasUnion,
+                            IsUnion = structDef.IsUnion
                         });
                     }
                 }

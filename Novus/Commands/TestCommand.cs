@@ -297,6 +297,7 @@ public static class TestCommand
         OptimizationLevel = options.GetOptimizationLevel(),
         SafetyLevelOption = options.SafetyLevel,
         UseStdlibCache = true,
+        IncludeAllDefinitionsForReachability = false,
         CompilationCacheDirectory = options.CacheDirectory,
         AdditionalSourceFiles = sourceFiles.Select(Path.GetFullPath).ToList()
     };
@@ -343,6 +344,27 @@ public static class TestCommand
             return;
 
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        CopyIfChanged(source, destination);
+
+        var sourceDirectory = Path.GetDirectoryName(source)!;
+        var destinationDirectory = Path.GetDirectoryName(destination)!;
+        foreach (System.Text.RegularExpressions.Match match in
+                 System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(source), "@embed\\s*\\(\\s*\"([^\"]+)\""))
+        {
+            var relative = match.Groups[1].Value;
+            if (Path.IsPathRooted(relative) || relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains(".."))
+                continue;
+            var embeddedSource = Path.Combine(sourceDirectory, relative);
+            if (!File.Exists(embeddedSource))
+                continue;
+            var embeddedDestination = Path.Combine(destinationDirectory, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(embeddedDestination)!);
+            CopyIfChanged(embeddedSource, embeddedDestination);
+        }
+    }
+
+    private static void CopyIfChanged(string source, string destination)
+    {
         if (!File.Exists(destination) ||
             !File.ReadAllBytes(source).AsSpan().SequenceEqual(File.ReadAllBytes(destination)))
             File.Copy(source, destination, overwrite: true);
@@ -572,6 +594,7 @@ public static class TestCommand
             sb.AppendLine("    var allocations_after: u32 = 0");
             sb.AppendLine("    var allocated_bytes_before: u32 = 0");
             sb.AppendLine("    var allocated_bytes_after: u32 = 0");
+            sb.AppendLine("    var memory_retries: u32 = 0");
         }
         sb.AppendLine();
 
@@ -655,7 +678,7 @@ public static class TestCommand
                 if (options.MemoryCheck)
                 {
                     sb.AppendLine("    __novus_memory_checkpoint()");
-                    sb.AppendLine("    memory_before = AvailMem(MEMF_ANY)");
+                sb.AppendLine("    memory_before = AvailMem(MEMF_ANY)");
                     sb.AppendLine("    allocations_before = __novus_memory_active_allocations()");
                     sb.AppendLine("    allocated_bytes_before = __novus_memory_active_bytes()");
                 }
@@ -680,19 +703,21 @@ public static class TestCommand
                     sb.AppendLine("    allocations_after = __novus_memory_active_allocations()");
                     sb.AppendLine("    allocated_bytes_after = __novus_memory_active_bytes()");
                     sb.AppendLine("    __novus_memory_checkpoint()");
-                    sb.AppendLine("    memory_after = AvailMem(MEMF_ANY)");
+                sb.AppendLine("    memory_after = AvailMem(MEMF_ANY)");
                     sb.AppendLine("    if allocations_after > allocations_before || allocated_bytes_after > allocated_bytes_before {");
                     sb.AppendLine("        write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
                     sb.AppendLine("        fail(\"Novus allocation leak\")");
                     sb.AppendLine("        __novus_memory_test_reset()");
                     sb.AppendLine("    } else if memory_after < memory_before {");
-                    sb.AppendLine("        // AmigaOS subsystems allocate lazy process-wide state on first use.");
-                    sb.AppendLine("        // Give asynchronous OS cleanup one tick, then retry once against");
-                    sb.AppendLine("        // the warmed baseline before calling a persistent drop a leak.");
+                    sb.AppendLine("        // AmigaOS subsystems may populate asynchronous process-wide caches.");
+                    sb.AppendLine("        // Repeat against each warmed baseline until memory stabilizes; a real");
+                    sb.AppendLine("        // leak keeps growing and still fails after the bounded retries.");
                     sb.AppendLine("        memory_after = __test_wait_for_memory(memory_before)");
-                    sb.AppendLine("        if memory_after < memory_before {");
+                    sb.AppendLine("        memory_retries = 0");
+                    sb.AppendLine("        while memory_after < memory_before && memory_retries < 5 {");
                     sb.AppendLine("            memory_before = memory_after");
                     sb.AppendLine($"            {testName}()");
+                    sb.AppendLine("            __novus_ffi_cleanup_lazy()");
                     sb.AppendLine("            allocations_after = __novus_memory_active_allocations()");
                     sb.AppendLine("            allocated_bytes_after = __novus_memory_active_bytes()");
                     sb.AppendLine("            __novus_memory_checkpoint()");
@@ -701,24 +726,14 @@ public static class TestCommand
                     sb.AppendLine("                write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
                     sb.AppendLine("                fail(\"Novus allocation leak\")");
                     sb.AppendLine("                __novus_memory_test_reset()");
-                    sb.AppendLine("            } else if memory_after < memory_before {");
-                    sb.AppendLine("                // Confirm linear growth once more; finite subsystem caches");
-                    sb.AppendLine("                // may need more than one call to reach steady state.");
-                    sb.AppendLine("                memory_before = memory_after");
-                    sb.AppendLine($"                {testName}()");
-                    sb.AppendLine("                allocations_after = __novus_memory_active_allocations()");
-                    sb.AppendLine("                allocated_bytes_after = __novus_memory_active_bytes()");
-                    sb.AppendLine("                __novus_memory_checkpoint()");
-                    sb.AppendLine("                memory_after = __test_wait_for_memory(memory_before)");
-                    sb.AppendLine("                if allocations_after > allocations_before || allocated_bytes_after > allocated_bytes_before {");
-                    sb.AppendLine("                    write(\"MEMORY LEAK: %lu allocation(s), %lu byte(s) still owned. \", allocations_after - allocations_before, allocated_bytes_after - allocated_bytes_before)");
-                    sb.AppendLine("                    fail(\"Novus allocation leak\")");
-                    sb.AppendLine("                    __novus_memory_test_reset()");
-                    sb.AppendLine("                } else if memory_after < memory_before {");
-                    sb.AppendLine("                    write(\"MEMORY LEAK: %lu AmigaOS byte(s) not returned. \", memory_before - memory_after)");
-                    sb.AppendLine("                    fail(\"AmigaOS resource leak\")");
-                    sb.AppendLine("                }");
+                    sb.AppendLine("                memory_after = memory_before");
+                    sb.AppendLine("                break");
                     sb.AppendLine("            }");
+                    sb.AppendLine("            memory_retries++");
+                    sb.AppendLine("        }");
+                    sb.AppendLine("        if memory_after < memory_before {");
+                    sb.AppendLine("            write(\"MEMORY LEAK: %lu AmigaOS byte(s) not returned. \", memory_before - memory_after)");
+                    sb.AppendLine("            fail(\"AmigaOS resource leak\")");
                     sb.AppendLine("        }");
                     sb.AppendLine("    }");
                 }

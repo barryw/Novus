@@ -41,9 +41,9 @@ VBCC=vendor/vbcc vendor/vbcc/bin/vc +aos68k -c99 -cpu=68020 -O=1 -o wrun wrun.c
 
 ## Running a suite
 
-For Novus conformance tests, use the MCP runner. It builds locally, boots one
-A4000, uploads each executable through the exchange, and records structured
-Guru/CPU-exception diagnostics without screenshots:
+For Novus conformance tests, use the MCP runner. It builds locally, boots the
+requested machine, uploads each executable through the exchange, and records
+structured Guru/CPU-exception diagnostics without screenshots:
 
 ```sh
 python3 tools/amiga/run_runtime_suite.py --layer foundation
@@ -55,6 +55,21 @@ python3 tools/amiga/run_runtime_suite.py --layer stdlib --memory-check
 python3 tools/amiga/run_runtime_suite.py --suite stdlib-tls-live --benchmark \
   --amissl-dir /path/to/extracted/AmiSSL
 ```
+
+For a dual-machine gate across classic configurations, use:
+
+```sh
+python3 tools/amiga/run_ndk_dual_machine_gate.py \
+  --configuration A4000 \
+  --configuration A1200 \
+  --layer amiga \
+  --profile release-o1 \
+  --memory-check \
+  --require-complete
+```
+
+By default, that command runs both A4000 and A1200. `--no-copy-reports` disables
+saved per-configuration snapshots of `report.json` if your filesystem is tight.
 
 The default endpoint is `http://localhost:6800/mcp`; results are written to
 `.novus-cache/amiga-runtime-suite/report.json`. The foundation layer compiles

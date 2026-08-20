@@ -17,7 +17,6 @@ pub fn test_sb_new() {
             var builder = sb
             expect_eq(builder.len(), 0, "new builder has len 0")
             expect_true(builder.is_empty(), "new builder is empty")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -36,7 +35,6 @@ pub fn test_sb_with_capacity() {
             var builder = sb
             expect_eq(builder.len(), 0, "with_capacity builder has len 0")
             expect_true(builder.is_empty(), "with_capacity builder is empty")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::with_capacity should succeed")
     }
@@ -59,7 +57,6 @@ pub fn test_sb_push_str() {
             let _ = builder.push_str(", ")
             let _ = builder.push_str("World!")
             expect_eq(builder.len(), 13, "len after all pushes")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -80,7 +77,6 @@ pub fn test_sb_push_byte() {
             let _ = builder.push_byte(66)  // 'B'
             let _ = builder.push_byte(67)  // 'C'
             expect_eq(builder.len(), 3, "len after 3 bytes")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -99,7 +95,6 @@ pub fn test_sb_push_i32_positive() {
             var builder = sb
             let _ = builder.push_i32(42)
             expect_eq(builder.len(), 2, "len for '42'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -114,7 +109,6 @@ pub fn test_sb_push_i32_negative() {
             var builder = sb
             let _ = builder.push_i32(-123)
             expect_eq(builder.len(), 4, "len for '-123'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -129,7 +123,6 @@ pub fn test_sb_push_i32_zero() {
             var builder = sb
             let _ = builder.push_i32(0)
             expect_eq(builder.len(), 1, "len for '0'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -144,7 +137,6 @@ pub fn test_sb_push_i32_large() {
             var builder = sb
             let _ = builder.push_i32(1000000)
             expect_eq(builder.len(), 7, "len for '1000000'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -163,7 +155,6 @@ pub fn test_sb_push_u32() {
             var builder = sb
             let _ = builder.push_u32(12345)
             expect_eq(builder.len(), 5, "len for '12345'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -178,7 +169,6 @@ pub fn test_sb_push_u32_zero() {
             var builder = sb
             let _ = builder.push_u32(0)
             expect_eq(builder.len(), 1, "len for '0'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -198,7 +188,6 @@ pub fn test_sb_push_hex() {
             let _ = builder.push_hex(255)  // 0xff
             // "ff" = 2 chars
             expect_eq(builder.len(), 2, "len for 'ff'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -213,7 +202,6 @@ pub fn test_sb_push_hex_zero() {
             var builder = sb
             let _ = builder.push_hex(0)
             expect_eq(builder.len(), 1, "len for '0'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -229,7 +217,6 @@ pub fn test_sb_push_hex_large() {
             let _ = builder.push_hex(65535)  // 0xffff
             // "ffff" = 4 chars
             expect_eq(builder.len(), 4, "len for 'ffff'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -249,7 +236,6 @@ pub fn test_sb_push_hex_upper() {
             let _ = builder.push_hex_upper(255)  // 0xFF
             // "FF" = 2 chars
             expect_eq(builder.len(), 2, "len for 'FF'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -268,7 +254,6 @@ pub fn test_sb_push_bool_true() {
             var builder = sb
             let _ = builder.push_bool(true)
             expect_eq(builder.len(), 4, "len for 'true'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -283,7 +268,6 @@ pub fn test_sb_push_bool_false() {
             var builder = sb
             let _ = builder.push_bool(false)
             expect_eq(builder.len(), 5, "len for 'false'")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -309,7 +293,6 @@ pub fn test_sb_complex_build() {
             // "Count: 42, Hex: 0xff, Flag: true"
             // 7 + 2 + 9 + 2 + 8 + 4 = 32
             expect_eq(builder.len(), 32, "complex string len")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -333,7 +316,6 @@ pub fn test_sb_len() {
 
             builder.push_byte(100).unwrap()
             expect_eq(builder.len(), 4, "len after byte")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }
@@ -350,7 +332,6 @@ pub fn test_sb_is_empty() {
 
             builder.push_byte(65).unwrap()
             expect_false(builder.is_empty(), "builder with content not empty")
-            builder.drop()
         },
         Err(_) => expect(false, "StringBuilder::new should succeed")
     }

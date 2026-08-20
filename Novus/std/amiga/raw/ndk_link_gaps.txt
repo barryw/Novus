@@ -1,0 +1,2 @@
+# Public pinned-NDK callables that cannot currently link through Novus.
+# Empty: Novus supplies the two helpers omitted by the distributed amiga.lib archives.

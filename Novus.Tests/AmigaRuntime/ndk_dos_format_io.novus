@@ -1,0 +1,240 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::dos import Close, DeleteFile, FGets, FPrintf, FPuts, FWritef, Flush, IoErr, Open, Output, PrintFault, Printf, Read, SelectOutput, SetIoErr, SetProtection, VFPrintf, VFWritef, VPrintf, Write, WriteChars, PutStr
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn c_starts_with(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+    }
+    return true
+}
+
+fn remove_file(path: Str) {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+}
+
+fn create_file(path: Str, contents: Str) -> bool {
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, contents.as_ptr(), (i32)contents.len())
+    let closed = Close(handle)
+    return written == (i32)contents.len() && closed != 0
+}
+
+fn file_equals(path: Str, expected: Str) -> bool {
+    let handle = Open(path.as_cstr(), 1005)
+    if handle == 0 { return false }
+    var bytes: [u8] = [0; 128]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let read = Read(handle, pointer, 127)
+    let closed = Close(handle)
+    return read == (i32)expected.len() && closed != 0 && c_equals(pointer, expected)
+}
+
+fn file_starts_with(path: Str, expected: Str) -> bool {
+    let handle = Open(path.as_cstr(), 1005)
+    if handle == 0 { return false }
+    var bytes: [u8] = [0; 128]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let read = Read(handle, pointer, 127)
+    let closed = Close(handle)
+    return read >= (i32)expected.len() && closed != 0 && c_starts_with(pointer, expected)
+}
+
+// @covers-ndk function|dos.library|FGets
+// @ndk-side-effects Reads complete and final unterminated lines through DOS buffering into caller-owned bounded storage, then distinguishes immediate EOF with a null return and zero IoErr
+@test("dos.library FGets reads lines and reports immediate EOF")
+pub fn dos_fgets() {
+    let path: Str = "RAM:novus_ndk_format"
+    expect(create_file(path, "first\nsecond"), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    var line: [u8] = [0; 16]
+    let pointer = unsafe { (*u8)&var line[0] }
+    let first = if handle != 0 { FGets(handle, pointer, 16) } else { null }
+    let first_ok = first == pointer && c_equals(pointer, "first\n")
+    let second = if handle != 0 { FGets(handle, pointer, 16) } else { null }
+    let second_ok = second == pointer && c_equals(pointer, "second")
+    SetIoErr(99)
+    let end = if handle != 0 { FGets(handle, pointer, 16) } else { pointer }
+    let eof_error = IoErr()
+    if handle != 0 { Close(handle) }
+    expect(first_ok && second_ok && end == null && eof_error == 0, "newline, final line, and EOF contracts are exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FPuts
+// @ndk-side-effects Buffers one complete NUL-terminated string to an explicit file handle without appending a newline; close flushes it before verification and cleanup
+@test("dos.library FPuts writes one exact string")
+pub fn dos_fputs() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let result = if handle != 0 { FPuts(handle, "alpha") } else { -1 }
+    if handle != 0 { Close(handle) }
+    expect(result == 0 && file_equals(path, "alpha"), "success is zero and no newline is appended")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|VFWritef
+// @ndk-side-effects Consumes a caller-owned LONG argument array with BCPL formatting and buffers the exact result to an explicit file handle
+@test("dos.library VFWritef formats a BCPL argument array")
+pub fn dos_vfwritef() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    var arguments: [i32] = [42]
+    if handle != 0 { VFWritef(handle, "value=%N", unsafe { (*i32)&var arguments[0] }) }
+    if handle != 0 { Close(handle) }
+    expect(handle != 0 && file_equals(path, "value=42"), "BCPL decimal formatting consumes the argument array")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FWritef
+// @ndk-side-effects Consumes one variadic LONG with BCPL formatting and buffers the exact result to an explicit file handle
+@test("dos.library FWritef formats variadic BCPL arguments")
+pub fn dos_fwritef() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    if handle != 0 { FWritef(handle, "value=%N", 42) }
+    if handle != 0 { Close(handle) }
+    expect(handle != 0 && file_equals(path, "value=42"), "variadic BCPL decimal formatting is exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|VFPrintf
+// @ndk-side-effects Consumes a caller-owned RawDoFmt argument array, returns the exact byte count, and buffers the formatted result to an explicit file handle
+@test("dos.library VFPrintf formats an argument array")
+pub fn dos_vfprintf() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    var arguments: [i32] = [42]
+    let result = if handle != 0 { VFPrintf(handle, "value=%ld", unsafe { (*u8)&var arguments[0] }) } else { -1 }
+    if handle != 0 { Close(handle) }
+    expect(result == 8 && file_equals(path, "value=42"), "formatted bytes and returned length are exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FPrintf
+// @ndk-side-effects Consumes one variadic LONG, returns the exact byte count, and buffers the formatted result to an explicit file handle
+@test("dos.library FPrintf formats variadic arguments")
+pub fn dos_fprintf() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let result = if handle != 0 { FPrintf(handle, "value=%ld", 42) } else { -1 }
+    if handle != 0 { Close(handle) }
+    expect(result == 8 && file_equals(path, "value=42"), "formatted bytes and returned length are exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|WriteChars
+// @ndk-side-effects Temporarily redirects process output, writes exactly the requested prefix bytes without reading past that span, flushes, restores output, and closes the fixture
+@test("dos.library WriteChars honors the explicit byte count")
+pub fn dos_write_chars() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let result = if handle != 0 { WriteChars("alphaTAIL", 5) } else { -1 }
+    if handle != 0 { Flush(handle) }
+    let displaced = if handle != 0 { SelectOutput(original) } else { 0 }
+    if handle != 0 { Close(handle) }
+    expect(previous == original && displaced == handle && result == 5 && file_equals(path, "alpha"), "only five requested bytes reach the redirected output")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|PutStr
+// @ndk-side-effects Temporarily redirects process output, writes one complete NUL-terminated string without adding a newline, then flushes and restores the original output handle
+@test("dos.library PutStr writes an exact default-output string")
+pub fn dos_put_str() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let result = if handle != 0 { PutStr("alpha") } else { -1 }
+    if handle != 0 { Flush(handle) }
+    let displaced = if handle != 0 { SelectOutput(original) } else { 0 }
+    if handle != 0 { Close(handle) }
+    expect(previous == original && displaced == handle && result == 0 && file_equals(path, "alpha"), "success is zero and no newline is appended")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|VPrintf
+// @ndk-side-effects Temporarily redirects process output, consumes a caller-owned RawDoFmt argument array, verifies the exact returned byte count, and restores output before assertions
+@test("dos.library VPrintf formats an argument array to default output")
+pub fn dos_vprintf() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    var arguments: [i32] = [42]
+    let result = if handle != 0 { VPrintf("value=%ld", unsafe { (*u8)&var arguments[0] }) } else { -1 }
+    if handle != 0 { Flush(handle) }
+    let displaced = if handle != 0 { SelectOutput(original) } else { 0 }
+    if handle != 0 { Close(handle) }
+    expect(previous == original && displaced == handle && result == 8 && file_equals(path, "value=42"), "formatted default output and length are exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|Printf
+// @ndk-side-effects Temporarily redirects process output, consumes one variadic LONG, verifies the exact returned byte count, and restores output before assertions
+@test("dos.library Printf formats variadic default output")
+pub fn dos_printf() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let result = if handle != 0 { Printf("value=%ld", 42) } else { -1 }
+    if handle != 0 { Flush(handle) }
+    let displaced = if handle != 0 { SelectOutput(original) } else { 0 }
+    if handle != 0 { Close(handle) }
+    expect(previous == original && displaced == handle && result == 8 && file_equals(path, "value=42"), "formatted default output and length are exact")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|PrintFault
+// @ndk-side-effects Temporarily redirects process output, emits a localized known DOS error with a stable caller prefix, captures its IoErr contract, then restores both output and prior IoErr
+@test("dos.library PrintFault emits a prefixed DOS error")
+pub fn dos_print_fault() {
+    let path: Str = "RAM:novus_ndk_format"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let output = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let original_error = IoErr()
+    SetIoErr(4321)
+    let result = if handle != 0 { PrintFault(205, "Novus") } else { 0 }
+    let reported = IoErr()
+    if handle != 0 { Flush(handle) }
+    let displaced = if handle != 0 { SelectOutput(output) } else { 0 }
+    SetIoErr(original_error)
+    if handle != 0 { Close(handle) }
+    expect(previous == output && displaced == handle && result != 0 && file_starts_with(path, "Novus:"), "known error is printed with the stable caller prefix")
+    expect(reported == 205, "PrintFault publishes the supplied error through IoErr")
+    remove_file(path)
+}

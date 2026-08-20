@@ -1,0 +1,301 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import GACT_RELVERIFY, GFLG_DISABLED, GFLG_GADGHNONE, GTYP_BOOLGADGET, GTYP_STRGADGET, JAM1, WFLG_WINDOWACTIVE
+from amiga::raw::graphics import ReadPixel, WaitBlit, WaitTOF
+from amiga::raw::intuition import ActivateGadget, ActivateWindow, AddGadget, AddGList, GadgetMouse, OffGadget, OnGadget, RefreshGadgets, RefreshGList, RemoveGadget, RemoveGList
+from amiga::raw::structs import Border, Gadget, GadgetInfo, IBox, Library, StringInfo, Window
+from amiga::sys::intuition import ScreenHandle, WindowHandle
+
+extern var IntuitionBase: *Library
+
+struct GadgetFixture {
+    screen: ScreenHandle,
+    window: WindowHandle,
+}
+
+fn fixture() -> Result<GadgetFixture, i32> {
+    return match ScreenHandle::custom("Gadget tests", 320, 120, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => Result::Ok(GadgetFixture { screen: screen, window: window }),
+                Result::Err(_) => Result::Err(2),
+            }
+        },
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+@suppress("W0002", "classic gadget flags and type values fit their UWORD ABI fields")
+fn boolean_gadget(id: u16, left: i16, top: i16) -> Gadget {
+    var gadget: Gadget = @zeroed(Gadget)
+    gadget.LeftEdge = left
+    gadget.TopEdge = top
+    gadget.Width = 20
+    gadget.Height = 10
+    gadget.Flags = (u16)GFLG_GADGHNONE
+    gadget.Activation = (u16)GACT_RELVERIFY
+    gadget.GadgetType = (u16)GTYP_BOOLGADGET
+    gadget.GadgetID = id
+    return gadget
+}
+
+@suppress("W0002", "JAM1 fits Border.DrawMode's byte ABI field")
+fn border(points: *i16) -> Border {
+    return Border {
+        LeftEdge: 0, TopEdge: 0, FrontPen: 1, BackPen: 0,
+        DrawMode: (u8)JAM1, Count: 5, XY: points, NextBorder: null,
+    }
+}
+
+// @covers-ndk function|intuition.library|AddGadget
+// @ndk-side-effects Adds one user Boolean gadget to an otherwise gadget-free live backdrop window, verifies exact head linkage and returned ordinal, then removes it before window teardown
+@test("intuition.library AddGadget links a live window gadget")
+pub fn intuition_add_gadget() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var gadget = boolean_gadget(1, 10, 10)
+    let pointer: *Gadget = &var gadget
+    let position = AddGadget(state.window.as_raw(), pointer, 0)
+    let linked = state.window.as_raw().FirstGadget == pointer && pointer.NextGadget == null
+    let removed = RemoveGadget(state.window.as_raw(), pointer)
+    expect(position == 0 && linked && removed == 0,
+        "single gadget is inserted at and removed from ordinal zero")
+}
+
+// @covers-ndk function|intuition.library|RemoveGadget
+// @ndk-side-effects Attaches one gadget to a live backdrop, removes the exact pointer, verifies returned ordinal and empty window linkage, then proves a second removal reports not found
+@test("intuition.library RemoveGadget unlinks the exact gadget")
+pub fn intuition_remove_gadget() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var gadget = boolean_gadget(2, 10, 10)
+    let pointer: *Gadget = &var gadget
+    AddGadget(state.window.as_raw(), pointer, 0)
+    let position = RemoveGadget(state.window.as_raw(), pointer)
+    let missing = RemoveGadget(state.window.as_raw(), pointer)
+    expect(position == 0 && state.window.as_raw().FirstGadget == null && missing == 65535,
+        "removal returns the original ordinal and a repeat reports not found")
+}
+
+// @covers-ndk function|intuition.library|AddGList
+// @ndk-side-effects Adds a linked two-gadget list to an empty live backdrop, verifies exact order, returned ordinal, and preserved tail, then removes both gadgets as one list
+@test("intuition.library AddGList preserves linked gadget order")
+pub fn intuition_add_glist() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var second = boolean_gadget(4, 40, 10)
+    var first = boolean_gadget(3, 10, 10)
+    let first_ptr: *Gadget = &var first
+    let second_ptr: *Gadget = &var second
+    first.NextGadget = second_ptr
+    let position = AddGList(state.window.as_raw(), first_ptr, 0, 2, null)
+    let exact = state.window.as_raw().FirstGadget == first_ptr && first.NextGadget == second_ptr &&
+        second.NextGadget == null
+    let removed = RemoveGList(state.window.as_raw(), first_ptr, 2)
+    expect(position == 0 && exact && removed == 0 && state.window.as_raw().FirstGadget == null,
+        "two-gadget list retains order and is removed from ordinal zero")
+}
+
+// @covers-ndk function|intuition.library|RemoveGList
+// @ndk-side-effects Attaches three linked gadgets, removes only the first two, verifies returned ordinal and that the third becomes the exact window-list head, checks the V36+ removed-tail termination contract or the documented 47.53 defect, then removes the remaining gadget
+@test("intuition.library RemoveGList removes the requested count")
+pub fn intuition_remove_glist() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var third = boolean_gadget(7, 70, 10)
+    var second = boolean_gadget(6, 40, 10)
+    var first = boolean_gadget(5, 10, 10)
+    let first_ptr: *Gadget = &var first
+    let second_ptr: *Gadget = &var second
+    let third_ptr: *Gadget = &var third
+    first.NextGadget = second_ptr
+    second.NextGadget = third_ptr
+    AddGList(state.window.as_raw(), first_ptr, 0, 3, null)
+    let position = RemoveGList(state.window.as_raw(), first_ptr, 2)
+    let head_is_tail = state.window.as_raw().FirstGadget == third_ptr
+    let first_chain = first.NextGadget == second_ptr
+    let terminated = second.NextGadget == null
+    RemoveGadget(state.window.as_raw(), third_ptr)
+    expect(position == 0, "removed prefix reports original ordinal zero")
+    expect(head_is_tail, "untouched third gadget becomes the exact window-list head")
+    expect(first_chain, "first removed gadget remains linked to the second removed gadget")
+    let installed_link_bug = IntuitionBase != null && IntuitionBase.lib_Version == 47 &&
+        IntuitionBase.lib_Revision == 53 && second.NextGadget == third_ptr
+    expect(terminated || installed_link_bug,
+        "last removed gadget is terminated or exhibits the documented Intuition 47.53 stale link")
+}
+
+// @covers-ndk function|intuition.library|OffGadget
+// @ndk-side-effects Attaches an enabled Boolean gadget, disables it through Intuition, verifies GFLG_DISABLED on the live list node, then removes it
+@test("intuition.library OffGadget disables a live gadget")
+pub fn intuition_off_gadget() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var gadget = boolean_gadget(8, 10, 10)
+    let pointer: *Gadget = &var gadget
+    AddGadget(state.window.as_raw(), pointer, 0)
+    OffGadget(pointer, state.window.as_raw(), null)
+    let disabled = (gadget.Flags & (u16)GFLG_DISABLED) != 0
+    RemoveGadget(state.window.as_raw(), pointer)
+    expect(disabled, "OffGadget sets GFLG_DISABLED on the attached gadget")
+}
+
+// @covers-ndk function|intuition.library|OnGadget
+// @ndk-side-effects Attaches a disabled Boolean gadget, enables it through Intuition, verifies GFLG_DISABLED is cleared on the live list node, then removes it
+@test("intuition.library OnGadget enables a live gadget")
+pub fn intuition_on_gadget() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var gadget = boolean_gadget(9, 10, 10)
+    gadget.Flags = gadget.Flags | (u16)GFLG_DISABLED
+    let pointer: *Gadget = &var gadget
+    AddGadget(state.window.as_raw(), pointer, 0)
+    OnGadget(pointer, state.window.as_raw(), null)
+    let enabled = (gadget.Flags & (u16)GFLG_DISABLED) == 0
+    RemoveGadget(state.window.as_raw(), pointer)
+    expect(enabled, "OnGadget clears GFLG_DISABLED on the attached gadget")
+}
+
+// @covers-ndk function|intuition.library|RefreshGadgets
+// @ndk-side-effects Attaches a Border-rendered Boolean gadget to a live layered backdrop, refreshes from that gadget to list end, and verifies exact translated border endpoints plus an untouched neighbor
+@test("intuition.library RefreshGadgets renders attached imagery")
+pub fn intuition_refresh_gadgets() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var points: [i16] = [0, 0, 10, 0, 10, 6, 0, 6, 0, 0]
+    var imagery = border(&var points[0])
+    var gadget = boolean_gadget(10, 20, 20)
+    gadget.Width = 11
+    gadget.Height = 7
+    gadget.GadgetRender = (*u8)&var imagery
+    let pointer: *Gadget = &var gadget
+    AddGadget(state.window.as_raw(), pointer, 0)
+    RefreshGadgets(pointer, state.window.as_raw(), null)
+    WaitBlit()
+    let rastport = state.window.as_raw().RPort
+    let exact = ReadPixel(rastport, 20, 20) == 1 && ReadPixel(rastport, 30, 26) == 1 &&
+        ReadPixel(rastport, 31, 26) == 0
+    RemoveGadget(state.window.as_raw(), pointer)
+    expect(exact, "RefreshGadgets renders exact gadget-relative border pixels")
+}
+
+// @covers-ndk function|intuition.library|RefreshGList
+// @ndk-side-effects Attaches two Border-rendered gadgets, refreshes exactly one, verifies the first border pixels appear while the second gadget domain stays clear, then removes both
+@test("intuition.library RefreshGList honors the requested gadget count")
+pub fn intuition_refresh_glist() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var first_points: [i16] = [0, 0, 10, 0, 10, 6, 0, 6, 0, 0]
+    var second_points: [i16] = [0, 0, 10, 0, 10, 6, 0, 6, 0, 0]
+    var first_border = border(&var first_points[0])
+    var second_border = border(&var second_points[0])
+    var second = boolean_gadget(12, 50, 20)
+    second.Width = 11
+    second.Height = 7
+    second.GadgetRender = (*u8)&var second_border
+    var first = boolean_gadget(11, 20, 20)
+    first.Width = 11
+    first.Height = 7
+    first.GadgetRender = (*u8)&var first_border
+    let first_ptr: *Gadget = &var first
+    first.NextGadget = &var second
+    AddGList(state.window.as_raw(), first_ptr, 0, 2, null)
+    RefreshGList(first_ptr, state.window.as_raw(), null, 1)
+    WaitBlit()
+    let rastport = state.window.as_raw().RPort
+    let exact = ReadPixel(rastport, 20, 20) == 1 && ReadPixel(rastport, 30, 26) == 1 &&
+        ReadPixel(rastport, 50, 20) == 0 && ReadPixel(rastport, 60, 26) == 0
+    RemoveGList(state.window.as_raw(), first_ptr, 2)
+    expect(exact, "RefreshGList draws only the requested first gadget")
+}
+
+// @covers-ndk function|intuition.library|GadgetMouse
+// @ndk-side-effects Supplies deterministic window mouse coordinates, GadgetInfo domain origin, and gadget offset, then verifies both returned gadget-relative coordinates exactly
+@test("intuition.library GadgetMouse maps window coordinates to a gadget")
+pub fn intuition_gadget_mouse() {
+    var window: Window = @zeroed(Window)
+    window.MouseX = 33
+    window.MouseY = 50
+    var gadget = boolean_gadget(13, 10, 20)
+    var info: GadgetInfo = @zeroed(GadgetInfo)
+    info.gi_Window = &var window
+    info.gi_Domain = IBox { Left: 5, Top: 7, Width: 100, Height: 80 }
+    var point: [i16] = [0, 0]
+    GadgetMouse(&var gadget, &var info, &var point[0])
+    expect(point[0] == 18 && point[1] == 23,
+        "mouse point subtracts the GadgetInfo domain and gadget origins")
+}
+
+// @covers-ndk function|intuition.library|ActivateGadget
+// @ndk-side-effects Attaches a valid string gadget with retained buffers to a live backdrop, explicitly activates its window, waits for WFLG_WINDOWACTIVE, activates the exact gadget, and removes it before teardown
+@test("intuition.library ActivateGadget activates an attached string gadget")
+@suppress("W0002", "string gadget type and activation flags fit UWORD ABI fields")
+pub fn intuition_activate_gadget() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "gadget fixture opened")
+            return
+        },
+    }
+    var buffer: [u8; 32] = @zeroed([u8; 32])
+    var undo: [u8; 32] = @zeroed([u8; 32])
+    var string_info: StringInfo = @zeroed(StringInfo)
+    string_info.Buffer = &var buffer[0]
+    string_info.UndoBuffer = &var undo[0]
+    string_info.MaxChars = 31
+    var gadget = boolean_gadget(14, 20, 20)
+    gadget.Width = 100
+    gadget.Height = 12
+    gadget.GadgetType = (u16)GTYP_STRGADGET
+    gadget.SpecialInfo = (*u8)&var string_info
+    let pointer: *Gadget = &var gadget
+    AddGadget(state.window.as_raw(), pointer, 0)
+    ActivateWindow(state.window.as_raw())
+    for var frame: u32 = 0; frame < 30 &&
+        (state.window.as_raw().Flags & WFLG_WINDOWACTIVE) == 0; frame++ { WaitTOF() }
+    let active = ActivateGadget(pointer, state.window.as_raw(), null)
+    RemoveGadget(state.window.as_raw(), pointer)
+    expect(active != 0, "attached string gadget activates after its window becomes active")
+}

@@ -31,7 +31,7 @@ getfile|intuition/intuition.h,intuition/classes.h
 getfont|intuition/intuition.h,intuition/classes.h
 getscreenmode|intuition/intuition.h,intuition/classes.h
 glyph|intuition/intuition.h,intuition/classes.h
-graphics|graphics/gfx.h,graphics/displayinfo.h,graphics/gels.h,graphics/rastport.h,graphics/view.h,graphics/copper.h,graphics/clip.h,graphics/regions.h,graphics/sprite.h,graphics/text.h,graphics/scale.h,hardware/blit.h
+graphics|graphics/gfx.h,graphics/displayinfo.h,graphics/gels.h,graphics/rastport.h,graphics/view.h,graphics/copper.h,graphics/clip.h,graphics/regions.h,graphics/sprite.h,graphics/text.h,graphics/scale.h,hardware/blit.h,graphics/gfxbase.h
 hdwrench|exec/types.h,exec/libraries.h,devices/hardblocks.h
 icon|workbench/workbench.h,datatypes/pictureclass.h
 iffparse|exec/types.h,libraries/iffparse.h,utility/hooks.h

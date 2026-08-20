@@ -1,0 +1,12 @@
+from std::test::test import expect
+from amiga::raw::consts import NVERR_BADNAME
+from amiga::raw::nonvolatile import StoreNV
+
+// @covers-ndk function|nonvolatile.library|StoreNV
+// @ndk-side-effects Calls StoreNV with a slash-containing application name, expects NVERR_BADNAME and no persistent item; live leak-checking separately verifies whether the error path returns all temporary AmigaOS storage
+@test("nonvolatile.library StoreNV rejects an invalid application name")
+pub fn nonvolatile_store_bad_name() {
+    var payload: [u8] = [0; 10]
+    let error = unsafe { StoreNV("Bad/Name", "Invalid", (*u8)&var payload[0], 1, 1) }
+    expect((u32)error == NVERR_BADNAME, "slash-containing app name returns NVERR_BADNAME")
+}

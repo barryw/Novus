@@ -1,0 +1,96 @@
+from std::core import Result
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::structs import BitScaleArgs, RastPort
+from amiga::raw::graphics import BitMapScale, InitRastPort, ReadPixel, ScalerDiv
+from amiga::raw::graphics import SetAPen, SetRast, WaitBlit, WritePixel
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+fn bitmap(width: u32, height: u32) -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(width, height, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(handle: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    unsafe { (*rastport).BitMap = handle.as_raw() }
+}
+
+// @covers-ndk function|graphics.library|ScalerDiv
+// @ndk-side-effects ScalerDiv performs bounded unsigned scale arithmetic without allocating or mutating caller state; exact integral, zero, and maximum-input ratios are checked
+@test("graphics.library ScalerDiv computes documented scale dimensions")
+pub fn graphics_scaler_div() {
+    expect_eq(ScalerDiv(16, 2, 1), 32, "two-times scale")
+    expect_eq(ScalerDiv(15, 1, 3), 5, "one-third scale")
+    expect_eq(ScalerDiv(0, 16383, 1), 0, "zero factor")
+    expect_eq(ScalerDiv(16383, 1, 16383), 1, "maximum legal operands")
+}
+
+// @covers-ndk function|graphics.library|BitMapScale
+// @ndk-side-effects BitMapScale expands a non-overlapping one-plane source into the exact ScalerDiv-derived destination dimensions; pixel readback checks all four expanded pixels and untouched neighbors before both owned bitmaps are released
+@test("graphics.library BitMapScale expands exact source pixels and reports dimensions")
+pub fn graphics_bitmap_scale() {
+    var source = match bitmap(16, 8) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap(32, 16) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var source_rp)
+    attach(&destination, &var destination_rp)
+    SetRast(&var source_rp, 0)
+    SetRast(&var destination_rp, 0)
+    SetAPen(&var source_rp, 1)
+    expect(WritePixel(&var source_rp, 1, 1) == 0, "source pixel written")
+
+    var args = BitScaleArgs {
+        bsa_SrcX: 0,
+        bsa_SrcY: 0,
+        bsa_SrcWidth: 16,
+        bsa_SrcHeight: 8,
+        bsa_XSrcFactor: 1,
+        bsa_YSrcFactor: 1,
+        bsa_DestX: 0,
+        bsa_DestY: 0,
+        bsa_DestWidth: 99,
+        bsa_DestHeight: 99,
+        bsa_XDestFactor: 2,
+        bsa_YDestFactor: 2,
+        bsa_SrcBitMap: source.as_raw(),
+        bsa_DestBitMap: destination.as_raw(),
+        bsa_Flags: 0,
+        bsa_XDDA: 0,
+        bsa_YDDA: 0,
+        bsa_Reserved1: 0,
+        bsa_Reserved2: 0,
+    }
+    BitMapScale(&var args)
+    WaitBlit()
+
+    expect_eq(args.bsa_DestWidth, ScalerDiv(args.bsa_SrcWidth, args.bsa_XDestFactor, args.bsa_XSrcFactor),
+        "reported destination width")
+    expect_eq(args.bsa_DestHeight, ScalerDiv(args.bsa_SrcHeight, args.bsa_YDestFactor, args.bsa_YSrcFactor),
+        "reported destination height")
+    expect(ReadPixel(&var destination_rp, 2, 2) == 1 &&
+        ReadPixel(&var destination_rp, 3, 2) == 1 &&
+        ReadPixel(&var destination_rp, 2, 3) == 1 &&
+        ReadPixel(&var destination_rp, 3, 3) == 1,
+        "one source pixel expands to the complete 2x2 destination block")
+    expect(ReadPixel(&var destination_rp, 1, 2) == 0 &&
+        ReadPixel(&var destination_rp, 4, 2) == 0 &&
+        ReadPixel(&var destination_rp, 2, 1) == 0 &&
+        ReadPixel(&var destination_rp, 2, 4) == 0,
+        "pixels outside the scaled block remain clear")
+}

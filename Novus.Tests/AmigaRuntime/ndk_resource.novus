@@ -1,0 +1,222 @@
+from std::test::test import expect
+from amiga::capabilities import library_available
+from amiga::raw::consts import GA_ID, TAG_DONE
+from amiga::raw::intuition import GetAttr, LockPubScreen, UnlockPubScreen
+from amiga::raw::resource import RL_CloseResource, RL_DisposeGroup, RL_DisposeObject, RL_GetObjectArray, RL_NewGroup, RL_NewGroupA, RL_NewObject, RL_NewObjectA, RL_OpenResource, RL_SetResourceScreen
+from amiga::raw::structs import Screen, TagItem
+
+const WIN_ID_MAIN: u32 = 1
+const GROUP_ID_MAIN: u32 = 2
+const GAD_ID_EUR: u32 = 2
+const GAD_ID_DM: u32 = 3
+const GAD_ID_PTA: u32 = 13
+
+// This is the NDK 3.9 ReActor EuroCalc example resource, not a synthetic fixture.
+@embed("assets/EuroCalcFrame.res", chip = false)
+static EURO_CALC_RESOURCE: [u8] = []
+
+fn open_resource(screen: *Screen) -> *u8 {
+    return RL_OpenResource(EURO_CALC_RESOURCE.data, screen, null)
+}
+
+fn group_has_gadget(group: **u32, index: u32, expected_id: u32) -> bool {
+    return false if group == null
+    let object = unsafe { group[index] }
+    return false if object == null
+    var actual_id: u32 = 0
+    return GetAttr(GA_ID, (*u8)object, &var actual_id) != 0 && actual_id == expected_id
+}
+
+fn valid_group(group: **u32) -> bool {
+    return group_has_gadget(group, GAD_ID_EUR, GAD_ID_EUR) &&
+           group_has_gadget(group, GAD_ID_DM, GAD_ID_DM) &&
+           group_has_gadget(group, GAD_ID_PTA, GAD_ID_PTA)
+}
+
+// @covers-ndk function|resource.library|RL_OpenResource
+// @ndk-side-effects Locks the Workbench public screen, opens the pinned NDK EuroCalc resource object from embedded bytes, closes the resource, and unlocks the screen
+@test("resource.library opens a real ReActor resource")
+pub fn resource_open() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let opened = resource != null && EURO_CALC_RESOURCE.size == 12122
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(opened, "the exact pinned NDK EuroCalc resource opens on the public screen")
+}
+
+// @covers-ndk function|resource.library|RL_CloseResource
+// @ndk-side-effects Opens a real resource and object group, closes it without individually disposing the group, then reopens the same resource and validates that a fresh group can be allocated before final cleanup
+@test("resource.library close releases owned objects")
+pub fn resource_close() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let first = if screen != null { open_resource(screen) } else { (*u8)null }
+    let first_group = if first != null { RL_NewGroupA(first, GROUP_ID_MAIN, null) } else { (**u32)null }
+    let first_valid = valid_group(first_group)
+    RL_CloseResource(first)
+
+    let second = if screen != null { open_resource(screen) } else { (*u8)null }
+    let second_group = if second != null { RL_NewGroupA(second, GROUP_ID_MAIN, null) } else { (**u32)null }
+    let reopened = valid_group(second_group)
+    RL_CloseResource(second)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(first_valid && reopened, "close releases the owned group and the same resource reopens cleanly")
+}
+
+// @covers-ndk function|resource.library|RL_NewObjectA
+// @ndk-side-effects Creates the EuroCalc window object through a terminated tag list, validates its automatically-created gadget group and exact gadget IDs, then disposes the object and resource
+@test("resource.library creates a real object with a tag list")
+pub fn resource_new_object_a() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    var tags: [TagItem] = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+    let object = if resource != null { RL_NewObjectA(resource, WIN_ID_MAIN, &var tags[0]) } else { (*u32)null }
+    let group = if object != null { RL_GetObjectArray(resource, object, GROUP_ID_MAIN) } else { (**u32)null }
+    let valid = object != null && valid_group(group)
+    if object != null { RL_DisposeObject(resource, object) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "tag-list construction creates the window object and its exact gadget group")
+}
+
+// @covers-ndk function|resource.library|RL_NewObject
+// @ndk-side-effects Creates the EuroCalc window object through the varargs entry point, validates its automatically-created gadget group and exact gadget IDs, then disposes the object and resource
+@test("resource.library creates a real object with varargs")
+pub fn resource_new_object_varargs() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let object = if resource != null { RL_NewObject(resource, WIN_ID_MAIN, TAG_DONE) } else { (*u32)null }
+    let group = if object != null { RL_GetObjectArray(resource, object, GROUP_ID_MAIN) } else { (**u32)null }
+    let valid = object != null && valid_group(group)
+    if object != null { RL_DisposeObject(resource, object) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "varargs construction creates the window object and its exact gadget group")
+}
+
+// @covers-ndk function|resource.library|RL_DisposeObject
+// @ndk-side-effects Creates and disposes a real EuroCalc window object, then creates a replacement and validates its dependent gadget group before disposing every owned resource
+@test("resource.library disposes an object without damaging its resource")
+pub fn resource_dispose_object() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let first = if resource != null { RL_NewObject(resource, WIN_ID_MAIN, TAG_DONE) } else { (*u32)null }
+    if first != null { RL_DisposeObject(resource, first) }
+    let replacement = if first != null { RL_NewObject(resource, WIN_ID_MAIN, TAG_DONE) } else { (*u32)null }
+    let group = if replacement != null { RL_GetObjectArray(resource, replacement, GROUP_ID_MAIN) } else { (**u32)null }
+    let valid = first != null && replacement != null && valid_group(group)
+    if replacement != null { RL_DisposeObject(resource, replacement) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "disposing one object leaves its resource able to construct a complete replacement")
+}
+
+// @covers-ndk function|resource.library|RL_NewGroupA
+// @ndk-side-effects Allocates the complete EuroCalc gadget group through the tag-list entry point, verifies three exact BOOPSI gadget IDs across the group, then disposes the group and resource
+@test("resource.library creates a real group with a tag list")
+pub fn resource_new_group_a() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    var tags: [TagItem] = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+    let group = if resource != null { RL_NewGroupA(resource, GROUP_ID_MAIN, &var tags[0]) } else { (**u32)null }
+    let valid = valid_group(group)
+    if group != null { RL_DisposeGroup(resource, group) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "tag-list group construction returns the exact EuroCalc gadget objects")
+}
+
+// @covers-ndk function|resource.library|RL_NewGroup
+// @ndk-side-effects Allocates the complete EuroCalc gadget group through the varargs entry point, verifies three exact BOOPSI gadget IDs across the group, then disposes the group and resource
+@test("resource.library creates a real group with varargs")
+pub fn resource_new_group_varargs() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let group = if resource != null { RL_NewGroup(resource, GROUP_ID_MAIN, TAG_DONE) } else { (**u32)null }
+    let valid = valid_group(group)
+    if group != null { RL_DisposeGroup(resource, group) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "varargs group construction returns the exact EuroCalc gadget objects")
+}
+
+// @covers-ndk function|resource.library|RL_DisposeGroup
+// @ndk-side-effects Creates and disposes a complete EuroCalc gadget group, then creates and validates a replacement group before disposing every owned resource
+@test("resource.library disposes a group without damaging its resource")
+pub fn resource_dispose_group() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let first = if resource != null { RL_NewGroup(resource, GROUP_ID_MAIN, TAG_DONE) } else { (**u32)null }
+    let first_valid = valid_group(first)
+    if first != null { RL_DisposeGroup(resource, first) }
+    let replacement = if first_valid { RL_NewGroup(resource, GROUP_ID_MAIN, TAG_DONE) } else { (**u32)null }
+    let replacement_valid = valid_group(replacement)
+    if replacement != null { RL_DisposeGroup(resource, replacement) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(first_valid && replacement_valid, "disposing one group permits a complete fresh group from the same resource")
+}
+
+// @covers-ndk function|resource.library|RL_GetObjectArray
+// @ndk-side-effects Creates the real EuroCalc window object, obtains its dependent gadget group twice, verifies stable identity and three exact BOOPSI gadget IDs, then disposes the owning object and resource
+@test("resource.library retrieves an object's dependent group")
+pub fn resource_get_object_array() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let screen = LockPubScreen(null)
+    let resource = if screen != null { open_resource(screen) } else { (*u8)null }
+    let object = if resource != null { RL_NewObject(resource, WIN_ID_MAIN, TAG_DONE) } else { (*u32)null }
+    let first = if object != null { RL_GetObjectArray(resource, object, GROUP_ID_MAIN) } else { (**u32)null }
+    let second = if object != null { RL_GetObjectArray(resource, object, GROUP_ID_MAIN) } else { (**u32)null }
+    let valid = first != null && first == second && valid_group(first)
+    if object != null { RL_DisposeObject(resource, object) }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "the dependent group is stable and contains the exact generated gadgets")
+}
+
+// @covers-ndk function|resource.library|RL_SetResourceScreen
+// @ndk-side-effects Opens the real resource without a screen, sets and repeats the public-screen association, creates and validates its real gadget group, clears the association, closes the resource, and unlocks the screen
+@test("resource.library sets and clears its screen")
+pub fn resource_set_screen() {
+    // resource.library ships with ReAction, not with the ROM, so the machine may not
+    // have it. The binding is optional: the base stays null instead of aborting startup.
+    if !library_available("resource.library", 0) { return }
+    let resource = open_resource(null)
+    let screen = LockPubScreen(null)
+    let set = if resource != null && screen != null { RL_SetResourceScreen(resource, screen) } else { 0 }
+    let unchanged = if set != 0 { RL_SetResourceScreen(resource, screen) } else { 0 }
+    let group = if unchanged != 0 { RL_NewGroup(resource, GROUP_ID_MAIN, TAG_DONE) } else { (**u32)null }
+    let group_valid = valid_group(group)
+    if group != null { RL_DisposeGroup(resource, group) }
+    let cleared = if resource != null { RL_SetResourceScreen(resource, null) } else { 0 }
+    RL_CloseResource(resource)
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(set != 0 && unchanged != 0 && group_valid && cleared != 0,
+           "the screen association supports allocation, idempotent set, and explicit clear")
+}

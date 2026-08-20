@@ -1,0 +1,20 @@
+from std::test::test import expect
+from amiga::raw::translator import Translate
+
+// @covers-ndk function|translator.library|Translate
+// @ndk-side-effects Converts a complete English phrase into a bounded NUL-terminated phoneme buffer, then forces documented word-boundary overflow without writing beyond the supplied capacity
+@test("translator.library Translate produces bounded phonemes and reports overflow")
+pub fn translator_translate_phonemes() {
+    var output: [u8] = [$A5; 64]
+    let complete = unsafe { Translate("hello world", 11, (*u8)&var output[0], 63) }
+    var written: u32 = 0
+    while written < 63 && output[written] != 0 { written += 1 }
+    expect(complete == 0, "a sufficiently large output buffer completes translation")
+    expect(written > 0 && written < 63, "translation produces a nonempty NUL-terminated phoneme string")
+    expect(output[63] == $A5, "complete translation leaves the byte beyond its capacity unchanged")
+
+    var limited: [u8] = [$A5; 17]
+    let partial = unsafe { Translate("hello world this is a long translation", 38, (*u8)&var limited[0], 16) }
+    expect(partial < 0 && -partial < 38, "overflow reports a resumable input offset before the end")
+    expect(limited[16] == $A5, "overflow leaves the byte beyond its capacity unchanged")
+}

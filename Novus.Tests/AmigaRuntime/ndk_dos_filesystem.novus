@@ -1,0 +1,382 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_FIB, DLT_DIRECTORY, FIBF_WRITE
+from amiga::raw::dos import AllocDosObject, AllocDosObjectTagList, AllocDosObjectTags, Close, CreateDir, DeleteFile, DupLock, Examine, ExamineFH, FilePart, FreeDosEntry, FreeDosObject, Info, Lock, MakeDosEntry, NameFromLock, Open, ParentDir, Read, Rename, SameDevice, SameLock, SetComment, SetFileDate, SetProtection, UnLock, Write
+from amiga::raw::structs import DateStamp, FileInfoBlock, InfoData
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn create_file(path: Str, contents: Str) -> bool {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+    let handle = Open(path.as_cstr(), 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, contents.as_ptr(), (i32)contents.len())
+    let closed = Close(handle)
+    return written == (i32)contents.len() && closed != 0
+}
+
+fn remove_file(path: Str) {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+}
+
+fn alloc_fib() -> *FileInfoBlock {
+    return (*FileInfoBlock)AllocDosObject(DOS_FIB, null)
+}
+
+fn free_fib(fib: *FileInfoBlock) {
+    FreeDosObject(DOS_FIB, (*u8)fib)
+}
+
+// @covers-ndk function|dos.library|Lock
+// @ndk-side-effects Allocates a shared filesystem lock for an existing file; the test releases it and deletes its fixture
+@test("dos.library Lock opens an existing file")
+pub fn dos_lock() {
+    let path: Str = "RAM:novus_ndk_lock"
+    expect(create_file(path, "lock"), "fixture created")
+    let lock = Lock(path.as_cstr(), -2)
+    expect(lock != 0, "existing file returns a lock")
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|UnLock
+// @ndk-side-effects Releases an exclusive filesystem lock so the same path can be locked again; all locks and the fixture are released before exit
+@test("dos.library UnLock releases an exclusive lock")
+pub fn dos_unlock() {
+    let path: Str = "RAM:novus_ndk_unlock"
+    expect(create_file(path, "unlock"), "fixture created")
+    let first = Lock(path.as_cstr(), -1)
+    expect(first != 0, "exclusive lock acquired")
+    if first != 0 { UnLock(first) }
+    let second = Lock(path.as_cstr(), -1)
+    expect(second != 0, "exclusive lock can be reacquired after release")
+    if second != 0 { UnLock(second) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|DupLock
+// @ndk-side-effects Allocates an independent shared lock for the same object; both locks are released before exit
+@test("dos.library DupLock duplicates a shared lock")
+pub fn dos_dup_lock() {
+    let original = Lock("RAM:", -2)
+    let duplicate = DupLock(original)
+    expect(original != 0 && duplicate != 0, "both locks exist")
+    if original != 0 && duplicate != 0 {
+        expect(SameLock(original, duplicate) == 0, "duplicate names the same object")
+    }
+    if duplicate != 0 { UnLock(duplicate) }
+    if original != 0 { UnLock(original) }
+}
+
+// @covers-ndk function|dos.library|SameLock
+// @ndk-side-effects Compares locks without consuming or mutating them and distinguishes the same object from distinct objects on one volume
+@test("dos.library SameLock distinguishes filesystem objects")
+pub fn dos_same_lock() {
+    let first_path: Str = "RAM:novus_ndk_same_a"
+    let second_path: Str = "RAM:novus_ndk_same_b"
+    expect(create_file(first_path, "a") && create_file(second_path, "b"), "fixtures created")
+    let first = Lock(first_path.as_cstr(), -2)
+    let duplicate = DupLock(first)
+    let second = Lock(second_path.as_cstr(), -2)
+    expect(first != 0 && duplicate != 0 && second != 0, "locks acquired")
+    if first != 0 && duplicate != 0 && second != 0 {
+        expect(SameLock(first, duplicate) == 0, "duplicate is the same lock target")
+        expect(SameLock(first, second) == 1, "different files report same volume")
+    }
+    if second != 0 { UnLock(second) }
+    if duplicate != 0 { UnLock(duplicate) }
+    if first != 0 { UnLock(first) }
+    remove_file(first_path)
+    remove_file(second_path)
+}
+
+// @covers-ndk function|dos.library|SameDevice
+// @ndk-side-effects Compares two live locks by filesystem device without consuming or mutating either lock
+@test("dos.library SameDevice recognizes one filesystem")
+pub fn dos_same_device() {
+    let first = Lock("RAM:", -2)
+    let second = Lock("RAM:", -2)
+    expect(first != 0 && second != 0, "locks acquired")
+    if first != 0 && second != 0 {
+        expect(SameDevice(first, second) != 0, "both locks belong to RAM:")
+    }
+    if second != 0 { UnLock(second) }
+    if first != 0 { UnLock(first) }
+}
+
+// @covers-ndk function|dos.library|NameFromLock
+// @ndk-side-effects Copies the absolute name of a live lock into caller-owned bounded storage without consuming the lock
+@test("dos.library NameFromLock resolves an absolute path")
+pub fn dos_name_from_lock() {
+    let path: Str = "RAM:novus_ndk_named"
+    expect(create_file(path, "named"), "fixture created")
+    let lock = Lock(path.as_cstr(), -2)
+    var name: [u8] = [0; 256]
+    let pointer = unsafe { (*u8)&var name[0] }
+    let named = if lock != 0 { NameFromLock(lock, pointer, 256) } else { 0 }
+    expect(named != 0 && c_equals(FilePart(pointer), "novus_ndk_named"), "resolved path ends with the locked file")
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|ParentDir
+// @ndk-side-effects Allocates a lock for the parent of an existing child lock; the test releases every lock and removes both fixtures
+@test("dos.library ParentDir returns the containing directory")
+pub fn dos_parent_dir() {
+    let directory: Str = "RAM:novus_ndk_parent"
+    let child: Str = "RAM:novus_ndk_parent/child"
+    remove_file(child)
+    DeleteFile(directory.as_cstr())
+    let created = CreateDir(directory.as_cstr())
+    if created != 0 { UnLock(created) }
+    expect(created != 0 && create_file(child, "child"), "directory and child created")
+    let child_lock = Lock(child.as_cstr(), -2)
+    let directory_lock = Lock(directory.as_cstr(), -2)
+    let parent = if child_lock != 0 { ParentDir(child_lock) } else { 0 }
+    expect(parent != 0 && directory_lock != 0 && SameLock(parent, directory_lock) == 0, "parent lock names the containing directory")
+    if parent != 0 { UnLock(parent) }
+    if directory_lock != 0 { UnLock(directory_lock) }
+    if child_lock != 0 { UnLock(child_lock) }
+    remove_file(child)
+    DeleteFile(directory.as_cstr())
+}
+
+// @covers-ndk function|dos.library|CreateDir
+// @ndk-side-effects Creates a directory and returns its allocated lock; the test verifies its type, releases the lock, and removes the directory
+@test("dos.library CreateDir creates a directory")
+pub fn dos_create_dir() {
+    let path: Str = "RAM:novus_ndk_created"
+    DeleteFile(path.as_cstr())
+    let lock = CreateDir(path.as_cstr())
+    let fib = alloc_fib()
+    expect(lock != 0 && fib != null, "directory lock and FileInfoBlock allocated")
+    if lock != 0 && fib != null {
+        expect(Examine(lock, fib) != 0 && fib.fib_DirEntryType > 0, "created object examines as a directory")
+    }
+    if fib != null { free_fib(fib) }
+    if lock != 0 { UnLock(lock) }
+    DeleteFile(path.as_cstr())
+}
+
+// @covers-ndk function|dos.library|Rename
+// @ndk-side-effects Renames one file on the same volume without changing its contents; the test removes both possible fixture names
+@test("dos.library Rename preserves file contents")
+pub fn dos_rename() {
+    let old_path: Str = "RAM:novus_ndk_rename_old"
+    let new_path: Str = "RAM:novus_ndk_rename_new"
+    remove_file(old_path)
+    remove_file(new_path)
+    expect(create_file(old_path, "renamed"), "fixture created")
+    expect(Rename(old_path.as_cstr(), new_path.as_cstr()) != 0, "rename succeeds")
+    expect(Lock(old_path.as_cstr(), -2) == 0, "old path is gone")
+    let handle = Open(new_path.as_cstr(), 1005)
+    var data: [u8] = [0; 8]
+    let pointer = unsafe { (*u8)&var data[0] }
+    let read = if handle != 0 { Read(handle, pointer, 7) } else { -1 }
+    if handle != 0 { Close(handle) }
+    expect(read == 7 && c_equals(pointer, "renamed"), "contents survive the rename")
+    remove_file(old_path)
+    remove_file(new_path)
+}
+
+// @covers-ndk function|dos.library|SetComment
+// @ndk-side-effects Replaces a file's on-disk comment; the test reads it through Examine and deletes the fixture
+@test("dos.library SetComment stores file metadata")
+pub fn dos_set_comment() {
+    let path: Str = "RAM:novus_ndk_comment"
+    expect(create_file(path, "comment"), "fixture created")
+    expect(SetComment(path.as_cstr(), "Novus NDK") != 0, "comment accepted")
+    let lock = Lock(path.as_cstr(), -2)
+    let fib = alloc_fib()
+    if lock != 0 && fib != null {
+        expect(Examine(lock, fib) != 0, "file examined")
+        let comment = unsafe { (*u8)&fib.fib_Comment[0] }
+        expect(c_equals(comment, "Novus NDK"), "stored comment matches exactly")
+    } else {
+        expect(false, "lock and FileInfoBlock allocated")
+    }
+    if fib != null { free_fib(fib) }
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|SetProtection
+// @ndk-side-effects Replaces a file's protection bits; the test verifies the exact stored mask, clears it, and deletes the fixture
+@test("dos.library SetProtection stores protection bits")
+pub fn dos_set_protection() {
+    let path: Str = "RAM:novus_ndk_protection"
+    expect(create_file(path, "protection"), "fixture created")
+    expect(SetProtection(path.as_cstr(), (i32)FIBF_WRITE) != 0, "protection accepted")
+    let lock = Lock(path.as_cstr(), -2)
+    let fib = alloc_fib()
+    if lock != 0 && fib != null {
+        expect(Examine(lock, fib) != 0 && fib.fib_Protection == (i32)FIBF_WRITE, "exact protection mask stored")
+    } else {
+        expect(false, "lock and FileInfoBlock allocated")
+    }
+    if fib != null { free_fib(fib) }
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|SetFileDate
+// @ndk-side-effects Replaces a file's DateStamp; the test reads all three exact fields through Examine and deletes the fixture
+@test("dos.library SetFileDate stores an exact timestamp")
+pub fn dos_set_file_date() {
+    let path: Str = "RAM:novus_ndk_date"
+    expect(create_file(path, "date"), "fixture created")
+    var date = DateStamp { ds_Days: 1234, ds_Minute: 567, ds_Tick: 890 }
+    expect(SetFileDate(path.as_cstr(), &var date) != 0, "date accepted")
+    let lock = Lock(path.as_cstr(), -2)
+    let fib = alloc_fib()
+    if lock != 0 && fib != null {
+        expect(Examine(lock, fib) != 0, "file examined")
+        expect(fib.fib_Date.ds_Days == 1234 && fib.fib_Date.ds_Minute == 567 && fib.fib_Date.ds_Tick == 890, "all timestamp fields match")
+    } else {
+        expect(false, "lock and FileInfoBlock allocated")
+    }
+    if fib != null { free_fib(fib) }
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|Examine
+// @ndk-side-effects Fills a caller-owned FileInfoBlock from a live lock without consuming either object; the test releases both and deletes the fixture
+@test("dos.library Examine reports exact file metadata")
+pub fn dos_examine() {
+    let path: Str = "RAM:novus_ndk_examine"
+    expect(create_file(path, "twelve bytes"), "fixture created")
+    let lock = Lock(path.as_cstr(), -2)
+    let fib = alloc_fib()
+    expect(lock != 0 && fib != null, "lock and FileInfoBlock allocated")
+    if lock != 0 && fib != null {
+        expect(Examine(lock, fib) != 0, "file examined")
+        expect(fib.fib_DirEntryType < 0 && fib.fib_Size == 12, "file type and byte size are exact")
+        let name = unsafe { (*u8)&fib.fib_FileName[0] }
+        expect(c_equals(name, "novus_ndk_examine"), "file name is exact")
+    }
+    if fib != null { free_fib(fib) }
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|ExamineFH
+// @ndk-side-effects Fills a caller-owned FileInfoBlock from an open file handle without moving or consuming the handle; the test closes it and deletes the fixture
+@test("dos.library ExamineFH reports an open file")
+pub fn dos_examine_fh() {
+    let path: Str = "RAM:novus_ndk_examine_fh"
+    expect(create_file(path, "sixteen-byte-file"), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let fib = alloc_fib()
+    expect(handle != 0 && fib != null, "handle and FileInfoBlock allocated")
+    if handle != 0 && fib != null {
+        expect(ExamineFH(handle, fib) != 0 && fib.fib_Size == 17, "open file reports exact byte size")
+    }
+    if fib != null { free_fib(fib) }
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|Info
+// @ndk-side-effects Fills a caller-owned InfoData block for a live volume lock without consuming either object
+@test("dos.library Info reports coherent RAM volume geometry")
+pub fn dos_info() {
+    let lock = Lock("RAM:", -2)
+    var info = InfoData { id_NumSoftErrors: 0, id_UnitNumber: 0, id_DiskState: 0, id_NumBlocks: 0, id_NumBlocksUsed: 0, id_BytesPerBlock: 0, id_DiskType: 0, id_VolumeNode: 0, id_InUse: 0 }
+    expect(lock != 0, "RAM: lock acquired")
+    if lock != 0 {
+        expect(Info(lock, &var info) != 0, "volume info returned")
+        expect(info.id_NumBlocks > 0 && info.id_NumBlocksUsed >= 0 && info.id_NumBlocksUsed <= info.id_NumBlocks, "block counts are coherent")
+        expect(info.id_BytesPerBlock > 0, "block size is positive")
+    }
+    if lock != 0 { UnLock(lock) }
+}
+
+// @covers-ndk function|dos.library|AllocDosObject
+// @ndk-side-effects Allocates and initializes a DOS FileInfoBlock with a null tag list; the test writes a field and releases the object
+@test("dos.library AllocDosObject allocates a usable FileInfoBlock")
+pub fn dos_alloc_object() {
+    let raw = AllocDosObject(DOS_FIB, null)
+    expect(raw != null, "FileInfoBlock allocated")
+    if raw != null {
+        let fib = (*FileInfoBlock)raw
+        fib.fib_Size = 123
+        expect(fib.fib_Size == 123, "allocated object is writable")
+        FreeDosObject(DOS_FIB, raw)
+    }
+}
+
+// @covers-ndk function|dos.library|AllocDosObjectTagList
+// @ndk-side-effects Allocates and initializes a DOS FileInfoBlock from a null TagItem list; the test writes a field and releases the object
+@test("dos.library AllocDosObjectTagList accepts no tags")
+pub fn dos_alloc_object_tag_list() {
+    let raw = AllocDosObjectTagList(DOS_FIB, null)
+    expect(raw != null, "FileInfoBlock allocated")
+    if raw != null {
+        let fib = (*FileInfoBlock)raw
+        fib.fib_Size = 456
+        expect(fib.fib_Size == 456, "allocated object is writable")
+        FreeDosObject(DOS_FIB, raw)
+    }
+}
+
+// @covers-ndk function|dos.library|AllocDosObjectTags
+// @ndk-side-effects Allocates and initializes a DOS FileInfoBlock from a TAG_DONE varargs list; the test writes a field and releases the object
+@test("dos.library AllocDosObjectTags accepts TAG_DONE")
+pub fn dos_alloc_object_tags() {
+    let raw = AllocDosObjectTags(DOS_FIB, 0)
+    expect(raw != null, "FileInfoBlock allocated")
+    if raw != null {
+        let fib = (*FileInfoBlock)raw
+        fib.fib_Size = 789
+        expect(fib.fib_Size == 789, "allocated object is writable")
+        FreeDosObject(DOS_FIB, raw)
+    }
+}
+
+// @covers-ndk function|dos.library|FreeDosObject
+// @ndk-side-effects Releases a DOS-allocated FileInfoBlock; the suite-level process memory check verifies that the allocation is not leaked
+@test("dos.library FreeDosObject releases a DOS object")
+pub fn dos_free_object() {
+    let first = AllocDosObject(DOS_FIB, null)
+    expect(first != null, "first object allocated")
+    if first != null { FreeDosObject(DOS_FIB, first) }
+    let second = AllocDosObject(DOS_FIB, null)
+    expect(second != null, "allocator remains usable after release")
+    if second != null { FreeDosObject(DOS_FIB, second) }
+}
+
+// @covers-ndk function|dos.library|MakeDosEntry
+// @ndk-side-effects Allocates an unattached DosList entry with a copied name and requested type; the test releases it without modifying the system list
+@test("dos.library MakeDosEntry creates an unattached directory entry")
+pub fn dos_make_entry() {
+    let entry = MakeDosEntry("NOVUSNDK", DLT_DIRECTORY)
+    expect(entry != null, "entry allocated")
+    if entry != null {
+        expect(entry.dol_Type == DLT_DIRECTORY, "entry type is exact")
+        FreeDosEntry(entry)
+    }
+}
+
+// @covers-ndk function|dos.library|FreeDosEntry
+// @ndk-side-effects Releases an unattached DosList entry and its copied name; the suite-level process memory check verifies that the allocation is not leaked
+@test("dos.library FreeDosEntry releases an unattached entry")
+pub fn dos_free_entry() {
+    let first = MakeDosEntry("NOVUSFREE1", DLT_DIRECTORY)
+    expect(first != null, "first entry allocated")
+    if first != null { FreeDosEntry(first) }
+    let second = MakeDosEntry("NOVUSFREE2", DLT_DIRECTORY)
+    expect(second != null && second.dol_Type == DLT_DIRECTORY, "allocator remains usable after release")
+    if second != null { FreeDosEntry(second) }
+}

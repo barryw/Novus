@@ -11,8 +11,10 @@ fn takes_str(value: Str) -> u32 {
 pub fn foundation_string_literals() {
     let value: Str = "Novus"
     expect(value.len == 5, "literal length")
-    expect(value.as_ptr()[0] == 'N', "first byte")
-    expect(value.as_ptr()[4] == 's', "last byte")
+    unsafe {
+        expect(value.as_ptr()[0] == 'N', "first byte")
+        expect(value.as_ptr()[4] == 's', "last byte")
+    }
 }
 
 @test("string literals coerce into Str parameters")
@@ -56,7 +58,9 @@ pub fn foundation_fixed_strings() {
     match FixedCString::<4>::new_from_str("SYS:") {
         Ok(value) => {
             expect_true(value.as_str().equals("SYS:"), "C string contents")
-            expect(value.as_cstr()[4] == 0, "full C string remains terminated")
+            unsafe {
+                expect(value.as_cstr()[4] == 0, "full C string remains terminated")
+            }
         },
         Err(_) => expect(false, "C string should fit exactly"),
     }

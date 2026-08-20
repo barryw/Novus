@@ -24,7 +24,6 @@ pub fn test_string_new() {
     var s = String::new()
     expect_eq(s.len(), 0, "new string has len 0")
     expect_true(s.is_empty(), "new string is empty")
-    s.drop()
 }
 
 // =============================================================================
@@ -42,7 +41,6 @@ pub fn test_string_with_capacity() {
             expect_true(owned.is_empty(), "with_capacity string is empty")
             // Capacity should be at least what we requested
             expect_true(owned.capacity() >= 100, "capacity >= 100")
-            owned.drop()
         },
         Err(_) => expect(false, "with_capacity should succeed")
     }
@@ -56,7 +54,6 @@ pub fn test_string_with_capacity_zero() {
         Ok(s) => {
             var owned = s
             expect_eq(owned.len(), 0, "zero capacity string has len 0")
-            owned.drop()
         },
         Err(_) => expect(false, "with_capacity(0) should succeed")
     }
@@ -87,7 +84,6 @@ pub fn test_string_new_from_str() {
                 let converted = owned.as_str()
                 expect_true(converted.equals(original), "content matches original")
             }
-            owned.drop()
         },
         Err(_) => expect(false, "new_from_str should succeed")
     }
@@ -103,7 +99,6 @@ pub fn test_string_new_from_str_empty() {
             var owned = s
             expect_eq(owned.len(), 0, "empty string copy has len 0")
             expect_true(owned.is_empty(), "empty string copy is empty")
-            owned.drop()
         },
         Err(_) => expect(false, "new_from_str empty should succeed")
     }
@@ -136,7 +131,6 @@ pub fn test_string_push_str() {
         let expected: Str = "Hello, World!"
         expect_true(content.equals(expected), "content matches expected")
     }
-    s.drop()
 }
 
 // @covers std::string::core::String::push_str(Str)
@@ -152,7 +146,6 @@ pub fn test_string_push_str_empty() {
         Err(_) => expect(false, "push empty string should succeed")
     }
     expect_eq(s.len(), len_before, "len unchanged after empty push")
-    s.drop()
 }
 
 // =============================================================================
@@ -172,7 +165,6 @@ pub fn test_string_push_byte() {
         let expected: Str = "Hi"
         expect_true(content.equals(expected), "content is 'Hi'")
     }
-    s.drop()
 }
 
 // =============================================================================
@@ -189,7 +181,6 @@ pub fn test_string_clear() {
     s.clear()
     expect_eq(s.len(), 0, "len is 0 after clear")
     expect_true(s.is_empty(), "is_empty after clear")
-    s.drop()
 }
 
 // @covers std::string::core::String::clear()
@@ -199,7 +190,6 @@ pub fn test_string_clear_empty() {
     s.clear()
     expect_eq(s.len(), 0, "clear on empty has len 0")
     expect_true(s.is_empty(), "clear on empty is still empty")
-    s.drop()
 }
 
 // =============================================================================
@@ -218,7 +208,6 @@ pub fn test_string_reserve() {
         Err(_) => expect(false, "reserve should succeed")
     }
     expect_true(s.capacity() >= initial_cap + 1000, "capacity increased by at least 1000")
-    s.drop()
 }
 
 // =============================================================================
@@ -238,7 +227,6 @@ pub fn test_string_as_str() {
         let expected: Str = "Test content"
         expect_true(slice.equals(expected), "slice content matches")
     }
-    s.drop()
 }
 
 // @covers std::string::core::String::as_str()
@@ -250,7 +238,6 @@ pub fn test_string_as_str_empty() {
         expect_eq(slice.len(), 0, "empty string slice has len 0")
         expect_true(slice.is_empty(), "empty string slice is empty")
     }
-    s.drop()
 }
 
 // =============================================================================
@@ -269,7 +256,6 @@ pub fn test_string_auto_growth() {
 
     expect_eq(s.len(), 100, "len is 100 after 100 pushes")
     expect_true(s.capacity() >= 100, "capacity >= 100")
-    s.drop()
 }
 
 // =============================================================================
@@ -290,7 +276,6 @@ pub fn test_string_len_tracking() {
 
     s.clear()
     expect_eq(s.len(), 0, "len is 0 after clear")
-    s.drop()
 }
 
 // @covers std::string::core::String::is_empty()
@@ -304,5 +289,4 @@ pub fn test_string_is_empty() {
 
     s.clear()
     expect_true(s.is_empty(), "cleared string is empty")
-    s.drop()
 }

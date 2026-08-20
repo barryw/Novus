@@ -1,0 +1,166 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_EXALLCONTROL, DOS_FIB, ED_NAME, ED_SIZE, ERROR_NO_MORE_ENTRIES
+from amiga::raw::dos import AllocDosObject, ExAll, ExAllEnd, Examine, ExNext, FreeDosObject, IoErr, Lock, MatchEnd, MatchFirst, MatchNext, UnLock
+from amiga::raw::structs import AnchorPath, ExAllControl, ExAllData, FileInfoBlock
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn saw_system_command(name: *u8, size: i32, saw_list: *bool, saw_dir: *bool) {
+    if c_equals(name, "List") && size > 0 { unsafe { *saw_list = true } }
+    if c_equals(name, "Dir") && size > 0 { unsafe { *saw_dir = true } }
+}
+
+// @covers-ndk function|dos.library|ExNext
+// @ndk-side-effects Advances a live SYS:C examination through its complete command set, finds known non-empty List and Dir executables, reaches ERROR_NO_MORE_ENTRIES, and releases every DOS object and lock
+@test("dos.library ExNext enumerates a complete directory")
+pub fn dos_ex_next() {
+    let lock = Lock("SYS:C", -2)
+    let raw = if lock != 0 { AllocDosObject(DOS_FIB, null) } else { null }
+    let fib = (*FileInfoBlock)raw
+    var saw_list = false
+    var saw_dir = false
+    var visits: u32 = 0
+    let examined = lock != 0 && fib != null && Examine(lock, fib) != 0
+    if examined {
+        while ExNext(lock, fib) != 0 && visits < 2048 {
+            let name = unsafe { (*u8)&fib.fib_FileName[0] }
+            saw_system_command(name, fib.fib_Size, &var saw_list, &var saw_dir)
+            visits++
+        }
+    }
+    let terminal = IoErr()
+    if raw != null { FreeDosObject(DOS_FIB, raw) }
+    if lock != 0 { UnLock(lock) }
+    expect(examined, "SYS:C directory is examined")
+    expect(saw_list && saw_dir && visits > 2 && visits < 2048, "known commands occur in a finite complete traversal")
+    expect(terminal == (i32)ERROR_NO_MORE_ENTRIES, "enumeration ends normally")
+}
+
+// @covers-ndk function|dos.library|ExAll
+// @ndk-side-effects Fills caller-owned aligned buffers across the complete SYS:C enumeration, links ED_SIZE records containing known non-empty commands, reports normal exhaustion, and releases its control object and lock
+@test("dos.library ExAll returns linked directory records")
+pub fn dos_ex_all() {
+    let lock = Lock("SYS:C", -2)
+    let raw = if lock != 0 { AllocDosObject(DOS_EXALLCONTROL, null) } else { null }
+    let control = (*ExAllControl)raw
+    var buffer: [u32] = [0; 256]
+    var saw_list = false
+    var saw_dir = false
+    var total: u32 = 0
+    var calls: u32 = 0
+    var terminal: i32 = 0
+    var done = false
+    if control != null {
+        control.eac_LastKey = 0
+        while !done && calls < 8 {
+            let more = ExAll(lock, (*ExAllData)&buffer[0], 1024, (i32)ED_SIZE, control)
+            var current = (*ExAllData)&buffer[0]
+            var records: u32 = 0
+            while current != null && records < control.eac_Entries {
+                saw_system_command(current.ed_Name, (i32)current.ed_Size, &var saw_list, &var saw_dir)
+                current = current.ed_Next
+                records++
+            }
+            total += records
+            if more == 0 {
+                terminal = IoErr()
+                done = true
+            }
+            calls++
+        }
+    }
+    if raw != null { FreeDosObject(DOS_EXALLCONTROL, raw) }
+    if lock != 0 { UnLock(lock) }
+    expect(control != null && done, "ExAll completes within its safety bound")
+    expect(saw_list && saw_dir && total > 2, "linked records contain known non-empty commands")
+    expect(terminal == (i32)ERROR_NO_MORE_ENTRIES, "ExAll reports normal exhaustion")
+}
+
+// @covers-ndk function|dos.library|ExAllEnd
+// @ndk-side-effects Aborts a deliberately partial SYS:C enumeration using the identical argument set, resets the control key, and proves the same control object can complete a fresh enumeration without leaked handler state
+@test("dos.library ExAllEnd aborts a partial enumeration")
+pub fn dos_ex_all_end() {
+    let lock = Lock("SYS:C", -2)
+    let raw = if lock != 0 { AllocDosObject(DOS_EXALLCONTROL, null) } else { null }
+    let control = (*ExAllControl)raw
+    var small: [u32] = [0; 32]
+    var large: [u32] = [0; 256]
+    var partial = false
+    var completed = false
+    var total: u32 = 0
+    if control != null {
+        control.eac_LastKey = 0
+        let more = ExAll(lock, (*ExAllData)&small[0], 128, (i32)ED_NAME, control)
+        partial = more != 0
+        ExAllEnd(lock, (*ExAllData)&small[0], 128, (i32)ED_NAME, control)
+        control.eac_LastKey = 0
+        var calls: u32 = 0
+        while !completed && calls < 8 {
+            let again = ExAll(lock, (*ExAllData)&large[0], 1024, (i32)ED_NAME, control)
+            total += control.eac_Entries
+            if again == 0 { completed = IoErr() == (i32)ERROR_NO_MORE_ENTRIES }
+            calls++
+        }
+    }
+    if raw != null { FreeDosObject(DOS_EXALLCONTROL, raw) }
+    if lock != 0 { UnLock(lock) }
+    expect(partial, "small buffer leaves an active partial enumeration")
+    expect(completed && total > 2, "aborted control object restarts and completes cleanly")
+}
+
+// @covers-ndk function|dos.library|MatchFirst
+// @ndk-side-effects Parses an exact SYS:C path, allocates matching state, returns List's exact non-empty FileInfoBlock metadata, and releases all matching state with MatchEnd
+@test("dos.library MatchFirst finds an exact path")
+pub fn dos_match_first() {
+    var anchor: AnchorPath = @zeroed(AnchorPath)
+    let result = MatchFirst("SYS:C/List", &var anchor)
+    let name = unsafe { (*u8)&anchor.ap_Info.fib_FileName[0] }
+    let exact = result == 0 && c_equals(name, "List") && anchor.ap_Info.fib_Size > 0
+    if result == 0 { MatchEnd(&var anchor) }
+    expect(exact, "exact pattern returns the non-empty List executable")
+}
+
+// @covers-ndk function|dos.library|MatchNext
+// @ndk-side-effects Advances wildcard matching through the complete SYS:C command set, finds known non-empty List and Dir executables, reaches ERROR_NO_MORE_ENTRIES, and releases the complete AnchorPath search state
+@test("dos.library MatchNext enumerates wildcard matches")
+pub fn dos_match_next() {
+    var anchor: AnchorPath = @zeroed(AnchorPath)
+    let first = MatchFirst("SYS:C/#?", &var anchor)
+    var saw_list = false
+    var saw_dir = false
+    var matches: u32 = 0
+    var result = first
+    while result == 0 && matches < 2048 {
+        let name = unsafe { (*u8)&anchor.ap_Info.fib_FileName[0] }
+        saw_system_command(name, anchor.ap_Info.fib_Size, &var saw_list, &var saw_dir)
+        matches++
+        result = MatchNext(&var anchor)
+    }
+    if first == 0 { MatchEnd(&var anchor) }
+    expect(saw_list && saw_dir && matches > 2 && matches < 2048, "wildcard matching returns known commands in a finite traversal")
+    expect(result == (i32)ERROR_NO_MORE_ENTRIES, "wildcard matching reaches normal exhaustion")
+}
+
+// @covers-ndk function|dos.library|MatchEnd
+// @ndk-side-effects Releases a wildcard search before exhaustion, then proves a fresh AnchorPath can immediately acquire and release equivalent matching state; suite leak checks verify both lifecycles
+@test("dos.library MatchEnd releases active matching state")
+pub fn dos_match_end() {
+    var first_anchor: AnchorPath = @zeroed(AnchorPath)
+    let first = MatchFirst("SYS:C/#?", &var first_anchor)
+    if first == 0 { MatchEnd(&var first_anchor) }
+    var second_anchor: AnchorPath = @zeroed(AnchorPath)
+    let second = if first == 0 { MatchFirst("SYS:C/#?", &var second_anchor) } else { -1 }
+    if second == 0 { MatchEnd(&var second_anchor) }
+    expect(first == 0 && second == 0, "early release permits immediate matching-state reacquisition")
+}

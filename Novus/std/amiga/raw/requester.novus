@@ -13,5 +13,5 @@ from amiga::raw::structs import *
 
 @library("requester.library")
 /// Returns the ReAction requester BOOPSI class pointer, or null if unavailable.
-/// The pointer is library-owned and valid only while requester.library is open.
-extern pub fn REQUESTER_GetClass() -> *u8
+/// The pointer is owned by requester.class and remains valid only while that class is open.
+extern pub fn REQUESTER_GetClass() -> *IClass

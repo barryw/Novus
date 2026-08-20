@@ -50,7 +50,6 @@ pub fn test_vec_push() {
     }
     expect_eq(v.len(), 3, "len is 3 after third push")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::push(T)
@@ -72,7 +71,6 @@ pub fn test_vec_push_grows() {
     expect_eq(v.len(), 10, "len is 10 after 10 pushes")
     expect_true(v.capacity() >= 10, "capacity is at least 10")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -101,7 +99,6 @@ pub fn test_vec_pop() {
     }
     expect_eq(v.len(), 1, "len is 1 after second pop")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::pop()
@@ -134,7 +131,6 @@ pub fn test_vec_pop_push_cycle() {
         None => expect(false, "should have returned value")
     }
 
-    v.drop()
 }
 
 // ============================================================================
@@ -164,7 +160,6 @@ pub fn test_vec_get() {
         None => expect(false, "should have returned value")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::get(usize)
@@ -184,7 +179,6 @@ pub fn test_vec_get_oob() {
         None => expect(true, "correctly returned None")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::get(usize)
@@ -221,7 +215,6 @@ pub fn test_vec_set() {
         None => expect(false, "should have returned value")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::set(usize, T)
@@ -236,7 +229,6 @@ pub fn test_vec_set_oob() {
         Err(_) => expect(true, "set correctly fails")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::get_mut(usize)
@@ -290,7 +282,6 @@ pub fn test_vec_insert_beginning() {
         None => expect(false, "should have element 2")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::insert(usize, T)
@@ -322,7 +313,6 @@ pub fn test_vec_insert_middle() {
         None => expect(false, "should have element 2")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::insert(usize, T)
@@ -344,7 +334,6 @@ pub fn test_vec_insert_end() {
         None => expect(false, "should have element 2")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::insert(usize, T)
@@ -360,7 +349,6 @@ pub fn test_vec_insert_oob() {
     }
     expect_eq(v.len(), 1, "len unchanged after failed insert")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -393,7 +381,6 @@ pub fn test_vec_remove_beginning() {
         None => expect(false, "should have element 1")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::remove(usize)
@@ -422,7 +409,6 @@ pub fn test_vec_remove_middle() {
         None => expect(false, "should have element 1")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::remove(usize)
@@ -441,7 +427,6 @@ pub fn test_vec_remove_end() {
 
     expect_eq(v.len(), 2, "len is 2 after remove")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::remove(usize)
@@ -458,7 +443,6 @@ pub fn test_vec_remove_oob() {
 
     expect_eq(v.len(), 1, "len unchanged after failed remove")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -480,7 +464,6 @@ pub fn test_vec_clear() {
     expect_true(v.is_empty(), "vec is empty after clear")
     expect_eq(v.capacity(), cap_before, "capacity unchanged after clear")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::truncate(usize)
@@ -507,7 +490,6 @@ pub fn test_vec_truncate() {
         None => expect(true, "correctly no element 3")
     }
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::truncate(usize)
@@ -522,7 +504,6 @@ pub fn test_vec_truncate_zero() {
     expect_eq(v.len(), 0, "len is 0 after truncate to 0")
     expect_true(v.is_empty(), "vec is empty after truncate to 0")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::truncate(usize)
@@ -536,7 +517,6 @@ pub fn test_vec_truncate_noop() {
 
     expect_eq(v.len(), 2, "len unchanged when truncate > len")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -557,7 +537,6 @@ pub fn test_vec_reserve() {
     expect_true(v.capacity() >= 101, "capacity is at least 101")
     expect_eq(v.len(), 1, "len unchanged after reserve")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -577,7 +556,6 @@ pub fn test_vec_is_empty_after_push() {
     var v = Vec::<i32>::new()
     let _ = v.push(10)
     expect_false(v.is_empty(), "vec with element is not empty")
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::is_empty()
@@ -587,7 +565,6 @@ pub fn test_vec_is_empty_after_clear() {
     let _ = v.push(10)
     v.clear()
     expect_true(v.is_empty(), "vec after clear is empty")
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::is_empty()
@@ -622,7 +599,6 @@ pub fn test_vec_len_tracking() {
     v.clear()
     expect_eq(v.len(), 0, "len 0 after clear")
 
-    v.drop()
 }
 
 // @covers std::collections::vec::Vec::capacity()
@@ -640,7 +616,6 @@ pub fn test_vec_capacity_grows() {
     expect_true(v.capacity() >= 20, "capacity at least 20")
     expect_eq(v.len(), 20, "len is 20")
 
-    v.drop()
 }
 
 // ============================================================================
@@ -655,7 +630,6 @@ pub fn test_vec_with_capacity() {
             expect_eq(v.capacity(), 10, "capacity is 10")
             expect_eq(v.len(), 0, "len is 0")
             expect_true(v.is_empty(), "vec is empty")
-            v.drop()
         },
         Err(_) => expect(false, "with_capacity should succeed")
     }
@@ -690,7 +664,6 @@ pub fn test_vec_with_capacity_push() {
                 None => expect(false, "should have element 1")
             }
 
-            v.drop()
         },
         Err(_) => expect(false, "with_capacity should succeed")
     }
@@ -715,7 +688,6 @@ pub fn test_vec_u32() {
         None => expect(false, "should have element 1")
     }
 
-    v.drop()
 }
 
 @test("Vec<u8> works correctly")
@@ -734,7 +706,6 @@ pub fn test_vec_u8() {
         None => expect(false, "should have popped value")
     }
 
-    v.drop()
 }
 
 @test("Vec<bool> works correctly")
@@ -752,7 +723,6 @@ pub fn test_vec_bool() {
         None => expect(false, "should have element 1")
     }
 
-    v.drop()
 }
 
 // ============================================================================
@@ -769,7 +739,6 @@ pub fn test_vec_with_capacity_in_match() {
                 Ok(var v) => {
                     let _ = v.push(100)
                     expect_eq(v.len(), 1, "len is 1")
-                    v.drop()
                 },
                 Err(_) => expect(false, "with_capacity should succeed")
             }
@@ -783,7 +752,6 @@ pub fn test_vec_with_capacity_in_match() {
 // @covers std::collections::vec::Vec::as_slice()
 // @covers std::collections::vec::Vec::as_mut_slice()
 // @covers std::collections::vec::Vec::shrink_to_fit()
-// @covers std::collections::vec::Vec::drop()
 @test("Vec exposes bounded views and can release spare capacity")
 pub fn test_vec_views_and_shrink() {
     match Vec::<i32>::with_capacity(8) {
@@ -801,8 +769,8 @@ pub fn test_vec_views_and_shrink() {
             expect_eq(*v.as_slice().get(1).unwrap(), 22, "mutable pointer")
             expect_true(v.shrink_to_fit().is_ok(), "shrink succeeds")
             expect_eq(v.capacity(), v.len(), "capacity fits length")
-            v.drop()
-            expect_true(v.is_empty(), "drop clears vector")
+            @drop_in_place(&var v)
+            expect_true(v.is_empty(), "drop_in_place releases the vector early")
         },
         Err(_) => expect(false, "with_capacity should succeed"),
     }

@@ -11,55 +11,860 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// HDWOpenDevice is called to open a SCSI Direct responding device within
+/// the hdwrench.library environment. It must be used before any of the
+/// other entry points that require a device be open such as QueryCapacity().
+/// Conversely it must not be used unless followed by a HDWCloseDevice() for
+/// the entry points that require no device be opened for their successful
+/// function.
+///
+/// # Synopsis
+///
+/// success = HDWOpenDevice ( TheDevName, unit )
+/// D0                        A0          D0
+///
+/// BOOL = HDWOpenDevice ( char *TheDevName, ULONG unit )
+///
+/// # Arguments
+///
+/// * TheDevName  Pointer to a C String containing the device name.
+/// * unit        ULONG containing the unit number to open.
+///
+/// # Returns
+///
+/// success     BOOL success or failure. TRUE means a device was opened.
+///
+/// # Bugs
+///
+/// Does not (yet) respond to any possible NSDPatch indications of device
+/// driver type. Be careful with it.
+///
+/// # Notes
+///
+/// Please see the unit number discussion in the header comments for
+/// "include:devices/scsidisk.h".
+/// Note that a successful return does not necessarily mean this is a device
+/// that listens to SCSI Direct commands. A "QueryReady()" command should
+/// be used to determine if the device is ready to respond to commands.
+///
+/// # See Also
+///
+/// hdwrench.library/HDWOpenDevice
 @library("hdwrench.library")
 extern pub fn HDWOpenDevice(DevName: *i8, unit: u32) -> i16
+/// HDWCloseDevice closes any open devices within the hdwrench.library
+/// context.
+///
+/// # Synopsis
+///
+/// HDWCloseDevice (  )
+///
+/// HDWCloseDevice ( void )
+///
+/// # Arguments
+///
+/// * none
+///
+/// # Returns
+///
+/// Any open device is closed and any RDBs loaded are cleared.
+///
+/// # See Also
+///
+/// hdwrench.library/HDWCloseDevice
 @library("hdwrench.library")
 extern pub fn HDWCloseDevice()
+/// Perform a "Raw" unprocessed read on the opened device and return the
+/// value read within the data portion of the BootBlock passed in. The
+/// block number to read is passed into the function through the BootBlock's
+/// bb_BlockNum value.
+///
+/// # Synopsis
+///
+/// error = RawRead ( bbk, size )
+/// D0                A0   D0
+///
+/// USHORT RawRead ( BootBlock *bbk, USHORT size );
+///
+/// # Arguments
+///
+/// * bbk     A pointer to a BootBlock structure large enough to contain one block of data from the device.
+/// * size    USHORT containing the blocksize of the device (from QueryCapacity) or 0 to use current internal default block size.
+///
+/// # Returns
+///
+/// error   USHORT containing the "success" field of an RWError structure.
+/// bbk     Filled with data if successful or even partially successful
+/// command completion is indicated.
+///
+/// # Bugs
+///
+/// This function will get very unhappy with blocksizes over 16384. This
+/// library buffers all reads and writes through a 16384 BYTE chip ram buffer.
+///
+/// # Notes
+///
+/// This command is best used with a default blocksize assumption of 16384
+/// for its first use. Subsequently one can use smaller blocks if one is
+/// clever in using the fill data within the bbk structure for diagnosing
+/// actual block size. This is a recommended technique as I have discovered
+/// drives, chiefly when formatted for old UniSys machines, that report
+/// incorrect block size data. (The most egregious example was a drive that
+/// reported 2048k blocks and returned 180 bytes, the UniSys format. At least
+/// one "unnamed" drive has returned more data than a "ReadCapacity" command
+/// had indicated was the appropriate blocksize.)
+/// Hdwrench.library defaults to using the above technique for diagnosing
+/// actual block sizes under default conditions. If one has a "csascsi.device"
+/// to contend with the best technique is to open the device within the
+/// hdwrench.library aegis, perform a QueryCapacity, and then a RawRead on
+/// any block on the disk. The library sets the default assumed blocksize to
+/// the actual read block size on the first read command issued.
+///
+/// # See Also
+///
+/// hdwrench.library/RawWrite hdwrench.library/WriteBlock
 @library("hdwrench.library")
-extern pub fn RawRead(bbk: *BootBlock, size: u16) -> u16
+extern pub fn RawRead(bbk: *HdwBootBlock, size: u16) -> u16
+/// Write the data section of a BootBlock to the disk at the block number
+/// stored within the BootBlock structure.
+///
+/// # Synopsis
+///
+/// error = RawWrite ( bb )
+/// D0                 A0
+///
+/// USHORT RawWrite ( BootBlock *bb );
+///
+/// # Arguments
+///
+/// * bb      Pointer to "struct BootBlock" containing the data to be written and other important data for the write operation.
+///
+/// # Returns
+///
+/// error   USHORT containing the same value as the RWError.success field.
+/// The bb->bb_RWErrors.block_written will be updated.
+/// Data will be written to disk with this function. Please be careful.
+///
+/// # Notes
+///
+/// This function is intentionally limited writing only to the lower block
+/// numbers on large drives. RDBs do not appear "Way Out There."
+///
+/// # See Also
+///
+/// hdwrench.library/RawRead hdwrench.library/WriteBlock
 @library("hdwrench.library")
-extern pub fn RawWrite(bb: *BootBlock) -> u16
+extern pub fn RawWrite(bb: *HdwBootBlock) -> u16
+/// Write a block to disk after filling in its RDB correct checksum and a
+/// reread for write verification. This function also performs a read to
+/// block 1000 before the reread with the hope that this will tend to flush
+/// drive buffers before the reread test.
+///
+/// # Synopsis
+///
+/// error = WriteBlock( bb )
+/// D0                  A0
+///
+/// USHORT WriteBlock( BootBlock *bb );
+///
+/// # Arguments
+///
+/// * bb      Pointer to a BootBlock structure containing all data necessary for performing the write including the bb_BlockNum field.
+///
+/// # Returns
+///
+/// error           The same value as returned in bb->bb_RWErrors.success.
+/// bb->bb_RWerrors will have all fields filled in with the failed_word filled
+/// with the number of the first byte that fails on the reread compare.
+///
+/// # See Also
+///
+/// hdwrench.library/RawRead hdwrench.library/RawWrite
 @library("hdwrench.library")
-extern pub fn WriteBlock(bb: *BootBlock) -> u16
+extern pub fn WriteBlock(bb: *HdwBootBlock) -> u16
+/// Read the entire RDB structure into RAM from disk paying NO attention to
+/// most internal values.
+///
+/// # Synopsis
+///
+/// error = ReadRDBs ( void )
+/// D0
+///
+/// error = ReadRDBs ( void )
+///
+/// # Arguments
+///
+/// * none
+///
+/// # Returns
+///
+/// error      ULONG containing the error from the E_* codes in hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the Disk RDBs.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn ReadRDBs() -> u16
+/// Write data contained in internal RDB structures to the DISK as RDBs. Start
+/// at rdb_RDBBlocksLo as the first block to be written.
+///
+/// # Synopsis
+///
+/// error = WriteRDBs ( void )
+/// D0
+///
+/// USHORT WriteRDBs ( void )
+///
+/// # Arguments
+///
+/// * none    (Although a set of RDB structures must have already been loaded before anything can be written.)
+///
+/// # Returns
+///
+/// error   USHORT containing the bb_RWErrors.success value for the worst
+/// error code encountered during the write.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs
 @library("hdwrench.library")
 extern pub fn WriteRDBs() -> u16
+/// Performs a SCSI Direct "Test Unit Ready" SCSI command.
+///
+/// # Synopsis
+///
+/// ready = QueryReady ( errorcode )
+/// D0                   A0
+///
+/// BOOL QueryReady ( int *errorcode )
+///
+/// # Arguments
+///
+/// * errorcode   A pointer to an integer error code value.
+///
+/// # Returns
+///
+/// ready       BOOL set TRUE if the device indicates a READY state.
+/// errorcode   Filled with the DoIO errorcode
+///
+/// # See Also
+///
+/// hdwrench.library/QueryCapacity hdwrench.library/QueryFindValid hdwrench.library/QueryInquiry hdwrench.library/QueryModeSense
 @library("hdwrench.library")
 extern pub fn QueryReady(errorcode: *i32) -> i16
+/// Perform a SCSI Inquiry on an open device. Generally this is used to
+/// determine the device type and its manufacturer, type, and version.
+///
+/// # Synopsis
+///
+/// success = QueryInquiry ( inqbuf, errorcode )
+///                          A0      A1
+///
+/// BOOL QueryInquiry ( BYTE *inqbuf, int *errorcode );
+///
+/// # Arguments
+///
+/// * inqbuf    Pointer to an INQBUFSIZE BYTE buffer to receive the inquiry data.
+/// * errorcode Pointer to an integer error code which will contain the DoIO error return.
+///
+/// # Returns
+///
+/// success   BOOL with TRUE indicating valid data in inqbuf.
+/// inqbuf    filled with the first 36 bytes (through mfg data) of the
+/// inquiry return
+///
+/// # See Also
+///
+/// hdwrench.library/QueryCapacity hdwrench.library/QueryFindValid hdwrench.library/QueryModeSense hdwrench.library/QueryReady
 @library("hdwrench.library")
 extern pub fn QueryInquiry(inqbuf: *i8, errorcode: *i32) -> i16
+/// Read Mode Sense pages from the currently opened device. This can be used
+/// to determine special characteristics about the device.
+///
+/// # Synopsis
+///
+/// success = QueryModeSense ( page, msbsize, msbuf, errorcode )
+/// D0                         D0    D1       A0     A1
+///
+/// BOOL QueryModeSense ( int page, int  msbsize, BYTE *msbuf, int *errorcode )
+///
+/// # Arguments
+///
+/// * page       int containing the "PC" and "page" code for the page(s) requested.
+/// * msbsize    int containing the size of the buffer passed to the function.
+/// * msbuf      Pointer to a BYTE array of msbsize BYTEs or more.
+/// * errorcode  Poinmter to an integer error code containing the DoIO command results.
+///
+/// # Returns
+///
+/// success    BOOL set TRUE if data contained within msbuf is valid.
+/// msbuf filled with data to msbsize requested from drive.
+///
+/// # Notes
+///
+/// Refer to the appropriate version of the SCSI specification to determine
+/// the value for the value in page.
+///
+/// # See Also
+///
+/// hdwrench.library/QueryCapacity hdwrench.library/QueryFindValid hdwrench.library/QueryInquiry hdwrench.library/QueryReady
 @library("hdwrench.library")
 extern pub fn QueryModeSense(page: i8, msbsize: i32, msbuf: *i8, errorcode: *i32) -> i16
+/// Fills an bitmap array with flag bits indicating valid devices on an
+/// exhaustive test of legal SCSI Devices for a given "board".
+///
+/// # Synopsis
+///
+/// QueryFindValid ( ValidIDs, devicename, board, types, wide_scsi, CallBack )
+///                  A0        A1          D0     D1     D2         A2
+///
+/// QueryFindValid ( ValidIDstruct *ValidIDs,
+///                  char *devicename,
+///                  int board,
+///                  ULONG types,
+///                  BOOL wide_scsi,
+///                  long ( * __asm CallBack)( HDWCallbackMsg *msg ))
+///
+/// # Arguments
+///
+/// * ValidIDs    Pointer to ValidIDStruct
+/// * devicename  Name of the device to search
+/// * board       A base unit ID for the board to be searched/
+/// * types       A ULONG bitmap of acceptable types to report, type 0 == bit 0.
+/// * wide_scsi   A boolean flag indicating whether the device is a wide scsi controller.
+/// * CallBack    Pointer to a display function for values in HDWCallbackMsg. (If NULL no attempt to callback is performed.)
+///
+/// # Returns
+///
+/// ValidIDs filled with a bitmap of valid drives according to the entry
+/// criteria. ValidIDs->there are drives which respond to an Inquiry to
+/// indicate their device type. ValidIDs->ready also test as ready and
+/// test readable. A failure is indicated by all zeros. No further
+/// indication is appropriate as this is a test for opening all legal
+/// unit numbers on the device indicated.
+///
+/// # See Also
+///
+/// hdwrench.library/QueryCapacity hdwrench.library/QueryInquiry hdwrench.library/QueryModeSense hdwrench.library/QueryReady
 @library("hdwrench.library")
-extern pub fn QueryFindValid(ValidIDs: *ValidIDstruct, devicename: *i8, board: i32, types: u32, wide_scsi: i16, Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0)
+extern pub fn QueryFindValid(ValidIDs: *ValidIDstruct, devicename: *i8, board: i32, types: u32, wide_scsi: i16, Callback: amiga fn(*HDWCallbackMsg in a0) -> i32)
+/// Determine the total capacity of the drive in blocks and the individual
+/// block size. Their product is the drive capacity in bytes.
+///
+/// # Synopsis
+///
+/// success = QueryCapacity( totalblocks, blocksize )
+/// D0                       A0           A1
+///
+/// BOOL QueryCapacity( ULONG *totalblocks, ULONG *blocksize );
+///
+/// # Arguments
+///
+/// * totalblocks  Pointer to a ULONG that will contain the totalblocks value.
+/// * blocksize    Pointer to a ULONG that will contain the blocksize value.
+///
+/// # Returns
+///
+/// success will be TRUE if that values in totalblocks and blocksize are
+/// valid.
+///
+/// # See Also
+///
+/// hdwrench.library/FindLastSector hdwrench.library/QueryFindValid hdwrench.library/QueryInquiry hdwrench.library/QueryModeSense hdwrench.library/QueryReady
 @library("hdwrench.library")
 extern pub fn QueryCapacity(totalblocks: *u32, blocksize: *u32) -> i16
+/// Parse a mounfile into internal RDB structures.
+///
+/// # Synopsis
+///
+/// error = ReadMountfile ( unit, filename, controller )
+/// D0                      D0    A0        A1
+///
+/// ULONG ReadMountfile ( ULONG unit, char *filename, char *controller );
+///
+/// # Arguments
+///
+/// * unit       Unit number for the parsed mountfile. (It MUST agree with the UNIT declarations within the mountfile.)
+/// * filename   Pointer to a C string containing the filename
+/// * controller Pointer to a 28 BYTE long BYTE array containing controller ID.
+///
+/// # Returns
+///
+/// error      ULONG containing the error from the E_* codes in hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the mountfile.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn ReadMountfile(unit: u32, filename: *i8, controller: *i8) -> u32
+/// Read RDBs from a file containing the image of the RDB disk blocks. Start
+/// with the RDSK block and include ALL blocks until the last block in the
+/// RDBs. The RDSK block must be the first one. An appropriate offset will
+/// be generated from its internal linkage information.
+///
+/// # Synopsis
+///
+/// error = ReadRDBStructs ( char *filename, ULONG unit )
+/// D0                             A0              D0
+///
+/// error = ReadRDBStructs ( char *filename, ULONG unit )
+///
+/// # Returns
+///
+/// error      ULONG containing the error from the E_* codes in hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the RDB file.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn ReadRDBStructs(filename: *i8, unit: u32) -> u32
+/// Write a "C:Mount" compatible mountfile to the indicated file. Check for
+/// files matching any DriveInit or FileSystem LSEGs within the RDBs and use
+/// them for the mountfile generated. If ldir is not NULL these LSEGs are
+/// stored to appropriate files on disk if no matching file already exists.
+/// nb. If the ldir value of "Sys:" exists files are saved to l: (filesystems)
+/// and devs: (devinit files.) If the ldir value "nil:" is given no files are
+/// saved. If ldir is NULL the function call fails.
+///
+/// # Synopsis
+///
+/// error = WriteMountfile ( char *filename, char *ldir, LONG flags, ULONG unit )
+/// d0                             A0              A1         D0           D1
+///
+/// # Arguments
+///
+/// * filename    Pointer to C string containing filename
+/// * ldir        Pointer to C string containing the directory for storing LSEGs.
+/// * unit        Unit number for the write. Must correspond with the opened device unit number.
+///
+/// # Returns
+///
+/// error      ULONG containing the error from the E_* codes in hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the mountfile.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn WriteMountfile(filename: *i8, ldir: *i8, unit: u32) -> u32
+/// Write RDBs to a file rather than to the RDB locations on disk. The first
+/// block written will be the RDSK block with all the others following in
+/// order. Given internal renumbering systems this means they should all be
+/// contiguous blocks.
+///
+/// # Synopsis
+///
+/// error = WriteRDBStructs ( char *filename )
+/// D0                              A0
+///
+/// ULONG WriteRDBStructs ( char *filename )
+///
+/// # Returns
+///
+/// error      ULONG containing the error from the E_* codes in hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the mountfile.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn WriteRDBStructs(filename: *i8) -> u32
+/// Load internal RDB structures from the data in mountfile format within
+/// memory.
+///
+/// # Synopsis
+///
+/// error = InMemMountfile ( unit, mfdata, controller )
+/// D0                       D0    A0      A1
+///
+/// ULONG InMemMountfile ( ULONG unit, char *mfdata, char *controller );
+///
+/// # Arguments
+///
+/// * unit       ULONG unit number per discussion in the scsidisk.h header
+/// * mfdate     Pointer to C string containing the mountfile format data.
+/// * controller Pointer to C string containing controller ID information.
+///
+/// # Returns
+///
+/// error      ULONG value according to the E_ error codes within hdwrench.h.
+/// If successful the internal RDB structures are filled according
+/// to the data within the mountfile.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+///
+/// # See Also
+///
+/// hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/InMemRDBStructs hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn InMemMountfile(unit: u32, mfdata: *i8, controller: *i8) -> u32
+/// Read RDB data directly from memory as it should appear on disk and
+/// place it within the internal RDB Structures.
+///
+/// # Synopsis
+///
+/// error = InMemRDBStructs ( rdbp, sizerdb, unit )
+/// D0                        A0    D0       D1
+///
+/// ULONG InMemRDBStructs ( char *rdbp, ULONG sizerdb, ULONG unit );
+///
+/// # Arguments
+///
+/// * rdbp     Pointer to an array of characters containing the RDB data.
+/// * sizerdb  The size of this memory image.
+/// * unit     The device unit number for which this image is intended.
+///
+/// # Returns
+///
+/// error      ULONG value according to the E_ error codes within hdwrench.h.
+/// if success the RDB Data is incorporated within the internal
+/// RDB structures.
+///
+/// # Notes
+///
+/// Note that no consistency checks are performed. What you send is to this
+/// entry is what you get, data errors and all.
+/// Some renumbering of blocks may take place in any writing process.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/WriteMountfile hdwrench.library/ReadRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/WriteRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn InMemRDBStructs(rdbp: *i8, sizerdb: u32, unit: u32) -> u32
+/// Convert internal RDB structures into RDBs in memory as if written to a
+/// disk.
+///
+/// # Synopsis
+///
+/// error = OutMemMountfile ( mfp, sizew, sizeb, unit )
+/// D0                         A0    A1     D0    D1
+///
+/// ULONG OutMemRDBStructs ( char *rdbp, ULONG *sizew, ULONG sizeb );
+///
+/// # Arguments
+///
+/// * mfp     Pointer to a character array to receive the mountfile string.
+/// * sizew   Pointer to buffer to receive size of the data actually written.
+/// * sizeb   Size of the buffer pointed to by memp.
+/// * unit    Unit number being dealt with for a reality check.
+///
+/// # Returns
+///
+/// error    ULONG containing an error code per E_ list in hdwrench.h.
+/// If the mfp entry is NULL the error code will be E_NO_ERROR and sizew
+/// will contain the size buffer required to hold the data irrespective
+/// of the value of sizeb.
+/// If the sizeb is insufficient to contain the entire data set an
+/// E_INSUFFICIENT_MEMORY error code will be returned and sizew will contain
+/// the required buffer size.
+/// If a buffer was passed in and is of sufficient size the mountfile is
+/// written to the memory image as if to a disk based mountfile.
+/// nb. This call does not provide for saving any files to disk such as
+/// filesystems or device init code. Use of WriteMountfile() is highly
+/// recommended for capturing filesystem code and driveinit code from
+/// the RDBs before writing to the RDBs.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/InMemRDBStructs hdwrench.library/OutMemRDBStructs hdwrench.library/ReadMountFile hdwrench.library/ReadRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBStructs hdwrench.library/WriteMountfile hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn OutMemMountfile(mfp: *i8, sizew: *u32, sizeb: u32, unit: u32) -> u32
+/// Convert internal RDB structures into RDBs in memory as if written to a
+/// disk.
+///
+/// # Synopsis
+///
+/// error = OutMemRDBStructs ( rdbp, sizew, sizeb )
+/// D0                         A0    A1     D0
+///
+/// ULONG OutMemRDBStructs ( char *rdbp, ULONG *sizew, ULONG sizeb );
+///
+/// # Arguments
+///
+/// * rdbp    Pointer to a BYTE array to contain the RDB data.
+/// * sizew   Size of the data actually written.
+/// * sizeb   Size of the buffer pointed to by rdbp.
+///
+/// # Returns
+///
+/// error    ULONG containing an error code per E_ list in hdwrench.h.
+/// If the rdbp entry is NULL the error code will be E_NO_ERROR and sizew
+/// will contain the size buffer required to hold the data.
+/// If the sizeb is insufficient to contain the entire data set an
+/// E_INSUFFICIENT_MEMORY error code will be returned and sizew will contain
+/// the required buffer size.
+/// If a buffer was passed in and is of sufficient size the RDBs are written
+/// to the memory image as if to disk. Note that the "RDSK" block will appear
+/// first and it will be "logically offset" with regards to internal RDB
+/// forward links by the value in the rdb_RDBBlocksLo field of the RDSK data.
+///
+/// # See Also
+///
+/// hdwrench.library/InMemMountfile hdwrench.library/InMemRDBStructs hdwrench.library/OutMemMountfile hdwrench.library/ReadMountFile hdwrench.library/ReadRDBStructs hdwrench.library/ReadRDBs hdwrench.library/WriteRDBStructs hdwrench.library/WriteMountfile hdwrench.library/WriteRDBs
 @library("hdwrench.library")
 extern pub fn OutMemRDBStructs(rdbp: *i8, sizew: *u32, sizeb: u32) -> u32
+/// Return the drive name information obtained from a SCSI Inquiry command.
+///
+/// # Synopsis
+///
+/// success = FindDiskName ( diskname )
+/// D0                       A0
+///
+/// BOOL FindDiskName ( char *diskname );
+///
+/// # Arguments
+///
+/// * diskname    pointer to UBYTE storage space for result data 28 bytes long.
+///
+/// # Returns
+///
+/// success   BOOL with TRUE indicating valid data returned in diskname.
+///
+/// # Bugs
+///
+/// Some SCSI drives and some IDE "psuedo-SCSI Direct" implementations
+/// include illegal characters in the three fields returned. Specificly
+/// the A1200 IDE device returns zeros rather than blanks for unfilled
+/// or unused portions of the fields. Some old drives had the revision
+/// code in binary rather than alphanumeric.
 @library("hdwrench.library")
 extern pub fn FindDiskName(diskname: *i8) -> i16
+/// Test open devices until find SelfID error
+/// ( Of course, this does not work on Commododo "scsi.device" and most
+/// other implementations. )
+///
+/// # Synopsis
+///
+/// success = FindControllerID ( devname, selfid )
+/// D0                           A0       A1
+///
+/// BOOL FindControllerID ( char *devname, ULONG *selfid );
+///
+/// # Arguments
+///
+/// * devname Pointer to C string device name for device to be searched.
+/// * selfid  Pointer to a ULONG for storing result. Preload it with a value within the expected range of results. (Used to determine the board to search.) Note this *MUST* be a ULONG value.
+///
+/// # Returns
+///
+/// success BOOL, TRUE means value returned in selfid has meaning.
+/// selfid  Filled with the discovered HostID for the controller card.
+///
+/// # Bugs
+///
+/// This tool searches only the "legal" first 8 SCSI IDs, 0..7, for a
+/// HFERR_SELFID error return from opening and attempting to issue a
+/// command to the opened unit. Most controllers do not support this.
+///
+/// # Notes
+///
+/// Note that the library must NOT have a device open for this test
+/// to succeed.
 @library("hdwrench.library")
 extern pub fn FindControllerID(devname: *i8, selfid: *u32) -> i16
+/// Determine the last useable sector on the disk. If this value differs
+/// materially from a ReadCapacity return value consider that the drive
+/// should be formatted before use. This function performs a binary search
+/// for the highest readable block starting at the block returned by the
+/// ReadCapacity command. (Every once and awhile you will find a drive that
+/// was not formatted completely escaping the drive manufacturers. This
+/// function will discover this and other interesting effects such as off
+/// by one errors.)
+///
+/// # Synopsis
+///
+/// result = FindLastSector ( void )
+/// D0
+///
+/// ULONG FindLastSector ( void )
+///
+/// # Arguments
+///
+/// * none
+///
+/// # Returns
+///
+/// result  ULONG 0 on failure otherwise the value of the highest readable
+/// block on the drive PLUS 1.
+///
+/// # Bugs
+///
+/// This is NOT a test for bad blocks. If it hits a bad block in its test
+/// near the end of the drive it may get confused. I am unable to test this
+/// condition. If the emulated SCSI device for an IDE drive does not
+/// correctly report a read failure on attempting to read the disk outside
+/// the address range possible this command could loop to ridiculous values.
+/// Code to hopefully prevent this exists but is untested.
+///
+/// # Notes
+///
+/// This command requires the library have a device open to proceed.
+///
+/// # See Also
+///
+/// hdwrench.library/ReadCapacity
 @library("hdwrench.library")
 extern pub fn FindLastSector() -> u32
+/// Determine last useable block on the drive. From this information
+/// derive standard partitioning data according to three algorithms.
+/// 1) Use standard 1 megabyte per cylinder values. Fall back to 100k
+/// per cylinder if waste space for 1 megabyte per cylinder is
+/// greater than 0.1% of the drive. (Exact values: 1045876 and 106496
+/// bytes respectively.
+/// 2) Attempt to optimize the disk per standard algorithm.
+/// 3) Attempt to optimize the disk per the old HardFrame algorithm.
+/// (deprecated)
+///
+/// # Synopsis
+///
+/// error = FindDefaults ( Optimize, Return )
+/// D0                     D0        A0
+///
+/// ULONG FindDefaults ( BOOL Optimize, struct DefaultsArray *Return )
+///
+/// # Arguments
+///
+/// * Optimize    USHORT Flag bits to set optimization method
+/// * Return      Pointer to struct DefaultsArray to contain return values
+/// * Optimize Flag bits:
+/// * DA_OPTIMIZE  Attempt to optimize usage of the drive.
+/// * DA_HUGE      Allow full usage of drives larger than 4 gigabytes. (Otherwise default to 4 gigabytes on large drives.)
+/// * DA_HF_WAY    Attempt to optimize with the old HF algorithm. This flag preempts DA_OPTIMIZE and DA_HUGE if set. It's use is deprecated.
+///
+/// # Returns
+///
+/// Error   ULONG error indication per following:
+/// DA_NOERRORS            Good results returned
+/// DA_NO_CAPACITY_REPORT  No capacity report received. (not fatal)
+/// DA_NO_OPTIMIZE         Could not optimize the drive. (not fatal)
+/// DA_BAD_MODESENSE_4     No Format Device page mode sense returned
+/// DA_BAD_MODESENSE_3     No Geometery page mode sense returned
+/// DA_NO_DRIVE_OPEN       Fatal: No drive open to evaluate.
+/// DA_RIDICULOUS_VALUES   Fatal: Values obtained are ridiculous*
+/// * This means ridiculous as in contains zeros.
+///
+/// # Bugs
+///
+/// This function no longer considers the old Adaptec ST-506 to SCSI converter
+/// boards. In fact it no longer considers ST-506 drives of any sort.
+///
+/// # Notes
+///
+/// This function requires the library already have a device open for the
+/// evaluation process.
 @library("hdwrench.library")
 extern pub fn FindDefaults(Optimize: u16, Return: *DefaultsArray) -> u32
+/// Format the currently opened drive.
+///
+/// # Synopsis
+///
+/// error = LowlevelFormat (  CallBack )
+/// D0                           A0
+///
+/// ULONG LowlevelFormat (  long ( *CallBack)( HDWCallbackMsg *msg ))
+///
+/// # Arguments
+///
+/// * CallBack	A function to accept a HDWCallbackMsg and interact with the
+/// * user.
+///
+/// # Returns
+///
+/// error    per rw_success_val in hdwrench.h
+/// If CallBack is NULL it returns the value no_callback_hook.
+/// If no device is open it returns the value io_device_not_open.
+/// If the user confirms the format drive callback request via CallBack
+/// if the selected	device is the system drive
+/// return opration_not_permitted.
+/// else
+/// if the selected device is mounted
+/// if the user requests abort via CallBack
+/// return user_aborted
+/// endif
+/// endif
+/// if format is successful
+/// inform the user of success via CallBack
+/// return success
+/// else
+/// inform the user of the sad event via CallBack
+/// return io_command_failure
+/// endif
+/// else
+/// inform the user his drive is safe via CallBack
+/// return user_aborted
+/// endif
 @library("hdwrench.library")
-extern pub fn LowlevelFormat(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0) -> u32
+extern pub fn LowlevelFormat(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32) -> u32
+/// Verify blocks on currently opened device and give the user the opportunity
+/// to reassign bad blocks via the SCSI Reassign command.
+///
+/// # Synopsis
+///
+/// error = VerifyDrive (  CallBack )
+/// D0                        A0
+///
+/// ULONG VerifyDrive (  long ( *CallBack)( HDWCallbackMsg *msg ))
+///
+/// # Arguments
+///
+/// * CallBack	A function to accept a HDWCallbackMsg and interact with the
+/// * user.
+///
+/// # Returns
+///
+/// error    per rw_success_val in hdwrench.h
+/// If CallBack is NULL it returns the value no_callback_hook.
+/// If no device is open it returns the value io_device_not_open.
+/// Inform the user that this is a safe operation, it will take a long time,
+/// and he will be able to abort the operation.
+/// If the user selects abort return user_aborted
+/// else verify the drive 65535 blocks at a time until completed.
+/// If a bad block is found give the user an opportunity to reassign the
+/// bad block.
+/// If the user elects to reassign the block attempt the reassign.
+/// Inform the user of any serious errors. Abort operations if the
+/// user elects abort or if a serious enough error occurs. (That is to
+/// say one from which any continuation of the verify is undefined.)
 @library("hdwrench.library")
-extern pub fn VerifyDrive(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32 in d0) -> u32
+extern pub fn VerifyDrive(Callback: amiga fn(*HDWCallbackMsg in a0) -> i32) -> u32

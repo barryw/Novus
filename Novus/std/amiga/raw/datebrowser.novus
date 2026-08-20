@@ -11,11 +11,107 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the datebrowser class.
+///
+/// Obtains the pointer to the datebrowser gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// datebrowser_class = DATEBROWSER_GetClass();
+/// D0
+///
+/// Class * DATEBROWSER_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// datebrowser_class - Pointer to the datebrowser gadget class.
 @library("datebrowser.library")
-extern pub fn DATEBROWSER_GetClass() -> *u8
+extern pub fn DATEBROWSER_GetClass() -> *IClass
+/// Checks for leap-year.
+///
+/// Return the weekday of the given date.
+///
+/// # Synopsis
+///
+/// wday = JulianWeekDay(day,month,year);
+/// D0                   D0  D1    D2
+///
+/// WORD JulianWeekDay(WORD,WORD,LONG);
+///
+/// # Arguments
+///
+/// * day -- the day (1-31).
+/// * month -- the month (1-12). year -- the year.
+///
+/// # Returns
+///
+/// wday -- the weekday of the given date, with 0 being Sunday and
+/// 6 being Saturday.
 @library("datebrowser.library")
 extern pub fn JulianWeekDay(day: u16, month: u16, year: i32) -> u16
+/// Returns the length of a month.
+///
+/// Based on the input parameters "month" and "year", this
+/// function returns the length of the given month.
+///
+/// # Synopsis
+///
+/// days = JulianMonthDays(month, year);
+/// D0                     D0     D1
+///
+/// WORD JulianMonthDays(WORD, LONG);
+///
+/// # Arguments
+///
+/// * month -- the month. year -- the year.
+///
+/// # Returns
+///
+/// days -- the length of the given month.
+///
+/// # Bugs
+///
+/// Live A4000 verification shows that the installed classic implementation
+/// treats every year divisible by four as a leap year. It therefore returns
+/// 29 for February 2100 instead of the Gregorian value 28. Tier 3 preserves
+/// this operating-system behavior.
 @library("datebrowser.library")
 extern pub fn JulianMonthDays(month: u16, year: i32) -> u16
+/// Checks for a leap-year.
+///
+/// This function will return TRUE if the given year is a leap year.
+///
+/// # Synopsis
+///
+/// isleapyear = JulianLeapYear(year);
+/// D0                          D0
+///
+/// BOOL JulianLeapYear(LONG);
+///
+/// # Arguments
+///
+/// * year -- the year.
+///
+/// # Returns
+///
+/// days -- TRUE when the given year is a leap-year, otherwise FALSE.
+///
+/// # Bugs
+///
+/// Live A4000 verification shows that the installed classic implementation
+/// applies only the divisible-by-four rule. It therefore reports 2100 as a
+/// leap year even though the Gregorian calendar does not. Tier 3 preserves
+/// this operating-system behavior.
 @library("datebrowser.library")
 extern pub fn JulianLeapYear(year: i32) -> i16

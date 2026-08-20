@@ -1,0 +1,103 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DVPF_ASSIGN
+from amiga::raw::dos import AssignAdd, AssignLock, CreateDir, DeleteFile, DeviceProc, FreeDeviceProc, GetDeviceProc, IoErr, Lock, SameLock, SetIoErr, UnLock
+from amiga::raw::structs import DevProc, MsgPort
+
+// The assign name must not collide with any mounted volume. NOVUSNDK is the
+// label of the disposable NDK0 partition, so an assign of that name is refused
+// whenever that partition is attached.
+fn clear_assign() {
+    AssignLock("NOVUSDEVPROC", 0)
+}
+
+fn create_directory(path: Str) -> bool {
+    DeleteFile(path.as_cstr())
+    let lock = CreateDir(path.as_cstr())
+    if lock == 0 { return false }
+    UnLock(lock)
+    return true
+}
+
+fn setup_multi_assign(first: Str, second: Str) -> bool {
+    clear_assign()
+    if !create_directory(first) || !create_directory(second) { return false }
+    let first_lock = Lock(first.as_cstr(), -2)
+    let second_lock = Lock(second.as_cstr(), -2)
+    let assigned = if first_lock != 0 { AssignLock("NOVUSDEVPROC", first_lock) } else { 0 }
+    if first_lock != 0 && assigned == 0 { UnLock(first_lock) }
+    let added = if assigned != 0 && second_lock != 0 { AssignAdd("NOVUSDEVPROC", second_lock) } else { 0 }
+    if second_lock != 0 && added == 0 { UnLock(second_lock) }
+    if added == 0 { clear_assign() }
+    return added != 0
+}
+
+fn cleanup_multi_assign(first: Str, second: Str) {
+    clear_assign()
+    DeleteFile(first.as_cstr())
+    DeleteFile(second.as_cstr())
+}
+
+// @covers-ndk function|dos.library|DeviceProc
+// @ndk-side-effects Borrows the RAM: handler port without changing its lifetime and verifies it is the same port managed by GetDeviceProc before releasing that temporary structure
+@test("dos.library DeviceProc returns the filesystem handler port")
+pub fn dos_device_proc() {
+    let legacy = DeviceProc("RAM:")
+    let managed = GetDeviceProc("RAM:", null)
+    let same = managed != null && managed.dvp_Port == legacy
+    if managed != null { FreeDeviceProc(managed) }
+    expect(legacy != null && same, "legacy and managed lookups identify the same RAM: handler")
+}
+
+// @covers-ndk function|dos.library|GetDeviceProc
+// @ndk-side-effects Allocates one DevProc for a two-entry multi-assign, advances the same structure across both temporary directory locks after object-not-found results, reports exhaustion, and releases it
+@test("dos.library GetDeviceProc iterates every multi-assign entry")
+pub fn dos_get_device_proc() {
+    let first_dir: Str = "RAM:novus_ndk_devproc_a"
+    let second_dir: Str = "RAM:novus_ndk_devproc_b"
+    expect(setup_multi_assign(first_dir, second_dir), "multi-assign fixture created")
+    let first_lock = Lock(first_dir.as_cstr(), -2)
+    let second_lock = Lock(second_dir.as_cstr(), -2)
+    var current = GetDeviceProc("NOVUSDEVPROC:missing", null)
+    let initial_assign = current != null && (current.dvp_Flags & DVPF_ASSIGN) != 0
+    var saw_first = false
+    var saw_second = false
+    var stable_address = true
+    var visits: u32 = 0
+    while current != null && visits < 8 {
+        saw_first = saw_first || SameLock(current.dvp_Lock, first_lock) == 0
+        saw_second = saw_second || SameLock(current.dvp_Lock, second_lock) == 0
+        let address = (u32)current
+        SetIoErr(205)
+        let advanced = GetDeviceProc("NOVUSDEVPROC:missing", current)
+        if advanced != null { stable_address = stable_address && (u32)advanced == address }
+        current = advanced
+        visits++
+    }
+    let exhausted = current == null
+    let exhaustion_error = IoErr()
+    if current != null { FreeDeviceProc(current) }
+    if second_lock != 0 { UnLock(second_lock) }
+    if first_lock != 0 { UnLock(first_lock) }
+    cleanup_multi_assign(first_dir, second_dir)
+    expect(initial_assign, "initial lookup identifies a multi-directory assign")
+    expect(saw_first && saw_second, "iteration exposes both assign locks")
+    expect(stable_address, "successful advances return the same owned DevProc allocation")
+    expect(exhausted, "iteration reaches a null result before the safety bound")
+    expect(exhaustion_error == 205, "AmigaOS 3.2 preserves ERROR_OBJECT_NOT_FOUND at exhaustion")
+}
+
+// @covers-ndk function|dos.library|FreeDeviceProc
+// @ndk-side-effects Releases a managed RAM: DevProc and its handler-use count, proves a fresh lookup remains available afterward, and verifies the documented null release is harmless
+@test("dos.library FreeDeviceProc balances managed lookups")
+pub fn dos_free_device_proc() {
+    let first = GetDeviceProc("RAM:", null)
+    var port: *MsgPort = null
+    if first != null { port = first.dvp_Port }
+    if first != null { FreeDeviceProc(first) }
+    let second = GetDeviceProc("RAM:", null)
+    let reusable = second != null && second.dvp_Port == port
+    if second != null { FreeDeviceProc(second) }
+    FreeDeviceProc(null)
+    expect(port != null && reusable, "balanced release permits an equivalent fresh lookup")
+}

@@ -1,0 +1,93 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_STDPKT, NP_Entry, NP_Name, NP_StackSize, TAG_DONE
+from amiga::raw::dos import AbortPkt, AllocDosObject, CreateNewProcTags, Delay, FreeDosObject, ReplyPkt, SendPkt, WaitPkt
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import DosPacket, Message, Process, StandardPacket
+
+static var PACKET_CHILD_RUNS: u32 = 0
+static var PACKET_DELAY_TICKS: i32 = 0
+
+fn packet_handler() -> i32 {
+    PACKET_CHILD_RUNS++
+    if PACKET_DELAY_TICKS > 0 { Delay(PACKET_DELAY_TICKS) }
+    let packet = WaitPkt()
+    if packet != null { ReplyPkt(packet, 12345, -54321) }
+    return 0
+}
+
+fn packet_entry_address() -> u32 {
+    var entry: fn() -> i32 = packet_handler
+    return unsafe { *(*u32)&var entry }
+}
+
+@suppress("W0002", "Function and static-string addresses are exact 32-bit values in the classic 68k ABI")
+fn packet_roundtrip(name: Str, abort: bool) -> bool {
+    let raw = AllocDosObject(DOS_STDPKT, null)
+    if raw == null { return false }
+    let standard = (*StandardPacket)raw
+    let packet = unsafe { (*DosPacket)&var standard.sp_Pkt }
+    let message = unsafe { (*Message)&var standard.sp_Msg }
+    let parent = (*Process)FindTask(null)
+    PACKET_CHILD_RUNS = 0
+    PACKET_DELAY_TICKS = if abort { 10 } else { 0 }
+    let child = if parent != null {
+        CreateNewProcTags(NP_Entry, packet_entry_address(), NP_Name, (u32)name.as_cstr(), NP_StackSize, 8192, TAG_DONE)
+    } else {
+        (*Process)null
+    }
+    if child == null {
+        FreeDosObject(DOS_STDPKT, raw)
+        return false
+    }
+
+    message.mn_Node.ln_Name = (*i8)packet
+    message.mn_ReplyPort = &var parent.pr_MsgPort
+    message.mn_Length = (u16)@sizeof(StandardPacket)
+    packet.dp_Link = message
+    packet.dp_Port = &var parent.pr_MsgPort
+    packet.dp_Type = 0
+    SendPkt(packet, &var child.pr_MsgPort, &var parent.pr_MsgPort)
+    if abort { AbortPkt(&var child.pr_MsgPort, packet) }
+    let returned = WaitPkt()
+
+    var attempts: u32 = 0
+    while FindTask(name.as_cstr()) != null && attempts < 50 {
+        Delay(1)
+        attempts++
+    }
+    let destroyed = FindTask(name.as_cstr()) == null
+    let exact = returned == packet && packet.dp_Res1 == 12345 && packet.dp_Res2 == -54321
+    let ran_once = PACKET_CHILD_RUNS == 1
+    FreeDosObject(DOS_STDPKT, raw)
+    PACKET_DELAY_TICKS = 0
+    return exact && ran_once && destroyed
+}
+
+// @covers-ndk function|dos.library|SendPkt
+// @ndk-side-effects Sends a fully initialized StandardPacket asynchronously to a real child Process, which returns exact primary and secondary results to the parent process port before both packet and child are released
+@test("dos.library SendPkt delivers an asynchronous packet")
+pub fn dos_send_packet() {
+    expect(packet_roundtrip("Novus SendPkt", false), "the child receives and returns the exact packet and result fields")
+}
+
+// @covers-ndk function|dos.library|WaitPkt
+// @ndk-side-effects Blocks on the current Process message port until a real child handler replies, removes the message, returns the exact original DosPacket pointer, and preserves both result fields
+@test("dos.library WaitPkt receives the exact reply")
+pub fn dos_wait_packet() {
+    expect(packet_roundtrip("Novus WaitPkt", false), "the parent receives the same packet after the child reply")
+}
+
+// @covers-ndk function|dos.library|ReplyPkt
+// @ndk-side-effects Replies from a real child Process with distinct primary and secondary results, transfers the packet back to its sender, and permits both processes to complete cleanly
+@test("dos.library ReplyPkt returns handler results")
+pub fn dos_reply_packet() {
+    expect(packet_roundtrip("Novus ReplyPkt", false), "the reply transports both exact handler result values")
+}
+
+// @covers-ndk function|dos.library|AbortPkt
+// @ndk-side-effects Attempts to abort a queued packet before a delayed child receives it and verifies the documented AmigaOS 3.2 no-op behavior: the handler still processes and returns the exact packet safely
+@test("dos.library AbortPkt preserves the documented no-op behavior")
+pub fn dos_abort_packet() {
+    expect(packet_roundtrip("Novus AbortPkt", true), "the V37+ no-op leaves the packet valid until its normal reply")
+}

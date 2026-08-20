@@ -1,11 +1,12 @@
 from std::core import Error, From, Option, Result
+from std::collections::vec import Vec
 from amiga::sys::dos::errors import DosError
 from std::memory import MutSlice, Slice
 from amiga::sys::dos import DirLockHandle, OwnedFileHandle
 from amiga::sys::dos import DosEnvironment, DosNodeDraft, DosNodeError
 from amiga::sys::dos import FileSystemHandler, FileSystemOperationError, FileSystemRegistry, MountedFileSystem
 from amiga::sys::dos import HandlerImage, LoadedSegment, SegmentError
-from std::string import FixedString, Str
+from std::string import FixedString, Str, String
 from amiga::sys::timer import Duration, delay
 
 // Tier 1: files, directories, mounted volumes, and formatting.
@@ -608,6 +609,109 @@ impl File {
         if buffer.is_empty() { return Result::Ok(()) }
         let Option::Some(first) = buffer.get(0) else { return Result::Ok(()) }
         return self.file.write_all(unsafe { (*u8)first }, buffer.len())
+    }
+
+    /// Writes an entire string at the current file position.
+    ///
+    /// The string is written as-is without a terminator or hidden allocation.
+    ///
+    /// # Parameters
+    /// * `text` - The text to write.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` only after every byte has been written.
+    pub fn write_text(&self, text: Str) -> Result<(), DosError> {
+        return self.write_all(text.as_bytes())
+    }
+
+    /// Writes an entire string followed by a newline.
+    ///
+    /// # Parameters
+    /// * `text` - The line contents, excluding the newline.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` only after the line and newline have been written.
+    pub fn write_line(&self, text: Str) -> Result<(), DosError> {
+        self.write_text(text)?
+        return self.write_text("\n")
+    }
+
+    /// Writes every string as a newline-terminated line.
+    ///
+    /// # Parameters
+    /// * `lines` - The line contents, excluding newline characters.
+    ///
+    /// # Returns
+    /// `Result::Ok(())` only after every line has been written.
+    pub fn write_lines(&self, lines: Slice<Str>) -> Result<(), DosError> {
+        for index in 0..lines.len() {
+            self.write_line(*lines.get(index).unwrap())?
+        }
+        return Result::Ok(())
+    }
+
+    /// Reads all text from the current position through end-of-file.
+    ///
+    /// The returned string owns its bytes and remains valid after the file closes.
+    ///
+    /// # Returns
+    /// The remaining file contents, or the error that prevented reading them.
+    pub fn read_text(&self) -> Result<String, DosError> {
+        let start = self.file.seek_from_current(0)?
+        let _ = self.file.seek_from_end(0)?
+        let end = self.file.seek_from_current(0)?
+        let _ = self.file.seek_from_start(start)?
+        if end < start { return Result::Err(DosError::SeekError) }
+
+        let length = (usize)(end - start)
+        let mut_text = String::with_capacity(length)
+        var text = match mut_text {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(DosError::NoFreeStore),
+        }
+        for _index in 0..length {
+            if text.push_byte(0).is_err() { return Result::Err(DosError::NoFreeStore) }
+        }
+        if length == 0 { return Result::Ok(text) }
+
+        let bytes_read = self.file.read_all(text.as_mut_ptr(), length)?
+        text.truncate((usize)bytes_read)
+        return Result::Ok(text)
+    }
+
+    /// Reads the remaining text as owned lines.
+    ///
+    /// Line terminators are omitted. Both LF and CRLF input are accepted.
+    ///
+    /// # Returns
+    /// An owned string for each line, or the error that prevented reading it.
+    pub fn read_lines(&self) -> Result<Vec<String>, DosError> {
+        let text = self.read_text()?
+        let source = text.as_str()
+        var lines = Vec::<String>::new()
+        var start: usize = 0
+        for index in 0..source.len() {
+            if source.get(index).unwrap() == (u8)'\n' {
+                var end = index
+                if end > start && source.get(end - 1).unwrap() == (u8)'\r' { end-- }
+                let line = String::new_from_str(source.slice(start, end).unwrap())
+                let owned = match line {
+                    Result::Ok(value) => value,
+                    Result::Err(_) => return Result::Err(DosError::NoFreeStore),
+                }
+                if lines.push(owned).is_err() { return Result::Err(DosError::NoFreeStore) }
+                start = index + 1
+            }
+        }
+        if start < source.len() {
+            let line = String::new_from_str(source.slice(start, source.len()).unwrap())
+            let owned = match line {
+                Result::Ok(value) => value,
+                Result::Err(_) => return Result::Err(DosError::NoFreeStore),
+            }
+            if lines.push(owned).is_err() { return Result::Err(DosError::NoFreeStore) }
+        }
+        return Result::Ok(lines)
     }
 
     /// Return the file size without changing its current position.

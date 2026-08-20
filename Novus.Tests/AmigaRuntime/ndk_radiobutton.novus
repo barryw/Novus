@@ -1,0 +1,134 @@
+from std::test::test import expect
+from amiga::raw::consts import RBNA_Labels, RBNA_UserData, TAG_DONE
+from amiga::raw::radiobutton import AllocRadioButtonNode, AllocRadioButtonNodeA, FreeRadioButtonNode, GetRadioButtonNodeAttrs, GetRadioButtonNodeAttrsA, RADIOBUTTON_GetClass, SetRadioButtonNodeAttrs, SetRadioButtonNodeAttrsA
+from amiga::raw::structs import Node, TagItem
+
+fn alloc_a(labels: **u8, user_data: u32) -> *Node {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: RBNA_Labels, ti_Data: (u32)labels },
+        TagItem { ti_Tag: RBNA_UserData, ti_Data: user_data },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocRadioButtonNodeA(1, &var tags[0])
+}
+
+// @covers-ndk function|radiobutton.library|RADIOBUTTON_GetClass
+// @ndk-side-effects Opens the installed RadioButton gadget class and verifies its runtime class pointer is available without constructing an object
+@test("radiobutton.library RADIOBUTTON_GetClass returns the installed class")
+pub fn radiobutton_get_class() {
+    expect(RADIOBUTTON_GetClass() != null, "RadioButton runtime class pointer is non-null")
+}
+
+// @covers-ndk function|radiobutton.library|AllocRadioButtonNodeA
+// @ndk-side-effects Allocates a private one-column RadioButton node from a terminated tag list, reads back its exact label-array pointer and user-data value, and frees the node
+@test("radiobutton.library AllocRadioButtonNodeA creates an attributed node")
+pub fn radiobutton_alloc_a() {
+    var labels: [*u8] = ["A", (*u8)null]
+    let labels_ptr = (**u8)&var labels[0]
+    let node = alloc_a(labels_ptr, 11)
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    if node != null { GetRadioButtonNodeAttrs(node, RBNA_Labels, &var actual_labels, RBNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && actual_labels == labels_ptr && user_data == 11
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "tag-list allocation preserves the exact label array and user data")
+}
+
+// @covers-ndk function|radiobutton.library|AllocRadioButtonNode
+// @ndk-side-effects Allocates a private one-column RadioButton node through varargs, reads back its exact label-array pointer and user-data value, and frees the node
+@test("radiobutton.library AllocRadioButtonNode creates a varargs node")
+pub fn radiobutton_alloc() {
+    var labels: [*u8] = ["B", (*u8)null]
+    let labels_ptr = (**u8)&var labels[0]
+    let node = AllocRadioButtonNode(1, RBNA_Labels, labels_ptr, RBNA_UserData, $12345678, TAG_DONE)
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    if node != null { GetRadioButtonNodeAttrs(node, RBNA_Labels, &var actual_labels, RBNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && actual_labels == labels_ptr && user_data == $12345678
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "varargs allocation preserves the exact label array and user data")
+}
+
+// @covers-ndk function|radiobutton.library|FreeRadioButtonNode
+// @ndk-side-effects Frees the exact private node returned by AllocRadioButtonNodeA; the per-test A4000 memory gate verifies that its allocation is returned
+@test("radiobutton.library FreeRadioButtonNode releases its exact node")
+pub fn radiobutton_free() {
+    var labels: [*u8] = ["C", (*u8)null]
+    let node = alloc_a((**u8)&var labels[0], 33)
+    if node != null { FreeRadioButtonNode(node) }
+    expect(node != null, "a real RadioButton node was allocated and released")
+}
+
+// @covers-ndk function|radiobutton.library|SetRadioButtonNodeAttrsA
+// @ndk-side-effects Replaces a detached private node's exact label-array pointer and user-data value through a terminated tag list, reads both back, and frees the node
+@test("radiobutton.library SetRadioButtonNodeAttrsA updates detached attributes")
+pub fn radiobutton_set_a() {
+    var before: [*u8] = ["D", (*u8)null]
+    var after: [*u8] = ["E", (*u8)null]
+    let after_ptr = (**u8)&var after[0]
+    let node = alloc_a((**u8)&var before[0], 44)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: RBNA_Labels, ti_Data: (u32)after_ptr },
+        TagItem { ti_Tag: RBNA_UserData, ti_Data: 55 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { SetRadioButtonNodeAttrsA(node, &var tags[0]) }
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    if node != null { GetRadioButtonNodeAttrs(node, RBNA_Labels, &var actual_labels, RBNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && actual_labels == after_ptr && user_data == 55
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "tag-list setter stores the replacement label array and user data")
+}
+
+// @covers-ndk function|radiobutton.library|SetRadioButtonNodeAttrs
+// @ndk-side-effects Replaces a detached private node's exact label-array pointer and user-data value through varargs, reads both back, and frees the node
+@test("radiobutton.library SetRadioButtonNodeAttrs updates detached attributes")
+pub fn radiobutton_set() {
+    var before: [*u8] = ["F", (*u8)null]
+    var after: [*u8] = ["G", (*u8)null]
+    let after_ptr = (**u8)&var after[0]
+    let node = alloc_a((**u8)&var before[0], 66)
+    if node != null { SetRadioButtonNodeAttrs(node, RBNA_Labels, after_ptr, RBNA_UserData, 77, TAG_DONE) }
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    if node != null { GetRadioButtonNodeAttrs(node, RBNA_Labels, &var actual_labels, RBNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && actual_labels == after_ptr && user_data == 77
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "varargs setter stores the replacement label array and user data")
+}
+
+// @covers-ndk function|radiobutton.library|GetRadioButtonNodeAttrsA
+// @ndk-side-effects Reads the exact label-array pointer and user-data value from a real private node through destination pointers in a terminated TagItem list, then frees the node
+@test("radiobutton.library GetRadioButtonNodeAttrsA reads private attributes")
+pub fn radiobutton_get_a() {
+    var labels: [*u8] = ["H", (*u8)null]
+    let labels_ptr = (**u8)&var labels[0]
+    let node = alloc_a(labels_ptr, $CAFEBABE)
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: RBNA_Labels, ti_Data: (u32)(***u8)&var actual_labels },
+        TagItem { ti_Tag: RBNA_UserData, ti_Data: (u32)(*u32)&var user_data },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { GetRadioButtonNodeAttrsA(node, &var tags[0]) }
+    let valid = node != null && actual_labels == labels_ptr && user_data == $CAFEBABE
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "tag-list getter returns the exact label array and user data")
+}
+
+// @covers-ndk function|radiobutton.library|GetRadioButtonNodeAttrs
+// @ndk-side-effects Reads the exact label-array pointer and user-data value from a real private node through varargs destination pointers, then frees the node
+@test("radiobutton.library GetRadioButtonNodeAttrs reads private attributes")
+pub fn radiobutton_get() {
+    var labels: [*u8] = ["I", (*u8)null]
+    let labels_ptr = (**u8)&var labels[0]
+    let node = alloc_a(labels_ptr, 99)
+    var actual_labels: **u8 = null
+    var user_data: u32 = 0
+    if node != null { GetRadioButtonNodeAttrs(node, RBNA_Labels, &var actual_labels, RBNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && actual_labels == labels_ptr && user_data == 99
+    if node != null { FreeRadioButtonNode(node) }
+    expect(valid, "varargs getter returns the exact label array and user data")
+}

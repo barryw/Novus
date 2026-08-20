@@ -211,7 +211,7 @@ pub fn foundation_arrayvec() {
         Option::None => expect(false, "missing updated item"),
     }
     var total: u32 = 0
-    for item in items { total += item.value }
+    for item in &items { total += item.value }
     expect(total == 31, "inline iteration")
     match items.remove(0) {
         Option::Some(item) => expect(item.value == 11, "ordered removal"),

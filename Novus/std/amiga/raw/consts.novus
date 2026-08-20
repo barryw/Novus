@@ -2808,7 +2808,17 @@ pub const GA_SysGType: u32 = (GA_Dummy+30)
 pub const GA_SYSGTYPE: u32 = GA_SysGType
 pub const GA_Text: u32 = (GA_Dummy+9)
 pub const GA_TEXT: u32 = GA_Text
-pub const TEXTEDITOR_Dummy: u32 = (REACTION_Dummy + $26000)
+/// Final value of the repeatedly defined NDK `TEXTEDITOR_Dummy` macro.
+///
+/// # Bugs
+/// The NDK first uses `(REACTION_Dummy + 0x26000)` for TextEditor gadget tags,
+/// then undefines and replaces it with `0x45000` for method IDs. Because C
+/// macros expand when used, the replacement also corrupts the earlier GA_*
+/// definitions. Use the corrected TextEditor tag API instead of raw GA_* IDs.
+///
+/// # Superseded By
+/// `amiga::ui::text_editor` corrected tag constants.
+pub const TEXTEDITOR_Dummy: u32 = $45000
 pub const GA_TEXTEDITOR_AreaMarked: u32 = (TEXTEDITOR_Dummy + $14)
 pub const GA_TEXTEDITOR_ColorMap: u32 = (TEXTEDITOR_Dummy + $2f)
 pub const GA_TEXTEDITOR_Contents: u32 = (TEXTEDITOR_Dummy + $02)

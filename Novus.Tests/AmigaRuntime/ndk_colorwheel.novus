@@ -1,0 +1,25 @@
+from std::test::test import expect
+from amiga::raw::colorwheel import ConvertHSBToRGB, ConvertRGBToHSB
+from amiga::raw::structs import ColorWheelHSB, ColorWheelRGB
+
+// @covers-ndk function|colorwheel.library|ConvertHSBToRGB
+// @ndk-side-effects Converts full-brightness, full-saturation hue zero into the exact RGB red primary without modifying the source HSB value
+@test("colorwheel.library ConvertHSBToRGB produces exact red")
+pub fn colorwheel_hsb_to_rgb() {
+    var hsb = ColorWheelHSB { cw_Hue: 0, cw_Saturation: $FFFFFFFF, cw_Brightness: $FFFFFFFF }
+    var rgb = ColorWheelRGB { cw_Red: $A5A5A5A5, cw_Green: $A5A5A5A5, cw_Blue: $A5A5A5A5 }
+    ConvertHSBToRGB(&var hsb, &var rgb)
+    expect(rgb.cw_Red == $FFFFFFFF && rgb.cw_Green == 0 && rgb.cw_Blue == 0, "hue zero converts to exact full red")
+    expect(hsb.cw_Hue == 0 && hsb.cw_Saturation == $FFFFFFFF && hsb.cw_Brightness == $FFFFFFFF, "source HSB remains unchanged")
+}
+
+// @covers-ndk function|colorwheel.library|ConvertRGBToHSB
+// @ndk-side-effects Converts the exact RGB red primary into hue zero with full saturation and brightness without modifying the source RGB value
+@test("colorwheel.library ConvertRGBToHSB produces exact red HSB")
+pub fn colorwheel_rgb_to_hsb() {
+    var rgb = ColorWheelRGB { cw_Red: $FFFFFFFF, cw_Green: 0, cw_Blue: 0 }
+    var hsb = ColorWheelHSB { cw_Hue: $A5A5A5A5, cw_Saturation: $A5A5A5A5, cw_Brightness: $A5A5A5A5 }
+    ConvertRGBToHSB(&var rgb, &var hsb)
+    expect(hsb.cw_Hue == 0 && hsb.cw_Saturation == $FFFFFFFF && hsb.cw_Brightness == $FFFFFFFF, "full red converts to exact HSB primary")
+    expect(rgb.cw_Red == $FFFFFFFF && rgb.cw_Green == 0 && rgb.cw_Blue == 0, "source RGB remains unchanged")
+}

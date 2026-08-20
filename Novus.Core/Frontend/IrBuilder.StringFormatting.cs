@@ -567,10 +567,8 @@ public partial class IrBuilder
     /// Emit a Drop call for a temporary String value used in f-strings.
     /// This is necessary because String contains Vec&lt;u8&gt; which owns heap memory.
     ///
-    /// NOTE: We call Vec_u8_drop directly on the String's vec field because
-    /// at this point in f-string processing, we have a temporary string value
-    /// and want to avoid the overhead of looking up String_Drop_drop when we
-    /// know the inner Vec is what needs freeing.
+    /// NOTE: We drop the String's vec field directly because at this point in f-string
+    /// processing we have a temporary string value and the inner Vec is what owns memory.
     /// </summary>
     private void EmitDropForTemporaryString(IrValue stringValue)
     {
@@ -598,24 +596,20 @@ public partial class IrBuilder
         // This may trigger generic instantiation if not already done
         EnsureDropMethodInstantiated(vecType);
 
-        // Now look for the drop method - try trait impl name first (Vec<u8>_Drop_drop),
-        // then regular method name (Vec_u8_drop)
+        // Cleanup is the Drop trait impl, named {Type}_{Trait}_{method}.
         var typeName = vecType.CacheKey ?? vecType.StructName;
-        var dropMethodName = $"{typeName}_Drop_drop";
-        var dropMethod = _module.GetFunction(dropMethodName);
-
-        if (dropMethod == null)
-        {
-            // Try the regular method name (mangled: Vec<u8> -> Vec_u8)
-            dropMethodName = $"{typeName.Replace("<", "_").Replace(">", "_").TrimEnd('_')}_drop";
-            dropMethod = _module.GetFunction(dropMethodName);
-        }
+        var rawTypeName = typeName.Replace("<", "_").Replace(">", "_").TrimEnd('_');
+        var dropMethod = _module.GetFunction($"{typeName}_Drop_drop") ??
+                         _module.GetFunction($"{rawTypeName}_Drop_drop");
 
         if (dropMethod == null)
         {
             // Vec doesn't have drop instantiated - this shouldn't happen but handle gracefully
             return;
         }
+
+        // Call the resolved function by its own name; the candidates mangle differently.
+        var dropMethodName = dropMethod.Name;
 
         // Use IrMemberAccess to load the 'vec' field into a temp variable
         var vecTempName = $"%t{_tempCounter++}";

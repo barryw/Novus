@@ -1,0 +1,112 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_FIB
+from amiga::raw::dos import AllocDosObject, Close, DeleteFile, DeviceProc, Examine, FreeDosObject, Lock, MakeLink, Open, Read, ReadLink, SetOwner, SetProtection, UnLock, Write
+from amiga::raw::structs import FileInfoBlock, MsgPort
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn cleanup_links() {
+    SetProtection("RAM:novus_ndk_link", 0)
+    SetProtection("RAM:novus_ndk_link_target", 0)
+    DeleteFile("RAM:novus_ndk_link")
+    DeleteFile("RAM:novus_ndk_link_target")
+}
+
+fn links_absent() -> bool {
+    let link = Lock("RAM:novus_ndk_link", -2)
+    let target = Lock("RAM:novus_ndk_link_target", -2)
+    if link != 0 { UnLock(link) }
+    if target != 0 { UnLock(target) }
+    return link == 0 && target == 0
+}
+
+fn create_target() -> bool {
+    cleanup_links()
+    let handle = Open("RAM:novus_ndk_link_target", 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, "linked", 6)
+    let closed = Close(handle)
+    return written == 6 && closed != 0
+}
+
+fn link_reads_target() -> bool {
+    let handle = Open("RAM:novus_ndk_link", 1005)
+    if handle == 0 { return false }
+    var bytes: [u8] = [0; 16]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let count = Read(handle, pointer, 15)
+    let closed = Close(handle)
+    return count == 6 && closed != 0 && c_equals(pointer, "linked")
+}
+
+@suppress("W0002", "MakeLink multiplexes a BPTR and a C-string address through one signed LONG ABI field")
+fn make_soft_link() -> bool {
+    if !create_target() { return false }
+    let path: Str = "RAM:novus_ndk_link_target"
+    let destination = (i32)(u32)path.as_cstr()
+    return MakeLink("RAM:novus_ndk_link", destination, 1) != 0
+}
+
+// @covers-ndk function|dos.library|MakeLink
+// @ndk-side-effects Creates a soft link on the live RAM: filesystem from a caller-owned destination string, resolves it through ordinary DOS Open/Read, then proves both directory entries are deleted
+@test("dos.library MakeLink creates a resolvable soft link")
+pub fn dos_make_link() {
+    let created = make_soft_link()
+    let resolved = created && link_reads_target()
+    cleanup_links()
+    let cleaned = links_absent()
+    expect(created, "filesystem accepts the soft-link entry")
+    expect(resolved, "ordinary DOS resolution reaches the exact target bytes")
+    expect(cleaned, "link and target entries are both removed")
+}
+
+// @covers-ndk function|dos.library|ReadLink
+// @ndk-side-effects Sends a direct soft-link read request to the containing RAM: handler using its port and a directory lock, receives the exact rewritten path in bounded caller storage, and proves all link state is removed
+@test("dos.library ReadLink returns the soft-link destination")
+pub fn dos_read_link() {
+    let created = make_soft_link()
+    let port = if created { DeviceProc("RAM:") } else { (*MsgPort)null }
+    let directory = if port != null { Lock("RAM:", -2) } else { 0 }
+    var buffer: [u8] = [0; 128]
+    let pointer = unsafe { (*u8)&var buffer[0] }
+    let result = if directory != 0 { ReadLink(port, directory, "novus_ndk_link", pointer, 127) } else { -1 }
+    let exact = result > 0 && c_equals(pointer, "RAM:novus_ndk_link_target")
+    if directory != 0 { UnLock(directory) }
+    cleanup_links()
+    let cleaned = links_absent()
+    expect(created && port != null && directory != 0, "soft link, handler, and relative directory lock exist")
+    expect(exact, "handler returns the exact soft-link destination")
+    expect(cleaned, "manual-read link and target are both removed")
+}
+
+// @covers-ndk function|dos.library|SetOwner
+// @ndk-side-effects Stores exact 16-bit user and group identifiers on a real RAM: file, verifies both through Examine, restores neutral ownership, and deletes the fixture
+@test("dos.library SetOwner persists user and group identifiers")
+pub fn dos_set_owner() {
+    cleanup_links()
+    let handle = Open("RAM:novus_ndk_link_target", 1006)
+    if handle != 0 { Close(handle) }
+    let changed = handle != 0 && SetOwner("RAM:novus_ndk_link_target", $12345678) != 0
+    let lock = if changed { Lock("RAM:novus_ndk_link_target", -2) } else { 0 }
+    let raw = if lock != 0 { AllocDosObject(DOS_FIB, null) } else { null }
+    let fib = (*FileInfoBlock)raw
+    let examined = lock != 0 && fib != null && Examine(lock, fib) != 0
+    let exact = examined && fib.fib_OwnerUID == $1234 && fib.fib_OwnerGID == $5678
+    if raw != null { FreeDosObject(DOS_FIB, raw) }
+    if lock != 0 { UnLock(lock) }
+    if changed { SetOwner("RAM:novus_ndk_link_target", 0) }
+    cleanup_links()
+    expect(changed, "filesystem accepts owner metadata")
+    expect(exact, "Examine returns the exact user and group identifiers")
+}

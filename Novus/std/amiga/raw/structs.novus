@@ -6,6 +6,13 @@
 
 from amiga::raw::consts import *
 
+/// Opaque Commodities Exchange object handle.
+#[extern_type]
+pub struct CxObj {}
+/// Opaque Commodities Exchange message handle.
+#[extern_type]
+pub struct CxMsg {}
+
 // ============================================================================
 // Struct Definitions
 // ============================================================================
@@ -90,6 +97,7 @@ pub struct FileInfoBlock {
 }
 
 #[extern_type]
+#[align(4)]
 pub struct InfoData {
     id_NumSoftErrors: i32,
     id_UnitNumber: i32,
@@ -1070,6 +1078,16 @@ pub struct opMember {
 
 #[extern_type]
 pub struct IClass {
+    cl_Dispatcher: Hook,
+    cl_Reserved: u32,
+    cl_Super: *IClass,
+    cl_ID: *u8,
+    cl_InstOffset: u16,
+    cl_InstSize: u16,
+    cl_UserData: u32,
+    cl_SubclassCount: u32,
+    cl_ObjectCount: u32,
+    cl_Flags: u32,
 }
 
 #[extern_type]
@@ -1109,6 +1127,8 @@ pub struct Rect32 {
 
 #[extern_type]
 pub struct tPoint {
+    x: i16,
+    y: i16,
 }
 
 #[extern_type]
@@ -5013,7 +5033,17 @@ pub union bootblock_bb_Data {
 }
 
 #[extern_type]
-pub struct bootblock {
+pub struct HdwBootBlock {
+    bb_Node: MinNode,
+    allocsize: i32,
+    bb_BlockNum: i32,
+    bb_Changed: i16,
+    unit: i32,
+    DeviceName: [i8; 32],
+    bb_RWErrors: rw_return,
+    wflag: i16,
+    spares: [i8; 4-4],
+    bb_Data: bootblock_bb_Data,
 }
 
 #[extern_type]

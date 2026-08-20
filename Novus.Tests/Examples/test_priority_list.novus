@@ -80,6 +80,8 @@ pub fn test_enqueue_single_not_empty() {
     expect_eq(list.len(), 1, "list length should be 1")
 }
 
+// @covers-ndk function|exec.library|Enqueue
+// @ndk-side-effects Enqueue links nodes in descending signed priority order while preserving a valid head and tail without allocation
 @test("enqueue orders by priority - higher first")
 pub fn test_enqueue_priority_order() {
     var list = PriorityList::<PriorityItem>::new()

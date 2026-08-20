@@ -1,0 +1,311 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_FIB
+from amiga::raw::dos import AllocDosObject, ChangeMode, Close, DeleteFile, DupLockFromFH, Examine, FGetC, FilePart, FPutC, FRead, FreeDosObject, Flush, FWrite, Input, IsInteractive, Lock, NameFromFH, Open, OpenFromLock, Output, ParentOfFH, Read, SameLock, SelectInput, SelectOutput, SetFileSize, SetProtection, SetVBuf, UnGetC, UnLock, Write
+from amiga::raw::structs import FileInfoBlock
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn remove_file(path: Str) {
+    SetProtection(path.as_cstr(), 0)
+    DeleteFile(path.as_cstr())
+}
+
+fn create_file(path: Str, contents: Str, length: i32) -> bool {
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, contents.as_ptr(), length)
+    let closed = Close(handle)
+    return written == length && closed != 0
+}
+
+fn examined_size(path: Str) -> i32 {
+    let lock = Lock(path.as_cstr(), -2)
+    let raw = AllocDosObject(DOS_FIB, null)
+    let fib = (*FileInfoBlock)raw
+    var size: i32 = -1
+    if lock != 0 && fib != null && Examine(lock, fib) != 0 { size = fib.fib_Size }
+    if fib != null { FreeDosObject(DOS_FIB, raw) }
+    if lock != 0 { UnLock(lock) }
+    return size
+}
+
+// @covers-ndk function|dos.library|Input
+// @ndk-side-effects Returns the current process input handle; the test temporarily replaces it, verifies Input observes the replacement, then restores it before closing the fixture
+@test("dos.library Input tracks the selected process input")
+pub fn dos_input() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "input", 5), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let original = Input()
+    let previous = if handle != 0 { SelectInput(handle) } else { 0 }
+    let observed = Input()
+    if handle != 0 { SelectInput(original) }
+    expect(handle != 0 && original != 0 && previous == original && observed == handle, "Input follows SelectInput exactly")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|Output
+// @ndk-side-effects Returns the current process output handle; the test temporarily replaces it, verifies Output observes the replacement, then restores it before closing the fixture
+@test("dos.library Output tracks the selected process output")
+pub fn dos_output() {
+    let handle = Open("NIL:", 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let observed = Output()
+    if handle != 0 { SelectOutput(original) }
+    expect(handle != 0 && original != 0 && previous == original && observed == handle, "Output follows SelectOutput exactly")
+    if handle != 0 { Close(handle) }
+}
+
+// @covers-ndk function|dos.library|SelectInput
+// @ndk-side-effects Replaces the current process input handle and returns the old handle; the test restores the original handle before closing the replacement
+@test("dos.library SelectInput swaps and restores input")
+pub fn dos_select_input() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "S", 1), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let original = Input()
+    let previous = if handle != 0 { SelectInput(handle) } else { 0 }
+    let selected = Input()
+    let replaced = if handle != 0 { SelectInput(original) } else { 0 }
+    expect(handle != 0 && previous == original && selected == handle && replaced == handle && Input() == original, "old, selected, and restored handles agree")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|SelectOutput
+// @ndk-side-effects Replaces the current process output handle and returns the old handle; the test restores the original handle before closing the replacement
+@test("dos.library SelectOutput swaps and restores output")
+pub fn dos_select_output() {
+    let handle = Open("NIL:", 1006)
+    let original = Output()
+    let previous = if handle != 0 { SelectOutput(handle) } else { 0 }
+    let selected = Output()
+    let replaced = if handle != 0 { SelectOutput(original) } else { 0 }
+    expect(handle != 0 && previous == original && selected == handle && replaced == handle && Output() == original, "old, selected, and restored handles agree")
+    if handle != 0 { Close(handle) }
+}
+
+// @covers-ndk function|dos.library|IsInteractive
+// @ndk-side-effects Queries a file handle without changing its position or ownership; a RAM file is correctly classified as non-interactive
+@test("dos.library IsInteractive rejects a disk file")
+pub fn dos_is_interactive() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "disk", 4), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    expect(handle != 0 && IsInteractive(handle) == 0, "RAM file is not an interactive stream")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FPutC
+// @ndk-side-effects Buffers one exact byte to a writable file handle; Flush and an unbuffered read verify the persisted byte
+@test("dos.library FPutC writes one byte")
+pub fn dos_fputc() {
+    let path: Str = "RAM:novus_ndk_io"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let written = if handle != 0 { FPutC(handle, (i32)'Q') } else { -1 }
+    let flushed = if handle != 0 { Flush(handle) } else { 0 }
+    if handle != 0 { Close(handle) }
+    let reader = Open(path.as_cstr(), 1005)
+    var byte: [u8] = [0; 1]
+    let read = if reader != 0 { Read(reader, unsafe { (*u8)&var byte[0] }, 1) } else { -1 }
+    if reader != 0 { Close(reader) }
+    expect(written == 'Q' && flushed != 0 && read == 1 && byte[0] == 'Q', "exact byte persisted")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FGetC
+// @ndk-side-effects Reads buffered bytes in order and returns EOF after the final byte; the test closes the handle and deletes its fixture
+@test("dos.library FGetC reads bytes and EOF")
+pub fn dos_fgetc() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "AZ", 2), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let first = if handle != 0 { FGetC(handle) } else { -1 }
+    let second = if handle != 0 { FGetC(handle) } else { -1 }
+    let eof = if handle != 0 { FGetC(handle) } else { 0 }
+    expect(first == 'A' && second == 'Z' && eof == -1, "bytes and EOF are exact")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|UnGetC
+// @ndk-side-effects Pushes the last buffered byte back onto a readable file handle so it is returned by the next FGetC call
+@test("dos.library UnGetC restores the last byte")
+pub fn dos_ungetc() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "UV", 2), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let first = if handle != 0 { FGetC(handle) } else { -1 }
+    let pushed = if handle != 0 { UnGetC(handle, -1) } else { 0 }
+    let repeated = if handle != 0 { FGetC(handle) } else { -1 }
+    let second = if handle != 0 { FGetC(handle) } else { -1 }
+    expect(first == 'U' && pushed != 0 && repeated == 'U' && second == 'V', "pushed byte is read again before the next byte")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FWrite
+// @ndk-side-effects Writes an exact number of fixed-size blocks through DOS buffering; a fresh unbuffered handle verifies every byte
+@test("dos.library FWrite writes complete blocks")
+pub fn dos_fwrite() {
+    let path: Str = "RAM:novus_ndk_io"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let blocks = if handle != 0 { FWrite(handle, "ABCDEF", 2, 3) } else { -1 }
+    if handle != 0 { Close(handle) }
+    let reader = Open(path.as_cstr(), 1005)
+    var bytes: [u8] = [0; 7]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let read = if reader != 0 { Read(reader, pointer, 6) } else { -1 }
+    if reader != 0 { Close(reader) }
+    expect(blocks == 3 && read == 6 && c_equals(pointer, "ABCDEF"), "three two-byte blocks persisted exactly")
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|FRead
+// @ndk-side-effects Reads only complete fixed-size blocks into caller-owned storage and leaves the file handle closable
+@test("dos.library FRead reads complete blocks")
+pub fn dos_fread() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "1234567", 7), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    var bytes: [u8] = [0; 8]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let blocks = if handle != 0 { FRead(handle, pointer, 2, 4) } else { -1 }
+    expect(blocks == 3 && bytes[0] == '1' && bytes[5] == '6', "only three complete two-byte blocks are reported")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|Flush
+// @ndk-side-effects Commits buffered output to its handler without consuming the handle; a fresh reader observes the byte before cleanup
+@test("dos.library Flush commits buffered output")
+pub fn dos_flush() {
+    let path: Str = "RAM:novus_ndk_io"
+    remove_file(path)
+    let handle = Open(path.as_cstr(), 1006)
+    let written = if handle != 0 { FPutC(handle, (i32)'F') } else { -1 }
+    let flushed = if handle != 0 { Flush(handle) } else { 0 }
+    if handle != 0 { Close(handle) }
+    let reader = Open(path.as_cstr(), 1005)
+    let observed = if reader != 0 { FGetC(reader) } else { -1 }
+    expect(written == 'F' && flushed != 0 && observed == 'F', "flushed byte is readable")
+    if reader != 0 { Close(reader) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|SetVBuf
+// @ndk-side-effects Changes an open handle to unbuffered mode without transferring buffer ownership; the handle remains readable and is closed normally
+@test("dos.library SetVBuf changes buffering mode")
+pub fn dos_set_vbuf() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "B", 1), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let result = if handle != 0 { SetVBuf(handle, null, 2, -1) } else { -1 }
+    let byte = if handle != 0 { FGetC(handle) } else { -1 }
+    expect(result == 0 && byte == 'B', "unbuffered mode accepted and data remains readable")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|DupLockFromFH
+// @ndk-side-effects Allocates a shared lock naming the object behind a non-exclusive file handle; both resources are released before cleanup
+@test("dos.library DupLockFromFH identifies an open file")
+pub fn dos_dup_lock_from_fh() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "lock", 4), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let from_handle = if handle != 0 { DupLockFromFH(handle) } else { 0 }
+    let direct = Lock(path.as_cstr(), -2)
+    expect(from_handle != 0 && direct != 0 && SameLock(from_handle, direct) == 0, "handle lock names the same file")
+    if direct != 0 { UnLock(direct) }
+    if from_handle != 0 { UnLock(from_handle) }
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|OpenFromLock
+// @ndk-side-effects Converts a shared file lock into a readable handle and consumes the lock only on success; the resulting handle is closed before cleanup
+@test("dos.library OpenFromLock converts a file lock")
+pub fn dos_open_from_lock() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "O", 1), "fixture created")
+    let lock = Lock(path.as_cstr(), -2)
+    let handle = if lock != 0 { OpenFromLock(lock) } else { 0 }
+    let byte = if handle != 0 { FGetC(handle) } else { -1 }
+    expect(lock != 0 && handle != 0 && byte == 'O', "converted handle reads the locked file")
+    if handle != 0 { Close(handle) } else if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|ParentOfFH
+// @ndk-side-effects Allocates a shared lock for an open file's parent directory; the test compares and releases it without consuming the handle
+@test("dos.library ParentOfFH returns the containing directory")
+pub fn dos_parent_of_fh() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "P", 1), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    let parent = if handle != 0 { ParentOfFH(handle) } else { 0 }
+    let ram = Lock("RAM:", -2)
+    expect(parent != 0 && ram != 0 && SameLock(parent, ram) == 0, "parent is RAM:")
+    if ram != 0 { UnLock(ram) }
+    if parent != 0 { UnLock(parent) }
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|NameFromFH
+// @ndk-side-effects Copies the absolute name of an open handle into caller-owned bounded storage without changing or consuming the handle
+@test("dos.library NameFromFH resolves an open file")
+pub fn dos_name_from_fh() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "N", 1), "fixture created")
+    let handle = Open(path.as_cstr(), 1005)
+    var name: [u8] = [0; 256]
+    let pointer = unsafe { (*u8)&var name[0] }
+    let named = if handle != 0 { NameFromFH(handle, pointer, 256) } else { 0 }
+    expect(named != 0 && c_equals(FilePart(pointer), "novus_ndk_io"), "resolved path ends with the open file")
+    if handle != 0 { Close(handle) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|ChangeMode
+// @ndk-side-effects Requests an exclusive mode for a shared RAM: lock; the lock remains valid and is released before cleanup
+@test("dos.library ChangeMode upgrades a filesystem lock")
+pub fn dos_change_mode() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "C", 1), "fixture created")
+    let lock = Lock(path.as_cstr(), -2)
+    let changed = if lock != 0 { ChangeMode(0, lock, -1) } else { 0 }
+    expect(lock != 0 && changed != 0, "RAM handler accepts the exclusive lock mode")
+    if lock != 0 { UnLock(lock) }
+    remove_file(path)
+}
+
+// @covers-ndk function|dos.library|SetFileSize
+// @ndk-side-effects Truncates an open file to an exact size without consuming the handle; Examine verifies the on-disk result after close
+@test("dos.library SetFileSize truncates a file")
+pub fn dos_set_file_size() {
+    let path: Str = "RAM:novus_ndk_io"
+    expect(create_file(path, "0123456789", 10), "fixture created")
+    let handle = Open(path.as_cstr(), 1004)
+    let size = if handle != 0 { SetFileSize(handle, 4, -1) } else { -1 }
+    if handle != 0 { Close(handle) }
+    expect(size == 4 && examined_size(path) == 4, "return value and examined size are four bytes")
+    remove_file(path)
+}

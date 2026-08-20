@@ -589,6 +589,7 @@ impl WindowHandle {
     /// Bring window to front of display
     ///
     /// Makes the window the frontmost window on the screen.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -601,6 +602,7 @@ impl WindowHandle {
     /// Send window to back of display
     ///
     /// Moves the window behind all other windows on the screen.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -613,6 +615,7 @@ impl WindowHandle {
     /// Programmatically activate window (give input focus)
     ///
     /// Triggers IDCMP_ACTIVEWINDOW event.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -652,6 +655,7 @@ impl WindowHandle {
     ///
     /// Moves the window dx pixels horizontally and dy pixels vertically
     /// from its current position. Negative values move left/up.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -668,6 +672,7 @@ impl WindowHandle {
     ///
     /// Triggers IDCMP_NEWSIZE event. Listen for this event to get actual dimensions
     /// as the requested size may be adjusted to fit constraints.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -681,6 +686,7 @@ impl WindowHandle {
     ///
     /// Sets window position and size in one operation, which is more efficient
     /// than separate move + resize calls. Size is constrained by WindowLimits.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Triggers IDCMP_NEWSIZE event if size changes.
     ///
@@ -697,13 +703,14 @@ impl WindowHandle {
     /// Constrains window sizing operations. Use WA_SIZE_UNLIMITED (0xFFFFFFFF)
     /// for unbounded constraints.
     ///
-    /// Returns true if the window was resized to fit the new constraints.
-    /// If true, an IDCMP_NEWSIZE event will be triggered.
+    /// Returns true when every requested limit is valid and accepted.
+    /// An invalid limit is ignored and makes this return false; valid limits
+    /// from the same call still take effect.
     ///
     /// Example:
     /// ```novus
     /// // Set minimum 320x200, maximum 1024x768
-    /// let was_resized = window.set_limits(320, 200, 1024, 768)
+    /// let accepted = window.set_limits(320, 200, 1024, 768)
     /// ```
     pub fn set_limits(&self, min_width: i32, min_height: i32, max_width: u32, max_height: u32) -> bool {
         unsafe {
@@ -718,6 +725,7 @@ impl WindowHandle {
     ///
     /// Zooms the window between its current size and an alternate size
     /// (determined by the window's Zoom field). Commonly used for maximize/restore.
+    /// Intuition applies the change on a later input tick.
     ///
     /// Example:
     /// ```novus
@@ -731,6 +739,7 @@ impl WindowHandle {
     ///
     /// More precise than to_front() - places this window directly in front
     /// of the specified window in the depth arrangement.
+    /// Intuition may apply the visible layer change on a later input tick.
     ///
     /// Example:
     /// ```novus

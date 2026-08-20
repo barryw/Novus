@@ -7,8 +7,7 @@
 from std::core import Option, Result, Drop
 from amiga::sys::graphics::errors import GraphicsError
 from amiga::raw::structs import *
-from amiga::raw::graphics import AllocBitMap, FreeBitMap, WaitBlit, LoadView, WaitTOF
-from std::memory import MemoryBlock
+from amiga::raw::graphics import AllocBitMap, FreeBitMap, WaitBlit
 
 // ============================================================================
 // RAII Resource Wrappers (Automatic Cleanup)
@@ -133,109 +132,5 @@ impl Drop for BitMapHandle {
             FreeBitMap(bm)
             self.bitmap = null
         }
-    }
-}
-
-/// CopperListHandle - RAII wrapper for custom copper lists
-///
-/// Automatically restores the system copper list and waits for vertical blank
-/// before freeing the copper list memory. This prevents:
-/// - Display corruption from copper reading freed memory
-/// - Crashes from copper DMA accessing invalid memory
-///
-/// The Drop implementation:
-/// 1. Calls LoadView(null) to restore system copper
-/// 2. Calls WaitTOF() to ensure copper has switched
-/// 3. Frees the copper list memory
-///
-/// Example:
-/// ```novus
-/// fn create_custom_display() -> Result<CopperListHandle, GraphicsError> {
-///     let copper_mem = MemoryBlock::alloc(1024, MEMF_CHIP)?;
-///     let copper = CopperListHandle::new(copper_mem, true);
-///
-///     // Build copper list...
-///     // Install with LoadView()...
-///
-///     // Automatically cleaned up here:
-///     // 1. LoadView(null) restores system
-///     // 2. WaitTOF() ensures switch complete
-///     // 3. Memory freed
-/// }
-/// ```
-pub struct CopperListHandle {
-    /// The memory value stored by `CopperListHandle`.
-    memory: MemoryBlock,  // Copper list memory (must be CHIP RAM)
-    /// The active value stored by `CopperListHandle`.
-    active: bool,  // Is this copper list currently active?
-}
-
-impl CopperListHandle {
-    /// Create a copper list from allocated memory
-    ///
-    /// memory: CHIP RAM containing copper list instructions
-    /// active: Set to true if this list is currently active (installed via LoadView)
-    pub fn new(consuming memory: MemoryBlock, active: bool) -> CopperListHandle {
-        return CopperListHandle {
-            memory: memory,
-            active: active,
-        }
-    }
-
-    /// Get pointer to copper list memory
-    pub fn ptr(&self) -> *u8 {
-        return self.memory.ptr()
-    }
-
-    /// Extract memory and prevent automatic cleanup
-    ///
-    /// This transfers ownership to the caller. The caller is responsible
-    /// for calling LoadView(null) + WaitTOF() and freeing the memory manually.
-    ///
-    /// Use this when passing ownership to another system or storing
-    /// the copper list beyond the current scope.
-    pub fn into_memory(consuming self) -> MemoryBlock {
-        self.active = false
-        return self.memory
-    }
-
-    /// Mark this copper list as active
-    ///
-    /// Call this after installing the list with LoadView().
-    pub fn mark_active(&var self) {
-        self.active = true
-    }
-
-    /// Mark this copper list as inactive
-    ///
-    /// Call this after restoring the system copper.
-    pub fn mark_inactive(&var self) {
-        self.active = false
-    }
-
-    /// Restore system copper and wait for switch
-    ///
-    /// This is called automatically by Drop if the list is active.
-    pub fn restore_system(&var self) {
-        if self.active {
-            LoadView(null)  // null = system copper
-            WaitTOF()  // CRITICAL: Wait for vertical blank
-            self.active = false
-        }
-    }
-}
-
-// Automatic cleanup for CopperListHandle (RAII)
-impl Drop for CopperListHandle {
-    fn drop(&var self) {
-        // CRITICAL: If this copper list is active, we must:
-        // 1. Restore system copper (LoadView(null))
-        // 2. Wait for vertical blank (WaitTOF)
-        // Otherwise the copper will read freed memory!
-        if self.active {
-            LoadView(null)  // null = restore system copper
-            WaitTOF()  // Wait for copper to switch
-        }
-        // memory.drop() called automatically (RAII composition!)
     }
 }

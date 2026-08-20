@@ -25,6 +25,7 @@ public class RegisterAllocator
     private readonly Dictionary<string, M68kRegister> _variableToRegister = new();
     private readonly Dictionary<string, int> _variableToStackOffset = new();
     private readonly HashSet<M68kRegister> _allocatedRegisters = new();
+    private readonly HashSet<string> _parameters = new(StringComparer.Ordinal);
     private int _stackFrameSize = 0;
 
     // Available registers for allocation (preserved registers only for locals)
@@ -55,6 +56,7 @@ public class RegisterAllocator
         foreach (var param in _function.Parameters)
         {
             _variableToStackOffset[param.Name] = paramOffset;
+            _parameters.Add(param.Name);
             int paramSize = param.Type.SizeInBytes;
             // Align to word boundary
             if (paramSize % 2 != 0)
@@ -90,8 +92,9 @@ public class RegisterAllocator
     {
         foreach (var block in _function.BasicBlocks)
         {
-            foreach (var instruction in block.Instructions)
+            for (var index = 0; index < block.Instructions.Count; index++)
             {
+                var instruction = block.Instructions[index];
                 // Look for store instructions that define variables
                 if (instruction is IrStore store)
                 {
@@ -103,10 +106,25 @@ public class RegisterAllocator
                 // Look for binary ops that define temporaries
                 else if (instruction is IrBinaryOp binOp)
                 {
+                    if (binOp.Type.SizeInBytes <= 4 && index + 1 < block.Instructions.Count &&
+                        ((block.Instructions[index + 1] is IrReturn { Value: IrVariable returned } &&
+                          returned.Name == binOp.ResultName) ||
+                         (block.Instructions[index + 1] is IrBinaryOp { Left: IrVariable nextLeft } &&
+                          nextLeft.Name == binOp.ResultName)))
+                        continue;
                     if (!string.IsNullOrEmpty(binOp.ResultName) && !_variableToStackOffset.ContainsKey(binOp.ResultName))
                     {
                         AllocateStackSlot(binOp.ResultName, binOp.Type);
                     }
+                }
+                else if (instruction is IrCall { ResultName: not null } call)
+                {
+                    if (index + 1 < block.Instructions.Count &&
+                        block.Instructions[index + 1] is IrReturn { Value: IrVariable returned } &&
+                        returned.Name == call.ResultName)
+                        continue;
+                    if (!_variableToStackOffset.ContainsKey(call.ResultName))
+                        AllocateStackSlot(call.ResultName, call.ReturnType);
                 }
             }
         }
@@ -124,7 +142,7 @@ public class RegisterAllocator
             size++;
 
         _stackFrameSize += size;
-        _variableToStackOffset[varName] = -_stackFrameSize - 4; // -4 for saved FP
+        _variableToStackOffset[varName] = -_stackFrameSize;
     }
 
     /// <summary>
@@ -137,6 +155,14 @@ public class RegisterAllocator
             return offset;
 
         throw new InvalidOperationException($"Variable '{varName}' not allocated");
+    }
+
+    public string GetStackOperand(string varName, int stackAdjustment = 0)
+    {
+        var offset = GetStackOffset(varName);
+        return _stackFrameSize == 0 && _parameters.Contains(varName)
+            ? $"{offset - 4 + stackAdjustment}(sp)"
+            : $"{offset}(a5)";
     }
 
     /// <summary>

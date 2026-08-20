@@ -1,0 +1,214 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, GSTAG_SPRITE_NUM, TAG_DONE
+from amiga::raw::structs import ExtSprite, SimpleSprite, TagItem
+from amiga::raw::graphics import AllocSpriteDataA, ChangeExtSprite, ChangeExtSpriteA
+from amiga::raw::graphics import FreeSprite, FreeSpriteData, GetExtSprite, GetExtSpriteA
+from amiga::raw::graphics import MoveSprite, WaitTOF
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::sys::intuition import ScreenHandle
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(16, 4, 2, BMF_CLEAR, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn screen() -> Result<ScreenHandle, i32> {
+    return match ScreenHandle::lores("Novus extended sprite test", 2) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn sprite(source: &BitMapHandle) -> *ExtSprite {
+    return AllocSpriteDataA(source.as_raw(), null)
+}
+
+// @covers-ndk function|graphics.library|GetExtSpriteA
+// @ndk-side-effects GetExtSpriteA reserves the exact requested hardware channel for an allocated ExtSprite, rejects a second owner while held, and permits that owner after FreeSprite releases the channel
+@test("graphics.library GetExtSpriteA enforces exclusive tagged channels")
+pub fn graphics_get_ext_sprite_a() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let first = sprite(&source)
+    let second = sprite(&source)
+    expect(first != null && second != null, "two extended sprite images allocated")
+    if first == null {
+        if second != null { FreeSpriteData(second) }
+        return
+    }
+    if second == null {
+        FreeSpriteData(first)
+        return
+    }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: GSTAG_SPRITE_NUM, ti_Data: 6 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+
+    let first_channel = GetExtSpriteA(first, &var tags[0])
+    expect(first_channel == 6, "tag list reserves the exact requested channel")
+    if first_channel == 6 {
+        expect(GetExtSpriteA(second, &var tags[0]) == -1, "held channel rejects a second owner")
+        FreeSprite(first_channel)
+        let released_channel = GetExtSpriteA(second, &var tags[0])
+        expect(released_channel == 6, "released channel can be acquired again")
+        if released_channel == 6 { FreeSprite(released_channel) }
+    }
+    FreeSpriteData(second)
+    FreeSpriteData(first)
+    expect(display.viewport() != null, "sprite allocation leaves the live ViewPort intact")
+}
+
+// @covers-ndk function|graphics.library|GetExtSprite
+// @ndk-side-effects GetExtSprite forwards GSTAG_SPRITE_NUM through its varargs list, reserves exactly that channel, rejects contention, and permits reacquisition after FreeSprite releases it
+@test("graphics.library GetExtSprite enforces exclusive varargs channels")
+pub fn graphics_get_ext_sprite_varargs() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let first = sprite(&source)
+    let second = sprite(&source)
+    expect(first != null && second != null, "two extended sprite images allocated")
+    if first == null {
+        if second != null { FreeSpriteData(second) }
+        return
+    }
+    if second == null {
+        FreeSpriteData(first)
+        return
+    }
+
+    let first_channel = GetExtSprite(first, GSTAG_SPRITE_NUM, 5, TAG_DONE)
+    expect(first_channel == 5, "varargs reserves the exact requested channel")
+    if first_channel == 5 {
+        expect(GetExtSprite(second, GSTAG_SPRITE_NUM, 5, TAG_DONE) == -1, "held varargs channel rejects a second owner")
+        FreeSprite(first_channel)
+        let released_channel = GetExtSprite(second, GSTAG_SPRITE_NUM, 5, TAG_DONE)
+        expect(released_channel == 5, "released varargs channel can be acquired again")
+        if released_channel == 5 { FreeSprite(released_channel) }
+    }
+    FreeSpriteData(second)
+    FreeSpriteData(first)
+    expect(display.viewport() != null, "varargs allocation leaves the live ViewPort intact")
+}
+
+// @covers-ndk function|graphics.library|ChangeExtSpriteA
+// @ndk-side-effects ChangeExtSpriteA replaces the image attached to an owned channel using a tag list, transfers the exact channel number to the replacement, and leaves that replacement movable through the live ViewPort before release
+@test("graphics.library ChangeExtSpriteA replaces a tagged channel image")
+pub fn graphics_change_ext_sprite_a() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let old_sprite = sprite(&source)
+    let new_sprite = sprite(&source)
+    expect(old_sprite != null && new_sprite != null, "old and replacement images allocated")
+    if old_sprite == null {
+        if new_sprite != null { FreeSpriteData(new_sprite) }
+        return
+    }
+    if new_sprite == null {
+        FreeSpriteData(old_sprite)
+        return
+    }
+    var request: [TagItem] = [
+        TagItem { ti_Tag: GSTAG_SPRITE_NUM, ti_Data: 6 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    var done: [TagItem] = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+    let channel = GetExtSpriteA(old_sprite, &var request[0])
+    expect(channel == 6, "old image owns the requested channel")
+    if channel == 6 {
+        let changed = ChangeExtSpriteA(display.viewport(), old_sprite, new_sprite, &var done[0])
+        expect(changed != 0, "tag-list replacement succeeds")
+        if changed != 0 {
+            unsafe { expect((*new_sprite).es_SimpleSprite.num == 6, "replacement inherits the exact channel") }
+            MoveSprite(display.viewport(), (*SimpleSprite)new_sprite, -256, -256)
+            WaitTOF()
+        }
+        FreeSprite(channel)
+    }
+    FreeSpriteData(new_sprite)
+    FreeSpriteData(old_sprite)
+}
+
+// @covers-ndk function|graphics.library|ChangeExtSprite
+// @ndk-side-effects ChangeExtSprite forwards its varargs terminator, replaces the image attached to an owned channel, transfers the exact channel number to the replacement, and leaves the replacement movable before release
+@test("graphics.library ChangeExtSprite replaces a varargs channel image")
+pub fn graphics_change_ext_sprite_varargs() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let old_sprite = sprite(&source)
+    let new_sprite = sprite(&source)
+    expect(old_sprite != null && new_sprite != null, "old and replacement images allocated")
+    if old_sprite == null {
+        if new_sprite != null { FreeSpriteData(new_sprite) }
+        return
+    }
+    if new_sprite == null {
+        FreeSpriteData(old_sprite)
+        return
+    }
+    let channel = GetExtSprite(old_sprite, GSTAG_SPRITE_NUM, 5, TAG_DONE)
+    expect(channel == 5, "old image owns the requested channel")
+    if channel == 5 {
+        let changed = ChangeExtSprite(display.viewport(), old_sprite, new_sprite, TAG_DONE)
+        expect(changed != 0, "varargs replacement succeeds")
+        if changed != 0 {
+            unsafe { expect((*new_sprite).es_SimpleSprite.num == 5, "replacement inherits the exact channel") }
+            MoveSprite(display.viewport(), (*SimpleSprite)new_sprite, -256, -256)
+            WaitTOF()
+        }
+        FreeSprite(channel)
+    }
+    FreeSpriteData(new_sprite)
+    FreeSpriteData(old_sprite)
+}

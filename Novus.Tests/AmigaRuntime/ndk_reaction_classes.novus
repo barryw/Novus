@@ -1,0 +1,132 @@
+from std::test::test import expect
+from amiga::raw::structs import IClass
+from amiga::raw::bevel import BEVEL_GetClass
+from amiga::raw::bitmap import BITMAP_GetClass
+from amiga::raw::button import BUTTON_GetClass
+from amiga::raw::checkbox import CHECKBOX_GetClass
+from amiga::raw::drawlist import DRAWLIST_GetClass
+from amiga::raw::fuelgauge import FUELGAUGE_GetClass
+from amiga::raw::getfile import GETFILE_GetClass
+from amiga::raw::getfont import GETFONT_GetClass
+from amiga::raw::getscreenmode import GETSCREENMODE_GetClass
+from amiga::raw::glyph import GLYPH_GetClass
+from amiga::raw::integer import INTEGER_GetClass
+from amiga::raw::label import LABEL_GetClass
+from amiga::raw::palette import PALETTE_GetClass
+from amiga::raw::penmap import PENMAP_GetClass
+from amiga::raw::scroller import SCROLLER_GetClass
+from amiga::raw::slider import SLIDER_GetClass
+from amiga::raw::space import SPACE_GetClass
+from amiga::raw::string import STRING_GetClass
+from amiga::raw::texteditor import TEXTEDITOR_GetClass
+from amiga::raw::virtual import VIRTUAL_GetClass
+from amiga::raw::window import WINDOW_GetClass
+
+fn expect_stable(first: *IClass, second: *IClass) {
+    expect(first != null && second == first, "class pointer is non-null and stable")
+}
+
+// @covers-ndk function|bevel.library|BEVEL_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("bevel.library returns a stable class")
+pub fn reaction_bevel_class() { expect_stable(BEVEL_GetClass(), BEVEL_GetClass()) }
+
+// @covers-ndk function|bitmap.library|BITMAP_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("bitmap.library returns a stable class")
+pub fn reaction_bitmap_class() { expect_stable(BITMAP_GetClass(), BITMAP_GetClass()) }
+
+// @covers-ndk function|button.library|BUTTON_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("button.library returns a stable class")
+pub fn reaction_button_class() { expect_stable(BUTTON_GetClass(), BUTTON_GetClass()) }
+
+// @covers-ndk function|checkbox.library|CHECKBOX_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("checkbox.library returns a stable class")
+pub fn reaction_checkbox_class() { expect_stable(CHECKBOX_GetClass(), CHECKBOX_GetClass()) }
+
+// @covers-ndk function|drawlist.library|DRAWLIST_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("drawlist.library returns a stable class")
+pub fn reaction_drawlist_class() { expect_stable(DRAWLIST_GetClass(), DRAWLIST_GetClass()) }
+
+// @covers-ndk function|fuelgauge.library|FUELGAUGE_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("fuelgauge.library returns a stable class")
+pub fn reaction_fuelgauge_class() { expect_stable(FUELGAUGE_GetClass(), FUELGAUGE_GetClass()) }
+
+// @covers-ndk function|getfile.library|GETFILE_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("getfile.library returns a stable class")
+pub fn reaction_getfile_class() { expect_stable(GETFILE_GetClass(), GETFILE_GetClass()) }
+
+// @covers-ndk function|getfont.library|GETFONT_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("getfont.library returns a stable class")
+pub fn reaction_getfont_class() { expect_stable(GETFONT_GetClass(), GETFONT_GetClass()) }
+
+// @covers-ndk function|getscreenmode.library|GETSCREENMODE_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("getscreenmode.library returns a stable class")
+pub fn reaction_getscreenmode_class() { expect_stable(GETSCREENMODE_GetClass(), GETSCREENMODE_GetClass()) }
+
+// @covers-ndk function|glyph.library|GLYPH_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("glyph.library returns a stable class")
+pub fn reaction_glyph_class() { expect_stable(GLYPH_GetClass(), GLYPH_GetClass()) }
+
+// @covers-ndk function|integer.library|INTEGER_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("integer.library returns a stable class")
+pub fn reaction_integer_class() { expect_stable(INTEGER_GetClass(), INTEGER_GetClass()) }
+
+// @covers-ndk function|label.library|LABEL_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("label.library returns a stable class")
+pub fn reaction_label_class() { expect_stable(LABEL_GetClass(), LABEL_GetClass()) }
+
+// @covers-ndk function|palette.library|PALETTE_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("palette.library returns a stable class")
+pub fn reaction_palette_class() { expect_stable(PALETTE_GetClass(), PALETTE_GetClass()) }
+
+// @covers-ndk function|penmap.library|PENMAP_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("penmap.library returns a stable class")
+pub fn reaction_penmap_class() { expect_stable(PENMAP_GetClass(), PENMAP_GetClass()) }
+
+// @covers-ndk function|scroller.library|SCROLLER_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("scroller.library returns a stable class")
+pub fn reaction_scroller_class() { expect_stable(SCROLLER_GetClass(), SCROLLER_GetClass()) }
+
+// @covers-ndk function|slider.library|SLIDER_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("slider.library returns a stable class")
+pub fn reaction_slider_class() { expect_stable(SLIDER_GetClass(), SLIDER_GetClass()) }
+
+// @covers-ndk function|space.library|SPACE_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("space.library returns a stable class")
+pub fn reaction_space_class() { expect_stable(SPACE_GetClass(), SPACE_GetClass()) }
+
+// @covers-ndk function|string.library|STRING_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("string.library returns a stable class")
+pub fn reaction_string_class() { expect_stable(STRING_GetClass(), STRING_GetClass()) }
+
+// @covers-ndk function|texteditor.library|TEXTEDITOR_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("texteditor.library returns a stable class")
+pub fn reaction_texteditor_class() { expect_stable(TEXTEDITOR_GetClass(), TEXTEDITOR_GetClass()) }
+
+// @covers-ndk function|virtual.library|VIRTUAL_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("virtual.library returns a stable class")
+pub fn reaction_virtual_class() { expect_stable(VIRTUAL_GetClass(), VIRTUAL_GetClass()) }
+
+// @covers-ndk function|window.library|WINDOW_GetClass
+// @ndk-side-effects Returns the library-owned shared class pointer without transferring ownership
+@test("window.library returns a stable class")
+pub fn reaction_window_class() { expect_stable(WINDOW_GetClass(), WINDOW_GetClass()) }

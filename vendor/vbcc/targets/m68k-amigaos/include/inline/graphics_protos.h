@@ -206,10 +206,12 @@ VOID __ChangeSprite(__reg("a6") void *, __reg("a0") struct ViewPort * vp, __reg(
 VOID __MoveSprite(__reg("a6") void *, __reg("a0") struct ViewPort * vp, __reg("a1") struct SimpleSprite * sprite, __reg("d0") LONG x, __reg("d1") LONG y)="\tjsr\t-426(a6)";
 #define MoveSprite(vp, sprite, x, y) __MoveSprite(GfxBase, (vp), (sprite), (x), (y))
 
-VOID __LockLayerRom(__reg("a6") void *, __reg("a5") struct Layer * layer)="\tjsr\t-432(a6)";
+/* A5 is vbcc's forced frame pointer.  Transport the argument through A0 and
+ * preserve A5 inside the inline bridge before entering the real library ABI. */
+VOID __LockLayerRom(__reg("a6") void *, __reg("a0") struct Layer * layer)="\tmove.l\ta5,-(sp)\n\tmove.l\ta0,a5\n\tjsr\t-432(a6)\n\tmove.l\t(sp)+,a5";
 #define LockLayerRom(layer) __LockLayerRom(GfxBase, (layer))
 
-VOID __UnlockLayerRom(__reg("a6") void *, __reg("a5") struct Layer * layer)="\tjsr\t-438(a6)";
+VOID __UnlockLayerRom(__reg("a6") void *, __reg("a0") struct Layer * layer)="\tmove.l\ta5,-(sp)\n\tmove.l\ta0,a5\n\tjsr\t-438(a6)\n\tmove.l\t(sp)+,a5";
 #define UnlockLayerRom(layer) __UnlockLayerRom(GfxBase, (layer))
 
 VOID __SyncSBitMap(__reg("a6") void *, __reg("a0") struct Layer * layer)="\tjsr\t-444(a6)";
@@ -311,7 +313,7 @@ VOID __SetRGB4CM(__reg("a6") void *, __reg("a0") struct ColorMap * colorMap, __r
 VOID __BltMaskBitMapRastPort(__reg("a6") void *, __reg("a0") CONST struct BitMap * srcBitMap, __reg("d0") LONG xSrc, __reg("d1") LONG ySrc, __reg("a1") struct RastPort * destRP, __reg("d2") LONG xDest, __reg("d3") LONG yDest, __reg("d4") LONG xSize, __reg("d5") LONG ySize, __reg("d6") ULONG minterm, __reg("a2") CONST PLANEPTR bltMask)="\tjsr\t-636(a6)";
 #define BltMaskBitMapRastPort(srcBitMap, xSrc, ySrc, destRP, xDest, yDest, xSize, ySize, minterm, bltMask) __BltMaskBitMapRastPort(GfxBase, (srcBitMap), (xSrc), (ySrc), (destRP), (xDest), (yDest), (xSize), (ySize), (minterm), (bltMask))
 
-BOOL __AttemptLockLayerRom(__reg("a6") void *, __reg("a5") struct Layer * layer)="\tjsr\t-654(a6)";
+BOOL __AttemptLockLayerRom(__reg("a6") void *, __reg("a0") struct Layer * layer)="\tmove.l\ta5,-(sp)\n\tmove.l\ta0,a5\n\tjsr\t-654(a6)\n\tmove.l\t(sp)+,a5";
 #define AttemptLockLayerRom(layer) __AttemptLockLayerRom(GfxBase, (layer))
 
 APTR __GfxNew(__reg("a6") void *, __reg("d0") ULONG gfxNodeType)="\tjsr\t-660(a6)";

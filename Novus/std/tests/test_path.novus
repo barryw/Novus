@@ -331,7 +331,6 @@ pub fn test_path_join_volume_file() {
             var s = joined
             let expected: Str = "Work:file.txt"
             expect_true(s.as_str().equals(expected), "joined is 'Work:file.txt'")
-            s.drop()
         },
         Err(_) => expect(false, "join should succeed")
     }
@@ -348,7 +347,6 @@ pub fn test_path_join_path_file() {
             var s = joined
             let expected: Str = "Work:Projects/main.novus"
             expect_true(s.as_str().equals(expected), "joined is 'Work:Projects/main.novus'")
-            s.drop()
         },
         Err(_) => expect(false, "join should succeed")
     }
@@ -366,7 +364,6 @@ pub fn test_path_join_trailing_slash() {
             // Should not double the slash
             let expected: Str = "Work:Projects/file.txt"
             expect_true(s.as_str().equals(expected), "no double slash")
-            s.drop()
         },
         Err(_) => expect(false, "join should succeed")
     }
@@ -383,7 +380,6 @@ pub fn test_path_join_relative() {
             var s = joined
             let expected: Str = "src/module.novus"
             expect_true(s.as_str().equals(expected), "joined is 'src/module.novus'")
-            s.drop()
         },
         Err(_) => expect(false, "join should succeed")
     }

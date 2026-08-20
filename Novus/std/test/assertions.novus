@@ -24,10 +24,11 @@
 // }
 // ```
 
-from std::io::file import write
+from std::io::file import print_str, write
 from std::string::core import Str, strlen, strcmp
 from std::core import Result, Option
 from amiga::raw::exec import TypeOfMem, AvailMem
+from amiga::raw::dos import Flush, Output
 from amiga::raw::consts import MEMF_CHIP, MEMF_FAST
 from std::test::test import __test_record_failure
 
@@ -152,11 +153,8 @@ pub fn expect_str_len(s: Str, expected_len: u32, message: *u8) {
 
 // Helper to write Str bytes (handles non-null-terminated strings)
 fn write_str_bytes(s: Str) {
-    while var i < s.len() {
-        let c: u8 = s.get(i).unwrap()
-        write("%c", (c as i32))
-        i = i + 1
-    }
+    let _ = Flush(Output())
+    let _ = print_str(s)
 }
 
 // ============================================================================

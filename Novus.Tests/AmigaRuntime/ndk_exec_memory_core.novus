@@ -1,0 +1,268 @@
+from std::test::test import expect
+from amiga::raw::consts import MEMF_CLEAR, MEMF_LARGEST, MEMF_PUBLIC, MEMF_TOTAL
+from amiga::raw::exec import AllocAbs, AllocEntry, AllocMem, AllocPooled, Allocate, AvailMem, CopyMemQuick, CreatePool, Deallocate, DeletePool, FreeEntry, FreeMem, FreePooled, InitStruct, TypeOfMem
+from amiga::raw::structs import MemChunk, MemHeader, MemList
+extern fn __novus_memory_checkpoint()
+
+// @covers-ndk function|exec.library|AvailMem
+// @ndk-side-effects AvailMem reads Exec's public-memory headers without mutation; total and largest-free queries return a nonzero, internally consistent snapshot
+@test("exec.library AvailMem reports consistent public memory")
+pub fn exec_available_memory_snapshot() {
+    let total = AvailMem(MEMF_PUBLIC | MEMF_TOTAL)
+    let largest = AvailMem(MEMF_PUBLIC | MEMF_LARGEST)
+    let free = AvailMem(MEMF_PUBLIC)
+    expect(total > 0, "public memory total is nonzero")
+    expect(free > 0 && free <= total, "free public memory is bounded by total memory")
+    expect(largest > 0 && largest <= free, "largest public block is bounded by free memory")
+}
+
+// @covers-ndk function|exec.library|CopyMemQuick
+// @ndk-side-effects CopyMemQuick copies exactly sixteen aligned bytes and leaves the source and adjacent destination words unchanged
+@test("exec.library CopyMemQuick copies aligned words exactly")
+pub fn exec_copy_mem_quick_words() {
+    var source: [u32] = [$01234567, $89ABCDEF, $13579BDF, $2468ACE0]
+    var destination: [u32] = [0, 0, 0, 0, $DEADBEEF]
+    unsafe { CopyMemQuick((*u8)&source[0], (*u8)&var destination[0], 16) }
+    expect(destination[0] == source[0], "first word copied")
+    expect(destination[1] == source[1], "second word copied")
+    expect(destination[2] == source[2], "third word copied")
+    expect(destination[3] == source[3], "fourth word copied")
+    expect(destination[4] == $DEADBEEF, "word beyond requested length is unchanged")
+}
+
+// @covers-ndk function|exec.library|CreatePool
+// @ndk-side-effects CreatePool allocates an initialized public cleared-memory pool; TypeOfMem recognizes its header and DeletePool returns all backing memory
+@test("exec.library CreatePool creates managed public storage")
+pub fn exec_create_pool_lifecycle() {
+    let pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR, 4096, 1024)
+    expect(pool != null, "pool header allocated")
+    if pool != null {
+        expect(TypeOfMem(pool) != 0, "pool header belongs to Exec-managed memory")
+        DeletePool(pool)
+    }
+}
+
+// @covers-ndk function|exec.library|AllocPooled
+// @ndk-side-effects AllocPooled reserves a cleared block from the selected pool; the returned bytes are writable and FreePooled returns the exact block before DeletePool
+@test("exec.library AllocPooled returns cleared writable bytes")
+pub fn exec_alloc_pooled_bytes() {
+    let pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR, 4096, 1024)
+    expect(pool != null, "pool created")
+    if pool == null { return }
+    let memory = AllocPooled(pool, 128)
+    expect(memory != null, "pooled block allocated")
+    if memory != null {
+        let last = memory + 127
+        expect(*memory == 0 && *last == 0, "MEMF_CLEAR zeroes the full pooled block")
+        *memory = $5A
+        *last = $A5
+        expect(*memory == $5A && *last == $A5, "pooled block is writable at both bounds")
+        FreePooled(pool, memory, 128)
+    }
+    DeletePool(pool)
+}
+
+// @covers-ndk function|exec.library|FreePooled
+// @ndk-side-effects FreePooled returns the exact block to its pool; the next equal-sized allocation reuses that address and remains writable
+@test("exec.library FreePooled makes a block reusable")
+pub fn exec_free_pooled_reuse() {
+    let pool = CreatePool(MEMF_PUBLIC, 4096, 1024)
+    expect(pool != null, "pool created")
+    if pool == null { return }
+    let first = AllocPooled(pool, 128)
+    let second = AllocPooled(pool, 128)
+    expect(first != null && second != null && first != second, "two distinct pooled blocks allocate")
+    if first != null { FreePooled(pool, first, 128) }
+    let reused = AllocPooled(pool, 128)
+    expect(reused == first, "equal-sized allocation reuses the freed block")
+    if reused != null {
+        *reused = $C3
+        expect(*reused == $C3, "reused block remains writable")
+        FreePooled(pool, reused, 128)
+    }
+    if second != null { FreePooled(pool, second, 128) }
+    DeletePool(pool)
+}
+
+// @covers-ndk function|exec.library|DeletePool
+// @ndk-side-effects DeletePool returns every puddle including an outstanding allocation; the enclosing process memory check verifies no retained bytes
+@test("exec.library DeletePool releases outstanding pool allocations")
+pub fn exec_delete_pool_with_outstanding_block() {
+    let pool = CreatePool(MEMF_PUBLIC | MEMF_CLEAR, 4096, 1024)
+    expect(pool != null, "pool created")
+    if pool == null { return }
+    let memory = AllocPooled(pool, 2048)
+    expect(memory != null, "outstanding pooled block allocated")
+    if memory != null {
+        *memory = $7E
+        expect(*memory == $7E, "outstanding block is live before pool deletion")
+    }
+    DeletePool(pool)
+}
+
+// @covers-ndk function|exec.library|AllocAbs
+// @ndk-side-effects AllocAbs reclaims an exact just-freed public range, rejects a second overlapping allocation, preserves writable bounds, and FreeMem returns the range
+@test("exec.library AllocAbs claims only a free absolute range")
+pub fn exec_alloc_abs_exact_range() {
+    unsafe {
+    let initial = AllocMem(256, MEMF_PUBLIC | MEMF_CLEAR)
+    expect(initial != null, "initial public range allocated")
+    if initial == null { return }
+    let address = (u32)initial
+    FreeMem(initial, 256)
+    // AllocAbs can legitimately reuse an address that was freed through the tracked
+    // allocator, but memory tracking still keeps a freed record for a short period.
+    // Release tracking state before asserting raw pointer reuse behavior.
+    __novus_memory_checkpoint()
+
+    let absolute = AllocAbs(256, (*u8)address)
+    expect(absolute == (*u8)address, "freed aligned range is reclaimed at its exact address")
+    if absolute == null { return }
+    let overlap = AllocAbs(256, (*u8)address)
+    expect(overlap == null, "occupied absolute range rejects an overlapping allocation")
+    var source: [u8] = [$5A, $A5, $3C, $C3]
+    var destination: [u8] = [0, 0, 0, 0]
+    CopyMemQuick(&var source[0], absolute, 4)
+    CopyMemQuick(absolute, &var destination[0], 4)
+    expect(destination[0] == source[0] && destination[3] == source[3], "absolute allocation is writable and readable")
+    if overlap != null { FreeMem(overlap, 256) }
+    FreeMem(absolute, 256)
+    }
+}
+
+// @covers-ndk function|exec.library|Allocate
+// @ndk-side-effects Allocate removes one aligned 64-byte block from a caller-owned 512-byte private MemHeader, updates mh_Free, and Deallocate coalesces it before backing memory is returned
+@test("exec.library Allocate reserves private free-list memory")
+pub fn exec_allocate_private_memory() {
+    unsafe {
+    let backing = AllocMem(512, MEMF_PUBLIC | MEMF_CLEAR)
+    expect(backing != null, "private pool backing allocated")
+    if backing == null { return }
+    var header: MemHeader = @zeroed(MemHeader)
+    let chunk = (*MemChunk)backing
+    header.mh_Node.ln_Type = 10
+    header.mh_Attributes = 1
+    header.mh_First = chunk
+    header.mh_Lower = backing
+    header.mh_Upper = backing + 512
+    header.mh_Free = 512
+    (*chunk).mc_Next = null
+    (*chunk).mc_Bytes = 512
+
+    let memory = Allocate(&var header, 64)
+    expect(memory != null && (u32)memory >= (u32)backing && (u32)memory + 64 <= (u32)backing + 512, "private allocation lies within its backing range")
+    expect(header.mh_Free == 448, "private header records the exact allocated size")
+    if memory != null {
+        *memory = $3C
+        memory[63] = $C3
+        expect(*memory == $3C && memory[63] == $C3, "private allocation is writable at both bounds")
+        Deallocate(&var header, memory, 64)
+    }
+    expect(header.mh_Free == 512, "cleanup Deallocate restores private free bytes")
+    FreeMem(backing, 512)
+    }
+}
+
+// @covers-ndk function|exec.library|Deallocate
+// @ndk-side-effects Deallocate returns adjacent private allocations in reverse order, coalesces the complete 512-byte region, and permits one full-size allocation before final cleanup
+@test("exec.library Deallocate coalesces adjacent private blocks")
+pub fn exec_deallocate_private_memory() {
+    unsafe {
+    let backing = AllocMem(512, MEMF_PUBLIC | MEMF_CLEAR)
+    expect(backing != null, "private pool backing allocated")
+    if backing == null { return }
+    var header: MemHeader = @zeroed(MemHeader)
+    let chunk = (*MemChunk)backing
+    header.mh_Node.ln_Type = 10
+    header.mh_Attributes = 1
+    header.mh_First = chunk
+    header.mh_Lower = backing
+    header.mh_Upper = backing + 512
+    header.mh_Free = 512
+    (*chunk).mc_Next = null
+    (*chunk).mc_Bytes = 512
+
+    let first = Allocate(&var header, 64)
+    let second = Allocate(&var header, 64)
+    expect(first != null && second != null && first != second, "two private blocks allocate independently")
+    if second != null { Deallocate(&var header, second, 64) }
+    if first != null { Deallocate(&var header, first, 64) }
+    expect(header.mh_Free == 512 && header.mh_First == chunk && (*chunk).mc_Bytes == 512,
+        "returned adjacent blocks coalesce into the original region")
+    let whole = Allocate(&var header, 512)
+    expect(whole != null, "coalesced region supports one full-size allocation")
+    if whole != null { Deallocate(&var header, whole, 512) }
+    FreeMem(backing, 512)
+    }
+}
+
+// @covers-ndk function|exec.library|AllocEntry
+// @ndk-side-effects AllocEntry creates a distinct MemList and one cleared 128-byte public allocation from a caller-owned one-entry requirements list; FreeEntry releases both
+@test("exec.library AllocEntry allocates its described regions")
+pub fn exec_alloc_entry_regions() {
+    unsafe {
+    var request: MemList = @zeroed(MemList)
+    request.ml_NumEntries = 1
+    request.ml_ME[0].me_Un.meu_Reqs = MEMF_PUBLIC | MEMF_CLEAR
+    request.ml_ME[0].me_Length = 128
+    let allocated = AllocEntry(&var request)
+    let succeeded = ((u32)allocated & $80000000) == 0 && allocated != null
+    expect(succeeded && allocated != (*MemList)&var request, "AllocEntry returns a distinct successful MemList")
+    if !succeeded { return }
+    let memory = (*allocated).ml_ME[0].me_Un.meu_Addr
+    expect((*allocated).ml_NumEntries == 1 && (*allocated).ml_ME[0].me_Length == 128, "returned list preserves entry count and size")
+    expect(memory != null && *memory == 0 && *(memory + 127) == 0, "MEMF_CLEAR zeroes the complete returned region")
+    if memory != null {
+        *memory = $69
+        expect(*memory == $69, "returned entry memory is writable")
+    }
+    FreeEntry(allocated)
+    }
+}
+
+// @covers-ndk function|exec.library|FreeEntry
+// @ndk-side-effects FreeEntry releases an AllocEntry MemList and its region; an identical second allocation succeeds cleared and is released again before test exit
+@test("exec.library FreeEntry makes described memory reusable")
+pub fn exec_free_entry_reuse() {
+    unsafe {
+    var request: MemList = @zeroed(MemList)
+    request.ml_NumEntries = 1
+    request.ml_ME[0].me_Un.meu_Reqs = MEMF_PUBLIC | MEMF_CLEAR
+    request.ml_ME[0].me_Length = 128
+    let first = AllocEntry(&var request)
+    let first_ok = ((u32)first & $80000000) == 0 && first != null
+    expect(first_ok, "first described allocation succeeds")
+    if !first_ok { return }
+    let first_memory = (*first).ml_ME[0].me_Un.meu_Addr
+    if first_memory != null { *first_memory = $A7 }
+    FreeEntry(first)
+
+    let second = AllocEntry(&var request)
+    let second_ok = ((u32)second & $80000000) == 0 && second != null
+    expect(second_ok, "same requirements allocate again after FreeEntry")
+    if second_ok {
+        let second_memory = (*second).ml_ME[0].me_Un.meu_Addr
+        expect(second_memory != null && *second_memory == 0, "reallocated MEMF_CLEAR entry starts cleared")
+        FreeEntry(second)
+    }
+    }
+}
+
+// @covers-ndk function|exec.library|InitStruct
+// @ndk-side-effects InitStruct clears exactly the requested sixteen bytes before honoring the terminating zero command and leaves adjacent destination bytes unchanged
+@test("exec.library InitStruct clears only its requested range")
+pub fn exec_init_struct_clear_range() {
+    unsafe {
+    var commands: [u8] = [0, 0]
+    var destination: [u8] = [$A5; 20]
+    InitStruct(&commands[0], &var destination[0], 16)
+    var cleared = true
+    var index: u32 = 0
+    while index < 16 {
+        if destination[index] != 0 { cleared = false }
+        index++
+    }
+    expect(cleared, "requested destination bytes are cleared")
+    expect(destination[16] == $A5 && destination[19] == $A5, "bytes beyond the requested size remain unchanged")
+    }
+}

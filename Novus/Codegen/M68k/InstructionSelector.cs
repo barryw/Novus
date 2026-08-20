@@ -106,7 +106,7 @@ public class InstructionSelector
     /// <summary>
     /// Emit a binary operation
     /// </summary>
-    public void EmitBinaryOp(IrBinaryOp op, string resultVar)
+    public void EmitBinaryOp(IrBinaryOp op, string resultVar, bool storeResult = true, bool leftAlreadyInD0 = false)
     {
         string suffix = GetSizeSuffix(op.Type);
 
@@ -117,8 +117,7 @@ public class InstructionSelector
             return;
         }
 
-        // Load left operand to D0
-        EmitLoadValue(op.Left, M68kRegister.D0, op.Type);
+        if (!leftAlreadyInD0) EmitLoadValue(op.Left, M68kRegister.D0, op.Type);
 
         // For commutative ops, we can operate directly
         // For non-commutative, we need D1 as scratch
@@ -172,7 +171,7 @@ public class InstructionSelector
             case IrBinaryOp.OpKind.Le:
             case IrBinaryOp.OpKind.Gt:
             case IrBinaryOp.OpKind.Ge:
-                EmitComparisonOp(op, resultVar);
+                EmitComparisonOp(op, resultVar, storeResult);
                 return; // Comparison handles result store itself
 
             default:
@@ -180,7 +179,7 @@ public class InstructionSelector
         }
 
         // Store result from D0 to result variable
-        EmitStoreRegister(M68kRegister.D0, resultVar, op.Type);
+        if (storeResult) EmitStoreRegister(M68kRegister.D0, resultVar, op.Type);
     }
 
     private void EmitAddOp(IrValue right, string suffix)
@@ -193,6 +192,12 @@ public class InstructionSelector
                 _output.AppendLine($"    addq{suffix}  #{constant.Value},d0");
                 return;
             }
+        }
+
+        if (right is IrVariable variable)
+        {
+            _output.AppendLine($"    add{suffix}   {_allocator.GetStackOperand(variable.Name)},d0");
+            return;
         }
 
         // Load right operand to D1 and add
@@ -317,7 +322,7 @@ public class InstructionSelector
         }
     }
 
-    private void EmitComparisonOp(IrBinaryOp op, string resultVar)
+    private void EmitComparisonOp(IrBinaryOp op, string resultVar, bool storeResult)
     {
         string suffix = GetSizeSuffix(op.Type);
 
@@ -346,7 +351,7 @@ public class InstructionSelector
         _output.AppendLine($"    neg.b     d0              ; Convert 0xFF to 0x01");
 
         // Store result (boolean)
-        EmitStoreRegister(M68kRegister.D0, resultVar, IrBoolType.Instance);
+        if (storeResult) EmitStoreRegister(M68kRegister.D0, resultVar, IrBoolType.Instance);
     }
 
     private static string GetLtCondition(IrType type)
@@ -372,7 +377,7 @@ public class InstructionSelector
     /// <summary>
     /// Load a value into a register
     /// </summary>
-    public void EmitLoadValue(IrValue value, M68kRegister destReg, IrType type)
+    public void EmitLoadValue(IrValue value, M68kRegister destReg, IrType type, int stackAdjustment = 0)
     {
         string suffix = GetSizeSuffix(type);
         string reg = destReg.ToAsmString();
@@ -397,8 +402,7 @@ public class InstructionSelector
 
             case IrVariable variable:
                 // Load from stack
-                int offset = _allocator.GetStackOffset(variable.Name);
-                _output.AppendLine($"    move{suffix}   {offset}(a5),{reg}");
+                _output.AppendLine($"    move{suffix}   {_allocator.GetStackOperand(variable.Name, stackAdjustment)},{reg}");
                 break;
 
             case IrStringLiteral stringLit:
@@ -480,48 +484,15 @@ public class InstructionSelector
     /// - Additional arguments go on stack right-to-left
     /// - Return value in d0 (d0/d1 for 64-bit)
     /// </summary>
-    public void EmitCall(IrCall call)
+    public void EmitCall(IrCall call, bool storeResult = true)
     {
-        // Register assignment order per Amiga ABI
-        var dataRegs = new[] { M68kRegister.D0, M68kRegister.D1 };
-        var addrRegs = new[] { M68kRegister.A0, M68kRegister.A1 };
-
-        int dataRegIndex = 0;
-        int addrRegIndex = 0;
         int stackAdjust = 0;
 
-        // Track which args go in registers vs stack
-        var regAssignments = new List<(int argIndex, M68kRegister reg)>();
-        var stackArgs = new List<int>();
-
-        for (int i = 0; i < call.Arguments.Count; i++)
+        // Push stack arguments in reverse order (right-to-left)
+        for (int i = call.Arguments.Count - 1; i >= 0; i--)
         {
             var arg = call.Arguments[i];
-            bool isPointer = arg.Type is IrPointerType or IrReferenceType or IrMutReferenceType;
-
-            if (isPointer && addrRegIndex < addrRegs.Length)
-            {
-                // Pointer/reference goes in address register
-                regAssignments.Add((i, addrRegs[addrRegIndex++]));
-            }
-            else if (!isPointer && dataRegIndex < dataRegs.Length)
-            {
-                // Integer/other goes in data register
-                regAssignments.Add((i, dataRegs[dataRegIndex++]));
-            }
-            else
-            {
-                // No more registers - goes on stack
-                stackArgs.Add(i);
-            }
-        }
-
-        // Push stack arguments in reverse order (right-to-left)
-        for (int i = stackArgs.Count - 1; i >= 0; i--)
-        {
-            var argIndex = stackArgs[i];
-            var arg = call.Arguments[argIndex];
-            EmitLoadValue(arg, M68kRegister.D0, arg.Type);
+            EmitLoadValue(arg, M68kRegister.D0, arg.Type, stackAdjust);
 
             string suffix = GetSizeSuffix(arg.Type);
             _output.AppendLine($"    move{suffix}   d0,-(sp)");
@@ -534,15 +505,8 @@ public class InstructionSelector
             }
         }
 
-        // Load register arguments (in order, to avoid clobbering)
-        // We need to be careful: loading into d1 before d0 if d0 is needed for d1's load
-        foreach (var (argIndex, reg) in regAssignments)
-        {
-            var arg = call.Arguments[argIndex];
-            EmitLoadValue(arg, reg, arg.Type);
-        }
-
         // Call function
+        _externalReferences.Add(call.FunctionName);
         _output.AppendLine($"    jsr       {call.FunctionName}");
 
         // Clean up stack
@@ -559,7 +523,7 @@ public class InstructionSelector
         }
 
         // Result is in D0 - store if needed
-        if (call.ResultName != null)
+        if (storeResult && call.ResultName != null)
         {
             EmitStoreRegister(M68kRegister.D0, call.ResultName, call.ReturnType);
         }
@@ -568,9 +532,9 @@ public class InstructionSelector
     /// <summary>
     /// Emit a return instruction
     /// </summary>
-    public void EmitReturn(IrReturn ret)
+    public void EmitReturn(IrReturn ret, bool valueAlreadyInD0 = false)
     {
-        if (ret.Value != null)
+        if (ret.Value != null && !valueAlreadyInD0)
         {
             // Load return value to D0
             EmitLoadValue(ret.Value, M68kRegister.D0, ret.Value.Type);

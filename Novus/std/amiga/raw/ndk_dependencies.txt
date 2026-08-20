@@ -1,0 +1,13 @@
+# Static amiga.lib routines whose implementation references a shared-library base.
+amiga_lib|AddTOF|graphics
+amiga_lib|RemTOF|graphics
+amiga_lib|waitbeam|graphics
+amiga_lib|ArgArrayDone|icon
+amiga_lib|ArgArrayInit|icon
+amiga_lib|ArgInt|icon
+amiga_lib|ArgString|icon
+amiga_lib|HotKey|commodities
+amiga_lib|InvertString|commodities
+amiga_lib|CheckRexxMsg|rexxsyslib
+amiga_lib|GetRexxVar|rexxsyslib
+amiga_lib|SetRexxVar|rexxsyslib

@@ -11,5 +11,33 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the font requester class
+///
+/// Obtains the pointer to the getfont gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// getfont_class = GETFONT_GetClass();
+/// D0
+///
+/// Class * GETFONT_GetClass( void );
+///
+/// # Returns
+///
+/// getfont_class - Pointer to the getfont gadget class.
+///
+/// # Notes
+///
+///
+/// # Examples
+///
+///
 @library("getfont.library")
-extern pub fn GETFONT_GetClass() -> *u8
+extern pub fn GETFONT_GetClass() -> *IClass

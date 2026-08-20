@@ -59,13 +59,22 @@ def matching_paren(value: str, start: int) -> int:
 
 
 def split_top_level(value: str) -> list[str]:
-    values, current, depth = [], [], 0
+    values, current = [], []
+    angle_depth = paren_depth = bracket_depth = 0
     for char in value:
-        if char in "<([":
-            depth += 1
-        elif char in ">)]":
-            depth -= 1
-        if char == "," and depth == 0:
+        if char == "<":
+            angle_depth += 1
+        elif char == ">" and angle_depth > 0:
+            angle_depth -= 1
+        elif char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth -= 1
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth -= 1
+        if char == "," and angle_depth == paren_depth == bracket_depth == 0:
             values.append("".join(current).strip())
             current = []
         else:

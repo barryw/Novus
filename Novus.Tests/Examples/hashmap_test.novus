@@ -102,7 +102,6 @@ fn main() -> i32 {
             }
 
             // Cleanup
-            map.drop()
 
             return 0  // Success
         },

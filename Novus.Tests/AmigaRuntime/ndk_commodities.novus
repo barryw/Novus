@@ -1,0 +1,675 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::commodities import ActivateCxObj, AddIEvents, AttachCxObj, ClearCxObjError
+from amiga::raw::commodities import CreateCxObj, CxBroker, CxMsgData, CxMsgID, CxMsgType
+from amiga::raw::commodities import CxObjError, CxObjType, DeleteCxObj, DeleteCxObjAll
+from amiga::raw::commodities import DisposeCxMsg, DivertCxMsg, EnqueueCxObj, InsertCxObj
+from amiga::raw::commodities import InvertKeyMap, MatchIX, ParseIX, RemoveCxObj, RouteCxMsg
+from amiga::raw::commodities import SetCxObjPri, SetFilter, SetFilterIX, SetTranslate
+from amiga::raw::consts import CXM_IEVENT, CX_CUSTOM, CX_FILTER, CX_INVALID
+from amiga::raw::consts import CX_SEND, CX_TRANSLATE
+from amiga::raw::dos import Delay
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg
+from amiga::raw::structs import CxMsg, CxObj, InputEvent, InputXpression, KeyMap
+from amiga::raw::structs import Message, MsgPort, NewBroker
+
+static var TRACE: i32 = 0
+static var ROUTE_MODE: i32 = 0
+static var ROUTER: *CxObj = null
+static var ROUTE_TARGET: *CxObj = null
+static var MESSAGE_TYPE: u32 = 0
+static var MESSAGE_ID: i32 = 0
+static var MESSAGE_CLASS: u8 = 0
+static var MESSAGE_CODE: u16 = 0
+static var MESSAGE_DATA_VALID: bool = false
+
+type CustomAction = amiga fn(*CxMsg in a0, *CxObj in a1) -> i32 in d0
+
+fn cstr(value: Str) -> *u8 {
+    return value.as_cstr()
+}
+
+amiga fn custom_action(message: *CxMsg in a0, object: *CxObj in a1) -> i32 in d0 {
+    let id = CxMsgID(message)
+    TRACE = TRACE * 10 + id
+    MESSAGE_TYPE = CxMsgType(message)
+    MESSAGE_ID = id
+    let data = CxMsgData(message)
+    MESSAGE_DATA_VALID = data != null
+    if data != null {
+        let event = (*InputEvent)data
+        MESSAGE_CLASS = unsafe { (*event).ie_Class }
+        MESSAGE_CODE = unsafe { (*event).ie_Code }
+    }
+    if ROUTE_MODE == 1 && id == 1 {
+        DivertCxMsg(message, ROUTER, ROUTER)
+    } else if ROUTE_MODE == 2 && id == 1 {
+        RouteCxMsg(message, ROUTE_TARGET)
+    } else if ROUTE_MODE == 3 && id == 1 {
+        DisposeCxMsg(message)
+    }
+    return if object == null { 0 } else { 1 }
+}
+
+@suppress("W0002", "Classic 68k function addresses preserve all 32 bits when transported through LONG")
+fn action_address() -> i32 {
+    var action: CustomAction = custom_action
+    return unsafe { (i32)*(*u32)&var action }
+}
+
+@suppress("W0002", "Commodities object constructors take classic 32-bit pointers through LONG arguments")
+fn custom(id: i32) -> *CxObj {
+    return CreateCxObj(CX_CUSTOM, action_address(), id)
+}
+
+@suppress("W0002", "Commodities object constructors take classic 32-bit pointers through LONG arguments")
+fn filter(description: Str) -> *CxObj {
+    return CreateCxObj(CX_FILTER, (i32)(u32)description.as_cstr(), 0)
+}
+
+@suppress("W0002", "Commodities object constructors take classic 32-bit pointers through LONG arguments")
+fn translator(events: *InputEvent) -> *CxObj {
+    return CreateCxObj(CX_TRANSLATE, (i32)(u32)events, 0)
+}
+
+@suppress("W0002", "Commodities object constructors take classic 32-bit pointers through LONG arguments")
+fn sender(port: *MsgPort, id: i32) -> *CxObj {
+    return CreateCxObj(CX_SEND, (i32)(u32)port, id)
+}
+
+fn broker(name: Str, unique: i16) -> *CxObj {
+    var error: i32 = -1
+    var spec: NewBroker = @zeroed(NewBroker)
+    spec.nb_Version = 5
+    spec.nb_Name = name.as_cstr()
+    spec.nb_Title = cstr("Novus NDK verification")
+    spec.nb_Descr = cstr("Disposable Commodities test broker")
+    spec.nb_Unique = unique
+    spec.nb_Pri = 127
+    let result = CxBroker(&var spec, &var error)
+    if result != null { expect(error == 0, "successful broker reports CBERR_OK") }
+    return result
+}
+
+fn timer_expression(code: u16) -> InputXpression {
+    return InputXpression {
+        ix_Version: 2,
+        ix_Class: 6,
+        ix_Code: code,
+        ix_CodeMask: $FFFF,
+        ix_Qualifier: 0,
+        ix_QualMask: $7FFF,
+        ix_QualSame: 0,
+    }
+}
+
+fn timer_event(code: u16) -> InputEvent {
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = 6
+    event.ie_Code = code
+    return event
+}
+
+fn inject_timer(code: u16) {
+    var event = timer_event(code)
+    AddIEvents(&var event)
+}
+
+fn inject_key(code: u16) {
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = 1
+    event.ie_Code = code
+    AddIEvents(&var event)
+}
+
+fn timer_gate(code: u16) -> *CxObj {
+    let gate = filter("TIMER")
+    if gate != null {
+        var expression = timer_expression(code)
+        SetFilterIX(gate, &var expression)
+    }
+    return gate
+}
+
+fn wait_for_trace(expected: i32) {
+    var attempts: i32 = 0
+    while TRACE != expected && attempts < 50 {
+        Delay(1)
+        attempts++
+    }
+}
+
+fn reset_observation() {
+    TRACE = 0
+    ROUTE_MODE = 0
+    ROUTER = null
+    ROUTE_TARGET = null
+    MESSAGE_TYPE = 0
+    MESSAGE_ID = 0
+    MESSAGE_CLASS = 0
+    MESSAGE_CODE = 0
+    MESSAGE_DATA_VALID = false
+}
+
+fn activate(broker_object: *CxObj) -> bool {
+    return broker_object != null && ActivateCxObj(broker_object, 1) == 0
+}
+
+struct SenderObservation {
+    received: bool,
+    message_type: u32,
+    message_id: i32,
+    event_class: u8,
+    event_code: u16,
+    data_valid: bool,
+}
+
+fn observe_sender(name: Str, code: u16, id: i32) -> SenderObservation {
+    var observation: SenderObservation = @zeroed(SenderObservation)
+    let port = CreateMsgPort()
+    let root = broker(name, 0)
+    let gate = timer_gate(code)
+    let send_object = sender(port, id)
+    let swallow = translator(null)
+    if port == null || root == null || gate == null || send_object == null || swallow == null {
+        if root != null { DeleteCxObjAll(root) }
+        DeleteCxObjAll(gate)
+        DeleteCxObj(send_object)
+        DeleteCxObj(swallow)
+        if port != null { DeleteMsgPort(port) }
+    } else {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, send_object)
+        AttachCxObj(gate, swallow)
+        if activate(root) {
+            inject_timer(code)
+            var raw = GetMsg(port)
+            var attempts: i32 = 0
+            while raw == null && attempts < 50 {
+                Delay(1)
+                raw = GetMsg(port)
+                attempts++
+            }
+            if raw != null {
+                let message = (*CxMsg)raw
+                let data = CxMsgData(message)
+                observation.received = true
+                observation.message_type = CxMsgType(message)
+                observation.message_id = CxMsgID(message)
+                observation.data_valid = data != null
+                if data != null {
+                    let event = (*InputEvent)data
+                    observation.event_class = unsafe { (*event).ie_Class }
+                    observation.event_code = unsafe { (*event).ie_Code }
+                }
+                ReplyMsg((*Message)raw)
+            }
+        }
+        DeleteCxObjAll(root)
+        DeleteMsgPort(port)
+    }
+    return observation
+}
+
+// @covers-ndk function|commodities.library|CreateCxObj
+// @ndk-side-effects Allocates a real filter object, proves its public type and clean error state, then deletes it before process memory measurement
+@test("commodities.library CreateCxObj creates the requested object type")
+pub fn commodities_create_object() {
+    let object = filter("TIMER")
+    expect(object != null, "filter object allocates")
+    if object != null {
+        expect(CxObjType(object) == CX_FILTER, "created object has the requested filter type")
+        expect(CxObjError(object) == 0, "valid filter starts without accumulated errors")
+        DeleteCxObj(object)
+    }
+}
+
+// @covers-ndk function|commodities.library|CxBroker
+// @ndk-side-effects Publishes one uniquely named broker, proves a duplicate is rejected with CBERR_DUP, then deletes the published broker and verifies the name can be acquired again
+@test("commodities.library CxBroker enforces and releases unique names")
+pub fn commodities_broker_unique_name() {
+    let first = broker("NovusNDKUniqueBroker", 1)
+    expect(first != null, "first unique broker is published")
+    var error: i32 = -1
+    var duplicate_spec: NewBroker = @zeroed(NewBroker)
+    duplicate_spec.nb_Version = 5
+    duplicate_spec.nb_Name = cstr("NovusNDKUniqueBroker")
+    duplicate_spec.nb_Title = cstr("duplicate")
+    duplicate_spec.nb_Descr = cstr("must fail")
+    duplicate_spec.nb_Unique = 1
+    let duplicate = CxBroker(&var duplicate_spec, &var error)
+    expect(duplicate == null && error == 2, "duplicate unique name is rejected exactly")
+    if duplicate != null { DeleteCxObjAll(duplicate) }
+    if first != null { DeleteCxObjAll(first) }
+    let reused = broker("NovusNDKUniqueBroker", 1)
+    expect(reused != null, "deleting the broker releases its unique name")
+    if reused != null { DeleteCxObjAll(reused) }
+}
+
+// @covers-ndk function|commodities.library|ActivateCxObj
+// @ndk-side-effects Toggles a disposable broker inactive-active-inactive and verifies every returned previous state before deleting it
+@test("commodities.library ActivateCxObj returns exact previous state")
+pub fn commodities_activate_object() {
+    let root = broker("NovusNDKActivate", 0)
+    expect(root != null, "broker allocates")
+    if root != null {
+        expect(ActivateCxObj(root, 1) == 0, "brokers begin inactive")
+        expect(ActivateCxObj(root, 1) != 0, "activating an active broker reports active")
+        expect(ActivateCxObj(root, 0) != 0, "deactivation reports the previous active state")
+        expect(ActivateCxObj(root, 0) == 0, "second deactivation reports inactive")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|DeleteCxObj
+// @ndk-side-effects Deletes one unattached object and proves the same object type can immediately be allocated and deleted again
+@test("commodities.library DeleteCxObj releases one object")
+pub fn commodities_delete_object() {
+    let first = filter("TIMER")
+    expect(first != null, "first object allocates")
+    DeleteCxObj(first)
+    let second = filter("TIMER")
+    expect(second != null, "allocator remains usable after deletion")
+    DeleteCxObj(second)
+}
+
+// @covers-ndk function|commodities.library|DeleteCxObjAll
+// @ndk-side-effects Deletes a broker and its two attached descendants recursively, then proves the broker's unique global name is immediately reusable
+@test("commodities.library DeleteCxObjAll removes an exact object tree")
+pub fn commodities_delete_object_tree() {
+    let root = broker("NovusNDKDeleteTree", 1)
+    expect(root != null, "tree root allocates")
+    if root != null {
+        AttachCxObj(root, custom(1))
+        AttachCxObj(root, translator(null))
+        DeleteCxObjAll(root)
+    }
+    let reused = broker("NovusNDKDeleteTree", 1)
+    expect(reused != null, "recursive deletion releases the broker and descendants")
+    if reused != null { DeleteCxObjAll(reused) }
+}
+
+// @covers-ndk function|commodities.library|CxObjType
+// @ndk-side-effects Reads an exact live translator type and the documented CX_INVALID null result without mutating either object or global lists
+@test("commodities.library CxObjType distinguishes live and null objects")
+pub fn commodities_object_type() {
+    let object = translator(null)
+    expect(object != null && CxObjType(object) == CX_TRANSLATE, "translator reports its exact type")
+    expect(CxObjType(null) == CX_INVALID, "null reports CX_INVALID")
+    DeleteCxObj(object)
+}
+
+// @covers-ndk function|commodities.library|CxObjError
+// @ndk-side-effects Accumulates both a bad-filter and null-attachment error on one real filter, reads the exact combined bits, then leaves cleanup to DeleteCxObj
+@test("commodities.library CxObjError reports accumulated failures")
+pub fn commodities_object_error() {
+    let object = filter("TIMER trailing-token")
+    expect(object != null, "filter object exists despite a parse error")
+    if object != null {
+        AttachCxObj(object, null)
+        let error = CxObjError(object)
+        expect((error & 4) != 0, "invalid description records COERR_BADFILTER")
+        expect((error & 2) != 0, "null child records COERR_NULLATTACH")
+        DeleteCxObj(object)
+    }
+}
+
+// @covers-ndk function|commodities.library|ClearCxObjError
+// @ndk-side-effects Creates a bad filter, proves its error is nonzero, clears the accumulated field, and proves the same object subsequently reports zero
+@test("commodities.library ClearCxObjError clears the exact error field")
+pub fn commodities_clear_object_error() {
+    let object = filter("TIMER trailing-token")
+    expect(object != null && CxObjError(object) != 0, "fixture has a real accumulated error")
+    if object != null {
+        ClearCxObjError(object)
+        expect(CxObjError(object) == 0, "accumulated error becomes zero")
+        DeleteCxObj(object)
+    }
+}
+
+// @covers-ndk function|commodities.library|SetCxObjPri
+// @ndk-side-effects Changes one unattached object's signed priority twice and verifies each returned previous value before deletion
+@test("commodities.library SetCxObjPri returns the exact previous priority")
+pub fn commodities_set_priority() {
+    let object = custom(1)
+    expect(object != null, "custom object allocates")
+    if object != null {
+        expect(SetCxObjPri(object, 23) == 0, "new object begins at priority zero")
+        expect(SetCxObjPri(object, -17) == 23, "second change returns the first priority")
+        expect(SetCxObjPri(object, 0) == -17, "signed negative priority round trips")
+        DeleteCxObj(object)
+    }
+}
+
+// @covers-ndk function|commodities.library|AttachCxObj
+// @ndk-side-effects Appends two custom objects to a disposable active broker, injects one swallowed timer event, and proves callback order is exactly FIFO
+@test("commodities.library AttachCxObj appends in exact FIFO order")
+pub fn commodities_attach_object() {
+    reset_observation()
+    let root = broker("NovusNDKAttach", 0)
+    let gate = timer_gate(11)
+    expect(root != null && gate != null, "broker and exact event gate allocate")
+    if root != null && gate != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, custom(1))
+        AttachCxObj(gate, custom(2))
+        AttachCxObj(gate, translator(null))
+        expect(activate(root), "broker activates from its initial inactive state")
+        inject_timer(11)
+        wait_for_trace(12)
+        expect(TRACE != 0, "at least one attached custom callback executes")
+        expect(TRACE == 12, "attached custom objects run in append order")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|EnqueueCxObj
+// @ndk-side-effects Enqueues two custom objects with opposite priorities, injects one swallowed timer event, and proves descending-priority callback order
+@test("commodities.library EnqueueCxObj orders by signed priority")
+pub fn commodities_enqueue_object() {
+    reset_observation()
+    let root = broker("NovusNDKEnqueue", 0)
+    let gate = timer_gate(12)
+    let low = custom(1)
+    let high = custom(2)
+    expect(root != null && gate != null && low != null && high != null, "broker, gate, and custom objects allocate")
+    if root != null && gate != null && low != null && high != null {
+        AttachCxObj(root, gate)
+        SetCxObjPri(low, -10)
+        SetCxObjPri(high, 10)
+        EnqueueCxObj(gate, low)
+        EnqueueCxObj(gate, high)
+        AttachCxObj(gate, translator(null))
+        activate(root)
+        inject_timer(12)
+        wait_for_trace(21)
+        expect(TRACE == 21, "higher priority object runs first")
+        DeleteCxObjAll(root)
+    } else {
+        DeleteCxObj(low)
+        DeleteCxObj(high)
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|InsertCxObj
+// @ndk-side-effects Inserts a custom object after an exact predecessor in a three-object list and proves the resulting callback order with one swallowed timer event
+@test("commodities.library InsertCxObj inserts after the exact predecessor")
+pub fn commodities_insert_object() {
+    reset_observation()
+    let root = broker("NovusNDKInsert", 0)
+    let gate = timer_gate(13)
+    let first = custom(1)
+    let middle = custom(2)
+    let last = custom(3)
+    expect(root != null && gate != null && first != null && middle != null && last != null, "fixture objects allocate")
+    if root != null && gate != null && first != null && middle != null && last != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, first)
+        AttachCxObj(gate, last)
+        InsertCxObj(gate, middle, first)
+        AttachCxObj(gate, translator(null))
+        activate(root)
+        inject_timer(13)
+        wait_for_trace(123)
+        expect(TRACE == 123, "inserted object runs between predecessor and successor")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|RemoveCxObj
+// @ndk-side-effects Removes the first of two attached custom objects, injects one swallowed timer event, and proves only the still-linked object executes
+@test("commodities.library RemoveCxObj unlinks the exact object")
+pub fn commodities_remove_object() {
+    reset_observation()
+    let root = broker("NovusNDKRemove", 0)
+    let gate = timer_gate(14)
+    let removed = custom(1)
+    expect(root != null && gate != null && removed != null, "fixture objects allocate")
+    if root != null && gate != null && removed != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, removed)
+        AttachCxObj(gate, custom(2))
+        AttachCxObj(gate, translator(null))
+        RemoveCxObj(removed)
+        DeleteCxObj(removed)
+        activate(root)
+        inject_timer(14)
+        wait_for_trace(2)
+        expect(TRACE == 2, "removed object receives no callback")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|SetFilter
+// @ndk-side-effects Replaces a filter description twice, proves F10 first reaches its custom child and then fails after switching to F9, and swallows the injected key before desktop input
+@test("commodities.library SetFilter replaces textual matching behavior")
+pub fn commodities_set_filter() {
+    reset_observation()
+    let root = broker("NovusNDKSetFilter", 0)
+    let match_filter = filter("RAWKEY A")
+    let barrier = filter("RAWKEY F10")
+    expect(root != null && match_filter != null && barrier != null, "broker and filters allocate")
+    if root != null && match_filter != null && barrier != null {
+        AttachCxObj(match_filter, custom(1))
+        AttachCxObj(barrier, custom(9))
+        AttachCxObj(barrier, translator(null))
+        AttachCxObj(root, match_filter)
+        AttachCxObj(root, barrier)
+        activate(root)
+        SetFilter(match_filter, cstr("RAWKEY F10"))
+        inject_key($59)
+        wait_for_trace(19)
+        expect(TRACE == 19, "replacement F10 filter matches before the traversal sentinel")
+        TRACE = 0
+        SetFilter(match_filter, cstr("RAWKEY F9"))
+        inject_key($59)
+        wait_for_trace(9)
+        expect(TRACE == 9, "replacement F9 filter rejects F10 before the traversal sentinel")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|SetFilterIX
+// @ndk-side-effects Replaces a filter's binary expression with an exact timer expression, proves one timer match reaches its child, then replaces it with RAWKEY and proves rejection
+@test("commodities.library SetFilterIX replaces binary matching behavior")
+pub fn commodities_set_filter_ix() {
+    reset_observation()
+    let root = broker("NovusNDKSetFilterIX", 0)
+    let match_filter = filter("RAWKEY A")
+    let barrier = timer_gate(17)
+    expect(root != null && match_filter != null && barrier != null, "broker and filters allocate")
+    if root != null && match_filter != null && barrier != null {
+        AttachCxObj(match_filter, custom(1))
+        AttachCxObj(barrier, custom(9))
+        AttachCxObj(barrier, translator(null))
+        AttachCxObj(root, match_filter)
+        AttachCxObj(root, barrier)
+        activate(root)
+        var timer = timer_expression(17)
+        SetFilterIX(match_filter, &var timer)
+        inject_timer(17)
+        wait_for_trace(19)
+        expect(TRACE == 19, "binary TIMER expression matches before the traversal sentinel")
+        TRACE = 0
+        timer.ix_Class = 1
+        SetFilterIX(match_filter, &var timer)
+        inject_timer(17)
+        wait_for_trace(9)
+        expect(TRACE == 9, "replacement RAWKEY expression rejects timer before the traversal sentinel")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|ParseIX
+// @ndk-side-effects Parses a TIMER description into caller-owned storage and verifies the exact version, class, code mask, and successful return without publishing any object
+@test("commodities.library ParseIX produces an exact timer expression")
+pub fn commodities_parse_ix() {
+    var expression: InputXpression = @zeroed(InputXpression)
+    expression.ix_Version = 2
+    let result = ParseIX(cstr("TIMER"), &var expression)
+    expect(result == 0, "valid TIMER description parses")
+    expect(expression.ix_Version == 2, "caller-owned version is preserved")
+    expect(expression.ix_Class == 6, "class is TIMER")
+    expect(expression.ix_Code == 0 && expression.ix_CodeMask == $FFFF,
+        "bare TIMER description requires the normal zero timer code")
+}
+
+// @covers-ndk function|commodities.library|MatchIX
+// @ndk-side-effects Compares caller-owned timer and raw-key events with one exact TIMER expression and proves both the positive and negative result
+@test("commodities.library MatchIX accepts only the described event class")
+pub fn commodities_match_ix() {
+    var expression = timer_expression(19)
+    var timer = timer_event(19)
+    var key: InputEvent = @zeroed(InputEvent)
+    key.ie_Class = 1
+    expect(MatchIX(&var timer, &var expression) != 0, "timer event matches TIMER expression")
+    expect(MatchIX(&var key, &var expression) == 0, "raw-key event does not match TIMER expression")
+}
+
+// @covers-ndk function|commodities.library|InvertKeyMap
+// @ndk-side-effects Converts ANSI lowercase a through the live default keymap, verifies the produced event is RAWKEY, then proves ParseIX describes the same physical key
+@test("commodities.library InvertKeyMap maps ANSI through the default keymap")
+pub fn commodities_invert_keymap() {
+    var event: InputEvent = @zeroed(InputEvent)
+    let success = InvertKeyMap(97, &var event, (*KeyMap)null)
+    var expression: InputXpression = @zeroed(InputXpression)
+    expression.ix_Version = 2
+    let parsed = ParseIX(cstr("a"), &var expression)
+    expect(success != 0 && parsed == 0, "default keymap and textual key both resolve")
+    expect(event.ie_Class == 1, "generated event is RAWKEY")
+    expect(MatchIX(&var event, &var expression) != 0, "generated event matches the same textual key")
+}
+
+// @covers-ndk function|commodities.library|AddIEvents
+// @ndk-side-effects Copies one caller-owned timer event into the live Commodities network, delivers it through a sender, and swallows the original before desktop input; the sender copy is replied
+@test("commodities.library AddIEvents copies an exact event into the network")
+pub fn commodities_add_input_events() {
+    let observed = observe_sender("NovusNDKAddIEvents", 41, 101)
+    expect(observed.received, "sender receives the injected event")
+    expect(observed.event_class == 6 && observed.event_code == 41,
+        "sender copy preserves exact class and code")
+}
+
+// @covers-ndk function|commodities.library|CxMsgType
+// @ndk-side-effects Reads the type from a real sender-produced Commodities message before replying that asynchronous message and deleting the disposable network
+@test("commodities.library CxMsgType identifies a real input message")
+pub fn commodities_message_type() {
+    let observed = observe_sender("NovusNDKMsgType", 42, 102)
+    expect(observed.received && observed.message_type == CXM_IEVENT, "sender message is exactly CXM_IEVENT")
+}
+
+// @covers-ndk function|commodities.library|CxMsgData
+// @ndk-side-effects Reads the live data pointer from a sender-produced message, proves it names the copied InputEvent with exact fields, then replies the owning message before cleanup
+@test("commodities.library CxMsgData exposes the exact copied event")
+pub fn commodities_message_data() {
+    let observed = observe_sender("NovusNDKMsgData", 43, 103)
+    expect(observed.received && observed.data_valid, "message owns a readable data area")
+    expect(observed.event_class == 6 && observed.event_code == 43,
+        "message data contains the exact copied event")
+}
+
+// @covers-ndk function|commodities.library|CxMsgID
+// @ndk-side-effects Reads the application-selected ID from a real sender-produced message and replies the asynchronous message before deleting its sender and port
+@test("commodities.library CxMsgID returns the sender's exact ID")
+pub fn commodities_message_id() {
+    let observed = observe_sender("NovusNDKMsgID", 44, 731)
+    expect(observed.received && observed.message_id == 731, "sender ID round trips exactly")
+}
+
+// @covers-ndk function|commodities.library|SetTranslate
+// @ndk-side-effects Replaces a translator's retained event pointer, injects a different source event, and proves the callback after the translator receives the exact replacement before a null translator swallows it
+@test("commodities.library SetTranslate replaces an event exactly")
+pub fn commodities_set_translate() {
+    reset_observation()
+    var original_replacement = timer_event(50)
+    var new_replacement = timer_event(77)
+    let root = broker("NovusNDKSetTranslate", 0)
+    let gate = timer_gate(20)
+    let translate_object = translator(&var original_replacement)
+    expect(root != null && gate != null && translate_object != null, "broker, gate, and translator allocate")
+    if root != null && gate != null && translate_object != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, translate_object)
+        AttachCxObj(gate, custom(1))
+        AttachCxObj(gate, translator(null))
+        SetTranslate(translate_object, &var new_replacement)
+        activate(root)
+        inject_timer(20)
+        wait_for_trace(1)
+        expect(TRACE == 1, "translated message reaches the following custom object once")
+        expect(MESSAGE_CLASS == 6 && MESSAGE_CODE == 77,
+            "custom object receives the exact replacement event")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|DivertCxMsg
+// @ndk-side-effects A custom object running synchronously in input-handler context diverts a real message through its child list, then routing resumes at its exact successor before a null translator swallows it
+@test("commodities.library DivertCxMsg executes a nested route and returns")
+pub fn commodities_divert_message() {
+    reset_observation()
+    let root = broker("NovusNDKDivert", 0)
+    let gate = timer_gate(21)
+    ROUTER = custom(1)
+    expect(root != null && gate != null && ROUTER != null, "broker, gate, and router allocate")
+    if root != null && gate != null && ROUTER != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(ROUTER, custom(2))
+        AttachCxObj(gate, ROUTER)
+        AttachCxObj(gate, custom(3))
+        AttachCxObj(gate, translator(null))
+        ROUTE_MODE = 1
+        activate(root)
+        inject_timer(21)
+        wait_for_trace(123)
+        expect(TRACE == 123, "divert visits child then returns to router successor")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|RouteCxMsg
+// @ndk-side-effects A custom object running synchronously in input-handler context routes a real message to an exact later object, skips the intervening object, and reaches a null translator for disposal
+@test("commodities.library RouteCxMsg jumps to the exact linked object")
+pub fn commodities_route_message() {
+    reset_observation()
+    let root = broker("NovusNDKRoute", 0)
+    let gate = timer_gate(22)
+    let router_object = custom(1)
+    ROUTE_TARGET = custom(3)
+    expect(root != null && gate != null && router_object != null && ROUTE_TARGET != null, "routing fixture allocates")
+    if root != null && gate != null && router_object != null && ROUTE_TARGET != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, router_object)
+        AttachCxObj(gate, custom(2))
+        AttachCxObj(gate, ROUTE_TARGET)
+        AttachCxObj(gate, translator(null))
+        ROUTE_MODE = 2
+        activate(root)
+        inject_timer(22)
+        wait_for_trace(13)
+        expect(TRACE == 13, "route skips the intervening object and reaches the target")
+        DeleteCxObjAll(root)
+    }
+}
+
+// @covers-ndk function|commodities.library|DisposeCxMsg
+// @ndk-side-effects A custom object disposes a real synchronous input message in input-handler context and proves no later object receives the invalidated message
+@test("commodities.library DisposeCxMsg stops routing immediately")
+pub fn commodities_dispose_message() {
+    reset_observation()
+    let root = broker("NovusNDKDispose", 0)
+    let gate = timer_gate(23)
+    expect(root != null && gate != null, "broker and exact event gate allocate")
+    if root != null && gate != null {
+        AttachCxObj(root, gate)
+        AttachCxObj(gate, custom(1))
+        AttachCxObj(gate, custom(2))
+        ROUTE_MODE = 3
+        activate(root)
+        inject_timer(23)
+        wait_for_trace(1)
+        expect(TRACE == 1, "disposed message reaches no successor")
+        DeleteCxObjAll(root)
+    }
+}

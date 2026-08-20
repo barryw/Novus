@@ -70,7 +70,8 @@ pub fn foundation_bitwise_operators() {
     expect((value | $000000F0) == $A5A500FF, "or")
     expect((value ^ $FFFF0000) == $5A5A000F, "xor")
     expect((1 << 12) == 4096, "left shift")
-    expect(($80000000 >> 31) == 1, "logical right shift")
+    let logical_shift: u32 = ((u32)$80000000 >> 31)
+    expect(logical_shift == 1, "logical right shift")
 }
 
 @test("comparison and boolean operators")
@@ -99,11 +100,12 @@ pub fn foundation_short_circuit() {
 pub fn foundation_casts() {
     let negative: i8 = -1
     let widened: i32 = (i32)negative
-    let narrowed: u8 = (u8)300
+    let source: u16 = 300
+    let narrowed: u8 = (u8)source
     let bits: u32 = (u32)widened
     expect(widened == -1, "sign extension")
     expect(narrowed == 44, "narrowing")
-    expect(bits == $FFFFFFFF, "signed to unsigned preserves bits")
+    expect(bits == (u32)$FFFFFFFF, "signed to unsigned preserves bits")
 }
 
 @test("character and escape literals")

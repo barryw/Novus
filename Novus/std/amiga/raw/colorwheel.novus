@@ -11,7 +11,47 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// convert from an HSB color space to an RGB color
+///
+/// Converts a color from an HSB representation to an RGB representation.
+///
+/// # Synopsis
+///
+/// ConvertHSBToRGB(hsb, rgb);
+/// 	        A0   A1
+///
+/// VOID ConvertHSBToRGB(struct ColorWheelHSB *, struct ColorWheelRGB *);
+///
+/// # Arguments
+///
+/// * `hsb` - filled-in ColorWheelHSB structure containing the values to convert rgb - structure to receive the converted values
+///
+/// # Bugs
+///
+/// Even though all communication with the color wheel is done using full
+/// 32-bit color components, color calculations are currently done using
+/// 16-bit math, which can cause certain rounding errors to appear.
 @library("colorwheel.library")
 extern pub fn ConvertHSBToRGB(hsb: *ColorWheelHSB, rgb: *ColorWheelRGB)
+/// convert from an RGB color space to an HSB color
+///
+/// Converts a color from an RGB representation to an HSB representation.
+///
+/// # Synopsis
+///
+/// ConvertRGBToHSB(rgb, hsb);
+/// 	        A0   A1
+///
+/// VOID ConvertRGBToHSB(struct ColorWheelRGB *, struct ColorWheelHSB *);
+///
+/// # Arguments
+///
+/// * `rgb` - filled-in ColorWheelRGB structure containing the values to convert hsb - structure to receive the converted values
+///
+/// # Bugs
+///
+/// Even though all communication with the color wheel is done using full
+/// 32-bit color components, color calculations are currently done using
+/// 16-bit math, which can cause certain rounding errors to appear.
 @library("colorwheel.library")
 extern pub fn ConvertRGBToHSB(rgb: *ColorWheelRGB, hsb: *ColorWheelHSB)

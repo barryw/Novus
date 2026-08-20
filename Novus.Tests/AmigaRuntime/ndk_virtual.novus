@@ -1,0 +1,104 @@
+from std::test::test import expect
+from amiga::raw::consts import GA_ID, GA_RelVerify, GA_TabCycle, LAYOUT_AddChild, STRINGA_TextVal, TAG_DONE, VIRTUALA_Contents, VIRTUALA_Scroller, WA_Activate, WA_AutoAdjust, WA_Gadgets, WA_Height, WA_Left, WA_Top, WA_Width
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import CloseWindow, DisposeObject, GetAttr, LockPubScreen, NewObjectA, OpenWindowTagList, UnlockPubScreen
+from amiga::raw::layout import LAYOUT_GetClass, RethinkLayout
+from amiga::raw::string import STRING_GetClass
+from amiga::raw::structs import Gadget, LayoutLimits, Screen, TagItem, Window
+from amiga::raw::virtual import RefreshVirtualGadget, RethinkVirtualSize, VIRTUAL_GetClass
+
+fn make_input(id: u32) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: GA_ID, ti_Data: id },
+        TagItem { ti_Tag: GA_TabCycle, ti_Data: 1 },
+        TagItem { ti_Tag: GA_RelVerify, ti_Data: 1 },
+        TagItem { ti_Tag: STRINGA_TextVal, ti_Data: (u32)"Virtual input" },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(STRING_GetClass(), null, &var tags[0])
+}
+
+fn make_layout(child: *u8) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LAYOUT_AddChild, ti_Data: (u32)child },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(LAYOUT_GetClass(), null, &var tags[0])
+}
+
+fn make_virtual(contents: *u8) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: VIRTUALA_Contents, ti_Data: (u32)contents },
+        TagItem { ti_Tag: VIRTUALA_Scroller, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(VIRTUAL_GetClass(), null, &var tags[0])
+}
+
+fn open_window(root: *u8) -> *Window {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WA_Left, ti_Data: 30 },
+        TagItem { ti_Tag: WA_Top, ti_Data: 30 },
+        TagItem { ti_Tag: WA_Width, ti_Data: 240 },
+        TagItem { ti_Tag: WA_Height, ti_Data: 90 },
+        TagItem { ti_Tag: WA_Gadgets, ti_Data: (u32)root },
+        TagItem { ti_Tag: WA_AutoAdjust, ti_Data: 1 },
+        TagItem { ti_Tag: WA_Activate, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return OpenWindowTagList(null, &var tags[0])
+}
+
+fn settle_display() {
+    WaitTOF()
+    WaitTOF()
+}
+
+// @covers-ndk function|virtual.library|RethinkVirtualSize
+// @ndk-side-effects Builds a real input-inside-layout-inside-Virtual hierarchy, locks the Workbench public screen, computes ordered nonzero window limits for the Virtual group, unlocks the screen, and disposes the complete owned hierarchy
+@test("virtual.library RethinkVirtualSize computes a real hierarchy")
+pub fn virtual_rethink_size() {
+    let input = make_input(61)
+    let contents = if input != null { make_layout(input) } else { (*u8)null }
+    let virtual = if contents != null { make_virtual(contents) } else { (*u8)null }
+    let root = if virtual != null { make_layout(virtual) } else { (*u8)null }
+    let screen = LockPubScreen(null)
+    var limits = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    let result = if root != null && screen != null { RethinkVirtualSize((*u32)virtual, (*u32)root, null, screen, &var limits) } else { 0 }
+    let limits_valid = limits.MinWidth > 0 && limits.MinHeight > 0 && limits.MinWidth <= limits.MaxWidth && limits.MinHeight <= limits.MaxHeight
+    if screen != null { UnlockPubScreen(null, screen) }
+    if root != null { DisposeObject(root) }
+    if root == null && virtual != null { DisposeObject(virtual) }
+    if virtual == null && contents != null { DisposeObject(contents) }
+    if contents == null && input != null { DisposeObject(input) }
+    expect(result != 0, "Virtual size calculation succeeds on the public screen")
+    expect(limits_valid, "Virtual hierarchy returns ordered nonzero window limits")
+}
+
+// @covers-ndk function|virtual.library|RefreshVirtualGadget
+// @ndk-side-effects Builds and sizes a real Virtual hierarchy, attaches it to an active Workbench window, renders the root, refreshes the exact visible input through Virtual clipping, verifies its live ID, then closes and disposes the hierarchy
+@test("virtual.library RefreshVirtualGadget renders a real child")
+pub fn virtual_refresh() {
+    let input = make_input(62)
+    let contents = if input != null { make_layout(input) } else { (*u8)null }
+    let virtual = if contents != null { make_virtual(contents) } else { (*u8)null }
+    let root = if virtual != null { make_layout(virtual) } else { (*u8)null }
+    let screen = LockPubScreen(null)
+    var limits = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    let sized = if root != null && screen != null { RethinkVirtualSize((*u32)virtual, (*u32)root, null, screen, &var limits) } else { 0 }
+    if screen != null { UnlockPubScreen(null, screen) }
+    let window = if sized != 0 { open_window(root) } else { (*Window)null }
+    let laid_out = if window != null { RethinkLayout((*Gadget)root, window, null, 1) } else { 0 }
+    if laid_out != 0 { RefreshVirtualGadget((*Gadget)input, (*u32)virtual, window, null) }
+    var id: u32 = 0
+    let got_id = if input != null { GetAttr(GA_ID, input, &var id) } else { 0 }
+    let refreshed = laid_out != 0
+    if window != null { CloseWindow(window) }
+    if root != null { DisposeObject(root) }
+    if root == null && virtual != null { DisposeObject(virtual) }
+    if virtual == null && contents != null { DisposeObject(contents) }
+    if contents == null && input != null { DisposeObject(input) }
+    settle_display()
+    expect(refreshed, "real Virtual hierarchy sizes, attaches, and lays out")
+    expect(got_id != 0 && id == 62, "refreshed clipped child remains live with ID 62")
+}

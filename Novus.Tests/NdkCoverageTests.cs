@@ -26,24 +26,50 @@ public sealed class NdkCoverageTests
                 ==public
                 ULONG DemoCall(struct Demo *value) (a0)
                 """);
+            File.WriteAllText(Path.Combine(ndk, "Include", "sfd", "mathffp_lib.sfd"), """
+                ==base _MathBase
+                ==libname mathffp.library
+                ==bias 30
+                ==public
+                FLOAT FfpValue(FLOAT value) (d0)
+                """);
             File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "clib", "alib_protos.h"), "");
+            File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "clib", "demo_protos.h"),
+                "ULONG DemoCall(struct Demo *value);\n");
+            File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "clib", "mathffp_protos.h"),
+                "FLOAT FfpValue(FLOAT value);\n");
             File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "devices", "demo.h"), """
                 struct Demo { ULONG value; };
                 #define DEMO_FLAG 4
                 #define DEMO_VALUE(x) ((x)->value)
                 """);
+            File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "devices", "aaa.h"),
+                "struct Demo *ForwardOnly;\n");
             File.WriteAllText(Path.Combine(raw, "demo.novus"), "extern pub fn DemoCall(value: *Demo) -> u32\n");
+            var mathFfp = Path.Combine(raw, "mathffp.novus");
+            File.WriteAllText(mathFfp, "extern pub fn FfpValue(value: u32) -> u32\n");
             File.WriteAllText(Path.Combine(raw, "structs.novus"), "pub struct Demo { value: u32 }\n");
             File.WriteAllText(Path.Combine(raw, "consts.novus"), "pub const DEMO_FLAG: u32 = 4\n");
 
             var manifest = NdkCoverage.Generate(ndk, raw);
 
             Assert.Contains(manifest.Symbols, symbol => symbol.Category == "function" && symbol.Name == "DemoCall" && symbol.Status == "DIRECTLY_SUPPORTED");
-            Assert.Contains(manifest.Symbols, symbol => symbol.Category == "type" && symbol.Name == "Demo" && symbol.Status == "DIRECTLY_SUPPORTED");
+            Assert.Contains(manifest.Symbols, symbol => symbol.Category == "type" && symbol.Name == "Demo" &&
+                symbol.Status == "DIRECTLY_SUPPORTED" && symbol.Definition.StartsWith("struct(", StringComparison.Ordinal));
             Assert.Contains(manifest.Symbols, symbol => symbol.Category == "constant" && symbol.Name == "DEMO_FLAG" && symbol.Status == "DIRECTLY_SUPPORTED");
             Assert.Contains(manifest.Symbols, symbol => symbol.Category == "macro" && symbol.Name == "DEMO_VALUE" && symbol.Status == "NOVUS_EQUIVALENT");
             Assert.Empty(NdkCoverage.Verify(manifest, raw, ndk));
 
+            File.WriteAllText(mathFfp, "extern pub fn FfpValue(value: f32) -> f32\n");
+            Assert.Contains(NdkCoverage.Verify(manifest, raw, ndk),
+                error => error.Contains("raw signature mismatch", StringComparison.Ordinal));
+            File.WriteAllText(mathFfp, "extern pub fn FfpValue(value: u32) -> u32\n");
+
+            File.WriteAllText(Path.Combine(raw, "demo.novus"), "extern pub fn DemoCall(value: *u8) -> u32\n");
+            Assert.Contains(NdkCoverage.Verify(manifest, raw, ndk),
+                error => error.Contains("raw signature mismatch", StringComparison.Ordinal));
+
+            File.WriteAllText(Path.Combine(raw, "demo.novus"), "extern pub fn DemoCall(value: *Demo) -> u32\n");
             File.AppendAllText(Path.Combine(raw, "demo.novus"), "extern pub fn DemoCall(value: *Demo) -> u32\n");
             Assert.Contains(NdkCoverage.Verify(manifest, raw), error => error.Contains("duplicate raw binding", StringComparison.Ordinal));
         }
@@ -64,6 +90,8 @@ public sealed class NdkCoverageTests
             File.WriteAllText(Path.Combine(raw, "structs.novus"), "pub struct ExtraType {}\n");
             File.WriteAllText(Path.Combine(raw, "consts.novus"), "pub const EXTRA_CONSTANT: u32 = 1\n");
             File.WriteAllText(Path.Combine(raw, "ndk_unsupported_macros.txt"), "UNCLASSIFIED = something\n");
+            File.WriteAllText(Path.Combine(raw, "ndk_link_gaps.txt"),
+                "amiga::raw::demo::Missing|undefined _Missing\n");
             var manifest = new NdkCoverageManifest
             {
                 Baseline = new NdkBaseline { Platform = "classic-68k-amigaos" },
@@ -82,6 +110,7 @@ public sealed class NdkCoverageTests
             Assert.Contains(errors, error => error.Contains("raw type is outside pinned baseline", StringComparison.Ordinal));
             Assert.Contains(errors, error => error.Contains("raw constant is outside pinned baseline", StringComparison.Ordinal));
             Assert.Contains(errors, error => error.Contains("macro is not classified", StringComparison.Ordinal));
+            Assert.Contains(errors, error => error.Contains("raw callable is not linkable", StringComparison.Ordinal));
         }
         finally
         {

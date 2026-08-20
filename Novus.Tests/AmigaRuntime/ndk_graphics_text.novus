@@ -1,0 +1,363 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, FPF_ROMFONT
+from amiga::raw::consts import FSF_BOLD, FSF_ITALIC, FSF_UNDERLINED, TAG_DONE
+from amiga::raw::structs import RastPort, TextAttr, TextExtent, TextFont
+from amiga::raw::graphics import AskFont, AskSoftStyle, CloseFont, ExtendFont, ExtendFontTags
+from amiga::raw::graphics import FontExtent, GetOutlinePen, InitRastPort, Move, OpenFont, ReadPixel
+from amiga::raw::graphics import SetAPen, SetFont, SetOutlinePen, SetSoftStyle, StripFont
+from amiga::raw::graphics import Text, TextExtent, TextFit, TextLength, WaitBlit
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::sys::graphics::font import FontHandle
+
+fn topaz_attr() -> TextAttr {
+    return TextAttr {
+        ta_Name: "topaz.font",
+        ta_YSize: 8,
+        ta_Style: 0,
+        ta_Flags: (u8)FPF_ROMFONT,
+    }
+}
+
+fn font() -> Result<FontHandle, i32> {
+    return match FontHandle::open_rom("topaz.font", 8) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn apply(handle: &FontHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    SetFont(rastport, handle.as_raw())
+}
+
+// @covers-ndk function|graphics.library|OpenFont
+// @ndk-side-effects OpenFont acquires the resident eight-pixel topaz font and returns its exact dimensions and ROM-font identity; FontHandle balances the accessor with CloseFont at scope exit
+@test("graphics.library OpenFont acquires resident topaz")
+pub fn graphics_open_font() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    let raw = handle.as_raw()
+    let valid = unsafe {
+        (*raw).tf_YSize == 8 && (*raw).tf_XSize == 8 && ((*raw).tf_Flags & (u8)FPF_ROMFONT) != 0
+    }
+    expect_true(valid, "resident topaz has exact 8x8 ROM metrics")
+}
+
+// @covers-ndk function|graphics.library|CloseFont
+// @ndk-side-effects Two OpenFont calls acquire the same resident font; CloseFont releases exactly one accessor and leaves the second valid, then the final CloseFont balances the remaining accessor
+@test("graphics.library CloseFont releases one accessor")
+pub fn graphics_close_font() {
+    var attr = topaz_attr()
+    let first = OpenFont(&var attr)
+    let second = OpenFont(&var attr)
+    if first == null || second == null {
+        if first != null { CloseFont(first) }
+        if second != null { CloseFont(second) }
+        expect(false, "two topaz accessors opened")
+        return
+    }
+    let before = unsafe { (*second).tf_Accessors }
+    CloseFont(first)
+    let after = unsafe { (*second).tf_Accessors }
+    expect(first == second && before == after + 1, "one close decrements the shared accessor count")
+    CloseFont(second)
+}
+
+// @covers-ndk function|graphics.library|SetFont
+// @ndk-side-effects SetFont installs the exact TextFont pointer and copies its height, width, and baseline into the RastPort while clearing a previously requested soft bold style
+@test("graphics.library SetFont installs exact metrics")
+pub fn graphics_set_font() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    apply(&handle, &var rp)
+    let enable = AskSoftStyle(&var rp)
+    SetSoftStyle(&var rp, FSF_BOLD, enable)
+    SetFont(&var rp, handle.as_raw())
+    let valid = unsafe {
+        rp.Font == handle.as_raw() && rp.TxHeight == (*handle.as_raw()).tf_YSize &&
+        rp.TxWidth == (*handle.as_raw()).tf_XSize && rp.TxBaseline == (*handle.as_raw()).tf_Baseline &&
+        (rp.AlgoStyle & (u8)FSF_BOLD) == 0
+    }
+    expect_true(valid, "RastPort points at topaz metrics with soft style cleared")
+}
+
+// @covers-ndk function|graphics.library|AskFont
+// @ndk-side-effects AskFont copies the active RastPort font's name pointer, height, intrinsic style, and flags into a caller-owned TextAttr without changing the font
+@test("graphics.library AskFont returns active attributes")
+pub fn graphics_ask_font() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    var attr: TextAttr = @zeroed(TextAttr)
+    apply(&handle, &var rp)
+    AskFont(&var rp, &var attr)
+    let valid = unsafe {
+        attr.ta_Name != null && attr.ta_YSize == (*handle.as_raw()).tf_YSize &&
+        attr.ta_Style == (*handle.as_raw()).tf_Style && attr.ta_Flags == (*handle.as_raw()).tf_Flags
+    }
+    expect_true(valid, "TextAttr exactly reflects the active font")
+}
+
+// @covers-ndk function|graphics.library|AskSoftStyle
+// @ndk-side-effects AskSoftStyle reports that resident topaz can synthesize underline, bold, and italic styles while leaving the RastPort's current algorithmic style unchanged
+@test("graphics.library AskSoftStyle reports supported synthesis")
+pub fn graphics_ask_soft_style() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    apply(&handle, &var rp)
+    let before = rp.AlgoStyle
+    let enabled = AskSoftStyle(&var rp)
+    let expected = FSF_UNDERLINED | FSF_BOLD | FSF_ITALIC
+    expect((enabled & expected) == expected && rp.AlgoStyle == before,
+        "topaz supports all three soft styles without mutation")
+}
+
+// @covers-ndk function|graphics.library|SetSoftStyle
+// @ndk-side-effects SetSoftStyle enables only the requested supported bold bit, returns the resulting style, updates RastPort.AlgoStyle, and then clears the bit through the same enable mask
+@test("graphics.library SetSoftStyle updates enabled bits")
+pub fn graphics_set_soft_style() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    apply(&handle, &var rp)
+    let enable = AskSoftStyle(&var rp)
+    let styled = SetSoftStyle(&var rp, FSF_BOLD, enable)
+    let set = (styled & FSF_BOLD) != 0 && (rp.AlgoStyle & (u8)FSF_BOLD) != 0
+    let cleared = SetSoftStyle(&var rp, 0, enable)
+    expect(set && (cleared & FSF_BOLD) == 0 && (rp.AlgoStyle & (u8)FSF_BOLD) == 0,
+        "bold toggles only through the enabled style mask")
+}
+
+// @covers-ndk function|graphics.library|ExtendFont
+// @ndk-side-effects StripFont removes topaz's extension and ExtendFont rebuilds it with default tags, returning success and replacing the restored original tf_Message.mn_ReplyPort with a live extension before CloseFont
+@test("graphics.library ExtendFont rebuilds stripped metadata")
+pub fn graphics_extend_font() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    let raw = handle.as_raw()
+    StripFont(raw)
+    let stripped = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    let extended = ExtendFont(raw, null)
+    let rebuilt = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    expect(extended == 1 && rebuilt != null && rebuilt != stripped,
+        "default extension replaces the stripped reply-port value")
+}
+
+// @covers-ndk function|graphics.library|ExtendFontTags
+// @ndk-side-effects ExtendFontTags forwards a TAG_DONE varargs list to rebuild a stripped topaz extension, returns success, and replaces the restored original tf_Message.mn_ReplyPort with a live extension before cleanup
+@test("graphics.library ExtendFontTags forwards varargs")
+pub fn graphics_extend_font_tags() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    let raw = handle.as_raw()
+    StripFont(raw)
+    let stripped = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    let extended = ExtendFontTags(raw, TAG_DONE)
+    let rebuilt = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    expect(extended == 1 && rebuilt != null && rebuilt != stripped,
+        "varargs extension replaces the stripped reply-port value")
+}
+
+// @covers-ndk function|graphics.library|StripFont
+// @ndk-side-effects StripFont replaces an existing TextFont extension pointer with its saved original reply port; ExtendFont immediately rebuilds the extension before the shared font accessor is closed
+@test("graphics.library StripFont removes extended metadata")
+pub fn graphics_strip_font() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    let raw = handle.as_raw()
+    expect_true(ExtendFont(raw, null) == 1, "font extension exists before strip")
+    let extension = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    StripFont(raw)
+    let stripped = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    let restored = ExtendFont(raw, null) == 1
+    let rebuilt = unsafe { (*raw).tf_Message.mn_ReplyPort }
+    expect(extension != null && stripped != extension && restored && rebuilt != stripped,
+        "extension pointer is stripped and rebuilt")
+}
+
+// @covers-ndk function|graphics.library|FontExtent
+// @ndk-side-effects FontExtent fills every vertical metric from the selected TextFont and reports its fixed-cell width; exact bounds are derived from topaz's YSize and baseline
+@test("graphics.library FontExtent reports exact font bounds")
+pub fn graphics_font_extent() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var extent: TextExtent = @zeroed(TextExtent)
+    FontExtent(handle.as_raw(), &var extent)
+    let baseline = (i16)handle.baseline()
+    expect(extent.te_Width == handle.width() && extent.te_Height == handle.height() &&
+        extent.te_Extent.MinY == -baseline &&
+        extent.te_Extent.MaxY == (i16)handle.height() - baseline - 1,
+        "font extent matches width, height, and baseline")
+}
+
+// @covers-ndk function|graphics.library|TextLength
+// @ndk-side-effects TextLength measures five fixed-width topaz glyphs without changing the RastPort cursor; the result equals five times the active font's XSize
+@test("graphics.library TextLength measures fixed glyphs")
+pub fn graphics_text_length() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    apply(&handle, &var rp)
+    let before = rp.cp_x
+    let width = TextLength(&var rp, "Novus", 5)
+    expect(width == (i16)(handle.width() * 5) && rp.cp_x == before,
+        "measurement returns 40 pixels without moving the cursor")
+}
+
+// @covers-ndk function|graphics.library|TextExtent
+// @ndk-side-effects TextExtent fills the width, height, and rendered vertical bounds for three topaz glyphs; its width exactly matches TextLength and its baseline-derived bounds match the active font
+@test("graphics.library TextExtent fills rendered bounds")
+pub fn graphics_text_extent() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    var extent: TextExtent = @zeroed(TextExtent)
+    apply(&handle, &var rp)
+    TextExtent(&var rp, "ABC", 3, &var extent)
+    let baseline = (i16)handle.baseline()
+    expect(extent.te_Width == (u16)TextLength(&var rp, "ABC", 3) &&
+        extent.te_Height == handle.height() && extent.te_Extent.MinY == -baseline &&
+        extent.te_Extent.MaxY == (i16)handle.height() - baseline - 1,
+        "extent matches measured advance and baseline bounds")
+}
+
+// @covers-ndk function|graphics.library|TextFit
+// @ndk-side-effects TextFit constrains a five-character topaz string to exactly three cell widths and fills the returned extent for precisely those three glyphs
+@test("graphics.library TextFit honors exact pixel width")
+pub fn graphics_text_fit() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    var extent: TextExtent = @zeroed(TextExtent)
+    apply(&handle, &var rp)
+    let limit = handle.width() * 3
+    let count = TextFit(&var rp, "ABCDE", 5, &var extent, null, 1, limit, handle.height())
+    expect(count == 3 && extent.te_Width == limit && extent.te_Height == handle.height(),
+        "only three complete fixed-width glyphs fit")
+}
+
+// @covers-ndk function|graphics.library|Text
+// @ndk-side-effects Text renders an A into a cleared owned bitmap, advances cp_x by the measured glyph width, and completes its blit before pixel scanning and bitmap cleanup
+@test("graphics.library Text draws and advances the cursor")
+pub fn graphics_text() {
+    let handle = match font() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "topaz/8 opened")
+            return
+        },
+    }
+    let bitmap = match BitMapHandle::alloc(64, 16, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "text bitmap allocated")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    apply(&handle, &var rp)
+    unsafe { rp.BitMap = bitmap.as_raw() }
+    SetAPen(&var rp, 1)
+    Move(&var rp, 0, (i16)handle.baseline())
+    let width = TextLength(&var rp, "A", 1)
+    Text(&var rp, "A", 1)
+    WaitBlit()
+    var ink = false
+    var y: i16 = 0
+    while y < (i16)handle.height() {
+        var x: i16 = 0
+        while x < width {
+            if ReadPixel(&var rp, x, y) == 1 { ink = true }
+            x++
+        }
+        y++
+    }
+    expect(ink && rp.cp_x == width, "glyph changes pixels and advances by its measured width")
+}
+
+// @covers-ndk function|graphics.library|SetOutlinePen
+// @ndk-side-effects SetOutlinePen returns the prior RastPort outline pen, stores the requested pen 5, and enables area-outline mode as observed through GetOutlinePen and RastPort flags
+@test("graphics.library SetOutlinePen stores and returns pens")
+pub fn graphics_set_outline_pen() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    let before = GetOutlinePen(&var rp)
+    let returned = SetOutlinePen(&var rp, 5)
+    expect(returned == before && GetOutlinePen(&var rp) == 5 && rp.AOlPen == 5,
+        "setter returns old pen and installs pen 5")
+}
+
+// @covers-ndk function|graphics.library|GetOutlinePen
+// @ndk-side-effects GetOutlinePen reads the full pen value installed through SetOutlinePen without changing the RastPort or the stored outline pen
+@test("graphics.library GetOutlinePen reads without mutation")
+pub fn graphics_get_outline_pen() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    SetOutlinePen(&var rp, 7)
+    let first = GetOutlinePen(&var rp)
+    let second = GetOutlinePen(&var rp)
+    expect(first == 7 && second == 7 && rp.AOlPen == 7, "two reads preserve installed pen 7")
+}

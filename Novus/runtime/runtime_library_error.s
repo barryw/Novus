@@ -3,6 +3,7 @@
 
 	section	__novus_library_not_found,code
 	xdef	___novus_library_not_found
+	xref	_DOSBase
 
 ___novus_library_not_found:
 	movem.l	d6-d7/a2-a4/a6,-(sp)
@@ -14,6 +15,23 @@ ___novus_library_not_found:
 	bpl.s	.alert
 	tst.l	276(a0)		; ExecBase.ThisTask
 	beq.s	.alert
+
+.try_output:
+	move.l	_DOSBase,d0
+	beq.s	.try_requester
+	movea.l	d0,a6
+	jsr	-60(a6)		; Output()
+	tst.l	d0
+	beq.s	.try_requester
+	move.l	d6,-(sp)
+	move.l	a4,-(sp)
+	move.l	sp,d3
+	lea	.cli_text(pc),a0
+	move.l	a0,d2
+	move.l	d0,d1
+	jsr	-354(a6)		; VFPrintf()
+	addq.l	#8,sp
+	bra.s	.done
 
 .try_requester:
 	movea.l	4.w,a6
@@ -56,6 +74,8 @@ ___novus_library_not_found:
 	dc.b	'Novus',0
 .text:
 	dc.b	'Need %s v%ld+.',0
+.cli_text:
+	dc.b	'Novus: need %s v%ld+',10,0
 .ok:
 	dc.b	'OK',0
 

@@ -1,0 +1,87 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DOS_RDARGS
+from amiga::raw::dos import AllocDosObject, FreeArgs, FreeDosObject, ReadArgs, ReadItem
+from amiga::raw::structs import CSource, RDArgs
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn init_rdargs(args: *RDArgs, source: Str) {
+    args.RDA_Source = CSource { CS_Buffer: source.as_cstr(), CS_Length: (i32)source.len(), CS_CurChr: 0 }
+    args.RDA_DAList = 0
+    args.RDA_Buffer = null
+    args.RDA_BufSiz = 0
+    args.RDA_ExtHelp = null
+    args.RDA_Flags = 0
+}
+
+// @covers-ndk function|dos.library|ReadItem
+// @ndk-side-effects Tokenizes caller-owned CSource text into bounded caller buffers, distinguishes quoted and unquoted items, strips quotes, and allocates no storage
+@test("dos.library ReadItem distinguishes quoted and unquoted words")
+pub fn dos_read_item() {
+    let plain: Str = "alpha beta"
+    var plain_source = CSource { CS_Buffer: plain.as_cstr(), CS_Length: (i32)plain.len(), CS_CurChr: 0 }
+    var word: [u8] = [0; 32]
+    let pointer = unsafe { (*u8)&var word[0] }
+    let plain_kind = ReadItem(pointer, 32, &var plain_source)
+    let plain_ok = plain_kind == 1 && c_equals(pointer, "alpha") && plain_source.CS_CurChr > 0
+
+    let quoted: Str = "\"two words\" tail"
+    var quoted_source = CSource { CS_Buffer: quoted.as_cstr(), CS_Length: (i32)quoted.len(), CS_CurChr: 0 }
+    let quoted_kind = ReadItem(pointer, 32, &var quoted_source)
+    expect(plain_ok && quoted_kind == 2 && c_equals(pointer, "two words"), "token kinds and stripped contents are exact")
+}
+
+// @covers-ndk function|dos.library|ReadArgs
+// @ndk-side-effects Parses a caller-owned newline-terminated CSource into string, numeric-pointer, and switch result slots; all attached DOS storage is released with FreeArgs
+@test("dos.library ReadArgs fills typed result slots")
+pub fn dos_read_args() {
+    let input: Str = "NAME=Novus COUNT=42 VERBOSE\n"
+    let args = (*RDArgs)AllocDosObject(DOS_RDARGS, null)
+    var results: [i32] = [0; 3]
+    if args != null { init_rdargs(args, input) }
+    var parsed: *RDArgs = null
+    if args != null { parsed = ReadArgs("NAME/K/A,COUNT/N/K,VERBOSE/S", unsafe { (*i32)&var results[0] }, args) }
+    var valid = false
+    if parsed != null && results[0] != 0 && results[1] != 0 {
+        let number = (*i32)results[1]
+        valid = parsed == args && c_equals((*u8)results[0], "Novus") && unsafe { number[0] == 42 } && results[2] != 0
+    }
+    if parsed != null { FreeArgs(parsed) }
+    if args != null { FreeDosObject(DOS_RDARGS, (*u8)args) }
+    expect(valid, "string, numeric, and switch results match the supplied command line")
+}
+
+// @covers-ndk function|dos.library|FreeArgs
+// @ndk-side-effects Releases every allocation attached by ReadArgs to a caller-owned RDArgs, after which the reset structure can parse and release a second command line without leaking
+@test("dos.library FreeArgs permits clean RDArgs reuse")
+pub fn dos_free_args() {
+    let first_input: Str = "VALUE=first\n"
+    let args = (*RDArgs)AllocDosObject(DOS_RDARGS, null)
+    var results: [i32] = [0]
+    if args != null { init_rdargs(args, first_input) }
+    var first: *RDArgs = null
+    if args != null { first = ReadArgs("VALUE/K/A", unsafe { (*i32)&var results[0] }, args) }
+    let first_ok = first != null && results[0] != 0 && c_equals((*u8)results[0], "first")
+    if first != null { FreeArgs(first) }
+
+    let second_input: Str = "VALUE=second\n"
+    if args != null { init_rdargs(args, second_input) }
+    results[0] = 0
+    var second: *RDArgs = null
+    if args != null { second = ReadArgs("VALUE/K/A", unsafe { (*i32)&var results[0] }, args) }
+    let second_ok = second != null && results[0] != 0 && c_equals((*u8)results[0], "second")
+    if second != null { FreeArgs(second) }
+    if args != null { FreeDosObject(DOS_RDARGS, (*u8)args) }
+    expect(first_ok && second_ok, "the caller-owned RDArgs parses successfully after balanced cleanup")
+}

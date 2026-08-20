@@ -12,57 +12,154 @@ from amiga::raw::structs import *
 // ============================================================================
 /// Add one time request to another.
 ///
-/// This routine adds one timeval structure to another. The results are stored
-/// in the destination (Dest + Source -> Dest) A0 and A1 will be left unchanged
+/// This routine adds one timeval structure to another.  The
+/// results are stored in the destination (Dest + Source -> Dest)
+/// A0 and A1 will be left unchanged
+///
+/// # Synopsis
+///
+/// AddTime( Dest, Source )
+///          A0    A1
+///
+/// void AddTime( struct timeval *, struct timeval *);
 ///
 /// # Arguments
 ///
-/// See also: timer.device/CmpTime(), timer.device/SubTime()
+/// * Dest, Source -- pointers to timeval structures.
+///
+/// # Notes
+///
+/// This function may be called from interrupts.
+///
+/// # See Also
+///
+/// timer.device/CmpTime(), timer.device/SubTime()
 @library("timer.device")
 extern pub fn AddTime(dest: *timeval, src: *timeval)
 /// Subtract one time request from another.
 ///
-/// This routine subtracts one timeval structure from another. The results are
-/// stored in the destination (Dest - Source -> Dest) A0 and A1 will be left
-/// unchanged
+/// This routine subtracts one timeval structure from another.  The
+/// results are stored in the destination (Dest - Source -> Dest)
+/// A0 and A1 will be left unchanged
+///
+/// # Synopsis
+///
+/// SubTime( Dest, Source )
+///          A0    A1
+///
+/// void SubTime( struct timeval *, struct timeval *);
 ///
 /// # Arguments
 ///
-/// See also: timer.device/AddTime(), timer.device/CmpTime()
+/// * Dest, Source -- pointers to timeval structures.
+///
+/// # Notes
+///
+/// This function may be called from interrupts.
+///
+/// # See Also
+///
+/// timer.device/AddTime(), timer.device/CmpTime()
 @library("timer.device")
 extern pub fn SubTime(dest: *timeval, src: *timeval)
 /// Compare two timeval structures.
 ///
-/// This routine compares timeval structures A0 and A1 will be left unchanged
+/// This routine compares timeval structures
+/// A0 and A1 will be left unchanged
+///
+/// # Synopsis
+///
+/// result = CmpTime( Dest, Source )
+/// D0                A0    A1
+///
+/// LONG CmpTime( struct timeval *, struct timeval *);
 ///
 /// # Arguments
 ///
-/// # Returns
-/// result will be 0 if Dest has same time as source -1 if Dest has more
-/// time than source +1 if Dest has less time than source
+/// * Dest, Source -- pointers to timeval structures.
 ///
-/// See also: timer.device/AddTime(), timer.device/SubTime()
+/// # Returns
+///
+/// result will be   0 if Dest has same time as source
+/// -1 if Dest has more time than source
+/// +1 if Dest has less time than source
+///
+/// # Bugs
+///
+/// Older version of this document had the sense of the return
+/// codes wrong; the code hasn't changed but the document has.
+///
+/// # Notes
+///
+/// This function may be called from interrupts.
+///
+/// # See Also
+///
+/// timer.device/AddTime(), timer.device/SubTime()
 @library("timer.device")
 extern pub fn CmpTime(dest: *timeval, src: *timeval) -> i32
 /// Get the current value of the E-Clock. (V36)
 ///
-/// This routine calculates the current 64 bit value of the E-Clock and stores
-/// it in the destination EClockVal structure. The count rate of the E-Clock is
-/// also returned.
+/// This routine calculates the current 64 bit value of the E-Clock
+/// and stores it in the destination EClockVal structure. The count
+/// rate of the E-Clock is also returned.
+/// A0 will be left unchanged
+/// This is a low overhead function designed so that very short
+/// intervals may be timed.
+///
+/// # Synopsis
+///
+/// E_Freq = ReadEClock( Dest )
+/// D0                   A0
+///
+/// ULONG ReadEClock ( struct EClockVal * );
 ///
 /// # Arguments
+///
+/// * Dest -- pointer to an EClockVal structure.
+///
+/// # Returns
+///
+/// Dest -- the EClockVal structure will contain the E-Clock time
+/// E_Freq -- The count rate of the E-Clock (tics/sec).
+///
+/// # Notes
+///
+/// This function may be called from interrupts.
 @library("timer.device")
 extern pub fn ReadEClock(dest: *EClockVal) -> u32
 /// Get the system time. (V36)
 ///
-/// Ask the system what time it is. The system time starts off at zero at power
-/// on, but may be initialized via the TR_SETSYSTIME timer.device command.
+/// Ask the system what time it is.  The system time starts off at
+/// zero at power on, but may be initialized via the TR_SETSYSTIME
+/// timer.device command.
+/// System time is monotonocally increasing and guarenteed to be
+/// unique (except when the system time is set back).
+/// A0 will be left unchanged.
+/// This function is less expensive to use than the TR_GETSYSTIME
+/// IORequest.
+///
+/// # Synopsis
+///
+/// GetSysTime( Dest )
+///             A0
+///
+/// void GetSysTime( struct timeval * );
 ///
 /// # Arguments
 ///
+/// * Dest -- pointer to a timeval structure to hold the system time.
+///
 /// # Returns
+///
 /// Dest -- the timeval structure will contain the system time.
 ///
-/// See also: timer.device/TR_GETSYSTIME, timer.device/TR_SETSYSTIME
+/// # Notes
+///
+/// This function may be called from interrupts.
+///
+/// # See Also
+///
+/// timer.device/TR_GETSYSTIME, timer.device/TR_SETSYSTIME
 @library("timer.device")
 extern pub fn GetSysTime(dest: *timeval)

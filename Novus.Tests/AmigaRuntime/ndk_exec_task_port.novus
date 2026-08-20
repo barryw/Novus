@@ -1,0 +1,135 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::exec import AddPort, AllocTrap, FindPort, FindTask, FreeTrap, RemPort, SetExcept, SetSignal, SetTaskPri
+from amiga::raw::structs import Task
+from amiga::sys::exec import MsgPortHandle, SignalHandle
+
+// @covers-ndk function|exec.library|SetTaskPri
+// @ndk-side-effects SetTaskPri returns the previous signed priority, updates the live current Task node, and a second call restores the exact original priority
+@test("exec.library SetTaskPri changes and restores current priority")
+pub fn exec_set_task_priority_roundtrip() {
+    let task = unsafe { FindTask(null) }
+    expect(task != null, "current task found")
+    if task == null { return }
+    let original = (*task).tc_Node.ln_Pri
+    let changed: i8 = if original < 10 { original + 1 } else { original - 1 }
+    let returned = SetTaskPri(task, (i32)changed)
+    expect(returned == original, "SetTaskPri returns the previous priority")
+    expect((*task).tc_Node.ln_Pri == changed, "Task node records the new priority")
+    let changed_returned = SetTaskPri(task, (i32)original)
+    expect(changed_returned == changed, "restore returns the temporary priority")
+    expect((*task).tc_Node.ln_Pri == original, "original priority restored")
+}
+
+// @covers-ndk function|exec.library|SetSignal
+// @ndk-side-effects SetSignal sets only the allocated bit in the current Task's received mask, returns its previous state, and then clears it completely
+@test("exec.library SetSignal sets reports and clears one signal")
+pub fn exec_set_signal_roundtrip() {
+    match SignalHandle::alloc() {
+        Result::Ok(signal) => {
+            let task = unsafe { FindTask(null) }
+            let mask = signal.mask()
+            expect((SetSignal(0, mask) & mask) == 0, "newly allocated signal starts clear")
+            expect((SetSignal(mask, mask) & mask) == 0, "setting reports the previous clear state")
+            expect(((*task).tc_SigRecvd & mask) != 0, "current Task records the received signal")
+            expect((SetSignal(0, mask) & mask) != 0, "clearing reports the previous set state")
+            expect(((*task).tc_SigRecvd & mask) == 0, "signal bit is clear after restoration")
+        },
+        Result::Err(_) => expect(false, "signal bit allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|SetExcept
+// @ndk-side-effects SetExcept changes only the allocated bit in the current Task exception mask, returns the previous mask, and restores the exact original value
+@test("exec.library SetExcept changes and restores exception signals")
+pub fn exec_set_except_roundtrip() {
+    match SignalHandle::alloc() {
+        Result::Ok(signal) => {
+            let task = unsafe { FindTask(null) }
+            let mask = signal.mask()
+            let original = (*task).tc_SigExcept
+            let returned = SetExcept(mask, mask)
+            expect(returned == original, "SetExcept returns the previous exception mask")
+            expect(((*task).tc_SigExcept & mask) != 0, "allocated signal enters the exception mask")
+            let changed = SetExcept(original, mask)
+            expect((changed & mask) != 0, "restore reports the temporary exception bit")
+            expect((*task).tc_SigExcept == original, "original exception mask restored")
+        },
+        Result::Err(_) => expect(false, "exception signal bit allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|AllocTrap
+// @ndk-side-effects AllocTrap reserves one valid task trap number; FreeTrap returns it before test exit
+@test("exec.library AllocTrap reserves a valid trap")
+pub fn exec_alloc_trap_any() {
+    let trap = AllocTrap(-1)
+    expect(trap >= 0 && trap < 16, "AllocTrap returns a valid trap number")
+    if trap >= 0 { FreeTrap(trap) }
+}
+
+// @covers-ndk function|exec.library|FreeTrap
+// @ndk-side-effects FreeTrap releases the selected task trap bit; requesting that exact number again succeeds and the final FreeTrap restores task state
+@test("exec.library FreeTrap makes the exact trap reusable")
+pub fn exec_free_trap_reuse() {
+    let trap = AllocTrap(-1)
+    expect(trap >= 0 && trap < 16, "initial trap allocated")
+    if trap < 0 { return }
+    FreeTrap(trap)
+    let reused = AllocTrap(trap)
+    expect(reused == trap, "freed trap can be allocated by exact number")
+    if reused >= 0 { FreeTrap(reused) }
+}
+
+// @covers-ndk function|exec.library|AddPort
+// @ndk-side-effects AddPort publishes the initialized message port under its exact name; FindPort returns the same address and RemPort removes it before owner drop
+@test("exec.library AddPort publishes an initialized port")
+pub fn exec_add_public_port() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let raw = port.as_raw()
+            let name = "Novus.NDK.AddPort"
+            (*raw).mp_Node.ln_Name = (*i8)name.as_cstr()
+            AddPort(raw)
+            expect(FindPort(name.as_cstr()) == raw, "published port resolves to its exact address")
+            RemPort(raw)
+        },
+        Result::Err(_) => expect(false, "public port allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|FindPort
+// @ndk-side-effects FindPort reads the public port list without mutation, returns the exact registered address, and returns null for an absent name
+@test("exec.library FindPort distinguishes present and absent names")
+pub fn exec_find_public_port() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let raw = port.as_raw()
+            let name = "Novus.NDK.FindPort"
+            (*raw).mp_Node.ln_Name = (*i8)name.as_cstr()
+            AddPort(raw)
+            expect(FindPort(name.as_cstr()) == raw, "registered name returns the exact port")
+            expect(FindPort("Novus.NDK.FindPort.Absent") == null, "absent name returns null")
+            RemPort(raw)
+        },
+        Result::Err(_) => expect(false, "findable port allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|RemPort
+// @ndk-side-effects RemPort unlinks the exact public message port; FindPort immediately confirms the name is absent before the owned port is deleted
+@test("exec.library RemPort removes a public port")
+pub fn exec_remove_public_port() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let raw = port.as_raw()
+            let name = "Novus.NDK.RemPort"
+            (*raw).mp_Node.ln_Name = (*i8)name.as_cstr()
+            AddPort(raw)
+            expect(FindPort(name.as_cstr()) == raw, "port is present before removal")
+            RemPort(raw)
+            expect(FindPort(name.as_cstr()) == null, "port is absent after removal")
+        },
+        Result::Err(_) => expect(false, "removable port allocates"),
+    }
+}

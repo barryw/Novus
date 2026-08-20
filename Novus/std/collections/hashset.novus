@@ -2,7 +2,7 @@
 // Namespace: std::collections
 // A hash set implementation backed by HashMap<T, ()>
 
-from std::core import Option, Result, Drop, Hash, Eq
+from std::core import Option, Result, Hash, Eq
 from std::collections::hashmap import HashMap, HashMapIter, KeyValueRef
 from std::memory::errors import MemoryError
 
@@ -201,13 +201,6 @@ impl<T> HashSet<T> where T: Hash + Eq {
         return HashSetIter {
             map_iter: self.map.iter(),
         }
-    }
-}
-
-// Automatic cleanup for HashSet (RAII)
-impl<T> Drop for HashSet<T> where T: Hash + Eq {
-    fn drop(&var self) {
-        self.map.drop()
     }
 }
 

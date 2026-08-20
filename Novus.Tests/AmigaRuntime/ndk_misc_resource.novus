@@ -1,0 +1,32 @@
+from std::test::test import expect
+from amiga::raw::consts import MR_SERIALBITS
+from amiga::raw::resources::misc import AllocMiscResource, FreeMiscResource
+
+// @covers-ndk function|misc.resource|AllocMiscResource
+// @ndk-side-effects Claims the serial-control bits, proves a competing claim reports the exact owner-name pointer, then frees the resource from the owning task
+@test("misc.resource AllocMiscResource reports current ownership")
+pub fn misc_resource_alloc_reports_owner() {
+    let owner: *u8 = "Novus misc.resource test"
+    let occupied = AllocMiscResource(MR_SERIALBITS, owner)
+    expect(occupied == null, "serial-control bits are initially available to the isolated test machine")
+    if occupied != null { return }
+
+    let current = AllocMiscResource(MR_SERIALBITS, owner)
+    expect(current == owner, "a competing claim returns the current owner's exact name pointer")
+    FreeMiscResource(MR_SERIALBITS)
+}
+
+// @covers-ndk function|misc.resource|FreeMiscResource
+// @ndk-side-effects Claims the serial-control bits, frees them from the same task, proves another claim succeeds, then restores the resource to its free state
+@test("misc.resource FreeMiscResource permits immediate reuse")
+pub fn misc_resource_free_permits_reuse() {
+    let owner: *u8 = "Novus misc.resource test"
+    let occupied = AllocMiscResource(MR_SERIALBITS, owner)
+    expect(occupied == null, "serial-control bits are available for the release test")
+    if occupied != null { return }
+
+    FreeMiscResource(MR_SERIALBITS)
+    let reclaimed = AllocMiscResource(MR_SERIALBITS, owner)
+    expect(reclaimed == null, "release makes the serial-control bits claimable again")
+    if reclaimed == null { FreeMiscResource(MR_SERIALBITS) }
+}

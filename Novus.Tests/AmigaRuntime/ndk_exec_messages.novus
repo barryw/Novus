@@ -1,0 +1,75 @@
+from std::core import Option, Result
+from std::test::test import expect
+from amiga::raw::exec import ReplyMsg, WaitPort
+from amiga::raw::structs import Message, MsgPort
+from amiga::sys::exec import MsgPortHandle
+
+fn message_for(reply_port: *MsgPort) -> Message {
+    var message: Message = @zeroed(Message)
+    message.mn_Node.ln_Type = 5
+    message.mn_ReplyPort = reply_port
+    return message
+}
+
+// @covers-ndk function|exec.library|PutMsg
+// @ndk-side-effects PutMsg links the exact Message into the destination port and signals it; GetMsg removes that same address and leaves the queue empty
+@test("exec.library PutMsg queues and signals the exact message")
+pub fn exec_put_message_roundtrip() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            var message = message_for(null)
+            let expected: *Message = (*Message)&var message
+            port.put_msg(expected)
+            expect((port.wait() & port.signal_mask()) != 0, "PutMsg signals the destination port")
+            match port.get_msg() {
+                Option::Some(actual) => expect(actual == expected, "GetMsg returns the exact queued message"),
+                Option::None => expect(false, "queued message is available"),
+            }
+            expect(port.get_msg().is_none(), "GetMsg removes the message from the queue")
+        },
+        Result::Err(_) => expect(false, "destination port allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|WaitPort
+// @ndk-side-effects WaitPort observes the first queued Message without unlinking it; the following GetMsg returns the same address and empties the queue
+@test("exec.library WaitPort observes without removing the head message")
+pub fn exec_wait_port_peek() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            var message = message_for(null)
+            let expected: *Message = (*Message)&var message
+            port.put_msg(expected)
+            let observed = WaitPort(port.as_raw())
+            expect(observed == expected, "WaitPort returns the queued head message")
+            match port.get_msg() {
+                Option::Some(actual) => expect(actual == expected, "WaitPort leaves the message queued"),
+                Option::None => expect(false, "WaitPort does not remove the message"),
+            }
+            expect(port.get_msg().is_none(), "queue is empty after GetMsg")
+        },
+        Result::Err(_) => expect(false, "wait port allocates"),
+    }
+}
+
+// @covers-ndk function|exec.library|ReplyMsg
+// @ndk-side-effects ReplyMsg changes the Message node type to NT_REPLYMSG, links it to its reply port, and signals that port; GetMsg removes the exact address
+@test("exec.library ReplyMsg returns the exact message to its reply port")
+pub fn exec_reply_message_roundtrip() {
+    match MsgPortHandle::create() {
+        Result::Ok(reply_port) => {
+            var message = message_for(reply_port.as_raw())
+            let expected: *Message = (*Message)&var message
+            ReplyMsg(expected)
+            expect((reply_port.wait() & reply_port.signal_mask()) != 0, "ReplyMsg signals the reply port")
+            match reply_port.get_msg() {
+                Option::Some(actual) => {
+                    expect(actual == expected, "reply port receives the exact message")
+                    expect((*actual).mn_Node.ln_Type != 5, "ReplyMsg marks the message as replied")
+                },
+                Option::None => expect(false, "reply message is queued"),
+            }
+        },
+        Result::Err(_) => expect(false, "reply port allocates"),
+    }
+}

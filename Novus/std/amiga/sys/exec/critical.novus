@@ -57,8 +57,12 @@
 // ```
 
 from std::core import Drop
-from amiga::raw::exec import Forbid, Permit, Disable, Enable, FindTask
-from amiga::raw::structs import Task
+from amiga::raw::exec import Forbid, Permit, Disable, Enable
+from amiga::raw::structs import ExecBase
+
+fn exec_base() -> *ExecBase {
+    unsafe { return (*ExecBase)*(*u32)4 }
+}
 
 // ============================================================================
 // CriticalSection - Task Switching Protection (Forbid/Permit)
@@ -106,21 +110,17 @@ impl CriticalSection {
 
     /// Check if we're currently in a Forbid state.
     ///
-    /// This reads the current task's TDNestCnt (Task Disable Nest Count).
+    /// This reads ExecBase's live TDNestCnt (Task Disable Nest Count).
     /// Returns true if Forbid has been called more times than Permit.
     ///
     /// Note: This is informational only - you should use RAII guards instead
     /// of manually checking and calling Forbid/Permit.
     pub fn is_forbidden() -> bool {
-        // Get current task (pass null to get our own task)
-        let task = FindTask(null)
-        if task == null {
-            return false
-        }
-        // tc_TDNestCnt starts at -1 (not forbidden)
+        let exec = exec_base()
+        if exec == null { return false }
+        // TDNestCnt starts at -1 (not forbidden)
         // After Forbid(), it becomes 0 or higher
-        // >= 0 means we're in a Forbid state
-        return (*task).tc_TDNestCnt >= 0
+        return (*exec).TDNestCnt >= 0
     }
 }
 
@@ -196,21 +196,17 @@ impl InterruptSection {
 
     /// Check if interrupts are currently disabled.
     ///
-    /// This reads the current task's IDNestCnt (Interrupt Disable Nest Count).
+    /// This reads ExecBase's live IDNestCnt (Interrupt Disable Nest Count).
     /// Returns true if Disable has been called more times than Enable.
     ///
     /// Note: This is informational only - you should use RAII guards instead
     /// of manually checking and calling Disable/Enable.
     pub fn is_disabled() -> bool {
-        // Get current task (pass null to get our own task)
-        let task = FindTask(null)
-        if task == null {
-            return false
-        }
-        // tc_IDNestCnt starts at -1 (interrupts enabled)
+        let exec = exec_base()
+        if exec == null { return false }
+        // IDNestCnt starts at -1 (interrupts enabled)
         // After Disable(), it becomes 0 or higher
-        // >= 0 means interrupts are disabled
-        return (*task).tc_IDNestCnt >= 0
+        return (*exec).IDNestCnt >= 0
     }
 }
 

@@ -1,0 +1,728 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::raw::consts import BBFT_RIDGE, BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::consts import CHECKBOX_KIND, GTCB_Checked, GTBB_FrameType, GTBB_Recessed
+from amiga::raw::consts import GTIN_MaxChars, GTIN_Number, INTEGER_KIND
+from amiga::raw::consts import GTMN_Menu, GT_VisualInfo, NM_END, NM_ITEM, NM_TITLE
+from amiga::raw::consts import IDCMP_REFRESHWINDOW, PLACETEXT_LEFT, TAG_DONE
+from amiga::raw::consts import WA_CustomScreen, WA_Flags, WA_Gadgets, WA_Height, WA_IDCMP
+from amiga::raw::consts import WA_Left, WA_Title, WA_Top, WA_Width
+from amiga::raw::consts import WFLG_ACTIVATE, WFLG_DEPTHGADGET, WFLG_DRAGBAR
+from amiga::raw::consts import WFLG_SIMPLE_REFRESH, WFLG_WINDOWREFRESH
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, PutMsg, ReplyMsg
+from amiga::raw::gadtools import CreateContext, CreateGadget, CreateGadgetA
+from amiga::raw::gadtools import CreateMenus, CreateMenusA, DrawBevelBox, DrawBevelBoxA
+from amiga::raw::gadtools import FreeGadgets, FreeMenus, FreeVisualInfo
+from amiga::raw::gadtools import GetVisualInfo, GetVisualInfoA
+from amiga::raw::gadtools import GT_GetGadgetAttrs, GT_GetGadgetAttrsA
+from amiga::raw::gadtools import GT_BeginRefresh, GT_EndRefresh, GT_RefreshWindow
+from amiga::raw::gadtools import GT_FilterIMsg, GT_GetIMsg, GT_PostFilterIMsg, GT_ReplyIMsg
+from amiga::raw::gadtools import GT_SetGadgetAttrs, GT_SetGadgetAttrsA
+from amiga::raw::gadtools import LayoutMenuItems, LayoutMenuItemsA, LayoutMenus, LayoutMenusA
+from amiga::raw::graphics import InitRastPort, ReadPixel, WaitBlit
+from amiga::raw::intuition import CloseWindow, LockPubScreen, OpenWindowTagList, UnlockPubScreen
+from amiga::raw::structs import ExtIntuiMessage, Gadget, IntuiMessage, Menu, Message, MsgPort
+from amiga::raw::structs import NewGadget, NewMenu, RastPort, Screen, TagItem, Window
+
+const UPDATING_FLAG: u16 = $10
+const MESSAGE_NODE_TYPE: u8 = 5
+
+fn cstr(value: Str) -> *u8 {
+    return value.as_cstr()
+}
+
+fn c_equals_i8(left: *i8, right: Str) -> bool {
+    return false if left == null
+    let bytes = (*u8)left
+    let expected = right.as_cstr()
+    var index: i32 = 0
+    forever {
+        let a = unsafe { bytes[index] }
+        let b = unsafe { expected[index] }
+        return false if a != b
+        return true if a == 0
+        index++
+    }
+}
+
+struct VisualFixture {
+    screen: *Screen,
+    info: *u8,
+}
+
+fn visual_fixture() -> VisualFixture {
+    var fixture: VisualFixture = @zeroed(VisualFixture)
+    fixture.screen = LockPubScreen(null)
+    if fixture.screen != null { fixture.info = GetVisualInfoA(fixture.screen, null) }
+    return fixture
+}
+
+fn close_visual(fixture: *VisualFixture) {
+    unsafe {
+        FreeVisualInfo((*fixture).info)
+        if (*fixture).screen != null { UnlockPubScreen(null, (*fixture).screen) }
+        (*fixture).info = null
+        (*fixture).screen = null
+    }
+}
+
+struct GadgetFixture {
+    list: *Gadget,
+    context: *Gadget,
+    gadget: *Gadget,
+}
+
+fn checkbox(visual: *VisualFixture, use_varargs: bool) -> GadgetFixture {
+    var fixture: GadgetFixture = @zeroed(GadgetFixture)
+    fixture.context = CreateContext(&var fixture.list)
+    if fixture.context != null {
+        var spec: NewGadget = @zeroed(NewGadget)
+        unsafe {
+            spec.ng_LeftEdge = 12
+            spec.ng_TopEdge = 10
+            spec.ng_Width = 90
+            spec.ng_Height = 14
+            spec.ng_GadgetText = cstr("Enabled")
+            spec.ng_TextAttr = (*(*visual).screen).Font
+            spec.ng_GadgetID = 42
+            spec.ng_Flags = PLACETEXT_LEFT
+            spec.ng_VisualInfo = (*visual).info
+        }
+        if use_varargs {
+            fixture.gadget = CreateGadget(CHECKBOX_KIND, fixture.context, &var spec,
+                GTCB_Checked, 1, TAG_DONE)
+        } else {
+            var tags = [
+                TagItem { ti_Tag: GTCB_Checked, ti_Data: 1 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+            ]
+            fixture.gadget = CreateGadgetA(CHECKBOX_KIND, fixture.context, &var spec, &var tags[0])
+        }
+    }
+    return fixture
+}
+
+fn release_gadgets(fixture: *GadgetFixture) {
+    unsafe {
+        FreeGadgets((*fixture).list)
+        (*fixture).list = null
+        (*fixture).context = null
+        (*fixture).gadget = null
+    }
+}
+
+struct WindowFixture {
+    visual: VisualFixture,
+    gadgets: GadgetFixture,
+    window: *Window,
+}
+
+fn window_fixture() -> WindowFixture {
+    var fixture: WindowFixture = @zeroed(WindowFixture)
+    fixture.visual = visual_fixture()
+    if fixture.visual.screen != null && fixture.visual.info != null {
+        fixture.gadgets.context = CreateContext(&var fixture.gadgets.list)
+        if fixture.gadgets.context != null {
+            var spec: NewGadget = @zeroed(NewGadget)
+            spec.ng_LeftEdge = 12
+            spec.ng_TopEdge = 24
+            spec.ng_Width = 110
+            spec.ng_Height = 18
+            spec.ng_GadgetText = cstr("Value")
+            spec.ng_TextAttr = unsafe { (*fixture.visual.screen).Font }
+            spec.ng_GadgetID = 43
+            spec.ng_Flags = PLACETEXT_LEFT
+            spec.ng_VisualInfo = fixture.visual.info
+            var gadget_tags = [
+                TagItem { ti_Tag: GTIN_Number, ti_Data: 42 },
+                TagItem { ti_Tag: GTIN_MaxChars, ti_Data: 4 },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+            ]
+            fixture.gadgets.gadget = CreateGadgetA(INTEGER_KIND, fixture.gadgets.context,
+                &var spec, &var gadget_tags[0])
+        }
+        if fixture.gadgets.gadget != null {
+            var tags = [
+                TagItem { ti_Tag: WA_Title, ti_Data: (u32)cstr("GadTools verification") },
+                TagItem { ti_Tag: WA_CustomScreen, ti_Data: unsafe { (u32)fixture.visual.screen } },
+                TagItem { ti_Tag: WA_Left, ti_Data: 20 },
+                TagItem { ti_Tag: WA_Top, ti_Data: 20 },
+                TagItem { ti_Tag: WA_Width, ti_Data: 150 },
+                TagItem { ti_Tag: WA_Height, ti_Data: 70 },
+                TagItem { ti_Tag: WA_Gadgets, ti_Data: unsafe { (u32)fixture.gadgets.list } },
+                TagItem { ti_Tag: WA_IDCMP, ti_Data: IDCMP_REFRESHWINDOW },
+                TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_DRAGBAR | WFLG_DEPTHGADGET | WFLG_ACTIVATE | WFLG_SIMPLE_REFRESH },
+                TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+            ]
+            fixture.window = OpenWindowTagList(null, &var tags[0])
+        }
+    }
+    return fixture
+}
+
+fn close_window_fixture(fixture: *WindowFixture) {
+    unsafe {
+        if (*fixture).window != null { CloseWindow((*fixture).window) }
+        (*fixture).window = null
+        release_gadgets(&var (*fixture).gadgets)
+        close_visual(&var (*fixture).visual)
+    }
+}
+
+fn gadget_pixels(fixture: *WindowFixture) -> i32 {
+    if unsafe { (*fixture).window == null || (*fixture).gadgets.gadget == null } { return 0 }
+    let window = unsafe { (*fixture).window }
+    let rastport = unsafe { (*window).RPort }
+    let min_x = unsafe { (i16)(*window).BorderLeft }
+    let min_y = unsafe { (i16)(*window).BorderTop }
+    let max_x = unsafe { (*window).Width - (i16)(*window).BorderRight - 1 }
+    let max_y = unsafe { (*window).Height - (i16)(*window).BorderBottom - 1 }
+    var count: i32 = 0
+    var y = min_y
+    while y <= max_y {
+        var x = min_x
+        while x <= max_x {
+            if ReadPixel(rastport, x, y) != 0 { count++ }
+            x++
+        }
+        y++
+    }
+    return count
+}
+
+struct MessageFixture {
+    input: *MsgPort,
+    reply: *MsgPort,
+    message: ExtIntuiMessage,
+}
+
+fn message_fixture() -> MessageFixture {
+    var fixture: MessageFixture = @zeroed(MessageFixture)
+    fixture.input = CreateMsgPort()
+    fixture.reply = CreateMsgPort()
+    fixture.message.eim_IntuiMessage.ExecMessage.mn_Node.ln_Type = MESSAGE_NODE_TYPE
+    fixture.message.eim_IntuiMessage.ExecMessage.mn_ReplyPort = fixture.reply
+    fixture.message.eim_IntuiMessage.ExecMessage.mn_Length = (u16)@sizeof(ExtIntuiMessage)
+    fixture.message.eim_IntuiMessage.Class = $00000200
+    fixture.message.eim_IntuiMessage.Code = $1234
+    return fixture
+}
+
+fn original_message(fixture: *MessageFixture) -> *IntuiMessage {
+    return unsafe { &var (*fixture).message.eim_IntuiMessage }
+}
+
+fn queue_message(fixture: *MessageFixture) {
+    if unsafe { (*fixture).input != null } {
+        PutMsg(unsafe { (*fixture).input }, unsafe { (*Message)original_message(fixture) })
+    }
+}
+
+fn close_message_fixture(fixture: *MessageFixture) {
+    unsafe {
+        if (*fixture).input != null {
+            while GetMsg((*fixture).input) != null {}
+            DeleteMsgPort((*fixture).input)
+        }
+        if (*fixture).reply != null {
+            while GetMsg((*fixture).reply) != null {}
+            DeleteMsgPort((*fixture).reply)
+        }
+        (*fixture).input = null
+        (*fixture).reply = null
+    }
+}
+
+fn menu(use_varargs: bool) -> *Menu {
+    var definition = [
+        NewMenu { nm_Type: 1, nm_Label: cstr("File"), nm_CommKey: null, nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null },
+        NewMenu { nm_Type: 2, nm_Label: cstr("Quit"), nm_CommKey: cstr("Q"), nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null },
+        NewMenu { nm_Type: 0, nm_Label: null, nm_CommKey: null, nm_Flags: 0, nm_MutualExclude: 0, nm_UserData: null },
+    ]
+    if use_varargs { return CreateMenus(&var definition[0], TAG_DONE) }
+    return CreateMenusA(&var definition[0], null)
+}
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(96, 48, 2, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn painted_pixels(rastport: *RastPort) -> i32 {
+    var count: i32 = 0
+    var y: i16 = 0
+    while y < 48 {
+        var x: i16 = 0
+        while x < 96 {
+            if ReadPixel(rastport, x, y) != 0 { count++ }
+            x++
+        }
+        y++
+    }
+    return count
+}
+
+// @covers-ndk function|gadtools.library|GetVisualInfoA
+// @ndk-side-effects Locks the live Workbench public screen, allocates its exact GadTools visual context with an empty tag list, then frees the context before unlocking the screen
+@test("gadtools.library GetVisualInfoA allocates Workbench visual context")
+pub fn gadtools_get_visual_info_a() {
+    let screen = LockPubScreen(null)
+    let info = if screen != null { GetVisualInfoA(screen, null) } else { (*u8)null }
+    expect(screen != null && info != null, "Workbench visual context allocates")
+    FreeVisualInfo(info)
+    if screen != null { UnlockPubScreen(null, screen) }
+}
+
+// @covers-ndk function|gadtools.library|GetVisualInfo
+// @ndk-side-effects Exercises the varargs visual-info entry point against the live Workbench screen, obtains non-null private state, frees it, and unlocks the same screen
+@test("gadtools.library GetVisualInfo varargs allocates Workbench context")
+pub fn gadtools_get_visual_info_varargs() {
+    let screen = LockPubScreen(null)
+    let info = if screen != null { GetVisualInfo(screen, TAG_DONE) } else { (*u8)null }
+    expect(screen != null && info != null, "varargs Workbench visual context allocates")
+    FreeVisualInfo(info)
+    if screen != null { UnlockPubScreen(null, screen) }
+}
+
+// @covers-ndk function|gadtools.library|FreeVisualInfo
+// @ndk-side-effects Releases one real Workbench visual context while its screen remains locked; the process leak gate verifies all private GadTools allocations return
+@test("gadtools.library FreeVisualInfo releases private state")
+pub fn gadtools_free_visual_info() {
+    let screen = LockPubScreen(null)
+    let info = if screen != null { GetVisualInfoA(screen, null) } else { (*u8)null }
+    expect(info != null, "visual context allocates before release")
+    FreeVisualInfo(info)
+    if screen != null { UnlockPubScreen(null, screen) }
+}
+
+// @covers-ndk function|gadtools.library|CreateContext
+// @ndk-side-effects Creates a real GadTools context gadget, publishes the owned list head through the caller pointer, proves both pointers are non-null, and frees the entire context list
+@test("gadtools.library CreateContext publishes owned gadget list")
+pub fn gadtools_create_context() {
+    var list: *Gadget = null
+    let context = CreateContext(&var list)
+    expect(context != null && list != null, "context and list head are published")
+    FreeGadgets(list)
+}
+
+// @covers-ndk function|gadtools.library|CreateGadgetA
+// @ndk-side-effects Creates a checked checkbox from exact bounds, ID, label, font, and visual info; public Gadget fields prove GadTools placed a positive control within the requested bounds before teardown
+@test("gadtools.library CreateGadgetA constructs exact checkbox")
+pub fn gadtools_create_gadget_a() {
+    var visual = visual_fixture()
+    expect(visual.screen != null && visual.info != null, "visual fixture opens")
+    var gadgets = checkbox(&var visual, false)
+    expect(gadgets.gadget != null, "checkbox allocates")
+    if gadgets.gadget != null {
+        unsafe {
+            expect((*gadgets.gadget).GadgetID == 42, "gadget ID is exact")
+            expect((*gadgets.gadget).LeftEdge >= 12 && (*gadgets.gadget).TopEdge >= 10,
+                "label placement keeps control inside requested origin")
+            expect((*gadgets.gadget).Width > 0 && (*gadgets.gadget).Height > 0 &&
+                (*gadgets.gadget).LeftEdge + (*gadgets.gadget).Width <= 102,
+                "checkbox has positive geometry inside requested width")
+        }
+    }
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|CreateGadget
+// @ndk-side-effects Exercises the varargs constructor for a checked checkbox and verifies exact public ID plus positive GadTools-adjusted geometry inside the requested bounds before teardown
+@test("gadtools.library CreateGadget varargs constructs checkbox")
+pub fn gadtools_create_gadget_varargs() {
+    var visual = visual_fixture()
+    expect(visual.screen != null && visual.info != null, "visual fixture opens")
+    var gadgets = checkbox(&var visual, true)
+    expect(gadgets.gadget != null, "varargs checkbox allocates")
+    if gadgets.gadget != null {
+        unsafe {
+            expect((*gadgets.gadget).GadgetID == 42, "varargs gadget ID is exact")
+            expect((*gadgets.gadget).Width > 0 && (*gadgets.gadget).Height > 0 &&
+                (*gadgets.gadget).TopEdge >= 10, "varargs checkbox has positive adjusted geometry")
+        }
+    }
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|FreeGadgets
+// @ndk-side-effects Releases a context plus one real checkbox and all generated IntuiText/image support; the whole-process leak gate verifies complete list ownership returns
+@test("gadtools.library FreeGadgets releases complete context list")
+pub fn gadtools_free_gadgets() {
+    var visual = visual_fixture()
+    var gadgets = checkbox(&var visual, false)
+    expect(gadgets.list != null && gadgets.gadget != null, "context and checkbox allocate")
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|CreateMenusA
+// @ndk-side-effects Builds a File/Quit menu hierarchy from caller-owned definitions, verifies exact title and first-item links, then frees the entire generated hierarchy
+@test("gadtools.library CreateMenusA builds exact hierarchy")
+pub fn gadtools_create_menus_a() {
+    let menus = menu(false)
+    expect(menus != null, "menu hierarchy allocates")
+    if menus != null {
+        unsafe {
+            expect(c_equals_i8((*menus).MenuName, "File"), "menu title is exact")
+            expect((*menus).FirstItem != null && (*(*menus).FirstItem).Command == 81,
+                "Quit item carries Q command key")
+        }
+    }
+    FreeMenus(menus)
+}
+
+// @covers-ndk function|gadtools.library|CreateMenus
+// @ndk-side-effects Exercises the varargs menu constructor, verifies the exact File title and non-null Quit item, then releases every generated menu structure
+@test("gadtools.library CreateMenus varargs builds hierarchy")
+pub fn gadtools_create_menus_varargs() {
+    let menus = menu(true)
+    expect(menus != null, "varargs menu hierarchy allocates")
+    if menus != null {
+        unsafe { expect(c_equals_i8((*menus).MenuName, "File") && (*menus).FirstItem != null, "varargs hierarchy is exact") }
+    }
+    FreeMenus(menus)
+}
+
+// @covers-ndk function|gadtools.library|FreeMenus
+// @ndk-side-effects Releases a complete generated menu strip with title, item, IntuiText, and command-key storage; the process leak gate verifies all ownership returns
+@test("gadtools.library FreeMenus releases complete hierarchy")
+pub fn gadtools_free_menus() {
+    let menus = menu(false)
+    expect(menus != null, "menu hierarchy allocates before release")
+    FreeMenus(menus)
+}
+
+// @covers-ndk function|gadtools.library|LayoutMenusA
+// @ndk-side-effects Lays out a real File/Quit strip with Workbench visual info and proves positive menu/item dimensions before freeing menus and visual state
+@test("gadtools.library LayoutMenusA computes positive geometry")
+pub fn gadtools_layout_menus_a() {
+    var visual = visual_fixture()
+    let menus = menu(false)
+    let success = if menus != null && visual.info != null { LayoutMenusA(menus, visual.info, null) } else { 0 }
+    expect(success != 0, "menu strip lays out")
+    if menus != null {
+        unsafe { expect((*menus).Width > 0 && (*menus).FirstItem != null && (*(*menus).FirstItem).Width > 0, "layout writes positive geometry") }
+    }
+    FreeMenus(menus)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|LayoutMenus
+// @ndk-side-effects Exercises the varargs strip layout against Workbench visual info and verifies positive menu/item geometry before complete teardown
+@test("gadtools.library LayoutMenus varargs computes geometry")
+pub fn gadtools_layout_menus_varargs() {
+    var visual = visual_fixture()
+    let menus = menu(true)
+    let success = if menus != null && visual.info != null { LayoutMenus(menus, visual.info, TAG_DONE) } else { 0 }
+    expect(success != 0, "varargs menu strip lays out")
+    if menus != null { unsafe { expect((*menus).Width > 0 && (*(*menus).FirstItem).Height > 0, "varargs geometry is positive") } }
+    FreeMenus(menus)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|LayoutMenuItemsA
+// @ndk-side-effects Lays out one generated menu's item list with its exact parent menu tag and Workbench visual info, producing positive item geometry without changing ownership
+@test("gadtools.library LayoutMenuItemsA lays out exact item list")
+pub fn gadtools_layout_items_a() {
+    var visual = visual_fixture()
+    let menus = menu(false)
+    var tags = [
+        TagItem { ti_Tag: GTMN_Menu, ti_Data: unsafe { (u32)menus } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let success = if menus != null && visual.info != null {
+        unsafe { LayoutMenuItemsA((*menus).FirstItem, visual.info, &var tags[0]) }
+    } else { 0 }
+    expect(success != 0, "menu items lay out")
+    if menus != null { unsafe { expect((*(*menus).FirstItem).Width > 0 && (*(*menus).FirstItem).Height > 0, "item geometry is positive") } }
+    FreeMenus(menus)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|LayoutMenuItems
+// @ndk-side-effects Exercises the varargs item-layout entry point with the exact parent menu and Workbench visual state, then verifies positive item dimensions and frees all resources
+@test("gadtools.library LayoutMenuItems varargs lays out item list")
+pub fn gadtools_layout_items_varargs() {
+    var visual = visual_fixture()
+    let menus = menu(true)
+    let success = if menus != null && visual.info != null {
+        unsafe { LayoutMenuItems((*menus).FirstItem, visual.info, GTMN_Menu, menus, TAG_DONE) }
+    } else { 0 }
+    expect(success != 0, "varargs menu items lay out")
+    if menus != null { unsafe { expect((*(*menus).FirstItem).Width > 0, "varargs item width is positive") } }
+    FreeMenus(menus)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|DrawBevelBoxA
+// @ndk-side-effects Draws a recessed ridge into a cleared owned bitmap using real Workbench visual info; pixel readback requires nonempty rendering before all resources are released
+@test("gadtools.library DrawBevelBoxA paints real bitmap")
+pub fn gadtools_draw_bevel_a() {
+    var visual = visual_fixture()
+    var surface = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "off-screen bitmap allocates")
+            close_visual(&var visual)
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rastport)
+    unsafe { rastport.BitMap = surface.as_raw() }
+    var tags = [
+        TagItem { ti_Tag: GT_VisualInfo, ti_Data: unsafe { (u32)visual.info } },
+        TagItem { ti_Tag: GTBB_Recessed, ti_Data: 1 },
+        TagItem { ti_Tag: GTBB_FrameType, ti_Data: BBFT_RIDGE },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    DrawBevelBoxA(&var rastport, 8, 8, 70, 28, &var tags[0])
+    WaitBlit()
+    expect(painted_pixels(&var rastport) > 0, "bevel paints nonzero pixels")
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|DrawBevelBox
+// @ndk-side-effects Exercises the varargs bevel renderer against real Workbench visual info and a cleared owned bitmap, requiring nonzero pixel readback before teardown
+@test("gadtools.library DrawBevelBox varargs paints real bitmap")
+pub fn gadtools_draw_bevel_varargs() {
+    var visual = visual_fixture()
+    var surface = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "off-screen bitmap allocates")
+            close_visual(&var visual)
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rastport)
+    unsafe { rastport.BitMap = surface.as_raw() }
+    DrawBevelBox(&var rastport, 8, 8, 70, 28,
+        GT_VisualInfo, visual.info, GTBB_Recessed, 0, GTBB_FrameType, BBFT_RIDGE, TAG_DONE)
+    WaitBlit()
+    expect(painted_pixels(&var rastport) > 0, "varargs bevel paints nonzero pixels")
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|GT_SetGadgetAttrsA
+// @ndk-side-effects Changes a real checked checkbox to unchecked without rendering, then reads the same internal state back through GadTools before complete teardown
+@test("gadtools.library GT_SetGadgetAttrsA changes checkbox state")
+pub fn gadtools_set_gadget_attrs_a() {
+    var visual = visual_fixture()
+    var gadgets = checkbox(&var visual, false)
+    var set_tags = [
+        TagItem { ti_Tag: GTCB_Checked, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if gadgets.gadget != null { GT_SetGadgetAttrsA(gadgets.gadget, null, null, &var set_tags[0]) }
+    var checked: u32 = 1
+    var get_tags = [
+        TagItem { ti_Tag: GTCB_Checked, ti_Data: unsafe { (u32)(*u32)&var checked } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let count = if gadgets.gadget != null { GT_GetGadgetAttrsA(gadgets.gadget, null, null, &var get_tags[0]) } else { 0 }
+    expect(count == 1 && checked == 0, "A-form setter stores exact unchecked state")
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|GT_SetGadgetAttrs
+// @ndk-side-effects Exercises the varargs setter on a real checked checkbox, then retrieves the changed internal value and releases all GadTools-owned state
+@test("gadtools.library GT_SetGadgetAttrs varargs changes checkbox state")
+pub fn gadtools_set_gadget_attrs_varargs() {
+    var visual = visual_fixture()
+    var gadgets = checkbox(&var visual, true)
+    if gadgets.gadget != null { GT_SetGadgetAttrs(gadgets.gadget, null, null, GTCB_Checked, 0, TAG_DONE) }
+    var checked: u32 = 1
+    var tags = [
+        TagItem { ti_Tag: GTCB_Checked, ti_Data: unsafe { (u32)(*u32)&var checked } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let count = if gadgets.gadget != null { GT_GetGadgetAttrsA(gadgets.gadget, null, null, &var tags[0]) } else { 0 }
+    expect(count == 1 && checked == 0, "varargs setter stores exact unchecked state")
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|GT_GetGadgetAttrsA
+// @ndk-side-effects Reads the initial checked attribute from a real checkbox into the required longword destination and verifies exactly one tag was processed
+@test("gadtools.library GT_GetGadgetAttrsA reads checkbox state")
+pub fn gadtools_get_gadget_attrs_a() {
+    var visual = visual_fixture()
+    var gadgets = checkbox(&var visual, false)
+    var checked: u32 = 0
+    var tags = [
+        TagItem { ti_Tag: GTCB_Checked, ti_Data: unsafe { (u32)(*u32)&var checked } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let count = if gadgets.gadget != null { GT_GetGadgetAttrsA(gadgets.gadget, null, null, &var tags[0]) } else { 0 }
+    expect(count == 1 && checked == 1, "A-form getter returns exact checked state")
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|GT_GetGadgetAttrs
+// @ndk-side-effects Exercises the varargs getter against a real checked checkbox, verifies its exact value and processed-tag count, then frees all state
+@test("gadtools.library GT_GetGadgetAttrs varargs reads checkbox state")
+pub fn gadtools_get_gadget_attrs_varargs() {
+    var visual = visual_fixture()
+    var gadgets = checkbox(&var visual, true)
+    var checked: u32 = 0
+    let count = if gadgets.gadget != null {
+        GT_GetGadgetAttrs(gadgets.gadget, null, null, GTCB_Checked, &var checked, TAG_DONE)
+    } else { 0 }
+    expect(count == 1 && checked == 1, "varargs getter returns exact checked state")
+    release_gadgets(&var gadgets)
+    close_visual(&var visual)
+}
+
+// @covers-ndk function|gadtools.library|GT_RefreshWindow
+// @ndk-side-effects Performs the required initial refresh immediately after opening a live Workbench window with an attached integer gadget, then verifies visible gadget rendering by pixel readback
+@test("gadtools.library GT_RefreshWindow repaints gadget pixels")
+pub fn gadtools_refresh_window() {
+    var fixture = window_fixture()
+    expect(fixture.window != null, "GadTools window opens")
+    if fixture.window != null { GT_RefreshWindow(fixture.window, null) }
+    WaitBlit()
+    expect(gadget_pixels(&var fixture) > 0, "initial refresh leaves visible GadTools rendering")
+    close_window_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_BeginRefresh
+// @ndk-side-effects Enters a GadTools-friendly refresh session on a live simple-refresh window, proves both Window and Layer update flags are set, then balances the session before teardown
+@test("gadtools.library GT_BeginRefresh enters live refresh state")
+pub fn gadtools_begin_refresh() {
+    var fixture = window_fixture()
+    expect(fixture.window != null, "GadTools window opens")
+    if fixture.window != null { GT_BeginRefresh(fixture.window) }
+    var refreshing: bool = false
+    if fixture.window != null {
+        unsafe {
+            refreshing = ((*fixture.window).Flags & WFLG_WINDOWREFRESH) != 0 &&
+                (*fixture.window).WLayer != null &&
+                ((*(*fixture.window).WLayer).Flags & UPDATING_FLAG) != 0
+        }
+    }
+    expect(refreshing, "begin refresh sets live Window and Layer update state")
+    if fixture.window != null { GT_EndRefresh(fixture.window, 1) }
+    close_window_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_EndRefresh
+// @ndk-side-effects Completes a real GadTools refresh session and proves the Window refresh bit, Layer update bit, and recursive layer-lock nesting all return to their pre-session state
+@test("gadtools.library GT_EndRefresh restores live refresh state")
+pub fn gadtools_end_refresh() {
+    var fixture = window_fixture()
+    expect(fixture.window != null, "GadTools window opens")
+    let original_nesting = if fixture.window != null && unsafe { (*fixture.window).WLayer != null } {
+        unsafe { (*(*fixture.window).WLayer).Lock.ss_NestCount }
+    } else { (i16)0 }
+    if fixture.window != null {
+        GT_BeginRefresh(fixture.window)
+        GT_EndRefresh(fixture.window, 1)
+    }
+    var restored: bool = false
+    if fixture.window != null {
+        unsafe {
+            restored = ((*fixture.window).Flags & WFLG_WINDOWREFRESH) == 0 &&
+                (*fixture.window).WLayer != null &&
+                ((*(*fixture.window).WLayer).Flags & UPDATING_FLAG) == 0 &&
+                (*(*fixture.window).WLayer).Lock.ss_NestCount == original_nesting
+        }
+    }
+    expect(restored, "end refresh restores Window, Layer, and lock state")
+    close_window_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_GetIMsg
+// @ndk-side-effects Queues an ABI-complete close-window IntuiMessage on a real Exec port, obtains GadTools' modified message, verifies exact class/code, and returns the original through its reply port
+@test("gadtools.library GT_GetIMsg filters a real queued message")
+pub fn gadtools_get_imsg() {
+    var fixture = message_fixture()
+    expect(fixture.input != null && fixture.reply != null, "message and reply ports allocate")
+    let original = original_message(&var fixture)
+    queue_message(&var fixture)
+    let filtered = if fixture.input != null { GT_GetIMsg(fixture.input) } else { (*IntuiMessage)null }
+    expect(filtered != null, "queued close message survives GadTools filtering")
+    if filtered != null {
+        unsafe {
+            expect((*filtered).Class == $00000200 && (*filtered).Code == $1234,
+                "filtered message preserves exact class and code")
+        }
+        GT_ReplyIMsg(filtered)
+    } else if original != null {
+        ReplyMsg((*Message)original)
+    }
+    let replied = if fixture.reply != null { GetMsg(fixture.reply) } else { (*Message)null }
+    expect(replied == (*Message)original, "GadTools returns the exact original message")
+    close_message_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_ReplyIMsg
+// @ndk-side-effects Replies a modified message obtained from GT_GetIMsg and proves the exact caller-owned original—not GadTools' temporary copy—is queued on the designated reply port
+@test("gadtools.library GT_ReplyIMsg replies exact original message")
+pub fn gadtools_reply_imsg() {
+    var fixture = message_fixture()
+    expect(fixture.input != null && fixture.reply != null, "message and reply ports allocate")
+    let original = original_message(&var fixture)
+    queue_message(&var fixture)
+    let filtered = if fixture.input != null { GT_GetIMsg(fixture.input) } else { (*IntuiMessage)null }
+    expect(filtered != null, "GadTools returns a modified message")
+    if filtered != null { GT_ReplyIMsg(filtered) } else { ReplyMsg((*Message)original) }
+    let replied = if fixture.reply != null { GetMsg(fixture.reply) } else { (*Message)null }
+    expect(replied == (*Message)original, "reply port receives the exact original address")
+    if replied != null { unsafe { expect((*replied).mn_Node.ln_Type == 7, "Exec marks original as replied") } }
+    close_message_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_FilterIMsg
+// @ndk-side-effects Filters an ABI-complete close-window message taken from a real Exec port, verifies its public fields, restores the original, and completes the mandatory Exec reply lifecycle
+@test("gadtools.library GT_FilterIMsg preserves application message")
+pub fn gadtools_filter_imsg() {
+    var fixture = message_fixture()
+    expect(fixture.input != null && fixture.reply != null, "message and reply ports allocate")
+    let original = original_message(&var fixture)
+    queue_message(&var fixture)
+    let received = if fixture.input != null { GetMsg(fixture.input) } else { (*Message)null }
+    expect(received == (*Message)original, "Exec returns the exact queued message")
+    let filtered = if received != null { GT_FilterIMsg((*IntuiMessage)received) } else { (*IntuiMessage)null }
+    expect(filtered != null, "close-window message remains application-visible")
+    if filtered != null {
+        unsafe {
+            expect((*filtered).Class == $00000200 && (*filtered).Code == $1234,
+                "filter preserves exact close-window payload")
+        }
+    }
+    let restored = if filtered != null { GT_PostFilterIMsg(filtered) } else { (*IntuiMessage)null }
+    expect(restored == original, "post-filter restores exact original")
+    if restored != null { ReplyMsg((*Message)restored) }
+    let replied = if fixture.reply != null { GetMsg(fixture.reply) } else { (*Message)null }
+    expect(replied == (*Message)original, "original completes normal Exec reply lifecycle")
+    close_message_fixture(&var fixture)
+}
+
+// @covers-ndk function|gadtools.library|GT_PostFilterIMsg
+// @ndk-side-effects Reverses a successful GadTools filter, proves the exact original IntuiMessage address is recovered, then replies and retrieves that same address through Exec
+@test("gadtools.library GT_PostFilterIMsg restores exact original")
+pub fn gadtools_post_filter_imsg() {
+    var fixture = message_fixture()
+    expect(fixture.input != null && fixture.reply != null, "message and reply ports allocate")
+    let original = original_message(&var fixture)
+    queue_message(&var fixture)
+    let received = if fixture.input != null { GetMsg(fixture.input) } else { (*Message)null }
+    let filtered = if received != null { GT_FilterIMsg((*IntuiMessage)received) } else { (*IntuiMessage)null }
+    expect(filtered != null, "filter produces a modified message")
+    let restored = GT_PostFilterIMsg(filtered)
+    expect(restored == original, "post-filter returns exact caller-owned message")
+    if restored != null { ReplyMsg((*Message)restored) }
+    let replied = if fixture.reply != null { GetMsg(fixture.reply) } else { (*Message)null }
+    expect(replied == (*Message)original, "restored original remains replyable")
+    close_message_fixture(&var fixture)
+}

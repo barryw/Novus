@@ -158,7 +158,7 @@ impl FFP {
     /// Subtract two FFP values
     @inline
     pub fn sub(&self, other: FFP) -> FFP {
-        return FFP { raw: SPSub(self.raw, other.raw) }
+        return FFP { raw: SPSub(other.raw, self.raw) }
     }
 
     /// Multiply two FFP values
@@ -170,7 +170,7 @@ impl FFP {
     /// Divide two FFP values
     @inline
     pub fn div(&self, other: FFP) -> FFP {
-        return FFP { raw: SPDiv(self.raw, other.raw) }
+        return FFP { raw: SPDiv(other.raw, self.raw) }
     }
 
     /// Negate FFP value
@@ -357,24 +357,23 @@ impl FFP {
 /// Pi in FFP format
 pub fn ffp_pi() -> FFP {
     // Pi ≈ 3.14159265
-    // FFP representation
-    return FFP::from_raw(0x40490FDB)
+    return FFP::from_raw(0xC90FDB42)
 }
 
 /// Pi/2 in FFP format
 pub fn ffp_half_pi() -> FFP {
-    return FFP::from_raw(0x3FC90FDB)
+    return FFP::from_raw(0xC90FDB41)
 }
 
 /// 2*Pi in FFP format
 pub fn ffp_two_pi() -> FFP {
-    return FFP::from_raw(0x40C90FDB)
+    return FFP::from_raw(0xC90FDB43)
 }
 
 /// e (Euler's number) in FFP format
 pub fn ffp_e() -> FFP {
     // e ≈ 2.71828182
-    return FFP::from_raw(0x402DF854)
+    return FFP::from_raw(0xADF85442)
 }
 
 /// 1.0 in FFP format

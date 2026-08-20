@@ -1,0 +1,112 @@
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, LAYERSMART, LAYERSUPER
+from amiga::raw::structs import BitMap, Layer, Layer_Info, RastPort
+from amiga::raw::graphics import AllocBitMap, CopySBitMap, FreeBitMap, InitRastPort, ReadPixel, SetAPen, SyncSBitMap, WaitBlit, WritePixel
+from amiga::raw::layers import CreateUpfrontLayer, DeleteLayer, DisposeLayerInfo, LockLayer, NewLayerInfo, UnlockLayer
+
+struct LayerStorage {
+    info: *Layer_Info,
+    layer: *Layer,
+    display: *BitMap,
+    super_bitmap: *BitMap,
+}
+
+fn prepare_layer() -> LayerStorage {
+    let display = AllocBitMap(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null)
+    let super_bitmap = AllocBitMap(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, display)
+    let info = NewLayerInfo()
+    if display == null || super_bitmap == null || info == null {
+        if info != null { DisposeLayerInfo(info) }
+        if super_bitmap != null { FreeBitMap(super_bitmap) }
+        if display != null { FreeBitMap(display) }
+        return LayerStorage { info: null, layer: null, display: null, super_bitmap: null }
+    }
+    let layer = CreateUpfrontLayer(info, display, 0, 0, 63, 31,
+        (i32)(LAYERSMART | LAYERSUPER), super_bitmap)
+    if layer == null {
+        DisposeLayerInfo(info)
+        FreeBitMap(super_bitmap)
+        FreeBitMap(display)
+        return LayerStorage { info: null, layer: null, display: null, super_bitmap: null }
+    }
+    WaitBlit()
+    return LayerStorage { info: info, layer: layer, display: display, super_bitmap: super_bitmap }
+}
+
+fn ready(storage: &LayerStorage) -> bool {
+    return storage.info != null && storage.layer != null &&
+        storage.display != null && storage.super_bitmap != null
+}
+
+fn release_layer(storage: &LayerStorage) {
+    if storage.layer != null {
+        DeleteLayer(0, storage.layer)
+        WaitBlit()
+    }
+    if storage.info != null { DisposeLayerInfo(storage.info) }
+    if storage.super_bitmap != null { FreeBitMap(storage.super_bitmap) }
+    if storage.display != null { FreeBitMap(storage.display) }
+}
+
+fn rast_port(bitmap: *BitMap) -> RastPort {
+    var port: RastPort = @zeroed(RastPort)
+    InitRastPort(&var port)
+    port.BitMap = bitmap
+    SetAPen(&var port, 1)
+    return port
+}
+
+// @covers-ndk function|graphics.library|SyncSBitMap
+// @ndk-side-effects SyncSBitMap copies an exact set pixel from the locked layer's visible common bitmap into the caller-owned SuperBitMap while preserving both source and Layer/SuperBitMap identities
+@test("graphics.library SyncSBitMap copies visible pixels into SuperBitMap")
+pub fn graphics_sync_super_bitmap() {
+    let storage = prepare_layer()
+    expect(ready(&storage), "SuperBitMap layer fixture allocated")
+    if !ready(&storage) { return }
+    var display_port = rast_port(storage.display)
+    var super_port = rast_port(storage.super_bitmap)
+    expect(ReadPixel(&var display_port, 11, 7) == 0 &&
+        ReadPixel(&var super_port, 11, 7) == 0,
+        "both bitmaps start clear at the probe pixel")
+    WritePixel(&var display_port, 11, 7)
+    expect(ReadPixel(&var display_port, 11, 7) == 1 &&
+        ReadPixel(&var super_port, 11, 7) == 0,
+        "visible bitmap changes independently before synchronization")
+
+    LockLayer(0, storage.layer)
+    SyncSBitMap(storage.layer)
+    WaitBlit()
+    UnlockLayer(storage.layer)
+
+    expect(ReadPixel(&var super_port, 11, 7) == 1,
+        "SuperBitMap receives the exact visible pixel")
+    expect(unsafe { (*storage.layer).SuperBitMap == storage.super_bitmap },
+        "synchronization preserves the caller-owned SuperBitMap identity")
+    release_layer(&storage)
+}
+
+// @covers-ndk function|graphics.library|CopySBitMap
+// @ndk-side-effects CopySBitMap copies an exact set pixel from a locked caller-owned SuperBitMap into the visible common layer bitmap while preserving the source pixel and Layer/SuperBitMap identities
+@test("graphics.library CopySBitMap copies SuperBitMap pixels into the layer")
+pub fn graphics_copy_super_bitmap() {
+    let storage = prepare_layer()
+    expect(ready(&storage), "SuperBitMap layer fixture allocated")
+    if !ready(&storage) { return }
+    var display_port = rast_port(storage.display)
+    var super_port = rast_port(storage.super_bitmap)
+    WritePixel(&var super_port, 23, 14)
+    expect(ReadPixel(&var super_port, 23, 14) == 1 &&
+        ReadPixel(&var display_port, 23, 14) == 0,
+        "SuperBitMap changes independently before copying")
+
+    LockLayer(0, storage.layer)
+    CopySBitMap(storage.layer)
+    WaitBlit()
+    UnlockLayer(storage.layer)
+
+    expect(ReadPixel(&var display_port, 23, 14) == 1,
+        "visible layer receives the exact SuperBitMap pixel")
+    expect(ReadPixel(&var super_port, 23, 14) == 1,
+        "copy leaves the source SuperBitMap pixel intact")
+    release_layer(&storage)
+}

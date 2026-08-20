@@ -11,9 +11,78 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Reset the clock chip.  (V36)
+///
+/// This routine does whatever is neeeded to put the clock chip
+/// into a working and usable state and also sets the date on the
+/// clock chip to 01-Jan-1978.
+///
+/// # Synopsis
+///
+/// ResetBattClock( )
+///
+/// void ResetBattClock( void );
+///
+/// # Notes
+///
+/// # Bugs
+///
+/// FS-UAE services `ReadBattClock` from the host clock and discards writes, so on the
+/// emulated A4000 used for verification the battery clock is effectively read-only.
+/// Live verification shows `WriteBattClock` and `ResetBattClock` returning normally while
+/// a following `ReadBattClock` still reports the live host time, never the written value
+/// and never the 01-Jan-1978 epoch. Real hardware stores both. Tier 3 preserves whatever
+/// the machine does.
 @library("battclock.resource")
 extern pub fn ResetBattClock()
+/// Read time from clock chip.  (V36)
+///
+/// This routine reads the time from the clock chip and returns it
+/// as the number of seconds from 01-jan-1978.
+///
+/// # Synopsis
+///
+/// AmigaTime = ReadBattClock( )
+///
+/// ULONG ReadBattClock( void );
+/// D0
+///
+/// # Returns
+///
+/// AmigaTime       The number of seconds from 01-Jan-1978 that
+/// the clock chip thinks it is.
+///
+/// # Notes
+///
+/// If the clock chip returns an invalid date, the clock chip is
+/// reset and 0 is returned.
 @library("battclock.resource")
 extern pub fn ReadBattClock() -> u32
+/// Set the time on the clock chip.  (V36)
+///
+/// This routine writes the time given in AmigaTime to the clock
+/// chip.
+///
+/// # Synopsis
+///
+/// WriteBattClock( AmigaTime )
+///                 D0
+///
+/// void WriteBattClock( ULONG );
+///
+/// # Arguments
+///
+/// * AmigaTime       The number of seconds from 01-Jan-1978 to the time that should be written to the clock chip.
+///
+/// # Notes
+///
+/// # Bugs
+///
+/// FS-UAE services `ReadBattClock` from the host clock and discards writes, so on the
+/// emulated A4000 used for verification the battery clock is effectively read-only.
+/// Live verification shows `WriteBattClock` and `ResetBattClock` returning normally while
+/// a following `ReadBattClock` still reports the live host time, never the written value
+/// and never the 01-Jan-1978 epoch. Real hardware stores both. Tier 3 preserves whatever
+/// the machine does.
 @library("battclock.resource")
 extern pub fn WriteBattClock(time: u32)

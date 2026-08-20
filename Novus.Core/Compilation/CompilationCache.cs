@@ -24,6 +24,7 @@ public partial class CompilationCache
     private readonly ConcurrentDictionary<string, CachedParseResult> _parseTrees = new();
     private readonly ConcurrentDictionary<string, CachedIrModule> _compiledModules = new();
     private readonly ConcurrentDictionary<(string Path, string ConfigHash), bool> _recompilationMemo = new();
+    private readonly ConcurrentDictionary<string, byte> _compiledThisBuild = new();
     private bool _memoizeRecompilationChecks;
     private readonly List<Task> _pendingSaves = new();
     private readonly object _pendingSavesLock = new();
@@ -114,6 +115,7 @@ public partial class CompilationCache
     public void BeginBuild()
     {
         _recompilationMemo.Clear();
+        _compiledThisBuild.Clear();
         _memoizeRecompilationChecks = true;
     }
 
@@ -150,14 +152,8 @@ public partial class CompilationCache
             return true;
         }
 
-        // Fast path: Check timestamp first
-        var lastModified = File.GetLastWriteTimeUtc(fullPath);
-        if (cachedState.LastModified != lastModified)
-        {
-            return true;
-        }
-
-        // Verify content hash (handles rapid modifications within filesystem time granularity)
+        // Generated sources are often rewritten with identical contents. The content
+        // hash is authoritative; timestamps alone must not discard reusable IR.
         var currentHash = ComputeFileHash(fullPath);
         if (cachedState.ContentHash != currentHash)
         {
@@ -171,6 +167,12 @@ public partial class CompilationCache
             {
                 return true;
             }
+        }
+
+        if (cachedState.Dependencies.Count > 0 &&
+            cachedState.DependencyGraphHash != ComputeSourceGraphHash(cachedState.Dependencies))
+        {
+            return true;
         }
 
         return false;
@@ -290,6 +292,7 @@ public partial class CompilationCache
             FileSize = fileInfo.Length,
             LastModified = lastModified,
             Dependencies = dependencies,
+            DependencyGraphHash = ComputeSourceGraphHash(dependencies),
             CompiledAt = DateTime.UtcNow,
             CompilerVersion = _compilerVersion,
             ConfigHash = configHash,
@@ -298,6 +301,7 @@ public partial class CompilationCache
 
         // Update in-memory caches
         _fileStates[fullPath] = fileState;
+        _compiledThisBuild[fullPath] = 0;
 
         _parseTrees[fullPath] = new CachedParseResult
         {
@@ -312,10 +316,7 @@ public partial class CompilationCache
             ImportedModules = importedModules,
             FileState = fileState
         };
-        foreach (var key in _recompilationMemo.Keys.Where(key => key.Path == fullPath))
-        {
-            _recompilationMemo.TryRemove(key, out _);
-        }
+        _recompilationMemo.Clear();
 
         // Snapshot synchronously: lowering mutates the module after this method returns.
         byte[]? persistedIr = null;
@@ -375,6 +376,23 @@ public partial class CompilationCache
         {
             _pendingSaves.RemoveAll(t => t.IsCompleted);
         }
+    }
+
+    /// <summary>
+    /// Refresh dependency snapshots for modules compiled in this invocation after
+    /// their complete dependency frontier has been cached.
+    /// </summary>
+    public async Task FinalizeBuildSnapshotAsync()
+    {
+        await FlushAsync();
+        foreach (var path in _compiledThisBuild.Keys)
+        {
+            if (!_fileStates.TryGetValue(path, out var state))
+                continue;
+            state.DependencyGraphHash = ComputeSourceGraphHash(state.Dependencies);
+            SaveFileState(path, state);
+        }
+        _recompilationMemo.Clear();
     }
 
     /// <summary>

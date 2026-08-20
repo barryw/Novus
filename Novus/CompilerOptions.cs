@@ -198,6 +198,13 @@ public class CompilerOptions
     [Option("cache-stats", Required = false, HelpText = "Display cache hit/miss statistics after compilation")]
     public bool CacheStats { get; set; }
 
+    /// <summary>
+    /// Preserve the historical test/build behavior and treat all non-extern
+    /// definitions as reachable, instead of strict call-graph reachability.
+    /// Defaults to true for compatibility.
+    /// </summary>
+    public bool IncludeAllDefinitionsForReachability { get; set; } = true;
+
     /// <summary>Override the persistent IR cache directory.</summary>
     public string? CompilationCacheDirectory { get; set; }
 

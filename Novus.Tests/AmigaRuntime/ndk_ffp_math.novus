@@ -1,0 +1,162 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::mathffp import SPFix, SPFlt, SPCmp, SPTst, SPAbs, SPNeg, SPAdd, SPSub, SPMul, SPDiv, SPFloor, SPCeil
+from amiga::raw::mathtrans import SPAtan, SPSin, SPCos, SPTan, SPSincos, SPSinh, SPCosh, SPTanh, SPExp, SPLog, SPPow, SPSqrt, SPTieee, SPFieee, SPAsin, SPAcos, SPLog10
+
+const FFP_ZERO: u32 = 0
+const FFP_ONE: u32 = 0x80000041
+const FFP_TWO: u32 = 0x80000042
+const FFP_THREE: u32 = 0xC0000042
+const FFP_FOUR: u32 = 0x80000043
+const FFP_EIGHT: u32 = 0x80000044
+const FFP_NEG_ONE: u32 = 0x800000C1
+const FFP_THREE_HALF: u32 = 0xE0000042
+const FFP_TWO_QUARTER: u32 = 0x90000042
+
+// @covers-ndk function|mathffp.library|SPFix
+// @ndk-side-effects Converts by truncating toward zero and does not mutate caller state
+@test("mathffp SPFix truncates toward zero")
+pub fn ffp_fix() { expect(SPFix(0xF0000042) == 3 && SPFix(0xF00000C2) == -3, "both signs truncate toward zero") }
+
+// @covers-ndk function|mathffp.library|SPFlt
+// @ndk-side-effects Converts a signed integer to Motorola FFP without mutating caller state
+@test("mathffp SPFlt converts signed integers")
+pub fn ffp_flt() { expect(SPFlt(-7) == 0xE00000C3, "negative integer has the exact FFP representation") }
+
+// @covers-ndk function|mathffp.library|SPCmp
+// @ndk-side-effects Compares values without mutation and returns negative, zero, or positive according to ordering
+@test("mathffp SPCmp reports ordering")
+pub fn ffp_cmp() { expect(SPCmp(FFP_ONE, FFP_TWO) < 0 && SPCmp(FFP_TWO, FFP_TWO) == 0 && SPCmp(FFP_THREE, FFP_TWO) > 0, "all ordering results are distinguished") }
+
+// @covers-ndk function|mathffp.library|SPTst
+// @ndk-side-effects Tests one value without mutation and reports its sign
+@test("mathffp SPTst reports sign")
+pub fn ffp_tst() { expect(SPTst(FFP_NEG_ONE) < 0 && SPTst(FFP_ZERO) == 0 && SPTst(FFP_ONE) > 0, "negative zero and positive are distinguished") }
+
+// @covers-ndk function|mathffp.library|SPAbs
+// @ndk-side-effects Returns the magnitude without mutating caller state
+@test("mathffp SPAbs clears the sign")
+pub fn ffp_abs() { expect(SPAbs(0xA00000C2) == 0xA0000042, "negative two and a half becomes positive") }
+
+// @covers-ndk function|mathffp.library|SPNeg
+// @ndk-side-effects Returns the negated value without mutating caller state
+@test("mathffp SPNeg reverses the sign")
+pub fn ffp_neg() { expect(SPNeg(0xA0000042) == 0xA00000C2, "positive two and a half becomes negative") }
+
+// @covers-ndk function|mathffp.library|SPAdd
+// @ndk-side-effects Returns the FFP sum without mutating caller state
+@test("mathffp SPAdd adds operands")
+pub fn ffp_add() { expect(SPAdd(0xA0000041, 0xA0000042) == 0xF0000042, "one and a quarter plus two and a half is three and three quarters") }
+
+// @covers-ndk function|mathffp.library|SPSub
+// @ndk-side-effects Returns its second FFP operand minus its first without mutating caller state
+@test("mathffp SPSub uses the documented register order")
+pub fn ffp_sub() { expect_eq(SPSub(FFP_TWO, 0xB0000043), FFP_THREE_HALF, "the second operand minus the first is three and a half") }
+
+// @covers-ndk function|mathffp.library|SPMul
+// @ndk-side-effects Returns the FFP product without mutating caller state
+@test("mathffp SPMul multiplies operands")
+pub fn ffp_mul() { expect(SPMul(0xC0000041, FFP_FOUR) == 0xC0000043, "one and a half times four is six") }
+
+// @covers-ndk function|mathffp.library|SPDiv
+// @ndk-side-effects Returns its second FFP operand divided by its first without mutating caller state
+@test("mathffp SPDiv uses the documented register order")
+pub fn ffp_div() { expect_eq(SPDiv(FFP_FOUR, 0x90000044), FFP_TWO_QUARTER, "the second operand divided by the first is two and a quarter") }
+
+// @covers-ndk function|mathffp.library|SPFloor
+// @ndk-side-effects Returns the greatest integral FFP value not above the input without mutation
+@test("mathffp SPFloor rounds downward")
+pub fn ffp_floor() { expect(SPFloor(0x900000C2) == 0xC00000C2, "negative two and a quarter rounds to negative three") }
+
+// @covers-ndk function|mathffp.library|SPCeil
+// @ndk-side-effects Returns the least integral FFP value not below the input without mutation
+@test("mathffp SPCeil rounds upward")
+pub fn ffp_ceil() { expect(SPCeil(0x900000C2) == 0x800000C2, "negative two and a quarter rounds to negative two") }
+
+// @covers-ndk function|mathtrans.library|SPAtan
+// @ndk-side-effects Returns the FFP arctangent in radians without mutation
+@test("mathtrans SPAtan preserves zero")
+pub fn ffp_atan() { expect(SPAtan(FFP_ZERO) == FFP_ZERO, "atan zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPSin
+// @ndk-side-effects Returns the FFP sine without mutation
+@test("mathtrans SPSin preserves zero")
+pub fn ffp_sin() { expect(SPSin(FFP_ZERO) == FFP_ZERO, "sin zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPCos
+// @ndk-side-effects Returns the FFP cosine without mutation
+@test("mathtrans SPCos returns one at zero")
+pub fn ffp_cos() { expect(SPCos(FFP_ZERO) == FFP_ONE, "cos zero is one") }
+
+// @covers-ndk function|mathtrans.library|SPTan
+// @ndk-side-effects Returns the FFP tangent without mutation
+@test("mathtrans SPTan preserves zero")
+pub fn ffp_tan() { expect(SPTan(FFP_ZERO) == FFP_ZERO, "tan zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPSincos
+// @ndk-side-effects Returns FFP sine and writes FFP cosine through the supplied pointer
+@test("mathtrans SPSincos returns both components")
+pub fn ffp_sincos() {
+    var cosine: u32 = FFP_ZERO
+    let sine = SPSincos(&var cosine, FFP_ZERO)
+    expect(sine == FFP_ZERO && cosine == FFP_ONE, "zero produces sine zero and cosine one")
+}
+
+// @covers-ndk function|mathtrans.library|SPSinh
+// @ndk-side-effects Returns the FFP hyperbolic sine without mutation
+@test("mathtrans SPSinh preserves zero")
+pub fn ffp_sinh() { expect(SPSinh(FFP_ZERO) == FFP_ZERO, "sinh zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPCosh
+// @ndk-side-effects Returns the FFP hyperbolic cosine without mutation
+@test("mathtrans SPCosh returns one at zero")
+pub fn ffp_cosh() { expect(SPCosh(FFP_ZERO) == FFP_ONE, "cosh zero is one") }
+
+// @covers-ndk function|mathtrans.library|SPTanh
+// @ndk-side-effects Returns the FFP hyperbolic tangent without mutation
+@test("mathtrans SPTanh preserves zero")
+pub fn ffp_tanh() { expect(SPTanh(FFP_ZERO) == FFP_ZERO, "tanh zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPExp
+// @ndk-side-effects Returns e raised to the FFP argument without mutation
+@test("mathtrans SPExp returns one at zero")
+pub fn ffp_exp() { expect(SPExp(FFP_ZERO) == FFP_ONE, "exp zero is one") }
+
+// @covers-ndk function|mathtrans.library|SPLog
+// @ndk-side-effects Returns the FFP natural logarithm without mutation
+@test("mathtrans SPLog returns zero at one")
+pub fn ffp_log() { expect(SPLog(FFP_ONE) == FFP_ZERO, "log one is zero") }
+
+// @covers-ndk function|mathtrans.library|SPPow
+// @ndk-side-effects Returns the FFP argument raised to the FFP exponent without mutation
+@test("mathtrans SPPow honors exponent-first ABI")
+pub fn ffp_pow() { expect(SPPow(FFP_THREE, FFP_TWO) == FFP_EIGHT, "two cubed is eight") }
+
+// @covers-ndk function|mathtrans.library|SPSqrt
+// @ndk-side-effects Returns the FFP square root without mutation
+@test("mathtrans SPSqrt computes a root")
+pub fn ffp_sqrt() { expect(SPSqrt(FFP_FOUR) == FFP_TWO, "square root of four is two") }
+
+// @covers-ndk function|mathtrans.library|SPTieee
+// @ndk-side-effects Converts Motorola FFP to IEEE single bits without mutating caller state
+@test("mathtrans SPTieee converts one exactly")
+pub fn ffp_tieee() { expect(SPTieee(FFP_ONE) == 0x3F800000, "FFP one becomes IEEE one") }
+
+// @covers-ndk function|mathtrans.library|SPFieee
+// @ndk-side-effects Converts IEEE single bits to Motorola FFP without mutating caller state
+@test("mathtrans SPFieee converts one exactly")
+pub fn ffp_fieee() { expect(SPFieee(0x3F800000) == FFP_ONE, "IEEE one becomes FFP one") }
+
+// @covers-ndk function|mathtrans.library|SPAsin
+// @ndk-side-effects Returns the FFP arcsine in radians without mutation
+@test("mathtrans SPAsin preserves zero")
+pub fn ffp_asin() { expect(SPAsin(FFP_ZERO) == FFP_ZERO, "asin zero is zero") }
+
+// @covers-ndk function|mathtrans.library|SPAcos
+// @ndk-side-effects Returns the FFP arccosine in radians without mutation
+@test("mathtrans SPAcos returns zero at one")
+pub fn ffp_acos() { expect(SPAcos(FFP_ONE) == FFP_ZERO, "acos one is zero") }
+
+// @covers-ndk function|mathtrans.library|SPLog10
+// @ndk-side-effects Returns the FFP base-ten logarithm without mutation
+@test("mathtrans SPLog10 returns zero at one")
+pub fn ffp_log10() { expect(SPLog10(FFP_ONE) == FFP_ZERO, "log10 one is zero") }

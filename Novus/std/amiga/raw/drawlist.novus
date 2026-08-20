@@ -11,5 +11,30 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the drawlist class.
+///
+/// Obtains the pointer to the DrawList image class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// drawlist_class = DRAWLIST_GetClass();
+/// D0
+///
+/// Class * DRAWLIST_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// drawlist_class - Pointer to the DrawList image class.
 @library("drawlist.library")
-extern pub fn DRAWLIST_GetClass() -> *u8
+extern pub fn DRAWLIST_GetClass() -> *IClass

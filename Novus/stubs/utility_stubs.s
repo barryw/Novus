@@ -241,7 +241,7 @@ _UMult32:
 
 	section	_SDivMod32_stub,code
 
-; LONG SDivMod32(LONG dividend, LONG divisor)
+; QUAD SDivMod32(LONG dividend, LONG divisor) -- quotient:remainder in d0:d1
 	xdef	_SDivMod32
 _SDivMod32:
 	movem.l	a6,-(sp)
@@ -254,7 +254,7 @@ _SDivMod32:
 
 	section	_UDivMod32_stub,code
 
-; ULONG UDivMod32(ULONG dividend, ULONG divisor)
+; UQUAD UDivMod32(ULONG dividend, ULONG divisor) -- quotient:remainder in d0:d1
 	xdef	_UDivMod32
 _UDivMod32:
 	movem.l	a6,-(sp)
@@ -331,7 +331,7 @@ _ApplyTagChanges:
 
 	section	_SMult64_stub,code
 
-; LONG SMult64(LONG arg1, LONG arg2)
+; QUAD SMult64(LONG arg1, LONG arg2)
 	xdef	_SMult64
 _SMult64:
 	movem.l	a6,-(sp)
@@ -339,12 +339,13 @@ _SMult64:
 	move.l	12(sp),d1
 	movea.l	_UtilityBase,a6
 	jsr	-198(a6)
+	exg	d0,d1
 	movem.l	(sp)+,a6
 	rts
 
 	section	_UMult64_stub,code
 
-; ULONG UMult64(ULONG arg1, ULONG arg2)
+; UQUAD UMult64(ULONG arg1, ULONG arg2)
 	xdef	_UMult64
 _UMult64:
 	movem.l	a6,-(sp)
@@ -352,6 +353,7 @@ _UMult64:
 	move.l	12(sp),d1
 	movea.l	_UtilityBase,a6
 	jsr	-204(a6)
+	exg	d0,d1
 	movem.l	(sp)+,a6
 	rts
 
@@ -507,4 +509,3 @@ _GetUniqueID:
 	jsr	-270(a6)
 	movem.l	(sp)+,a6
 	rts
-

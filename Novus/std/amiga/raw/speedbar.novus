@@ -11,19 +11,336 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the speedbar class. (V40)
+///
+/// Obtains the pointer to the SpeedBar gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// speedbar_class = SPEEDBAR_GetClass();
+/// D0
+///
+/// Class * SPEEDBAR_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// speedbar_class - Pointer to the SpeedBar gadget class.
 @library("speedbar.library")
-extern pub fn SPEEDBAR_GetClass() -> *u8
+extern pub fn SPEEDBAR_GetClass() -> *IClass
+/// Allocate a SpeedBar node. (V40)
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the speedbar.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the SpeedBar class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocSpeedButtonNode(UWORD, Tag, ...)
+/// node = AllocSpeedButtonNode(number, Tag, ...)
+///
+/// struct Node * AllocSpeedButtonNodeA(UWORD, struct TagItem *)
+/// node = AllocSpeedButtonNodeA(number, taglist)
+///
+/// # Arguments
+///
+/// * `number` - Places value in node->sbn_Node.ln_Pri, and is the numeric ID of the button within the bar. Note the current limitation, ln_Pri is a BYTE. This will be addressed, and *posibly* made obsolete and overridden by SBNA_ButtonID.
+/// * `taglist` - Attributes for the node, passed onto SetSpeedButtonNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a SpeedBar gadget.
+///
+/// # See Also
+///
+/// FreeSpeedButtonNode(), SetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn AllocSpeedButtonNodeA(number: u16, tags: *TagItem) -> *Node
+/// Allocate a SpeedBar node. (V40)
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the speedbar.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the SpeedBar class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocSpeedButtonNode(UWORD, Tag, ...)
+/// node = AllocSpeedButtonNode(number, Tag, ...)
+///
+/// struct Node * AllocSpeedButtonNodeA(UWORD, struct TagItem *)
+/// node = AllocSpeedButtonNodeA(number, taglist)
+///
+/// # Arguments
+///
+/// * `number` - Places value in node->sbn_Node.ln_Pri, and is the numeric ID of the button within the bar. Note the current limitation, ln_Pri is a BYTE. This will be addressed, and *posibly* made obsolete and overridden by SBNA_ButtonID.
+/// * `taglist` - Attributes for the node, passed onto SetSpeedButtonNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a SpeedBar gadget.
+///
+/// # See Also
+///
+/// FreeSpeedButtonNode(), SetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn AllocSpeedButtonNode(number: u16, tags: u32, ...args) -> *Node
+/// Free a SpeedBar node. (V40)
+///
+/// Frees a SpeedButtonNode allocated with AllocSpeedButtonNodeA().
+///
+/// # Synopsis
+///
+/// VOID FreeSpeedButtonNode(struct Node *)
+/// FreeSpeedButtonNode(node)
+///
+/// # Arguments
+///
+/// * `node` - The node to free.
+///
+/// # See Also
+///
+/// AllocSpeedButtonNodeA()
 @library("speedbar.library")
 extern pub fn FreeSpeedButtonNode(node: *Node)
+/// Set attributes of a SpeedBar node. (V40)
+///
+/// Changes attributes for a SpeedBar node.  Since the SpeedBar
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a SpeedBar gadget.  You must first detach the list
+/// with SPEEDBAR_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetSpeedButtonNodeAttrs(struct Node *, Tag, ...)
+/// SetSpeedButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetSpeedButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// SetSpeedButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// SBNA_Left (WORD)
+/// Left spacing offset of button from left of bar, set automatically.
+///
+/// SBNA_Top (WORD)
+/// Top spacing offset of button from top of bar, set automatically.
+///
+/// SBNA_Width (WORD)
+/// Width Of Button - these are set automatically.
+///
+/// SBNA_Height (WORD)
+/// Height Of Button - these are set automatically.
+///
+/// SBNA_Image (struct Image *)
+/// Standard Image or BOOPSI Image to be displayed in this button.
+///
+/// SBNA_SelImage (struct Image *)
+/// Standard Image or BOOPSI Image to be displayed in this button
+/// when selected.
+///
+/// SBNA_Spacing (WORD)
+/// Spacing between this button and the last button.
+///
+/// SBNA_Highlight (WORD)
+/// Button selecting highlight mode, ant one of the following
+/// is supported:
+///
+///         SBH_NONE        - Do not highlight.
+///         SBH_BACKFILL    - BackFill will FILLPEN
+///         SBH_RECESS      - Shift image right and down when selected.
+///         SBH_IMAGE       - Display alternate image (SBNA_SelImage)
+///
+/// SBNA_Enabled (BOOL)
+/// Enabled (hidden/shown) state of a speed button.
+///
+/// SBNA_Help (STRPTR)
+/// String Pointer to optional help text place in window titlebar
+/// when this speed button is active/selected.
+///
+/// SBNA_UserData (APTR)
+/// User Data, use as desired.
+///
+/// SBNA_Disabled (BOOL) (V41)
+/// Marks this button as disabled, it will render with a ghost pattern
+/// and will not allow it to be selected.
+///
+/// SBNA_Toggle (BOOL) (V41)
+/// Designates the button as a boolean toggle button. Defaults FALSE.
+///
+/// SBNA_Selected (BOOL) (V41)
+/// The current selection state of a Toggle/MX button. Defaults FALSE.
+///
+/// SBNA_MXGroup (BOOL) (V41)
+/// Set the MXGroup a button belongs in. This setting implies the
+/// SBNA_Toggle setting as TRUE also. The default is ~0, or not
+/// in any MXGroup. Note, a single speedbar can contain several
+/// MX groupings and mixtures of toggles and normal selections!
+///
+/// # See Also
+///
+/// GetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn SetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
+/// Set attributes of a SpeedBar node. (V40)
+///
+/// Changes attributes for a SpeedBar node.  Since the SpeedBar
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a SpeedBar gadget.  You must first detach the list
+/// with SPEEDBAR_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetSpeedButtonNodeAttrs(struct Node *, Tag, ...)
+/// SetSpeedButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetSpeedButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// SetSpeedButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// SBNA_Left (WORD)
+/// Left spacing offset of button from left of bar, set automatically.
+///
+/// SBNA_Top (WORD)
+/// Top spacing offset of button from top of bar, set automatically.
+///
+/// SBNA_Width (WORD)
+/// Width Of Button - these are set automatically.
+///
+/// SBNA_Height (WORD)
+/// Height Of Button - these are set automatically.
+///
+/// SBNA_Image (struct Image *)
+/// Standard Image or BOOPSI Image to be displayed in this button.
+///
+/// SBNA_SelImage (struct Image *)
+/// Standard Image or BOOPSI Image to be displayed in this button
+/// when selected.
+///
+/// SBNA_Spacing (WORD)
+/// Spacing between this button and the last button.
+///
+/// SBNA_Highlight (WORD)
+/// Button selecting highlight mode, ant one of the following
+/// is supported:
+///
+///         SBH_NONE        - Do not highlight.
+///         SBH_BACKFILL    - BackFill will FILLPEN
+///         SBH_RECESS      - Shift image right and down when selected.
+///         SBH_IMAGE       - Display alternate image (SBNA_SelImage)
+///
+/// SBNA_Enabled (BOOL)
+/// Enabled (hidden/shown) state of a speed button.
+///
+/// SBNA_Help (STRPTR)
+/// String Pointer to optional help text place in window titlebar
+/// when this speed button is active/selected.
+///
+/// SBNA_UserData (APTR)
+/// User Data, use as desired.
+///
+/// SBNA_Disabled (BOOL) (V41)
+/// Marks this button as disabled, it will render with a ghost pattern
+/// and will not allow it to be selected.
+///
+/// SBNA_Toggle (BOOL) (V41)
+/// Designates the button as a boolean toggle button. Defaults FALSE.
+///
+/// SBNA_Selected (BOOL) (V41)
+/// The current selection state of a Toggle/MX button. Defaults FALSE.
+///
+/// SBNA_MXGroup (BOOL) (V41)
+/// Set the MXGroup a button belongs in. This setting implies the
+/// SBNA_Toggle setting as TRUE also. The default is ~0, or not
+/// in any MXGroup. Note, a single speedbar can contain several
+/// MX groupings and mixtures of toggles and normal selections!
+///
+/// # See Also
+///
+/// GetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn SetSpeedButtonNodeAttrs(node: *Node, ...args)
+/// Get attributes about a SpeedBar node. (V40)
+///
+/// The SpeedBar uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Output width
+///
+/// Every tag destination must point to writable 32-bit storage. The classic
+/// implementation writes a full 32-bit result even for attributes documented
+/// as WORD or BOOL; a 16-bit destination causes a two-byte overwrite.
+///
+/// # Synopsis
+///
+/// VOID GetSpeedButtonNodeAttrs(struct Node *, Tag, ...)
+/// GetSpeedButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetSpeedButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// GetSpeedButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The SpeedBar node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.
+///
+/// # See Also
+///
+/// SetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn GetSpeedButtonNodeAttrsA(node: *Node, tags: *TagItem)
+/// Get attributes about a SpeedBar node. (V40)
+///
+/// The SpeedBar uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Output width
+///
+/// Every tag destination must point to writable 32-bit storage. The classic
+/// implementation writes a full 32-bit result even for attributes documented
+/// as WORD or BOOL; a 16-bit destination causes a two-byte overwrite.
+///
+/// # Synopsis
+///
+/// VOID GetSpeedButtonNodeAttrs(struct Node *, Tag, ...)
+/// GetSpeedButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetSpeedButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// GetSpeedButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The SpeedBar node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.
+///
+/// # See Also
+///
+/// SetSpeedButtonNodeAttrsA()
 @library("speedbar.library")
 extern pub fn GetSpeedButtonNodeAttrs(node: *Node, ...args)

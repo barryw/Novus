@@ -1,0 +1,124 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import ERROR_OBJECT_IN_USE, ID_INTER_FFS_DISK
+from amiga::raw::dos import AddBuffers, Close, Delay, DeleteFile, Format, Inhibit, IoErr, Lock, Open, Read, Relabel, UnLock, Write
+
+// A handler that has just serviced a write still has work outstanding, and
+// ACTION_INHIBIT is refused with ERROR_OBJECT_IN_USE until it settles. That is
+// the documented contract, not a failure, so give the handler time to drain
+// before treating a refusal as one. Every other error is reported as-is.
+fn inhibit_when_idle(name: Str, flag: i32) -> i32 {
+    var attempt: i32 = 0
+    forever {
+        let result = Inhibit(name, flag)
+        if result != 0 { return result }
+        if IoErr() != (i32)ERROR_OBJECT_IN_USE { return 0 }
+        if attempt >= 25 { return 0 }
+        Delay(10)
+        attempt++
+    }
+}
+
+fn mounted() -> bool {
+    let lock = Lock("NDK0:", -2)
+    if lock != 0 { UnLock(lock) }
+    return lock != 0
+}
+
+fn ensure_formatted() -> bool {
+    if mounted() { return true }
+    inhibit_when_idle("NDK0:", 1)
+    let formatted = Format("NDK0:", "NOVUSNDK", ID_INTER_FFS_DISK) != 0
+    let resumed = inhibit_when_idle("NDK0:", 0) != 0
+    return formatted && resumed && mounted()
+}
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn write_and_read_probe() -> bool {
+    DeleteFile("NDK0:novus_format_probe")
+    let output = Open("NDK0:novus_format_probe", 1006)
+    if output == 0 { return false }
+    let written = Write(output, "formatted", 9)
+    let output_closed = Close(output)
+    let input = Open("NDK0:novus_format_probe", 1005)
+    var bytes: [u8] = [0; 16]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let read = if input != 0 { Read(input, pointer, 15) } else { -1 }
+    let input_closed = if input != 0 { Close(input) } else { 0 }
+    let exact = read == 9 && c_equals(pointer, "formatted")
+    let deleted = DeleteFile("NDK0:novus_format_probe") != 0
+    return written == 9 && output_closed != 0 && input != 0 && input_closed != 0 && exact && deleted
+}
+
+fn buffer_count(result: i32) -> i32 {
+    if result == -1 { return IoErr() }
+    return result if result > 0
+    return -1
+}
+
+// @covers-ndk function|dos.library|Format
+// @ndk-side-effects Inhibits only the attached disposable NDK0 partition, creates a DOS3 international FFS volume, resumes the handler, and proves exact create/write/read/delete behavior on the new filesystem
+@test("dos.library Format creates a working disposable filesystem")
+pub fn dos_format() {
+    inhibit_when_idle("NDK0:", 1)
+    let formatted = Format("NDK0:", "NOVUSNDK", ID_INTER_FFS_DISK) != 0
+    let resumed = inhibit_when_idle("NDK0:", 0) != 0
+    expect(formatted && resumed, "the disposable partition formats and resumes")
+    expect(mounted() && write_and_read_probe(), "the formatted filesystem performs exact file I/O")
+}
+
+// @covers-ndk function|dos.library|Relabel
+// @ndk-side-effects Renames the disposable volume, proves the new volume-name path resolves to its root, restores the original label, and proves the restored name resolves
+@test("dos.library Relabel changes and restores a volume name")
+pub fn dos_relabel() {
+    let ready = ensure_formatted()
+    let renamed = ready && Relabel("NDK0:", "NOVUSRENAMED") != 0
+    let renamed_lock = if renamed { Lock("NOVUSRENAMED:", -2) } else { 0 }
+    if renamed_lock != 0 { UnLock(renamed_lock) }
+    let restored = if renamed_lock != 0 { Relabel("NDK0:", "NOVUSNDK") != 0 } else { false }
+    let restored_lock = if restored { Lock("NOVUSNDK:", -2) } else { 0 }
+    if restored_lock != 0 { UnLock(restored_lock) }
+    expect(ready && renamed && renamed_lock != 0, "the new volume label becomes addressable")
+    expect(restored && restored_lock != 0, "the original label is restored and addressable")
+}
+
+// @covers-ndk function|dos.library|Inhibit
+// @ndk-side-effects Suspends the disposable NDK0 handler, proves new filesystem locks are rejected while inhibited, resumes it, and proves locking succeeds again
+@test("dos.library Inhibit suspends and resumes a filesystem")
+pub fn dos_inhibit() {
+    let ready = ensure_formatted()
+    let inhibited = ready && inhibit_when_idle("NDK0:", 1) != 0
+    let blocked = if inhibited { Lock("NDK0:", -2) } else { 0 }
+    if blocked != 0 { UnLock(blocked) }
+    let resumed = if inhibited { inhibit_when_idle("NDK0:", 0) != 0 } else { false }
+    let available = if resumed { Lock("NDK0:", -2) } else { 0 }
+    if available != 0 { UnLock(available) }
+    expect(ready && inhibited && blocked == 0, "inhibited filesystem rejects a new root lock")
+    expect(resumed && available != 0, "resumed filesystem accepts a new root lock")
+}
+
+// @covers-ndk function|dos.library|AddBuffers
+// @ndk-side-effects Queries the disposable filesystem buffer count, adds exactly one buffer, verifies the documented direct-result or IoErr count increments, removes it, and verifies the original count is restored
+@test("dos.library AddBuffers changes and restores the buffer count")
+pub fn dos_add_buffers() {
+    let ready = ensure_formatted()
+    let query_result = if ready { AddBuffers("NDK0:", 0) } else { 0 }
+    let before = buffer_count(query_result)
+    let add_result = if before > 0 { AddBuffers("NDK0:", 1) } else { 0 }
+    let after_add = buffer_count(add_result)
+    let remove_result = if after_add == before + 1 { AddBuffers("NDK0:", -1) } else { 0 }
+    let after_remove = buffer_count(remove_result)
+    expect(before > 0 && after_add == before + 1, "one buffer is reflected in the handler count")
+    expect(after_remove == before, "removing one buffer restores the exact original count")
+}

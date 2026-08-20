@@ -110,10 +110,21 @@ impl<T> BPtr<T> {
         if size > 1 && address > $FFFFFFFF - (size - 1) {
             return false
         }
-        if TypeOfMem((*u8)address) == 0 {
+        if !self.readable_byte(address) {
             return false
         }
-        return size <= 1 || TypeOfMem((*u8)(address + size - 1)) != 0
+        return size <= 1 || self.readable_byte(address + size - 1)
+    }
+
+    /// `TypeOfMem` answers only for memory on Exec's free lists, so every ROM
+    /// address reads back as unknown. Kickstart-resident code is perfectly
+    /// readable, and the ROM filesystem handlers live there, so a ROM address
+    /// must not be reported as unaddressable. The ranges are the ones exec
+    /// documents as holding ROMTags: $F80000-$FFFFFF and $F00000-$F7FFFF.
+    fn readable_byte(&self, address: u32) -> bool {
+        if address >= $00F80000 && address <= $00FFFFFF { return true }
+        if address >= $00F00000 && address <= $00F7FFFF { return true }
+        return TypeOfMem((*u8)address) != 0
     }
 
     /// The caller must prove that the OS object is alive and has type T.

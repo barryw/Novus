@@ -338,9 +338,9 @@ pub fn get_nested(o: Outer) -> i32 {
         var code = GenerateCCode(module);
 
         // Should generate nested field access
-        Assert.Contains("Inner", code);
         Assert.Contains("Outer", code);
-        Assert.Contains("o.inner.value", code);
+        Assert.Contains("o->inner.value", code);
+        Assert.DoesNotContain("Inner _slot_", code);
         Assert.DoesNotContain("sizeof(Inner)", code);
     }
 

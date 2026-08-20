@@ -71,6 +71,7 @@ public partial class CCodeGenerator
     private readonly BuildMode _buildMode;
     private readonly SafetyLevel _safetyLevel;
     private readonly HashSet<string> _cFunctionIdentifiers;
+    private HashSet<string>? _cachedReachableFunctions;
 
     // Track which variables have been declared in the current function
     // to avoid redeclaration errors when the same variable is assigned in multiple branches
@@ -83,6 +84,11 @@ public partial class CCodeGenerator
     // Track which function parameters were converted to pointers in the C signature
     // (due to TypeContainsHeapData) so we don't add & when passing them to other functions
     private HashSet<string> _pointerConvertedParameters = new();
+
+    // Locals whose type requests stricter-than-ABI alignment are emitted as an
+    // aligned pointer into stack storage. VBCC's m68k ABI only aligns automatic
+    // objects to two bytes, while a few AmigaOS interfaces require four.
+    private HashSet<string> _alignedLocalVariables = new();
 
     // Track member access instructions for move semantic analysis
     // Maps result variable name -> (source struct, field name, accessor, field type)
@@ -353,6 +359,10 @@ public partial class CCodeGenerator
                         {
                         var assocValue = EmitValueForByValueUse(nestedEnumValue.AssociatedValues[j]);
                             _output.AppendLine($"    {destExpr}.data.{nestedEnumValue.VariantName}._{j} = {assocValue};");
+                            // The payload moves into the enum, so the source must stop owning it.
+                            // Sibling branches already do this; without it a consuming parameter is
+                            // still dropped on the way out while the caller owns the same value.
+                            EmitMovedSourceZero(nestedEnumValue.AssociatedValues[j]);
                         }
                     }
                 }
@@ -623,11 +633,14 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <exec/lists.h>");
         sb.AppendLine("#include <exec/ports.h>");
         sb.AppendLine("#include <exec/libraries.h>");
+        sb.AppendLine("#include <exec/resident.h>");
+        sb.AppendLine("#include <exec/execbase.h>");
         sb.AppendLine("#include <exec/tasks.h>");
         sb.AppendLine("#include <exec/devices.h>");
         sb.AppendLine("#include <exec/semaphores.h>");
         sb.AppendLine("#include <devices/trackdisk.h>");
         sb.AppendLine("#include <devices/timer.h>");
+        sb.AppendLine("#include <devices/audio.h>");
         sb.AppendLine("#include <intuition/intuition.h>");
         sb.AppendLine("#include <graphics/gfx.h>");
         sb.AppendLine("#include <graphics/text.h>");
@@ -661,6 +674,13 @@ public partial class CCodeGenerator
         sb.AppendLine("#include <inline/intuition_protos.h>");
         sb.AppendLine("#include <inline/graphics_protos.h>");
         sb.AppendLine("#include <inline/gadtools_protos.h>");
+        sb.AppendLine("// Route SetArgStr through the generated DOS stub using its autodoc ABI.");
+        sb.AppendLine("// NDK 3.9's SFD says BOOL, but the function returns the previous STRPTR.");
+        sb.AppendLine("#undef SetArgStr");
+        sb.AppendLine("extern STRPTR SetArgStr(STRPTR string);");
+        sb.AppendLine("// NDK 3.9's SFD/clib prototype says BOOL, but Fault returns a LONG length.");
+        sb.AppendLine("#undef Fault");
+        sb.AppendLine("extern LONG Fault(LONG code, CONST_STRPTR header, STRPTR buffer, LONG len);");
         sb.AppendLine("#endif");
         // ReAction class headers (OS 3.5+) - tag definitions
         sb.AppendLine("#include <classes/window.h>");
@@ -1680,7 +1700,6 @@ public partial class CCodeGenerator
                                                  char.IsUpper(funcName[0]) &&
                                                  !funcName.StartsWith("__") &&
                                                  !funcName.StartsWith("MUI_") &&
-                                                 !funcObj.IsVariadic &&
                                                  hasProtoHeader;
 
                         if (isAmigaOSFunction)
@@ -1836,9 +1855,10 @@ public partial class CCodeGenerator
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
+        _alignedLocalVariables.Clear();
         foreach (var param in function.Parameters)
         {
-            if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+            if (param.Type is IrStructType)
             {
                 _pointerConvertedParameters.Add(param.Name);
             }
@@ -1904,6 +1924,11 @@ public partial class CCodeGenerator
         // These are declared at function scope since they may be reused across the function
         foreach (var (slotName, slotType) in slotTypes)
         {
+            // Chained aggregate member accesses are reconstructed as direct lvalues.
+            // Their liveness slots are never read and may name C-only nested union types.
+            if (_addressOnlyStructMemberAccess.Contains(slotName))
+                continue;
+
             // A coalesced aggregate call writes directly into its destination. If every
             // value assigned to this slot was such a call result, the slot is dead.
             if (variablesBySlot[slotName].All(coalescedCallResults.Contains))
@@ -1914,6 +1939,13 @@ public partial class CCodeGenerator
                 continue;
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes is [])
                 continue;
+
+            if (GetRequestedAlignment(slotType) is var slotAlignment && slotAlignment > 2)
+            {
+                EmitAlignedLocalDeclaration(targetBuilder, slotType, slotName, slotAlignment);
+                _declaredVariables.Add(slotName);
+                continue;
+            }
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
             // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
@@ -2026,6 +2058,13 @@ public partial class CCodeGenerator
             var sanitizedName = SanitizeVariableName(varName);
             if (!_declaredVariables.Contains(sanitizedName) && !localDeclVars.ContainsKey(sanitizedName))
             {
+                if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                {
+                    EmitAlignedLocalDeclaration(targetBuilder, varType, sanitizedName, alignment);
+                    _declaredVariables.Add(sanitizedName);
+                    localDeclVars[sanitizedName] = (varType, false, 0);
+                    continue;
+                }
                 var decl = GetCVariableDeclaration(varType, sanitizedName);
                 targetBuilder.AppendLine($"    {decl};  // Pre-declared for defer cleanup");
                 _declaredVariables.Add(sanitizedName);
@@ -2054,6 +2093,12 @@ public partial class CCodeGenerator
             }
             else
             {
+                if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                {
+                    EmitAlignedLocalDeclaration(targetBuilder, varType, varName, alignment);
+                    _declaredVariables.Add(varName);
+                    continue;
+                }
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
                 // VBCC ensures 2-byte alignment for initialized structs/enums, preventing Guru Meditation.
@@ -2073,6 +2118,12 @@ public partial class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName))
             {
+                if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                {
+                    EmitAlignedLocalDeclaration(targetBuilder, varType, varName, alignment);
+                    _declaredVariables.Add(varName);
+                    continue;
+                }
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
                 var aggregate = varType is IrEnumType or IrStructType or IrTupleType;
@@ -3704,6 +3755,18 @@ public partial class CCodeGenerator
                     // Scan stored value for function addresses (including casts)
                     ScanValueForFuncAddrs(store.Value);
                 }
+                else if (instruction is IrMemberStore memberStore)
+                {
+                    ScanValueForFuncAddrs(memberStore.Value);
+                }
+                else if (instruction is IrDereferenceStore dereferenceStore)
+                {
+                    ScanValueForFuncAddrs(dereferenceStore.Value);
+                }
+                else if (instruction is IrIndexStore indexStore)
+                {
+                    ScanValueForFuncAddrs(indexStore.Value);
+                }
                 else if (instruction is IrReturn returnInst)
                 {
                     // Scan return value for function addresses
@@ -4100,9 +4163,22 @@ public partial class CCodeGenerator
             entryPoints.AddRange(_module.Functions.Where(f => f.IsPublic && !f.IsExtern && f.BasicBlocks.Count > 0));
         }
 
-        // CRITICAL: Always include exported functions as entry points
-        // Exported functions can be called from external C code, so they must not be eliminated
-        entryPoints.AddRange(_module.Functions.Where(f => f.IsExported && !f.IsExtern && f.BasicBlocks.Count > 0 && !entryPoints.Contains(f)));
+        // CRITICAL: Always include exported functions as entry points only when no explicit entry
+        // set is supplied. When explicitEntryPoints is supplied (smart DCE mode), only emit
+        // explicitly reachable exported functions.
+        entryPoints.AddRange(_module.Functions.Where(f =>
+            f.IsExported && !f.IsExtern && f.BasicBlocks.Count > 0 &&
+            _explicitEntryPoints == null && !entryPoints.Contains(f)));
+
+        if (_explicitEntryPoints != null)
+        {
+            entryPoints.AddRange(_module.Functions.Where(f =>
+                _explicitEntryPoints.Contains(f.Name) &&
+                f.IsExported &&
+                !f.IsExtern &&
+                f.BasicBlocks.Count > 0 &&
+                !entryPoints.Contains(f)));
+        }
 
         // Start BFS from entry points
         foreach (var entry in entryPoints)
@@ -4229,6 +4305,11 @@ public partial class CCodeGenerator
         // For now, we rely on the linker's --gc-sections to eliminate truly unused code.
 
         return reachable;
+    }
+
+    public HashSet<string> GetReachableFunctionNames()
+    {
+        return _cachedReachableFunctions ??= AnalyzeReachableFunctions();
     }
 
     /// <summary>
@@ -5256,9 +5337,10 @@ public partial class CCodeGenerator
 
         // Track which parameters were converted to pointers in the C signature
         _pointerConvertedParameters.Clear();
+        _alignedLocalVariables.Clear();
         foreach (var param in function.Parameters)
         {
-            if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+            if (param.Type is IrStructType)
             {
                 _pointerConvertedParameters.Add(param.Name);
             }
@@ -5379,11 +5461,23 @@ public partial class CCodeGenerator
         // These are declared at function scope since they may be reused across the function
         foreach (var (slotName, slotType) in slotTypes)
         {
+            // Chained aggregate member accesses are reconstructed as direct lvalues.
+            // Their liveness slots are never read and may name C-only nested union types.
+            if (_addressOnlyStructMemberAccess.Contains(slotName))
+                continue;
+
             // Skip unit type () / void - it has no runtime representation and can't be stored in a variable
             if (slotType is IrVoidType)
                 continue;
             if (slotType is IrTupleType tupleType && tupleType.ElementTypes is [])
                 continue;
+
+            if (GetRequestedAlignment(slotType) is var slotAlignment && slotAlignment > 2)
+            {
+                EmitAlignedLocalDeclaration(_output, slotType, slotName, slotAlignment);
+                _declaredVariables.Add(slotName);
+                continue;
+            }
 
             // DEFENSE IN DEPTH: Zero-initialize ALL slot variables.
             // 1. Structs/enums/arrays MUST use {0} for 68k alignment (VBCC ensures 2-byte alignment for initialized data)
@@ -5480,6 +5574,12 @@ public partial class CCodeGenerator
             }
             else
             {
+                if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                {
+                    EmitAlignedLocalDeclaration(_output, varType, varName, alignment);
+                    _declaredVariables.Add(varName);
+                    continue;
+                }
                 var decl = GetCVariableDeclaration(varType, varName);
                 var cType = GetCType(varType);
 
@@ -5504,6 +5604,12 @@ public partial class CCodeGenerator
         {
             if (!localDeclVars.ContainsKey(varName) && functionScopedVars.Contains(varName))
             {
+                if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                {
+                    EmitAlignedLocalDeclaration(_output, varType, varName, alignment);
+                    _declaredVariables.Add(varName);
+                    continue;
+                }
                 // CRITICAL FIX FOR 68K ALIGNMENT:
                 // Aggregates use {0} to preserve deterministic Amiga ABI layout.
                 var aggregate = varType is IrEnumType or IrStructType or IrTupleType;
@@ -5631,6 +5737,12 @@ public partial class CCodeGenerator
                     }
                     else
                     {
+                        if (GetRequestedAlignment(varType) is var alignment && alignment > 2)
+                        {
+                            EmitAlignedLocalDeclaration(_output, varType, varName, alignment, "        ");
+                            _declaredVariables.Add(varName);
+                            continue;
+                        }
                         var decl = GetCVariableDeclaration(varType, varName);
                         var cType = GetCType(varType);
 
@@ -5651,6 +5763,12 @@ public partial class CCodeGenerator
                 // Check if this is a stored variable
                 else if (_currentStoredVars != null && _currentStoredVars.TryGetValue(varName, out var varType2))
                 {
+                    if (GetRequestedAlignment(varType2) is var alignment && alignment > 2)
+                    {
+                        EmitAlignedLocalDeclaration(_output, varType2, varName, alignment, "        ");
+                        _declaredVariables.Add(varName);
+                        continue;
+                    }
                     // CRITICAL FIX FOR 68K ALIGNMENT:
                     // Aggregates use {0} to preserve deterministic Amiga ABI layout.
                     var aggregate = varType2 is IrEnumType or IrStructType or IrTupleType;
@@ -6232,6 +6350,7 @@ public partial class CCodeGenerator
 
         var isPromotedReturn = _promotedAggregateReturnVariables.Contains(localDecl.Name);
         var varName = isPromotedReturn ? "(*__out)" : SanitizeVariableName(localDecl.Name);
+        var alignedLocal = _alignedLocalVariables.Contains(varName);
 
         // An uninitialized declaration may have been predeclared at function scope.
         // It carries type/scope information only and emits no later assignment.
@@ -6281,12 +6400,22 @@ public partial class CCodeGenerator
                         var arrayFieldType = actualFieldType ?? (arrayFieldLitAssign.Type as IrArrayType);
 
                         // VBCC 68K FIX: Use safe array copy to avoid compound literal alignment issues
-                        EmitSafeArrayCopy($"{varName}.{kvp.Key}", arrayFieldLitAssign, arrayFieldType!);
+                        EmitSafeArrayCopy(alignedLocal ? $"{varName}->{kvp.Key}" : $"{varName}.{kvp.Key}", arrayFieldLitAssign, arrayFieldType!);
+                    }
+                    else if (kvp.Value is IrEnumValue fieldEnumLiteral)
+                    {
+                        // A compound literal here would hide the move: the payload variable is
+                        // copied in with nothing marking it as moved out. Emit field-by-field so
+                        // the shared helper deactivates the source's drop.
+                        EmitNestedEnumFieldByField(
+                            alignedLocal ? $"{varName}->{kvp.Key}" : $"{varName}.{kvp.Key}",
+                            fieldEnumLiteral,
+                            structTypeForFields?.GetField(kvp.Key)?.Type as IrEnumType);
                     }
                     else
                     {
                         var fieldValue = EmitValue(kvp.Value);
-                        _output.AppendLine($"    {varName}.{kvp.Key} = {fieldValue};");
+                        _output.AppendLine($"    {(alignedLocal ? $"{varName}->{kvp.Key}" : $"{varName}.{kvp.Key}")} = {fieldValue};");
 
                         // CRITICAL FIX: Move semantics for struct fields containing droppable content
                         var fieldSourceIsLocalVar = kvp.Value is IrVariable;
@@ -6417,13 +6546,13 @@ public partial class CCodeGenerator
                     // These are already pointers in C (e.g., Sleep* sleep_future), so we should
                     // use them directly instead of taking their address with &.
                     var sourceIsPointerConvertedParam = localDecl.InitialValue is IrVariable srcVar &&
-                                                        _pointerConvertedParameters.Contains(srcVar.Name);
+                                                        IsPointerConvertedVariable(srcVar.Name);
 
-                    // OPTIMIZATION: Use field-by-field copy for small simple structs
-                    // Note: Only apply optimization for non-pointer-converted cases (simpler to handle)
-                    if (!sourceIsPointerConvertedParam && initValue != null && CanUseFieldByFieldCopy(localDecl.InitialValue.Type))
+                    // OPTIMIZATION: Use field-by-field copy for small simple structs.
+                    if (initValue != null && CanUseFieldByFieldCopy(localDecl.InitialValue.Type))
                     {
-                        EmitStructCopy(varName, initValue, localDecl.InitialValue.Type);
+                        EmitStructCopy(
+                            varName, initValue, localDecl.InitialValue.Type, sourceIsPointerConvertedParam);
                     }
                     else
                     {
@@ -7138,22 +7267,17 @@ public partial class CCodeGenerator
                 {
                     argValue = $"*{argValue}";
                 }
-                // If parameter is a struct with heap data (passed by pointer in signature),
-                // but the argument is not already a pointer, pass by address
-                else if (paramType is IrStructType structType &&
-                    TypeContainsHeapData(structType) &&
-                    arg.Type is IrStructType argStructType)  // arg is struct value, not pointer
+                // Materialize struct literals before calls. VBCC can corrupt fields in
+                // compound-literal arguments on 68k, even when the callee takes the
+                // otherwise-safe struct by value.
+                else if (paramType is IrStructType structType && arg.Type is IrStructType)
                 {
-                    // Check if the argument is a variable that was itself a pointer-converted parameter
-                    // If so, it's already a pointer in C and doesn't need &
+                    var passByPointer = !function.IsExtern || TypeContainsHeapData(structType);
                     bool isPointerConvertedParam = arg is IrVariable variable &&
-                                                   _pointerConvertedParameters.Contains(variable.Name);
+                                                   IsPointerConvertedVariable(variable.Name);
 
                     if (!isPointerConvertedParam)
                     {
-                        // VBCC 68K FIX: If the argument is a struct literal, emit a temporary variable
-                        // with field-by-field assignment instead of using compound literal &(Struct){ ... }
-                        // which causes misalignment on 68040
                         if (arg is IrStructLiteral structLitArg)
                         {
                             var tempVarName = $"_arg_tmp_{_tempCounter++}";
@@ -7169,10 +7293,9 @@ public partial class CCodeGenerator
                                 _output.AppendLine($"    {tempVarName}.{kvp.Key} = {fValue};");
                             }
 
-                            // Use address of the temp variable
-                            argValue = $"&{tempVarName}";
+                            argValue = passByPointer ? $"&{tempVarName}" : tempVarName;
                         }
-                        else
+                        else if (passByPointer)
                         {
                             argValue = $"&{argValue}";
                         }
@@ -7625,7 +7748,7 @@ public partial class CCodeGenerator
                             // CRITICAL FIX: If field value is a pointer-converted parameter, dereference it
                             if (kvp.Value is IrVariable fieldVarWithArray &&
                                 kvp.Value.Type is IrStructType &&
-                                _pointerConvertedParameters.Contains(fieldVarWithArray.Name))
+                                IsPointerConvertedVariable(fieldVarWithArray.Name))
                             {
                                 var srcVarName = SanitizeVariableName(fieldVarWithArray.Name);
                                 _output.AppendLine($"    __out->{kvp.Key} = *{srcVarName};");
@@ -7646,7 +7769,7 @@ public partial class CCodeGenerator
                             // parameter converted to pointer for ABI), we need to dereference it
                             if (kvp.Value is IrVariable fieldVar &&
                                 kvp.Value.Type is IrStructType fieldStructType &&
-                                _pointerConvertedParameters.Contains(fieldVar.Name))
+                                IsPointerConvertedVariable(fieldVar.Name))
                             {
                                 // The parameter is a pointer in C - need to dereference and copy
                                 var srcVarName = SanitizeVariableName(fieldVar.Name);
@@ -7717,7 +7840,7 @@ public partial class CCodeGenerator
                                             // we need to copy field-by-field instead of assigning the pointer
                                             if (kvp.Value is IrVariable fieldVar &&
                                                 kvp.Value.Type is IrStructType fieldStructType &&
-                                                _pointerConvertedParameters.Contains(fieldVar.Name))
+                                                IsPointerConvertedVariable(fieldVar.Name))
                                             {
                                                 // This is a by-value parameter that was converted to a pointer
                                                 // Copy each field of the struct
@@ -7793,7 +7916,7 @@ public partial class CCodeGenerator
                                         var assocValue = EmitValue(associatedValue);
                                         var assocValueType = associatedValue.Type;
                                         var sourceIsPointerConvertedParam = associatedValue is IrVariable assocVariable &&
-                                                                            _pointerConvertedParameters.Contains(assocVariable.Name);
+                                                                            IsPointerConvertedVariable(assocVariable.Name);
                                         // VBCC 68K FIX: Use memcpy for struct types to avoid illegal instruction on 68040
                                         if (CanUseFieldByFieldCopy(assocValueType) && !sourceIsPointerConvertedParam)
                                         {
@@ -7862,7 +7985,7 @@ public partial class CCodeGenerator
                     // Struct parameters containing heap data are passed as pointers (e.g., ScreenBuilder* self),
                     // so when returning them via memcpy, we should NOT add & (they're already pointers).
                     bool isPointerConvertedParam = returnInst.Value is IrVariable returnVariable &&
-                                                   _pointerConvertedParameters.Contains(returnVariable.Name);
+                                                   IsPointerConvertedVariable(returnVariable.Name);
 
                     // VBCC 68K FIX: Use memcpy for complex types (enums with associated data, nested structs)
                     // VBCC generates illegal instructions on 68040 for struct-by-value assignment of these types.
@@ -8811,8 +8934,8 @@ public partial class CCodeGenerator
                     {
                         isMovingField = false;
                     }
-                    // Struct parameters containing heap data are passed by pointer
-                    else if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+                    // Novus struct parameters use the backend's stable pointer ABI.
+                    else if (param.Type is IrStructType structType)
                     {
                         sourceStructType = structType;
 
@@ -8833,6 +8956,7 @@ public partial class CCodeGenerator
             // This prevents illegal instruction crashes (Guru $80000004) on 68040 when VBCC generates
             // unsupported opcodes for large struct copies.
             bool skipStructCopy = _addressOnlyStructMemberAccess.Contains(resultName);
+            var fieldExpression = FormatMemberAccess(structValue, accessor, memberAccess.FieldName);
 
             if (!skipStructCopy)
             {
@@ -8850,13 +8974,13 @@ public partial class CCodeGenerator
                     var sizeExpr = GetSizeofExpression(memberAccess.FieldType);
                     if (alreadyDeclared)
                     {
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), {sizeExpr});");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({fieldExpression}), {sizeExpr});");
                     }
                     else
                     {
                         var decl = GetCVariableDeclaration(memberAccess.FieldType, resultName);
                         _output.AppendLine($"    {decl};");
-                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({structValue}{accessor}{memberAccess.FieldName}), {sizeExpr});");
+                        _output.AppendLine($"    __novus_memcpy((uint8_t*)&{resultName}, (uint8_t*)&({fieldExpression}), {sizeExpr});");
                     }
                 }
                 else
@@ -8865,11 +8989,11 @@ public partial class CCodeGenerator
                     // direct assignment works correctly
                     if (alreadyDeclared)
                     {
-                        _output.AppendLine($"    {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                        _output.AppendLine($"    {resultName} = {fieldExpression};");
                     }
                     else
                     {
-                        _output.AppendLine($"    {fieldType} {resultName} = {structValue}{accessor}{memberAccess.FieldName};");
+                        _output.AppendLine($"    {fieldType} {resultName} = {fieldExpression};");
                     }
                 }
             }
@@ -8887,6 +9011,12 @@ public partial class CCodeGenerator
                 {
                     // The base came from a field access - use its reconstructed chain
                     chainBase = ReconstructFieldAccessChain(baseVar.Name);
+                }
+                else if (_indexAccessInfo.TryGetValue(baseVar.Name, out var indexInfo))
+                {
+                    // The base came from array indexing - preserve the original element as the
+                    // lvalue instead of letting a later nested store mutate the loaded copy.
+                    chainBase = $"{indexInfo.arrayExpr}[{indexInfo.indexExpr}]";
                 }
             }
             _fieldAccessChainInfo[resultName] = (chainBase, memberAccess.FieldName, accessor);
@@ -8931,12 +9061,17 @@ public partial class CCodeGenerator
         if (_fieldAccessChainInfo.TryGetValue(sanitizedName, out var chainInfo))
         {
             var (baseExpr, fieldName, accessor) = chainInfo;
-            return $"{baseExpr}{accessor}{fieldName}";
+            return FormatMemberAccess(baseExpr, accessor, fieldName);
         }
 
         // Not a field access chain - return the variable name as-is
         return sanitizedName;
     }
+
+    private static string FormatMemberAccess(string baseExpression, string accessor, string fieldName) =>
+        baseExpression.StartsWith('(')
+            ? $"({baseExpression}){accessor}{fieldName}"
+            : $"{baseExpression}{accessor}{fieldName}";
 
     /// <summary>
     /// Check if a variable came from a field access (and thus has chain info available).
@@ -9418,6 +9553,34 @@ public partial class CCodeGenerator
         return IsModuleStaticVariable(varName) || IsExternalVariable(varName);
     }
 
+    private static int GetRequestedAlignment(IrType type)
+    {
+        if (type is not IrStructType structType)
+            return 0;
+
+        var alignment = structType.Attributes?
+            .Get(Novus.SemanticAnalysis.KnownAttributes.Align)?
+            .GetPositionalArg<int>(0) ?? 0;
+        return alignment > 0 && (alignment & (alignment - 1)) == 0 ? alignment : 0;
+    }
+
+    private void EmitAlignedLocalDeclaration(StringBuilder output, IrType type, string name, int alignment, string indent = "    ")
+    {
+        var cType = GetCType(type);
+        var storageName = $"{name}__aligned_storage";
+        var mask = unchecked((uint)~(alignment - 1));
+        output.AppendLine($"{indent}uint8_t {storageName}[sizeof({cType}) + {alignment - 1}];");
+        output.AppendLine($"{indent}{cType} *{name} = ({cType}*)(((uint32_t){storageName} + {alignment - 1}) & 0x{mask:X8}UL);");
+        output.AppendLine($"{indent}__novus_memset({name}, 0, sizeof({cType}));");
+        _alignedLocalVariables.Add(name);
+    }
+
+    private bool IsPointerConvertedVariable(string name)
+    {
+        return _pointerConvertedParameters.Contains(name) ||
+               _alignedLocalVariables.Contains(SanitizeVariableName(name));
+    }
+
     /// <summary>
     /// Determine the correct accessor (. or ->) for struct member access.
     /// Returns "->" if the struct is accessed through a pointer, "." otherwise.
@@ -9446,9 +9609,13 @@ public partial class CCodeGenerator
         // This includes:
         // 1. Reference types (&T, &mut T) - pointers in C
         // 2. Pointer types (used by IR builder for &self/&mut self parameters)
-        // 3. Struct parameters containing heap data - passed by pointer
+        // 3. Novus struct parameters - passed by pointer
         if (structValue is IrVariable variable && _currentEmittingFunction != null)
         {
+            if (_alignedLocalVariables.Contains(SanitizeVariableName(variable.Name)))
+            {
+                return "->";
+            }
             var param = _currentEmittingFunction.Parameters.FirstOrDefault(p => p.Name == variable.Name);
             if (param != null)
             {
@@ -9458,7 +9625,7 @@ public partial class CCodeGenerator
                 {
                     return "->";
                 }
-                else if (param.Type is IrStructType structType && TypeContainsHeapData(structType))
+                else if (param.Type is IrStructType)
                 {
                     return "->";
                 }
@@ -9611,7 +9778,7 @@ public partial class CCodeGenerator
         // we need to dereference it to get the actual struct value for the array store.
         // Also applies to stores of struct values that need memcpy for VBCC compatibility.
         var actualStoreValue = storeValue;
-        if (_pointerConvertedParameters.Contains(storeValue))
+        if (IsPointerConvertedVariable(storeValue))
         {
             // The parameter is a pointer to a struct, we need to dereference it
             actualStoreValue = $"*{storeValue}";
@@ -9648,6 +9815,7 @@ public partial class CCodeGenerator
         var arrayValue = EmitValue(indexedFieldStore.Array);
         var indexValue = EmitValue(indexedFieldStore.Index);
         var storeValue = EmitValue(indexedFieldStore.Value);
+        var actualStoreValue = IsPointerConvertedVariable(storeValue) ? $"*{storeValue}" : storeValue;
 
         if (indexedFieldStore.BoundsCheck == IrBoundsCheckMode.Checked && indexedFieldStore.Length != null)
         {
@@ -9666,7 +9834,7 @@ public partial class CCodeGenerator
 
         // Emit direct assignment to array[index].field
         // This is the whole point of this instruction - avoid creating a temporary copy
-        _output.AppendLine($"    {arrayValue}[{indexValue}].{indexedFieldStore.FieldName} = {storeValue};");
+        _output.AppendLine($"    {arrayValue}[{indexValue}].{indexedFieldStore.FieldName} = {actualStoreValue};");
         EmitMovedSourceZero(indexedFieldStore.Value);
     }
 
@@ -9729,13 +9897,15 @@ public partial class CCodeGenerator
             // Emit field-by-field assignments instead of compound literal
             foreach (var kvp in structLit.FieldValues)
             {
-                var fieldValue = EmitValue(kvp.Value);
-                _output.AppendLine($"    {litStructValue}{litAccessor}{memberStore.FieldName}.{kvp.Key} = {fieldValue};");
+                var fieldValue = EmitValueForByValueUse(kvp.Value);
+                var storedField = FormatMemberAccess(litStructValue, litAccessor, memberStore.FieldName);
+                _output.AppendLine($"    ({storedField}).{kvp.Key} = {fieldValue};");
             }
             return;
         }
 
         var storeValue = EmitValue(memberStore.Value);
+        var actualStoreValue = IsPointerConvertedVariable(storeValue) ? $"*{storeValue}" : storeValue;
 
         // Determine the correct accessor (. or ->)
         var accessor = GetStructAccessor(memberStore.Struct);
@@ -9796,7 +9966,7 @@ public partial class CCodeGenerator
             _knownNonNullPointers.Add(structValue);
         }
 
-        _output.AppendLine($"    {structValue}{accessor}{memberStore.FieldName} = {storeValue};");
+        _output.AppendLine($"    {FormatMemberAccess(structValue, accessor, memberStore.FieldName)} = {actualStoreValue};");
         EmitMovedSourceZero(memberStore.Value);
     }
 
@@ -9804,7 +9974,7 @@ public partial class CCodeGenerator
     {
         var pointerValue = EmitValue(derefStore.Pointer);
         var storeValue = EmitValue(derefStore.Value);
-        var actualStoreValue = _pointerConvertedParameters.Contains(storeValue)
+        var actualStoreValue = IsPointerConvertedVariable(storeValue)
             ? $"*{storeValue}"
             : storeValue;
 
@@ -9850,7 +10020,7 @@ public partial class CCodeGenerator
         // Check if we're borrowing a pointer-converted parameter
         // If so, the parameter is already a pointer in C, so don't add &
         if (borrowValue.BorrowedValue is IrVariable variable &&
-            _pointerConvertedParameters.Contains(variable.Name))
+            IsPointerConvertedVariable(variable.Name))
         {
             // Parameter is already a pointer in C (e.g., Str* s), so just use it directly
             return EmitValue(variable);
@@ -9970,7 +10140,7 @@ public partial class CCodeGenerator
     private string EmitValueForByValueUse(IrValue value)
     {
         var emitted = EmitValue(value);
-        return value is IrVariable variable && _pointerConvertedParameters.Contains(variable.Name)
+        return value is IrVariable variable && IsPointerConvertedVariable(variable.Name)
             ? $"*{emitted}"
             : emitted;
     }
@@ -10729,10 +10899,10 @@ public partial class CCodeGenerator
         }
 
         // Get the Drop method name based on type
-        string dropMethodName;
+        string? dropMethodName;
         if (elementType is IrStructType st)
         {
-            dropMethodName = $"{MangleName(st.CacheKey ?? st.StructName)}_Drop_drop";
+            dropMethodName = ResolveDropMethodName(st);
         }
         else if (elementType is IrEnumType et)
         {
@@ -10753,21 +10923,74 @@ public partial class CCodeGenerator
             return "((void)0)";
         }
 
-        // Emit the drop call: TypeName_Drop_drop(ptr)
+        // Emit the drop call: TypeName_drop(ptr)
         var ptrExpr = EmitValue(dropInPlace.Pointer);
-        return $"{dropMethodName}({ptrExpr})";
+        return dropMethodName != null
+            ? $"{dropMethodName}({ptrExpr})"
+            : "((void)0)";
     }
+
+    private string? ResolveDropMethodName(IrStructType st)
+    {
+        var rawTypeName = st.CacheKey ?? st.StructName;
+        var mangledTypeName = MangleName(rawTypeName);
+        // Cleanup lives in the Drop trait impl, named {Type}_{Trait}_{method}.
+        string[] dropCandidates = [
+            $"{rawTypeName}_Drop_drop",
+            $"{mangledTypeName}_Drop_drop",
+        ];
+
+        var fallbackFunction = dropCandidates
+            .Select(candidate => _module.GetFunction(candidate))
+            .FirstOrDefault(candidateFunction => candidateFunction != null);
+
+        var definedFunction = dropCandidates
+            .Select(candidate => _module.GetFunction(candidate))
+            .FirstOrDefault(candidateFunction =>
+                candidateFunction != null &&
+                candidateFunction.BasicBlocks.Count > 0 &&
+                !candidateFunction.IsExtern);
+
+        if (definedFunction == null)
+        {
+            definedFunction = dropCandidates
+                .Select(candidate => _module.GetFunction(candidate))
+                .FirstOrDefault(candidateFunction => candidateFunction != null);
+        }
+
+        var function = definedFunction ?? fallbackFunction;
+        if (function != null)
+            return MangleName(function);
+
+        // The Drop impl may be compiled into another module, which this generator cannot
+        // see. The trait table is module-wide, so when it says the type implements Drop the
+        // symbol exists somewhere and the linker resolves it. Silently skipping the call
+        // instead would leak every value of this type.
+        return _module.StructImplementsDrop(st) ? $"{mangledTypeName}_Drop_drop" : null;
+    }
+
+    /// <summary>
+    /// Monomorphization can hand the backend a struct reference that carries only a name,
+    /// so field-by-field cleanup would silently walk an empty layout. Recover the declared
+    /// layout from the module whenever the reference has no fields of its own.
+    /// </summary>
+    private IrStructType ResolveStructLayout(IrStructType structType) =>
+        _module.ResolveStructLayout(structType);
 
     private IEnumerable<(string Name, IrType Type)> GetDropInPlaceFunctions(IrType type)
     {
         if (!_module.TypeImplementsDrop(type))
             yield break;
-        if (type is IrStructType structType)
+        if (type is IrStructType declaredStruct)
         {
+            var structType = ResolveStructLayout(declaredStruct);
             if (_module.StructImplementsDrop(structType))
             {
-                yield return ($"{MangleName(structType.CacheKey ?? structType.StructName)}_Drop_drop", structType);
-                yield break;
+                var dropName = ResolveDropMethodName(structType);
+                if (dropName != null)
+                {
+                    yield return (dropName, structType);
+                }
             }
 
             foreach (var field in structType.Fields)
@@ -10778,7 +11001,8 @@ public partial class CCodeGenerator
 
         IEnumerable<IrType> children = type switch
         {
-            IrEnumType enumType => enumType.Variants.SelectMany(variant => variant.AssociatedData),
+            IrEnumType enumType => _module.ResolveEnumLayout(enumType).Variants
+                .SelectMany(variant => variant.AssociatedData),
             IrTupleType tupleType => tupleType.ElementTypes,
             IrArrayType arrayType => [arrayType.ElementType],
             _ => []
@@ -10811,12 +11035,16 @@ public partial class CCodeGenerator
             return;
         }
 
-        if (type is IrStructType structType)
+        if (type is IrStructType declaredStruct)
         {
+            var structType = ResolveStructLayout(declaredStruct);
             if (_module.StructImplementsDrop(structType))
             {
-                _output.AppendLine($"{indent}{MangleName(structType.CacheKey ?? structType.StructName)}_Drop_drop({pointer});");
-                return;
+                var dropName = ResolveDropMethodName(structType);
+                if (dropName != null)
+                {
+                    _output.AppendLine($"{indent}{dropName}({pointer});");
+                }
             }
 
             for (var index = structType.Fields.Count - 1; index >= 0; index--)
@@ -10828,8 +11056,9 @@ public partial class CCodeGenerator
             return;
         }
 
-        if (type is IrEnumType enumType)
+        if (type is IrEnumType declaredEnum)
         {
+            var enumType = _module.ResolveEnumLayout(declaredEnum);
             var enumName = MangleName(enumType);
             _output.AppendLine($"{indent}switch (({pointer})->tag) {{");
             foreach (var variant in enumType.Variants)
@@ -10916,6 +11145,18 @@ public partial class CCodeGenerator
     /// </summary>
     private int CalculateStructSize(IrStructType structType)
     {
+        if (structType.IsUnion)
+        {
+            var size = 0;
+            foreach (var field in structType.Fields)
+            {
+                var fieldSize = CalculateTypeSize(field.Type);
+                if (fieldSize == 0) return 0;
+                size = Math.Max(size, fieldSize);
+            }
+            return size;
+        }
+
         int offset = 0;
         int maxAlignment = 1;
 
@@ -11201,7 +11442,10 @@ public partial class CCodeGenerator
             IrFixedType fixedType => fixedType.BitWidth == 16 ? "int16_t" : "int32_t",
             IrPointerType ptrType => $"{GetCType(ptrType.PointeeType)}*",
             IrEnumType enumType => MangleName(enumType),
-            IrStructType { StructName: "ExecBase" or "GfxBase" or "IntuitionBase" } structType =>
+            // C struct tags and functions have separate namespaces; typedef names do not.
+            // The pinned NDK exposes functions with these same names, so retain tag spelling.
+            IrStructType { StructName: "ExecBase" or "GfxBase" or "IntuitionBase" or
+                "AvailFonts" or "DateStamp" or "LayoutLimits" or "TextExtent" } structType =>
                 $"struct {structType.StructName}",
             IrStructType structType => MangleName(structType),
             IrArrayType arrayType => $"{GetCType(arrayType.ElementType)}*",  // Arrays as pointers for now
@@ -11241,12 +11485,24 @@ public partial class CCodeGenerator
     {
         // Generate C function pointer type: return_type (*)(param1_type, param2_type, ...)
         var returnType = GetCReturnType(fpType.ReturnType);
-        var paramTypes = fpType.ParameterTypes.Count > 0
-            ? string.Join(", ", fpType.ParameterTypes.Select((type, index) =>
-                AddRegisterBinding(GetCType(type), fpType.ParameterRegisters[index])))
-            : "void";
-        return $"{AddRegisterBinding(returnType, fpType.ReturnRegister)} (*)({paramTypes})";
+        var paramTypes = GetFunctionPointerParameters(fpType);
+        // VBCC accepts register qualifiers on callback parameters, not on the
+        // return type inside a function-pointer declarator. Scalar callback
+        // results already use the Amiga C ABI's D0 return register.
+        return $"{GetFunctionPointerReturnDeclaration(fpType, returnType)} (*)({paramTypes})";
     }
+
+    private string GetFunctionPointerParameters(IrFunctionPointerType fpType) =>
+        fpType.ParameterTypes.Count == 0
+            ? "void"
+            : string.Join(", ", fpType.ParameterTypes.Select((type, index) =>
+                fpType.ParameterRegisters[index] == null
+                    ? GetCType(type)
+                    : AddRegisterBinding(GetCVariableDeclaration(type, $"__arg{index}"),
+                        fpType.ParameterRegisters[index])));
+
+    private static string GetFunctionPointerReturnDeclaration(IrFunctionPointerType fpType, string returnType) =>
+        fpType.CallingConvention == IrCallingConvention.Amiga ? $"{returnType} __regargs" : returnType;
 
     /// <summary>
     /// Get the C struct name for a closure type (fat pointer: fn_ptr + env_ptr).
@@ -11316,11 +11572,8 @@ public partial class CCodeGenerator
             {
                 // Function pointer: return_type (*declarator)(params)
                 var returnType = GetCReturnType(fpType.ReturnType);
-                var paramTypes = fpType.ParameterTypes.Count > 0
-                    ? string.Join(", ", fpType.ParameterTypes.Select((type, index) =>
-                        AddRegisterBinding(GetCType(type), fpType.ParameterRegisters[index])))
-                    : "void";
-                return $"{AddRegisterBinding(returnType, fpType.ReturnRegister)} (*{declarator})({paramTypes})";
+                var paramTypes = GetFunctionPointerParameters(fpType);
+                return $"{GetFunctionPointerReturnDeclaration(fpType, returnType)} (*{declarator})({paramTypes})";
             }
 
             case IrPointerType { PointeeType: IrArrayType } ptrType:
@@ -11430,8 +11683,14 @@ public partial class CCodeGenerator
         switch (type)
         {
             case IrStructType structType:
-                // Check if any field is a pointer or contains pointers
-                return structType.Fields.Any(f =>
+                // Generic specialization can retain a named shell while the module owns
+                // the populated definition. Use that definition for ABI decisions.
+                var fields = structType.Fields.Count > 0
+                    ? structType.Fields
+                    : _module.Structs.LastOrDefault(candidate =>
+                        candidate.StructName == structType.StructName && candidate.Fields.Count > 0)?.Fields
+                      ?? structType.Fields;
+                return fields.Any(f =>
                     f.Type is IrPointerType || TypeContainsHeapData(f.Type));
 
             case IrPointerType:
@@ -11593,7 +11852,8 @@ public partial class CCodeGenerator
     /// <param name="destExpr">Destination expression (already prefixed with & if needed)</param>
     /// <param name="sourceExpr">Source expression (already prefixed with & if needed)</param>
     /// <param name="type">The type being copied</param>
-    private void EmitStructCopy(string destExpr, string sourceExpr, IrType type)
+    private void EmitStructCopy(
+        string destExpr, string sourceExpr, IrType type, bool sourceIsPointer = false)
     {
         if (type is IrStructType structType && CanUseFieldByFieldCopy(structType))
         {
@@ -11601,7 +11861,8 @@ public partial class CCodeGenerator
             foreach (var field in structType.Fields)
             {
                 var fieldName = SanitizeVariableName(field.Name);
-                _output.AppendLine($"    ({destExpr}).{fieldName} = ({sourceExpr}).{fieldName};");
+                var sourceAccessor = sourceIsPointer ? "->" : ".";
+                _output.AppendLine($"    ({destExpr}).{fieldName} = ({sourceExpr}){sourceAccessor}{fieldName};");
             }
         }
         else
@@ -11609,7 +11870,8 @@ public partial class CCodeGenerator
             // Use memcpy for larger or complex structs/arrays
             // Note: GetSizeofExpression handles arrays correctly (element size * length)
             var sizeExpr = GetSizeofExpression(type);
-            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{destExpr}, (uint8_t*)&{sourceExpr}, {sizeExpr});");
+            var sourceAddress = sourceIsPointer ? sourceExpr : $"&{sourceExpr}";
+            _output.AppendLine($"    __novus_memcpy((uint8_t*)&{destExpr}, (uint8_t*){sourceAddress}, {sizeExpr});");
         }
     }
 
@@ -11652,7 +11914,7 @@ public partial class CCodeGenerator
             EmitMovedValueZero(
                 valueExpr,
                 variable.Type,
-                !isFieldAccess && _pointerConvertedParameters.Contains(variable.Name));
+                !isFieldAccess && IsPointerConvertedVariable(variable.Name));
         }
     }
 
@@ -11724,7 +11986,9 @@ public partial class CCodeGenerator
 
         // Add regular parameters
         parameters.AddRange(function.Parameters
-            .Select(p => p.IsVariadic ? "..." : GetCParameter(p.Type, SanitizeVariableName(p.Name), p.Register)));
+            .Select(p => p.IsVariadic
+                ? "..."
+                : GetCParameter(p.Type, SanitizeVariableName(p.Name), p.Register, !function.IsExtern)));
 
         return parameters.Count > 0 ? string.Join(", ", parameters) : "void";
     }
@@ -11735,27 +11999,25 @@ public partial class CCodeGenerator
     ///   int32_t (*callback)(int32_t, int32_t)  // correct
     ///   int32_t (*)(int32_t, int32_t) callback // incorrect
     ///
-    /// BUG FIX: For structs containing heap data (pointers), pass by pointer instead
-    /// of by value to avoid shallow copy issues and double-free bugs.
+    /// Novus functions pass structs by pointer because VBCC's 68k struct-by-value ABI
+    /// is not reliable. Extern declarations retain their declared C ABI.
     /// </summary>
-    internal string GetCParameter(IrType type, string name, string? register = null)
+    internal string GetCParameter(
+        IrType type, string name, string? register = null, bool passStructByPointer = false)
     {
         if (type is IrFunctionPointerType fpType)
         {
             // Special handling for function pointer parameters
             var returnType = GetCReturnType(fpType.ReturnType);
-            var paramTypes = fpType.ParameterTypes.Count > 0
-                ? string.Join(", ", fpType.ParameterTypes.Select((parameterType, index) =>
-                    AddRegisterBinding(GetCType(parameterType), fpType.ParameterRegisters[index])))
-                : "void";
-            var declaration = $"{AddRegisterBinding(returnType, fpType.ReturnRegister)} (*{name})({paramTypes})";
+            var paramTypes = GetFunctionPointerParameters(fpType);
+            var declaration = $"{GetFunctionPointerReturnDeclaration(fpType, returnType)} (*{name})({paramTypes})";
             return AddRegisterBinding(declaration, register);
         }
 
-        // BUG FIX: If this is a struct type (not already a pointer/reference) that contains
-        // heap-allocated data, pass it by pointer to avoid shallow copy issues
+        // Internal Novus ABI always uses pointers for structs. Keep the older heap-data
+        // safeguard for declarations emitted without an owning function context.
         if (type is IrStructType structType &&
-            TypeContainsHeapData(structType))
+            (passStructByPointer || TypeContainsHeapData(structType)))
         {
             // Pass by pointer to enable move semantics
             var cType = GetCType(type);

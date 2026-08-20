@@ -1,0 +1,322 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, MEMF_CHIP, MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::structs import AnimComp, AnimOb, BitMap, Bob, GelsInfo, RastPort, VSprite, collTable
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::graphics import AddAnimOb, AllocBitMap, Animate, FreeBitMap, FreeGBuffers, GetGBuffers, InitGels, InitGMasks, InitRastPort, RemVSprite
+
+static var OBJECT_CALLBACKS: u32 = 0
+static var COMPONENT_CALLBACKS: u32 = 0
+static var CALLBACK_OBJECT: *AnimOb = null
+static var CALLBACK_COMPONENT: *AnimComp = null
+static var INVALID_CALLBACK: bool = false
+
+fn object_callback(object: *AnimOb) -> i16 {
+    if object == CALLBACK_OBJECT {
+        OBJECT_CALLBACKS++
+    } else {
+        INVALID_CALLBACK = true
+    }
+    return 0
+}
+
+fn component_callback(component: *AnimComp) -> i16 {
+    if component == CALLBACK_COMPONENT {
+        COMPONENT_CALLBACKS++
+    } else {
+        INVALID_CALLBACK = true
+    }
+    return 0
+}
+
+fn initialize_gels(
+    head: *VSprite,
+    tail: *VSprite,
+    info: *GelsInfo,
+    table: *collTable,
+    rast_port: *RastPort
+) {
+    unsafe {
+        (*head).Y = -32767
+        (*head).Flags = 1
+        (*tail).Y = 32767
+        (*tail).Flags = 1
+        (*info).collHandler = table
+        (*info).leftmost = 0
+        (*info).rightmost = 63
+        (*info).topmost = 0
+        (*info).bottommost = 31
+        (*rast_port).GelsInfo = info
+    }
+    InitGels(head, tail, info)
+}
+
+fn attach_component(
+    object: *AnimOb,
+    component: *AnimComp,
+    bob: *Bob,
+    sprite: *VSprite
+) {
+    unsafe {
+        (*object).HeadComp = component
+        (*component).HeadOb = object
+        (*component).AnimBob = bob
+        (*component).NextSeq = component
+        (*bob).BobComp = component
+        (*bob).BobVSprite = sprite
+        (*sprite).VSBob = bob
+        (*sprite).Flags = 2
+        (*sprite).Width = 1
+        (*sprite).Height = 2
+        (*sprite).Depth = 1
+    }
+}
+
+fn prepare_rast_port(
+    head: *VSprite,
+    tail: *VSprite,
+    info: *GelsInfo,
+    table: *collTable,
+    rast_port: *RastPort
+) -> *BitMap {
+    let bitmap = AllocBitMap(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null)
+    if bitmap == null { return null }
+    InitRastPort(rast_port)
+    unsafe { (*rast_port).BitMap = bitmap }
+    initialize_gels(head, tail, info, table, rast_port)
+    return bitmap
+}
+
+// @covers-ndk function|graphics.library|AddAnimOb
+// @ndk-side-effects AddAnimOb prepends two caller-owned AnimObs with exact PrevOb/NextOb links, copies each active component's TimeSet into Timer, and links both reciprocal Bob/VSprite pairs into the initialized GEL list without taking ownership
+@test("graphics.library AddAnimOb links objects, timers, and Bobs")
+pub fn graphics_add_anim_object() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var first_object: AnimOb = @zeroed(AnimOb)
+    var second_object: AnimOb = @zeroed(AnimOb)
+    var first_component: AnimComp = @zeroed(AnimComp)
+    var second_component: AnimComp = @zeroed(AnimComp)
+    var first_bob: Bob = @zeroed(Bob)
+    var second_bob: Bob = @zeroed(Bob)
+    var first_sprite: VSprite = @zeroed(VSprite)
+    var second_sprite: VSprite = @zeroed(VSprite)
+    var anim_key: *AnimOb = null
+    let first_object_ptr = (*AnimOb)&var first_object
+    let second_object_ptr = (*AnimOb)&var second_object
+    let first_sprite_ptr = (*VSprite)&var first_sprite
+    let second_sprite_ptr = (*VSprite)&var second_sprite
+    let tail_ptr = (*VSprite)&var tail
+    initialize_gels(&var head, &var tail, &var info, &var table, &var rast_port)
+    attach_component(&var first_object, &var first_component, &var first_bob, &var first_sprite)
+    attach_component(&var second_object, &var second_component, &var second_bob, &var second_sprite)
+    first_component.TimeSet = 5
+    second_component.TimeSet = 9
+    first_sprite.X = 8
+    first_sprite.Y = 4
+    second_sprite.X = 24
+    second_sprite.Y = 12
+
+    AddAnimOb(&var first_object, &var anim_key, &var rast_port)
+    AddAnimOb(&var second_object, &var anim_key, &var rast_port)
+
+    expect(anim_key == second_object_ptr && second_object.NextOb == first_object_ptr &&
+        second_object.PrevOb == null && first_object.PrevOb == second_object_ptr,
+        "new AnimOb is the bidirectionally linked list head")
+    expect_eq(first_component.Timer, 5, "first active component timer is initialized")
+    expect_eq(second_component.Timer, 9, "second active component timer is initialized")
+    expect(head.NextVSprite == first_sprite_ptr && first_sprite.NextVSprite == second_sprite_ptr &&
+        second_sprite.NextVSprite == tail_ptr,
+        "both component Bobs enter the GEL list in Y/X order")
+    RemVSprite(&var first_sprite)
+    RemVSprite(&var second_sprite)
+}
+
+// @covers-ndk function|graphics.library|Animate
+// @ndk-side-effects Animate advances one caller-owned AnimOb clock and 1/64-pixel position/velocity state exactly once, decrements its active component timer, writes rounded pixel coordinates into the Bob's VSprite, and calls both registered callbacks with their exact identities
+@test("graphics.library Animate advances exact fixed-point state")
+pub fn graphics_animate_object() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var object: AnimOb = @zeroed(AnimOb)
+    var component: AnimComp = @zeroed(AnimComp)
+    var bob: Bob = @zeroed(Bob)
+    var sprite: VSprite = @zeroed(VSprite)
+    var anim_key: *AnimOb = null
+    initialize_gels(&var head, &var tail, &var info, &var table, &var rast_port)
+    attach_component(&var object, &var component, &var bob, &var sprite)
+    object.AnY = 64
+    object.AnX = 128
+    object.YVel = 64
+    object.XVel = 64
+    object.YAccel = 32
+    object.XAccel = -32
+    object.AnimORoutine = object_callback
+    component.TimeSet = 3
+    component.YTrans = 64
+    component.XTrans = 64
+    component.AnimCRoutine = component_callback
+    OBJECT_CALLBACKS = 0
+    COMPONENT_CALLBACKS = 0
+    CALLBACK_OBJECT = &var object
+    CALLBACK_COMPONENT = &var component
+    INVALID_CALLBACK = false
+    AddAnimOb(&var object, &var anim_key, &var rast_port)
+
+    Animate(&var anim_key, &var rast_port)
+
+    expect(object.Clock == 1 && object.AnOldY == 64 && object.AnOldX == 128 &&
+        object.AnY == 128 && object.AnX == 192,
+        "clock and 1/64-pixel positions advance exactly once")
+    expect(object.YVel == 96 && object.XVel == 32,
+        "accelerations update both fixed-point velocities")
+    expect(component.Timer == 2 && sprite.Y == 3 && sprite.X == 4,
+        "active component timer and rounded pixel coordinates advance")
+    expect(OBJECT_CALLBACKS == 1 && COMPONENT_CALLBACKS == 1 && !INVALID_CALLBACK,
+        "both callbacks receive their exact object identities once")
+    RemVSprite(&var sprite)
+}
+
+// @covers-ndk function|graphics.library|GetGBuffers
+// @ndk-side-effects GetGBuffers allocates complete CHIP-resident shadow/collision, save, border, and double-buffer storage for one Bob, aliases CollMask to ImageShadow, and leaves every caller-owned AnimOb/AnimComp/Bob/VSprite structure intact for explicit cleanup
+@test("graphics.library GetGBuffers allocates every Bob buffer")
+pub fn graphics_get_gel_buffers() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var object: AnimOb = @zeroed(AnimOb)
+    var component: AnimComp = @zeroed(AnimComp)
+    var bob: Bob = @zeroed(Bob)
+    var sprite: VSprite = @zeroed(VSprite)
+    let bitmap = prepare_rast_port(&var head, &var tail, &var info, &var table, &var rast_port)
+    expect(bitmap != null, "animation fixture allocated a displayable bitmap")
+    if bitmap == null { return }
+    attach_component(&var object, &var component, &var bob, &var sprite)
+
+    let allocated = GetGBuffers(&var object, &var rast_port, 1)
+    expect(allocated != 0, "all requested single- and double-buffer storage allocated")
+    expect(bob.ImageShadow != null && sprite.CollMask == bob.ImageShadow &&
+        bob.SaveBuffer != null && sprite.BorderLine != null,
+        "shadow, collision, save, and border buffers are complete and correctly aliased")
+    expect(bob.DBuffer != null && unsafe { (*bob.DBuffer).BufBuffer != null },
+        "double-buffer packet owns its second save buffer")
+    FreeGBuffers(&var object, &var rast_port, 1)
+    FreeBitMap(bitmap)
+}
+
+// @covers-ndk function|graphics.library|FreeGBuffers
+// @ndk-side-effects FreeGBuffers releases every buffer allocated by GetGBuffers including DBufPacket/BufBuffer, leaves the five published pointers unchanged and dangling on classic AmigaOS, and preserves the caller-owned AnimOb/component graph
+@test("graphics.library FreeGBuffers releases but leaves dangling pointers")
+pub fn graphics_free_gel_buffers() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var object: AnimOb = @zeroed(AnimOb)
+    var component: AnimComp = @zeroed(AnimComp)
+    var bob: Bob = @zeroed(Bob)
+    var sprite: VSprite = @zeroed(VSprite)
+    let component_ptr = (*AnimComp)&var component
+    let bob_ptr = (*Bob)&var bob
+    let sprite_ptr = (*VSprite)&var sprite
+    let bitmap = prepare_rast_port(&var head, &var tail, &var info, &var table, &var rast_port)
+    expect(bitmap != null, "animation fixture allocated a displayable bitmap")
+    if bitmap == null { return }
+    attach_component(&var object, &var component, &var bob, &var sprite)
+    let allocated = GetGBuffers(&var object, &var rast_port, 1)
+    expect(allocated != 0, "buffers exist before release")
+    if allocated == 0 {
+        FreeBitMap(bitmap)
+        return
+    }
+    let image_shadow = bob.ImageShadow
+    let save_buffer = bob.SaveBuffer
+    let double_buffer = bob.DBuffer
+    let collision_mask = sprite.CollMask
+    let border_line = sprite.BorderLine
+
+    FreeGBuffers(&var object, &var rast_port, 1)
+
+    expect(image_shadow != null && bob.ImageShadow == image_shadow,
+        "classic release leaves ImageShadow dangling")
+    expect(save_buffer != null && bob.SaveBuffer == save_buffer,
+        "classic release leaves SaveBuffer dangling")
+    expect(double_buffer != null && bob.DBuffer == double_buffer,
+        "classic release leaves DBuffer dangling")
+    expect(collision_mask != null && sprite.CollMask == collision_mask,
+        "classic release leaves CollMask dangling")
+    expect(border_line != null && sprite.BorderLine == border_line,
+        "classic release leaves BorderLine dangling")
+    expect(object.HeadComp == component_ptr && component.AnimBob == bob_ptr &&
+        bob.BobVSprite == sprite_ptr,
+        "caller-owned animation graph remains valid after nested buffers are freed")
+    FreeBitMap(bitmap)
+}
+
+// @covers-ndk function|graphics.library|InitGMasks
+// @ndk-side-effects InitGMasks traverses a two-frame circular sequence and derives each frame's exact per-row collision mask from its caller-owned one-plane image without replacing any GetGBuffers allocation
+@test("graphics.library InitGMasks initializes every sequence frame")
+pub fn graphics_init_gel_masks() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    var object: AnimOb = @zeroed(AnimOb)
+    var first_component: AnimComp = @zeroed(AnimComp)
+    var second_component: AnimComp = @zeroed(AnimComp)
+    var first_bob: Bob = @zeroed(Bob)
+    var second_bob: Bob = @zeroed(Bob)
+    var first_sprite: VSprite = @zeroed(VSprite)
+    var second_sprite: VSprite = @zeroed(VSprite)
+    let bitmap = prepare_rast_port(&var head, &var tail, &var info, &var table, &var rast_port)
+    let images = unsafe { AllocMem(8, MEMF_CHIP | MEMF_CLEAR | MEMF_PUBLIC) }
+    expect(bitmap != null && images != null, "animation mask fixture allocated bitmap and CHIP images")
+    if bitmap == null || images == null {
+        if images != null { unsafe { FreeMem(images, 8) } }
+        if bitmap != null { FreeBitMap(bitmap) }
+        return
+    }
+    attach_component(&var object, &var first_component, &var first_bob, &var first_sprite)
+    attach_component(&var object, &var second_component, &var second_bob, &var second_sprite)
+    object.HeadComp = &var first_component
+    first_component.NextSeq = &var second_component
+    second_component.NextSeq = &var first_component
+    let image_words = (*i16)images
+    unsafe {
+        image_words[0] = 3855
+        image_words[1] = 255
+        image_words[2] = 13107
+        image_words[3] = 21845
+        first_sprite.ImageData = &image_words[0]
+        second_sprite.ImageData = &image_words[2]
+    }
+    let allocated = GetGBuffers(&var object, &var rast_port, 0)
+    expect(allocated != 0, "both sequence frames received mask storage")
+    if allocated == 0 {
+        unsafe { FreeMem(images, 8) }
+        FreeBitMap(bitmap)
+        return
+    }
+    let first_mask = first_sprite.CollMask
+    let second_mask = second_sprite.CollMask
+
+    InitGMasks(&var object)
+
+    expect(first_sprite.CollMask == first_mask && second_sprite.CollMask == second_mask,
+        "InitGMasks preserves both allocated collision-mask identities")
+    expect(unsafe { first_mask[0] == 3855 && first_mask[1] == 255 &&
+        second_mask[0] == 13107 && second_mask[1] == 21845 },
+        "both circular sequence frames receive exact per-row masks")
+    FreeGBuffers(&var object, &var rast_port, 0)
+    unsafe { FreeMem(images, 8) }
+    FreeBitMap(bitmap)
+}

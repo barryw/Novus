@@ -1071,7 +1071,7 @@ _SetIoErr:
 
 	section	_Fault_stub,code
 
-; BOOL Fault(LONG code, STRPTR header, STRPTR buffer, LONG len)
+; LONG Fault(LONG code, STRPTR header, STRPTR buffer, LONG len)
 	xdef	_Fault
 _Fault:
 	movem.l	d2/d3/d4/a6,-(sp)
@@ -1234,7 +1234,7 @@ _GetArgStr:
 
 	section	_SetArgStr_stub,code
 
-; BOOL SetArgStr(CONST_STRPTR string)
+; STRPTR SetArgStr(STRPTR string)
 	xdef	_SetArgStr
 _SetArgStr:
 	movem.l	a6,-(sp)
@@ -2221,4 +2221,3 @@ _SetOwner:
 	jsr	-996(a6)
 	movem.l	(sp)+,d2/a6
 	rts
-

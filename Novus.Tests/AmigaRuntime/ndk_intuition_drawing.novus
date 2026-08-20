@@ -1,0 +1,197 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, IDS_NORMAL, JAM1
+from amiga::raw::graphics import InitRastPort, ReadPixel, SetRast, WaitBlit
+from amiga::raw::intuition import DrawBorder, DrawImage, DrawImageState, EraseImage, LockPubScreen, PrintIText, UnlockPubScreen
+from amiga::raw::structs import Border, Image, IntuiText, RastPort
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+const WIDTH: u32 = 64
+const HEIGHT: u32 = 32
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(WIDTH, HEIGHT, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(handle: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    rastport.BitMap = handle.as_raw()
+}
+
+fn image(data: *u16) -> Image {
+    return Image {
+        LeftEdge: 2,
+        TopEdge: 3,
+        Width: 8,
+        Height: 2,
+        Depth: 1,
+        ImageData: data,
+        PlanePick: 1,
+        PlaneOnOff: 0,
+        NextImage: null,
+    }
+}
+
+fn pattern_is_exact(rastport: *RastPort, left: i16, top: i16) -> bool {
+    for var x: i16 = 0; x < 8; x++ {
+        let first = if (x & 1) == 0 { (u32)1 } else { (u32)0 }
+        let second = if (x & 1) == 0 { (u32)0 } else { (u32)1 }
+        return false if ReadPixel(rastport, left + x, top) != first
+        return false if ReadPixel(rastport, left + x, top + 1) != second
+    }
+    return ReadPixel(rastport, left - 1, top) == 0 &&
+        ReadPixel(rastport, left + 8, top + 1) == 0
+}
+
+fn painted(rastport: *RastPort, left: i16, top: i16, right: i16, bottom: i16) -> u32 {
+    var count: u32 = 0
+    for var y = top; y <= bottom; y++ {
+        for var x = left; x <= right; x++ {
+            if ReadPixel(rastport, x, y) != 0 { count++ }
+        }
+    }
+    return count
+}
+
+// @covers-ndk function|intuition.library|DrawBorder
+// @ndk-side-effects Draws a translated three-segment Border into an owned displayable bitmap and verifies both line endpoints, the corner, and untouched neighboring pixels before bitmap cleanup
+@test("intuition.library DrawBorder renders translated vectors")
+@suppress("W0002", "JAM1 fits Border.DrawMode's byte ABI field")
+pub fn intuition_draw_border() {
+    var handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "displayable bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rastport)
+    var points: [i16] = [0, 0, 5, 0, 5, 5]
+    var border = Border {
+        LeftEdge: 1, TopEdge: 2, FrontPen: 1, BackPen: 0, DrawMode: (u8)JAM1,
+        Count: 3, XY: &var points[0], NextBorder: null,
+    }
+    DrawBorder(&var rastport, &var border, 10, 8)
+    expect(ReadPixel(&var rastport, 11, 10) == 1 &&
+        ReadPixel(&var rastport, 16, 10) == 1 && ReadPixel(&var rastport, 16, 15) == 1,
+        "translated horizontal and vertical segments include their endpoints")
+    expect(ReadPixel(&var rastport, 10, 10) == 0 && ReadPixel(&var rastport, 17, 15) == 0,
+        "pixels outside the translated border remain clear")
+}
+
+// @covers-ndk function|intuition.library|DrawImage
+// @ndk-side-effects Draws an exact alternating two-row planar Image at combined image and call offsets, waits for blitter completion, and verifies every image bit plus adjacent clear pixels
+@test("intuition.library DrawImage copies exact planar bits")
+pub fn intuition_draw_image() {
+    var handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "displayable bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rastport)
+    var data: [u16] = [$AA00, $5500]
+    var source = image(&var data[0])
+    DrawImage(&var rastport, &var source, 10, 8)
+    WaitBlit()
+    expect(pattern_is_exact(&var rastport, 12, 11),
+        "DrawImage preserves every source bit at the combined offset")
+}
+
+// @covers-ndk function|intuition.library|DrawImageState
+// @ndk-side-effects Renders a traditional planar Image in IDS_NORMAL with no DrawInfo, waits for DMA, and verifies the same exact alternating image and untouched neighbors
+@test("intuition.library DrawImageState normal state matches DrawImage")
+pub fn intuition_draw_image_state() {
+    var handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "displayable bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rastport)
+    var data: [u16] = [$AA00, $5500]
+    var source = image(&var data[0])
+    DrawImageState(&var rastport, &var source, 20, 10, IDS_NORMAL, null)
+    WaitBlit()
+    expect(pattern_is_exact(&var rastport, 22, 13),
+        "IDS_NORMAL renders every traditional Image bit at the combined offset")
+}
+
+// @covers-ndk function|intuition.library|EraseImage
+// @ndk-side-effects Draws a planar Image over a filled surrounding raster, erases the exact image rectangle through the RastPort backfill, and verifies cleared bounds plus preserved adjacent pixels
+@test("intuition.library EraseImage clears only image bounds")
+pub fn intuition_erase_image() {
+    var handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "displayable bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rastport)
+    SetRast(&var rastport, 1)
+    WaitBlit()
+    var data: [u16] = [$AA00, $5500]
+    var source = image(&var data[0])
+    EraseImage(&var rastport, &var source, 10, 8)
+    WaitBlit()
+    expect(painted(&var rastport, 12, 11, 19, 12) == 0,
+        "EraseImage clears the full translated image rectangle")
+    expect(ReadPixel(&var rastport, 11, 11) == 1 && ReadPixel(&var rastport, 20, 12) == 1,
+        "EraseImage preserves pixels immediately outside the rectangle")
+}
+
+// @covers-ndk function|intuition.library|PrintIText
+// @ndk-side-effects Prints two identical default-font IntuiText nodes at distinct offsets into a cleared owned bitmap and verifies both translated glyph regions contain ink while untouched corners remain clear
+@test("intuition.library PrintIText renders linked translated text")
+@suppress("W0002", "JAM1 fits IntuiText.DrawMode's byte ABI field")
+pub fn intuition_print_itext() {
+    var handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "displayable bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rastport)
+    let screen = LockPubScreen("Workbench")
+    if screen == null {
+        expect(false, "Workbench font locked")
+        return
+    }
+    rastport.Font = screen.RastPort.Font
+    let font_height = (i16)rastport.Font.tf_YSize
+    var second: IntuiText = @zeroed(IntuiText)
+    second.FrontPen = 1
+    second.DrawMode = (u8)JAM1
+    second.LeftEdge = 24
+    second.TopEdge = 10
+    second.IText = "N"
+    var first: IntuiText = @zeroed(IntuiText)
+    first.FrontPen = 1
+    first.DrawMode = (u8)JAM1
+    first.LeftEdge = 2
+    first.TopEdge = 10
+    first.IText = "N"
+    first.NextText = &var second
+    PrintIText(&var rastport, &var first, 4, 4)
+    UnlockPubScreen(null, screen)
+    let glyph_top: i16 = 14
+    let glyph_bottom = glyph_top + font_height - 1
+    expect(painted(&var rastport, 6, glyph_top, 20, glyph_bottom) > 0,
+        "first translated text node renders visible glyph pixels")
+    expect(painted(&var rastport, 28, glyph_top, 42, glyph_bottom) > 0,
+        "linked translated text node renders visible glyph pixels")
+    expect(ReadPixel(&var rastport, 0, 0) == 0 && ReadPixel(&var rastport, 63, 31) == 0,
+        "untouched bitmap corners remain clear")
+}

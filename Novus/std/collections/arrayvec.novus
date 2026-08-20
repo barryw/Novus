@@ -1,6 +1,6 @@
 // Fixed-capacity vector with inline storage and no allocation.
 
-from std::core import Drop, Error, Iterable, Option, Result
+from std::core import Error, Iterable, Option, Result
 
 /// Returned by `ArrayVec::push` when the inline capacity is exhausted.
 pub enum ArrayVecError {
@@ -109,6 +109,7 @@ impl<T, const N: usize> ArrayVec<T, N> {
             current++
         }
         self.len--
+        self.items[self.len] = Option::None
         return removed
     }
 }
@@ -121,15 +122,6 @@ impl<T, const N: usize> Iterable<T> for ArrayVec<T, N> {
         return match &self.items[index] {
             Option::Some(&value) => value,
             Option::None => { panic!("ArrayVec invariant violated") },
-        }
-    }
-}
-
-impl<T, const N: usize> Drop for ArrayVec<T, N> {
-    fn drop(&var self) {
-        while self.len > 0 {
-            self.len--
-            @drop_in_place(&var self.items[self.len])
         }
     }
 }

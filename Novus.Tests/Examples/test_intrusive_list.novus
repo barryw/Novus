@@ -96,6 +96,8 @@ pub fn test_add_tail_single_is_first_and_last() {
     }
 }
 
+// @covers-ndk function|exec.library|AddTail
+// @ndk-side-effects AddTail links each node at the list tail; forward and reverse endpoints preserve insertion order without allocating memory
 @test("add_tail multiple items maintains order")
 pub fn test_add_tail_order() {
     var list = IntrusiveList::<TestItem>::new()
@@ -138,6 +140,8 @@ pub fn test_add_head_single_not_empty() {
     expect_eq(list.len(), 1, "list length should be 1")
 }
 
+// @covers-ndk function|exec.library|AddHead
+// @ndk-side-effects AddHead links each node at the list head; list endpoints prove reverse insertion order without allocating memory
 @test("add_head multiple items reverses insertion order")
 pub fn test_add_head_reverse_order() {
     var list = IntrusiveList::<TestItem>::new()
@@ -198,6 +202,8 @@ pub fn test_remove_head_returns_first() {
     expect_eq(list.len(), 1, "list length should be 1 after remove_head")
 }
 
+// @covers-ndk function|exec.library|RemHead
+// @ndk-side-effects RemHead unlinks and returns each head node in order; the final removal restores the initialized empty-list sentinels
 @test("remove_head all items leaves empty list")
 pub fn test_remove_head_until_empty() {
     var list = IntrusiveList::<TestItem>::new()
@@ -269,6 +275,8 @@ pub fn test_remove_tail_returns_last() {
     expect_eq(list.len(), 1, "list length should be 1 after remove_tail")
 }
 
+// @covers-ndk function|exec.library|RemTail
+// @ndk-side-effects RemTail unlinks and returns each tail node in reverse order; the final removal restores the initialized empty-list sentinels
 @test("remove_tail all items leaves empty list")
 pub fn test_remove_tail_until_empty() {
     var list = IntrusiveList::<TestItem>::new()
@@ -304,6 +312,8 @@ pub fn test_remove_tail_until_empty() {
 // Remove Specific Node Tests
 // ============================================================================
 
+// @covers-ndk function|exec.library|Remove
+// @ndk-side-effects Remove unlinks only the selected middle node and reconnects its predecessor and successor without allocation
 @test("remove middle node maintains list integrity")
 pub fn test_remove_middle_node() {
     var list = IntrusiveList::<TestItem>::new()
@@ -408,6 +418,8 @@ pub fn test_insert_after_at_end() {
     }
 }
 
+// @covers-ndk function|exec.library|Insert
+// @ndk-side-effects Insert links the new node after the selected predecessor and preserves both neighboring links and list endpoints
 @test("insert_after in middle inserts correctly")
 pub fn test_insert_after_middle() {
     var list = IntrusiveList::<TestItem>::new()

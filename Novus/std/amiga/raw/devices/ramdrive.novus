@@ -12,10 +12,38 @@ from amiga::raw::structs import *
 // ============================================================================
 
 @library("ramdrive.device")
-/// Removes the legacy RAD: unit zero and returns its detached segment list.
-/// A null result means the unit could not be removed.
+/// Remove ramdrive.device unit zero and return its DOS device name.
+///
+/// This historical entry point performs `KillRAD(0)`: it removes the reset
+/// recovery hooks, frees the RAD disk memory, and returns the colon-terminated,
+/// null-terminated DOS device name that had been associated with unit zero.
+///
+/// # Returns
+///
+/// A pointer to the device-name string, such as `RAD:`, or null when the unit
+/// could not be removed. The result is not a segment list and must not be freed.
+///
+/// # See Also
+///
+/// `KillRAD`
 extern pub fn KillRAD0() -> *u8
 @library("ramdrive.device")
-/// Removes the requested RAD: unit and returns its detached segment list.
-/// The caller becomes responsible for the returned segment list; null means failure.
+/// Remove a ramdrive.device unit and return its DOS device name.
+///
+/// The call first removes the system hooks that recover the RAD disk after a
+/// reset, then frees the disk memory.
+///
+/// # Arguments
+///
+/// * `unit` - ramdrive.device unit to remove.
+///
+/// # Returns
+///
+/// A pointer to the colon-terminated, null-terminated DOS device-name string
+/// associated with the removed unit, or null when removal failed. The result
+/// is not a segment list and must not be freed.
+///
+/// # See Also
+///
+/// `KillRAD0`
 extern pub fn KillRAD(unit: u32) -> *u8

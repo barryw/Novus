@@ -9,13 +9,59 @@ namespace Novus.Frontend;
 /// </summary>
 public partial class IrBuilder
 {
+    private static string NormalizeDropTypeName(string typeName) =>
+        typeName.Replace("<", "_").Replace(">", "_").Replace(",", "_").Replace(" ", "_").TrimEnd('_');
+
+    /// <summary>
+    /// Cleanup lives in the Drop trait impl, which is named {Type}_{Trait}_{method}.
+    /// An inherent `drop` is rejected by semantic analysis, so this is the only entry point.
+    /// </summary>
+    private static IEnumerable<string> GetDropMethodCandidates(string typeName)
+    {
+        var normalizedTypeName = NormalizeDropTypeName(typeName);
+        yield return $"{typeName}_Drop_drop";
+        if (normalizedTypeName != typeName)
+            yield return $"{normalizedTypeName}_Drop_drop";
+    }
+
+    private string? ResolveDropMethodNameInModule(string typeName)
+    {
+        foreach (var candidate in GetDropMethodCandidates(typeName))
+        {
+            var function = _module.GetFunction(candidate);
+            if (function != null && !function.IsExtern && function.BasicBlocks.Count > 0)
+            {
+                return candidate;
+            }
+        }
+
+        foreach (var candidate in GetDropMethodCandidates(typeName))
+        {
+            var function = _module.GetFunction(candidate);
+            if (function != null && !function.IsExtern)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
     private bool EnsureDropMethodInstantiated(IrType type)
     {
         if (type is IrStructType knownStruct)
         {
+            knownStruct = _module.ResolveStructLayout(knownStruct);
             var knownTypeName = knownStruct.CacheKey ?? knownStruct.StructName;
-            if (_module.GetFunction($"{knownTypeName}_Drop_drop") != null)
+            if (ResolveDropMethodNameInModule(knownTypeName) != null)
+            {
+                foreach (var field in knownStruct.Fields)
+                {
+                    if (_module.TypeImplementsDrop(field.Type))
+                        EnsureDropMethodInstantiated(field.Type);
+                }
                 return true;
+            }
         }
 
         // Check if this type implements the Drop trait
@@ -44,7 +90,7 @@ public partial class IrBuilder
         // We recursively ensure payload types have their Drop methods ready.
         if (type is IrEnumType enumType && _module.EnumNeedsDrop(enumType))
         {
-            foreach (var variant in enumType.Variants)
+            foreach (var variant in _module.ResolveEnumLayout(enumType).Variants)
             {
                 foreach (var payloadType in variant.AssociatedData)
                 {
@@ -58,12 +104,14 @@ public partial class IrBuilder
         }
 
         // For struct types, check if they have an explicit Drop method or generic template
-        if (type is not IrStructType st)
+        if (type is not IrStructType declaredStruct)
         {
             // Only structs, enums, and tuples can have Drop
             // (enums and tuples are handled above)
             return false;
         }
+
+        var st = _module.ResolveStructLayout(declaredStruct);
 
         if (!_module.StructImplementsDrop(st))
         {
@@ -75,9 +123,10 @@ public partial class IrBuilder
             return true;
         }
 
-        // Skip if this is a generic template (has unsubstituted generic parameters)
-        // We can only instantiate Drop for concrete types
-        if (st.GenericParameters.Count > 0)
+        // Skip only generic templates (unsubstituted generics).
+        // Monomorphized generic structs (e.g. Vec<i32>) keep GenericParameters populated
+        // but should still instantiate Drop via their cache key.
+        if (st.GenericParameters.Count > 0 && string.IsNullOrEmpty(st.CacheKey))
         {
             return false;
         }
@@ -87,21 +136,15 @@ public partial class IrBuilder
         // For non-generic types, use StructName
         var typeName = st.CacheKey ?? st.StructName;
 
-        // Look for Type_drop method in the module
-        // The Drop trait implementation generates: Type_Drop_drop
-        // (trait impl convention: {Type}_{Trait}_{method})
-        // For monomorphized types like Vec<bool>, this would be Vec<bool>_Drop_drop
-        var dropMethod = $"{typeName}_Drop_drop";
-
-        // Check if already instantiated
-        if (_module.Functions.Any(f => f.Name == dropMethod))
+        if (ResolveDropMethodNameInModule(typeName) != null)
         {
             return true;
         }
 
         // Check if there's a generic template for the drop() method
         // Use base type name for template lookup (e.g., "Vec" not "Vec<bool>")
-        var templateKey = $"{baseTypeName}::drop";
+        var templateKey = Generics.InstantiationKeyBuilder.BuildMethodTemplateKey(
+            baseTypeName, "drop", isTraitImpl: true, traitName: "Drop");
 
         if (_genericInstantiator.HasMethodTemplate(templateKey))
         {
@@ -119,6 +162,16 @@ public partial class IrBuilder
 
                 if (instantiatedFunc != null)
                 {
+                    if (ResolveDropMethodNameInModule(typeName) == null)
+                    {
+                        return false;
+                    }
+
+                    foreach (var field in st.Fields)
+                    {
+                        if (_module.TypeImplementsDrop(field.Type))
+                            EnsureDropMethodInstantiated(field.Type);
+                    }
                     return true;
                 }
             }
@@ -145,7 +198,7 @@ public partial class IrBuilder
         string typeName;
         if (type is IrStructType structType)
         {
-            typeName = structType.StructName;  // Use base name for generic types
+            typeName = structType.CacheKey ?? structType.StructName;
         }
         else if (type is IrEnumType enumType)
         {
@@ -157,9 +210,7 @@ public partial class IrBuilder
             return false;
         }
 
-        // Look for Type_drop method in the module
-        var dropMethod = $"{typeName}_drop";
-        return _module.Functions.Any(f => f.Name == dropMethod);
+        return ResolveDropMethodNameInModule(typeName) != null;
     }
 
     /// <summary>
@@ -398,7 +449,11 @@ public partial class IrBuilder
                 if (payloadType is IrStructType payloadStructType)
                 {
                     var payloadTypeName = payloadStructType.CacheKey ?? payloadStructType.StructName;
-                    var dropMethodName = $"{payloadTypeName}_Drop_drop";
+                    var dropMethodName = ResolveDropMethodNameInModule(payloadTypeName);
+                    if (dropMethodName == null)
+                    {
+                        continue;
+                    }
 
                     // Borrow the payload mutably
                     var payloadBorrow = new IrBorrowValue(payloadAccess, new IrMutReferenceType(payloadType), isMutable: true);
@@ -479,9 +534,8 @@ public partial class IrBuilder
                 continue;
             }
 
-            var dropMethodName = $"{elementTypeName}_Drop_drop";
-            var dropMethod = _module.GetFunction(dropMethodName);
-            if (dropMethod == null)
+            var dropMethodName = ResolveDropMethodNameInModule(elementTypeName);
+            if (dropMethodName == null)
             {
                 // Log warning but continue - element might not actually need drop
                 continue;
@@ -566,9 +620,8 @@ public partial class IrBuilder
                 continue;
             }
 
-            var dropMethodName = $"{elementTypeName}_Drop_drop";
-            var dropMethod = _module.GetFunction(dropMethodName);
-            if (dropMethod == null)
+            var dropMethodName = ResolveDropMethodNameInModule(elementTypeName);
+            if (dropMethodName == null)
             {
                 continue;
             }
@@ -749,20 +802,20 @@ public partial class IrBuilder
             if (elementType is IrStructType st)
             {
                 var typeName = st.CacheKey ?? st.StructName;
-                var dropMethodName = $"{typeName}_Drop_drop";
+                var dropMethodName = ResolveDropMethodNameInModule(typeName);
+                if (dropMethodName == null)
+                {
+                    continue;
+                }
 
                 EnsureDropMethodInstantiated(elementType);
-                var dropMethod = _module.GetFunction(dropMethodName);
-                if (dropMethod != null)
-                {
-                    var tupleVar = new IrVariable(tupleVarName, tupleType);
-                    var elementAccess = new IrTupleElementAccess(tupleVar, i, elementType);
-                    var elementBorrow = new IrBorrowValue(elementAccess, new IrMutReferenceType(elementType), isMutable: true);
+                var tupleVar = new IrVariable(tupleVarName, tupleType);
+                var elementAccess = new IrTupleElementAccess(tupleVar, i, elementType);
+                var elementBorrow = new IrBorrowValue(elementAccess, new IrMutReferenceType(elementType), isMutable: true);
 
-                    var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
-                    dropCall.Arguments.Add(elementBorrow);
-                    _currentBlock!.AddInstruction(dropCall);
-                }
+                var dropCall = new IrCall(dropMethodName, IrVoidType.Instance, null);
+                dropCall.Arguments.Add(elementBorrow);
+                _currentBlock!.AddInstruction(dropCall);
             }
         }
     }
@@ -858,7 +911,11 @@ public partial class IrBuilder
                 if (payloadType is IrStructType payloadStructType)
                 {
                     var payloadTypeName = payloadStructType.CacheKey ?? payloadStructType.StructName;
-                    var dropMethodName = $"{payloadTypeName}_Drop_drop";
+                    var dropMethodName = ResolveDropMethodNameInModule(payloadTypeName);
+                    if (dropMethodName == null)
+                    {
+                        continue;
+                    }
 
                     EnsureDropMethodInstantiated(payloadType);
 

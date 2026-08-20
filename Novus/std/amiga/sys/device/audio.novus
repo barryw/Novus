@@ -27,9 +27,8 @@
 //
 // // Device automatically closed on drop
 // ```
-
 from std::core import Option, Result, Drop
-from amiga::raw::exec import OpenDevice, CloseDevice, DoIO, SendIO, WaitIO, AbortIO
+from amiga::raw::exec import OpenDevice, CloseDevice, DoIO
 from amiga::raw::exec import CreateIORequest, DeleteIORequest, CreateMsgPort, DeleteMsgPort
 from amiga::raw::structs import IOAudio, IORequest, MsgPort, Message
 from amiga::raw::consts import ADCMD_FREE, ADCMD_PERVOL, CMD_WRITE, CMD_STOP, CMD_START
@@ -42,7 +41,6 @@ from amiga::sys::hardware::paula import PAULA_MAX_VOLUME, is_valid_period, is_va
 // ============================================================================
 // Channel Preference
 // ============================================================================
-
 /// Specify which channels to request from audio.device
 ///
 /// audio.device will allocate channels based on availability and priority.
@@ -63,39 +61,9 @@ pub enum ChannelPreference {
     All,
 }
 
-impl ChannelPreference {
-    /// Convert preference to channel allocation mask
-    ///
-    /// The mask is a bitmap where bit N = channel N.
-    /// audio.device uses this to determine acceptable channels.
-    fn to_mask(&self) -> u8 {
-        match *self {
-            ChannelPreference::Any => return $0F,        // Any of 0,1,2,3
-            ChannelPreference::Specific(ch) => return 1 << (ch & 3),
-            ChannelPreference::Left => return $09,       // Channels 0 or 3
-            ChannelPreference::Right => return $06,      // Channels 1 or 2
-            ChannelPreference::Stereo => return $0F,     // Need left + right
-            ChannelPreference::All => return $0F,        // All channels
-        }
-    }
-
-    /// Get the number of channels requested
-    fn channel_count(&self) -> u8 {
-        match *self {
-            ChannelPreference::Any => return 1,
-            ChannelPreference::Specific(_) => return 1,
-            ChannelPreference::Left => return 1,
-            ChannelPreference::Right => return 1,
-            ChannelPreference::Stereo => return 2,
-            ChannelPreference::All => return 4,
-        }
-    }
-}
-
 // ============================================================================
 // Audio Device Handle
 // ============================================================================
-
 /// RAII wrapper for audio.device
 ///
 /// Manages the complete lifecycle of an audio.device connection:
@@ -133,15 +101,19 @@ impl ChannelPreference {
 /// ```
 pub struct AudioDeviceHandle {
     /// The io audio value stored by `AudioDeviceHandle`.
-    io_audio: *IOAudio,      // IORequest for audio commands
+    io_audio: *IOAudio,
+    // IORequest for audio commands
     /// The port value stored by `AudioDeviceHandle`.
-    port: *MsgPort,          // Message port for I/O completion
+    port: *MsgPort,
+    // Message port for I/O completion
     /// The allocated channels value stored by `AudioDeviceHandle`.
-    allocated_channels: u8,  // Bitmask of channels we own
+    allocated_channels: u8,
+    // Bitmask of channels we own
     /// The alloc key value stored by `AudioDeviceHandle`.
-    alloc_key: i16,          // Allocation key from audio.device
+    alloc_key: i16,
 }
 
+// Allocation key from audio.device
 impl AudioDeviceHandle {
     /// Open audio.device and allocate channels
     ///
@@ -161,42 +133,68 @@ impl AudioDeviceHandle {
     /// var audio = AudioDeviceHandle::open(ChannelPreference::Left, 50)?
     /// ```
     pub fn open(preference: ChannelPreference, priority: i8) -> Result<AudioDeviceHandle, AudioError> {
+        // Each byte is one acceptable channel combination, not a mask of
+        // interchangeable channels. audio.device tries the entries in order.
+        var alloc_map: [u8] = [0, 0, 0, 0]
+        var choice_count: u32 = 1
+        match preference {
+            ChannelPreference::Any => {
+                alloc_map[0] = 1
+                alloc_map[1] = 2
+                alloc_map[2] = 4
+                alloc_map[3] = 8
+                choice_count = 4
+            },
+            ChannelPreference::Specific(channel) => {
+                return Result::Err(AudioError::InvalidChannel) if channel > 3
+                alloc_map[0] = 1 << channel
+            },
+            ChannelPreference::Left => {
+                alloc_map[0] = 1
+                alloc_map[1] = 8
+                choice_count = 2
+            },
+            ChannelPreference::Right => {
+                alloc_map[0] = 2
+                alloc_map[1] = 4
+                choice_count = 2
+            },
+            ChannelPreference::Stereo => {
+                alloc_map[0] = 3
+                alloc_map[1] = 5
+                alloc_map[2] = 10
+                alloc_map[3] = 12
+                choice_count = 4
+            },
+            ChannelPreference::All => {
+                alloc_map[0] = $0F
+            }
+        }
         // Create message port for I/O replies
         let port = CreateMsgPort()
         if (u32)port == 0 {
             return Result::Err(AudioError::NoMsgPort)
         }
-
         // Create IORequest (must be IOAudio size)
         let req = CreateIORequest(port, @sizeof(IOAudio))
         if (u32)req == 0 {
             DeleteMsgPort(port)
             return Result::Err(AudioError::NoIORequest)
         }
-
         let io_audio = (*IOAudio)req
-
-        // Set up channel allocation request
-        // The allocation array lists acceptable channel combinations
-        let channel_mask = preference.to_mask()
-        var alloc_map: [u8] = [channel_mask, 0, 0, 0]
-
         // Set up the IOAudio for allocation
         io_audio.ioa_Request.io_Message.mn_ReplyPort = port
         io_audio.ioa_Request.io_Message.mn_Node.ln_Pri = priority
         io_audio.ioa_Data = &alloc_map[0]
-        io_audio.ioa_Length = (u32)preference.channel_count()
-
+        io_audio.ioa_Length = choice_count
         // Open device - this performs the allocation
         unsafe {
             let req_addr = &io_audio.ioa_Request
             let ioreq = (*IORequest)req_addr
             let error = OpenDevice("audio.device", 0, ioreq, 0)
-
             if error != 0 {
                 DeleteIORequest(req)
                 DeleteMsgPort(port)
-
                 // Map error code to our error type
                 if error == -10 {
                     return Result::Err(AudioError::NoAllocation)
@@ -207,18 +205,11 @@ impl AudioDeviceHandle {
                 return Result::Err(AudioError::DeviceOpenFailed)
             }
         }
-
         // Extract allocation results
         let alloc_key = io_audio.ioa_AllocKey
         // io_Unit contains the allocated channel mask
         let allocated = (u8)((u32)io_audio.ioa_Request.io_Unit & $FF)
-
-        return Result::Ok(AudioDeviceHandle {
-            io_audio: io_audio,
-            port: port,
-            allocated_channels: allocated,
-            alloc_key: alloc_key,
-        })
+        return Result::Ok(AudioDeviceHandle { io_audio: io_audio, port: port, allocated_channels: allocated, alloc_key: alloc_key })
     }
 
     /// Open and request any available channel
@@ -253,8 +244,7 @@ impl AudioDeviceHandle {
 
     /// Play a sample on our allocated channel(s)
     ///
-    /// This is a blocking call - it waits until the sound finishes.
-    /// For non-blocking playback, use play_async().
+    /// This is a blocking call and returns only after playback completes.
     ///
     /// # Arguments
     /// * `sample` - Sample data (must be in chip RAM)
@@ -273,7 +263,6 @@ impl AudioDeviceHandle {
         if !is_valid_volume(volume) {
             return Result::Err(AudioError::InvalidVolume)
         }
-
         // Set up the IOAudio for CMD_WRITE
         self.io_audio.ioa_Request.io_Command = (u16)CMD_WRITE
         self.io_audio.ioa_Request.io_Flags = (u8)ADIOF_PERVOL
@@ -282,18 +271,15 @@ impl AudioDeviceHandle {
         self.io_audio.ioa_Period = period
         self.io_audio.ioa_Volume = volume
         self.io_audio.ioa_Cycles = cycles
-
         let req_addr = &self.io_audio.ioa_Request
         let ioreq = (*IORequest)req_addr
         let error = DoIO(ioreq)
-
         if error != 0 {
             if error == ADIOERR_CHANNELSTOLEN {
                 return Result::Err(AudioError::ChannelStolen)
             }
             return Result::Err(AudioError::DeviceIOError(error))
         }
-
         return Result::Ok(())
     }
 
@@ -328,19 +314,15 @@ impl AudioDeviceHandle {
         if !is_valid_volume(volume) {
             return Result::Err(AudioError::InvalidVolume)
         }
-
         self.io_audio.ioa_Request.io_Command = (u16)ADCMD_PERVOL
         self.io_audio.ioa_Period = period
         self.io_audio.ioa_Volume = volume
-
         let req_addr = &self.io_audio.ioa_Request
         let ioreq = (*IORequest)req_addr
         let error = DoIO(ioreq)
-
         if error != 0 {
             return Result::Err(AudioError::DeviceIOError(error))
         }
-
         return Result::Ok(())
     }
 
@@ -349,15 +331,12 @@ impl AudioDeviceHandle {
     /// Immediately stops any playing sound. The channel remains allocated.
     pub fn stop(&var self) -> Result<(), AudioError> {
         self.io_audio.ioa_Request.io_Command = (u16)CMD_STOP
-
         let req_addr = &self.io_audio.ioa_Request
         let ioreq = (*IORequest)req_addr
         let error = DoIO(ioreq)
-
         if error != 0 {
             return Result::Err(AudioError::DeviceIOError(error))
         }
-
         return Result::Ok(())
     }
 
@@ -366,15 +345,12 @@ impl AudioDeviceHandle {
     /// Continues from where the sound was stopped.
     pub fn start(&var self) -> Result<(), AudioError> {
         self.io_audio.ioa_Request.io_Command = (u16)CMD_START
-
         let req_addr = &self.io_audio.ioa_Request
         let ioreq = (*IORequest)req_addr
         let error = DoIO(ioreq)
-
         if error != 0 {
             return Result::Err(AudioError::DeviceIOError(error))
         }
-
         return Result::Ok(())
     }
 
@@ -424,16 +400,13 @@ impl Drop for AudioDeviceHandle {
                 let req_addr = &io.ioa_Request
                 let ioreq = (*IORequest)req_addr
                 let _ = DoIO(ioreq)
-
                 // Close device
                 CloseDevice(ioreq)
-
                 // Free IORequest
                 DeleteIORequest((*u8)io)
             }
             self.io_audio = null
         }
-
         if let port = self.port {
             DeleteMsgPort(port)
             self.port = null

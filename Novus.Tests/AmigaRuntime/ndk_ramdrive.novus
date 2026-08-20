@@ -1,0 +1,78 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import ACCESS_READ, DOSTRUE, ERROR_OBJECT_IN_USE, MODE_NEWFILE
+from amiga::raw::devices::ramdrive import KillRAD, KillRAD0
+from amiga::raw::dos import Close, Delay, Inhibit, IoErr, Lock, Open, UnLock, Write
+
+// Mounting writes a marker file, which leaves the handler with outstanding work, and
+// ACTION_INHIBIT is refused with ERROR_OBJECT_IN_USE until it drains. That is
+// the documented contract, so wait for the handler to settle before treating a
+// refusal as a failure. Any other error is reported as-is.
+fn inhibit_when_idle(name: Str, flag: i32) -> i32 {
+    var attempt: i32 = 0
+    forever {
+        let result = Inhibit(name, flag)
+        if result != 0 { return result }
+        if IoErr() != (i32)ERROR_OBJECT_IN_USE { return 0 }
+        if attempt >= 25 { return 0 }
+        Delay(10)
+        attempt++
+    }
+}
+
+// Both units are mounted by the suite fixture before the binary starts. Prove the
+// unit is live by writing a marker file to it.
+fn mount_writable_rad(volume: Str, marker: Str) -> bool {
+    let existing = Lock(volume, ACCESS_READ)
+    if existing == 0 { return false }
+    UnLock(existing)
+    let file = Open(marker, MODE_NEWFILE)
+    if file == 0 { return false }
+    let written = Write(file, "RAD", 3)
+    Close(file)
+    return written == 3
+}
+
+fn name_equals(name: *u8, expected: Str) -> bool {
+    if name == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if name[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return name[expected.len()] == 0
+    }
+}
+
+fn rad_is_gone(volume: Str) -> bool {
+    let lock = Lock(volume, ACCESS_READ)
+    if lock != 0 { UnLock(lock) }
+    return lock == 0
+}
+
+// @covers-ndk function|ramdrive.device|KillRAD
+// @ndk-side-effects Uses a real writable RAD unit one, writes a marker file, inhibits its filesystem handler, removes the unit through KillRAD(1), validates the returned `RAD1:` device-name string, and proves the DOS volume is no longer lockable
+@test("ramdrive.device KillRAD frees a mounted unit and returns its name")
+pub fn ramdrive_kill_unit() {
+    let mounted = mount_writable_rad("RAD1:", "RAD1:novus-killrad-test")
+    let inhibited = mounted && inhibit_when_idle("RAD1:", (i32)DOSTRUE) != 0
+    let name = if inhibited { KillRAD(1) } else { null }
+    expect(mounted, "RAD1: mounts and accepts a marker file")
+    expect(inhibited, "RAD1: filesystem handler accepts inhibition")
+    expect(name_equals(name, "RAD1:"), "KillRAD returns the exact RAD1: device name")
+    expect(rad_is_gone("RAD1:"), "RAD1: is no longer lockable after KillRAD")
+}
+
+// @covers-ndk function|ramdrive.device|KillRAD0
+// @ndk-side-effects Uses a real writable RAD unit zero, writes a marker file, inhibits its filesystem handler, removes it through the historical entry point, validates the returned `RAD:` string, and proves the DOS volume is gone
+@test("ramdrive.device KillRAD0 performs the unit-zero lifecycle")
+pub fn ramdrive_kill_legacy_unit_zero() {
+    let mounted = mount_writable_rad("RAD:", "RAD:novus-killrad-test")
+    let inhibited = mounted && inhibit_when_idle("RAD:", (i32)DOSTRUE) != 0
+    let name = if inhibited { KillRAD0() } else { null }
+    expect(mounted, "RAD: mounts and accepts a marker file")
+    expect(inhibited, "RAD: accepts inhibition")
+    expect(name_equals(name, "RAD:"), "KillRAD0 returns the exact RAD: device name")
+    expect(rad_is_gone("RAD:"), "RAD: is no longer lockable after KillRAD0")
+}

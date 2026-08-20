@@ -1,0 +1,205 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::structs import GelsInfo, RastPort, VSprite, collTable
+from amiga::raw::graphics import AddVSprite, InitGels, InitMasks, RemVSprite, SetCollision, SortGList
+
+static var GELS_COLLISION_CALLS: u32 = 0
+static var GELS_COLLISION_FIRST: *VSprite = null
+static var GELS_COLLISION_SECOND: *VSprite = null
+
+fn collision_probe(first: *VSprite, second: *VSprite) {
+    if first == GELS_COLLISION_FIRST && second == GELS_COLLISION_SECOND {
+        GELS_COLLISION_CALLS++
+    }
+}
+
+fn initialize_gels(
+    head: *VSprite,
+    tail: *VSprite,
+    info: *GelsInfo,
+    table: *collTable,
+    rast_port: *RastPort
+) {
+    unsafe {
+        (*head).Y = -32767
+        (*head).Flags = 1
+        (*tail).Y = 32767
+        (*tail).Flags = 1
+        (*info).collHandler = table
+        (*info).leftmost = 0
+        (*info).rightmost = 319
+        (*info).topmost = 0
+        (*info).bottommost = 255
+        (*rast_port).GelsInfo = info
+    }
+    InitGels(head, tail, info)
+}
+
+// @covers-ndk function|graphics.library|InitGels
+// @ndk-side-effects InitGels installs the caller's exact head and tail sentinels, links them bidirectionally, and clears the BORDERHIT collision vector without allocating memory
+@test("graphics.library InitGels installs exact sentinel state")
+pub fn graphics_init_gels() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    initialize_gels(head_ptr, tail_ptr, &var info, &var table, &var rast_port)
+
+    expect(@sizeof(VSprite) == 60 && @sizeof(GelsInfo) == 38 && @sizeof(collTable) == 64,
+        "GEL structures match the classic 68k NDK ABI")
+    expect(info.gelHead == head_ptr && info.gelTail == tail_ptr,
+        "GelsInfo retains the exact caller-owned sentinels")
+    expect(head.NextVSprite == tail_ptr && tail.PrevVSprite == head_ptr,
+        "sentinels are linked in both directions")
+    expect((u32)table.collPtrs[0] == 0, "BORDERHIT starts disabled")
+}
+
+// @covers-ndk function|graphics.library|InitMasks
+// @ndk-side-effects InitMasks ORs each pair of caller-owned hardware-sprite bitplane words into the exact per-row collision mask without changing the image; live AmigaOS 3.2 also reproduces its documented BorderLine defect by returning $8FF1 instead of the full $EFFF row union
+@test("graphics.library InitMasks derives exact collision masks")
+pub fn graphics_init_masks() {
+    var image: [i16] = [-32767, 3840, 240, 15, 16384, 8192]
+    var original: [i16] = [-32767, 3840, 240, 15, 16384, 8192]
+    var border: [i16] = [0]
+    var collision: [i16] = [0, 0, 0]
+    var sprite: VSprite = @zeroed(VSprite)
+    sprite.Flags = 1
+    sprite.Width = 1
+    sprite.Height = 3
+    sprite.Depth = 2
+    sprite.ImageData = &var image[0]
+    sprite.BorderLine = &var border[0]
+    sprite.CollMask = &var collision[0]
+
+    InitMasks(&var sprite)
+
+    expect_eq(collision[0], -28927, "collision row zero ORs both sprite planes")
+    expect_eq(collision[1], 255, "collision row one ORs both sprite planes")
+    expect_eq(collision[2], 24576, "collision row two ORs both sprite planes")
+    expect_eq(border[0], -28687, "AmigaOS 3.2 reproduces the documented incomplete border line")
+    expect(border[0] != (collision[0] | collision[1] | collision[2]),
+        "classic InitMasks omits occupied bits from BorderLine")
+    expect(image[0] == original[0] && image[1] == original[1] &&
+        image[2] == original[2] && image[3] == original[3] &&
+        image[4] == original[4] && image[5] == original[5],
+        "source image remains unchanged")
+}
+
+// @covers-ndk function|graphics.library|AddVSprite
+// @ndk-side-effects AddVSprite inserts a caller-owned VSprite between initialized sentinels according to its Y,X position and establishes exact forward and backward links
+@test("graphics.library AddVSprite links a positioned sprite")
+pub fn graphics_add_vsprite() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var sprite: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    let sprite_ptr = (*VSprite)&var sprite
+    initialize_gels(head_ptr, tail_ptr, &var info, &var table, &var rast_port)
+    sprite.Flags = 1
+    sprite.Y = 42
+    sprite.X = 17
+
+    AddVSprite(sprite_ptr, &var rast_port)
+    expect(head.NextVSprite == sprite_ptr && sprite.PrevVSprite == head_ptr &&
+        sprite.NextVSprite == tail_ptr && tail.PrevVSprite == sprite_ptr,
+        "sprite is linked between both sentinels")
+    RemVSprite(sprite_ptr)
+}
+
+// @covers-ndk function|graphics.library|SortGList
+// @ndk-side-effects SortGList reorders an existing GEL list by ascending Y then X after callers mutate coordinates, preserving every bidirectional link and sentinel
+@test("graphics.library SortGList restores Y,X order")
+pub fn graphics_sort_gels() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var first: VSprite = @zeroed(VSprite)
+    var second: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    let first_ptr = (*VSprite)&var first
+    let second_ptr = (*VSprite)&var second
+    initialize_gels(head_ptr, tail_ptr, &var info, &var table, &var rast_port)
+    first.Flags = 1
+    first.Y = 10
+    first.X = 10
+    second.Flags = 1
+    second.Y = 20
+    second.X = 20
+    AddVSprite(first_ptr, &var rast_port)
+    AddVSprite(second_ptr, &var rast_port)
+
+    first.Y = 30
+    second.Y = 5
+    SortGList(&var rast_port)
+    expect(head.NextVSprite == second_ptr && second.PrevVSprite == head_ptr &&
+        second.NextVSprite == first_ptr && first.PrevVSprite == second_ptr &&
+        first.NextVSprite == tail_ptr && tail.PrevVSprite == first_ptr,
+        "mutated sprites are sorted and linked in both directions")
+    RemVSprite(second_ptr)
+    RemVSprite(first_ptr)
+}
+
+// @covers-ndk function|graphics.library|RemVSprite
+// @ndk-side-effects RemVSprite unlinks exactly one caller-owned VSprite and reconnects its previous and next neighbors without disturbing the remaining GEL list
+@test("graphics.library RemVSprite reconnects neighboring gels")
+pub fn graphics_remove_vsprite() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var first: VSprite = @zeroed(VSprite)
+    var second: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let head_ptr = (*VSprite)&var head
+    let tail_ptr = (*VSprite)&var tail
+    let first_ptr = (*VSprite)&var first
+    let second_ptr = (*VSprite)&var second
+    initialize_gels(head_ptr, tail_ptr, &var info, &var table, &var rast_port)
+    first.Flags = 1
+    first.Y = 10
+    second.Flags = 1
+    second.Y = 20
+    AddVSprite(first_ptr, &var rast_port)
+    AddVSprite(second_ptr, &var rast_port)
+
+    RemVSprite(first_ptr)
+    expect(head.NextVSprite == second_ptr && second.PrevVSprite == head_ptr &&
+        second.NextVSprite == tail_ptr && tail.PrevVSprite == second_ptr,
+        "neighbors reconnect around only the removed sprite")
+    RemVSprite(second_ptr)
+}
+
+// @covers-ndk function|graphics.library|SetCollision
+// @ndk-side-effects SetCollision writes the exact callback into only the requested collision-table slot; invoking that stored pointer receives both caller-provided VSprite addresses
+@test("graphics.library SetCollision installs the exact callback slot")
+pub fn graphics_set_collision() {
+    var head: VSprite = @zeroed(VSprite)
+    var tail: VSprite = @zeroed(VSprite)
+    var first: VSprite = @zeroed(VSprite)
+    var second: VSprite = @zeroed(VSprite)
+    var info: GelsInfo = @zeroed(GelsInfo)
+    var table: collTable = @zeroed(collTable)
+    var rast_port: RastPort = @zeroed(RastPort)
+    let first_ptr = (*VSprite)&var first
+    let second_ptr = (*VSprite)&var second
+    initialize_gels(&var head, &var tail, &var info, &var table, &var rast_port)
+    GELS_COLLISION_CALLS = 0
+    GELS_COLLISION_FIRST = first_ptr
+    GELS_COLLISION_SECOND = second_ptr
+
+    SetCollision(7, collision_probe, &var info)
+    let installed = table.collPtrs[7]
+    expect((u32)installed != 0 && (u32)table.collPtrs[6] == 0 && (u32)table.collPtrs[8] == 0,
+        "only collision slot seven receives a callback")
+    if (u32)installed != 0 { installed(first_ptr, second_ptr) }
+    expect_eq(GELS_COLLISION_CALLS, 1, "stored callback receives both exact sprite pointers")
+}

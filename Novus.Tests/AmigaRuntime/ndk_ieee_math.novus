@@ -1,0 +1,313 @@
+from std::test::test import expect
+from amiga::raw::mathieeesingbas import IEEESPFix, IEEESPFlt, IEEESPCmp, IEEESPTst, IEEESPAbs, IEEESPNeg, IEEESPAdd, IEEESPSub, IEEESPMul, IEEESPDiv, IEEESPFloor, IEEESPCeil
+from amiga::raw::mathieeesingtrans import IEEESPAtan, IEEESPSin, IEEESPCos, IEEESPTan, IEEESPSincos, IEEESPSinh, IEEESPCosh, IEEESPTanh, IEEESPExp, IEEESPLog, IEEESPPow, IEEESPSqrt, IEEESPTieee, IEEESPFieee, IEEESPAsin, IEEESPAcos, IEEESPLog10
+from amiga::raw::mathieeedoubbas import IEEEDPFix, IEEEDPFlt, IEEEDPCmp, IEEEDPTst, IEEEDPAbs, IEEEDPNeg, IEEEDPAdd, IEEEDPSub, IEEEDPMul, IEEEDPDiv, IEEEDPFloor, IEEEDPCeil
+from amiga::raw::mathieeedoubtrans import IEEEDPAtan, IEEEDPSin, IEEEDPCos, IEEEDPTan, IEEEDPSincos, IEEEDPSinh, IEEEDPCosh, IEEEDPTanh, IEEEDPExp, IEEEDPLog, IEEEDPPow, IEEEDPSqrt, IEEEDPTieee, IEEEDPFieee, IEEEDPAsin, IEEEDPAcos, IEEEDPLog10
+
+fn near_f32(actual: f32, expected: f32) -> bool {
+    let difference = actual - expected
+    return difference > -0.001 && difference < 0.001
+}
+
+fn near_f64(actual: f64, expected: f64) -> bool {
+    let difference = actual - expected
+    return difference > -0.000001 && difference < 0.000001
+}
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPFix
+// @ndk-side-effects Converts by truncating toward zero and does not mutate caller state
+@test("mathieeesingbas IEEESPFix truncates toward zero")
+pub fn ieee_sp_fix() { expect(IEEESPFix(3.75) == 3 && IEEESPFix(-3.75) == -3, "both signs truncate toward zero") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPFlt
+// @ndk-side-effects Converts an integer to IEEE single precision without mutating caller state
+@test("mathieeesingbas IEEESPFlt converts signed integers")
+pub fn ieee_sp_flt() { expect(IEEESPFlt(-7) == -7.0, "negative integer converts exactly") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPCmp
+// @ndk-side-effects Compares values without mutation and returns negative, zero, or positive according to ordering
+@test("mathieeesingbas IEEESPCmp reports ordering")
+pub fn ieee_sp_cmp() { expect(IEEESPCmp(1.0, 2.0) < 0 && IEEESPCmp(2.0, 2.0) == 0 && IEEESPCmp(3.0, 2.0) > 0, "all ordering results are distinguished") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPTst
+// @ndk-side-effects Tests one value without mutation and reports its sign
+@test("mathieeesingbas IEEESPTst reports sign")
+pub fn ieee_sp_tst() { expect(IEEESPTst(-1.0) < 0 && IEEESPTst(0.0) == 0 && IEEESPTst(1.0) > 0, "negative zero and positive are distinguished") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPAbs
+// @ndk-side-effects Returns the magnitude without mutating caller state
+@test("mathieeesingbas IEEESPAbs clears the sign")
+pub fn ieee_sp_abs() { expect(IEEESPAbs(-2.5) == 2.5, "negative input becomes positive") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPNeg
+// @ndk-side-effects Returns the negated value without mutating caller state
+@test("mathieeesingbas IEEESPNeg reverses the sign")
+pub fn ieee_sp_neg() { expect(IEEESPNeg(2.5) == -2.5, "positive input becomes negative") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPAdd
+// @ndk-side-effects Returns the sum without mutating caller state
+@test("mathieeesingbas IEEESPAdd adds operands")
+pub fn ieee_sp_add() { expect(IEEESPAdd(1.25, 2.5) == 3.75, "sum is exact") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPSub
+// @ndk-side-effects Returns the difference without mutating caller state
+@test("mathieeesingbas IEEESPSub subtracts operands")
+pub fn ieee_sp_sub() { expect(IEEESPSub(5.5, 2.0) == 3.5, "difference is exact") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPMul
+// @ndk-side-effects Returns the product without mutating caller state
+@test("mathieeesingbas IEEESPMul multiplies operands")
+pub fn ieee_sp_mul() { expect(IEEESPMul(1.5, 4.0) == 6.0, "product is exact") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPDiv
+// @ndk-side-effects Returns dividend divided by divisor without mutating caller state
+@test("mathieeesingbas IEEESPDiv divides operands")
+pub fn ieee_sp_div() { expect(IEEESPDiv(9.0, 4.0) == 2.25, "quotient is exact") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPFloor
+// @ndk-side-effects Returns the greatest integral value not above the input without mutation
+@test("mathieeesingbas IEEESPFloor rounds downward")
+pub fn ieee_sp_floor() { expect(IEEESPFloor(-2.25) == -3.0, "negative input rounds downward") }
+
+// @covers-ndk function|mathieeesingbas.library|IEEESPCeil
+// @ndk-side-effects Returns the least integral value not below the input without mutation
+@test("mathieeesingbas IEEESPCeil rounds upward")
+pub fn ieee_sp_ceil() { expect(IEEESPCeil(-2.25) == -2.0, "negative input rounds upward") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPAtan
+// @ndk-side-effects Returns the arctangent in radians without mutation
+@test("mathieeesingtrans IEEESPAtan preserves zero")
+pub fn ieee_sp_atan() { expect(IEEESPAtan(0.0) == 0.0, "atan zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPSin
+// @ndk-side-effects Returns the sine without mutation
+@test("mathieeesingtrans IEEESPSin preserves zero")
+pub fn ieee_sp_sin() { expect(IEEESPSin(0.0) == 0.0, "sin zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPCos
+// @ndk-side-effects Returns the cosine without mutation
+@test("mathieeesingtrans IEEESPCos returns one at zero")
+pub fn ieee_sp_cos() { expect(IEEESPCos(0.0) == 1.0, "cos zero is one") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPTan
+// @ndk-side-effects Returns the tangent without mutation
+@test("mathieeesingtrans IEEESPTan preserves zero")
+pub fn ieee_sp_tan() { expect(IEEESPTan(0.0) == 0.0, "tan zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPSincos
+// @ndk-side-effects Returns sine and writes cosine through the supplied pointer
+@test("mathieeesingtrans IEEESPSincos returns both components")
+pub fn ieee_sp_sincos() {
+    var cosine: f32 = 0.0
+    let sine = IEEESPSincos(&var cosine, 0.0)
+    expect(sine == 0.0 && cosine == 1.0, "zero produces sine zero and cosine one")
+}
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPSinh
+// @ndk-side-effects Returns the hyperbolic sine without mutation
+@test("mathieeesingtrans IEEESPSinh preserves zero")
+pub fn ieee_sp_sinh() { expect(IEEESPSinh(0.0) == 0.0, "sinh zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPCosh
+// @ndk-side-effects Returns the hyperbolic cosine without mutation
+@test("mathieeesingtrans IEEESPCosh returns one at zero")
+pub fn ieee_sp_cosh() { expect(IEEESPCosh(0.0) == 1.0, "cosh zero is one") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPTanh
+// @ndk-side-effects Returns the hyperbolic tangent without mutation
+@test("mathieeesingtrans IEEESPTanh preserves zero")
+pub fn ieee_sp_tanh() { expect(IEEESPTanh(0.0) == 0.0, "tanh zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPExp
+// @ndk-side-effects Returns e raised to the argument without mutation
+@test("mathieeesingtrans IEEESPExp returns one at zero")
+pub fn ieee_sp_exp() { expect(IEEESPExp(0.0) == 1.0, "exp zero is one") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPLog
+// @ndk-side-effects Returns the natural logarithm without mutation
+@test("mathieeesingtrans IEEESPLog returns zero at one")
+pub fn ieee_sp_log() { expect(IEEESPLog(1.0) == 0.0, "log one is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPPow
+// @ndk-side-effects Returns the argument raised to the exponent without mutation
+@test("mathieeesingtrans IEEESPPow honors exponent-first ABI")
+pub fn ieee_sp_pow() { expect(near_f32(IEEESPPow(3.0, 2.0), 8.0), "two cubed is eight") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPSqrt
+// @ndk-side-effects Returns the square root without mutation
+@test("mathieeesingtrans IEEESPSqrt computes a root")
+pub fn ieee_sp_sqrt() { expect(IEEESPSqrt(4.0) == 2.0, "square root of four is two") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPTieee
+// @ndk-side-effects Returns the unchanged IEEE single value without mutation
+@test("mathieeesingtrans IEEESPTieee is the documented identity")
+pub fn ieee_sp_tieee() { expect(IEEESPTieee(-3.5) == -3.5, "IEEE single identity preserves bits") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPFieee
+// @ndk-side-effects Returns the unchanged IEEE single value without mutation
+@test("mathieeesingtrans IEEESPFieee is the documented identity")
+pub fn ieee_sp_fieee() { expect(IEEESPFieee(6.25) == 6.25, "IEEE single identity preserves bits") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPAsin
+// @ndk-side-effects Returns the arcsine in radians without mutation
+@test("mathieeesingtrans IEEESPAsin preserves zero")
+pub fn ieee_sp_asin() { expect(IEEESPAsin(0.0) == 0.0, "asin zero is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPAcos
+// @ndk-side-effects Returns the arccosine in radians without mutation
+@test("mathieeesingtrans IEEESPAcos returns zero at one")
+pub fn ieee_sp_acos() { expect(IEEESPAcos(1.0) == 0.0, "acos one is zero") }
+
+// @covers-ndk function|mathieeesingtrans.library|IEEESPLog10
+// @ndk-side-effects Returns the base-ten logarithm without mutation
+@test("mathieeesingtrans IEEESPLog10 returns zero at one")
+pub fn ieee_sp_log10() { expect(IEEESPLog10(1.0) == 0.0, "log10 one is zero") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPFix
+// @ndk-side-effects Converts by truncating toward zero and does not mutate caller state
+@test("mathieeedoubbas IEEEDPFix truncates toward zero")
+pub fn ieee_dp_fix() { expect(IEEEDPFix(3.75) == 3 && IEEEDPFix(-3.75) == -3, "both signs truncate toward zero") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPFlt
+// @ndk-side-effects Converts an integer to IEEE double precision without mutating caller state
+@test("mathieeedoubbas IEEEDPFlt converts signed integers")
+pub fn ieee_dp_flt() { expect(IEEEDPFlt(-7) == -7.0, "negative integer converts exactly") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPCmp
+// @ndk-side-effects Compares values without mutation and returns negative, zero, or positive according to ordering
+@test("mathieeedoubbas IEEEDPCmp reports ordering")
+pub fn ieee_dp_cmp() { expect(IEEEDPCmp(1.0, 2.0) < 0 && IEEEDPCmp(2.0, 2.0) == 0 && IEEEDPCmp(3.0, 2.0) > 0, "all ordering results are distinguished") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPTst
+// @ndk-side-effects Tests one value without mutation and reports its sign
+@test("mathieeedoubbas IEEEDPTst reports sign")
+pub fn ieee_dp_tst() { expect(IEEEDPTst(-1.0) < 0 && IEEEDPTst(0.0) == 0 && IEEEDPTst(1.0) > 0, "negative zero and positive are distinguished") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPAbs
+// @ndk-side-effects Returns the magnitude without mutating caller state
+@test("mathieeedoubbas IEEEDPAbs clears the sign")
+pub fn ieee_dp_abs() { expect(IEEEDPAbs(-2.5) == 2.5, "negative input becomes positive") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPNeg
+// @ndk-side-effects Returns the negated value without mutating caller state
+@test("mathieeedoubbas IEEEDPNeg reverses the sign")
+pub fn ieee_dp_neg() { expect(IEEEDPNeg(2.5) == -2.5, "positive input becomes negative") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPAdd
+// @ndk-side-effects Returns the sum without mutating caller state
+@test("mathieeedoubbas IEEEDPAdd adds operands")
+pub fn ieee_dp_add() { expect(IEEEDPAdd(1.25, 2.5) == 3.75, "sum is exact") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPSub
+// @ndk-side-effects Returns the difference without mutating caller state
+@test("mathieeedoubbas IEEEDPSub subtracts operands")
+pub fn ieee_dp_sub() { expect(IEEEDPSub(5.5, 2.0) == 3.5, "difference is exact") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPMul
+// @ndk-side-effects Returns the product without mutating caller state
+@test("mathieeedoubbas IEEEDPMul multiplies operands")
+pub fn ieee_dp_mul() { expect(IEEEDPMul(1.5, 4.0) == 6.0, "product is exact") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPDiv
+// @ndk-side-effects Returns dividend divided by divisor without mutating caller state
+@test("mathieeedoubbas IEEEDPDiv divides operands")
+pub fn ieee_dp_div() { expect(IEEEDPDiv(9.0, 4.0) == 2.25, "quotient is exact") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPFloor
+// @ndk-side-effects Returns the greatest integral value not above the input without mutation
+@test("mathieeedoubbas IEEEDPFloor rounds downward")
+pub fn ieee_dp_floor() { expect(IEEEDPFloor(-2.25) == -3.0, "negative input rounds downward") }
+
+// @covers-ndk function|mathieeedoubbas.library|IEEEDPCeil
+// @ndk-side-effects Returns the least integral value not below the input without mutation
+@test("mathieeedoubbas IEEEDPCeil rounds upward")
+pub fn ieee_dp_ceil() { expect(IEEEDPCeil(-2.25) == -2.0, "negative input rounds upward") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPAtan
+// @ndk-side-effects Returns the arctangent in radians without mutation
+@test("mathieeedoubtrans IEEEDPAtan preserves zero")
+pub fn ieee_dp_atan() { expect(IEEEDPAtan(0.0) == 0.0, "atan zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPSin
+// @ndk-side-effects Returns the sine without mutation
+@test("mathieeedoubtrans IEEEDPSin preserves zero")
+pub fn ieee_dp_sin() { expect(IEEEDPSin(0.0) == 0.0, "sin zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPCos
+// @ndk-side-effects Returns the cosine without mutation
+@test("mathieeedoubtrans IEEEDPCos returns one at zero")
+pub fn ieee_dp_cos() { expect(IEEEDPCos(0.0) == 1.0, "cos zero is one") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPTan
+// @ndk-side-effects Returns the tangent without mutation
+@test("mathieeedoubtrans IEEEDPTan preserves zero")
+pub fn ieee_dp_tan() { expect(IEEEDPTan(0.0) == 0.0, "tan zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPSincos
+// @ndk-side-effects Returns sine and writes cosine through the supplied pointer
+@test("mathieeedoubtrans IEEEDPSincos returns both components")
+pub fn ieee_dp_sincos() {
+    var cosine: f64 = 0.0
+    let sine = IEEEDPSincos(&var cosine, 0.0)
+    expect(sine == 0.0 && cosine == 1.0, "zero produces sine zero and cosine one")
+}
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPSinh
+// @ndk-side-effects Returns the hyperbolic sine without mutation
+@test("mathieeedoubtrans IEEEDPSinh preserves zero")
+pub fn ieee_dp_sinh() { expect(IEEEDPSinh(0.0) == 0.0, "sinh zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPCosh
+// @ndk-side-effects Returns the hyperbolic cosine without mutation
+@test("mathieeedoubtrans IEEEDPCosh returns one at zero")
+pub fn ieee_dp_cosh() { expect(IEEEDPCosh(0.0) == 1.0, "cosh zero is one") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPTanh
+// @ndk-side-effects Returns the hyperbolic tangent without mutation
+@test("mathieeedoubtrans IEEEDPTanh preserves zero")
+pub fn ieee_dp_tanh() { expect(IEEEDPTanh(0.0) == 0.0, "tanh zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPExp
+// @ndk-side-effects Returns e raised to the argument without mutation
+@test("mathieeedoubtrans IEEEDPExp returns one at zero")
+pub fn ieee_dp_exp() { expect(IEEEDPExp(0.0) == 1.0, "exp zero is one") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPLog
+// @ndk-side-effects Returns the natural logarithm without mutation
+@test("mathieeedoubtrans IEEEDPLog returns zero at one")
+pub fn ieee_dp_log() { expect(IEEEDPLog(1.0) == 0.0, "log one is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPPow
+// @ndk-side-effects Returns the argument raised to the exponent without mutation
+@test("mathieeedoubtrans IEEEDPPow honors exponent-first ABI")
+pub fn ieee_dp_pow() { expect(near_f64(IEEEDPPow(3.0, 2.0), 8.0), "two cubed is eight") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPSqrt
+// @ndk-side-effects Returns the square root without mutation
+@test("mathieeedoubtrans IEEEDPSqrt computes a root")
+pub fn ieee_dp_sqrt() { expect(IEEEDPSqrt(4.0) == 2.0, "square root of four is two") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPTieee
+// @ndk-side-effects Converts IEEE double to IEEE single without mutating caller state
+@test("mathieeedoubtrans IEEEDPTieee narrows exactly representable values")
+pub fn ieee_dp_tieee() { expect(IEEEDPTieee(-3.5) == -3.5, "exact value survives narrowing") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPFieee
+// @ndk-side-effects Converts IEEE single to IEEE double without mutating caller state
+@test("mathieeedoubtrans IEEEDPFieee widens exactly")
+pub fn ieee_dp_fieee() { expect(IEEEDPFieee(6.25) == 6.25, "single value widens exactly") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPAsin
+// @ndk-side-effects Returns the arcsine in radians without mutation
+@test("mathieeedoubtrans IEEEDPAsin preserves zero")
+pub fn ieee_dp_asin() { expect(IEEEDPAsin(0.0) == 0.0, "asin zero is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPAcos
+// @ndk-side-effects Returns the arccosine in radians without mutation
+@test("mathieeedoubtrans IEEEDPAcos returns zero at one")
+pub fn ieee_dp_acos() { expect(IEEEDPAcos(1.0) == 0.0, "acos one is zero") }
+
+// @covers-ndk function|mathieeedoubtrans.library|IEEEDPLog10
+// @ndk-side-effects Returns the base-ten logarithm without mutation
+@test("mathieeedoubtrans IEEEDPLog10 returns zero at one")
+pub fn ieee_dp_log10() { expect(IEEEDPLog10(1.0) == 0.0, "log10 one is zero") }

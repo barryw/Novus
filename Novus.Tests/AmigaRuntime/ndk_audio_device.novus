@@ -1,0 +1,76 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::sys::device::audio import AudioDeviceHandle
+from amiga::sys::hardware::audio import SampleHandle
+from amiga::sys::hardware::paula import period_from_hz, hz_from_period
+from amiga::sys::exec::memory::chip import is_chip_ram
+
+// @covers-ndk function|exec.library|AllocVec
+// @covers-ndk function|exec.library|CopyMem
+// @covers-ndk function|exec.library|FreeVec
+// @ndk-side-effects AllocVec reserves cleared DMA-visible chip memory; CopyMem preserves all 16 source bytes; SampleHandle retains the exact length, word count, and rate metadata; Drop returns the allocation once with FreeVec
+@test("Paula sample metadata and chip allocation are consistent")
+pub fn audio_sample_lifecycle() {
+    var pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    match SampleHandle::from_data_with_rate(&pcm[0], 16, 11025) {
+        Result::Ok(sample) => {
+            expect_true(sample.ptr() != null, "sample copied to chip RAM")
+            expect_true(is_chip_ram(sample.ptr()), "sample allocation is DMA-visible")
+            unsafe {
+                expect(sample.ptr()[0] == pcm[0] && sample.ptr()[5] == pcm[5] && sample.ptr()[15] == pcm[15],
+                    "CopyMem preserved bytes across the sample")
+            }
+            expect_eq(sample.bytes(), 16, "sample byte length")
+            expect_eq(sample.words(), 8, "Paula word length")
+            expect_eq(sample.sample_rate(), 11025, "sample rate retained")
+            expect_true(sample.period_pal() >= 321 && sample.period_pal() <= 323, "PAL period calculated")
+        },
+        Result::Err(_) => expect(false, "sample allocated"),
+    }
+}
+
+// @covers-ndk function|exec.library|CreateMsgPort
+// @covers-ndk function|exec.library|CreateIORequest
+// @covers-ndk function|exec.library|OpenDevice
+// @covers-ndk function|exec.library|DoIO
+// @covers-ndk function|exec.library|CloseDevice
+// @covers-ndk function|exec.library|DeleteIORequest
+// @covers-ndk function|exec.library|DeleteMsgPort
+// @ndk-side-effects OpenDevice asks audio.device to allocate one real Paula channel; Novus rejects invalid period and volume values before I/O; DoIO completes one nonzero sample write; Drop sends ADCMD_FREE, closes the device, deletes its IOAudio request, and releases the reply port and signal
+@test("audio.device plays a sample and releases its channel")
+pub fn audio_device_lifecycle() {
+    var pcm: [u8] = [0, 16, 32, 16, 0, 240, 224, 240, 0, 16, 32, 16, 0, 240, 224, 240]
+    let sample = match SampleHandle::from_data(&pcm[0], 16) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "silent sample allocated")
+            return
+        },
+    }
+    match AudioDeviceHandle::open_any(0) {
+        Result::Ok(audio) => {
+            var device = audio
+            let channels = device.channels()
+            expect(channels != 0 && (channels & $F0) == 0, "audio.device allocated only Paula channels 0 through 3")
+            expect(device.channel_count() == 1, "open_any allocated exactly one channel")
+            expect(device.has_channel(0) || device.has_channel(1) || device.has_channel(2) || device.has_channel(3),
+                "allocated channel is discoverable")
+            expect(device.play(&sample, 123, 1, 1).is_err(), "unsafe playback period rejected before I/O")
+            expect(device.play(&sample, 322, 65, 1).is_err(), "unsafe playback volume rejected before I/O")
+            expect(device.play(&sample, 322, 1, 1).is_ok(), "nonzero sample playback completed")
+        },
+        Result::Err(_) => expect(false, "audio.device opened"),
+    }
+}
+
+@test("Paula period conversion remains usable at runtime")
+pub fn audio_period_conversion() {
+    match period_from_hz(11025, true) {
+        Option::Some(period) => {
+            expect_true(period >= 321 && period <= 323, "11025 Hz PAL period")
+            let hz = hz_from_period(period, true)
+            expect_true(hz >= 11000 && hz <= 11100, "period converts back to frequency")
+        },
+        Option::None => expect(false, "valid sample rate produces a period"),
+    }
+}

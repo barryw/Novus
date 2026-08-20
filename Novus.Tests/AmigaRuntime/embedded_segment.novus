@@ -14,9 +14,17 @@ static var MINIMAL_HUNK: [u8] = [
     $4E, $75, 0, 0, 0, 0, 3, $F2,
 ]
 
-@test("embedded HUNK segments load and release every allocation")
-pub fn embedded_segment() {
+// @covers-ndk function|dos.library|InternalLoadSeg
+// @ndk-side-effects Loads a real caller-owned in-memory HUNK through DOS read/allocate/free callbacks, validates the returned BPTR is addressable and contains the exact executable RTS bytes, then releases it
+@test("dos.library InternalLoadSeg reconstructs an in-memory HUNK")
+pub fn internal_load_segment() {
     expect(load_and_drop(), "minimal HUNK loads")
+}
+
+// @covers-ndk function|dos.library|InternalUnLoadSeg
+// @ndk-side-effects Releases every allocation in 64 independently reconstructed HUNK segment lists through the matching free callback and proves exact AmigaOS available-memory balance
+@test("dos.library InternalUnLoadSeg releases every HUNK allocation")
+pub fn internal_unload_segment() {
     let before = unsafe { AvailMem(MEMF_ANY) }
     var ok = true
     while var i < 64 {
@@ -38,8 +46,10 @@ fn load_and_drop() -> bool {
     }
     return false if segment.segment().is_null() || !segment.segment().is_addressable()
     let code = unsafe { (*u8)(segment.segment().address() + 4) }
-    if unsafe { code[0] != $4E || code[1] != $75 } {
-        write("segment %lX begins %lX %lX\n", segment.segment().address(), (u32)code[0], (u32)code[1])
+    let first = unsafe { code[0] }
+    let second = unsafe { code[1] }
+    if first != $4E || second != $75 {
+        write("segment %lX begins %lX %lX\n", segment.segment().address(), (u32)first, (u32)second)
         return false
     }
     return true

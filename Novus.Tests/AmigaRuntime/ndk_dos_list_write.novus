@@ -1,0 +1,61 @@
+from std::test::test import expect
+from amiga::raw::consts import DLT_DIRECTORY, LDF_ASSIGNS, LDF_READ, LDF_WRITE
+from amiga::raw::dos import AddDosEntry, FindDosEntry, FreeDosEntry, Lock, LockDosList, MakeDosEntry, RemDosEntry, UnLock, UnLockDosList
+from amiga::raw::structs import DosList
+
+fn release_entry(entry: *DosList, removed: bool) {
+    if entry == null || !removed { return }
+    let lock = entry.dol_Lock
+    entry.dol_Lock = 0
+    FreeDosEntry(entry)
+    if lock != 0 { UnLock(lock) }
+}
+
+// @covers-ndk function|dos.library|AddDosEntry
+// @ndk-side-effects Adds a caller-owned directory assignment to the global DOS list, proves the exact entry is discoverable under the documented read lock, removes it, and releases its lock and storage
+@test("dos.library AddDosEntry publishes an assignment")
+pub fn dos_add_entry() {
+    let entry = MakeDosEntry("NOVUSADD", DLT_DIRECTORY)
+    let target = Lock("RAM:", -2)
+    if entry != null { entry.dol_Lock = target }
+    let added = if entry != null && target != 0 { AddDosEntry(entry) } else { 0 }
+
+    let read = if added != 0 { LockDosList(LDF_ASSIGNS | LDF_READ) } else { (*DosList)null }
+    let found = if read != null { FindDosEntry(read, "NOVUSADD", LDF_ASSIGNS) } else { (*DosList)null }
+    let published = found == entry
+    if read != null { UnLockDosList(LDF_ASSIGNS | LDF_READ) }
+
+    let write = if added != 0 { LockDosList(LDF_ASSIGNS | LDF_WRITE) } else { (*DosList)null }
+    let attached = if write != null { FindDosEntry(write, "NOVUSADD", LDF_ASSIGNS) } else { (*DosList)null }
+    let removed = attached == entry && RemDosEntry(attached) != 0
+    if write != null { UnLockDosList(LDF_ASSIGNS | LDF_WRITE) }
+    release_entry(entry, added == 0 || removed)
+
+    expect(entry != null && target != 0, "assignment storage and target lock are available")
+    expect(added != 0 && published, "the exact caller-owned entry becomes globally discoverable")
+    expect(removed, "the fixture is detached before its storage is released")
+}
+
+// @covers-ndk function|dos.library|RemDosEntry
+// @ndk-side-effects Removes a named directory assignment while holding the DOS-list write lock, proves the entry is absent afterward, and releases its detached lock and storage
+@test("dos.library RemDosEntry detaches an assignment")
+pub fn dos_remove_entry() {
+    let entry = MakeDosEntry("NOVUSREM", DLT_DIRECTORY)
+    let target = Lock("RAM:", -2)
+    if entry != null { entry.dol_Lock = target }
+    let added = if entry != null && target != 0 { AddDosEntry(entry) } else { 0 }
+
+    let write = if added != 0 { LockDosList(LDF_ASSIGNS | LDF_WRITE) } else { (*DosList)null }
+    let attached = if write != null { FindDosEntry(write, "NOVUSREM", LDF_ASSIGNS) } else { (*DosList)null }
+    let removed = attached == entry && RemDosEntry(attached) != 0
+    if write != null { UnLockDosList(LDF_ASSIGNS | LDF_WRITE) }
+
+    let read = if removed { LockDosList(LDF_ASSIGNS | LDF_READ) } else { (*DosList)null }
+    let after = if read != null { FindDosEntry(read, "NOVUSREM", LDF_ASSIGNS) } else { entry }
+    if read != null { UnLockDosList(LDF_ASSIGNS | LDF_READ) }
+    release_entry(entry, added == 0 || removed)
+
+    expect(entry != null && target != 0 && added != 0, "assignment fixture is attached")
+    expect(removed, "write-locked removal accepts the exact attached entry")
+    expect(read != null && after == null, "the removed name is no longer globally discoverable")
+}

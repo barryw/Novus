@@ -11,11 +11,87 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Obtain access to nonvolatile ram. (V36)
+///
+/// Aquires exclusive access to the system nonvolatile ram.
+///
+/// # Synopsis
+///
+/// ObtainBattSemaphore( )
+///
+/// void ObtainBattSemaphore( void );
+///
+/// # Notes
 @library("battmem.resource")
 extern pub fn ObtainBattSemaphore()
+/// Allow nonvolatile ram to others.  (V36)
+///
+/// Relinquish exclusive access to the system nonvolatile ram.
+///
+/// # Synopsis
+///
+/// ReleaseBattSemaphore( )
+///
+/// void ReleaseBattSemaphore( void );
+///
+/// # Notes
 @library("battmem.resource")
 extern pub fn ReleaseBattSemaphore()
+/// Read a bitstring from nonvolatile ram.  (V36)
+///
+/// Read a bitstring from nonvolatile ram.
+///
+/// # Synopsis
+///
+/// Error = ReadBattMem( Buffer, Offset, Len )
+/// D0                   A0      D0      D1
+///
+/// ULONG ReadBattMem( APTR, ULONG, ULONG );
+///
+/// # Arguments
+///
+/// * Buffer          Where to put the bitstring. Offset          Bit offset of first bit to read. Len             Length of bitstring to read.
+///
+/// # Returns
+///
+/// Error           Zero if no error.
+///
+/// # Notes
+///
+/// The battery-backed memory is checksummed. If a checksum error
+/// is detected, all bits in the battery-backed memory are
+/// silently set to zero.
+/// Bits in the battery-backed memory that do not exist are read
+/// as zero.
+/// Partial byte reads (less than 8 bits) result in the bits read
+/// being put in the low-order bits of the destination byte.
 @library("battmem.resource")
 extern pub fn ReadBattMem(buffer: *u8, offset: u32, length: u32) -> u32
+/// Write a bitstring to nonvolatile ram.  (V36)
+///
+/// Write a bitstring to the nonvolatile ram.
+///
+/// # Synopsis
+///
+/// Error = WriteBattMem( Buffer, Offset, Len )
+/// D0                    A0      D0      D1
+///
+/// ULONG WriteBattMem( APTR, ULONG, ULONG );
+///
+/// # Arguments
+///
+/// * Buffer          Where to get the bitstring. Offset          Bit offset of first bit to write. Len             Length of bitstring to write.
+///
+/// # Returns
+///
+/// Error           Zero if no error.
+///
+/// # Notes
+///
+/// The battery-backed memory is checksummed. If a checksum error
+/// is detected, all bits in the battery-backed memory are
+/// silently set to zero.
+/// Partial byte writes (less than 8 bits) result in the bits
+/// written being read from the low-order bits of the source byte.
 @library("battmem.resource")
 extern pub fn WriteBattMem(buffer: *u8, offset: u32, length: u32) -> u32

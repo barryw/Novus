@@ -1,0 +1,215 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import AVOID_FLICKER, BIDTAG_Depth, BIDTAG_DesiredHeight
+from amiga::raw::consts import BIDTAG_DesiredWidth, BIDTAG_NominalHeight, BIDTAG_NominalWidth
+from amiga::raw::consts import DTAG_DIMS, DTAG_DISP, DTAG_MNTR, DTAG_NAME
+from amiga::raw::consts import INVALID_ID, MONITOR_ID_MASK, PRESERVE_COLORS, TAG_DONE
+from amiga::raw::structs import DimensionInfo, DisplayInfo, MonitorInfo, MonitorSpec, NameInfo, TagItem, ViewPort
+from amiga::raw::graphics import BestModeID, BestModeIDA, CloseMonitor, CoerceMode
+from amiga::raw::graphics import FindDisplayInfo, GetDisplayInfoData, GetVPModeID
+from amiga::raw::graphics import ModeNotAvailable, NextDisplayInfo, OpenMonitor
+from amiga::sys::intuition import ScreenHandle
+
+fn first_mode() -> u32 {
+    return NextDisplayInfo(INVALID_ID)
+}
+
+@suppress("W0002", "GetVPModeID uses signed i32 ABI storage for an unsigned mode identifier; INVALID_ID is checked by callers")
+fn viewport_mode(viewport: *ViewPort) -> u32 {
+    return (u32)GetVPModeID(viewport)
+}
+
+fn screen() -> Result<ScreenHandle, i32> {
+    return match ScreenHandle::lores("Novus display-info test", 2) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+// @covers-ndk function|graphics.library|NextDisplayInfo
+// @ndk-side-effects NextDisplayInfo begins enumeration from INVALID_ID and returns two distinct installed mode identifiers; FindDisplayInfo confirms both identifiers resolve to database records
+@test("graphics.library NextDisplayInfo enumerates distinct modes")
+pub fn graphics_next_display_info() {
+    let first = NextDisplayInfo(INVALID_ID)
+    let second = if first != INVALID_ID { NextDisplayInfo(first) } else { INVALID_ID }
+    expect(first != INVALID_ID && second != INVALID_ID && second != first &&
+        FindDisplayInfo(first) != null && FindDisplayInfo(second) != null,
+        "the first two database identifiers are distinct and resolvable")
+}
+
+// @covers-ndk function|graphics.library|FindDisplayInfo
+// @ndk-side-effects FindDisplayInfo resolves an enumerated mode to a stable database handle; GetDisplayInfoData returns a positive versioned chunk no larger than the supplied DisplayInfo and exposes the canonical mode identifier, which resolves back to the same handle
+@test("graphics.library FindDisplayInfo resolves an enumerated mode")
+pub fn graphics_find_display_info() {
+    let id = first_mode()
+    let handle = if id != INVALID_ID { FindDisplayInfo(id) } else { null }
+    var info: DisplayInfo = @zeroed(DisplayInfo)
+    let copied = if handle != null {
+        GetDisplayInfoData(handle, (*u8)&var info, @sizeof(DisplayInfo), DTAG_DISP, id)
+    } else { 0 }
+    expect_true(handle != null, "enumerated mode resolves")
+    expect(copied > 0 && copied <= @sizeof(DisplayInfo), "versioned DisplayInfo fits the supplied buffer")
+    expect_eq(info.Header.StructID, DTAG_DISP, "DisplayInfo chunk identifies its type")
+    expect(FindDisplayInfo(info.Header.DisplayID) == handle,
+        "canonical DisplayInfo ID resolves to the original handle")
+}
+
+// @covers-ndk function|graphics.library|GetDisplayInfoData
+// @ndk-side-effects GetDisplayInfoData copies versioned DisplayInfo, DimensionInfo, MonitorInfo, and NameInfo chunks for one installed mode; every positive transfer fits its supplied current-NDK buffer, identifies its chunk type, shares one canonical mode ID, and exposes valid dimensions, monitor data, and name
+@test("graphics.library GetDisplayInfoData copies every core chunk")
+pub fn graphics_get_display_info_data() {
+    let id = first_mode()
+    let handle = if id != INVALID_ID { FindDisplayInfo(id) } else { null }
+    var display: DisplayInfo = @zeroed(DisplayInfo)
+    var dimensions: DimensionInfo = @zeroed(DimensionInfo)
+    var monitor: MonitorInfo = @zeroed(MonitorInfo)
+    var name: NameInfo = @zeroed(NameInfo)
+    let display_bytes = if handle != null { GetDisplayInfoData(handle, (*u8)&var display, @sizeof(DisplayInfo), DTAG_DISP, id) } else { 0 }
+    let dimension_bytes = if handle != null { GetDisplayInfoData(handle, (*u8)&var dimensions, @sizeof(DimensionInfo), DTAG_DIMS, id) } else { 0 }
+    let monitor_bytes = if handle != null { GetDisplayInfoData(handle, (*u8)&var monitor, @sizeof(MonitorInfo), DTAG_MNTR, id) } else { 0 }
+    let name_bytes = if handle != null { GetDisplayInfoData(handle, (*u8)&var name, @sizeof(NameInfo), DTAG_NAME, id) } else { 0 }
+    let nominal_width = dimensions.Nominal.MaxX - dimensions.Nominal.MinX + 1
+    let nominal_height = dimensions.Nominal.MaxY - dimensions.Nominal.MinY + 1
+    let canonical = display.Header.DisplayID
+    expect(display_bytes > 0 && display_bytes <= @sizeof(DisplayInfo) &&
+        dimension_bytes > 0 && dimension_bytes <= @sizeof(DimensionInfo) &&
+        monitor_bytes > 0 && monitor_bytes <= @sizeof(MonitorInfo) &&
+        name_bytes > 0 && name_bytes <= @sizeof(NameInfo),
+        "all versioned chunks fit their supplied buffers")
+    expect(display.Header.StructID == DTAG_DISP && dimensions.Header.StructID == DTAG_DIMS &&
+        monitor.Header.StructID == DTAG_MNTR && name.Header.StructID == DTAG_NAME,
+        "all chunks identify their requested types")
+    expect(dimensions.Header.DisplayID == canonical && monitor.Header.DisplayID == canonical &&
+        name.Header.DisplayID == canonical && FindDisplayInfo(canonical) == handle,
+        "all chunks share one resolvable canonical mode ID")
+    expect(nominal_width > 0 && nominal_height > 0 && monitor.Mspc != null && name.Name[0] != 0,
+        "chunks contain dimensions, monitor, and name")
+}
+
+// @covers-ndk function|graphics.library|ModeNotAvailable
+// @ndk-side-effects ModeNotAvailable reports zero for an installed enumerated mode and INVALID_ID for the sentinel that cannot identify a mode, without changing the display database
+@test("graphics.library ModeNotAvailable distinguishes installed modes")
+pub fn graphics_mode_not_available() {
+    let id = first_mode()
+    let available = if id != INVALID_ID { ModeNotAvailable(id) } else { -2 }
+    let invalid = ModeNotAvailable(INVALID_ID)
+    expect(available == 0 && invalid == -1,
+        "installed mode is available and sentinel is rejected")
+}
+
+// @covers-ndk function|graphics.library|BestModeIDA
+// @ndk-side-effects BestModeIDA consumes explicit nominal, desired, and depth tags and returns an installed available mode whose DimensionInfo can be read from the graphics database
+@test("graphics.library BestModeIDA selects an installed fit")
+pub fn graphics_best_mode_id_a() {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: BIDTAG_NominalWidth, ti_Data: 320 },
+        TagItem { ti_Tag: BIDTAG_NominalHeight, ti_Data: 200 },
+        TagItem { ti_Tag: BIDTAG_DesiredWidth, ti_Data: 320 },
+        TagItem { ti_Tag: BIDTAG_DesiredHeight, ti_Data: 200 },
+        TagItem { ti_Tag: BIDTAG_Depth, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let id = BestModeIDA(&var tags[0])
+    var dimensions: DimensionInfo = @zeroed(DimensionInfo)
+    let handle = if id != INVALID_ID { FindDisplayInfo(id) } else { null }
+    let copied = if handle != null {
+        GetDisplayInfoData(handle, (*u8)&var dimensions, @sizeof(DimensionInfo), DTAG_DIMS, id)
+    } else { 0 }
+    expect_true(id != INVALID_ID, "tag-list selection returns a mode")
+    expect_eq(ModeNotAvailable(id), 0, "selected mode is available")
+    expect(copied > 0 && copied <= @sizeof(DimensionInfo),
+        "selected mode returns a bounded versioned DimensionInfo")
+    expect(dimensions.Header.StructID == DTAG_DIMS && dimensions.Header.DisplayID == id,
+        "selected mode dimension chunk identifies the canonical mode")
+    expect_true(dimensions.MaxDepth >= 2, "selected mode supports requested depth")
+}
+
+// @covers-ndk function|graphics.library|BestModeID
+// @ndk-side-effects BestModeID forwards the same nominal, desired, and depth constraints through its varargs stub and returns exactly the mode selected by BestModeIDA
+@test("graphics.library BestModeID forwards varargs constraints")
+pub fn graphics_best_mode_id() {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: BIDTAG_NominalWidth, ti_Data: 320 },
+        TagItem { ti_Tag: BIDTAG_NominalHeight, ti_Data: 200 },
+        TagItem { ti_Tag: BIDTAG_DesiredWidth, ti_Data: 320 },
+        TagItem { ti_Tag: BIDTAG_DesiredHeight, ti_Data: 200 },
+        TagItem { ti_Tag: BIDTAG_Depth, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let direct = BestModeIDA(&var tags[0])
+    let varargs = BestModeID(BIDTAG_NominalWidth, 320,
+        BIDTAG_NominalHeight, 200, BIDTAG_DesiredWidth, 320,
+        BIDTAG_DesiredHeight, 200, BIDTAG_Depth, 2, TAG_DONE)
+    expect(varargs != INVALID_ID && varargs == direct && ModeNotAvailable(varargs) == 0,
+        "varargs and tag-list selectors return the same available mode")
+}
+
+// @covers-ndk function|graphics.library|OpenMonitor
+// @ndk-side-effects OpenMonitor resolves the monitor owning an installed mode, increments its open count, and exposes non-zero beam geometry; CloseMonitor balances the acquired reference
+@test("graphics.library OpenMonitor acquires mode monitor metadata")
+pub fn graphics_open_monitor() {
+    let id = first_mode()
+    let monitor = if id != INVALID_ID { OpenMonitor(null, id) } else { (*MonitorSpec)null }
+    let valid = unsafe {
+        monitor != null && (*monitor).ms_OpenCount > 0 && (*monitor).total_rows > 0 &&
+        (*monitor).total_colorclocks > 0
+    }
+    let closed = if monitor != null { CloseMonitor(monitor) } else { 1 }
+    expect(valid && closed == 0, "monitor metadata is live and closes cleanly")
+}
+
+// @covers-ndk function|graphics.library|CloseMonitor
+// @ndk-side-effects Two OpenMonitor calls acquire the same installed MonitorSpec; CloseMonitor returns false and decrements exactly one open reference while the second remains valid, then the final close balances it
+@test("graphics.library CloseMonitor releases one reference")
+pub fn graphics_close_monitor() {
+    let id = first_mode()
+    let first = if id != INVALID_ID { OpenMonitor(null, id) } else { (*MonitorSpec)null }
+    let second = if id != INVALID_ID { OpenMonitor(null, id) } else { (*MonitorSpec)null }
+    if first == null || second == null {
+        if first != null { CloseMonitor(first) }
+        if second != null { CloseMonitor(second) }
+        expect(false, "two monitor references opened")
+        return
+    }
+    let before = unsafe { (*second).ms_OpenCount }
+    let result = CloseMonitor(first)
+    let after = unsafe { (*second).ms_OpenCount }
+    expect(first == second && result == 0 && before == after + 1,
+        "one close decrements exactly one shared monitor reference")
+    CloseMonitor(second)
+}
+
+// @covers-ndk function|graphics.library|GetVPModeID
+// @ndk-side-effects GetVPModeID reads the actual mode attached to a live private Intuition screen; the identifier is available and resolves to a DisplayInfo handle before the screen closes
+@test("graphics.library GetVPModeID identifies a live screen")
+pub fn graphics_get_vp_mode_id() {
+    let handle = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let id = viewport_mode(handle.viewport())
+    expect(id != INVALID_ID && ModeNotAvailable(id) == 0 && FindDisplayInfo(id) != null,
+        "live ViewPort reports a resolvable available mode")
+}
+
+// @covers-ndk function|graphics.library|CoerceMode
+// @ndk-side-effects CoerceMode maps a live private screen ViewPort into its own monitor family while preserving depth and avoiding flicker; the returned identifier is available, resolvable, and retains the monitor bits
+@test("graphics.library CoerceMode preserves the live monitor")
+pub fn graphics_coerce_mode() {
+    let handle = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let current = viewport_mode(handle.viewport())
+    let monitor = current & MONITOR_ID_MASK
+    let coerced = CoerceMode(handle.viewport(), monitor, PRESERVE_COLORS | AVOID_FLICKER)
+    expect(current != INVALID_ID && coerced != INVALID_ID &&
+        (coerced & MONITOR_ID_MASK) == monitor && ModeNotAvailable(coerced) == 0 &&
+        FindDisplayInfo(coerced) != null, "coerced mode stays available in the same monitor family")
+}

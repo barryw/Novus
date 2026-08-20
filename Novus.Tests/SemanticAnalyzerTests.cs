@@ -127,6 +127,19 @@ fn main() -> u32 {
     }
 
     [Fact]
+    public void Analyze_DistinctOpaquePointerTypesCannotBeMixed()
+    {
+        var diagnostics = Analyze("""
+            struct CxObj {}
+            struct CxMsg {}
+            fn use_object(value: *CxObj) {}
+            fn demo(message: *CxMsg) { use_object(message) }
+            """);
+
+        Assert.True(diagnostics.HasErrors);
+    }
+
+    [Fact]
     public void Analyze_DuplicateFunction_ReportsError()
     {
         // With function overloading support, duplicate functions with identical signatures

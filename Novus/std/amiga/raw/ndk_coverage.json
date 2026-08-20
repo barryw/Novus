@@ -6,7 +6,7 @@
     "platform": "classic-68k-amigaos",
     "source_layout": "README; Include/sfd; Include/fd; Include/include_h",
     "input_sha256": "ff72bc32c855c31d1b0d3a89f3cf187d52683c5c4cc22de4789f517de50aaa8e",
-    "inventory_sha256": "f652361ab3e153faeff8b43159b6205da5e86204b6a647c479f15c6f9225f365",
+    "inventory_sha256": "92ca90c7b08190fe78f4e8a1abfe51bc8029bccb17c701ebbbff55e85bd2131d",
     "excluded_compiler_interface_directories": [
       "clib",
       "defines",
@@ -77246,7 +77246,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::consts",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "(REACTION_Dummy \u002B 0x26000)",
+      "definition": "(0x45000)",
       "notes": ""
     },
     {
@@ -103538,7 +103538,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::diskfont",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "VOID(...)@a0:66",
+      "definition": "VOID(Tag,...)@a0:66",
       "notes": ""
     },
     {
@@ -104364,7 +104364,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::dos",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "BOOL(LONG,STRPTR,STRPTR,LONG)@d1,d2,d3,d4:468",
+      "definition": "LONG(LONG,STRPTR,STRPTR,LONG)@d1,d2,d3,d4:468",
       "notes": ""
     },
     {
@@ -105442,7 +105442,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::dos",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "BOOL(CONST_STRPTR)@d1:540",
+      "definition": "STRPTR(CONST_STRPTR)@d1:540",
       "notes": ""
     },
     {
@@ -113156,7 +113156,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::intuition",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "struct RastPort *(struct GadgetInfo *)@a0:558",
+      "definition": "struct RastPort\t*(struct GadgetInfo *)@a0:558",
       "notes": ""
     },
     {
@@ -113786,7 +113786,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::intuition",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "struct Preferences *(const struct Preferences *,LONG,BOOL)@a0,d0,d1:324",
+      "definition": "struct Preferences  *(const struct Preferences *,LONG,BOOL)@a0,d0,d1:324",
       "notes": ""
     },
     {
@@ -115606,7 +115606,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:54",
+      "definition": "ULONG(ULONG)@d0:54",
       "notes": ""
     },
     {
@@ -115620,7 +115620,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT,FLOAT)@d1,d0:66",
+      "definition": "ULONG(ULONG,ULONG)@d1,d0:66",
       "notes": ""
     },
     {
@@ -115634,7 +115634,7 @@
       "minimum_version": 33,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:96",
+      "definition": "ULONG(ULONG)@d0:96",
       "notes": ""
     },
     {
@@ -115648,7 +115648,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "LONG(FLOAT,FLOAT)@d1,d0:42",
+      "definition": "LONG(ULONG,ULONG)@d1,d0:42",
       "notes": ""
     },
     {
@@ -115662,7 +115662,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT,FLOAT)@d1,d0:84",
+      "definition": "ULONG(ULONG,ULONG)@d1,d0:84",
       "notes": ""
     },
     {
@@ -115676,7 +115676,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "LONG(FLOAT)@d0:30",
+      "definition": "LONG(ULONG)@d0:30",
       "notes": ""
     },
     {
@@ -115690,7 +115690,7 @@
       "minimum_version": 33,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:90",
+      "definition": "ULONG(ULONG)@d0:90",
       "notes": ""
     },
     {
@@ -115704,7 +115704,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(LONG)@d0:36",
+      "definition": "ULONG(LONG)@d0:36",
       "notes": ""
     },
     {
@@ -115718,7 +115718,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT,FLOAT)@d1,d0:78",
+      "definition": "ULONG(ULONG,ULONG)@d1,d0:78",
       "notes": ""
     },
     {
@@ -115732,7 +115732,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:60",
+      "definition": "ULONG(ULONG)@d0:60",
       "notes": ""
     },
     {
@@ -115746,7 +115746,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT,FLOAT)@d1,d0:72",
+      "definition": "ULONG(ULONG,ULONG)@d1,d0:72",
       "notes": ""
     },
     {
@@ -115760,7 +115760,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathffp",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "LONG(FLOAT)@d1:48",
+      "definition": "LONG(ULONG)@d1:48",
       "notes": ""
     },
     {
@@ -116586,7 +116586,7 @@
       "minimum_version": 31,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:120",
+      "definition": "ULONG(ULONG)@d0:120",
       "notes": ""
     },
     {
@@ -116600,7 +116600,7 @@
       "minimum_version": 31,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:114",
+      "definition": "ULONG(ULONG)@d0:114",
       "notes": ""
     },
     {
@@ -116614,7 +116614,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:30",
+      "definition": "ULONG(ULONG)@d0:30",
       "notes": ""
     },
     {
@@ -116628,7 +116628,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:42",
+      "definition": "ULONG(ULONG)@d0:42",
       "notes": ""
     },
     {
@@ -116642,7 +116642,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:66",
+      "definition": "ULONG(ULONG)@d0:66",
       "notes": ""
     },
     {
@@ -116656,7 +116656,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:78",
+      "definition": "ULONG(ULONG)@d0:78",
       "notes": ""
     },
     {
@@ -116670,7 +116670,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:108",
+      "definition": "ULONG(ULONG)@d0:108",
       "notes": ""
     },
     {
@@ -116684,7 +116684,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:84",
+      "definition": "ULONG(ULONG)@d0:84",
       "notes": ""
     },
     {
@@ -116698,7 +116698,7 @@
       "minimum_version": 31,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:126",
+      "definition": "ULONG(ULONG)@d0:126",
       "notes": ""
     },
     {
@@ -116712,7 +116712,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT,FLOAT)@d1,d0:90",
+      "definition": "ULONG(ULONG,ULONG)@d1,d0:90",
       "notes": ""
     },
     {
@@ -116726,7 +116726,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:36",
+      "definition": "ULONG(ULONG)@d0:36",
       "notes": ""
     },
     {
@@ -116740,7 +116740,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT *,FLOAT)@d1,d0:54",
+      "definition": "ULONG(ULONG *,ULONG)@d1,d0:54",
       "notes": ""
     },
     {
@@ -116754,7 +116754,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:60",
+      "definition": "ULONG(ULONG)@d0:60",
       "notes": ""
     },
     {
@@ -116768,7 +116768,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:96",
+      "definition": "ULONG(ULONG)@d0:96",
       "notes": ""
     },
     {
@@ -116782,7 +116782,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:48",
+      "definition": "ULONG(ULONG)@d0:48",
       "notes": ""
     },
     {
@@ -116796,7 +116796,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:72",
+      "definition": "ULONG(ULONG)@d0:72",
       "notes": ""
     },
     {
@@ -116810,7 +116810,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::mathtrans",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "FLOAT(FLOAT)@d0:102",
+      "definition": "ULONG(ULONG)@d0:102",
       "notes": ""
     },
     {
@@ -118392,7 +118392,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::utility",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "LONG(LONG,LONG)@d0,d1:150",
+      "definition": "QUAD(LONG,LONG)@d0,d1:150",
       "notes": ""
     },
     {
@@ -118420,7 +118420,7 @@
       "minimum_version": 39,
       "novus_module": "amiga::raw::utility",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "LONG(LONG,LONG)@d0,d1:198",
+      "definition": "QUAD(LONG,LONG)@d0,d1:198",
       "notes": ""
     },
     {
@@ -118504,7 +118504,7 @@
       "minimum_version": 36,
       "novus_module": "amiga::raw::utility",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "ULONG(ULONG,ULONG)@d0,d1:156",
+      "definition": "UQUAD(ULONG,ULONG)@d0,d1:156",
       "notes": ""
     },
     {
@@ -118532,7 +118532,7 @@
       "minimum_version": 39,
       "novus_module": "amiga::raw::utility",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "ULONG(ULONG,ULONG)@d0,d1:204",
+      "definition": "UQUAD(ULONG,ULONG)@d0,d1:204",
       "notes": ""
     },
     {
@@ -123886,8 +123886,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UWORD asi_Start;UWORD asi_Stop)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -124271,8 +124271,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UWORD BytesPerRow;UWORD Rows;UBYTE Flags;UBYTE Depth;UWORD pad;PLANEPTR Planes[8])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -124624,8 +124624,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UBYTE Flags;UBYTE Type;UWORD Count;APTR ColorTable;struct\tViewPortExtra * cm_vpe;APTR LowColorBits;UBYTE TransparencyPlane;UBYTE SpriteResolution;UBYTE SpriteResDefault;UBYTE AuxFlags;struct\tViewPort * cm_vp;APTR NormalDisplayInfo;APTR CoerceDisplayInfo;struct\tTagItem * cm_batch_items;ULONG VPModeID;struct\tPaletteExtra * PalExtra;UWORD SpriteBase_Even;UWORD SpriteBase_Odd;UWORD Bp_0_base;UWORD Bp_1_base)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -124947,10 +124947,10 @@
         "Include/include_h/libraries/commodities.h"
       ],
       "minimum_version": 0,
-      "novus_module": "native Novus type system",
-      "status": "NOVUS_EQUIVALENT",
+      "novus_module": "amiga::raw::types",
+      "status": "DIRECTLY_SUPPORTED",
       "definition": "LONG CxMsg",
-      "notes": "NDK typedef maps without ABI change to i32."
+      "notes": ""
     },
     {
       "category": "type",
@@ -124961,10 +124961,10 @@
         "Include/include_h/libraries/commodities.h"
       ],
       "minimum_version": 0,
-      "novus_module": "native Novus type system",
-      "status": "NOVUS_EQUIVALENT",
+      "novus_module": "amiga::raw::types",
+      "status": "DIRECTLY_SUPPORTED",
       "definition": "LONG CxObj",
-      "notes": "NDK typedef maps without ABI change to i32."
+      "notes": ""
     },
     {
       "category": "type",
@@ -125092,8 +125092,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(LONG ds_Days;LONG ds_Minute;LONG ds_Tick)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -125478,7 +125478,7 @@
     {
       "category": "type",
       "name": "DrawInfo",
-      "scope": "NDK_REACTION",
+      "scope": "CORE_NDK",
       "interface": "NDK headers",
       "sources": [
         "Include/include_h/gadgets/listbrowser.h",
@@ -125490,8 +125490,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UWORD dri_Version;UWORD dri_NumPens;UWORD * dri_Pens;struct TextFont * dri_Font;UWORD dri_Depth;DrawInfo_dri_Resolution dri_Resolution;ULONG dri_Flags;struct Image * dri_CheckMark;struct Image * dri_AmigaKey;ULONG dri_Reserved[5])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -125790,8 +125790,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(LONG fib_DiskKey;LONG fib_DirEntryType;char fib_FileName[108];LONG fib_Protection;LONG fib_EntryType;LONG fib_Size;LONG fib_NumBlocks;struct DateStamp fib_Date;char fib_Comment[80];UWORD fib_OwnerUID;UWORD fib_OwnerGID;char fib_Reserved[32])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126122,8 +126122,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Screen * gi_Screen;struct Window * gi_Window;struct Requester * gi_Requester;struct RastPort * gi_RastPort;struct Layer * gi_Layer;struct IBox gi_Domain;GadgetInfo_gi_Pens gi_Pens;struct DrawInfo * gi_DrInfo;ULONG gi_Reserved[6])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126283,8 +126283,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct MinNode h_MinNode;ULONG (*h_Entry)() h_Entry;ULONG (*h_SubEntry)() h_SubEntry;APTR h_Data)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126301,8 +126301,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(WORD Left;WORD Top;WORD Width;WORD Height)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126315,7 +126315,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "struct()",
+      "definition": "struct(struct Hook cl_Dispatcher;ULONG cl_Reserved;struct IClass * cl_Super;ClassID cl_ID;UWORD cl_InstOffset;UWORD cl_InstSize;ULONG cl_UserData;ULONG cl_SubclassCount;ULONG cl_ObjectCount;ULONG cl_Flags)",
       "notes": ""
     },
     {
@@ -126344,8 +126344,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(ULONG iff_Stream;ULONG iff_Flags;LONG iff_Depth)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126429,8 +126429,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Message io_Message;struct  Device * io_Device;struct  Unit * io_Unit;UWORD io_Command;UBYTE io_Flags;BYTE io_Error;ULONG io_Actual;ULONG io_Length;APTR io_Data;ULONG io_Offset)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126558,8 +126558,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(APTR iv_Data;VOID (*iv_Code)() iv_Code;struct  Node * iv_Node)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126588,8 +126588,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Message ExecMessage;ULONG Class;UWORD Code;UWORD Qualifier;APTR IAddress;WORD MouseX;WORD MouseY;ULONG Seconds;ULONG Micros;struct Window * IDCMPWindow;struct IntuiMessage * SpecialLink)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126805,8 +126805,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct\tLayer * top_layer;struct\tLayer * check_lp;struct\tClipRect * obs;struct\tClipRect * FreeClipRects;LONG PrivateReserve1;LONG PrivateReserve2;struct SignalSemaphore Lock;struct MinList gs_Head;WORD PrivateReserve3;VOID * PrivateReserve4;UWORD Flags;BYTE fatten_count;BYTE LockLayersCount;WORD PrivateReserve5;VOID * BlankHook;VOID * LayerInfo_extra)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126849,8 +126849,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node lib_Node;UBYTE lib_Flags;UBYTE lib_pad;UWORD lib_NegSize;UWORD lib_PosSize;UWORD lib_Version;UWORD lib_Revision;APTR lib_IdString;ULONG lib_Sum;UWORD lib_OpenCnt)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -126891,8 +126891,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct  Node * lh_Head;struct  Node * lh_Tail;struct  Node * lh_TailPred;UBYTE lh_Type;UBYTE l_pad)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127140,8 +127140,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node mn_Node;struct  MsgPort * mn_ReplyPort;UWORD mn_Length)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127159,8 +127159,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct  MinNode * mlh_Head;struct  MinNode * mlh_Tail;struct  MinNode * mlh_TailPred)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127183,8 +127183,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct MinNode * mln_Succ;struct MinNode * mln_Pred)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127214,8 +127214,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct ExtendedNode ms_Node;UWORD ms_Flags;LONG ratioh;LONG ratiov;UWORD total_rows;UWORD total_colorclocks;UWORD DeniseMaxDisplayColumn;UWORD BeamCon0;UWORD min_row;struct\tSpecialMonitor * ms_Special;UWORD ms_OpenCount;LONG (*ms_transform)() ms_transform;LONG (*ms_translate)() ms_translate;LONG (*ms_scale)() ms_scale;UWORD ms_xoffset;UWORD ms_yoffset;struct Rectangle ms_LegalView;LONG (*ms_maxoscan)() ms_maxoscan;LONG (*ms_videoscan)() ms_videoscan;UWORD DeniseMinDisplayColumn;ULONG DisplayCompatible;struct List DisplayInfoDataBase;struct SignalSemaphore DisplayInfoDataBaseSemaphore;LONG (*ms_MrgCop)() ms_MrgCop;LONG (*ms_LoadView)() ms_LoadView;LONG (*ms_KillView)() ms_KillView)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127241,8 +127241,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node mp_Node;UBYTE mp_Flags;UBYTE mp_SigBit;void * mp_SigTask;struct List mp_MsgList)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127397,8 +127397,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(LONG ns_Ivalue;UWORD ns_Length;UBYTE ns_Flags;UBYTE ns_Hash;BYTE ns_Buff[8])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127433,8 +127433,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct  Node * ln_Succ;struct  Node * ln_Pred;UBYTE ln_Type;BYTE ln_Pri;char * ln_Name)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -127933,8 +127933,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct  Layer * Layer;struct  BitMap * BitMap;UWORD * AreaPtrn;struct  TmpRas * TmpRas;struct  AreaInfo * AreaInfo;struct  GelsInfo * GelsInfo;UBYTE Mask;BYTE FgPen;BYTE BgPen;BYTE AOlPen;BYTE DrawMode;BYTE AreaPtSz;BYTE linpatcnt;BYTE dummy;UWORD Flags;UWORD LinePtrn;WORD cp_x;WORD cp_y;UBYTE minterms[8];WORD PenWidth;WORD PenHeight;struct  TextFont * Font;UBYTE AlgoStyle;UBYTE TxFlags;UWORD TxHeight;UWORD TxWidth;UWORD TxBaseline;WORD TxSpacing;APTR * RP_User;ULONG longreserved[2];UWORD wordreserved[7];UBYTE reserved[8])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128015,8 +128015,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(WORD MinX;WORD MinY;WORD MaxX;WORD MaxY)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128030,8 +128030,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Rectangle bounds;struct RegionRectangle * RegionRectangle)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128073,8 +128073,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Requester * OlderRequest;WORD LeftEdge;WORD TopEdge;WORD Width;WORD Height;WORD RelLeft;WORD RelTop;struct Gadget * ReqGadget;struct Border * ReqBorder;struct IntuiText * ReqText;UWORD Flags;UBYTE BackFill;struct Layer * ReqLayer;UBYTE ReqPad1[32];struct BitMap * ImageBMap;struct Window * RWindow;struct Image * ReqImage;UBYTE ReqPad2[32])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128144,8 +128144,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node rr_Node;WORD rr_Func;APTR rr_Base;LONG rr_Size;LONG rr_Arg1;LONG rr_Arg2)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128262,7 +128262,7 @@
     {
       "category": "type",
       "name": "Screen",
-      "scope": "NDK_REACTION",
+      "scope": "CORE_NDK",
       "interface": "NDK headers",
       "sources": [
         "Include/include_h/classes/requester.h",
@@ -128276,8 +128276,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Screen * NextScreen;struct Window * FirstWindow;WORD LeftEdge;WORD TopEdge;WORD Width;WORD Height;WORD MouseY;WORD MouseX;UWORD Flags;UBYTE * Title;UBYTE * DefaultTitle;BYTE BarHeight;BYTE BarVBorder;BYTE BarHBorder;BYTE MenuVBorder;BYTE MenuHBorder;BYTE WBorTop;BYTE WBorLeft;BYTE WBorRight;BYTE WBorBottom;struct TextAttr * Font;struct ViewPort ViewPort;struct RastPort RastPort;struct BitMap BitMap;struct Layer_Info LayerInfo;struct Gadget * FirstGadget;UBYTE DetailPen;UBYTE BlockPen;UWORD SaveColor0;struct Layer * BarLayer;UBYTE * ExtData;UBYTE * UserData)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128439,8 +128439,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node ss_Link;WORD ss_NestCount;struct MinList ss_WaitQueue;struct SemaphoreRequest ss_MultipleLink;struct Task * ss_Owner;WORD ss_QueueCount)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128454,8 +128454,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UWORD * posctldata;UWORD height;UWORD x;UWORD y;UWORD num)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128469,8 +128469,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct List sh_List;UWORD sh_Pad)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128596,8 +128596,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct TextFont * Font;UBYTE Pens[2];UBYTE ActivePens[2];ULONG InitialModes;struct Hook * EditHook;UBYTE * WorkBuffer;ULONG Reserved[4])",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128669,8 +128669,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(STRPTR tta_Name;UWORD tta_YSize;UBYTE tta_Style;UBYTE tta_Flags;struct TagItem * tta_Tags)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128684,8 +128684,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(UWORD td_XFraction;UWORD td_YFraction;ULONG td_TabletX;ULONG td_TabletY;ULONG td_RangeX;ULONG td_RangeY;struct TagItem * td_TagList)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128718,7 +128718,7 @@
     {
       "category": "type",
       "name": "TagItem",
-      "scope": "NDK_REACTION",
+      "scope": "CORE_NDK",
       "interface": "NDK headers",
       "sources": [
         "Include/include_h/classes/requester.h",
@@ -128740,8 +128740,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(Tag ti_Tag;ULONG ti_Data)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128761,8 +128761,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Node tc_Node;UBYTE tc_Flags;UBYTE tc_State;BYTE tc_IDNestCnt;BYTE tc_TDNestCnt;ULONG tc_SigAlloc;ULONG tc_SigWait;ULONG tc_SigRecvd;ULONG tc_SigExcept;UWORD tc_TrapAlloc;UWORD tc_TrapAble;APTR tc_ExceptData;APTR tc_ExceptCode;APTR tc_TrapData;APTR tc_TrapCode;APTR tc_SPReg;APTR tc_SPLower;APTR tc_SPUpper;VOID (*tc_Switch)() tc_Switch;VOID (*tc_Launch)() tc_Launch;struct List tc_MemEntry;APTR tc_UserData)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128783,8 +128783,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(STRPTR ta_Name;UWORD ta_YSize;UBYTE ta_Style;UBYTE ta_Flags)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -128817,8 +128817,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Message tf_Message;UWORD tf_YSize;UBYTE tf_Style;UBYTE tf_Flags;UWORD tf_XSize;UWORD tf_Baseline;UWORD tf_BoldSmear;UWORD tf_Accessors;UBYTE tf_LoChar;UBYTE tf_HiChar;APTR tf_CharData;UWORD tf_Modulo;APTR tf_CharLoc;APTR tf_CharSpace;APTR tf_CharKern)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129074,8 +129074,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct\tViewPort * ViewPort;struct\tcprlist * LOFCprList;struct\tcprlist * SHFCprList;WORD DyOffset;WORD DxOffset;UWORD Modes)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129104,8 +129104,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct\tViewPort * Next;struct\tColorMap * ColorMap;struct\tCopList * DspIns;struct\tCopList * SprIns;struct\tCopList * ClrIns;struct\tUCopList * UCopIns;WORD DWidth;WORD DHeight;WORD DxOffset;WORD DyOffset;UWORD Modes;UBYTE SpritePriorities;UBYTE ExtendedModes;struct\tRasInfo * RasInfo)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129148,8 +129148,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(BPTR wa_Lock;BYTE * wa_Name)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129224,7 +129224,7 @@
     {
       "category": "type",
       "name": "Window",
-      "scope": "NDK_REACTION",
+      "scope": "CORE_NDK",
       "interface": "NDK headers",
       "sources": [
         "Include/include_h/classes/requester.h",
@@ -129240,8 +129240,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct Window * NextWindow;WORD LeftEdge;WORD TopEdge;WORD Width;WORD Height;WORD MouseY;WORD MouseX;WORD MinWidth;WORD MinHeight;UWORD MaxWidth;UWORD MaxHeight;ULONG Flags;struct Menu * MenuStrip;UBYTE * Title;struct Requester * FirstRequest;struct Requester * DMRequest;WORD ReqCount;struct Screen * WScreen;struct RastPort * RPort;BYTE BorderLeft;BYTE BorderTop;BYTE BorderRight;BYTE BorderBottom;struct RastPort * BorderRPort;struct Gadget * FirstGadget;struct Window * Parent;struct Window * Descendant;UWORD * Pointer;BYTE PtrHeight;BYTE PtrWidth;BYTE XOffset;BYTE YOffset;ULONG IDCMPFlags;struct MsgPort * UserPort;struct MsgPort * WindowPort;struct IntuiMessage * MessageKey;UBYTE DetailPen;UBYTE BlockPen;struct Image * CheckMark;UBYTE * ScreenTitle;WORD GZZMouseX;WORD GZZMouseY;WORD GZZWidth;WORD GZZHeight;UBYTE * ExtData;BYTE * UserData;struct Layer * WLayer;struct TextFont * IFont;ULONG MoreFlags)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129367,8 +129367,8 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "opaque aggregate declaration",
-      "notes": "Opaque or forward-declared NDK aggregate."
+      "definition": "struct(struct  bltnode * n;int (*function)() function;char stat;short blitsize;short beamsync;int (*cleanup)() cleanup)",
+      "notes": ""
     },
     {
       "category": "type",
@@ -129380,9 +129380,9 @@
       ],
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
-      "status": "DIRECTLY_SUPPORTED",
-      "definition": "struct()",
-      "notes": ""
+      "status": "NOVUS_EQUIVALENT",
+      "definition": "struct(struct MinNode bb_Node;LONG allocsize;LONG bb_BlockNum;WORD bb_Changed;LONG unit;char DeviceName[32];struct rw_return bb_RWErrors;BOOL wflag;BYTE spares[4-sizeof(BOOL)];bootblock_bb_Data bb_Data)",
+      "notes": "Exposed as HdwBootBlock to avoid a C tag/typedef namespace collision."
     },
     {
       "category": "type",
@@ -130238,7 +130238,7 @@
       "minimum_version": 0,
       "novus_module": "amiga::raw::structs",
       "status": "DIRECTLY_SUPPORTED",
-      "definition": "struct()",
+      "definition": "struct(WORD x;WORD y)",
       "notes": ""
     },
     {
@@ -135396,6 +135396,13 @@
       "module": "amiga::raw::exec",
       "scope": "NOVUS_SUPPORT",
       "notes": "Compatibility declaration of the canonical amiga.lib routine for existing exec imports."
+    },
+    {
+      "category": "type",
+      "name": "HdwBootBlock",
+      "module": "amiga::raw::structs",
+      "scope": "NOVUS_SUPPORT",
+      "notes": "Unambiguous Novus name for hdwrench.h\u0027s typedef struct bootblock BootBlock, which collides with devices/hardblocks.h\u0027s struct BootBlock in Novus\u0027s single type namespace."
     }
   ],
   "summary": {
@@ -135403,8 +135410,8 @@
     "function_directly_supported": 1397,
     "macro_novus_equivalent": 328,
     "macro_not_applicable_c_only": 10,
-    "type_directly_supported": 778,
-    "type_novus_equivalent": 34,
+    "type_directly_supported": 779,
+    "type_novus_equivalent": 33,
     "interfaces_total": 112,
     "symbols_total": 9563
   }

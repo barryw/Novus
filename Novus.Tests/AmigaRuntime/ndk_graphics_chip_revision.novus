@@ -1,0 +1,24 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import SETCHIPREV_AA
+from amiga::raw::exec import CloseLibrary, OpenLibrary
+from amiga::raw::graphics import SetChipRev
+from amiga::raw::structs import GfxBase
+
+// @covers-ndk function|graphics.library|SetChipRev
+// @ndk-side-effects Opens graphics.library as its public GfxBase, requests only the chipset bits the running A4000 already enabled, and proves SetChipRev returns and preserves the exact live ChipRevBits0 value; the idempotent request avoids reconfiguring the one-shot graphics database
+@test("graphics.library SetChipRev preserves the enabled chipset")
+pub fn graphics_set_chip_revision() {
+    let library = unsafe { OpenLibrary("graphics.library", 39) }
+    if library == null {
+        expect(false, "graphics.library V39 opened")
+        return
+    }
+    let base = (*GfxBase)library
+    let before = unsafe { (*base).ChipRevBits0 }
+    let public_bits = (u32)before & SETCHIPREV_AA
+    let returned = SetChipRev(public_bits)
+    let after = unsafe { (*base).ChipRevBits0 }
+    expect_eq(returned, public_bits, "idempotent request returns the exact public revision bits")
+    expect_eq(after, before, "idempotent request preserves the live graphics revision state")
+    unsafe { CloseLibrary(library) }
+}

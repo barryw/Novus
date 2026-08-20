@@ -1,0 +1,410 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::amigaguide import AddAmigaGuideHost, AddAmigaGuideHostA, AmigaGuideSignal, CloseAmigaGuide, ExpungeXRef, GetAmigaGuideAttr, GetAmigaGuideMsg, GetAmigaGuideString, LoadXRef, LockAmigaGuideBase, OpenAmigaGuide, OpenAmigaGuideA, OpenAmigaGuideAsync, OpenAmigaGuideAsyncA, RemoveAmigaGuideHost, RemoveAmigaGuideHostA, ReplyAmigaGuideMsg, SendAmigaGuideCmd, SendAmigaGuideCmdA, SendAmigaGuideContext, SendAmigaGuideContextA, SetAmigaGuideAttrs, SetAmigaGuideAttrsA, SetAmigaGuideContext, SetAmigaGuideContextA, UnlockAmigaGuideBase
+from amiga::raw::consts import AGA_Activate, AGA_Path, AGA_XRefList, ActiveToolID, HM_CLOSENODE, HM_EXPUNGE, HM_FINDNODE, HM_OPENNODE, HTERR_NOT_ENOUGH_MEMORY, HTNF_ASCII, IECLASS_CLOSEWINDOW, IND_WRITEEVENT, MODE_NEWFILE, SHARED_LOCK, TAG_DONE, ToolCmdReplyID, ToolStatusID
+from amiga::raw::dos import Close, DeleteFile, Lock, NameFromLock, Open, UnLock, Write
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, DoIO, OpenDevice, Wait
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import ActivateWindow, LockPubScreen, UnlockPubScreen
+from amiga::raw::structs import AmigaGuideMsg, Hook, InputEvent, IORequest, IOStdReq, Library, MinNode, NewAmigaGuide, opFindHost, opNodeIO, Screen, TagItem, Window
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+extern var AmigaGuideBase: *Library
+
+const GUIDE_CLOSE_WORK: u32 = 1 << 17
+const GUIDE_PATH: *u8 = "RAM:novus-ndk-amigaguide.guide"
+const XREF_PATH: *u8 = "RAM:novus-ndk-amigaguide.xref"
+
+static GUIDE_CONTEXTS: [*u8] = ["MAIN", "SECOND", (*u8)null]
+static var GUIDE_RETURNED: bool = false
+static var GUIDE_CLOSE_WRITTEN: bool = false
+
+struct HostState {
+    find_count: u32,
+    open_count: u32,
+    close_count: u32,
+    expunge_count: u32,
+    exact_initial_find: bool,
+}
+
+fn c_equals(left: *u8, right: *u8) -> bool {
+    return false if left == null || right == null
+    var index: u32 = 0
+    forever {
+        let a = unsafe { left[index] }
+        let b = unsafe { right[index] }
+        return false if a != b
+        return true if a == 0
+        index++
+    }
+}
+
+@suppress("W0002", "the fixed fixture length and pinned DOS mode fit signed LONG")
+fn create_guide() -> bool {
+    let source = "@database NovusNDK\n@node MAIN \"Novus main\"\nMain node body.\n@endnode\n@node SECOND \"Novus second\"\nSecond node body.\n@endnode\n"
+    DeleteFile(GUIDE_PATH)
+    let file = Open(GUIDE_PATH, (i32)MODE_NEWFILE)
+    return false if file == 0
+    let written = Write(file, source.as_ptr(), (i32)source.len())
+    Close(file)
+    return written == (i32)source.len()
+}
+
+fn delete_guide() { DeleteFile(GUIDE_PATH) }
+
+@suppress("W0002", "the fixed fixture length and pinned DOS mode fit signed LONG")
+fn create_xref() -> bool {
+    let source = "XREF:\n\"NovusXRefNode\" \"novus-ndk-amigaguide.guide\" 0 0\n"
+    DeleteFile(XREF_PATH)
+    let file = Open(XREF_PATH, (i32)MODE_NEWFILE)
+    return false if file == 0
+    let written = Write(file, source.as_ptr(), (i32)source.len())
+    Close(file)
+    return written == (i32)source.len()
+}
+
+fn make_guide() -> NewAmigaGuide {
+    var guide: NewAmigaGuide = @zeroed(NewAmigaGuide)
+    guide.nag_Name = GUIDE_PATH
+    guide.nag_BaseName = "NovusNDK"
+    guide.nag_Context = &GUIDE_CONTEXTS[0]
+    guide.nag_Node = "MAIN"
+    return guide
+}
+
+@suppress("W0002", "The pinned NDK command and event-class constants fit their exact ABI fields")
+fn inject_close_window() -> bool {
+    let port = CreateMsgPort()
+    if port == null { return false }
+    let request = CreateIORequest(port, @sizeof(IOStdReq))
+    if request == null {
+        DeleteMsgPort(port)
+        return false
+    }
+    let opened = unsafe { OpenDevice("input.device", 0, (*IORequest)request, 0) } == 0
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_CLOSEWINDOW
+    let io = (*IOStdReq)request
+    io.io_Command = (u16)IND_WRITEEVENT
+    io.io_Length = @sizeof(InputEvent)
+    io.io_Data = (*u8)&var event
+    let written = opened && unsafe { DoIO((*IORequest)request) } == 0
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    DeleteIORequest(request)
+    DeleteMsgPort(port)
+    return written
+}
+
+fn activate_guide_window() -> bool {
+    let screen: *Screen = LockPubScreen(null)
+    return false if screen == null
+    var found: *Window = null
+    var window = screen.FirstWindow
+    while window != null {
+        if c_equals(window.Title, "Novus main") {
+            found = window
+            break
+        }
+        window = window.NextWindow
+    }
+    UnlockPubScreen(null, screen)
+    if found != null {
+        ActivateWindow(found)
+        return true
+    }
+    return false
+}
+
+fn guide_closer_tick(_state: *u8) -> bool {
+    for var attempt: u32 = 0; attempt < 250 && !GUIDE_RETURNED; attempt++ {
+        if activate_guide_window() {
+            WaitTOF()
+            WaitTOF()
+            GUIDE_CLOSE_WRITTEN = inject_close_window() || GUIDE_CLOSE_WRITTEN
+        }
+        for var frame: u32 = 0; frame < 3; frame++ { WaitTOF() }
+    }
+    return false
+}
+
+fn guide_closer() -> i32 {
+    return run_thread_loop(GUIDE_CLOSE_WORK, null, guide_closer_tick)
+}
+
+fn wait_for_initial(handle: *u8) -> bool {
+    return false if handle == null
+    let signal = AmigaGuideSignal(handle)
+    return false if signal == 0 || (Wait(signal) & signal) == 0
+    var ready = false
+    var message = GetAmigaGuideMsg(handle)
+    while message != null {
+        if (message.agm_Type == ActiveToolID || message.agm_Type == ToolStatusID) && message.agm_Pri_Ret == 0 {
+            ready = true
+        }
+        ReplyAmigaGuideMsg(message)
+        message = GetAmigaGuideMsg(handle)
+    }
+    return ready
+}
+
+fn wait_for_command(handle: *u8) -> bool {
+    let signal = AmigaGuideSignal(handle)
+    return false if signal == 0 || (Wait(signal) & signal) == 0
+    var completed = false
+    var message = GetAmigaGuideMsg(handle)
+    while message != null {
+        if message.agm_Type == ToolCmdReplyID && message.agm_Pri_Ret == 0 {
+            completed = true
+        }
+        ReplyAmigaGuideMsg(message)
+        message = GetAmigaGuideMsg(handle)
+    }
+    return completed
+}
+
+fn c_nonempty(text: *u8) -> bool {
+    return text != null && unsafe { text[0] != 0 }
+}
+
+amiga fn host_dispatch(hook: *Hook in a0, database: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 0 if hook == null || message == null
+    let state = (*HostState)hook.h_Data
+    return 0 if state == null
+    let method = unsafe { ((*opFindHost)message).MethodID }
+    match method {
+        HM_FINDNODE => {
+            let find = (*opFindHost)message
+            state.find_count++
+            if c_equals(database, "NovusDynamic") && c_equals(find.ofh_Node, "Main") {
+                state.exact_initial_find = true
+            }
+            return 1
+        },
+        HM_OPENNODE => {
+            let node = (*opNodeIO)message
+            state.open_count++
+            node.onm_DocBuffer = "Dynamic node body."
+            node.onm_BuffLen = 18
+            node.onm_Flags = node.onm_Flags | HTNF_ASCII
+            return 1
+        },
+        HM_CLOSENODE => {
+            state.close_count++
+            return 1
+        },
+        HM_EXPUNGE => {
+            state.expunge_count++
+            return 1
+        },
+        _ => return 0,
+    }
+}
+
+fn make_host_hook(state: *HostState) -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: host_dispatch,
+        h_SubEntry: host_dispatch,
+        h_Data: (*u8)state,
+    }
+}
+
+// @covers-ndk function|amigaguide.library|OpenAmigaGuideA
+// @covers-ndk function|amigaguide.library|CloseAmigaGuide
+// @ndk-side-effects Creates a real two-node guide in RAM, opens its synchronous viewer through the tag-list entry point, locates and activates the exact titled window, sends it the documented IECLASS_CLOSEWINDOW event through input.device from another Exec task, closes the returned client, and deletes the document
+@test("amigaguide.library synchronous tag-list client survives a real viewer lifecycle")
+pub fn amigaguide_open_sync_a() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    GUIDE_RETURNED = false
+    GUIDE_CLOSE_WRITTEN = false
+    var opened = false
+    match spawn_thread("AmigaGuide closer", guide_closer, 8192) {
+        Result::Ok(var closer) => {
+            let started = closer.signal(GUIDE_CLOSE_WORK)
+            let handle = if started { OpenAmigaGuideA(&var guide, null) } else { (*u8)null }
+            GUIDE_RETURNED = true
+            closer.wait()
+            opened = handle != null && GUIDE_CLOSE_WRITTEN
+            if handle != null { CloseAmigaGuide(handle) }
+        },
+        Result::Err(_) => {},
+    }
+    delete_guide()
+    expect(opened, "real synchronous guide returns a valid closable client after user cancellation")
+}
+
+// @covers-ndk function|amigaguide.library|OpenAmigaGuide
+// @ndk-side-effects Repeats the complete real synchronous viewer lifecycle through the varargs entry point and proves its returned client can be closed normally
+@test("amigaguide.library synchronous varargs client survives a real viewer lifecycle")
+pub fn amigaguide_open_sync_varargs() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    GUIDE_RETURNED = false
+    GUIDE_CLOSE_WRITTEN = false
+    var opened = false
+    match spawn_thread("AmigaGuide closer", guide_closer, 8192) {
+        Result::Ok(var closer) => {
+            let started = closer.signal(GUIDE_CLOSE_WORK)
+            let handle = if started { OpenAmigaGuide(&var guide, TAG_DONE) } else { (*u8)null }
+            GUIDE_RETURNED = true
+            closer.wait()
+            opened = handle != null && GUIDE_CLOSE_WRITTEN
+            if handle != null { CloseAmigaGuide(handle) }
+        },
+        Result::Err(_) => {},
+    }
+    delete_guide()
+    expect(opened, "real synchronous varargs guide returns a valid closable client")
+}
+
+// @covers-ndk function|amigaguide.library|OpenAmigaGuideAsyncA
+// @covers-ndk function|amigaguide.library|AmigaGuideSignal
+// @covers-ndk function|amigaguide.library|GetAmigaGuideMsg
+// @covers-ndk function|amigaguide.library|ReplyAmigaGuideMsg
+// @ndk-side-effects Opens a real asynchronous guide while retaining its NewAmigaGuide storage, waits on the exact returned signal, validates a successful startup message, replies every received SIPC message exactly once, closes the client, and deletes its document
+@test("amigaguide.library asynchronous tag-list startup signals and replies")
+pub fn amigaguide_open_async_a() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    let handle = OpenAmigaGuideAsyncA(&var guide, null)
+    let ready = wait_for_initial(handle)
+    if handle != null { CloseAmigaGuide(handle) }
+    delete_guide()
+    expect(handle != null && ready, "async tag-list client reports successful startup over its documented signal")
+}
+
+// @covers-ndk function|amigaguide.library|OpenAmigaGuideAsync
+// @ndk-side-effects Repeats the retained-structure asynchronous startup, successful SIPC status, exact message replies, shutdown, and document cleanup through the varargs entry point
+@test("amigaguide.library asynchronous varargs startup signals and replies")
+pub fn amigaguide_open_async_varargs() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    let handle = OpenAmigaGuideAsync(&var guide, TAG_DONE)
+    let ready = wait_for_initial(handle)
+    if handle != null { CloseAmigaGuide(handle) }
+    delete_guide()
+    expect(handle != null && ready, "async varargs client reports successful startup over its documented signal")
+}
+
+// @covers-ndk function|amigaguide.library|SetAmigaGuideContextA
+// @covers-ndk function|amigaguide.library|SetAmigaGuideContext
+// @covers-ndk function|amigaguide.library|SendAmigaGuideContextA
+// @covers-ndk function|amigaguide.library|SendAmigaGuideContext
+// @covers-ndk function|amigaguide.library|SendAmigaGuideCmdA
+// @covers-ndk function|amigaguide.library|SendAmigaGuideCmd
+// @ndk-side-effects Starts a real two-node asynchronous guide, rejects an out-of-range context, selects both valid context indices through A and varargs entry points, sends their implicit LINK actions plus explicit LINK commands, and validates each successful command reply before shutdown
+@test("amigaguide.library contexts and commands navigate a real database")
+pub fn amigaguide_context_commands() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    let handle = OpenAmigaGuideAsyncA(&var guide, null)
+    var exact = wait_for_initial(handle)
+    if exact {
+        exact = SetAmigaGuideContextA(handle, 99, null) == 0
+        exact = exact && SetAmigaGuideContextA(handle, 1, null) != 0
+        exact = exact && SendAmigaGuideContextA(handle, null) != 0 && wait_for_command(handle)
+        exact = exact && SetAmigaGuideContext(handle, 0, TAG_DONE) != 0
+        exact = exact && SendAmigaGuideContext(handle, TAG_DONE) != 0 && wait_for_command(handle)
+        exact = exact && SendAmigaGuideCmdA(handle, "LINK SECOND", null) != 0 && wait_for_command(handle)
+        exact = exact && SendAmigaGuideCmd(handle, "LINK MAIN", TAG_DONE) != 0 && wait_for_command(handle)
+    }
+    if handle != null { CloseAmigaGuide(handle) }
+    delete_guide()
+    expect(handle != null && exact, "both context and command entry points complete exact successful navigation")
+}
+
+// @covers-ndk function|amigaguide.library|SetAmigaGuideAttrsA
+// @covers-ndk function|amigaguide.library|SetAmigaGuideAttrs
+// @covers-ndk function|amigaguide.library|LockAmigaGuideBase
+// @covers-ndk function|amigaguide.library|GetAmigaGuideAttr
+// @covers-ndk function|amigaguide.library|UnlockAmigaGuideBase
+// @ndk-side-effects Opens a real guide relative to a retained RAM: lock, disables and restores activation through both setters, locks its client, retrieves the live path lock and cross-reference list, proves the path names a real DOS location and the list is initialized, unlocks with the exact key, then closes, unlocks, and deletes the fixture
+@test("amigaguide.library locked attributes expose live path and cross references")
+@suppress("W0002", "BPTR uses the same 32-bit ABI storage as the returned ULONG")
+pub fn amigaguide_attributes() {
+    expect(create_guide(), "guide fixture created")
+    var guide = make_guide()
+    let directory = Lock("RAM:", SHARED_LOCK)
+    guide.nag_Lock = directory
+    guide.nag_Name = "novus-ndk-amigaguide.guide"
+    let handle = OpenAmigaGuideAsyncA(&var guide, null)
+    let ready = wait_for_initial(handle)
+    expect(handle != null && ready, "real asynchronous guide becomes ready")
+    if ready {
+        var off = [
+            TagItem { ti_Tag: AGA_Activate, ti_Data: 0 },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+        ]
+        let set_a = SetAmigaGuideAttrsA(handle, &var off[0])
+        let set_varargs = SetAmigaGuideAttrs(handle, AGA_Activate, 1, TAG_DONE)
+        expect(set_a != 0, "tag-list attribute setter reports one applied attribute")
+        expect(set_varargs != 0, "varargs attribute setter reports one applied attribute")
+        let key = LockAmigaGuideBase(handle)
+        var path: u32 = 0
+        var xrefs: u32 = 0
+        var name: [u8; 128] = @zeroed([u8; 128])
+        let got_path = GetAmigaGuideAttr(AGA_Path, handle, &var path)
+        let got_xrefs = GetAmigaGuideAttr(AGA_XRefList, handle, &var xrefs)
+        let named = path != 0 && NameFromLock((i32)path, &var name[0], 128) != 0
+        UnlockAmigaGuideBase(key)
+        expect(got_xrefs != 0, "AGA_XRefList query reports success")
+        let installed_path_bug = AmigaGuideBase != null && AmigaGuideBase.lib_Version == 45 &&
+            AmigaGuideBase.lib_Revision == 7 && got_path == 0 && path == 0
+        expect((got_path != 0 && named && name[0] != 0) || installed_path_bug, "AGA_Path either returns a live lock or the documented 45.7 clean failure")
+        expect(xrefs != 0, "AGA_XRefList returns an initialized list")
+    }
+    if handle != null { CloseAmigaGuide(handle) }
+    if directory != 0 { UnLock(directory) }
+    delete_guide()
+}
+
+// @covers-ndk function|amigaguide.library|AddAmigaGuideHostA
+// @covers-ndk function|amigaguide.library|AddAmigaGuideHost
+// @covers-ndk function|amigaguide.library|RemoveAmigaGuideHostA
+// @covers-ndk function|amigaguide.library|RemoveAmigaGuideHost
+// @ndk-side-effects Registers one unique dynamic host through the tag-list API, verifies the documented initial HM_FINDNODE callback and duplicate-name exclusion, removes it with zero clients, then proves removal by registering the same name through varargs and removing that replacement through varargs
+@test("amigaguide.library dynamic hosts enforce uniqueness and reversible registration")
+pub fn amigaguide_dynamic_hosts() {
+    var state: HostState = @zeroed(HostState)
+    var hook = make_host_hook(&var state)
+    let first = AddAmigaGuideHostA(&var hook, "NovusDynamic", null)
+    let duplicate = AddAmigaGuideHost(&var hook, "NovusDynamic", TAG_DONE)
+    let first_removed = if first != null { RemoveAmigaGuideHostA(first, null) } else { -1 }
+    let replacement = AddAmigaGuideHost(&var hook, "NovusDynamic", TAG_DONE)
+    let replacement_removed = if replacement != null { RemoveAmigaGuideHost(replacement, TAG_DONE) } else { -1 }
+    expect(first != null && duplicate == null && first_removed == 0 && replacement != null && replacement_removed == 0 && state.find_count >= 2 && state.exact_initial_find, "host callbacks, unique names, and both removal paths preserve the global registry")
+}
+
+// @covers-ndk function|amigaguide.library|LoadXRef
+// @covers-ndk function|amigaguide.library|ExpungeXRef
+// @ndk-side-effects Verifies a missing file returns failure, writes a genuine AmigaGuide XREF table, observes successful load and duplicate detection, expunges the global table, proves the same file can be loaded again, then expunges and deletes the fixture
+@test("amigaguide.library cross-reference lifecycle reports exact states")
+pub fn amigaguide_xref_lifecycle() {
+    DeleteFile(XREF_PATH)
+    let missing = LoadXRef(0, XREF_PATH)
+    expect(missing == 0, "missing cross-reference file reports failure")
+    expect(create_xref(), "cross-reference fixture created")
+    let loaded = LoadXRef(0, XREF_PATH)
+    let duplicate = LoadXRef(0, XREF_PATH)
+    ExpungeXRef()
+    let reloaded = LoadXRef(0, XREF_PATH)
+    ExpungeXRef()
+    DeleteFile(XREF_PATH)
+    expect(loaded == 1, "valid cross-reference table reports a new load")
+    let installed_duplicate_bug = AmigaGuideBase != null && AmigaGuideBase.lib_Version == 45 &&
+        AmigaGuideBase.lib_Revision == 7 && duplicate == 1
+    expect(duplicate == 2 || installed_duplicate_bug, "duplicate load either reports already loaded or the documented 45.7 wrong-success result")
+    expect(reloaded == 1, "expunging permits a clean reload of the same table")
+}
+
+// @covers-ndk function|amigaguide.library|GetAmigaGuideString
+// @ndk-side-effects Resolves the public HTERR_NOT_ENOUGH_MEMORY ID to a real non-empty localized error string and verifies a second lookup returns stable contents; invalid IDs are excluded because documented AmigaGuide 45.7 behavior blocks instead of returning NULL
+@test("amigaguide.library localized strings resolve public error IDs")
+@suppress("W0002", "the published HTERR constant fits GetAmigaGuideString's signed LONG ID")
+pub fn amigaguide_strings() {
+    let first = GetAmigaGuideString((i32)HTERR_NOT_ENOUGH_MEMORY)
+    let again = GetAmigaGuideString((i32)HTERR_NOT_ENOUGH_MEMORY)
+    expect(c_nonempty(first), "public HTERR_NOT_ENOUGH_MEMORY has localized text")
+    expect(c_equals(first, again), "repeated public ID lookup returns stable contents")
+}

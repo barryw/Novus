@@ -1,0 +1,170 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import NVEF_DELETE
+from amiga::raw::nonvolatile import DeleteNV, FreeNVData, GetCopyNV, GetNVInfo, GetNVList, SetNVProtection, StoreNV
+from amiga::raw::structs import NVEntry
+
+const APP: *u8 = "NovusNDK"
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn clear_item(item: *u8) {
+    SetNVProtection(APP, item, 0, 1)
+    DeleteNV(APP, item, 1)
+}
+
+fn store_item(item: *u8) -> u16 {
+    var payload: [u8] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    return unsafe { StoreNV(APP, item, (*u8)&var payload[0], 1, 1) }
+}
+
+fn payload_matches(data: *u8) -> bool {
+    if data == null { return false }
+    unsafe {
+        for var index: u32 = 0; index < 10; index++ {
+            if data[index] != (u8)(index + 1) { return false }
+        }
+    }
+    return true
+}
+
+// @covers-ndk function|nonvolatile.library|StoreNV
+// @ndk-side-effects Removes stale test state, stores one exact ten-byte unit under an isolated app/item name, verifies the persisted payload, frees the returned copy, and deletes the item
+@test("nonvolatile.library StoreNV persists exact data")
+pub fn nonvolatile_store() {
+    let item: *u8 = "Store"
+    clear_item(item)
+    let stored = store_item(item)
+    let copy = GetCopyNV(APP, item, 1)
+    let exact = payload_matches(copy)
+    if copy != null { FreeNVData(copy) }
+    let deleted = DeleteNV(APP, item, 1)
+    expect(stored == 0 && exact, "ten-byte payload persists exactly")
+    expect(deleted != 0, "stored item is removed")
+}
+
+// @covers-ndk function|nonvolatile.library|GetCopyNV
+// @ndk-side-effects Proves a missing isolated item returns null, stores one item, obtains an independent exact copy, frees that copy, and deletes the persistent item
+@test("nonvolatile.library GetCopyNV distinguishes missing and stored data")
+pub fn nonvolatile_get_copy() {
+    let item: *u8 = "Copy"
+    clear_item(item)
+    let missing = GetCopyNV(APP, item, 1)
+    let stored = store_item(item)
+    let copy = GetCopyNV(APP, item, 1)
+    let exact = payload_matches(copy)
+    if copy != null { FreeNVData(copy) }
+    let deleted = DeleteNV(APP, item, 1)
+    expect(missing == null, "missing item has no copy")
+    expect(stored == 0 && exact && deleted != 0, "stored item returns an exact owned copy")
+}
+
+// @covers-ndk function|nonvolatile.library|FreeNVData
+// @ndk-side-effects Obtains an exact library-owned data copy, consumes it with FreeNVData, immediately reacquires and verifies reuse of the same freed Exec block, frees that copy, and removes the persistent source item
+@test("nonvolatile.library FreeNVData releases an owned copy")
+pub fn nonvolatile_free_data() {
+    let item: *u8 = "Free"
+    clear_item(item)
+    let stored = store_item(item)
+    let copy = GetCopyNV(APP, item, 1)
+    let address = (u32)copy
+    let allocated = copy != null && payload_matches(copy)
+    if copy != null { FreeNVData(copy) }
+    let reacquired = GetCopyNV(APP, item, 1)
+    let reused = reacquired != null && (u32)reacquired == address && payload_matches(reacquired)
+    if reacquired != null { FreeNVData(reacquired) }
+    let deleted = DeleteNV(APP, item, 1)
+    expect(stored == 0 && allocated, "returned copy occupies Exec-managed memory")
+    expect(reused && deleted != 0, "FreeNVData returns the exact block for immediate reuse and source cleanup")
+}
+
+// @covers-ndk function|nonvolatile.library|DeleteNV
+// @ndk-side-effects Stores an isolated item, deletes it, proves no copy remains, and proves deleting the already-missing item returns false
+@test("nonvolatile.library DeleteNV removes exactly one item")
+pub fn nonvolatile_delete() {
+    let item: *u8 = "Delete"
+    clear_item(item)
+    let stored = store_item(item)
+    let first = DeleteNV(APP, item, 1)
+    let missing = GetCopyNV(APP, item, 1)
+    let second = DeleteNV(APP, item, 1)
+    expect(stored == 0 && first != 0, "existing item deletes successfully")
+    expect(missing == null && second == 0, "deleted item is absent and cannot be deleted twice")
+}
+
+// GetNVInfo describes a hardware nonvolatile medium, and this machine has none.
+// Measured on the live A4000: the call returns a valid owned NVInfo block whose
+// MaxStorage and FreeStorage both read zero, for either killRequesters value.
+// Every other entry point in this suite still works, because the library falls
+// back to the NVDISK location in ENV:Sys/nv_location. So assert the response the
+// machine actually gives - an owned block reporting no medium - rather than a
+// capacity it cannot have. The binding records the same finding under `# Bugs`.
+
+// @covers-ndk function|nonvolatile.library|GetNVInfo
+// @ndk-side-effects Obtains the selected nonvolatile medium's owned information block for both killRequesters values, verifies the capacity invariant holds, and consumes each block with FreeNVData
+@test("nonvolatile.library GetNVInfo reports the absent hardware medium")
+pub fn nonvolatile_info() {
+    let info = GetNVInfo(1)
+    let allocated = info != null
+    let bounded = info != null && (*info).nvi_FreeStorage <= (*info).nvi_MaxStorage
+    let absent = info != null && (*info).nvi_MaxStorage == 0 && (*info).nvi_FreeStorage == 0
+    if info != null { FreeNVData((*u8)info) }
+
+    let permitted = GetNVInfo(0)
+    let permitted_absent = permitted != null && (*permitted).nvi_MaxStorage == 0 &&
+        (*permitted).nvi_FreeStorage == 0
+    if permitted != null { FreeNVData((*u8)permitted) }
+
+    expect(allocated && bounded, "the selected medium returns an owned block with free storage within capacity")
+    expect(absent, "no hardware nonvolatile medium reports any capacity")
+    expect(permitted_absent, "allowing system requesters reports the same absent medium")
+}
+
+// @covers-ndk function|nonvolatile.library|GetNVList
+// @ndk-side-effects Stores one isolated item, obtains its owned MinList, validates the first NVEntry's exact name and one-unit size, frees the list, and deletes the source item
+@test("nonvolatile.library GetNVList enumerates an exact item")
+pub fn nonvolatile_list() {
+    let item: *u8 = "List"
+    clear_item(item)
+    let stored = store_item(item)
+    let list = GetNVList(APP, 1)
+    let entry = if list != null { (*NVEntry)(*list).mlh_Head } else { (*NVEntry)null }
+    let exact = entry != null && c_equals((*entry).nve_Name, "List") && (*entry).nve_Size == 1
+    if list != null { FreeNVData((*u8)list) }
+    let deleted = DeleteNV(APP, item, 1)
+    expect(stored == 0 && exact, "list exposes the exact stored item and ten-byte unit count")
+    expect(deleted != 0, "enumerated item is removed")
+}
+
+// @covers-ndk function|nonvolatile.library|SetNVProtection
+// @ndk-side-effects Stores an isolated item, enables delete protection and observes its NVEntry flag, proves deletion is denied, clears and re-observes the flag, then deletes the item
+@test("nonvolatile.library SetNVProtection controls deletion")
+pub fn nonvolatile_protection() {
+    let item: *u8 = "Protect"
+    clear_item(item)
+    let stored = store_item(item)
+    let protected = SetNVProtection(APP, item, (i32)NVEF_DELETE, 1)
+    let protected_list = GetNVList(APP, 1)
+    let protected_entry = if protected_list != null { (*NVEntry)(*protected_list).mlh_Head } else { (*NVEntry)null }
+    let flag_set = protected_entry != null && ((*protected_entry).nve_Protection & NVEF_DELETE) != 0
+    if protected_list != null { FreeNVData((*u8)protected_list) }
+    let denied = DeleteNV(APP, item, 1) == 0
+    let cleared = SetNVProtection(APP, item, 0, 1)
+    let clear_list = GetNVList(APP, 1)
+    let clear_entry = if clear_list != null { (*NVEntry)(*clear_list).mlh_Head } else { (*NVEntry)null }
+    let flag_clear = clear_entry != null && ((*clear_entry).nve_Protection & NVEF_DELETE) == 0
+    if clear_list != null { FreeNVData((*u8)clear_list) }
+    let deleted = DeleteNV(APP, item, 1)
+    expect(stored == 0 && protected != 0 && flag_set, "delete protection is stored and observable")
+    expect(denied && cleared != 0 && flag_clear && deleted != 0, "protected deletion is denied, then clearing permits cleanup")
+}

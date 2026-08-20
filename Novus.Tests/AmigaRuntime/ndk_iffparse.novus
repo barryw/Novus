@@ -1,0 +1,894 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import IFFCMD_CLEANUP, IFFCMD_INIT, IFFCMD_PURGELCI, PRIMARY_CLIP
+from amiga::raw::iffparse import AllocIFF, AllocLocalItem, CloseClipboard, CloseIFF
+from amiga::raw::iffparse import FreeIFF, FreeLocalItem, GoodID, GoodType, IDtoStr
+from amiga::raw::iffparse import InitIFF, InitIFFasClip, LocalItemData, OpenClipboard, OpenIFF
+from amiga::raw::iffparse import SetLocalItemPurge, StoreLocalItem, FindLocalItem
+from amiga::raw::iffparse import CollectionChunk, CollectionChunks, CurrentChunk
+from amiga::raw::iffparse import EntryHandler, ExitHandler, FindCollection, FindProp, FindPropContext
+from amiga::raw::iffparse import InitIFFasDOS, ParentChunk, ParseIFF, PopChunk, PropChunk, PropChunks
+from amiga::raw::iffparse import PushChunk, ReadChunkBytes, ReadChunkRecords, StopChunk, StopChunks
+from amiga::raw::iffparse import StopOnExit, StoreItemInContext, WriteChunkBytes, WriteChunkRecords
+from amiga::raw::dos import Close, DeleteFile, Open
+from amiga::raw::structs import ClipboardHandle, CollectionItem, ContextNode, Hook, IFFHandle, IFFStreamCmd
+from amiga::raw::structs import LocalContextItem, MinNode, StoredProperty
+
+const ID_TEST: i32 = $54455354
+const ID_DATA: i32 = $44415441
+const ID_LOCAL: i32 = $4E565553
+const ID_FORM_TEST: i32 = $464F524D
+const ID_VERS_TEST: i32 = $56455253
+const ID_ITEM_TEST: i32 = $4954454D
+const ID_BODY_TEST: i32 = $424F4459
+const MODE_READ: i32 = 0
+const MODE_WRITE: i32 = 1
+const DOS_READ: i32 = 1005
+const DOS_NEW: i32 = 1006
+const STORE_ROOT: i32 = 1
+const STORE_TOP: i32 = 2
+const PARSE_SCAN: i32 = 0
+const PARSE_STEP: i32 = 1
+const SIZE_UNKNOWN: i32 = -1
+
+static var STREAM_INIT_COUNT: i32 = 0
+static var STREAM_CLEANUP_COUNT: i32 = 0
+static var STREAM_HANDLE: *IFFHandle = null
+static var PURGE_COUNT: i32 = 0
+static var PURGED_ITEM: *LocalContextItem = null
+static var PURGE_COMMAND: i32 = -1
+static var ENTRY_COUNT: i32 = 0
+static var EXIT_COUNT: i32 = 0
+static var HANDLER_OBJECT: *u8 = null
+static var HANDLER_COMMAND: i32 = -1
+static var HANDLER_RETURN: i32 = 0
+
+amiga fn stream_hook_entry(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 1 if hook == null || object == null || message == null
+    unsafe {
+        let command = (*IFFStreamCmd)message
+        STREAM_HANDLE = (*IFFHandle)object
+        if (*command).sc_Command == IFFCMD_INIT {
+            STREAM_INIT_COUNT++
+            return 0
+        }
+        if (*command).sc_Command == IFFCMD_CLEANUP {
+            STREAM_CLEANUP_COUNT++
+            return 0
+        }
+    }
+    return 1
+}
+
+amiga fn purge_hook_entry(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 1 if hook == null || object == null || message == null
+    unsafe {
+        PURGE_COUNT++
+        PURGED_ITEM = (*LocalContextItem)object
+        let command = (*i32)message
+        PURGE_COMMAND = command[0]
+        FreeLocalItem(PURGED_ITEM)
+    }
+    return 0
+}
+
+@suppress("W0002", "IFF handler return values are signed LONG bit patterns carried through Hook's ULONG return ABI")
+amiga fn entry_hook_entry(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 1 if hook == null || message == null
+    unsafe {
+        let command = (*i32)message
+        ENTRY_COUNT++
+        HANDLER_OBJECT = object
+        HANDLER_COMMAND = command[0]
+    }
+    return (u32)HANDLER_RETURN
+}
+
+@suppress("W0002", "IFF handler return values are signed LONG bit patterns carried through Hook's ULONG return ABI")
+amiga fn exit_hook_entry(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 1 if hook == null || message == null
+    unsafe {
+        let command = (*i32)message
+        EXIT_COUNT++
+        HANDLER_OBJECT = object
+        HANDLER_COMMAND = command[0]
+    }
+    return (u32)HANDLER_RETURN
+}
+
+fn hook(entry: amiga fn(*Hook in a0, *u8 in a2, *u8 in a1) -> u32 in d0) -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: entry,
+        h_SubEntry: entry,
+        h_Data: null,
+    }
+}
+
+fn reset_stream_observation() {
+    STREAM_INIT_COUNT = 0
+    STREAM_CLEANUP_COUNT = 0
+    STREAM_HANDLE = null
+}
+
+fn cstr(value: Str) -> *u8 {
+    return value.as_cstr()
+}
+
+fn fixture_path() -> *u8 {
+    return cstr("RAM:novus_ndk_iffparse")
+}
+
+@suppress("W0002", "Classic DOS BPTR values preserve all 32 bits in IFFHandle.iff_Stream")
+fn create_fixture() -> bool {
+    DeleteFile(fixture_path())
+    let file = Open(fixture_path(), DOS_NEW)
+    let iff = AllocIFF()
+    if file == 0 || iff == null {
+        FreeIFF(iff)
+        if file != 0 { Close(file) }
+        return false
+    }
+
+    var property: [u8] = [1, 2, 3, 4]
+    var first_item: [u8] = [5, 6]
+    var second_item: [u8] = [7, 8]
+    var body: [u8] = [10, 20, 30, 40, 50, 60, 70, 80]
+    unsafe { (*iff).iff_Stream = (u32)file }
+    InitIFFasDOS(iff)
+    var ok = OpenIFF(iff, MODE_WRITE) == 0
+    if ok {
+        ok = PushChunk(iff, ID_TEST, ID_FORM_TEST, SIZE_UNKNOWN) == 0
+    }
+    if ok {
+        ok = PushChunk(iff, 0, ID_VERS_TEST, 4) == 0
+    }
+    if ok {
+        ok = WriteChunkBytes(iff, &var property[0], 4) == 4
+    }
+    if ok {
+        ok = PopChunk(iff) == 0
+    }
+    if ok {
+        ok = PushChunk(iff, 0, ID_ITEM_TEST, 2) == 0
+    }
+    if ok {
+        ok = WriteChunkRecords(iff, &var first_item[0], 1, 2) == 2
+    }
+    if ok {
+        ok = PopChunk(iff) == 0
+    }
+    if ok {
+        ok = PushChunk(iff, 0, ID_ITEM_TEST, 2) == 0
+    }
+    if ok {
+        ok = WriteChunkBytes(iff, &var second_item[0], 2) == 2
+    }
+    if ok {
+        ok = PopChunk(iff) == 0
+    }
+    if ok {
+        ok = PushChunk(iff, 0, ID_BODY_TEST, 8) == 0
+    }
+    if ok {
+        ok = WriteChunkBytes(iff, &var body[0], 8) == 8
+    }
+    if ok {
+        ok = PopChunk(iff) == 0
+    }
+    if ok {
+        ok = PopChunk(iff) == 0
+    }
+    CloseIFF(iff)
+    FreeIFF(iff)
+    Close(file)
+    if !ok { DeleteFile(fixture_path()) }
+    return ok
+}
+
+struct ReadFixture {
+    iff: *IFFHandle,
+    file: i32,
+    opened: bool,
+}
+
+@suppress("W0002", "Classic DOS BPTR values preserve all 32 bits in IFFHandle.iff_Stream")
+fn open_fixture() -> ReadFixture {
+    var result: ReadFixture = @zeroed(ReadFixture)
+    if create_fixture() {
+        result.file = Open(fixture_path(), DOS_READ)
+        result.iff = AllocIFF()
+        if result.file != 0 && result.iff != null {
+            unsafe { (*result.iff).iff_Stream = (u32)result.file }
+            InitIFFasDOS(result.iff)
+            result.opened = OpenIFF(result.iff, MODE_READ) == 0
+        }
+    }
+    return result
+}
+
+fn close_fixture(fixture: *ReadFixture) {
+    unsafe {
+        if (*fixture).opened { CloseIFF((*fixture).iff) }
+        FreeIFF((*fixture).iff)
+        if (*fixture).file != 0 { Close((*fixture).file) }
+        (*fixture).iff = null
+        (*fixture).file = 0
+        (*fixture).opened = false
+    }
+    DeleteFile(fixture_path())
+}
+
+fn stop_at_body(fixture: *ReadFixture) -> bool {
+    unsafe {
+        return false unless (*fixture).opened
+        return false unless StopChunk((*fixture).iff, ID_TEST, ID_BODY_TEST) == 0
+        return ParseIFF((*fixture).iff, PARSE_SCAN) == 0
+    }
+}
+
+// @covers-ndk function|iffparse.library|AllocIFF
+// @ndk-side-effects Allocates the library-owned handle, verifies its public stream/depth state is initialized, and frees it before memory measurement
+@test("iffparse.library AllocIFF creates initialized private state")
+pub fn iffparse_alloc_iff() {
+    let iff = AllocIFF()
+    expect(iff != null, "IFF handle allocates")
+    if iff != null {
+        unsafe {
+            expect((*iff).iff_Stream == 0 && (*iff).iff_Depth == 0,
+                "new handle starts detached at root depth")
+        }
+        FreeIFF(iff)
+    }
+}
+
+// @covers-ndk function|iffparse.library|FreeIFF
+// @ndk-side-effects Releases one library-owned unopened IFFHandle; the whole-process leak gate proves the allocation is returned
+@test("iffparse.library FreeIFF releases an unopened handle")
+pub fn iffparse_free_iff() {
+    let iff = AllocIFF()
+    expect(iff != null, "IFF handle allocates before release")
+    FreeIFF(iff)
+}
+
+// @covers-ndk function|iffparse.library|InitIFF
+// @ndk-side-effects Installs a caller-owned stream Hook, then OpenIFF and CloseIFF deliver exact INIT and CLEANUP commands with the original handle in A2
+@test("iffparse.library InitIFF installs the exact stream hook ABI")
+pub fn iffparse_init_iff() {
+    reset_stream_observation()
+    let iff = AllocIFF()
+    var stream_hook = hook(stream_hook_entry)
+    expect(iff != null, "IFF handle allocates")
+    if iff != null {
+        InitIFF(iff, 0, &var stream_hook)
+        let opened = OpenIFF(iff, MODE_READ)
+        expect(opened == 0, "custom stream initializes")
+        if opened == 0 { CloseIFF(iff) }
+        expect(STREAM_INIT_COUNT == 1 && STREAM_CLEANUP_COUNT == 1,
+            "stream receives one balanced INIT/CLEANUP pair")
+        expect(STREAM_HANDLE == iff, "stream receives the original IFFHandle in A2")
+        FreeIFF(iff)
+    }
+}
+
+// @covers-ndk function|iffparse.library|GoodID
+// @ndk-side-effects Classifies printable chunk IDs including punctuation and rejects IDs containing NUL or DEL control bytes without allocating or mutating state
+@test("iffparse.library GoodID enforces IFF chunk-ID characters")
+pub fn iffparse_good_id() {
+    expect(GoodID(ID_DATA) != 0, "DATA is a valid chunk ID")
+    expect(GoodID($44412F41) != 0, "printable punctuation is valid in chunk IDs")
+    expect(GoodID($44410041) == 0, "an embedded NUL is not a valid chunk ID")
+    expect(GoodID($44417F41) == 0, "DEL is not a valid chunk-ID byte")
+}
+
+// @covers-ndk function|iffparse.library|GoodType
+// @ndk-side-effects Classifies valid uppercase FORM types including the universal FORM identifier and rejects a lowercase type without allocating or mutating state
+@test("iffparse.library GoodType enforces FORM-type restrictions")
+pub fn iffparse_good_type() {
+    expect(GoodType(ID_TEST) != 0, "TEST is a valid FORM type")
+    expect(GoodType($464F524D) != 0, "FORM itself satisfies the type character rules")
+    expect(GoodType($74657374) == 0, "lowercase letters are not valid in FORM types")
+}
+
+// @covers-ndk function|iffparse.library|IDtoStr
+// @ndk-side-effects Writes exactly four big-endian identifier characters and a terminating NUL into caller-owned storage and returns that same storage address
+@test("iffparse.library IDtoStr writes an exact terminated identifier")
+pub fn iffparse_id_to_string() {
+    var output: [u8; 5] = @zeroed([u8; 5])
+    let result = IDtoStr(ID_DATA, &var output[0])
+    let output_pointer = unsafe { (*u8)&var output[0] }
+    expect(result == output_pointer, "IDtoStr returns the caller buffer")
+    expect(output[0] == 68 && output[1] == 65 && output[2] == 84 && output[3] == 65,
+        "identifier bytes are written in display order")
+    expect(output[4] == 0, "identifier is NUL terminated")
+}
+
+// @covers-ndk function|iffparse.library|AllocLocalItem
+// @ndk-side-effects Allocates one local item with exact public type, ID, and identifier fields, then releases the allocation
+@test("iffparse.library AllocLocalItem preserves its identity tuple")
+pub fn iffparse_alloc_local_item() {
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 4)
+    expect(item != null, "local item allocates")
+    if item != null {
+        unsafe {
+            expect((*item).lci_Type == ID_TEST && (*item).lci_ID == ID_DATA && (*item).lci_Ident == ID_LOCAL,
+                "local item stores the exact identity tuple")
+        }
+        FreeLocalItem(item)
+    }
+}
+
+// @covers-ndk function|iffparse.library|LocalItemData
+// @ndk-side-effects Returns the writable payload owned by a local item; an exact longword round-trip proves the storage is distinct and usable before the item frees it
+@test("iffparse.library LocalItemData exposes writable owned payload")
+pub fn iffparse_local_item_data() {
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 4)
+    expect(item != null, "local item allocates")
+    if item != null {
+        let data = LocalItemData(item)
+        expect(data != null, "four-byte payload has an address")
+        if data != null {
+            let words = (*u32)data
+            unsafe { words[0] = $12345678 }
+            let same_words = (*u32)LocalItemData(item)
+            expect(unsafe { same_words[0] == $12345678 },
+                "payload preserves an exact caller-written longword")
+        }
+        FreeLocalItem(item)
+    }
+    expect(LocalItemData(null) == null, "null item has no payload")
+}
+
+// @covers-ndk function|iffparse.library|FreeLocalItem
+// @ndk-side-effects Releases an item and its associated payload allocation; the whole-process leak gate verifies both allocations return
+@test("iffparse.library FreeLocalItem releases item and payload")
+pub fn iffparse_free_local_item() {
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 32)
+    expect(item != null && LocalItemData(item) != null, "item and payload allocate before release")
+    FreeLocalItem(item)
+}
+
+// @covers-ndk function|iffparse.library|StoreLocalItem
+// @ndk-side-effects Transfers one local item into the handle's root context and proves the exact item remains discoverable until FreeIFF purges it
+@test("iffparse.library StoreLocalItem transfers item to root context")
+pub fn iffparse_store_local_item() {
+    let iff = AllocIFF()
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 0)
+    expect(iff != null && item != null, "handle and local item allocate")
+    if iff != null && item != null {
+        let stored = StoreLocalItem(iff, item, STORE_ROOT)
+        expect(stored == 0, "root storage succeeds")
+        expect(FindLocalItem(iff, ID_TEST, ID_DATA, ID_LOCAL) == item,
+            "root lookup returns the exact transferred item")
+        FreeIFF(iff)
+    } else {
+        if item != null { FreeLocalItem(item) }
+        FreeIFF(iff)
+    }
+}
+
+// @covers-ndk function|iffparse.library|FindLocalItem
+// @ndk-side-effects Searches one populated root context without changing ownership and distinguishes exact identity from a mismatched identifier
+@test("iffparse.library FindLocalItem matches the complete identity tuple")
+pub fn iffparse_find_local_item() {
+    let iff = AllocIFF()
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 0)
+    expect(iff != null && item != null, "handle and local item allocate")
+    if iff != null && item != null {
+        expect(StoreLocalItem(iff, item, STORE_ROOT) == 0, "root storage succeeds")
+        expect(FindLocalItem(iff, ID_TEST, ID_DATA, ID_LOCAL) == item,
+            "exact tuple returns the stored item")
+        expect(FindLocalItem(iff, ID_TEST, ID_DATA, ID_LOCAL + 1) == null,
+            "different identifier does not match")
+        FreeIFF(iff)
+    } else {
+        if item != null { FreeLocalItem(item) }
+        FreeIFF(iff)
+    }
+}
+
+// @covers-ndk function|iffparse.library|SetLocalItemPurge
+// @ndk-side-effects Installs a purge Hook on a root-owned item; FreeIFF invokes it once with the exact item in A2 and IFFCMD_PURGELCI in A1, and the Hook performs the required final free
+@test("iffparse.library SetLocalItemPurge installs exact cleanup ABI")
+pub fn iffparse_set_local_item_purge() {
+    PURGE_COUNT = 0
+    PURGED_ITEM = null
+    PURGE_COMMAND = -1
+    let iff = AllocIFF()
+    let item = AllocLocalItem(ID_TEST, ID_DATA, ID_LOCAL, 0)
+    var purge_hook = hook(purge_hook_entry)
+    expect(iff != null && item != null, "handle and local item allocate")
+    if iff != null && item != null {
+        SetLocalItemPurge(item, &var purge_hook)
+        expect(StoreLocalItem(iff, item, STORE_ROOT) == 0, "purge-managed item transfers to root")
+        FreeIFF(iff)
+        expect(PURGE_COUNT == 1 && PURGED_ITEM == item, "purge hook receives the exact item once")
+        expect(PURGE_COMMAND == IFFCMD_PURGELCI, "purge hook receives IFFCMD_PURGELCI")
+    } else {
+        if item != null { FreeLocalItem(item) }
+        FreeIFF(iff)
+    }
+}
+
+// @covers-ndk function|iffparse.library|OpenClipboard
+// @ndk-side-effects Opens disposable clipboard unit 7, verifies its live device request and initialized message ports, then closes it
+@test("iffparse.library OpenClipboard creates a usable device handle")
+pub fn iffparse_open_clipboard() {
+    let clipboard = OpenClipboard(7)
+    expect(clipboard != null, "disposable clipboard unit opens")
+    if clipboard != null {
+        unsafe {
+            expect((*clipboard).cbh_Req.io_Device != null, "clipboard.device is open")
+            expect((*clipboard).cbh_CBport.mp_SigTask != null && (*clipboard).cbh_SatisfyPort.mp_SigTask != null,
+                "both clipboard message ports are initialized")
+        }
+        CloseClipboard(clipboard)
+    }
+}
+
+// @covers-ndk function|iffparse.library|CloseClipboard
+// @ndk-side-effects Closes one disposable clipboard handle, then immediately reopens the same unit to prove the device and signals were released for reuse
+@test("iffparse.library CloseClipboard releases device and ports")
+pub fn iffparse_close_clipboard() {
+    let first = OpenClipboard(7)
+    expect(first != null, "first clipboard handle opens")
+    CloseClipboard(first)
+    let second = OpenClipboard(7)
+    expect(second != null, "same unit reopens after close")
+    CloseClipboard(second)
+}
+
+// @covers-ndk function|iffparse.library|InitIFFasClip
+// @ndk-side-effects Installs clipboard stream handling on a disposable unit; OpenIFF performs a real clipboard transaction and CloseIFF balances it before both handles are freed
+@test("iffparse.library InitIFFasClip opens a real clipboard stream")
+@suppress("W0002", "Classic ClipboardHandle pointers preserve all 32 bits in IFFHandle.iff_Stream")
+pub fn iffparse_init_as_clipboard() {
+    let clipboard = OpenClipboard(7)
+    let iff = AllocIFF()
+    expect(clipboard != null && iff != null, "clipboard and IFF handles allocate")
+    if clipboard != null && iff != null {
+        unsafe { (*iff).iff_Stream = (u32)clipboard }
+        InitIFFasClip(iff)
+        let opened = OpenIFF(iff, MODE_READ)
+        expect(opened == 0, "clipboard stream initializes for reading")
+        if opened == 0 { CloseIFF(iff) }
+        FreeIFF(iff)
+        CloseClipboard(clipboard)
+    } else {
+        FreeIFF(iff)
+        CloseClipboard(clipboard)
+    }
+}
+
+// @covers-ndk function|iffparse.library|InitIFFasDOS
+// @ndk-side-effects Installs the DOS stream Hook on a handle carrying a real RAM: BPTR; OpenIFF then reads the valid FORM header through dos.library before all resources are closed
+@test("iffparse.library InitIFFasDOS reads a real DOS stream")
+pub fn iffparse_init_as_dos() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "DOS-backed IFF stream opens")
+    if fixture.opened {
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0, "BODY stop installs")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == 0, "DOS stream parses to BODY")
+        let current = CurrentChunk(fixture.iff)
+        expect(current != null && unsafe { (*current).cn_ID == ID_BODY_TEST && (*current).cn_Type == ID_TEST },
+            "DOS stream exposes an exact typed child header")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|OpenIFF
+// @ndk-side-effects Opens a real RAM: IFF stream for reading, initializes the parser root context exactly once, and is balanced by CloseIFF during fixture teardown
+@test("iffparse.library OpenIFF initializes a readable parser context")
+pub fn iffparse_open_iff() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        unsafe { expect((*fixture.iff).iff_Depth == 0, "opened parser starts at root depth") }
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|CloseIFF
+// @ndk-side-effects Closes an open DOS parser context and restores public depth to zero while leaving the IFFHandle reusable until FreeIFF
+@test("iffparse.library CloseIFF resets an open parser context")
+pub fn iffparse_close_iff() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(stop_at_body(&var fixture), "FORM and BODY contexts are entered")
+        unsafe { expect((*fixture.iff).iff_Depth == 2, "nested BODY increments depth twice") }
+        CloseIFF(fixture.iff)
+        fixture.opened = false
+        unsafe { expect((*fixture.iff).iff_Depth == 0, "close returns parser to root depth") }
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|PushChunk
+// @ndk-side-effects Pushes every chunk while creating a real DOS-backed FORM; a fresh parser proves the resulting FORM size and exact nested BODY metadata
+@test("iffparse.library PushChunk creates exact nested write contexts")
+pub fn iffparse_push_chunk() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(stop_at_body(&var fixture), "fresh parser reaches generated BODY")
+        let body = CurrentChunk(fixture.iff)
+        let form = ParentChunk(body)
+        expect(body != null && unsafe { (*body).cn_ID == ID_BODY_TEST && (*body).cn_Size == 8 },
+            "generated BODY has exact metadata")
+        expect(form != null && unsafe { (*form).cn_ID == ID_FORM_TEST && (*form).cn_Type == ID_TEST && (*form).cn_Size == 52 },
+            "generated FORM has exact type and computed size")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|PopChunk
+// @ndk-side-effects Pops all writer contexts to finalize their headers; a fresh parser proves the computed FORM length includes each exact child and payload
+@test("iffparse.library PopChunk finalizes exact computed chunk sizes")
+pub fn iffparse_pop_chunk() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(stop_at_body(&var fixture), "fresh parser reaches generated BODY")
+        let form = ParentChunk(CurrentChunk(fixture.iff))
+        expect(form != null && unsafe { (*form).cn_Size == 52 && (*form).cn_Scan == 44 },
+            "finalized FORM size and pre-BODY scan position are exact")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|ParseIFF
+// @ndk-side-effects Scans a real FORM until its registered BODY stop chunk and returns success with BODY current at scan offset zero
+@test("iffparse.library ParseIFF stops at the exact registered chunk")
+pub fn iffparse_parse_iff() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches the registered BODY chunk")
+    if fixture.opened {
+        let current = CurrentChunk(fixture.iff)
+        expect(current != null && unsafe { (*current).cn_ID == ID_BODY_TEST && (*current).cn_Size == 8 && (*current).cn_Scan == 0 },
+            "BODY context is current before payload consumption")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|CurrentChunk
+// @ndk-side-effects Returns the exact live BODY ContextNode after a stop and reflects its scan count changing from zero to one after one byte is read
+@test("iffparse.library CurrentChunk exposes live scan state")
+pub fn iffparse_current_chunk() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        let current = CurrentChunk(fixture.iff)
+        var byte: u8 = 0
+        expect(current != null && ReadChunkBytes(fixture.iff, &var byte, 1) == 1,
+            "one BODY byte reads")
+        expect(byte == 10 && CurrentChunk(fixture.iff) == current && unsafe { (*current).cn_Scan == 1 },
+            "same context reports the exact updated scan count")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|ParentChunk
+// @ndk-side-effects Returns the exact enclosing FORM ContextNode for BODY and returns null for that top-level FORM without mutating either context
+@test("iffparse.library ParentChunk walks one exact nesting level")
+pub fn iffparse_parent_chunk() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        let body = CurrentChunk(fixture.iff)
+        let form = ParentChunk(body)
+        expect(form != null && unsafe { (*form).cn_ID == ID_FORM_TEST && (*form).cn_Type == ID_TEST },
+            "BODY parent is FORM TEST")
+        expect(ParentChunk(form) == null, "top-level FORM has no public parent chunk")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|ReadChunkBytes
+// @ndk-side-effects Reads four exact BODY bytes, then requests beyond the remaining chunk and proves the call truncates to the four bytes still available
+@test("iffparse.library ReadChunkBytes honors chunk boundaries")
+pub fn iffparse_read_chunk_bytes() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        var first: [u8; 4] = @zeroed([u8; 4])
+        var second: [u8; 8] = @zeroed([u8; 8])
+        expect(ReadChunkBytes(fixture.iff, &var first[0], 4) == 4, "first half reads")
+        expect(first[0] == 10 && first[3] == 40, "first half has exact bytes")
+        expect(ReadChunkBytes(fixture.iff, &var second[0], 8) == 4, "oversized read truncates at chunk end")
+        expect(second[0] == 50 && second[3] == 80 && second[4] == 0, "only remaining bytes are written")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|ReadChunkRecords
+// @ndk-side-effects Reads two complete two-byte records from BODY, then proves an oversized four-byte-record request returns only the one complete record remaining
+@test("iffparse.library ReadChunkRecords returns complete records only")
+pub fn iffparse_read_chunk_records() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        var records: [u8; 8] = @zeroed([u8; 8])
+        expect(ReadChunkRecords(fixture.iff, &var records[0], 2, 2) == 2,
+            "two two-byte records read")
+        expect(records[0] == 10 && records[3] == 40, "first records preserve bytes")
+        expect(ReadChunkRecords(fixture.iff, &var records[4], 4, 2) == 1,
+            "only one complete four-byte record remains")
+        expect(records[4] == 50 && records[7] == 80, "remaining record is exact")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|WriteChunkBytes
+// @ndk-side-effects Writes the exact eight-byte BODY payload through a DOS-backed writer; a fresh parser reads all bytes back from the resulting FORM
+@test("iffparse.library WriteChunkBytes persists exact chunk payload")
+pub fn iffparse_write_chunk_bytes() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "writer fixture reopens at BODY")
+    if fixture.opened {
+        var body: [u8; 8] = @zeroed([u8; 8])
+        expect(ReadChunkBytes(fixture.iff, &var body[0], 8) == 8, "entire BODY reads back")
+        expect(body[0] == 10 && body[1] == 20 && body[6] == 70 && body[7] == 80,
+            "written byte payload round-trips exactly")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|WriteChunkRecords
+// @ndk-side-effects Writes two one-byte ITEM records through the record API; collection parsing later recovers the exact two-byte stored chunk
+@test("iffparse.library WriteChunkRecords persists exact record count")
+pub fn iffparse_write_chunk_records() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "writer fixture reopens")
+    if fixture.opened {
+        expect(StopChunk(fixture.iff, ID_TEST, ID_ITEM_TEST) == 0, "ITEM stop installs")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == 0, "parser reaches first ITEM")
+        var item: [u8; 3] = @zeroed([u8; 3])
+        expect(ReadChunkRecords(fixture.iff, &var item[0], 1, 3) == 2,
+            "stored chunk contains exactly two complete records")
+        expect(item[0] == 5 && item[1] == 6 && item[2] == 0, "record bytes round-trip without overwrite")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|StopChunk
+// @ndk-side-effects Installs one BODY entry stop and proves ParseIFF returns with that exact chunk current rather than scanning to EOF
+@test("iffparse.library StopChunk pauses at one exact chunk")
+pub fn iffparse_stop_chunk() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "BODY stop pauses scanning")
+    if fixture.opened {
+        expect(unsafe { (*CurrentChunk(fixture.iff)).cn_ID == ID_BODY_TEST }, "BODY is the paused context")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|StopChunks
+// @ndk-side-effects Installs an array containing ITEM and BODY stops and proves scanning pauses at the first matching ITEM in file order
+@test("iffparse.library StopChunks installs every pair")
+pub fn iffparse_stop_chunks() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        var pairs: [i32] = [ID_TEST, ID_ITEM_TEST, ID_TEST, ID_BODY_TEST]
+        expect(StopChunks(fixture.iff, &var pairs[0], 2) == 0, "two stop pairs install")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == 0, "scan pauses at first matching pair")
+        expect(unsafe { (*CurrentChunk(fixture.iff)).cn_ID == ID_ITEM_TEST }, "first ITEM wins file order")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|PropChunk
+// @ndk-side-effects Stores VERS under FORM property scoping and returns an exact four-byte StoredProperty while BODY is the current context
+@test("iffparse.library PropChunk stores scoped property data")
+pub fn iffparse_prop_chunk() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(PropChunk(fixture.iff, ID_TEST, ID_VERS_TEST) == 0, "VERS property handler installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan reaches BODY after storing VERS")
+        let property = FindProp(fixture.iff, ID_TEST, ID_VERS_TEST)
+        expect(property != null && unsafe { (*property).sp_Size == 4 }, "stored property has exact size")
+        if property != null {
+            let data = unsafe { (*property).sp_Data }
+            expect(data != null && unsafe { data[0] == 1 && data[3] == 4 }, "stored property bytes are exact")
+        }
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|PropChunks
+// @ndk-side-effects Installs the VERS property from a caller-owned type/ID pair array and proves the array remains unchanged while parsing stores the property
+@test("iffparse.library PropChunks consumes complete pair arrays")
+pub fn iffparse_prop_chunks() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        var pairs: [i32] = [ID_TEST, ID_VERS_TEST]
+        expect(PropChunks(fixture.iff, &var pairs[0], 1) == 0, "one property pair installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan stores property before BODY")
+        expect(FindProp(fixture.iff, ID_TEST, ID_VERS_TEST) != null, "pair-selected property is available")
+        expect(pairs[0] == ID_TEST && pairs[1] == ID_VERS_TEST, "declaration array is not mutated")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|FindProp
+// @ndk-side-effects Returns the scoped VERS property for an exact type/ID tuple and null for a mismatched ID without transferring ownership
+@test("iffparse.library FindProp matches exact scoped identity")
+pub fn iffparse_find_prop() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(PropChunk(fixture.iff, ID_TEST, ID_VERS_TEST) == 0, "property handler installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan reaches BODY")
+        expect(FindProp(fixture.iff, ID_TEST, ID_VERS_TEST) != null, "exact property matches")
+        expect(FindProp(fixture.iff, ID_TEST, ID_BODY_TEST) == null, "different property ID does not match")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|FindPropContext
+// @ndk-side-effects Returns the enclosing FORM TEST context while BODY is current and leaves both context nodes unchanged
+@test("iffparse.library FindPropContext returns enclosing FORM scope")
+pub fn iffparse_find_prop_context() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        let context = FindPropContext(fixture.iff)
+        expect(context != null && unsafe { (*context).cn_ID == ID_FORM_TEST && (*context).cn_Type == ID_TEST },
+            "property context is enclosing FORM TEST")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|CollectionChunk
+// @ndk-side-effects Collects both ITEM chunks across one FORM scope and exposes two independently stored payload nodes before teardown frees them
+@test("iffparse.library CollectionChunk stores every matching chunk")
+pub fn iffparse_collection_chunk() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(CollectionChunk(fixture.iff, ID_TEST, ID_ITEM_TEST) == 0, "ITEM collection handler installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan collects both ITEM chunks")
+        let first = FindCollection(fixture.iff, ID_TEST, ID_ITEM_TEST)
+        expect(first != null && unsafe { (*first).ci_Next != null }, "collection contains two nodes")
+        if first != null && unsafe { (*first).ci_Next != null } {
+            let second = unsafe { (*first).ci_Next }
+            expect(unsafe { (*first).ci_Size == 2 && (*second).ci_Size == 2 }, "both nodes preserve exact size")
+            let a = unsafe { (*first).ci_Data[0] }
+            let b = unsafe { (*second).ci_Data[0] }
+            expect((a == 5 && b == 7) || (a == 7 && b == 5), "collection preserves both exact payloads")
+        }
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|CollectionChunks
+// @ndk-side-effects Installs ITEM collection handling from one caller-owned pair and proves parsing stores both chunks without mutating the pair array
+@test("iffparse.library CollectionChunks installs pair arrays")
+pub fn iffparse_collection_chunks() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        var pairs: [i32] = [ID_TEST, ID_ITEM_TEST]
+        expect(CollectionChunks(fixture.iff, &var pairs[0], 1) == 0, "one collection pair installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan collects pair-selected chunks")
+        let collection = FindCollection(fixture.iff, ID_TEST, ID_ITEM_TEST)
+        expect(collection != null && unsafe { (*collection).ci_Next != null }, "two collection nodes are available")
+        expect(pairs[0] == ID_TEST && pairs[1] == ID_ITEM_TEST, "declaration array is not mutated")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|FindCollection
+// @ndk-side-effects Returns the collection head for an exact type/ID tuple and null for a mismatched tuple without changing collection ownership or links
+@test("iffparse.library FindCollection matches exact identity")
+pub fn iffparse_find_collection() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(CollectionChunk(fixture.iff, ID_TEST, ID_ITEM_TEST) == 0, "collection handler installs")
+        expect(StopChunk(fixture.iff, ID_TEST, ID_BODY_TEST) == 0 && ParseIFF(fixture.iff, PARSE_SCAN) == 0,
+            "scan reaches BODY")
+        expect(FindCollection(fixture.iff, ID_TEST, ID_ITEM_TEST) != null, "exact collection matches")
+        expect(FindCollection(fixture.iff, ID_TEST, ID_BODY_TEST) == null, "different collection ID does not match")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|EntryHandler
+// @ndk-side-effects Invokes a custom Hook exactly once on BODY entry with the caller object in A2 and IFFCMD_ENTRY in A1; a separate exit stop returns control
+@test("iffparse.library EntryHandler preserves hook register ABI")
+pub fn iffparse_entry_handler() {
+    ENTRY_COUNT = 0
+    HANDLER_OBJECT = null
+    HANDLER_COMMAND = -1
+    HANDLER_RETURN = 0
+    var marker: u32 = $12345678
+    var entry = hook(entry_hook_entry)
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        let marker_pointer = unsafe { (*u8)&var marker }
+        expect(EntryHandler(fixture.iff, ID_TEST, ID_BODY_TEST, STORE_ROOT, &var entry, marker_pointer) == 0,
+            "entry handler installs")
+        expect(StopOnExit(fixture.iff, ID_TEST, ID_BODY_TEST) == 0, "BODY exit stop installs")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == -2, "exit stop returns IFFERR_EOC at BODY exit")
+        expect(ENTRY_COUNT == 1 && HANDLER_OBJECT == marker_pointer, "entry hook receives exact object once")
+        expect(HANDLER_COMMAND == 5, "entry hook receives IFFCMD_ENTRY")
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|ExitHandler
+// @ndk-side-effects Invokes a custom Hook exactly once before BODY exits with the caller object in A2 and IFFCMD_EXIT in A1; IFF_RETURN2CLIENT pauses parsing normally
+@test("iffparse.library ExitHandler preserves hook register ABI")
+pub fn iffparse_exit_handler() {
+    EXIT_COUNT = 0
+    HANDLER_OBJECT = null
+    HANDLER_COMMAND = -1
+    HANDLER_RETURN = -12
+    var marker: u32 = $89ABCDEF
+    var exit = hook(exit_hook_entry)
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        let marker_pointer = unsafe { (*u8)&var marker }
+        expect(ExitHandler(fixture.iff, ID_TEST, ID_BODY_TEST, STORE_ROOT, &var exit, marker_pointer) == 0,
+            "exit handler installs")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == 0, "handler returns control without an error")
+        expect(EXIT_COUNT == 1 && HANDLER_OBJECT == marker_pointer, "exit hook receives exact object once")
+        expect(HANDLER_COMMAND == 6, "exit hook receives IFFCMD_EXIT")
+    }
+    HANDLER_RETURN = 0
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|StopOnExit
+// @ndk-side-effects Installs one BODY exit stop, returns IFFERR_EOC with the exact BODY context still current, and proves the payload remains caller-readable at that pause boundary
+@test("iffparse.library StopOnExit pauses after complete chunk consumption")
+pub fn iffparse_stop_on_exit() {
+    var fixture = open_fixture()
+    expect(fixture.opened, "valid FORM stream opens")
+    if fixture.opened {
+        expect(StopOnExit(fixture.iff, ID_TEST, ID_BODY_TEST) == 0, "BODY exit stop installs")
+        expect(ParseIFF(fixture.iff, PARSE_SCAN) == -2, "scan returns IFFERR_EOC at BODY exit")
+        let current = CurrentChunk(fixture.iff)
+        expect(current != null, "a context remains current at the exit boundary")
+        if current != null {
+            expect(unsafe { (*current).cn_ID == ID_BODY_TEST }, "BODY remains current at its exit boundary")
+            expect(unsafe { (*current).cn_Size == 8 }, "BODY preserves its exact declared size")
+            var byte: u8 = 0
+            expect(ReadChunkBytes(fixture.iff, &var byte, 1) == 1 && byte == 10,
+                "BODY payload remains caller-readable from its first byte")
+        }
+    }
+    close_fixture(&var fixture)
+}
+
+// @covers-ndk function|iffparse.library|StoreItemInContext
+// @ndk-side-effects Transfers a local item into the exact current BODY ContextNode, makes it discoverable immediately, and lets parser teardown purge it with that context
+@test("iffparse.library StoreItemInContext targets an exact context node")
+pub fn iffparse_store_item_in_context() {
+    var fixture = open_fixture()
+    expect(stop_at_body(&var fixture), "parser reaches BODY")
+    if fixture.opened {
+        let context = CurrentChunk(fixture.iff)
+        let item = AllocLocalItem(ID_TEST, ID_BODY_TEST, ID_LOCAL, 0)
+        expect(context != null && item != null, "current context and local item exist")
+        if context != null && item != null {
+            StoreItemInContext(fixture.iff, item, context)
+            expect(FindLocalItem(fixture.iff, ID_TEST, ID_BODY_TEST, ID_LOCAL) == item,
+                "exact context exposes transferred item")
+        } else if item != null {
+            FreeLocalItem(item)
+        }
+    }
+    close_fixture(&var fixture)
+}

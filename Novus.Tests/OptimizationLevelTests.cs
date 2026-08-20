@@ -88,6 +88,26 @@ public class OptimizationLevelTests
     }
 
     [Fact]
+    public void GraphicsA5InlineCallsPreserveTheForcedFramePointer()
+    {
+        var root = PathUtility.FindProjectRoot()
+            ?? throw new InvalidOperationException("Novus project root not found");
+        var header = File.ReadAllText(Path.Combine(
+            root, "vendor", "vbcc", "targets", "m68k-amigaos",
+            "include", "inline", "graphics_protos.h"));
+
+        foreach (var function in new[] { "LockLayerRom", "UnlockLayerRom", "AttemptLockLayerRom" })
+        {
+            var declaration = header.Split('\n').Single(line => line.StartsWith($"VOID __{function}(") ||
+                line.StartsWith($"BOOL __{function}("));
+            Assert.Contains("__reg(\"a0\") struct Layer * layer", declaration);
+            Assert.Contains("move.l\\ta5,-(sp)\\n\\tmove.l\\ta0,a5", declaration);
+            Assert.Contains("move.l\\t(sp)+,a5", declaration);
+            Assert.DoesNotContain("__reg(\"a5\")", declaration);
+        }
+    }
+
+    [Fact]
     public void TestCommandDefaultsMatchBuildMode()
     {
         Assert.Equal(0, new TestOptions().GetOptimizationLevel());

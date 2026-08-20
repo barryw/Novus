@@ -14,27 +14,334 @@ from amiga::raw::structs import *
 /// Runtime-managed mathffp.library base used by the raw call stubs.
 extern var MathBase: *Library
 
+/// Convert fast floating point number to integer.
+///
+/// Accepts a floating point number and returns the truncated
+/// integer portion of said number.
+///
+/// # Synopsis
+///
+/// inum = SPFix(fnum)
+/// D0	     D0
+///
+/// int SPFix(float fnum);
+///
+/// # Arguments
+///
+/// * fnum 	- floating point number.
+///
+/// # Returns
+///
+/// inum 	- signed integer number.
+///
+/// # Bugs
+///
+/// None.
 @library("mathffp.library")
 extern pub fn SPFix(parm: u32) -> i32
+/// Convert integer number to fast floating point.
+///
+/// Accepts an integer and returns the converted
+/// floating point result of said number.
+///
+/// # Synopsis
+///
+/// fnum = SPFlt(inum)
+/// D0	     D0
+///
+/// float SPFlt(inet inum);
+///
+/// # Arguments
+///
+/// * inum 	- signed integer number
+///
+/// # Returns
+///
+/// fnum 	- floating point number
+///
+/// # Bugs
+///
+/// None.
 @library("mathffp.library")
 extern pub fn SPFlt(integer: i32) -> u32
+/// Compares two floating point numbers.
+///
+/// Accepts two floating point numbers and returns the condition
+/// codes set to indicate the result of said comparison.  Additionally,
+/// the integer functional result is returned to indicate the result
+/// of said comparison.
+///
+/// # Synopsis
+///
+/// result = SPCmp(fnum1, fnum2)
+/// D0               D0     D1
+///
+/// int SPCmp(float fnum1, float fnum2);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number. fnum2 	- floating point number.
+///
+/// # Returns
+///
+/// Condition codes set to reflect the following branches:
+/// GT - fnum2 >  fnum1
+/// GE - fnum2 >= fnum1
+/// EQ - fnum2 =  fnum1
+/// NE - fnum2 != fnum1
+/// LT - fnum2 <  fnum1
+/// LE - fnum2 <= fnum1
+/// Integer functional result as:
+/// +1 => fnum1 > fnum2
+/// -1 => fnum1 < fnum2
+/// 0 => fnum1 = fnum2
+///
+/// # Bugs
+///
+/// None.
 @library("mathffp.library")
 extern pub fn SPCmp(leftParm: u32, rightParm: u32) -> i32
+/// Compares a float against zero (0.0).
+///
+/// Accepts a floating point number and returns the condition
+/// codes set to indicate the result of a comparison against
+/// the value of zero (0.0).  Additionally, the integer functional
+/// result is returned.
+///
+/// # Synopsis
+///
+/// result = SPTst(fnum)
+/// D0	       D1
+///
+/// int SPTst(float fnum);
+///
+/// # Arguments
+///
+/// * fnum 	- floating point number.
+///
+/// # Returns
+///
+/// Condition codes set to reflect the following branches:
+/// EQ - fnum =  0.0
+/// NE - fnum != 0.0
+/// PL - fnum >= 0.0
+/// MI - fnum <  0.0
+/// Integer functional result as:
+/// +1 => fnum > 0.0
+/// -1 => fnum < 0.0
+/// 0 => fnum = 0.0
+///
+/// # Bugs
+///
+/// None.
 @library("mathffp.library")
 extern pub fn SPTst(parm: u32) -> i32
+/// Obtain the absolute value of the fast floating point number.
+///
+/// Accepts a floating point number and returns the absolute value of
+/// said number.
+///
+/// # Synopsis
+///
+/// fnum2 = SPAbs(fnum1)
+/// D0	      D0
+///
+/// float SPAbs(float fnum1);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number.
+///
+/// # Returns
+///
+/// fnum2 	- floating point absolute value of fnum1.
+///
+/// # Bugs
+///
+/// None
 @library("mathffp.library")
 extern pub fn SPAbs(parm: u32) -> u32
+/// Negate the supplied floating point number.
+///
+/// Accepts a floating point number and returns the value
+/// of said number after having been subtracted from 0.0.
+///
+/// # Synopsis
+///
+/// fnum2 = SPNeg(fnum1)
+/// D0	      D0
+///
+/// float SPNeg(float fnum1);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number.
+///
+/// # Returns
+///
+/// fnum2 	- floating point negation of fnum1.
+///
+/// # Bugs
+///
+/// None
 @library("mathffp.library")
 extern pub fn SPNeg(parm: u32) -> u32
+/// Add two floating point numbers.
+///
+/// Accepts two floating point numbers and returns the arithmetic
+/// sum of said numbers.
+///
+/// # Synopsis
+///
+/// fnum3 = SPAdd(fnum1, fnum2)
+/// D0	      D1     D0
+///
+/// float SPAdd(float fnum1, float fnum2);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number to add. fnum2 	- other floating point number to add.
+///
+/// # Returns
+///
+/// fnum3 	- floating point number, sum of fnum1 and fnum2.
+///
+/// # Bugs
+///
+/// None.
 @library("mathffp.library")
 extern pub fn SPAdd(leftParm: u32, rightParm: u32) -> u32
+/// Subtract two floating point numbers.
+///
+/// Accepts two floating point numbers and returns the arithmetic
+/// subtraction of said numbers.
+///
+/// # Synopsis
+///
+/// fnum3 = SPSub(fnum1, fnum2)
+/// D0	      D1     D0
+///
+/// float SPSub(float fnum1, float fnum2);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number. fnum2 	- floating point number.
+///
+/// # Returns
+///
+/// fnum3 	- floating point number.
+///
+/// # Bugs
+///
+/// None.
+/// The NDK register ABI is intentionally reversed: this returns `minuend - subtrahend`.
 @library("mathffp.library")
-extern pub fn SPSub(leftParm: u32, rightParm: u32) -> u32
+extern pub fn SPSub(subtrahend: u32, minuend: u32) -> u32
+/// Multiply two floating point numbers.
+///
+/// Accepts two floating point numbers and returns the arithmetic
+/// multiplication of said numbers.
+///
+/// # Synopsis
+///
+/// fnum3 = SPMul(fnum1, fnum2)
+/// D0	      D1     D0
+///
+/// float SPMul(float fnum1, float fnum2);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number fnum2 	- floating point number
+///
+/// # Returns
+///
+/// fnum3 	- floating point number
+///
+/// # Bugs
+///
+/// None
 @library("mathffp.library")
 extern pub fn SPMul(leftParm: u32, rightParm: u32) -> u32
+/// Divide two floating point numbers.
+///
+/// Accepts two floating point numbers and returns the arithmetic
+/// division of said numbers.
+///
+/// # Synopsis
+///
+/// fnum3 = SPDiv(fnum1, fnum2)
+/// D0	      D1     D0
+///
+/// float SPDiv(float fnum1, float fnum2);
+///
+/// # Arguments
+///
+/// * fnum1 	- floating point number. fnum2	- floating point number.
+///
+/// # Returns
+///
+/// fnum3 	- floating point number (fnum3 = fnum2/fnum1).
+///
+/// # Bugs
+///
+/// None.
+/// The NDK register ABI is intentionally reversed: this returns `dividend / divisor`.
 @library("mathffp.library")
-extern pub fn SPDiv(leftParm: u32, rightParm: u32) -> u32
+extern pub fn SPDiv(divisor: u32, dividend: u32) -> u32
+/// compute Floor function of a number.
+///
+/// Calculate the largest integer less than or equal to x and return it.
+///
+/// # Synopsis
+///
+/// x = SPFloor(y)
+/// D0 	    D0
+///
+/// float SPFloor(float y);
+///
+/// # Arguments
+///
+/// * y 	- Motorola Fast Floating Point number.
+///
+/// # Returns
+///
+/// x 	- Motorola Fast Floating Point number.
+///
+/// # Bugs
+///
+/// None.
+///
+/// # See Also
+///
+/// SPCeil()
 @library("mathffp.library")
 extern pub fn SPFloor(parm: u32) -> u32
+/// Compute Ceil function of a number.
+///
+/// Calculate the least integer greater than or equal to x and return it.
+/// This identity is true.  Ceil(x) = -Floor(-x).
+///
+/// # Synopsis
+///
+/// x = SPCeil(y)
+/// D0         D0
+///
+/// float SPCeil(float y);
+///
+/// # Arguments
+///
+/// * y 	- Motorola Fast Floating Point Format Number.
+///
+/// # Returns
+///
+/// x 	- Motorola Fast Floating Point Format Number.
+///
+/// # Bugs
+///
+/// None.
+///
+/// # See Also
+///
+/// SPFloor()
 @library("mathffp.library")
 extern pub fn SPCeil(parm: u32) -> u32

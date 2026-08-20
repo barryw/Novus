@@ -1,0 +1,420 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import HIRES, LORES_KEY, MEMF_CLEAR, MEMF_PUBLIC, MENUNULL, NOSUB, OSCAN_TEXT, SPRITES, WBENCHSCREEN
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import AllocRemember, CurrentTime, DoubleClick, FreeRemember, FreeScreenDrawInfo, GetDefaultPubScreen, GetDefPrefs, GetPrefs, GetScreenData, GetScreenDrawInfo, InitRequester, IntuiTextLength, ItemAddress, LockIBase, LockPubScreen, LockPubScreenList, NextPubScreen, OpenWorkBench, PointInImage, QueryOverscan, SetDefaultPubScreen, SetPrefs, UnlockIBase, UnlockPubScreen, UnlockPubScreenList, ViewAddress
+from amiga::raw::structs import DrawInfo, Image, IntuiText, Menu, MenuItem, Preferences, Rectangle, Remember, Requester, Screen
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+const IBASE_WORK: u32 = 1 << 18
+
+static var IBASE_ATTEMPTED: bool = false
+static var IBASE_ACQUIRED: bool = false
+
+fn ibase_tick(_state: *u8) -> bool {
+    IBASE_ATTEMPTED = true
+    let key = LockIBase(0)
+    IBASE_ACQUIRED = true
+    UnlockIBase(key)
+    return false
+}
+
+fn ibase_worker() -> i32 {
+    return run_thread_loop(IBASE_WORK, null, ibase_tick)
+}
+
+fn prove_ibase_exclusion() -> bool {
+    IBASE_ATTEMPTED = false
+    IBASE_ACQUIRED = false
+    match spawn_thread("IBase contender", ibase_worker, 4096) {
+        Result::Ok(var worker) => {
+            let key = LockIBase(0)
+            let started = worker.signal(IBASE_WORK)
+            for var spin: u32 = 0; spin < 1000000 && !IBASE_ATTEMPTED; spin++ {}
+            let blocked = started && IBASE_ATTEMPTED && !IBASE_ACQUIRED
+            UnlockIBase(key)
+            worker.wait()
+            return blocked && IBASE_ACQUIRED
+        },
+        Result::Err(_) => return false,
+    }
+}
+
+fn c_equals(left: *u8, right: *u8) -> bool {
+    return false if left == null || right == null
+    var index: u32 = 0
+    forever {
+        let a = unsafe { left[index] }
+        let b = unsafe { right[index] }
+        return false if a != b
+        return true if a == 0
+        index++
+    }
+}
+
+// @covers-ndk function|intuition.library|CurrentTime
+// @ndk-side-effects Samples Intuition's clock across a real vertical blank and verifies normalized microseconds and monotonic time
+@test("intuition.library CurrentTime returns normalized monotonic time")
+pub fn intuition_current_time() {
+    var first_seconds: u32 = 0
+    var first_micros: u32 = 0
+    var next_seconds: u32 = 0
+    var next_micros: u32 = 0
+    CurrentTime(&var first_seconds, &var first_micros)
+    WaitTOF()
+    CurrentTime(&var next_seconds, &var next_micros)
+    let monotonic = next_seconds > first_seconds ||
+        (next_seconds == first_seconds && next_micros >= first_micros)
+    expect(first_micros < 1000000 && next_micros < 1000000 && monotonic,
+        "CurrentTime returns normalized values that do not move backwards")
+}
+
+// @covers-ndk function|intuition.library|DoubleClick
+// @ndk-side-effects Compares identical timestamps and timestamps ten seconds apart against the user's live double-click preference
+@test("intuition.library DoubleClick applies the configured interval")
+pub fn intuition_double_click() {
+    expect(DoubleClick(100, 250000, 100, 250000) != 0,
+        "identical timestamps are inside the double-click interval")
+    expect(DoubleClick(100, 250000, 110, 250000) == 0,
+        "timestamps ten seconds apart are outside the double-click interval")
+}
+
+// @covers-ndk function|intuition.library|InitRequester
+// @ndk-side-effects Poisons representative scalar and pointer fields, initializes the requester, and verifies Intuition cleared them
+@test("intuition.library InitRequester clears requester state")
+pub fn intuition_init_requester() {
+    var requester: Requester = @zeroed(Requester)
+    requester.Width = 123
+    requester.Flags = 65535
+    requester.BackFill = 7
+    requester.OlderRequest = &var requester
+    InitRequester(&var requester)
+    expect(requester.Width == 0 && requester.Flags == 0 && requester.BackFill == 0 &&
+        requester.OlderRequest == null && requester.ReqLayer == null,
+        "InitRequester resets both public state and private linkage")
+}
+
+// @covers-ndk function|intuition.library|ItemAddress
+// @ndk-side-effects Builds a one-menu one-item strip and verifies exact packed selection and MENUNULL lookup results
+@test("intuition.library ItemAddress resolves packed menu selections")
+@suppress("W0002", "NOSUB and MENUNULL are defined 16-bit menu selector values")
+pub fn intuition_item_address() {
+    var item: MenuItem = @zeroed(MenuItem)
+    var menu: Menu = @zeroed(Menu)
+    let item_ptr: *MenuItem = &var item
+    menu.FirstItem = item_ptr
+    let selected = ItemAddress(&var menu, (u16)(NOSUB << 11))
+    let absent = ItemAddress(&var menu, (u16)MENUNULL)
+    expect(selected == item_ptr && absent == null,
+        "packed menu zero/item zero selects the exact item and MENUNULL selects none")
+}
+
+// @covers-ndk function|intuition.library|IntuiTextLength
+// @ndk-side-effects Measures visible and empty IntuiText using the screen default font
+@test("intuition.library IntuiTextLength measures rendered text")
+pub fn intuition_text_length() {
+    var text: IntuiText = @zeroed(IntuiText)
+    text.IText = "Novus"
+    let visible = IntuiTextLength(&var text)
+    text.IText = ""
+    let empty = IntuiTextLength(&var text)
+    expect(visible > 0 && empty == 0, "visible text has width while empty text has none")
+}
+
+// @covers-ndk function|intuition.library|PointInImage
+// @ndk-side-effects Tests one point inside and one point outside a positioned standard image plus the documented NULL-image result
+@test("intuition.library PointInImage honors image bounds")
+pub fn intuition_point_in_image() {
+    var image: Image = @zeroed(Image)
+    image.LeftEdge = 10
+    image.TopEdge = 20
+    image.Width = 5
+    image.Height = 4
+    let inside = ((u32)12 << 16) | 22
+    let outside = ((u32)9 << 16) | 22
+    expect(PointInImage(inside, &var image) != 0 && PointInImage(outside, &var image) == 0,
+        "standard image containment includes only its positioned rectangle")
+    expect(PointInImage(inside, null) != 0, "NULL image returns the documented true result")
+}
+
+// @covers-ndk function|intuition.library|AllocRemember
+// @ndk-side-effects Allocates two cleared public-memory blocks under one Remember key, validates node linkage, sizes, addresses, and every cleared byte, then releases the complete list
+@test("intuition.library AllocRemember builds a valid cleared allocation list")
+pub fn intuition_alloc_remember() {
+    var key: *Remember = null
+    let first = AllocRemember(&var key, 32, MEMF_PUBLIC | MEMF_CLEAR)
+    let second = AllocRemember(&var key, 48, MEMF_PUBLIC | MEMF_CLEAR)
+    var cleared = first != null && second != null && key != null && key.NextRemember != null
+    if cleared {
+        cleared = key.Memory == second && key.RememberSize == 48 &&
+            key.NextRemember.Memory == first && key.NextRemember.RememberSize == 32
+        for var index: u32 = 0; index < 32 && cleared; index++ {
+            cleared = unsafe { first[index] == 0 }
+        }
+        for var second_index: u32 = 0; second_index < 48 && cleared; second_index++ {
+            cleared = unsafe { second[second_index] == 0 }
+        }
+    }
+    FreeRemember(&var key, 1)
+    expect(cleared, "Remember list owns both exact cleared allocations in newest-first order")
+}
+
+// @covers-ndk function|intuition.library|FreeRemember
+// @ndk-side-effects Allocates and dirties one remembered block, frees the node and payload with ReallyForget, then proves a fresh Remember list can allocate and be freed without retained memory
+@test("intuition.library FreeRemember releases nodes and payloads")
+pub fn intuition_free_remember() {
+    var first_key: *Remember = null
+    let first = AllocRemember(&var first_key, 64, MEMF_PUBLIC)
+    if first != null {
+        unsafe {
+            first[0] = 90
+            first[63] = 165
+        }
+    }
+    FreeRemember(&var first_key, 1)
+    var second_key: *Remember = null
+    let second = AllocRemember(&var second_key, 64, MEMF_PUBLIC | MEMF_CLEAR)
+    let reusable = second != null && second_key != null && unsafe { second[0] == 0 && second[63] == 0 }
+    FreeRemember(&var second_key, 1)
+    expect(first != null && reusable, "freed Remember storage is followed by a clean independent allocation")
+}
+
+// @covers-ndk function|intuition.library|GetDefPrefs
+// @ndk-side-effects Copies the complete built-in Intuition Preferences into caller storage, verifies the returned pointer identity, and validates normalized timing fields and nonzero pointer cadence
+@test("intuition.library GetDefPrefs copies normalized defaults")
+@suppress("W0002", "Preferences size fits GetDefPrefs's signed WORD parameter")
+pub fn intuition_get_default_prefs() {
+    var preferences: Preferences = @zeroed(Preferences)
+    let pointer: *Preferences = &var preferences
+    let returned = GetDefPrefs(pointer, (i16)@sizeof(Preferences))
+    expect(returned == pointer, "GetDefPrefs returns the caller's exact buffer")
+    expect(preferences.DoubleClick.tv_micro < 1000000 &&
+        preferences.KeyRptSpeed.tv_micro < 1000000 &&
+        preferences.KeyRptDelay.tv_micro < 1000000 && preferences.PointerTicks > 0,
+        "default preference timing fields are normalized and usable")
+}
+
+// @covers-ndk function|intuition.library|GetPrefs
+// @ndk-side-effects Copies the complete live Intuition Preferences twice into independent caller storage, verifies both returned pointer identities, and proves stable normalized live timing fields
+@test("intuition.library GetPrefs copies the live timing contract")
+@suppress("W0002", "Preferences size fits GetPrefs's signed WORD parameter")
+pub fn intuition_get_prefs() {
+    var preferences: Preferences = @zeroed(Preferences)
+    let pointer: *Preferences = &var preferences
+    let returned = GetPrefs(pointer, (i16)@sizeof(Preferences))
+    var again: Preferences = @zeroed(Preferences)
+    let again_pointer: *Preferences = &var again
+    let again_returned = GetPrefs(again_pointer, (i16)@sizeof(Preferences))
+    expect(returned == pointer && again_returned == again_pointer &&
+        preferences.DoubleClick.tv_micro < 1000000,
+        "GetPrefs returns normalized live data in each caller buffer")
+    expect(again.DoubleClick.tv_secs == preferences.DoubleClick.tv_secs &&
+        again.DoubleClick.tv_micro == preferences.DoubleClick.tv_micro &&
+        again.PointerTicks == preferences.PointerTicks,
+        "successive live preference copies preserve timing values")
+}
+
+// @covers-ndk function|intuition.library|SetPrefs
+// @ndk-side-effects Snapshots all live Preferences, changes only the double-click microseconds without broadcasting, verifies the exact live change, restores the complete snapshot, and verifies exact restoration
+@test("intuition.library SetPrefs applies and restores a live preference")
+@suppress("W0002", "Preferences size fits SetPrefs and GetPrefs ABI parameters")
+pub fn intuition_set_prefs() {
+    var original: Preferences = @zeroed(Preferences)
+    GetPrefs(&var original, (i16)@sizeof(Preferences))
+    var changed: Preferences = @zeroed(Preferences)
+    GetPrefs(&var changed, (i16)@sizeof(Preferences))
+    changed.DoubleClick.tv_secs = 0
+    changed.DoubleClick.tv_micro = if original.DoubleClick.tv_micro == 123456 { 234567 } else { 123456 }
+    let changed_pointer: *Preferences = &var changed
+    let set_result = SetPrefs(changed_pointer, (i32)@sizeof(Preferences), 0)
+    var observed: Preferences = @zeroed(Preferences)
+    GetPrefs(&var observed, (i16)@sizeof(Preferences))
+    let applied = observed.DoubleClick.tv_secs == 0 &&
+        observed.DoubleClick.tv_micro == changed.DoubleClick.tv_micro
+    SetPrefs(&var original, (i32)@sizeof(Preferences), 0)
+    var restored: Preferences = @zeroed(Preferences)
+    GetPrefs(&var restored, (i16)@sizeof(Preferences))
+    expect(set_result == changed_pointer && applied,
+        "SetPrefs returns the caller buffer and applies the changed double-click interval")
+    expect(restored.DoubleClick.tv_secs == original.DoubleClick.tv_secs &&
+        restored.DoubleClick.tv_micro == original.DoubleClick.tv_micro,
+        "the complete live preference snapshot is restored")
+}
+
+// @covers-ndk function|intuition.library|QueryOverscan
+// @ndk-side-effects Queries the live low-resolution text overscan preference and validates its documented origin and positive extent
+@test("intuition.library QueryOverscan returns usable text dimensions")
+@suppress("W0002", "OSCAN_TEXT is a defined WORD selector")
+pub fn intuition_query_overscan() {
+    var rectangle: Rectangle = @zeroed(Rectangle)
+    let found = QueryOverscan(LORES_KEY, &var rectangle, (i16)OSCAN_TEXT)
+    expect(found != 0 && rectangle.MinX == 0 && rectangle.MinY == 0 &&
+        rectangle.MaxX >= 319 && rectangle.MaxY > 0,
+        "low-resolution text overscan starts at zero and spans a visible display")
+}
+
+// @covers-ndk function|intuition.library|LockIBase
+// @ndk-side-effects Holds Intuition's lock zero while a second Exec task attempts the same lock, proves that task remains blocked, then releases the exact token and observes the task acquire and release it
+@test("intuition.library LockIBase excludes another task")
+pub fn intuition_lock_ibase() {
+    expect(prove_ibase_exclusion(), "a second task cannot acquire IBase until the owner unlocks it")
+}
+
+// @covers-ndk function|intuition.library|UnlockIBase
+// @ndk-side-effects Releases Intuition's exact lock token while another Exec task is blocked and proves the waiting task then acquires and releases the lock
+@test("intuition.library UnlockIBase releases a waiting task")
+pub fn intuition_unlock_ibase() {
+    expect(prove_ibase_exclusion(), "unlock transfers IBase availability to a waiting task")
+}
+
+// @covers-ndk function|intuition.library|OpenWorkBench
+// @ndk-side-effects Ensures the Workbench screen is open and verifies it can immediately be locked by its public name
+@test("intuition.library OpenWorkBench exposes the Workbench public screen")
+pub fn intuition_open_workbench() {
+    let opened = OpenWorkBench()
+    let screen = LockPubScreen("Workbench")
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(opened != 0 && screen != null, "OpenWorkBench returns success and exposes its public screen")
+}
+
+// @covers-ndk function|intuition.library|LockPubScreen
+// @ndk-side-effects Locks the named Workbench public screen, validates its dimensions, and releases the exact returned screen pointer
+@test("intuition.library LockPubScreen protects a live public screen")
+pub fn intuition_lock_pub_screen() {
+    let screen = LockPubScreen("Workbench")
+    let valid = screen != null && screen.Width > 0 && screen.Height > 0
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(valid, "named public-screen lock exposes stable screen geometry")
+}
+
+// @covers-ndk function|intuition.library|UnlockPubScreen
+// @ndk-side-effects Releases one Workbench public-screen lock then proves a fresh lock can be acquired and released
+@test("intuition.library UnlockPubScreen releases the public-screen lock")
+pub fn intuition_unlock_pub_screen() {
+    let first = LockPubScreen("Workbench")
+    if first != null { UnlockPubScreen(null, first) }
+    let second = LockPubScreen("Workbench")
+    if second != null { UnlockPubScreen(null, second) }
+    expect(first != null && second != null, "unlock permits a fresh named public-screen lock")
+}
+
+// @covers-ndk function|intuition.library|LockPubScreenList
+// @ndk-side-effects Locks the global public-screen list, verifies its Exec list sentinels are initialized, and immediately unlocks it
+@test("intuition.library LockPubScreenList exposes an initialized list")
+pub fn intuition_lock_pub_screen_list() {
+    let screens = LockPubScreenList()
+    let initialized = screens != null && screens.lh_Head != null && screens.lh_TailPred != null
+    UnlockPubScreenList()
+    expect(initialized, "locked public-screen list has initialized sentinels")
+}
+
+// @covers-ndk function|intuition.library|UnlockPubScreenList
+// @ndk-side-effects Unlocks the public-screen list and proves it can be locked and unlocked a second time
+@test("intuition.library UnlockPubScreenList restores list availability")
+pub fn intuition_unlock_pub_screen_list() {
+    let first = LockPubScreenList()
+    UnlockPubScreenList()
+    let second = LockPubScreenList()
+    UnlockPubScreenList()
+    expect(first != null && second != null, "unlock permits a subsequent public-screen list lock")
+}
+
+// @covers-ndk function|intuition.library|NextPubScreen
+// @ndk-side-effects Ensures Workbench exists, asks Intuition for the next public screen, and verifies it returns the caller's populated buffer
+@test("intuition.library NextPubScreen returns a lockable screen name")
+pub fn intuition_next_pub_screen() {
+    OpenWorkBench()
+    var name: [u8; 140] = @zeroed([u8; 140])
+    let name_ptr: *u8 = &var name[0]
+    let result = NextPubScreen(null, name_ptr)
+    let screen = if result != null { LockPubScreen(name_ptr) } else { (*Screen)null }
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(result == name_ptr && name[0] != 0 && screen != null,
+        "returned public-screen name identifies a screen that can be locked")
+}
+
+// @covers-ndk function|intuition.library|GetDefaultPubScreen
+// @ndk-side-effects Reads the current default public-screen name into the documented maximum-sized caller buffer and verifies the name identifies a lockable screen
+@test("intuition.library GetDefaultPubScreen names a live public screen")
+pub fn intuition_get_default_pub_screen() {
+    var name: [u8; 140] = @zeroed([u8; 140])
+    GetDefaultPubScreen(&var name[0])
+    let screen = LockPubScreen(&var name[0])
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(name[0] != 0 && screen != null, "default public-screen name identifies a lockable screen")
+}
+
+// @covers-ndk function|intuition.library|SetDefaultPubScreen
+// @ndk-side-effects Saves the current default name, selects Workbench through NULL, verifies the exact reported name, then restores the saved default
+@test("intuition.library SetDefaultPubScreen changes and restores the default")
+pub fn intuition_set_default_pub_screen() {
+    var original: [u8; 140] = @zeroed([u8; 140])
+    var changed: [u8; 140] = @zeroed([u8; 140])
+    GetDefaultPubScreen(&var original[0])
+    SetDefaultPubScreen(null)
+    GetDefaultPubScreen(&var changed[0])
+    SetDefaultPubScreen(&var original[0])
+    expect(c_equals(&var changed[0], "Workbench"), "NULL selects Workbench as the default public screen")
+}
+
+// @covers-ndk function|intuition.library|GetScreenData
+// @ndk-side-effects Copies the Workbench compatibility Screen, verifies its documented HIRES+SPRITES mode and clipped positive dimensions against a simultaneously locked modern Workbench screen, and confirms unchanged title-bar geometry
+@test("intuition.library GetScreenData returns documented compatibility geometry")
+@suppress("W0002", "Screen size and WBENCHSCREEN fit their UWORD ABI parameters")
+pub fn intuition_get_screen_data() {
+    let live = LockPubScreen("Workbench")
+    var copied: Screen = @zeroed(Screen)
+    let copied_ok = GetScreenData((*u8)&var copied, (u16)@sizeof(Screen), (u16)WBENCHSCREEN, null)
+    let live_width = if live != null { live.Width } else { (i16)-1 }
+    let live_height = if live != null { live.Height } else { (i16)-1 }
+    let live_bar_height = if live != null { live.BarHeight } else { (i8)-1 }
+    if live != null { UnlockPubScreen(null, live) }
+    expect(live != null, "Workbench screen lock succeeds")
+    expect(copied_ok != 0, "GetScreenData reports a successful Workbench copy")
+    expect(copied.Width > 0 && copied.Width <= live_width,
+        "compatibility width is positive and no wider than the live Workbench")
+    expect(copied.Height > 0 && copied.Height <= live_height,
+        "compatibility height is positive and no taller than the live Workbench")
+    expect(copied.BarHeight == live_bar_height, "copied Workbench title-bar geometry matches")
+    expect((copied.ViewPort.Modes & (u16)HIRES) != 0 &&
+        (copied.ViewPort.Modes & (u16)SPRITES) != 0,
+        "compatibility mode contains the documented HIRES and SPRITES bits")
+}
+
+// @covers-ndk function|intuition.library|GetScreenDrawInfo
+// @ndk-side-effects Obtains Workbench drawing metadata, validates its pen table, font, depth, and resolution, then releases it before unlocking the screen
+@test("intuition.library GetScreenDrawInfo exposes usable drawing metadata")
+pub fn intuition_get_screen_draw_info() {
+    let screen = LockPubScreen("Workbench")
+    let info = if screen != null { GetScreenDrawInfo(screen) } else { (*DrawInfo)null }
+    let usable = info != null && info.dri_NumPens > 0 && info.dri_Pens != null &&
+        info.dri_Font != null && info.dri_Depth > 0 && info.dri_Resolution.X > 0 &&
+        info.dri_Resolution.Y > 0
+    if info != null { FreeScreenDrawInfo(screen, info) }
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(usable, "DrawInfo contains usable pens, font, depth, and resolution")
+}
+
+// @covers-ndk function|intuition.library|FreeScreenDrawInfo
+// @ndk-side-effects Releases one Workbench DrawInfo and verifies a new independent DrawInfo can be obtained and released from the still-locked screen
+@test("intuition.library FreeScreenDrawInfo permits reacquisition")
+pub fn intuition_free_screen_draw_info() {
+    let screen = LockPubScreen("Workbench")
+    let first = if screen != null { GetScreenDrawInfo(screen) } else { (*DrawInfo)null }
+    if first != null { FreeScreenDrawInfo(screen, first) }
+    let second = if screen != null { GetScreenDrawInfo(screen) } else { (*DrawInfo)null }
+    if second != null { FreeScreenDrawInfo(screen, second) }
+    if screen != null { UnlockPubScreen(null, screen) }
+    expect(first != null && second != null, "released DrawInfo can be obtained again")
+}
+
+// @covers-ndk function|intuition.library|ViewAddress
+// @ndk-side-effects Ensures Workbench is displayed then reads Intuition's current graphics View twice and verifies stable identity
+@test("intuition.library ViewAddress returns the active graphics view")
+pub fn intuition_view_address() {
+    OpenWorkBench()
+    WaitTOF()
+    let first = ViewAddress()
+    let second = ViewAddress()
+    expect(first != null && second == first, "active graphics View is non-null and stable across immediate reads")
+}

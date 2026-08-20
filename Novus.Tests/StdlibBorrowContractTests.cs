@@ -76,6 +76,15 @@ public class StdlibBorrowContractTests
     }
 
     [Fact]
+    public void WorkbenchArgsUsesCorrectDosArgumentOrderAndResultType()
+    {
+        var args = Read("amiga/sys/workbench/args.novus");
+
+        Assert.Contains("ReadArgs((*u8)&args.template, (*i32)&args.results[0], null)", args);
+        Assert.Contains("FindArg((*u8)&self.template, (*u8)&name_buf)", args);
+    }
+
+    [Fact]
     public void EveryIntoRawConsumesAndDisarmsItsOwner()
     {
         var stdlib = PathUtility.FindStdLibPath()
@@ -116,8 +125,7 @@ public class StdlibBorrowContractTests
             Read("memory/block.novus"));
         Assert.Contains("new(consuming value: T)",
             Read("async/future.novus"));
-        Assert.Contains("new(consuming memory: MemoryBlock", Read("amiga/sys/graphics/bitmap.novus"));
-        Assert.Contains("self.active = false", Read("amiga/sys/graphics/bitmap.novus"));
+        Assert.Contains("self.active = false", Read("amiga/sys/graphics/copper.novus"));
         Assert.Contains("from_sprites(consuming plane01: SpriteData, consuming plane23: SpriteData)",
             Read("amiga/sys/graphics/sprite.novus"));
         Assert.Contains("connect(&self, consuming tcp: TcpStream", Read("net/tls.novus"));

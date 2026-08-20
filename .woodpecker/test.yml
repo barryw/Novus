@@ -1,4 +1,4 @@
-# Build the solution and run the CLI-conventions conformance tests.
+# Build the solution and run the host-verifiable compiler and NDK gates.
 #
 # Runs on every push and pull request so changes are verified BEFORE they
 # reach main. The release pipeline (01-bump + 02-build) only fires on push
@@ -20,11 +20,22 @@ steps:
     image: mcr.microsoft.com/dotnet/sdk:10.0
     commands:
       # Native tools for the vendored build targets invoked during dotnet build.
-      - apt-get update && apt-get install -y make gcc clang zlib1g-dev
+      - apt-get update && apt-get install -y make gcc clang zlib1g-dev python3
       - dotnet --version
       - dotnet build Novus.Tests/Novus.Tests.csproj -c Debug
-      # Scope execution to the CLI-surface tests: deterministic, no native
-      # toolchain (vbcc/assembler) needed, so this is a reliable gate.
-      - >-
-        dotnet test Novus.Tests/Novus.Tests.csproj -c Debug --no-build
-        --filter "FullyQualifiedName~CliConventionsConformanceTests|FullyQualifiedName~NovusErrorListenerTests"
+      - dotnet test Novus.Tests/Novus.Tests.csproj -c Debug --no-build
+      # Checked-in manifest/raw bindings must remain a complete, conflict-free
+      # account of the pinned NDK inventory even when the proprietary NDK
+      # distribution is not installed in the CI image.
+      - dotnet Novus/bin/Debug/net10.0/Novus.dll verify-ndk
+      - python3 -m unittest discover -s tools -p 'test_ndk_*.py'
+      - python3 -m unittest tools/test_update_ffi_docs.py
+      # Full link/size gates can take ~2h on the current host; run only when
+      # explicitly requested.
+      - |
+        if [ "${NOVUS_FULL_NDK_GATES:-0}" = "1" ]; then
+          python3 tools/verify_ndk_compile_probes.py --output /tmp/novus-ndk-probes --compile --measure-size --report /tmp/novus-ndk-probes/report.json
+          python3 tools/verify_ndk_tests.py --compile-report /tmp/novus-ndk-probes/report.json
+        else
+          echo "Skipping full compile/size gates. Set NOVUS_FULL_NDK_GATES=1 to run."
+        fi

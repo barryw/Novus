@@ -1,0 +1,10 @@
+from std::test::test import expect
+from amiga::raw::consts import IEQUALIFIER_LSHIFT
+from amiga::raw::devices::input import PeekQualifier
+
+// @covers-ndk function|input.device|PeekQualifier
+// @ndk-side-effects The A4000 harness holds left shift through FS-UAE while the executable runs, verifies PeekQualifier observes the real input state, and releases the key in a host-side finally path
+@test("input.device PeekQualifier reports a physically held modifier")
+pub fn input_peek_qualifier_reports_shift() {
+    expect((PeekQualifier() & (u16)IEQUALIFIER_LSHIFT) != 0, "FS-UAE left-shift state appears in the qualifier snapshot")
+}

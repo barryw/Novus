@@ -11,5 +11,30 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the glyph class.
+///
+/// Obtains the pointer to the Glyph image class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// glyph_class = GLYPH_GetClass();
+/// D0
+///
+/// Class * GLYPH_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// glyph_class - Pointer to the Glyph image class.
 @library("glyph.library")
-extern pub fn GLYPH_GetClass() -> *u8
+extern pub fn GLYPH_GetClass() -> *IClass

@@ -304,6 +304,7 @@ extern fn ERR_print_errors(bp: *BIO)
 extern fn SSL_get1_peer_certificate(ssl: *SSL) -> *X509
 
 @unsafe
+/// Returns a retained peer certificate that the caller must release with X509_free, or null.
 pub fn SSL_get_peer_certificate(ssl: *SSL) -> *X509 {
     return unsafe { SSL_get1_peer_certificate(ssl) }
 }
@@ -334,6 +335,7 @@ extern fn X509_NAME_oneline(name: *X509_NAME, buf: *u8, size: i32) -> *u8
 extern fn X509_getm_notBefore(cert: *X509) -> *ASN1_TIME
 
 @unsafe
+/// Returns the mutable start of the certificate validity interval, or null.
 pub fn X509_get_notBefore(cert: *X509) -> *ASN1_TIME {
     return unsafe { X509_getm_notBefore(cert) }
 }
@@ -343,6 +345,7 @@ pub fn X509_get_notBefore(cert: *X509) -> *ASN1_TIME {
 extern fn X509_getm_notAfter(cert: *X509) -> *ASN1_TIME
 
 @unsafe
+/// Returns the mutable end of the certificate validity interval, or null.
 pub fn X509_get_notAfter(cert: *X509) -> *ASN1_TIME {
     return unsafe { X509_getm_notAfter(cert) }
 }

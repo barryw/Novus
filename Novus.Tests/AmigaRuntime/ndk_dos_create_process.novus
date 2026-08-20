@@ -1,0 +1,157 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import NP_Entry, NP_Name, NP_StackSize, TAG_DONE
+from amiga::raw::dos import CreateNewProc, CreateNewProcTagList, CreateNewProcTags, CreateProc, Delay, Exit
+from amiga::raw::exec import AllocSignal, FindTask, FreeSignal, SetSignal, Signal, Wait
+from amiga::raw::structs import MsgPort, Process, TagItem, Task
+
+static var PARENT_TASK: *Task = null
+static var COMPLETION_MASK: u32 = 0
+static var CHILD_RUNS: u32 = 0
+static var LEGACY_SEGMENT: [u32] = [16, 0, 0, 0]
+
+fn child_entry() -> i32 {
+    CHILD_RUNS++
+    if PARENT_TASK != null && COMPLETION_MASK != 0 { Signal(PARENT_TASK, COMPLETION_MASK) }
+    return 0
+}
+
+fn exit_child_entry() -> i32 {
+    CHILD_RUNS++
+    if PARENT_TASK != null && COMPLETION_MASK != 0 { Signal(PARENT_TASK, COMPLETION_MASK) }
+    Exit(5)
+    CHILD_RUNS += 100
+    return 0
+}
+
+fn entry_address() -> u32 {
+    var entry: fn() -> i32 = child_entry
+    return unsafe { *(*u32)&var entry }
+}
+
+fn exit_entry_address() -> u32 {
+    var entry: fn() -> i32 = exit_child_entry
+    return unsafe { *(*u32)&var entry }
+}
+
+fn prepare_signal() -> i8 {
+    let bit = AllocSignal(-1)
+    PARENT_TASK = FindTask(null)
+    COMPLETION_MASK = if bit >= 0 { 1 << (u32)bit } else { 0 }
+    CHILD_RUNS = 0
+    if COMPLETION_MASK != 0 { SetSignal(0, COMPLETION_MASK) }
+    return bit
+}
+
+fn await_child(bit: i8, created: bool, name: Str) -> bool {
+    var received: u32 = 0
+    if created && bit >= 0 { received = Wait(COMPLETION_MASK) }
+    var attempts: u32 = 0
+    while created && FindTask(name.as_cstr()) != null && attempts < 50 {
+        Delay(1)
+        attempts++
+    }
+    let destroyed = !created || FindTask(name.as_cstr()) == null
+    if bit >= 0 { FreeSignal(bit) }
+    let completed = created && destroyed && (received & COMPLETION_MASK) != 0 && CHILD_RUNS == 1
+    PARENT_TASK = null
+    COMPLETION_MASK = 0
+    return completed
+}
+
+@suppress("W0002", "A classic DOS segment list is a word-addressed 32-bit BCPL pointer")
+fn legacy_segment() -> i32 {
+    let target = entry_address()
+    LEGACY_SEGMENT[1] = 0
+    LEGACY_SEGMENT[2] = 0x4ef90000 | (target >> 16)
+    LEGACY_SEGMENT[3] = target << 16
+    let pointer = unsafe { (*u32)&var LEGACY_SEGMENT[1] }
+    return (i32)((u32)pointer >> 2)
+}
+
+@suppress("W0002", "Function and static-string addresses are exact 32-bit values in the classic 68k ABI")
+fn process_tags(name: Str) -> [TagItem; 4] {
+    return [
+        TagItem { ti_Tag: NP_Entry, ti_Data: entry_address() },
+        TagItem { ti_Tag: NP_Name, ti_Data: (u32)name.as_cstr() },
+        TagItem { ti_Tag: NP_StackSize, ti_Data: 8192 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+}
+
+// @covers-ndk function|dos.library|CreateNewProc
+// @ndk-side-effects Creates a real child Process from an NP_Entry tag list, gives it a private stack and name, observes exactly one child execution through an allocated Exec signal, and waits for teardown
+@test("dos.library CreateNewProc runs an NP_Entry child")
+pub fn dos_create_new_proc() {
+    let bit = prepare_signal()
+    let name: Str = "Novus CreateNewProc"
+    var tags = process_tags(name)
+    let process = if bit >= 0 && PARENT_TASK != null { CreateNewProc(&var tags[0]) } else { (*Process)null }
+    let completed = await_child(bit, process != null, name)
+    expect(process != null, "tag-list process is created")
+    expect(completed, "child runs once, signals its parent, and tears down")
+}
+
+// @covers-ndk function|dos.library|CreateNewProcTagList
+// @ndk-side-effects Creates a real child Process through the explicit TagList entry point, validates its NP_Entry execution with a one-shot parent signal, and waits for process teardown
+@test("dos.library CreateNewProcTagList runs an NP_Entry child")
+pub fn dos_create_new_proc_tag_list() {
+    let bit = prepare_signal()
+    let name: Str = "Novus ProcTagList"
+    var tags = process_tags(name)
+    let process = if bit >= 0 && PARENT_TASK != null { CreateNewProcTagList(&var tags[0]) } else { (*Process)null }
+    let completed = await_child(bit, process != null, name)
+    expect(process != null, "explicit TagList process is created")
+    expect(completed, "TagList child runs once and tears down")
+}
+
+// @covers-ndk function|dos.library|CreateNewProcTags
+// @ndk-side-effects Creates a real child Process through variadic NP_Entry, NP_Name, and NP_StackSize tags, validates exactly one execution with a parent signal, and waits for teardown
+@test("dos.library CreateNewProcTags runs a variadic-tag child")
+@suppress("W0002", "The child name is a static 32-bit address in the classic 68k ABI")
+pub fn dos_create_new_proc_tags() {
+    let bit = prepare_signal()
+    let name: Str = "Novus ProcTags"
+    let process = if bit >= 0 && PARENT_TASK != null {
+        CreateNewProcTags(NP_Entry, entry_address(), NP_Name, (u32)name.as_cstr(), NP_StackSize, 8192, TAG_DONE)
+    } else {
+        (*Process)null
+    }
+    let completed = await_child(bit, process != null, name)
+    expect(process != null, "variadic-tag process is created")
+    expect(completed, "variadic-tag child runs once and tears down")
+}
+
+// @covers-ndk function|dos.library|CreateProc
+// @ndk-side-effects Creates a legacy DOS process from a valid caller-owned BCPL segment list, observes exactly one execution through an allocated Exec signal, waits for teardown, and retains ownership of the static segment
+@test("dos.library CreateProc runs a legacy segment child")
+pub fn dos_create_proc() {
+    let bit = prepare_signal()
+    let name: Str = "Novus CreateProc"
+    let segment = legacy_segment()
+    let process = if bit >= 0 && PARENT_TASK != null && segment != 0 {
+        CreateProc(name.as_cstr(), 0, segment, 8192)
+    } else {
+        (*MsgPort)null
+    }
+    let completed = await_child(bit, process != null, name)
+    expect(segment != 0 && process != null, "legacy process is created from the caller-owned segment")
+    expect(completed, "legacy child runs once, signals its parent, and tears down")
+}
+
+// @covers-ndk function|dos.library|Exit
+// @ndk-side-effects Terminates a real child Process with return code 5, proves execution never continues after Exit, and waits until DOS has destroyed the process before memory measurement
+@test("dos.library Exit terminates the calling process")
+@suppress("W0002", "The child name is a static 32-bit address in the classic 68k ABI")
+pub fn dos_exit() {
+    let bit = prepare_signal()
+    let name: Str = "Novus Exit Child"
+    let process = if bit >= 0 && PARENT_TASK != null {
+        CreateNewProcTags(NP_Entry, exit_entry_address(), NP_Name, (u32)name.as_cstr(), NP_StackSize, 8192, TAG_DONE)
+    } else {
+        (*Process)null
+    }
+    let completed = await_child(bit, process != null, name)
+    expect(process != null, "exit child process is created")
+    expect(completed && CHILD_RUNS == 1, "Exit destroys the child without returning to its next instruction")
+}

@@ -11,19 +11,252 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the chooser class.
+///
+/// This function is only available in runtime linked version of the
+/// class, and is not in the compiler linker library chooser_gc.lib.
+/// Obtains the pointer to the Chooser gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// chooser_class = CHOOSER_GetClass();
+/// D0
+///
+/// Class * CHOOSER_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// chooser_class - Pointer to the Chooser gadget class.
 @library("chooser.library")
-extern pub fn CHOOSER_GetClass() -> *u8
+extern pub fn CHOOSER_GetClass() -> *IClass
+/// Allocate a Chooser node.
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the chooser.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the Chooser class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocChooserNode(Tag, ...)
+/// node = AllocChooserNode(columns, Tag, ...)
+///
+/// struct Node * AllocChooserNodeA(struct TagItem *)
+/// node = AllocChooserNodeA(taglist)
+///
+/// # Arguments
+///
+/// * `taglist` - Attributes for the node, passed onto SetChooserNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a Chooser gadget.
+///
+/// # See Also
+///
+/// FreeChooserNode(), SetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn AllocChooserNodeA(tags: *TagItem) -> *Node
+/// Allocate a Chooser node.
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the chooser.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the Chooser class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocChooserNode(Tag, ...)
+/// node = AllocChooserNode(columns, Tag, ...)
+///
+/// struct Node * AllocChooserNodeA(struct TagItem *)
+/// node = AllocChooserNodeA(taglist)
+///
+/// # Arguments
+///
+/// * `taglist` - Attributes for the node, passed onto SetChooserNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a Chooser gadget.
+///
+/// # See Also
+///
+/// FreeChooserNode(), SetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn AllocChooserNode(tags: u32, ...args) -> *Node
+/// Free a Chooser node.
+///
+/// Frees a ChooserNode allocated with AllocChooserNodeA().
+///
+/// # Synopsis
+///
+/// VOID FreeChooserNode(struct Node *)
+/// FreeChooserNode(node)
+///
+/// # Arguments
+///
+/// * `node` - The node to free.
+///
+/// # See Also
+///
+/// AllocChooserNodeA()
 @library("chooser.library")
 extern pub fn FreeChooserNode(node: *Node)
+/// Set attributes of a Chooser node.
+///
+/// Changes attributes for a Chooser node.  Since the Chooser
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a Chooser gadget.  You must first detach the list
+/// with CHOOSER_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetChooserNodeAttrs(struct Node *, Tag, ...)
+/// SetChooserNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetChooserNodeAttrsA(struct Node *, struct TagItem *)
+/// SetChooserNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// CNA_Text (STRPTR)
+/// Text string to appear as a line in the Chooser menu. This tag
+/// must be supplied for the node.
+///
+/// CNA_Image (struct Image *)
+/// Image to be placed to the left of the CNA_Text in the Chooser menu.
+///
+/// CNA_SelImage (struct Image *)
+/// Selected state Image to be placed to the left of the CNA_Text in
+/// the Chooser menu.
+///
+/// CNA_ReadOnly (BOOL) (V41.4)
+/// Item will not be highlight rendered when selected.
+///
+/// CNA_Disabled (BOOL) (V41.5)
+/// Item can not be selected. No GADGETUP message is generated.
+///
+/// CNA_Separator (BOOL) (V41.7)
+/// Separator (~~~~) Bar Item can not be selected. Simular to the
+/// separator bars in Intuition menus. No GADGETUP message is generated.
+///
+/// # See Also
+///
+/// GetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn SetChooserNodeAttrsA(node: *Node, tags: *TagItem)
+/// Set attributes of a Chooser node.
+///
+/// Changes attributes for a Chooser node.  Since the Chooser
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a Chooser gadget.  You must first detach the list
+/// with CHOOSER_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetChooserNodeAttrs(struct Node *, Tag, ...)
+/// SetChooserNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetChooserNodeAttrsA(struct Node *, struct TagItem *)
+/// SetChooserNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// CNA_Text (STRPTR)
+/// Text string to appear as a line in the Chooser menu. This tag
+/// must be supplied for the node.
+///
+/// CNA_Image (struct Image *)
+/// Image to be placed to the left of the CNA_Text in the Chooser menu.
+///
+/// CNA_SelImage (struct Image *)
+/// Selected state Image to be placed to the left of the CNA_Text in
+/// the Chooser menu.
+///
+/// CNA_ReadOnly (BOOL) (V41.4)
+/// Item will not be highlight rendered when selected.
+///
+/// CNA_Disabled (BOOL) (V41.5)
+/// Item can not be selected. No GADGETUP message is generated.
+///
+/// CNA_Separator (BOOL) (V41.7)
+/// Separator (~~~~) Bar Item can not be selected. Simular to the
+/// separator bars in Intuition menus. No GADGETUP message is generated.
+///
+/// # See Also
+///
+/// GetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn SetChooserNodeAttrs(node: *Node, ...args)
+/// Get attributes about a Chooser node.
+///
+/// The Chooser uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetChooserNodeAttrs(struct Node *, Tag, ...)
+/// GetChooserNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetChooserNodeAttrsA(struct Node *, struct TagItem *)
+/// GetChooserNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The Chooser node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.  The exception is LBNA_Column, which is used to specify a column to get attributes on.
+///
+/// # See Also
+///
+/// SetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn GetChooserNodeAttrsA(node: *Node, tags: *TagItem)
+/// Get attributes about a Chooser node.
+///
+/// The Chooser uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetChooserNodeAttrs(struct Node *, Tag, ...)
+/// GetChooserNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetChooserNodeAttrsA(struct Node *, struct TagItem *)
+/// GetChooserNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The Chooser node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.  The exception is LBNA_Column, which is used to specify a column to get attributes on.
+///
+/// # See Also
+///
+/// SetChooserNodeAttrsA()
 @library("chooser.library")
 extern pub fn GetChooserNodeAttrs(node: *Node, ...args)

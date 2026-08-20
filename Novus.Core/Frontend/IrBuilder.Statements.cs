@@ -226,6 +226,21 @@ public partial class IrBuilder
             annotatedType = ParseType(context.type());
         }
 
+        // `var buffer: [u8; N]` reserves fixed-size storage with no initializer; semantic
+        // analysis has already rejected every other annotated type without a value.
+        if (context.expression() == null && annotatedType is IrArrayType { Length: >= 0 })
+        {
+            if (isThrowaway)
+                return null;
+            var storageName = UniqueLocalName(name);
+            var storage = new IrLocalVariable(storageName, annotatedType, isMutable);
+            _currentFunction!.LocalVariables.Add(storage);
+            _localVariables[storageName] = storage;
+            _localVariables[name] = storage;
+            Emit(new IrLocalDecl(storageName, annotatedType, isMutable, null));
+            return null;
+        }
+
         // Set expected type for bidirectional type checking
         var savedExpectedType = _expectedType;
         _expectedType = annotatedType;
@@ -4258,6 +4273,9 @@ public partial class IrBuilder
 
             // Materialize expressions once. Besides preserving side effects, this avoids
             // asking the C backend to access fields on VBCC-incompatible compound literals.
+            var matchesBorrowedEnum =
+                exprIr.Type is IrPointerType or IrReferenceType or IrMutReferenceType;
+
             IrValue matchedValue = exprIr;
             if (exprIr is not IrVariable)
             {
@@ -4310,7 +4328,7 @@ public partial class IrBuilder
                         {
                             var dataType = variant.AssociatedData[i];
                             BindPatternData(subPatterns[i], matchedValue, enumType,
-                                variantNameOnly, i, dataType);
+                                variantNameOnly, i, dataType, matchesBorrowedEnum);
                         }
                     }
 
@@ -4359,7 +4377,7 @@ public partial class IrBuilder
     /// Helper to bind pattern data from an enum variant.
     /// </summary>
     private void BindPatternData(NovusParser.PatternContext subPattern, IrValue enumValue, IrEnumType enumType,
-        string variantName, int dataIndex, IrType dataType)
+        string variantName, int dataIndex, IrType dataType, bool bindsBorrowedEnum = false)
     {
         if (subPattern is NovusParser.IdentifierPatternContext idPattern)
         {
@@ -4435,7 +4453,21 @@ public partial class IrBuilder
         }
         else if (subPattern is NovusParser.WildcardPatternContext)
         {
-            // Wildcard - don't bind anything
+            // A wildcard binds no name, but the payload still moves out of the enum.
+            // Without an owner the value is simply abandoned, so anything that owns a
+            // resource leaks. Give it a temporary owner and let scope exit drop it.
+            if (!bindsBorrowedEnum && EnsureDropMethodInstantiated(dataType))
+            {
+                var discardName = $"__discard_{_tempCounter++}";
+                var localVar = new IrLocalVariable(discardName, dataType, false);
+                _currentFunction!.LocalVariables.Add(localVar);
+                _localVariables[discardName] = localVar;
+
+                var extractResultName = $"_extract_{_tempCounter++}";
+                Emit(new IrExtractVariantData(extractResultName, enumValue, variantName, dataIndex, dataType));
+                Emit(new IrLocalDecl(discardName, dataType, false, new IrVariable(extractResultName, dataType)));
+                InjectAutomaticDrop(discardName, dataType);
+            }
         }
         // Other sub-pattern types could be handled here
     }

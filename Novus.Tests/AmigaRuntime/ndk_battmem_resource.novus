@@ -1,0 +1,96 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::dos import Delay
+from amiga::raw::exec import FindTask, Signal, Wait
+from amiga::raw::resources::battmem import ObtainBattSemaphore, ReadBattMem, ReleaseBattSemaphore, WriteBattMem
+from amiga::raw::structs import Task
+from amiga::sys::exec import SignalHandle
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+const BATT_WORK: u32 = 1 << 20
+const HOST_ID_OFFSET: u32 = 65
+const HOST_ID_LENGTH: u32 = 3
+
+static var BATT_PARENT: *Task = null
+static var BATT_STARTED: u32 = 0
+static var BATT_PHASE: u32 = 0
+
+fn batt_contender_tick(_state: *u8) -> bool {
+    BATT_PHASE = 1
+    Signal(BATT_PARENT, BATT_STARTED)
+    ObtainBattSemaphore()
+    BATT_PHASE = 2
+    ReleaseBattSemaphore()
+    BATT_PHASE = 3
+    return false
+}
+
+fn batt_contender() -> i32 {
+    return run_thread_loop(BATT_WORK, null, batt_contender_tick)
+}
+
+// @covers-ndk function|battmem.resource|ObtainBattSemaphore
+// @covers-ndk function|battmem.resource|ReleaseBattSemaphore
+// @ndk-side-effects The parent obtains exclusive battery-memory access; a competing Exec task signals immediately before blocking in ObtainBattSemaphore, remains blocked while the parent owns it, then acquires and releases it after the parent calls ReleaseBattSemaphore
+@test("battmem.resource semaphore excludes a competing task until release")
+pub fn battmem_semaphore_exclusive() {
+    let started = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "contender start signal allocated")
+            return
+        },
+    }
+    BATT_PARENT = FindTask(null)
+    BATT_STARTED = started.mask()
+    BATT_PHASE = 0
+    ObtainBattSemaphore()
+    var contender = match spawn_thread("BattMem contender", batt_contender, 4096) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            ReleaseBattSemaphore()
+            expect(false, "battery-memory contender spawned")
+            return
+        },
+    }
+    let sent = contender.signal(BATT_WORK)
+    let received = if sent { Wait(BATT_STARTED) } else { 0 }
+    Delay(2)
+    let blocked = received == BATT_STARTED && BATT_PHASE == 1
+    ReleaseBattSemaphore()
+    if !sent { contender.break_ctrl_c() }
+    contender.wait()
+    expect(sent && received == BATT_STARTED, "contender reaches the resource call")
+    expect(blocked, "competing task stays blocked while the parent owns the resource")
+    expect(BATT_PHASE == 3, "competing task acquires and releases after parent release")
+}
+
+// @covers-ndk function|battmem.resource|ReadBattMem
+// @ndk-side-effects Reads the documented three-bit SCSI host-ID field into the low bits of one byte without changing battery-backed memory or overwriting an adjacent sentinel
+@test("battmem.resource ReadBattMem returns a bounded partial-byte field")
+pub fn battmem_read_partial_byte() {
+    var bytes: [u8] = [$A0, $5A]
+    let error = ReadBattMem(&var bytes[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    expect(error == 0, "documented battery-memory field reads successfully")
+    expect((bytes[0] & $F8) == 0, "partial-byte read places only three bits in the low end")
+    expect(bytes[1] == $5A, "read leaves the adjacent byte untouched")
+}
+
+// @covers-ndk function|battmem.resource|WriteBattMem
+// @ndk-side-effects Saves the documented SCSI host-ID field, writes its three-bit complement, reads the changed value, restores the exact saved bits, and verifies the restored value before returning
+@test("battmem.resource WriteBattMem changes and restores an exact bit field")
+pub fn battmem_write_restore() {
+    var original: [u8] = [0]
+    var changed: [u8] = [0]
+    var restored: [u8] = [0]
+    let read_error = ReadBattMem(&var original[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    let saved = original[0] & 7
+    var replacement: [u8] = [saved ^ 7]
+    let write_error = WriteBattMem(&var replacement[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    let changed_error = ReadBattMem(&var changed[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    let restore_error = WriteBattMem(&var original[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    let verify_error = ReadBattMem(&var restored[0], HOST_ID_OFFSET, HOST_ID_LENGTH)
+    expect(read_error == 0 && write_error == 0 && changed_error == 0, "battery-memory write transaction succeeds")
+    expect((changed[0] & 7) == (saved ^ 7), "written three-bit field reads back exactly")
+    expect(restore_error == 0 && verify_error == 0 && (restored[0] & 7) == saved, "saved battery-memory bits are restored exactly")
+}

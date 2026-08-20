@@ -117,13 +117,15 @@ impl SpriteData {
                     }
                 }
 
+                let data_ptr = (*u16)chip_mem.into_raw()
+
                 // Calculate height from data
                 // Format: control_word (2 words) + (height * 2 words per line) + terminator (2 words)
                 let num_words = len - 4  // Subtract control and terminator
                 let num_lines = num_words / 2  // 2 words per line (2 bitplanes)
 
                 return Result::Ok(SpriteData {
-                    data_ptr: (*u16)chip_mem.ptr(),
+                    data_ptr: data_ptr,
                     owns_memory: true,
                     height: (u16)num_lines,
                     width: 16,
@@ -482,8 +484,8 @@ impl SpriteHandle {
 
         // Write colors to hardware
         // Convert reference to pointer so we can index it
-        let colors_ptr: *Color = (*Color)colors
         unsafe {
+            let colors_ptr: *Color = (*Color)colors
             for i in 0..3 {
                 let color_index_offset = (base_color + i) * 2
                 let color_reg_offset = $180 + (u32)color_index_offset
@@ -829,8 +831,8 @@ impl AttachedSpriteHandle {
     pub fn set_colors(&var self, colors: &[Color; 15]) -> Result<(), GraphicsError> {
         // Attached sprites use colors 16-31
         // Convert reference to pointer so we can index it
-        let colors_ptr: *Color = (*Color)colors
         unsafe {
+            let colors_ptr: *Color = (*Color)colors
             for i in 0..15 {
                 let color_index_offset = (16 + i) * 2
                 let color_reg_offset = $180 + (u32)color_index_offset

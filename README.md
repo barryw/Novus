@@ -62,7 +62,7 @@ This compiles to clean 68k assembly that runs natively on any Amiga.
 - `std::io` — File I/O with RAII handles
 - `std::net` — TCP/UDP networking via bsdsocket.library
 - `amiga::audio` — Paula audio and ProTracker module playback
-- `amiga::raw` — Complete raw bindings for the pinned classic 68k AmigaOS NDK 3.9 baseline; symbol coverage is verified by `novusc verify-ndk`
+- `amiga::raw` — Audited raw declarations for the pinned classic 68k AmigaOS NDK 3.9 baseline; all 1,397 callables compile and link and all 9,563 inventoried symbols are machine-accounted
 
 ## Quick Start
 

@@ -11,19 +11,244 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the clicktab class.
+///
+/// Obtains the pointer to the ClickTab gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// clicktab_class = CLICKTAB_GetClass();
+/// D0
+///
+/// Class * CLICKTAB_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// clicktab_class - Pointer to the ClickTab gadget class.
 @library("clicktab.library")
-extern pub fn CLICKTAB_GetClass() -> *u8
+extern pub fn CLICKTAB_GetClass() -> *IClass
+/// Allocate a ClickTab node.
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the clicktab.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the ClickTab class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocClickTabNode(Tag, ...)
+/// node = AllocClickTabNode(Tag, ...)
+///
+/// struct Node * AllocClickTabNodeA(struct TagItem *)
+/// node = AllocClickTabNodeA(taglist)
+///
+/// # Arguments
+///
+/// * `columns` - How many columns your ClickTab has. taglist - Attributes for the node, passed onto SetClickTabNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a ClickTab gadget.
+///
+/// # See Also
+///
+/// FreeClickTabNode(), SetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn AllocClickTabNodeA(tags: *TagItem) -> *Node
+/// Allocate a ClickTab node.
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the clicktab.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the ClickTab class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocClickTabNode(Tag, ...)
+/// node = AllocClickTabNode(Tag, ...)
+///
+/// struct Node * AllocClickTabNodeA(struct TagItem *)
+/// node = AllocClickTabNodeA(taglist)
+///
+/// # Arguments
+///
+/// * `columns` - How many columns your ClickTab has. taglist - Attributes for the node, passed onto SetClickTabNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a ClickTab gadget.
+///
+/// # See Also
+///
+/// FreeClickTabNode(), SetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn AllocClickTabNode(tags: u32, ...args) -> *Node
+/// Free a ClickTab node.
+///
+/// Frees a ClickTabNode allocated with AllocClickTabNodeA().
+///
+/// # Synopsis
+///
+/// VOID FreeClickTabNode(struct Node *)
+/// FreeClickTabNode(node)
+///
+/// # Arguments
+///
+/// * `node` - The node to free.
+///
+/// # See Also
+///
+/// AllocClickTabNodeA()
 @library("clicktab.library")
 extern pub fn FreeClickTabNode(node: *Node)
+/// Set attributes of a ClickTab node.
+///
+/// Changes attributes for a ClickTab node.  Since the ClickTab
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a ClickTab gadget.  You must first detach the list
+/// with CLICKTAB_Labels, ~0 before you can change attributes, and
+/// then re-attach the list, and re-render the gadget to reflect
+/// any changes. This should include re-domaining the gadget.
+/// If used in a layout group, turn off domain caching for the
+/// clicktab object if you intend to dynamically alter the tabs
+/// and refresh the layout group with RethinkLayout().
+///
+/// # Synopsis
+///
+/// VOID SetClickTabNodeAttrs(struct Node *, Tag, ...)
+/// SetClickTabNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetClickTabNodeAttrsA(struct Node *, struct TagItem *)
+/// SetClickTabNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// TNA_Text (STRPTR)
+///
+///     Text string to appear as a line in the ClickTab menu node.
+///
+/// TNA_Number (WORD)
+///
+///     ID Number assigned to a ClickTab menu node
+///
+/// TNA_TextPen (WORD)
+///
+///     Specifies pen number to use for the label.
+///
+///     Defaults to pens[TEXTPEN].
+///
+/// # See Also
+///
+/// GetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn SetClickTabNodeAttrsA(node: *Node, tags: *TagItem)
+/// Set attributes of a ClickTab node.
+///
+/// Changes attributes for a ClickTab node.  Since the ClickTab
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a ClickTab gadget.  You must first detach the list
+/// with CLICKTAB_Labels, ~0 before you can change attributes, and
+/// then re-attach the list, and re-render the gadget to reflect
+/// any changes. This should include re-domaining the gadget.
+/// If used in a layout group, turn off domain caching for the
+/// clicktab object if you intend to dynamically alter the tabs
+/// and refresh the layout group with RethinkLayout().
+///
+/// # Synopsis
+///
+/// VOID SetClickTabNodeAttrs(struct Node *, Tag, ...)
+/// SetClickTabNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetClickTabNodeAttrsA(struct Node *, struct TagItem *)
+/// SetClickTabNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// TNA_Text (STRPTR)
+///
+///     Text string to appear as a line in the ClickTab menu node.
+///
+/// TNA_Number (WORD)
+///
+///     ID Number assigned to a ClickTab menu node
+///
+/// TNA_TextPen (WORD)
+///
+///     Specifies pen number to use for the label.
+///
+///     Defaults to pens[TEXTPEN].
+///
+/// # See Also
+///
+/// GetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn SetClickTabNodeAttrs(node: *Node, ...args)
+/// Get attributes about a ClickTab node.
+///
+/// The ClickTab uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetClickTabNodeAttrs(struct Node *, Tag, ...)
+/// GetClickTabNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetClickTabNodeAttrsA(struct Node *, struct TagItem *)
+/// GetClickTabNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The ClickTab node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.  The exception is LBNA_Column, which is used to specify a column to get attributes on.
+///
+/// # See Also
+///
+/// SetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn GetClickTabNodeAttrsA(node: *Node, tags: *TagItem)
+/// Get attributes about a ClickTab node.
+///
+/// The ClickTab uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetClickTabNodeAttrs(struct Node *, Tag, ...)
+/// GetClickTabNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetClickTabNodeAttrsA(struct Node *, struct TagItem *)
+/// GetClickTabNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The ClickTab node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.  The exception is LBNA_Column, which is used to specify a column to get attributes on.
+///
+/// # See Also
+///
+/// SetClickTabNodeAttrsA()
 @library("clicktab.library")
 extern pub fn GetClickTabNodeAttrs(node: *Node, ...args)

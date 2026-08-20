@@ -1,0 +1,79 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect
+from amiga::dos import File
+from amiga::sys::dos import delete_file
+
+@borrows(static)
+fn test_path() -> Str { return "RAM:novus-dos-text-io.txt" }
+
+fn write_sample() -> bool {
+    let file = match File::create(test_path()) {
+        Result::Ok(value) => value,
+        Result::Err(_) => return false,
+    }
+    return false if file.write_text("heading\n").is_err()
+    return false if file.write_line("first").is_err()
+    let lines: [Str] = ["second", "third"]
+    return file.write_lines(&lines).is_ok()
+}
+
+// @covers-ndk function|dos.library|Open
+// @covers-ndk function|dos.library|Close
+// @covers-ndk function|dos.library|Write
+// @covers-ndk function|dos.library|Seek
+// @covers-ndk function|dos.library|Read
+// @covers-ndk function|dos.library|DeleteFile
+// @covers-ndk function|dos.library|IoErr
+// @ndk-side-effects Open creates and later reopens one RAM file; Write persists all 27 requested bytes; Seek measures the exact extent and restores position; Read returns those bytes unchanged; Close runs at each lexical scope exit before DeleteFile removes the fixture; the final failed Open is classified through IoErr
+// @covers std::string::core::String::truncate(usize)
+@test("DOS text helpers round-trip complete strings and lines")
+pub fn dos_text_helpers_roundtrip() {
+    let _ = delete_file(test_path())
+    expect(write_sample(), "text and lines written")
+
+    var text_ok = false
+    {
+        let text_file = match File::open(test_path()) {
+            Result::Ok(value) => value,
+            Result::Err(_) => {
+                expect(false, "text file opened")
+                return
+            },
+        }
+        match text_file.len() {
+            Result::Ok(length) => expect(length == 27, "Seek reports the exact persisted byte count"),
+            Result::Err(_) => expect(false, "file extent measured"),
+        }
+        text_ok = match text_file.read_text() {
+            Result::Ok(text) => text.as_str().equals("heading\nfirst\nsecond\nthird\n"),
+            Result::Err(_) => false,
+        }
+    }
+    expect(text_ok, "whole text preserved")
+
+    var lines_ok = false
+    {
+        let lines_file = match File::open(test_path()) {
+            Result::Ok(value) => value,
+            Result::Err(_) => {
+                expect(false, "line file opened")
+                return
+            },
+        }
+        lines_ok = match lines_file.read_lines() {
+            Result::Ok(lines) => {
+                let count_ok = lines.len() == 4
+                let heading_ok = lines.get(0).unwrap().as_str().equals("heading")
+                let first_ok = lines.get(1).unwrap().as_str().equals("first")
+                let second_ok = lines.get(2).unwrap().as_str().equals("second")
+                let third_ok = lines.get(3).unwrap().as_str().equals("third")
+                count_ok && heading_ok && first_ok && second_ok && third_ok
+            },
+            Result::Err(_) => false,
+        }
+    }
+    expect(lines_ok, "lines returned without terminators")
+    expect(delete_file(test_path()).is_ok(), "closed fixture deleted")
+    expect(File::open(test_path()).is_err(), "deleted fixture no longer opens")
+}

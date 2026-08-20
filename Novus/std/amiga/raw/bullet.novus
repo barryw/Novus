@@ -11,19 +11,353 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Acquire engine handle
+///
+/// This function establishes a context for access to the bullet
+/// library.  This context remains valid until it is closed via
+/// CloseEngine.  Each specific context isolates the specification
+/// of the various font attributes from other contexts concurrently
+/// accessing the bullet library.  A context can be shared among
+/// different tasks.
+///
+/// # Synopsis
+///
+/// engineHandle = OpenEngine()
+///
+/// struct GlyphEngine *OpenEngine(void)
+///
+/// # Returns
+///
+/// This function returns an engineHandle, or NULL if for some
+/// reason no engineHandle can be created.
+///
+/// # Examples
+///
+/// BulletBase = OpenLibrary("bullet.library", 0);
+///    if (!BulletBase)
+/// EndGame(ERROR_LibOpen, "bullet.library", 0);
+///    EngineHandle = OpenEngine();
+///    if (!EngineHandle)
+/// EndGame(ERROR_InternalCall, "OpenEngine");
+///
+/// # See Also
+///
+/// CloseEngine()
 @library("bullet.library")
 extern pub fn OpenEngine() -> *GlyphEngine
+/// Release an engine handle
+///
+/// This function releases the engine handle acquired with
+/// OpenEngine.  It first releases any data acquired with
+/// ObtainInfoA associated with the engineHandle that has not yet
+/// been released.
+///
+/// # Synopsis
+///
+/// CloseEngine(engineHandle)
+///             A0
+///
+/// void CloseEngine(struct GlyphEngine *);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine.  If zero, no operation is performed.
+///
+/// # Returns
+///
+/// This function has no result.  The only error that can occur is
+/// when the when an invalid engineHandle is supplied: the
+/// application is assumed not to do that.
+///
+/// # Examples
+///
+/// EndGame(code, arg1, arg2, arg3, arg3)
+/// {
+///     ...
+///     CloseEngine(EngineHandle);
+///     ...
+/// }
+///
+/// # See Also
+///
+/// OpenEngine()
 @library("bullet.library")
 extern pub fn CloseEngine(glyphEngine: *GlyphEngine)
+/// Set font and/or glyph metrics
+///
+/// This function accepts a tagList whose tag field elements are
+/// valid for specification, and whose associated data fields are
+/// used to supply the specified data.
+/// Data that is supplied via an indirect pointer (OT_Indirect) to
+/// an array or structure is copied from that array or structure
+/// into the internal memory of the library.  Changes to the data
+/// after this call do not affect the engine.
+///
+/// # Synopsis
+///
+/// error = SetInfoA(engineHandle, tagList)
+///                  A0            A1
+///
+/// ULONG SetInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = SetInfo(engineHandle, firstTag, ...)
+///
+/// ULONG SetInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for specification paired with the specification data.
+///
+/// # Returns
+///
+/// This function returns a zero success indication, or a non-zero
+/// error code.
+///
+/// # Examples
+///
+/// if (!(error = SetInfo(EngineHandle, OT_PointHeight, fpoints,
+///     OT_GlyphCode, GC_daggerdbl, TAG_DONE)) {
+/// error = ObtainInfo(EngineHandle, OT_Glyph, &glyph);
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph);
+///    }
+///
+/// # See Also
+///
+/// diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn SetInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+/// Set font and/or glyph metrics
+///
+/// This function accepts a tagList whose tag field elements are
+/// valid for specification, and whose associated data fields are
+/// used to supply the specified data.
+/// Data that is supplied via an indirect pointer (OT_Indirect) to
+/// an array or structure is copied from that array or structure
+/// into the internal memory of the library.  Changes to the data
+/// after this call do not affect the engine.
+///
+/// # Synopsis
+///
+/// error = SetInfoA(engineHandle, tagList)
+///                  A0            A1
+///
+/// ULONG SetInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = SetInfo(engineHandle, firstTag, ...)
+///
+/// ULONG SetInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for specification paired with the specification data.
+///
+/// # Returns
+///
+/// This function returns a zero success indication, or a non-zero
+/// error code.
+///
+/// # Examples
+///
+/// if (!(error = SetInfo(EngineHandle, OT_PointHeight, fpoints,
+///     OT_GlyphCode, GC_daggerdbl, TAG_DONE)) {
+/// error = ObtainInfo(EngineHandle, OT_Glyph, &glyph);
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph);
+///    }
+///
+/// # See Also
+///
+/// diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn SetInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
+/// Inquire tagged font and/or glyph metrics
+///
+/// This function accepts a tagList whose tag field elements are
+/// valid for inquiry, and whose associated data fields are
+/// pointers to the destination in which to place the requested
+/// data.
+/// Tag items that refer to data indirectly (OT_Indirect is set)
+/// return pointers that may be allocated or cached by the
+/// library.  This data must be treated as read-only data.  When
+/// the application is done with the data acquired via ObtainInfoA,
+/// it must perform a ReleaseInfoA to allow the library to release
+/// the data.
+///
+/// # Synopsis
+///
+/// error = ObtainInfoA(engineHandle, tagList)
+///                     A0            A1
+///
+/// ULONG ObtainInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = ObtainInfo(engineHandle, firstTag, ...)
+///
+/// ULONG ObtainInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for inquiry paired with the destination pointers for the inquiry results.  All destinations are longwords, whether they are pointers or values, and regardless of whether the value could fit in a smaller variable.
+///
+/// # Returns
+///
+/// This function returns a zero success indication, or a non-zero
+/// error code.
+///
+/// # Examples
+///
+/// ULONG pointSize;
+///    struct GlyphMap *glyph;
+///    ...
+///    if (!ObtainInfo(EngineHandle, OT_Glyph, &glyph, TAG_DONE)) {
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph, TAG_DONE);
+///    }
+///
+/// # See Also
+///
+/// ReleaseInfoA(), diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn ObtainInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+/// Inquire tagged font and/or glyph metrics
+///
+/// This function accepts a tagList whose tag field elements are
+/// valid for inquiry, and whose associated data fields are
+/// pointers to the destination in which to place the requested
+/// data.
+/// Tag items that refer to data indirectly (OT_Indirect is set)
+/// return pointers that may be allocated or cached by the
+/// library.  This data must be treated as read-only data.  When
+/// the application is done with the data acquired via ObtainInfoA,
+/// it must perform a ReleaseInfoA to allow the library to release
+/// the data.
+///
+/// # Synopsis
+///
+/// error = ObtainInfoA(engineHandle, tagList)
+///                     A0            A1
+///
+/// ULONG ObtainInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = ObtainInfo(engineHandle, firstTag, ...)
+///
+/// ULONG ObtainInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for inquiry paired with the destination pointers for the inquiry results.  All destinations are longwords, whether they are pointers or values, and regardless of whether the value could fit in a smaller variable.
+///
+/// # Returns
+///
+/// This function returns a zero success indication, or a non-zero
+/// error code.
+///
+/// # Examples
+///
+/// ULONG pointSize;
+///    struct GlyphMap *glyph;
+///    ...
+///    if (!ObtainInfo(EngineHandle, OT_Glyph, &glyph, TAG_DONE)) {
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph, TAG_DONE);
+///    }
+///
+/// # See Also
+///
+/// ReleaseInfoA(), diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn ObtainInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32
+/// Release data obtained with ObtainInfoA
+///
+/// This function releases the data obtained with ObtainInfoA.
+/// Data associated with tags that are not indirect, i.e. for which
+/// OT_Indirect is not set, need not be released, but it is not an
+/// error to do so.  Released data may be immediately freed or may
+/// become a candidate to be expunged from memory when the system
+/// reaches a low memory condition, depending on the library's
+/// internal implementation.
+/// Each ReleaseInfoA tag item must be associated with a prior
+/// ObtainInfoA.
+///
+/// # Synopsis
+///
+/// error = ReleaseInfoA(engineHandle, tagList)
+///                      A0            A1
+///
+/// ULONG ReleaseInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = ReleaseInfo(engineHandle, firstTag, ...)
+///
+/// ULONG ReleaseInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for inquiry paired with the data previously acquired for them with ObtainInfoA.  Null pointers quietly accepted and ignored for indirect data.
+///
+/// # Returns
+///
+/// This function has no result.  The only error that can occur is
+/// when the Obtain and Release pairs are mismatched: the
+/// application is assumed not to do that.
+///
+/// # Examples
+///
+/// ULONG pointSize;
+/// struct GlyphMap *glyph;
+/// ...
+/// error = ObtainInfo(EngineHandle, OT_Glyph, &glyph, TAG_DONE);
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph, TAG_DONE);
+///
+/// # See Also
+///
+/// ReleaseInfoA(), diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn ReleaseInfoA(glyphEngine: *GlyphEngine, tagList: *TagItem) -> u32
+/// Release data obtained with ObtainInfoA
+///
+/// This function releases the data obtained with ObtainInfoA.
+/// Data associated with tags that are not indirect, i.e. for which
+/// OT_Indirect is not set, need not be released, but it is not an
+/// error to do so.  Released data may be immediately freed or may
+/// become a candidate to be expunged from memory when the system
+/// reaches a low memory condition, depending on the library's
+/// internal implementation.
+/// Each ReleaseInfoA tag item must be associated with a prior
+/// ObtainInfoA.
+///
+/// # Synopsis
+///
+/// error = ReleaseInfoA(engineHandle, tagList)
+///                      A0            A1
+///
+/// ULONG ReleaseInfoA(struct GlyphEngine *, struct TagItem *);
+///
+/// error = ReleaseInfo(engineHandle, firstTag, ...)
+///
+/// ULONG ReleaseInfo(struct GlyphEngine *, Tag, ...);
+///
+/// # Arguments
+///
+/// * engineHandle -- the handle acquired via OpenEngine. tagList -- a tagList containing OT_ tags valid for inquiry paired with the data previously acquired for them with ObtainInfoA.  Null pointers quietly accepted and ignored for indirect data.
+///
+/// # Returns
+///
+/// This function has no result.  The only error that can occur is
+/// when the Obtain and Release pairs are mismatched: the
+/// application is assumed not to do that.
+///
+/// # Examples
+///
+/// ULONG pointSize;
+/// struct GlyphMap *glyph;
+/// ...
+/// error = ObtainInfo(EngineHandle, OT_Glyph, &glyph, TAG_DONE);
+/// ...
+/// ReleaseInfo(EngineHandle, OT_Glyph, glyph, TAG_DONE);
+///
+/// # See Also
+///
+/// ReleaseInfoA(), diskfont/diskfonttag.h, diskfont/oterrors.h
 @library("bullet.library")
 extern pub fn ReleaseInfo(glyphEngine: *GlyphEngine, tagList: u32, ...args) -> u32

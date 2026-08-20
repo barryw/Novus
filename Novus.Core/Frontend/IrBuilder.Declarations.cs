@@ -13,9 +13,16 @@ namespace Novus.Frontend;
 /// </summary>
 public partial class IrBuilder
 {
-    private void StoreGenericMethodTemplate(string typeName, string methodName, List<string> genericParams, NovusParser.FunctionDeclarationContext funcDecl)
+    private void StoreGenericMethodTemplate(
+        string typeName,
+        string methodName,
+        List<string> genericParams,
+        NovusParser.FunctionDeclarationContext funcDecl,
+        bool isTraitImpl = false,
+        string? traitName = null)
     {
-        var templateKey = $"{typeName}::{methodName}";
+        var templateKey = InstantiationKeyBuilder.BuildMethodTemplateKey(
+            typeName, methodName, isTraitImpl, traitName);
         // Capture current constants dictionary (make a copy so imports don't affect templates)
         var templateConstants = GetConstantsAsTuples();
         // Parse where clause for constraint checking during monomorphization

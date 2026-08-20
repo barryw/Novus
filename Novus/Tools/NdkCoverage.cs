@@ -81,6 +81,11 @@ internal partial class NdkCoverageJsonContext : JsonSerializerContext;
 /// <summary>Builds and verifies the licensed-NDK inventory snapshot checked into the repo.</summary>
 public static class NdkCoverage
 {
+    private static readonly Dictionary<string, string> RenamedRawTypes = new(StringComparer.Ordinal)
+    {
+        ["bootblock"] = "HdwBootBlock"
+    };
+
     private static readonly HashSet<string> ExcludedHeaderDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         "clib", "defines", "inline", "pragma", "pragmas", "proto"
@@ -137,6 +142,11 @@ public static class NdkCoverage
                 {
                     Category = "function", Name = "BeginIO", Module = "amiga::raw::exec",
                     Notes = "Compatibility declaration of the canonical amiga.lib routine for existing exec imports."
+                },
+                new()
+                {
+                    Category = "type", Name = "HdwBootBlock", Module = "amiga::raw::structs",
+                    Notes = "Unambiguous Novus name for hdwrench.h's typedef struct bootblock BootBlock, which collides with devices/hardblocks.h's struct BootBlock in Novus's single type namespace."
                 }
             ]
         };
@@ -247,6 +257,11 @@ public static class NdkCoverage
                     errors.Add($"generator-skipped macro is not classified in the coverage manifest: {name}");
             }
         }
+        var linkGaps = Path.Combine(rawPath, "ndk_link_gaps.txt");
+        if (File.Exists(linkGaps))
+            errors.AddRange(File.ReadLines(linkGaps)
+                .Where(line => line.Length > 0 && !line.StartsWith('#'))
+                .Select(line => $"raw callable is not linkable: {line}"));
 
         if (!string.IsNullOrWhiteSpace(ndkPath))
         {
@@ -255,6 +270,7 @@ public static class NdkCoverage
                 errors.Add($"NDK input hash changed: expected {manifest.Baseline.InputSha256}, got {regenerated.Baseline.InputSha256}");
             if (regenerated.Baseline.InventorySha256 != manifest.Baseline.InventorySha256)
                 errors.Add($"authoritative NDK inventory changed: expected {manifest.Baseline.InventorySha256}, got {regenerated.Baseline.InventorySha256}");
+            VerifyFunctionSignatures(Path.Combine(ndkPath, "Include", "include_h", "clib"), raw, errors);
         }
 
         return errors;
@@ -374,13 +390,17 @@ public static class NdkCoverage
             var parsed = CHeaderParser.ParseFile(path);
             foreach (var type in parsed.Structs.Where(type => !string.IsNullOrWhiteSpace(type.Name)))
             {
+                var renamed = RenamedRawTypes.GetValueOrDefault(type.Name);
+                var direct = raw.Types.Contains(renamed ?? type.Name);
                 manifest.Symbols.Add(new NdkSymbol
                 {
                     Category = "type", Name = type.Name, Scope = scope, Interface = HeaderInterface(relative),
                     Sources = [source], NovusModule = "amiga::raw::structs",
-                    Status = raw.Types.Contains(type.Name) ? "DIRECTLY_SUPPORTED" : "UNSUPPORTED_NEEDS_WORK",
+                    Status = direct ? renamed == null ? "DIRECTLY_SUPPORTED" : "NOVUS_EQUIVALENT" : "UNSUPPORTED_NEEDS_WORK",
                     Definition = $"{(type.IsUnion ? "union" : "struct")}({string.Join(';', type.Fields.Select(field => $"{field.Type} {field.Name}{(field.IsArray ? $"[{field.ArraySize}]" : "")}"))})",
-                    Notes = raw.Types.Contains(type.Name) ? "" : "Public aggregate is absent from amiga::raw::structs."
+                    Notes = direct
+                        ? renamed == null ? "" : $"Exposed as {renamed} to avoid a C tag/typedef namespace collision."
+                        : "Public aggregate is absent from amiga::raw::structs."
                 });
             }
 
@@ -464,13 +484,20 @@ public static class NdkCoverage
     private static NdkSymbol MergeSymbols(IGrouping<string, NdkSymbol> group)
     {
         var values = group.ToList();
-        var result = values.OrderByDescending(value => value.Status == "DIRECTLY_SUPPORTED").First();
+        var result = values
+            .OrderByDescending(value => value.Status == "DIRECTLY_SUPPORTED")
+            .ThenByDescending(value => value.Category == "type" &&
+                value.Definition is not "opaque aggregate declaration" and not "")
+            .First();
         result.Sources = values.SelectMany(value => value.Sources).Distinct(StringComparer.Ordinal).Order().ToList();
-        if (values.Select(value => value.Definition).Where(value => value.Length > 0).Distinct(StringComparer.Ordinal).Count() > 1 &&
-            result.Category == "function")
+        var definitions = values.Select(value => value.Definition)
+            .Where(value => value.Length > 0 &&
+                (result.Category != "type" || value != "opaque aggregate declaration"))
+            .Distinct(StringComparer.Ordinal).ToList();
+        if (definitions.Count > 1 && result.Category is "function" or "type")
         {
             result.Status = "UNSUPPORTED_NEEDS_WORK";
-            result.Notes = "Conflicting authoritative function definitions.";
+            result.Notes = $"Conflicting authoritative {result.Category} definitions.";
         }
         return result;
     }
@@ -483,13 +510,32 @@ public static class NdkCoverage
     private static RawSurface ReadRawSurface(string rawPath)
     {
         var surface = new RawSurface();
-        foreach (var path in Directory.EnumerateFiles(rawPath, "*.novus", SearchOption.AllDirectories))
+        var paths = Directory.EnumerateFiles(rawPath, "*.novus", SearchOption.AllDirectories).ToList();
+        foreach (var path in paths)
+        foreach (Match match in Regex.Matches(File.ReadAllText(path),
+                     @"(?m)^\s*(?:pub\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^\r\n/]+)"))
+            surface.TypeAliases[match.Groups[1].Value] = match.Groups[2].Value.Trim();
+
+        foreach (var path in paths)
         {
             var module = "amiga::raw::" + Path.ChangeExtension(Path.GetRelativePath(rawPath, path), null)!
                 .Replace(Path.DirectorySeparatorChar.ToString(), "::", StringComparison.Ordinal);
             var text = File.ReadAllText(path);
             var names = PublicFunction.Matches(text).Select(match => match.Groups[1].Value).ToList();
             surface.Functions[module] = names.ToHashSet(StringComparer.Ordinal);
+            foreach (Match match in Regex.Matches(text,
+                         @"(?m)^\s*extern\s+pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*(?:->\s*([^\r\n/]+))?"))
+            {
+                var parameters = SfdParser.SplitParameters(match.Groups[2].Value)
+                    .Where(value => value.Length > 0)
+                    .Select(value => value.StartsWith("...", StringComparison.Ordinal)
+                        ? "..."
+                        : NormalizeNovusType(value[(value.IndexOf(':') + 1)..], surface.TypeAliases))
+                    .ToList();
+                surface.FunctionSignatures[$"{module}::{match.Groups[1].Value}"] = new RawFunctionSignature(
+                    NormalizeNovusType(match.Groups[3].Success ? match.Groups[3].Value : "()", surface.TypeAliases),
+                    parameters);
+            }
             var duplicates = names.GroupBy(name => name, StringComparer.Ordinal).Where(group => group.Count() > 1)
                 .Select(group => group.Key).ToList();
             if (duplicates.Count > 0) surface.DuplicateFunctions[module] = duplicates;
@@ -509,6 +555,83 @@ public static class NdkCoverage
         surface.DuplicateConstants.AddRange(AllMatches(rawPath, PublicConstant).GroupBy(name => name, StringComparer.Ordinal)
             .Where(group => group.Count() > 1).Select(group => group.Key));
         return surface;
+    }
+
+    private static void VerifyFunctionSignatures(string clibPath, RawSurface raw, List<string> errors)
+    {
+        var prototypes = Directory.EnumerateFiles(clibPath, "*_protos.h")
+            .SelectMany(path => ParseCPrototypes(path).Select(value => (value.Name, value.Definition, Path: path)))
+            .DistinctBy(value => value.Name)
+            .ToDictionary(value => value.Name, StringComparer.Ordinal);
+        foreach (var (qualifiedName, actual) in raw.FunctionSignatures)
+        {
+            var name = qualifiedName[(qualifiedName.LastIndexOf("::", StringComparison.Ordinal) + 2)..];
+            if (!prototypes.TryGetValue(name, out var prototype)) continue;
+            var match = Regex.Match(prototype.Definition,
+                $@"^(.*?)\b{Regex.Escape(name)}\s*\((.*)\)$", RegexOptions.Singleline);
+            if (!match.Success) continue;
+            var expectedParameters = SfdParser.SplitParameters(match.Groups[2].Value)
+                .Where(value => value.Length > 0 && value is not ("void" or "VOID"))
+                .Select(value => value == "..."
+                    ? "..."
+                    : NormalizeNovusType(SfdParser.MapAmigaTypeToNovus(
+                        value.Contains("(*", StringComparison.Ordinal) ? value : SfdParser.StripParameterName(value)),
+                        raw.TypeAliases))
+                .ToList();
+            var expected = new RawFunctionSignature(
+                NormalizeNovusType(SfdParser.MapAmigaTypeToNovus(match.Groups[1].Value), raw.TypeAliases),
+                expectedParameters);
+            if (!FunctionSignaturesCompatible(qualifiedName, actual, expected))
+                errors.Add($"raw signature mismatch: {qualifiedName} is {actual}, NDK {Path.GetFileName(prototype.Path)} declares {expected}");
+        }
+    }
+
+    private static bool FunctionSignaturesCompatible(string qualifiedName, RawFunctionSignature actual,
+        RawFunctionSignature expected)
+    {
+        if (actual.Parameters.Count != expected.Parameters.Count) return false;
+        var ffpBits = qualifiedName.Contains("::mathffp::", StringComparison.Ordinal) ||
+                      qualifiedName.Contains("::mathtrans::", StringComparison.Ordinal) ||
+                      qualifiedName.EndsWith("::amiga_lib::afp", StringComparison.Ordinal) ||
+                      qualifiedName.EndsWith("::amiga_lib::dbf", StringComparison.Ordinal) ||
+                      qualifiedName.EndsWith("::amiga_lib::fpa", StringComparison.Ordinal) ||
+                      qualifiedName.EndsWith("::amiga_lib::fpbcd", StringComparison.Ordinal);
+        var utilityWideResult = qualifiedName.EndsWith("::utility::SDivMod32", StringComparison.Ordinal) ||
+                                qualifiedName.EndsWith("::utility::UDivMod32", StringComparison.Ordinal) ||
+                                qualifiedName.EndsWith("::utility::SMult64", StringComparison.Ordinal) ||
+                                qualifiedName.EndsWith("::utility::UMult64", StringComparison.Ordinal);
+        var setArgStrAutodocResult = qualifiedName.EndsWith("::dos::SetArgStr", StringComparison.Ordinal);
+        var faultAutodocResult = qualifiedName.EndsWith("::dos::Fault", StringComparison.Ordinal);
+        if (ffpBits && (actual.ReturnType == "f32" || actual.Parameters.Any(type => type is "f32" or "*f32")))
+            return false;
+        if (actual.ReturnType != expected.ReturnType &&
+            !(ffpBits && actual.ReturnType == "u32" && expected.ReturnType == "f32") &&
+            !(utilityWideResult && actual.ReturnType is "i64" or "u64" && expected.ReturnType is "i32" or "u32") &&
+            !(setArgStrAutodocResult && actual.ReturnType == "*u8" && expected.ReturnType == "i16") &&
+            !(faultAutodocResult && actual.ReturnType == "i32" && expected.ReturnType == "i16"))
+            return false;
+        return actual.Parameters.Zip(expected.Parameters).All(pair =>
+            pair.First == pair.Second ||
+            pair is ("i8" or "i16", "i32") or ("u8" or "u16", "u32") ||
+            ffpBits && pair is ("u32", "f32") or ("*u32", "*f32") ||
+            qualifiedName.Contains("::virtual::", StringComparison.Ordinal) && pair is ("*u32", "u32") ||
+            qualifiedName.StartsWith("amiga::raw::exec::AVL_", StringComparison.Ordinal) &&
+                pair.First.StartsWith("amiga fn(", StringComparison.Ordinal) && pair.Second == "*u8" ||
+            qualifiedName.EndsWith("::InternalUnLoadSeg", StringComparison.Ordinal) &&
+                pair.First.StartsWith("amiga fn(", StringComparison.Ordinal) && pair.Second == "fn()");
+    }
+
+    private static string NormalizeNovusType(string value, IReadOnlyDictionary<string, string> aliases)
+    {
+        value = Regex.Replace(Regex.Replace(value.Split("//", 2)[0], @"/\*.*?\*/", " ").Trim(), @"\s+", " ");
+        if (value is "void" or "VOID") return "()";
+        var modifiers = new[] { "borrowing ", "consuming ", "mut " };
+        foreach (var modifier in modifiers)
+            if (value.StartsWith(modifier, StringComparison.Ordinal)) value = value[modifier.Length..];
+        if (aliases.TryGetValue(value, out var alias)) return NormalizeNovusType(alias, aliases);
+        if (value.StartsWith('*') && aliases.TryGetValue(value[1..], out alias))
+            return "*" + NormalizeNovusType(alias, aliases);
+        return value;
     }
 
     private static IEnumerable<string> AllMatches(string rawPath, Regex pattern) =>
@@ -739,8 +862,18 @@ public static class NdkCoverage
         public HashSet<string> Constants { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, HashSet<string>> TypesByModule { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, HashSet<string>> ConstantsByModule { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, string> TypeAliases { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, RawFunctionSignature> FunctionSignatures { get; } = new(StringComparer.Ordinal);
         public List<string> DuplicateTypes { get; } = [];
         public List<string> DuplicateConstants { get; } = [];
+    }
+
+    private sealed record RawFunctionSignature(string ReturnType, List<string> Parameters)
+    {
+        public bool Equals(RawFunctionSignature? other) => other != null && ReturnType == other.ReturnType &&
+            Parameters.SequenceEqual(other.Parameters, StringComparer.Ordinal);
+        public override int GetHashCode() => HashCode.Combine(ReturnType, string.Join("|", Parameters));
+        public override string ToString() => $"{ReturnType} ({string.Join(", ", Parameters)})";
     }
 
     private sealed class FdFile { public List<FdFunction> Functions { get; } = []; }

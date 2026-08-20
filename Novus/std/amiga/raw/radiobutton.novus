@@ -11,19 +11,212 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the radiobutton class.
+///
+/// Obtains the pointer to the RadioButton gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// radiobutton_class = RADIOBUTTON_GetClass();
+/// D0
+///
+/// Class * RADIOBUTTON_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// radiobutton_class - Pointer to the RadioButton gadget class.
 @library("radiobutton.library")
-extern pub fn RADIOBUTTON_GetClass() -> *u8
+extern pub fn RADIOBUTTON_GetClass() -> *IClass
+/// Allocate a RadioButton node. (V40)
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the radiobutton.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the RadioButton class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocRadioButtonNode(UWORD pri, Tag, ...)
+/// node = AllocRadioButtonNode(pri, Tag, ...)
+///
+/// struct Node * AllocRadioButtonNodeA(UWORD pri, struct TagItem *)
+/// node = AllocRadioButtonNodeA(pri, taglist)
+///
+/// # Arguments
+///
+/// * `pri` - the priority of the node (node->ln_Pri). taglist - Attributes for the node, passed onto SetRadioButtonNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a RadioButton gadget.
+///
+/// # See Also
+///
+/// FreeRadioButtonNode(), SetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn AllocRadioButtonNodeA(columns: u16, tags: *TagItem) -> *Node
+/// Allocate a RadioButton node. (V40)
+///
+/// Allocates a node that can be added to the Exec linked list of
+/// labels in the radiobutton.  This is the only way to allocate a
+/// node for this list, you cannot allocate nodes yourself because
+/// the RadioButton class uses a private node structure.
+///
+/// # Synopsis
+///
+/// struct Node * AllocRadioButtonNode(UWORD pri, Tag, ...)
+/// node = AllocRadioButtonNode(pri, Tag, ...)
+///
+/// struct Node * AllocRadioButtonNodeA(UWORD pri, struct TagItem *)
+/// node = AllocRadioButtonNodeA(pri, taglist)
+///
+/// # Arguments
+///
+/// * `pri` - the priority of the node (node->ln_Pri). taglist - Attributes for the node, passed onto SetRadioButtonNodeAttrsA().
+///
+/// # Returns
+///
+/// node - A node that can be added into the Exec list of labels for
+/// a RadioButton gadget.
+///
+/// # See Also
+///
+/// FreeRadioButtonNode(), SetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn AllocRadioButtonNode(columns: u16, tags: u32, ...args) -> *Node
+/// Free a RadioButton node. (V40)
+///
+/// Frees a RadioButtonNode allocated with AllocRadioButtonNodeA().
+///
+/// # Synopsis
+///
+/// VOID FreeRadioButtonNode(struct Node *)
+/// FreeRadioButtonNode(node)
+///
+/// # Arguments
+///
+/// * `node` - The node to free.
+///
+/// # See Also
+///
+/// AllocRadioButtonNodeA()
 @library("radiobutton.library")
 extern pub fn FreeRadioButtonNode(node: *Node)
+/// Set attributes of a RadioButton node. (V40)
+///
+/// Changes attributes for a RadioButton node.  Since the RadioButton
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a RadioButton gadget.  You must first detach the list
+/// with RADIOBUTTON_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetRadioButtonNodeAttrs(struct Node *, Tag, ...)
+/// SetRadioButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetRadioButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// SetRadioButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// RBNA_Labels (STRPTR *) - Caller-owned array of label-string pointers.
+///
+/// # See Also
+///
+/// GetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn SetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
+/// Set attributes of a RadioButton node. (V40)
+///
+/// Changes attributes for a RadioButton node.  Since the RadioButton
+/// class uses a private node structure, this is the only way to change
+/// node attributes.
+/// You may NOT change node attributes when the node is in a list
+/// attached to a RadioButton gadget.  You must first detach the list
+/// with RADIOBUTTON_Labels, ~0 before you can change attributes, and
+/// then re-attach the list.
+///
+/// # Synopsis
+///
+/// VOID SetRadioButtonNodeAttrs(struct Node *, Tag, ...)
+/// SetRadioButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID SetRadioButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// SetRadioButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - Node whose attributes you are changing. taglist - Tag list of attributes to change.
+///
+/// # Tags
+///
+/// RBNA_Labels (STRPTR *) - Caller-owned array of label-string pointers.
+///
+/// # See Also
+///
+/// GetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn SetRadioButtonNodeAttrs(node: *Node, ...args)
+/// Get attributes about a RadioButton node. (V40)
+///
+/// The RadioButton uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetRadioButtonNodeAttrs(struct Node *, Tag, ...)
+/// GetRadioButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetRadioButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// GetRadioButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The RadioButton node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.
+///
+/// # See Also
+///
+/// SetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn GetRadioButtonNodeAttrsA(node: *Node, tags: *TagItem)
+/// Get attributes about a RadioButton node. (V40)
+///
+/// The RadioButton uses a private node structure and all attributes
+/// are hidden, and must therefore be accessed with this function.
+///
+/// # Synopsis
+///
+/// VOID GetRadioButtonNodeAttrs(struct Node *, Tag, ...)
+/// GetRadioButtonNodeAttrs(node, firsttag, ...)
+///
+/// VOID GetRadioButtonNodeAttrsA(struct Node *, struct TagItem *)
+/// GetRadioButtonNodeAttrsA(node, taglist)
+///
+/// # Arguments
+///
+/// * `node` - The RadioButton node to get the information on. taglist - A tag list of attributes to get.  ti_Tag is the attribute to get and ti_Data is a pointer to a location to copy the result to.
+///
+/// # See Also
+///
+/// SetRadioButtonNodeAttrsA()
 @library("radiobutton.library")
 extern pub fn GetRadioButtonNodeAttrs(node: *Node, ...args)

@@ -1,0 +1,50 @@
+from std::test::test import expect
+from amiga::raw::resources::potgo import AllocPotBits, FreePotBits, WritePotgo
+from amiga::raw::structs import Custom
+
+const RIGHT_Y_DATA: u16 = $4000
+const RIGHT_Y_OUTPUT: u16 = $8000
+const RIGHT_Y_PAIR: u16 = $C000
+
+// @covers-ndk function|potgo.resource|AllocPotBits
+// @ndk-side-effects Reserves the right-port Y data/output pair, proves a competing reservation is denied while held, then releases the granted data bit
+@test("potgo.resource AllocPotBits grants exclusively owned controller bits")
+pub fn potgo_alloc_exclusive() {
+    let granted = AllocPotBits(RIGHT_Y_PAIR)
+    expect((granted & RIGHT_Y_DATA) != 0, "right-port Y data bit is granted")
+    if granted == 0 { return }
+    let competing = AllocPotBits(RIGHT_Y_PAIR)
+    expect(competing == 0, "held controller bits reject a competing reservation")
+    FreePotBits(granted)
+}
+
+// @covers-ndk function|potgo.resource|FreePotBits
+// @ndk-side-effects Reserves and frees the right-port Y pair, proves the same bit can be reserved again immediately, then returns the second grant to the resource
+@test("potgo.resource FreePotBits makes controller bits reusable")
+pub fn potgo_free_reuse() {
+    let first = AllocPotBits(RIGHT_Y_PAIR)
+    expect((first & RIGHT_Y_DATA) != 0, "initial right-port Y reservation succeeds")
+    if first == 0 { return }
+    FreePotBits(first)
+    let second = AllocPotBits(RIGHT_Y_PAIR)
+    expect((second & RIGHT_Y_DATA) != 0, "freed controller bit can be reserved again")
+    if second != 0 { FreePotBits(second) }
+}
+
+// @covers-ndk function|potgo.resource|WritePotgo
+// @ndk-side-effects Reserves the right-port Y pair, drives its output low then high and verifies both states through POTINP, restores input mode, and frees the reservation
+@test("potgo.resource WritePotgo drives only its reserved controller pin")
+pub fn potgo_write_reserved_pin() {
+    let granted = AllocPotBits(RIGHT_Y_PAIR)
+    expect((granted & RIGHT_Y_DATA) != 0, "right-port Y pair is reserved before hardware writes")
+    if granted == 0 { return }
+    let custom = (*Custom)$DFF000
+    WritePotgo(RIGHT_Y_OUTPUT, RIGHT_Y_PAIR)
+    let low = ((*custom).potinp & RIGHT_Y_DATA) == 0
+    WritePotgo(RIGHT_Y_PAIR, RIGHT_Y_PAIR)
+    let high = ((*custom).potinp & RIGHT_Y_DATA) != 0
+    WritePotgo(0, RIGHT_Y_PAIR)
+    FreePotBits(granted)
+    expect(low, "reserved output reads back low through POTINP")
+    expect(high, "reserved output reads back high through POTINP")
+}

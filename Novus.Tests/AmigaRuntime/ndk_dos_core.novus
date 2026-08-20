@@ -1,0 +1,192 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::dos import AddPart, CheckSignal, CompareDates, DateStamp, FilePart, GetCurrentDirName, GetProgramName, IoErr, MatchPattern, MatchPatternNoCase, ParsePattern, ParsePatternNoCase, PathPart, SetIoErr, SetProgramName, SplitName, StrToLong
+from amiga::raw::exec import SetSignal
+from amiga::raw::structs import DateStamp as DosDateStamp
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+// @covers-ndk function|dos.library|StrToLong
+// @ndk-side-effects Converts a signed decimal prefix without allocation, reports the exact consumed span including leading whitespace, and leaves the following non-digit untouched
+@test("dos.library StrToLong parses signed decimal prefixes")
+pub fn dos_str_to_long() {
+    var value: i32 = 0
+    let consumed = StrToLong("  -1234tail", &var value)
+    expect(consumed == 7 && value == -1234, "leading spaces, sign, and four digits consumed")
+}
+
+// @covers-ndk function|dos.library|FilePart
+// @ndk-side-effects Returns a borrowed pointer into the supplied immutable path at its final component and performs no allocation or mutation
+@test("dos.library FilePart locates the final component")
+pub fn dos_file_part() {
+    let path: Str = "SYS:Tools/Calculator"
+    let part = FilePart(path.as_cstr())
+    expect(c_equals(part, "Calculator"), "returned pointer names the final component")
+}
+
+// @covers-ndk function|dos.library|PathPart
+// @ndk-side-effects Returns a borrowed pointer into the supplied immutable path at the separator before its final component and performs no allocation or mutation
+@test("dos.library PathPart locates the final separator")
+pub fn dos_path_part() {
+    let path: Str = "SYS:Tools/Calculator"
+    let part = PathPart(path.as_cstr())
+    unsafe { expect(part[0] == '/' && part[1] == 'C', "returned pointer identifies /Calculator") }
+}
+
+// @covers-ndk function|dos.library|AddPart
+// @ndk-side-effects Appends one relative component in place, inserts the required separator, preserves NUL termination, and allocates nothing
+@test("dos.library AddPart appends a path component")
+pub fn dos_add_part() {
+    var path: [u8] = [0; 64]
+    path[0] = 'R'
+    path[1] = 'A'
+    path[2] = 'M'
+    path[3] = ':'
+    let pointer = unsafe { (*u8)&var path[0] }
+    expect(AddPart(pointer, "Novus", 64) != 0, "component fits")
+    expect(c_equals(pointer, "RAM:Novus"), "separator and component appended exactly")
+}
+
+// @covers-ndk function|dos.library|SplitName
+// @ndk-side-effects Copies each component into the caller-owned buffer, NUL-terminates it, and returns the next source position without allocation
+@test("dos.library SplitName walks every component")
+pub fn dos_split_name() {
+    var part: [u8] = [0; 16]
+    let pointer = unsafe { (*u8)&var part[0] }
+    let second = SplitName("one/two/three", '/', pointer, 0, 16)
+    let first_ok = second == 4 && c_equals(pointer, "one")
+    let third = SplitName("one/two/three", '/', pointer, second, 16)
+    let second_ok = third == 8 && c_equals(pointer, "two")
+    let end = SplitName("one/two/three", '/', pointer, third, 16)
+    expect(first_ok && second_ok && end == -1 && c_equals(pointer, "three"), "all components and positions are exact")
+}
+
+// @covers-ndk function|dos.library|CompareDates
+// @ndk-side-effects Compares caller-owned DateStamp values without mutation using DOS's documented reverse-sign ordering for later and earlier timestamps
+@test("dos.library CompareDates orders timestamps")
+pub fn dos_compare_dates() {
+    var early = DosDateStamp { ds_Days: 100, ds_Minute: 10, ds_Tick: 20 }
+    var same = DosDateStamp { ds_Days: 100, ds_Minute: 10, ds_Tick: 20 }
+    var late = DosDateStamp { ds_Days: 100, ds_Minute: 11, ds_Tick: 0 }
+    expect(CompareDates(&var early, &var same) == 0, "equal timestamps compare equal")
+    expect(CompareDates(&var late, &var early) < 0, "later first timestamp returns negative")
+    expect(CompareDates(&var early, &var late) > 0, "earlier first timestamp returns positive")
+}
+
+// @covers-ndk function|dos.library|DateStamp
+// @ndk-side-effects Writes the current system time into the caller-owned structure and returns that exact structure pointer without allocation
+@test("dos.library DateStamp returns a valid current timestamp")
+pub fn dos_date_stamp() {
+    var stamp = DosDateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 }
+    let returned = DateStamp(&var stamp)
+    expect(returned == (*DosDateStamp)&var stamp, "returns the supplied structure")
+    expect(stamp.ds_Days > 0 && stamp.ds_Minute >= 0 && stamp.ds_Minute < 1440, "day and minute are in range")
+    expect(stamp.ds_Tick >= 0 && stamp.ds_Tick < 3000, "tick is within one minute")
+}
+
+// @covers-ndk function|dos.library|SetIoErr
+// @ndk-side-effects Replaces only the current process's secondary DOS result, returns its previous value, and restores the original value before the test exits
+@test("dos.library SetIoErr swaps the process result")
+pub fn dos_set_io_err() {
+    let original = IoErr()
+    let previous = SetIoErr(4321)
+    let observed = IoErr()
+    let replaced = SetIoErr(original)
+    expect(previous == original && observed == 4321 && replaced == 4321, "old, current, and restored results agree")
+}
+
+// @covers-ndk function|dos.library|CheckSignal
+// @ndk-side-effects Reads and clears exactly SIGBREAKF_CTRL_F from the current process after the test sets it, leaving the signal cleared on exit
+@test("dos.library CheckSignal returns and clears selected signals")
+pub fn dos_check_signal() {
+    let mask: i32 = 1 << 15
+    let original = SetSignal(mask, mask)
+    let found = CheckSignal(mask)
+    let after = CheckSignal(mask)
+    SetSignal(original & mask, mask)
+    expect((found & mask) == mask && (after & mask) == 0, "selected signal is observed once")
+}
+
+// @covers-ndk function|dos.library|GetCurrentDirName
+// @ndk-side-effects Copies the runner CLI's current-directory name into caller-owned storage with NUL termination and performs no allocation
+@test("dos.library GetCurrentDirName returns the runner directory")
+pub fn dos_get_current_dir_name() {
+    var name: [u8] = [0; 256]
+    let pointer = unsafe { (*u8)&var name[0] }
+    expect(GetCurrentDirName(pointer, 256) != 0, "runner has a CLI current directory")
+    unsafe { expect(pointer[0] != 0 && pointer[255] == 0, "name is non-empty and bounded") }
+}
+
+// @covers-ndk function|dos.library|GetProgramName
+// @ndk-side-effects Copies the runner CLI's program name into caller-owned storage with NUL termination and performs no allocation
+@test("dos.library GetProgramName returns the runner name")
+pub fn dos_get_program_name() {
+    var name: [u8] = [0; 256]
+    let pointer = unsafe { (*u8)&var name[0] }
+    expect(GetProgramName(pointer, 256) != 0, "runner has a CLI program name")
+    unsafe { expect(pointer[0] != 0 && pointer[255] == 0, "program name is non-empty and bounded") }
+}
+
+// @covers-ndk function|dos.library|SetProgramName
+// @ndk-side-effects Replaces the current CLI program name, exposes the new value through GetProgramName, and restores the original name before exit
+@test("dos.library SetProgramName updates and restores the runner name")
+pub fn dos_set_program_name() {
+    var original: [u8] = [0; 256]
+    var observed: [u8] = [0; 256]
+    let original_pointer = unsafe { (*u8)&var original[0] }
+    let observed_pointer = unsafe { (*u8)&var observed[0] }
+    expect(GetProgramName(original_pointer, 256) != 0, "original program name captured")
+    let changed = SetProgramName("NovusNDKTest")
+    let read_back = GetProgramName(observed_pointer, 256)
+    let restored = SetProgramName(original_pointer)
+    expect(changed != 0 && read_back != 0 && c_equals(observed_pointer, "NovusNDKTest") && restored != 0, "new name observed and old name restored")
+}
+
+// @covers-ndk function|dos.library|ParsePattern
+// @ndk-side-effects Tokenizes one case-sensitive wildcard expression into caller-owned bounded storage without allocation
+@test("dos.library ParsePattern tokenizes wildcards")
+pub fn dos_parse_pattern() {
+    var pattern: [u8] = [0; 64]
+    let pointer = unsafe { (*u8)&var pattern[0] }
+    let result = ParsePattern("N#?.novus", pointer, 64)
+    unsafe { expect(result == 1 && pointer[0] != 0, "wildcard reported and token stream emitted") }
+}
+
+// @covers-ndk function|dos.library|MatchPattern
+// @ndk-side-effects Reads a caller-owned case-sensitive token stream without mutation and distinguishes matching from non-matching text
+@test("dos.library MatchPattern is case sensitive")
+pub fn dos_match_pattern() {
+    var pattern: [u8] = [0; 64]
+    let pointer = unsafe { (*u8)&var pattern[0] }
+    expect(ParsePattern("N#?", pointer, 64) == 1, "setup pattern tokenized")
+    expect(MatchPattern(pointer, "Novus") != 0 && MatchPattern(pointer, "novus") == 0, "case-sensitive matches differ")
+}
+
+// @covers-ndk function|dos.library|ParsePatternNoCase
+// @ndk-side-effects Tokenizes one case-insensitive wildcard expression into caller-owned bounded storage without allocation
+@test("dos.library ParsePatternNoCase tokenizes wildcards")
+pub fn dos_parse_pattern_no_case() {
+    var pattern: [u8] = [0; 64]
+    let pointer = unsafe { (*u8)&var pattern[0] }
+    let result = ParsePatternNoCase("N#?.novus", pointer, 64)
+    unsafe { expect(result == 1 && pointer[0] != 0, "wildcard reported and folded token stream emitted") }
+}
+
+// @covers-ndk function|dos.library|MatchPatternNoCase
+// @ndk-side-effects Reads a caller-owned case-folded token stream without mutation and accepts equivalent upper- and lower-case text
+@test("dos.library MatchPatternNoCase ignores case")
+pub fn dos_match_pattern_no_case() {
+    var pattern: [u8] = [0; 64]
+    let pointer = unsafe { (*u8)&var pattern[0] }
+    expect(ParsePatternNoCase("N#?", pointer, 64) == 1, "setup pattern tokenized")
+    expect(MatchPatternNoCase(pointer, "Novus") != 0 && MatchPatternNoCase(pointer, "novus") != 0, "both cases match")
+}

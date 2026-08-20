@@ -34,6 +34,7 @@ public class M68kCodeGenerator
     private readonly StringBuilder _output;
     private readonly StringBuilder _dataSection;
     private readonly StringBuilder _bssSection;
+    private readonly HashSet<string> _externalReferences = new(StringComparer.Ordinal);
 
     public M68kCodeGenerator(IrModule module, List<IrStringLiteral> stringLiterals, string cpuTarget)
     {
@@ -63,6 +64,9 @@ public class M68kCodeGenerator
 
         // Generate code section (functions)
         GenerateCodeSection();
+
+        foreach (var reference in _externalReferences.Order(StringComparer.Ordinal))
+            result.AppendLine($"    XREF      {reference}");
 
         // Combine sections
         if (_dataSection.Length > 0)
@@ -137,25 +141,17 @@ public class M68kCodeGenerator
         sb.AppendLine("; =============================================================================");
         sb.AppendLine();
 
-        // CPU target directive
-        string cpuDirective = _cpuTarget switch
-        {
-            "68020" or "020" => "68020",
-            "68030" or "030" => "68030",
-            "68040" or "040" => "68040",
-            "68060" or "060" => "68060",
-            "68080" or "080" => "68080",
-            _ => "68020" // Default to 68020
-        };
-
-        sb.AppendLine($"    CPU {cpuDirective}");
     }
 
     private void GenerateDataSection()
     {
-        _dataSection.AppendLine("_str_file:");
-        EmitStringData("<novus>", _dataSection);
-        _dataSection.AppendLine();
+        if (_module.Functions.SelectMany(function => function.BasicBlocks).SelectMany(block => block.Instructions)
+            .Any(instruction => instruction is IrAssert or IrPanic or IrIndexAccess or IrIndexStore or IrSliceBoundsCheck))
+        {
+            _dataSection.AppendLine("_str_file:");
+            EmitStringData("<novus>", _dataSection);
+            _dataSection.AppendLine();
+        }
 
         // String literals
         if (_stringLiterals.Count > 0)
@@ -238,17 +234,18 @@ public class M68kCodeGenerator
         EmitPrologue(function, allocator);
 
         // Generate code for each basic block
-        bool isFirstBlock = true;
-        foreach (var block in function.BasicBlocks)
+        for (var index = 0; index < function.BasicBlocks.Count; index++)
         {
-            GenerateBasicBlock(block, selector, allocator, isFirstBlock);
-            isFirstBlock = false;
+            GenerateBasicBlock(function.BasicBlocks[index], selector, allocator,
+                index == 0, index == function.BasicBlocks.Count - 1);
         }
 
         // Emit function epilogue (if not already emitted by return)
         _output.AppendLine();
         _output.AppendLine($"{function.Name}_epilogue:");
         EmitEpilogue(function, allocator);
+
+        _externalReferences.UnionWith(selector.ExternalReferences);
 
         _output.AppendLine();
     }
@@ -259,15 +256,7 @@ public class M68kCodeGenerator
 
         int frameSize = allocator.GetStackFrameSize();
 
-        // Create stack frame
-        if (frameSize > 0)
-        {
-            _output.AppendLine($"    link      a5,#{-frameSize}");
-        }
-        else
-        {
-            _output.AppendLine($"    link      a5,#0");
-        }
+        if (frameSize > 0) _output.AppendLine($"    link      a5,#{-frameSize}");
 
         // Save preserved registers if used
         var preservedRegs = allocator.GetPreservedRegisters().ToList();
@@ -292,14 +281,14 @@ public class M68kCodeGenerator
             _output.AppendLine($"    movem.l   (sp)+,{regList}");
         }
 
-        // Destroy stack frame
-        _output.AppendLine($"    unlk      a5");
+        if (allocator.GetStackFrameSize() > 0) _output.AppendLine($"    unlk      a5");
 
         // Return
         _output.AppendLine($"    rts");
     }
 
-    private void GenerateBasicBlock(IrBasicBlock block, InstructionSelector selector, RegisterAllocator allocator, bool isEntryBlock)
+    private void GenerateBasicBlock(IrBasicBlock block, InstructionSelector selector, RegisterAllocator allocator,
+        bool isEntryBlock, bool isLastBlock)
     {
         // Emit block label (skip for entry block - function label already emitted)
         if (!isEntryBlock)
@@ -308,13 +297,53 @@ public class M68kCodeGenerator
         }
 
         // Generate instructions
-        foreach (var instruction in block.Instructions)
+        string? valueInD0 = null;
+        for (var index = 0; index < block.Instructions.Count; index++)
         {
-            GenerateInstruction(instruction, selector, allocator);
+            var instruction = block.Instructions[index];
+            if (instruction is IrBinaryOp binary && binary.Type.SizeInBytes <= 4)
+            {
+                var leftAlreadyInD0 = binary.Left is IrVariable left && left.Name == valueInD0;
+                if (index + 1 < block.Instructions.Count &&
+                    block.Instructions[index + 1] is IrReturn { Value: IrVariable returned } ret &&
+                    returned.Name == binary.ResultName)
+                {
+                    selector.EmitBinaryOp(binary, binary.ResultName, false, leftAlreadyInD0);
+                    selector.EmitReturn(ret, true);
+                    if (!(isLastBlock && index + 1 == block.Instructions.Count - 1))
+                        _output.AppendLine($"    bra       {GetCurrentFunctionName()}_epilogue");
+                    index++;
+                    valueInD0 = null;
+                    continue;
+                }
+                var feedsNext = index + 1 < block.Instructions.Count &&
+                    block.Instructions[index + 1] is IrBinaryOp { Left: IrVariable nextLeft } &&
+                    nextLeft.Name == binary.ResultName;
+                selector.EmitBinaryOp(binary, binary.ResultName, !feedsNext, leftAlreadyInD0);
+                valueInD0 = feedsNext ? binary.ResultName : null;
+                continue;
+            }
+            if (instruction is IrCall { ResultName: not null } call &&
+                index + 1 < block.Instructions.Count &&
+                block.Instructions[index + 1] is IrReturn { Value: IrVariable callReturned } callReturn &&
+                callReturned.Name == call.ResultName)
+            {
+                selector.EmitCall(call, false);
+                selector.EmitReturn(callReturn, true);
+                if (!(isLastBlock && index + 1 == block.Instructions.Count - 1))
+                    _output.AppendLine($"    bra       {GetCurrentFunctionName()}_epilogue");
+                index++;
+                valueInD0 = null;
+                continue;
+            }
+            GenerateInstruction(instruction, selector, allocator,
+                isLastBlock && index == block.Instructions.Count - 1);
+            valueInD0 = null;
         }
     }
 
-    private void GenerateInstruction(IrInstruction instruction, InstructionSelector selector, RegisterAllocator allocator)
+    private void GenerateInstruction(IrInstruction instruction, InstructionSelector selector, RegisterAllocator allocator,
+        bool fallsThroughToEpilogue)
     {
         switch (instruction)
         {
@@ -329,7 +358,8 @@ public class M68kCodeGenerator
             case IrReturn ret:
                 selector.EmitReturn(ret);
                 // Branch to epilogue
-                _output.AppendLine($"    bra       {GetCurrentFunctionName()}_epilogue");
+                if (!fallsThroughToEpilogue)
+                    _output.AppendLine($"    bra       {GetCurrentFunctionName()}_epilogue");
                 break;
 
             case IrBranch branch:

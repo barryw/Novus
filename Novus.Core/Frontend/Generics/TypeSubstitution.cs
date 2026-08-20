@@ -358,9 +358,15 @@ public static class InstantiationKeyBuilder
     /// <summary>
     /// Build a method template key (e.g., "Vec::push")
     /// </summary>
-    public static string BuildMethodTemplateKey(string baseTypeName, string methodName)
+    public static string BuildMethodTemplateKey(
+        string baseTypeName,
+        string methodName,
+        bool isTraitImpl = false,
+        string? traitName = null)
     {
-        return $"{baseTypeName}::{methodName}";
+        return isTraitImpl && traitName != null
+            ? $"{baseTypeName}::{traitName}::{methodName}"
+            : $"{baseTypeName}::{methodName}";
     }
 
     /// <summary>

@@ -157,6 +157,21 @@ public class CompilationCacheTests : IDisposable
     }
 
     [Fact]
+    public void CacheHit_RewrittenWithIdenticalContent_ShouldRemainValid()
+    {
+        const string source = "fn main() { }";
+        var testFile = CreateTestFile(source);
+        var configHash = CompilationCache.ComputeConfigHash("68020", "auto", 2, "debug");
+
+        _cache.CacheCompilationResult(
+            testFile, CreateMockParseTree(), new IrModule(), [], [], configHash);
+        File.WriteAllText(testFile, source);
+        File.SetLastWriteTimeUtc(testFile, DateTime.UtcNow.AddSeconds(1));
+
+        Assert.False(_cache.NeedsRecompilation(testFile, configHash));
+    }
+
+    [Fact]
     public void CacheMiss_DifferentConfig_ShouldReturnNull()
     {
         var testFile = CreateTestFile("fn main() { }");
@@ -254,7 +269,7 @@ public class CompilationCacheTests : IDisposable
     }
 
     [Fact]
-    public void SourceGraphHash_ChangesWhenAnotherTargetRefreshesDependency()
+    public void RefreshedDependency_InvalidatesMemoizedDependentIr()
     {
         var dependencyFile = CreateTestFile("pub fn value() -> i32 { 1 }", "shared.novus");
         var mainFile = CreateTestFile("from shared import value", "app.novus");
@@ -264,13 +279,31 @@ public class CompilationCacheTests : IDisposable
         _cache.CacheCompilationResult(dependencyFile, parseTree, new IrModule(), [], [], configHash);
         _cache.CacheCompilationResult(mainFile, parseTree, new IrModule(), [], [dependencyFile], configHash,
             dependencyModules: [dependencyFile]);
-        var linkedGraph = _cache.ComputeSourceGraphHash([mainFile]);
+        _cache.BeginBuild();
+        Assert.False(_cache.NeedsRecompilation(mainFile, configHash));
 
         File.WriteAllText(dependencyFile, "pub fn value() -> i32 { 2 }");
         _cache.CacheCompilationResult(dependencyFile, parseTree, new IrModule(), [], [], configHash);
 
-        Assert.False(_cache.NeedsRecompilation(mainFile, configHash));
-        Assert.NotEqual(linkedGraph, _cache.ComputeSourceGraphHash([mainFile]));
+        Assert.True(_cache.NeedsRecompilation(mainFile, configHash));
+    }
+
+    [Fact]
+    public async Task FinalizedCleanBuild_DoesNotRequireSecondCompilation()
+    {
+        var dependencyFile = CreateTestFile("pub fn value() -> i32 { 1 }", "clean-shared.novus");
+        var mainFile = CreateTestFile("from clean_shared import value", "clean-app.novus");
+        var configHash = CompilationCache.ComputeConfigHash("68020", "auto", 1, "release");
+        var parseTree = CreateMockParseTree();
+
+        _cache.BeginBuild();
+        _cache.CacheCompilationResult(mainFile, parseTree, new IrModule(), [], [dependencyFile], configHash,
+            dependencyModules: [dependencyFile]);
+        _cache.CacheCompilationResult(dependencyFile, parseTree, new IrModule(), [], [], configHash);
+        await _cache.FinalizeBuildSnapshotAsync();
+
+        var nextBuild = new CompilationCache(_testCacheDir, TestCompilerVersion);
+        Assert.False(nextBuild.NeedsRecompilation(mainFile, configHash));
     }
 
     [Fact]

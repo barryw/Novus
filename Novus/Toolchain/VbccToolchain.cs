@@ -285,6 +285,12 @@ public class VbccToolchain
         // This is in the same vbcc lib directory
         args.Add("-lamiga");
 
+        // VBCC's compact amiga.lib omits several public NDK 3.9 helpers.
+        // Supplement it with the pinned NDK archive; vlink extracts only used objects.
+        var ndkAmigaLib = Path.Combine(_ndkPath, "Include", "linker_libs", "amiga.lib");
+        if (File.Exists(ndkAmigaLib))
+            args.Add(ndkAmigaLib);
+
         // Add standard Amiga libraries path and link with -lauto if NDK lib exists
         // -lauto: Provides automatic library base opening/closing
         var libPath = Path.Combine(_ndkPath, "lib");

@@ -1,0 +1,131 @@
+from std::test::test import expect
+from amiga::raw::consts import ACCESS_READ, AFF_BITMAP, AFF_DISK, DFCTRL_CACHE, DFCTRL_SORTMODE, DFCTRL_SORT_ASC, DFCTRL_SORT_OFF, FCH_ID, FPF_DESIGNED, FPF_DISKFONT, FS_NORMAL, MEMF_CLEAR, MEMF_PUBLIC, TAG_DONE
+from amiga::raw::diskfont import AvailFonts, DisposeFontContents, GetDiskFontCtrl, NewFontContents, NewScaledDiskFont, OpenDiskFont, SetDiskFontCtrl, SetDiskFontCtrlA
+from amiga::raw::dos import Lock, UnLoadSeg, UnLock
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::graphics import CloseFont, StripFont
+from amiga::raw::structs import AvailFontsHeader, DiskFont, DiskFontHeader, FontContentsHeader, TagItem, TextAttr, TextFont
+
+fn topaz(size: u16, designed: bool) -> TextAttr {
+    return TextAttr {
+        ta_Name: "topaz.font",
+        ta_YSize: size,
+        ta_Style: (u8)FS_NORMAL,
+        ta_Flags: (u8)if designed { FPF_DISKFONT | FPF_DESIGNED } else { FPF_DISKFONT },
+    }
+}
+
+fn alternate_sort(current: i32) -> i32 {
+    return if current == DFCTRL_SORT_ASC { DFCTRL_SORT_OFF } else { DFCTRL_SORT_ASC }
+}
+
+// @covers-ndk function|diskfont.library|OpenDiskFont
+// @ndk-side-effects Loads the installed 11-pixel topaz disk font, verifies its requested dimensions and disk-font identity, then balances the returned accessor with CloseFont
+@test("diskfont.library OpenDiskFont loads an installed bitmap font")
+pub fn diskfont_open_installed_font() {
+    var attr = topaz(11, true)
+    let font = OpenDiskFont(&var attr)
+    let valid = font != null && font.tf_YSize == 11 && (font.tf_Flags & FPF_DISKFONT) != 0
+    if font != null { CloseFont(font) }
+    expect(valid, "topaz/11 loads with the requested disk-font attributes")
+}
+
+// @covers-ndk function|diskfont.library|AvailFonts
+// @ndk-side-effects First proves the documented shortage result with a header-only buffer, then allocates exactly the requested public-memory size, inventories installed bitmap disk fonts, validates a non-empty header, and frees the buffer
+@test("diskfont.library AvailFonts reports and fills the required buffer")
+pub fn diskfont_available_fonts() {
+    var header = AvailFontsHeader { afh_NumEntries: 0 }
+    let shortage = AvailFonts((*u8)&var header, @sizeof(AvailFontsHeader), AFF_DISK | AFF_BITMAP)
+    expect(shortage > 0, "header-only buffer reports the extra bytes required")
+    if shortage <= 0 { return }
+    let bytes = (u32)shortage + @sizeof(AvailFontsHeader)
+    let buffer = unsafe { AllocMem(bytes, MEMF_PUBLIC | MEMF_CLEAR) }
+    expect(buffer != null, "exact advertised buffer size allocates")
+    if buffer == null { return }
+    let remaining = AvailFonts(buffer, (i32)bytes, AFF_DISK | AFF_BITMAP)
+    let filled = (*AvailFontsHeader)buffer
+    let valid = remaining == 0 && filled.afh_NumEntries > 0
+    unsafe { FreeMem(buffer, bytes) }
+    expect(valid, "exact advertised buffer contains installed bitmap fonts")
+}
+
+// @covers-ndk function|diskfont.library|NewFontContents
+// @ndk-side-effects Locks FONTS:, constructs topaz.font contents from the real font directory, verifies the FCH_ID and non-empty entry count, disposes the allocation, and unlocks the directory
+@test("diskfont.library NewFontContents describes a real font family")
+pub fn diskfont_new_font_contents() {
+    let fonts = Lock("FONTS:", ACCESS_READ)
+    var contents: *FontContentsHeader = null
+    if fonts != 0 { contents = NewFontContents(fonts, "topaz.font") }
+    let valid = contents != null && contents.fch_FileID == FCH_ID && contents.fch_NumEntries > 0
+    if contents != null { DisposeFontContents(contents) }
+    if fonts != 0 { UnLock(fonts) }
+    expect(valid, "topaz.font contents identify at least one installed size")
+}
+
+// @covers-ndk function|diskfont.library|DisposeFontContents
+// @ndk-side-effects Acquires a real FontContentsHeader through NewFontContents and returns that exact allocation through DisposeFontContents; the A4000 memory gate verifies it is released
+@test("diskfont.library DisposeFontContents releases its exact result")
+pub fn diskfont_dispose_font_contents() {
+    let fonts = Lock("FONTS:", ACCESS_READ)
+    var contents: *FontContentsHeader = null
+    if fonts != 0 { contents = NewFontContents(fonts, "topaz.font") }
+    if contents != null { DisposeFontContents(contents) }
+    if fonts != 0 { UnLock(fonts) }
+    expect(contents != null, "a library-owned contents allocation was acquired and disposed")
+}
+
+// @covers-ndk function|diskfont.library|NewScaledDiskFont
+// @ndk-side-effects Scales the installed topaz/11 source to a distinct 22-pixel DiskFontHeader, validates the constructed TextFont, then releases its font resources with StripFont and its segment with UnLoadSeg before closing the source
+@test("diskfont.library NewScaledDiskFont constructs and releases a scaled font")
+pub fn diskfont_new_scaled_font() {
+    var source_attr = topaz(11, true)
+    var destination_attr = topaz(22, false)
+    let source = OpenDiskFont(&var source_attr)
+    var scaled: *DiskFont = null
+    if source != null { scaled = NewScaledDiskFont(source, &var destination_attr) }
+    let header = (*DiskFontHeader)scaled
+    let valid = scaled != null && header.dfh_FileID != 0 && header.dfh_TF.tf_YSize == 22 && header.dfh_Segment != 0
+    if scaled != null {
+        StripFont(&var header.dfh_TF)
+        UnLoadSeg(header.dfh_Segment)
+    }
+    if source != null { CloseFont(source) }
+    expect(valid, "scaled font has the requested height and a releasable segment")
+}
+
+// @covers-ndk function|diskfont.library|GetDiskFontCtrl
+// @ndk-side-effects Reads diskfont.library's cache preference without mutation and verifies the documented boolean domain
+@test("diskfont.library GetDiskFontCtrl returns a valid cache setting")
+pub fn diskfont_get_control() {
+    let cache = GetDiskFontCtrl(DFCTRL_CACHE)
+    expect(cache == 0 || cache == 1, "cache control is a boolean setting")
+}
+
+// @covers-ndk function|diskfont.library|SetDiskFontCtrlA
+// @ndk-side-effects Changes the sort preference through a terminated TagItem list, reads back the exact new value, and restores the original setting before returning
+@test("diskfont.library SetDiskFontCtrlA round-trips and restores a setting")
+pub fn diskfont_set_control_a() {
+    let original = GetDiskFontCtrl(DFCTRL_SORTMODE)
+    let changed = alternate_sort(original)
+    var set_tags: [TagItem] = [
+        TagItem { ti_Tag: DFCTRL_SORTMODE, ti_Data: changed },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    SetDiskFontCtrlA(&var set_tags[0])
+    let observed = GetDiskFontCtrl(DFCTRL_SORTMODE)
+    set_tags[0].ti_Data = original
+    SetDiskFontCtrlA(&var set_tags[0])
+    expect(observed == changed && GetDiskFontCtrl(DFCTRL_SORTMODE) == original, "tag-list setting is observable and restored")
+}
+
+// @covers-ndk function|diskfont.library|SetDiskFontCtrl
+// @ndk-side-effects Changes the sort preference through the varargs entry point, reads back the exact new value, and restores the original setting before returning
+@test("diskfont.library SetDiskFontCtrl round-trips and restores a setting")
+pub fn diskfont_set_control() {
+    let original = GetDiskFontCtrl(DFCTRL_SORTMODE)
+    let changed = alternate_sort(original)
+    SetDiskFontCtrl(DFCTRL_SORTMODE, changed, TAG_DONE)
+    let observed = GetDiskFontCtrl(DFCTRL_SORTMODE)
+    SetDiskFontCtrl(DFCTRL_SORTMODE, original, TAG_DONE)
+    expect(observed == changed && GetDiskFontCtrl(DFCTRL_SORTMODE) == original, "varargs setting is observable and restored")
+}

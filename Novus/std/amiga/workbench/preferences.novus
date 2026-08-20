@@ -14,7 +14,7 @@
 //   ENV:<app_name>.prefs      - Volatile (RAM)
 //   ENVARC:<app_name>.prefs   - Persistent (disk)
 
-from std::core import Option, Result, Drop, Error, From
+from std::core import Option, Result, Error, From
 from std::collections import Vec
 from std::string import Str, String, PathString
 from amiga::sys::dos::errors import DosError
@@ -80,13 +80,6 @@ impl Error for PrefsError {
 struct PrefsEntry {
     key: String,
     value: String,
-}
-
-impl Drop for PrefsEntry {
-    fn drop(&var self) {
-        self.key.drop()
-        self.value.drop()
-    }
 }
 
 // ============================================================================
@@ -769,10 +762,9 @@ impl Prefs {
                     Result::Ok(new_value) => {
                         // Get entry and replace value
                         let entry_ptr = self.entries.as_mut_ptr()
-                        // Free old value and replace
+                        // Move the old value out so RAII frees it, then store the new one.
                         unsafe {
                             var old_value = entry_ptr[idx].value
-                            old_value.drop()
                             entry_ptr[idx].value = new_value
                         }
                         self.dirty = true
@@ -931,24 +923,6 @@ impl Prefs {
         }
 
         return true
-    }
-}
-
-// Automatic cleanup for Prefs (RAII)
-impl Drop for Prefs {
-    fn drop(&var self) {
-        // Drop all entries by popping and explicitly dropping each one
-        while self.entries.len() > 0 {
-            // Pop returns Option<PrefsEntry>, we need to drop the contained entry
-            match self.entries.pop() {
-                Option::Some(entry) => {
-                    // Entry's String fields will be dropped automatically
-                    // when 'entry' goes out of scope at end of match arm
-                },
-                Option::None => {}
-            }
-        }
-        self.entries.drop()
     }
 }
 

@@ -13,136 +13,292 @@ from amiga::raw::structs import *
 
 /// Create an argument string structure
 ///
-/// Allocates a RexxArg structure and copies the supplied string into it. The
-/// returned pointer points at the string part of the structure and can be
-/// treated like an ordinary string pointer.
+/// Allocates a RexxArg structure and copies the supplied string into it.
+/// The returned pointer points at the string part of the structure
+/// and can be treated like an ordinary string pointer.  (However, care
+/// must be taken that you do not change the string)
+///
+/// # Synopsis
+///
+/// argstr = CreateArgstring(string, length)
+/// D0,A0                    A0      D0
+///
+/// UBYTE *CreateArgstring(UBYTE *, ULONG);
 ///
 /// # Arguments
-/// * `string` - A pointer at your input string length - The number of byt...
+///
+/// * `string` - A pointer at your input string length - The number of bytes of your input string you wish copied. (NOTE:  You are limited to 65,535 byte strings)
 ///
 /// # Returns
-/// argstr - A pointer to the argument string.  The results are returned
 ///
-/// See also: DeleteArgstring(), LengthArgstring(), ClearRexxMsg(), FillRexxMsg()
+/// argstr - A pointer to the argument string.  The results are returned
+/// in both A0 and D0.  You should always check the result
+/// as an allocation failure would cause an error.
+///
+/// # See Also
+///
+/// DeleteArgstring(), LengthArgstring(), ClearRexxMsg(), FillRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn CreateArgstring(string: *u8, length: u32) -> *u8
 /// Releases an Argstring created by CreateArgstring()
 ///
-/// Releases an argstring. The argstring must have been created by ARexx
+/// Releases an argstring.  The argstring must have been created by ARexx
+///
+/// # Synopsis
+///
+/// DeleteArgstring(argstring)
+///                 A0
+///
+/// VOID DeleteArgstring(UBYTE *);
 ///
 /// # Arguments
+///
 /// * `argstring` - A pointer to the string buffer of an argstring.
 ///
-/// See also: CreateArgstring(), ClearRexxMsg(), FillRexxMsg()
+/// # See Also
+///
+/// CreateArgstring(), ClearRexxMsg(), FillRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn DeleteArgstring(argstring: *u8)
 /// Returns the length value stored in the argstring
 ///
-/// This function returns the length value stored in the argstring. This is
-/// *NOT* the same as doing a strlen() type call on the argstring.
+/// This function returns the length value stored in the argstring.
+/// This is *NOT* the same as doing a strlen() type call on the
+/// argstring.  (Note that argstrings may contain NULLs)
+///
+/// # Synopsis
+///
+/// length = LengthArgstring(argstring)
+/// D0                       A0
+///
+/// ULONG LengthArgstring(UBYTE *);
 ///
 /// # Arguments
+///
 /// * `argstring` - A pointer to an argstring that was created by ARexx
 ///
 /// # Returns
+///
 /// length - The length of the argstring.
 ///
-/// See also: CreateArgstring()
+/// # Examples
+///
+///
+///
+/// # See Also
+///
+/// CreateArgstring()
 @library("rexxsyslib.library")
 extern pub fn LengthArgstring(argstring: *u8) -> u32
 /// Create an ARexx message structure
 ///
-/// This functions allocates an ARexx message packet. The RexxMsg consists of a
-/// standard EXEC message structure extended to include the ARexx specific
-/// information.
+/// This functions allocates an ARexx message packet.  The RexxMsg
+/// consists of a standard EXEC message structure extended to include
+/// the ARexx specific information.
+///
+/// # Synopsis
+///
+/// rexxmsg = CreateRexxMsg(port, extension, host)
+/// D0,A0                   A0    A1         D0
+///
+/// struct RexxMsg *CreateRexxMsg(struct MsgPort *, UBYTE *, UBYTE *);
 ///
 /// # Arguments
-/// * `port` - A pointer to a public or private message port.  This *MUS...
-/// * `extension` - A pointer to a NULL terminated string that is to be used ...
-/// * `host` - A pointer to a NULL terminated string that is to be used ...
+///
+/// * `port` - A pointer to a public or private message port.  This *MUST* be a valid port as this is where the message will be replied.
+/// * `extension` - A pointer to a NULL terminated string that is to be used as the default extension for the REXX scripts.  If this is NULL, the default is "REXX"
+/// * `host` - A pointer to a NULL terminated string that is to be used as the default host port.  The name must be the same as the name of the public message port that is to be the default host. If this field is NULL, the default is REXX.
 ///
 /// # Returns
+///
 /// rexxmsg - A RexxMsg structure
 ///
-/// See also: DeleteRexxMsg(), ClearRexxMsg(), FillRexxMsg()
+/// # Notes
+///
+/// The extension and host strings must remain valid for as long as the
+/// RexxMsg exists as only the pointer to those strings are stored.
+///
+/// # See Also
+///
+/// DeleteRexxMsg(), ClearRexxMsg(), FillRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn CreateRexxMsg(port: *MsgPort, extension: *u8, host: *u8) -> *RexxMsg
 /// Releases a RexxMsg structure created by CreateRexxMsg()
 ///
-/// The function releases an ARexx message packet that was allocated with
-/// CreateRexxMsg(). Any argument fields in the RexxMsg structure should be
-/// cleared before calling this function as it does not release them for you.
+/// The function releases an ARexx message packet that was allocated
+/// with CreateRexxMsg().  Any argument fields in the RexxMsg structure
+/// should be cleared before calling this function as it does
+/// not release them for you.
+///
+/// # Synopsis
+///
+/// DeleteRexxMsg(packet)
+///               A0
+///
+/// VOID DeleteRexxMsg(struct RexxMsg *);
 ///
 /// # Arguments
-/// * `packet` - A pointer to a RexxMsg structure allocated by CreateRexxM...
 ///
-/// See also: CreateRexxMsg(), ClearRexxMsg()
+/// * `packet` - A pointer to a RexxMsg structure allocated by CreateRexxMsg()
+///
+/// # Examples
+///
+/// if (rmsg=CreateRexxMsg(myport,"myapp","MYAPP_PORT"))
+/// {
+/// 	/* Do my think with rmsg */
+/// 	ClearRexxMsg(rmsg,16);	/* We may not want to clear all 16 */
+/// 	DeleteRexxMsg(rmsg);
+/// }
+///
+/// # See Also
+///
+/// CreateRexxMsg(), ClearRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn DeleteRexxMsg(packet: *RexxMsg)
 /// Releases and clears the argument array in a RexxMsg
 ///
-/// This function will DeleteArgstring() one or more argstrings from the RexxMsg
-/// and clear the slot. The count is used to select the number of slots to
-/// clear.
+/// This function will DeleteArgstring() one or more argstrings from
+/// the RexxMsg and clear the slot.  The count is used to select the
+/// number of slots to clear.
+///
+/// # Synopsis
+///
+/// ClearRexxMsg(msgptr, count)
+///              A0      D0
+///
+/// VOID ClearRexxMsg(struct RexxMsg *,ULONG);
 ///
 /// # Arguments
-/// * `msgptr` - A pointer to a RexxMsg count - The number of slots to be ...
+///
+/// * `msgptr` - A pointer to a RexxMsg count - The number of slots to be cleared.  The number can be from 1 to 16.  (There are 16 slots)
 ///
 /// # Returns
-/// All of the slots in the given count will be cleared and the argstring
 ///
-/// See also: FillRexxMsg(), DeleteRexxMsg(), DeleteArgstring(), CreateArgstring()
+/// All of the slots in the given count will be cleared and the argstring
+/// will have been released.
+///
+/// # See Also
+///
+/// FillRexxMsg(), DeleteRexxMsg(), DeleteArgstring(), CreateArgstring()
 @library("rexxsyslib.library")
 extern pub fn ClearRexxMsg(msgptr: *RexxMsg, count: u32)
 /// Fill the argument strings as needed
 ///
-/// This function will convert and install up to 16 argument strings into a
-/// RexxMsg structure. The message packet's argument fields must be set to
-/// either a pointer to a NULL terminated string or an integer value The mask,
-/// bits 0 to 15, correspond to the type of value is stored in the argument
-/// slot.
+/// This function will convert and install up to 16 argument strings into
+/// a RexxMsg structure.  The message packet's argument fields must be
+/// set to either a pointer to a NULL terminated string or an integer value
+/// The mask, bits 0 to 15, correspond to the type of value is stored
+/// in the argument slot.  If the bit is cleared, the argument is a
+/// string pointer; if the bit is set, the argument is an integer.
+///
+/// # Synopsis
+///
+/// result = FillRexxMsg(msgptr, count, mask)
+/// D0                   A0      D0     D1 [0:15]
+///
+/// BOOL FillRexxMsg(struct RexxMsg *,ULONG,ULONG);
 ///
 /// # Arguments
-/// * `msgptr` - Pointer to a RexxMsg (allocated via CreateRexxMsg) count ...
-/// * `mask` - A bit mask corresponding to the 16 fields that is used to...
+///
+/// * `msgptr` - Pointer to a RexxMsg (allocated via CreateRexxMsg) count - The number of argument slots to fill in.  This number should be from 1 to 16.
+/// * `mask` - A bit mask corresponding to the 16 fields that is used to determine the type of the field.
 ///
 /// # Returns
-/// result - A boolean.  If it is TRUE, the call worked.  If it is false,
 ///
-/// See also: ClearRexxMsg(), CreateArgstring(), DeleteArgstring(), CreateRexxMsg()
+/// result - A boolean.  If it is TRUE, the call worked.  If it is false,
+/// some allocation did not work.  All argstrings that were
+/// created will be released.
+///
+/// # See Also
+///
+/// ClearRexxMsg(), CreateArgstring(), DeleteArgstring(), CreateRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn FillRexxMsg(msgptr: *RexxMsg, count: u32, mask: u32) -> i16
 /// Function to determine if a message came from ARexx
 ///
-/// This function can be used to determine if a message came from an ARexx
-/// program.
+/// This function can be used to determine if a message came from an
+/// ARexx program.
+///
+/// # Synopsis
+///
+/// result = IsRexxMsg(msgptr)
+/// D0                 A0
+///
+/// BOOL IsRexxMsg(struct RexxMsg *);
 ///
 /// # Arguments
+///
 /// * `msgptr` - A pointer to the suspected RexxMsg.
 ///
 /// # Returns
+///
 /// result - A boolean:  TRUE if it is an ARexx message, FALSE if not.
 ///
-/// See also: CreateRexxMsg()
+/// # Notes
+///
+/// On the pinned classic 68k implementation, `CreateRexxMsg` creates an
+/// outgoing packet with a null node name, so this function initially returns
+/// false. RexxMaster marks delivered ARexx packets with the node name `REXX`;
+/// the function recognizes that marker. Do not treat a newly created outgoing
+/// packet as if it had already arrived from RexxMaster.
+///
+/// # See Also
+///
+/// CreateRexxMsg()
 @library("rexxsyslib.library")
 extern pub fn IsRexxMsg(msgptr: *RexxMsg) -> i16
 /// Obtain a semaphore lock on the RexxBase structure
 ///
 /// Secures the specified resource in the ARexx library base.
 ///
-/// # Arguments
-/// * `resource` - A manifest constant defining which resource to lock. ZERO...
+/// # Synopsis
 ///
-/// See also: UnlockRexxBase()
+/// LockRexxBase(resource)
+///              D0
+///
+/// VOID LockRexxBase(ULONG);
+///
+/// # Arguments
+///
+/// * `resource` - A manifest constant defining which resource to lock. ZERO locks all resources.
+///
+/// # Notes
+///
+/// Currently, only ZERO resource type is available.  You *MUST* make
+/// sure that you do not call this function with an undefined value
+/// as it may become defined at some future date and cause unwanted
+/// behavior.
+///
+/// # See Also
+///
+/// UnlockRexxBase()
 @library("rexxsyslib.library")
 extern pub fn LockRexxBase(resource: u32)
 /// Release a semaphore lock on the RexxBase structure
 ///
 /// Releases the specified resource in the ARexx library base.
 ///
-/// # Arguments
-/// * `resource` - A manifest constant defining which resource to unlock. Th...
+/// # Synopsis
 ///
-/// See also: LockRexxBase()
+/// UnlockRexxBase(resource)
+///                D0
+///
+/// VOID UnlockRexxBase(ULONG);
+///
+/// # Arguments
+///
+/// * `resource` - A manifest constant defining which resource to unlock. This value *MUST* match the value used in the matching LockRexxBase() call.
+///
+/// # Notes
+///
+/// Currently, only ZERO resource type is available.  You *MUST* make
+/// sure that you do not call this function with an undefined value
+/// as it may become defined at some future date and cause unwanted
+/// behavior.  You *MUST* make sure that you only call this function
+/// after a matching call to LockRexxBase() was made.
+///
+/// # See Also
+///
+/// LockRexxBase()
 @library("rexxsyslib.library")
 extern pub fn UnlockRexxBase(resource: u32)

@@ -1,0 +1,327 @@
+from std::core import Option, Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::sys::exec import get_current_task, SignalHandle, MsgPortHandle, SemaphoreHandle
+from amiga::sys::exec::critical import CriticalSection, InterruptSection
+from amiga::sys::exec::memory::allocation import MemHandle
+from amiga::sys::exec::memory::chip import is_chip_ram
+from amiga::raw::amiga_lib import NewList
+from amiga::raw::exec import AddTail, CloseLibrary, Disable, Enable, FindName, FindResident, FindTask, Forbid, NewMinList, OldOpenLibrary, OpenLibrary, OpenResource, Permit, Remove, TypeOfMem
+from amiga::raw::structs import ExecBase, List, MinList, MinNode, Node
+
+// @covers-ndk function|exec.library|FindTask
+// @ndk-side-effects reads Exec's task list and returns the current task without modifying task state
+@test("exec.library FindTask returns the current task")
+pub fn exec_find_task_current() {
+    expect_true(unsafe { FindTask(null) != null }, "current task found")
+}
+
+// @covers-ndk function|exec.library|TypeOfMem
+// @ndk-side-effects reads the memory headers for a valid task address without allocating, freeing, or modifying memory
+@test("exec.library TypeOfMem classifies a live task address")
+pub fn exec_type_of_mem_task() {
+    let task = unsafe { FindTask(null) }
+    expect_true(task != null, "current task found")
+    expect_true(unsafe { TypeOfMem((*u8)task) } != 0, "task address belongs to managed memory")
+}
+
+// @covers-ndk function|exec.library|FindTask
+// @covers-ndk function|exec.library|AllocSignal
+// @covers-ndk function|exec.library|Signal
+// @covers-ndk function|exec.library|Wait
+// @covers-ndk function|exec.library|FreeSignal
+// @ndk-side-effects FindTask reads the current task without mutation; AllocSignal reserves one signal bit; Signal sets it; Wait consumes the pending signal; Drop returns the bit with FreeSignal
+@test("Exec signals round-trip through the current task")
+pub fn exec_signal_roundtrip() {
+    let task = match get_current_task() {
+        Option::Some(value) => value,
+        Option::None => {
+            expect(false, "current task exists")
+            return
+        },
+    }
+    let signal = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "signal allocated")
+            return
+        },
+    }
+
+    signal.send_to(task)
+    expect_true((signal.wait() & signal.mask()) != 0, "signal received")
+}
+
+// @covers-ndk function|exec.library|CreateMsgPort
+// @covers-ndk function|exec.library|GetMsg
+// @covers-ndk function|exec.library|DeleteMsgPort
+// @ndk-side-effects CreateMsgPort allocates an empty signal-backed port; GetMsg observes the empty queue; Drop drains it and DeleteMsgPort releases the port and signal
+@test("Exec message ports allocate signals and start empty")
+pub fn exec_message_port_lifecycle() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            expect_true(port.as_raw() != null, "port created")
+            expect_true(port.signal_bit() < 32, "port owns a valid signal")
+            expect_true(port.signal_mask() != 0, "port exposes its signal mask")
+            expect_true(port.get_msg().is_none(), "new port is empty")
+        },
+        Result::Err(_) => expect(false, "message port created"),
+    }
+}
+
+// @covers-ndk function|exec.library|AllocMem
+// @covers-ndk function|exec.library|InitSemaphore
+// @covers-ndk function|exec.library|ObtainSemaphore
+// @covers-ndk function|exec.library|ReleaseSemaphore
+// @covers-ndk function|exec.library|AttemptSemaphore
+// @covers-ndk function|exec.library|FreeMem
+// @ndk-side-effects AllocMem creates cleared semaphore storage; InitSemaphore initializes it; guards obtain and release it; AttemptSemaphore proves release; Drop frees the exact allocation
+@test("Exec semaphore guards release deterministically")
+pub fn exec_semaphore_lifecycle() {
+    match SemaphoreHandle::new() {
+        Result::Ok(semaphore) => {
+            let current = unsafe { FindTask(null) }
+            let raw = semaphore.as_raw()
+            {
+                let guard = semaphore.lock()
+                unsafe {
+                    expect_true((*raw).ss_Owner == current, "exclusive lock records the current task")
+                    expect_true((*raw).ss_NestCount > 0, "exclusive lock increments nesting")
+                }
+            }
+            unsafe {
+                expect_true((*raw).ss_Owner != current, "guard drop releases ownership")
+            }
+            expect_true(semaphore.try_lock().is_some(), "released lock can be acquired again")
+        },
+        Result::Err(_) => expect(false, "semaphore allocated"),
+    }
+}
+
+// @covers-ndk function|exec.library|AllocVec
+// @covers-ndk function|exec.library|TypeOfMem
+// @covers-ndk function|exec.library|FreeVec
+// @ndk-side-effects AllocVec creates cleared chip, fast, and general blocks; TypeOfMem verifies DMA visibility; each owned block is returned once with FreeVec on scope exit
+@test("Exec chip fast and general allocations release on scope exit")
+pub fn exec_memory_lifecycle() {
+    match MemHandle::new_chip(256) {
+        Result::Ok(memory) => {
+            expect_true(memory.is_valid(), "chip allocation valid")
+            expect_eq(memory.size(), 256, "chip allocation size")
+            expect_true(is_chip_ram(memory.ptr()), "chip allocation is DMA-visible")
+        },
+        Result::Err(_) => expect(false, "chip memory allocated"),
+    }
+    match MemHandle::new_fast(256) {
+        Result::Ok(memory) => expect_true(memory.is_valid(), "fast allocation valid"),
+        Result::Err(_) => expect(false, "fast memory allocated"),
+    }
+    match MemHandle::new_any(256) {
+        Result::Ok(memory) => expect_true(memory.is_valid(), "general allocation valid"),
+        Result::Err(_) => expect(false, "general memory allocated"),
+    }
+}
+
+// @covers-ndk function|exec.library|OpenLibrary
+// @ndk-side-effects OpenLibrary returns the installed utility.library only when its version satisfies the request, increments its live open count, and CloseLibrary restores that count
+@test("exec.library OpenLibrary enforces version and balances its open")
+pub fn exec_open_library_versioned() {
+    let base = unsafe { OpenLibrary("utility.library", 37) }
+    expect(base != null, "installed utility.library version 37 opens")
+    if base == null { return }
+    let opened_count = (*base).lib_OpenCnt
+    expect((*base).lib_Version >= 37, "opened library satisfies the requested version")
+    let unavailable = unsafe { OpenLibrary("utility.library", 100) }
+    expect(unavailable == null, "newer unavailable version is rejected")
+    if unavailable != null { unsafe { CloseLibrary(unavailable) } }
+    unsafe { CloseLibrary(base) }
+
+    let reopened = unsafe { OpenLibrary("utility.library", 37) }
+    expect(reopened != null, "library remains available after balanced close")
+    if reopened != null {
+        expect((*reopened).lib_OpenCnt == opened_count, "balanced close restores the prior open count")
+        unsafe { CloseLibrary(reopened) }
+    }
+}
+
+// @covers-ndk function|exec.library|OldOpenLibrary
+// @ndk-side-effects OldOpenLibrary opens the same installed library as OpenLibrary(name, 0), increments its live open count once, and CloseLibrary restores it
+@test("exec.library OldOpenLibrary performs a version-zero open")
+pub fn exec_old_open_library() {
+    let baseline = unsafe { OpenLibrary("utility.library", 0) }
+    expect(baseline != null, "baseline utility.library opens")
+    if baseline == null { return }
+    let baseline_count = (*baseline).lib_OpenCnt
+    let legacy = unsafe { OldOpenLibrary("utility.library") }
+    expect(legacy == baseline, "legacy and current calls return the same library base")
+    if legacy != null {
+        expect((*legacy).lib_OpenCnt == baseline_count + 1, "legacy open increments the live open count")
+        unsafe { CloseLibrary(legacy) }
+    }
+    expect((*baseline).lib_OpenCnt == baseline_count, "legacy close restores the baseline count")
+    unsafe { CloseLibrary(baseline) }
+}
+
+// @covers-ndk function|exec.library|CloseLibrary
+// @ndk-side-effects CloseLibrary decrements exactly one matching OpenLibrary reference and accepts null without changing system state
+@test("exec.library CloseLibrary releases exactly one reference")
+pub fn exec_close_library_reference() {
+    let first = unsafe { OpenLibrary("utility.library", 37) }
+    let second = unsafe { OpenLibrary("utility.library", 37) }
+    expect(first != null && second == first, "two opens return one live library base")
+    if first == null || second == null {
+        if first != null { unsafe { CloseLibrary(first) } }
+        if second != null { unsafe { CloseLibrary(second) } }
+        return
+    }
+    let doubled_count = (*first).lib_OpenCnt
+    unsafe { CloseLibrary(second) }
+    expect((*first).lib_OpenCnt + 1 == doubled_count, "one close releases one reference")
+    unsafe { CloseLibrary(first) }
+    unsafe { CloseLibrary(null) }
+}
+
+// @covers-ndk function|exec.library|OpenResource
+// @ndk-side-effects OpenResource returns the stable installed ciaa.resource address without an open-count mutation and returns null for an absent resource
+@test("exec.library OpenResource distinguishes installed resources")
+pub fn exec_open_resource() {
+    let first = unsafe { OpenResource("ciaa.resource") }
+    let second = unsafe { OpenResource("ciaa.resource") }
+    expect(first != null, "ciaa.resource is installed")
+    expect(second == first, "resource lookup returns its stable address")
+    expect(OpenResource("novus.absent.resource") == null, "absent resource returns null")
+}
+
+// @covers-ndk function|exec.library|FindResident
+// @ndk-side-effects FindResident returns the live dos.library Resident tag with a self-matching tag and valid match word, and returns null for an absent resident
+@test("exec.library FindResident validates resident metadata")
+pub fn exec_find_resident() {
+    let resident = unsafe { FindResident("dos.library") }
+    expect(resident != null, "dos.library resident is present")
+    if resident != null {
+        expect((*resident).rt_MatchWord == 0x4AFC, "resident has the required match word")
+        expect((*resident).rt_MatchTag == resident, "resident match tag points to itself")
+        expect((*resident).rt_Name != null, "resident exposes its name")
+    }
+    expect(FindResident("novus.absent.resident") == null, "absent resident returns null")
+}
+
+// @covers-ndk function|exec.library|FindName
+// @ndk-side-effects FindName returns the exact named Node from a live list without changing links, skips the starting node form, and returns null for an absent name
+@test("exec.library FindName searches without mutating its list")
+pub fn exec_find_name() {
+    var list: List = @zeroed(List)
+    var first: Node = @zeroed(Node)
+    var second: Node = @zeroed(Node)
+    first.ln_Name = (*i8)"Novus.First".as_cstr()
+    second.ln_Name = (*i8)"Novus.Second".as_cstr()
+    NewList(&var list)
+    AddTail(&var list, &var first)
+    AddTail(&var list, &var second)
+
+    let first_succ = first.ln_Succ
+    let second_pred = second.ln_Pred
+    expect(FindName(&var list, "Novus.Second") == (*Node)&var second, "list-header search returns the exact named node")
+    expect(FindName((*List)&var first, "Novus.Second") == (*Node)&var second, "node-start search skips the starting node")
+    expect(FindName(&var list, "Novus.Absent") == null, "absent name returns null")
+    expect(first.ln_Succ == first_succ && second.ln_Pred == second_pred, "search leaves list links unchanged")
+
+    Remove(&var second)
+    Remove(&var first)
+}
+
+// @covers-ndk function|exec.library|NewMinList
+// @ndk-side-effects NewMinList writes the canonical empty sentinel layout into all three MinList pointers
+@test("exec.library NewMinList creates canonical empty sentinels")
+pub fn exec_new_min_list() {
+    var list: MinList = @zeroed(MinList)
+    NewMinList(&var list)
+    expect(list.mlh_Head == (*MinNode)&var list.mlh_Tail, "head points at the tail sentinel")
+    expect(list.mlh_Tail == null, "tail sentinel is null")
+    expect(list.mlh_TailPred == (*MinNode)&var list.mlh_Head, "tail predecessor points at the head sentinel")
+}
+
+// @covers-ndk function|exec.library|Forbid
+// @ndk-side-effects Forbid increments ExecBase's live scheduling-disable nesting count; the matching cleanup Permit restores it before any blocking operation
+@test("exec.library Forbid increments scheduler nesting")
+pub fn exec_forbid_nesting() {
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    expect(exec != null, "ExecBase found")
+    if exec == null { return }
+    let original = (*exec).TDNestCnt
+    Forbid()
+    let nested = (*exec).TDNestCnt
+    Permit()
+    let restored = (*exec).TDNestCnt
+    expect(nested == original + 1, "Forbid increments scheduler nesting")
+    expect(restored == original, "Permit restores scheduler nesting")
+}
+
+// @covers-ndk function|exec.library|Permit
+// @ndk-side-effects Permit releases exactly one prior Forbid level and restores ExecBase's live scheduling-disable nesting count
+@test("exec.library Permit releases scheduler nesting")
+pub fn exec_permit_nesting() {
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    expect(exec != null, "ExecBase found")
+    if exec == null { return }
+    let original = (*exec).TDNestCnt
+    Forbid()
+    let nested = (*exec).TDNestCnt
+    Permit()
+    let restored = (*exec).TDNestCnt
+    expect(nested == original + 1, "setup Forbid increments scheduler nesting")
+    expect(restored == original, "Permit releases exactly one nesting level")
+}
+
+// @covers-ndk function|exec.library|Disable
+// @ndk-side-effects Disable increments ExecBase's live interrupt-disable nesting count; the matching cleanup Enable restores it before any assertion or OS call
+@test("exec.library Disable increments interrupt nesting")
+pub fn exec_disable_nesting() {
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    expect(exec != null, "ExecBase found")
+    if exec == null { return }
+    let original = (*exec).IDNestCnt
+    unsafe { Disable() }
+    let nested = (*exec).IDNestCnt
+    unsafe { Enable() }
+    let restored = (*exec).IDNestCnt
+    expect(nested == original + 1, "Disable increments interrupt nesting")
+    expect(restored == original, "Enable restores interrupt nesting")
+}
+
+// @covers-ndk function|exec.library|Enable
+// @ndk-side-effects Enable releases exactly one prior Disable level and restores ExecBase's live interrupt-disable nesting count before any assertion or OS call
+@test("exec.library Enable releases interrupt nesting")
+pub fn exec_enable_nesting() {
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    expect(exec != null, "ExecBase found")
+    if exec == null { return }
+    let original = (*exec).IDNestCnt
+    unsafe { Disable() }
+    let nested = (*exec).IDNestCnt
+    unsafe { Enable() }
+    let restored = (*exec).IDNestCnt
+    expect(nested == original + 1, "setup Disable increments interrupt nesting")
+    expect(restored == original, "Enable releases exactly one nesting level")
+}
+
+@test("Exec critical-section guards report live state and restore it")
+pub fn exec_critical_section_live_state() {
+    expect(!CriticalSection::is_forbidden(), "scheduler starts enabled")
+    {
+        let _guard = CriticalSection::enter()
+        expect(CriticalSection::is_forbidden(), "guard observes live scheduler-disabled state")
+    }
+    expect(!CriticalSection::is_forbidden(), "guard restores scheduler state")
+}
+
+@test("Exec interrupt-section guards report live state and restore it")
+pub fn exec_interrupt_section_live_state() {
+    expect(!InterruptSection::is_disabled(), "interrupts start enabled")
+    var observed = false
+    {
+        let _guard = InterruptSection::enter()
+        observed = InterruptSection::is_disabled()
+    }
+    expect(observed, "guard observes live interrupt-disabled state")
+    expect(!InterruptSection::is_disabled(), "guard restores interrupt state")
+}

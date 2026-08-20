@@ -112,22 +112,27 @@ impl ScreenHandle {
         }
     }
 
-    /// Bring screen to front
+    /// Bring this screen to the front of the display and screen list.
     pub fn to_front(&self) {
         ScreenToFront(self.screen)
     }
 
-    /// Send screen to back
+    /// Send this screen to the back of the display and screen list.
     pub fn to_back(&self) {
         ScreenToBack(self.screen)
     }
 
-    /// Move screen by delta (dx, dy)
+    /// Move the screen by a signed pixel delta.
+    ///
+    /// Intuition clamps the final position to the display's legal range; read
+    /// `width()`, `height()`, or the raw position when the exact result matters.
     pub fn move_by(&self, dx: i16, dy: i16) {
         MoveScreen(self.screen, dx, dy)
     }
 
-    /// Show or hide the screen title bar
+    /// Place the screen title bar in front of or behind backdrop windows.
+    ///
+    /// `true` sets the screen's `SHOWTITLE` flag; `false` clears it.
     pub fn show_title(&self, show: bool) {
         let show_val: i16 = if show { 1 } else { 0 }
         ShowTitle(self.screen, show_val)

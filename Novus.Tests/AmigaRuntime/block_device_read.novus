@@ -14,7 +14,6 @@ pub fn block_device_read() {
                 Result::Ok(bytes) => expect(bytes == 512, "complete block read"),
                 Result::Err(BlockDeviceError::CommandFailed) => {
                     // No media is inserted in the standard A4000 test configuration.
-                    expect(true, "no-media error returned safely")
                 },
                 Result::Err(_) => expect(false, "unexpected read error"),
             }

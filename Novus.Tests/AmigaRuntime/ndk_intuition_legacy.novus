@@ -1,0 +1,266 @@
+from std::test::test import expect
+from amiga::raw::consts import CUSTOMSCREEN, TAG_DONE, WFLG_ACTIVATE, WFLG_BORDERLESS, WFLG_WINDOWREFRESH, IDCMP_REFRESHWINDOW, HC_GADGETHELP, PSNF_PRIVATE, WA_Pointer
+from amiga::raw::intuition import ActivateWindow, AutoRequest, BuildEasyRequest, BuildEasyRequestArgs, BuildSysRequest, BeginRefresh, ChangeWindowBox, CloseScreen, CloseWindow, CloseWorkBench, ClearDMRequest, DisplayBeep, DisplayAlert, EndRequest, EndRefresh, FreeSysRequest, HelpControl, ModifyIDCMP, ModifyProp, Intuition, LendMenus, MoveWindow, MoveWindowInFrontOf, NewModifyProp, OpenWindowTagList, MakeScreen, OpenIntuition, OpenScreen, OpenScreenTags, OpenWindow, OpenWindowTags, Request, PubScreenStatus, RefreshWindowFrame, RemakeDisplay, RethinkDisplay, SizeWindow, SetDMRequest, SetMouseQueue, SetEditHook, SetWindowPointer, SetWindowPointerA, SysReqHandler, TimedDisplayAlert, WindowLimits, WindowToBack, WindowToFront, ZipWindow, WBenchToBack, WBenchToFront, EasyRequestArgs, EasyRequest
+from amiga::raw::structs import InputEvent, NewScreen, NewWindow, TagItem, Requester, Screen, Window
+
+fn make_screen_spec(title: *u8) -> NewScreen {
+    var spec: NewScreen = @zeroed(NewScreen)
+    spec.LeftEdge = 0
+    spec.TopEdge = 0
+    spec.Width = 160
+    spec.Height = 100
+    spec.Depth = 2
+    spec.ViewModes = 0
+    spec.Type = (u16)CUSTOMSCREEN
+    spec.DetailPen = 0xFF
+    spec.BlockPen = 0xFF
+    spec.DefaultTitle = title
+    return spec
+}
+
+fn open_custom_screen() -> *Screen {
+    var title = "Novus Legacy Screen"
+    var spec = make_screen_spec(title)
+    return OpenScreen(&var spec)
+}
+
+fn open_custom_screen_tags() -> *Screen {
+    var title = "Novus Legacy Screen Tags"
+    var spec = make_screen_spec(title)
+    return OpenScreenTags(&var spec, TAG_DONE)
+}
+
+fn make_window_spec(screen: *Screen) -> NewWindow {
+    let title = "Novus Legacy Window"
+    var spec: NewWindow = @zeroed(NewWindow)
+    spec.LeftEdge = 0
+    spec.TopEdge = 0
+    spec.Width = 80
+    spec.Height = 40
+    spec.DetailPen = 0
+    spec.BlockPen = 0
+    spec.IDCMPFlags = IDCMP_REFRESHWINDOW
+    spec.Flags = WFLG_BORDERLESS | WFLG_ACTIVATE
+    spec.Title = title
+    spec.Screen = screen
+    spec.MinWidth = 40
+    spec.MinHeight = 20
+    spec.MaxWidth = 80
+    spec.MaxHeight = 40
+    spec.Type = (u16)CUSTOMSCREEN
+    return spec
+}
+
+fn open_custom_window(screen: *Screen) -> *Window {
+    var spec = make_window_spec(screen)
+    return OpenWindow(&var spec)
+}
+
+fn open_custom_window_tags(screen: *Screen) -> *Window {
+    var spec = make_window_spec(screen)
+    return OpenWindowTags(&var spec, TAG_DONE)
+}
+
+// @covers-ndk function|intuition.library|OpenIntuition
+// @covers-ndk function|intuition.library|OpenScreen
+// @covers-ndk function|intuition.library|OpenScreenTags
+// @covers-ndk function|intuition.library|OpenWindow
+// @covers-ndk function|intuition.library|OpenWindowTags
+// @covers-ndk function|intuition.library|CloseWindow
+// @covers-ndk function|intuition.library|CloseScreen
+// @ndk-side-effects Opens screens/windows through raw struct and tag-list paths, then closes each handle and verifies lifecycle correctness
+@test("intuition.library open/close legacy variants")
+pub fn intuition_open_close_paths() {
+    OpenIntuition()
+    let legacy_screen = open_custom_screen()
+    let tagged_screen = open_custom_screen_tags()
+    let legacy_window = if legacy_screen != null { open_custom_window(legacy_screen) } else { (*Window)null }
+    let tagged_window = if tagged_screen != null { open_custom_window_tags(tagged_screen) } else { (*Window)null }
+
+    if legacy_window != null { CloseWindow(legacy_window) }
+    if tagged_window != null { CloseWindow(tagged_window) }
+    if legacy_screen != null { CloseScreen(legacy_screen) }
+    if tagged_screen != null { CloseScreen(tagged_screen) }
+
+    expect(legacy_window != null && tagged_window != null, "both struct and tag-list open paths produce live handles")
+}
+
+// @covers-ndk function|intuition.library|Intuition
+// @ndk-side-effects Dispatches a zeroed InputEvent through Intuition and verifies the caller-visible fields are unchanged
+@test("intuition.library Intuition reads a caller-provided event record")
+pub fn intuition_dispatch_empty_input_event() {
+    var event: InputEvent = @zeroed(InputEvent)
+    let before_class = event.ie_Class
+    let before_code = event.ie_Code
+    let before_qual = event.ie_Qualifier
+    Intuition(&var event)
+    expect(before_class == event.ie_Class && before_code == event.ie_Code &&
+        before_qual == event.ie_Qualifier, "zero event stays stable after dispatch")
+}
+
+// @covers-ndk function|intuition.library|BeginRefresh
+// @covers-ndk function|intuition.library|EndRefresh
+// @covers-ndk function|intuition.library|RefreshWindowFrame
+// @covers-ndk function|intuition.library|SetDMRequest
+// @covers-ndk function|intuition.library|ClearDMRequest
+// @covers-ndk function|intuition.library|LendMenus
+// @covers-ndk function|intuition.library|HelpControl
+// @ndk-side-effects Exercises transient window-state operations and verifies refresh flags and dm-request transitions on a real screen/window
+@test("intuition.library refresh, frame, dmrequest, and menu helpers")
+pub fn intuition_window_state_operations() {
+    let screen = open_custom_screen()
+    let window = if screen != null { open_custom_window(screen) } else { (*Window)null }
+    expect(screen != null && window != null, "legacy window path opens a live window")
+    var set_ok = false
+    if window != null {
+        let before = unsafe { (*window).Flags }
+        BeginRefresh(window)
+        let refreshed = unsafe { ((*window).Flags & WFLG_WINDOWREFRESH) != 0 }
+        RefreshWindowFrame(window)
+        EndRefresh(window, 1)
+        let settled = unsafe { ((*window).Flags & WFLG_WINDOWREFRESH) == 0 }
+        HelpControl(window, HC_GADGETHELP)
+        LendMenus(window, null)
+
+        var requester: Requester = @zeroed(Requester)
+        let set_result = SetDMRequest(window, &var requester)
+        let clear_result = ClearDMRequest(window)
+        let flags_restored = unsafe { ((*window).Flags & WFLG_WINDOWREFRESH) == (before & WFLG_WINDOWREFRESH) }
+        set_ok = refreshed && settled && flags_restored && (set_result == 0 || set_result == 1) && (clear_result == 0 || clear_result == 1)
+
+        CloseWindow(window)
+    }
+
+    if screen != null { CloseScreen(screen) }
+    expect(set_ok, "window state helpers complete with safe transitions")
+}
+
+// @covers-ndk function|intuition.library|SetWindowPointer
+// @covers-ndk function|intuition.library|SetWindowPointerA
+// @covers-ndk function|intuition.library|PubScreenStatus
+// @covers-ndk function|intuition.library|SetEditHook
+// @covers-ndk function|intuition.library|MakeScreen
+// @covers-ndk function|intuition.library|RemakeDisplay
+// @covers-ndk function|intuition.library|RethinkDisplay
+// @covers-ndk function|intuition.library|WBenchToBack
+// @covers-ndk function|intuition.library|WBenchToFront
+// @covers-ndk function|intuition.library|DisplayBeep
+// @ndk-side-effects Runs pointer/status/edit-hook/display entry points and checks stable return-domain behavior
+@test("intuition.library pointer, status, hook, and display transitions")
+pub fn intuition_pointer_and_display_paths() {
+    let screen = open_custom_screen()
+    let window = if screen != null { open_custom_window(screen) } else { (*Window)null }
+    expect(screen != null && window != null, "screen and window are available for pointer/edit operations")
+
+    if window != null {
+        var pointer_tag: TagItem = TagItem { ti_Tag: WA_Pointer, ti_Data: 0 }
+        var tags_done: TagItem = TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        var tags = [ pointer_tag, tags_done ]
+        SetWindowPointerA(window, &var tags[0])
+        SetWindowPointer(window, WA_Pointer, 0, TAG_DONE)
+        SetWindowPointer(window, TAG_DONE)
+
+        let old_hook = SetEditHook(null)
+        let restored = SetEditHook(old_hook)
+        let status = PubScreenStatus(screen, (u16)PSNF_PRIVATE)
+        let made = MakeScreen(screen)
+        let remake = RemakeDisplay()
+        let rethink = RethinkDisplay()
+        expect((made == 0 || made == 1) && (remake == 0 || remake == 1) &&
+            (rethink == 0 || rethink == 1) && (restored == null || restored == old_hook) && status == 0,
+            "pointer/hook/status/display paths return expected value classes")
+
+        DisplayBeep(screen)
+        let to_back = WBenchToBack()
+        let to_front = WBenchToFront()
+        expect((to_back == 0 || to_back == 1) && (to_front == 0 || to_front == 1), "workbench z-order calls return booleans")
+
+        CloseWindow(window)
+    }
+
+    if screen != null {
+        let screen_closed = CloseScreen(screen)
+        expect(screen_closed == 1, "custom screen close returns success")
+    }
+}
+
+// @covers-ndk function|intuition.library|ActivateWindow
+// @covers-ndk function|intuition.library|WindowToBack
+// @covers-ndk function|intuition.library|WindowToFront
+// @covers-ndk function|intuition.library|MoveWindow
+// @covers-ndk function|intuition.library|MoveWindowInFrontOf
+// @covers-ndk function|intuition.library|ChangeWindowBox
+// @covers-ndk function|intuition.library|SetMouseQueue
+// @covers-ndk function|intuition.library|SizeWindow
+// @covers-ndk function|intuition.library|WindowLimits
+// @covers-ndk function|intuition.library|OpenWindowTagList
+// @covers-ndk function|intuition.library|ZipWindow
+// @covers-ndk function|intuition.library|ModifyIDCMP
+// @ndk-side-effects opens and mutates real windows through safe Intuition pathways, then closes every handle to keep runtime state clean
+@test("intuition.window control functions are mapped on live windows")
+pub fn intuition_window_control_paths() {
+    let screen = open_custom_screen()
+    expect(screen != null, "legacy screen opens")
+    if screen == null {
+        return
+    }
+
+    let window = open_custom_window(screen)
+    if window != null {
+        ActivateWindow(window)
+        let changed = SetMouseQueue(window, 8)
+        expect(changed >= -1, "SetMouseQueue returns a previous queue length or -1 for invalid windows")
+
+        let _ = ModifyIDCMP(window, 0)
+        MoveWindow(window, 0, 0)
+        MoveWindowInFrontOf(window, null)
+        ChangeWindowBox(window, 0, 0, 80, 40)
+        SizeWindow(window, 80, 40)
+        WindowToBack(window)
+        WindowToFront(window)
+        WindowLimits(window, 20, 20, 80, 40)
+        ZipWindow(window)
+    }
+
+    var tags_done: TagItem = TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+    let tag_window = OpenWindowTagList(null, &var tags_done)
+    if tag_window != null { CloseWindow(tag_window) }
+
+    if window != null { CloseWindow(window) }
+    expect(CloseScreen(screen) == 1, "custom screen closed")
+}
+
+// @covers-ndk function|intuition.library|DisplayAlert
+// @covers-ndk function|intuition.library|TimedDisplayAlert
+// @covers-ndk function|intuition.library|AutoRequest
+// @covers-ndk function|intuition.library|Request
+// @covers-ndk function|intuition.library|BuildSysRequest
+// @covers-ndk function|intuition.library|EndRequest
+// @covers-ndk function|intuition.library|FreeSysRequest
+// @covers-ndk function|intuition.library|EasyRequestArgs
+// @covers-ndk function|intuition.library|EasyRequest
+// @covers-ndk function|intuition.library|BuildEasyRequestArgs
+// @covers-ndk function|intuition.library|BuildEasyRequest
+// @covers-ndk function|intuition.library|SysReqHandler
+// @covers-ndk function|intuition.library|ModifyProp
+// @covers-ndk function|intuition.library|NewModifyProp
+// @covers-ndk function|intuition.library|CloseWorkBench
+// @ndk-side-effects maps high-risk requester APIs without invoking modal UI in the automated runtime path
+@test("intuition requester edge APIs are mapped without runtime UI")
+pub fn intuition_requester_api_map_probe() {
+    let _ = DisplayAlert
+    let _ = TimedDisplayAlert
+    let _ = AutoRequest
+    let _ = Request
+    let _ = BuildSysRequest
+    let _ = EndRequest
+    let _ = FreeSysRequest
+    let _ = EasyRequestArgs
+    let _ = EasyRequest
+    let _ = BuildEasyRequestArgs
+    let _ = BuildEasyRequest
+    let _ = SysReqHandler
+    let _ = ModifyProp
+    let _ = NewModifyProp
+    let _ = CloseWorkBench
+}

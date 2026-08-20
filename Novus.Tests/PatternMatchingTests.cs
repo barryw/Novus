@@ -137,6 +137,37 @@ pub fn classify(value: Outer<Inner>) -> i32 {
     }
 
     [Fact]
+    public void BuildIr_NestedGenericEnumVariantPatterns_CheckEveryTag()
+    {
+        var source = @"
+enum Result<T, E> {
+    Ok(T),
+    Err(E)
+}
+enum Poll<T> {
+    Ready(T),
+    Pending
+}
+enum TimerError {
+    OpenFailed,
+    IoFailed
+}
+pub fn classify(value: Poll<Result<(), TimerError>>) -> i32 {
+    return match value {
+        Poll::Ready(Result::Err(TimerError::OpenFailed)) => 1,
+        Poll::Ready(Result::Err(TimerError::IoFailed)) => 2,
+        Poll::Ready(Result::Ok(_)) => 3,
+        Poll::Pending => 0,
+    }
+}";
+        var module = BuildIr(source);
+        var instructions = module.Functions.Single(f => f.Name == "classify")
+            .BasicBlocks.SelectMany(block => block.Instructions).ToList();
+
+        Assert.Equal(6, instructions.OfType<IrExtractTag>().Count());
+    }
+
+    [Fact]
     public void BuildIr_MatchMultipleBindings_Compiles()
     {
         var source = @"

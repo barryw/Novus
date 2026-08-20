@@ -1,0 +1,67 @@
+from std::test::test import expect
+from amiga::raw::consts import IECODE_UP_PREFIX, IECLASS_RAWKEY
+from amiga::raw::devices::console import CDInputHandler, RawKeyConvert
+from amiga::raw::dos import Close, Delay, Open, Read, SetMode, WaitForChar
+from amiga::raw::exec import CloseDevice, CreateIORequest, CreateMsgPort, DeleteIORequest, DeleteMsgPort, OpenDevice
+from amiga::raw::structs import InputEvent, IORequest, IOStdReq, Library
+
+// @covers-ndk function|console.device|RawKeyConvert
+// @ndk-side-effects Converts a synthetic unqualified raw A-key event through console.device's default keymap into one lowercase ANSI byte, detects a zero-length overflow, and preserves adjacent sentinels
+@suppress("W0002", "IECLASS_RAWKEY is the NDK value 1 and fits the InputEvent u8 class field")
+@test("console.device RawKeyConvert decodes a bounded raw key")
+pub fn console_raw_key_convert() {
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = $20
+    var output: [u8] = [$A5; 2]
+    let count = unsafe { RawKeyConvert(&var event, &var output[0], 1, null) }
+    let overflow = unsafe { RawKeyConvert(&var event, &var output[0], 0, null) }
+    expect(count == 1 && output[0] == 97, "raw A maps to exactly lowercase ASCII a")
+    expect(output[1] == $A5, "conversion leaves the adjacent byte untouched")
+    expect(overflow == -1, "zero capacity reports the documented overflow")
+}
+
+// @covers-ndk function|console.device|CDInputHandler
+// @ndk-side-effects Opens a real raw console and the function-vector-only unit -1 ConsoleDevice base, feeds an A key directly through CDInputHandler, reads the exact translated byte from the console, feeds key-up, then closes every handle, request, port, and window
+@suppress("W0002", "IECLASS_RAWKEY is the NDK value 1 and fits the InputEvent u8 class field")
+@test("console.device CDInputHandler feeds a live console unit")
+pub fn console_input_handler() {
+    let handle = Open("CON:0/0/320/100/Novus CDInputHandler/CLOSE", 1006)
+    let raw = if handle != 0 { SetMode(handle, 1) } else { 0 }
+    if raw != 0 { Delay(5) }
+    let port = CreateMsgPort()
+    let request = if port != null { CreateIORequest(port, @sizeof(IOStdReq)) } else { null }
+    let opened = request != null && unsafe { OpenDevice("console.device", $FFFFFFFF, (*IORequest)request, 0) } == 0
+
+    var down: InputEvent = @zeroed(InputEvent)
+    down.ie_Class = (u8)IECLASS_RAWKEY
+    down.ie_Code = $20
+    let io = (*IORequest)request
+    let base = if opened { (*Library)(*io).io_Device } else { (*Library)null }
+    var handled = false
+    var unused: *InputEvent = null
+    if raw != 0 && opened {
+        unused = unsafe { CDInputHandler(&var down, base) }
+        handled = true
+    }
+    let ready = if handled && unused == null { WaitForChar(handle, 1000000) } else { 0 }
+    var byte: [u8] = [0]
+    let count = if ready != 0 { Read(handle, &var byte[0], 1) } else { -1 }
+
+    var up: InputEvent = @zeroed(InputEvent)
+    up.ie_Class = (u8)IECLASS_RAWKEY
+    up.ie_Code = (u16)($20 | IECODE_UP_PREFIX)
+    if opened { unsafe { CDInputHandler(&var up, base) } }
+    if opened { unsafe { CloseDevice((*IORequest)request) } }
+    if request != null { DeleteIORequest(request) }
+    if port != null { DeleteMsgPort(port) }
+    let cooked = if raw != 0 { SetMode(handle, 0) } else { 0 }
+    let closed = if handle != 0 { Close(handle) } else { 0 }
+    if closed != 0 { Delay(50) }
+
+    expect(handle != 0 && raw != 0, "raw console opens")
+    expect(opened && base != null, "console unit -1 returns its function-vector base")
+    expect(handled && unused == null && ready != 0, "input handler consumes the key and wakes the console")
+    expect(count == 1 && byte[0] == 97, "live console receives exactly lowercase ASCII a")
+    expect(cooked != 0 && closed != 0, "console mode and window are restored")
+}

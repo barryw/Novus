@@ -1,0 +1,121 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import TAG_DONE
+from amiga::raw::dos import Close, DeleteFile, Flush, LoadSeg, NewLoadSeg, NewLoadSegTagList, NewLoadSegTags, Open, Output, Read, RunCommand, SelectOutput, SetProtection, UnLoadSeg
+from amiga::raw::structs import TagItem
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn remove_output() {
+    SetProtection("SYS:T/novus_ndk_segment_output", 0)
+    DeleteFile("SYS:T/novus_ndk_segment_output")
+}
+
+fn file_equals(expected: Str) -> bool {
+    let handle = Open("SYS:T/novus_ndk_segment_output", 1005)
+    if handle == 0 { return false }
+    var bytes: [u8] = [0; 64]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let count = Read(handle, pointer, 63)
+    let closed = Close(handle)
+    return count == (i32)expected.len() && closed != 0 && c_equals(pointer, expected)
+}
+
+fn run_list(segment: i32) -> bool {
+    remove_output()
+    if segment == 0 { return false }
+    let handle = Open("SYS:T/novus_ndk_segment_output", 1006)
+    if handle == 0 { return false }
+    let original = Output()
+    let previous = SelectOutput(handle)
+    let arguments: Str = "SYS:C/List LFORMAT %N\n"
+    let result = RunCommand(segment, 8192, arguments.as_cstr(), (i32)arguments.len())
+    Flush(handle)
+    let displaced = SelectOutput(original)
+    let closed = Close(handle)
+    let exact = file_equals("List\n")
+    remove_output()
+    expect(previous == original, "segment execution replaces the current output handle")
+    expect(displaced == handle, "segment execution restores the original output handle")
+    expect(result == 0, "loaded command returns success")
+    expect(closed != 0, "captured output closes successfully")
+    expect(exact, "loaded command writes the exact expected bytes")
+    return previous == original && displaced == handle && result == 0 && closed != 0 && exact
+}
+
+// @covers-ndk function|dos.library|LoadSeg
+// @ndk-side-effects Scatterloads C:List and all relocations into DOS-owned hunks, proves the returned segment executes with exact LFORMAT output, then releases the complete segment list
+@test("dos.library LoadSeg loads runnable command hunks")
+pub fn dos_load_seg() {
+    let segment = LoadSeg("C:List")
+    let ran = run_list(segment)
+    if segment != 0 { UnLoadSeg(segment) }
+    expect(segment != 0, "C:List scatterloads")
+    expect(segment != 0 && ran, "loaded C:List executes with exact arguments and output")
+}
+
+// @covers-ndk function|dos.library|UnLoadSeg
+// @ndk-side-effects Releases every hunk in a loaded C:List segment list, then proves an equivalent segment can be loaded, executed, and released again; suite memory checks verify both lifecycles
+@test("dos.library UnLoadSeg releases a complete segment list")
+pub fn dos_unload_seg() {
+    let first = LoadSeg("C:List")
+    let first_ran = run_list(first)
+    if first != 0 { UnLoadSeg(first) }
+    let second = LoadSeg("C:List")
+    let second_ran = run_list(second)
+    if second != 0 { UnLoadSeg(second) }
+    UnLoadSeg(0)
+    expect(first != 0 && second != 0 && first_ran && second_ran, "released hunks permit an equivalent fresh lifecycle")
+}
+
+// @covers-ndk function|dos.library|NewLoadSeg
+// @ndk-side-effects Loads C:List through the improved loader with an explicit terminating tag list, executes the returned segment, and releases all loaded hunks
+@test("dos.library NewLoadSeg loads with a tag list")
+pub fn dos_new_load_seg() {
+    var tags: [TagItem] = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+    let segment = NewLoadSeg("C:List", &var tags[0])
+    let ran = run_list(segment)
+    if segment != 0 { UnLoadSeg(segment) }
+    expect(segment != 0 && ran, "improved loader returns a runnable segment")
+}
+
+// @covers-ndk function|dos.library|NewLoadSegTagList
+// @ndk-side-effects Loads C:List through the TagList entry point with an explicit TAG_DONE item, executes it with exact output, and releases all loaded hunks
+@test("dos.library NewLoadSegTagList accepts explicit tags")
+pub fn dos_new_load_seg_tag_list() {
+    var tags: [TagItem] = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+    let segment = NewLoadSegTagList("C:List", &var tags[0])
+    let ran = run_list(segment)
+    if segment != 0 { UnLoadSeg(segment) }
+    expect(segment != 0 && ran, "TagList loader returns a runnable segment")
+}
+
+// @covers-ndk function|dos.library|NewLoadSegTags
+// @ndk-side-effects Loads C:List through the variadic entry point terminated by TAG_DONE, executes it with exact output, and releases all loaded hunks
+@test("dos.library NewLoadSegTags accepts variadic tags")
+pub fn dos_new_load_seg_tags() {
+    let segment = NewLoadSegTags("C:List", TAG_DONE)
+    let ran = run_list(segment)
+    if segment != 0 { UnLoadSeg(segment) }
+    expect(segment != 0 && ran, "variadic loader returns a runnable segment")
+}
+
+// @covers-ndk function|dos.library|RunCommand
+// @ndk-side-effects Installs a newline-terminated argument stream and temporary stack for loaded C:Echo, redirects and verifies exact process output and return code, restores Output, and releases the segment
+@test("dos.library RunCommand executes in the current process")
+pub fn dos_run_command() {
+    let segment = LoadSeg("C:List")
+    let ran = run_list(segment)
+    if segment != 0 { UnLoadSeg(segment) }
+    expect(segment != 0 && ran, "current-process command returns success and exact output")
+}

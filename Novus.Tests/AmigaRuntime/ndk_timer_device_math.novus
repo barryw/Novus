@@ -1,0 +1,67 @@
+from std::test::test import expect
+from amiga::raw::devices::timer import AddTime, CmpTime, GetSysTime, ReadEClock, SubTime
+from amiga::raw::dos import Delay
+from amiga::raw::structs import EClockVal, timeval
+
+// @covers-ndk function|timer.device|AddTime
+// @ndk-side-effects Adds source into destination in place and normalizes one million microseconds into the seconds field without modifying source
+@test("timer.device AddTime normalizes the destination timeval")
+pub fn timer_add_time() {
+    var destination = timeval { tv_secs: 1, tv_micro: 900000 }
+    var source = timeval { tv_secs: 2, tv_micro: 250000 }
+    AddTime(&var destination, &var source)
+    expect(destination.tv_secs == 4 && destination.tv_micro == 150000, "addition carries excess microseconds")
+    expect(source.tv_secs == 2 && source.tv_micro == 250000, "source remains unchanged")
+}
+
+// @covers-ndk function|timer.device|SubTime
+// @ndk-side-effects Subtracts source from destination in place and borrows one second when destination microseconds are smaller, without modifying source
+@test("timer.device SubTime borrows into the destination timeval")
+pub fn timer_sub_time() {
+    var destination = timeval { tv_secs: 5, tv_micro: 100000 }
+    var source = timeval { tv_secs: 2, tv_micro: 300000 }
+    SubTime(&var destination, &var source)
+    expect(destination.tv_secs == 2 && destination.tv_micro == 800000, "subtraction borrows one second")
+    expect(source.tv_secs == 2 && source.tv_micro == 300000, "source remains unchanged")
+}
+
+// @covers-ndk function|timer.device|CmpTime
+// @ndk-side-effects Compares earlier, equal, and later timeval values without modifying either operand and verifies the corrected documented return-code direction
+@test("timer.device CmpTime implements the documented reverse sign")
+pub fn timer_compare_time() {
+    var earlier = timeval { tv_secs: 4, tv_micro: 999999 }
+    var equal = timeval { tv_secs: 5, tv_micro: 0 }
+    var equal_copy = timeval { tv_secs: 5, tv_micro: 0 }
+    var later = timeval { tv_secs: 5, tv_micro: 1 }
+    expect(CmpTime(&var earlier, &var equal) == 1, "an earlier destination returns positive one")
+    expect(CmpTime(&var equal, &var equal_copy) == 0, "equal values compare equal")
+    expect(CmpTime(&var later, &var equal) == -1, "a later destination returns negative one")
+}
+
+// @covers-ndk function|timer.device|GetSysTime
+// @ndk-side-effects Reads timer.device system time twice without changing it and verifies the normalized monotonic result
+@test("timer.device GetSysTime returns normalized monotonic time")
+pub fn timer_get_system_time() {
+    var first = timeval { tv_secs: 0, tv_micro: 0 }
+    var second = timeval { tv_secs: 0, tv_micro: 0 }
+    GetSysTime(&var first)
+    GetSysTime(&var second)
+    let monotonic = second.tv_secs > first.tv_secs || (second.tv_secs == first.tv_secs && second.tv_micro >= first.tv_micro)
+    expect(first.tv_secs != 0 || first.tv_micro != 0, "system time has advanced since boot")
+    expect(first.tv_micro < 1000000 && second.tv_micro < 1000000, "microseconds remain normalized")
+    expect(monotonic, "back-to-back reads never move backward")
+}
+
+// @covers-ndk function|timer.device|ReadEClock
+// @ndk-side-effects Reads the 64-bit E-clock, waits one scheduler tick, reads it again, and verifies a stable nonzero frequency and a strictly increasing counter
+@test("timer.device ReadEClock returns a stable advancing counter")
+pub fn timer_read_eclock() {
+    var first = EClockVal { ev_hi: 0, ev_lo: 0 }
+    var second = EClockVal { ev_hi: 0, ev_lo: 0 }
+    let first_frequency = ReadEClock(&var first)
+    Delay(1)
+    let second_frequency = ReadEClock(&var second)
+    let advanced = second.ev_hi > first.ev_hi || (second.ev_hi == first.ev_hi && second.ev_lo > first.ev_lo)
+    expect(first_frequency > 0 && second_frequency == first_frequency, "E-clock frequency is stable and nonzero")
+    expect(advanced, "E-clock advances across one scheduler tick")
+}

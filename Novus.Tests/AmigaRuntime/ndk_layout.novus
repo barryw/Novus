@@ -1,0 +1,269 @@
+from std::test::test import expect
+from amiga::raw::consts import GA_Disabled, GA_ID, GA_RelVerify, GA_TabCycle, LAYOUT_AddChild, PAGE_Add, STRINGA_TextVal, TAG_DONE, WA_Activate, WA_AutoAdjust, WA_Gadgets, WA_Height, WA_Left, WA_Top, WA_Width
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::intuition import CloseWindow, DisposeObject, GetAttr, NewObjectA, OpenWindowTagList
+from amiga::raw::layout import ActivateLayoutGadget, FlushLayoutDomainCache, LAYOUT_GetClass, LayoutLimits, PAGE_GetClass, RefreshPageGadget, RethinkLayout, SetPageGadgetAttrs, SetPageGadgetAttrsA
+from amiga::raw::string import STRING_GetClass
+from amiga::raw::structs import Gadget, IClass, LayoutLimits, TagItem, Window
+
+fn make_input(id: u32) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: GA_ID, ti_Data: id },
+        TagItem { ti_Tag: GA_TabCycle, ti_Data: 1 },
+        TagItem { ti_Tag: GA_RelVerify, ti_Data: 1 },
+        TagItem { ti_Tag: STRINGA_TextVal, ti_Data: (u32)"Input" },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(STRING_GetClass(), null, &var tags[0])
+}
+
+fn settle_display() {
+    WaitTOF()
+    WaitTOF()
+}
+
+fn make_parent(class_ptr: *IClass, child: *u8) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LAYOUT_AddChild, ti_Data: (u32)child },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(class_ptr, null, &var tags[0])
+}
+
+fn make_page(child: *u8) -> *u8 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: PAGE_Add, ti_Data: (u32)child },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewObjectA(PAGE_GetClass(), null, &var tags[0])
+}
+
+fn open_window(root: *u8) -> *Window {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: WA_Left, ti_Data: 20 },
+        TagItem { ti_Tag: WA_Top, ti_Data: 20 },
+        TagItem { ti_Tag: WA_Width, ti_Data: 220 },
+        TagItem { ti_Tag: WA_Height, ti_Data: 80 },
+        TagItem { ti_Tag: WA_Gadgets, ti_Data: (u32)root },
+        TagItem { ti_Tag: WA_AutoAdjust, ti_Data: 1 },
+        TagItem { ti_Tag: WA_Activate, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return OpenWindowTagList(null, &var tags[0])
+}
+
+// @covers-ndk function|layout.library|LAYOUT_GetClass
+// @covers-ndk function|layout.library|PAGE_GetClass
+// @ndk-side-effects Opens the installed Layout gadget class and obtains stable library-owned pointers for both its Layout and Page BOOPSI classes
+@test("layout.library returns stable Layout and Page classes")
+pub fn layout_classes() {
+    let layout = LAYOUT_GetClass()
+    let page = PAGE_GetClass()
+    expect(layout != null && layout == LAYOUT_GetClass(), "Layout class pointer is non-null and stable")
+    expect(page != null && page == PAGE_GetClass(), "Page class pointer is non-null and stable")
+    expect(page != layout, "Page and Layout expose distinct BOOPSI classes")
+}
+
+// @covers-ndk function|layout.library|ActivateLayoutGadget
+// @covers-ndk function|layout.library|FlushLayoutDomainCache
+// @covers-ndk function|layout.library|LayoutLimits
+// @covers-ndk function|layout.library|RethinkLayout
+// @ndk-side-effects Creates a real button inside a Layout object, computes and invalidates its domain cache, attaches it to a real Workbench window, relayouts/renders it, activates the child through the hierarchy, then closes and disposes the complete hierarchy
+@test("layout.library computes, flushes, renders, and activates a real hierarchy")
+pub fn layout_hierarchy() {
+    let child = make_input(41)
+    let layout = if child != null { make_parent(LAYOUT_GetClass(), child) } else { (*u8)null }
+    var before = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    var after = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    if layout != null {
+        LayoutLimits((*Gadget)layout, &var before, null, null)
+        FlushLayoutDomainCache((*Gadget)layout)
+        LayoutLimits((*Gadget)layout, &var after, null, null)
+    }
+    let window = if layout != null { open_window(layout) } else { (*Window)null }
+    let rethought = if window != null { RethinkLayout((*Gadget)layout, window, null, 1) } else { 0 }
+    let activated = if window != null { ActivateLayoutGadget((*Gadget)layout, window, null, (u32)child) } else { 0 }
+    let limits_valid = before.MinWidth > 0 && before.MinHeight > 0 && before.MinWidth <= before.MaxWidth && before.MinHeight <= before.MaxHeight
+    let cache_recomputed = before.MinWidth == after.MinWidth && before.MinHeight == after.MinHeight && before.MaxWidth == after.MaxWidth && before.MaxHeight == after.MaxHeight
+    let has_layout = layout != null
+    let has_window = window != null
+    if window != null { CloseWindow(window) }
+    if layout != null { DisposeObject(layout) }
+    if layout == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(has_layout, "a real Layout hierarchy was constructed")
+    expect(limits_valid, "LayoutLimits returns ordered nonzero button dimensions")
+    expect(cache_recomputed, "flushed domain cache recomputes the same unchanged limits")
+    expect(has_window, "the hierarchy attaches to a real Workbench window")
+    expect(rethought != 0, "RethinkLayout accepts and renders the attached hierarchy")
+    expect(activated != 0, "ActivateLayoutGadget finds and activates the real child")
+}
+
+// @covers-ndk function|layout.library|SetPageGadgetAttrsA
+// @covers-ndk function|layout.library|SetPageGadgetAttrs
+// @covers-ndk function|layout.library|RefreshPageGadget
+// @ndk-side-effects Creates a real button inside a Page object and Workbench window, disables and re-enables the child through both page-aware setter forms with exact GetAttr verification, refreshes the visible page child, then closes and disposes the hierarchy
+@test("layout.library updates and refreshes a real Page child")
+pub fn page_hierarchy() {
+    let child = make_input(42)
+    let page = if child != null { make_page(child) } else { (*u8)null }
+    let window = if page != null { open_window(page) } else { (*Window)null }
+    var disable_tags: [TagItem] = [
+        TagItem { ti_Tag: GA_Disabled, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let set_a = if window != null { SetPageGadgetAttrsA((*Gadget)child, (*u32)page, window, null, &var disable_tags[0]) } else { 0 }
+    var disabled: u32 = 0
+    let got_disabled = if child != null { GetAttr(GA_Disabled, child, &var disabled) } else { 0 }
+    let set_varargs = if window != null { SetPageGadgetAttrs((*Gadget)child, (*u32)page, window, null, GA_Disabled, 0, TAG_DONE) } else { 0 }
+    var enabled: u32 = 1
+    let got_enabled = if child != null { GetAttr(GA_Disabled, child, &var enabled) } else { 0 }
+    if window != null { RefreshPageGadget((*Gadget)child, (*u32)page, window, null) }
+    var id: u32 = 0
+    let got_id = if child != null { GetAttr(GA_ID, child, &var id) } else { 0 }
+    let has_page = page != null
+    let has_window = window != null
+    if window != null { CloseWindow(window) }
+    if page != null { DisposeObject(page) }
+    if page == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(has_page && has_window, "a real Page hierarchy is attached to a Workbench window")
+    expect(set_a != 0 && got_disabled != 0 && disabled != 0, "tag-list page setter disables the exact child")
+    expect(set_varargs != 0 && got_enabled != 0 && enabled == 0, "varargs page setter re-enables the exact child")
+    expect(got_id != 0 && id == 42, "refreshed Page child remains accessible with its exact ID")
+}
+
+// @covers-ndk function|layout.library|LAYOUT_GetClass
+// @ndk-side-effects Obtains the installed library-owned Layout class pointer twice and verifies its stable identity
+@test("layout.library LAYOUT_GetClass focused timing")
+pub fn layout_get_class_timing() {
+    let class_ptr = LAYOUT_GetClass()
+    expect(class_ptr != null && class_ptr == LAYOUT_GetClass(), "Layout class pointer is stable")
+}
+
+// @covers-ndk function|layout.library|PAGE_GetClass
+// @ndk-side-effects Obtains the installed library-owned Page class pointer twice and verifies its stable identity
+@test("layout.library PAGE_GetClass focused timing")
+pub fn page_get_class_timing() {
+    let class_ptr = PAGE_GetClass()
+    expect(class_ptr != null && class_ptr == PAGE_GetClass(), "Page class pointer is stable")
+}
+
+// @covers-ndk function|layout.library|LayoutLimits
+// @ndk-side-effects Computes ordered nonzero domain limits for a real Layout hierarchy and disposes the complete hierarchy
+@test("layout.library LayoutLimits focused timing")
+pub fn layout_limits_timing() {
+    let child = make_input(51)
+    let layout = if child != null { make_parent(LAYOUT_GetClass(), child) } else { (*u8)null }
+    var limits = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    if layout != null { LayoutLimits((*Gadget)layout, &var limits, null, null) }
+    let valid = layout != null && limits.MinWidth > 0 && limits.MinHeight > 0 && limits.MinWidth <= limits.MaxWidth && limits.MinHeight <= limits.MaxHeight
+    if layout != null { DisposeObject(layout) }
+    if layout == null && child != null { DisposeObject(child) }
+    expect(valid, "real Layout domain limits are ordered and nonzero")
+}
+
+// @covers-ndk function|layout.library|FlushLayoutDomainCache
+// @ndk-side-effects Computes a real hierarchy's domain, flushes its complete child-domain cache, recomputes identical unchanged limits, and disposes the hierarchy
+@test("layout.library FlushLayoutDomainCache focused timing")
+pub fn layout_flush_timing() {
+    let child = make_input(52)
+    let layout = if child != null { make_parent(LAYOUT_GetClass(), child) } else { (*u8)null }
+    var before = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    var after = LayoutLimits { MinWidth: 0, MinHeight: 0, MaxWidth: 0, MaxHeight: 0 }
+    if layout != null {
+        LayoutLimits((*Gadget)layout, &var before, null, null)
+        FlushLayoutDomainCache((*Gadget)layout)
+        LayoutLimits((*Gadget)layout, &var after, null, null)
+    }
+    let valid = layout != null && before.MinWidth == after.MinWidth && before.MinHeight == after.MinHeight && before.MaxWidth == after.MaxWidth && before.MaxHeight == after.MaxHeight
+    if layout != null { DisposeObject(layout) }
+    if layout == null && child != null { DisposeObject(child) }
+    expect(valid, "flushed domain cache recomputes identical unchanged limits")
+}
+
+// @covers-ndk function|layout.library|RethinkLayout
+// @ndk-side-effects Attaches a real Layout hierarchy to an active Workbench window, relayouts and renders it successfully, then closes and disposes all objects
+@test("layout.library RethinkLayout focused timing")
+pub fn layout_rethink_timing() {
+    let child = make_input(53)
+    let layout = if child != null { make_parent(LAYOUT_GetClass(), child) } else { (*u8)null }
+    let window = if layout != null { open_window(layout) } else { (*Window)null }
+    let result = if window != null { RethinkLayout((*Gadget)layout, window, null, 1) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if layout != null { DisposeObject(layout) }
+    if layout == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(result != 0, "attached Layout relayouts and renders successfully")
+}
+
+// @covers-ndk function|layout.library|ActivateLayoutGadget
+// @ndk-side-effects Attaches a real tab-cycle string child to an active Layout window, finds and activates it through the hierarchy, then closes and disposes all objects
+@test("layout.library ActivateLayoutGadget focused timing")
+pub fn layout_activate_timing() {
+    let child = make_input(54)
+    let layout = if child != null { make_parent(LAYOUT_GetClass(), child) } else { (*u8)null }
+    let window = if layout != null { open_window(layout) } else { (*Window)null }
+    let result = if window != null { ActivateLayoutGadget((*Gadget)layout, window, null, (u32)child) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if layout != null { DisposeObject(layout) }
+    if layout == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(result != 0, "Layout finds and activates the real tab-cycle child")
+}
+
+// @covers-ndk function|layout.library|SetPageGadgetAttrsA
+// @ndk-side-effects Disables a real visible Page child through a terminated tag list, verifies the exact live attribute, then closes and disposes the page hierarchy
+@test("layout.library SetPageGadgetAttrsA focused timing")
+pub fn page_set_a_timing() {
+    let child = make_input(55)
+    let page = if child != null { make_page(child) } else { (*u8)null }
+    let window = if page != null { open_window(page) } else { (*Window)null }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: GA_Disabled, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let changed = if window != null { SetPageGadgetAttrsA((*Gadget)child, (*u32)page, window, null, &var tags[0]) } else { 0 }
+    var disabled: u32 = 0
+    let got = if child != null { GetAttr(GA_Disabled, child, &var disabled) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if page != null { DisposeObject(page) }
+    if page == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(changed != 0 && got != 0 && disabled != 0, "tag-list page setter disables the exact child")
+}
+
+// @covers-ndk function|layout.library|SetPageGadgetAttrs
+// @ndk-side-effects Disables a real visible Page child through varargs, verifies the exact live attribute, then closes and disposes the page hierarchy
+@test("layout.library SetPageGadgetAttrs focused timing")
+pub fn page_set_timing() {
+    let child = make_input(56)
+    let page = if child != null { make_page(child) } else { (*u8)null }
+    let window = if page != null { open_window(page) } else { (*Window)null }
+    let changed = if window != null { SetPageGadgetAttrs((*Gadget)child, (*u32)page, window, null, GA_Disabled, 1, TAG_DONE) } else { 0 }
+    var disabled: u32 = 0
+    let got = if child != null { GetAttr(GA_Disabled, child, &var disabled) } else { 0 }
+    if window != null { CloseWindow(window) }
+    if page != null { DisposeObject(page) }
+    if page == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(changed != 0 && got != 0 && disabled != 0, "varargs page setter disables the exact child")
+}
+
+// @covers-ndk function|layout.library|RefreshPageGadget
+// @ndk-side-effects Refreshes a real visible Page child in an active Workbench window, verifies the child remains live with its exact ID, then closes and disposes the hierarchy
+@test("layout.library RefreshPageGadget focused timing")
+pub fn page_refresh_timing() {
+    let child = make_input(57)
+    let page = if child != null { make_page(child) } else { (*u8)null }
+    let window = if page != null { open_window(page) } else { (*Window)null }
+    if window != null { RefreshPageGadget((*Gadget)child, (*u32)page, window, null) }
+    var id: u32 = 0
+    let got = if child != null { GetAttr(GA_ID, child, &var id) } else { 0 }
+    let refreshed = window != null
+    if window != null { CloseWindow(window) }
+    if page != null { DisposeObject(page) }
+    if page == null && child != null { DisposeObject(child) }
+    settle_display()
+    expect(refreshed && got != 0 && id == 57, "refreshed Page child remains live with ID 57")
+}

@@ -31,7 +31,6 @@ fn main() {
             let cap = v.capacity()
 
             // Clean up
-            v.drop()
         },
         Result::Err(_) => {
             let dummy = 0

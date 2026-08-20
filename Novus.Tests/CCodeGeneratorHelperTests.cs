@@ -185,6 +185,8 @@ public class CCodeGeneratorHelperTests
 
         Assert.Equal("struct IntuitionBase*", gen.GetCType(
             new IrPointerType(new IrStructType("IntuitionBase", []))));
+        Assert.Contains("#include <exec/resident.h>", header);
+        Assert.Contains("#include <exec/execbase.h>", header);
         Assert.Contains("#include <inline/intuition_protos.h>", header);
         Assert.Contains("extern struct IntuitionBase *IntuitionBase;", header);
     }
@@ -216,6 +218,17 @@ public class CCodeGeneratorHelperTests
         Assert.Contains("#include <resources/filesysres.h>", header);
         Assert.Contains("typedef struct FileSysResource FileSysResource;", header);
         Assert.Contains("typedef struct FileSysEntry FileSysEntry;", header);
+    }
+
+    [Fact]
+    public void SharedTypesHeader_SetArgStrDeclarationPreservesReturnedPointer()
+    {
+        var header = CCodeGenerator.GenerateSharedTypesHeader(new TypeRegistry());
+
+        Assert.Contains("extern STRPTR SetArgStr(STRPTR string);", header);
+        Assert.DoesNotContain("extern BOOL SetArgStr", header);
+        Assert.Contains("extern LONG Fault(LONG code, CONST_STRPTR header, STRPTR buffer, LONG len);", header);
+        Assert.DoesNotContain("extern BOOL Fault", header);
     }
 
     [Fact]
@@ -659,6 +672,20 @@ public class CCodeGeneratorHelperTests
 
         var result = gen.GetFunctionPointerType(fpType);
         Assert.Equal("void (*)(void)", result);
+    }
+
+    [Fact]
+    public void GetFunctionPointerType_AmigaCallback_QualifiesParametersOnly()
+    {
+        var gen = CreateGenerator();
+        var fpType = new IrFunctionPointerType(
+            [new IrIntType(32, true)],
+            new IrIntType(32, true),
+            IrCallingConvention.Amiga,
+            ["a0"],
+            "d0");
+
+        Assert.Equal("int32_t __regargs (*)(__reg(\"a0\") int32_t __arg0)", gen.GetFunctionPointerType(fpType));
     }
 
     #endregion

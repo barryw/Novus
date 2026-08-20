@@ -1,18 +1,28 @@
 // Window Tests for Novus Standard Library
 // Tests window creation, manipulation, and cleanup
-
-from std::test::test import expect, expect_true, expect_false, expect_eq
+from std::test::test import expect, expect_true, expect_eq
 from amiga::sys::intuition import WindowHandle, open_window
 from amiga::raw::structs import TagItem, Window, MsgPort, Screen
 from amiga::raw::consts import TAG_DONE, WA_Left, WA_Top, WA_Width, WA_Height, WA_Title, WA_Flags, WA_IDCMP
 from amiga::raw::consts import WFLG_CLOSEGADGET, WFLG_DRAGBAR, WFLG_DEPTHGADGET, WFLG_SIZEGADGET, WFLG_BORDERLESS, WFLG_ACTIVATE
+from amiga::raw::consts import WFLG_WINDOWACTIVE, WFLG_ZOOMED
 from amiga::raw::consts import IDCMP_CLOSEWINDOW
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::layers import WhichLayer
 from amiga::sys::intuition::errors import IntuitionError
+
+fn wait_for_intuition() {
+    for frame in 0..10 {
+        unsafe { WaitTOF() }
+    }
+}
 
 // ============================================================================
 // Window Creation Tests
 // ============================================================================
-
+// @covers-ndk function|intuition.library|OpenWindowTagList
+// @covers-ndk function|intuition.library|CloseWindow
+// @ndk-side-effects OpenWindowTagList creates a real Workbench window and its IDCMP port; WindowHandle Drop drains messages and CloseWindow releases both, with the suite-level memory check proving no retained allocation
 @test("WindowHandle::simple opens a window successfully")
 pub fn test_window_simple_opens() {
     let result = WindowHandle::simple("Test Window", 200, 150)
@@ -20,8 +30,8 @@ pub fn test_window_simple_opens() {
         Result::Ok(window) => {
             var w = window
             expect_true(w.as_raw() != (*Window)0, "window pointer should be non-null")
-            // Window is automatically closed when w goes out of scope (Drop)
         },
+        // Window is automatically closed when w goes out of scope (Drop)
         Result::Err(_) => {
             expect(false, "WindowHandle::simple should succeed")
         }
@@ -89,22 +99,41 @@ pub fn test_window_borderless_opens() {
 //         }
 //     }
 // }
-
 // ============================================================================
 // Window Manipulation Tests
 // ============================================================================
-
-@test("WindowHandle::to_front and to_back don't crash")
+// @covers-ndk function|intuition.library|WindowToFront
+// @covers-ndk function|intuition.library|WindowToBack
+// @covers-ndk function|layers.library|WhichLayer
+// @ndk-side-effects WindowToFront and WindowToBack defer layer rearrangement to Intuition; WhichLayer observes the target alternately above and below an overlapping peer after input ticks
+@test("WindowHandle::to_front and to_back change depth order")
 pub fn test_window_depth_operations() {
     let result = WindowHandle::simple("Depth Test", 200, 150)
     match result {
         Result::Ok(window) => {
             var w = window
-            // These shouldn't crash
-            w.to_front()
-            w.to_back()
-            w.to_front()
-            expect(true, "depth operations completed")
+            match WindowHandle::simple("Depth Peer", 180, 120) {
+                Result::Ok(peer_window) => {
+                    var peer = peer_window
+                    let screen = w.get_screen()
+                    w.to_front()
+                    wait_for_intuition()
+                    unsafe {
+                        expect(WhichLayer(&(*screen).LayerInfo, 60, 80) == (*w.as_raw()).WLayer, "WindowToFront makes the target visible above its peer")
+                    }
+                    w.to_back()
+                    wait_for_intuition()
+                    unsafe {
+                        expect(WhichLayer(&(*screen).LayerInfo, 60, 80) != (*w.as_raw()).WLayer, "WindowToBack places the peer above the target")
+                    }
+                    w.to_front()
+                    wait_for_intuition()
+                    unsafe {
+                        expect(WhichLayer(&(*screen).LayerInfo, 60, 80) == (*w.as_raw()).WLayer, "target can return above its peer")
+                    }
+                },
+                Result::Err(_) => expect(false, "peer window should open")
+            }
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -112,14 +141,28 @@ pub fn test_window_depth_operations() {
     }
 }
 
+// @covers-ndk function|intuition.library|ActivateWindow
+// @ndk-side-effects ActivateWindow transfers WFLG_WINDOWACTIVE from the peer to the target after Intuition processes the requests
 @test("WindowHandle::activate gives focus")
 pub fn test_window_activate() {
     let result = WindowHandle::simple("Activate Test", 200, 150)
     match result {
         Result::Ok(window) => {
             var w = window
-            w.activate()
-            expect(true, "activate completed without crash")
+            match WindowHandle::simple("Activate Peer", 180, 120) {
+                Result::Ok(peer_window) => {
+                    var peer = peer_window
+                    peer.activate()
+                    wait_for_intuition()
+                    w.activate()
+                    wait_for_intuition()
+                    unsafe {
+                        expect(((*w.as_raw()).Flags & WFLG_WINDOWACTIVE) != 0, "ActivateWindow marks the target active")
+                        expect(((*peer.as_raw()).Flags & WFLG_WINDOWACTIVE) == 0, "ActivateWindow clears the previous active window")
+                    }
+                },
+                Result::Err(_) => expect(false, "peer window should open")
+            }
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -127,16 +170,28 @@ pub fn test_window_activate() {
     }
 }
 
+// @covers-ndk function|intuition.library|MoveWindow
+// @ndk-side-effects MoveWindow defers each signed relative move; the live Window records the exact accumulated LeftEdge and TopEdge deltas after input ticks
 @test("WindowHandle::move_by changes position")
 pub fn test_window_move_by() {
     let result = WindowHandle::simple("Move Test", 200, 150)
     match result {
         Result::Ok(window) => {
             var w = window
-            // Move the window
+            let raw = w.as_raw()
+            let original_left = unsafe { (*raw).LeftEdge }
+            let original_top = unsafe { (*raw).TopEdge }
+
             w.move_by(10, 10)
+            wait_for_intuition()
+            unsafe {
+                expect((*raw).LeftEdge == original_left + 10 && (*raw).TopEdge == original_top + 10, "MoveWindow applies the requested positive delta")
+            }
             w.move_by(-5, -5)
-            expect(true, "move_by completed without crash")
+            wait_for_intuition()
+            unsafe {
+                expect((*raw).LeftEdge == original_left + 5 && (*raw).TopEdge == original_top + 5, "MoveWindow applies the requested negative delta")
+            }
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -144,6 +199,8 @@ pub fn test_window_move_by() {
     }
 }
 
+// @covers-ndk function|intuition.library|SizeWindow
+// @ndk-side-effects SizeWindow defers resizing and updates the live Window to the exact requested width and height within its limits
 @test("WindowHandle::resize_by changes size")
 pub fn test_window_resize_by() {
     let result = WindowHandle::simple("Resize Test", 200, 150)
@@ -152,13 +209,11 @@ pub fn test_window_resize_by() {
             var w = window
             let orig_width = w.width()
             let orig_height = w.height()
-
             // Resize the window
             w.resize_by(50, 30)
-
-            // New size should be larger (may not be exact due to constraints)
-            expect_true(w.width() >= orig_width, "width should increase or stay same")
-            expect_true(w.height() >= orig_height, "height should increase or stay same")
+            wait_for_intuition()
+            expect_true(w.width() == orig_width + 50, "SizeWindow applies the requested width delta")
+            expect_true(w.height() == orig_height + 30, "SizeWindow applies the requested height delta")
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -166,6 +221,8 @@ pub fn test_window_resize_by() {
     }
 }
 
+// @covers-ndk function|intuition.library|ChangeWindowBox
+// @ndk-side-effects ChangeWindowBox defers one atomic absolute position and size change; all four live Window fields match after an input tick
 @test("WindowHandle::set_bounds sets position and size")
 pub fn test_window_set_bounds() {
     let result = WindowHandle::simple("Bounds Test", 200, 150)
@@ -173,8 +230,11 @@ pub fn test_window_set_bounds() {
         Result::Ok(window) => {
             var w = window
             w.set_bounds(120, 80, 300, 220)
-            // Can't easily verify position, but we can check size changed
-            expect(true, "set_bounds completed without crash")
+            wait_for_intuition()
+            let raw = w.as_raw()
+            unsafe {
+                expect((*raw).LeftEdge == 120 && (*raw).TopEdge == 80 && (*raw).Width == 300 && (*raw).Height == 220, "ChangeWindowBox applies the requested position and size")
+            }
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -182,15 +242,20 @@ pub fn test_window_set_bounds() {
     }
 }
 
+// @covers-ndk function|intuition.library|WindowLimits
+// @ndk-side-effects WindowLimits accepts four valid constraints containing the current size and stores the exact minimum and maximum dimensions
 @test("WindowHandle::set_limits constrains sizing")
 pub fn test_window_set_limits() {
     let result = WindowHandle::simple("Limits Test", 200, 150)
     match result {
         Result::Ok(window) => {
             var w = window
-            let was_resized = w.set_limits(100, 80, 400, 300)
-            // Function returns bool indicating if window was resized to fit
-            expect(true, "set_limits completed")
+            let accepted = w.set_limits(100, 80, 400, 300)
+            let raw = w.as_raw()
+            unsafe {
+                expect((*raw).MinWidth == 100 && (*raw).MinHeight == 80 && (*raw).MaxWidth == 400 && (*raw).MaxHeight == 300, "WindowLimits stores all four constraints")
+            }
+            expect_true(accepted, "WindowLimits accepts constraints containing the current size")
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -198,15 +263,28 @@ pub fn test_window_set_limits() {
     }
 }
 
+// @covers-ndk function|intuition.library|ZipWindow
+// @ndk-side-effects ZipWindow defers each change and toggles WFLG_ZOOMED on the first input tick, then restores the original state on the second
 @test("WindowHandle::zoom toggles size")
 pub fn test_window_zoom() {
     let result = WindowHandle::simple("Zoom Test", 200, 150)
     match result {
         Result::Ok(window) => {
             var w = window
+            let raw = w.as_raw()
+            let initially_zoomed = unsafe { ((*raw).Flags & WFLG_ZOOMED) != 0 }
+
             w.zoom()
-            w.zoom()  // Toggle back
-            expect(true, "zoom completed without crash")
+            wait_for_intuition()
+            let toggled = unsafe { ((*raw).Flags & WFLG_ZOOMED) != 0 }
+
+            expect(toggled != initially_zoomed, "ZipWindow toggles WFLG_ZOOMED")
+            w.zoom()
+            wait_for_intuition()
+            // Toggle back
+            unsafe {
+                expect((((*raw).Flags & WFLG_ZOOMED) != 0) == initially_zoomed, "second ZipWindow restores the original zoom state")
+            }
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -214,21 +292,12 @@ pub fn test_window_zoom() {
     }
 }
 
-@test("WindowHandle::refresh_frame redraws borders")
+@test(skip = "Requires a safe frame-pixel oracle; direct BorderRPort writes can fault on RTG screens")
 pub fn test_window_refresh_frame() {
-    let result = WindowHandle::simple("Refresh Test", 200, 150)
-    match result {
-        Result::Ok(window) => {
-            var w = window
-            w.refresh_frame()
-            expect(true, "refresh_frame completed")
-        },
-        Result::Err(_) => {
-            expect(false, "window should open")
-        }
-    }
 }
 
+// @covers-ndk function|intuition.library|ModifyIDCMP
+// @ndk-side-effects ModifyIDCMP replaces the window's live event subscription with exactly IDCMP_CLOSEWINDOW and reports success
 @test("WindowHandle::modify_idcmp changes event mask")
 pub fn test_window_modify_idcmp() {
     let result = WindowHandle::simple("IDCMP Test", 200, 150)
@@ -237,7 +306,9 @@ pub fn test_window_modify_idcmp() {
             var w = window
             let modify_result = w.modify_idcmp(IDCMP_CLOSEWINDOW)
             match modify_result {
-                Result::Ok(_) => expect(true, "modify_idcmp succeeded"),
+                Result::Ok(_) => unsafe {
+                    expect((*w.as_raw()).IDCMPFlags == IDCMP_CLOSEWINDOW, "ModifyIDCMP stores the requested event mask")
+                },
                 Result::Err(_) => expect(false, "modify_idcmp should succeed")
             }
         },
@@ -247,6 +318,8 @@ pub fn test_window_modify_idcmp() {
     }
 }
 
+// @covers-ndk function|intuition.library|SetMouseQueue
+// @ndk-side-effects SetMouseQueue installs a 20-message mouse queue and the restoring call returns 20 as the exact replaced limit
 @test("WindowHandle::set_mouse_queue changes queue size")
 pub fn test_window_set_mouse_queue() {
     let result = WindowHandle::simple("Queue Test", 200, 150)
@@ -255,6 +328,8 @@ pub fn test_window_set_mouse_queue() {
             var w = window
             let old_size = w.set_mouse_queue(20)
             expect_true(old_size >= 0, "old queue size should be valid")
+            let replaced_size = w.set_mouse_queue((u16)old_size)
+            expect(replaced_size == 20, "SetMouseQueue returns the queue size it replaced")
         },
         Result::Err(_) => {
             expect(false, "window should open")
@@ -265,7 +340,6 @@ pub fn test_window_set_mouse_queue() {
 // ============================================================================
 // Window Properties Tests
 // ============================================================================
-
 @test("WindowHandle::user_port returns valid port")
 pub fn test_window_user_port() {
     let result = WindowHandle::simple("Port Test", 200, 150)
@@ -299,13 +373,11 @@ pub fn test_window_get_screen() {
 // ============================================================================
 // Multiple Windows Tests
 // ============================================================================
-
 @test("Multiple windows can be opened simultaneously")
 pub fn test_multiple_windows() {
     let result1 = WindowHandle::simple("Window 1", 200, 150)
     let result2 = WindowHandle::simple("Window 2", 200, 150)
     let result3 = WindowHandle::simple("Window 3", 200, 150)
-
     match result1 {
         Result::Ok(w1) => {
             var window1 = w1
@@ -318,7 +390,6 @@ pub fn test_multiple_windows() {
                             // All three windows should be open
                             expect_true(window1.as_raw() != window2.as_raw(), "windows have different handles")
                             expect_true(window2.as_raw() != window3.as_raw(), "windows have different handles")
-                            expect(true, "all three windows opened")
                         },
                         Result::Err(_) => expect(false, "window 3 should open")
                     }
@@ -330,11 +401,13 @@ pub fn test_multiple_windows() {
     }
 }
 
+// @covers-ndk function|intuition.library|MoveWindowInFrontOf
+// @covers-ndk function|layers.library|WhichLayer
+// @ndk-side-effects MoveWindowInFrontOf rearranges overlapping window layers and WhichLayer observes the target above its peer at their shared coordinate
 @test("WindowHandle::move_in_front_of changes depth order")
 pub fn test_window_move_in_front_of() {
     let result1 = WindowHandle::simple("Back", 200, 150)
     let result2 = WindowHandle::simple("Front", 200, 150)
-
     match result1 {
         Result::Ok(w1) => {
             var back_window = w1
@@ -343,7 +416,11 @@ pub fn test_window_move_in_front_of() {
                     var front_window = w2
                     // Move back_window in front of front_window
                     back_window.move_in_front_of(&front_window)
-                    expect(true, "move_in_front_of completed")
+                    wait_for_intuition()
+                    unsafe {
+                        let screen = (*back_window.as_raw()).WScreen
+                        expect(WhichLayer(&(*screen).LayerInfo, 60, 80) == (*back_window.as_raw()).WLayer, "MoveWindowInFrontOf makes the target visible above its peer")
+                    }
                 },
                 Result::Err(_) => expect(false, "front window should open")
             }
@@ -351,5 +428,4 @@ pub fn test_window_move_in_front_of() {
         Result::Err(_) => expect(false, "back window should open")
     }
 }
-
 // Note: No main() - this file is used by the test runner

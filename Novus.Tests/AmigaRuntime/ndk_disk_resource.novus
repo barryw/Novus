@@ -1,0 +1,117 @@
+from std::test::test import expect
+from amiga::raw::consts import DRF_ACTIVE, NT_INTERRUPT, NT_MESSAGE
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, OpenResource, WaitPort
+from amiga::raw::resources::disk import AllocUnit, FreeUnit, GetUnit, GetUnitID, GiveUnit, ReadUnitID
+from amiga::raw::structs import DiscResource, DiscResourceUnit, MsgPort
+
+const TEST_UNIT: i32 = 3
+
+@suppress("W0002", "NDK node type constants and DiscResourceUnit size fit their exact u8/u16 ABI fields")
+fn initialize_unit(unit: &var DiscResourceUnit, port: *MsgPort) {
+    unit.dru_Message.mn_Node.ln_Type = (u8)NT_MESSAGE
+    unit.dru_Message.mn_Node.ln_Name = (*i8)"Novus disk.resource test"
+    unit.dru_Message.mn_ReplyPort = port
+    unit.dru_Message.mn_Length = (u16)@sizeof(DiscResourceUnit)
+    unit.dru_DiscBlock.is_Node.ln_Type = (u8)NT_INTERRUPT
+    unit.dru_DiscSync.is_Node.ln_Type = (u8)NT_INTERRUPT
+    unit.dru_Index.is_Node.ln_Type = (u8)NT_INTERRUPT
+}
+
+fn disk_resource() -> *DiscResource {
+    return (*DiscResource)unsafe { OpenResource("disk.resource") }
+}
+
+fn acquire_disk(unit: *DiscResourceUnit, port: *MsgPort, resource: *DiscResource) -> bool {
+    if resource == null || port == null { return false }
+    GetUnit(unit)
+    while (*resource).dr_Current != unit {
+        WaitPort(port)
+        GetMsg(port)
+        GetUnit(unit)
+    }
+    return true
+}
+
+// @covers-ndk function|disk.resource|AllocUnit
+// @ndk-side-effects Allocates absent floppy unit 3, proves a competing allocation is denied while held, then returns the unit with FreeUnit
+@test("disk.resource AllocUnit grants exclusive unit ownership")
+pub fn disk_alloc_unit_exclusive() {
+    let first = AllocUnit(TEST_UNIT)
+    let competing = if first != 0 { AllocUnit(TEST_UNIT) } else { 0 }
+    if first != 0 { FreeUnit(TEST_UNIT) }
+    expect(first != 0, "absent unit 3 can be reserved for a driver")
+    expect(competing == 0, "held unit rejects a competing allocation")
+}
+
+// @covers-ndk function|disk.resource|FreeUnit
+// @ndk-side-effects Allocates unit 3, frees it only after successful ownership, immediately reallocates the exact unit to prove release, then performs the final balanced free
+@test("disk.resource FreeUnit makes the exact unit reusable")
+pub fn disk_free_unit_reuse() {
+    let first = AllocUnit(TEST_UNIT)
+    if first != 0 { FreeUnit(TEST_UNIT) }
+    let second = if first != 0 { AllocUnit(TEST_UNIT) } else { 0 }
+    if second != 0 { FreeUnit(TEST_UNIT) }
+    expect(first != 0 && second != 0, "freed unit can be allocated again immediately")
+}
+
+// @covers-ndk function|disk.resource|GetUnit
+// @ndk-side-effects Allocates unit 3, submits a valid replyable DiscResourceUnit, waits and retries if another driver is active, verifies disk.resource records the exact owner, gives the hardware back, deletes the reply port, and frees unit ownership
+@test("disk.resource GetUnit records the exact active driver")
+pub fn disk_get_unit_owner() {
+    let allocated = AllocUnit(TEST_UNIT)
+    let port = if allocated != 0 { CreateMsgPort() } else { (*MsgPort)null }
+    var unit: DiscResourceUnit = @zeroed(DiscResourceUnit)
+    if port != null { initialize_unit(&var unit, port) }
+    let resource = disk_resource()
+    let owned = if allocated != 0 { acquire_disk(&var unit, port, resource) } else { false }
+    let exact = owned && (*resource).dr_Current == (*DiscResourceUnit)&var unit
+    if owned { GiveUnit() }
+    if port != null { DeleteMsgPort(port) }
+    if allocated != 0 { FreeUnit(TEST_UNIT) }
+    expect(owned && exact, "disk resource records the submitted unit as its active driver")
+}
+
+// @covers-ndk function|disk.resource|GiveUnit
+// @ndk-side-effects Allocates and acquires disk hardware with a replyable unit, calls GiveUnit without enabling any disk interrupts or DMA, verifies disk.resource clears its documented active flag, then deletes the port and frees unit ownership
+@test("disk.resource GiveUnit relinquishes active hardware ownership")
+pub fn disk_give_unit_release() {
+    let allocated = AllocUnit(TEST_UNIT)
+    let port = if allocated != 0 { CreateMsgPort() } else { (*MsgPort)null }
+    var unit: DiscResourceUnit = @zeroed(DiscResourceUnit)
+    if port != null { initialize_unit(&var unit, port) }
+    let resource = disk_resource()
+    let owned = if allocated != 0 { acquire_disk(&var unit, port, resource) } else { false }
+    if owned { GiveUnit() }
+    let released = owned && ((*resource).dr_Flags & (u8)DRF_ACTIVE) == 0
+    if port != null { DeleteMsgPort(port) }
+    if allocated != 0 { FreeUnit(TEST_UNIT) }
+    expect(released, "GiveUnit clears disk.resource's active flag")
+}
+
+// @covers-ndk function|disk.resource|GetUnitID
+// @ndk-side-effects Reads absent floppy unit 3 twice without allocating or changing disk hardware and verifies the stable DRT_EMPTY identifier
+@test("disk.resource GetUnitID reports an absent drive consistently")
+pub fn disk_get_unit_id_empty() {
+    let first = GetUnitID(TEST_UNIT)
+    let second = GetUnitID(TEST_UNIT)
+    expect(first == -1 && second == first, "unit 3 reports the stable DRT_EMPTY identifier")
+}
+
+// @covers-ndk function|disk.resource|ReadUnitID
+// @ndk-side-effects Allocates unit 3, acquires the disk through a valid reply port, rereads its hardware ID while exclusively active, verifies GetUnitID caches the exact DRT_EMPTY result, then gives and frees every resource
+@test("disk.resource ReadUnitID refreshes the cached drive identifier")
+pub fn disk_read_unit_id_refresh() {
+    let allocated = AllocUnit(TEST_UNIT)
+    let port = if allocated != 0 { CreateMsgPort() } else { (*MsgPort)null }
+    var unit: DiscResourceUnit = @zeroed(DiscResourceUnit)
+    if port != null { initialize_unit(&var unit, port) }
+    let resource = disk_resource()
+    let owned = if allocated != 0 { acquire_disk(&var unit, port, resource) } else { false }
+    let refreshed = if owned { ReadUnitID(TEST_UNIT) } else { 0 }
+    let cached = GetUnitID(TEST_UNIT)
+    if owned { GiveUnit() }
+    if port != null { DeleteMsgPort(port) }
+    if allocated != 0 { FreeUnit(TEST_UNIT) }
+    expect(owned, "disk hardware is owned before rereading its identifier")
+    expect(refreshed == -1 && cached == refreshed, "reread returns DRT_EMPTY and updates the cached ID")
+}

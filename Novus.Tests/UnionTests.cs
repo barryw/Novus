@@ -75,6 +75,27 @@ public class UnionTests
     }
 
     [Fact]
+    public void ImportedNestedNdkUnion_PreservesAbiSize()
+    {
+        const string source = """
+            from amiga::raw::structs import CopIns
+            pub fn size() -> u32 { return @sizeof(CopIns) }
+            """;
+        var parser = new NovusParser(new AngleBracketTokenStream(
+            new NovusLexer(new AntlrInputStream(source))));
+        var builder = new IrBuilder(skipAutoImports: true);
+        builder.SetStdLibPath(PathUtility.FindStdLibPath()!);
+        var module = builder.BuildModule(parser.compilationUnit());
+
+        Assert.False(builder.Diagnostics.HasErrors,
+            string.Join(Environment.NewLine, builder.Diagnostics.Diagnostics.Select(d => d.Message)));
+        var copIns = module.GetStruct("CopIns")!;
+        Assert.Equal(6, copIns.SizeInBytes);
+        Assert.Equal("6", new CCodeGenerator(module, [], "68020", "soft", BuildMode.Release)
+            .EmitSizeOf(new IrSizeOf(copIns, IrIntType.U32)));
+    }
+
+    [Fact]
     public void Union_ExactlyOneInitialField_IsValid()
     {
         Assert.False(Analyze(Source).HasErrors);

@@ -1,0 +1,270 @@
+from std::test::test import expect
+from amiga::raw::amiga_lib import ACrypt, DoTimer, FastRand, LibAllocPooled, LibCreatePool, LibDeletePool, LibFreePooled, NewList, RangeRand, TimeDelay, afp, arnd, dbf, fpa, fpbcd, waitbeam
+from amiga::raw::consts import MEMF_ANY, MEMF_CLEAR, UNIT_MICROHZ
+from amiga::raw::graphics import VBeamPos
+from amiga::raw::structs import List, Node, timeval
+
+// @covers-ndk function|amiga.lib|afp
+// @ndk-side-effects afp reads the caller's C string and returns an FFP bit pattern; it touches no library state
+@test("amiga.lib afp converts equivalent ASCII spellings to one FFP value")
+pub fn amiga_lib_afp() {
+    let plain = afp("42")
+    expect(plain == afp("+42."), "leading sign and trailing point are optional")
+    expect(plain == afp("0000042.00"), "leading and trailing zeroes are optional")
+    expect(plain != afp("43"), "different magnitudes convert differently")
+    expect(afp("0") == 0, "zero converts to the all-zero FFP pattern")
+
+    // The documented grammar spells the exponent marker with a capital E, and that is the
+    // only form the shipped routine recognises: a lower-case marker ends the mantissa.
+    expect(plain == afp("4.2E1"), "the documented exponent form reaches the same value")
+    expect(afp("4.2e1") == afp("4.2"), "a lower-case marker terminates the number")
+}
+
+// @covers-ndk function|amiga.lib|fpbcd
+// @ndk-side-effects fpbcd writes exactly eight output bytes at the caller's address and reads nothing else
+@test("fpbcd converts FFP bits to the documented packed format")
+pub fn amiga_lib_fpbcd() {
+    var bcd: [u8] = [0, 0, 0, 0, 0, 0, 0, 0]
+    fpbcd(afp("120"), (*i8)&bcd[0])
+    expect(bcd[0] == 0x12 && bcd[1] == 0 && bcd[2] == 0 && bcd[3] == 0,
+        "mantissa is packed BCD")
+    expect(bcd[4] == 0 && bcd[5] == 0x03 && bcd[6] == 0 && bcd[7] == 3,
+        "sign and exponent are encoded")
+}
+
+// @covers-ndk function|amiga.lib|fpa
+// @ndk-side-effects fpa writes a NUL-terminated ASCII rendering into the caller's buffer and returns the base-ten exponent
+@test("amiga.lib fpa renders FFP as ASCII that converts back to the same value")
+pub fn amiga_lib_fpa() {
+    var text: [i8; 16]
+    let value = afp("42")
+    let exponent = fpa(value, (*i8)&text[0])
+    expect(afp((*u8)&text[0]) == value, "the rendered string converts back to the same FFP value")
+
+    var larger: [i8; 16]
+    let larger_exponent = fpa(afp("4200"), (*i8)&larger[0])
+    expect(larger_exponent > exponent, "a larger magnitude reports a larger exponent")
+}
+
+// @covers-ndk function|amiga.lib|arnd
+// @ndk-side-effects arnd rewrites the ASCII string in place at the caller's address and returns nothing
+@test("amiga.lib arnd rounds an ASCII FFP string in place")
+pub fn amiga_lib_arnd() {
+    var text: [i8; 16]
+    let exponent = fpa(afp("1.2345"), (*i8)&text[0])
+    var original: [i8; 16]
+    var index: u32 = 0
+    while index < 16 {
+        original[index] = text[index]
+        index = index + 1
+    }
+
+    arnd(2, exponent, (*u8)&text[0])
+
+    var changed = false
+    index = 0
+    while index < 16 {
+        if original[index] != text[index] { changed = true }
+        index = index + 1
+    }
+    expect(changed, "rounding to two places rewrites the string")
+}
+
+// @covers-ndk function|amiga.lib|dbf
+// @ndk-side-effects dbf is a pure conversion from the dual-binary exponent/mantissa pair to an FFP bit pattern
+@test("amiga.lib dbf converts a dual-binary pair to the matching FFP value")
+pub fn amiga_lib_dbf() {
+    expect(dbf(0, 42) == afp("42"), "a zero exponent yields the plain integer value")
+    expect(dbf(2, 42) == afp("4200"), "the exponent scales the mantissa by powers of ten")
+    expect(dbf(0, 0) == 0, "a zero mantissa yields the FFP zero pattern")
+}
+
+// @covers-ndk function|amiga.lib|FastRand
+// @ndk-side-effects FastRand is a pure transform of its argument and keeps no state between calls
+@test("amiga.lib FastRand shifts the seed and folds in the polynomial on carry")
+pub fn amiga_lib_fast_rand() {
+    // The shipped routine is a Galois shift register: it doubles the seed and only
+    // exclusive-ors $1D872B41 when that shift carries the high bit out.
+    let low: u32 = 0x12345678
+    expect(FastRand(low) == (low << 1), "a seed without the high bit is a plain doubling")
+
+    let high: u32 = 0x92345678
+    expect(FastRand(high) == ((high << 1) ^ 0x1D872B41),
+        "a seed with the high bit also folds in the polynomial")
+
+    expect(FastRand(low) == FastRand(low), "FastRand keeps no state between calls")
+    expect(FastRand(low) != FastRand(high), "different seeds produce different values")
+}
+
+// @covers-ndk function|amiga.lib|RangeRand
+// @ndk-side-effects RangeRand advances the amiga.lib RangeSeed global and returns a value below maxValue
+@test("amiga.lib RangeRand stays below maxValue and advances its seed")
+pub fn amiga_lib_range_rand() {
+    let first = RangeRand(10)
+    expect(first < 10, "the first draw stays below maxValue")
+
+    var distinct = false
+    var index: u32 = 0
+    while index < 64 {
+        let value = RangeRand(10)
+        expect(value < 10, "every draw stays below maxValue")
+        if value != first { distinct = true }
+        index = index + 1
+    }
+    expect(distinct, "the shared seed advances between calls")
+}
+
+// @covers-ndk function|amiga.lib|NewList
+// @ndk-side-effects NewList rewrites the three header pointers of the caller's List and leaves lh_Type untouched
+@test("amiga.lib NewList prepares an empty list header")
+pub fn amiga_lib_new_list() {
+    var list = List {
+        lh_Head: null,
+        lh_Tail: null,
+        lh_TailPred: null,
+        lh_Type: 7,
+        l_pad: 0,
+    }
+    NewList(&list)
+    expect(list.lh_Head == (*Node)&list.lh_Tail, "head points at the tail slot")
+    expect(list.lh_Tail == null, "tail is cleared")
+    expect(list.lh_TailPred == (*Node)&list.lh_Head, "tail predecessor points back at the head slot")
+    expect(list.lh_Type == 7, "NewList leaves lh_Type for the caller")
+}
+
+// @covers-ndk function|amiga.lib|ACrypt
+// @ndk-side-effects ACrypt writes the encrypted password into the caller's buffer and returns that same buffer
+@test("amiga.lib ACrypt fills the caller buffer with a repeatable hash")
+pub fn amiga_lib_acrypt() {
+    var first: [u8; 16]
+    var second: [u8; 16]
+    var other: [u8; 16]
+
+    let returned = ACrypt((*u8)&first[0], "novus", "barry")
+    expect(returned == (*u8)&first[0], "ACrypt returns the caller's buffer")
+    expect(first[0] != 0, "the buffer receives an encrypted password")
+
+    let _ = ACrypt((*u8)&second[0], "novus", "barry")
+    let _ = ACrypt((*u8)&other[0], "different", "barry")
+
+    var same = true
+    var differs = false
+    var index: u32 = 0
+    while index < 12 {
+        if first[index] != second[index] { same = false }
+        if first[index] != other[index] { differs = true }
+        index = index + 1
+    }
+    expect(same, "the same password and user encrypt identically")
+    expect(differs, "a different password encrypts differently")
+}
+
+// @covers-ndk function|amiga.lib|LibCreatePool
+// @ndk-side-effects LibCreatePool allocates a private pool header from system memory that the caller must delete
+@test("amiga.lib LibCreatePool returns a usable private pool header")
+pub fn amiga_lib_lib_create_pool() {
+    let pool = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(pool != null, "LibCreatePool returns a pool header")
+    if pool == null { return }
+
+    let other = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(other != pool, "a second pool is a distinct header")
+    if other != null { LibDeletePool(other) }
+    LibDeletePool(pool)
+}
+
+// @covers-ndk function|amiga.lib|LibAllocPooled
+// @ndk-side-effects LibAllocPooled takes memory from the pool's puddles and returns writable storage owned by the pool
+@test("amiga.lib LibAllocPooled hands out writable pool memory")
+pub fn amiga_lib_lib_alloc_pooled() {
+    let pool = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(pool != null, "the test pool is created")
+    if pool == null { return }
+
+    let block = LibAllocPooled(pool, 64)
+    expect(block != null, "LibAllocPooled returns a block")
+    if block != null {
+        *block = 0xA5
+        expect(*block == 0xA5, "the returned block is writable")
+        let second = LibAllocPooled(pool, 64)
+        expect(second != block, "a second allocation is a distinct block")
+        if second != null { LibFreePooled(pool, second, 64) }
+        LibFreePooled(pool, block, 64)
+    }
+    LibDeletePool(pool)
+}
+
+// @covers-ndk function|amiga.lib|LibFreePooled
+// @ndk-side-effects LibFreePooled returns one block to its pool so the pool can hand the same storage out again
+@test("amiga.lib LibFreePooled returns a block to its pool for reuse")
+pub fn amiga_lib_lib_free_pooled() {
+    let pool = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(pool != null, "the test pool is created")
+    if pool == null { return }
+
+    let block = LibAllocPooled(pool, 128)
+    expect(block != null, "the first allocation succeeds")
+    if block != null {
+        LibFreePooled(pool, block, 128)
+        let reused = LibAllocPooled(pool, 128)
+        expect(reused == block, "the freed block is handed out again")
+        if reused != null { LibFreePooled(pool, reused, 128) }
+    }
+    LibDeletePool(pool)
+}
+
+// @covers-ndk function|amiga.lib|LibDeletePool
+// @ndk-side-effects LibDeletePool frees every puddle in the pool, so outstanding allocations do not need individual frees
+@test("amiga.lib LibDeletePool drains a pool that still holds allocations")
+pub fn amiga_lib_lib_delete_pool() {
+    let pool = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(pool != null, "the test pool is created")
+    if pool == null { return }
+
+    let block = LibAllocPooled(pool, 256)
+    expect(block != null, "the pool holds an outstanding allocation")
+    LibDeletePool(pool)
+
+    let replacement = LibCreatePool(MEMF_ANY | MEMF_CLEAR, 1024, 256)
+    expect(replacement != null, "a pool can be created again after the drain")
+    if replacement != null { LibDeletePool(replacement) }
+}
+
+// @covers-ndk function|amiga.lib|waitbeam
+// @ndk-side-effects waitbeam busy-waits on the display beam counter and returns once the requested raster line is reached
+@test("amiga.lib waitbeam returns at or after the requested raster line")
+pub fn amiga_lib_waitbeam() {
+    waitbeam(50)
+    let reached = VBeamPos()
+    expect(reached >= 50, "the beam has passed the requested line")
+    expect(reached < 400, "the reported line stays inside a display frame")
+}
+
+// @covers-ndk function|amiga.lib|TimeDelay
+// @ndk-side-effects TimeDelay opens timer.device for the requested unit, waits the requested interval, then closes and frees every temporary object
+@test("amiga.lib TimeDelay blocks for at least the requested interval")
+pub fn amiga_lib_time_delay() {
+    var before = timeval { tv_secs: 0, tv_micro: 0 }
+    var after = timeval { tv_secs: 0, tv_micro: 0 }
+    expect(DoTimer(&before, (i32)UNIT_MICROHZ, 10) == 0, "system time read before the delay")
+
+    let error = TimeDelay((i32)UNIT_MICROHZ, 0, 40000)
+    expect(error == 0, "TimeDelay reports success")
+
+    expect(DoTimer(&after, (i32)UNIT_MICROHZ, 10) == 0, "system time read after the delay")
+    let seconds = after.tv_secs - before.tv_secs
+    let elapsed = seconds * 1000000 + after.tv_micro - before.tv_micro
+    expect(elapsed >= 30000, "at least the requested interval elapsed")
+}
+
+// @covers-ndk function|amiga.lib|DoTimer
+// @ndk-side-effects opens timer.device, updates the timeval, then closes and frees every temporary object
+@test("DoTimer performs a timer.device command and releases its resources")
+pub fn amiga_lib_do_timer() {
+    var now = timeval { tv_secs: 0, tv_micro: 0 }
+    let unit: i32 = 0       // UNIT_MICROHZ
+    let command: i32 = 10   // TR_GETSYSTIME
+    let error = DoTimer(&now, unit, command)
+    expect(error == 0, "timer.device command succeeded")
+    expect(now.tv_secs != 0 || now.tv_micro != 0, "system time returned")
+}

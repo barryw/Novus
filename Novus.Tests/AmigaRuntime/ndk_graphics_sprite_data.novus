@@ -1,0 +1,98 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, SPRITEA_OutputHeight, SPRITEA_Width, TAG_DONE
+from amiga::raw::structs import RastPort, TagItem
+from amiga::raw::graphics import AllocSpriteData, AllocSpriteDataA, FreeSpriteData
+from amiga::raw::graphics import InitRastPort, SetAPen, WritePixel
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(16, 4, 2, BMF_CLEAR, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+// @covers-ndk function|graphics.library|AllocSpriteDataA
+// @ndk-side-effects AllocSpriteDataA converts exact two-plane bitmap pixels into one-word-wide hardware sprite rows, honors the requested output height, and allocates data that remains valid until FreeSpriteData releases it
+@test("graphics.library AllocSpriteDataA converts bitmap planes exactly")
+pub fn graphics_alloc_sprite_data_a() {
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rastport)
+    unsafe { rastport.BitMap = source.as_raw() }
+    SetAPen(&var rastport, 1)
+    expect(WritePixel(&var rastport, 0, 0) == 0, "plane-zero source pixel written")
+    SetAPen(&var rastport, 2)
+    expect(WritePixel(&var rastport, 1, 1) == 0, "plane-one source pixel written")
+
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SPRITEA_Width, ti_Data: 16 },
+        TagItem { ti_Tag: SPRITEA_OutputHeight, ti_Data: 4 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let sprite = AllocSpriteDataA(source.as_raw(), &var tags[0])
+    expect(sprite != null, "tag-list sprite conversion succeeds")
+    if sprite == null { return }
+
+    unsafe {
+        let words = (*sprite).es_SimpleSprite.posctldata
+        expect((*sprite).es_wordwidth == 1, "sixteen pixels occupy one hardware word")
+        expect((*sprite).es_SimpleSprite.height == 4, "requested output height is retained")
+        expect(words != null, "converted hardware words are allocated")
+        if words != null {
+            expect(words[2] == $8000 && words[3] == 0, "first row encodes the plane-zero pixel")
+            expect(words[4] == 0 && words[5] == $4000, "second row encodes the plane-one pixel")
+        }
+    }
+    FreeSpriteData(sprite)
+}
+
+// @covers-ndk function|graphics.library|AllocSpriteData
+// @ndk-side-effects AllocSpriteData forwards its varargs tags to the bitmap converter and limits the generated sprite to the requested two rows; FreeSpriteData releases the converted allocation before the source bitmap drops
+@test("graphics.library AllocSpriteData honors varargs output height")
+pub fn graphics_alloc_sprite_data_varargs() {
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let sprite = AllocSpriteData(source.as_raw(), SPRITEA_Width, 16, SPRITEA_OutputHeight, 2, TAG_DONE)
+    expect(sprite != null, "varargs sprite conversion succeeds")
+    if sprite == null { return }
+
+    unsafe {
+        expect((*sprite).es_wordwidth == 1, "varargs width reaches the converter")
+        expect((*sprite).es_SimpleSprite.height == 2, "varargs output height reaches the converter")
+        expect((*sprite).es_SimpleSprite.posctldata != null, "varargs conversion allocates hardware words")
+    }
+    FreeSpriteData(sprite)
+}
+
+// @covers-ndk function|graphics.library|FreeSpriteData
+// @ndk-side-effects FreeSpriteData returns an AllocSpriteDataA allocation exactly once, accepts null as the documented no-op, and leaves its source bitmap usable; the harness verifies all command-owned memory is returned
+@test("graphics.library FreeSpriteData releases storage and accepts null")
+pub fn graphics_free_sprite_data() {
+    let source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    let sprite = AllocSpriteDataA(source.as_raw(), null)
+    expect(sprite != null, "default sprite data allocated before release")
+    if sprite == null { return }
+
+    FreeSpriteData(sprite)
+    FreeSpriteData(null)
+    expect(source.as_raw() != null, "release leaves the source bitmap owned and usable")
+}

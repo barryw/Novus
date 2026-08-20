@@ -11,5 +11,35 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// get the input device's current qualifiers (V36)
+///
+/// This function takes a snapshot of what the input device thinks
+/// the current qualifiers are.
+///
+/// # Synopsis
+///
+/// qualifier = PeekQualifier()
+/// d0
+///
+/// UWORD PeekQualifier( VOID );
+///
+/// # Returns
+///
+/// qualifier - a word with the following bits set according to
+/// what the input device knows their state to be:
+/// IEQUALIFIER_LSHIFT, IEQUALIFIER_RSHIFT,
+/// IEQUALIFIER_CAPSLOCK, IEQUALIFIER_CONTROL,
+/// IEQUALIFIER_LALT, IEQUALIFIER_RALT,
+/// IEQUALIFIER_LCOMMAND, IEQUALIFIER_RCOMMAND,
+/// IEQUALIFIER_LEFTBUTTON, IEQUALIFIER_RBUTTON,
+/// IEQUALIFIER_MIDBUTTON
+///
+/// # Notes
+///
+/// This function is new for V36.
+///
+/// # See Also
+///
+/// devices/inputevent.h
 @library("input.device")
 extern pub fn PeekQualifier() -> u16

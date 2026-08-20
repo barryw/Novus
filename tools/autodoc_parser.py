@@ -142,7 +142,7 @@ class FunctionDoc:
         while lines and lines[-1] == "///":
             lines.pop()
 
-        return '\n'.join(lines)
+        return '\n'.join(line.rstrip() for line in lines)
 
 
 class AutodocParser:

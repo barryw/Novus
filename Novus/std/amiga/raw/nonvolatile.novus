@@ -11,98 +11,246 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
-/// Return a copy of an item stored in nonvolatile storage.
+/// return a copy of an item stored in nonvolatile storage.
 ///
-/// Searches the nonvolatile storage for the indicated appName and itemName. A
-/// pointer to a copy of this data will be returned.
+/// Searches the nonvolatile storage for the indicated appName and
+/// itemName. A pointer to a copy of this data will be returned.
+/// The strings appName and itemName may not contain the '/' or ':'
+/// characters. It is recommended that these characters be blocked
+/// from user input when requesting appName and itemName strings.
+///
+/// # Synopsis
+///
+/// data = GetCopyNV(appName, itemName, killRequesters);
+/// D0		 A0	  A1	    D1
+///
+/// APTR GetCopyNV(STRPTR, STRPTR, BOOL);
 ///
 /// # Arguments
-/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// * `appName` - NULL terminated string indicating the application name to be found. Maximum length is 31. itemName - NULL terminated string indicated the item within the application to be found. Maximum length is 31. killRequesters - Suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
-/// data - pointer to a copy of the data found in the nonvolatile storage
 ///
-/// See also: FreeNVData(), <libraries/nonvolatile.h>
+/// data - pointer to a copy of the data found in the nonvolatile storage
+/// assocated with appName and itemName. NULL will be returned
+/// if there is insufficient memory or the appName/itemName does
+/// not exist.
+///
+/// # See Also
+///
+/// FreeNVData(), <libraries/nonvolatile.h>
 @library("nonvolatile.library")
 extern pub fn GetCopyNV(appName: *u8, itemName: *u8, killRequesters: i16) -> *u8
-/// Release the memory allocated by a function of this
+/// release the memory allocated by a function of this
 ///
 /// Frees a block of memory that was allocated by any of the following:
 /// GetCopyNV(), GetNVInfo(), GetNVList().
 ///
-/// # Arguments
-/// * `data` - pointer to the memory block to be freed. If passed NULL, ...
+/// # Synopsis
 ///
-/// See also: GetCopyNV(), GetNVInfo(), GetNVList()
+/// FreeNVData(data);
+/// 	   A0
+///
+/// VOID FreeNVData(APTR);
+///
+/// # Arguments
+///
+/// * `data` - pointer to the memory block to be freed. If passed NULL, this function does nothing.
+///
+/// # See Also
+///
+/// GetCopyNV(), GetNVInfo(), GetNVList()
 @library("nonvolatile.library")
-extern pub fn FreeNVData(data: *u8)
-/// Store data in nonvolatile storage. (V40)
+extern pub fn FreeNVData(consuming data: *u8)
+/// store data in nonvolatile storage. (V40)
 ///
-/// Saves some data in nonvolatile storage. The data is tagged with AppName and
-/// ItemName so it can be retrieved later.
+/// Saves some data in nonvolatile storage. The data is tagged with
+/// AppName and ItemName so it can be retrieved later. No single
+/// item should be larger than one fourth of the maximum storage as
+/// returned by GetNVInfo().
+/// There is no data compression associated with this function.
+/// The strings, AppName and ItemName, should be short, but descriptive.
+/// They need to be short since the string is stored with the data and
+/// the nonvolatile storage for a stand alone game system is limited.
+/// The game system allows the user to selectively remove entries from
+/// storage, so the string should be desriptive.
+/// The strings AppName and ItemName may not contain the '/' or ':'
+/// characters. It is recommended that these characters be blocked
+/// from user input when requesting AppName and ItemName strings.
+///
+/// # Synopsis
+///
+/// error = StoreNV(appName, itemName, data, length, killRequesters);
+/// D0		A0	 A1	   A2    D0	 D1
+///
+/// UWORD StoreNV(STRPTR, STRPTR, APTR, ULONG, BOOL);
 ///
 /// # Arguments
-/// * `appName` - NULL terminated string identifying the application creati...
+///
+/// * `appName` - NULL terminated string identifying the application creating the data. Maximum length is 31. itemName - NULL terminated string uniquely identifying the data within the application. Maximum length is 31. data - pointer to the memory block to be stored. length - number of bytes to be stored in the units of tens of bytes. For example, if you have 23 bytes to store length = 3; 147 byte then length = 15. killRequesters - suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
-/// error - 0                means no error,
 ///
-/// See also: GetCopyNV(), GetNVInfo()
+/// error - 0                means no error,
+/// NVERR_BADNAME    error in AppName, or ItemName.
+/// NVERR_WRITEPROT  Nonvolatile storage is read only.
+/// NVERR_FAIL       Failure in writing data (nonvolatile storage
+/// full, or write protected).
+/// NVERR_FATAL      Fatal error when accessing nonvolatile
+/// storage, possible loss of previously saved
+/// nonvolatile data.
+///
+/// # See Also
+///
+/// GetCopyNV(), GetNVInfo()
 @library("nonvolatile.library")
 extern pub fn StoreNV(appName: *u8, itemName: *u8, data: *u8, length: u32, killRequesters: i16) -> u16
-/// Remove an entry from nonvoltatile storage. (V40)
+/// remove an entry from nonvoltatile storage. (V40)
 ///
-/// Searches the nonvolatile storage for the indicated entry and removes it. The
-/// strings appName and itemName may not contain the '/' or ':' characters.
+/// Searches the nonvolatile storage for the indicated entry and removes
+/// it.
+/// The strings appName and itemName may not contain the '/' or ':'
+/// characters. It is recommended that these characters be blocked
+/// from user input when requesting AppName and ItemName strings.
+///
+/// # Synopsis
+///
+/// success = DeleteNV(appName, itemName, killRequesters);
+/// D0		   A0	    A1	      D1
+///
+/// BOOL DeleteNV(STRPTR, STRPTR, BOOL);
 ///
 /// # Arguments
-/// * `appName` - NULL terminated string identifing the application that cr...
+///
+/// * `appName` - NULL terminated string identifing the application that created the data. Maximum length is 31. ItemName - NULL terminated string uniquely identifing the data within the application. Maximum length is 31. killRequesters - suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
+///
 /// success - TRUE will be returned if the entry is found and deleted.
+/// If the entry is not found, FALSE will be returned.
 @library("nonvolatile.library")
 extern pub fn DeleteNV(appName: *u8, itemName: *u8, killRequesters: i16) -> i16
-/// Report information on the current nonvolatile storage.
+/// report information on the current nonvolatile storage.
 ///
-/// Finds the user's preferred nonvolatile device and reports information about
-/// it.
+/// Finds the user's preferred nonvolatile device and reports information
+/// about it.
+///
+/// # Synopsis
+///
+/// information = GetNVInfo(killRequesters);
+/// D0			D1
+///
+/// struct NVInfo *GetNVInfo(BOOL);
 ///
 /// # Arguments
-/// * `killRequesters` - suppress system requesters flag. TRUE if all system reque...
+///
+/// * `killRequesters` - suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
-/// information - pointer to an NVInfo structure. This structure contains
 ///
-/// See also: FreeNVData(), StoreNV(), <libraries/nonvolatile.h>
+/// information - pointer to an NVInfo structure. This structure contains
+/// information on the NV storage media with the largest
+/// storage. The structure contains 2 longword fields:
+/// nvi_MaxStorage and nvi_FreeStorage. Both values are
+/// rounded down to the nearest ten. The nvi_MaxStorage
+/// field is defined as the total amount of nonvolatile
+/// storage available on this device. The nvi_FreeStorage is
+/// defined as the amount of available space for NVDISK or
+/// the amount of non-locked storage for NVRAM. For NVDISK,
+/// the nvi_FreeStorage takes into account the amount of
+/// overhead room required to store a new App/Item. This
+/// amount is 3 blocks to allow room for storing a new Item
+/// file and possibly a new App directory. For NVRAM, the
+/// amount of overhead is 5 bytes. However, the amount of
+/// room required to store a new NVRAM item depends on the
+/// length of the App and Item names. Refer to StoreNV()
+/// function for storage details.
+/// This function may return NULL in the case of failure.
+///
+/// # See Also
+///
+/// FreeNVData(), StoreNV(), <libraries/nonvolatile.h>
+///
+/// # Bugs
+///
+/// `GetNVInfo` reports on a hardware nonvolatile medium, and the emulated A4000 used for
+/// verification has none. Live verification shows it returning a valid owned NVInfo block
+/// whose `nvi_MaxStorage` and `nvi_FreeStorage` both read zero, for either value of
+/// `killRequesters`. Storage itself still works there because the library falls back to the
+/// NVDISK location named by `ENV:Sys/nv_location`: `StoreNV`, `GetCopyNV`, `DeleteNV`,
+/// `GetNVList` and `SetNVProtection` all behave normally against that volume. Read a
+/// zero capacity as "no nonvolatile medium present", not as a failed call.
 @library("nonvolatile.library")
 extern pub fn GetNVInfo(killRequesters: i16) -> *NVInfo
-/// Return a list of the items stored in nonvolatile
+/// return a list of the items stored in nonvolatile
 ///
-/// Returns a pointer to an Exec list of nonvolatile Items associated with the
-/// appName requested. The string appName may not contain the '/' or ':'
-/// characters.
+/// Returns a pointer to an Exec list of nonvolatile Items associated
+/// with the appName requested.
+/// The string appName may not contain the '/' or ':' characters.
+/// It is recommended that these characters be blocked from user input
+/// when requesting an appName string.
+///
+/// # Synopsis
+///
+/// list = GetNVList(appName, killRequesters);
+/// D0		 A0	  D1
+///
+/// struct MinList *GetNVList(STRPTR, BOOL);
 ///
 /// # Arguments
-/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// * `appName` - NULL terminated string indicating the application name to be matched. Maximum length is 31. killRequesters - Suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
-/// list - a pointer to an Exec MinList of NVEntries. A NULL will be
 ///
-/// See also: FreeNVData(), SetNVProtection()
+/// list - a pointer to an Exec MinList of NVEntries. A NULL will be
+/// returned if there is insufficient memory. If there are no
+/// entries in the nonvolatile storage for the AppName, an
+/// empty list will be returned.
+///
+/// # Notes
+///
+/// The protection field contains more bits than are required for
+/// storing the delete protection status. These bits are reserved
+/// for other system usage and may not be zero. When checking for
+/// the delete status use either the field mask NVIF_DELETE, or the
+/// bit definition NVIB_DELETE.
+///
+/// # See Also
+///
+/// FreeNVData(), SetNVProtection()
 @library("nonvolatile.library")
 extern pub fn GetNVList(appName: *u8, killRequesters: i16) -> *MinList
-/// Set the protection flags. (V40)
+/// set the protection flags. (V40)
 ///
-/// Sets the protection attributes for an item currently in the nonvolatile
-/// storage. Although 'mask' is LONG only the delete bit,
-/// NVEF_DELETE/NVEB_DELETE, may be set.
+/// Sets the protection attributes for an item currently in the
+/// nonvolatile storage.
+/// Although 'mask' is LONG only the delete bit, NVEF_DELETE/NVEB_DELETE,
+/// may be set. If any other bits are set this function will return
+/// FALSE.
+/// The strings appName and itemName may not contain the '/' or ':'
+/// characters. It is recommended that these characters be blocked
+/// from user input when requesting AppName and ItemName strings.
+///
+/// # Synopsis
+///
+/// success = SetNVProtection(appName, itemName, mask, killRequesters);
+/// D0			  A0	   A1	     D2    D1
+///
+/// BOOL SetNVProtection(STRPTR, STRPTR, LONG, BOOL);
 ///
 /// # Arguments
-/// * `appName` - NULL terminated string indicating the application name to...
+///
+/// * `appName` - NULL terminated string indicating the application name to be matched. Maximum length is 31. itemName - NULL terminated string indicated the item within the application to be found. Maximum length is 31. mask - the new protection mask. Only set the delete bit otherwise this function WILL CRASH. killRequesters - suppress system requesters flag. TRUE if all system requesters are to be suppressed during this function. FALSE if system requesters are allowed.
 ///
 /// # Returns
-/// success - FALSE if the protection could not be change (ie the data
 ///
-/// See also: GetNVList(), <libraries/nonvolatile.h>
+/// success - FALSE if the protection could not be change (ie the data
+/// does not exist).
+///
+/// # See Also
+///
+/// GetNVList(), <libraries/nonvolatile.h>
 @library("nonvolatile.library")
 extern pub fn SetNVProtection(appName: *u8, itemName: *u8, mask: i32, killRequesters: i16) -> i16

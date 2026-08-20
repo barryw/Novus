@@ -34,7 +34,10 @@ public static class FfiRuntimeGenerator
             sb.AppendLine($"{binding.BaseSymbol}:\tds.l\t1");
         }
         foreach (var binding in bindings.Where(b => b.Kind == FfiModuleKind.Device))
-            sb.AppendLine($"__novus_{binding.ModuleName}_ioreq:\tds.b\t32");
+        {
+            sb.AppendLine($"__novus_{binding.ModuleName}_ioreq:\tds.l\t1");
+            sb.AppendLine($"__novus_{binding.ModuleName}_port:\tds.l\t1");
+        }
 
         sb.AppendLine("\tsection\t__MERGED,data");
         foreach (var binding in bindings.Where(binding => binding.Kind != FfiModuleKind.LazyLibrary))
@@ -51,6 +54,7 @@ public static class FfiRuntimeGenerator
                 sb.AppendLine($"\tdc.l\t__novus_{binding.ModuleName}_name");
                 sb.AppendLine($"\tdc.l\t{binding.BaseSymbol}");
                 sb.AppendLine($"\tdc.w\t{binding.MinimumVersion}");
+                sb.AppendLine("\tdc.w\t0\t; keep every table entry long-aligned");
             }
             sb.AppendLine("__novus_ffi_table_end:");
             sb.AppendLine("\tdc.l\t0");
@@ -69,25 +73,26 @@ public static class FfiRuntimeGenerator
             sb.AppendLine("\tlea\t__novus_ffi_table,a4");
             sb.AppendLine(".__novus_ffi_open_next:");
             sb.AppendLine("\tmove.l\t(a4)+,d4");
-            sb.AppendLine("\tbeq.s\t.__novus_ffi_opened");
+            sb.AppendLine("\tbeq\t.__novus_ffi_opened");
             sb.AppendLine("\tmovea.l\t(a4)+,a2");
             sb.AppendLine("\tmoveq\t#0,d0");
             sb.AppendLine("\tmove.w\t(a4)+,d0");
+            sb.AppendLine("\taddq.w\t#2,a4");
             sb.AppendLine("\ttst.l\t(a2)");
-            sb.AppendLine("\tbne.s\t.__novus_ffi_open_next");
+            sb.AppendLine("\tbne\t.__novus_ffi_open_next");
             sb.AppendLine("\tmovea.l\td4,a1");
             sb.AppendLine("\tjsr\t-552(a6)\t; OpenLibrary");
             sb.AppendLine("\tmove.l\td0,(a2)");
-            sb.AppendLine("\tbne.s\t.__novus_ffi_open_next");
+            sb.AppendLine("\tbne\t.__novus_ffi_open_next");
             sb.AppendLine("\tmoveq\t#0,d1");
-            sb.AppendLine("\tmove.w\t-2(a4),d1");
+            sb.AppendLine("\tmove.w\t-4(a4),d1");
             sb.AppendLine("\tmove.l\td1,-(sp)");
-            sb.AppendLine("\tmove.l\td4,-(sp)");
+            sb.AppendLine("\tmove.l\t-12(a4),-(sp)");
             sb.AppendLine("\tjsr\t___novus_library_not_found");
             sb.AppendLine("\taddq.l\t#8,sp");
             sb.AppendLine("\tbsr\t___novus_ffi_cleanup");
             sb.AppendLine("\tmoveq\t#0,d0");
-            sb.AppendLine("\tbra.s\t.__novus_ffi_init_done");
+            sb.AppendLine("\tbra\t.__novus_ffi_init_done");
             sb.AppendLine(".__novus_ffi_opened:");
             sb.AppendLine("\tmoveq\t#1,d0");
             sb.AppendLine(".__novus_ffi_init_done:");
@@ -96,18 +101,20 @@ public static class FfiRuntimeGenerator
         }
         else
         {
-            sb.AppendLine("\tmovem.l\td1/a0-a1/a6,-(sp)");
+            sb.AppendLine("\tmovem.l\td1/d6/a0-a2/a6,-(sp)");
             sb.AppendLine("\tmove.l\t4.w,a6");
             foreach (var binding in bindings)
             {
                 if (binding.Kind == FfiModuleKind.LazyLibrary)
                     continue;
                 sb.AppendLine($"\ttst.l\t{binding.BaseSymbol}");
-                sb.AppendLine($"\tbne.s\t.__novus_{binding.ModuleName}_ready");
+                sb.AppendLine($"\tbne\t.__novus_{binding.ModuleName}_ready");
                 sb.AppendLine($"\tlea\t__novus_{binding.ModuleName}_name,a0");
                 sb.AppendLine(binding.MinimumVersion <= 127
                     ? $"\tmoveq\t#{binding.MinimumVersion},d1"
                     : $"\tmove.l\t#{binding.MinimumVersion},d1");
+                sb.AppendLine("\tmovea.l\ta0,a2");
+                sb.AppendLine("\tmove.l\td1,d6");
                 switch (binding.Kind)
                 {
                     case FfiModuleKind.Library:
@@ -116,7 +123,7 @@ public static class FfiRuntimeGenerator
                         sb.AppendLine("\tjsr\t-552(a6)\t; OpenLibrary");
                         sb.AppendLine($"\tmove.l\td0,{binding.BaseSymbol}");
                         sb.AppendLine(binding.Optional
-                            ? $"\tbeq.s\t.__novus_{binding.ModuleName}_ready"
+                        ? $"\tbeq\t.__novus_{binding.ModuleName}_ready"
                             : "\tbeq\t.__novus_ffi_failed");
                         break;
                     case FfiModuleKind.Resource:
@@ -126,14 +133,24 @@ public static class FfiRuntimeGenerator
                         sb.AppendLine("\tbeq\t.__novus_ffi_failed");
                         break;
                     case FfiModuleKind.Device:
-                        sb.AppendLine($"\tlea\t__novus_{binding.ModuleName}_ioreq,a1");
-                        sb.AppendLine("\tmove.w\t#32,18(a1)\t; mn_Length = sizeof(IORequest)");
-                        sb.AppendLine("\tmoveq\t#0,d0\t; unit 0");
+                        sb.AppendLine("\tjsr\t-666(a6)\t; CreateMsgPort");
+                        sb.AppendLine($"\tmove.l\td0,__novus_{binding.ModuleName}_port");
+                        sb.AppendLine("\tbeq\t.__novus_ffi_failed");
+                        sb.AppendLine("\tmovea.l\td0,a0");
+                        sb.AppendLine("\tmoveq\t#32,d0\t; sizeof(IORequest)");
+                        sb.AppendLine("\tjsr\t-654(a6)\t; CreateIORequest");
+                        sb.AppendLine($"\tmove.l\td0,__novus_{binding.ModuleName}_ioreq");
+                        sb.AppendLine("\tbeq\t.__novus_ffi_failed");
+                        sb.AppendLine("\tmovea.l\td0,a1");
+                        sb.AppendLine("\tmovea.l\ta2,a0\t; device name");
+                        sb.AppendLine(binding.DeviceUnit is >= -128 and <= 127
+                            ? $"\tmoveq\t#{binding.DeviceUnit},d0\t; unit"
+                            : $"\tmove.l\t#{binding.DeviceUnit},d0\t; unit");
                         sb.AppendLine("\tmoveq\t#0,d1\t; flags");
                         sb.AppendLine("\tjsr\t-444(a6)\t; OpenDevice");
                         sb.AppendLine("\ttst.l\td0");
-                        sb.AppendLine("\tbne.s\t.__novus_ffi_failed");
-                        sb.AppendLine($"\tmove.l\t__novus_{binding.ModuleName}_ioreq+20,{binding.BaseSymbol}");
+                    sb.AppendLine("\tbne\t.__novus_ffi_failed");
+                        sb.AppendLine($"\tmove.l\t20(a1),{binding.BaseSymbol}");
                         break;
                 }
                 if (binding.Kind == FfiModuleKind.Device)
@@ -144,16 +161,16 @@ public static class FfiRuntimeGenerator
                 sb.AppendLine($".__novus_{binding.ModuleName}_ready:");
             }
             sb.AppendLine("\tmoveq\t#1,d0");
-            sb.AppendLine("\tbra.s\t.__novus_ffi_init_done");
+            sb.AppendLine("\tbra\t.__novus_ffi_init_done");
             sb.AppendLine(".__novus_ffi_failed:");
-            sb.AppendLine("\tmove.l\td1,-(sp)");
-            sb.AppendLine("\tmove.l\ta0,-(sp)");
+            sb.AppendLine("\tmove.l\td6,-(sp)");
+            sb.AppendLine("\tmove.l\ta2,-(sp)");
             sb.AppendLine("\tjsr\t___novus_library_not_found");
             sb.AppendLine("\taddq.l\t#8,sp");
             sb.AppendLine("\tbsr\t___novus_ffi_cleanup");
             sb.AppendLine("\tmoveq\t#0,d0");
             sb.AppendLine(".__novus_ffi_init_done:");
-            sb.AppendLine("\tmovem.l\t(sp)+,d1/a0-a1/a6");
+            sb.AppendLine("\tmovem.l\t(sp)+,d1/d6/a0-a2/a6");
             sb.AppendLine("\trts");
         }
 
@@ -166,10 +183,10 @@ public static class FfiRuntimeGenerator
             sb.AppendLine($"\tmoveq\t#{bindings.Count - 1},d4");
             sb.AppendLine("\tlea\t__novus_ffi_table_end,a4");
             sb.AppendLine(".__novus_ffi_close_next:");
-            sb.AppendLine("\tsuba.w\t#10,a4");
+            sb.AppendLine("\tsuba.w\t#12,a4");
             sb.AppendLine("\tmovea.l\t4(a4),a2");
             sb.AppendLine("\tmove.l\t(a2),d0");
-            sb.AppendLine("\tbeq.s\t.__novus_ffi_close_skip");
+            sb.AppendLine("\tbeq\t.__novus_ffi_close_skip");
             sb.AppendLine("\tmovea.l\td0,a1");
             sb.AppendLine("\tjsr\t-414(a6)\t; CloseLibrary");
             sb.AppendLine("\tclr.l\t(a2)");
@@ -186,18 +203,32 @@ public static class FfiRuntimeGenerator
             {
                 if (binding.Kind == FfiModuleKind.Resource)
                     continue;
-                sb.AppendLine($"\tmove.l\t{binding.BaseSymbol},d0");
-                sb.AppendLine($"\tbeq.s\t.__novus_{binding.ModuleName}_closed");
                 if (binding.Kind == FfiModuleKind.Device)
                 {
-                    sb.AppendLine($"\tlea\t__novus_{binding.ModuleName}_ioreq,a1");
+                    sb.AppendLine($"\tmove.l\t{binding.BaseSymbol},d0");
+                    sb.AppendLine($"\tbeq\t.__novus_{binding.ModuleName}_device_closed");
+                    sb.AppendLine($"\tmovea.l\t__novus_{binding.ModuleName}_ioreq,a1");
                     sb.AppendLine("\tjsr\t-450(a6)\t; CloseDevice");
+                    sb.AppendLine($"\tclr.l\t{binding.BaseSymbol}");
+                    sb.AppendLine($".__novus_{binding.ModuleName}_device_closed:");
+                    sb.AppendLine($"\tmove.l\t__novus_{binding.ModuleName}_ioreq,d0");
+                    sb.AppendLine($"\tbeq\t.__novus_{binding.ModuleName}_request_deleted");
+                    sb.AppendLine("\tmovea.l\td0,a0");
+                    sb.AppendLine("\tjsr\t-660(a6)\t; DeleteIORequest");
+                    sb.AppendLine($"\tclr.l\t__novus_{binding.ModuleName}_ioreq");
+                    sb.AppendLine($".__novus_{binding.ModuleName}_request_deleted:");
+                    sb.AppendLine($"\tmove.l\t__novus_{binding.ModuleName}_port,d0");
+                    sb.AppendLine($"\tbeq\t.__novus_{binding.ModuleName}_closed");
+                    sb.AppendLine("\tmovea.l\td0,a0");
+                    sb.AppendLine("\tjsr\t-672(a6)\t; DeleteMsgPort");
+                    sb.AppendLine($"\tclr.l\t__novus_{binding.ModuleName}_port");
+                    sb.AppendLine($".__novus_{binding.ModuleName}_closed:");
+                    continue;
                 }
-                else
-                {
-                    sb.AppendLine("\tmove.l\td0,a1");
-                    sb.AppendLine("\tjsr\t-414(a6)\t; CloseLibrary");
-                }
+                sb.AppendLine($"\tmove.l\t{binding.BaseSymbol},d0");
+                sb.AppendLine($"\tbeq\t.__novus_{binding.ModuleName}_closed");
+                sb.AppendLine("\tmove.l\td0,a1");
+                sb.AppendLine("\tjsr\t-414(a6)\t; CloseLibrary");
                 sb.AppendLine($"\tclr.l\t{binding.BaseSymbol}");
                 sb.AppendLine($".__novus_{binding.ModuleName}_closed:");
             }
@@ -213,7 +244,7 @@ public static class FfiRuntimeGenerator
             foreach (var binding in lazyBindings.AsEnumerable().Reverse())
             {
                 sb.AppendLine($"\tmove.l\t{binding.BaseSymbol},d0");
-                sb.AppendLine($"\tbeq.s\t.__novus_{binding.ModuleName}_lazy_closed");
+                sb.AppendLine($"\tbeq\t.__novus_{binding.ModuleName}_lazy_closed");
                 sb.AppendLine("\tmove.l\td0,a1");
                 sb.AppendLine("\tjsr\t-414(a6)\t; CloseLibrary");
                 sb.AppendLine($"\tclr.l\t{binding.BaseSymbol}");

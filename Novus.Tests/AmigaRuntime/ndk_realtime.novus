@@ -1,0 +1,265 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import CONDSTATE_PAUSED, CONDSTATE_RUNNING, CONDSTATE_STOPPED, CONDUCTF_EXTERNAL, PLAYERF_EXTSYNC, PLAYERF_QUIET, PLAYERF_READY, PLAYER_Conductor, PLAYER_ExtSync, PLAYER_ID, PLAYER_Name, PLAYER_Quiet, PLAYER_Ready, PLAYER_UserData, RT_CONDUCTORS, TAG_DONE
+from amiga::raw::dos import Delay
+from amiga::raw::exec import FindTask, Signal, Wait
+from amiga::raw::realtime import CreatePlayer, CreatePlayerA, DeletePlayer, ExternalSync, FindConductor, GetPlayerAttrs, GetPlayerAttrsA, LockRealTime, NextConductor, SetConductorState, SetPlayerAttrs, SetPlayerAttrsA, UnlockRealTime
+from amiga::raw::structs import Conductor, Player, TagItem, Task
+from amiga::sys::exec import SignalHandle
+from amiga::sys::exec::thread import run_thread_loop, spawn_thread
+
+const REALTIME_WORK: u32 = 1 << 19
+
+static var REALTIME_PARENT: *Task = null
+static var REALTIME_STARTED: u32 = 0
+static var REALTIME_PHASE: u32 = 0
+
+fn create_player_a(player_name: *u8, conductor_name: *u8, id: u16, user_data: u32) -> *Player {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: PLAYER_Name, ti_Data: (u32)player_name },
+        TagItem { ti_Tag: PLAYER_Conductor, ti_Data: (u32)conductor_name },
+        TagItem { ti_Tag: PLAYER_ID, ti_Data: (u32)id },
+        TagItem { ti_Tag: PLAYER_UserData, ti_Data: user_data },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return CreatePlayerA(&var tags[0])
+}
+
+fn realtime_contender_tick(_state: *u8) -> bool {
+    REALTIME_PHASE = 1
+    Signal(REALTIME_PARENT, REALTIME_STARTED)
+    let lock = LockRealTime(RT_CONDUCTORS)
+    REALTIME_PHASE = if lock != null { 2 } else { 4 }
+    if lock != null { UnlockRealTime(lock) }
+    if lock != null { REALTIME_PHASE = 3 }
+    return false
+}
+
+fn realtime_contender() -> i32 {
+    return run_thread_loop(REALTIME_WORK, null, realtime_contender_tick)
+}
+
+// @covers-ndk function|realtime.library|LockRealTime
+// @ndk-side-effects Acquires the documented conductor-list lock, rejects an undefined lock type, and releases the exact valid handle before returning
+@test("realtime.library LockRealTime validates and acquires the conductor list")
+pub fn realtime_lock() {
+    let invalid = LockRealTime($FFFFFFFF)
+    let lock = LockRealTime(RT_CONDUCTORS)
+    if lock != null { UnlockRealTime(lock) }
+    expect(invalid == null, "undefined realtime lock type is rejected")
+    expect(lock != null, "documented conductor-list lock returns a releasable handle")
+}
+
+// @covers-ndk function|realtime.library|UnlockRealTime
+// @ndk-side-effects Holds the conductor-list lock while a competing Exec task blocks in LockRealTime, releases it through UnlockRealTime, and waits until the contender acquires and releases the same list
+@test("realtime.library UnlockRealTime releases a blocked competing task")
+pub fn realtime_unlock() {
+    let started = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "contender start signal allocated")
+            return
+        },
+    }
+    let lock = LockRealTime(RT_CONDUCTORS)
+    if lock == null {
+        expect(false, "parent acquires conductor-list lock")
+        return
+    }
+    REALTIME_PARENT = FindTask(null)
+    REALTIME_STARTED = started.mask()
+    REALTIME_PHASE = 0
+    var contender = match spawn_thread("Realtime contender", realtime_contender, 4096) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            UnlockRealTime(lock)
+            expect(false, "realtime contender spawned")
+            return
+        },
+    }
+    let sent = contender.signal(REALTIME_WORK)
+    let received = if sent { Wait(REALTIME_STARTED) } else { 0 }
+    Delay(2)
+    let blocked = received == REALTIME_STARTED && REALTIME_PHASE == 1
+    UnlockRealTime(lock)
+    if !sent { contender.break_ctrl_c() }
+    contender.wait()
+    expect(sent && blocked, "competing task remains blocked while the parent owns the list")
+    expect(REALTIME_PHASE == 3, "competing task acquires and releases after UnlockRealTime")
+}
+
+// @covers-ndk function|realtime.library|CreatePlayerA
+// @ndk-side-effects Creates a named player and conductor from a terminated TagItem list, verifies exact ID/user-data/ownership fields, then deletes the player and its final conductor
+@test("realtime.library CreatePlayerA constructs an attributed player")
+pub fn realtime_create_a() {
+    let player = create_player_a("Novus Realtime A", "Novus.Conductor.A", 101, $12345678)
+    let valid = player != null && player.pl_Source != null && player.pl_PlayerID == 101 && (u32)player.pl_UserData == $12345678
+    if player != null { DeletePlayer(player) }
+    expect(valid, "tag-list creation stores exact player attributes and links a conductor")
+}
+
+// @covers-ndk function|realtime.library|CreatePlayer
+// @ndk-side-effects Creates a named player and conductor through the varargs stub, verifies exact ID/user-data/ownership fields, then deletes the player and its final conductor
+@test("realtime.library CreatePlayer constructs a varargs player")
+pub fn realtime_create() {
+    let player_name: *u8 = "Novus Realtime V"
+    let conductor_name: *u8 = "Novus.Conductor.V"
+    let player = CreatePlayer(PLAYER_Name, (u32)player_name, PLAYER_Conductor, (u32)conductor_name, PLAYER_ID, 102, PLAYER_UserData, (u32)$89ABCDEF, TAG_DONE)
+    let valid = player != null && player.pl_Source != null && player.pl_PlayerID == 102 && (u32)player.pl_UserData == $89ABCDEF
+    if player != null { DeletePlayer(player) }
+    expect(valid, "varargs creation stores exact player attributes and links a conductor")
+}
+
+// @covers-ndk function|realtime.library|DeletePlayer
+// @ndk-side-effects Deletes the only player attached to a uniquely named conductor, then locks the global conductor list and proves the library flushed that conductor
+@test("realtime.library DeletePlayer flushes its empty conductor")
+pub fn realtime_delete() {
+    let player = create_player_a("Novus Delete", "Novus.Conductor.Delete", 103, 0)
+    let source = if player != null { player.pl_Source } else { (*Conductor)null }
+    if player != null { DeletePlayer(player) }
+    let lock = LockRealTime(RT_CONDUCTORS)
+    let found = if lock != null { FindConductor("Novus.Conductor.Delete") } else { (*Conductor)null }
+    if lock != null { UnlockRealTime(lock) }
+    expect(source != null, "fixture owns a real conductor before deletion")
+    expect(found == null, "deleting the final player removes its conductor")
+}
+
+// @covers-ndk function|realtime.library|SetPlayerAttrsA
+// @ndk-side-effects Changes exact ID, user-data, ready, and quiet attributes through a terminated tag list, observes the documented Player fields/flags, then deletes the owned player
+@test("realtime.library SetPlayerAttrsA updates player state")
+pub fn realtime_set_a() {
+    let player = create_player_a("Novus Set A", "Novus.Conductor.SetA", 104, 1)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: PLAYER_ID, ti_Data: 204 },
+        TagItem { ti_Tag: PLAYER_UserData, ti_Data: $CAFEBABE },
+        TagItem { ti_Tag: PLAYER_Ready, ti_Data: 1 },
+        TagItem { ti_Tag: PLAYER_Quiet, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let changed = if player != null { SetPlayerAttrsA(player, &var tags[0]) } else { 0 }
+    let valid = player != null && player.pl_PlayerID == 204 && (u32)player.pl_UserData == $CAFEBABE && (player.pl_Flags & PLAYERF_READY) != 0 && (player.pl_Flags & PLAYERF_QUIET) != 0
+    if player != null { DeletePlayer(player) }
+    expect(changed != 0 && valid, "tag-list setter updates exact fields and flags")
+}
+
+// @covers-ndk function|realtime.library|SetPlayerAttrs
+// @ndk-side-effects Changes exact ID, user-data, ready, and quiet attributes through the varargs stub, observes the documented Player fields/flags, then deletes the owned player
+@test("realtime.library SetPlayerAttrs updates player state")
+pub fn realtime_set() {
+    let player = create_player_a("Novus Set V", "Novus.Conductor.SetV", 105, 2)
+    let changed = if player != null { SetPlayerAttrs(player, PLAYER_ID, 205, PLAYER_UserData, $0BADF00D, PLAYER_Ready, 1, PLAYER_Quiet, 1, TAG_DONE) } else { 0 }
+    let valid = player != null && player.pl_PlayerID == 205 && (u32)player.pl_UserData == $0BADF00D && (player.pl_Flags & PLAYERF_READY) != 0 && (player.pl_Flags & PLAYERF_QUIET) != 0
+    if player != null { DeletePlayer(player) }
+    expect(changed != 0 && valid, "varargs setter updates exact fields and flags")
+}
+
+// @covers-ndk function|realtime.library|GetPlayerAttrsA
+// @ndk-side-effects Reads four exact player attributes through documented longword output storage in a terminated TagItem list and verifies the exact processed count before deleting the player
+@test("realtime.library GetPlayerAttrsA reads exact longword outputs")
+pub fn realtime_get_a() {
+    let player = create_player_a("Novus Get A", "Novus.Conductor.GetA", 206, $10203040)
+    if player != null { SetPlayerAttrs(player, PLAYER_Ready, 1, PLAYER_Quiet, 1, TAG_DONE) }
+    var id: u32 = 0
+    var user_data: u32 = 0
+    var ready: u32 = 0
+    var quiet: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: PLAYER_ID, ti_Data: (u32)(*u32)&var id },
+        TagItem { ti_Tag: PLAYER_UserData, ti_Data: (u32)(*u32)&var user_data },
+        TagItem { ti_Tag: PLAYER_Ready, ti_Data: (u32)(*u32)&var ready },
+        TagItem { ti_Tag: PLAYER_Quiet, ti_Data: (u32)(*u32)&var quiet },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let processed = if player != null { GetPlayerAttrsA(player, &var tags[0]) } else { 0 }
+    if player != null { DeletePlayer(player) }
+    expect(processed == 4, "getter reports all four requested attributes")
+    expect(id == 206 && user_data == $10203040 && ready != 0 && quiet != 0, "getter writes exact longword values")
+}
+
+// @covers-ndk function|realtime.library|GetPlayerAttrs
+// @ndk-side-effects Reads four exact player attributes through documented longword varargs output pointers and verifies the exact processed count before deleting the player
+@test("realtime.library GetPlayerAttrs reads exact longword outputs")
+pub fn realtime_get() {
+    let player = create_player_a("Novus Get V", "Novus.Conductor.GetV", 207, $50607080)
+    if player != null { SetPlayerAttrs(player, PLAYER_Ready, 1, PLAYER_Quiet, 1, TAG_DONE) }
+    var id: u32 = 0
+    var user_data: u32 = 0
+    var ready: u32 = 0
+    var quiet: u32 = 0
+    let processed = if player != null { GetPlayerAttrs(player, PLAYER_ID, &var id, PLAYER_UserData, &var user_data, PLAYER_Ready, &var ready, PLAYER_Quiet, &var quiet, TAG_DONE) } else { 0 }
+    if player != null { DeletePlayer(player) }
+    expect(processed == 4, "varargs getter reports all four requested attributes")
+    expect(id == 207 && user_data == $50607080 && ready != 0 && quiet != 0, "varargs getter writes exact longword values")
+}
+
+// @covers-ndk function|realtime.library|FindConductor
+// @ndk-side-effects Creates a uniquely named conductor, locks the global conductor list, resolves the name to the player's exact source pointer, unlocks, then deletes the player
+@test("realtime.library FindConductor resolves an exact source")
+pub fn realtime_find_conductor() {
+    let player = create_player_a("Novus Find", "Novus.Conductor.Find", 208, 0)
+    let source = if player != null { player.pl_Source } else { (*Conductor)null }
+    let lock = LockRealTime(RT_CONDUCTORS)
+    let found = if lock != null { FindConductor("Novus.Conductor.Find") } else { (*Conductor)null }
+    if lock != null { UnlockRealTime(lock) }
+    if player != null { DeletePlayer(player) }
+    expect(source != null && found == source, "locked lookup returns the exact created conductor")
+}
+
+// @covers-ndk function|realtime.library|NextConductor
+// @ndk-side-effects Creates a uniquely named conductor, walks the locked library-owned conductor list from its documented null cursor until the player's exact source is found, unlocks, then deletes the player
+@test("realtime.library NextConductor walks the live conductor list")
+pub fn realtime_next_conductor() {
+    let player = create_player_a("Novus Next", "Novus.Conductor.Next", 209, 0)
+    let source = if player != null { player.pl_Source } else { (*Conductor)null }
+    let lock = LockRealTime(RT_CONDUCTORS)
+    var current = if lock != null { NextConductor(null) } else { (*Conductor)null }
+    var found = false
+    var visits: u32 = 0
+    while current != null && visits < 256 {
+        if current == source {
+            found = true
+            break
+        }
+        current = NextConductor(current)
+        visits += 1
+    }
+    if lock != null { UnlockRealTime(lock) }
+    if player != null { DeletePlayer(player) }
+    expect(source != null && found, "list traversal reaches the exact created conductor")
+}
+
+// @covers-ndk function|realtime.library|SetConductorState
+// @ndk-side-effects Starts a real ready conductor at a nonzero offset, observes its running clock advance, pauses it and observes the clock stop, restores the stopped state, then deletes the player
+@test("realtime.library SetConductorState drives and pauses its clock")
+pub fn realtime_set_conductor_state() {
+    let player = create_player_a("Novus State", "Novus.Conductor.State", 210, 0)
+    if player != null { SetPlayerAttrs(player, PLAYER_Ready, 1, TAG_DONE) }
+    let source = if player != null { player.pl_Source } else { (*Conductor)null }
+    let started = if player != null { SetConductorState(player, CONDSTATE_RUNNING, 120) } else { -1 }
+    Delay(2)
+    let running_time = if source != null { source.cdt_ClockTime } else { 0 }
+    let running = source != null && (u32)source.cdt_State == CONDSTATE_RUNNING && running_time > 120
+    let paused_result = if player != null { SetConductorState(player, CONDSTATE_PAUSED, 0) } else { -1 }
+    let paused_time = if source != null { source.cdt_ClockTime } else { 0 }
+    Delay(2)
+    let paused = source != null && (u32)source.cdt_State == CONDSTATE_PAUSED && source.cdt_ClockTime == paused_time
+    if player != null { SetConductorState(player, CONDSTATE_STOPPED, 0) }
+    if player != null { DeletePlayer(player) }
+    expect(started == 0 && running, "running state advances the real conductor clock beyond its offset")
+    expect(paused_result == 0 && paused, "paused state holds the exact conductor clock value")
+}
+
+// @covers-ndk function|realtime.library|ExternalSync
+// @ndk-side-effects Claims external-sync ownership for a real conductor, applies exact minimum/maximum clock constraints, observes the documented player/conductor flags and time fields, releases ownership, then deletes the player
+@test("realtime.library ExternalSync constrains an owned conductor")
+pub fn realtime_external_sync() {
+    let player = create_player_a("Novus Sync", "Novus.Conductor.Sync", 211, 0)
+    let claimed = if player != null { SetPlayerAttrs(player, PLAYER_ExtSync, 1, TAG_DONE) } else { 0 }
+    let source = if player != null { player.pl_Source } else { (*Conductor)null }
+    let synced = if player != null { ExternalSync(player, 1000, 1010) } else { 0 }
+    let valid = player != null && source != null && (player.pl_Flags & PLAYERF_EXTSYNC) != 0 && (source.cdt_Flags & CONDUCTF_EXTERNAL) != 0 && source.cdt_ExternalTime == 1000 && source.cdt_MaxExternalTime == 1010
+    if player != null { SetPlayerAttrs(player, PLAYER_ExtSync, 0, TAG_DONE) }
+    if player != null { DeletePlayer(player) }
+    expect(claimed != 0 && synced != 0, "player becomes the conductor's external clock source")
+    expect(valid, "external sync stores exact bounds and ownership flags")
+}

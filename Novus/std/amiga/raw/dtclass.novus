@@ -1,6 +1,7 @@
 // Generated from SFD file by Novus SFD Parser
 // Library: dtclass.library
 // Base: _DTClassBase
+// Lifecycle: optional
 
 from amiga::raw::structs import *
 //
@@ -14,4 +15,4 @@ from amiga::raw::structs import *
 @library("dtclass.library")
 /// Obtains dtclass.library's shared datatype engine pointer.
 /// The pointer is library-owned and is valid only while dtclass.library is open.
-extern pub fn ObtainEngine() -> *u8
+extern pub fn ObtainEngine() -> *IClass

@@ -404,12 +404,42 @@ public class IrModule
     }
 
     /// <summary>
+    /// Imports and monomorphization can hand out a struct or enum reference that was
+    /// captured before its declaration was filled in, leaving an empty layout behind.
+    /// Drop analysis must never read one of those: an empty layout looks exactly like a
+    /// type with nothing to clean up, so every value of it would leak. Recover the
+    /// declared layout from the module whenever the reference carries none of its own.
+    /// </summary>
+    public IrStructType ResolveStructLayout(IrStructType structType)
+    {
+        if (structType.Fields.Count > 0)
+            return structType;
+        return (structType.CacheKey != null ? GetStruct(structType.CacheKey) : null)
+               ?? GetStruct(structType.StructName)
+               ?? structType;
+    }
+
+    /// <summary>
+    /// Enum counterpart to <see cref="ResolveStructLayout"/>. A stub registered during
+    /// import keeps its name but carries no variants until the declaration is parsed.
+    /// </summary>
+    public IrEnumType ResolveEnumLayout(IrEnumType enumType)
+    {
+        if (enumType.Variants.Count > 0)
+            return enumType;
+        return (enumType.CacheKey != null ? GetEnum(enumType.CacheKey) : null)
+               ?? GetEnum(enumType.EnumName)
+               ?? enumType;
+    }
+
+    /// <summary>
     /// Check if a type implements the Drop trait (accepts IrType)
     /// </summary>
     public bool TypeImplementsDrop(IrType type)
     {
         if (type is IrStructType structType)
         {
+            structType = ResolveStructLayout(structType);
             return StructImplementsDrop(structType) ||
                    structType.Fields.Any(field => TypeImplementsDrop(field.Type));
         }
@@ -455,7 +485,7 @@ public class IrModule
     /// </summary>
     public bool EnumNeedsDrop(IrEnumType enumType)
     {
-        foreach (var variant in enumType.Variants)
+        foreach (var variant in ResolveEnumLayout(enumType).Variants)
         {
             foreach (var payloadType in variant.AssociatedData)
             {

@@ -11,37 +11,457 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// compute the arc tangent of number
+///
+/// Compute arctangent of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPAtan(  y  );
+/// d0		   d0
+///
+/// single	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPAtan(parm: f32) -> f32
+/// compute the sine of a floating point number
+///
+/// Compute sine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPSin(  y  );
+/// d0		  d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPAsin(), IEEESPTan(), IEEESPCos()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPSin(parm: f32) -> f32
+/// compute the cosine of a floating point number
+///
+/// Compute cosine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPCos(  y  );
+/// d0		   d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPAcos(), IEEESPSin(), IEEESPTan()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPCos(parm: f32) -> f32
+/// compute the tangent of a floating point number
+///
+/// Compute tangent of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPTan(  y  );
+/// d0		  d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPAtan(), IEEESPSin(), IEEESPCos()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPTan(parm: f32) -> f32
+/// compute the arc tangent of a floating point number
+///
+/// Compute sin and cosine of y in IEEE single precision.
+/// Store the cosine in *z. Return the sine of y.
+///
+/// # Synopsis
+///
+/// x   = IEEESPSincos( z ,  y  );
+/// d0		     a0  d0
+///
+/// float	x,y,*z;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value z - pointer to IEEE single precision floating point number
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Not very fast if no FPU is available. Otherwise, it might be
+/// faster than calling IEEEDPSin() and IEEEDPCos() separately.
+///
+/// # See Also
+///
+/// IEEESPSin(), IEEESPCos()
 @library("mathieeesingtrans.library")
-extern pub fn IEEESPSincos(cosptr: *u8, parm: f32) -> f32
+extern pub fn IEEESPSincos(cosptr: *f32, parm: f32) -> f32
+/// compute the hyperbolic sine of a floating point number
+///
+/// Compute hyperbolic sine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPSinh(  y  );
+/// d0		   d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPCosh(), IEEESPTanh()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPSinh(parm: f32) -> f32
+/// compute the hyperbolic cosine of a floating point number
+///
+/// Compute hyperbolic cosine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPCosh(  y  );
+/// d0		   d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPSinh(), IEEESPTanh()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPCosh(parm: f32) -> f32
+/// compute the hyperbolic tangent of a floating point number
+///
+/// Compute hyperbolic tangent of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPTanh(  y  );
+/// d0		   d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPSinh(), IEEESPCosh()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPTanh(parm: f32) -> f32
+/// compute the exponential of e
+///
+/// Compute e^y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPExp(  y  );
+/// d0	          d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPLog()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPExp(parm: f32) -> f32
+/// compute the natural logarithm of a floating point number
+///
+/// Compute ln(y) in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPLog(  y  );
+/// d0	          d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases. Returns NAN for negative arguments or -INF for
+/// an argument of zero.
+///
+/// # See Also
+///
+/// IEEESPExp()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPLog(parm: f32) -> f32
+/// raise a number to another number power
+///
+/// Compute y^x in IEEE single precision
+///
+/// # Synopsis
+///
+/// z   = IEEESPPow(  x  ,  y  );
+/// d0	          d1 d0
+///
+/// float	x,y,z;
+///
+/// # Arguments
+///
+/// * `x` - IEEE single precision floating point value y - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// z - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases, and was not very precise or smart breaking
+/// large arguments down into a suitable range. The computational
+/// precision of this function left a lot to be deserved. All this
+/// was fixed in V45.
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPPow(exp: f32, arg: f32) -> f32
+/// compute the square root of a number
+///
+/// Compute square root of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPSqrt(  y  );
+///  d0 	             d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases. Returns NAN for V45 in these cases.
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPSqrt(parm: f32) -> f32
+/// convert IEEE single to IEEE single
+///
+/// Convert IEEE single precision number to IEEE single precision.
+/// These are included for completeness although they just
+/// return the input parameter. A good way to remember how these
+/// functions work is: They convert to and from the local format
+/// to Single Precision IEEE. The local format for this library
+/// happens to also be Single Precision IEEE.
+///
+/// # Synopsis
+///
+/// x   = IEEESPTieee(  y  );
+///  d0	            d0
+///
+/// float 	y;
+/// float   x;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # See Also
+///
+/// IEEESPFieee()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPTieee(parm: f32) -> f32
+/// convert IEEE single to IEEE single
+///
+/// Convert IEEE single precision number to IEEE single precision.
+/// These are included for completeness although they just
+/// return the input parameter. A good way to remember how these
+/// functions work is: They convert to and from the local format
+/// to Single Precision IEEE. The local format for this library
+/// happens to also be Single Precision IEEE.
+///
+/// # Synopsis
+///
+/// x   = IEEESPFieee(  y  );
+/// d0	              d0
+///
+/// float	y;
+/// float  x;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Note that the conversion functions are of limited usefulness
+/// as IEEE double and single math must not be mixed.
+///
+/// # See Also
+///
+/// IEEESPTieee()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPFieee(parm: f32) -> f32
+/// compute the arcsine of a number
+///
+/// Compute the arc sine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPAsin(  y  );
+/// d0	           d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases. Returns NAN for V45 in these cases.
+///
+/// # See Also
+///
+/// IEEESPSin(), IEEESPAtan(), IEEESPAcos()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPAsin(parm: f32) -> f32
+/// compute the arc cosine of a number
+///
+/// Compute arc cosine of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPAcos(  y  );
+/// d0	           d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases. Returns NAN for V45 in these cases.
+///
+/// # See Also
+///
+/// IEEESPCos(), IEEESPAtan(), IEEESPAsin()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPAcos(parm: f32) -> f32
+/// compute logarithm base 10 of a number
+///
+/// Compute the logarithm base 10 of y in IEEE single precision
+///
+/// # Synopsis
+///
+/// x   = IEEESPLog10(  y  );
+/// d0	            d0
+///
+/// float	x,y;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases. Returns NAN for negative arguments or -INF for
+/// an argument of zero.
+///
+/// # See Also
+///
+/// IEEESPLog()
 @library("mathieeesingtrans.library")
 extern pub fn IEEESPLog10(parm: f32) -> f32

@@ -1,0 +1,163 @@
+from std::test::test import expect
+from amiga::raw::bullet import CloseEngine, ObtainInfo, ObtainInfoA, OpenEngine, ReleaseInfo, ReleaseInfoA, SetInfo, SetInfoA
+from amiga::raw::consts import OT_DeviceDPI, OT_GlyphCode, OT_GlyphMap, OT_Indirect, OT_OTagList, OT_OTagPath, OT_PointHeight, TAG_DONE
+from amiga::raw::dos import Close, Open, Read
+from amiga::raw::structs import GlyphEngine, GlyphMap, TagItem
+
+const POINT_HEIGHT: u32 = 12 << 16
+fn load_otag(buffer: *u8) -> bool {
+    let handle = Open("FONTS:CGTimes.otag", 1005)
+    let read = if handle != 0 { Read(handle, buffer, 261) } else { -1 }
+    if handle != 0 { Close(handle) }
+    if read != 261 { return false }
+    let tags = (*TagItem)buffer
+    let base = (u32)buffer
+    unsafe {
+        var index: usize = 0
+        while index < 32 && tags[index].ti_Tag != TAG_DONE {
+            if (tags[index].ti_Tag & OT_Indirect) != 0 && tags[index].ti_Data != 0 {
+                tags[index].ti_Data += base
+            }
+            index++
+        }
+        return index < 32
+    }
+}
+
+fn configure_engine(engine: *GlyphEngine, otag: *u8) -> bool {
+    let path: *u8 = "FONTS:CGTimes.otag"
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: OT_OTagPath, ti_Data: (u32)path },
+        TagItem { ti_Tag: OT_OTagList, ti_Data: (u32)otag },
+        TagItem { ti_Tag: OT_DeviceDPI, ti_Data: (72 << 16) | 72 },
+        TagItem { ti_Tag: OT_PointHeight, ti_Data: POINT_HEIGHT },
+        TagItem { ti_Tag: OT_GlyphCode, ti_Data: 65 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return SetInfoA(engine, &var tags[0]) == 0
+}
+
+fn obtain_glyph(engine: *GlyphEngine, destination: **GlyphMap) -> bool {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: OT_GlyphMap, ti_Data: (u32)destination },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return ObtainInfoA(engine, &var tags[0]) == 0
+}
+
+// @covers-ndk function|bullet.library|OpenEngine
+// @ndk-side-effects Allocates an isolated glyph-engine context, verifies the returned handle is non-null, then closes it
+@test("bullet.library OpenEngine creates an isolated context")
+pub fn bullet_open_engine() {
+    let engine = OpenEngine()
+    if engine != null { CloseEngine(engine) }
+    expect(engine != null, "glyph engine context is allocated")
+}
+
+// @covers-ndk function|bullet.library|CloseEngine
+// @ndk-side-effects Opens and closes a glyph-engine context; the per-test A4000 memory check verifies that the context allocation is released
+@test("bullet.library CloseEngine releases its context")
+pub fn bullet_close_engine() {
+    let engine = OpenEngine()
+    if engine != null { CloseEngine(engine) }
+    expect(engine != null, "glyph engine exists before close")
+}
+
+// @covers-ndk function|bullet.library|SetInfoA
+// @ndk-side-effects Selects the installed CGTimes outline face, a 12-point height, and glyph A through a terminated TagItem list, proves the configuration can produce a real glyph map, releases it, and closes the engine
+@test("bullet.library SetInfoA configures a usable outline face")
+pub fn bullet_set_info_a() {
+    let engine = OpenEngine()
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let set = engine != null && load_otag(&var otag[0]) && configure_engine(engine, &var otag[0])
+    let obtained = set && unsafe { obtain_glyph(engine, (**GlyphMap)&var glyph) }
+    if obtained {
+        var release: [TagItem] = [
+            TagItem { ti_Tag: OT_GlyphMap, ti_Data: (u32)glyph },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+        ]
+        ReleaseInfoA(engine, &var release[0])
+    }
+    if engine != null { CloseEngine(engine) }
+    expect(set && obtained && glyph != null, "tag-list configuration produces glyph A")
+}
+
+// @covers-ndk function|bullet.library|SetInfo
+// @ndk-side-effects Selects the installed CGTimes outline face, a 12-point height, and glyph A through the varargs entry point, proves the configuration can produce a real glyph map, releases it, and closes the engine
+@test("bullet.library SetInfo varargs configures a usable face")
+pub fn bullet_set_info() {
+    let engine = OpenEngine()
+    let path: *u8 = "FONTS:CGTimes.otag"
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let set = engine != null && load_otag(&var otag[0]) && SetInfo(engine, OT_OTagPath, path, OT_OTagList, &var otag[0], OT_DeviceDPI, (72 << 16) | 72, OT_PointHeight, POINT_HEIGHT, OT_GlyphCode, 65, TAG_DONE) == 0
+    let obtained = set && unsafe { obtain_glyph(engine, (**GlyphMap)&var glyph) }
+    if obtained { ReleaseInfo(engine, OT_GlyphMap, glyph, TAG_DONE) }
+    if engine != null { CloseEngine(engine) }
+    expect(set && obtained && glyph != null, "varargs configuration produces glyph A")
+}
+
+// @covers-ndk function|bullet.library|ObtainInfoA
+// @ndk-side-effects Configures CGTimes glyph A, obtains its library-owned GlyphMap through a TagItem destination pointer, validates non-empty bitmap dimensions and storage, releases the exact map, and closes the engine
+@test("bullet.library ObtainInfoA returns a rendered glyph map")
+pub fn bullet_obtain_info_a() {
+    let engine = OpenEngine()
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let obtained = engine != null && load_otag(&var otag[0]) && configure_engine(engine, &var otag[0]) && unsafe { obtain_glyph(engine, (**GlyphMap)&var glyph) }
+    let valid = obtained && glyph != null && glyph.glm_BitMap != null && glyph.glm_BMRows > 0 && glyph.glm_BlackWidth > 0
+    if obtained {
+        var release: [TagItem] = [
+            TagItem { ti_Tag: OT_GlyphMap, ti_Data: (u32)glyph },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+        ]
+        ReleaseInfoA(engine, &var release[0])
+    }
+    if engine != null { CloseEngine(engine) }
+    expect(valid, "tag-list inquiry returns non-empty glyph A bitmap data")
+}
+
+// @covers-ndk function|bullet.library|ObtainInfo
+// @ndk-side-effects Configures CGTimes glyph A, obtains its library-owned GlyphMap through the varargs destination pointer, validates non-empty bitmap dimensions and storage, releases the exact map, and closes the engine
+@test("bullet.library ObtainInfo varargs returns a glyph map")
+pub fn bullet_obtain_info() {
+    let engine = OpenEngine()
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let obtained = engine != null && load_otag(&var otag[0]) && configure_engine(engine, &var otag[0]) && ObtainInfo(engine, OT_GlyphMap, &var glyph, TAG_DONE) == 0
+    let valid = obtained && glyph != null && glyph.glm_BitMap != null && glyph.glm_BMRows > 0 && glyph.glm_BlackWidth > 0
+    if obtained { ReleaseInfo(engine, OT_GlyphMap, glyph, TAG_DONE) }
+    if engine != null { CloseEngine(engine) }
+    expect(valid, "varargs inquiry returns non-empty glyph A bitmap data")
+}
+
+// @covers-ndk function|bullet.library|ReleaseInfoA
+// @ndk-side-effects Obtains CGTimes glyph A as indirect library-owned data, releases the exact GlyphMap through a terminated tag list, verifies success, and closes the engine without retaining the map
+@test("bullet.library ReleaseInfoA releases an acquired glyph map")
+pub fn bullet_release_info_a() {
+    let engine = OpenEngine()
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let obtained = engine != null && load_otag(&var otag[0]) && configure_engine(engine, &var otag[0]) && unsafe { obtain_glyph(engine, (**GlyphMap)&var glyph) }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: OT_GlyphMap, ti_Data: (u32)glyph },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let released = obtained && ReleaseInfoA(engine, &var tags[0]) == 0
+    if engine != null { CloseEngine(engine) }
+    expect(released && glyph != null, "exact acquired GlyphMap is accepted by release")
+}
+
+// @covers-ndk function|bullet.library|ReleaseInfo
+// @ndk-side-effects Obtains CGTimes glyph A as indirect library-owned data, releases the exact GlyphMap through the varargs entry point, verifies success, and closes the engine without retaining the map
+@test("bullet.library ReleaseInfo varargs releases a glyph map")
+pub fn bullet_release_info() {
+    let engine = OpenEngine()
+    var otag: [u8] = [0; 261]
+    var glyph: *GlyphMap = null
+    let obtained = engine != null && load_otag(&var otag[0]) && configure_engine(engine, &var otag[0]) && unsafe { obtain_glyph(engine, (**GlyphMap)&var glyph) }
+    let released = obtained && ReleaseInfo(engine, OT_GlyphMap, glyph, TAG_DONE) == 0
+    if engine != null { CloseEngine(engine) }
+    expect(released && glyph != null, "varargs release accepts the exact acquired GlyphMap")
+}

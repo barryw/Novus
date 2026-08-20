@@ -8,11 +8,12 @@
 // The generic `expect_eq<T>` function works with any type that implements Eq + Display traits,
 // allowing a single function to handle i32, u32, i16, u16, i8, u8, and bool comparisons.
 
-from std::io::file import write
+from std::io::file import print_str, write
 from std::core import Eq, Option, Result
 from std::string::format import Display
 from std::string::core import Str
 from std::string::display import *  // Import Display implementations for primitives
+from amiga::raw::dos import Flush, Output
 
 // ============================================================================
 // External Runtime Functions (for should_panic tests)
@@ -102,15 +103,8 @@ pub fn expect_eq<T>(actual: T, expected: T, message: Str) where T: Eq + Display 
     if actual != expected {
         __test_record_failure()
         write("  FAIL: ")
-        // Write message character by character since it's a Str
-        while var i < message.len {
-            let c = match message.get(i) {
-                Option::Some(byte) => byte,
-                Option::None => 0,
-            }
-            write("%c", (c as i32))
-            i = i + 1
-        }
+        let _ = Flush(Output())
+        let _ = print_str(message)
         write(" - expected {expected}, got {actual}\n")
     }
 }

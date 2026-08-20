@@ -47,6 +47,32 @@ pub fn empty() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_StructLiteralArgument_AvoidsVbccCompoundLiteral()
+    {
+        var source = @"
+struct View {
+    ptr: *u8,
+    len: u32,
+}
+
+fn consume<T>(view: T) -> u32 {
+    return 1
+}
+
+pub fn call_consume() -> u32 {
+    return consume(View { ptr: null, len: 32 })
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("View _arg_tmp_", code);
+        Assert.Contains(".len = (uint32_t)32U", code);
+        Assert.Contains("View* view", code);
+        Assert.Contains("&_arg_tmp_", code);
+        Assert.DoesNotContain("consume((View){", code);
+    }
+
+    [Fact]
     public void CCodeGen_FixedPointType_Fixed16_GeneratesCorrectType()
     {
         var source = @"
@@ -550,8 +576,66 @@ impl Container {
         }
         Assert.True(foundCorrectStore, "Should have a store to nested field through pointer");
 
-        // Note: We still generate the IrMemberAccess for inner (which creates a temp copy),
-        // but we don't USE that copy for the store - we reconstruct the chain instead.
+        // The intermediate aggregate is reconstructed as a direct lvalue; no dead copy is emitted.
+    }
+
+    [Fact]
+    public void CCodeGen_ChainedUnionRead_DoesNotDeclareDeadIntermediateSlots()
+    {
+        var source = @"
+union WaitOrMove {
+    wait: WaitInstruction,
+    move: MoveInstruction,
+}
+
+struct WaitInstruction {
+    vertical: i16,
+    horizontal: i16,
+}
+
+struct MoveInstruction {
+    destination: i16,
+    data: i16,
+}
+
+struct CopperInstruction {
+    kind: WaitOrMove,
+}
+
+pub fn read_destination(instruction: *CopperInstruction) -> i16 {
+    unsafe { return instruction.kind.move.destination }
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("instruction->kind.move.destination", code);
+        Assert.DoesNotContain("WaitOrMove _slot_", code);
+        Assert.DoesNotContain("MoveInstruction _slot_", code);
+    }
+
+    [Fact]
+    public void CCodeGen_IndexedNestedFieldStore_WritesOriginalArrayElement()
+    {
+        var source = @"
+union Choice {
+    requirements: u32,
+    address: *u8,
+}
+
+struct Entry {
+    choice: Choice,
+    length: u32,
+}
+
+pub fn set_requirements(entries: *Entry) {
+    unsafe { entries[0].choice.requirements = 65537 }
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("entries[0].choice.requirements =", code);
+        Assert.DoesNotContain("_indexed_", code.Split('\n')
+            .Single(line => line.Contains(".requirements =")));
     }
 
     [Fact]
@@ -899,7 +983,7 @@ pub fn short_circuit() -> bool {
             """);
         var code = GenerateCCode(module);
 
-        Assert.Contains("consume(Token token)", code);
+        Assert.Contains("consume(Token* token)", code);
         Assert.DoesNotContain("Token token;", code);
     }
 

@@ -1,0 +1,70 @@
+from std::test::test import expect
+from amiga::raw::consts import IECLASS_RAWKEY, MEMF_PUBLIC
+from amiga::raw::exec import AllocMem, CopyMem, FreeMem
+from amiga::raw::keymap import AskKeyMapDefault, MapANSI, MapRawKey, SetKeyMapDefault
+from amiga::raw::structs import InputEvent, KeyMap
+
+// @covers-ndk function|keymap.library|AskKeyMapDefault
+// @ndk-side-effects Borrows the permanent default KeyMap twice without mutation and verifies its required low and high mapping tables are initialized
+@test("keymap.library AskKeyMapDefault returns the initialized permanent map")
+pub fn keymap_ask_default() {
+    let first = AskKeyMapDefault()
+    let second = AskKeyMapDefault()
+    expect(first != null && second == first, "default keymap is non-null and stable")
+    if first != null {
+        expect((*first).km_LoKeyMap != null && (*first).km_HiKeyMap != null, "default keymap exposes both mapping tables")
+    }
+}
+
+// @covers-ndk function|keymap.library|MapRawKey
+// @ndk-side-effects Converts one synthetic unqualified raw A-key event through the default keymap into exactly one lowercase ANSI byte without touching the following sentinel
+@suppress("W0002", "IECLASS_RAWKEY is the NDK value 1 and fits the InputEvent u8 class field")
+@test("keymap.library MapRawKey decodes an A key exactly")
+pub fn keymap_map_raw_a() {
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = 0x20
+    var output: [u8] = [$A5; 4]
+    let count = unsafe { MapRawKey(&var event, (*u8)&var output[0], 3, null) }
+    expect(count == 1 && output[0] == 97, "raw A maps to exactly lowercase ASCII a")
+    expect(output[1] == $A5, "conversion leaves the byte after its result unchanged")
+}
+
+// @covers-ndk function|keymap.library|MapANSI
+// @ndk-side-effects Encodes one lowercase ANSI byte into one raw code/qualifier pair using the default keymap, round-trips that pair through MapRawKey, and preserves adjacent sentinels
+@suppress("W0002", "IECLASS_RAWKEY and MapANSI's returned code/qualifier bytes fit their documented InputEvent fields")
+@test("keymap.library MapANSI encodes a reversible raw-key pair")
+pub fn keymap_map_ansi_a() {
+    var encoded: [u8] = [$A5; 8]
+    let pairs = unsafe { MapANSI("a", 1, (*u8)&var encoded[0], 3, null) }
+    var event: InputEvent = @zeroed(InputEvent)
+    event.ie_Class = (u8)IECLASS_RAWKEY
+    event.ie_Code = (u16)encoded[0]
+    event.ie_Qualifier = (u16)encoded[1]
+    var decoded: [u8] = [$A5; 2]
+    let bytes = unsafe { MapRawKey(&var event, (*u8)&var decoded[0], 1, null) }
+    expect(pairs == 1, "one ANSI character produces one code/qualifier pair")
+    expect(bytes == 1 && decoded[0] == 97, "encoded pair round-trips to the original ANSI byte")
+    expect(encoded[2] == $A5 && decoded[1] == $A5, "both conversions preserve adjacent sentinels")
+}
+
+// @covers-ndk function|keymap.library|SetKeyMapDefault
+// @ndk-side-effects Installs a public-memory clone of the permanent default KeyMap, observes pointer identity through AskKeyMapDefault, restores the original before freeing the clone, and leaves no dangling library pointer
+@test("keymap.library SetKeyMapDefault changes and safely restores the map")
+pub fn keymap_set_default_restore() {
+    let original = AskKeyMapDefault()
+    expect(original != null, "original default keymap exists")
+    if original == null { return }
+    let memory = unsafe { AllocMem(@sizeof(KeyMap), MEMF_PUBLIC) }
+    expect(memory != null, "temporary public KeyMap storage allocates")
+    if memory == null { return }
+    unsafe { CopyMem((*u8)original, memory, @sizeof(KeyMap)) }
+    let replacement = (*KeyMap)memory
+    SetKeyMapDefault(replacement)
+    let selected = AskKeyMapDefault()
+    SetKeyMapDefault(original)
+    let restored = AskKeyMapDefault()
+    unsafe { FreeMem(memory, @sizeof(KeyMap)) }
+    expect(selected == replacement, "setter publishes the replacement pointer")
+    expect(restored == original, "original permanent keymap is restored before replacement storage is freed")
+}

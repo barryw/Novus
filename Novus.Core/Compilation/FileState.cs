@@ -41,6 +41,12 @@ public class FileState
     public HashSet<string> Dependencies { get; set; } = new();
 
     /// <summary>
+    /// Fingerprint of the dependency graph used to compile this file.
+    /// </summary>
+    [JsonPropertyName("dependency_graph_hash")]
+    public string DependencyGraphHash { get; set; } = string.Empty;
+
+    /// <summary>
     /// When this file was last compiled
     /// </summary>
     [JsonPropertyName("compiled_at")]

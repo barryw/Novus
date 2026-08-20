@@ -11,21 +11,274 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// Gets the pointer to the layout class.
+///
+/// Obtains the pointer to the layout gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of
+/// course this implies that if opening the library fails, you
+/// shouldn't be calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// layout_class = LAYOUT_GetClass();
+/// D0
+///
+/// Class * LAYOUT_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// LayoutClass - Pointer to the layout gadget class.
 @library("layout.library")
-extern pub fn LAYOUT_GetClass() -> *u8
+extern pub fn LAYOUT_GetClass() -> *IClass
+/// Activate a gadget within a layout window.
+///
+/// The equivalent of intuition.library ActivateGadget() for a
+/// window controlled by layout.gadget. If successful, this means
+/// that the user does not need to click in the gadget before
+/// typing.
+/// The gadget parameter MUST point to the root layout gadget in
+/// the window, and the object parameter to the gagdet you wish
+/// to activate. This works by calling the private
+/// LAYOUT_ACTIVATEOBJECT method to search the layout hierarchy for
+/// the specified gadget, and set the handleinput path to that
+/// gadget, and finally calling ActivateGadget for the root object.
+/// The rules of calling ActivateGadget() apply to
+/// ActivateLayoutGadget() also.
+///
+/// # Synopsis
+///
+/// Success = ActivateLayoutGadget( Gadget, Window, Request, Object )
+/// d0                              a0      a1      a2       d0
+///
+/// BOOL ActivateLayoutGadget( struct Gadget *, struct Window *,
+///         struct Requester *, ULONG );
+///
+/// # Arguments
+///
+/// * Gadget = pointer to the root layout obejct for the window.
+/// * Window = pointer to the window the gadget is in.
+/// * Requester = pointer to a requester (may be NULL)
+/// * Object = pointer to the BOOPSI object you wish to activate.
+///
+/// # Returns
+///
+/// If the conditions above (and those of ActivateGadget()) are
+/// met, the function will return TRUE, else FALSE.
+///
+/// # Notes
+///
+/// Not only string gadgets can be activated this way. Many
+/// ReAction gadget classes, such as the button.gadget, also
+/// support keyboard control, and thus may be activated this way.
+/// An attempt to activate a gadget that is not currently visible
+/// (as on a hidden page) will fail.
+///
+/// # See Also
+///
+/// intuition.library/ActivateGadget()
 @library("layout.library")
 extern pub fn ActivateLayoutGadget(gadget: *Gadget, window: *Window, requester: *Requester, object: u32) -> i16
+/// Flush layout domain cache below a level.
+///
+/// Layout gadget normally caches GM_DOMAIN results from the child
+/// objects to speed up window re-layout. However, on some rare
+/// occassions a gadget's minimum or maximum domain might change
+/// after creation. For these instances layout gadget provides two
+/// methods of controlling the domain cache. You can set a caching on
+/// a child-by-child basis, using the CHILD_CacheDomain attribute, so
+/// that on each relayout the domain is calculated again. This
+/// method might have an extra performance hit, if the domain
+/// changes infrequently. It also has to be set for each parent
+/// layout level, which makes the amount of extra calculations grow
+/// quickly. The other method, for the cases where the application
+/// will know when a gadget's domain changes, it can call
+/// FlushLayoutDomainCache() with a pointer to the parent layout object.
+/// This call will flush the whole hierarchy, so that the next window
+/// re-layout will re-calculate child domains.
+///
+/// # Synopsis
+///
+/// FlushLayoutDomainCache( layout )
+///                         a0
+///
+/// void FlushLayoutDomainCache( struct Gadget * )
+///
+/// # Arguments
+///
+/// * layout = the layout object to flush. This should be the topmost layout object for the window.
+///
+/// # See Also
+///
+/// --datasheet-- (CHILD_CacheDomain attribute)
 @library("layout.library")
 extern pub fn FlushLayoutDomainCache(gadget: *Gadget)
+/// Relayout and render the layout. (V39)
+///
+/// Relayout and refresh the layout page. Call this function after
+/// a call SetGadgetAttrs() returns 1 to display the changes in the
+/// layout.  According to BOOPSI rules, a gadget will return a value
+/// of 1 from OM_SET to tell the application to refresh. This is what
+/// this function is for. Basically, it will call the GM_LAYOUT and
+/// GM_RENDER methods of the layout.
+///
+/// # Synopsis
+///
+/// RethinkLayout( layout, window, requester, refresh );
+///                 a0        a1        a2
+///
+/// void RethinkLayout( struct Gadget *, struct Window *,
+///                         struct Requester *, BOOL )
+///
+/// # Arguments
+///
+/// * layout = the layout to refresh. Doesn't have to be the topmost object in the hierarchy, if the changes do not affect it.
+/// * window = the window to which the layout (or its parent) is attached to.
+/// * requester = the window's requester, or NULL.
+/// * refresh = whether layout.gadget should also refresh the display.
+///
+/// # Notes
+///
+/// This function emulates a DoGadgetMethod() on V37 and V38 systems.
+/// The refresh flag is provided for several reasons. First, when using
+/// LAYOUT_DeferLayout, you should not refresh upon receiving a
+/// LAYOUT_RequestLayout notification. Second, datatypes have an
+/// asynchronous layout, and should not be attempted to refresh before
+/// that is finished. Wait for DTA_Sync, and then RefreshGList( layout,
+/// window, requester, 1 ).
+///
+/// # See Also
+///
+/// intuition.library/RefreshGList(), intuition.library/SetGadgetAttrsA(), intuition.library/DoGadgetMethod()
 @library("layout.library")
 extern pub fn RethinkLayout(gadget: *Gadget, window: *Window, requester: *Requester, refresh: i16) -> i16
+/// easy way to find out max and min size of layout
+///
+/// This function is an easy way of getting the minimum and maximum
+/// limit of the layout group. Effectively it create a RastPort and
+/// execute the GM_DOMAIN method for both minimum and maximum size
+/// of the object filling in the LayoutLimits structure with the size
+/// values. The font passed to this call will most likely affect the
+/// results, so use the font you will use with the window. If you
+/// pass a NULL for the font, the system default font (monospaced)
+/// will be used. If you pass the optional screen pointer, the
+/// gadget will be provided a DrawInfo. This will let the gadget
+/// adjust to the aspect ratio of the screen.
+/// If you use the resulting size for OpenWindow() or WindowLimits(),
+/// remember that the results do not include window borders.
+///
+/// # Synopsis
+///
+/// LayoutLimits( layout, limits, font, screen );
+///               a0      a1      a2    a3
+///
+/// void LayoutLimits( struct Gadget *, struct LayoutLimits *,
+///                         struct TextFont *, struct Screen * )
+///
+/// # Arguments
+///
+/// * layout = the layout object to get the size on.
+/// * limits = a pointer to the struct LayoutLimits to fill.
+/// * font = the TextFont to use on the domain requests. May be NULL for system default font.
+/// * screen = optional pointer to the screen on which the layout will be used on, or NULL.
+///
+/// # Notes
+///
+/// This function will invoke the object's GM_DOMAIN method twice,
+/// with a NULL GadgetInfo. If you call it providing a screen
+/// pointer, the taglist of the message will contain that screen's
+/// DrawInfo (GA_DrawInfo) for aspect information.
+///
+/// # See Also
+///
+/// gadgetclass/GM_DOMAIN
 @library("layout.library")
 extern pub fn LayoutLimits(gadget: *Gadget, limits: *LayoutLimits, font: *TextFont, screen: *Screen)
+/// Gets the pointer to the Page class.
+///
+/// Obtains the pointer to the page gadget class for use with
+/// NewObject().  This function always returns a valid pointer so
+/// you do not need to check it.  The reason is that if the library
+/// opens fine, then the pointer returned is already setup.  (Of course
+/// this implies that if opening the library fails, you shouldn't be
+/// calling this.)
+/// Note that this function does not create the class, that is done
+/// when the class library is opened.
+///
+/// # Synopsis
+///
+/// page_class = PAGE_GetClass();
+/// D0
+///
+/// Class * PAGE_GetClass(VOID);
+///
+/// # Arguments
+///
+/// * Nothing.
+///
+/// # Returns
+///
+/// page_class - Pointer to the page gadget class.
+///
+/// # Notes
+///
+/// PAGE_GetClass() is contained in layout.gadget. There is no PageBase,
+/// just LayoutBase.
 @library("layout.library")
-extern pub fn PAGE_GetClass() -> *u8
+extern pub fn PAGE_GetClass() -> *IClass
+/// Set gadget attributes in a paged layout
+///
+/// Like SetGadgetAttrs, but passes a NULL window and requester pointer
+/// if the gadget is not on the currently visible page.
+///
+/// # Synopsis
+///
+/// value = SetPageGadgetAttrsA(gad, page, win, req, tags)
+/// D0                            A0     A1       A2   A3   A4
+///
+/// ULONG SetPageGadgetAttrsA(struct Gadget *, Object *,
+///         struct Window *, struct Requester *, struct TagItem *)
+///
+/// ULONG SetPageGadgetAttrs(struct Gadget *, Object *,
+///         struct Window *, struct Requester *, ULONG, ...)
 @library("layout.library")
-extern pub fn SetPageGadgetAttrsA(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, tags: *TagItem) -> u32
+extern pub fn SetPageGadgetAttrsA(gadget: *Gadget, object: *u32, window: *Window, requester: *Requester, tags: *TagItem) -> u32
+/// Set gadget attributes in a paged layout
+///
+/// Like SetGadgetAttrs, but passes a NULL window and requester pointer
+/// if the gadget is not on the currently visible page.
+///
+/// # Synopsis
+///
+/// value = SetPageGadgetAttrsA(gad, page, win, req, tags)
+/// D0                            A0     A1       A2   A3   A4
+///
+/// ULONG SetPageGadgetAttrsA(struct Gadget *, Object *,
+///         struct Window *, struct Requester *, struct TagItem *)
+///
+/// ULONG SetPageGadgetAttrs(struct Gadget *, Object *,
+///         struct Window *, struct Requester *, ULONG, ...)
 @library("layout.library")
-extern pub fn SetPageGadgetAttrs(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester, ...args) -> u32
+extern pub fn SetPageGadgetAttrs(gadget: *Gadget, object: *u32, window: *Window, requester: *Requester, ...args) -> u32
+/// Refresh gadget in a paged layout
+///
+/// Like RefreshGList(gad,win,req,1), but passes a NULL window and
+/// requester pointer if the gadget is not on the currently visible
+/// page.
+///
+/// # Synopsis
+///
+/// RefreshPageGadget(gad, page, win, req)
+///                   A0     A1       A2   A3
+///
+/// void RefreshPageGadget(struct Gadget *, Object *,
+///         struct Window *, struct Requester *)
 @library("layout.library")
-extern pub fn RefreshPageGadget(gadget: *Gadget, object: *u8, window: *Window, requester: *Requester)
+extern pub fn RefreshPageGadget(gadget: *Gadget, object: *u32, window: *Window, requester: *Requester)

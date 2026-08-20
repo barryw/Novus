@@ -1,0 +1,86 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import NOTIFY_CLASS, NOTIFY_CODE, NRF_SEND_MESSAGE, NRF_WAIT_REPLY
+from amiga::raw::dos import Close, Delay, DeleteFile, EndNotify, Open, SetProtection, StartNotify, Write
+from amiga::raw::exec import CreateMsgPort, DeleteMsgPort, GetMsg, ReplyMsg
+from amiga::raw::structs import Message, MsgPort, NotifyMessage, NotifyRequest
+
+fn remove_file() {
+    SetProtection("SYS:T/novus_ndk_notify", 0)
+    DeleteFile("SYS:T/novus_ndk_notify")
+}
+
+@suppress("W0002", "The bounded test strings are far below DOS's signed 32-bit byte count")
+fn write_file(contents: Str) -> bool {
+    let handle = Open("SYS:T/novus_ndk_notify", 1006)
+    if handle == 0 { return false }
+    let written = Write(handle, contents.as_ptr(), (i32)contents.len())
+    let closed = Close(handle)
+    return written == (i32)contents.len() && closed != 0
+}
+
+fn request_for(port: *MsgPort, path: Str) -> NotifyRequest {
+    var request: NotifyRequest = @zeroed(NotifyRequest)
+    request.nr_Name = path.as_cstr()
+    request.nr_UserData = $4E4F5655
+    request.nr_Flags = NRF_SEND_MESSAGE | NRF_WAIT_REPLY
+    request.nr_stuff.nr_Msg.nr_Port = port
+    return request
+}
+
+fn poll_message(port: *MsgPort) -> *Message {
+    var message = GetMsg(port)
+    var attempts: u32 = 0
+    while message == null && attempts < 50 {
+        Delay(1)
+        message = GetMsg(port)
+        attempts++
+    }
+    return message
+}
+
+// @covers-ndk function|dos.library|StartNotify
+// @ndk-side-effects Registers a message-based watch on a real SYS:T file, closes a changed replacement, receives and validates the exact NotifyMessage class, code, and request identity, replies it, and ends the watch
+@test("dos.library StartNotify delivers a file-change message")
+pub fn dos_start_notify() {
+    remove_file()
+    let initial = write_file("before")
+    let port = if initial { CreateMsgPort() } else { (*MsgPort)null }
+    let path: Str = "SYS:T/novus_ndk_notify"
+    var request = request_for(port, path)
+    let started = port != null && StartNotify(&var request) != 0
+    let changed = started && write_file("after")
+    let message = if changed { poll_message(port) } else { (*Message)null }
+    let notify = (*NotifyMessage)message
+    let valid = notify != null && notify.nm_Class == NOTIFY_CLASS && (u32)notify.nm_Code == NOTIFY_CODE && notify.nm_NReq == (*NotifyRequest)&var request
+    if message != null { ReplyMsg(message) }
+    EndNotify(&var request)
+    let balanced = request.nr_MsgCount == 0 && (port == null || GetMsg(port) == null)
+    if port != null { DeleteMsgPort(port) }
+    remove_file()
+    expect(initial && started && changed, "notification watch and file replacement succeed")
+    expect(valid, "delivered message identifies the exact request and notify protocol")
+    expect(balanced, "reply and EndNotify drain all outstanding messages")
+}
+
+// @covers-ndk function|dos.library|EndNotify
+// @ndk-side-effects Removes an active SYS:T watch before mutation, proves a subsequent close queues no message on the caller-owned port, and safely drains and releases all request resources
+@test("dos.library EndNotify prevents later notifications")
+pub fn dos_end_notify() {
+    remove_file()
+    let initial = write_file("before")
+    let port = if initial { CreateMsgPort() } else { (*MsgPort)null }
+    let path: Str = "SYS:T/novus_ndk_notify"
+    var request = request_for(port, path)
+    let started = port != null && StartNotify(&var request) != 0
+    EndNotify(&var request)
+    let changed = write_file("after")
+    Delay(3)
+    let message = if port != null { GetMsg(port) } else { (*Message)null }
+    if message != null { ReplyMsg(message) }
+    let stopped = message == null && request.nr_MsgCount == 0
+    if port != null { DeleteMsgPort(port) }
+    remove_file()
+    expect(initial && started && changed, "active watch starts and the post-stop mutation succeeds")
+    expect(stopped, "ended watch queues no later notification")
+}

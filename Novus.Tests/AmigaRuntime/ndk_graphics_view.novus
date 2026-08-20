@@ -1,0 +1,192 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect, expect_eq, expect_true
+from amiga::raw::consts import CUSTOMSCREEN, SA_Depth, SA_Height, SA_SharePens
+from amiga::raw::consts import SA_Title, SA_Type, SA_Width, TAG_DONE
+from amiga::raw::structs import ColorMap, CopList, RasInfo, TagItem, UCopList, View, ViewPort, cprlist
+from amiga::raw::graphics import GetRGB4, GetRGB32, InitView, InitVPort
+from amiga::raw::graphics import LoadRGB4, LoadRGB32, SetRGB4, SetRGB32, VBeamPos
+from amiga::sys::intuition import ScreenHandle
+
+fn private_screen() -> Result<ScreenHandle, i32> {
+    let title: Str = "Novus view test"
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SA_Width, ti_Data: 320 },
+        TagItem { ti_Tag: SA_Height, ti_Data: 100 },
+        TagItem { ti_Tag: SA_Depth, ti_Data: 4 },
+        TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
+        TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+        TagItem { ti_Tag: SA_SharePens, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return match ScreenHandle::open(&tags) {
+        Result::Ok(screen) => Result::Ok(screen),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+// @covers-ndk function|graphics.library|InitVPort
+// @ndk-side-effects InitVPort discards every dirty pointer, dimension, offset, and mode field and installs the documented 0x24 sprite-priority default
+@test("graphics.library InitVPort installs complete defaults")
+pub fn graphics_init_vport() {
+    var vp: ViewPort = @zeroed(ViewPort)
+    unsafe {
+        vp.Next = &var vp
+        vp.ColorMap = (*ColorMap)1
+        vp.DspIns = (*CopList)1
+        vp.SprIns = (*CopList)1
+        vp.ClrIns = (*CopList)1
+        vp.UCopIns = (*UCopList)1
+        vp.DWidth = 123
+        vp.DHeight = 45
+        vp.DxOffset = 6
+        vp.DyOffset = 7
+        vp.Modes = $FFFF
+        vp.SpritePriorities = $FF
+        vp.ExtendedModes = $FF
+        vp.RasInfo = (*RasInfo)1
+    }
+    InitVPort(&var vp)
+    expect(vp.Next == null && vp.ColorMap == null && vp.DspIns == null &&
+        vp.SprIns == null && vp.ClrIns == null && vp.UCopIns == null &&
+        vp.DWidth == 0 && vp.DHeight == 0 && vp.DxOffset == 0 && vp.DyOffset == 0 &&
+        vp.Modes == 0 && vp.SpritePriorities == $24 && vp.ExtendedModes == 0 &&
+        vp.RasInfo == null, "all ViewPort fields match documented defaults")
+}
+
+// @covers-ndk function|graphics.library|InitView
+// @ndk-side-effects InitView discards dirty display and copper-list state, installs stable monitor-derived offsets, and reproduces those offsets on a second initialization
+@test("graphics.library InitView resets state and derives stable offsets")
+pub fn graphics_init_view() {
+    var view: View = @zeroed(View)
+    unsafe {
+        view.ViewPort = (*ViewPort)1
+        view.LOFCprList = (*cprlist)1
+        view.SHFCprList = (*cprlist)1
+        view.DxOffset = 1
+        view.DyOffset = 2
+        view.Modes = $FFFF
+    }
+    InitView(&var view)
+    let dx = view.DxOffset
+    let dy = view.DyOffset
+    unsafe {
+        view.ViewPort = (*ViewPort)1
+        view.LOFCprList = (*cprlist)1
+        view.SHFCprList = (*cprlist)1
+        view.DxOffset = -1
+        view.DyOffset = -1
+        view.Modes = $FFFF
+    }
+    InitView(&var view)
+    expect(view.ViewPort == null && view.LOFCprList == null && view.SHFCprList == null &&
+        view.Modes == 0 && view.DxOffset == dx && view.DyOffset == dy && dx >= 0 && dy >= 0,
+        "InitView resets state and reproduces monitor defaults")
+}
+
+// @covers-ndk function|graphics.library|SetRGB4
+// @ndk-side-effects SetRGB4 changes live custom-screen color zero to the exact requested four-bit triplet; GetRGB4 proves the update before SetRGB32 restores the original color
+@test("graphics.library SetRGB4 changes a live viewport color")
+pub fn graphics_set_rgb4() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let vp = screen.viewport()
+    let cm = unsafe { (*vp).ColorMap }
+    var saved: [u32] = [0, 0, 0]
+    GetRGB32(cm, 0, 1, &var saved[0])
+    SetRGB4(vp, 0, $A, $B, $C)
+    expect_eq(GetRGB4(cm, 0), $ABC, "live color zero contains exact 4-bit RGB")
+    SetRGB32(vp, 0, saved[0], saved[1], saved[2])
+}
+
+// @covers-ndk function|graphics.library|SetRGB32
+// @ndk-side-effects SetRGB32 changes live custom-screen color zero to full red and blue with zero green; GetRGB32 proves all channels before the original color is restored
+@test("graphics.library SetRGB32 changes full-width viewport channels")
+pub fn graphics_set_rgb32() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let vp = screen.viewport()
+    let cm = unsafe { (*vp).ColorMap }
+    var saved: [u32] = [0, 0, 0]
+    var actual: [u32] = [0, 0, 0]
+    GetRGB32(cm, 0, 1, &var saved[0])
+    SetRGB32(vp, 0, $FFFFFFFF, 0, $FFFFFFFF)
+    GetRGB32(cm, 0, 1, &var actual[0])
+    expect(actual[0] == $FFFFFFFF && actual[1] == 0 && actual[2] == $FFFFFFFF,
+        "live color zero contains requested full-width channels")
+    SetRGB32(vp, 0, saved[0], saved[1], saved[2])
+}
+
+// @covers-ndk function|graphics.library|LoadRGB4
+// @ndk-side-effects LoadRGB4 writes two consecutive packed four-bit colors into a live custom-screen palette; both entries are read back independently before exact restoration
+@test("graphics.library LoadRGB4 loads consecutive viewport colors")
+pub fn graphics_load_rgb4() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let vp = screen.viewport()
+    let cm = unsafe { (*vp).ColorMap }
+    var saved: [u32] = [0, 0, 0, 0, 0, 0]
+    var colors: [u16] = [$123, $456]
+    GetRGB32(cm, 0, 2, &var saved[0])
+    LoadRGB4(vp, &var colors[0], 2)
+    expect(GetRGB4(cm, 0) == $123 && GetRGB4(cm, 1) == $456,
+        "two packed colors load into consecutive entries")
+    SetRGB32(vp, 0, saved[0], saved[1], saved[2])
+    SetRGB32(vp, 1, saved[3], saved[4], saved[5])
+}
+
+// @covers-ndk function|graphics.library|LoadRGB32
+// @ndk-side-effects LoadRGB32 consumes one two-color record plus its terminator and installs exact full-width red and green entries in a live custom-screen palette before restoration
+@test("graphics.library LoadRGB32 consumes records and terminator")
+pub fn graphics_load_rgb32() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let vp = screen.viewport()
+    let cm = unsafe { (*vp).ColorMap }
+    var saved: [u32] = [0, 0, 0, 0, 0, 0]
+    var actual: [u32] = [0, 0, 0, 0, 0, 0]
+    var table: [u32] = [$00020000, $FFFFFFFF, 0, 0, 0, $FFFFFFFF, 0, 0]
+    GetRGB32(cm, 0, 2, &var saved[0])
+    LoadRGB32(vp, &var table[0])
+    GetRGB32(cm, 0, 2, &var actual[0])
+    expect(actual[0] == $FFFFFFFF && actual[1] == 0 && actual[2] == 0 &&
+        actual[3] == 0 && actual[4] == $FFFFFFFF && actual[5] == 0,
+        "record installs exact red and green entries")
+    SetRGB32(vp, 0, saved[0], saved[1], saved[2])
+    SetRGB32(vp, 1, saved[3], saved[4], saved[5])
+}
+
+// @covers-ndk function|graphics.library|VBeamPos
+// @ndk-side-effects VBeamPos returns an in-range live raster position and advances while repeatedly sampled, proving it reads the active display beam rather than a constant
+@test("graphics.library VBeamPos tracks the live display beam")
+pub fn graphics_vbeam_pos() {
+    let first = VBeamPos()
+    var current = first
+    var attempts: u32 = 0
+    while current == first && attempts < 50000 {
+        current = VBeamPos()
+        attempts++
+    }
+    expect_true(first >= 0 && first < 1024 && current >= 0 && current < 1024 && current != first,
+        "beam position is bounded and advances under observation")
+}

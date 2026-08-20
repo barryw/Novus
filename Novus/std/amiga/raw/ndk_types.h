@@ -1,4 +1,9 @@
 /* Generated NDK tag/typedef bridge for Novus C output. */
+#ifndef COMMODITIES_BASE_H
+#define COMMODITIES_BASE_H
+typedef long CxObj;
+typedef long CxMsg;
+#endif
 typedef struct AChain AChain;
 typedef struct ARexxCmd ARexxCmd;
 typedef struct AVLNode AVLNode;
@@ -367,7 +372,7 @@ typedef struct adtNewFormatFrame adtNewFormatFrame;
 typedef struct adtStart adtStart;
 typedef struct apExecute apExecute;
 typedef struct bltnode bltnode;
-typedef struct bootblock bootblock;
+typedef struct bootblock HdwBootBlock;
 typedef struct collTable collTable;
 typedef union colorEntry colorEntry;
 typedef struct copinit copinit;
@@ -426,3 +431,6 @@ typedef struct tPoint tPoint;
 typedef struct timerequest timerequest;
 typedef struct timeval timeval;
 typedef struct wmHandle wmHandle;
+/* hdwrench.h's public anonymous typedefs; its SAS/C callback prototypes are not VBCC-compatible. */
+typedef struct ValidIDstruct { unsigned short ready[16]; unsigned short there[16]; } ValidIDstruct;
+typedef struct HDWCallbackMsg { char *devicename; long board; long address; long lun; char *messagestring; long extra; long param1; long param2; long param3; } HDWCallbackMsg;

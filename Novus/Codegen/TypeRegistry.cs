@@ -8,6 +8,8 @@ namespace Novus.Codegen;
 /// </summary>
 public class TypeRegistry
 {
+    private const string CollisionSuffixMarker = "__novus_";
+
     private readonly List<IrEnumType> _enumTypes = new();
     private readonly List<IrStructType> _structTypes = new();
     private readonly List<IrTupleType> _tupleTypes = new();
@@ -508,22 +510,105 @@ public class TypeRegistry
 
     /// <summary>
     /// Add or update a struct type in the registry.
-    /// If a struct with the same name already exists, keeps the version with more fields.
-    /// This handles cases where struct types are encountered multiple times with varying completeness.
+    /// If a struct with the same public signature already exists, keeps the version with more fields.
+    /// If same-name structs have different shapes, generates a deterministic suffix to prevent collisions.
     /// </summary>
     private void AddOrUpdateStructType(IrStructType structType)
     {
-        var existingStruct = _structTypes.FirstOrDefault(s => GetStructName(s) == GetStructName(structType));
-        if (existingStruct == null)
+        var canonicalName = GetCanonicalStructName(structType);
+        var sameNameStructs = _structTypes.Where(s => GetCanonicalStructName(s) == canonicalName).ToList();
+
+        foreach (var existing in sameNameStructs)
         {
-            _structTypes.Add(structType);
+            if (StructTypesHaveSameShape(existing, structType))
+            {
+                // Keep references consistent for equivalent shapes.
+                if (existing.CacheKey != null && !existing.CacheKey.Equals(structType.CacheKey, StringComparison.Ordinal))
+                {
+                    structType.CacheKey = existing.CacheKey;
+                }
+
+                if (structType.Fields.Count > existing.Fields.Count)
+                {
+                    // Replace with the version that has more fields (the fully-defined version)
+                    _structTypes.Remove(existing);
+                    _structTypes.Add(structType);
+                }
+
+                return;
+            }
         }
-        else if (structType.Fields.Count > existingStruct.Fields.Count)
+
+        if (sameNameStructs.Count > 0)
         {
-            // Replace with the version that has more fields (the fully-defined version)
-            _structTypes.Remove(existingStruct);
+            // Same base name, different shape. Keep both via a deterministic collision key.
+            if (structType.CacheKey is null || !structType.CacheKey.Contains(CollisionSuffixMarker, StringComparison.Ordinal))
+            {
+                var hash = ComputeDeterministicStructHash(structType);
+                structType.CacheKey = $"{canonicalName}{CollisionSuffixMarker}{hash}";
+            }
+
             _structTypes.Add(structType);
+            return;
         }
+
+        _structTypes.Add(structType);
+    }
+
+    private static string GetCanonicalStructName(IrStructType structType)
+    {
+        var name = structType.CacheKey ?? structType.StructName;
+        if (structType.Attributes?.Has(SemanticAnalysis.KnownAttributes.ExternType) == true)
+            name += "#extern";
+
+        var suffixIndex = name.IndexOf(CollisionSuffixMarker, StringComparison.Ordinal);
+        return suffixIndex >= 0 ? name.Substring(0, suffixIndex) : name;
+    }
+
+    private static bool StructTypesHaveSameShape(IrStructType left, IrStructType right)
+    {
+        if (left.Fields.Count != right.Fields.Count || left.IsUnion != right.IsUnion)
+            return false;
+
+        for (int i = 0; i < left.Fields.Count; i++)
+        {
+            var leftField = left.Fields[i];
+            var rightField = right.Fields[i];
+
+            if (leftField.Name != rightField.Name)
+                return false;
+
+            if (leftField.Type.Name != rightField.Type.Name)
+                return false;
+        }
+
+        return true;
+    }
+
+    private static string ComputeDeterministicStructHash(IrStructType structType)
+    {
+        var signature = GetStructSignature(structType);
+        unchecked
+        {
+            uint hash = 2166136261u;
+            foreach (byte b in System.Text.Encoding.UTF8.GetBytes(signature))
+            {
+                hash ^= b;
+                hash *= 16777619;
+            }
+
+            return hash.ToString("x8");
+        }
+    }
+
+    private static string GetStructSignature(IrStructType structType)
+    {
+        var fieldSignature = string.Join(
+            ";",
+            structType.Fields.Select(field => $"{field.Name}:{field.Type.Name}:{field.Type.SizeInBytes}")
+        );
+
+        return $"{GetCanonicalStructName(structType)}|{(structType.IsUnion ? "union" : "struct")}|{fieldSignature}";
     }
 
     public IEnumerable<IrEnumType> EnumTypes => _enumTypes;

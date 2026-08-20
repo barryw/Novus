@@ -1,0 +1,19 @@
+from std::test::test import expect
+from amiga::capabilities import library_available
+from amiga::raw::dtclass import ObtainEngine
+
+// @covers-ndk function|dtclass.library|ObtainEngine
+// @ndk-side-effects Borrows dtclass.library's shared engine twice without taking ownership, verifies pointer identity and the public read-only IClass dispatcher and identifier fields, and leaves library lifetime to generated FFI cleanup
+@test("dtclass.library ObtainEngine returns its initialized shared class")
+pub fn dtclass_obtain_engine_shared_class() {
+    if !library_available("dtclass.library", 39) { return }
+    let first = ObtainEngine()
+    let second = ObtainEngine()
+    expect(first != null && second == first, "repeated calls return one non-null library-owned engine")
+    if first != null {
+        unsafe {
+            expect((u32)(*first).cl_Dispatcher.h_Entry != 0, "shared engine has an installed dispatcher entry")
+            expect((*first).cl_ID != null, "shared engine has a public class identifier")
+        }
+    }
+}

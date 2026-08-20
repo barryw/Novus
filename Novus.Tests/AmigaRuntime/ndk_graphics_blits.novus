@@ -1,0 +1,273 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::structs import BitMap, RastPort
+from amiga::raw::graphics import InitRastPort, SetRast, SetAPen, SetDrMd, RectFill, ReadPixel, WritePixel, WaitBlit
+from amiga::raw::graphics import BltBitMap, BltBitMapRastPort, BltMaskBitMapRastPort
+from amiga::raw::graphics import ClipBlit, BltPattern, BltTemplate, BltClear
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+const WIDTH: u32 = 64
+const HEIGHT: u32 = 32
+const COPY_SOURCE: u8 = $F0
+const COOKIE_CUT: u8 = $CA
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(WIDTH, HEIGHT, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(handle: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    unsafe { (*rastport).BitMap = handle.as_raw() }
+}
+
+fn plane(handle: &BitMapHandle) -> *u8 {
+    unsafe { return (*handle.as_raw()).Planes[0] }
+}
+
+fn row_bytes(handle: &BitMapHandle) -> i16 {
+    unsafe { return (i16)(*handle.as_raw()).BytesPerRow }
+}
+
+fn fill(rastport: *RastPort, x0: i16, y0: i16, x1: i16, y1: i16) {
+    SetAPen(rastport, 1)
+    RectFill(rastport, x0, y0, x1, y1)
+    WaitBlit()
+}
+
+fn pixel(rastport: *RastPort, x: i16, y: i16) -> u32 {
+    return ReadPixel(rastport, x, y)
+}
+
+// @covers-ndk function|graphics.library|BltBitMap
+// @ndk-side-effects BltBitMap copies the exact inclusive 8x6 source rectangle into a cleared destination bitmap with the source-copy minterm; readback proves both copied boundaries and untouched adjacent pixels before both owned bitmaps are released
+@test("graphics.library BltBitMap copies exact bitmap bounds")
+pub fn graphics_blt_bitmap() {
+    var source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var source_rp)
+    attach(&destination, &var destination_rp)
+    fill(&var source_rp, 4, 3, 11, 8)
+
+    let planes = BltBitMap(source.as_raw(), 4, 3, destination.as_raw(), 20, 10, 8, 6, COPY_SOURCE, 1, null)
+    WaitBlit()
+    expect_true(planes > 0, "one destination plane copied")
+    expect_eq(pixel(&var destination_rp, 20, 10), 1, "copy minimum included")
+    expect_eq(pixel(&var destination_rp, 27, 15), 1, "copy maximum included")
+    expect_eq(pixel(&var destination_rp, 19, 10), 0, "left neighbor preserved")
+    expect_eq(pixel(&var destination_rp, 28, 15), 0, "right neighbor preserved")
+}
+
+// @covers-ndk function|graphics.library|BltBitMapRastPort
+// @ndk-side-effects BltBitMapRastPort copies an exact source bitmap rectangle through the destination RastPort; pixel readback proves the translated bounds and untouched background, and WaitBlit completes DMA before owned bitmap cleanup
+@test("graphics.library BltBitMapRastPort reaches the destination RastPort")
+pub fn graphics_blt_bitmap_rastport() {
+    var source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var source_rp)
+    attach(&destination, &var destination_rp)
+    fill(&var source_rp, 6, 4, 15, 9)
+
+    BltBitMapRastPort(source.as_raw(), 6, 4, &var destination_rp, 30, 12, 10, 6, COPY_SOURCE)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 30, 12), 1, "translated minimum included")
+    expect_eq(pixel(&var destination_rp, 39, 17), 1, "translated maximum included")
+    expect_eq(pixel(&var destination_rp, 29, 12), 0, "background before copy preserved")
+}
+
+// @covers-ndk function|graphics.library|ClipBlit
+// @ndk-side-effects ClipBlit copies between two live RastPorts while honoring the requested source and destination coordinates; exact destination readback proves the copied rectangle and an adjacent untouched pixel
+@test("graphics.library ClipBlit copies between RastPorts")
+pub fn graphics_clip_blit() {
+    var source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var source_rp)
+    attach(&destination, &var destination_rp)
+    fill(&var source_rp, 8, 6, 19, 13)
+
+    ClipBlit(&var source_rp, 8, 6, &var destination_rp, 22, 14, 12, 8, COPY_SOURCE)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 22, 14), 1, "clipped copy minimum included")
+    expect_eq(pixel(&var destination_rp, 33, 21), 1, "clipped copy maximum included")
+    expect_eq(pixel(&var destination_rp, 34, 21), 0, "pixel beyond copy preserved")
+}
+
+// @covers-ndk function|graphics.library|BltMaskBitMapRastPort
+// @ndk-side-effects BltMaskBitMapRastPort cookie-cuts a filled source through a live one-plane mask; readback proves only the mask's translated 8x4 island reaches the cleared destination and all three bitmap allocations are released
+@test("graphics.library masked blit obeys every mask boundary")
+pub fn graphics_blt_mask_bitmap_rastport() {
+    var source = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var mask = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "mask bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_rp: RastPort = @zeroed(RastPort)
+    var mask_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var source_rp)
+    attach(&mask, &var mask_rp)
+    attach(&destination, &var destination_rp)
+    fill(&var source_rp, 0, 0, 15, 7)
+    fill(&var mask_rp, 4, 2, 11, 5)
+
+    BltMaskBitMapRastPort(source.as_raw(), 0, 0, &var destination_rp,
+        20, 10, 16, 8, COOKIE_CUT, plane(&mask))
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 24, 12), 1, "mask minimum copied")
+    expect_eq(pixel(&var destination_rp, 31, 15), 1, "mask maximum copied")
+    expect_eq(pixel(&var destination_rp, 23, 12), 0, "pixel before mask excluded")
+    expect_eq(pixel(&var destination_rp, 32, 15), 0, "pixel after mask excluded")
+}
+
+// @covers-ndk function|graphics.library|BltPattern
+// @ndk-side-effects BltPattern with no mask fills the exact requested rectangle using the RastPort foreground pen and drawing mode; boundary and adjacent-pixel readback prove the inclusive extent before bitmap cleanup
+@test("graphics.library BltPattern fills exact unmasked bounds")
+pub fn graphics_blt_pattern() {
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&destination, &var destination_rp)
+    SetRast(&var destination_rp, 0)
+    SetAPen(&var destination_rp, 1)
+    SetDrMd(&var destination_rp, 0)
+    BltPattern(&var destination_rp, null, 10, 8, 25, 17, 0)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 10, 8), 1, "pattern minimum included")
+    expect_eq(pixel(&var destination_rp, 25, 17), 1, "pattern maximum included")
+    expect_eq(pixel(&var destination_rp, 9, 8), 0, "left neighbor preserved")
+    expect_eq(pixel(&var destination_rp, 26, 17), 0, "right neighbor preserved")
+}
+
+// @covers-ndk function|graphics.library|BltTemplate
+// @ndk-side-effects BltTemplate interprets a chip-resident one-plane bitmap as a 16x4 template with the supplied row stride; two distinct source rows are reproduced at translated coordinates while clear template bits preserve the destination
+@test("graphics.library BltTemplate respects bits and row stride")
+pub fn graphics_blt_template() {
+    var template = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "template bitmap allocated")
+            return
+        },
+    }
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var template_rp: RastPort = @zeroed(RastPort)
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&template, &var template_rp)
+    attach(&destination, &var destination_rp)
+    SetAPen(&var template_rp, 1)
+    var x: i16 = 0
+    while x < 4 {
+        expect(WritePixel(&var template_rp, x, 0) == 0, "left template pixel written")
+        expect(WritePixel(&var template_rp, x + 12, 0) == 0, "right template pixel written")
+        x++
+    }
+    x = 4
+    while x < 12 {
+        expect(WritePixel(&var template_rp, x, 1) == 0, "second-row template pixel written")
+        x++
+    }
+    SetAPen(&var destination_rp, 1)
+    SetDrMd(&var destination_rp, 0)
+    BltTemplate(plane(&template), 0, row_bytes(&template), &var destination_rp, 20, 10, 16, 4)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 20, 10), 1, "first-row left run copied")
+    expect_eq(pixel(&var destination_rp, 25, 10), 0, "first-row center stays clear")
+    expect_eq(pixel(&var destination_rp, 32, 10), 1, "first-row right run copied")
+    expect_eq(pixel(&var destination_rp, 20, 11), 0, "second-row left stays clear")
+    expect_eq(pixel(&var destination_rp, 25, 11), 1, "second-row center copied")
+}
+
+// @covers-ndk function|graphics.library|BltClear
+// @ndk-side-effects BltClear zeroes every byte of a filled chip-memory bitplane in byte-count mode; readback verifies set pixels before the call and clear pixels at both bitmap extremes after WaitBlit, then the bitmap is released
+@test("graphics.library BltClear zeroes the complete bitplane")
+pub fn graphics_blt_clear() {
+    var destination = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var destination_rp: RastPort = @zeroed(RastPort)
+    attach(&destination, &var destination_rp)
+    SetRast(&var destination_rp, 1)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 0, 0), 1, "bitmap begins filled")
+    let bytes: u32 = (u32)row_bytes(&destination) * HEIGHT
+    BltClear(plane(&destination), bytes, 0)
+    WaitBlit()
+    expect_eq(pixel(&var destination_rp, 0, 0), 0, "first pixel cleared")
+    expect_eq(pixel(&var destination_rp, 63, 31), 0, "last pixel cleared")
+}

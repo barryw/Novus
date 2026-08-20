@@ -221,10 +221,13 @@ impl<T> Ready<T> {
     pub fn new(consuming value: T) -> Ready<T> {
         return Ready { value: Option::Some(value), completed: false }
     }
-}
 
-impl<T> Future<T> for Ready<T> {
-    fn poll(&var self, ctx: &var Context) -> Poll<T> {
+    /// Poll the ready value. This is immediate and only ready once.
+    pub fn poll(&var self, ctx: &var Context) -> Poll<T> {
+        return self.poll_impl(ctx)
+    }
+
+    fn poll_impl(&var self, ctx: &var Context) -> Poll<T> {
         if self.completed {
             panic!("Ready polled after completion")
         }
@@ -235,6 +238,12 @@ impl<T> Future<T> for Ready<T> {
                 panic!("Ready has no value")
             }
         }
+    }
+}
+
+impl<T> Future<T> for Ready<T> {
+    fn poll(&var self, ctx: &var Context) -> Poll<T> {
+        return self.poll_impl(ctx)
     }
 }
 
@@ -262,6 +271,11 @@ impl<T> Pending<T> {
     /// The resulting `Pending<T>` value.
     pub fn new() -> Pending<T> {
         return Pending { _phantom: 0 }
+    }
+
+    /// Polls the pending future, which always remains pending.
+    pub fn poll(&var self, ctx: &var Context) -> Poll<T> {
+        return Poll::Pending
     }
 }
 

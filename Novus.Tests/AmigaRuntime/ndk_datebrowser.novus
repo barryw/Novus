@@ -1,0 +1,38 @@
+from std::test::test import expect
+from amiga::raw::datebrowser import DATEBROWSER_GetClass, JulianLeapYear, JulianMonthDays, JulianWeekDay
+
+// @covers-ndk function|datebrowser.library|DATEBROWSER_GetClass
+// @ndk-side-effects Borrows the permanent class pointer twice from the opened ReAction gadget library without creating or disposing an object
+@test("datebrowser.library GetClass returns its stable class")
+pub fn datebrowser_get_class() {
+    let first = DATEBROWSER_GetClass()
+    let second = DATEBROWSER_GetClass()
+    expect(first != null && second == first, "opened gadget exposes one stable non-null class")
+}
+
+// @covers-ndk function|datebrowser.library|JulianLeapYear
+// @ndk-side-effects Computes the installed implementation's every-four-years leap status, including its documented legacy 2100 century discrepancy, without modifying system date state
+@test("datebrowser.library JulianLeapYear pins its legacy century rule")
+pub fn datebrowser_leap_year() {
+    expect(JulianLeapYear(2000) != 0, "year 2000 is a leap year")
+    expect(JulianLeapYear(2100) != 0, "raw NDK helper preserves its every-four-years 2100 result")
+    expect(JulianLeapYear(2004) != 0 && JulianLeapYear(2001) == 0, "ordinary leap and common years classify correctly")
+}
+
+// @covers-ndk function|datebrowser.library|JulianMonthDays
+// @ndk-side-effects Computes exact month lengths for leap February, the installed implementation's documented legacy 2100 result, a 30-day month, and a 31-day month without modifying system date state
+@test("datebrowser.library JulianMonthDays returns exact month lengths")
+pub fn datebrowser_month_days() {
+    expect(JulianMonthDays(2, 2000) == 29, "leap February has 29 days")
+    expect(JulianMonthDays(2, 2100) == 29, "raw NDK helper preserves its 29-day February 2100 result")
+    expect(JulianMonthDays(4, 2024) == 30 && JulianMonthDays(1, 2024) == 31, "30-day and 31-day months are exact")
+}
+
+// @covers-ndk function|datebrowser.library|JulianWeekDay
+// @ndk-side-effects Computes exact weekdays for three known Gregorian dates without reading or changing the system clock
+@test("datebrowser.library JulianWeekDay matches known dates")
+pub fn datebrowser_weekday() {
+    expect(JulianWeekDay(1, 1, 1978) == 0, "1978-01-01 was Sunday")
+    expect(JulianWeekDay(1, 1, 2000) == 6, "2000-01-01 was Saturday")
+    expect(JulianWeekDay(29, 2, 2024) == 4, "2024-02-29 was Thursday")
+}

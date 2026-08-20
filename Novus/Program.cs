@@ -182,7 +182,7 @@ public class Program
         if (versionExit.HasValue)
             return versionExit.Value;
 
-        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions, VerifyNdkOptions, ConfigOptions>(args)
+        return await CommandLine.Parser.Default.ParseArguments<CompilerOptions, BuildOptions, GenerateStubsOptions, NewCommandOptions, StdlibBuildOptions, FmtOptions, CleanOptions, TestOptions, BenchOptions, VerifyDocsOptions, VerifyNdkOptions, ConfigOptions, AssembleOptions, CCompileOptions>(args)
             .MapResult(
                 (CompilerOptions options) => RunCompiler(options),
                 (BuildOptions options) => RunBuild(options),
@@ -196,6 +196,8 @@ public class Program
                 (VerifyDocsOptions options) => Task.FromResult(Commands.VerifyDocsCommand.Run(options)),
                 (VerifyNdkOptions options) => Task.FromResult(Commands.VerifyNdkCommand.Run(options)),
                 (ConfigOptions options) => Task.FromResult(Commands.ConfigCommand.Run(options)),
+                (AssembleOptions options) => Task.FromResult(Commands.AssembleCommand.Run(options)),
+                (CCompileOptions options) => Task.FromResult(Commands.CCompileCommand.Run(options)),
                 // Parse failures (unknown verb, bad/missing flags) are usage errors.
                 errors => Task.FromResult(EXIT_USAGE)
             );
@@ -250,11 +252,14 @@ public class Program
         IReadOnlySet<string> reachableFunctions)
     {
         var modules = importedModules.Prepend(mainModule).ToList();
+        var requiredFunctions = FindReachableCalls(mainModule, modules, reachableFunctions);
 
         return modules
             .Select(module => (Module: module, Metadata: FfiModuleMetadata.TryRead(module.ModulePath)))
             .Where(item => item.Metadata != null &&
-                           item.Module.IrModule.Functions.Any(f => f.IsExtern && reachableFunctions.Contains(f.Name)))
+                           item.Module.IrModule.Functions.Any(f =>
+                               f.IsExtern &&
+                               (reachableFunctions.Contains(f.Name) || requiredFunctions.Contains(f.Name))))
             .Select(item => item.Metadata! with
             {
                 MinimumVersion = Math.Max(
@@ -270,6 +275,182 @@ public class Program
             .DistinctBy(metadata => metadata.ModuleName)
             .OrderBy(metadata => metadata.ModuleName, StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static IReadOnlySet<string> FindReachableCalls(
+        ModuleIR mainModule,
+        IReadOnlyList<ModuleIR> allModules,
+        IReadOnlySet<string> reachableFunctions)
+    {
+        var definitions = allModules
+            .SelectMany(module => module.IrModule.Functions
+                .Where(function => !function.IsExtern && function.BasicBlocks.Count > 0)
+                .Select(function => (function, functionModule: module)))
+            .ToLookup(item => item.function.Name, StringComparer.Ordinal);
+
+        var reachable = new HashSet<string>(reachableFunctions, StringComparer.Ordinal);
+        var pending = new Queue<string>(reachableFunctions);
+        var calledFunctions = new HashSet<string>(StringComparer.Ordinal);
+
+        void Mark(string name)
+        {
+            if (reachable.Add(name))
+                pending.Enqueue(name);
+        }
+
+        while (pending.TryDequeue(out var name))
+        {
+            foreach (var (function, ownerModule) in definitions[name])
+            {
+                foreach (var block in function.BasicBlocks.Concat(function.DeferredBlocks))
+                {
+                    foreach (var instruction in block.Instructions)
+                    {
+                        switch (instruction)
+                        {
+                            case IrCall call:
+                                calledFunctions.Add(call.FunctionName);
+                                Mark(call.FunctionName);
+                                foreach (var argument in call.Arguments) ScanValue(ownerModule, argument);
+                                break;
+                            case IrIndirectCall call:
+                                ScanValue(ownerModule, call.FunctionPointer);
+                                foreach (var argument in call.Arguments) ScanValue(ownerModule, argument);
+                                break;
+                            case IrCreateClosure closure:
+                                Mark(closure.GeneratedFunctionName);
+                                foreach (var captured in closure.CapturedValues) ScanValue(ownerModule, captured.Value);
+                                break;
+                            case IrInvokeClosure invocation:
+                                ScanValue(ownerModule, invocation.Closure);
+                                foreach (var argument in invocation.Arguments) ScanValue(ownerModule, argument);
+                                break;
+                            case IrDropInPlace drop:
+                                foreach (var dropFunction in GetDropFunctions(ownerModule.IrModule, drop.ElementType))
+                                    Mark(dropFunction);
+                                ScanValue(ownerModule, drop.Pointer);
+                                break;
+                            case IrLocalDecl local when local.InitialValue != null:
+                                ScanValue(ownerModule, local.InitialValue);
+                                break;
+                            case IrStore store:
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrStoreCapture store:
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrDereferenceStore store:
+                                ScanValue(ownerModule, store.Pointer);
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrMemberAccess access:
+                                ScanValue(ownerModule, access.Struct);
+                                break;
+                            case IrMemberStore store:
+                                ScanValue(ownerModule, store.Struct);
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrIndexAccess access:
+                                ScanValue(ownerModule, access.Array);
+                                ScanValue(ownerModule, access.Index);
+                                break;
+                            case IrIndexStore store:
+                                ScanValue(ownerModule, store.Array);
+                                ScanValue(ownerModule, store.Index);
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrIndexedFieldStore store:
+                                ScanValue(ownerModule, store.Array);
+                                ScanValue(ownerModule, store.Index);
+                                ScanValue(ownerModule, store.Value);
+                                break;
+                            case IrBinaryOp binary:
+                                ScanValue(ownerModule, binary.Left);
+                                ScanValue(ownerModule, binary.Right);
+                                break;
+                            case IrConditionalBranch branch:
+                                ScanValue(ownerModule, branch.Condition);
+                                break;
+                            case IrPhi phi:
+                                foreach (var value in phi.IncomingValues) ScanValue(ownerModule, value);
+                                break;
+                            case IrMatch match:
+                                ScanValue(ownerModule, match.MatchValue);
+                                break;
+                            case IrReturn returned when returned.Value != null:
+                                ScanValue(ownerModule, returned.Value);
+                                break;
+                            case IrAssert assertion:
+                                ScanValue(ownerModule, assertion.Condition);
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return calledFunctions;
+
+        void ScanValue(ModuleIR ownerModule, IrValue value)
+        {
+            switch (value)
+            {
+                case IrFunctionAddress address:
+                    calledFunctions.Add(address.FunctionName);
+                    Mark(address.FunctionName);
+                    break;
+                case IrFunctionRef reference:
+                    calledFunctions.Add(reference.Function.Name);
+                    Mark(reference.Function.Name);
+                    break;
+                case IrStructLiteral literal:
+                    foreach (var field in literal.FieldValues.Values) ScanValue(ownerModule, field);
+                    break;
+                case IrTupleLiteral literal:
+                    foreach (var element in literal.Elements) ScanValue(ownerModule, element);
+                    break;
+                case IrArrayLiteral literal:
+                    foreach (var element in literal.Elements) ScanValue(ownerModule, element);
+                    break;
+                case IrEnumValue enumValue:
+                    foreach (var associated in enumValue.AssociatedValues) ScanValue(ownerModule, associated);
+                    break;
+                case IrBorrowValue borrow:
+                    ScanValue(ownerModule, borrow.BorrowedValue);
+                    break;
+                case IrDereferenceValue dereference:
+                    ScanValue(ownerModule, dereference.PointerValue);
+                    break;
+                case IrCastValue cast:
+                    ScanValue(ownerModule, cast.Value);
+                    break;
+                case IrPointerOffsetValue offset:
+                    ScanValue(ownerModule, offset.Pointer);
+                    ScanValue(ownerModule, offset.Index);
+                    break;
+                case IrFieldReference field:
+                    ScanValue(ownerModule, field.Struct);
+                    break;
+                case IrIndexedFieldAccess field:
+                    ScanValue(ownerModule, field.Array);
+                    ScanValue(ownerModule, field.Index);
+                    break;
+                case IrTupleElementAccess element:
+                    ScanValue(ownerModule, element.Tuple);
+                    break;
+            }
+        }
+    }
+
+    private static string? FindNdkTypesHeader(string modulePath)
+    {
+        for (var directory = Path.GetDirectoryName(modulePath); directory != null;
+             directory = Directory.GetParent(directory)?.FullName)
+        {
+            var candidate = Path.Combine(directory, "ndk_types.h");
+            if (File.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     private static HashSet<string> FindReachableFunctionNames(
@@ -409,7 +590,8 @@ public class Program
         {
             if (module.StructImplementsDrop(structType))
             {
-                yield return $"{CCodeGenerator.MangleNameStatic(structType.CacheKey ?? structType.StructName)}_Drop_drop";
+                foreach (var dropFunction in GetDropFunctionNames(module, structType))
+                    yield return dropFunction;
                 yield break;
             }
             foreach (var field in structType.Fields)
@@ -733,6 +915,47 @@ public class Program
                 circularImportDetector.ExitModule();
             }
         }
+    }
+
+    private static IEnumerable<string> GetDropFunctionNames(IrModule module, IrStructType st)
+    {
+        var typeName = st.CacheKey ?? st.StructName;
+        var mangledTypeName = CCodeGenerator.MangleNameStatic(typeName);
+        // Same names the IR builder and the C backend use: cleanup is the Drop trait impl.
+        var orderedCandidates = new[]
+        {
+            $"{typeName}_Drop_drop",
+            $"{mangledTypeName}_Drop_drop",
+        };
+
+        // Reachability is keyed by IR function name, not by the mangled C symbol.
+        foreach (var candidate in orderedCandidates)
+        {
+            var function = module.Functions.FirstOrDefault(function =>
+                string.Equals(function.Name, candidate, StringComparison.Ordinal));
+            if (function == null) continue;
+
+            if (function.BasicBlocks.Count > 0 && !function.IsExtern)
+            {
+                yield return function.Name;
+                yield break;
+            }
+        }
+
+        foreach (var candidate in orderedCandidates)
+        {
+            var function = module.Functions.FirstOrDefault(function =>
+                string.Equals(function.Name, candidate, StringComparison.Ordinal));
+            if (function != null)
+            {
+                yield return function.Name;
+                yield break;
+            }
+        }
+
+        // The Drop impl can live in another module. Reachability is resolved against every
+        // module's definitions, so name the canonical entry point rather than dropping it.
+        yield return $"{typeName}_Drop_drop";
     }
 
     /// <summary>
@@ -1230,6 +1453,9 @@ public class Program
                 }
             }
 
+            if (compilationCache != null)
+                await compilationCache.FinalizeBuildSnapshotAsync();
+
             if (allModulesIR.Count > 0)
             {
                 Console.WriteLine($"  ✓ Compiled {allModulesIR.Count + 1} module{(allModulesIR.Count > 0 ? "s" : "")}");
@@ -1360,9 +1586,10 @@ public class Program
 
             var preservePublicFunctions = options.ProjectType.Equals("library", StringComparison.OrdinalIgnoreCase);
             var reachableFunctions = FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions);
+            var includeAllDefinitions = options.IncludeAllDefinitionsForReachability;
             var linkedFunctions = options.BuildMode == BuildMode.Release && options.OptimizationLevel == 3
                 ? reachableFunctions
-                : FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions, includeAllDefinitions: true);
+                : FindReachableFunctionNames(mainIR, allModulesIR.Values, preservePublicFunctions, includeAllDefinitions: includeAllDefinitions);
             var usesAmiSsl = allModulesIR.Values.Prepend(mainIR).Any(module =>
                 module.ModuleName.Equals("amissl", StringComparison.OrdinalIgnoreCase) ||
                 Path.GetFileName(module.ModulePath).Equals("amissl.novus", StringComparison.OrdinalIgnoreCase));
@@ -1373,6 +1600,8 @@ public class Program
                 .DistinctBy(metadata => metadata.ModuleName)
                 .ToList();
             var requiredFfiModules = FindRequiredFfiModules(mainIR, allModulesIR.Values, linkedFunctions)
+                .Concat(FfiModuleMetadata.ReadMappedFunctionDependencies(
+                    Path.Combine(stdLibPath, "amiga", "raw"), linkedFunctions))
                 .Concat(ffiCompileModules.Where(metadata => metadata.Kind == FfiModuleKind.LazyLibrary))
                 .Concat(options.AdditionalFfiModules)
                 .DistinctBy(metadata => metadata.BaseSymbol)
@@ -1432,19 +1661,26 @@ public class Program
                 .OrderBy(header => header, StringComparer.Ordinal)
                 .Select(header => $"#include <{header}>")
                 .ToList();
-            if (ffiHeaders.Count > 0)
+            var builtInNdkTypesPath = Path.Combine(stdLibPath, "amiga", "raw", "ndk_types.h");
+            var ndkTypesPath = File.Exists(builtInNdkTypesPath)
+                ? builtInNdkTypesPath
+                : allModulesIR.Values.Select(module => module.ModulePath)
+                    .Prepend(mainIR.ModulePath)
+                    .Select(FindNdkTypesHeader)
+                    .FirstOrDefault(path => path != null);
+            if (ffiHeaders.Count > 0 || ndkTypesPath != null)
             {
-                var ffiDirectory = Path.GetDirectoryName(ffiCompileModules[0].ModulePath)!;
-                var ndkTypesPath = Path.Combine(ffiDirectory, "ndk_types.h");
-                var ndkTypes = File.Exists(ndkTypesPath)
+                var ndkTypes = ndkTypesPath != null
                     ? string.Join(Environment.NewLine, File.ReadLines(ndkTypesPath)
                         // These typedef names collide with the required Amiga library-base globals.
                         .Where(line => line is not "typedef struct GfxBase GfxBase;"
                             and not "typedef struct IntuitionBase IntuitionBase;")
-                        .Where(line => !sharedTypesHeader.Contains(line, StringComparison.Ordinal)))
+                        .Where(line => !line.StartsWith("typedef ", StringComparison.Ordinal) ||
+                                       !sharedTypesHeader.Contains(line, StringComparison.Ordinal)))
                     : "";
-                sharedTypesHeader = string.Join(Environment.NewLine, ffiHeaders) + Environment.NewLine +
-                                    ndkTypes + sharedTypesHeader;
+                sharedTypesHeader = ndkTypes + Environment.NewLine +
+                                    string.Join(Environment.NewLine, ffiHeaders) + Environment.NewLine +
+                                    sharedTypesHeader;
             }
 
             // Determine output directory - NEVER write to repo root
@@ -1739,9 +1975,6 @@ public class Program
             {
                 var moduleName = moduleIR.ModuleName;
                 var modulePrefix = GetGeneratedModulePrefix(modulePath, moduleName);
-                var cachedGeneratedFiles = LoadGeneratedFiles(moduleIR);
-                var moduleCFiles = new List<string>();
-
                 // Get all non-extern functions with implementations
                 var functions = moduleIR.IrModule.Functions
                     .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0)
@@ -1750,6 +1983,24 @@ public class Program
                 if (functions is [])
                     continue;
 
+                var moduleExplicitEntryPoints = moduleIR.IrModule.Functions
+                    .Where(f => !f.IsExtern && f.BasicBlocks.Count > 0 && linkedFunctions.Contains(f.Name))
+                    .Select(f => f.Name)
+                    .ToHashSet(StringComparer.Ordinal);
+                if (moduleExplicitEntryPoints.Count == 0)
+                {
+                    if (options.Verbose)
+                    {
+                        Console.WriteLine($"    [SKIPPED] {moduleName}: no reachable functions");
+                    }
+                    continue;
+                }
+
+                var moduleHasAllReachableFunctions = moduleExplicitEntryPoints.Count >= functions.Count;
+                var explicitEntryPoints = moduleHasAllReachableFunctions ? null : moduleExplicitEntryPoints;
+                var cachedGeneratedFiles = moduleHasAllReachableFunctions ? LoadGeneratedFiles(moduleIR) : null;
+                var moduleCFiles = new List<string>();
+
                 var moduleCodegen = new CCodeGenerator(
                     moduleIR.IrModule,
                     moduleIR.StringLiterals,
@@ -1757,15 +2008,10 @@ public class Program
                     options.Fpu,
                     options.BuildMode,
                     safetyLevel: safetyLevel,
-                    explicitEntryPoints: null,
+                    explicitEntryPoints: explicitEntryPoints,
                     useSharedTypesHeader: true,
                     projectVersion: options.PackageVersion);
                 allCodeGenerators.Add(moduleCodegen);
-
-                // Monomorphized function ownership depends on this build's import
-                // graph, so a per-module C manifest cannot safely cache the winner.
-                if (functions.Any(moduleCodegen.IsMonomorphizedFunction))
-                    cachedGeneratedFiles = null;
 
                 // Generate one C file per function
                 // Filter out functions with unresolved types to avoid symbol conflicts
@@ -1781,7 +2027,26 @@ public class Program
                     })
                     .ToList();
 
-                foreach (var function in generableFunctions)
+                var moduleReachableFunctions = explicitEntryPoints == null ? null : moduleCodegen.GetReachableFunctionNames();
+                var reachableGenerableFunctions = moduleReachableFunctions == null
+                    ? generableFunctions
+                    : generableFunctions.Where(function => moduleReachableFunctions.Contains(function.Name)).ToList();
+
+                // Monomorphized function ownership depends on this build's import
+                // graph, so a per-module C manifest cannot safely cache the winner.
+                if (reachableGenerableFunctions.Any(moduleCodegen.IsMonomorphizedFunction))
+                    cachedGeneratedFiles = null;
+
+                if (reachableGenerableFunctions.Count == 0)
+                {
+                    if (options.Verbose)
+                    {
+                        Console.WriteLine($"    [SKIPPED] No reachable functions for {Path.GetFileName(modulePath)}");
+                    }
+                    continue;
+                }
+
+                foreach (var function in reachableGenerableFunctions)
                 {
                     // Check if this is a monomorphized function (trait method or static generic function)
                     bool isMonomorphized = moduleCodegen.IsMonomorphizedFunction(function);
@@ -1830,7 +2095,7 @@ public class Program
                 cFiles.AddRange(cachedGeneratedFiles ?? moduleCFiles);
 
                 var cacheLabel = cachedGeneratedFiles != null ? ", cached C" : "";
-                Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath)} ({functions.Count} function{(functions.Count > 1 ? "s" : "")}{cacheLabel})");
+                Console.WriteLine($"  → {PathUtility.GetModuleDisplayName(modulePath)} ({reachableGenerableFunctions.Count} function{(reachableGenerableFunctions.Count > 1 ? "s" : "")}{cacheLabel})");
             }
 
             // Always generate debug_symbols.c - it provides __novus_init_debug_symbols()
@@ -2033,6 +2298,22 @@ ___stack:
                     return 1;
                 }
                 objectFiles.Add(stackConfigObj);
+            }
+
+            foreach (var (function, stub) in new[]
+                     {
+                         ("DoTimer", "alib_dotimer"),
+                         ("fpbcd", "alib_fpbcd")
+                     }.Where(item => linkedFunctions.Contains(item.Item1)))
+            {
+                var source = Path.Combine(compilerDir, "stubs", $"{stub}.s");
+                var obj = Path.Combine(outputDir, $"{stub}.o");
+                if (!await AssembleCached(source, obj, assemblyCpu, false))
+                {
+                    Console.WriteLine($"Failed to assemble {function} compatibility helper");
+                    return 1;
+                }
+                objectFiles.Add(obj);
             }
 
             // Safe to add now: for executables novus_startup.o is already first, so

@@ -6,6 +6,7 @@ using Novus.IR;
 using Novus.Parser;
 using Novus.SemanticAnalysis;
 using Xunit;
+using System.Text.RegularExpressions;
 
 namespace Novus.Tests;
 
@@ -512,6 +513,49 @@ pub fn make_size() -> Size {
         var structNames = registry.StructTypes.Select(s => s.Name).ToHashSet();
         Assert.Contains("Point", structNames);
         Assert.Contains("Size", structNames);
+    }
+
+    [Fact]
+    public void TypeRegistry_SameNameStructsInDifferentModules_GenerateDistinctDefinitions()
+    {
+        var source1 = @"
+pub struct GadgetFixture {
+    list: i16,
+    context: i16,
+    gadget: i16,
+}
+
+pub fn make_a() -> GadgetFixture {
+    return GadgetFixture { list: 0, context: 0, gadget: 0 }
+}";
+
+        var source2 = @"
+pub struct GadgetFixture {
+    screen: i32,
+    window: i32,
+}
+
+pub fn make_b() -> GadgetFixture {
+    return GadgetFixture { screen: 1, window: 2 }
+}";
+
+        var moduleA = BuildIR(source1);
+        var moduleB = BuildIR(source2);
+        var registry = new TypeRegistry();
+
+        registry.RegisterModule(moduleA);
+        registry.RegisterModule(moduleB);
+
+        var matching = registry.StructTypes.Where(s => s.Name == "GadgetFixture").ToList();
+        Assert.Equal(2, matching.Count);
+
+        var header = CCodeGenerator.GenerateSharedTypesHeader(registry);
+        var structDefs = Regex.Matches(header, @"struct (GadgetFixture(?:__novus_[0-9a-f]{8})?) \{")
+                              .Select(m => m.Groups[1].Value)
+                              .ToList();
+        Assert.Equal(2, structDefs.Count);
+        Assert.Contains("GadgetFixture", structDefs);
+        Assert.Matches(@"GadgetFixture__novus_[0-9a-f]{8}", string.Join(' ', structDefs));
     }
 
     [Fact]

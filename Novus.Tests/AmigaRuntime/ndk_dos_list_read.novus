@@ -1,0 +1,101 @@
+from std::test::test import expect
+from amiga::raw::consts import LDF_DEVICES, LDF_READ
+from amiga::raw::dos import AttemptLockDosList, FindDosEntry, LockDosList, NextDosEntry, UnLockDosList
+from amiga::raw::structs import DosList, ExecBase
+
+fn scheduler_nest_count() -> i8 {
+    let exec = unsafe { (*ExecBase)*(*u32)4 }
+    if exec == null { return -128 }
+    return unsafe { (*exec).TDNestCnt }
+}
+
+// @covers-ndk function|dos.library|LockDosList
+// @ndk-side-effects Acquires the shared device-list lock under one Exec Forbid level, resolves RAM while protected, and releases both the list lock and scheduler nesting
+@test("dos.library LockDosList protects device-list access")
+pub fn dos_lock_dos_list() {
+    let flags = LDF_DEVICES | LDF_READ
+    let before = scheduler_nest_count()
+    let root = LockDosList(flags)
+    let during = scheduler_nest_count()
+    let ram = if root != null { FindDosEntry(root, "RAM", LDF_DEVICES) } else { (*DosList)null }
+    if root != null { UnLockDosList(flags) }
+    let after = scheduler_nest_count()
+    expect(root != null && ram != null, "locked device list contains RAM")
+    expect(during == before + 1, "LockDosList enters one Forbid level")
+    expect(after == before, "UnLockDosList restores scheduler nesting")
+}
+
+// @covers-ndk function|dos.library|AttemptLockDosList
+// @ndk-side-effects Acquires the currently uncontended shared device-list lock under one Exec Forbid level, resolves RAM while protected, and balances both states
+@test("dos.library AttemptLockDosList acquires an available list")
+pub fn dos_attempt_lock_dos_list() {
+    let flags = LDF_DEVICES | LDF_READ
+    let before = scheduler_nest_count()
+    let root = AttemptLockDosList(flags)
+    let during = scheduler_nest_count()
+    let ram = if root != null { FindDosEntry(root, "RAM", LDF_DEVICES) } else { (*DosList)null }
+    if root != null { UnLockDosList(flags) }
+    let after = scheduler_nest_count()
+    expect(root != null && ram != null, "uncontended attempt locks the device list")
+    expect(during == before + 1, "successful attempt enters one Forbid level")
+    expect(after == before, "attempted lock release restores scheduler nesting")
+}
+
+// @covers-ndk function|dos.library|FindDosEntry
+// @ndk-side-effects Searches the live protected device list for RAM without retaining the returned list pointer after unlocking
+@test("dos.library FindDosEntry locates a named device")
+pub fn dos_find_dos_entry() {
+    let flags = LDF_DEVICES | LDF_READ
+    let root = LockDosList(flags)
+    let found = root != null && FindDosEntry(root, "RAM", LDF_DEVICES) != null
+    let missing = root != null && FindDosEntry(root, "NOVUS_NDK_MISSING", LDF_DEVICES) == null
+    if root != null { UnLockDosList(flags) }
+    expect(found, "RAM is present in the device list")
+    expect(missing, "an absent device is not fabricated")
+}
+
+// @covers-ndk function|dos.library|NextDosEntry
+// @ndk-side-effects Walks every live device-list entry under its shared lock until it reaches the RAM entry or exhausts the list, then releases the lock
+@test("dos.library NextDosEntry traverses devices")
+pub fn dos_next_dos_entry() {
+    let flags = LDF_DEVICES | LDF_READ
+    let root = LockDosList(flags)
+    let target = if root != null { FindDosEntry(root, "RAM", LDF_DEVICES) } else { (*DosList)null }
+    var current = if root != null { NextDosEntry(root, LDF_DEVICES) } else { (*DosList)null }
+    var found = false
+    var visits: u32 = 0
+    while current != null && visits < 256 {
+        if current == target {
+            found = true
+            break
+        }
+        current = NextDosEntry(current, LDF_DEVICES)
+        visits++
+    }
+    if root != null { UnLockDosList(flags) }
+    expect(target != null && found, "sequential traversal reaches the named RAM device")
+    expect(visits < 256, "device traversal terminates within its safety bound")
+}
+
+// @covers-ndk function|dos.library|UnLockDosList
+// @ndk-side-effects Releases two nested shared device-list locks and their two matching Exec Forbid levels in reverse order, then proves the list is immediately available again
+@test("dos.library UnLockDosList balances nested locks")
+pub fn dos_unlock_dos_list() {
+    let flags = LDF_DEVICES | LDF_READ
+    let before = scheduler_nest_count()
+    let first = LockDosList(flags)
+    let after_first = scheduler_nest_count()
+    let second = if first != null { LockDosList(flags) } else { (*DosList)null }
+    let after_second = scheduler_nest_count()
+    if second != null { UnLockDosList(flags) }
+    let after_one_release = scheduler_nest_count()
+    if first != null { UnLockDosList(flags) }
+    let after_both = scheduler_nest_count()
+    let reacquired = AttemptLockDosList(flags)
+    if reacquired != null { UnLockDosList(flags) }
+    let final_count = scheduler_nest_count()
+    expect(first != null && second != null && reacquired != null, "nested locks release the list for immediate reuse")
+    expect(after_first == before + 1 && after_second == before + 2, "nested locks enter matching Forbid levels")
+    expect(after_one_release == before + 1, "one unlock releases one Forbid level")
+    expect(after_both == before && final_count == before, "all unlocks and reacquisition restore scheduler state")
+}

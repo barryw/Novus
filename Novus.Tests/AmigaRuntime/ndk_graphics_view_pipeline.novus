@@ -1,0 +1,443 @@
+from std::core import Result
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::structs import BitMap, ColorMap, CopIns, Interrupt, RasInfo, UCopList, View, ViewPort, cprlist
+from amiga::raw::exec import AddIntServer, AllocMem, FreeMem, RemIntServer
+from amiga::raw::graphics import AllocBitMap, AllocDBufInfo, CalcIVG, CBump, ChangeVPBitMap, CMove, CWait, FreeBitMap, FreeColorMap, FreeCprList, FreeDBufInfo, FreeVPortCopLists, GetColorMap, InitView, InitVPort, LoadView, MakeVPort, MrgCop, ScrollVPort, SetRGB4CM, UCopperListInit, VBeamPos, WaitBOVP, WaitTOF
+from amiga::raw::intuition import ViewAddress
+from amiga::sys::intuition import ScreenHandle
+
+struct DisplayStorage {
+    bitmap: *BitMap,
+    colors: *ColorMap,
+}
+
+fn prepare(view: *View, viewport: *ViewPort, rasinfo: *RasInfo) -> DisplayStorage {
+    InitView(view)
+    InitVPort(viewport)
+
+    let bitmap = AllocBitMap(320, 256, 1, BMF_CLEAR | BMF_DISPLAYABLE, null)
+    if bitmap == null {
+        return DisplayStorage { bitmap: null, colors: null }
+    }
+    let colors = GetColorMap(2)
+    if colors == null {
+        FreeBitMap(bitmap)
+        return DisplayStorage { bitmap: null, colors: null }
+    }
+
+    SetRGB4CM(colors, 0, 0, 0, 0)
+    SetRGB4CM(colors, 1, 15, 15, 15)
+    unsafe {
+        (*rasinfo).Next = null
+        (*rasinfo).BitMap = bitmap
+        (*rasinfo).RxOffset = 0
+        (*rasinfo).RyOffset = 0
+        (*viewport).ColorMap = colors
+        (*viewport).DWidth = 320
+        (*viewport).DHeight = 256
+        (*viewport).DxOffset = 0
+        (*viewport).DyOffset = 0
+        (*viewport).Modes = 0
+        (*viewport).RasInfo = rasinfo
+        (*view).ViewPort = viewport
+    }
+    return DisplayStorage { bitmap: bitmap, colors: colors }
+}
+
+fn ready(storage: &DisplayStorage) -> bool {
+    return storage.bitmap != null && storage.colors != null
+}
+
+fn release_hardware_lists(view: *View) {
+    let long_frame = unsafe { (*view).LOFCprList }
+    let short_frame = unsafe { (*view).SHFCprList }
+    unsafe {
+        (*view).LOFCprList = null
+        (*view).SHFCprList = null
+    }
+    if long_frame != null { FreeCprList(long_frame) }
+    if short_frame != null && short_frame != long_frame { FreeCprList(short_frame) }
+}
+
+fn release(view: *View, viewport: *ViewPort, storage: &DisplayStorage) {
+    release_hardware_lists(view)
+    FreeVPortCopLists(viewport)
+    if storage.colors != null { FreeColorMap(storage.colors) }
+    if storage.bitmap != null { FreeBitMap(storage.bitmap) }
+}
+
+fn hardware_move_present(list: *cprlist, register_offset: u16, data: u16) -> bool {
+    if list == null { return false }
+    let start = unsafe { (*list).start }
+    let count = (u32)(u16)unsafe { (*list).MaxCount }
+    if start == null || count <= 0 { return false }
+
+    for var index: u32 = 0; index < count; index++ {
+        let word = index * 2
+        if unsafe { start[word] == register_offset && start[word + 1] == data } {
+            return true
+        }
+    }
+    return false
+}
+
+fn hardware_bitplane_pointer(list: *cprlist) -> u32 {
+    if list == null { return 0 }
+    let start = unsafe { (*list).start }
+    let count = (u32)(u16)unsafe { (*list).MaxCount }
+    if start == null || count <= 0 { return 0 }
+    var high: u32 = 0
+    var low: u32 = 0
+    var found_high = false
+    var found_low = false
+    for var index: u32 = 0; index < count; index++ {
+        let word = index * 2
+        let reg = unsafe { start[word] }
+        if reg == $00E0 {
+            high = (u32)unsafe { start[word + 1] }
+            found_high = true
+        }
+        if reg == $00E2 {
+            low = (u32)unsafe { start[word + 1] }
+            found_low = true
+        }
+    }
+    return 0 unless found_high && found_low
+    return (high << 16) | low
+}
+
+@interrupt
+amiga fn pipeline_copper_interrupt(fired: *u8 in a1) -> u32 in d0 {
+    unsafe {
+        write_volatile((*u32)fired, 1)
+        write_volatile((*u16)$DFF09C, (u16)$0010)
+    }
+    return 1
+}
+
+fn attach_execution_list(viewport: *ViewPort) -> bool {
+    let storage = unsafe { AllocMem(@sizeof(UCopList), MEMF_PUBLIC | MEMF_CLEAR) }
+    if storage == null { return false }
+    let user = (*UCopList)storage
+    let first = UCopperListInit(user, 5)
+    if first == null {
+        unsafe { FreeMem(storage, @sizeof(UCopList)) }
+        return false
+    }
+
+    CWait(user, 80, 0)
+    CBump(user)
+    CMove(user, (*u8)$DFF180, (i16)$05A3)
+    CBump(user)
+    CMove(user, (*u8)$DFF09C, -32752)
+    CBump(user)
+    CWait(user, 10000, 255)
+    unsafe { (*viewport).UCopIns = user }
+    return true
+}
+
+// @covers-ndk function|graphics.library|MakeVPort
+// @ndk-side-effects MakeVPort consumes a displayable one-plane BitMap and RasInfo, returns MVP_OK, and installs a non-empty intermediate display list owned by the exact ViewPort; cleanup returns every allocation
+@test("graphics.library MakeVPort constructs an owned display list")
+pub fn graphics_make_viewport() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let result = MakeVPort(&var view, &var viewport)
+    expect_eq(result, 0, "valid display geometry returns MVP_OK")
+    expect_eq(@sizeof(CopIns), 6, "CopIns matches the classic 68k NDK ABI")
+    if result == 0 {
+        unsafe {
+            expect(viewport.DspIns != null, "display instructions allocated")
+            if viewport.DspIns != null {
+                let list = viewport.DspIns
+                expect((*list).CopIns != null, "display instruction storage allocated")
+                expect((*list).Count > 0, "display list commits concrete instructions")
+                expect((*list).MaxCount >= (*list).Count, "committed instructions remain within capacity")
+            }
+        }
+    }
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|CalcIVG
+// @ndk-side-effects CalcIVG reads the display instructions made for a valid ViewPort and returns the same nonzero blank-line budget on repeated calls without mutating either structure
+@test("graphics.library CalcIVG returns a stable display bandwidth gap")
+pub fn graphics_calc_ivg() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let made = MakeVPort(&var view, &var viewport)
+    let first = if made == 0 { CalcIVG(&var view, &var viewport) } else { 0 }
+    let second = if made == 0 { CalcIVG(&var view, &var viewport) } else { 0 }
+    expect(made == 0 && first > 0 && first == second && first < 256,
+        "valid display instructions produce a stable bounded gap")
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|MrgCop
+// @ndk-side-effects MrgCop merges a valid ViewPort display list into a non-empty long-frame hardware list containing the exact impossible WAIT terminator within its declared bound; all merged and intermediate storage is released
+@test("graphics.library MrgCop emits a terminated hardware program")
+pub fn graphics_merge_copper() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let made = MakeVPort(&var view, &var viewport)
+    let merged = if made == 0 { MrgCop(&var view) } else { 1 }
+    expect(made == 0 && merged == 0, "valid display merges with MCOP_OK")
+    if merged == 0 && view.LOFCprList != null {
+        let list = view.LOFCprList
+        let count = (u32)(u16)unsafe { (*list).MaxCount }
+        let start = unsafe { (*list).start }
+        expect(count > 0 && start != null, "long-frame hardware list has executable words")
+        if count > 0 && start != null {
+            var terminated = false
+            for var index: u32 = 0; index < count; index++ {
+                let word = index * 2
+                if unsafe { start[word] == $FFFF && start[word + 1] == $FFFE } {
+                    terminated = true
+                }
+            }
+            expect(terminated, "hardware list contains the canonical impossible WAIT")
+        }
+    } else {
+        expect(false, "long-frame hardware list allocated")
+    }
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|FreeCprList
+// @ndk-side-effects FreeCprList releases the real long-frame hardware program allocated by MrgCop after the View is detached from it; the harness proves the allocation is returned
+@test("graphics.library FreeCprList releases a merged hardware program")
+pub fn graphics_free_cpr_list() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let made = MakeVPort(&var view, &var viewport)
+    let merged = if made == 0 { MrgCop(&var view) } else { 1 }
+    let list = view.LOFCprList
+    expect(made == 0 && merged == 0 && list != null, "MrgCop allocated a long-frame program")
+    if list != null {
+        view.LOFCprList = null
+        if view.SHFCprList == list { view.SHFCprList = null }
+        FreeCprList(list)
+    }
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|FreeVPortCopLists
+// @ndk-side-effects FreeVPortCopLists releases both a real MakeVPort display list and an allocated user copper list, then clears DspIns, SprIns, ClrIns, and UCopIns exactly as documented; the harness proves all storage is returned
+@test("graphics.library FreeVPortCopLists clears every owned list")
+pub fn graphics_free_viewport_copper_lists() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let attached = attach_execution_list(&var viewport)
+    let made = MakeVPort(&var view, &var viewport)
+    expect(attached && made == 0 && viewport.DspIns != null && viewport.UCopIns != null,
+        "fixture owns display and user copper lists")
+    FreeVPortCopLists(&var viewport)
+    expect(viewport.DspIns == null && viewport.SprIns == null &&
+        viewport.ClrIns == null && viewport.UCopIns == null,
+        "all four ViewPort copper-list fields are cleared")
+    if storage.colors != null { FreeColorMap(storage.colors) }
+    if storage.bitmap != null { FreeBitMap(storage.bitmap) }
+}
+
+// @covers-ndk function|graphics.library|LoadView
+// @ndk-side-effects LoadView installs a fully merged manual View; its hardware list contains the requested COLOR00 move and then executes the following INTREQ move, proven by a real Exec copper-interrupt server before the saved Intuition View is restored
+@test("graphics.library LoadView executes the merged display program")
+pub fn graphics_load_view_executes() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+
+    let attached = attach_execution_list(&var viewport)
+    let made = if attached { MakeVPort(&var view, &var viewport) } else { 1 }
+    let merged = if made == 0 { MrgCop(&var view) } else { 1 }
+    let list = view.LOFCprList
+    expect(attached && made == 0 && merged == 0 && list != null,
+        "complete manual display program built")
+    if list == null {
+        release(&var view, &var viewport, &storage)
+        return
+    }
+    expect(hardware_move_present(list, $0180, $05A3), "merged program contains exact COLOR00 move")
+    expect(hardware_move_present(list, $009C, $8010), "merged program contains exact copper interrupt move")
+
+    var fired: u32 = 0
+    var server: Interrupt = @zeroed(Interrupt)
+    server.is_Node.ln_Type = 2
+    server.is_Node.ln_Pri = 0
+    server.is_Node.ln_Name = null
+    server.is_Data = (*u8)&var fired
+    server.is_Code = pipeline_copper_interrupt
+    AddIntServer(4, &var server)
+
+    let saved = ViewAddress()
+    LoadView(&var view)
+    var frames: u32 = 0
+    while unsafe { read_volatile((*u32)&var fired) } == 0 && frames < 4 {
+        WaitTOF()
+        frames++
+    }
+    LoadView(saved)
+    WaitTOF()
+    RemIntServer(4, &var server)
+    expect_eq(unsafe { read_volatile((*u32)&fired) }, 1,
+        "A4000 copper executed through the interrupt instruction")
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|WaitBOVP
+// @ndk-side-effects After WaitTOF starts a fresh frame, WaitBOVP busy-waits on a live private ViewPort until VBeamPos is at or beyond that ViewPort's exact bottom edge without altering its geometry
+@test("graphics.library WaitBOVP reaches the live ViewPort bottom")
+pub fn graphics_wait_bottom_viewport() {
+    let display = match ScreenHandle::lores("Novus WaitBOVP test", 1) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    display.to_front()
+    let viewport = display.viewport()
+    let bottom = unsafe { (*viewport).DyOffset + (*viewport).DHeight }
+    WaitTOF()
+    let before = VBeamPos()
+    WaitBOVP(viewport)
+    let after = VBeamPos()
+    expect(before < bottom && after >= bottom && after < 512,
+        "beam advanced from the new frame through the ViewPort bottom")
+}
+
+// @covers-ndk function|graphics.library|ChangeVPBitMap
+// @ndk-side-effects ChangeVPBitMap swaps a live manual ViewPort between two layout-compatible displayable CHIP BitMaps, updates RasInfo and the executed BPL1 copper pointer to each exact plane identity, then restores the original before either caller-owned bitmap is released
+@test("graphics.library ChangeVPBitMap patches the live bitplane pointer")
+pub fn graphics_change_viewport_bitmap() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+    let replacement = AllocBitMap(320, 256, 1, BMF_CLEAR | BMF_DISPLAYABLE, storage.bitmap)
+    let outgoing = AllocDBufInfo(&var viewport)
+    let restoring = AllocDBufInfo(&var viewport)
+    expect(replacement != null && outgoing != null && restoring != null,
+        "compatible replacement bitmap and synchronization records allocated")
+    if replacement == null || outgoing == null || restoring == null {
+        if restoring != null { FreeDBufInfo(restoring) }
+        if outgoing != null { FreeDBufInfo(outgoing) }
+        if replacement != null { FreeBitMap(replacement) }
+        release(&var view, &var viewport, &storage)
+        return
+    }
+    let made = MakeVPort(&var view, &var viewport)
+    let merged = if made == 0 { MrgCop(&var view) } else { 1 }
+    expect(made == 0 && merged == 0 && view.LOFCprList != null,
+        "manual ViewPort has a complete hardware list")
+    if made != 0 || merged != 0 || view.LOFCprList == null {
+        FreeDBufInfo(restoring)
+        FreeDBufInfo(outgoing)
+        FreeBitMap(replacement)
+        release(&var view, &var viewport, &storage)
+        return
+    }
+    let original_plane = (u32)unsafe { (*storage.bitmap).Planes[0] }
+    let replacement_plane = (u32)unsafe { (*replacement).Planes[0] }
+    expect(hardware_bitplane_pointer(view.LOFCprList) == original_plane,
+        "merged display starts at the original plane address")
+    let saved = ViewAddress()
+    LoadView(&var view)
+    WaitTOF()
+
+    ChangeVPBitMap(&var viewport, replacement, outgoing)
+    WaitTOF()
+    WaitBOVP(&var viewport)
+    expect(rasinfo.BitMap == replacement &&
+        hardware_bitplane_pointer(view.LOFCprList) == replacement_plane,
+        "live RasInfo and hardware copper list select the replacement plane")
+
+    ChangeVPBitMap(&var viewport, storage.bitmap, restoring)
+    WaitTOF()
+    WaitBOVP(&var viewport)
+    expect(rasinfo.BitMap == storage.bitmap &&
+        hardware_bitplane_pointer(view.LOFCprList) == original_plane,
+        "second swap restores both original software and hardware addresses")
+    LoadView(saved)
+    WaitTOF()
+    FreeDBufInfo(restoring)
+    FreeDBufInfo(outgoing)
+    FreeBitMap(replacement)
+    release(&var view, &var viewport, &storage)
+}
+
+// @covers-ndk function|graphics.library|ScrollVPort
+// @ndk-side-effects ScrollVPort applies a one-row RasInfo offset to a live manual ViewPort by advancing the executed BPL1 copper pointer by the bitmap's exact BytesPerRow, then reverses the offset and restores the original address before teardown
+@test("graphics.library ScrollVPort patches one exact bitmap row")
+pub fn graphics_scroll_viewport() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    var rasinfo: RasInfo = @zeroed(RasInfo)
+    let storage = prepare(&var view, &var viewport, &var rasinfo)
+    expect(ready(&storage), "manual display storage allocated")
+    if !ready(&storage) { return }
+    viewport.DHeight = 255
+    let made = MakeVPort(&var view, &var viewport)
+    let merged = if made == 0 { MrgCop(&var view) } else { 1 }
+    expect(made == 0 && merged == 0 && view.LOFCprList != null,
+        "scroll fixture has a complete hardware list")
+    if made != 0 || merged != 0 || view.LOFCprList == null {
+        release(&var view, &var viewport, &storage)
+        return
+    }
+    let original_plane = (u32)unsafe { (*storage.bitmap).Planes[0] }
+    let row_bytes = (u32)unsafe { (*storage.bitmap).BytesPerRow }
+    expect(hardware_bitplane_pointer(view.LOFCprList) == original_plane,
+        "unscrolled hardware pointer starts at row zero")
+    let saved = ViewAddress()
+    LoadView(&var view)
+    WaitTOF()
+
+    rasinfo.RyOffset = 1
+    ScrollVPort(&var viewport)
+    WaitTOF()
+    WaitBOVP(&var viewport)
+    expect(hardware_bitplane_pointer(view.LOFCprList) == original_plane + row_bytes,
+        "one-row scroll advances hardware by exactly BytesPerRow")
+
+    rasinfo.RyOffset = 0
+    ScrollVPort(&var viewport)
+    WaitTOF()
+    WaitBOVP(&var viewport)
+    expect(hardware_bitplane_pointer(view.LOFCprList) == original_plane,
+        "zero offset restores the original hardware plane address")
+    LoadView(saved)
+    WaitTOF()
+    release(&var view, &var viewport, &storage)
+}

@@ -1,0 +1,92 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import SYS_Output, TAG_DONE
+from amiga::raw::dos import Close, DeleteFile, Execute, Flush, Open, Read, SetProtection, System, SystemTagList, SystemTags, Write
+from amiga::raw::structs import TagItem
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn remove_output() {
+    SetProtection("SYS:T/novus_ndk_shell_output", 0)
+    DeleteFile("SYS:T/novus_ndk_shell_output")
+}
+
+fn open_output() -> i32 {
+    remove_output()
+    return Open("SYS:T/novus_ndk_shell_output", 1006)
+}
+
+fn finish_output(handle: i32) -> bool {
+    let marker_written = if handle != 0 { Write(handle, "!", 1) } else { -1 }
+    if handle != 0 { Flush(handle) }
+    let closed = if handle != 0 { Close(handle) } else { 0 }
+    let input = Open("SYS:T/novus_ndk_shell_output", 1005)
+    var bytes: [u8] = [0; 32]
+    let pointer = unsafe { (*u8)&var bytes[0] }
+    let count = if input != 0 { Read(input, pointer, 31) } else { -1 }
+    if input != 0 { Close(input) }
+    remove_output()
+    return marker_written == 1 && closed != 0 && count == 6 && c_equals(pointer, "List\n!")
+}
+
+// @covers-ndk function|dos.library|Execute
+// @ndk-side-effects Starts the boot shell synchronously with caller-owned output, runs C:List with deterministic LFORMAT output, preserves the output handle for a trailing write, and returns only after the command completes
+@test("dos.library Execute runs a synchronous shell command")
+pub fn dos_execute() {
+    let output = open_output()
+    let result = if output != 0 { Execute("C:List SYS:C/List LFORMAT %N", 0, output) } else { 0 }
+    let exact = finish_output(output)
+    expect(output != 0 && result != 0, "Execute finds and starts the command")
+    expect(exact, "command output is exact and the caller still owns its handle")
+}
+
+// @covers-ndk function|dos.library|SystemTagList
+// @ndk-side-effects Spawns a synchronous shell using an explicit SYS_Output TagItem list, returns the command's zero status, and preserves caller ownership of the exact-output handle
+@test("dos.library SystemTagList executes with explicit tags")
+pub fn dos_system_tag_list() {
+    let output = open_output()
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SYS_Output, ti_Data: (u32)output },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let result = if output != 0 { SystemTagList("C:List SYS:C/List LFORMAT %N", &var tags[0]) } else { -1 }
+    let exact = finish_output(output)
+    expect(result == 0, "SystemTagList returns the command status")
+    expect(exact, "tagged command output is exact and remains caller-owned")
+}
+
+// @covers-ndk function|dos.library|System
+// @ndk-side-effects Executes through the System entry point with an explicit SYS_Output tag list, returns the command's zero status, and leaves the exact-output handle open for its caller
+@test("dos.library System executes with a TagItem list")
+pub fn dos_system() {
+    let output = open_output()
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SYS_Output, ti_Data: (u32)output },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let result = if output != 0 { System("C:List SYS:C/List LFORMAT %N", &var tags[0]) } else { -1 }
+    let exact = finish_output(output)
+    expect(result == 0, "System returns the command status")
+    expect(exact, "System writes exact output without consuming its handle")
+}
+
+// @covers-ndk function|dos.library|SystemTags
+// @ndk-side-effects Executes through the variadic SystemTags entry point with SYS_Output and TAG_DONE, returns the command's zero status, and leaves the exact-output handle open for its caller
+@test("dos.library SystemTags executes with variadic tags")
+pub fn dos_system_tags() {
+    let output = open_output()
+    let result = if output != 0 { SystemTags("C:List SYS:C/List LFORMAT %N", SYS_Output, (u32)output, TAG_DONE) } else { -1 }
+    let exact = finish_output(output)
+    expect(result == 0, "SystemTags returns the command status")
+    expect(exact, "variadic command output is exact and remains caller-owned")
+}

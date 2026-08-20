@@ -1,0 +1,1 @@
+{"errors": [], "functions": [{"module": "demo", "interface": "demo.library", "name": "Thing", "runtime_verified": true, "leak_verified": true, "documented": true, "behavior_mapped": true, "side_effects_documented": true}], "summary": {}}

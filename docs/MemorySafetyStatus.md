@@ -31,8 +31,9 @@ library follows the same ownership vocabulary as the language.
 - Non-consuming parameters cannot forward owned data into a consuming call.
   `Copy` implementations are rejected for resource owners, non-Copy fields,
   and mutable references.
-- `Drop` receives `&var self`. Moved fields are disarmed before cleanup, so
-  ownership is released exactly once.
+- `Drop` receives `&var self`. Its custom cleanup runs before owned fields are
+  dropped automatically in reverse declaration order. Moved fields are
+  disarmed before cleanup, so ownership is released exactly once.
 
 ## Standard-library contract
 

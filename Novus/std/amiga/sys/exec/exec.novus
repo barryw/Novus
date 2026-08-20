@@ -655,9 +655,8 @@ impl SemaphoreHandle {
     /// Multiple tasks can hold shared access simultaneously.
     /// Blocks if another task holds exclusive access.
     ///
-    /// WARNING: Unlike exclusive locks, shared locks are NOT nestable from the
-    /// same task. Calling lock_shared() twice from the same task without
-    /// releasing the first lock will deadlock. Use lock() for nestable locking.
+    /// Shared locks may be nested; every guard must be released. Never try to
+    /// upgrade a held shared lock to an exclusive lock on the same semaphore.
     pub fn lock_shared(&self) -> SharedSemaphoreGuard {
         unsafe {
             __novus_obtain_semaphore_shared(self.sem)
@@ -669,15 +668,20 @@ impl SemaphoreHandle {
     ///
     /// Returns Some(guard) if successful, None if semaphore is exclusively held.
     ///
-    /// WARNING: Unlike exclusive locks, shared locks are NOT nestable from the
-    /// same task. Calling try_lock_shared() twice from the same task without
-    /// releasing the first lock may succeed but will deadlock on release.
+    /// Shared locks may be nested; every successful guard must be released.
+    /// Never try to upgrade a held shared lock to an exclusive lock.
     pub fn try_lock_shared(&self) -> Option<SharedSemaphoreGuard> {
         let result = unsafe { __novus_attempt_semaphore_shared(self.sem) }
         if result != 0 {
             return Option::Some(SharedSemaphoreGuard { sem: self.sem, owner: self })
         }
         return Option::None
+    }
+
+    /// Borrows the underlying Exec semaphore for Tier 3 interoperation and
+    /// state inspection. The pointer remains owned by this handle.
+    pub fn as_raw(&self) -> *SignalSemaphore {
+        return (*SignalSemaphore)self.sem
     }
 
 }
@@ -860,7 +864,6 @@ impl<T> ScopedData<T> {
 
 impl<T> Drop for ScopedData<T> {
     fn drop(&var self) {
-        @drop_in_place(&var self.data)
         if (u32)self.sem != 0 {
             let sem_size: u32 = @sizeof(SignalSemaphore)
             unsafe {

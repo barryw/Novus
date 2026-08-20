@@ -1,0 +1,384 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import DAY_1, OC_BuiltInLanguage, SC_ASCII, TAG_DONE
+from amiga::raw::dos import IoErr, SetIoErr
+from amiga::raw::locale import CloseCatalog, CloseLocale, ConvToLower, ConvToUpper, FormatDate, FormatString, GetCatalogStr, GetLocaleStr, IsAlNum, IsAlpha, IsCntrl, IsDigit, IsGraph, IsLower, IsPrint, IsPunct, IsSpace, IsUpper, IsXDigit, OpenCatalog, OpenCatalogA, OpenLocale, ParseDate, StrConvert, StrnCmp
+from amiga::raw::structs import Catalog, DateStamp, Hook, Locale, MinNode, TagItem
+
+struct OutputState {
+    buffer: *u32,
+    index: u32,
+    capacity: u32,
+}
+
+struct InputState {
+    text: *u8,
+    index: u32,
+}
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    return false if actual == null
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn bytes_equal(left: *u8, right: *u8, length: u32) -> bool {
+    unsafe {
+        var index: u32 = 0
+        while index <= length {
+            if left[index] != right[index] { return false }
+            index++
+        }
+    }
+    return true
+}
+
+fn output_equals(actual: *u32, expected: Str) -> bool {
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != (u32)expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+amiga fn locale_put_char(hook: *Hook in a0, _locale: *u8 in a2, character: *u8 in a1) -> u32 in d0 {
+    return 0 if hook == null || hook.h_Data == null
+    let state = (*OutputState)hook.h_Data
+    let value = (u32)character
+    unsafe {
+        if state.index < state.capacity {
+            state.buffer[state.index] = value
+            state.index++
+        }
+    }
+    return value
+}
+
+amiga fn locale_get_char(hook: *Hook in a0, _unused: *u8 in a2, _locale: *u8 in a1) -> u32 in d0 {
+    return 0 if hook == null || hook.h_Data == null
+    let state = (*InputState)hook.h_Data
+    let value = unsafe { state.text[state.index] }
+    if value != 0 { state.index++ }
+    return (u32)value
+}
+
+fn output_hook(state: *OutputState) -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: locale_put_char,
+        h_SubEntry: locale_put_char,
+        h_Data: (*u8)state,
+    }
+}
+
+fn input_hook(state: *InputState) -> Hook {
+    return Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: locale_get_char,
+        h_SubEntry: locale_get_char,
+        h_Data: (*u8)state,
+    }
+}
+
+fn default_locale() -> *Locale {
+    return OpenLocale(null)
+}
+
+// @covers-ndk function|locale.library|OpenLocale
+// @ndk-side-effects Opens the guaranteed current default locale, verifies its public locale and language names are initialized, and closes it
+@test("locale.library OpenLocale opens the current default locale")
+pub fn locale_open() {
+    let locale = default_locale()
+    let valid = locale != null && locale.loc_LocaleName != null && unsafe { locale.loc_LocaleName[0] != 0 } && locale.loc_LanguageName != null && unsafe { locale.loc_LanguageName[0] != 0 }
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "default locale exposes initialized locale and language names")
+}
+
+// @covers-ndk function|locale.library|CloseLocale
+// @ndk-side-effects Completes two guaranteed default-locale open/close lifecycles; the per-test A4000 memory gate verifies both references are released
+@test("locale.library CloseLocale releases opened locales")
+pub fn locale_close() {
+    let first = default_locale()
+    if first != null { CloseLocale(first) }
+    let second = default_locale()
+    if second != null { CloseLocale(second) }
+    expect(first != null && second != null, "two complete default-locale lifecycles succeed")
+}
+
+// @covers-ndk function|locale.library|ConvToLower
+// @ndk-side-effects Converts an uppercase ASCII character through the current locale and leaves a digit unchanged, then closes the locale
+@test("locale.library ConvToLower converts only uppercase input")
+pub fn locale_to_lower() {
+    let locale = default_locale()
+    let valid = locale != null && ConvToLower(locale, 65) == 97 && ConvToLower(locale, 55) == 55
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "A converts to a while digit 7 remains unchanged")
+}
+
+// @covers-ndk function|locale.library|ConvToUpper
+// @ndk-side-effects Converts a lowercase ASCII character through the current locale and leaves a digit unchanged, then closes the locale
+@test("locale.library ConvToUpper converts only lowercase input")
+pub fn locale_to_upper() {
+    let locale = default_locale()
+    let valid = locale != null && ConvToUpper(locale, 97) == 65 && ConvToUpper(locale, 55) == 55
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "a converts to A while digit 7 remains unchanged")
+}
+
+// @covers-ndk function|locale.library|FormatDate
+// @ndk-side-effects Formats the Amiga epoch through the documented A0/A1/A2/A3 hook ABI, captures every emitted byte including its terminator, and closes the locale
+@test("locale.library FormatDate emits an exact epoch timestamp")
+pub fn locale_format_date() {
+    let locale = default_locale()
+    var buffer: [u32] = [0; 32]
+    var state = OutputState { buffer: &var buffer[0], index: 0, capacity: 32 }
+    var hook = output_hook(&var state)
+    var date = DateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 }
+    if locale != null { FormatDate(locale, "%Y-%m-%d %H:%M:%S", &var date, &var hook) }
+    let valid = locale != null && state.index == 20 && output_equals(&var buffer[0], "1978-01-01 00:00:00")
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "epoch formats exactly and the callback receives its terminating byte")
+}
+
+// @covers-ndk function|locale.library|FormatString
+// @ndk-side-effects Formats an exact longword and C string through the documented callback registers, verifies the returned next-data pointer and terminating byte, and closes the locale
+@test("locale.library FormatString consumes and emits exact data")
+pub fn locale_format_string() {
+    let locale = default_locale()
+    var buffer: [u32] = [0; 32]
+    var state = OutputState { buffer: &var buffer[0], index: 0, capacity: 32 }
+    var hook = output_hook(&var state)
+    let text: *u8 = "ok"
+    var data: [u32] = [42, (u32)text]
+    let next = if locale != null { FormatString(locale, "%ld:%s", (*u8)&var data[0], &var hook) } else { (*u8)null }
+    let expected_next = (*u8)((u32)(*u32)&var data[0] + 8)
+    let valid = locale != null && next == expected_next && state.index == 6 && output_equals(&var buffer[0], "42:ok")
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "formatter emits 42:ok, consumes two longwords, and terminates output")
+}
+
+// @covers-ndk function|locale.library|GetCatalogStr
+// @ndk-side-effects Requests an absent string from the documented null-catalog fallback and verifies the exact caller-owned default string is returned without allocation
+@test("locale.library GetCatalogStr returns built-in fallback text")
+pub fn locale_get_catalog_string() {
+    let fallback: *u8 = "Novus fallback"
+    let result = GetCatalogStr(null, 12345, fallback)
+    expect(result == fallback && c_equals(result, "Novus fallback"), "null catalog returns the exact built-in fallback pointer")
+}
+
+// @covers-ndk function|locale.library|GetLocaleStr
+// @ndk-side-effects Reads the current locale's first weekday name, verifies it is a non-empty library-owned string, and closes the locale
+@test("locale.library GetLocaleStr returns localized weekday text")
+pub fn locale_get_locale_string() {
+    let locale = default_locale()
+    let text = if locale != null { GetLocaleStr(locale, DAY_1) } else { (*u8)null }
+    let valid = locale != null && text != null && unsafe { text[0] != 0 }
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "the current locale provides a non-empty first weekday name")
+}
+
+// @covers-ndk function|locale.library|IsAlNum
+// @ndk-side-effects Classifies one ASCII letter and one punctuation character through the current locale, then closes it
+@test("locale.library IsAlNum distinguishes letters from punctuation")
+pub fn locale_is_alnum() {
+    let locale = default_locale()
+    let valid = locale != null && IsAlNum(locale, 65) != 0 && IsAlNum(locale, 45) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "A is alphanumeric and hyphen is not")
+}
+
+// @covers-ndk function|locale.library|IsAlpha
+// @ndk-side-effects Classifies one ASCII letter and one digit through the current locale, then closes it
+@test("locale.library IsAlpha distinguishes letters from digits")
+pub fn locale_is_alpha() {
+    let locale = default_locale()
+    let valid = locale != null && IsAlpha(locale, 90) != 0 && IsAlpha(locale, 55) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "Z is alphabetic and 7 is not")
+}
+
+// @covers-ndk function|locale.library|IsCntrl
+// @ndk-side-effects Classifies one ASCII linefeed and one printable letter through the current locale, then closes it
+@test("locale.library IsCntrl distinguishes controls from printable text")
+pub fn locale_is_control() {
+    let locale = default_locale()
+    let valid = locale != null && IsCntrl(locale, 10) != 0 && IsCntrl(locale, 65) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "linefeed is control data and A is not")
+}
+
+// @covers-ndk function|locale.library|IsDigit
+// @ndk-side-effects Classifies one ASCII digit and one letter through the current locale, then closes it
+@test("locale.library IsDigit distinguishes digits from letters")
+pub fn locale_is_digit() {
+    let locale = default_locale()
+    let valid = locale != null && IsDigit(locale, 55) != 0 && IsDigit(locale, 65) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "7 is a digit and A is not")
+}
+
+// @covers-ndk function|locale.library|IsGraph
+// @ndk-side-effects Classifies one visible punctuation character and one space through the current locale, then closes it
+@test("locale.library IsGraph distinguishes visible glyphs from spaces")
+pub fn locale_is_graph() {
+    let locale = default_locale()
+    let valid = locale != null && IsGraph(locale, 33) != 0 && IsGraph(locale, 32) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "exclamation mark is graphical and space is not")
+}
+
+// @covers-ndk function|locale.library|IsLower
+// @ndk-side-effects Classifies lowercase and uppercase ASCII letters through the current locale, then closes it
+@test("locale.library IsLower distinguishes letter case")
+pub fn locale_is_lower() {
+    let locale = default_locale()
+    let valid = locale != null && IsLower(locale, 97) != 0 && IsLower(locale, 65) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "a is lowercase and A is not")
+}
+
+// @covers-ndk function|locale.library|IsPrint
+// @ndk-side-effects Verifies letters and spaces are printable, pins the installed classic locale bug that also classifies linefeed as printable, rejects NUL, and closes the locale; canonical VBCC C reproduces the same defect
+@test("locale.library IsPrint distinguishes printable spaces from controls")
+pub fn locale_is_print() {
+    let locale = default_locale()
+    let has_locale = locale != null
+    let letter_prints = locale != null && IsPrint(locale, 65) != 0
+    let space_prints = locale != null && IsPrint(locale, 32) != 0
+    let linefeed_bug = locale != null && IsPrint(locale, 10) != 0
+    let nul_does_not = locale != null && IsPrint(locale, 0) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(has_locale, "default locale opens")
+    expect(letter_prints, "A is printable")
+    expect(space_prints, "space is printable")
+    expect(linefeed_bug, "classic locale bug: linefeed is reported printable")
+    expect(nul_does_not, "NUL is not printable")
+}
+
+// @covers-ndk function|locale.library|IsPunct
+// @ndk-side-effects Classifies one ASCII punctuation character and one letter through the current locale, then closes it
+@test("locale.library IsPunct distinguishes punctuation from letters")
+pub fn locale_is_punct() {
+    let locale = default_locale()
+    let valid = locale != null && IsPunct(locale, 33) != 0 && IsPunct(locale, 65) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "exclamation mark is punctuation and A is not")
+}
+
+// @covers-ndk function|locale.library|IsSpace
+// @ndk-side-effects Classifies one ASCII space and one letter through the current locale, then closes it
+@test("locale.library IsSpace distinguishes whitespace from letters")
+pub fn locale_is_space() {
+    let locale = default_locale()
+    let valid = locale != null && IsSpace(locale, 32) != 0 && IsSpace(locale, 65) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "space is whitespace and A is not")
+}
+
+// @covers-ndk function|locale.library|IsUpper
+// @ndk-side-effects Classifies uppercase and lowercase ASCII letters through the current locale, then closes it
+@test("locale.library IsUpper distinguishes letter case")
+pub fn locale_is_upper() {
+    let locale = default_locale()
+    let valid = locale != null && IsUpper(locale, 65) != 0 && IsUpper(locale, 97) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "A is uppercase and a is not")
+}
+
+// @covers-ndk function|locale.library|IsXDigit
+// @ndk-side-effects Classifies one ASCII hexadecimal letter and one non-hexadecimal letter through the current locale, then closes it
+@test("locale.library IsXDigit distinguishes hexadecimal letters")
+pub fn locale_is_xdigit() {
+    let locale = default_locale()
+    let valid = locale != null && IsXDigit(locale, 70) != 0 && IsXDigit(locale, 71) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "F is hexadecimal and G is not")
+}
+
+// @covers-ndk function|locale.library|OpenCatalogA
+// @ndk-side-effects Opens the system Workbench catalog through a terminated tag list, accepts either the documented English built-in null result or a real localized catalog, validates the result, and closes it
+@test("locale.library OpenCatalogA selects matching built-in strings")
+pub fn locale_open_catalog_a() {
+    let locale = default_locale()
+    let english: *u8 = "english"
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: OC_BuiltInLanguage, ti_Data: (u32)english },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    SetIoErr(0)
+    let catalog = if locale != null { OpenCatalogA(locale, "sys/workbench.catalog", &var tags[0]) } else { (*Catalog)null }
+    let valid = locale != null && ((catalog == null && IoErr() == 0) || (catalog != null && catalog.cat_Language != null))
+    CloseCatalog(catalog)
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "Workbench strings resolve from English built-ins or an initialized localized catalog")
+}
+
+// @covers-ndk function|locale.library|OpenCatalog
+// @ndk-side-effects Opens the system Workbench catalog through varargs, accepts either the documented English built-in null result or a real localized catalog, validates the result, and closes it
+@test("locale.library OpenCatalog varargs selects matching built-in strings")
+pub fn locale_open_catalog() {
+    let locale = default_locale()
+    SetIoErr(0)
+    let catalog = if locale != null { OpenCatalog(locale, "sys/workbench.catalog", OC_BuiltInLanguage, "english", TAG_DONE) } else { (*Catalog)null }
+    let valid = locale != null && ((catalog == null && IoErr() == 0) || (catalog != null && catalog.cat_Language != null))
+    CloseCatalog(catalog)
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "varargs Workbench strings resolve from built-ins or an initialized localized catalog")
+}
+
+// @covers-ndk function|locale.library|CloseCatalog
+// @ndk-side-effects Closes the documented null built-in catalog result twice and verifies catalog fallback remains usable, exercising the required null-safe no-op behavior without disk state
+@test("locale.library CloseCatalog accepts built-in fallback catalogs")
+pub fn locale_close_catalog() {
+    CloseCatalog(null)
+    CloseCatalog(null)
+    let fallback: *u8 = "still valid"
+    expect(GetCatalogStr(null, 1, fallback) == fallback, "repeated null-catalog closes are harmless")
+}
+
+// @covers-ndk function|locale.library|ParseDate
+// @ndk-side-effects Parses an exact numeric timestamp through the documented A0/A1/A2 hook registers, verifies the callback consumes all bytes and the resulting Amiga DateStamp fields, and closes the locale
+@test("locale.library ParseDate consumes an exact timestamp")
+pub fn locale_parse_date() {
+    let locale = default_locale()
+    var state = InputState { text: "1978-01-02 03:04:05", index: 0 }
+    var hook = input_hook(&var state)
+    var date: DateStamp = @zeroed(DateStamp)
+    let parsed = if locale != null { ParseDate(locale, &var date, "%Y-%m-%d %H:%M:%S", &var hook) } else { 0 }
+    let valid = locale != null && parsed != 0 && state.index == 19 && date.ds_Days == 1 && date.ds_Minute == 184 && date.ds_Tick == 250
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "parser consumes every byte and returns the exact Amiga timestamp")
+}
+
+// @covers-ndk function|locale.library|StrConvert
+// @ndk-side-effects Transforms two case variants using SC_ASCII into independent caller-owned buffers, verifies exact lengths and terminators and equal collation keys, and closes the locale
+@test("locale.library StrConvert creates stable case-insensitive keys")
+pub fn locale_str_convert() {
+    let locale = default_locale()
+    var upper: [u8] = [0; 32]
+    var mixed: [u8] = [0; 32]
+    let upper_len = if locale != null { StrConvert(locale, "ABC", &var upper[0], 32, SC_ASCII) } else { 0 }
+    let mixed_len = if locale != null { StrConvert(locale, "aBc", &var mixed[0], 32, SC_ASCII) } else { 0 }
+    let valid = locale != null && upper_len == mixed_len && upper_len > 0 && upper[upper_len] == 0 && mixed[mixed_len] == 0 && bytes_equal(&var upper[0], &var mixed[0], upper_len)
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "case variants produce equal terminated SC_ASCII collation keys")
+}
+
+// @covers-ndk function|locale.library|StrnCmp
+// @ndk-side-effects Performs full and length-limited SC_ASCII comparisons, verifying case folding, ordering, and the exact length boundary, then closes the locale
+@test("locale.library StrnCmp honors case folding and length")
+pub fn locale_str_compare() {
+    let locale = default_locale()
+    let valid = locale != null && StrnCmp(locale, "Alpha", "alpha", -1, SC_ASCII) == 0 && StrnCmp(locale, "Alpha", "beta", -1, SC_ASCII) < 0 && StrnCmp(locale, "ax", "az", 1, SC_ASCII) == 0
+    if locale != null { CloseLocale(locale) }
+    expect(valid, "SC_ASCII folds case, preserves ordering, and stops at one character")
+}

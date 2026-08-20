@@ -529,9 +529,11 @@ pub fn clear() -> i32 {
     public void CCodeGen_ManglesGenericStructuralDropNames()
     {
         var module = BuildIRWithStdlib("""
+            from std::core import Drop
             from std::collections::vec import Vec
 
             struct Wrapper { values: Vec<u8> }
+            impl Drop for Wrapper { fn drop(&var self) {} }
 
             pub fn make_and_drop() {
                 let wrapper = Wrapper { values: Vec::<u8>::new() }
@@ -541,9 +543,30 @@ pub fn clear() -> i32 {
         var function = module.Functions.Single(candidate => candidate.Name == "make_and_drop");
         var code = generator.GenerateFunctionFile(function);
 
+        Assert.Contains(module.Functions, candidate => candidate.Name == "Vec<u8>_Drop_drop");
         Assert.Contains("extern void Vec_u8_Drop_drop(Vec_u8* self);", code);
         Assert.Contains("Vec_u8_Drop_drop(&((&wrapper)->values));", code);
         Assert.DoesNotContain("Vec<u8>_Drop_drop", code);
+    }
+
+    [Fact]
+    [Trait("Category", "CompilerIntegration")]
+    public void CCodeGen_InstantiatesConstrainedGenericDropMethods()
+    {
+        var module = BuildIRWithStdlib("""
+            from std::collections::hashmap import HashMap
+
+            pub fn make_and_drop() {
+                let map = HashMap::<u32, u32>::new()
+            }
+            """);
+
+        Assert.Contains(module.Functions, candidate =>
+            candidate.Name == "HashMap<u32,u32>_Drop_drop");
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "make_and_drop"));
+        Assert.Contains("HashMap_u32_u32_Drop_drop(&((&map)->data.Ok._0));", code);
     }
 
     [Fact]
@@ -770,6 +793,40 @@ pub fn clear() -> i32 {
     }
 
     [Fact]
+    public void CCodeGen_CustomDropThenDropsOwnedFieldsInReverseOrder()
+    {
+        var module = BuildIR("""
+            struct First { value: i32 }
+            impl Drop for First { fn drop(&var self) {} }
+            struct Second { value: i32 }
+            impl Drop for Second { fn drop(&var self) {} }
+            struct Owner { first: First, second: Second }
+            impl Drop for Owner { fn drop(&var self) {} }
+
+            pub fn run() {
+                let owner = Owner {
+                    first: First { value: 1 },
+                    second: Second { value: 2 },
+                }
+            }
+            """);
+        var generator = new CCodeGenerator(module, [], "68020", "soft");
+        var code = generator.GenerateFunctionFile(
+            module.Functions.Single(candidate => candidate.Name == "run"));
+        var lines = code.Split('\n');
+        var ownerDrop = Array.FindIndex(lines, line =>
+            line.Contains("Owner_Drop_drop") && line.Contains("&owner"));
+        var secondDrop = Array.FindIndex(lines, line =>
+            line.Contains("Second_Drop_drop") && line.Contains("second"));
+        var firstDrop = Array.FindIndex(lines, line =>
+            line.Contains("First_Drop_drop") && line.Contains("first"));
+
+        Assert.True(ownerDrop >= 0, code);
+        Assert.True(secondDrop > ownerDrop, code);
+        Assert.True(firstDrop > secondDrop, code);
+    }
+
+    [Fact]
     public void CCodeGen_ConsumingCallsInvalidateSmallOwnedValuesAndTheirSourceFields()
     {
         var module = BuildIR("""
@@ -806,9 +863,9 @@ pub fn clear() -> i32 {
         var code = generator.GenerateFunctionFile(
             module.Functions.Single(candidate => candidate.Name == "unwrap"));
 
-        Assert.Contains("__novus_memset(&(wrapper.handle), 0, sizeof(Handle));", code);
+        Assert.Contains("__novus_memset(&(wrapper->handle), 0, sizeof(Handle));", code);
         Assert.True(
-            code.IndexOf("__novus_memset(&(wrapper.handle)", StringComparison.Ordinal) <
+            code.IndexOf("__novus_memset(&(wrapper->handle)", StringComparison.Ordinal) <
             code.LastIndexOf("Handle_Drop_drop", StringComparison.Ordinal),
             code);
     }
@@ -1331,6 +1388,22 @@ pub fn deref(ptr: *i32) -> i32 {
 
         Assert.Contains("int32_t", code);
         Assert.Contains("deref", code);
+    }
+
+    [Fact]
+    public void CCodeGen_MemberAccessAfterPointerCast_ParenthesizesCast()
+    {
+        var source = @"
+struct Node { key: i32 }
+
+pub fn key(ptr: *u8) -> i32 {
+    return (*(*Node)ptr).key
+}";
+
+        var code = GenerateCCode(BuildIR(source));
+
+        Assert.Contains("((Node*)ptr)->key", code);
+        Assert.DoesNotContain("(Node*)ptr->key", code);
     }
 
     [Fact]

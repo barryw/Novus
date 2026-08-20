@@ -189,7 +189,7 @@ impl Args {
         }
 
         // Call ReadArgs
-        let rdargs_result = ReadArgs((*u8)&args.template, (*u8)&args.results, null)
+        let rdargs_result = ReadArgs((*u8)&args.template, (*i32)&args.results[0], null)
         if (u32)rdargs_result == 0 {
             // ReadArgs failed - get error from DOS
             let err = dos_last_error()
@@ -376,7 +376,7 @@ impl Args {
         name_buf[name.len()] = 0
 
         // FindArg returns -1 if not found
-        return FindArg((*u8)&name_buf, (*u8)&self.template)
+        return FindArg((*u8)&self.template, (*u8)&name_buf)
     }
 }
 

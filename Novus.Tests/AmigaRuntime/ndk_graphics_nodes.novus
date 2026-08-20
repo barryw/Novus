@@ -1,0 +1,64 @@
+from std::test::test import expect
+from amiga::raw::consts import VIEW_EXTRA_TYPE, VIEWPORT_EXTRA_TYPE
+from amiga::raw::structs import ExtendedNode, View, ViewPort
+from amiga::raw::graphics import GfxAssociate, GfxFree, GfxLookUp, GfxNew
+
+// @covers-ndk function|graphics.library|GfxNew
+// @ndk-side-effects GfxNew allocates the requested extended-node subtype, initializes its graphics subsystem identity, and returns ownership to the caller
+@test("graphics.library GfxNew allocates and identifies an extended node")
+pub fn graphics_gfx_new() {
+    let raw = GfxNew(VIEW_EXTRA_TYPE)
+    expect(raw != null, "ViewExtra allocation succeeds")
+    if raw == null { return }
+    let node = unsafe { (*ExtendedNode)raw }
+    expect(unsafe { (*node).xln_Subsystem } == 2 &&
+        unsafe { (*node).xln_Subtype } == 1,
+        "allocated node records graphics subsystem and requested subtype")
+    GfxFree(raw)
+}
+
+// @covers-ndk function|graphics.library|GfxAssociate
+// @ndk-side-effects GfxAssociate installs an identity-based association between an arbitrary object address and one graphics extended node
+@test("graphics.library GfxAssociate installs an exact pointer association")
+pub fn graphics_gfx_associate() {
+    var view: View = @zeroed(View)
+    let key = unsafe { (*u8)&var view }
+    let node = GfxNew(VIEW_EXTRA_TYPE)
+    expect(node != null && GfxLookUp(key) == null, "fixture starts allocated and unassociated")
+    if node == null { return }
+    GfxAssociate(key, node)
+    expect(GfxLookUp(key) == node, "lookup returns the exact associated node")
+    GfxFree(node)
+}
+
+// @covers-ndk function|graphics.library|GfxLookUp
+// @ndk-side-effects GfxLookUp performs an identity lookup without changing either the association or an unrelated object's state
+@test("graphics.library GfxLookUp distinguishes associated object addresses")
+pub fn graphics_gfx_lookup() {
+    var view: View = @zeroed(View)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    let view_key = unsafe { (*u8)&var view }
+    let viewport_key = unsafe { (*u8)&var viewport }
+    let node = GfxNew(VIEW_EXTRA_TYPE)
+    expect(node != null, "association node allocation succeeds")
+    if node == null { return }
+    GfxAssociate(view_key, node)
+    expect(GfxLookUp(view_key) == node && GfxLookUp(viewport_key) == null,
+        "only the associated object address resolves")
+    GfxFree(node)
+}
+
+// @covers-ndk function|graphics.library|GfxFree
+// @ndk-side-effects GfxFree releases an owned graphics extended node and removes its previously installed object association
+@test("graphics.library GfxFree removes its association before releasing the node")
+pub fn graphics_gfx_free() {
+    var viewport: ViewPort = @zeroed(ViewPort)
+    let key = unsafe { (*u8)&var viewport }
+    let node = GfxNew(VIEWPORT_EXTRA_TYPE)
+    expect(node != null, "ViewPortExtra allocation succeeds")
+    if node == null { return }
+    GfxAssociate(key, node)
+    expect(GfxLookUp(key) == node, "association exists before free")
+    GfxFree(node)
+    expect(GfxLookUp(key) == null, "free removes the association")
+}

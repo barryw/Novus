@@ -32,6 +32,9 @@ TestResults/
 /tests
 /tests.novus-build
 /tests.novus-link
+# Per-binary link/build stamps the compiler drops beside its output
+*.novus-build
+*.novus-link
 
 # Compiled object files and C sources (build artifacts)
 *.o

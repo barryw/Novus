@@ -11,37 +11,209 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// compute the arctangent of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPAtan(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPAtan(parm: f64) -> f64
+/// compute the sine of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPSin(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPSin(parm: f64) -> f64
+/// compute the cosine of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPCos(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPCos(parm: f64) -> f64
+/// compute the tangent of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPTan(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPTan(parm: f64) -> f64
+/// compute the arc tangent of a floating point number
+///
+/// Compute sin and cosine of y in IEEE double precision.
+/// Store the cosine in *z. Return the sine of y.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPSincos( z ,  y  );
+/// d0/d1		     a0  d0/d1
+///
+/// double	x,y,*z;
+///
+/// # Arguments
+///
+/// * `y` - IEEE double precision floating point value z - pointer to IEEE double precision floating point number
+///
+/// # Returns
+///
+/// x - IEEE double precision floating point value
+///
+/// # Bugs
+///
+/// Not very fast if no FPU is available. Otherwise, it might be
+/// faster than calling IEEEDPSin() and IEEEDPCos() separately.
+///
+/// # See Also
+///
+/// IEEEDPSin(), IEEEDPCos()
 @library("mathieeedoubtrans.library")
-extern pub fn IEEEDPSincos(pf2: *u8, parm: f64) -> f64
+extern pub fn IEEEDPSincos(pf2: *f64, parm: f64) -> f64
+/// compute the hyperbolic sine of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPSinh(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPSinh(parm: f64) -> f64
+/// compute the hyperbolic cosine of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPCosh(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPCosh(parm: f64) -> f64
+/// compute the hyperbolic tangent of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPTanh(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPTanh(parm: f64) -> f64
+/// compute the exponential of e
+///
+/// # Synopsis
+///
+/// x   = IEEEDPExp(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPExp(parm: f64) -> f64
+/// compute the natural logarithm of a floating point number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPLog(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPLog(parm: f64) -> f64
+/// raise a number to another number power
+///
+/// Compute y^x in IEEE double precision
+///
+/// # Synopsis
+///
+/// z   = IEEEDPPow(  x  ,  y  );
+/// d0/d1	          d2/d3 d0/d1
+///
+/// double	x,y,z;
+///
+/// # Arguments
+///
+/// * `x` - IEEE double precision floating point value y - IEEE double precision floating point value
+///
+/// # Returns
+///
+/// z - IEEE double precision floating point value
+///
+/// # Bugs
+///
+/// Might have returned bare nonsense if the argument was out of range
+/// for pre-V45 releases, and was not very precise or smart breaking
+/// large arguments down into a suitable range. The computational
+/// precision of this function left a lot to be deserved. All this
+/// was fixed in V45.
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPPow(exp: f64, arg: f64) -> f64
+/// compute the square root of a number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPSqrt(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPSqrt(parm: f64) -> f64
+/// convert IEEE double to IEEE single
+///
+/// Convert IEEE double precision number to IEEE single precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPTieee(  y  );
+///  d0	            d0/d1
+///
+/// double	y;
+/// float   x;
+///
+/// # Arguments
+///
+/// * `y` - IEEE double precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE single precision floating point value
+///
+/// # Bugs
+///
+/// Did not cover denormalized numbers, NANs and INFs correctly for
+/// pre-V45 releases. Fixed in V45.
+/// This call is of limited usefulness as IEEE double and single
+/// math should not be mixed anyhow.
+///
+/// # See Also
+///
+/// IEEEDPFieee()
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPTieee(parm: f64) -> f32
+/// convert IEEE single to IEEE double
+///
+/// Convert IEEE single precision number to IEEE double precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPFieee(  y  );
+/// d0/d1	              d0
+///
+/// float	y;
+/// double  x;
+///
+/// # Arguments
+///
+/// * `y` - IEEE single precision floating point value
+///
+/// # Returns
+///
+/// x - IEEE double precision floating point value
+///
+/// # See Also
+///
+/// IEEEDPTieee()
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPFieee(single: f32) -> f64
+/// compute the arcsine of a number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPAsin(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPAsin(parm: f64) -> f64
+/// compute the arc cosine of a number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPAcos(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPAcos(parm: f64) -> f64
+/// compute logarithm base 10 of a number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPLog10(  y  );
 @library("mathieeedoubtrans.library")
 extern pub fn IEEEDPLog10(parm: f64) -> f64

@@ -165,6 +165,13 @@ public partial class IrBuilder
         if (valueType is IrEnumType nestedEnum &&
             pattern is NovusParser.VariantPatternContext or NovusParser.SimpleVariantPatternContext)
         {
+            if (nestedEnum.CacheKey is { Length: > 0 } cacheKey)
+                nestedEnum = _symbols.LookupMonomorphizedEnum(cacheKey) ?? nestedEnum;
+            if (nestedEnum.Variants.Count == 0)
+                nestedEnum = _symbols.LookupEnum(nestedEnum.EnumName) ?? nestedEnum;
+            valueType = nestedEnum;
+            value.Type = nestedEnum;
+
             string variantName;
             NovusParser.PatternContext[] payloadPatterns;
             if (pattern is NovusParser.VariantPatternContext variantPattern)

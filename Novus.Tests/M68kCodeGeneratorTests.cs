@@ -50,8 +50,8 @@ public class M68kCodeGeneratorTests
 
         // Verify output contains expected elements
         Assert.Contains("test:", asm);
-        Assert.Contains("link", asm);
-        Assert.Contains("unlk", asm);
+        Assert.DoesNotContain("link      a5", asm);
+        Assert.DoesNotContain("unlk      a5", asm);
         Assert.Contains("rts", asm);
         Assert.Contains("moveq", asm); // Loading 42
     }
@@ -202,7 +202,7 @@ public class M68kCodeGeneratorTests
     }
 
     [Fact]
-    public void TestCpuDirective()
+    public void TestCpuTargetIsDocumentedWithoutAssemblerSpecificDirective()
     {
         var module = new IrModule();
         var function = new IrFunction("test", IrVoidType.Instance, Visibility.Public);
@@ -218,8 +218,8 @@ public class M68kCodeGeneratorTests
             var codegen = new M68kCodeGenerator(module, new List<IrStringLiteral>(), target);
             var asm = codegen.Generate();
 
-            // Verify CPU directive is present
-            Assert.Contains($"CPU {target}", asm);
+            Assert.Contains($"Target CPU: {target}", asm);
+            Assert.DoesNotContain($"CPU {target}", asm);
         }
     }
 

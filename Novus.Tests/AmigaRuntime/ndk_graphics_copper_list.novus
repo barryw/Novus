@@ -1,0 +1,184 @@
+from std::core import Result
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import MEMF_CLEAR, MEMF_PUBLIC
+from amiga::raw::structs import CopIns, CopList, Interrupt, UCopList
+from amiga::raw::exec import AddIntServer, AllocMem, FreeMem, RemIntServer
+from amiga::raw::graphics import CBump, CMove, CWait, FreeCopList, UCopperListInit, WaitTOF
+from amiga::raw::intuition import RethinkDisplay
+from amiga::sys::intuition import ScreenHandle
+
+fn initialized(list: *UCopList, capacity: i16) -> *CopList {
+    return UCopperListInit(list, capacity)
+}
+
+@interrupt
+amiga fn copper_interrupt(fired: *u8 in a1) -> u32 in d0 {
+    unsafe {
+        write_volatile((*u32)fired, 1)
+        write_volatile((*u16)$DFF09C, (u16)$0010)
+    }
+    return 1
+}
+
+// @covers-ndk function|graphics.library|UCopperListInit
+// @ndk-side-effects UCopperListInit allocates and installs one empty intermediate CopList with the requested capacity, positions CopPtr at the first instruction, and FreeCopList returns its internal storage
+@test("graphics.library UCopperListInit installs exact empty state")
+pub fn graphics_user_copper_init() {
+    var user: UCopList = @zeroed(UCopList)
+    let list = initialized(&var user, 3)
+    expect(list != null, "intermediate copper list allocated")
+    if list == null { return }
+
+    unsafe {
+        expect(user.FirstCopList == list && user.CopList == list, "user list points at the allocated first block")
+        expect((*list).Next == null, "single initialized block has no successor")
+        expect((*list).CopIns != null && (*list).CopPtr == (*list).CopIns, "write pointer begins at the instruction buffer")
+        expect((*list).Count == 0 && (*list).MaxCount == 3, "count and capacity match initialized state")
+    }
+    FreeCopList(list)
+}
+
+// @covers-ndk function|graphics.library|CMove
+// @ndk-side-effects CMove writes one COPPER_MOVE pseudo-instruction at the current slot with the exact custom-register offset and data while leaving CopPtr and Count unchanged until CBump advances them
+@test("graphics.library CMove writes the exact current instruction")
+pub fn graphics_user_copper_move() {
+    var user: UCopList = @zeroed(UCopList)
+    let list = initialized(&var user, 2)
+    expect(list != null, "intermediate copper list allocated")
+    if list == null { return }
+    let instruction = unsafe { (*list).CopPtr }
+
+    CMove(&var user, (*u8)$DFF180, (i16)$5A3C)
+    unsafe {
+        expect((*instruction).OpCode == 0, "move opcode is encoded")
+        expect((*instruction).u3.u4.u1.DestAddr == -3712, "destination preserves the low word of the full custom-register address")
+        expect((*instruction).u3.u4.u2.DestData == (i16)$5A3C, "move data is stored exactly")
+        expect((*list).CopPtr == instruction && (*list).Count == 0, "CMove does not perform the macro's separate bump")
+    }
+    FreeCopList(list)
+}
+
+// @covers-ndk function|graphics.library|CWait
+// @ndk-side-effects CWait writes one COPPER_WAIT pseudo-instruction with the exact vertical and legal horizontal beam positions while leaving CopPtr and Count unchanged until CBump advances them
+@test("graphics.library CWait writes the exact current instruction")
+pub fn graphics_user_copper_wait() {
+    var user: UCopList = @zeroed(UCopList)
+    let list = initialized(&var user, 2)
+    expect(list != null, "intermediate copper list allocated")
+    if list == null { return }
+    let instruction = unsafe { (*list).CopPtr }
+
+    CWait(&var user, 123, 200)
+    unsafe {
+        expect((*instruction).OpCode == 1, "wait opcode is encoded")
+        expect((*instruction).u3.u4.u1.VWaitPos == 123, "vertical beam position is stored exactly")
+        expect((*instruction).u3.u4.u2.HWaitPos == 200, "horizontal beam position is stored exactly")
+        expect((*list).CopPtr == instruction && (*list).Count == 0, "CWait does not perform the macro's separate bump")
+    }
+    FreeCopList(list)
+}
+
+// @covers-ndk function|graphics.library|CBump
+// @ndk-side-effects CBump commits the one-instruction block, moves that instruction into a newly allocated successor, replaces the old slot with CPRNXTBUF, and selects the successor; FreeCopList releases the complete chain
+@test("graphics.library CBump advances and rolls over full blocks")
+pub fn graphics_user_copper_bump() {
+    var user: UCopList = @zeroed(UCopList)
+    let first = initialized(&var user, 1)
+    expect(first != null, "one-slot copper block allocated")
+    if first == null { return }
+    let first_instruction = unsafe { (*first).CopPtr }
+
+    CMove(&var user, (*u8)$DFF180, 7)
+    CBump(&var user)
+    unsafe {
+        expect((*first).Count == 1, "bump commits the first block")
+        expect((*first).CopPtr == first_instruction, "full block keeps its pointer on the chaining slot")
+        expect((*first_instruction).OpCode == 2, "full block terminates with an exact next-buffer instruction")
+        expect((*first).Next != null, "full block gains a successor")
+        expect(user.CopList == (*first).Next, "user list selects the successor block")
+        if (*first).Next != null {
+            let successor = user.CopList
+            expect((*successor).Count == 1 && (*successor).CopPtr == (*successor).CopIns + 1,
+                "successor contains the committed instruction and points at its next slot")
+            expect((*(*successor).CopIns).OpCode == 0 &&
+                (*(*successor).CopIns).u3.u4.u2.DestData == 7,
+                "successor preserves the exact instruction moved out of the full block")
+        }
+    }
+    FreeCopList(first)
+}
+
+// @covers-ndk function|graphics.library|FreeCopList
+// @ndk-side-effects FreeCopList returns a multi-block intermediate copper-list chain created by UCopperListInit and CBump; the harness verifies every command-owned byte is returned
+@test("graphics.library FreeCopList releases a complete block chain")
+pub fn graphics_free_copper_list() {
+    var user: UCopList = @zeroed(UCopList)
+    let first = initialized(&var user, 1)
+    expect(first != null, "first copper block allocated")
+    if first == null { return }
+    CWait(&var user, 10, 20)
+    CBump(&var user)
+    let chained = unsafe { (*first).Next != null }
+    expect(chained, "fixture owns a second allocated block")
+    FreeCopList(first)
+}
+
+// @covers-ndk function|graphics.library|UCopperListInit
+// @covers-ndk function|graphics.library|CMove
+// @covers-ndk function|graphics.library|CWait
+// @covers-ndk function|graphics.library|CBump
+// @ndk-side-effects The complete user copper list is attached to a live private ViewPort, merged into the active system list, and executed by the A4000 copper; a MOVE changes COLOR00 and the following MOVE raises a real copper interrupt whose Exec server records execution, while closing the screen returns the owned UCopList and all intermediate blocks
+@test("graphics.library user copper list executes on the custom chipset")
+pub fn graphics_user_copper_executes() {
+    let display = match ScreenHandle::lores("Novus copper execution test", 2) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    display.to_front()
+    WaitTOF()
+
+    let storage = unsafe { AllocMem(@sizeof(UCopList), MEMF_PUBLIC | MEMF_CLEAR) }
+    expect(storage != null, "public cleared UCopList storage allocated")
+    if storage == null { return }
+    let user = (*UCopList)storage
+    let first = UCopperListInit(user, 5)
+    expect(first != null, "intermediate copper list allocated")
+    if first == null {
+        unsafe { FreeMem(storage, @sizeof(UCopList)) }
+        return
+    }
+
+    CWait(user, 80, 0)
+    CBump(user)
+    CMove(user, (*u8)$DFF180, (i16)$0A5C)
+    CBump(user)
+    CMove(user, (*u8)$DFF09C, -32752)
+    CBump(user)
+    CWait(user, 10000, 255)
+
+    var fired: u32 = 0
+    var server: Interrupt = @zeroed(Interrupt)
+    server.is_Node.ln_Type = 2
+    server.is_Node.ln_Pri = 0
+    server.is_Node.ln_Name = null
+    server.is_Data = (*u8)&var fired
+    server.is_Code = copper_interrupt
+    AddIntServer(4, &var server)
+
+    let viewport = display.viewport()
+    unsafe { (*viewport).UCopIns = user }
+    let rebuilt = RethinkDisplay()
+    expect(rebuilt == 0, "Intuition merged the user list into the active display")
+    if rebuilt == 0 {
+        var frames: u32 = 0
+        while unsafe { read_volatile((*u32)&var fired) } == 0 && frames < 4 {
+            WaitTOF()
+            frames++
+        }
+    }
+    RemIntServer(4, &var server)
+    expect_eq(unsafe { read_volatile((*u32)&fired) }, 1, "installed list reached the color MOVE and raised its following copper interrupt")
+}

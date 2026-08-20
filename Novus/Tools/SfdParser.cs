@@ -187,6 +187,69 @@ public class SfdParser
             }
         }
 
+        // NDK 3.9's dos_lib.sfd and clib/inline prototypes incorrectly say
+        // BOOL. The autodoc defines the actual result: D0 returns the previous
+        // STRPTR so callers can restore it.
+        if (library.LibraryName == "dos.library")
+        {
+            var setArgStr = library.Functions.SingleOrDefault(function => function.Name == "SetArgStr");
+            if (setArgStr != null)
+                setArgStr.ReturnType = "STRPTR";
+
+            var fault = library.Functions.SingleOrDefault(function => function.Name == "Fault");
+            if (fault != null)
+                fault.ReturnType = "LONG";
+
+            var findArg = library.Functions.SingleOrDefault(function => function.Name == "FindArg");
+            if (findArg is { Parameters.Count: 2 })
+            {
+                findArg.Parameters[0].Name = "template";
+                findArg.Parameters[1].Name = "keyword";
+            }
+        }
+
+        // Amiga FFP values are 32-bit bit patterns passed in data registers,
+        // not IEEE/native C floats. Keeping them as ULONG prevents VBCC from
+        // applying its floating-point calling convention at this raw boundary.
+        if (library.LibraryName is "mathffp.library" or "mathtrans.library")
+        {
+            foreach (var function in library.Functions)
+            {
+                if (function.ReturnType == "FLOAT") function.ReturnType = "ULONG";
+                foreach (var parameter in function.Parameters)
+                {
+                    if (parameter.Type == "FLOAT") parameter.Type = "ULONG";
+                    if (parameter.Type == "FLOAT *") parameter.Type = "ULONG *";
+                }
+            }
+        }
+
+        // The SFD's C varargs convenience omits its named first Tag even
+        // though clib/diskfont_protos.h and the autodoc expose it explicitly.
+        if (library.LibraryName == "diskfont.library")
+        {
+            var setDiskFontCtrl = library.Functions.SingleOrDefault(
+                function => function.Name == "SetDiskFontCtrl");
+            if (setDiskFontCtrl is { Parameters.Count: 1 } &&
+                setDiskFontCtrl.Parameters[0].Type == "...")
+            {
+                setDiskFontCtrl.Parameters.Insert(0,
+                    new SfdParameter { Type = "Tag", Name = "tag1" });
+            }
+        }
+
+        // The utility SFD/clib prototypes use LONG/ULONG because classic C had
+        // no portable way to spell these D0:D1 results.  The autodocs define
+        // the complete ABI: quotient:remainder or a 64-bit product.
+        if (library.LibraryName == "utility.library")
+        {
+            foreach (var function in library.Functions)
+            {
+                if (function.Name is "SDivMod32" or "SMult64") function.ReturnType = "QUAD";
+                if (function.Name is "UDivMod32" or "UMult64") function.ReturnType = "UQUAD";
+            }
+        }
+
         return library;
     }
 
@@ -390,6 +453,13 @@ public class SfdParser
             ["BUserStuff"] = "i16",
             ["AUserStuff"] = "i16",
             ["Tag"] = "u32",
+            ["Object"] = "u32",
+            ["Class"] = "IClass",
+            ["CxObj"] = "CxObj",
+            ["CxMsg"] = "CxMsg",
+            ["IX"] = "InputXpression",
+            ["AVLNODECOMP"] = "amiga fn(*AVLNode in a0, *AVLNode in a1) -> i32",
+            ["AVLKEYCOMP"] = "amiga fn(*AVLNode in a0, *u8 in a1) -> i32",
 
             // Pointer types
             ["APTR"] = "*u8",
@@ -452,8 +522,11 @@ public class SfdParser
                     Regex.Replace(parameter, @"\bregister\s+__[ad][0-7]\s*", "", RegexOptions.IgnoreCase)));
                 return register.Success ? $"{type} in {register.Groups[1].Value.ToLowerInvariant()}" : type;
             });
+            // D0 is the default scalar result register. Spelling `in d0` at
+            // the end of an inline parameter type is ambiguous with the
+            // containing function parameter's own register binding.
             return $"{(registerAbi ? "amiga " : "")}fn({string.Join(", ", parameterTypes)})" +
-                   (returnType == "void" ? "" : $" -> {returnType}{(registerAbi ? " in d0" : "")}");
+                   (returnType == "void" ? "" : $" -> {returnType}");
         }
 
         var typedPointer = Regex.Match(cleanType, @"^(.+?)\s*(\*+)$");
@@ -506,7 +579,7 @@ public class SfdParser
         return $"*u8 /* {amigaType} */";
     }
 
-    private static IEnumerable<string> SplitParameters(string parameters)
+    internal static IEnumerable<string> SplitParameters(string parameters)
     {
         var start = 0;
         var depth = 0;
@@ -522,7 +595,7 @@ public class SfdParser
         yield return parameters[start..].Trim();
     }
 
-    private static string StripParameterName(string parameter)
+    internal static string StripParameterName(string parameter)
     {
         var pointerName = Regex.Match(parameter, @"^(.+?\*)\s*[A-Za-z_][A-Za-z0-9_]*$");
         if (pointerName.Success)

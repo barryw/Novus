@@ -1,0 +1,693 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect
+from amiga::sys::exec import MsgPortHandle
+from amiga::raw::consts import DTA_DataType, DTA_GroupID, DTA_SourceAddress, DTA_SourceSize
+from amiga::raw::consts import DTA_Busy, DTA_SourceType, DTA_UserData
+from amiga::raw::consts import DTERROR_UNKNOWN_DATATYPE, DTM_ASYNCLAYOUT, DTM_PRINT, DTM_WRITE
+from amiga::raw::consts import DTST_MEMORY, DTWM_RAW, GA_Height, GA_Left, GA_Top, GA_Width
+from amiga::raw::consts import GID_PICTURE, GID_TEXT, MODE_NEWFILE, MODE_OLDFILE, PDTA_Screen, TAG_DONE
+from amiga::raw::consts import WA_CustomScreen, WA_Flags, WA_Height, WA_Left, WA_Top, WA_Width
+from amiga::raw::consts import WFLG_SIMPLE_REFRESH
+from amiga::raw::datatypes import AddDTObject, DisposeDTObject, DoAsyncLayout, DoDTMethod, DoDTMethodA
+from amiga::raw::datatypes import DrawDTObject, DrawDTObjectA, GetDTAttrs, GetDTAttrsA, GetDTMethods
+from amiga::raw::datatypes import GetDTString, GetDTTriggerMethods, NewDTObject, NewDTObjectA
+from amiga::raw::datatypes import ObtainDTDrawInfo, ObtainDTDrawInfoA
+from amiga::raw::datatypes import ObtainDataType, ObtainDataTypeA, ReleaseDataType
+from amiga::raw::datatypes import PrintDTObject, PrintDTObjectA, RefreshDTObject, RefreshDTObjectA
+from amiga::raw::datatypes import RefreshDTObjects, ReleaseDTDrawInfo, RemoveDTObject, SetDTAttrs, SetDTAttrsA
+from amiga::raw::dos import Close, Delay, DeleteFile, Open, Read, Write
+from amiga::raw::exec import CloseDevice, CreateIORequest, DeleteIORequest, GetMsg, OpenDevice
+from amiga::raw::graphics import ReadPixel, RectFill, SetAPen, SetDrMd, WaitBlit
+from amiga::raw::intuition import CloseWindow, LockPubScreen, OpenWindowTagList, UnlockPubScreen
+from amiga::raw::structs import DataType, DTMethod, DTMethods, dtPrint, dtWrite, gpLayout, printerIO
+from amiga::raw::structs import Gadget, IORequest, MsgPort, RastPort, Screen, TagItem, Window
+
+const DRAW_JAM1: u8 = 0
+const TINY_ILBM_BYTES: i32 = 66
+
+static var TINY_ILBM: [u8] = [
+    $46, $4F, $52, $4D, 0, 0, 0, $3A, $49, $4C, $42, $4D,
+    $42, $4D, $48, $44, 0, 0, 0, $14,
+    0, 2, 0, 2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 10, 11, 0, 2, 0, 2,
+    $43, $4D, $41, $50, 0, 0, 0, 6, 0, 0, 0, $FF, $FF, $FF,
+    $42, $4F, $44, $59, 0, 0, 0, 4, $80, 0, $40, 0,
+]
+
+@borrows(static)
+fn text_source() -> Str {
+    return "Novus DataTypes verification\nSecond deterministic line.\n"
+}
+
+@borrows(static)
+fn text_path() -> Str {
+    return "T:NovusDataTypesVerification.txt"
+}
+
+@borrows(static)
+fn output_path() -> Str {
+    return "T:NovusDataTypesOutput.txt"
+}
+
+@borrows(static)
+fn picture_path() -> Str {
+    return "T:NovusDataTypesTiny.ilbm"
+}
+
+fn write_text_file() -> bool {
+    DeleteFile(text_path().as_cstr())
+    let file = Open(text_path().as_cstr(), (i32)MODE_NEWFILE)
+    return false if file == 0
+    let source = text_source()
+    let written = Write(file, source.as_cstr(), (i32)source.len())
+    let closed = Close(file)
+    return written == (i32)source.len() && closed != 0
+}
+
+fn text_object(use_varargs: bool) -> *u32 {
+    return null if !write_text_file()
+    if use_varargs {
+        return NewDTObject(text_path().as_cstr(), DTA_GroupID, GID_TEXT,
+            GA_Left, 10, GA_Top, 20, GA_Width, 200, GA_Height, 70, TAG_DONE)
+    }
+    var tags = [
+        TagItem { ti_Tag: DTA_GroupID, ti_Data: GID_TEXT },
+        TagItem { ti_Tag: GA_Left, ti_Data: 10 },
+        TagItem { ti_Tag: GA_Top, ti_Data: 20 },
+        TagItem { ti_Tag: GA_Width, ti_Data: 200 },
+        TagItem { ti_Tag: GA_Height, ti_Data: 70 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewDTObjectA(text_path().as_cstr(), &var tags[0])
+}
+
+fn picture_object(screen: *Screen, use_varargs: bool) -> *u32 {
+    DeleteFile(picture_path().as_cstr())
+    let file = Open(picture_path().as_cstr(), (i32)MODE_NEWFILE)
+    return null if file == 0
+    let written = Write(file, &var TINY_ILBM[0], TINY_ILBM_BYTES)
+    Close(file)
+    return null if written != TINY_ILBM_BYTES
+    if use_varargs {
+        return NewDTObject(picture_path().as_cstr(), DTA_GroupID, GID_PICTURE,
+            PDTA_Screen, screen, GA_Left, 10, GA_Top, 20,
+            GA_Width, 200, GA_Height, 70, TAG_DONE)
+    }
+    var tags = [
+        TagItem { ti_Tag: DTA_GroupID, ti_Data: GID_PICTURE },
+        TagItem { ti_Tag: PDTA_Screen, ti_Data: unsafe { (u32)screen } },
+        TagItem { ti_Tag: GA_Left, ti_Data: 10 },
+        TagItem { ti_Tag: GA_Top, ti_Data: 20 },
+        TagItem { ti_Tag: GA_Width, ti_Data: 200 },
+        TagItem { ti_Tag: GA_Height, ti_Data: 70 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return NewDTObjectA(picture_path().as_cstr(), &var tags[0])
+}
+
+fn dispose_object(object: *u32) {
+    DisposeDTObject(object)
+    DeleteFile(text_path().as_cstr())
+    DeleteFile(picture_path().as_cstr())
+}
+
+fn memory_datatype(use_varargs: bool) -> *DataType {
+    let source = text_source()
+    if use_varargs {
+        return ObtainDataType(DTST_MEMORY, null,
+            DTA_SourceAddress, source.as_cstr(), DTA_SourceSize, source.len(), TAG_DONE)
+    }
+    var tags = [
+        TagItem { ti_Tag: DTA_SourceAddress, ti_Data: unsafe { (u32)source.as_cstr() } },
+        TagItem { ti_Tag: DTA_SourceSize, ti_Data: source.len() },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return ObtainDataTypeA(DTST_MEMORY, null, &var tags[0])
+}
+
+fn method_exists(methods: *u32, expected: u32) -> bool {
+    return false if methods == null
+    var index: i32 = 0
+    while index < 64 {
+        let method = unsafe { methods[index] }
+        return false if method == $FFFFFFFF
+        return true if method == expected
+        index++
+    }
+    return false
+}
+
+fn methods_terminate(methods: *u32) -> bool {
+    return false if methods == null
+    var index: i32 = 0
+    while index < 64 {
+        return true if unsafe { methods[index] == $FFFFFFFF }
+        index++
+    }
+    return false
+}
+
+fn object_datatype(object: *u32) -> *DataType {
+    var datatype: *DataType = null
+    if object != null { GetDTAttrs(object, DTA_DataType, &var datatype, TAG_DONE) }
+    return datatype
+}
+
+struct DTFixture {
+    screen: *Screen,
+    window: *Window,
+    object: *u32,
+    position: i32,
+    added: bool,
+}
+
+fn fixture_for(screen: *Screen, object: *u32, add_object: bool) -> DTFixture {
+    var fixture: DTFixture = @zeroed(DTFixture)
+    fixture.position = -1
+    fixture.screen = screen
+    fixture.object = object
+    if fixture.screen != null {
+        var tags = [
+            TagItem { ti_Tag: WA_CustomScreen, ti_Data: unsafe { (u32)fixture.screen } },
+            TagItem { ti_Tag: WA_Left, ti_Data: 30 },
+            TagItem { ti_Tag: WA_Top, ti_Data: 30 },
+            TagItem { ti_Tag: WA_Width, ti_Data: 240 },
+            TagItem { ti_Tag: WA_Height, ti_Data: 120 },
+            TagItem { ti_Tag: WA_Flags, ti_Data: WFLG_SIMPLE_REFRESH },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+        ]
+        fixture.window = OpenWindowTagList(null, &var tags[0])
+    }
+    if add_object && fixture.window != null && fixture.object != null {
+        fixture.position = AddDTObject(fixture.window, null, fixture.object, -1)
+        fixture.added = fixture.position >= 0
+    }
+    return fixture
+}
+
+fn dt_fixture(add_object: bool) -> DTFixture {
+    let screen = LockPubScreen(null)
+    return fixture_for(screen, text_object(false), add_object)
+}
+
+fn picture_fixture(use_varargs: bool) -> DTFixture {
+    let screen = LockPubScreen(null)
+    let object = if screen != null { picture_object(screen, use_varargs) } else { (*u32)null }
+    return fixture_for(screen, object, false)
+}
+
+fn close_dt_fixture(fixture: *DTFixture) {
+    unsafe {
+        if (*fixture).added && (*fixture).window != null && (*fixture).object != null {
+            RemoveDTObject((*fixture).window, (*fixture).object)
+        }
+        if (*fixture).window != null { CloseWindow((*fixture).window) }
+        (*fixture).window = null
+        dispose_object((*fixture).object)
+        (*fixture).object = null
+        if (*fixture).screen != null { UnlockPubScreen(null, (*fixture).screen) }
+        (*fixture).screen = null
+        (*fixture).added = false
+    }
+}
+
+fn clear_object_area(fixture: *DTFixture) {
+    if unsafe { (*fixture).window == null } { return }
+    let rastport = unsafe { (*(*fixture).window).RPort }
+    let original_pen = unsafe { (*rastport).FgPen }
+    let original_mode = unsafe { (*rastport).DrawMode }
+    SetAPen(rastport, 0)
+    SetDrMd(rastport, DRAW_JAM1)
+    RectFill(rastport, 10, 20, 209, 89)
+    WaitBlit()
+    unsafe {
+        (*rastport).FgPen = original_pen
+        (*rastport).DrawMode = original_mode
+    }
+}
+
+fn object_pixels(fixture: *DTFixture) -> i32 {
+    return 0 if unsafe { (*fixture).window == null }
+    let rastport = unsafe { (*(*fixture).window).RPort }
+    var count: i32 = 0
+    var y: i16 = 20
+    while y <= 89 {
+        var x: i16 = 10
+        while x <= 209 {
+            if ReadPixel(rastport, x, y) != 0 { count++ }
+            x++
+        }
+        y++
+    }
+    return count
+}
+
+fn output_matches_source() -> bool {
+    let file = Open(output_path().as_cstr(), (i32)MODE_OLDFILE)
+    return false if file == 0
+    var bytes: [u8] = [0; 128]
+    let read = Read(file, &var bytes[0], 128)
+    Close(file)
+    let source = text_source()
+    return false if read != (i32)source.len()
+    var index: i32 = 0
+    while index < read {
+        return false if unsafe { bytes[index] != source.as_cstr()[index] }
+        index++
+    }
+    return true
+}
+
+fn open_printer(port: *MsgPort) -> *u8 {
+    let request = CreateIORequest(port, @sizeof(printerIO))
+    return null if request == null
+    let error = unsafe { OpenDevice("printer.device", 0, (*IORequest)request, 0) }
+    if error != 0 {
+        DeleteIORequest(request)
+        return null
+    }
+    return request
+}
+
+fn close_printer(port: *MsgPort, request: *u8) {
+    if request == null { return }
+    unsafe { CloseDevice((*IORequest)request) }
+    while GetMsg(port) != null {}
+    DeleteIORequest(request)
+}
+
+fn wait_until_idle(object: *u32) -> bool {
+    var busy: u32 = 1
+    var attempts: i32 = 0
+    while object != null && attempts < 100 {
+        GetDTAttrs(object, DTA_Busy, &var busy, TAG_DONE)
+        if busy == 0 {
+            Delay(2)
+            return true
+        }
+        Delay(1)
+        attempts++
+    }
+    return false
+}
+
+// @covers-ndk function|datatypes.library|ObtainDataTypeA
+// @ndk-side-effects Classifies deterministic caller-owned in-memory ASCII data and verifies the returned descriptor identifies the text group before releasing it
+@test("datatypes.library ObtainDataTypeA classifies memory text")
+pub fn datatypes_obtain_a() {
+    let datatype = memory_datatype(false)
+    expect(datatype != null, "memory text datatype is recognized")
+    if datatype != null {
+        unsafe {
+            expect((*datatype).dtn_Header != null, "descriptor has a public header")
+            if (*datatype).dtn_Header != null {
+                expect((*(*datatype).dtn_Header).dth_GroupID == GID_TEXT, "descriptor group is text")
+                expect((*(*datatype).dtn_Header).dth_Name != null, "descriptor has a name")
+            }
+        }
+    }
+    ReleaseDataType(datatype)
+}
+
+// @covers-ndk function|datatypes.library|ObtainDataType
+// @ndk-side-effects Exercises the varargs classifier against the same in-memory bytes and verifies the exact public text group before releasing the descriptor
+@test("datatypes.library ObtainDataType varargs classifies memory text")
+pub fn datatypes_obtain_varargs() {
+    let datatype = memory_datatype(true)
+    expect(datatype != null, "varargs memory text datatype is recognized")
+    if datatype != null {
+        unsafe { expect((*(*datatype).dtn_Header).dth_GroupID == GID_TEXT, "varargs descriptor group is text") }
+    }
+    ReleaseDataType(datatype)
+}
+
+// @covers-ndk function|datatypes.library|ReleaseDataType
+// @ndk-side-effects Releases a real descriptor acquired from the global DataTypes list; the process leak gate verifies its reference and private state are returned
+@test("datatypes.library ReleaseDataType releases descriptor")
+pub fn datatypes_release() {
+    let datatype = memory_datatype(false)
+    expect(datatype != null, "descriptor is acquired before release")
+    ReleaseDataType(datatype)
+}
+
+// @covers-ndk function|datatypes.library|NewDTObjectA
+// @ndk-side-effects Constructs a real text.datatype BOOPSI object from a disposable file, retrieves its descriptor and exact text group, and disposes every object allocation
+@test("datatypes.library NewDTObjectA constructs file text object")
+pub fn datatypes_new_object_a() {
+    let object = text_object(false)
+    expect(object != null, "A-form file text object is constructed")
+    let datatype = object_datatype(object)
+    expect(datatype != null && unsafe { (*(*datatype).dtn_Header).dth_GroupID == GID_TEXT },
+        "constructed object descriptor reports text group")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|NewDTObject
+// @ndk-side-effects Exercises the varargs constructor with a deterministic disposable file and verifies its descriptor's exact text group before disposal
+@test("datatypes.library NewDTObject varargs constructs file text object")
+pub fn datatypes_new_object_varargs() {
+    let object = text_object(true)
+    expect(object != null, "varargs file text object is constructed")
+    let datatype = object_datatype(object)
+    expect(datatype != null && unsafe { (*(*datatype).dtn_Header).dth_GroupID == GID_TEXT },
+        "varargs object descriptor reports text group")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|DisposeDTObject
+// @ndk-side-effects Disposes a complete text.datatype object and its parsed source/layout state; the whole-process leak gate verifies ownership returns
+@test("datatypes.library DisposeDTObject releases complete object")
+pub fn datatypes_dispose_object() {
+    let object = text_object(false)
+    expect(object != null, "object is constructed before disposal")
+    DisposeDTObject(object)
+    DeleteFile(text_path().as_cstr())
+}
+
+// @covers-ndk function|datatypes.library|SetDTAttrsA
+// @ndk-side-effects Sets an exact application-owned longword on a real text object with a tag list and reads that same state back before disposal
+@test("datatypes.library SetDTAttrsA changes user data")
+pub fn datatypes_set_attrs_a() {
+    let object = text_object(false)
+    var set_tags = [
+        TagItem { ti_Tag: DTA_UserData, ti_Data: $12345678 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if object != null { SetDTAttrsA(object, null, null, &var set_tags[0]) }
+    var value: u32 = 0
+    if object != null { GetDTAttrs(object, DTA_UserData, &var value, TAG_DONE) }
+    expect(object != null && value == $12345678, "A-form setter stores exact user data")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|SetDTAttrs
+// @ndk-side-effects Exercises the varargs setter on a real text object and verifies the exact application-owned longword through the independent getter
+@test("datatypes.library SetDTAttrs varargs changes user data")
+pub fn datatypes_set_attrs_varargs() {
+    let object = text_object(true)
+    if object != null { SetDTAttrs(object, null, null, DTA_UserData, $76543210, TAG_DONE) }
+    var value: u32 = 0
+    if object != null { GetDTAttrs(object, DTA_UserData, &var value, TAG_DONE) }
+    expect(object != null && value == $76543210, "varargs setter stores exact user data")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|GetDTAttrsA
+// @ndk-side-effects Retrieves the object's exact descriptor and source type into required longword destinations, verifies both tags were handled, and checks the descriptor's text group
+@test("datatypes.library GetDTAttrsA retrieves exact attributes")
+pub fn datatypes_get_attrs_a() {
+    let object = text_object(false)
+    var datatype: *DataType = null
+    var source_type: u32 = 0
+    var tags = [
+        TagItem { ti_Tag: DTA_DataType, ti_Data: unsafe { (u32)(**DataType)&var datatype } },
+        TagItem { ti_Tag: DTA_SourceType, ti_Data: unsafe { (u32)(*u32)&var source_type } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let count = if object != null { GetDTAttrsA(object, &var tags[0]) } else { 0 }
+    expect(count == 2 && datatype != null && source_type == 2, "A-form getter returns descriptor and file source")
+    if datatype != null { unsafe { expect((*(*datatype).dtn_Header).dth_GroupID == GID_TEXT, "descriptor group is text") } }
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|GetDTAttrs
+// @ndk-side-effects Exercises the varargs getter against a real text object and verifies its exact descriptor plus the number of successfully handled attributes
+@test("datatypes.library GetDTAttrs varargs retrieves descriptor")
+pub fn datatypes_get_attrs_varargs() {
+    let object = text_object(true)
+    var datatype: *DataType = null
+    let count = if object != null { GetDTAttrs(object, DTA_DataType, &var datatype, TAG_DONE) } else { 0 }
+    expect(count == 1 && datatype != null, "varargs getter returns exact descriptor")
+    if datatype != null { unsafe { expect((*(*datatype).dtn_Header).dth_GroupID == GID_TEXT, "descriptor group is text") } }
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|GetDTMethods
+// @ndk-side-effects Reads the object's library-owned sentinel-terminated method table and proves the text class advertises document writing without walking beyond the terminator
+@test("datatypes.library GetDTMethods exposes text capabilities")
+pub fn datatypes_get_methods() {
+    let object = text_object(false)
+    let methods = if object != null { GetDTMethods(object) } else { (*u32)null }
+    expect(method_exists(methods, DTM_WRITE), "text object supports document writing")
+    expect(methods_terminate(methods), "method table terminates within its public bound")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|GetDTTriggerMethods
+// @ndk-side-effects Retrieves the library-owned trigger table from a real text object and validates the first advertised control's nonempty label and method ID
+@test("datatypes.library GetDTTriggerMethods returns valid text trigger")
+pub fn datatypes_get_trigger_methods() {
+    let object = text_object(false)
+    let opaque: *DTMethods = if object != null { GetDTTriggerMethods(object) } else { null }
+    expect(object != null && opaque != null, "text object advertises a trigger-method table")
+    if opaque != null {
+        let first = unsafe { (*DTMethod)opaque }
+        unsafe { expect((*first).dtm_Label != null && (*first).dtm_Method != 0, "first trigger entry is complete") }
+    }
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|GetDTString
+// @ndk-side-effects Resolves a documented DataTypes error ID through the active locale/catalog path and verifies a nonempty NUL-terminated message is returned
+@test("datatypes.library GetDTString resolves error text")
+pub fn datatypes_get_string() {
+    let message = GetDTString(DTERROR_UNKNOWN_DATATYPE)
+    expect(message != null && unsafe { message[0] != 0 }, "unknown-datatype message is nonempty")
+}
+
+// @covers-ndk function|datatypes.library|AddDTObject
+// @ndk-side-effects Adds a real text.datatype object at the end of an empty live window gadget list, verifies ordinal zero and exact FirstGadget identity, then removes it through the required DataTypes path
+@test("datatypes.library AddDTObject attaches exact gadget")
+pub fn datatypes_add_object() {
+    var fixture = dt_fixture(true)
+    expect(fixture.window != null && fixture.object != null, "window and text object open")
+    expect(fixture.added && fixture.position == 0, "object is added at ordinal zero")
+    if fixture.window != null {
+        unsafe { expect((*fixture.window).FirstGadget == (*Gadget)fixture.object, "window publishes exact object pointer") }
+    }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|RemoveDTObject
+// @ndk-side-effects Removes a real text object from a live window, verifies the original ordinal and that the exact object leaves FirstGadget, then closes and disposes both owners
+@test("datatypes.library RemoveDTObject detaches exact gadget")
+pub fn datatypes_remove_object() {
+    var fixture = dt_fixture(true)
+    expect(fixture.added, "text object is attached before removal")
+    let position = if fixture.window != null && fixture.object != null {
+        RemoveDTObject(fixture.window, fixture.object)
+    } else { -1 }
+    fixture.added = false
+    expect(position == 0, "removal returns original ordinal zero")
+    if fixture.window != null {
+        unsafe { expect((*fixture.window).FirstGadget != (*Gadget)fixture.object, "exact object leaves window list") }
+    }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|RefreshDTObjectA
+// @ndk-side-effects Clears the exact domain of an attached text object, sends the A-form render request on its live layered RastPort, and requires nonzero pixel output
+@test("datatypes.library RefreshDTObjectA redraws attached text")
+pub fn datatypes_refresh_a() {
+    var fixture = dt_fixture(true)
+    expect(fixture.added, "text object is attached")
+    clear_object_area(&var fixture)
+    if fixture.object != null && fixture.window != null { RefreshDTObjectA(fixture.object, fixture.window, null, null) }
+    WaitBlit()
+    expect(object_pixels(&var fixture) > 0, "A-form refresh renders visible text-object pixels")
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|RefreshDTObjects
+// @ndk-side-effects Exercises the legacy plural varargs refresh on an attached text object after clearing its domain and verifies live pixel output
+@test("datatypes.library RefreshDTObjects redraws attached text")
+pub fn datatypes_refresh_plural() {
+    var fixture = dt_fixture(true)
+    expect(fixture.added, "text object is attached")
+    clear_object_area(&var fixture)
+    if fixture.object != null && fixture.window != null { RefreshDTObjects(fixture.object, fixture.window, null, TAG_DONE) }
+    WaitBlit()
+    expect(object_pixels(&var fixture) > 0, "plural refresh renders visible text-object pixels")
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|RefreshDTObject
+// @ndk-side-effects Exercises the singular varargs refresh on an attached text object after clearing its domain and verifies live pixel output
+@test("datatypes.library RefreshDTObject redraws attached text")
+pub fn datatypes_refresh_varargs() {
+    var fixture = dt_fixture(true)
+    expect(fixture.added, "text object is attached")
+    clear_object_area(&var fixture)
+    if fixture.object != null && fixture.window != null { RefreshDTObject(fixture.object, fixture.window, null, TAG_DONE) }
+    WaitBlit()
+    expect(object_pixels(&var fixture) > 0, "singular refresh renders visible text-object pixels")
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|DoAsyncLayout
+// @ndk-side-effects Starts text layout on a separate process, polls the object's public busy state to completion, and verifies the resulting document has a positive vertical extent before disposal waits for teardown
+@test("datatypes.library DoAsyncLayout completes text layout")
+pub fn datatypes_async_layout() {
+    let object = text_object(false)
+    var layout = gpLayout { MethodID: DTM_ASYNCLAYOUT, gpl_GInfo: null, gpl_Initial: 1 }
+    let started = if object != null { DoAsyncLayout(object, &var layout) } else { 0 }
+    expect(started != 0 && wait_until_idle(object), "asynchronous layout starts and returns to idle")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|DoDTMethodA
+// @ndk-side-effects Sends an explicit DTM_WRITE message to a real text object, writes its raw document to a disposable DOS file, and verifies every output byte against the source
+@test("datatypes.library DoDTMethodA writes exact raw text")
+pub fn datatypes_do_method_a() {
+    let object = text_object(false)
+    DeleteFile(output_path().as_cstr())
+    let file = Open(output_path().as_cstr(), (i32)MODE_NEWFILE)
+    var message = dtWrite { MethodID: DTM_WRITE, dtw_GInfo: null, dtw_FileHandle: file, dtw_Mode: DTWM_RAW, dtw_AttrList: null }
+    let result = if object != null && file != 0 {
+        DoDTMethodA(object, null, null, unsafe { (*u32)&var message })
+    } else { 0 }
+    if file != 0 { Close(file) }
+    expect(result != 0, "A-form DTM_WRITE succeeds")
+    expect(output_matches_source(), "A-form output matches every source byte")
+    DeleteFile(output_path().as_cstr())
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|DoDTMethod
+// @ndk-side-effects Exercises varargs DTM_WRITE against a real text object, writes a raw disposable file, and verifies its complete byte sequence against the source
+@test("datatypes.library DoDTMethod varargs writes exact raw text")
+pub fn datatypes_do_method_varargs() {
+    let object = text_object(true)
+    DeleteFile(output_path().as_cstr())
+    let file = Open(output_path().as_cstr(), (i32)MODE_NEWFILE)
+    let result = if object != null && file != 0 {
+        DoDTMethod(object, null, null, DTM_WRITE, null, file, DTWM_RAW, null)
+    } else { 0 }
+    if file != 0 { Close(file) }
+    expect(result != 0, "varargs DTM_WRITE succeeds")
+    expect(output_matches_source(), "varargs output matches every source byte")
+    DeleteFile(output_path().as_cstr())
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|PrintDTObjectA
+// @ndk-side-effects Opens printer.device with a full printerIO request, submits an explicit asynchronous print message, waits for the object to return idle, then closes and releases the device request
+@test("datatypes.library PrintDTObjectA completes printer-device job")
+pub fn datatypes_print_a() {
+    let object = text_object(false)
+    var opened: bool = false
+    var accepted: bool = false
+    var idle: bool = false
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let request = open_printer(port.as_raw())
+            opened = request != null
+            if request != null {
+                var message = dtPrint { MethodID: DTM_PRINT, dtp_GInfo: null,
+                    dtp_PIO: unsafe { (*printerIO)request }, dtp_AttrList: null }
+                accepted = object != null && PrintDTObjectA(object, null, null, &var message) != 0
+                idle = wait_until_idle(object)
+                close_printer(port.as_raw(), request)
+            }
+        },
+        Result::Err(_) => {},
+    }
+    expect(opened, "printer.device opens with full printerIO request")
+    expect(accepted && idle, "A-form print task is accepted and returns to idle")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|PrintDTObject
+// @ndk-side-effects Opens printer.device with a full printerIO request, exercises the varargs asynchronous print entry point, waits for idle, then closes and releases the device request
+@test("datatypes.library PrintDTObject varargs completes printer-device job")
+pub fn datatypes_print_varargs() {
+    let object = text_object(true)
+    var opened: bool = false
+    var accepted: bool = false
+    var idle: bool = false
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let request = open_printer(port.as_raw())
+            opened = request != null
+            if request != null {
+                accepted = object != null && PrintDTObject(object, null, null, DTM_PRINT,
+                    null, unsafe { (*printerIO)request }, null) != 0
+                idle = wait_until_idle(object)
+                close_printer(port.as_raw(), request)
+            }
+        },
+        Result::Err(_) => {},
+    }
+    expect(opened, "printer.device opens with full printerIO request")
+    expect(accepted && idle, "varargs print task is accepted and returns to idle")
+    dispose_object(object)
+}
+
+// @covers-ndk function|datatypes.library|ObtainDTDrawInfoA
+// @ndk-side-effects Performs the A-form private layout for a screen-bound standalone ILBM picture object, obtains a non-null opaque drawing handle, then releases it before disposal
+@test("datatypes.library ObtainDTDrawInfoA prepares standalone drawing")
+pub fn datatypes_obtain_draw_info_a() {
+    var fixture = picture_fixture(false)
+    expect(fixture.object != null, "screen-bound tiny ILBM picture object is constructed")
+    let handle = if fixture.object != null { ObtainDTDrawInfoA(fixture.object, null) } else { (*u8)null }
+    expect(handle != null, "A-form drawing handle is obtained")
+    if fixture.object != null && handle != null { ReleaseDTDrawInfo(fixture.object, handle) }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|ObtainDTDrawInfo
+// @ndk-side-effects Exercises the varargs private-layout path for a screen-bound standalone ILBM picture object, obtains a non-null opaque drawing handle, and balances it before disposal
+@test("datatypes.library ObtainDTDrawInfo varargs prepares drawing")
+pub fn datatypes_obtain_draw_info_varargs() {
+    var fixture = picture_fixture(true)
+    expect(fixture.object != null, "screen-bound varargs tiny ILBM picture object is constructed")
+    let handle = if fixture.object != null { ObtainDTDrawInfo(fixture.object, TAG_DONE) } else { (*u8)null }
+    expect(handle != null, "varargs drawing handle is obtained")
+    if fixture.object != null && handle != null { ReleaseDTDrawInfo(fixture.object, handle) }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|DrawDTObjectA
+// @ndk-side-effects Obtains standalone draw state, renders a deterministic ILBM through the A-form API into a cleared live layered window RastPort, and verifies pixels before balanced release
+@test("datatypes.library DrawDTObjectA renders into layered RastPort")
+pub fn datatypes_draw_a() {
+    var fixture = picture_fixture(false)
+    expect(fixture.window != null && fixture.object != null, "standalone drawing fixture opens")
+    let handle = if fixture.object != null { ObtainDTDrawInfoA(fixture.object, null) } else { (*u8)null }
+    clear_object_area(&var fixture)
+    let result = if handle != null && fixture.window != null {
+        DrawDTObjectA(unsafe { (*fixture.window).RPort }, fixture.object, 10, 20, 200, 70, 0, 0, null)
+    } else { 0 }
+    WaitBlit()
+    expect(result != 0 && object_pixels(&var fixture) > 0, "A-form draw produces visible picture pixels")
+    if fixture.object != null && handle != null { ReleaseDTDrawInfo(fixture.object, handle) }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|DrawDTObject
+// @ndk-side-effects Obtains standalone draw state, exercises varargs ILBM rendering into a cleared live layered window RastPort, and verifies pixels before balanced release
+@test("datatypes.library DrawDTObject varargs renders into layered RastPort")
+pub fn datatypes_draw_varargs() {
+    var fixture = picture_fixture(false)
+    expect(fixture.window != null && fixture.object != null, "standalone drawing fixture opens")
+    let handle = if fixture.object != null { ObtainDTDrawInfo(fixture.object, TAG_DONE) } else { (*u8)null }
+    clear_object_area(&var fixture)
+    let result = if handle != null && fixture.window != null {
+        DrawDTObject(unsafe { (*fixture.window).RPort }, fixture.object, 10, 20, 200, 70, 0, 0, TAG_DONE)
+    } else { 0 }
+    WaitBlit()
+    expect(result != 0 && object_pixels(&var fixture) > 0, "varargs draw produces visible picture pixels")
+    if fixture.object != null && handle != null { ReleaseDTDrawInfo(fixture.object, handle) }
+    close_dt_fixture(&var fixture)
+}
+
+// @covers-ndk function|datatypes.library|ReleaseDTDrawInfo
+// @ndk-side-effects Releases one real opaque screen-bound ILBM drawing handle through the owning object; the process leak gate verifies all private layout state returns
+@test("datatypes.library ReleaseDTDrawInfo releases private layout")
+pub fn datatypes_release_draw_info() {
+    var fixture = picture_fixture(false)
+    let handle = if fixture.object != null { ObtainDTDrawInfoA(fixture.object, null) } else { (*u8)null }
+    expect(handle != null, "drawing handle is obtained before release")
+    if fixture.object != null && handle != null { ReleaseDTDrawInfo(fixture.object, handle) }
+    close_dt_fixture(&var fixture)
+}

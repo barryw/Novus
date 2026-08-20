@@ -15,6 +15,46 @@ public class AmigaLibraryDesignTests
     private static readonly string StdLibPath = Path.Combine(ProjectRoot, "Novus", "std");
 
     [Fact]
+    public void AnalyzedImportedMethodReturnSupportsNestedGenericPatterns()
+    {
+        const string source = """
+            from std::async::future import Poll, Context, Waker
+            from std::async::sleep import Sleep
+            from amiga::timer import Duration, TimerError
+            from amiga::raw::exec import FindTask
+
+            pub fn main() -> i32 {
+                let waker = Waker::new(FindTask(null), 0)
+                var context = Context::new(waker)
+                var future = Sleep::with_unit(Duration::zero(), 255)
+                return match future.poll(&var context) {
+                    Poll::Ready(Result::Err(TimerError::OpenFailed)) => 1,
+                    _ => 0,
+                }
+            }
+            """;
+        var diagnostics = new Novus.Diagnostics.DiagnosticBag();
+        var parser = NovusParserFactory.CreateParser(source, diagnostics,
+            "test.novus", NovusParserFactory.ParseMode.Compilation);
+        var tree = parser.compilationUnit();
+        var analyzer = new SemanticAnalyzer("test.novus", source, StdLibPath);
+        analyzer.Analyze(tree);
+        Assert.False(analyzer.Diagnostics.HasErrors, analyzer.Diagnostics.FormatDiagnostics());
+
+        var builder = new IrBuilder(analyzer.GetResult());
+        builder.SetStdLibPath(StdLibPath);
+        builder.SetInputFilePath("test.novus");
+        var module = builder.BuildModule(tree);
+
+        Assert.False(builder.Diagnostics.HasErrors, builder.Diagnostics.FormatDiagnostics());
+        var timerTag = module.Functions.SelectMany(function => function.BasicBlocks)
+            .SelectMany(block => block.Instructions).OfType<IrExtractTag>()
+            .Single(tag => tag.EnumValue.Type is IrEnumType { EnumName: "ApplicationTimerError" });
+        var timerType = Assert.IsType<IrEnumType>(timerTag.EnumValue.Type);
+        Assert.Contains(timerType.Variants, variant => variant.HasAssociatedData);
+    }
+
+    [Fact]
     public void CanonicalImports_PreserveGenericTraitImplementations()
     {
         const string source = """

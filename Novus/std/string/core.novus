@@ -685,6 +685,14 @@ impl String {
         self.vec.clear()
     }
 
+    /// Shortens the string to at most `new_len` bytes.
+    ///
+    /// # Parameters
+    /// * `new_len` - The maximum length to retain.
+    pub fn truncate(&var self, new_len: usize) {
+        self.vec.truncate(new_len)
+    }
+
     /// Reserve additional capacity
     ///
     /// Returns `Result::Err(StringError::AllocationFailed)` if allocation fails.
@@ -711,18 +719,6 @@ impl String {
         return (*u8)self.vec.as_ptr()
     }
 
-    /// Manually free the string's memory
-    /// Call this when you need explicit cleanup (e.g., in tests)
-    pub fn drop(&var self) {
-        self.vec.drop()
-    }
-}
-
-// Automatic cleanup for String (RAII)
-impl Drop for String {
-    fn drop(&var self) {
-        self.vec.drop()
-    }
 }
 
 // ============================================================================
@@ -2205,11 +2201,6 @@ impl StringBuilder {
         return self.string
     }
 
-    /// Manually free the builder's memory
-    /// Call this when you need explicit cleanup (e.g., in tests)
-    pub fn drop(&var self) {
-        self.string.drop()
-    }
 }
 
 // ============================================================================

@@ -1,0 +1,385 @@
+from std::test::test import expect
+from amiga::raw::amiga_lib import NewList
+from amiga::raw::consts import CIF_DRAGGABLE, CIF_FIXED, LBCIA_Column, LBCIA_Flags, LBCIA_Title, LBCIA_Width, LBFLG_HASCHILDREN, LBFLG_HIDDEN, LBNA_Checked, LBNA_Column, LBNA_Flags, LBNA_Generation, LBNA_Selected, LBNA_UserData, LBNCA_CopyText, LBNCA_Text, TAG_DONE
+from amiga::raw::exec import AddTail
+from amiga::raw::listbrowser import AllocLBColumnInfo, AllocLBColumnInfoA, AllocListBrowserNode, AllocListBrowserNodeA, FreeLBColumnInfo, FreeListBrowserList, FreeListBrowserNode, GetLBColumnInfoAttrs, GetLBColumnInfoAttrsA, GetListBrowserNodeAttrs, GetListBrowserNodeAttrsA, HideAllListBrowserChildren, HideListBrowserNodeChildren, LISTBROWSER_GetClass, ListBrowserClearAll, ListBrowserSelectAll, SetLBColumnInfoAttrs, SetLBColumnInfoAttrsA, SetListBrowserNodeAttrs, SetListBrowserNodeAttrsA, ShowAllListBrowserChildren, ShowListBrowserNodeChildren
+from amiga::raw::structs import ColumnInfo, List, Node, TagItem
+
+struct Hierarchy {
+    root: *Node,
+    child: *Node,
+    grandchild: *Node,
+}
+
+fn text_is(value: *u8, first: u8) -> bool {
+    return value != null && unsafe { value[0] == first && value[1] == 0 }
+}
+
+fn alloc_node(text: *u8, user_data: u32, generation: u32, flags: u32, selected: bool) -> *Node {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBNA_UserData, ti_Data: user_data },
+        TagItem { ti_Tag: LBNA_Generation, ti_Data: generation },
+        TagItem { ti_Tag: LBNA_Flags, ti_Data: flags },
+        TagItem { ti_Tag: LBNA_Selected, ti_Data: if selected { 1 } else { 0 } },
+        TagItem { ti_Tag: LBNA_Column, ti_Data: 0 },
+        TagItem { ti_Tag: LBNCA_Text, ti_Data: (u32)text },
+        TagItem { ti_Tag: LBNCA_CopyText, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocListBrowserNodeA(1, &var tags[0])
+}
+
+fn node_value(node: *Node, tag: u32) -> u32 {
+    var value: u32 = $FFFFFFFF
+    if node != null { GetListBrowserNodeAttrs(node, tag, &var value, TAG_DONE) }
+    return value
+}
+
+fn make_hierarchy(list: *List) -> Hierarchy {
+    NewList(list)
+    let root = alloc_node("R", 1, 1, LBFLG_HASCHILDREN, false)
+    let child = alloc_node("C", 2, 2, LBFLG_HASCHILDREN, false)
+    let grandchild = alloc_node("G", 3, 3, 0, false)
+    if root != null { AddTail(list, root) }
+    if child != null { AddTail(list, child) }
+    if grandchild != null { AddTail(list, grandchild) }
+    return Hierarchy { root: root, child: child, grandchild: grandchild }
+}
+
+fn alloc_columns_a(title: *u8, width: u32, flags: u32) -> *ColumnInfo {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBCIA_Column, ti_Data: 0 },
+        TagItem { ti_Tag: LBCIA_Title, ti_Data: (u32)title },
+        TagItem { ti_Tag: LBCIA_Width, ti_Data: width },
+        TagItem { ti_Tag: LBCIA_Flags, ti_Data: flags },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocLBColumnInfoA(1, &var tags[0])
+}
+
+// @covers-ndk function|listbrowser.library|LISTBROWSER_GetClass
+// @ndk-side-effects Opens the installed ListBrowser gadget class and verifies its runtime class pointer is available without constructing a gadget
+@test("listbrowser.library LISTBROWSER_GetClass returns the installed class")
+pub fn listbrowser_get_class() {
+    expect(LISTBROWSER_GetClass() != null, "ListBrowser runtime class pointer is non-null")
+}
+
+// @covers-ndk function|listbrowser.library|AllocListBrowserNodeA
+// @ndk-side-effects Allocates a private one-column node from a terminated tag list, reads its exact copied text and user data, and frees it
+@test("listbrowser.library AllocListBrowserNodeA creates an attributed node")
+pub fn listbrowser_alloc_node_a() {
+    let node = alloc_node("A", $12345678, 1, 0, false)
+    var text: *u8 = null
+    if node != null { GetListBrowserNodeAttrs(node, LBNA_Column, 0, LBNCA_Text, &var text, TAG_DONE) }
+    let valid = node != null && node_value(node, LBNA_UserData) == $12345678 && text_is(text, 65)
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "tag-list allocation preserves copied text A and exact user data")
+}
+
+// @covers-ndk function|listbrowser.library|AllocListBrowserNode
+// @ndk-side-effects Allocates a private node through varargs, reads its selected and checked states, and frees it
+@test("listbrowser.library AllocListBrowserNode creates a varargs node")
+pub fn listbrowser_alloc_node() {
+    let node = AllocListBrowserNode(1, LBNA_Selected, 1, LBNA_Checked, 1, LBNA_UserData, 77, TAG_DONE)
+    let valid = node != null && node_value(node, LBNA_Selected) == 1 && node_value(node, LBNA_Checked) == 1 && node_value(node, LBNA_UserData) == 77
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "varargs allocation preserves selected, checked, and user-data attributes")
+}
+
+// @covers-ndk function|listbrowser.library|FreeListBrowserNode
+// @ndk-side-effects Completes two private-node allocate/free lifecycles; the per-test A4000 memory gate verifies both allocations are returned
+@test("listbrowser.library FreeListBrowserNode releases private nodes")
+pub fn listbrowser_free_node() {
+    let first = alloc_node("B", 1, 1, 0, false)
+    if first != null { FreeListBrowserNode(first) }
+    let second = alloc_node("C", 2, 1, 0, false)
+    if second != null { FreeListBrowserNode(second) }
+    expect(first != null && second != null, "two complete private-node lifecycles succeed")
+}
+
+// @covers-ndk function|listbrowser.library|SetListBrowserNodeAttrsA
+// @ndk-side-effects Mutates exact user-data, selected, and checked values on a detached private node through a terminated tag list, reads them back, and frees it
+@test("listbrowser.library SetListBrowserNodeAttrsA mutates detached attributes")
+pub fn listbrowser_set_node_a() {
+    let node = alloc_node("D", 3, 1, 0, false)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBNA_UserData, ti_Data: $CAFEBABE },
+        TagItem { ti_Tag: LBNA_Selected, ti_Data: 1 },
+        TagItem { ti_Tag: LBNA_Checked, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { SetListBrowserNodeAttrsA(node, &var tags[0]) }
+    let valid = node != null && node_value(node, LBNA_UserData) == $CAFEBABE && node_value(node, LBNA_Selected) == 1 && node_value(node, LBNA_Checked) == 1
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "tag-list setter stores exact user data and boolean states")
+}
+
+// @covers-ndk function|listbrowser.library|SetListBrowserNodeAttrs
+// @ndk-side-effects Mutates a detached private node through varargs, reads the exact values back, and frees it
+@test("listbrowser.library SetListBrowserNodeAttrs mutates detached attributes")
+pub fn listbrowser_set_node() {
+    let node = alloc_node("E", 4, 1, 0, false)
+    if node != null { SetListBrowserNodeAttrs(node, LBNA_UserData, $0BADF00D, LBNA_Generation, 3, TAG_DONE) }
+    let valid = node != null && node_value(node, LBNA_UserData) == $0BADF00D && node_value(node, LBNA_Generation) == 3
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "varargs setter stores exact user data and generation")
+}
+
+// @covers-ndk function|listbrowser.library|GetListBrowserNodeAttrsA
+// @ndk-side-effects Reads exact scalar and copied-text attributes through caller-owned destinations in a terminated TagItem list, then frees the private node
+@test("listbrowser.library GetListBrowserNodeAttrsA reads private attributes")
+pub fn listbrowser_get_node_a() {
+    let node = alloc_node("F", $11223344, 2, 0, true)
+    var user_data: u32 = 0
+    var selected: u32 = 0
+    var text: *u8 = null
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBNA_UserData, ti_Data: (u32)(*u32)&var user_data },
+        TagItem { ti_Tag: LBNA_Selected, ti_Data: (u32)(*u32)&var selected },
+        TagItem { ti_Tag: LBNA_Column, ti_Data: 0 },
+        TagItem { ti_Tag: LBNCA_Text, ti_Data: (u32)(**u8)&var text },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { GetListBrowserNodeAttrsA(node, &var tags[0]) }
+    let valid = node != null && user_data == $11223344 && selected == 1 && text_is(text, 70)
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "tag-list getter returns exact user data, selected state, and text F")
+}
+
+// @covers-ndk function|listbrowser.library|GetListBrowserNodeAttrs
+// @ndk-side-effects Reads exact scalar attributes from a real private node through varargs destinations and frees it
+@test("listbrowser.library GetListBrowserNodeAttrs reads private attributes")
+pub fn listbrowser_get_node() {
+    let node = alloc_node("G", $55667788, 4, 0, false)
+    var user_data: u32 = 0
+    var generation: u32 = 0
+    if node != null { GetListBrowserNodeAttrs(node, LBNA_UserData, &var user_data, LBNA_Generation, &var generation, TAG_DONE) }
+    let valid = node != null && user_data == $55667788 && generation == 4
+    if node != null { FreeListBrowserNode(node) }
+    expect(valid, "varargs getter returns exact user data and generation")
+}
+
+// @covers-ndk function|listbrowser.library|ListBrowserSelectAll
+// @ndk-side-effects Adds two unselected private nodes to a detached Exec list, selects both, verifies both exact states, and frees the entire list
+@test("listbrowser.library ListBrowserSelectAll selects every node")
+pub fn listbrowser_select_all() {
+    var list: List = @zeroed(List)
+    NewList(&var list)
+    let first = alloc_node("H", 1, 1, 0, false)
+    let second = alloc_node("I", 2, 1, 0, false)
+    if first != null { AddTail(&var list, first) }
+    if second != null { AddTail(&var list, second) }
+    if first != null && second != null { ListBrowserSelectAll(&var list) }
+    let valid = first != null && second != null && node_value(first, LBNA_Selected) == 1 && node_value(second, LBNA_Selected) == 1
+    FreeListBrowserList(&var list)
+    expect(valid, "both detached-list nodes become selected")
+}
+
+// @covers-ndk function|listbrowser.library|ShowListBrowserNodeChildren
+// @ndk-side-effects Builds a three-generation detached hierarchy, hides all descendants, shows one depth below the root, verifies only the direct child becomes visible, and frees the list
+@test("listbrowser.library ShowListBrowserNodeChildren honors depth")
+pub fn listbrowser_show_children() {
+    var list: List = @zeroed(List)
+    let nodes = make_hierarchy(&var list)
+    if nodes.root != null && nodes.child != null && nodes.grandchild != null {
+        HideAllListBrowserChildren(&var list)
+        ShowListBrowserNodeChildren(nodes.root, 1)
+    }
+    let valid = nodes.root != null && nodes.child != null && nodes.grandchild != null && (node_value(nodes.child, LBNA_Flags) & LBFLG_HIDDEN) == 0 && (node_value(nodes.grandchild, LBNA_Flags) & LBFLG_HIDDEN) != 0
+    FreeListBrowserList(&var list)
+    expect(valid, "depth one reveals the child but leaves the grandchild hidden")
+}
+
+// @covers-ndk function|listbrowser.library|HideListBrowserNodeChildren
+// @ndk-side-effects Builds a visible three-generation detached hierarchy, hides the root's direct children, verifies the direct child becomes hidden, and frees the list
+@test("listbrowser.library HideListBrowserNodeChildren hides direct children")
+pub fn listbrowser_hide_children() {
+    var list: List = @zeroed(List)
+    let nodes = make_hierarchy(&var list)
+    if nodes.root != null && nodes.child != null { HideListBrowserNodeChildren(nodes.root) }
+    let valid = nodes.root != null && nodes.child != null && (node_value(nodes.child, LBNA_Flags) & LBFLG_HIDDEN) != 0
+    FreeListBrowserList(&var list)
+    expect(valid, "the root's direct child becomes hidden")
+}
+
+// @covers-ndk function|listbrowser.library|ShowAllListBrowserChildren
+// @ndk-side-effects Builds a detached hierarchy, hides all descendants, shows all descendants, verifies both child generations are visible, and frees the list
+@test("listbrowser.library ShowAllListBrowserChildren reveals every descendant")
+pub fn listbrowser_show_all_children() {
+    var list: List = @zeroed(List)
+    let nodes = make_hierarchy(&var list)
+    if nodes.root != null && nodes.child != null && nodes.grandchild != null {
+        HideAllListBrowserChildren(&var list)
+        ShowAllListBrowserChildren(&var list)
+    }
+    let valid = nodes.root != null && nodes.child != null && nodes.grandchild != null && (node_value(nodes.child, LBNA_Flags) & LBFLG_HIDDEN) == 0 && (node_value(nodes.grandchild, LBNA_Flags) & LBFLG_HIDDEN) == 0
+    FreeListBrowserList(&var list)
+    expect(valid, "both child generations become visible")
+}
+
+// @covers-ndk function|listbrowser.library|HideAllListBrowserChildren
+// @ndk-side-effects Builds a visible detached hierarchy, hides all descendants, verifies both child generations become hidden while the root stays visible, and frees the list
+@test("listbrowser.library HideAllListBrowserChildren hides every descendant")
+pub fn listbrowser_hide_all_children() {
+    var list: List = @zeroed(List)
+    let nodes = make_hierarchy(&var list)
+    if nodes.root != null && nodes.child != null && nodes.grandchild != null { HideAllListBrowserChildren(&var list) }
+    let valid = nodes.root != null && nodes.child != null && nodes.grandchild != null && (node_value(nodes.root, LBNA_Flags) & LBFLG_HIDDEN) == 0 && (node_value(nodes.child, LBNA_Flags) & LBFLG_HIDDEN) != 0 && (node_value(nodes.grandchild, LBNA_Flags) & LBFLG_HIDDEN) != 0
+    FreeListBrowserList(&var list)
+    expect(valid, "all descendants become hidden while the root remains visible")
+}
+
+// @covers-ndk function|listbrowser.library|FreeListBrowserList
+// @ndk-side-effects Frees two private nodes owned by an initialized Exec list and verifies the list returns to its canonical empty sentinel state; the A4000 memory gate verifies allocation return
+@test("listbrowser.library FreeListBrowserList empties and releases its list")
+pub fn listbrowser_free_list() {
+    var list: List = @zeroed(List)
+    NewList(&var list)
+    let first = alloc_node("J", 1, 1, 0, false)
+    let second = alloc_node("K", 2, 1, 0, false)
+    if first != null { AddTail(&var list, first) }
+    if second != null { AddTail(&var list, second) }
+    FreeListBrowserList(&var list)
+    expect(first != null && second != null && list.lh_Head == (*Node)&var list.lh_Tail && list.lh_Tail == null && list.lh_TailPred == (*Node)&var list.lh_Head, "the list is empty after both private nodes are released")
+}
+
+// @covers-ndk function|listbrowser.library|AllocLBColumnInfoA
+// @ndk-side-effects Allocates one column through a terminated tag list, verifies the exact public width and flags, and frees the metadata
+@test("listbrowser.library AllocLBColumnInfoA creates attributed metadata")
+pub fn listbrowser_alloc_columns_a() {
+    let info = alloc_columns_a("L", 31, CIF_FIXED)
+    let valid = info != null && info.ci_Width == 31 && info.ci_Flags == CIF_FIXED && text_is(info.ci_Title, 76)
+    if info != null { FreeLBColumnInfo(info) }
+    expect(valid, "tag-list allocation preserves title L, width 31, and fixed flag")
+}
+
+// @covers-ndk function|listbrowser.library|AllocLBColumnInfo
+// @ndk-side-effects Allocates one column through varargs, verifies the exact public width and flags, and frees the metadata
+@test("listbrowser.library AllocLBColumnInfo creates varargs metadata")
+pub fn listbrowser_alloc_columns() {
+    let info = AllocLBColumnInfo(1, LBCIA_Column, 0, LBCIA_Title, "M", LBCIA_Width, 32, LBCIA_Flags, CIF_DRAGGABLE, TAG_DONE)
+    let has_info = info != null
+    let width_valid = info != null && info.ci_Width == 32
+    let flags_valid = info != null && info.ci_Flags == (CIF_FIXED | CIF_DRAGGABLE)
+    let title_valid = info != null && text_is(info.ci_Title, 77)
+    if info != null { FreeLBColumnInfo(info) }
+    expect(has_info, "varargs allocation returns column metadata")
+    expect(width_valid, "varargs allocation preserves width 32")
+    expect(flags_valid, "varargs allocation preserves draggable and the fixed flag implied by width")
+    expect(title_valid, "varargs allocation preserves title M")
+}
+
+// @covers-ndk function|listbrowser.library|SetLBColumnInfoAttrsA
+// @ndk-side-effects Mutates one allocated column's exact width and flags through a terminated tag list, verifies its public fields, and frees it
+@test("listbrowser.library SetLBColumnInfoAttrsA updates column metadata")
+pub fn listbrowser_set_columns_a() {
+    let info = alloc_columns_a("N", 33, CIF_FIXED)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBCIA_Column, ti_Data: 0 },
+        TagItem { ti_Tag: LBCIA_Width, ti_Data: 41 },
+        TagItem { ti_Tag: LBCIA_Flags, ti_Data: CIF_DRAGGABLE },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let status = if info != null { SetLBColumnInfoAttrsA(info, &var tags[0]) } else { -1 }
+    let has_info = info != null
+    let status_valid = status != 0
+    let width_valid = info != null && info.ci_Width == 41
+    let flags_valid = info != null && info.ci_Flags == (CIF_FIXED | CIF_DRAGGABLE)
+    if info != null { FreeLBColumnInfo(info) }
+    expect(has_info, "tag-list setter receives allocated metadata")
+    expect(status_valid, "tag-list setter returns documented non-zero success")
+    expect(width_valid, "tag-list setter stores width 41")
+    expect(flags_valid, "tag-list setter stores draggable and the fixed flag implied by width")
+}
+
+// @covers-ndk function|listbrowser.library|SetLBColumnInfoAttrs
+// @ndk-side-effects Mutates one allocated column's exact width and flags through varargs, verifies its public fields, and frees it
+@test("listbrowser.library SetLBColumnInfoAttrs updates column metadata")
+pub fn listbrowser_set_columns() {
+    let info = alloc_columns_a("O", 34, CIF_FIXED)
+    let status = if info != null { SetLBColumnInfoAttrs(info, LBCIA_Column, 0, LBCIA_Width, 42, LBCIA_Flags, CIF_DRAGGABLE, TAG_DONE) } else { -1 }
+    let has_info = info != null
+    let status_valid = status != 0
+    let width_valid = info != null && info.ci_Width == 42
+    let flags_valid = info != null && info.ci_Flags == (CIF_FIXED | CIF_DRAGGABLE)
+    if info != null { FreeLBColumnInfo(info) }
+    expect(has_info, "varargs setter receives allocated metadata")
+    expect(status_valid, "varargs setter returns documented non-zero success")
+    expect(width_valid, "varargs setter stores width 42")
+    expect(flags_valid, "varargs setter stores draggable and the fixed flag implied by width")
+}
+
+// @covers-ndk function|listbrowser.library|GetLBColumnInfoAttrsA
+// @ndk-side-effects Reads one allocated column's exact title, width, and flags through caller-owned destinations in a terminated TagItem list, then frees it
+@test("listbrowser.library GetLBColumnInfoAttrsA reads column metadata")
+pub fn listbrowser_get_columns_a() {
+    let info = alloc_columns_a("P", 43, CIF_DRAGGABLE)
+    var title: *u8 = null
+    var width: u32 = 0
+    var flags: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: LBCIA_Column, ti_Data: 0 },
+        TagItem { ti_Tag: LBCIA_Title, ti_Data: (u32)(**u8)&var title },
+        TagItem { ti_Tag: LBCIA_Width, ti_Data: (u32)(*u32)&var width },
+        TagItem { ti_Tag: LBCIA_Flags, ti_Data: (u32)(*u32)&var flags },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let status = if info != null { GetLBColumnInfoAttrsA(info, &var tags[0]) } else { -1 }
+    let has_info = info != null
+    let status_valid = status != 0
+    let width_valid = width == 43
+    let flags_valid = flags == (CIF_FIXED | CIF_DRAGGABLE)
+    let title_valid = text_is(title, 80)
+    if info != null { FreeLBColumnInfo(info) }
+    expect(has_info, "tag-list getter receives allocated metadata")
+    expect(status_valid, "tag-list getter returns documented non-zero success")
+    expect(width_valid, "tag-list getter returns width 43")
+    expect(flags_valid, "tag-list getter returns draggable and the fixed flag implied by width")
+    expect(title_valid, "tag-list getter returns title P")
+}
+
+// @covers-ndk function|listbrowser.library|GetLBColumnInfoAttrs
+// @ndk-side-effects Reads one allocated column's exact width and flags through varargs caller-owned destinations, then frees it
+@test("listbrowser.library GetLBColumnInfoAttrs reads column metadata")
+pub fn listbrowser_get_columns() {
+    let info = alloc_columns_a("Q", 44, CIF_FIXED)
+    var width: u32 = 0
+    var flags: u32 = 0
+    let status = if info != null { GetLBColumnInfoAttrs(info, LBCIA_Column, 0, LBCIA_Width, &var width, LBCIA_Flags, &var flags, TAG_DONE) } else { -1 }
+    let has_info = info != null
+    let status_valid = status != 0
+    let width_valid = width == 44
+    let flags_valid = flags == CIF_FIXED
+    if info != null { FreeLBColumnInfo(info) }
+    expect(has_info, "varargs getter receives allocated metadata")
+    expect(status_valid, "varargs getter returns documented non-zero success")
+    expect(width_valid, "varargs getter returns width 44")
+    expect(flags_valid, "varargs getter returns the fixed flag")
+}
+
+// @covers-ndk function|listbrowser.library|FreeLBColumnInfo
+// @ndk-side-effects Completes two column-metadata allocate/free lifecycles; the per-test A4000 memory gate verifies both allocations are returned
+@test("listbrowser.library FreeLBColumnInfo releases column metadata")
+pub fn listbrowser_free_columns() {
+    let first = alloc_columns_a("R", 45, CIF_FIXED)
+    if first != null { FreeLBColumnInfo(first) }
+    let second = alloc_columns_a("S", 46, CIF_DRAGGABLE)
+    if second != null { FreeLBColumnInfo(second) }
+    expect(first != null && second != null, "two complete column-metadata lifecycles succeed")
+}
+
+// @covers-ndk function|listbrowser.library|ListBrowserClearAll
+// @ndk-side-effects Adds two selected private nodes to a detached Exec list, clears both, verifies both exact states, and frees the entire list
+@test("listbrowser.library ListBrowserClearAll clears every selection")
+pub fn listbrowser_clear_all() {
+    var list: List = @zeroed(List)
+    NewList(&var list)
+    let first = alloc_node("T", 1, 1, 0, true)
+    let second = alloc_node("U", 2, 1, 0, true)
+    if first != null { AddTail(&var list, first) }
+    if second != null { AddTail(&var list, second) }
+    if first != null && second != null { ListBrowserClearAll(&var list) }
+    let valid = first != null && second != null && node_value(first, LBNA_Selected) == 0 && node_value(second, LBNA_Selected) == 0
+    FreeListBrowserList(&var list)
+    expect(valid, "both detached-list nodes become unselected")
+}

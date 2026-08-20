@@ -1,0 +1,110 @@
+from std::core import Result
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::structs import RastPort
+from amiga::raw::graphics import InitRastPort, ReadPixel, ReadPixelArray8, RectFill
+from amiga::raw::graphics import SetAPen, SetRast, WaitBlit, WritePixelArray8
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+fn bitmap(width: u32, height: u32) -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(width, height, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(handle: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    unsafe { (*rastport).BitMap = handle.as_raw() }
+}
+
+fn pixels() -> [u8; 32] {
+    return [
+        1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+    ]
+}
+
+// @covers-ndk function|graphics.library|WritePixelArray8
+// @ndk-side-effects WritePixelArray8 decodes a padded 16x2 chunky pen array into the requested planar rectangle; exact row boundaries, opposite pen runs, untouched neighbors, the returned count, and both owned bitmap releases are verified
+@test("graphics.library WritePixelArray8 writes an exact two-row pen array")
+pub fn graphics_write_pixel_array8() {
+    var destination = match bitmap(64, 32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var temporary = match bitmap(16, 1) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "temporary bitmap allocated")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    var temp_rp: RastPort = @zeroed(RastPort)
+    attach(&destination, &var rp)
+    attach(&temporary, &var temp_rp)
+    SetRast(&var rp, 0)
+    SetRast(&var temp_rp, 0)
+    SetAPen(&var rp, 1)
+    SetAPen(&var temp_rp, 1)
+    WaitBlit()
+    var input = pixels()
+
+    let count = WritePixelArray8(&var rp, 10, 8, 25, 9, &var input[0], &var temp_rp)
+    WaitBlit()
+    expect(count == 32, "all 32 requested pixels written")
+    expect(ReadPixel(&var rp, 10, 8) == 1 && ReadPixel(&var rp, 17, 8) == 1 &&
+        ReadPixel(&var rp, 18, 8) == 0 && ReadPixel(&var rp, 25, 8) == 0,
+        "first row preserves both exact pen runs")
+    expect(ReadPixel(&var rp, 10, 9) == 0 && ReadPixel(&var rp, 17, 9) == 0 &&
+        ReadPixel(&var rp, 18, 9) == 1 && ReadPixel(&var rp, 25, 9) == 1,
+        "second row preserves both exact pen runs")
+    expect(ReadPixel(&var rp, 9, 8) == 0 && ReadPixel(&var rp, 26, 9) == 0,
+        "pixels outside the requested rectangle remain clear")
+}
+
+// @covers-ndk function|graphics.library|ReadPixelArray8
+// @ndk-side-effects ReadPixelArray8 encodes an exact 16x2 planar rectangle into the padded chunky destination array; the returned count and every byte are compared before both owned bitmaps are released
+@test("graphics.library ReadPixelArray8 reads every requested planar pen")
+pub fn graphics_read_pixel_array8() {
+    var source = match bitmap(64, 32) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var temporary = match bitmap(16, 1) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "temporary bitmap allocated")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    var temp_rp: RastPort = @zeroed(RastPort)
+    attach(&source, &var rp)
+    attach(&temporary, &var temp_rp)
+    SetRast(&var rp, 0)
+    SetRast(&var temp_rp, 0)
+    SetAPen(&var rp, 1)
+    SetAPen(&var temp_rp, 1)
+    RectFill(&var rp, 10, 8, 17, 8)
+    RectFill(&var rp, 18, 9, 25, 9)
+    WaitBlit()
+    var output: [u8; 32] = @zeroed([u8; 32])
+    let expected = pixels()
+
+    let count = ReadPixelArray8(&var rp, 10, 8, 25, 9, &var output[0], &var temp_rp)
+    WaitBlit()
+    expect(count == 32, "all 32 requested pixels read")
+    var index: u32 = 0
+    while index < 32 {
+        expect_eq((u32)output[index], (u32)expected[index], "chunky pen byte matches source pixel")
+        index++
+    }
+}

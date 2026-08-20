@@ -1,0 +1,313 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, CUSTOMSCREEN, OBP_Precision
+from amiga::raw::consts import PEN_EXCLUSIVE, PRECISION_EXACT, SA_Depth, SA_Height
+from amiga::raw::consts import SA_SharePens, SA_Title, SA_Type, SA_Width, TAG_DONE
+from amiga::raw::consts import VTAG_PF1_BASE_GET, VTAG_PF1_BASE_SET, VTAG_PF2_BASE_GET, VTAG_PF2_BASE_SET
+from amiga::raw::structs import ColorMap, RasInfo, TagItem, ViewPort
+from amiga::raw::graphics import AttachPalExtra, FindColor, FreeColorMap, GetColorMap
+from amiga::raw::graphics import GetRGB4, GetRGB32, InitVPort, ObtainBestPen, ObtainBestPenA
+from amiga::raw::graphics import ObtainPen, ReleasePen, SetRGB4CM, SetRGB32CM
+from amiga::raw::graphics import VideoControl, VideoControlTags
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::sys::intuition import ScreenHandle
+
+const NO_PEN: u32 = $FFFFFFFF
+
+fn map(entries: i32) -> *ColorMap {
+    return GetColorMap(entries)
+}
+
+fn private_screen() -> Result<ScreenHandle, i32> {
+    let title: Str = "Novus palette test"
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SA_Width, ti_Data: 320 },
+        TagItem { ti_Tag: SA_Height, ti_Data: 100 },
+        TagItem { ti_Tag: SA_Depth, ti_Data: 4 },
+        TagItem { ti_Tag: SA_Title, ti_Data: (u32)title.as_ptr() },
+        TagItem { ti_Tag: SA_Type, ti_Data: CUSTOMSCREEN },
+        TagItem { ti_Tag: SA_SharePens, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return match ScreenHandle::open(&tags) {
+        Result::Ok(screen) => Result::Ok(screen),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn screen_map(screen: &ScreenHandle) -> *ColorMap {
+    unsafe { return (*screen.viewport()).ColorMap }
+}
+
+// @covers-ndk function|graphics.library|GetColorMap
+// @ndk-side-effects GetColorMap allocates a ColorMap with the requested entry count and a non-null private color table; FreeColorMap returns the complete allocation before process-level leak measurement
+@test("graphics.library GetColorMap allocates the requested table")
+pub fn graphics_get_color_map() {
+    let cm = map(16)
+    if cm == null {
+        expect(false, "16-entry ColorMap allocated")
+        return
+    }
+    let valid = unsafe { (*cm).Count == 16 && (*cm).ColorTable != null }
+    expect_true(valid, "ColorMap has exactly 16 addressable entries")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|FreeColorMap
+// @ndk-side-effects FreeColorMap releases a real 64-entry ColorMap; a second allocation and release prove the allocator remains usable, while the A4000 process memory check proves no ColorMap storage survives teardown
+@test("graphics.library FreeColorMap releases reusable storage")
+pub fn graphics_free_color_map() {
+    let first = map(64)
+    if first == null {
+        expect(false, "first ColorMap allocated")
+        return
+    }
+    FreeColorMap(first)
+    let second = map(64)
+    expect_true(second != null, "ColorMap allocation succeeds after release")
+    if second != null { FreeColorMap(second) }
+}
+
+// @covers-ndk function|graphics.library|SetRGB4CM
+// @ndk-side-effects SetRGB4CM writes the exact four-bit red, green, and blue nibbles into entry 3 of an unattached ColorMap; GetRGB4 reads back 0x0ABC before the map is released
+@test("graphics.library SetRGB4CM stores exact channel nibbles")
+pub fn graphics_set_rgb4_cm() {
+    let cm = map(8)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    SetRGB4CM(cm, 3, $A, $B, $C)
+    expect_eq(GetRGB4(cm, 3), $ABC, "entry 3 contains exact 4-bit RGB")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|GetRGB4
+// @ndk-side-effects GetRGB4 reads the selected ColorMap entry without altering adjacent entries; exact packed-nibble results are checked after two distinct writes
+@test("graphics.library GetRGB4 selects the exact entry")
+pub fn graphics_get_rgb4() {
+    let cm = map(8)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    SetRGB4CM(cm, 2, 1, 2, 3)
+    SetRGB4CM(cm, 3, 4, 5, 6)
+    expect_eq(GetRGB4(cm, 2), $123, "requested entry returns its packed RGB value")
+    expect_eq(GetRGB4(cm, 3), $456, "adjacent entry remains independent")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|SetRGB32CM
+// @ndk-side-effects SetRGB32CM writes full-width fractional channels to entry 5 of an unattached ColorMap; GetRGB32 returns all three exact values before cleanup
+@test("graphics.library SetRGB32CM stores exact fractional channels")
+pub fn graphics_set_rgb32_cm() {
+    let cm = map(8)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    var table: [u32] = [0, 0, 0]
+    SetRGB32CM(cm, 5, $12121212, $34343434, $56565656)
+    GetRGB32(cm, 5, 1, &var table[0])
+    expect_eq(table[0], $12121212, "red fraction preserved")
+    expect_eq(table[1], $34343434, "green fraction preserved")
+    expect_eq(table[2], $56565656, "blue fraction preserved")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|GetRGB32
+// @ndk-side-effects GetRGB32 writes two consecutive RGB triplets into the caller's six-long table in entry order; exact values prove the count, stride, and destination writes
+@test("graphics.library GetRGB32 writes consecutive triplets")
+pub fn graphics_get_rgb32() {
+    let cm = map(8)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    var table: [u32] = [0, 0, 0, 0, 0, 0]
+    SetRGB32CM(cm, 2, $11111111, $22222222, $33333333)
+    SetRGB32CM(cm, 3, $AAAAAAAA, $BBBBBBBB, $CCCCCCCC)
+    GetRGB32(cm, 2, 2, &var table[0])
+    expect_eq(table[0], $11111111, "first red written at offset zero")
+    expect_eq(table[2], $33333333, "first blue completes first triplet")
+    expect_eq(table[3], (u32)$AAAAAAAA, "second red starts second triplet")
+    expect_eq(table[5], (u32)$CCCCCCCC, "second blue completes second triplet")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|FindColor
+// @ndk-side-effects FindColor searches only the requested ColorMap range and returns the exact index whose stored 32-bit RGB triplet matches the target; it neither allocates nor changes a pen
+@test("graphics.library FindColor returns the exact palette match")
+pub fn graphics_find_color() {
+    let cm = map(8)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    SetRGB32CM(cm, 1, $FFFFFFFF, 0, 0)
+    SetRGB32CM(cm, 2, 0, $FFFFFFFF, 0)
+    SetRGB32CM(cm, 3, 0, 0, $FFFFFFFF)
+    expect_eq(FindColor(cm, 0, $FFFFFFFF, 0, 7), 2, "green resolves to entry 2")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|AttachPalExtra
+// @ndk-side-effects AttachPalExtra attaches one palette-sharing structure to a custom two-plane ViewPort and ColorMap; the resulting PalExtra is non-null and accepts an exclusive pen before FreeColorMap releases it
+@test("graphics.library AttachPalExtra enables palette sharing")
+pub fn graphics_attach_pal_extra() {
+    let bitmap = match BitMapHandle::alloc(64, 32, 2, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "fixture bitmap allocated")
+            return
+        },
+    }
+    let cm = map(4)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    var info: RasInfo = @zeroed(RasInfo)
+    var viewport: ViewPort = @zeroed(ViewPort)
+    InitVPort(&var viewport)
+    unsafe {
+        info.BitMap = bitmap.as_raw()
+        viewport.ColorMap = cm
+        viewport.RasInfo = &var info
+        viewport.DWidth = 64
+        viewport.DHeight = 32
+    }
+    let status = AttachPalExtra(cm, &var viewport)
+    let pen = if status == 0 { ObtainPen(cm, NO_PEN, $FFFFFFFF, 0, 0, (i32)PEN_EXCLUSIVE) } else { NO_PEN }
+    let attached = unsafe { (*cm).PalExtra != null }
+    expect(status == 0 && attached && pen != NO_PEN, "palette sharing attaches and allocates a pen")
+    if pen != NO_PEN { ReleasePen(cm, pen) }
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|ObtainPen
+// @ndk-side-effects ObtainPen reserves an exclusive entry from a private screen ColorMap and installs the requested full-red value; GetRGB32 verifies the selected entry and ReleasePen balances ownership
+@test("graphics.library ObtainPen reserves and colors one entry")
+pub fn graphics_obtain_pen() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let cm = screen_map(&screen)
+    let pen = ObtainPen(cm, NO_PEN, $FFFFFFFF, 0, 0, (i32)PEN_EXCLUSIVE)
+    var rgb: [u32] = [0, 0, 0]
+    if pen != NO_PEN { GetRGB32(cm, pen, 1, &var rgb[0]) }
+    expect_true(pen != NO_PEN, "exclusive pen allocated")
+    expect_eq(rgb[0], (u32)$FFFFFFFF, "exclusive pen red channel")
+    expect_eq(rgb[1], (u32)0, "exclusive pen green channel")
+    expect_eq(rgb[2], (u32)0, "exclusive pen blue channel")
+    if pen != NO_PEN { ReleasePen(cm, pen) }
+}
+
+// @covers-ndk function|graphics.library|ObtainBestPenA
+// @ndk-side-effects ObtainBestPenA consumes an explicit exact-precision tag list, returns a sharable pen for full green in a private screen ColorMap, and ReleasePen balances its reference
+@test("graphics.library ObtainBestPenA honors exact precision tags")
+pub fn graphics_obtain_best_pen_a() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let cm = screen_map(&screen)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: OBP_Precision, ti_Data: PRECISION_EXACT },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let pen = ObtainBestPenA(cm, 0, $FFFFFFFF, 0, &var tags[0])
+    expect(pen >= 0, "tag-list entry point returns an exact green pen")
+    if pen >= 0 { ReleasePen(cm, (u32)pen) }
+}
+
+// @covers-ndk function|graphics.library|ObtainBestPen
+// @ndk-side-effects ObtainBestPen forwards an exact-precision varargs list, returns a sharable pen for full blue in a private screen ColorMap, and ReleasePen balances its reference
+@test("graphics.library ObtainBestPen forwards varargs tags")
+pub fn graphics_obtain_best_pen() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let cm = screen_map(&screen)
+    let pen = ObtainBestPen(cm, 0, 0, $FFFFFFFF, OBP_Precision, PRECISION_EXACT, TAG_DONE)
+    expect(pen >= 0, "varargs entry point returns an exact blue pen")
+    if pen >= 0 { ReleasePen(cm, (u32)pen) }
+}
+
+// @covers-ndk function|graphics.library|ReleasePen
+// @ndk-side-effects ReleasePen returns an exclusive palette entry to the private screen's free pool; immediately obtaining that same numbered entry again proves the ownership transition before the second release
+@test("graphics.library ReleasePen makes an exclusive entry reusable")
+pub fn graphics_release_pen() {
+    let screen = match private_screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let cm = screen_map(&screen)
+    let first = ObtainPen(cm, NO_PEN, $FFFFFFFF, $FFFFFFFF, 0, (i32)PEN_EXCLUSIVE)
+    if first != NO_PEN { ReleasePen(cm, first) }
+    let second = if first != NO_PEN {
+        ObtainPen(cm, first, 0, $FFFFFFFF, $FFFFFFFF, (i32)PEN_EXCLUSIVE)
+    } else { NO_PEN }
+    expect_true(first != NO_PEN, "first exclusive entry allocated")
+    expect_eq(second, first, "released entry can be reacquired by number")
+    if second != NO_PEN { ReleasePen(cm, second) }
+}
+
+// @covers-ndk function|graphics.library|VideoControl
+// @ndk-side-effects Applies a PF1 palette base to a real ColorMap, then performs the documented GET operation and proves graphics.library rewrites the query tag to SET while returning the exact stored base before the map is released
+@test("graphics.library VideoControl mutates query tags with exact state")
+pub fn graphics_video_control() {
+    let cm = map(32)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: VTAG_PF1_BASE_SET, ti_Data: 4 },
+        TagItem { ti_Tag: VTAG_PF1_BASE_GET, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let error = VideoControl(cm, &var tags[0])
+    expect_eq(error, 0, "valid VideoControl tag list succeeds")
+    expect_eq(tags[1].ti_Tag, VTAG_PF1_BASE_SET, "GET tag is rewritten to its SET form")
+    expect_eq(tags[1].ti_Data, 4, "query returns the exact stored PF1 base")
+    FreeColorMap(cm)
+}
+
+// @covers-ndk function|graphics.library|VideoControlTags
+// @ndk-side-effects Sends a PF2 palette-base update through the varargs stub, then queries the real ColorMap through VideoControl and proves the exact value reached graphics.library before releasing the map
+@test("graphics.library VideoControlTags forwards palette state")
+pub fn graphics_video_control_tags() {
+    let cm = map(32)
+    if cm == null {
+        expect(false, "ColorMap allocated")
+        return
+    }
+    let set_error = VideoControlTags(cm, VTAG_PF2_BASE_SET, 8, TAG_DONE)
+    var query: [TagItem] = [
+        TagItem { ti_Tag: VTAG_PF2_BASE_GET, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let get_error = VideoControl(cm, &var query[0])
+    expect_eq(set_error, 0, "varargs VideoControl update succeeds")
+    expect_eq(get_error, 0, "PF2 query succeeds")
+    expect_eq(query[0].ti_Tag, VTAG_PF2_BASE_SET, "PF2 GET tag is rewritten")
+    expect_eq(query[0].ti_Data, 8, "varargs update stores the exact PF2 base")
+    FreeColorMap(cm)
+}

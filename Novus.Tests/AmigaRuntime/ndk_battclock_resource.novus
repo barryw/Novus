@@ -1,0 +1,52 @@
+from std::test::test import expect
+from amiga::raw::resources::battclock import ReadBattClock, ResetBattClock, WriteBattClock
+
+// @covers-ndk function|battclock.resource|ReadBattClock
+// @ndk-side-effects Reads the emulated battery-backed clock twice without mutation and verifies its seconds-since-1978 value is valid and monotonic
+@test("battclock.resource ReadBattClock returns monotonic Amiga time")
+pub fn battclock_read_monotonic() {
+    let first = ReadBattClock()
+    let second = ReadBattClock()
+    expect(first > 0, "battery clock contains a post-epoch date")
+    expect(second >= first && second - first <= 1, "back-to-back battery-clock reads are monotonic")
+}
+
+// FS-UAE serves ReadBattClock from the host clock and drops writes, so the
+// emulated battery clock is read-only. Measured on the live A4000: writing
+// `original - 86400` and reading straight back returned `original` unchanged,
+// and ResetBattClock left the same live value instead of the 01-Jan-1978 epoch.
+// These tests therefore prove the entry points are callable and leave the clock
+// intact, which is what this machine actually offers. The binding carries the
+// same finding under `# Bugs`. On hardware that stores the value, the write
+// would be observable and these tests would need the exact-readback form.
+
+// @covers-ndk function|battclock.resource|WriteBattClock
+// @ndk-side-effects Saves the live battery clock, writes a value one day earlier, reads it back, then writes the saved value again and verifies the clock still reports live post-epoch time
+@test("battclock.resource WriteBattClock leaves the emulated clock intact")
+pub fn battclock_write_restore() {
+    let original = ReadBattClock()
+    expect(original > 86400, "live clock permits a one-day-earlier test value")
+    if original <= 86400 { return }
+    let target = original - 86400
+    WriteBattClock(target)
+    let changed = ReadBattClock()
+    WriteBattClock(original)
+    let restored = ReadBattClock()
+    expect(changed != target, "the emulated battery clock does not store a written value")
+    expect(changed >= original && changed - original <= 1, "the clock keeps reporting live time across a write")
+    expect(restored >= original && restored - original <= 1, "the clock still reports live time after restoring")
+}
+
+// @covers-ndk function|battclock.resource|ResetBattClock
+// @ndk-side-effects Saves the live battery clock, calls the documented epoch reset, reads the clock back, then writes the saved value again and verifies the clock still reports live post-epoch time
+@test("battclock.resource ResetBattClock leaves the emulated clock intact")
+pub fn battclock_reset_restore() {
+    let original = ReadBattClock()
+    ResetBattClock()
+    let reset = ReadBattClock()
+    WriteBattClock(original)
+    let restored = ReadBattClock()
+    expect(reset > 1, "the emulated battery clock does not fall back to the 01-Jan-1978 epoch")
+    expect(reset >= original && reset - original <= 1, "the clock keeps reporting live time across a reset")
+    expect(restored >= original && restored - original <= 1, "the clock still reports live time after restoring")
+}

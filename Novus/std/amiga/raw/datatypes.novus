@@ -12,253 +12,1133 @@ from amiga::raw::structs import *
 // ============================================================================
 /// Examines a handle and return its DataType.
 ///
-/// This function examines the data that the handle points to, and returns a
-/// DataType record that describes the data.
+/// This function examines the data that the handle points to,
+/// and returns a DataType record that describes the data.
+///
+/// # Synopsis
+///
+/// dtn = ObtainDataTypeA (type, handle, attrs);
+/// d0			d0    a0      a1
+///
+/// struct DataType *ObtainDataTypeA (ULONG, APTR, struct TagItem *);
+///
+/// dtn = ObtainDataType (type, handle, tag1, ...);
+///
+/// struct DataType *ObtainDataType (ULONG, APTR, Tag tag1, ...);
 ///
 /// # Arguments
+///
 /// * `type` - Type of handle.
-/// * `handle` - Handle to examine. For DTST_FILE, handle must be BPTR
-///   lock. For DTST_CLIPBOARD, handle must be struct IFFHandle *. For
-///   DTST_MEMORY, handle will be ignored (you need to specify the
-///   additional information required by this source type through the attrs
-///   list).
+/// * `handle` - Handle to examine. For DTST_FILE, handle must be BPTR lock. For DTST_CLIPBOARD, handle must be struct IFFHandle *. For DTST_MEMORY, handle will be ignored (you need to specify the additional information required by this source type through the attrs list).
 /// * `attrs` - Additional attributes (see TAGS).
 ///
-/// See also: FreeDataType()
+/// # Returns
+///
+/// Success returns a pointer to a DataType.  You must call
+/// FreeDataType() when you are done with the handle.
+/// A NULL return indicates failure.  Use IoErr() to get error value.
+/// Following is a summary of the error number used and there meaning
+/// as it relates to DataTypes.
+/// ERROR_NO_FREE_STORE - Not enough memory.
+/// ERROR_OBJECT_NOT_FOUND - Unable to open the data object.
+/// ERROR_NOT_IMPLEMENTED - Unknown handle type.
+///
+/// # Tags
+///
+/// DTA_SourceAddress (APTR) -- For DTST_MEMORY source data, this
+///     specifies the memory address at which the source data is
+///     located. This must be non-NULL. This attribute is required
+///     for DTST_MEMORY source data (V44).
+///
+/// DTA_SourceSize (ULONG) -- For DTST_MEMORY source data, this
+///     specifies the size of the source data (in bytes). This must
+///     be greater than 0. This attribute is required for DTST_MEMORY
+///     source data (V44).
+///
+/// # Notes
+///
+/// The datatypes.library maintains a sorted list of all the
+/// DataType descriptors.  The descriptor can consist of a
+/// function, a data mask for the first 64 bytes of the data,
+/// and a name pattern.
+/// The sort order for the list is:
+/// Descriptors with a function and no mask or name pattern.
+/// Descriptors with a function and a mask or name pattern.
+/// Descriptors with no function and a mask or name pattern.
+/// Within each group, they are also sorted in descending priority
+/// and descending mask length.
+/// The DTST_MEMORY source type introduced in V44 makes in-memory
+/// data available to subclasses as if the data were stored in a
+/// file. Thus, subclasses will see the data as DTST_FILE. Since
+/// the data does not correspond to an on-disk file, subclasses
+/// and examine hook code must not assume that they will be able
+/// to reopen the "file" whose data has been provided to them.
+///
+/// # See Also
+///
+/// FreeDataType()
 @library("datatypes.library")
 extern pub fn ObtainDataTypeA(_type: u32, handle: *u8, attrs: *TagItem) -> *DataType
+/// Examines a handle and return its DataType.
+///
+/// This function examines the data that the handle points to,
+/// and returns a DataType record that describes the data.
+///
+/// # Synopsis
+///
+/// dtn = ObtainDataTypeA (type, handle, attrs);
+/// d0			d0    a0      a1
+///
+/// struct DataType *ObtainDataTypeA (ULONG, APTR, struct TagItem *);
+///
+/// dtn = ObtainDataType (type, handle, tag1, ...);
+///
+/// struct DataType *ObtainDataType (ULONG, APTR, Tag tag1, ...);
+///
+/// # Arguments
+///
+/// * `type` - Type of handle.
+/// * `handle` - Handle to examine. For DTST_FILE, handle must be BPTR lock. For DTST_CLIPBOARD, handle must be struct IFFHandle *. For DTST_MEMORY, handle will be ignored (you need to specify the additional information required by this source type through the attrs list).
+/// * `attrs` - Additional attributes (see TAGS).
+///
+/// # Returns
+///
+/// Success returns a pointer to a DataType.  You must call
+/// FreeDataType() when you are done with the handle.
+/// A NULL return indicates failure.  Use IoErr() to get error value.
+/// Following is a summary of the error number used and there meaning
+/// as it relates to DataTypes.
+/// ERROR_NO_FREE_STORE - Not enough memory.
+/// ERROR_OBJECT_NOT_FOUND - Unable to open the data object.
+/// ERROR_NOT_IMPLEMENTED - Unknown handle type.
+///
+/// # Tags
+///
+/// DTA_SourceAddress (APTR) -- For DTST_MEMORY source data, this
+///     specifies the memory address at which the source data is
+///     located. This must be non-NULL. This attribute is required
+///     for DTST_MEMORY source data (V44).
+///
+/// DTA_SourceSize (ULONG) -- For DTST_MEMORY source data, this
+///     specifies the size of the source data (in bytes). This must
+///     be greater than 0. This attribute is required for DTST_MEMORY
+///     source data (V44).
+///
+/// # Notes
+///
+/// The datatypes.library maintains a sorted list of all the
+/// DataType descriptors.  The descriptor can consist of a
+/// function, a data mask for the first 64 bytes of the data,
+/// and a name pattern.
+/// The sort order for the list is:
+/// Descriptors with a function and no mask or name pattern.
+/// Descriptors with a function and a mask or name pattern.
+/// Descriptors with no function and a mask or name pattern.
+/// Within each group, they are also sorted in descending priority
+/// and descending mask length.
+/// The DTST_MEMORY source type introduced in V44 makes in-memory
+/// data available to subclasses as if the data were stored in a
+/// file. Thus, subclasses will see the data as DTST_FILE. Since
+/// the data does not correspond to an on-disk file, subclasses
+/// and examine hook code must not assume that they will be able
+/// to reopen the "file" whose data has been provided to them.
+///
+/// # See Also
+///
+/// FreeDataType()
 @library("datatypes.library")
 extern pub fn ObtainDataType(_type: u32, handle: *u8, attrs: u32, ...args) -> *DataType
 /// Release a DataType structure.         (V39)
 ///
-/// This function is used to release a DataType structure obtained by
-/// ObtainDataTypeA().
+/// This function is used to release a DataType structure obtained
+/// by ObtainDataTypeA().
+///
+/// # Synopsis
+///
+/// ReleaseDataType (dtn);
+/// 	      a0
+///
+/// VOID ReleaseDataType (struct DataType *);
 ///
 /// # Arguments
-/// * `dtn` - DataType structure returned by ObtainDataTypeA(). NULL is a
-///   valid input.
 ///
-/// See also: ObtainDataTypeA()
+/// * `dtn` - DataType structure returned by ObtainDataTypeA().  NULL is a valid input.
+///
+/// # See Also
+///
+/// ObtainDataTypeA()
 @library("datatypes.library")
 extern pub fn ReleaseDataType(dt: *DataType)
 /// Create an data type object.              (V39)
 ///
-/// This is the method for creating datatype objects from 'boopsi' classes.
-/// Boopsi' stands for "basic object-oriented programming system for
-/// Intuition".) You further specify initial "create-time" attributes for the
-/// object via a TagItem list, and they are applied to the resulting datatype
-/// object that is returned.
+/// This is the method for creating datatype objects from
+/// 'boopsi' classes.  Boopsi' stands for "basic object-oriented
+/// programming system for Intuition".)
+/// You further specify initial "create-time" attributes for the
+/// object via a TagItem list, and they are applied to the
+/// resulting datatype object that is returned.
+///
+/// # Synopsis
+///
+/// o = NewDTObjectA (name, attrs);
+/// d0		  d0   a0
+///
+/// Object *NewDTObjectA (APTR, struct TagItem *);
+///
+/// o = NewDTObject (name, tag1, ...);
+///
+/// Object *NewDTObject (APTR, Tag tag1, ...);
 ///
 /// # Arguments
+///
 /// * `name` - Name of the data source.  Usually an existing file name.
 /// * `attrs` - Pointer to a taglist containing additional arguments.
 ///
-/// See also: AddDTObject(), DisposeDTObject(), RemoveDTObject(), intuition.library/NewObjectA()
+/// # Returns
+///
+/// A boopsi object, which may be used in different contexts such
+/// as a gadget or image, and may be manipulated by generic functions.
+/// You eventually free the object using DisposeDTObject().
+/// A NULL return indicates failure.  Use IoErr() to get error value.
+/// Following is a summary of the error number used and there meaning
+/// as it relates to DataTypes.
+/// ERROR_REQUIRED_ARG_MISSING - Indicates that a required attribute
+/// wasn't passed in.
+/// ERROR_BAD_NUMBER - An invalid group ID was passed in.
+/// ERROR_OBJECT_WRONG_TYPE - Object data type doesn't match
+/// DTA_GroupID.
+/// ERROR_NO_FREE_STORE - Not enough memory.
+/// DTERROR_UNKNOWN_DATATYPE - Unable to open the class library
+/// associated with the data type.
+/// DTERROR_COULDNT_OPEN - Unable to open the data object.
+/// ERROR_NOT_IMPLEMENTED - Unknown handle type.
+///
+/// # Tags
+///
+/// DTA_SourceType - Specify the type of source data; such as coming
+///     from a file or clipboard (defaults to DTST_FILE).  If
+///     source type is clipboard, then the name field contains the
+///     numeric clipboard unit. If source type is DTST_MEMORY,
+///     the name field will be ignored (V44).
+///
+/// DTA_Handle - Can optionally be used instead of the name field.
+///     Must be a valid FileHandle if DTA_SourceType is DTST_FILE.
+///     Must be a valid IFFHandle if DTA_SourceType is DTST_CLIPBOARD.
+///     Will be ignored if DTA_SourceType is DTST_MEMORY.
+///
+/// DTA_DataType - Specify the class of data.  Data is a pointer to a
+///     valid DataType.  This is only used when attempting to create
+///     a new object that doesn't have any source data.
+///
+/// DTA_GroupID - Specify that the object must be of this type, or
+///     NewDTObject() will fail with IoErr() of
+///     ERROR_OBJECT_WRONG_TYPE.
+///
+/// DTA_SourceAddress (APTR) -- For DTST_MEMORY source data, this
+///     specifies the memory address at which the source data is
+///     located. This must be non-NULL. This attribute is required
+///     for DTST_MEMORY source data (V44).
+///
+/// DTA_SourceSize (ULONG) -- For DTST_MEMORY source data, this
+///     specifies the size of the source data (in bytes). This must
+///     be greater than 0. This attribute is required for DTST_MEMORY
+///     source data (V44).
+///
+/// GA_Left, GA_RelRight, GA_Top, GA_RelBottom, GA_Width, GA_RelWidth,
+/// GA_Height, GA_RelHeight - Specify the placement of the object
+///     within the destination window.
+///
+/// GA_ID - Specify the object ID.
+///
+/// GA_UserData - Specify the application specific data for the
+///     object.
+///
+/// # Notes
+///
+/// This function invokes the OM_NEW "method" for the class specified.
+/// The DTST_MEMORY source type introduced in V44 makes in-memory
+/// data available to subclasses as if the data were stored in a
+/// file. Thus, subclasses will see the data as DTST_FILE. Since
+/// the data does not correspond to an on-disk file, subclasses
+/// and examine hook code must not assume that they will be able
+/// to reopen the "file" whose data has been provided to them.
+///
+/// # Examples
+///
+/// STRPTR fileName = "s:startup-sequence"
+/// Object *o;
+///
+/// /* Simplest use is to just open an existing file */
+/// if (o = NewDTObject ((APTR)fileName, NULL))
+/// {
+///     /* Free the object when we are done with it */
+///     DisposeDTObject (o);
+/// }
+///
+/// # See Also
+///
+/// AddDTObject(), DisposeDTObject(), RemoveDTObject(), intuition.library/NewObjectA()
 @library("datatypes.library")
-extern pub fn NewDTObjectA(name: *u8, attrs: *TagItem) -> *u8
+extern pub fn NewDTObjectA(name: *u8, attrs: *TagItem) -> *u32
+/// Create an data type object.              (V39)
+///
+/// This is the method for creating datatype objects from
+/// 'boopsi' classes.  Boopsi' stands for "basic object-oriented
+/// programming system for Intuition".)
+/// You further specify initial "create-time" attributes for the
+/// object via a TagItem list, and they are applied to the
+/// resulting datatype object that is returned.
+///
+/// # Synopsis
+///
+/// o = NewDTObjectA (name, attrs);
+/// d0		  d0   a0
+///
+/// Object *NewDTObjectA (APTR, struct TagItem *);
+///
+/// o = NewDTObject (name, tag1, ...);
+///
+/// Object *NewDTObject (APTR, Tag tag1, ...);
+///
+/// # Arguments
+///
+/// * `name` - Name of the data source.  Usually an existing file name.
+/// * `attrs` - Pointer to a taglist containing additional arguments.
+///
+/// # Returns
+///
+/// A boopsi object, which may be used in different contexts such
+/// as a gadget or image, and may be manipulated by generic functions.
+/// You eventually free the object using DisposeDTObject().
+/// A NULL return indicates failure.  Use IoErr() to get error value.
+/// Following is a summary of the error number used and there meaning
+/// as it relates to DataTypes.
+/// ERROR_REQUIRED_ARG_MISSING - Indicates that a required attribute
+/// wasn't passed in.
+/// ERROR_BAD_NUMBER - An invalid group ID was passed in.
+/// ERROR_OBJECT_WRONG_TYPE - Object data type doesn't match
+/// DTA_GroupID.
+/// ERROR_NO_FREE_STORE - Not enough memory.
+/// DTERROR_UNKNOWN_DATATYPE - Unable to open the class library
+/// associated with the data type.
+/// DTERROR_COULDNT_OPEN - Unable to open the data object.
+/// ERROR_NOT_IMPLEMENTED - Unknown handle type.
+///
+/// # Tags
+///
+/// DTA_SourceType - Specify the type of source data; such as coming
+///     from a file or clipboard (defaults to DTST_FILE).  If
+///     source type is clipboard, then the name field contains the
+///     numeric clipboard unit. If source type is DTST_MEMORY,
+///     the name field will be ignored (V44).
+///
+/// DTA_Handle - Can optionally be used instead of the name field.
+///     Must be a valid FileHandle if DTA_SourceType is DTST_FILE.
+///     Must be a valid IFFHandle if DTA_SourceType is DTST_CLIPBOARD.
+///     Will be ignored if DTA_SourceType is DTST_MEMORY.
+///
+/// DTA_DataType - Specify the class of data.  Data is a pointer to a
+///     valid DataType.  This is only used when attempting to create
+///     a new object that doesn't have any source data.
+///
+/// DTA_GroupID - Specify that the object must be of this type, or
+///     NewDTObject() will fail with IoErr() of
+///     ERROR_OBJECT_WRONG_TYPE.
+///
+/// DTA_SourceAddress (APTR) -- For DTST_MEMORY source data, this
+///     specifies the memory address at which the source data is
+///     located. This must be non-NULL. This attribute is required
+///     for DTST_MEMORY source data (V44).
+///
+/// DTA_SourceSize (ULONG) -- For DTST_MEMORY source data, this
+///     specifies the size of the source data (in bytes). This must
+///     be greater than 0. This attribute is required for DTST_MEMORY
+///     source data (V44).
+///
+/// GA_Left, GA_RelRight, GA_Top, GA_RelBottom, GA_Width, GA_RelWidth,
+/// GA_Height, GA_RelHeight - Specify the placement of the object
+///     within the destination window.
+///
+/// GA_ID - Specify the object ID.
+///
+/// GA_UserData - Specify the application specific data for the
+///     object.
+///
+/// # Notes
+///
+/// This function invokes the OM_NEW "method" for the class specified.
+/// The DTST_MEMORY source type introduced in V44 makes in-memory
+/// data available to subclasses as if the data were stored in a
+/// file. Thus, subclasses will see the data as DTST_FILE. Since
+/// the data does not correspond to an on-disk file, subclasses
+/// and examine hook code must not assume that they will be able
+/// to reopen the "file" whose data has been provided to them.
+///
+/// # Examples
+///
+/// STRPTR fileName = "s:startup-sequence"
+/// Object *o;
+///
+/// /* Simplest use is to just open an existing file */
+/// if (o = NewDTObject ((APTR)fileName, NULL))
+/// {
+///     /* Free the object when we are done with it */
+///     DisposeDTObject (o);
+/// }
+///
+/// # See Also
+///
+/// AddDTObject(), DisposeDTObject(), RemoveDTObject(), intuition.library/NewObjectA()
 @library("datatypes.library")
-extern pub fn NewDTObject(name: *u8, attrs: u32, ...args) -> *u8
+extern pub fn NewDTObject(name: *u8, attrs: u32, ...args) -> *u32
 /// Delete a data type object.            (V39)
 ///
-/// This function is used to dispose of a data type object that was obtained
-/// with NewDTObjectA().
+/// This function is used to dispose of a data type object that was
+/// obtained with NewDTObjectA().
+///
+/// # Synopsis
+///
+/// DisposeDTObject (o);
+/// 		 a0
+///
+/// VOID DisposeDTObject (Object *);
 ///
 /// # Arguments
-/// * `o` - Pointer to an object as returned by NewDTObjectA(). NULL is a
-///   valid input.
 ///
-/// See also: NewDTObjectA()
+/// * `o` - Pointer to an object as returned by NewDTObjectA(). NULL is a valid input.
+///
+/// # See Also
+///
+/// NewDTObjectA()
 @library("datatypes.library")
-extern pub fn DisposeDTObject(o: *u8)
+extern pub fn DisposeDTObject(o: *u32)
 /// Set attributes for an object.             (V39)
 ///
-/// This function is used to set the attributes of a data type object.
+/// This function is used to set the attributes of a data type
+/// object.
+///
+/// # Synopsis
+///
+/// retval = SetDTAttrsA (o, win, req, attrs);
+/// d0		      a0  a1   a2   a3
+///
+/// ULONG SetDTAttrsA (Object *, struct Window *, struct Requester *,
+/// 		   struct TagItem *);
+///
+/// retval = SetDTAttrs (o, win, req, tag1, ...);
+///
+/// ULONG SetDTAttrs (Object *, struct Window *, struct Requester *,
+/// 		  Tag tag1, ...);
 ///
 /// # Arguments
+///
 /// * `o` - Pointer to an object as returned by NewDTObjectA().
 /// * `win` - Window that the object has been added to.
 /// * `attrs` - Attributes to set, terminated with TAG_DONE.
 ///
-/// See also: GetDTAttrsA(), intuition.library/SetGadgetAttrsA()
+/// # Tags
+///
+/// see <datatypes/datatypesclass.h> for tags.
+///
+/// # See Also
+///
+/// GetDTAttrsA(), intuition.library/SetGadgetAttrsA()
 @library("datatypes.library")
-extern pub fn SetDTAttrsA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem) -> u32
+extern pub fn SetDTAttrsA(o: *u32, win: *Window, req: *Requester, attrs: *TagItem) -> u32
+/// Set attributes for an object.             (V39)
+///
+/// This function is used to set the attributes of a data type
+/// object.
+///
+/// # Synopsis
+///
+/// retval = SetDTAttrsA (o, win, req, attrs);
+/// d0		      a0  a1   a2   a3
+///
+/// ULONG SetDTAttrsA (Object *, struct Window *, struct Requester *,
+/// 		   struct TagItem *);
+///
+/// retval = SetDTAttrs (o, win, req, tag1, ...);
+///
+/// ULONG SetDTAttrs (Object *, struct Window *, struct Requester *,
+/// 		  Tag tag1, ...);
+///
+/// # Arguments
+///
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `win` - Window that the object has been added to.
+/// * `attrs` - Attributes to set, terminated with TAG_DONE.
+///
+/// # Tags
+///
+/// see <datatypes/datatypesclass.h> for tags.
+///
+/// # See Also
+///
+/// GetDTAttrsA(), intuition.library/SetGadgetAttrsA()
 @library("datatypes.library")
-extern pub fn SetDTAttrs(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args) -> u32
+extern pub fn SetDTAttrs(o: *u32, win: *Window, req: *Requester, attrs: u32, ...args) -> u32
 /// Obtain attributes for an object.          (V39)
 ///
-/// This function is used to get the attributes of a data type object.
+/// This function is used to get the attributes of a data type
+/// object.
+///
+/// # Synopsis
+///
+/// retval = GetDTAttrsA (o, attrs);
+/// d0		      a0  a2
+///
+/// ULONG GetDTAttrsA (Object *, struct TagItem *);
+///
+/// retval = GetDTAttrs (o, tag1, ...);
+///
+/// ULONG GetDTAttrs (Object *, Tag tag1, ...);
 ///
 /// # Arguments
-/// * `o` - Pointer to an object as returned by NewDTObjectA().
-/// * `attrs` - Attributes to get, terminated with TAG_DONE. The data
-///   element of each pair contains the address of the storage variable.
-/// * `RETURNS retval` - Contains the number of attributes the system was
-///   able to obtain.
 ///
-/// See also: SetDTAttrsA(), intuition.library/GetAttr()
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `attrs` - Attributes to get, terminated with TAG_DONE.  The data element of each pair contains the address of the storage variable.
+///
+/// # Returns
+///
+/// retval - Contains the number of attributes the system was able
+/// to obtain.
+///
+/// # See Also
+///
+/// SetDTAttrsA(), intuition.library/GetAttr()
 @library("datatypes.library")
-extern pub fn GetDTAttrsA(o: *u8, attrs: *TagItem) -> u32
+extern pub fn GetDTAttrsA(o: *u32, attrs: *TagItem) -> u32
+/// Obtain attributes for an object.          (V39)
+///
+/// This function is used to get the attributes of a data type
+/// object.
+///
+/// # Synopsis
+///
+/// retval = GetDTAttrsA (o, attrs);
+/// d0		      a0  a2
+///
+/// ULONG GetDTAttrsA (Object *, struct TagItem *);
+///
+/// retval = GetDTAttrs (o, tag1, ...);
+///
+/// ULONG GetDTAttrs (Object *, Tag tag1, ...);
+///
+/// # Arguments
+///
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `attrs` - Attributes to get, terminated with TAG_DONE.  The data element of each pair contains the address of the storage variable.
+///
+/// # Returns
+///
+/// retval - Contains the number of attributes the system was able
+/// to obtain.
+///
+/// # See Also
+///
+/// SetDTAttrsA(), intuition.library/GetAttr()
 @library("datatypes.library")
-extern pub fn GetDTAttrs(o: *u8, attrs: u32, ...args) -> u32
+extern pub fn GetDTAttrs(o: *u32, attrs: u32, ...args) -> u32
 /// Add an object to a window or requester.   (V39)
 ///
-/// This function adds a single object to the gadget list of the given window or
-/// requester at the position in the list specified by the position argument.
-/// When the object is added to the gadget list, the object will receive a
-/// GM_LAYOUT message with the gpl_Initial field set to one.
+/// This function adds a single object to the gadget list of the given
+/// window or requester at the position in the list specified by the
+/// position argument.
+/// When the object is added to the gadget list, the object will
+/// receive a GM_LAYOUT message with the gpl_Initial field set to
+/// one.
+///
+/// # Synopsis
+///
+/// realposition = AddDTObject (window, requester, object, position);
+/// d0			    a0      a1	       a2      d0
+///
+/// LONG AddDTObject (struct Window *, struct Requester *,
+/// 		  Object *, LONG);
 ///
 /// # Arguments
+///
 /// * `window` - Pointer to the window.
 /// * `requester` - Must be NULL.
 /// * `object` - Pointer to an object as returned by NewDTObjectA().
-/// * `position` - Integer position in the list for the new gadget. -1 to
-///   add to the end of the list.
+/// * `position` - Integer position in the list for the new gadget. -1 to add to the end of the list.
 ///
-/// See also: RemoveDTObject(), intuition.library/AddGList()
+/// # Returns
+///
+/// Returns the position of where the object was actually added.
+///
+/// # See Also
+///
+/// RemoveDTObject(), intuition.library/AddGList()
 @library("datatypes.library")
-extern pub fn AddDTObject(win: *Window, req: *Requester, o: *u8, pos: i32) -> i32
+extern pub fn AddDTObject(win: *Window, req: *Requester, o: *u32, pos: i32) -> i32
 /// Refresh a datatypes object.          (V39)
 ///
-/// Refreshes the specified object, by sending the GM_RENDER method to the
-/// object.
+/// Refreshes the specified object, by sending the GM_RENDER method to
+/// the object.
+///
+/// # Synopsis
+///
+/// RefreshDTObjectA (object, window, req, attrs)
+/// 		   a0	   a1	   a2	a3
+///
+/// VOID RefreshDTObjectA (Object *, struct Window *,
+/// 		        struct Requester *, struct TagItem *);
+///
+/// RefreshDTObject (object, window, req, tag1, ...);
+///
+/// VOID RefreshDTObject (Object *, struct Window *,
+/// 		       struct Requester *, Tag tag1, ...);
 ///
 /// # Arguments
+///
 /// * `object` - Pointer to an object as returned by NewDTObjectA().
 /// * `window` - Pointer to the window.
 /// * `req` - Must be NULL.
 /// * `attrs` - Additional attributes (currently none are defined).
 ///
-/// See also: AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
-@library("datatypes.library")
-extern pub fn RefreshDTObjectA(o: *u8, win: *Window, req: *Requester, attrs: *TagItem)
-@library("datatypes.library")
-extern pub fn RefreshDTObjects(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
-@library("datatypes.library")
-extern pub fn RefreshDTObject(o: *u8, win: *Window, req: *Requester, attrs: u32, ...args)
-/// Call the DTM_ASYNCLAYOUT method on a separate process.
+/// # See Also
 ///
-/// This function is used to asyncronously perform the object's DTM_ASYNCLAYOUT
-/// method. This is used to offload the layout method from input.device.
+/// AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
+@library("datatypes.library")
+extern pub fn RefreshDTObjectA(o: *u32, win: *Window, req: *Requester, attrs: *TagItem)
+/// Refresh a datatypes object.          (V39)
+///
+/// Refreshes the specified object, by sending the GM_RENDER method to
+/// the object.
+///
+/// # Synopsis
+///
+/// RefreshDTObjectA (object, window, req, attrs)
+/// 		   a0	   a1	   a2	a3
+///
+/// VOID RefreshDTObjectA (Object *, struct Window *,
+/// 		        struct Requester *, struct TagItem *);
+///
+/// RefreshDTObject (object, window, req, tag1, ...);
+///
+/// VOID RefreshDTObject (Object *, struct Window *,
+/// 		       struct Requester *, Tag tag1, ...);
 ///
 /// # Arguments
-/// * `object` - Pointer to the data types object. gpl - Pointer to a
-///   gpLayout message.
+///
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+/// * `window` - Pointer to the window.
+/// * `req` - Must be NULL.
+/// * `attrs` - Additional attributes (currently none are defined).
+///
+/// # See Also
+///
+/// AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
 @library("datatypes.library")
-extern pub fn DoAsyncLayout(o: *u8, gpl: *gpLayout) -> u32
+extern pub fn RefreshDTObjects(o: *u32, win: *Window, req: *Requester, attrs: u32, ...args)
+/// Refresh a datatypes object.          (V39)
+///
+/// Refreshes the specified object, by sending the GM_RENDER method to
+/// the object.
+///
+/// # Synopsis
+///
+/// RefreshDTObjectA (object, window, req, attrs)
+/// 		   a0	   a1	   a2	a3
+///
+/// VOID RefreshDTObjectA (Object *, struct Window *,
+/// 		        struct Requester *, struct TagItem *);
+///
+/// RefreshDTObject (object, window, req, tag1, ...);
+///
+/// VOID RefreshDTObject (Object *, struct Window *,
+/// 		       struct Requester *, Tag tag1, ...);
+///
+/// # Arguments
+///
+/// * `object` - Pointer to an object as returned by NewDTObjectA().
+/// * `window` - Pointer to the window.
+/// * `req` - Must be NULL.
+/// * `attrs` - Additional attributes (currently none are defined).
+///
+/// # See Also
+///
+/// AddDTObject(), RemoveDTObject(), intuition.library/RefreshGList()
+@library("datatypes.library")
+extern pub fn RefreshDTObject(o: *u32, win: *Window, req: *Requester, attrs: u32, ...args)
+/// Call the DTM_ASYNCLAYOUT method on a separate process.
+///
+/// This function is used to asyncronously perform the object's
+/// DTM_ASYNCLAYOUT method.  This is used to offload the layout method
+/// from input.device.
+/// The DTM_ASYNCLAYOUT method must exit when SIGBREAKF_CTRL_C signal
+/// is set.   This indicates that the data has become obsolete and
+/// the DTM_ASYNCLAYOUT method will be called again.
+///
+/// # Synopsis
+///
+/// retval = DoAsyncLayout (object, gpl);
+/// d0			a0	a1
+///
+/// ULONG DoAsyncLayout (Object *, struct gpLayout *);
+///
+/// # Arguments
+///
+/// * `object` - Pointer to the data types object. gpl - Pointer to a gpLayout message.
+@library("datatypes.library")
+extern pub fn DoAsyncLayout(o: *u32, gpl: *gpLayout) -> u32
 /// Do a datatypes method.                    (V39)
 ///
 /// This function is used to perform a datatypes method.
 ///
+/// # Synopsis
+///
+/// retval = DoDTMethodA (o, win, req, msg);
+/// d0		      a0 a1   a2   a3
+///
+/// ULONG DoDTMethodA (Object *, struct Window *,
+/// 		   struct Requester *, Msg);
+///
+/// retval = DoDTMethod (o, win, req, data, ...);
+///
+/// ULONG DoDTMethod (Object *, struct Window *,
+/// 		  struct Requester *, ULONG, ...);
+///
 /// # Arguments
+///
 /// * `o` - Pointer to an object as returned by NewDTObjectA().
 /// * `win` - Window that the object is attached to.
 /// * `req` - Requester that the object is attached to.
 /// * `msg` - The message to send to the object.
 ///
-/// See also: intuition.library/DoGadgetMethod()
-@library("datatypes.library")
-extern pub fn DoDTMethodA(o: *u8, win: *Window, req: *Requester, msg: *u32) -> u32
-@library("datatypes.library")
-extern pub fn DoDTMethod(o: *u8, win: *Window, req: *Requester, msg: u32, ...args) -> u32
-/// Remove an object from a window.        (V39)
+/// # Returns
 ///
-/// Removes the object from the window's object list. This will wait until the
-/// AsyncLayout process is complete.
+/// Returns the value returned by the method.
+///
+/// # See Also
+///
+/// intuition.library/DoGadgetMethod()
+@library("datatypes.library")
+extern pub fn DoDTMethodA(o: *u32, win: *Window, req: *Requester, msg: *u32) -> u32
+/// Do a datatypes method.                    (V39)
+///
+/// This function is used to perform a datatypes method.
+///
+/// # Synopsis
+///
+/// retval = DoDTMethodA (o, win, req, msg);
+/// d0		      a0 a1   a2   a3
+///
+/// ULONG DoDTMethodA (Object *, struct Window *,
+/// 		   struct Requester *, Msg);
+///
+/// retval = DoDTMethod (o, win, req, data, ...);
+///
+/// ULONG DoDTMethod (Object *, struct Window *,
+/// 		  struct Requester *, ULONG, ...);
 ///
 /// # Arguments
+///
+/// * `o` - Pointer to an object as returned by NewDTObjectA().
+/// * `win` - Window that the object is attached to.
+/// * `req` - Requester that the object is attached to.
+/// * `msg` - The message to send to the object.
+///
+/// # Returns
+///
+/// Returns the value returned by the method.
+///
+/// # See Also
+///
+/// intuition.library/DoGadgetMethod()
+@library("datatypes.library")
+extern pub fn DoDTMethod(o: *u32, win: *Window, req: *Requester, msg: u32, ...args) -> u32
+/// Remove an object from a window.        (V39)
+///
+/// Removes the object from the window's object list.  This will wait
+/// until the AsyncLayout process is complete.  The object will
+/// receive a DTM_REMOVEDTOBJECT message to inform the object it has
+/// been removed.
+///
+/// # Synopsis
+///
+/// position = RemoveDTObject (window, object);
+/// d0			    a0	    a1
+///
+/// LONG RemoveDTObject (struct Window *, Object *);
+///
+/// # Arguments
+///
 /// * `window` - Pointer to the window.
 /// * `object` - Pointer to an object as returned by NewDTObjectA().
 ///
-/// See also: AddDTObject(), intuition.library/RemoveGList()
+/// # Returns
+///
+/// Returns the ordinal position of the removed object.  If the
+/// object wasn't found in the appropriate list then a -1 is
+/// returned.
+///
+/// # See Also
+///
+/// AddDTObject(), intuition.library/RemoveGList()
 @library("datatypes.library")
-extern pub fn RemoveDTObject(win: *Window, o: *u8) -> i32
+extern pub fn RemoveDTObject(win: *Window, o: *u32) -> i32
 /// Obtain methods an object supports.       (V39)
 ///
-/// This function is used to obtain a list of methods that an object supports.
+/// This function is used to obtain a list of methods that an
+/// object supports.
+///
+/// # Synopsis
+///
+/// methods = GetDTMethods (object);
+/// d0			a0
+///
+/// ULONG GetDTMethods (Object *);
 ///
 /// # Arguments
+///
 /// * `object` - Pointer to an object as returned by NewDTObjectA().
 ///
-/// See also: GetDTTriggerMethods()
+/// # Returns
+///
+/// Returns a pointer to a ~0 terminated ULONG array.  This array
+/// is only valid until the object is disposed off.
+///
+/// # See Also
+///
+/// GetDTTriggerMethods()
 @library("datatypes.library")
-extern pub fn GetDTMethods(object: *u8) -> *u8
+extern pub fn GetDTMethods(object: *u32) -> *u32
 /// Obtain trigger methods supported by an object
 ///
-/// This function is used to obtain a list of trigger methods that an object
-/// supports. This is so that an application can provide the appropriate
-/// controls for an object.
+/// This function is used to obtain a list of trigger methods that an
+/// object supports.  This is so that an application can provide
+/// the appropriate controls for an object.  For example, an AmigaGuide
+/// object needs controls for "Contents", "Index", "Retrace", "Browse <",
+/// and "Browse >",
+///
+/// # Synopsis
+///
+/// methods = GetDTTriggerMethods (object);
+/// d0				a0
+///
+/// struct DTMethods *GetDTTriggerMethods (Object *);
 ///
 /// # Arguments
+///
 /// * `object` - Pointer to an object as returned by NewDTObjectA().
 ///
-/// See also: GetDTMethods()
+/// # Returns
+///
+/// Returns a pointer to a NULL terminated DTMethod list.  This list is
+/// only valid until the object is disposed off.
+///
+/// The pinned NDK prototype misspells the public element type as the
+/// otherwise undefined `struct DTMethods`. The returned memory is actually a
+/// NULL-terminated array of `struct DTMethod`; cast the opaque result to
+/// `*DTMethod` before reading its entries.
+///
+/// # Examples
+///
+/// To call the method:
+///
+///     DoMethod (object, DTM_TRIGGER, dtm[button]->dtm_Method);
+///
+/// # See Also
+///
+/// GetDTMethods()
 @library("datatypes.library")
-extern pub fn GetDTTriggerMethods(object: *u8) -> *DTMethods
+extern pub fn GetDTTriggerMethods(object: *u32) -> *DTMethods
 /// Call the DTM_PRINT method on a separate process.
 ///
 /// This function is used to asyncronously perform the object's DTM_PRINT
-/// method. Once the application has performed the PrintDTObjectA() function, it
-/// must not manipulate the printerIO union until it receives a
-/// IDCMP_IDCMPUPDATE message that contains the DTA_PrinterStatus tag.
+/// method.
+/// Once the application has performed the PrintDTObjectA() function,
+/// it must not manipulate the printerIO union until it receives a
+/// IDCMP_IDCMPUPDATE message that contains the DTA_PrinterStatus
+/// tag.
+/// To abort a print, the application sends the DTM_ABORTPRINT method
+/// to the object.  This in turn signals the print process with a
+/// SIGBREAKF_CTRL_C.
+///
+/// # Synopsis
+///
+/// retval = PrintDTObjectA (object, window, requester, msg);
+/// d0			 a0	 a1	 a2	    a3
+///
+/// ULONG PrintDTObjectA (Object *, struct Window *, struct Requester *,
+/// 		      struct dtPrint *);
+///
+/// retval = PrintDTObject (object, window, requester, data, ...);
+///
+/// ULONG PrintDTObject (Object *, struct Window *, struct Requester *,
+/// 		     ULONG, ...);
 ///
 /// # Arguments
-/// * `object` - Pointer to the DataTypes object. window - Pointer to the
-///   window that the object has been added to. requester - Pointer to the
-///   requester that the object has been added to.
+///
+/// * `object` - Pointer to the DataTypes object. window - Pointer to the window that the object has been added to. requester - Pointer to the requester that the object has been added to.
+///
+/// # Returns
+///
+/// Returns TRUE if successful, FALSE on error.
+///
+/// # Safety
+///
+/// `msg.dtp_PIO` must point to a complete `printerIO` request whose
+/// `printer.device` has been opened. AmigaOS 3.2 does not reject a null
+/// request: it dereferences it asynchronously and raises Guru Meditation
+/// `0x81000005`.
 @library("datatypes.library")
-extern pub fn PrintDTObjectA(o: *u8, w: *Window, r: *Requester, msg: *dtPrint) -> u32
+extern pub fn PrintDTObjectA(o: *u32, w: *Window, r: *Requester, msg: *dtPrint) -> u32
+/// Call the DTM_PRINT method on a separate process.
+///
+/// This function is used to asyncronously perform the object's DTM_PRINT
+/// method.
+/// Once the application has performed the PrintDTObjectA() function,
+/// it must not manipulate the printerIO union until it receives a
+/// IDCMP_IDCMPUPDATE message that contains the DTA_PrinterStatus
+/// tag.
+/// To abort a print, the application sends the DTM_ABORTPRINT method
+/// to the object.  This in turn signals the print process with a
+/// SIGBREAKF_CTRL_C.
+///
+/// # Synopsis
+///
+/// retval = PrintDTObjectA (object, window, requester, msg);
+/// d0			 a0	 a1	 a2	    a3
+///
+/// ULONG PrintDTObjectA (Object *, struct Window *, struct Requester *,
+/// 		      struct dtPrint *);
+///
+/// retval = PrintDTObject (object, window, requester, data, ...);
+///
+/// ULONG PrintDTObject (Object *, struct Window *, struct Requester *,
+/// 		     ULONG, ...);
+///
+/// # Arguments
+///
+/// * `object` - Pointer to the DataTypes object. window - Pointer to the window that the object has been added to. requester - Pointer to the requester that the object has been added to.
+///
+/// # Returns
+///
+/// Returns TRUE if successful, FALSE on error.
+///
+/// # Safety
+///
+/// The varargs message must contain a complete `printerIO` request whose
+/// `printer.device` has been opened. AmigaOS 3.2 does not reject a null
+/// request: it dereferences it asynchronously and raises Guru Meditation
+/// `0x81000005`.
 @library("datatypes.library")
-extern pub fn PrintDTObject(o: *u8, w: *Window, r: *Requester, msg: u32, ...args) -> u32
+extern pub fn PrintDTObject(o: *u32, w: *Window, r: *Requester, msg: u32, ...args) -> u32
 /// Obtain a DataTypes object for drawing. (V44)
 ///
-/// This function is used to prepare a DataTypes object for drawing into a
-/// RastPort. This function will send the DTM_OBTAINDRAWINFO method to the
-/// object using the opSet message structure.
+/// This function is used to prepare a DataTypes object for
+/// drawing into a RastPort.
+/// This function will send the DTM_OBTAINDRAWINFO method
+/// to the object using the opSet message structure.
+///
+/// # Synopsis
+///
+/// handle = ObtainDTDrawInfoA (o, attrs);
+/// d0			    a0 a1
+///
+/// APTR ObtainDTDrawInfoA (Object *, struct TagItem *);
+///
+/// handle = ObtainDTDrawInfo (o, tag1, ...);
+///
+/// APTR ObtainDTDrawInfo (Object *, Tag, ...);
 ///
 /// # Arguments
-/// * `o` - Pointer to an object as returned by NewDTObjectA(). attrs -
-///   Additional attributes.
 ///
-/// See also: DrawDTObjectA(), ReleaseDTDrawInfo()
+/// * `o` - Pointer to an object as returned by NewDTObjectA(). attrs - Additional attributes.
+///
+/// # Returns
+///
+/// Returns a opaque handle that must be passed to ReleaseDTDrawInfo()
+/// when the application is done drawing the object.
+///
+/// # Tags
+///
+/// none defined at this time.
+///
+/// # Notes
+///
+/// This function implies a layout operation. Thus, you must not
+/// add the object in question to a window or requester and use
+/// ObtainDTDrawInfo() on it.
+///
+/// # See Also
+///
+/// DrawDTObjectA(), ReleaseDTDrawInfo()
 @library("datatypes.library")
-extern pub fn ObtainDTDrawInfoA(o: *u8, attrs: *TagItem) -> *u8
+extern pub fn ObtainDTDrawInfoA(o: *u32, attrs: *TagItem) -> *u8
+/// Obtain a DataTypes object for drawing. (V44)
+///
+/// This function is used to prepare a DataTypes object for
+/// drawing into a RastPort.
+/// This function will send the DTM_OBTAINDRAWINFO method
+/// to the object using the opSet message structure.
+///
+/// # Synopsis
+///
+/// handle = ObtainDTDrawInfoA (o, attrs);
+/// d0			    a0 a1
+///
+/// APTR ObtainDTDrawInfoA (Object *, struct TagItem *);
+///
+/// handle = ObtainDTDrawInfo (o, tag1, ...);
+///
+/// APTR ObtainDTDrawInfo (Object *, Tag, ...);
+///
+/// # Arguments
+///
+/// * `o` - Pointer to an object as returned by NewDTObjectA(). attrs - Additional attributes.
+///
+/// # Returns
+///
+/// Returns a opaque handle that must be passed to ReleaseDTDrawInfo()
+/// when the application is done drawing the object.
+///
+/// # Tags
+///
+/// none defined at this time.
+///
+/// # Notes
+///
+/// This function implies a layout operation. Thus, you must not
+/// add the object in question to a window or requester and use
+/// ObtainDTDrawInfo() on it.
+///
+/// # See Also
+///
+/// DrawDTObjectA(), ReleaseDTDrawInfo()
 @library("datatypes.library")
-extern pub fn ObtainDTDrawInfo(o: *u8, attrs: u32, ...args) -> *u8
+extern pub fn ObtainDTDrawInfo(o: *u32, attrs: u32, ...args) -> *u8
 /// Draw a DataTypes object.                (V44)
 ///
-/// This function is used to draw a DataTypes object into a RastPort. This
-/// function can be used for strip printing the object or embedding it within a
-/// document.
+/// This function is used to draw a DataTypes object into a RastPort.
+/// This function can be used for strip printing the object or
+/// embedding it within a document.
+/// You must successfully call ObtainDTDrawInfoA() before using
+/// this function.
+/// This function invokes the object's DTM_DRAW method.
+/// Clipping MUST be turned on within the RastPort.  This means
+/// that there must be a valid layer structure attached to the
+/// RastPort.
+///
+/// # Synopsis
+///
+/// retval = DrawDTObjectA (rp, o, x, y, w, h, th, tv, attrs);
+/// d0			a0  a1 d0 d1 d2 d3 d4  d5  a2
+///
+/// LONG DrawDTObjectA (struct RastPort *rp, Object *, LONG x, LONG y,
+/// 		    LONG w, LONG h, LONG th, LONG tv,
+/// 		    struct TagItem *);
+///
+/// retval = DrawDTObject (rp, o, x, y, w, h, th, tv, tag1, ...);
+///
+/// LONG DrawDTObjectA (struct RastPort *rp, Object *, LONG x, LONG y,
+/// 		    LONG w, LONG h, LONG th, LONG tv, Tag, ...);
 ///
 /// # Arguments
-/// * `rp` - Pointer to the RastPort to draw into. o - Pointer to an object
-///   returned by NewDTObjectA(). x - Left-most point of area to draw into.
-///   y - Top-most point of area to draw into. w - Width of area to draw
-///   into. h - Height of area to draw into. th - Horizontal top in units.
-///   tv - Vertical top in units. attrs - Additional attributes.
 ///
-/// See also: ObtainDTDrawInfo(), ReleaseDTDrawInfo()
+/// * `rp` - Pointer to the RastPort to draw into. o - Pointer to an object returned by NewDTObjectA(). x - Left-most point of area to draw into. y - Top-most point of area to draw into. w - Width of area to draw into. h - Height of area to draw into. th - Horizontal top in units. tv - Vertical top in units. attrs - Additional attributes.
+///
+/// # Returns
+///
+/// TRUE to indicate that it was able to render, FALSE on failure.
+///
+/// # Tags
+///
+/// none defined at this time.
+///
+/// # See Also
+///
+/// ObtainDTDrawInfo(), ReleaseDTDrawInfo()
 @library("datatypes.library")
-extern pub fn DrawDTObjectA(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: *TagItem) -> i32
+extern pub fn DrawDTObjectA(rp: *RastPort, o: *u32, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: *TagItem) -> i32
+/// Draw a DataTypes object.                (V44)
+///
+/// This function is used to draw a DataTypes object into a RastPort.
+/// This function can be used for strip printing the object or
+/// embedding it within a document.
+/// You must successfully call ObtainDTDrawInfoA() before using
+/// this function.
+/// This function invokes the object's DTM_DRAW method.
+/// Clipping MUST be turned on within the RastPort.  This means
+/// that there must be a valid layer structure attached to the
+/// RastPort.
+///
+/// # Synopsis
+///
+/// retval = DrawDTObjectA (rp, o, x, y, w, h, th, tv, attrs);
+/// d0			a0  a1 d0 d1 d2 d3 d4  d5  a2
+///
+/// LONG DrawDTObjectA (struct RastPort *rp, Object *, LONG x, LONG y,
+/// 		    LONG w, LONG h, LONG th, LONG tv,
+/// 		    struct TagItem *);
+///
+/// retval = DrawDTObject (rp, o, x, y, w, h, th, tv, tag1, ...);
+///
+/// LONG DrawDTObjectA (struct RastPort *rp, Object *, LONG x, LONG y,
+/// 		    LONG w, LONG h, LONG th, LONG tv, Tag, ...);
+///
+/// # Arguments
+///
+/// * `rp` - Pointer to the RastPort to draw into. o - Pointer to an object returned by NewDTObjectA(). x - Left-most point of area to draw into. y - Top-most point of area to draw into. w - Width of area to draw into. h - Height of area to draw into. th - Horizontal top in units. tv - Vertical top in units. attrs - Additional attributes.
+///
+/// # Returns
+///
+/// TRUE to indicate that it was able to render, FALSE on failure.
+///
+/// # Tags
+///
+/// none defined at this time.
+///
+/// # See Also
+///
+/// ObtainDTDrawInfo(), ReleaseDTDrawInfo()
 @library("datatypes.library")
-extern pub fn DrawDTObject(rp: *RastPort, o: *u8, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: u32, ...args) -> i32
+extern pub fn DrawDTObject(rp: *RastPort, o: *u32, x: i32, y: i32, w: i32, h: i32, th: i32, tv: i32, attrs: u32, ...args) -> i32
 /// Release a DataTypes object from drawing. (V44)
 ///
-/// This function is used to release the information obtained with
-/// ObtainDTDrawInfoA(). This function invokes the object's DTM_RELEASEDRAWINFO
-/// method using the opMember message structure.
+/// This function is used to release the information obtained
+/// with ObtainDTDrawInfoA().
+/// This function invokes the object's DTM_RELEASEDRAWINFO method
+/// using the opMember message structure.
+///
+/// # Synopsis
+///
+/// ReleaseDTDrawInfo (o, handle);
+/// 		   a0 a1
+///
+/// VOID ReleaseDTDrawInfo (Object *, APTR);
 ///
 /// # Arguments
+///
 /// * `handle` - Pointer to an object returned by ObtainDTDrawInfoA().
 ///
-/// See also: DrawDTObjectA(), ObtainDTDrawInfo()
+/// # See Also
+///
+/// DrawDTObjectA(), ObtainDTDrawInfo()
 @library("datatypes.library")
-extern pub fn ReleaseDTDrawInfo(o: *u8, handle: *u8)
+extern pub fn ReleaseDTDrawInfo(o: *u32, handle: *u8)
 /// Obtain a DataTypes string.                (V39)
 ///
-/// This function is used to obtain a pointer to a localized DataTypes string.
+/// This function is used to obtain a pointer to a localized
+/// DataTypes string.
+///
+/// # Synopsis
+///
+/// str = GetDTString (id);
+/// d0		   d0
+///
+/// STRPTR GetDTString (ULONG id);
 ///
 /// # Arguments
+///
 /// * `id` - ID of the string to obtain.
+///
+/// # Returns
+///
+/// A pointer to a NULL terminated string.
 @library("datatypes.library")
 extern pub fn GetDTString(id: u32) -> *u8

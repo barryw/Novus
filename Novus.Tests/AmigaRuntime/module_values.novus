@@ -1,0 +1,19 @@
+pub const MODULE_CONST: i32 = 40
+
+pub struct ModuleValue {
+    value: i32,
+}
+
+impl ModuleValue {
+    pub fn new(value: i32) -> ModuleValue {
+        return ModuleValue { value: value }
+    }
+
+    pub fn get(&self) -> i32 {
+        return self.value
+    }
+}
+
+pub fn module_add(a: i32, b: i32) -> i32 {
+    return a + b
+}

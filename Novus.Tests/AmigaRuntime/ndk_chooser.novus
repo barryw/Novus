@@ -1,0 +1,132 @@
+from std::test::test import expect
+from amiga::raw::chooser import AllocChooserNode, AllocChooserNodeA, CHOOSER_GetClass, FreeChooserNode, GetChooserNodeAttrs, GetChooserNodeAttrsA, SetChooserNodeAttrs, SetChooserNodeAttrsA
+from amiga::raw::consts import CNA_Disabled, CNA_ReadOnly, CNA_Text, CNA_UserData, TAG_DONE
+from amiga::raw::structs import Node, TagItem
+
+fn text_is(value: *u8, first: u8) -> bool {
+    return value != null && unsafe { value[0] == first && value[1] == 0 }
+}
+
+fn alloc_a(text: *u8) -> *Node {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: CNA_Text, ti_Data: (u32)text },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocChooserNodeA(&var tags[0])
+}
+
+// @covers-ndk function|chooser.library|CHOOSER_GetClass
+// @ndk-side-effects Opens the installed Chooser gadget class and verifies its runtime class pointer is available without constructing an object
+@test("chooser.library CHOOSER_GetClass returns the installed class")
+pub fn chooser_get_class() {
+    expect(CHOOSER_GetClass() != null, "Chooser runtime class pointer is non-null")
+}
+
+// @covers-ndk function|chooser.library|AllocChooserNodeA
+// @ndk-side-effects Allocates a private chooser node from a terminated tag list, reads back the exact text pointer through the public accessor, and frees the node
+@test("chooser.library AllocChooserNodeA creates an attributed node")
+pub fn chooser_alloc_a() {
+    let node = alloc_a("A")
+    var text: *u8 = null
+    if node != null { GetChooserNodeAttrs(node, CNA_Text, &var text, TAG_DONE) }
+    let valid = node != null && text_is(text, 65)
+    if node != null { FreeChooserNode(node) }
+    expect(valid, "tag-list allocation preserves chooser text A")
+}
+
+// @covers-ndk function|chooser.library|AllocChooserNode
+// @ndk-side-effects Allocates a private chooser node through the varargs entry point, reads back its exact caller-owned user-data value, and frees the node
+@test("chooser.library AllocChooserNode creates a varargs node")
+pub fn chooser_alloc() {
+    let node = AllocChooserNode(CNA_Text, "B", CNA_UserData, $12345678, TAG_DONE)
+    var user_data: u32 = 0
+    if node != null { GetChooserNodeAttrs(node, CNA_UserData, &var user_data, TAG_DONE) }
+    let valid = node != null && user_data == $12345678
+    if node != null { FreeChooserNode(node) }
+    expect(valid, "varargs allocation preserves exact user data")
+}
+
+// @covers-ndk function|chooser.library|FreeChooserNode
+// @ndk-side-effects Frees the exact private node returned by AllocChooserNodeA; the per-test A4000 memory gate verifies that its allocation is returned
+@test("chooser.library FreeChooserNode releases its exact node")
+pub fn chooser_free() {
+    let node = alloc_a("C")
+    if node != null { FreeChooserNode(node) }
+    expect(node != null, "a real chooser node was allocated and released")
+}
+
+// @covers-ndk function|chooser.library|SetChooserNodeAttrsA
+// @ndk-side-effects Changes a detached chooser node's text through a terminated tag list, proves the installed classic class ignores CNA_Disabled by reading zero back, and frees the node
+@test("chooser.library SetChooserNodeAttrsA updates detached node attributes")
+pub fn chooser_set_a() {
+    let node = alloc_a("D")
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: CNA_Text, ti_Data: (u32)"E" },
+        TagItem { ti_Tag: CNA_Disabled, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { SetChooserNodeAttrsA(node, &var tags[0]) }
+    var text: *u8 = null
+    var disabled: u32 = 0
+    if node != null { GetChooserNodeAttrs(node, CNA_Text, &var text, CNA_Disabled, &var disabled, TAG_DONE) }
+    let has_node = node != null
+    let text_changed = text_is(text, 69)
+    let disabled_changed = disabled != 0
+    if node != null { FreeChooserNode(node) }
+    expect(has_node, "tag-list setter receives a real node")
+    expect(text_changed, "tag-list setter stores text E")
+    expect(!disabled_changed, "classic chooser bug: CNA_Disabled reads back zero")
+}
+
+// @covers-ndk function|chooser.library|SetChooserNodeAttrs
+// @ndk-side-effects Changes a detached chooser node's text through varargs, proves the installed classic class ignores CNA_ReadOnly by reading zero back, and frees the node
+@test("chooser.library SetChooserNodeAttrs updates detached node attributes")
+pub fn chooser_set() {
+    let node = alloc_a("F")
+    if node != null { SetChooserNodeAttrs(node, CNA_Text, "G", CNA_ReadOnly, 1, TAG_DONE) }
+    var text: *u8 = null
+    var read_only: u32 = 0
+    if node != null { GetChooserNodeAttrs(node, CNA_Text, &var text, CNA_ReadOnly, &var read_only, TAG_DONE) }
+    let has_node = node != null
+    let text_changed = text_is(text, 71)
+    let read_only_changed = read_only != 0
+    if node != null { FreeChooserNode(node) }
+    expect(has_node, "varargs setter receives a real node")
+    expect(text_changed, "varargs setter stores text G")
+    expect(!read_only_changed, "classic chooser bug: CNA_ReadOnly reads back zero")
+}
+
+// @covers-ndk function|chooser.library|GetChooserNodeAttrsA
+// @ndk-side-effects Reads the exact text pointer and user-data value from a real private chooser node through destination pointers in a terminated TagItem list, then frees the node
+@test("chooser.library GetChooserNodeAttrsA reads private attributes")
+pub fn chooser_get_a() {
+    let node = AllocChooserNode(CNA_Text, "H", CNA_UserData, (u32)$CAFEBABE, TAG_DONE)
+    var text: *u8 = null
+    var user_data: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: CNA_Text, ti_Data: (u32)(**u8)&var text },
+        TagItem { ti_Tag: CNA_UserData, ti_Data: (u32)(*u32)&var user_data },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { GetChooserNodeAttrsA(node, &var tags[0]) }
+    let valid = node != null && text_is(text, 72) && user_data == $CAFEBABE
+    if node != null { FreeChooserNode(node) }
+    expect(valid, "tag-list getter returns text H and exact user data")
+}
+
+// @covers-ndk function|chooser.library|GetChooserNodeAttrs
+// @ndk-side-effects Reads the exact text pointer from a real private chooser node and confirms the installed classic class reports zero for its requested CNA_Disabled attribute, then frees the node
+@test("chooser.library GetChooserNodeAttrs reads private attributes")
+pub fn chooser_get() {
+    let node = AllocChooserNode(CNA_Text, "I", CNA_Disabled, 1, TAG_DONE)
+    var text: *u8 = null
+    var disabled: u32 = 0
+    if node != null { GetChooserNodeAttrs(node, CNA_Text, &var text, CNA_Disabled, &var disabled, TAG_DONE) }
+    let has_node = node != null
+    let text_read = text_is(text, 73)
+    let disabled_read = disabled != 0
+    if node != null { FreeChooserNode(node) }
+    expect(has_node, "varargs getter receives a real node")
+    expect(text_read, "varargs getter returns text I")
+    expect(!disabled_read, "classic chooser bug: requested disabled state reads as zero")
+}

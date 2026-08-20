@@ -1,0 +1,411 @@
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import MEMF_CHIP
+from amiga::raw::structs import AreaInfo, BitMap, RastPort, TmpRas
+from amiga::raw::exec import TypeOfMem
+from amiga::raw::graphics import AllocRaster, FreeRaster, InitBitMap, InitRastPort
+from amiga::raw::graphics import InitArea, InitTmpRas, AreaMove, AreaDraw, AreaEnd, AreaEllipse
+from amiga::raw::graphics import SetRast, SetAPen, SetBPen, SetDrMd, Move, Draw, ReadPixel, WritePixel, RectFill
+from amiga::raw::graphics import DrawEllipse, PolyDraw, Flood, ClearEOL, ClearScreen
+from amiga::raw::graphics import ScrollRaster, ScrollRasterBF
+from amiga::raw::graphics import ReadPixelLine8, WritePixelLine8, WriteChunkyPixels
+from amiga::raw::graphics import WaitBlit
+
+const RASTER_WIDTH: u16 = 128
+const RASTER_HEIGHT: u16 = 64
+const RASTER_WIDTH_I16: i16 = 128
+const RASTER_HEIGHT_I16: i16 = 64
+const RASTER_BYTES: i32 = 1024
+const DRAW_MODE_JAM2: u8 = 2
+
+fn init_raster(bitmap: *BitMap, rastport: *RastPort) -> *u8 {
+    InitBitMap(bitmap, 1, RASTER_WIDTH_I16, RASTER_HEIGHT_I16)
+    let plane = AllocRaster(RASTER_WIDTH, RASTER_HEIGHT)
+    if plane == null {
+        return null
+    }
+    unsafe {
+        (*bitmap).Planes[0] = plane
+    }
+    InitRastPort(rastport)
+    unsafe {
+        (*rastport).BitMap = bitmap
+    }
+    return plane
+}
+
+fn init_area(rastport: *RastPort, area: *AreaInfo, temp: *TmpRas, vectors: *u8) -> *u8 {
+    let raster = AllocRaster(RASTER_WIDTH, RASTER_HEIGHT)
+    if raster == null {
+        return null
+    }
+    InitArea(area, vectors, 20)
+    let _ = InitTmpRas(temp, raster, RASTER_BYTES)
+    unsafe {
+        (*rastport).AreaInfo = area
+        (*rastport).TmpRas = temp
+    }
+    return raster
+}
+
+fn init_line_temp(bitmap: *BitMap, rastport: *RastPort) -> *u8 {
+    InitBitMap(bitmap, 1, 16, 1)
+    let plane = AllocRaster(16, 1)
+    if plane == null {
+        return null
+    }
+    unsafe {
+        (*bitmap).Planes[0] = plane
+    }
+    InitRastPort(rastport)
+    unsafe {
+        (*rastport).BitMap = bitmap
+    }
+    return plane
+}
+
+fn pixel(rastport: *RastPort, x: i16, y: i16) -> u32 {
+    return ReadPixel(rastport, x, y)
+}
+
+// @covers-ndk function|graphics.library|InitBitMap
+// @covers-ndk function|graphics.library|AllocRaster
+// @covers-ndk function|graphics.library|InitRastPort
+// @covers-ndk function|graphics.library|FreeRaster
+// @ndk-side-effects InitBitMap establishes the exact one-plane 128x64 layout; AllocRaster reserves a chip-memory plane; InitRastPort establishes drawing defaults and is attached to that bitmap; a written pixel is read back from the plane; FreeRaster returns the exact allocation
+@test("graphics.library initializes and releases a custom raster")
+pub fn graphics_custom_raster_lifecycle() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "chip raster allocated")
+        return
+    }
+
+    unsafe {
+        expect_eq((u32)bitmap.Depth, 1, "bitmap depth initialized")
+        expect_eq((u32)bitmap.Rows, (u32)RASTER_HEIGHT, "bitmap height initialized")
+        expect_eq((u32)bitmap.BytesPerRow, 16, "bitmap row stride initialized")
+    }
+    expect_true((TypeOfMem(plane) & MEMF_CHIP) != 0, "raster resides in chip memory")
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    expect(WritePixel(&var rastport, 17, 9) == 0, "pixel write succeeds")
+    expect_eq(pixel(&var rastport, 17, 9), 1, "initialized rastport reaches bitmap plane")
+
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|InitArea
+// @covers-ndk function|graphics.library|InitTmpRas
+// @covers-ndk function|graphics.library|AreaMove
+// @covers-ndk function|graphics.library|AreaDraw
+// @covers-ndk function|graphics.library|AreaEnd
+// @ndk-side-effects InitArea and InitTmpRas attach bounded vector and chip-raster workspaces; AreaMove and AreaDraw describe a triangle; AreaEnd fills its interior while leaving an exterior pixel unchanged; both chip rasters are released
+@test("graphics.library fills an area polygon into a custom bitmap")
+pub fn graphics_area_polygon() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var area: AreaInfo = @zeroed(AreaInfo)
+    var temp: TmpRas = @zeroed(TmpRas)
+    var vectors: [u8; 100] = @zeroed([u8; 100])
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "destination raster allocated")
+        return
+    }
+    let area_raster = init_area(&var rastport, &var area, &var temp, &var vectors[0])
+    if area_raster == null {
+        expect(false, "temporary area raster allocated")
+        FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+        return
+    }
+
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    expect(AreaMove(&var rastport, 10, 10) == 0, "polygon begins")
+    expect(AreaDraw(&var rastport, 54, 10) == 0, "polygon second vertex accepted")
+    expect(AreaDraw(&var rastport, 32, 42) == 0, "polygon third vertex accepted")
+    expect(AreaEnd(&var rastport) == 0, "polygon completes")
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 32, 20), 1, "polygon interior filled")
+    expect_eq(pixel(&var rastport, 5, 5), 0, "polygon exterior preserved")
+
+    FreeRaster(area_raster, RASTER_WIDTH, RASTER_HEIGHT)
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|AreaEllipse
+// @ndk-side-effects AreaEllipse appends a 12x8 ellipse to initialized area state; AreaEnd fills its center and horizontal radius while preserving the pixel immediately outside; destination and temporary rasters are released
+@test("graphics.library fills an area ellipse with exact bounds")
+pub fn graphics_area_ellipse() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var area: AreaInfo = @zeroed(AreaInfo)
+    var temp: TmpRas = @zeroed(TmpRas)
+    var vectors: [u8; 100] = @zeroed([u8; 100])
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "destination raster allocated")
+        return
+    }
+    let area_raster = init_area(&var rastport, &var area, &var temp, &var vectors[0])
+    if area_raster == null {
+        expect(false, "temporary area raster allocated")
+        FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+        return
+    }
+
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    expect(AreaEllipse(&var rastport, 32, 24, 12, 8) == 0, "ellipse accepted")
+    expect(AreaEnd(&var rastport) == 0, "ellipse completes")
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 32, 24), 1, "ellipse center filled")
+    expect_eq(pixel(&var rastport, 44, 24), 1, "ellipse radius filled")
+    expect_eq(pixel(&var rastport, 45, 24), 0, "outside ellipse preserved")
+
+    FreeRaster(area_raster, RASTER_WIDTH, RASTER_HEIGHT)
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|DrawEllipse
+// @ndk-side-effects DrawEllipse writes the four cardinal points of a 12x8 outline with the foreground pen while leaving its center and the pixel beyond its horizontal radius unchanged; the raster is released
+@test("graphics.library draws only an ellipse outline")
+pub fn graphics_draw_ellipse_outline() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    DrawEllipse(&var rastport, 32, 24, 12, 8)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 20, 24), 1, "left cardinal point drawn")
+    expect_eq(pixel(&var rastport, 44, 24), 1, "right cardinal point drawn")
+    expect_eq(pixel(&var rastport, 32, 16), 1, "top cardinal point drawn")
+    expect_eq(pixel(&var rastport, 32, 24), 0, "ellipse center remains empty")
+    expect_eq(pixel(&var rastport, 45, 24), 0, "outside ellipse remains empty")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|PolyDraw
+// @ndk-side-effects PolyDraw consumes three coordinate pairs and draws connected horizontal and vertical segments from the live cursor; readback verifies both segments and an adjacent untouched pixel before releasing the raster
+@test("graphics.library draws every PolyDraw segment")
+pub fn graphics_poly_draw_segments() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var points: [i16] = [10, 10, 42, 10, 42, 34]
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    Move(&var rastport, 5, 5)
+    PolyDraw(&var rastport, 3, &var points[0])
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 10, 10), 1, "first coordinate reached")
+    expect_eq(pixel(&var rastport, 30, 10), 1, "horizontal segment drawn")
+    expect_eq(pixel(&var rastport, 42, 24), 1, "vertical segment drawn")
+    expect_eq(pixel(&var rastport, 41, 24), 0, "adjacent pixel preserved")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|Flood
+// @ndk-side-effects A closed rectangle is drawn into an initialized RastPort with a valid TmpRas; Flood mode zero fills its interior up to the border while leaving an exterior pixel unchanged; both rasters are released
+@test("graphics.library flood fill stops at a drawn border")
+pub fn graphics_flood_border() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var temp: TmpRas = @zeroed(TmpRas)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "destination raster allocated")
+        return
+    }
+    let flood_raster = AllocRaster(RASTER_WIDTH, RASTER_HEIGHT)
+    if flood_raster == null {
+        expect(false, "flood workspace allocated")
+        FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+        return
+    }
+    let _ = InitTmpRas(&var temp, flood_raster, RASTER_BYTES)
+    unsafe { rastport.TmpRas = &var temp }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    Move(&var rastport, 10, 10)
+    Draw(&var rastport, 50, 10)
+    Draw(&var rastport, 50, 40)
+    Draw(&var rastport, 10, 40)
+    Draw(&var rastport, 10, 10)
+    expect_true(Flood(&var rastport, 0, 30, 25) != 0, "flood succeeds")
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 30, 25), 1, "border interior filled")
+    expect_eq(pixel(&var rastport, 5, 5), 0, "border exterior preserved")
+    FreeRaster(flood_raster, RASTER_WIDTH, RASTER_HEIGHT)
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|ClearEOL
+// @ndk-side-effects ClearEOL replaces the full current-font swath from the live cursor through the right edge with the background pen while preserving the preceding pixel and a scanline outside that swath; the raster is released
+@test("graphics.library ClearEOL honors the cursor and row boundary")
+pub fn graphics_clear_eol() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 1)
+    SetBPen(&var rastport, 0)
+    SetDrMd(&var rastport, DRAW_MODE_JAM2)
+    Move(&var rastport, 40, 20)
+    ClearEOL(&var rastport)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 39, 20), 1, "pixel before cursor preserved")
+    expect_eq(pixel(&var rastport, 40, 20), 0, "cursor pixel cleared")
+    expect_eq(pixel(&var rastport, 127, 20), 0, "row tail cleared")
+    expect_eq(pixel(&var rastport, 40, 30), 1, "scanline below font swath preserved")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|ClearScreen
+// @ndk-side-effects ClearScreen replaces pixels from the live cursor through the bottom-right of the RastPort with the background pen while preserving preceding pixels; the raster is released
+@test("graphics.library ClearScreen honors the cursor and bitmap end")
+pub fn graphics_clear_screen() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 1)
+    SetBPen(&var rastport, 0)
+    SetDrMd(&var rastport, DRAW_MODE_JAM2)
+    Move(&var rastport, 40, 20)
+    ClearScreen(&var rastport)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 39, 20), 1, "pixel before cursor preserved")
+    expect_eq(pixel(&var rastport, 40, 20), 0, "cursor pixel cleared")
+    expect_eq(pixel(&var rastport, 127, 63), 0, "bitmap tail cleared")
+    expect_eq(pixel(&var rastport, 0, 19), 1, "preceding row preserved")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|ScrollRaster
+// @ndk-side-effects ScrollRaster moves a marked rectangle four pixels toward the origin and fills the exposed right edge with the background pen; readback verifies source, destination, and exposed pixels before release
+@test("graphics.library ScrollRaster moves and clears raster pixels")
+pub fn graphics_scroll_raster() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    SetBPen(&var rastport, 0)
+    RectFill(&var rastport, 20, 10, 23, 13)
+    ScrollRaster(&var rastport, 4, 0, 0, 0, 63, 31)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 16, 11), 1, "source block moved left")
+    expect_eq(pixel(&var rastport, 22, 11), 0, "old source location cleared")
+    expect_eq(pixel(&var rastport, 63, 11), 0, "exposed right edge uses background")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|ScrollRasterBF
+// @ndk-side-effects ScrollRasterBF moves a marked rectangle four pixels toward the origin while preserving pixels outside the requested bounds; readback verifies the moved block and untouched neighbor before release
+@test("graphics.library ScrollRasterBF confines movement to its bounds")
+pub fn graphics_scroll_raster_bf() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    RectFill(&var rastport, 20, 10, 23, 13)
+    WritePixel(&var rastport, 70, 11)
+    ScrollRasterBF(&var rastport, 4, 0, 0, 0, 63, 31)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 16, 11), 1, "bounded source block moved left")
+    expect_eq(pixel(&var rastport, 70, 11), 1, "pixel outside bounds preserved")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|WriteChunkyPixels
+// @ndk-side-effects WaitBlit completes the preceding SetRast clear and SetAPen initializes the RastPort minterms; WriteChunkyPixels then decodes two exact eight-pixel chunky rows into the planar bitmap using the supplied stride; readback verifies both colors and row order before the raster is released
+@test("graphics.library writes a strided chunky pixel rectangle")
+pub fn graphics_write_chunky_pixels() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var pixels: [u8] = [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1]
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "raster allocated")
+        return
+    }
+    SetRast(&var rastport, 0)
+    WaitBlit()
+    SetAPen(&var rastport, 1)
+    WriteChunkyPixels(&var rastport, 10, 10, 17, 11, &var pixels[0], 8)
+    WaitBlit()
+    expect_eq(pixel(&var rastport, 10, 10), 1, "first row first pixel decoded")
+    expect_eq(pixel(&var rastport, 11, 10), 0, "first row second pixel decoded")
+    expect_eq(pixel(&var rastport, 10, 11), 0, "second row first pixel decoded")
+    expect_eq(pixel(&var rastport, 11, 11), 1, "second row second pixel decoded")
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}
+
+// @covers-ndk function|graphics.library|WritePixelLine8
+// @covers-ndk function|graphics.library|ReadPixelLine8
+// @ndk-side-effects The destination and exact one-row temporary RastPorts have their pen minterms initialized and the temporary plane cleared; WritePixelLine8 decodes an alternating 16-pixel pen array and ReadPixelLine8 reconstructs the same pens into a cleared destination array; both bitmap planes are released
+@test("graphics.library round-trips an eight-bit pixel line")
+pub fn graphics_pixel_line8_roundtrip() {
+    var bitmap: BitMap = @zeroed(BitMap)
+    var rastport: RastPort = @zeroed(RastPort)
+    var temp_bitmap: BitMap = @zeroed(BitMap)
+    var temp_rastport: RastPort = @zeroed(RastPort)
+    var input: [u8] = [1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1]
+    var output: [u8; 16] = @zeroed([u8; 16])
+    let plane = init_raster(&var bitmap, &var rastport)
+    if plane == null {
+        expect(false, "destination raster allocated")
+        return
+    }
+    let temp_plane = init_line_temp(&var temp_bitmap, &var temp_rastport)
+    if temp_plane == null {
+        expect(false, "temporary raster allocated")
+        FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+        return
+    }
+    SetRast(&var rastport, 0)
+    SetAPen(&var rastport, 1)
+    SetAPen(&var temp_rastport, 1)
+    SetRast(&var temp_rastport, 0)
+    WaitBlit()
+    let written = WritePixelLine8(&var rastport, 20, 12, 16, &var input[0], &var temp_rastport)
+    expect(written == 16, "all pixels written")
+    WaitBlit()
+    let read = ReadPixelLine8(&var rastport, 20, 12, 16, &var output[0], &var temp_rastport)
+    expect(read == 16, "all pixels read")
+    WaitBlit()
+    var index: u32 = 0
+    while index < 16 {
+        expect_eq((u32)output[index], (u32)input[index], "pixel line value round-trips")
+        index++
+    }
+    FreeRaster(temp_plane, 16, 1)
+    FreeRaster(plane, RASTER_WIDTH, RASTER_HEIGHT)
+}

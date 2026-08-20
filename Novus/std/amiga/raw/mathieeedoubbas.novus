@@ -11,27 +11,239 @@ from amiga::raw::structs import *
 // Library Functions
 // ============================================================================
 
+/// convert IEEE double float to integer
+///
+/// Convert IEEE double precision argument to a 32 bit signed integer
+/// and return result.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPFix(  y  );
+/// d0		d0/d1
+///
+/// long	x;
+/// double	y;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// if no overflow occured then return
+/// x -- 32 bit signed integer
+/// if overflow return largest +- integer
+/// For round to zero
+///
+/// # See Also
+///
+/// IEEEDPFlt()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPFix(parm: f64) -> i32
+/// convert integer to IEEE double precision number
+///
+/// Convert a signed 32 bit value to a double precision IEEE value
+/// and return it in d0/d1. No exceptions can occur with this
+/// function.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPFlt(  y  );
+/// d0/d1		   d0
+///
+/// double	x;
+/// long	y;
+///
+/// # Arguments
+///
+/// * y -- 32 bit integer in d0
+///
+/// # Returns
+///
+/// x is a 64 bit double precision IEEE value
+///
+/// # See Also
+///
+/// IEEEDPFix()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPFlt(integer: i32) -> f64
+/// compare two double precision floating point numbers
+///
+/// Compare y with z. Set the condition codes for less, greater, or
+/// equal. Set return value c to -1 if y<z, or +1 if y>z, or 0 if
+/// y == z.
+///
+/// # Synopsis
+///
+/// c   = IEEEDPCmp(  y  ,  z  );
+///   d0		  d0/d1 d2/d3
+///
+/// double	y,z;
+/// long	c;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value z -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// c = 1   cc = gt         for (y > z)
+/// c = 0   cc = eq         for (y == z)
+/// c = -1  cc = lt         for (y < z)
+///
+/// # Bugs
+///
+/// Did not work correctly prior to V45 and might have returned results
+/// indicating the wrong order for negative numbers of small absolute
+/// value. This has been fixed in V45.
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPCmp(leftParm: f64, rightParm: f64) -> i32
+/// compare IEEE double precision value to 0.0
+///
+/// Compare y to 0.0, set the condition codes for less than, greater
+/// than, or equal to 0.0.  Set the return value c to -1 if less than,
+/// to +1 if greater than, or 0 if equal to 0.0.
+///
+/// # Synopsis
+///
+/// c   = IEEEDPTst(  y  );
+///   d0		  d0/d1
+///
+/// double	y;
+/// long	c;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// c = 1	cc = gt		for (y > 0.0)
+/// c = 0	cc = eq		for (y == 0.0)
+/// c = -1  cc = lt		for (y < 0.0)
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPTst(parm: f64) -> i32
+/// compute absolute value of IEEE double precision argument
+///
+/// # Synopsis
+///
+/// x   = IEEEDPAbs(  y  );
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPAbs(parm: f64) -> f64
+/// compute negative value of IEEE double precision number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPNeg(  y  );
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPNeg(parm: f64) -> f64
+/// add one double precision IEEE number to another
+///
+/// Compute x = y + z in IEEE double precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPAdd(  y  ,  z  );
+/// d0/d1		  d0/d1 d2/d3
+///
+/// double	x,y,z;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value z -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// x -- IEEE double precision floating point value
+///
+/// # See Also
+///
+/// IEEEDPSub()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPAdd(leftParm: f64, rightParm: f64) -> f64
+/// subtract one double precision IEEE number from another
+///
+/// Compute x = y - z in IEEE double precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPSub(  y  ,  z  );
+/// d0/d1		  d0/d1 d2/d3
+///
+/// double	x,y,z;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value z -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// x -- IEEE double precision floating point value
+///
+/// # See Also
+///
+/// IEEEDPAdd()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPSub(leftParm: f64, rightParm: f64) -> f64
+/// multiply one double precision IEEE number by another
+///
+/// Compute x = y * z in IEEE double precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPMul(  y  ,  z  );
+/// d0/d1		  d0/d1 d2/d3
+///
+/// double	x,y,z;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value z -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// x -- IEEE double precision floating point value
+///
+/// # See Also
+///
+/// IEEEDPDiv()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPMul(factor1: f64, factor2: f64) -> f64
+/// divide one double precision IEEE by another
+///
+/// Compute x = y / z in IEEE double precision.
+///
+/// # Synopsis
+///
+/// x   = IEEEDPDiv(  y  ,  z  );
+/// d0/d1		  d0/d1 d2/d3
+///
+/// double	x,y,z;
+///
+/// # Arguments
+///
+/// * y -- IEEE double precision floating point value z -- IEEE double precision floating point value
+///
+/// # Returns
+///
+/// x -- IEEE double precision floating point value
+///
+/// # See Also
+///
+/// IEEEDPMul()
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPDiv(dividend: f64, divisor: f64) -> f64
+/// compute Floor function of IEEE double precision number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPFloor(  y  );
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPFloor(parm: f64) -> f64
+/// compute Ceil function of IEEE double precision number
+///
+/// # Synopsis
+///
+/// x   = IEEEDPCeil(  y  );
 @library("mathieeedoubbas.library")
 extern pub fn IEEEDPCeil(parm: f64) -> f64

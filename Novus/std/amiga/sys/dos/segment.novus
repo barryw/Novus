@@ -156,18 +156,18 @@ impl LoadedSegment {
         let read_address = unsafe { *(*u32)&read_callback }
         let alloc_address = unsafe { *(*u32)&alloc_callback }
         let free_address = unsafe { *(*u32)&free_callback }
-        var callbacks = [read_address, alloc_address, free_address]
+        var callbacks: [i32] = [(i32)read_address, (i32)alloc_address, (i32)free_address]
         var cursor = MemoryCursor {
             data: unsafe { (*u8)image.get_unchecked(0) },
             offset: 0,
             len: image.len(),
         }
-        var stack_size: u32 = 0
+        var stack_size: i32 = 0
         let raw = InternalLoadSeg(
             (i32)(u32)(*u8)&var cursor,
             0,
-            (*u8)&var callbacks[0],
-            (*u8)&var stack_size
+            &var callbacks[0],
+            &var stack_size
         )
         let segment = match BPtr::<u8>::from_raw(raw) {
             Result::Ok(value) => value,

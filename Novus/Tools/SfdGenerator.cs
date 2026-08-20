@@ -93,6 +93,7 @@ public class SfdGenerator
             {
                 var moduleName = library.LibraryName.Replace(".library", "").Replace(".", "_");
                 var headers = library.Includes
+                    .Concat(library.LibraryName == "graphics.library" ? ["graphics/gfxbase.h"] : [])
                     .Select(include => include.Trim('<', '>', '"'))
                     .Where(include => File.Exists(Path.Combine(_ndkPath, "Include", "include_h", include)))
                     .Distinct(StringComparer.Ordinal);
@@ -133,6 +134,8 @@ public class SfdGenerator
         sb.AppendLine("// Generated from SFD file by Novus SFD Parser");
         sb.AppendLine($"// Library: {library.LibraryName}");
         sb.AppendLine($"// Base: {(string.IsNullOrWhiteSpace(library.BaseSymbol) ? "caller-supplied" : library.BaseSymbol)}");
+        if (library.LibraryName.Equals("console.device", StringComparison.OrdinalIgnoreCase))
+            sb.AppendLine("// Unit: -1");
         sb.AppendLine("//");
         sb.AppendLine("// NOTE: Constants are in amiga::raw::consts");
         sb.AppendLine("// NOTE: Structs are in amiga::raw::structs");
@@ -167,7 +170,7 @@ public class SfdGenerator
                     novusParams.Add("...args");
                     continue;
                 }
-                var paramType = SfdParser.MapAmigaTypeToNovus(param.Type);
+                var paramType = MapBindingType(library.LibraryName, param.Type);
                 var paramName = string.IsNullOrWhiteSpace(param.Name) ? $"arg{i}" : SanitizeIdentifier(param.Name);
 
                 novusParams.Add($"{paramName}: {paramType}");
@@ -177,7 +180,7 @@ public class SfdGenerator
             sb.Append(")");
 
             // Generate return type
-            var returnType = SfdParser.MapAmigaTypeToNovus(func.ReturnType);
+            var returnType = MapBindingType(library.LibraryName, func.ReturnType);
             if (returnType != "void")
             {
                 sb.Append($" -> {returnType}");
@@ -310,6 +313,10 @@ public class SfdGenerator
 
         // Call the library function
         sb.AppendLine($"\tjsr\t-{func.Offset}(a6)");
+        // utility.library returns 64-bit products low:high in D0:D1,
+        // opposite the Novus/VBCC wide-result ABI.
+        if (library.LibraryName == "utility.library" && func.Name is "SMult64" or "UMult64")
+            sb.AppendLine("\texg\td0,d1");
         sb.AppendLine($"\tmovem.l\t(sp)+,{preservedRegisterList}");
 
         // Return value is in d0 (or d0/d1 for 64-bit)
@@ -327,6 +334,13 @@ public class SfdGenerator
         spec == register ||
         spec.Length == 5 && spec[2] == '-' && spec[0] == register[0] && spec[3] == register[0] &&
         spec[1] <= register[1] && register[1] <= spec[4];
+
+    private static string MapBindingType(string libraryName, string amigaType)
+    {
+        if (libraryName == "hdwrench.library" && Regex.IsMatch(amigaType, @"\bBootBlock\b"))
+            return new string('*', amigaType.Count(character => character == '*')) + "HdwBootBlock";
+        return SfdParser.MapAmigaTypeToNovus(amigaType);
+    }
 
     private void GenerateCentralStructsFile(
         List<string> _,
@@ -372,6 +386,17 @@ public class SfdGenerator
         {
             if (!allStructs.ContainsKey(tag))
                 allStructs[tag] = new CHeaderParser.CStruct { Name = tag, TagName = tag };
+        }
+
+        // devices/hardblocks.h declares struct BootBlock while hdwrench.h declares
+        // typedef struct bootblock BootBlock. C has separate tag/typedef namespaces;
+        // Novus does not, so preserve both public layouts under unambiguous names.
+        if (allStructs.ContainsKey("BootBlock") &&
+            allStructs.Remove("bootblock", out var hdwBootBlock) &&
+            hdwBootBlock.Fields.Count > 0)
+        {
+            hdwBootBlock.Name = "HdwBootBlock";
+            allStructs[hdwBootBlock.Name] = hdwBootBlock;
         }
 
         // Generate amiga_consts.novus (constants only)
@@ -456,6 +481,13 @@ public class SfdGenerator
         structsSb.AppendLine();
         structsSb.AppendLine("from amiga::raw::consts import *");
         structsSb.AppendLine();
+        structsSb.AppendLine("/// Opaque Commodities Exchange object handle.");
+        structsSb.AppendLine("#[extern_type]");
+        structsSb.AppendLine("pub struct CxObj {}");
+        structsSb.AppendLine("/// Opaque Commodities Exchange message handle.");
+        structsSb.AppendLine("#[extern_type]");
+        structsSb.AppendLine("pub struct CxMsg {}");
+        structsSb.AppendLine();
         structsSb.AppendLine("// ============================================================================");
         structsSb.AppendLine("// Struct Definitions");
         structsSb.AppendLine("// ============================================================================");
@@ -475,6 +507,11 @@ public class SfdGenerator
         var ndkTypesOutputFile = Path.Combine(_outputPath, "std", "amiga", "raw", "ndk_types.h");
         var ndkTypes = new StringBuilder();
         ndkTypes.AppendLine("/* Generated NDK tag/typedef bridge for Novus C output. */");
+        ndkTypes.AppendLine("#ifndef COMMODITIES_BASE_H");
+        ndkTypes.AppendLine("#define COMMODITIES_BASE_H");
+        ndkTypes.AppendLine("typedef long CxObj;");
+        ndkTypes.AppendLine("typedef long CxMsg;");
+        ndkTypes.AppendLine("#endif");
         foreach (var structDef in sortedStructs.OrderBy(value => value.Name, StringComparer.Ordinal))
         {
             if (functionNames.Contains(structDef.Name) || structDef.IsTypedef || structDef.IsSynthetic)
@@ -482,6 +519,11 @@ public class SfdGenerator
             var tagName = string.IsNullOrWhiteSpace(structDef.TagName) ? structDef.Name : structDef.TagName;
             ndkTypes.AppendLine($"typedef {(structDef.IsUnion ? "union" : "struct")} {tagName} {structDef.Name};");
         }
+        // hdwrench.h exposes these as anonymous typedefs, then switches to
+        // SAS/C-only callback prototypes that VBCC cannot parse. Keep the two
+        // public layouts available without including that incompatible header.
+        ndkTypes.AppendLine("typedef struct ValidIDstruct { unsigned short ready[16]; unsigned short there[16]; } ValidIDstruct;");
+        ndkTypes.AppendLine("typedef struct HDWCallbackMsg { char *devicename; long board; long address; long lun; char *messagestring; long extra; long param1; long param2; long param3; } HDWCallbackMsg;");
         File.WriteAllText(ndkTypesOutputFile, ndkTypes.ToString());
     }
 
@@ -639,6 +681,7 @@ public class SfdGenerator
         IReadOnlyDictionary<string, CHeaderParser.CConstant> constants,
         HashSet<string> visiting)
     {
+        expression = Regex.Replace(expression, @"sizeof\s*\(\s*BOOL\s*\)", "4");
         expression = Regex.Replace(expression, @"\b[A-Za-z_][A-Za-z0-9_]*\b", match =>
         {
             var name = match.Value;

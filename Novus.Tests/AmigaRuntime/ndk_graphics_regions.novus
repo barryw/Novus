@@ -1,0 +1,355 @@
+from std::core import Result, Drop
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::structs import BitMap, Layer, Layer_Info, RastPort, Rectangle, Region
+from amiga::raw::graphics import NewRegion, DisposeRegion, ClearRegion
+from amiga::raw::graphics import OrRectRegion, AndRectRegion, ClearRectRegion, XorRectRegion
+from amiga::raw::graphics import OrRegionRegion, AndRegionRegion, XorRegionRegion
+from amiga::raw::graphics import InitRastPort, SetAPen, RectFill, ReadPixel, WaitBlit
+from amiga::raw::layers import NewLayerInfo, CreateUpfrontLayer, InstallClipRegion
+from amiga::raw::layers import DeleteLayer, DisposeLayerInfo
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+const REGION_WIDTH: i16 = 128
+const REGION_HEIGHT: i16 = 64
+const REGION_WIDTH_U32: u32 = 128
+const REGION_HEIGHT_U32: u32 = 64
+const SIMPLE_LAYER: i32 = 1
+
+fn rectangle(min_x: i16, min_y: i16, max_x: i16, max_y: i16) -> Rectangle {
+    return Rectangle { MinX: min_x, MinY: min_y, MaxX: max_x, MaxY: max_y }
+}
+
+fn region_with_rect(rect: *Rectangle) -> *Region {
+    let region = NewRegion()
+    if region == null {
+        return null
+    }
+    if OrRectRegion(region, rect) == 0 {
+        DisposeRegion(region)
+        return null
+    }
+    return region
+}
+
+struct ClipCanvas {
+    bitmap: BitMapHandle,
+    rastport: RastPort,
+    layer_info: *Layer_Info,
+    layer: *Layer,
+}
+
+impl ClipCanvas {
+    fn new() -> Result<ClipCanvas, i32> {
+        let bitmap = match BitMapHandle::alloc(
+            REGION_WIDTH_U32, REGION_HEIGHT_U32, 1,
+            BMF_CLEAR | BMF_DISPLAYABLE, null) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(1),
+        }
+        let layer_info = NewLayerInfo()
+        if layer_info == null {
+            return Result::Err(2)
+        }
+        let layer = CreateUpfrontLayer(
+            layer_info, bitmap.as_raw(), 0, 0,
+            (i32)REGION_WIDTH - 1, (i32)REGION_HEIGHT - 1,
+            SIMPLE_LAYER, null)
+        if layer == null {
+            DisposeLayerInfo(layer_info)
+            return Result::Err(3)
+        }
+        var rastport: RastPort = @zeroed(RastPort)
+        InitRastPort(&var rastport)
+        unsafe {
+            rastport.BitMap = bitmap.as_raw()
+            rastport.Layer = layer
+        }
+        return Result::Ok(ClipCanvas {
+            bitmap: bitmap,
+            rastport: rastport,
+            layer_info: layer_info,
+            layer: layer,
+        })
+    }
+
+    fn draw_region(&var self, region: *Region) -> bool {
+        if self.layer == null {
+            return false
+        }
+        let _ = InstallClipRegion(self.layer, null)
+        if InstallClipRegion(self.layer, region) != null {
+            return false
+        }
+        SetAPen(&var self.rastport, 1)
+        RectFill(&var self.rastport, 0, 0, REGION_WIDTH - 1, REGION_HEIGHT - 1)
+        WaitBlit()
+        return InstallClipRegion(self.layer, null) == region
+    }
+
+    fn pixel(&var self, x: i16, y: i16) -> u32 {
+        return ReadPixel(&var self.rastport, x, y)
+    }
+
+    fn close(&var self) -> bool {
+        if self.layer == null {
+            return true
+        }
+        let _ = InstallClipRegion(self.layer, null)
+        let deleted = DeleteLayer(0, self.layer) != 0
+        self.layer = null
+        DisposeLayerInfo(self.layer_info)
+        self.layer_info = null
+        return deleted
+    }
+}
+
+impl Drop for ClipCanvas {
+    fn drop(&var self) {
+        let _ = self.close()
+    }
+}
+
+// @covers-ndk function|graphics.library|NewRegion
+// @covers-ndk function|graphics.library|OrRectRegion
+// @covers-ndk function|graphics.library|ClearRegion
+// @covers-ndk function|graphics.library|DisposeRegion
+// @ndk-side-effects NewRegion allocates an empty region; OrRectRegion creates live rectangle storage with exact aggregate bounds; ClearRegion releases every rectangle node and restores the empty representation; DisposeRegion returns the region itself
+@test("graphics.library clears and disposes region storage")
+pub fn graphics_region_storage_lifecycle() {
+    var rect = rectangle(10, 10, 30, 30)
+    let region = region_with_rect(&var rect)
+    if region == null {
+        expect(false, "region allocated and rectangle added")
+        return
+    }
+    unsafe {
+        expect_true((*region).RegionRectangle != null, "rectangle storage created")
+        expect((*region).bounds.MinX == 10, "minimum x recorded")
+        expect((*region).bounds.MaxY == 30, "maximum y recorded")
+    }
+    ClearRegion(region)
+    unsafe {
+        expect_true((*region).RegionRectangle == null, "rectangle storage released")
+    }
+    DisposeRegion(region)
+}
+
+// @covers-ndk function|graphics.library|NewRegion
+// @covers-ndk function|graphics.library|OrRectRegion
+// @covers-ndk function|graphics.library|ClearRegion
+// @covers-ndk function|graphics.library|DisposeRegion
+// @covers-ndk function|layers.library|NewLayerInfo
+// @covers-ndk function|layers.library|CreateUpfrontLayer
+// @covers-ndk function|layers.library|InstallClipRegion
+// @covers-ndk function|layers.library|DeleteLayer
+// @covers-ndk function|layers.library|DisposeLayerInfo
+// @ndk-side-effects NewRegion allocates an empty region; OrRectRegion adds exact inclusive bounds; InstallClipRegion clips a full-bitmap RectFill to those bounds and returns the same region when removed; ClearRegion makes a fill on a fresh cleared bitmap draw no pixels; DeleteLayer and DisposeLayerInfo release both layer lifecycles and DisposeRegion releases the region
+@test("graphics and layers libraries manage a clipped region lifecycle")
+pub fn graphics_region_lifecycle() {
+    var rect = rectangle(10, 10, 30, 30)
+    let region = region_with_rect(&var rect)
+    if region == null {
+        expect(false, "region allocated and rectangle added")
+        return
+    }
+    var canvas = match ClipCanvas::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "clip canvas created")
+            DisposeRegion(region)
+            return
+        },
+    }
+    expect_true(canvas.draw_region(region), "region installs and uninstalls exactly")
+    expect_eq(canvas.pixel(10, 10), 1, "minimum corner included")
+    expect_eq(canvas.pixel(30, 30), 1, "maximum corner included")
+    expect_eq(canvas.pixel(9, 20), 0, "pixel before region excluded")
+    expect_eq(canvas.pixel(31, 20), 0, "pixel after region excluded")
+    expect_true(canvas.close(), "first layer deleted cleanly")
+
+    ClearRegion(region)
+    match ClipCanvas::new() {
+        Result::Ok(empty_canvas_value) => {
+            var empty_canvas = empty_canvas_value
+            expect_true(empty_canvas.draw_region(region), "cleared region remains installable")
+            expect_eq(empty_canvas.pixel(20, 20), 0, "cleared region clips every pixel")
+            expect_true(empty_canvas.close(), "second layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "second clip canvas created"),
+    }
+    DisposeRegion(region)
+}
+
+// @covers-ndk function|graphics.library|AndRectRegion
+// @ndk-side-effects AndRectRegion intersects an existing 10..50 square with a 30..70 rectangle; layer clipping proves only the inclusive 30..50 overlap remains and disposal returns all allocations
+@test("graphics.library intersects a region with a rectangle")
+pub fn graphics_and_rect_region() {
+    var base = rectangle(10, 10, 50, 50)
+    var clip = rectangle(30, 20, 70, 40)
+    let region = region_with_rect(&var base)
+    if region == null {
+        expect(false, "base region created")
+        return
+    }
+    AndRectRegion(region, &var clip)
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(region), "intersection rendered")
+            expect_eq(canvas.pixel(30, 20), 1, "intersection minimum included")
+            expect_eq(canvas.pixel(50, 40), 1, "intersection maximum included")
+            expect_eq(canvas.pixel(29, 30), 0, "left remainder removed")
+            expect_eq(canvas.pixel(51, 30), 0, "right remainder removed")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(region)
+}
+
+// @covers-ndk function|graphics.library|ClearRectRegion
+// @ndk-side-effects ClearRectRegion subtracts a central inclusive strip from a square; layer clipping proves both outer pieces remain while every sampled pixel in the removed strip is excluded; disposal returns all allocations
+@test("graphics.library subtracts a rectangle from a region")
+pub fn graphics_clear_rect_region() {
+    var base = rectangle(10, 10, 50, 40)
+    var removed = rectangle(25, 10, 35, 40)
+    let region = region_with_rect(&var base)
+    if region == null {
+        expect(false, "base region created")
+        return
+    }
+    expect_true(ClearRectRegion(region, &var removed) != 0, "rectangle subtraction succeeds")
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(region), "subtracted region rendered")
+            expect_eq(canvas.pixel(15, 25), 1, "left piece remains")
+            expect_eq(canvas.pixel(40, 25), 1, "right piece remains")
+            expect_eq(canvas.pixel(25, 25), 0, "removed minimum excluded")
+            expect_eq(canvas.pixel(35, 25), 0, "removed maximum excluded")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(region)
+}
+
+// @covers-ndk function|graphics.library|XorRectRegion
+// @ndk-side-effects XorRectRegion toggles an overlapping rectangle against an existing one; layer clipping proves the two non-overlap pieces remain and the inclusive overlap disappears; disposal returns all allocations
+@test("graphics.library XORs a rectangle into a region")
+pub fn graphics_xor_rect_region() {
+    var base = rectangle(10, 10, 30, 30)
+    var toggled = rectangle(20, 10, 40, 30)
+    let region = region_with_rect(&var base)
+    if region == null {
+        expect(false, "base region created")
+        return
+    }
+    expect_true(XorRectRegion(region, &var toggled) != 0, "rectangle XOR succeeds")
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(region), "XOR region rendered")
+            expect_eq(canvas.pixel(15, 20), 1, "left non-overlap remains")
+            expect_eq(canvas.pixel(35, 20), 1, "right non-overlap remains")
+            expect_eq(canvas.pixel(20, 20), 0, "overlap minimum removed")
+            expect_eq(canvas.pixel(30, 20), 0, "overlap maximum removed")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(region)
+}
+
+// @covers-ndk function|graphics.library|OrRegionRegion
+// @ndk-side-effects OrRegionRegion unions a source island into a disjoint destination; layer clipping proves both islands render and the gap remains excluded while the source remains independently disposable
+@test("graphics.library unions two regions")
+pub fn graphics_or_region_region() {
+    var left = rectangle(10, 10, 20, 30)
+    var right = rectangle(40, 10, 50, 30)
+    let destination = region_with_rect(&var left)
+    let source = region_with_rect(&var right)
+    if destination == null || source == null {
+        expect(false, "both regions created")
+        if destination != null { DisposeRegion(destination) }
+        if source != null { DisposeRegion(source) }
+        return
+    }
+    expect_true(OrRegionRegion(source, destination) != 0, "region union succeeds")
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(destination), "union rendered")
+            expect_eq(canvas.pixel(15, 20), 1, "destination island remains")
+            expect_eq(canvas.pixel(45, 20), 1, "source island added")
+            expect_eq(canvas.pixel(30, 20), 0, "gap remains excluded")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(source)
+    DisposeRegion(destination)
+}
+
+// @covers-ndk function|graphics.library|AndRegionRegion
+// @ndk-side-effects AndRegionRegion intersects the destination square with the source rectangle; layer clipping proves only the inclusive overlap remains while both non-overlap sides are removed; both regions are disposed
+@test("graphics.library intersects two regions")
+pub fn graphics_and_region_region() {
+    var destination_rect = rectangle(10, 10, 50, 40)
+    var source_rect = rectangle(25, 20, 40, 30)
+    let destination = region_with_rect(&var destination_rect)
+    let source = region_with_rect(&var source_rect)
+    if destination == null || source == null {
+        expect(false, "both regions created")
+        if destination != null { DisposeRegion(destination) }
+        if source != null { DisposeRegion(source) }
+        return
+    }
+    expect_true(AndRegionRegion(source, destination) != 0, "region intersection succeeds")
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(destination), "intersection rendered")
+            expect_eq(canvas.pixel(25, 20), 1, "overlap minimum included")
+            expect_eq(canvas.pixel(40, 30), 1, "overlap maximum included")
+            expect_eq(canvas.pixel(24, 25), 0, "left non-overlap removed")
+            expect_eq(canvas.pixel(41, 25), 0, "right non-overlap removed")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(source)
+    DisposeRegion(destination)
+}
+
+// @covers-ndk function|graphics.library|XorRegionRegion
+// @ndk-side-effects XorRegionRegion toggles the overlapping source against the destination; layer clipping proves both outer pieces remain and the complete inclusive overlap is removed; both regions are disposed
+@test("graphics.library XORs two regions")
+pub fn graphics_xor_region_region() {
+    var destination_rect = rectangle(10, 10, 30, 30)
+    var source_rect = rectangle(20, 10, 40, 30)
+    let destination = region_with_rect(&var destination_rect)
+    let source = region_with_rect(&var source_rect)
+    if destination == null || source == null {
+        expect(false, "both regions created")
+        if destination != null { DisposeRegion(destination) }
+        if source != null { DisposeRegion(source) }
+        return
+    }
+    expect_true(XorRegionRegion(source, destination) != 0, "region XOR succeeds")
+    match ClipCanvas::new() {
+        Result::Ok(canvas_value) => {
+            var canvas = canvas_value
+            expect_true(canvas.draw_region(destination), "XOR rendered")
+            expect_eq(canvas.pixel(15, 20), 1, "left non-overlap remains")
+            expect_eq(canvas.pixel(35, 20), 1, "right non-overlap remains")
+            expect_eq(canvas.pixel(20, 20), 0, "overlap minimum removed")
+            expect_eq(canvas.pixel(30, 20), 0, "overlap maximum removed")
+            expect_true(canvas.close(), "layer deleted cleanly")
+        },
+        Result::Err(_) => expect(false, "clip canvas created"),
+    }
+    DisposeRegion(source)
+    DisposeRegion(destination)
+}

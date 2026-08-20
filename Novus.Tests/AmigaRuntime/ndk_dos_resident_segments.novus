@@ -1,0 +1,84 @@
+from std::test::test import expect
+from amiga::raw::dos import AddSegment, FindSegment, LoadSeg, RemSegment, UnLoadSeg
+from amiga::raw::exec import Forbid, Permit
+from amiga::raw::structs import Segment
+
+fn remove_named() -> bool {
+    Forbid()
+    let resident = FindSegment("NOVUS_NDK_SEGMENT", null, 0)
+    let removed = if resident != null { RemSegment(resident) != 0 } else { true }
+    Permit()
+    return removed
+}
+
+fn resident_absent() -> bool {
+    Forbid()
+    let resident = FindSegment("NOVUS_NDK_SEGMENT", null, 0)
+    Permit()
+    return resident == null
+}
+
+// @covers-ndk function|dos.library|AddSegment
+// @ndk-side-effects Transfers a loaded C:List seglist into a uniquely named normal resident entry, verifies AmigaOS 3.2's idle use-count value and exact BPTR, then removes and unloads the owned entry
+@test("dos.library AddSegment registers a loaded segment")
+pub fn dos_add_segment() {
+    let initially_clean = remove_named()
+    let loaded = if initially_clean { LoadSeg("C:List") } else { 0 }
+    var add_result: i32 = 0
+    if loaded != 0 { add_result = AddSegment("NOVUS_NDK_SEGMENT", loaded, 1) }
+    let added = add_result != 0
+    Forbid()
+    let resident = if added { FindSegment("NOVUS_NDK_SEGMENT", null, 0) } else { (*Segment)null }
+    let stored_segment = if resident != null { resident.seg_Seg } else { 0 }
+    let stored_use_count = if resident != null { resident.seg_UC } else { -9999 }
+    let removed = if resident != null { RemSegment(resident) != 0 } else { false }
+    Permit()
+    if loaded != 0 && !added { UnLoadSeg(loaded) }
+    expect(initially_clean && loaded != 0 && added, "loaded segment ownership transfers to DOS")
+    expect(resident != null, "normal resident is discoverable")
+    expect(stored_segment == loaded, "resident entry preserves the exact segment BPTR")
+    expect(stored_use_count == 1, "AmigaOS 3.2 represents an idle normal resident with use count one")
+    expect(removed && resident_absent(), "resident entry is removed and unloaded")
+}
+
+// @covers-ndk function|dos.library|FindSegment
+// @ndk-side-effects Searches the resident list under Forbid, returns the exact uniquely named normal segment without changing its idle use count of one, honors the start-after cursor, and removes the fixture before Permit
+@test("dos.library FindSegment locates and advances past a resident")
+pub fn dos_find_segment() {
+    let initially_clean = remove_named()
+    let loaded = if initially_clean { LoadSeg("C:List") } else { 0 }
+    var add_result: i32 = 0
+    if loaded != 0 { add_result = AddSegment("NOVUS_NDK_SEGMENT", loaded, 1) }
+    let added = add_result != 0
+    Forbid()
+    let found = if added { FindSegment("NOVUS_NDK_SEGMENT", null, 0) } else { (*Segment)null }
+    let exact = found != null && found.seg_Seg == loaded && found.seg_UC == 1
+    let next = if found != null { FindSegment("NOVUS_NDK_SEGMENT", found, 0) } else { (*Segment)null }
+    let removed = if found != null { RemSegment(found) != 0 } else { false }
+    Permit()
+    if loaded != 0 && !added { UnLoadSeg(loaded) }
+    expect(initially_clean && added && exact, "named lookup returns the exact resident without acquiring it")
+    expect(next == null, "start-after lookup reports no duplicate entry")
+    expect(removed && resident_absent(), "fixture is removed without a stale registry entry")
+}
+
+// @covers-ndk function|dos.library|RemSegment
+// @ndk-side-effects Removes an idle normal resident entry under list exclusion, unloads its transferred C:List hunks, and proves the name can be registered and removed again without stale state or leaked memory
+@test("dos.library RemSegment unloads an unused resident")
+pub fn dos_rem_segment() {
+    let initially_clean = remove_named()
+    let first = if initially_clean { LoadSeg("C:List") } else { 0 }
+    var first_result: i32 = 0
+    if first != 0 { first_result = AddSegment("NOVUS_NDK_SEGMENT", first, 1) }
+    let first_added = first_result != 0
+    let first_removed = if first_added { remove_named() } else { false }
+    if first != 0 && !first_added { UnLoadSeg(first) }
+    let second = if first_removed { LoadSeg("C:List") } else { 0 }
+    var second_result: i32 = 0
+    if second != 0 { second_result = AddSegment("NOVUS_NDK_SEGMENT", second, 1) }
+    let second_added = second_result != 0
+    let second_removed = if second_added { remove_named() } else { false }
+    if second != 0 && !second_added { UnLoadSeg(second) }
+    expect(first_added && first_removed && second_added && second_removed, "two complete resident lifecycles succeed")
+    expect(resident_absent(), "removed segment name no longer resolves")
+}

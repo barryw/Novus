@@ -1,0 +1,56 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::graphics import AllocDBufInfo, FreeDBufInfo
+from amiga::sys::intuition import ScreenHandle
+
+fn screen() -> Result<ScreenHandle, i32> {
+    return match ScreenHandle::lores("Novus double-buffer test", 2) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+// @covers-ndk function|graphics.library|AllocDBufInfo
+// @ndk-side-effects AllocDBufInfo allocates a DBufInfo for a live double-buffer-capable ViewPort; its documented user-data fields retain application pointers, and balanced cleanup returns the allocation before the private screen closes
+@test("graphics.library AllocDBufInfo returns writable application fields")
+pub fn graphics_alloc_dbuf_info() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let info = AllocDBufInfo(display.viewport())
+    expect(info != null, "live low-resolution ViewPort supports double buffering")
+    if info == null { return }
+
+    unsafe {
+        (*info).dbi_UserData1 = (*u8)0x1234
+        (*info).dbi_UserData2 = (*u8)0x5678
+        expect((*info).dbi_UserData1 == (*u8)0x1234, "first application pointer round-trips")
+        expect((*info).dbi_UserData2 == (*u8)0x5678, "second application pointer round-trips")
+    }
+    FreeDBufInfo(info)
+}
+
+// @covers-ndk function|graphics.library|FreeDBufInfo
+// @ndk-side-effects FreeDBufInfo releases a DBufInfo obtained for a live ViewPort without damaging that ViewPort, and a null argument is the documented no-op; the harness verifies all command-owned memory is returned
+@test("graphics.library FreeDBufInfo releases storage and accepts null")
+pub fn graphics_free_dbuf_info() {
+    let display = match screen() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "private screen opened")
+            return
+        },
+    }
+    let viewport = display.viewport()
+    let info = AllocDBufInfo(viewport)
+    expect(info != null, "DBufInfo allocated before release")
+    if info == null { return }
+
+    FreeDBufInfo(info)
+    FreeDBufInfo(null)
+    expect(display.viewport() == viewport, "release leaves the owning ViewPort intact")
+}

@@ -44,6 +44,34 @@ public class InterruptTests
         Assert.Contains("__interrupt void bus_error", code);
     }
 
+    [Fact]
+    public void AmigaFunctionStoredInStructField_IsDeclaredInSplitFunctionFile()
+    {
+        const string source = """
+            struct Handler {
+                code: amiga fn(*u8 in a1) -> u32 in d0,
+            }
+
+            amiga fn callback(data: *u8 in a1) -> u32 in d0 { return 0 }
+
+            fn initialize(handler: &var Handler) {
+                handler.code = callback
+            }
+            """;
+
+        var module = BuildIr(source);
+        var generator = new CCodeGenerator(module, [], "68020", "soft", BuildMode.Release);
+        var code = generator.GenerateFunctionFile(module.GetFunction("initialize")!);
+
+        const string assignmentPrefix = "handler->code = ";
+        var assignment = code.IndexOf(assignmentPrefix, StringComparison.Ordinal);
+        Assert.True(assignment > 0, code);
+        var symbolStart = assignment + assignmentPrefix.Length;
+        var symbolEnd = code.IndexOf(';', symbolStart);
+        var symbol = code[symbolStart..symbolEnd];
+        Assert.Contains(symbol, code[..assignment]);
+    }
+
     [Theory]
     [InlineData("Signal", false)]
     [InlineData("PutMsg", false)]

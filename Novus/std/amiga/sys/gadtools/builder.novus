@@ -1366,14 +1366,14 @@ impl GadToolsWindow {
     /// Fill an inclusive rectangle using one of the window screen's pens.
     pub fn fill_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
         let rastport = self.rastport()
-        SetAPen(rastport, (u32)pen)
+        SetAPen(rastport, (u8)pen)
         RectFill(rastport, left, top, right, bottom)
     }
 
     /// Outline an inclusive rectangle using one of the window screen's pens.
     pub fn outline_rect(&self, pen: u8, left: i16, top: i16, right: i16, bottom: i16) {
         let rastport = self.rastport()
-        SetAPen(rastport, (u32)pen)
+        SetAPen(rastport, (u8)pen)
         Move(rastport, left, top)
         Draw(rastport, right, top)
         Draw(rastport, right, bottom)

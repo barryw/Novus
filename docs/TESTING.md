@@ -194,9 +194,22 @@ each test:
 novus test path/to/tests --memory-check
 ```
 
-The check is exact for Novus allocations and confirms raw AmigaOS memory drops
-against a warmed baseline. Runtime libraries opened lazily are closed between
-tests, and a failing test's tracked allocations are reset before the next test.
+The check is exact for Novus allocations. Raw AmigaOS memory drops wait for
+asynchronous cleanup and repeat the test against each new baseline up to five
+times: finite subsystem caches stabilize, while continuing loss still fails.
+Runtime libraries opened lazily are closed between tests, and a failing test's
+tracked allocations are reset before the next test. The A4000 harness also
+reruns the exact same guest command path with warmed operating-system state
+before accepting a suite-level memory result; changing the command name would
+confound the measurement with AmigaDOS segment loading and caching.
+
+For NDK completeness checks that must pass on both A4000 and A1200, use the
+dual-machine gate:
+
+```bash
+python3 tools/amiga/run_ndk_dual_machine_gate.py --layer amiga \
+  --profile release-o1 --memory-check --require-complete
+```
 
 ### Run Specific Test Class
 ```bash

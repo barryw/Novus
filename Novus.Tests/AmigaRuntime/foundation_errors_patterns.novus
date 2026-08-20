@@ -3,7 +3,7 @@
 from std::core import Option, Result
 from std::test::test import expect, expect_true, expect_false
 
-enum Color {
+enum TestColor {
     Red,
     Green,
     Blue,
@@ -41,13 +41,13 @@ fn failed_result() -> Result<i32, i32> {
     return Result::Err(-1)
 }
 
-fn classify_nested_result(value: Result<i32, Color>) -> i32 {
+fn classify_nested_result(value: Result<i32, TestColor>) -> i32 {
     return match value {
         Result::Ok(_) => 0,
-        Result::Err(Color::Red) => 1,
-        Result::Err(Color::Green) => 2,
-        Result::Err(Color::Blue) => 3,
-        Result::Err(Color::Cyan) => 4,
+        Result::Err(TestColor::Red) => 1,
+        Result::Err(TestColor::Green) => 2,
+        Result::Err(TestColor::Blue) => 3,
+        Result::Err(TestColor::Cyan) => 4,
     }
 }
 
@@ -104,15 +104,15 @@ pub fn foundation_ok_or() {
 
 @test("pattern alternatives select expected variants")
 pub fn foundation_pattern_alternatives() {
-    let primary = Color::Green
-    let secondary = Color::Cyan
+    let primary = TestColor::Green
+    let secondary = TestColor::Cyan
     let first = match primary {
-        Color::Red | Color::Green | Color::Blue => true,
-        Color::Cyan => false,
+        TestColor::Red | TestColor::Green | TestColor::Blue => true,
+        TestColor::Cyan => false,
     }
     let second = match secondary {
-        Color::Red | Color::Green | Color::Blue => true,
-        Color::Cyan => false,
+        TestColor::Red | TestColor::Green | TestColor::Blue => true,
+        TestColor::Cyan => false,
     }
     expect_true(first, "alternative matched")
     expect_false(second, "fallback matched")
@@ -133,10 +133,10 @@ pub fn foundation_enum_payload_constant() {
 
 @test("nested enum payload patterns check inner variants")
 pub fn foundation_nested_enum_payload() {
-    expect(classify_nested_result(Result::Err(Color::Red)) == 1, "nested red")
-    expect(classify_nested_result(Result::Err(Color::Green)) == 2, "nested green")
-    expect(classify_nested_result(Result::Err(Color::Blue)) == 3, "nested blue")
-    expect(classify_nested_result(Result::Err(Color::Cyan)) == 4, "nested cyan")
+    expect(classify_nested_result(Result::Err(TestColor::Red)) == 1, "nested red")
+    expect(classify_nested_result(Result::Err(TestColor::Green)) == 2, "nested green")
+    expect(classify_nested_result(Result::Err(TestColor::Blue)) == 3, "nested blue")
+    expect(classify_nested_result(Result::Err(TestColor::Cyan)) == 4, "nested cyan")
 }
 
 @test(should_panic)

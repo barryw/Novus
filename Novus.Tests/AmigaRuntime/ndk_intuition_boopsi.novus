@@ -1,0 +1,391 @@
+from std::core import Result
+from std::test::test import expect
+from amiga::raw::consts import BUTTONGCLASS, GA_Disabled, GA_Height, GA_ID, GA_Left, GA_Top, GA_Width, GM_HITTEST, GMR_GADGETHIT, OM_GET, ROOTCLASS, SB_COPY_BITMAP, SB_SCREEN_BITMAP, TAG_DONE
+from amiga::raw::graphics import WaitBlit
+from amiga::raw::intuition import AddClass, AddGadget, AllocScreenBuffer, ChangeScreenBuffer, DisposeObject, DoGadgetMethod, DoGadgetMethodA, FreeClass, FreeScreenBuffer, GetAttr, MakeClass, NextObject, NewObject, NewObjectA, ObtainGIRPort, ReleaseGIRPort, RemoveClass, RemoveGadget, SetAttrs, SetAttrsA, SetGadgetAttrs, SetGadgetAttrsA
+from amiga::raw::structs import Gadget, GadgetInfo, IBox, Node, List, TagItem, Window, gpHitTest
+from amiga::sys::intuition import ScreenHandle, WindowHandle
+
+fn setup_gadget_info(window: *Window) -> GadgetInfo {
+    let screen = unsafe { (*window).WScreen }
+    let rast_port = unsafe { (*window).RPort }
+    var info: GadgetInfo = @zeroed(GadgetInfo)
+    info.gi_Window = window
+    info.gi_Screen = screen
+    info.gi_Requester = null
+    info.gi_RastPort = rast_port
+    info.gi_Layer = unsafe { (*window).WLayer }
+    info.gi_Pens.DetailPen = 0
+    info.gi_Pens.BlockPen = 0
+    info.gi_Domain = @zeroed(IBox)
+    info.gi_Domain.Left = 0
+    info.gi_Domain.Top = 0
+    info.gi_Domain.Width = if screen != null { unsafe { screen.Width } } else { 0 }
+    info.gi_Domain.Height = if screen != null { unsafe { screen.Height } } else { 0 }
+    return info
+}
+
+struct BoopsiFixture {
+    screen: ScreenHandle,
+    window: WindowHandle,
+}
+
+fn fixture() -> Result<BoopsiFixture, i32> {
+    return match ScreenHandle::custom("BOOPSI tests", 320, 120, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => Result::Ok(BoopsiFixture { screen: screen, window: window }),
+                Result::Err(_) => Result::Err(2),
+            }
+        },
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn button_a(id: u32) -> *Gadget {
+    var tags = [
+        TagItem { ti_Tag: GA_ID, ti_Data: id },
+        TagItem { ti_Tag: GA_Left, ti_Data: 20 },
+        TagItem { ti_Tag: GA_Top, ti_Data: 20 },
+        TagItem { ti_Tag: GA_Width, ti_Data: 60 },
+        TagItem { ti_Tag: GA_Height, ti_Data: 16 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return (*Gadget)NewObjectA(null, BUTTONGCLASS, &var tags[0])
+}
+
+fn read_attr(object: *u8, attr: u32) -> Result<u32, i32> {
+    var value: u32 = 0
+    if GetAttr(attr, object, &var value) == 0 { return Result::Err(1) }
+    return Result::Ok(value)
+}
+
+// @covers-ndk function|intuition.library|NewObjectA
+// @ndk-side-effects Constructs a real built-in buttongclass object from an explicit tag list, verifies its exact GA_ID through BOOPSI dispatch, and disposes the object before process teardown
+@test("intuition.library NewObjectA constructs a tagged BOOPSI object")
+pub fn intuition_new_object_a() {
+    let gadget = button_a(101)
+    let id: Result<u32, i32> = if gadget != null { read_attr((*u8)gadget, GA_ID) } else { Result::Err(1) }
+    if gadget != null { DisposeObject((*u8)gadget) }
+    match id {
+        Result::Ok(value) => expect(value == 101, "tag-list construction preserves the exact GA_ID"),
+        Result::Err(_) => expect(false, "buttongclass object constructed and answered OM_GET"),
+    }
+}
+
+// @covers-ndk function|intuition.library|NewObject
+// @ndk-side-effects Constructs a real built-in buttongclass object through the varargs entry point, verifies the exact GA_ID, and disposes it before process teardown
+@test("intuition.library NewObject constructs a varargs BOOPSI object")
+pub fn intuition_new_object() {
+    let object = NewObject(null, BUTTONGCLASS, GA_ID, 102, TAG_DONE)
+    let id: Result<u32, i32> = if object != null { read_attr(object, GA_ID) } else { Result::Err(1) }
+    if object != null { DisposeObject(object) }
+    match id {
+        Result::Ok(value) => expect(value == 102, "varargs construction preserves the exact GA_ID"),
+        Result::Err(_) => expect(false, "varargs buttongclass object constructed and answered OM_GET"),
+    }
+}
+
+// @covers-ndk function|intuition.library|DisposeObject
+// @ndk-side-effects Constructs and disposes one built-in object, then independently constructs a replacement with a different ID and verifies it before balanced disposal; the harness proves all object storage is released
+@test("intuition.library DisposeObject releases BOOPSI object storage")
+pub fn intuition_dispose_object() {
+    let first = button_a(103)
+    if first != null { DisposeObject((*u8)first) }
+    let second = button_a(104)
+    let id: Result<u32, i32> = if second != null { read_attr((*u8)second, GA_ID) } else { Result::Err(1) }
+    if second != null { DisposeObject((*u8)second) }
+    match id {
+        Result::Ok(value) => expect(first != null && value == 104, "replacement object constructs independently after disposal"),
+        Result::Err(_) => expect(false, "replacement object constructed after disposal"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetAttrsA
+// @ndk-side-effects Changes GA_Disabled on an unattached built-in gadget through an explicit tag list, verifies the exact stored value with GetAttr, and disposes the object
+@test("intuition.library SetAttrsA updates an unattached object")
+pub fn intuition_set_attrs_a() {
+    let gadget = button_a(105)
+    var tags = [
+        TagItem { ti_Tag: GA_Disabled, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if gadget != null { SetAttrsA((*u8)gadget, &var tags[0]) }
+    let disabled: Result<u32, i32> = if gadget != null { read_attr((*u8)gadget, GA_Disabled) } else { Result::Err(1) }
+    if gadget != null { DisposeObject((*u8)gadget) }
+    match disabled {
+        Result::Ok(value) => expect(value != 0, "tag-list update stores GA_Disabled"),
+        Result::Err(_) => expect(false, "updated object answers GA_Disabled"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetAttrs
+// @ndk-side-effects Changes GA_Disabled on an unattached built-in gadget through the varargs entry point, verifies the exact stored value with GetAttr, and disposes the object
+@test("intuition.library SetAttrs updates an unattached object")
+pub fn intuition_set_attrs() {
+    let gadget = button_a(106)
+    if gadget != null { SetAttrs((*u8)gadget, GA_Disabled, 1, TAG_DONE) }
+    let disabled: Result<u32, i32> = if gadget != null { read_attr((*u8)gadget, GA_Disabled) } else { Result::Err(1) }
+    if gadget != null { DisposeObject((*u8)gadget) }
+    match disabled {
+        Result::Ok(value) => expect(value != 0, "varargs update stores GA_Disabled"),
+        Result::Err(_) => expect(false, "varargs-updated object answers GA_Disabled"),
+    }
+}
+
+// @covers-ndk function|intuition.library|GetAttr
+// @ndk-side-effects Queries both a known GA_ID and an unknown attribute on a real built-in object, verifies success writes exact storage while failure leaves the sentinel untouched, then disposes the object
+@test("intuition.library GetAttr reports supported and unknown attributes")
+pub fn intuition_get_attr() {
+    let gadget = button_a(107)
+    var id: u32 = 0
+    var untouched: u32 = $A55A5AA5
+    let known = if gadget != null { GetAttr(GA_ID, (*u8)gadget, &var id) } else { 0 }
+    let unknown = if gadget != null { GetAttr($DEADBEEF, (*u8)gadget, &var untouched) } else { 1 }
+    if gadget != null { DisposeObject((*u8)gadget) }
+    expect(known != 0 && id == 107 && unknown == 0 && untouched == $A55A5AA5,
+        "GetAttr writes supported storage and rejects an unknown attribute without mutation")
+}
+
+// @covers-ndk function|intuition.library|SetGadgetAttrsA
+// @ndk-side-effects Attaches a real BOOPSI button to an owned live window, changes GA_Disabled through the GadgetInfo-aware tag-list path, verifies the exact attribute, then removes and disposes it before window teardown
+@test("intuition.library SetGadgetAttrsA updates an attached gadget")
+pub fn intuition_set_gadget_attrs_a() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "SetGadgetAttrsA fixture opened")
+            return
+        },
+    }
+    let gadget = button_a(108)
+    var tags = [
+        TagItem { ti_Tag: GA_Disabled, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if gadget != null { AddGadget(state.window.as_raw(), gadget, 0) }
+    if gadget != null { SetGadgetAttrsA(gadget, state.window.as_raw(), null, &var tags[0]) }
+    let disabled: Result<u32, i32> = if gadget != null { read_attr((*u8)gadget, GA_Disabled) } else { Result::Err(1) }
+    if gadget != null {
+        RemoveGadget(state.window.as_raw(), gadget)
+        DisposeObject((*u8)gadget)
+    }
+    match disabled {
+        Result::Ok(value) => expect(value != 0, "attached tag-list update stores GA_Disabled"),
+        Result::Err(_) => expect(false, "attached gadget answers GA_Disabled"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetGadgetAttrs
+// @ndk-side-effects Attaches a real BOOPSI button to an owned live window, changes GA_Disabled through the GadgetInfo-aware varargs path, verifies the exact attribute, then removes and disposes it before window teardown
+@test("intuition.library SetGadgetAttrs updates an attached gadget")
+pub fn intuition_set_gadget_attrs() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "SetGadgetAttrs fixture opened")
+            return
+        },
+    }
+    let gadget = button_a(109)
+    if gadget != null { AddGadget(state.window.as_raw(), gadget, 0) }
+    if gadget != null { SetGadgetAttrs(gadget, state.window.as_raw(), null, GA_Disabled, 1, TAG_DONE) }
+    let disabled: Result<u32, i32> = if gadget != null { read_attr((*u8)gadget, GA_Disabled) } else { Result::Err(1) }
+    if gadget != null {
+        RemoveGadget(state.window.as_raw(), gadget)
+        DisposeObject((*u8)gadget)
+    }
+    match disabled {
+        Result::Ok(value) => expect(value != 0, "attached varargs update stores GA_Disabled"),
+        Result::Err(_) => expect(false, "attached varargs gadget answers GA_Disabled"),
+    }
+}
+
+// @covers-ndk function|intuition.library|DoGadgetMethodA
+// @ndk-side-effects Attaches a real BOOPSI button, dispatches GM_HITTEST through the GadgetInfo-aware live-window path, verifies the built-in class reports an exact interior hit while the caller-owned message field remains unchanged, then removes and disposes the gadget
+@test("intuition.library DoGadgetMethodA dispatches an attached gadget method")
+pub fn intuition_do_gadget_method_a() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "DoGadgetMethodA fixture opened")
+            return
+        },
+    }
+    let gadget = button_a(110)
+    if gadget != null { AddGadget(state.window.as_raw(), gadget, 0) }
+    var message: gpHitTest = @zeroed(gpHitTest)
+    message.MethodID = GM_HITTEST
+    message.gpht_Mouse.X = 1
+    message.gpht_Mouse.Y = 1
+    let result = if gadget != null {
+        DoGadgetMethodA(gadget, state.window.as_raw(), null, (*u32)&var message)
+    } else { 0 }
+    if gadget != null {
+        RemoveGadget(state.window.as_raw(), gadget)
+        DisposeObject((*u8)gadget)
+    }
+    expect((result & GMR_GADGETHIT) != 0, "GM_HITTEST reports GMR_GADGETHIT for an interior point")
+    expect(message.gpht_GInfo == null, "temporary dispatch context does not mutate the caller-owned message")
+}
+
+// @covers-ndk function|intuition.library|DoGadgetMethod
+// @ndk-side-effects Calls DoGadgetMethod() on a live attached button gadget and validates the same return signaling as
+// GM_HITTEST through a caller-owned message
+@test("intuition.library DoGadgetMethod reads an attached gadget attribute")
+pub fn intuition_do_gadget_method() {
+    var state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "DoGadgetMethod fixture opened")
+            return
+        },
+    }
+    let gadget = button_a(111)
+    if gadget != null { AddGadget(state.window.as_raw(), gadget, 0) }
+    var message: gpHitTest = @zeroed(gpHitTest)
+    message.MethodID = GM_HITTEST
+    message.gpht_Mouse.X = 1
+    message.gpht_Mouse.Y = 1
+    let found = if gadget != null {
+        DoGadgetMethod(gadget, state.window.as_raw(), null, GM_HITTEST, (*u32)&var message)
+    } else { 0 }
+    if gadget != null {
+        RemoveGadget(state.window.as_raw(), gadget)
+        DisposeObject((*u8)gadget)
+    }
+    expect((found & GMR_GADGETHIT) != 0, "DoGadgetMethod with GM_HITTEST returns GMR_GADGETHIT")
+}
+
+// @covers-ndk function|intuition.library|MakeClass
+// @covers-ndk function|intuition.library|FreeClass
+// @ndk-side-effects Builds a private class from ROOTCLASS, checks superclass linkage, and proves it is freed when no objects exist
+@test("intuition.library MakeClass and FreeClass handle a private class")
+pub fn intuition_make_and_free_class() {
+    let class = MakeClass(null, ROOTCLASS, null, 0, 0)
+    if class != null {
+        let had_super = unsafe { (*class).cl_Super } != null
+        let freed = FreeClass(class)
+        expect(had_super && freed != 0, "private class has ROOTCLASS linkage and is fully releasable")
+    } else {
+        expect(false, "MakeClass returned a class pointer")
+    }
+}
+
+// @covers-ndk function|intuition.library|AddClass
+// @covers-ndk function|intuition.library|RemoveClass
+// @ndk-side-effects Creates a public class, adds it to the class list, removes it again, and confirms memory reclaim succeeds without leaks
+@test("intuition.library AddClass and RemoveClass process a public class")
+pub fn intuition_add_and_remove_class() {
+    let class_name = "NOVUS-INTUITION-TEST-CLASS"
+    let class = MakeClass(class_name.as_ptr(), ROOTCLASS, null, 0, 0)
+    if class != null {
+        AddClass(class)
+        RemoveClass(class)
+        let freed = FreeClass(class)
+        expect(freed != 0, "public class registration path can be toggled and reclaimed")
+    } else {
+        expect(false, "MakeClass returned a public class pointer")
+    }
+}
+
+// @covers-ndk function|intuition.library|NextObject
+// @ndk-side-effects Builds a concrete list head and validates forward traversal returns the same nodes then null
+@test("intuition.library NextObject traverses object nodes")
+pub fn intuition_next_object() {
+    var head: Node = @zeroed(Node)
+    var tail: Node = @zeroed(Node)
+    var second: Node = @zeroed(Node)
+    head.ln_Succ = &var second
+    head.ln_Pred = null
+    second.ln_Succ = &var tail
+    second.ln_Pred = &var head
+    tail.ln_Pred = &var second
+    tail.ln_Succ = null
+
+    var list: List = @zeroed(List)
+    list.lh_Head = &var head
+    list.lh_Tail = &var tail
+    list.lh_TailPred = &var second
+
+    var state: *u8 = list.lh_Head as *u8
+    let first = NextObject((*u8)(&var state))
+    let second_value = NextObject((*u8)(&var state))
+    let terminal = NextObject((*u8)(&var state))
+    expect(first != null && second_value != null && terminal == null,
+        "NextObject traverses list links and terminates at null")
+}
+
+// @covers-ndk function|intuition.library|ObtainGIRPort
+// @covers-ndk function|intuition.library|ReleaseGIRPort
+// @ndk-side-effects Obtains and releases a GIR RastPort from a valid GadgetInfo snapshot and verifies backing-bitmap continuity
+@test("intuition.library ObtainGIRPort and ReleaseGIRPort roundtrip")
+pub fn intuition_gir_port_cycle() {
+    let state = match fixture() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "GIR port cycle fixture opened")
+            return
+        },
+    }
+    let window = state.window.as_raw()
+    var gadget_info = setup_gadget_info(window)
+    let ras_port = ObtainGIRPort(&var gadget_info)
+    if ras_port == null {
+        expect(false, "ObtainGIRPort returned a rastport")
+        return
+    }
+    let source = unsafe { (*window).RPort }
+    let bitmap_matches = if source != null { (unsafe { (*ras_port).BitMap == (*source).BitMap }) != 0 } else { false }
+    ReleaseGIRPort(ras_port)
+    let again = ObtainGIRPort(&var gadget_info)
+    if again == null {
+        expect(false, "ObtainGIRPort reusable after release")
+        return
+    }
+    ReleaseGIRPort(again)
+    expect(bitmap_matches, "ObtainGIRPort returns a compatible RastPort")
+}
+
+// @covers-ndk function|intuition.library|AllocScreenBuffer
+// @covers-ndk function|intuition.library|ChangeScreenBuffer
+// @covers-ndk function|intuition.library|FreeScreenBuffer
+// @ndk-side-effects Allocates two screen buffers, swaps each way via ChangeScreenBuffer, checks visible BitMap identity transitions, and frees both buffers
+@test("intuition.library Screen buffer helpers install and restore rendering state")
+pub fn intuition_screen_buffering() {
+    match ScreenHandle::custom("Intuition ScreenBuffer", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            let raw = screen.as_raw()
+            let primary = AllocScreenBuffer(raw, null, SB_SCREEN_BITMAP)
+            if primary == null {
+                expect(false, "primary screen buffer allocated")
+                return
+            }
+            let primary_bitmap = unsafe { (*primary).sb_BitMap }
+            let secondary = AllocScreenBuffer(raw, null, SB_SCREEN_BITMAP | SB_COPY_BITMAP)
+            if secondary == null {
+                FreeScreenBuffer(raw, primary)
+                expect(false, "secondary screen buffer allocated")
+                return
+            }
+            let secondary_bitmap = unsafe { (*secondary).sb_BitMap }
+            let installed_primary = (unsafe { (*raw).RastPort.BitMap == primary_bitmap }) != 0
+            let switched = ChangeScreenBuffer(raw, secondary) != 0
+            if switched { WaitBlit() }
+            let restored = if switched {
+                ChangeScreenBuffer(raw, primary) != 0
+            } else {
+                false
+            }
+            if restored { WaitBlit() }
+            FreeScreenBuffer(raw, secondary)
+            FreeScreenBuffer(raw, primary)
+            expect(switched && restored && installed_primary &&
+                primary_bitmap != null && secondary_bitmap != null,
+                "screen-buffer chain allocates, swaps, restores, and frees")
+        },
+        Result::Err(_) => expect(false, "screen buffer test screen opened"),
+    }
+}

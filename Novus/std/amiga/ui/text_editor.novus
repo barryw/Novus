@@ -1,0 +1,72 @@
+/// Correct TextEditor gadget-tag base from the first NDK definition, before
+/// `gadgets/texteditor.h` mistakenly reuses its macro name for method IDs.
+pub const TAG_BASE: u32 = 0x85026000
+
+/// Indicates whether text is selected.
+pub const TAG_AREA_MARKED: u32 = TAG_BASE + 0x14
+/// Supplies the editor color map.
+pub const TAG_COLOR_MAP: u32 = TAG_BASE + 0x2f
+/// Gets or sets the editor text.
+pub const TAG_CONTENTS: u32 = TAG_BASE + 0x02
+/// Gets or sets the cursor column.
+pub const TAG_CURSOR_X: u32 = TAG_BASE + 0x04
+/// Gets or sets the cursor row.
+pub const TAG_CURSOR_Y: u32 = TAG_BASE + 0x05
+/// Supplies the double-click hook.
+pub const TAG_DOUBLE_CLICK_HOOK: u32 = TAG_BASE + 0x06
+/// Supplies the export hook.
+pub const TAG_EXPORT_HOOK: u32 = TAG_BASE + 0x08
+/// Controls wrapping during export.
+pub const TAG_EXPORT_WRAP: u32 = TAG_BASE + 0x09
+/// Selects fixed-width font behavior.
+pub const TAG_FIXED_FONT: u32 = TAG_BASE + 0x0a
+/// Selects text-flow behavior.
+pub const TAG_FLOW: u32 = TAG_BASE + 0x0b
+/// Reports whether the contents changed.
+pub const TAG_HAS_CHANGED: u32 = TAG_BASE + 0x0c
+/// Controls experimental horizontal scrolling.
+pub const TAG_HORIZONTAL_SCROLL: u32 = TAG_BASE + 0x2d
+/// Supplies the import hook.
+pub const TAG_IMPORT_HOOK: u32 = TAG_BASE + 0x0e
+/// Controls wrapping during import.
+pub const TAG_IMPORT_WRAP: u32 = TAG_BASE + 0x10
+/// Selects insert or overwrite mode.
+pub const TAG_INSERT_MODE: u32 = TAG_BASE + 0x0f
+/// Supplies editor key bindings.
+pub const TAG_KEY_BINDINGS: u32 = TAG_BASE + 0x11
+/// Controls numeric-lock behavior.
+pub const TAG_NUM_LOCK: u32 = TAG_BASE + 0x18
+/// Selects an editor pen.
+pub const TAG_PEN: u32 = TAG_BASE + 0x2e
+/// Controls the private pop-window state.
+pub const TAG_POP_WINDOW_OPEN: u32 = TAG_BASE + 0x03
+/// Selects the proportional-gadget delta factor.
+pub const TAG_PROP_DELTA_FACTOR: u32 = TAG_BASE + 0x0d
+/// Sets the proportional-gadget entry count.
+pub const TAG_PROP_ENTRIES: u32 = TAG_BASE + 0x15
+/// Sets the proportional-gadget first entry.
+pub const TAG_PROP_FIRST: u32 = TAG_BASE + 0x20
+/// Reports the private proportional-gadget release state.
+pub const TAG_PROP_RELEASE: u32 = TAG_BASE + 0x01
+/// Sets the proportional-gadget visible entry count.
+pub const TAG_PROP_VISIBLE: u32 = TAG_BASE + 0x16
+/// Suppresses visual updates while changing several attributes.
+pub const TAG_QUIET: u32 = TAG_BASE + 0x17
+/// Enables read-only behavior.
+pub const TAG_READ_ONLY: u32 = TAG_BASE + 0x19
+/// Reports whether redo is available.
+pub const TAG_REDO_AVAILABLE: u32 = TAG_BASE + 0x13
+/// Selects the separator character.
+pub const TAG_SEPARATOR: u32 = TAG_BASE + 0x2c
+/// Controls bold styling.
+pub const TAG_STYLE_BOLD: u32 = TAG_BASE + 0x1c
+/// Controls italic styling.
+pub const TAG_STYLE_ITALIC: u32 = TAG_BASE + 0x1d
+/// Controls underline styling.
+pub const TAG_STYLE_UNDERLINE: u32 = TAG_BASE + 0x1e
+/// Controls type-and-spell behavior.
+pub const TAG_TYPE_AND_SPELL: u32 = TAG_BASE + 0x07
+/// Reports whether undo is available.
+pub const TAG_UNDO_AVAILABLE: u32 = TAG_BASE + 0x12
+/// Selects the wrap border.
+pub const TAG_WRAP_BORDER: u32 = TAG_BASE + 0x21

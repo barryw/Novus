@@ -1,0 +1,476 @@
+from std::test::test import expect
+from amiga::sys::intuition import ScreenHandle
+from amiga::sys::gadtools::menu import GadToolsMenuBuilder, GadToolsMenuStrip
+from amiga::raw::consts import MENUENABLED, NOITEM, NOSUB, SHANGHAI, SHOWTITLE, SDEPTH_TOBACK, SDEPTH_TOFRONT, SPOS_ABSOLUTE, SPOS_RELATIVE, WFLG_REPORTMOUSE
+from amiga::raw::graphics import ReadPixel, RectFill, SetAPen, SetBPen, SetRast, WaitBlit, WaitTOF
+from amiga::raw::intuition import ClearMenuStrip, ClearPointer, OffMenu, OnMenu, ReportMouse, ReportMouse1, ResetMenuStrip, ScreenDepth, ScreenPosition, ScrollWindowRaster, SetMenuStrip, SetPointer, SetPubScreenModes, SetWindowTitles, ViewPortAddress
+from amiga::raw::structs import Screen
+
+fn settle_display() {
+    unsafe {
+        WaitTOF()
+        WaitTOF()
+    }
+}
+
+fn test_menu(screen: *Screen) -> Result<GadToolsMenuStrip, i32> {
+    var builder = GadToolsMenuBuilder::new(screen)
+    var file = builder.add_menu("File")
+    file.add_item("Quit")
+    return match builder.build() {
+        Result::Ok(strip) => Result::Ok(strip),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+@suppress("W0002", "NOITEM and NOSUB occupy the documented packed UWORD fields")
+fn whole_first_menu() -> u16 {
+    return (u16)((NOITEM << 5) | (NOSUB << 11))
+}
+
+// @covers-ndk function|intuition.library|OpenScreenTagList
+// @covers-ndk function|intuition.library|ScreenToFront
+// @covers-ndk function|intuition.library|ScreenToBack
+// @covers-ndk function|intuition.library|CloseScreen
+// @ndk-side-effects OpenScreenTagList inserts two custom screens into Intuition's front-to-back list; ScreenToFront places the target immediately before its peer; ScreenToBack moves it to the list tail; scope exit closes both screens without retained display memory
+@test("Intuition screen depth operations update the screen list")
+pub fn screen_depth_order() {
+    let first_result = ScreenHandle::custom("Depth First", 320, 100, 2)
+    let second_result = ScreenHandle::custom("Depth Second", 320, 100, 2)
+    match first_result {
+        Result::Ok(first_screen) => {
+            var first = first_screen
+            match second_result {
+                Result::Ok(second_screen) => {
+                    var second = second_screen
+                    first.to_front()
+                    settle_display()
+                    unsafe {
+                        expect((*first.as_raw()).NextScreen == second.as_raw(), "ScreenToFront places the target immediately before the previous front screen")
+                    }
+                    first.to_back()
+                    settle_display()
+                    unsafe {
+                        expect((*first.as_raw()).NextScreen == null, "ScreenToBack moves the target to the back of the screen list")
+                    }
+                },
+                Result::Err(_) => expect(false, "second custom screen opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "first custom screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|MoveScreen
+// @ndk-side-effects MoveScreen changes the live screen TopEdge by the requested positive delta and a second call restores the exact original position
+@test("MoveScreen applies reversible vertical deltas")
+pub fn screen_move() {
+    match ScreenHandle::custom("Move Screen", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            let raw = screen.as_raw()
+            let original_top = unsafe { (*raw).TopEdge }
+            screen.move_by(0, 10)
+            settle_display()
+            unsafe { expect((*raw).TopEdge == original_top + 10, "MoveScreen applies the positive delta") }
+            screen.move_by(0, -10)
+            settle_display()
+            unsafe { expect((*raw).TopEdge == original_top, "MoveScreen restores the original position") }
+        },
+        Result::Err(_) => expect(false, "movable custom screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ShowTitle
+// @ndk-side-effects ShowTitle(false) clears SHOWTITLE in the live Screen and ShowTitle(true) restores it
+@test("ShowTitle updates the screen title priority flag")
+pub fn screen_title_visibility() {
+    match ScreenHandle::custom("Title Screen", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            let raw = screen.as_raw()
+            screen.show_title(false)
+            unsafe { expect(((*raw).Flags & SHOWTITLE) == 0, "ShowTitle(false) clears SHOWTITLE") }
+            screen.show_title(true)
+            unsafe { expect(((*raw).Flags & SHOWTITLE) != 0, "ShowTitle(true) sets SHOWTITLE") }
+        },
+        Result::Err(_) => expect(false, "title custom screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ScreenDepth
+// @ndk-side-effects Opens two owned custom screens, moves the first to the exact front and back positions through ScreenDepth, verifies live list linkage after each operation, and closes both screens
+@test("intuition.library ScreenDepth changes live screen ordering")
+pub fn intuition_screen_depth() {
+    let first_result = ScreenHandle::custom("ScreenDepth first", 320, 100, 2)
+    let second_result = ScreenHandle::custom("ScreenDepth second", 320, 100, 2)
+    match first_result {
+        Result::Ok(first_screen) => {
+            var first = first_screen
+            match second_result {
+                Result::Ok(second_screen) => {
+                    var second = second_screen
+                    ScreenDepth(first.as_raw(), SDEPTH_TOFRONT, null)
+                    settle_display()
+                    let front = unsafe { (*first.as_raw()).NextScreen == second.as_raw() }
+                    ScreenDepth(first.as_raw(), SDEPTH_TOBACK, null)
+                    settle_display()
+                    let back = unsafe { (*first.as_raw()).NextScreen == null }
+                    expect(front && back, "ScreenDepth moves the target to both exact list extremes")
+                },
+                Result::Err(_) => expect(false, "second ScreenDepth screen opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "first ScreenDepth screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ScreenPosition
+// @ndk-side-effects Moves an owned custom screen by a relative vertical delta, verifies its live coordinate, then uses absolute positioning to restore the exact original coordinate before teardown
+@test("intuition.library ScreenPosition applies relative and absolute coordinates")
+pub fn intuition_screen_position() {
+    match ScreenHandle::custom("ScreenPosition", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            let raw = screen.as_raw()
+            let original_top = unsafe { (*raw).TopEdge }
+            ScreenPosition(raw, SPOS_RELATIVE, 0, 7, 0, 0)
+            settle_display()
+            let moved = unsafe { (*raw).TopEdge == original_top + 7 }
+            ScreenPosition(raw, SPOS_ABSOLUTE, 0, (i32)original_top, 0, 0)
+            settle_display()
+            let restored = unsafe { (*raw).TopEdge == original_top }
+            expect(moved && restored, "relative movement is observable and absolute movement restores it")
+        },
+        Result::Err(_) => expect(false, "ScreenPosition screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ViewPortAddress
+// @ndk-side-effects Opens an owned backdrop window and proves ViewPortAddress returns the exact embedded ViewPort of that window's retained screen
+@test("intuition.library ViewPortAddress returns the window screen ViewPort")
+pub fn intuition_viewport_address() {
+    match ScreenHandle::custom("ViewPortAddress", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    let viewport = ViewPortAddress(window.as_raw())
+                    expect(viewport == screen.viewport(), "returned pointer is the exact live screen ViewPort")
+                },
+                Result::Err(_) => expect(false, "ViewPortAddress backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ViewPortAddress screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ReportMouse
+// @ndk-side-effects Enables and disables mouse-movement reporting on a live owned backdrop and verifies the corresponding Window flag after each transition
+@test("intuition.library ReportMouse updates the report flag")
+pub fn intuition_report_mouse() {
+    match ScreenHandle::custom("ReportMouse", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    let raw = window.as_raw()
+                    ReportMouse(1, raw)
+                    let enabled = unsafe { ((*raw).Flags & WFLG_REPORTMOUSE) != 0 }
+                    ReportMouse(0, raw)
+                    let disabled = unsafe { ((*raw).Flags & WFLG_REPORTMOUSE) == 0 }
+                    expect(enabled && disabled, "ReportMouse performs both flag transitions")
+                },
+                Result::Err(_) => expect(false, "ReportMouse backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ReportMouse screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ReportMouse1
+// @ndk-side-effects Exercises the alternate register-order entry point on a live backdrop and verifies both exact WFLG_REPORTMOUSE transitions
+@test("intuition.library ReportMouse1 updates the report flag")
+pub fn intuition_report_mouse1() {
+    match ScreenHandle::custom("ReportMouse1", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    let raw = window.as_raw()
+                    ReportMouse1(raw, 1)
+                    let enabled = unsafe { ((*raw).Flags & WFLG_REPORTMOUSE) != 0 }
+                    ReportMouse1(raw, 0)
+                    let disabled = unsafe { ((*raw).Flags & WFLG_REPORTMOUSE) == 0 }
+                    expect(enabled && disabled, "ReportMouse1 performs both flag transitions")
+                },
+                Result::Err(_) => expect(false, "ReportMouse1 backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ReportMouse1 screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetWindowTitles
+// @ndk-side-effects Assigns retained static window and screen title pointers to a live backdrop and verifies both exact Window fields before teardown
+@test("intuition.library SetWindowTitles retains both title pointers")
+pub fn intuition_set_window_titles() {
+    match ScreenHandle::custom("SetWindowTitles", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    let window_title = "NDK window title"
+                    let screen_title = "NDK screen title"
+                    let raw = window.as_raw()
+                    SetWindowTitles(raw, window_title.as_ptr(), screen_title.as_ptr())
+                    let exact = unsafe {
+                        (*raw).Title == window_title.as_ptr() &&
+                        (*raw).ScreenTitle == screen_title.as_ptr()
+                    }
+                    expect(exact, "Window retains the exact static title pointers supplied")
+                },
+                Result::Err(_) => expect(false, "SetWindowTitles backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "SetWindowTitles screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetPointer
+// @ndk-side-effects Installs a retained one-row custom pointer on a live window, verifies its exact data pointer, dimensions, and hot-spot offsets, then clears it before the backing data leaves scope
+@test("intuition.library SetPointer stores custom pointer geometry")
+pub fn intuition_set_pointer() {
+    match ScreenHandle::custom("SetPointer", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    var pointer_data: [u16] = [0, 0]
+                    let data: *u16 = &var pointer_data[0]
+                    let raw = window.as_raw()
+                    SetPointer(raw, data, 1, 16, -3, -4)
+                    let exact = unsafe {
+                        (*raw).Pointer == data && (*raw).PtrHeight == 1 &&
+                        (*raw).PtrWidth == 16 && (*raw).XOffset == -3 && (*raw).YOffset == -4
+                    }
+                    ClearPointer(raw)
+                    expect(exact, "custom pointer data and geometry are retained exactly")
+                },
+                Result::Err(_) => expect(false, "SetPointer backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "SetPointer screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ClearPointer
+// @ndk-side-effects Clears a previously installed retained custom pointer and verifies the live Window returns to the default-pointer null state before its backing data leaves scope
+@test("intuition.library ClearPointer restores the default pointer")
+pub fn intuition_clear_pointer() {
+    match ScreenHandle::custom("ClearPointer", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    var pointer_data: [u16] = [0, 0]
+                    let data: *u16 = &var pointer_data[0]
+                    let raw = window.as_raw()
+                    SetPointer(raw, data, 1, 16, 0, 0)
+                    let installed = unsafe { (*raw).Pointer == data }
+                    ClearPointer(raw)
+                    let cleared = unsafe { (*raw).Pointer == null }
+                    expect(installed && cleared, "ClearPointer removes the installed custom definition")
+                },
+                Result::Err(_) => expect(false, "ClearPointer backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ClearPointer screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetPubScreenModes
+// @ndk-side-effects Toggles only the documented global SHANGHAI bit, verifies each call returns the exact previous mode word, and restores the complete original global value
+@test("intuition.library SetPubScreenModes returns and restores global modes")
+@suppress("W0002", "SHANGHAI is a documented UWORD public-screen flag")
+pub fn intuition_set_pub_screen_modes() {
+    let original = SetPubScreenModes(0)
+    let changed: u16 = original ^ (u16)SHANGHAI
+    let cleared_previous = SetPubScreenModes(changed)
+    let changed_previous = SetPubScreenModes(original)
+    expect(cleared_previous == 0 && changed_previous == changed,
+        "mode transitions return their exact predecessors and restore the original word")
+}
+
+// @covers-ndk function|intuition.library|ScrollWindowRaster
+// @ndk-side-effects Draws an exact block into an owned backdrop RastPort, scrolls a bounded rectangle left by five pixels, waits for rendering completion, and verifies both the destination and vacated source pixels
+@test("intuition.library ScrollWindowRaster moves exact pixels")
+pub fn intuition_scroll_window_raster() {
+    match ScreenHandle::custom("ScrollWindowRaster", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => {
+                    let raw = window.as_raw()
+                    let rast_port = unsafe { (*raw).RPort }
+                    SetRast(rast_port, 0)
+                    SetAPen(rast_port, 1)
+                    SetBPen(rast_port, 0)
+                    RectFill(rast_port, 40, 40, 42, 42)
+                    WaitBlit()
+                    ScrollWindowRaster(raw, 5, 0, 20, 20, 60, 60)
+                    WaitBlit()
+                    let destination = ReadPixel(rast_port, 35, 40)
+                    let old_source = ReadPixel(rast_port, 40, 40)
+                    expect(destination == 1 && old_source == 0,
+                        "bounded positive dx moves the block left and exposes background")
+                },
+                Result::Err(_) => expect(false, "ScrollWindowRaster backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ScrollWindowRaster screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|SetMenuStrip
+// @ndk-side-effects Builds and lays out a real GadTools menu for an owned custom screen, attaches its exact native pointer to a live backdrop, verifies Window.MenuStrip identity, and detaches it before either owner is dropped
+@test("intuition.library SetMenuStrip attaches the exact menu")
+pub fn intuition_set_menu_strip() {
+    match ScreenHandle::custom("SetMenuStrip", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => match test_menu(screen.as_raw()) {
+                    Result::Ok(strip_value) => {
+                        var strip = strip_value
+                        let menu = strip.raw_menu()
+                        let attached = SetMenuStrip(window.as_raw(), menu)
+                        let exact = unsafe { (*window.as_raw()).MenuStrip == menu }
+                        ClearMenuStrip(window.as_raw())
+                        expect(attached != 0 && exact, "SetMenuStrip installs the exact laid-out menu pointer")
+                    },
+                    Result::Err(_) => expect(false, "SetMenuStrip menu built"),
+                },
+                Result::Err(_) => expect(false, "SetMenuStrip backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "SetMenuStrip screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ClearMenuStrip
+// @ndk-side-effects Attaches a real laid-out menu to a live backdrop, clears it through Intuition, and verifies Window.MenuStrip is null before the menu owner is dropped
+@test("intuition.library ClearMenuStrip detaches the active menu")
+pub fn intuition_clear_menu_strip() {
+    match ScreenHandle::custom("ClearMenuStrip", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => match test_menu(screen.as_raw()) {
+                    Result::Ok(strip_value) => {
+                        var strip = strip_value
+                        SetMenuStrip(window.as_raw(), strip.raw_menu())
+                        let installed = unsafe { (*window.as_raw()).MenuStrip == strip.raw_menu() }
+                        ClearMenuStrip(window.as_raw())
+                        let cleared = unsafe { (*window.as_raw()).MenuStrip == null }
+                        expect(installed && cleared, "ClearMenuStrip removes the live menu reference")
+                    },
+                    Result::Err(_) => expect(false, "ClearMenuStrip menu built"),
+                },
+                Result::Err(_) => expect(false, "ClearMenuStrip backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ClearMenuStrip screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|ResetMenuStrip
+// @ndk-side-effects Attaches and clears a real menu, changes only its documented MENUENABLED state, reattaches it through the fast reset path, verifies pointer and flag identity, then clears it before teardown
+@test("intuition.library ResetMenuStrip reattaches a state-only menu change")
+@suppress("W0002", "MENUENABLED is a documented UWORD Menu.Flags bit")
+pub fn intuition_reset_menu_strip() {
+    match ScreenHandle::custom("ResetMenuStrip", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => match test_menu(screen.as_raw()) {
+                    Result::Ok(strip_value) => {
+                        var strip = strip_value
+                        let menu = strip.raw_menu()
+                        SetMenuStrip(window.as_raw(), menu)
+                        ClearMenuStrip(window.as_raw())
+                        unsafe { (*menu).Flags = (*menu).Flags & (u16)(~MENUENABLED) }
+                        let reset = ResetMenuStrip(window.as_raw(), menu)
+                        let exact = unsafe {
+                            (*window.as_raw()).MenuStrip == menu &&
+                            (((u32)(*menu).Flags & MENUENABLED) == 0)
+                        }
+                        ClearMenuStrip(window.as_raw())
+                        expect(reset != 0 && exact, "ResetMenuStrip preserves the allowed disabled-menu change")
+                    },
+                    Result::Err(_) => expect(false, "ResetMenuStrip menu built"),
+                },
+                Result::Err(_) => expect(false, "ResetMenuStrip backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "ResetMenuStrip screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|OffMenu
+// @ndk-side-effects Attaches a real enabled menu, disables the whole first menu through its packed menu number, verifies MENUENABLED clears, then re-enables and detaches it before teardown
+@test("intuition.library OffMenu disables the selected menu")
+pub fn intuition_off_menu() {
+    match ScreenHandle::custom("OffMenu", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => match test_menu(screen.as_raw()) {
+                    Result::Ok(strip_value) => {
+                        var strip = strip_value
+                        let menu = strip.raw_menu()
+                        SetMenuStrip(window.as_raw(), menu)
+                        let initially_enabled = unsafe { ((u32)(*menu).Flags & MENUENABLED) != 0 }
+                        OffMenu(window.as_raw(), whole_first_menu())
+                        let disabled = unsafe { ((u32)(*menu).Flags & MENUENABLED) == 0 }
+                        OnMenu(window.as_raw(), whole_first_menu())
+                        ClearMenuStrip(window.as_raw())
+                        expect(initially_enabled && disabled, "OffMenu clears MENUENABLED on the exact selected menu")
+                    },
+                    Result::Err(_) => expect(false, "OffMenu menu built"),
+                },
+                Result::Err(_) => expect(false, "OffMenu backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "OffMenu screen opened"),
+    }
+}
+
+// @covers-ndk function|intuition.library|OnMenu
+// @ndk-side-effects Attaches and disables a real first menu, re-enables it through the same packed menu number, verifies MENUENABLED is restored, then detaches it before teardown
+@test("intuition.library OnMenu enables the selected menu")
+pub fn intuition_on_menu() {
+    match ScreenHandle::custom("OnMenu", 320, 100, 2) {
+        Result::Ok(screen_handle) => {
+            var screen = screen_handle
+            match screen.open_backdrop() {
+                Result::Ok(window) => match test_menu(screen.as_raw()) {
+                    Result::Ok(strip_value) => {
+                        var strip = strip_value
+                        let menu = strip.raw_menu()
+                        SetMenuStrip(window.as_raw(), menu)
+                        OffMenu(window.as_raw(), whole_first_menu())
+                        let disabled = unsafe { ((u32)(*menu).Flags & MENUENABLED) == 0 }
+                        OnMenu(window.as_raw(), whole_first_menu())
+                        let enabled = unsafe { ((u32)(*menu).Flags & MENUENABLED) != 0 }
+                        ClearMenuStrip(window.as_raw())
+                        expect(disabled && enabled, "OnMenu restores MENUENABLED on the exact selected menu")
+                    },
+                    Result::Err(_) => expect(false, "OnMenu menu built"),
+                },
+                Result::Err(_) => expect(false, "OnMenu backdrop opened"),
+            }
+        },
+        Result::Err(_) => expect(false, "OnMenu screen opened"),
+    }
+}

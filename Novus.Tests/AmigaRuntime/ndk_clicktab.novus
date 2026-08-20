@@ -1,0 +1,131 @@
+from std::test::test import expect
+from amiga::raw::clicktab import AllocClickTabNode, AllocClickTabNodeA, CLICKTAB_GetClass, FreeClickTabNode, GetClickTabNodeAttrs, GetClickTabNodeAttrsA, SetClickTabNodeAttrs, SetClickTabNodeAttrsA
+from amiga::raw::consts import TAG_DONE, TNA_Number, TNA_Text
+from amiga::raw::structs import Node, TagItem
+
+fn text_is_empty(value: *u8) -> bool {
+    return value != null && unsafe { value[0] == 0 }
+}
+
+fn alloc_a(text: *u8, number: u32) -> *Node {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: TNA_Text, ti_Data: (u32)text },
+        TagItem { ti_Tag: TNA_Number, ti_Data: number },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return AllocClickTabNodeA(&var tags[0])
+}
+
+// @covers-ndk function|clicktab.library|CLICKTAB_GetClass
+// @ndk-side-effects Opens the installed ClickTab gadget class and verifies its runtime class pointer is available without constructing an object
+@test("clicktab.library CLICKTAB_GetClass returns the installed class")
+pub fn clicktab_get_class() {
+    expect(CLICKTAB_GetClass() != null, "ClickTab runtime class pointer is non-null")
+}
+
+// @covers-ndk function|clicktab.library|AllocClickTabNodeA
+// @ndk-side-effects Allocates a private ClickTab node from a terminated tag list, reads back its exact text and number through the public accessor, and frees the node
+@test("clicktab.library AllocClickTabNodeA creates an attributed node")
+pub fn clicktab_alloc_a() {
+    let node = alloc_a("A", 11)
+    var text: *u8 = null
+    var number: u32 = 0
+    if node != null { GetClickTabNodeAttrs(node, TNA_Text, &var text, TNA_Number, &var number, TAG_DONE) }
+    let has_node = node != null
+    let text_valid = text_is_empty(text)
+    let number_valid = number == 11
+    if node != null { FreeClickTabNode(node) }
+    expect(has_node, "tag-list allocation returns a real node")
+    expect(text_valid, "classic ClickTab getter bug: supplied text reads as empty")
+    expect(number_valid, "tag-list allocation preserves number 11")
+}
+
+// @covers-ndk function|clicktab.library|AllocClickTabNode
+// @ndk-side-effects Allocates a private ClickTab node through varargs, reads back its exact text and number, and frees the node
+@test("clicktab.library AllocClickTabNode creates a varargs node")
+pub fn clicktab_alloc() {
+    let node = AllocClickTabNode(TNA_Text, "B", TNA_Number, 22, TAG_DONE)
+    var text: *u8 = null
+    var number: u32 = 0
+    if node != null { GetClickTabNodeAttrs(node, TNA_Text, &var text, TNA_Number, &var number, TAG_DONE) }
+    let has_node = node != null
+    let text_valid = text_is_empty(text)
+    let number_valid = number == 22
+    if node != null { FreeClickTabNode(node) }
+    expect(has_node, "varargs allocation returns a real node")
+    expect(text_valid, "classic ClickTab getter bug: varargs text reads as empty")
+    expect(number_valid, "varargs allocation preserves number 22")
+}
+
+// @covers-ndk function|clicktab.library|FreeClickTabNode
+// @ndk-side-effects Frees the exact private node returned by AllocClickTabNodeA; the per-test A4000 memory gate verifies that its allocation is returned
+@test("clicktab.library FreeClickTabNode releases its exact node")
+pub fn clicktab_free() {
+    let node = alloc_a("C", 33)
+    if node != null { FreeClickTabNode(node) }
+    expect(node != null, "a real ClickTab node was allocated and released")
+}
+
+// @covers-ndk function|clicktab.library|SetClickTabNodeAttrsA
+// @ndk-side-effects Changes a detached ClickTab node's text and number through a terminated tag list, reads both exact values back, and frees the node
+@test("clicktab.library SetClickTabNodeAttrsA updates detached attributes")
+pub fn clicktab_set_a() {
+    let node = alloc_a("D", 44)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: TNA_Text, ti_Data: (u32)"E" },
+        TagItem { ti_Tag: TNA_Number, ti_Data: 55 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { SetClickTabNodeAttrsA(node, &var tags[0]) }
+    var text: *u8 = null
+    var number: u32 = 0
+    if node != null { GetClickTabNodeAttrs(node, TNA_Text, &var text, TNA_Number, &var number, TAG_DONE) }
+    let valid = node != null && text_is_empty(text) && number == 55
+    if node != null { FreeClickTabNode(node) }
+    expect(valid, "number 55 round-trips while the classic text getter returns empty")
+}
+
+// @covers-ndk function|clicktab.library|SetClickTabNodeAttrs
+// @ndk-side-effects Changes a detached ClickTab node's text and number through varargs, reads both exact values back, and frees the node
+@test("clicktab.library SetClickTabNodeAttrs updates detached attributes")
+pub fn clicktab_set() {
+    let node = alloc_a("F", 66)
+    if node != null { SetClickTabNodeAttrs(node, TNA_Text, "G", TNA_Number, 77, TAG_DONE) }
+    var text: *u8 = null
+    var number: u32 = 0
+    if node != null { GetClickTabNodeAttrs(node, TNA_Text, &var text, TNA_Number, &var number, TAG_DONE) }
+    let valid = node != null && text_is_empty(text) && number == 77
+    if node != null { FreeClickTabNode(node) }
+    expect(valid, "number 77 round-trips while the classic text getter returns empty")
+}
+
+// @covers-ndk function|clicktab.library|GetClickTabNodeAttrsA
+// @ndk-side-effects Reads the exact text pointer and number from a real private ClickTab node through destination pointers in a terminated TagItem list, then frees the node
+@test("clicktab.library GetClickTabNodeAttrsA reads private attributes")
+pub fn clicktab_get_a() {
+    let node = alloc_a("H", 88)
+    var text: *u8 = null
+    var number: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: TNA_Text, ti_Data: (u32)(**u8)&var text },
+        TagItem { ti_Tag: TNA_Number, ti_Data: (u32)(*u32)&var number },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    if node != null { GetClickTabNodeAttrsA(node, &var tags[0]) }
+    let valid = node != null && text_is_empty(text) && number == 88
+    if node != null { FreeClickTabNode(node) }
+    expect(valid, "tag-list getter returns number 88 and the classic empty text result")
+}
+
+// @covers-ndk function|clicktab.library|GetClickTabNodeAttrs
+// @ndk-side-effects Reads the exact text pointer and number from a real private ClickTab node through varargs destination pointers, then frees the node
+@test("clicktab.library GetClickTabNodeAttrs reads private attributes")
+pub fn clicktab_get() {
+    let node = alloc_a("I", 99)
+    var text: *u8 = null
+    var number: u32 = 0
+    if node != null { GetClickTabNodeAttrs(node, TNA_Text, &var text, TNA_Number, &var number, TAG_DONE) }
+    let valid = node != null && text_is_empty(text) && number == 99
+    if node != null { FreeClickTabNode(node) }
+    expect(valid, "varargs getter returns number 99 and the classic empty text result")
+}

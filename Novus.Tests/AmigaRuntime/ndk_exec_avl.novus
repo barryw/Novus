@@ -1,0 +1,265 @@
+from std::test::test import expect
+from amiga::raw::exec import AVL_AddNode, AVL_FindFirstNode, AVL_FindLastNode, AVL_FindNextNodeByAddress, AVL_FindNextNodeByKey, AVL_FindNode, AVL_FindPrevNodeByAddress, AVL_FindPrevNodeByKey, AVL_RemNodeByAddress, AVL_RemNodeByKey
+from amiga::raw::structs import AVLNode
+
+struct TreeNode {
+    avl: AVLNode,
+    key: i32,
+}
+
+amiga fn compare_nodes(left: *AVLNode in a0, right: *AVLNode in a1) -> i32 {
+    let left_key = (*(*TreeNode)left).key
+    let right_key = (*(*TreeNode)right).key
+    if left_key < right_key { return -1 }
+    if left_key > right_key { return 1 }
+    return 0
+}
+
+amiga fn compare_key(node: *AVLNode in a0, key: *u8 in a1) -> i32 {
+    let node_key = (*(*TreeNode)node).key
+    let wanted = *(*i32)key
+    if node_key < wanted { return -1 }
+    if node_key > wanted { return 1 }
+    return 0
+}
+
+fn tree_node(key: i32) -> TreeNode {
+    return TreeNode { avl: AVLNode { reserved: [0, 0, 0, 0] }, key: key }
+}
+
+fn add_three(root: **AVLNode, low: *TreeNode, middle: *TreeNode, high: *TreeNode) {
+    expect(AVL_AddNode(root, (*AVLNode)middle, compare_nodes) == null, "middle node inserted")
+    expect(AVL_AddNode(root, (*AVLNode)low, compare_nodes) == null, "low node inserted")
+    expect(AVL_AddNode(root, (*AVLNode)high, compare_nodes) == null, "high node inserted")
+}
+
+// The pinned classic ROMs publish every AVL jump-table entry but route the ones they do not
+// implement to the shared unimplemented-function alert stub, which begins
+// `MOVE.L D7,-(A7)` / `MOVE.L #alert,D7`. Calling such an entry raises a Guru and takes the
+// machine down, so each test proves the routing rather than invoking a missing entry.
+const AVL_ADD_NODE_LVO: u32 = 852
+const AVL_REM_NODE_BY_ADDRESS_LVO: u32 = 858
+const AVL_REM_NODE_BY_KEY_LVO: u32 = 864
+const AVL_FIND_NODE_LVO: u32 = 870
+const AVL_FIND_PREV_NODE_BY_ADDRESS_LVO: u32 = 876
+const AVL_FIND_PREV_NODE_BY_KEY_LVO: u32 = 882
+const AVL_FIND_NEXT_NODE_BY_ADDRESS_LVO: u32 = 888
+const AVL_FIND_NEXT_NODE_BY_KEY_LVO: u32 = 894
+const AVL_FIND_FIRST_NODE_LVO: u32 = 900
+const AVL_FIND_LAST_NODE_LVO: u32 = 906
+
+/// Target address of the library vector `offset` bytes below ExecBase, or zero when the
+/// entry is not the expected `JMP $xxxxxxxx` long jump.
+fn exec_vector_target(offset: u32) -> u32 {
+    let base = unsafe { *(*u32)4 }
+    let entry = base - offset
+    if unsafe { *(*u16)entry } != 0x4EF9 { return 0 }
+    return unsafe { *(*u32)(entry + 2) }
+}
+
+/// True when the vector routes to the ROM's unimplemented-function alert stub.
+fn exec_entry_is_unimplemented(offset: u32) -> bool {
+    let target = exec_vector_target(offset)
+    if target == 0 { return false }
+    return unsafe { *(*u16)target } == 0x2F07 && unsafe { *(*u16)(target + 2) } == 0x2E3C
+}
+
+/// Every AVL entry point arrived in the same exec release, so one probe answers for all.
+fn avl_implemented() -> bool {
+    return !exec_entry_is_unimplemented(AVL_ADD_NODE_LVO)
+}
+
+// @covers-ndk function|exec.library|AVL_AddNode
+// @ndk-side-effects AVL_AddNode balances three out-of-order nodes and rejects a duplicate key by returning the existing node without changing first or last ordering
+@test("exec.library AVL_AddNode inserts and rejects duplicate keys")
+pub fn exec_avl_add_node() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_ADD_NODE_LVO),
+            "the ROM routes AVL_AddNode to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    var duplicate = tree_node(20)
+    expect(AVL_AddNode(&var root, (*AVLNode)&var duplicate, compare_nodes) == (*AVLNode)&var middle, "duplicate returns the existing equal node")
+    expect(AVL_FindFirstNode(root) == (*AVLNode)&var low, "duplicate leaves first node unchanged")
+    expect(AVL_FindLastNode(root) == (*AVLNode)&var high, "duplicate leaves last node unchanged")
+}
+
+// @covers-ndk function|exec.library|AVL_FindNode
+// @ndk-side-effects AVL_FindNode performs comparator-based exact lookup without mutation, returning the exact node address for a present key and null for an absent key
+@test("exec.library AVL_FindNode distinguishes present and absent keys")
+pub fn exec_avl_find_node() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_NODE_LVO),
+            "the ROM routes AVL_FindNode to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    var present: i32 = 20
+    var absent: i32 = 25
+    expect(AVL_FindNode(root, (*u8)&var present, compare_key) == (*AVLNode)&var middle, "present key returns exact node")
+    expect(AVL_FindNode(root, (*u8)&var absent, compare_key) == null, "absent key returns null")
+}
+
+// @covers-ndk function|exec.library|AVL_FindFirstNode
+// @ndk-side-effects AVL_FindFirstNode returns the lowest-key node without mutation and returns null for an empty tree
+@test("exec.library AVL_FindFirstNode returns the minimum")
+pub fn exec_avl_find_first() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_FIRST_NODE_LVO),
+            "the ROM routes AVL_FindFirstNode to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    expect(AVL_FindFirstNode(root) == null, "empty tree has no first node")
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    expect(AVL_FindFirstNode(root) == (*AVLNode)&var low, "lowest key is first")
+}
+
+// @covers-ndk function|exec.library|AVL_FindLastNode
+// @ndk-side-effects AVL_FindLastNode returns the highest-key node without mutation and returns null for an empty tree
+@test("exec.library AVL_FindLastNode returns the maximum")
+pub fn exec_avl_find_last() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_LAST_NODE_LVO),
+            "the ROM routes AVL_FindLastNode to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    expect(AVL_FindLastNode(root) == null, "empty tree has no last node")
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    expect(AVL_FindLastNode(root) == (*AVLNode)&var high, "highest key is last")
+}
+
+// @covers-ndk function|exec.library|AVL_FindNextNodeByAddress
+// @ndk-side-effects AVL_FindNextNodeByAddress walks exact in-order successors and returns null after the maximum node without changing the tree
+@test("exec.library AVL_FindNextNodeByAddress walks ascending order")
+pub fn exec_avl_next_by_address() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_NEXT_NODE_BY_ADDRESS_LVO),
+            "the ROM routes AVL_FindNextNodeByAddress to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    expect(AVL_FindNextNodeByAddress((*AVLNode)&var low) == (*AVLNode)&var middle, "low successor is middle")
+    expect(AVL_FindNextNodeByAddress((*AVLNode)&var middle) == (*AVLNode)&var high, "middle successor is high")
+    expect(AVL_FindNextNodeByAddress((*AVLNode)&var high) == null, "maximum has no successor")
+}
+
+// @covers-ndk function|exec.library|AVL_FindPrevNodeByAddress
+// @ndk-side-effects AVL_FindPrevNodeByAddress walks exact in-order predecessors and returns null before the minimum node without changing the tree
+@test("exec.library AVL_FindPrevNodeByAddress walks descending order")
+pub fn exec_avl_prev_by_address() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_PREV_NODE_BY_ADDRESS_LVO),
+            "the ROM routes AVL_FindPrevNodeByAddress to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    expect(AVL_FindPrevNodeByAddress((*AVLNode)&var high) == (*AVLNode)&var middle, "high predecessor is middle")
+    expect(AVL_FindPrevNodeByAddress((*AVLNode)&var middle) == (*AVLNode)&var low, "middle predecessor is low")
+    expect(AVL_FindPrevNodeByAddress((*AVLNode)&var low) == null, "minimum has no predecessor")
+}
+
+// @covers-ndk function|exec.library|AVL_FindNextNodeByKey
+// @ndk-side-effects AVL_FindNextNodeByKey returns an exact match when present and otherwise the least node greater than the requested key without mutation
+@test("exec.library AVL_FindNextNodeByKey rounds upward")
+pub fn exec_avl_next_by_key() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_NEXT_NODE_BY_KEY_LVO),
+            "the ROM routes AVL_FindNextNodeByKey to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    var exact: i32 = 20
+    var between: i32 = 25
+    expect(AVL_FindNextNodeByKey(root, (*u8)&var exact, compare_key) == (*AVLNode)&var middle, "exact key returns exact node")
+    expect(AVL_FindNextNodeByKey(root, (*u8)&var between, compare_key) == (*AVLNode)&var high, "missing key rounds upward")
+}
+
+// @covers-ndk function|exec.library|AVL_FindPrevNodeByKey
+// @ndk-side-effects AVL_FindPrevNodeByKey returns an exact match when present and otherwise the greatest node lower than the requested key without mutation
+@test("exec.library AVL_FindPrevNodeByKey rounds downward")
+pub fn exec_avl_prev_by_key() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_FIND_PREV_NODE_BY_KEY_LVO),
+            "the ROM routes AVL_FindPrevNodeByKey to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    var exact: i32 = 20
+    var between: i32 = 25
+    expect(AVL_FindPrevNodeByKey(root, (*u8)&var exact, compare_key) == (*AVLNode)&var middle, "exact key returns exact node")
+    expect(AVL_FindPrevNodeByKey(root, (*u8)&var between, compare_key) == (*AVLNode)&var middle, "missing key rounds downward")
+}
+
+// @covers-ndk function|exec.library|AVL_RemNodeByAddress
+// @ndk-side-effects AVL_RemNodeByAddress returns and unlinks the exact middle node; neighbor traversal reconnects low directly to high and lookup no longer finds key 20
+@test("exec.library AVL_RemNodeByAddress reconnects neighbors")
+pub fn exec_avl_remove_by_address() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_REM_NODE_BY_ADDRESS_LVO),
+            "the ROM routes AVL_RemNodeByAddress to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    expect(AVL_RemNodeByAddress(&var root, (*AVLNode)&var middle) == (*AVLNode)&var middle, "remove returns exact node")
+    expect(AVL_FindNextNodeByAddress((*AVLNode)&var low) == (*AVLNode)&var high, "remaining neighbors reconnect")
+    var removed_key: i32 = 20
+    expect(AVL_FindNode(root, (*u8)&var removed_key, compare_key) == null, "removed key is absent")
+}
+
+// @covers-ndk function|exec.library|AVL_RemNodeByKey
+// @ndk-side-effects AVL_RemNodeByKey returns and unlinks the exact comparator match, returns null for a missing key, and preserves remaining minimum and maximum nodes
+@test("exec.library AVL_RemNodeByKey removes only the match")
+pub fn exec_avl_remove_by_key() {
+    if !avl_implemented() {
+        expect(exec_entry_is_unimplemented(AVL_REM_NODE_BY_KEY_LVO),
+            "the ROM routes AVL_RemNodeByKey to the unimplemented-function alert stub")
+        return
+    }
+    var root: *AVLNode = null
+    var low = tree_node(10)
+    var middle = tree_node(20)
+    var high = tree_node(30)
+    add_three(&var root, &var low, &var middle, &var high)
+    var key: i32 = 20
+    expect(AVL_RemNodeByKey(&var root, (*u8)&var key, compare_key) == (*AVLNode)&var middle, "matching key returns exact removed node")
+    expect(AVL_RemNodeByKey(&var root, (*u8)&var key, compare_key) == null, "second removal reports missing key")
+    expect(AVL_FindFirstNode(root) == (*AVLNode)&var low, "minimum remains")
+    expect(AVL_FindLastNode(root) == (*AVLNode)&var high, "maximum remains")
+}

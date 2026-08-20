@@ -1,0 +1,92 @@
+from std::test::test import expect, expect_eq
+from amiga::raw::consts import FPF_REMOVED, FPF_ROMFONT, FS_NORMAL, MEMF_CLEAR, MEMF_PUBLIC, NT_FONT
+from amiga::raw::structs import TextAttr, TextFont
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::graphics import AddFont, CloseFont, OpenFont, RemFont
+
+fn allocate_font(name: *u8) -> *TextFont {
+    let memory = unsafe { AllocMem(@sizeof(TextFont), MEMF_PUBLIC | MEMF_CLEAR) }
+    if memory == null { return null }
+    let font = (*TextFont)memory
+    unsafe {
+        (*font).tf_Message.mn_Node.ln_Name = (*i8)name
+        (*font).tf_Message.mn_Node.ln_Type = 1
+        (*font).tf_YSize = 9
+        (*font).tf_Style = (u8)FS_NORMAL
+        (*font).tf_Flags = (u8)(FPF_ROMFONT | FPF_REMOVED)
+        (*font).tf_XSize = 8
+        (*font).tf_Baseline = 7
+        (*font).tf_BoldSmear = 1
+        (*font).tf_Accessors = 23
+        (*font).tf_LoChar = 32
+        (*font).tf_HiChar = 126
+    }
+    return font
+}
+
+fn matching_attributes(name: *u8) -> TextAttr {
+    return TextAttr {
+        ta_Name: name,
+        ta_YSize: 9,
+        ta_Style: (u8)FS_NORMAL,
+        ta_Flags: (u8)FPF_ROMFONT,
+    }
+}
+
+fn release_font(font: *TextFont) {
+    unsafe { FreeMem((*u8)font, @sizeof(TextFont)) }
+}
+
+// @covers-ndk function|graphics.library|AddFont
+// @ndk-side-effects AddFont publishes one caller-owned MEMF_PUBLIC TextFont, forces NT_FONT and zero accessors, clears only FPF_REMOVED, links the node into the system font list, and makes an exact OpenFont request return that identity without taking ownership
+@test("graphics.library AddFont publishes an exact public font")
+pub fn graphics_add_public_font() {
+    let name: *u8 = "NovusAddFont-9"
+    let font = allocate_font(name)
+    expect(font != null, "public TextFont storage allocated")
+    if font == null { return }
+    let attributes = matching_attributes(name)
+
+    AddFont(font)
+
+    expect(unsafe { (*font).tf_Message.mn_Node.ln_Type == (u8)NT_FONT },
+        "AddFont forces the public node type")
+    expect_eq(unsafe { (*font).tf_Accessors }, 0, "AddFont resets the accessor count")
+    expect(unsafe { (((u32)(*font).tf_Flags) & FPF_REMOVED) == 0 &&
+        (((u32)(*font).tf_Flags) & FPF_ROMFONT) != 0 },
+        "AddFont clears removed state without disturbing other flags")
+    expect(unsafe { (*font).tf_Message.mn_Node.ln_Succ != null &&
+        (*font).tf_Message.mn_Node.ln_Pred != null },
+        "font node is linked into the system list")
+    let opened = OpenFont(&attributes)
+    expect(opened == font, "OpenFont resolves the exact newly published identity")
+    expect_eq(unsafe { (*font).tf_Accessors }, 1, "OpenFont increments the published accessor count")
+    if opened != null { CloseFont(opened) }
+    expect_eq(unsafe { (*font).tf_Accessors }, 0, "CloseFont balances the accessor count")
+    RemFont(font)
+    release_font(font)
+}
+
+// @covers-ndk function|graphics.library|RemFont
+// @ndk-side-effects RemFont unpublishes one zero-accessor caller-owned TextFont, sets FPF_REMOVED, makes the same exact OpenFont request fail, and leaves the public allocation owned by the caller for explicit release
+@test("graphics.library RemFont makes a public font unavailable")
+pub fn graphics_remove_public_font() {
+    let name: *u8 = "NovusRemFont-9"
+    let font = allocate_font(name)
+    expect(font != null, "public TextFont storage allocated")
+    if font == null { return }
+    let attributes = matching_attributes(name)
+    AddFont(font)
+    let opened_before = OpenFont(&attributes)
+    expect(opened_before == font, "font is discoverable before removal")
+    if opened_before != null { CloseFont(opened_before) }
+
+    RemFont(font)
+
+    expect(unsafe { (((u32)(*font).tf_Flags) & FPF_REMOVED) != 0 },
+        "RemFont marks the caller-owned font removed")
+    let opened_after = OpenFont(&attributes)
+    expect(opened_after == null, "removed font cannot satisfy new OpenFont requests")
+    if opened_after != null { CloseFont(opened_after) }
+    release_font(font)
+}

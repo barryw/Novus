@@ -1,0 +1,179 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMA_DEPTH, BMA_FLAGS, BMA_HEIGHT, BMA_WIDTH
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE, BMF_STANDARD, JAM2
+from amiga::raw::consts import RPTAG_APen, RPTAG_BPen, RPTAG_DrMd, RPTAG_MaxPen
+from amiga::raw::consts import RPTAG_OutlinePen, RPTAG_WriteMask, TAG_DONE
+from amiga::raw::structs import BitMap, RastPort, TagItem
+from amiga::raw::graphics import GetAPen, GetBPen, GetBitMapAttr, GetDrMd, GetOutlinePen
+from amiga::raw::graphics import GetRPAttrs, GetRPAttrsA, InitRastPort, ReadPixel
+from amiga::raw::graphics import SetABPenDrMd, SetMaxPen, SetRPAttrs, SetRPAttrsA
+from amiga::raw::graphics import SetWriteMask, WaitBlit, WritePixel
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(64, 32, 3, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(handle: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    unsafe { (*rastport).BitMap = handle.as_raw() }
+}
+
+// @covers-ndk function|graphics.library|GetBitMapAttr
+// @ndk-side-effects GetBitMapAttr reports the exact width, height, depth, and standard displayable flags of a real owned three-plane bitmap and returns zero for an unknown reserved attribute before bitmap cleanup
+@test("graphics.library GetBitMapAttr reports owned bitmap layout")
+pub fn graphics_get_bitmap_attr() {
+    let handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "three-plane bitmap allocated")
+            return
+        },
+    }
+    let raw: *BitMap = handle.as_raw()
+    let flags = GetBitMapAttr(raw, BMA_FLAGS)
+    expect_eq(GetBitMapAttr(raw, BMA_WIDTH), 64, "bitmap width")
+    expect_eq(GetBitMapAttr(raw, BMA_HEIGHT), 32, "bitmap height")
+    expect_eq(GetBitMapAttr(raw, BMA_DEPTH), 3, "bitmap depth")
+    expect((flags & BMF_DISPLAYABLE) != 0 && (flags & BMF_STANDARD) != 0,
+        "bitmap is standard displayable planar memory")
+    expect_eq(GetBitMapAttr(raw, 999), 0, "reserved attribute returns zero")
+}
+
+// @covers-ndk function|graphics.library|SetABPenDrMd
+// @ndk-side-effects SetABPenDrMd updates foreground pen, background pen, and JAM2 drawing mode in one call; public getters and the RastPort fields agree on all three values
+@test("graphics.library SetABPenDrMd updates all drawing state")
+pub fn graphics_set_ab_pen_draw_mode() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    SetABPenDrMd(&var rp, 6, 2, JAM2)
+    expect(GetAPen(&var rp) == 6 && GetBPen(&var rp) == 2 && GetDrMd(&var rp) == JAM2 &&
+        rp.FgPen == 6 && rp.BgPen == 2 && rp.DrawMode == (i8)JAM2,
+        "combined setter updates pens, mode, and derived RastPort state")
+}
+
+// @covers-ndk function|graphics.library|SetWriteMask
+// @ndk-side-effects SetWriteMask installs mask 0b101 on a standard three-plane RastPort; writing pen 7 produces pixel value 5, proving the mask affects real rendering before the owned bitmap is released
+@test("graphics.library SetWriteMask masks rendered pixel bits")
+pub fn graphics_set_write_mask() {
+    let handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "three-plane bitmap allocated")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rp)
+    SetABPenDrMd(&var rp, 7, 0, 0)
+    let supported = SetWriteMask(&var rp, 5)
+    WritePixel(&var rp, 4, 3)
+    WaitBlit()
+    expect(supported != 0 && rp.Mask == 5 && ReadPixel(&var rp, 4, 3) == 5,
+        "mask 0b101 removes the middle bit from pen 7")
+}
+
+// @covers-ndk function|graphics.library|SetMaxPen
+// @ndk-side-effects SetMaxPen reduces a standard three-plane RastPort to maximum pen 3; writing pen 7 stores pixel value 3, proving the optimized write mask is active
+@test("graphics.library SetMaxPen limits planar rendering")
+pub fn graphics_set_max_pen() {
+    let handle = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "three-plane bitmap allocated")
+            return
+        },
+    }
+    var rp: RastPort = @zeroed(RastPort)
+    attach(&handle, &var rp)
+    SetABPenDrMd(&var rp, 7, 0, 0)
+    SetWriteMask(&var rp, 7)
+    SetMaxPen(&var rp, 3)
+    WritePixel(&var rp, 5, 4)
+    WaitBlit()
+    expect(rp.Mask == 3 && ReadPixel(&var rp, 5, 4) == 3,
+        "maximum pen 3 produces a two-plane write mask")
+}
+
+// @covers-ndk function|graphics.library|SetRPAttrsA
+// @ndk-side-effects SetRPAttrsA consumes a five-item tag list and updates foreground pen, background pen, drawing mode, outline pen, and write mask atomically; getters read every requested value
+@test("graphics.library SetRPAttrsA applies a complete tag list")
+pub fn graphics_set_rp_attrs_a() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: RPTAG_APen, ti_Data: 6 },
+        TagItem { ti_Tag: RPTAG_BPen, ti_Data: 2 },
+        TagItem { ti_Tag: RPTAG_DrMd, ti_Data: JAM2 },
+        TagItem { ti_Tag: RPTAG_OutlinePen, ti_Data: 4 },
+        TagItem { ti_Tag: RPTAG_WriteMask, ti_Data: 7 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    SetRPAttrsA(&var rp, &var tags[0])
+    expect(GetAPen(&var rp) == 6 && GetBPen(&var rp) == 2 && GetDrMd(&var rp) == JAM2 &&
+        GetOutlinePen(&var rp) == 4 && rp.Mask == 7,
+        "tag-list setter applies every requested attribute")
+}
+
+// @covers-ndk function|graphics.library|SetRPAttrs
+// @ndk-side-effects SetRPAttrs forwards five varargs attributes and updates foreground pen, background pen, drawing mode, outline pen, and write mask; getters read every requested value
+@test("graphics.library SetRPAttrs forwards varargs state")
+pub fn graphics_set_rp_attrs() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    SetRPAttrs(&var rp, RPTAG_APen, 5, RPTAG_BPen, 1, RPTAG_DrMd, JAM2,
+        RPTAG_OutlinePen, 3, RPTAG_WriteMask, 6, TAG_DONE)
+    expect(GetAPen(&var rp) == 5 && GetBPen(&var rp) == 1 && GetDrMd(&var rp) == JAM2 &&
+        GetOutlinePen(&var rp) == 3 && rp.Mask == 6,
+        "varargs setter applies every requested attribute")
+}
+
+// @covers-ndk function|graphics.library|GetRPAttrsA
+// @ndk-side-effects GetRPAttrsA writes five current RastPort attributes as full 32-bit values through caller-owned tag destinations after SetRPAttrsA establishes known state
+@test("graphics.library GetRPAttrsA fills tagged destinations")
+pub fn graphics_get_rp_attrs_a() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    SetRPAttrs(&var rp, RPTAG_APen, 5, RPTAG_BPen, 2, RPTAG_DrMd, JAM2,
+        RPTAG_OutlinePen, 4, RPTAG_WriteMask, 7, TAG_DONE)
+    var apen: u32 = 0
+    var bpen: u32 = 0
+    var mode: u32 = 0
+    var outline: u32 = 0
+    var mask: u32 = 0
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: RPTAG_APen, ti_Data: (u32)(*u32)&var apen },
+        TagItem { ti_Tag: RPTAG_BPen, ti_Data: (u32)(*u32)&var bpen },
+        TagItem { ti_Tag: RPTAG_DrMd, ti_Data: (u32)(*u32)&var mode },
+        TagItem { ti_Tag: RPTAG_OutlinePen, ti_Data: (u32)(*u32)&var outline },
+        TagItem { ti_Tag: RPTAG_WriteMask, ti_Data: (u32)(*u32)&var mask },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    GetRPAttrsA(&var rp, &var tags[0])
+    expect(apen == 5 && bpen == 2 && mode == JAM2 && outline == 4 && mask == 7,
+        "tag-list getter fills every 32-bit destination")
+}
+
+// @covers-ndk function|graphics.library|GetRPAttrs
+// @ndk-side-effects GetRPAttrs forwards five varargs destination pointers and writes the current foreground pen, background pen, drawing mode, outline pen, and write mask as full 32-bit values
+@test("graphics.library GetRPAttrs forwards output pointers")
+pub fn graphics_get_rp_attrs() {
+    var rp: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rp)
+    SetRPAttrs(&var rp, RPTAG_APen, 6, RPTAG_BPen, 3, RPTAG_DrMd, JAM2,
+        RPTAG_OutlinePen, 5, RPTAG_WriteMask, 7, TAG_DONE)
+    var apen: u32 = 0
+    var bpen: u32 = 0
+    var mode: u32 = 0
+    var outline: u32 = 0
+    var mask: u32 = 0
+    GetRPAttrs(&var rp, RPTAG_APen, &var apen, RPTAG_BPen, &var bpen,
+        RPTAG_DrMd, &var mode, RPTAG_OutlinePen, &var outline,
+        RPTAG_WriteMask, &var mask, TAG_DONE)
+    expect(apen == 6 && bpen == 3 && mode == JAM2 && outline == 5 && mask == 7,
+        "varargs getter fills every 32-bit destination")
+}

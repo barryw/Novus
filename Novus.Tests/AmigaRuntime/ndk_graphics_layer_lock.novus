@@ -1,0 +1,206 @@
+from std::core import Drop, Option, Result
+from std::test::test import expect
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::dos import Delay
+from amiga::raw::exec import FindTask
+from amiga::raw::structs import Layer, Layer_Info
+from amiga::raw::graphics import AttemptLockLayerRom, LockLayerRom, UnlockLayerRom
+from amiga::raw::layers import CreateUpfrontLayer, DeleteLayer, DisposeLayerInfo, NewLayerInfo
+from amiga::sys::exec import receive_startup_data, spawn_task_fn_with_ptr
+from amiga::sys::graphics::bitmap import BitMapHandle
+
+const SIMPLE_LAYER: i32 = 1
+
+struct LayerFixture {
+    bitmap: BitMapHandle,
+    info: *Layer_Info,
+    layer: *Layer,
+}
+
+impl LayerFixture {
+    fn new() -> Result<LayerFixture, i32> {
+        let bitmap = match BitMapHandle::alloc(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+            Result::Ok(value) => value,
+            Result::Err(_) => return Result::Err(1),
+        }
+        let info = NewLayerInfo()
+        if info == null { return Result::Err(2) }
+        let layer = CreateUpfrontLayer(info, bitmap.as_raw(), 0, 0, 63, 31, SIMPLE_LAYER, null)
+        if layer == null {
+            DisposeLayerInfo(info)
+            return Result::Err(3)
+        }
+        return Result::Ok(LayerFixture { bitmap: bitmap, info: info, layer: layer })
+    }
+
+    fn as_raw(&self) -> *Layer {
+        return self.layer
+    }
+}
+
+impl Drop for LayerFixture {
+    fn drop(&var self) {
+        if self.layer != null {
+            let _ = DeleteLayer(0, self.layer)
+            self.layer = null
+        }
+        if self.info != null {
+            DisposeLayerInfo(self.info)
+            self.info = null
+        }
+    }
+}
+
+struct LayerLockHandoff {
+    layer: *Layer,
+    locked: u32,
+    release: u32,
+    done: u32,
+}
+
+fn layer_lock_worker() -> i32 {
+    let handoff = match receive_startup_data() {
+        Option::Some(data) => (*LayerLockHandoff)data,
+        Option::None => return 1,
+    }
+    let layer = unsafe { (*handoff).layer }
+    if layer == null { return 2 }
+    LockLayerRom(layer)
+    unsafe { (*handoff).locked = 1 }
+    while unsafe { (*handoff).release } == 0 {
+        Delay(1)
+    }
+    UnlockLayerRom(layer)
+    unsafe { (*handoff).done = 1 }
+    return 0
+}
+
+// @covers-ndk function|graphics.library|LockLayerRom
+// @ndk-side-effects LockLayerRom acquires a live Layer semaphore for the current task and a recursive call increments its nesting exactly once; balanced cleanup releases both acquisitions before the layer fixture is freed
+@test("graphics.library ROM layer locks preserve recursive semaphore state")
+pub fn graphics_layer_lock_roundtrip() {
+    let fixture = match LayerFixture::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "test layer created")
+            return
+        },
+    }
+    let layer = fixture.as_raw()
+    let current = FindTask(null)
+    let original_owner = unsafe { (*layer).Lock.ss_Owner }
+    let original_nesting = unsafe { (*layer).Lock.ss_NestCount }
+
+    LockLayerRom(layer)
+    let first_nesting = unsafe { (*layer).Lock.ss_NestCount }
+    unsafe {
+        expect((*layer).Lock.ss_Owner == current, "first lock records the current task")
+        expect(first_nesting == original_nesting + 1, "first lock increments nesting once")
+    }
+    LockLayerRom(layer)
+    unsafe {
+        expect((*layer).Lock.ss_Owner == current, "recursive lock keeps the current owner")
+        expect((*layer).Lock.ss_NestCount == first_nesting + 1, "recursive lock increments nesting again")
+    }
+
+    UnlockLayerRom(layer)
+    UnlockLayerRom(layer)
+    unsafe {
+        expect((*layer).Lock.ss_Owner == original_owner, "balanced cleanup restores the original owner")
+        expect((*layer).Lock.ss_NestCount == original_nesting, "balanced cleanup restores original nesting")
+    }
+}
+
+// @covers-ndk function|graphics.library|UnlockLayerRom
+// @ndk-side-effects UnlockLayerRom unwinds one recursive acquisition at a time, retains ownership until the final release, and restores the exact original owner and nesting state before the layer fixture is freed
+@test("graphics.library ROM layer unlocks unwind recursive semaphore state")
+pub fn graphics_layer_unlock_roundtrip() {
+    let fixture = match LayerFixture::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "test layer created")
+            return
+        },
+    }
+    let layer = fixture.as_raw()
+    let current = FindTask(null)
+    let original_owner = unsafe { (*layer).Lock.ss_Owner }
+    let original_nesting = unsafe { (*layer).Lock.ss_NestCount }
+
+    LockLayerRom(layer)
+    LockLayerRom(layer)
+    let recursive_nesting = unsafe { (*layer).Lock.ss_NestCount }
+    unsafe {
+        expect((*layer).Lock.ss_Owner == current, "recursive setup records the current owner")
+        expect(recursive_nesting == original_nesting + 2, "fixture holds two recursive acquisitions")
+    }
+
+    UnlockLayerRom(layer)
+    unsafe {
+        expect((*layer).Lock.ss_Owner == current, "first unlock retains recursive ownership")
+        expect((*layer).Lock.ss_NestCount == recursive_nesting - 1, "first unlock unwinds one nesting level")
+    }
+    UnlockLayerRom(layer)
+    unsafe {
+        expect((*layer).Lock.ss_Owner == original_owner, "final unlock restores the original owner")
+        expect((*layer).Lock.ss_NestCount == original_nesting, "final unlock restores original nesting")
+    }
+}
+
+// @covers-ndk function|graphics.library|AttemptLockLayerRom
+// @ndk-side-effects AttemptLockLayerRom succeeds and is released on an available live Layer, fails without changing state while another process owns that Layer, then succeeds again after the worker releases and exits; the layer fixture is released last
+@test("graphics.library AttemptLockLayerRom reports real cross-task contention")
+pub fn graphics_attempt_layer_lock() {
+    let fixture = match LayerFixture::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "test layer created")
+            return
+        },
+    }
+    let layer = fixture.as_raw()
+
+    let immediate = AttemptLockLayerRom(layer)
+    expect(immediate != 0, "available layer locks immediately")
+    if immediate != 0 { UnlockLayerRom(layer) }
+
+    var handoff = LayerLockHandoff { layer: layer, locked: 0, release: 0, done: 0 }
+    let worker_name = "Novus.NDK.LayerLock"
+    var worker = match spawn_task_fn_with_ptr(worker_name, layer_lock_worker, unsafe { (*u8)&var handoff }, 8192) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "lock worker spawned")
+            return
+        },
+    }
+    var ticks: u32 = 0
+    while handoff.locked == 0 && ticks < 100 {
+        Delay(1)
+        ticks++
+    }
+    expect(handoff.locked == 1, "worker acquired the layer")
+    if handoff.locked == 1 {
+        let contended = AttemptLockLayerRom(layer)
+        expect(contended == 0, "attempt fails while another task owns the layer")
+        if contended != 0 { UnlockLayerRom(layer) }
+    }
+
+    handoff.release = 1
+    ticks = 0
+    while handoff.done == 0 && ticks < 100 {
+        Delay(1)
+        ticks++
+    }
+    expect(handoff.done == 1, "worker released the layer")
+    ticks = 0
+    while FindTask(worker_name.as_cstr()) != null && ticks < 100 {
+        Delay(1)
+        ticks++
+    }
+    expect(FindTask(worker_name.as_cstr()) == null, "worker process exited")
+    let _ = worker.wait()
+
+    let released = AttemptLockLayerRom(layer)
+    expect(released != 0, "layer locks again after worker release")
+    if released != 0 { UnlockLayerRom(layer) }
+}

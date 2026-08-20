@@ -1,0 +1,192 @@
+from std::core import Result
+from std::test::test import expect, expect_true
+from amiga::sys::device::request import DeviceRequest
+from amiga::sys::device::block import SystemBlockGeometry
+from amiga::sys::exec import MsgPortHandle
+from amiga::sys::timer::device import TimerHandle
+from amiga::raw::consts import TR_ADDREQUEST
+from amiga::raw::exec import AbortIO, CheckIO, CreateIORequest, DeleteIORequest, GetMsg, OpenDevice, CloseDevice, SendIO, WaitIO
+from amiga::raw::structs import IORequest, IOStdReq, timerequest, timeval
+
+@suppress("W0002", "TR_ADDREQUEST is the NDK command value 9 and fits u16")
+fn start_timer(timer: &TimerHandle, micros: u32) -> *IORequest {
+    let raw = timer.as_raw()
+    (*raw).tr_node.io_Command = (u16)TR_ADDREQUEST
+    (*raw).tr_time = timeval { tv_secs: 0, tv_micro: micros }
+    let request = unsafe { (*IORequest)&(*raw).tr_node }
+    SendIO(request)
+    return request
+}
+
+// @covers-ndk function|exec.library|CreateMsgPort
+// @covers-ndk function|exec.library|CreateIORequest
+// @covers-ndk function|exec.library|OpenDevice
+// @covers-ndk function|exec.library|CloseDevice
+// @covers-ndk function|exec.library|DeleteIORequest
+// @covers-ndk function|exec.library|DeleteMsgPort
+// @ndk-side-effects CreateMsgPort reserves a reply-port signal; CreateIORequest allocates an IOStdReq tied to that port; OpenDevice installs non-null trackdisk device and unit pointers; Drop closes the device, deletes the request, and releases the port and signal
+@test("Exec device requests close and release their request and reply port")
+pub fn device_request_open_close() {
+    match DeviceRequest::open_block("trackdisk.device", 0) {
+        Result::Ok(request) => {
+            let raw = request.as_raw()
+            expect_true(raw != null, "trackdisk request allocated")
+            expect(request.size() == @sizeof(IOStdReq), "request has the complete IOStdReq ABI size")
+            unsafe {
+                expect((*raw).io_Device != null && (*raw).io_Unit != null && (*raw).io_Error == 0,
+                    "OpenDevice initialized the device, unit, and success status")
+            }
+        },
+        Result::Err(_) => expect(false, "trackdisk request opened"),
+    }
+}
+
+// @covers-ndk function|exec.library|DoIO
+// @ndk-side-effects DoIO submits TD_GETGEOMETRY synchronously, waits for completion, removes any reply, and fills the caller-owned DriveGeometry without retaining its address
+@test("trackdisk geometry command leaves no device allocation behind")
+pub fn device_request_geometry() {
+    match DeviceRequest::open_block("trackdisk.device", 0) {
+        Result::Ok(request) => {
+            var device = request
+            match device.block_geometry() {
+                Result::Ok(geometry) => {
+                    let dimensions_match = geometry.block_bytes() == 512 &&
+                        geometry.cylinders() == 80 && geometry.heads() == 2 &&
+                        geometry.blocks_per_track() == 11 && geometry.total_blocks() == 1760
+                    expect_true(dimensions_match, "trackdisk unit 0 reports 80x2x11 geometry with 512-byte sectors")
+                    expect(geometry.total_blocks() == geometry.cylinders() * geometry.heads() * geometry.blocks_per_track(),
+                        "reported geometry dimensions equal its total sector count")
+                },
+                Result::Err(_) => expect(false, "geometry returned"),
+            }
+        },
+        Result::Err(_) => expect(false, "trackdisk request opened"),
+    }
+}
+
+// @covers-ndk function|exec.library|CreateMsgPort
+// @covers-ndk function|exec.library|CreateIORequest
+// @covers-ndk function|exec.library|DeleteIORequest
+// @covers-ndk function|exec.library|DeleteMsgPort
+// @ndk-side-effects CreateIORequest allocates and clears exactly one IOStdReq, records its allocation length and reply port, and DeleteIORequest plus the port's Drop return both allocations and the signal bit
+@test("Exec IO request allocation releases without opening a device")
+pub fn exec_io_request_allocation() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let request = CreateIORequest(port.as_raw(), @sizeof(IOStdReq))
+            expect_true(request != null, "I/O request allocated")
+            if request != null {
+                let raw = (*IORequest)request
+                unsafe {
+                    expect((*raw).io_Message.mn_ReplyPort == port.as_raw(), "request records its reply port")
+                    expect((u32)(*raw).io_Message.mn_Length == @sizeof(IOStdReq), "request records its allocation size")
+                    expect((*raw).io_Device == null && (*raw).io_Unit == null && (*raw).io_Error == 0,
+                        "new request starts unopened and error-free")
+                }
+                DeleteIORequest(request)
+            }
+        },
+        Result::Err(_) => expect(false, "reply port created"),
+    }
+}
+
+// @covers-ndk function|exec.library|CreateMsgPort
+// @covers-ndk function|exec.library|CreateIORequest
+// @covers-ndk function|exec.library|OpenDevice
+// @covers-ndk function|exec.library|CloseDevice
+// @covers-ndk function|exec.library|DeleteIORequest
+// @covers-ndk function|exec.library|DeleteMsgPort
+// @ndk-side-effects OpenDevice initializes the raw request for trackdisk unit 0; CloseDevice concludes access only after successful open; DeleteIORequest and the port's Drop release every allocation and signal
+@test("raw trackdisk open close releases its request")
+pub fn raw_trackdisk_open_close() {
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            let request = CreateIORequest(port.as_raw(), @sizeof(IOStdReq))
+            if request == null {
+                expect(false, "I/O request allocated")
+                return
+            }
+            let error = unsafe { OpenDevice("trackdisk.device", 0, (*IORequest)request, 0) }
+            if error == 0 {
+                unsafe {
+                    let raw = (*IORequest)request
+                    expect((*raw).io_Device != null && (*raw).io_Unit != null && (*raw).io_Error == 0,
+                        "raw OpenDevice initialized the request")
+                    CloseDevice(raw)
+                }
+            }
+            DeleteIORequest(request)
+            expect(error == 0, "trackdisk opened")
+        },
+        Result::Err(_) => expect(false, "reply port created"),
+    }
+}
+
+// @covers-ndk function|exec.library|SendIO
+// @ndk-side-effects SendIO submits a one-second timer request without blocking; CheckIO observes it pending, AbortIO cancels it, and WaitIO returns IOERR_ABORTED before owner drop
+@test("exec.library SendIO leaves a timer request pending")
+pub fn exec_send_io_pending() {
+    match TimerHandle::microhz() {
+        Result::Ok(timer) => {
+            let request = start_timer(&timer, 1000000)
+            let pending = CheckIO(request) == null
+            if pending { AbortIO(request) }
+            let error = WaitIO(request)
+            expect(pending, "one-second request remains pending after nonblocking SendIO")
+            expect(error == -2, "aborted pending request reports IOERR_ABORTED")
+        },
+        Result::Err(_) => expect(false, "timer.device opens"),
+    }
+}
+
+// @covers-ndk function|exec.library|CheckIO
+// @ndk-side-effects CheckIO reports null for a live pending timer without removing or completing it; AbortIO and WaitIO then cancel and drain that same request
+@test("exec.library CheckIO distinguishes a pending request")
+pub fn exec_check_io_pending() {
+    match TimerHandle::microhz() {
+        Result::Ok(timer) => {
+            let request = start_timer(&timer, 1000000)
+            let first = CheckIO(request)
+            let second = CheckIO(request)
+            if first == null && second == null { AbortIO(request) }
+            let error = WaitIO(request)
+            expect(first == null && second == null, "repeated CheckIO calls leave the timer pending")
+            expect(error == -2, "pending request remains cancellable")
+        },
+        Result::Err(_) => expect(false, "timer.device opens"),
+    }
+}
+
+// @covers-ndk function|exec.library|WaitIO
+// @ndk-side-effects WaitIO blocks for a short timer, returns its zero io_Error result, and removes the completed request from its reply port
+@test("exec.library WaitIO completes and drains a timer request")
+pub fn exec_wait_io_completion() {
+    match TimerHandle::microhz() {
+        Result::Ok(timer) => {
+            let request = start_timer(&timer, 20000)
+            let port = (*request).io_Message.mn_ReplyPort
+            let error = WaitIO(request)
+            expect(error == 0 && (*request).io_Error == 0, "natural timer completion reports success")
+            expect(GetMsg(port) == null, "WaitIO removes the completed reply from its port")
+        },
+        Result::Err(_) => expect(false, "timer.device opens"),
+    }
+}
+
+// @covers-ndk function|exec.library|AbortIO
+// @ndk-side-effects AbortIO cancels a live pending timer without removing it; WaitIO then returns IOERR_ABORTED and drains the reply before owner drop
+@test("exec.library AbortIO cancels a pending timer")
+pub fn exec_abort_io_completion() {
+    match TimerHandle::microhz() {
+        Result::Ok(timer) => {
+            let request = start_timer(&timer, 1000000)
+            let port = (*request).io_Message.mn_ReplyPort
+            let pending = CheckIO(request) == null
+            if pending { AbortIO(request) }
+            let error = WaitIO(request)
+            expect(pending && error == -2 && (*request).io_Error == -2, "aborted timer completes with IOERR_ABORTED")
+            expect(GetMsg(port) == null, "WaitIO drains the aborted reply")
+        },
+        Result::Err(_) => expect(false, "timer.device opens"),
+    }
+}

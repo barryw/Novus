@@ -1,0 +1,31 @@
+from amiga::raw::exec import FreeVec
+from amiga::raw::structs import NamedObject
+from amiga::raw::utility import FreeNamedObject, UtilityBase
+
+/// Frees an owned, unlinked named object and its optional user storage.
+///
+/// This is the supported replacement for raw `FreeNamedObject`. The
+/// utility.library 47.3 implementation in Kickstart 47.115 passes its
+/// calculated allocation address in A0 to Exec `FreeVec`, whose ABI requires
+/// A1. That ROM therefore leaks the object or may free an unrelated stale A1
+/// pointer. Novus detects that exact library version and calls `FreeVec` with
+/// the allocation address established by the affected implementation.
+///
+/// The object must have been returned by `AllocNamedObjectA`, must no longer
+/// belong to a namespace, must have no outstanding users, and must not be used
+/// after this call. Null is accepted and does nothing.
+///
+/// # Parameters
+/// * `object` - The owned named object to release.
+///
+pub fn free_named_object(consuming object: *NamedObject) {
+    return unless object
+
+    unsafe {
+        if (*UtilityBase).lib_Version == 47 && (*UtilityBase).lib_Revision == 3 {
+            FreeVec((*u8)((u32)object - 16))
+        } else {
+            FreeNamedObject(object)
+        }
+    }
+}

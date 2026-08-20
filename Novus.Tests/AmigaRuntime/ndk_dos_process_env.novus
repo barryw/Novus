@@ -1,0 +1,300 @@
+from std::string import Str
+from std::test::test import expect
+from amiga::raw::consts import GVF_LOCAL_ONLY, LV_VAR
+from amiga::raw::dos import Cli, CurrentDir, DateStamp, Delay, DeleteVar, Fault, FindArg, FindCliProc, FindVar, GetArgStr, GetConsoleTask, GetCurrentDirName, GetFileSysTask, GetProgramDir, GetPrompt, GetVar, IoErr, IsFileSystem, Lock, MaxCli, SetArgStr, SetConsoleTask, SetCurrentDirName, SetFileSysTask, SetIoErr, SetProgramDir, SetPrompt, SetVar, UnLock
+from amiga::raw::exec import FindTask, Forbid, Permit
+from amiga::raw::structs import CommandLineInterface, DateStamp as DosDateStamp, LocalVar, MsgPort, Process
+
+fn c_equals(actual: *u8, expected: Str) -> bool {
+    if actual == null { return false }
+    unsafe {
+        var index: usize = 0
+        while index < expected.len() {
+            if actual[index] != expected.as_ptr()[index] { return false }
+            index++
+        }
+        return actual[expected.len()] == 0
+    }
+}
+
+fn local_var_flags() -> i32 {
+    return 512
+}
+
+fn remove_test_var() {
+    DeleteVar("NOVUS_NDK_VAR", GVF_LOCAL_ONLY | LV_VAR)
+}
+
+// @covers-ndk function|dos.library|CurrentDir
+// @ndk-side-effects Installs a caller-owned directory lock as the process current directory, returns the previous lock, then restores it and releases only the replacement lock
+@test("dos.library CurrentDir swaps and restores the process directory")
+pub fn dos_current_dir() {
+    let replacement = Lock("RAM:", -2)
+    let original = if replacement != 0 { CurrentDir(replacement) } else { 0 }
+    let returned = if replacement != 0 { CurrentDir(original) } else { 0 }
+    expect(replacement != 0 && returned == replacement, "the displaced current-directory lock is returned exactly")
+    if returned != 0 { UnLock(returned) }
+}
+
+// @covers-ndk function|dos.library|Delay
+// @ndk-side-effects Suspends the current process for at least two DOS ticks without allocating memory or retaining any resource
+@test("dos.library Delay waits for the requested ticks")
+pub fn dos_delay() {
+    var before = DosDateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 }
+    var after = DosDateStamp { ds_Days: 0, ds_Minute: 0, ds_Tick: 0 }
+    DateStamp(&var before)
+    Delay(2)
+    DateStamp(&var after)
+    let before_ticks = (i64)before.ds_Days * 4320000 + (i64)before.ds_Minute * 3000 + (i64)before.ds_Tick
+    let after_ticks = (i64)after.ds_Days * 4320000 + (i64)after.ds_Minute * 3000 + (i64)after.ds_Tick
+    expect(after_ticks - before_ticks >= 2, "the system clock advanced by at least two ticks")
+}
+
+// @covers-ndk function|dos.library|Fault
+// @ndk-side-effects Formats one known DOS error into caller-owned bounded storage and verifies AmigaOS 3.2's documented IoErr defect before restoring the prior value
+@test("dos.library Fault formats and reports a DOS error")
+pub fn dos_fault() {
+    var message: [u8] = [0; 128]
+    let pointer = unsafe { (*u8)&var message[0] }
+    let original = IoErr()
+    SetIoErr(4321)
+    let code: i32 = 205
+    let length = Fault(code, "Novus", pointer, 128)
+    let reported = IoErr()
+    SetIoErr(original)
+    expect(length > 6, "Fault returns the formatted text length")
+    expect(reported == 4321, "AmigaOS 3.2 leaves IoErr unchanged despite the autodoc contract")
+    expect(message[0] == 'N' && message[1] == 'o' && message[2] == 'v' && message[3] == 'u' && message[4] == 's' && message[5] == ':', "the stable caller header prefixes the localized error text")
+}
+
+// @covers-ndk function|dos.library|Cli
+// @ndk-side-effects Borrows the current process CLI structure without allocation; its active handles agree with the DOS accessors
+@test("dos.library Cli exposes the current command interface")
+pub fn dos_cli() {
+    let cli = Cli()
+    let process = (*Process)FindTask(null)
+    var expected: *CommandLineInterface = null
+    if process != null { expected = (*CommandLineInterface)((u32)process.pr_CLI << 2) }
+    expect(cli != null && cli == expected, "the accessor decodes the current Process CLI BPTR exactly")
+}
+
+// @covers-ndk function|dos.library|GetConsoleTask
+// @ndk-side-effects Reads the process default console port without changing it or transferring ownership
+@test("dos.library GetConsoleTask matches the Process field")
+pub fn dos_get_console_task() {
+    let process = (*Process)FindTask(null)
+    var expected: *MsgPort = null
+    if process != null { expected = (*MsgPort)process.pr_ConsoleTask }
+    expect(process != null && GetConsoleTask() == expected, "accessor and ABI structure report the same console port")
+}
+
+// @covers-ndk function|dos.library|SetConsoleTask
+// @ndk-side-effects Temporarily clears the process default console port, verifies both return values and observable state, and restores the original port before any assertion output
+@test("dos.library SetConsoleTask swaps and restores the console port")
+pub fn dos_set_console_task() {
+    let original = GetConsoleTask()
+    let previous = SetConsoleTask(null)
+    let observed = GetConsoleTask()
+    let replaced = SetConsoleTask(original)
+    expect(previous == original && observed == null && replaced == null && GetConsoleTask() == original, "old, cleared, and restored console ports agree")
+}
+
+// @covers-ndk function|dos.library|GetFileSysTask
+// @ndk-side-effects Reads the process default filesystem port without changing it or transferring ownership
+@test("dos.library GetFileSysTask matches the Process field")
+pub fn dos_get_filesys_task() {
+    let process = (*Process)FindTask(null)
+    var expected: *MsgPort = null
+    if process != null { expected = (*MsgPort)process.pr_FileSystemTask }
+    expect(process != null && GetFileSysTask() == expected, "accessor and ABI structure report the same filesystem port")
+}
+
+// @covers-ndk function|dos.library|SetFileSysTask
+// @ndk-side-effects Temporarily clears the process default filesystem port, performs no filesystem operation while cleared, and restores it before assertion output
+@test("dos.library SetFileSysTask swaps and restores the filesystem port")
+pub fn dos_set_filesys_task() {
+    let original = GetFileSysTask()
+    let previous = SetFileSysTask(null)
+    let observed = GetFileSysTask()
+    let replaced = SetFileSysTask(original)
+    expect(previous == original && observed == null && replaced == null && GetFileSysTask() == original, "old, cleared, and restored filesystem ports agree")
+}
+
+// @covers-ndk function|dos.library|GetArgStr
+// @ndk-side-effects Borrows the current startup argument string and returns the exact pointer stored in the Process structure
+@test("dos.library GetArgStr returns the process argument pointer")
+pub fn dos_get_arg_str() {
+    let process = (*Process)FindTask(null)
+    expect(process != null && GetArgStr() == process.pr_Arguments, "accessor returns the Process argument pointer exactly")
+}
+
+// @covers-ndk function|dos.library|SetArgStr
+// @ndk-side-effects Temporarily replaces the borrowed process argument pointer, verifies its exact previous-pointer return contract, and restores it before exit
+@test("dos.library SetArgStr returns the previous pointer and restores it")
+pub fn dos_set_arg_str() {
+    let replacement: Str = "novus-ndk-arguments"
+    let replacement_pointer = replacement.as_cstr()
+    let original = GetArgStr()
+    let previous = SetArgStr(replacement_pointer)
+    let observed = GetArgStr()
+    let replaced = SetArgStr(original)
+    expect(previous == original && observed == replacement_pointer && replaced == replacement_pointer && GetArgStr() == original, "argument pointers swap and restore without truncation")
+    expect(c_equals(observed, "novus-ndk-arguments"), "the replacement argument text remains intact")
+}
+
+// @covers-ndk function|dos.library|FindCliProc
+// @ndk-side-effects Borrows the current CLI Process while scheduling is forbidden, releases the scheduler immediately, and retains no pointer beyond the comparison
+@test("dos.library FindCliProc locates the current CLI")
+pub fn dos_find_cli_proc() {
+    let current = (*Process)FindTask(null)
+    var found: *Process = null
+    if current != null {
+        Forbid()
+        found = FindCliProc((u32)current.pr_TaskNum)
+        Permit()
+    }
+    expect(current != null && current.pr_TaskNum > 0 && found == current, "the current CLI number resolves to the current Process")
+}
+
+// @covers-ndk function|dos.library|MaxCli
+// @ndk-side-effects Reads the transient upper CLI-number bound without allocating or retaining any process pointer
+@test("dos.library MaxCli includes the current CLI number")
+pub fn dos_max_cli() {
+    let current = (*Process)FindTask(null)
+    let maximum = MaxCli()
+    expect(current != null && current.pr_TaskNum > 0 && maximum >= (u32)current.pr_TaskNum, "the current CLI falls within the reported bound")
+}
+
+// @covers-ndk function|dos.library|SetCurrentDirName
+// @ndk-side-effects Replaces the CLI display name for the current directory, verifies it through GetCurrentDirName, and restores the original text
+@test("dos.library SetCurrentDirName updates and restores the CLI name")
+pub fn dos_set_current_dir_name() {
+    var original: [u8] = [0; 256]
+    var observed: [u8] = [0; 256]
+    let original_pointer = unsafe { (*u8)&var original[0] }
+    let observed_pointer = unsafe { (*u8)&var observed[0] }
+    let captured = GetCurrentDirName(original_pointer, 256)
+    let changed = SetCurrentDirName("NovusNDK:")
+    let read_back = GetCurrentDirName(observed_pointer, 256)
+    let restored = SetCurrentDirName(original_pointer)
+    expect(captured != 0 && changed != 0 && read_back != 0 && c_equals(observed_pointer, "NovusNDK:") && restored != 0, "new directory name is observed and the original is restored")
+}
+
+// @covers-ndk function|dos.library|GetPrompt
+// @ndk-side-effects Copies the current CLI prompt into caller-owned bounded storage without changing the prompt or allocating memory
+@test("dos.library GetPrompt returns a bounded CLI prompt")
+pub fn dos_get_prompt() {
+    var prompt: [u8] = [0; 256]
+    let pointer = unsafe { (*u8)&var prompt[0] }
+    let result = GetPrompt(pointer, 256)
+    expect(result != 0 && prompt[0] != 0 && prompt[255] == 0, "the test runner prompt is non-empty and NUL bounded")
+}
+
+// @covers-ndk function|dos.library|SetPrompt
+// @ndk-side-effects Replaces the current CLI prompt, verifies the exact visible text, and restores the original prompt before exit
+@test("dos.library SetPrompt updates and restores the CLI prompt")
+pub fn dos_set_prompt() {
+    var original: [u8] = [0; 256]
+    var observed: [u8] = [0; 256]
+    let original_pointer = unsafe { (*u8)&var original[0] }
+    let observed_pointer = unsafe { (*u8)&var observed[0] }
+    let captured = GetPrompt(original_pointer, 256)
+    let changed = SetPrompt("Novus> ")
+    let read_back = GetPrompt(observed_pointer, 256)
+    let restored = SetPrompt(original_pointer)
+    expect(captured != 0 && changed != 0 && read_back != 0 && c_equals(observed_pointer, "Novus> ") && restored != 0, "new prompt is observed and the original is restored")
+}
+
+// @covers-ndk function|dos.library|GetProgramDir
+// @ndk-side-effects Borrows the process PROGDIR lock without consuming it; the returned BPTR agrees with the Process ABI field
+@test("dos.library GetProgramDir matches the Process field")
+pub fn dos_get_program_dir() {
+    let process = (*Process)FindTask(null)
+    expect(process != null && GetProgramDir() == process.pr_HomeDir, "accessor and ABI structure report the same PROGDIR lock")
+}
+
+// @covers-ndk function|dos.library|SetProgramDir
+// @ndk-side-effects Installs a caller-owned shared PROGDIR lock, returns each displaced lock exactly, restores the original, and releases the replacement
+@test("dos.library SetProgramDir swaps and restores PROGDIR")
+pub fn dos_set_program_dir() {
+    let replacement = Lock("RAM:", -2)
+    let original = if replacement != 0 { SetProgramDir(replacement) } else { 0 }
+    let observed = GetProgramDir()
+    let returned = if replacement != 0 { SetProgramDir(original) } else { 0 }
+    expect(replacement != 0 && observed == replacement && returned == replacement && GetProgramDir() == original, "PROGDIR lock swaps and restores exactly")
+    if returned != 0 { UnLock(returned) }
+}
+
+// @covers-ndk function|dos.library|IsFileSystem
+// @ndk-side-effects Queries two resident DOS devices without opening, locking, or modifying either one
+@test("dos.library IsFileSystem distinguishes handlers")
+pub fn dos_is_file_system() {
+    expect(IsFileSystem("RAM:") != 0, "RAM: implements a filesystem")
+    expect(IsFileSystem("NIL:") == 0, "NIL: is a stream handler rather than a filesystem")
+}
+
+// @covers-ndk function|dos.library|FindArg
+// @ndk-side-effects Searches an immutable ReadArgs template without allocation or mutation and reports exact zero-based positions
+@test("dos.library FindArg locates template keywords")
+pub fn dos_find_arg() {
+    expect(FindArg("FIRST,SECOND/K,THIRD/S", "SECOND") == 1, "exact keyword returns its zero-based slot")
+    expect(FindArg("FIRST,SECOND=SEC/K,THIRD/S", "SEC") == 1, "explicit alias resolves to its keyword slot")
+    expect(FindArg("FIRST,SECOND/K,THIRD/S", "MISSING") == -1, "missing keyword is rejected")
+}
+
+// @covers-ndk function|dos.library|SetVar
+// @ndk-side-effects Creates one process-local variable from an exact byte span, verifies its stored value, and deletes it before exit
+@test("dos.library SetVar stores an exact local value")
+pub fn dos_set_var() {
+    remove_test_var()
+    let stored = SetVar("NOVUS_NDK_VAR", "alpha", 5, local_var_flags())
+    var value: [u8] = [0; 16]
+    let pointer = unsafe { (*u8)&var value[0] }
+    let length = GetVar("NOVUS_NDK_VAR", pointer, 16, local_var_flags())
+    remove_test_var()
+    expect(stored != 0 && length == 5 && c_equals(pointer, "alpha"), "five exact bytes are stored and retrieved")
+}
+
+// @covers-ndk function|dos.library|GetVar
+// @ndk-side-effects Reads a process-local variable into a deliberately short caller buffer, reports transferred and total lengths, then deletes the fixture
+@test("dos.library GetVar reports safe truncation")
+pub fn dos_get_var() {
+    remove_test_var()
+    let stored = SetVar("NOVUS_NDK_VAR", "abcdef", 6, local_var_flags())
+    var value: [u8] = [0; 4]
+    let pointer = unsafe { (*u8)&var value[0] }
+    let length = if stored != 0 { GetVar("NOVUS_NDK_VAR", pointer, 4, local_var_flags()) } else { -1 }
+    let total = IoErr()
+    remove_test_var()
+    expect(stored != 0 && length == 3 && total == 6 && c_equals(pointer, "abc"), "bounded read returns three bytes and reports the six-byte source")
+}
+
+// @covers-ndk function|dos.library|DeleteVar
+// @ndk-side-effects Deletes one process-local variable and verifies the name becomes absent without touching global environment storage
+@test("dos.library DeleteVar removes a local variable")
+pub fn dos_delete_var() {
+    remove_test_var()
+    let stored = SetVar("NOVUS_NDK_VAR", "gone", 4, local_var_flags())
+    let deleted = if stored != 0 { DeleteVar("NOVUS_NDK_VAR", GVF_LOCAL_ONLY | LV_VAR) } else { 0 }
+    var value: [u8] = [0; 8]
+    let missing = GetVar("NOVUS_NDK_VAR", unsafe { (*u8)&var value[0] }, 8, local_var_flags())
+    let error = IoErr()
+    remove_test_var()
+    expect(stored != 0 && deleted != 0 && missing == -1 && error == 205, "deleted local variable is observably absent")
+}
+
+// @covers-ndk function|dos.library|FindVar
+// @ndk-side-effects Borrows the current process LocalVar node, validates its exact type, length, and value, then deletes it before retaining no pointer
+@test("dos.library FindVar exposes the local variable node")
+pub fn dos_find_var() {
+    remove_test_var()
+    let stored = SetVar("NOVUS_NDK_VAR", "node", 4, local_var_flags())
+    var variable: *LocalVar = null
+    if stored != 0 { variable = FindVar("NOVUS_NDK_VAR", LV_VAR) }
+    var valid = false
+    if variable != null {
+        valid = (variable.lv_Flags & $00ff) == 0 && variable.lv_Len == 4 && c_equals(variable.lv_Value, "node")
+    }
+    remove_test_var()
+    expect(stored != 0 && valid, "LocalVar metadata and contents match the stored value")
+}

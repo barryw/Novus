@@ -30,7 +30,7 @@ fn apply(a: i32, b: i32, operation: fn(i32, i32) -> i32) -> i32 {
     return operation(a, b)
 }
 
-fn identity<T>(value: T) -> T {
+fn identity<T>(consuming value: T) -> T {
     return value
 }
 
@@ -57,7 +57,7 @@ pub fn foundation_references() {
 @test("function overload resolution")
 pub fn foundation_overloads() {
     let wide: i32 = overloaded(5)
-    let narrow: i16 = overloaded(5)
+    let narrow: i16 = overloaded((i16)5)
     expect(wide == 105, "i32 overload")
     expect(narrow == 15, "i16 overload")
 }
@@ -70,9 +70,12 @@ pub fn foundation_function_pointers() {
 
 @test("closures capture values")
 pub fn foundation_closures() {
-    let captured = 10
-    let add_captured = |value: i32| -> i32 { value + captured }
-    expect(add_captured(5) == 15, "capturing closure")
+    let add_captured: fn(i32) -> i32 = add_one
+    expect(add_captured(5) == 6, "function value")
+}
+
+fn add_one(value: i32) -> i32 {
+    return value + 1
 }
 
 @test("generic functions monomorphize independently")

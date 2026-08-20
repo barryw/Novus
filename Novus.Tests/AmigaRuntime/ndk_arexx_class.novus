@@ -1,0 +1,10 @@
+from std::test::test import expect
+from amiga::raw::arexx import AREXX_GetClass
+
+// @covers-ndk function|arexx.library|AREXX_GetClass
+// @ndk-side-effects Returns the class-owned shared pointer without transferring ownership; startup reports a controlled missing-class error when arexx.class is not installed
+@test("arexx.class returns a stable class when installed")
+pub fn reaction_arexx_class() {
+    let first = AREXX_GetClass()
+    expect(first != null && AREXX_GetClass() == first, "class pointer is non-null and stable")
+}

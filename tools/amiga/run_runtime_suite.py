@@ -54,6 +54,120 @@ FOUNDATION_STANDALONE = {
     name: FOUNDATION_SUITES[name] for name in ("const-fn", "intrinsics", "fixed32")
 }
 AMIGA_SUITES = {
+    "ndk-amiga-lib": "Novus.Tests/AmigaRuntime/ndk_amiga_lib.novus",
+    "ndk-exec-lifecycle": "Novus.Tests/AmigaRuntime/ndk_exec_lifecycle.novus",
+    "ndk-graphics-dma": "Novus.Tests/AmigaRuntime/ndk_graphics_dma.novus",
+    "ndk-graphics-raster": "Novus.Tests/AmigaRuntime/ndk_graphics_raster.novus",
+    "ndk-graphics-regions": "Novus.Tests/AmigaRuntime/ndk_graphics_regions.novus",
+    "ndk-graphics-blits": "Novus.Tests/AmigaRuntime/ndk_graphics_blits.novus",
+    "ndk-graphics-colormap": "Novus.Tests/AmigaRuntime/ndk_graphics_colormap.novus",
+    "ndk-graphics-text": "Novus.Tests/AmigaRuntime/ndk_graphics_text.novus",
+    "ndk-graphics-display-info": "Novus.Tests/AmigaRuntime/ndk_graphics_display_info.novus",
+    "ndk-graphics-rp-attrs": "Novus.Tests/AmigaRuntime/ndk_graphics_rp_attrs.novus",
+    "ndk-graphics-view": "Novus.Tests/AmigaRuntime/ndk_graphics_view.novus",
+    "ndk-graphics-nodes": "Novus.Tests/AmigaRuntime/ndk_graphics_nodes.novus",
+    "ndk-graphics-scale": "Novus.Tests/AmigaRuntime/ndk_graphics_scale.novus",
+    "ndk-graphics-pixel-array": "Novus.Tests/AmigaRuntime/ndk_graphics_pixel_array.novus",
+    "ndk-graphics-layer-lock": "Novus.Tests/AmigaRuntime/ndk_graphics_layer_lock.novus",
+    "ndk-graphics-dbuf": "Novus.Tests/AmigaRuntime/ndk_graphics_dbuf.novus",
+    "ndk-graphics-sprite-data": "Novus.Tests/AmigaRuntime/ndk_graphics_sprite_data.novus",
+    "ndk-graphics-ext-sprite": "Novus.Tests/AmigaRuntime/ndk_graphics_ext_sprite.novus",
+    "ndk-graphics-copper-list": "Novus.Tests/AmigaRuntime/ndk_graphics_copper_list.novus",
+    "ndk-graphics-view-pipeline": "Novus.Tests/AmigaRuntime/ndk_graphics_view_pipeline.novus",
+    "ndk-graphics-blit-queue": "Novus.Tests/AmigaRuntime/ndk_graphics_blit_queue.novus",
+    "ndk-graphics-chip-revision": "Novus.Tests/AmigaRuntime/ndk_graphics_chip_revision.novus",
+    "ndk-layers-core": "Novus.Tests/AmigaRuntime/ndk_layers_core.novus",
+    "ndk-commodities": "Novus.Tests/AmigaRuntime/ndk_commodities.novus",
+    "ndk-iffparse": "Novus.Tests/AmigaRuntime/ndk_iffparse.novus",
+    "ndk-icon": "Novus.Tests/AmigaRuntime/ndk_icon.novus",
+    "ndk-gadtools": "Novus.Tests/AmigaRuntime/ndk_gadtools.novus",
+    "ndk-datatypes": "Novus.Tests/AmigaRuntime/ndk_datatypes.novus",
+    "ndk-graphics-gels": "Novus.Tests/AmigaRuntime/ndk_graphics_gels.novus",
+    "ndk-graphics-gels-render": "Novus.Tests/AmigaRuntime/ndk_graphics_gels_render.novus",
+    "ndk-graphics-gels-animation": "Novus.Tests/AmigaRuntime/ndk_graphics_gels_animation.novus",
+    "ndk-graphics-font-list": "Novus.Tests/AmigaRuntime/ndk_graphics_font_list.novus",
+    "ndk-graphics-layer-bitmap": "Novus.Tests/AmigaRuntime/ndk_graphics_layer_bitmap.novus",
+    "ndk-intuition-screen": "Novus.Tests/AmigaRuntime/ndk_intuition_screen.novus",
+    "ndk-intuition-core": "Novus.Tests/AmigaRuntime/ndk_intuition_core.novus",
+    "ndk-intuition-drawing": "Novus.Tests/AmigaRuntime/ndk_intuition_drawing.novus",
+    "ndk-intuition-gadgets": "Novus.Tests/AmigaRuntime/ndk_intuition_gadgets.novus",
+    "ndk-intuition-legacy": "Novus.Tests/AmigaRuntime/ndk_intuition_legacy.novus",
+    "ndk-intuition-boopsi": "Novus.Tests/AmigaRuntime/ndk_intuition_boopsi.novus",
+    "ndk-utility-core": "Novus.Tests/AmigaRuntime/ndk_utility_core.novus",
+    "ndk-ieee-math": "Novus.Tests/AmigaRuntime/ndk_ieee_math.novus",
+    "ndk-ffp-math": "Novus.Tests/AmigaRuntime/ndk_ffp_math.novus",
+    "ndk-reaction-classes": "Novus.Tests/AmigaRuntime/ndk_reaction_classes.novus",
+    "ndk-arexx-class": "Novus.Tests/AmigaRuntime/ndk_arexx_class.novus",
+    "ndk-requester-class": "Novus.Tests/AmigaRuntime/ndk_requester_class.novus",
+    "ndk-audio-device": "Novus.Tests/AmigaRuntime/ndk_audio_device.novus",
+    "ndk-device-lifecycle": "Novus.Tests/AmigaRuntime/ndk_device_lifecycle.novus",
+    "ndk-input-device": "Novus.Tests/AmigaRuntime/ndk_input_device.novus",
+    "ndk-misc-resource": "Novus.Tests/AmigaRuntime/ndk_misc_resource.novus",
+    "ndk-translator": "Novus.Tests/AmigaRuntime/ndk_translator.novus",
+    "ndk-dtclass": "Novus.Tests/AmigaRuntime/ndk_dtclass.novus",
+    "ndk-keymap": "Novus.Tests/AmigaRuntime/ndk_keymap.novus",
+    "ndk-battclock-resource": "Novus.Tests/AmigaRuntime/ndk_battclock_resource.novus",
+    "ndk-potgo-resource": "Novus.Tests/AmigaRuntime/ndk_potgo_resource.novus",
+    "ndk-battmem-resource": "Novus.Tests/AmigaRuntime/ndk_battmem_resource.novus",
+    "ndk-timer-device-math": "Novus.Tests/AmigaRuntime/ndk_timer_device_math.novus",
+    "ndk-console-device": "Novus.Tests/AmigaRuntime/ndk_console_device.novus",
+    "ndk-colorwheel": "Novus.Tests/AmigaRuntime/ndk_colorwheel.novus",
+    "ndk-datebrowser": "Novus.Tests/AmigaRuntime/ndk_datebrowser.novus",
+    "ndk-nonvolatile": "Novus.Tests/AmigaRuntime/ndk_nonvolatile.novus",
+    "ndk-nonvolatile-bad-name": "Novus.Tests/AmigaRuntime/ndk_nonvolatile_bad_name.novus",
+    "ndk-cia-resource": "Novus.Tests/AmigaRuntime/ndk_cia_resource.novus",
+    "ndk-disk-resource": "Novus.Tests/AmigaRuntime/ndk_disk_resource.novus",
+    "ndk-rexxsyslib": "Novus.Tests/AmigaRuntime/ndk_rexxsyslib.novus",
+    "ndk-bullet": "Novus.Tests/AmigaRuntime/ndk_bullet.novus",
+    "ndk-diskfont": "Novus.Tests/AmigaRuntime/ndk_diskfont.novus",
+    "ndk-ramdrive": "Novus.Tests/AmigaRuntime/ndk_ramdrive.novus",
+    "ndk-chooser": "Novus.Tests/AmigaRuntime/ndk_chooser.novus",
+    "ndk-clicktab": "Novus.Tests/AmigaRuntime/ndk_clicktab.novus",
+    "ndk-radiobutton": "Novus.Tests/AmigaRuntime/ndk_radiobutton.novus",
+    "ndk-speedbar": "Novus.Tests/AmigaRuntime/ndk_speedbar.novus",
+    "ndk-layout": "Novus.Tests/AmigaRuntime/ndk_layout.novus",
+    "ndk-virtual": "Novus.Tests/AmigaRuntime/ndk_virtual.novus",
+    "ndk-realtime": "Novus.Tests/AmigaRuntime/ndk_realtime.novus",
+    "ndk-lowlevel": "Novus.Tests/AmigaRuntime/ndk_lowlevel.novus",
+    "ndk-expansion": "Novus.Tests/AmigaRuntime/ndk_expansion.novus",
+    "ndk-amigaguide": "Novus.Tests/AmigaRuntime/ndk_amigaguide.novus",
+    "ndk-listbrowser": "Novus.Tests/AmigaRuntime/ndk_listbrowser.novus",
+    "ndk-locale": "Novus.Tests/AmigaRuntime/ndk_locale.novus",
+    "ndk-workbench": "Novus.Tests/AmigaRuntime/ndk_workbench.novus",
+    "ndk-resource": "Novus.Tests/AmigaRuntime/ndk_resource.novus",
+    "ndk-asl": "Novus.Tests/AmigaRuntime/ndk_asl.novus",
+    "ndk-missing-coverage-fill": "Novus.Tests/AmigaRuntime/ndk_missing_coverage_fill.novus",
+    "ndk-dos-buffered-io": "Novus.Tests/AmigaRuntime/ndk_dos_buffered_io.novus",
+    "ndk-dos-console": "Novus.Tests/AmigaRuntime/ndk_dos_console.novus",
+    "ndk-dos-core": "Novus.Tests/AmigaRuntime/ndk_dos_core.novus",
+    "ndk-dos-create-process": "Novus.Tests/AmigaRuntime/ndk_dos_create_process.novus",
+    "ndk-dos-argument-parsing": "Novus.Tests/AmigaRuntime/ndk_dos_argument_parsing.novus",
+    "ndk-dos-assigns": "Novus.Tests/AmigaRuntime/ndk_dos_assigns.novus",
+    "ndk-dos-async-packets": "Novus.Tests/AmigaRuntime/ndk_dos_async_packets.novus",
+    "ndk-dos-dates-records": "Novus.Tests/AmigaRuntime/ndk_dos_dates_records.novus",
+    "ndk-dos-device-proc": "Novus.Tests/AmigaRuntime/ndk_dos_device_proc.novus",
+    "ndk-dos-enumeration": "Novus.Tests/AmigaRuntime/ndk_dos_enumeration.novus",
+    "ndk-dos-error-report": "Novus.Tests/AmigaRuntime/ndk_dos_error_report.novus",
+    "ndk-dos-filesystem-control": "Novus.Tests/AmigaRuntime/ndk_dos_filesystem_control.novus",
+    "ndk-dos-list-read": "Novus.Tests/AmigaRuntime/ndk_dos_list_read.novus",
+    "ndk-dos-list-write": "Novus.Tests/AmigaRuntime/ndk_dos_list_write.novus",
+    "ndk-dos-links-owner": "Novus.Tests/AmigaRuntime/ndk_dos_links_owner.novus",
+    "ndk-dos-notify": "Novus.Tests/AmigaRuntime/ndk_dos_notify.novus",
+    "ndk-dos-packets": "Novus.Tests/AmigaRuntime/ndk_dos_packets.novus",
+    "ndk-dos-segments": "Novus.Tests/AmigaRuntime/ndk_dos_segments.novus",
+    "ndk-dos-shell-execution": "Novus.Tests/AmigaRuntime/ndk_dos_shell_execution.novus",
+    "ndk-dos-filesystem": "Novus.Tests/AmigaRuntime/ndk_dos_filesystem.novus",
+    "ndk-dos-format-io": "Novus.Tests/AmigaRuntime/ndk_dos_format_io.novus",
+    "ndk-dos-process-env": "Novus.Tests/AmigaRuntime/ndk_dos_process_env.novus",
+    "ndk-dos-resident-segments": "Novus.Tests/AmigaRuntime/ndk_dos_resident_segments.novus",
+    "ndk-dos-text-io": "Novus.Tests/AmigaRuntime/ndk_dos_text_io.novus",
+    "ndk-exec-semaphores": "Novus.Tests/Examples/test_semaphore.novus",
+    "ndk-exec-intrusive-list": "Novus.Tests/Examples/test_intrusive_list.novus",
+    "ndk-exec-priority-list": "Novus.Tests/Examples/test_priority_list.novus",
+    "ndk-exec-messages": "Novus.Tests/AmigaRuntime/ndk_exec_messages.novus",
+    "ndk-exec-memory-core": "Novus.Tests/AmigaRuntime/ndk_exec_memory_core.novus",
+    "ndk-exec-task-port": "Novus.Tests/AmigaRuntime/ndk_exec_task_port.novus",
+    "ndk-exec-avl": "Novus.Tests/AmigaRuntime/ndk_exec_avl.novus",
     "block-device-read": "Novus.Tests/AmigaRuntime/block_device_read.novus",
     "dos-device-list": "Novus.Tests/AmigaRuntime/dos_device_list.novus",
     "dos-node-draft": "Novus.Tests/AmigaRuntime/dos_node_draft.novus",
@@ -88,6 +202,44 @@ AMIGA_SUITES = {
     "channel": "Novus.Tests/Examples/channel_comprehensive_test.novus",
 }
 STDIN_FIXTURES = {"stdlib-io-blocking": b"ab"}
+HELD_KEY_FIXTURES = {
+    "ndk-input-device": 56,
+    "ndk-lowlevel": 0,
+}  # macOS virtual key code: left shift
+# ramdrive.device exposes KillRAD(unit) and the historical KillRAD0(). Both tear
+# a unit down permanently, and unit zero cannot be rebuilt inside one session, so
+# each entry point needs a unit of its own. The stock RAD mount entry documents
+# extra units as copies carrying a different Unit value; RAD1 is that copy, built
+# on the guest so the test owns its fixture instead of depending on the image.
+RAD1_MOUNT_ENTRY = (
+    "RAD1:",
+    "Device = ramdrive.device",
+    "Unit = 1",
+    "Flags = 0",
+    "Surfaces = 2",
+    "SectorsPerTrack = 11",
+    "SectorSize = 512",
+    "Reserved = 2",
+    "Interleave = 0",
+    "Buffers = 5",
+    "BufMemType = 1",
+    "LowCyl = 0",
+    "HighCyl = 79",
+    "#",
+)
+
+RAD1_SETUP = tuple(
+    f'Echo "{line}" {">" if index == 0 else ">>"}T:RAD1'
+    for index, line in enumerate(RAD1_MOUNT_ENTRY)
+) + ("C:Mount RAD1: FROM T:RAD1",)
+
+# Mount only adds the DOS entry; the handler starts and the unit claims its RAM on
+# first access. Touch both volumes here so that allocation is already accounted for
+# when the test samples memory, otherwise the test looks like it leaks a unit's
+# worth of RAM and --memory-check reruns it against a unit it has already killed.
+RAD_TOUCH = ("C:List RAD:", "C:List RAD1:")
+
+SUITE_SETUP = {"ndk-ramdrive": ("C:Mount RAD:",) + RAD1_SETUP + RAD_TOUCH}
 ALL_SUITES = (FOUNDATION_ALL | STDLIB_ALL | STDLIB_SUITES | STDLIB_FIXTURE_SUITES |
               STDLIB_OPTIONAL_SUITES |
               FOUNDATION_SUITES | AMIGA_SUITES)
@@ -139,16 +291,65 @@ class McpClient:
 
 
 class Machine:
-    def __init__(self, client: McpClient, configuration: str):
+    def __init__(self, client: McpClient, configuration: str,
+                 hdf: Path | None = None, hdf_drive: int | None = None):
         self.client = client
         self.configuration = configuration
+        self.hdf = hdf
+        self.hdf_drive = hdf_drive
         self.id: str | None = None
 
+    def _machines_for_configuration(self) -> list[dict[str, Any]]:
+        machines = self.client.call("fsuae_machines_list", {})
+        return [
+            machine for machine in machines
+            if machine.get("configuration") == self.configuration
+        ]
+
+    def _stop_existing_machine(self, machine_id: str) -> None:
+        self.client.call("fsuae_machine_stop", {"machine_id": machine_id})
+
+    def _recover_stale_machines(self) -> list[dict[str, Any]]:
+        machines = self._machines_for_configuration()
+        stale_machines = [
+            machine for machine in machines
+            if machine.get("status") != "running" or not machine.get("guest_control_ready")
+        ]
+        for machine in stale_machines:
+            self._stop_existing_machine(machine["machine_id"])
+        if stale_machines:
+            # Give stale machine stop requests a moment to complete.
+            deadline = time.monotonic() + 8.0
+            while time.monotonic() < deadline:
+                remaining = self._machines_for_configuration()
+                stale_machines = [
+                    machine for machine in remaining
+                    if machine.get("status") != "running" or not machine.get("guest_control_ready")
+                ]
+                if not stale_machines:
+                    break
+                time.sleep(0.25)
+            else:
+                raise McpError(
+                    "Timed out waiting for stale FS-UAE machine(s) to stop: " +
+                    ", ".join(machine["machine_id"] for machine in stale_machines),
+                )
+            machines = remaining
+        return [
+            machine for machine in self._machines_for_configuration()
+            if machine.get("status") == "running" and machine.get("guest_control_ready")
+        ]
+
     def start(self) -> None:
-        running = self.client.call("fsuae_machines_list", {})
+        running = self._recover_stale_machines()
         if running:
             raise McpError("Refusing to reuse or stop an existing FS-UAE machine")
-        result = self.client.call("fsuae_machine_start", {"configuration": self.configuration})
+        arguments: dict[str, Any] = {"configuration": self.configuration}
+        if self.hdf:
+            arguments["hdf"] = {"path": str(self.hdf), "read_only": False}
+            if self.hdf_drive is not None:
+                arguments["hdf"]["drive"] = self.hdf_drive
+        result = self.client.call("fsuae_machine_start", arguments)
         match = re.search(r"machine_id ([0-9a-f-]+)", str(result))
         if not match:
             raise McpError(f"Could not parse machine id from: {result}")
@@ -295,11 +496,24 @@ def run_suite(
     record: dict[str, Any] = {"suite": suite, "profile": profile}
     try:
         record["memory_before"] = available_memory(machine)
-        result = machine.client.call("fsuae_command_execute", {
-            "machine_id": machine.id,
-            "command": command,
-            "timeout_seconds": timeout,
-        }, timeout=timeout + 15)
+        held_key = HELD_KEY_FIXTURES.get(suite)
+        if held_key is not None:
+            machine.client.call("fsuae_input", {
+                "machine_id": machine.id, "event": "key",
+                "code": held_key, "pressed": True,
+            })
+        try:
+            result = machine.client.call("fsuae_command_execute", {
+                "machine_id": machine.id,
+                "command": command,
+                "timeout_seconds": timeout,
+            }, timeout=timeout + 15)
+        finally:
+            if held_key is not None:
+                machine.client.call("fsuae_input", {
+                    "machine_id": machine.id, "event": "key",
+                    "code": held_key, "pressed": False,
+                })
         output = result.get("output", "") if isinstance(result, dict) else str(result)
         record["memory_after_command"] = available_memory(machine)
         if record["memory_before"] is not None and record["memory_after_command"] is not None:
@@ -368,6 +582,23 @@ def guest_command(
     return result
 
 
+def disable_patchasl(machine: Machine) -> dict[str, Any]:
+    """Remove the per-boot MUI ASL patch so raw asl.library tests hit the OS."""
+    status = guest_command(machine, "Status FULL")
+    match = re.search(
+        r"(?m)^Process\s+(\d+):.*Loaded as command: MUI:PatchASL$",
+        status.get("output", ""),
+    )
+    if not match:
+        return {"status": "not_running"}
+    process = match.group(1)
+    guest_command(machine, f"Break {process} C")
+    verify = guest_command(machine, "Status FULL")
+    if "Loaded as command: MUI:PatchASL" in verify.get("output", ""):
+        raise McpError("PatchASL ignored Ctrl-C; native asl.library tests are not authoritative")
+    return {"status": "stopped", "process": int(process)}
+
+
 def amissl_files(root: Path) -> dict[str, Path]:
     files = {
         "library": root / "Libs/AmigaOS3/AmiSSL/68020-40/amissl_v362.library",
@@ -417,6 +648,38 @@ def provision_amissl(machine: Machine, root: Path, build_root: Path) -> dict[str
         "master_version": version.get("output", "").strip(),
         "library_bytes": files["library"].stat().st_size,
         "master_bytes": files["master"].stat().st_size,
+    }
+
+
+def provision_nonvolatile(machine: Machine, volume: str) -> dict[str, Any]:
+    root = f"{volume}:"
+    storage = f"{root}NovusNVTest"
+    for directory in (
+        f"{root}Prefs", f"{root}Prefs/Env-Archive", f"{root}Prefs/Env-Archive/Sys",
+        storage, "ENV:Sys",
+    ):
+        guest_command(machine, f"MakeDir {directory}", required=False)
+    guest_command(
+        machine,
+        f'Echo "{storage}" >{root}Prefs/Env-Archive/Sys/nv_location',
+    )
+    guest_command(machine, f'Echo "{storage}" >ENV:Sys/nv_location')
+    return {
+        "location": storage,
+        "config": guest_command(machine, "Type ENV:Sys/nv_location").get("output", "").strip(),
+    }
+
+
+def cleanup_nonvolatile(machine: Machine, volume: str) -> dict[str, Any]:
+    config = guest_command(machine, "Delete ENV:Sys/nv_location QUIET", required=False)
+    storage = guest_command(machine, f"Delete {volume}:NovusNVTest ALL QUIET", required=False)
+    location = guest_command(
+        machine, f"Delete {volume}:Prefs/Env-Archive/Sys/nv_location QUIET", required=False,
+    )
+    return {
+        "config_removed": config.get("succeeded"),
+        "location_removed": location.get("succeeded"),
+        "storage_removed": storage.get("succeeded"),
     }
 
 
@@ -479,6 +742,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mcp-url", default="http://localhost:6800/mcp")
     parser.add_argument("--configuration", default="A4000")
+    parser.add_argument("--hdf", type=Path,
+                        help="attach a writable disposable HDF without changing the saved configuration")
+    parser.add_argument("--hdf-drive", type=int,
+                        help="DH slot for --hdf; defaults to the first unused slot")
+    parser.add_argument("--nonvolatile-volume",
+                        help="mounted disposable volume used by ndk-nonvolatile (for example NDK0)")
     parser.add_argument("--compiler")
     parser.add_argument("--build-dir", type=Path,
                         default=ROOT / ".novus-cache/amiga-runtime-suite")
@@ -488,7 +757,7 @@ def parse_args() -> argparse.Namespace:
                         default="foundation", help="default suite layer")
     parser.add_argument("--suite", action="append", choices=ALL_SUITES,
                         help="repeat to select explicit suites")
-    parser.add_argument("--timeout", type=int, default=120,
+    parser.add_argument("--timeout", type=int, default=None,
                         help="seconds allowed for each Amiga test executable")
     parser.add_argument("--filter", help="test-name filter passed to novus test")
     parser.add_argument("--benchmark", action="store_true",
@@ -503,6 +772,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if args.timeout is None:
+        args.timeout = 300 if args.configuration.upper().startswith("A1200") else 120
     if args.list:
         for name, path in ALL_SUITES.items():
             layer = "foundation" if name in FOUNDATION_ALL or name in FOUNDATION_SUITES else \
@@ -510,6 +781,11 @@ def main() -> int:
             print(f"{layer:10} {name:28} {path}")
         return 0
     profiles = args.profile or ["release-o1"]
+    if args.hdf:
+        args.hdf = args.hdf.resolve()
+        if not args.hdf.is_file():
+            print(f"HDF not found: {args.hdf}", file=sys.stderr)
+            return 2
     layer_suites = {
         "foundation": FOUNDATION_ALL | FOUNDATION_STANDALONE,
         "stdlib": STDLIB_ALL | STDLIB_FIXTURE_SUITES,
@@ -517,6 +793,12 @@ def main() -> int:
         "all": FOUNDATION_ALL | STDLIB_ALL | STDLIB_FIXTURE_SUITES | FOUNDATION_STANDALONE | AMIGA_SUITES,
     }
     suites = args.suite or list(layer_suites[args.layer])
+    needs_nonvolatile = any(suite.startswith("ndk-nonvolatile") for suite in suites)
+    if needs_nonvolatile and (
+        args.hdf is None or args.hdf_drive is None or not args.nonvolatile_volume
+    ):
+        print("ndk-nonvolatile requires --hdf PATH --hdf-drive N --nonvolatile-volume NAME", file=sys.stderr)
+        return 2
     if TLS_LIVE_SUITE in suites:
         if args.amissl_dir is None:
             print("stdlib-tls-live requires --amissl-dir PATH", file=sys.stderr)
@@ -534,6 +816,9 @@ def main() -> int:
         "profiles": profiles,
         "benchmark": args.benchmark,
         "memory_check": args.memory_check,
+        "hdf": str(args.hdf) if args.hdf else None,
+        "hdf_drive": args.hdf_drive,
+        "nonvolatile_volume": args.nonvolatile_volume,
         "tests": [],
     }
 
@@ -546,7 +831,7 @@ def main() -> int:
                 args.filter, args.benchmark, args.memory_check,
                 args.build_dir / ".shared-cache" / profile,
             )
-            build.update(suite=suite, profile=profile)
+            build.update(suite=suite, profile=profile, source=ALL_SUITES[suite])
             report["tests"].append({"build": build})
             print(f"{build['status']} ({build['seconds']}s)")
             server_executable = None
@@ -557,28 +842,38 @@ def main() -> int:
                     ROOT / TLS_SERVER_SOURCE, profile, args.filter, False, args.memory_check,
                     args.build_dir / ".shared-cache" / profile,
                 )
-                server_build.update(suite=f"{suite}-server", profile=profile)
+                server_build.update(suite=f"{suite}-server", profile=profile,
+                                    source=TLS_SERVER_SOURCE)
                 report["tests"].append({"build": server_build})
                 print(f"{server_build['status']} ({server_build['seconds']}s)")
             if executable and (suite != TLS_LIVE_SUITE or server_executable):
                 builds.append((profile, suite, executable, server_executable))
 
-    machine = Machine(McpClient(args.mcp_url), args.configuration)
+    machine = Machine(McpClient(args.mcp_url), args.configuration, args.hdf, args.hdf_drive)
+    nonvolatile_volume = args.nonvolatile_volume or ""
     try:
         machine.start()
         if TLS_LIVE_SUITE in suites:
             report["amissl"] = provision_amissl(machine, args.amissl_dir, args.build_dir)
+        if needs_nonvolatile:
+            report["nonvolatile"] = provision_nonvolatile(machine, nonvolatile_volume)
         for index, (profile, suite, executable, server_executable) in enumerate(builds):
             print(f"RUN   {profile:10} {suite}...", end=" ", flush=True)
+            if suite == "ndk-asl":
+                report["asl_native_setup"] = disable_patchasl(machine)
+            for command in SUITE_SETUP.get(suite, ()):
+                guest_command(machine, command)
             result = run_tls_suite(
                 machine, executable, server_executable, profile, args.timeout, index,
             ) if server_executable else run_suite(
                 machine, executable, suite, profile, args.timeout, index,
             )
-            if (args.memory_check and not server_executable and
+            if (args.memory_check and not server_executable and result.get("status") == "passed" and
                     result.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE):
+                # Reuse the guest command name so confirmations measure the same
+                # process lifecycle instead of cold-loading a new DOS command.
                 confirmation = run_suite(
-                    machine, executable, suite, profile, args.timeout, index + len(builds),
+                    machine, executable, suite, profile, args.timeout, index,
                 )
                 result["memory_confirmation"] = {
                     key: confirmation.get(key) for key in (
@@ -586,19 +881,49 @@ def main() -> int:
                         "memory_after", "memory_delta", "status",
                     )
                 }
-                if confirmation.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE:
+                if confirmation.get("status") != "passed":
                     result["status"] = "failed"
-                    result["process_memory_leak"] = -confirmation["memory_delta"]
+                    result["memory_confirmation_failure"] = {
+                        key: confirmation.get(key) for key in
+                        ("error", "result", "diagnostics") if confirmation.get(key) is not None
+                    }
+                elif confirmation.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE:
+                    final_confirmation = run_suite(
+                        machine, executable, suite, profile, args.timeout, index,
+                    )
+                    result["memory_confirmation_2"] = {
+                        key: final_confirmation.get(key) for key in (
+                            "memory_before", "memory_after_command", "memory_delta_command",
+                            "memory_after", "memory_delta", "status",
+                        )
+                    }
+                    if final_confirmation.get("status") != "passed":
+                        result["status"] = "failed"
+                        result["memory_confirmation_failure"] = {
+                            key: final_confirmation.get(key) for key in
+                            ("error", "result", "diagnostics")
+                            if final_confirmation.get(key) is not None
+                        }
+                    elif final_confirmation.get("memory_delta", 0) < -PROCESS_MEMORY_TOLERANCE:
+                        result["status"] = "failed"
+                        result["process_memory_leak"] = -final_confirmation["memory_delta"]
             report["tests"].append({"run": result})
             detail = ""
             if "diagnostics" in result:
                 detail = f" — {diagnostic_summary(result['diagnostics'])}"
             if "process_memory_leak" in result:
                 detail = f" — repeatable process teardown leak: {result['process_memory_leak']} bytes"
+            elif "memory_confirmation_failure" in result:
+                detail = " — memory confirmation behavior failed"
             print(f"{result['status']} ({result['seconds']}s){detail}")
     except Exception as error:
         report["infrastructure_error"] = str(error)
     finally:
+        if needs_nonvolatile and machine.id:
+            try:
+                report["nonvolatile_cleanup"] = cleanup_nonvolatile(machine, nonvolatile_volume)
+            except Exception as error:
+                report["nonvolatile_cleanup"] = {"error": str(error)}
         machine.stop()
 
     report_path = args.build_dir / "report.json"

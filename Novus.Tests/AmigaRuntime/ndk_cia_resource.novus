@@ -1,0 +1,147 @@
+from std::test::test import expect
+from amiga::raw::consts import CIAANAME, CIABNAME
+from amiga::raw::exec import Disable, Enable, OpenResource
+from amiga::raw::resources::cia import AbleICR, AddICRVector, RemICRVector, SetICR
+from amiga::raw::structs import Interrupt, Library
+
+const TIMER_A: i16 = 0
+const TIMER_B: i16 = 1
+const ICR_SETCLR: i16 = $80
+
+struct CiaClaim {
+    resource: *Library,
+    bit: i16,
+    mask: i16,
+}
+
+amiga fn cia_noop(_data: *u8 in a1) -> u32 in d0 {
+    return 0
+}
+
+fn initialize(handler: &var Interrupt) {
+    handler.is_Data = null
+    handler.is_Code = cia_noop
+}
+
+fn try_claim(resource: *Library, bit: i16, handler: *Interrupt) -> bool {
+    return resource != null && AddICRVector(resource, bit, handler) == null
+}
+
+fn claim_timer(handler: *Interrupt) -> CiaClaim {
+    let ciaa = (*Library)unsafe { OpenResource(CIAANAME) }
+    let ciab = (*Library)unsafe { OpenResource(CIABNAME) }
+    var resource: *Library = null
+    var bit: i16 = -1
+    unsafe { Disable() }
+    if try_claim(ciab, TIMER_B, handler) {
+        resource = ciab
+        bit = TIMER_B
+    } else if try_claim(ciab, TIMER_A, handler) {
+        resource = ciab
+        bit = TIMER_A
+    } else if try_claim(ciaa, TIMER_B, handler) {
+        resource = ciaa
+        bit = TIMER_B
+    } else if try_claim(ciaa, TIMER_A, handler) {
+        resource = ciaa
+        bit = TIMER_A
+    }
+    let mask: i16 = if bit == TIMER_A { 1 } else if bit == TIMER_B { 2 } else { 0 }
+    if resource != null {
+        AbleICR(resource, mask)
+        SetICR(resource, mask)
+    }
+    unsafe { Enable() }
+    return CiaClaim { resource: resource, bit: bit, mask: mask }
+}
+
+fn release_timer(claim: &CiaClaim, handler: *Interrupt) {
+    if claim.resource == null { return }
+    unsafe { Disable() }
+    AbleICR(claim.resource, claim.mask)
+    SetICR(claim.resource, claim.mask)
+    RemICRVector(claim.resource, claim.bit, handler)
+    unsafe { Enable() }
+}
+
+// @covers-ndk function|cia.resource|AddICRVector
+// @ndk-side-effects Claims one free CIA timer interrupt while processor interrupts are disabled, disables and clears its source before reenabling interrupts, proves a competing vector receives the exact owner pointer, then removes the original vector
+@test("cia.resource AddICRVector grants exclusive timer ownership")
+pub fn cia_add_vector_exclusive() {
+    var owner: Interrupt = @zeroed(Interrupt)
+    var competitor: Interrupt = @zeroed(Interrupt)
+    initialize(&var owner)
+    initialize(&var competitor)
+    let owner_ptr: *Interrupt = &var owner
+    let claim = claim_timer(owner_ptr)
+    var conflict: *Interrupt = null
+    if claim.resource != null { conflict = AddICRVector(claim.resource, claim.bit, &var competitor) }
+    release_timer(&claim, owner_ptr)
+    expect(claim.resource != null, "one of four CIA timers is available for an owned test")
+    expect(conflict == owner_ptr, "competing vector receives the exact current owner")
+}
+
+// @covers-ndk function|cia.resource|RemICRVector
+// @ndk-side-effects Claims and safely removes one CIA timer vector, immediately reclaims that exact timer with a second vector to prove ownership was released, then disables, clears, and removes the replacement
+@test("cia.resource RemICRVector makes the exact timer reusable")
+pub fn cia_remove_vector_reuse() {
+    var first: Interrupt = @zeroed(Interrupt)
+    var second: Interrupt = @zeroed(Interrupt)
+    initialize(&var first)
+    initialize(&var second)
+    let claim = claim_timer(&var first)
+    release_timer(&claim, &var first)
+    unsafe { Disable() }
+    let reclaimed = claim.resource != null && AddICRVector(claim.resource, claim.bit, &var second) == null
+    if reclaimed {
+        AbleICR(claim.resource, claim.mask)
+        SetICR(claim.resource, claim.mask)
+        RemICRVector(claim.resource, claim.bit, &var second)
+    }
+    unsafe { Enable() }
+    expect(claim.resource != null && reclaimed, "removed CIA timer can be claimed again immediately")
+}
+
+// @covers-ndk function|cia.resource|AbleICR
+// @ndk-side-effects Claims and clears one CIA timer, observes it disabled, enables only that owned source and observes the mask, disables it and observes the previous enabled state, then clears and releases ownership
+@test("cia.resource AbleICR changes and reports one owned enable bit")
+pub fn cia_enable_mask_roundtrip() {
+    var handler: Interrupt = @zeroed(Interrupt)
+    initialize(&var handler)
+    let claim = claim_timer(&var handler)
+    var initially_disabled = false
+    var enabled = false
+    var disable_reported_enabled = false
+    var disabled_again = false
+    if claim.resource != null {
+        initially_disabled = (AbleICR(claim.resource, 0) & claim.mask) == 0
+        AbleICR(claim.resource, ICR_SETCLR | claim.mask)
+        enabled = (AbleICR(claim.resource, 0) & claim.mask) != 0
+        disable_reported_enabled = (AbleICR(claim.resource, claim.mask) & claim.mask) != 0
+        disabled_again = (AbleICR(claim.resource, 0) & claim.mask) == 0
+    }
+    release_timer(&claim, &var handler)
+    expect(claim.resource != null && initially_disabled, "claimed timer starts disabled by the test")
+    expect(enabled && disable_reported_enabled && disabled_again, "enable bit sets, reports, and clears exactly")
+}
+
+// @covers-ndk function|cia.resource|SetICR
+// @ndk-side-effects Claims and disables one CIA timer, causes only its pending bit while masked, samples the exact pending state, clears it and observes the prior set bit, verifies it remains clear, then releases ownership
+@test("cia.resource SetICR causes samples and clears one owned pending bit")
+pub fn cia_pending_mask_roundtrip() {
+    var handler: Interrupt = @zeroed(Interrupt)
+    initialize(&var handler)
+    let claim = claim_timer(&var handler)
+    var sampled = false
+    var clear_reported_pending = false
+    var cleared = false
+    if claim.resource != null {
+        SetICR(claim.resource, ICR_SETCLR | claim.mask)
+        sampled = (SetICR(claim.resource, 0) & claim.mask) != 0
+        clear_reported_pending = (SetICR(claim.resource, claim.mask) & claim.mask) != 0
+        cleared = (SetICR(claim.resource, 0) & claim.mask) == 0
+    }
+    release_timer(&claim, &var handler)
+    expect(claim.resource != null, "one CIA timer is owned before pending-state changes")
+    expect(sampled && clear_reported_pending && cleared, "pending bit causes, reports, and clears exactly while masked")
+}

@@ -14,37 +14,505 @@ from amiga::raw::structs import *
 /// Runtime-managed mathtrans.library base used by the raw call stubs.
 extern var MathTransBase: *Library
 
+/// obtain the arctangent of the floating point number
+///
+/// Accepts a floating point number representing the tangent
+/// of an angle and returns the value of said angle in
+/// radians
+///
+/// # Synopsis
+///
+/// fnum2 = SPAtan(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPTan()
 @library("mathtrans.library")
 extern pub fn SPAtan(parm: u32) -> u32
+/// obtain the sine of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the sine of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPSin(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPAsin()
 @library("mathtrans.library")
 extern pub fn SPSin(parm: u32) -> u32
+/// obtain the cosine of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the cosine of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPCos(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPAcos()
 @library("mathtrans.library")
 extern pub fn SPCos(parm: u32) -> u32
+/// obtain the tangent of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the tangent of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPTan(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPAtan()
 @library("mathtrans.library")
 extern pub fn SPTan(parm: u32) -> u32
+/// obtain the sine and cosine of a number
+///
+/// Accepts a floating point number (fnum1) representing
+/// an angle in radians and a pointer to another floating
+/// point number (pfnum2). It computes the cosine and places it in
+/// *pfnum2. It computes the sine and returns it as a result.
+///
+/// # Synopsis
+///
+/// fnum3 = SPSincos(pfnum2, fnum1);
+///                         d1.l,   d0.l
+/// float *pfnum2;
+/// float fnum1;
+/// float fnum3;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number pfnum2 - pointer to Motorola fast floating point number
+///
+/// # Returns
+///
+/// *pfnum2 - Motorola fast floating point number (cosine)
+/// fnum3 - Motorola fast floating point number (sine)
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPSin(), SPCos()
 @library("mathtrans.library")
 extern pub fn SPSincos(cosResult: *u32, parm: u32) -> u32
+/// obtain the hyperbolic sine of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the hyperbolic sine of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPSinh(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPCosh()
 @library("mathtrans.library")
 extern pub fn SPSinh(parm: u32) -> u32
+/// obtain the hyperbolic cosine of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the hyperbolic cosine of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPCosh(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPSinh()
 @library("mathtrans.library")
 extern pub fn SPCosh(parm: u32) -> u32
+/// obtain the hyperbolic tangent of the floating point number
+///
+/// Accepts a floating point number representing an angle
+/// in radians and returns the hyperbolic tangent of said angle.
+///
+/// # Synopsis
+///
+/// fnum2 = SPTanh(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPSinh(), SPCosh()
 @library("mathtrans.library")
 extern pub fn SPTanh(parm: u32) -> u32
+/// obtain the exponential (e**X) of the floating point number
+///
+/// Accepts a floating point number and returns the value
+/// of e raised to the fnum1 power
+///
+/// # Synopsis
+///
+/// fnum2 = SPExp(fnum1);
+///                      d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPLog()
 @library("mathtrans.library")
 extern pub fn SPExp(parm: u32) -> u32
+/// obtain the natural logarithm of the floating point number
+///
+/// Accepts a floating point number and returns the natural
+/// logarithem (base e) of said number
+///
+/// # Synopsis
+///
+/// fnum2 = SPLog(fnum1);
+///                      d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPExp()
 @library("mathtrans.library")
 extern pub fn SPLog(parm: u32) -> u32
+/// raise a number to a power
+///
+/// Accepts two floating point numbers and returns the
+/// result of fnum2 raised to the fnum1 power
+///
+/// # Synopsis
+///
+/// result = SPPow(fnum1, fnum2);
+///                      d1.l    d0.l
+/// float fnum1, fnum2;
+/// float result;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number fnum2 - Motorola fast floating point number
+///
+/// # Returns
+///
+/// result - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPExp(), SPLog()
 @library("mathtrans.library")
 extern pub fn SPPow(power: u32, arg: u32) -> u32
+/// obtain the square root of the floating point number
+///
+/// Accepts a floating point number and returns the square toot
+/// of said number
+///
+/// # Synopsis
+///
+/// fnum2 = SPSqrt(fnum1);
+///                      d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPPow(), SPMul()
 @library("mathtrans.library")
 extern pub fn SPSqrt(parm: u32) -> u32
+/// convert FFP number to single precision ieee
+///
+/// Accepts a Motorola fast floating point number and
+/// returns the same number, converted into IEEE
+/// standard single precision format
+///
+/// # Synopsis
+///
+/// ieeenum = SPTieee(fnum);
+///                         d0.l
+/// float ieeenum;
+/// float fnum;
+///
+/// # Arguments
+///
+/// * `fnum` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// ieeenum - IEEE Single Precision Floating Point
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPFieee()
 @library("mathtrans.library")
 extern pub fn SPTieee(parm: u32) -> u32
+/// convert single precision ieee to FFP number
+///
+/// Accepts a standard single precision format
+/// returns the same number, converted to Motorola
+/// fast floating point number
+///
+/// # Synopsis
+///
+/// fnum = SPFieee(ieeenum);
+///                       d0.l
+/// float fnum;
+/// float ieeenum;
+///
+/// # Arguments
+///
+/// * `ieeenum` - IEEE Single Precision Floating Point
+///
+/// # Returns
+///
+/// fnum - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPTieee()
 @library("mathtrans.library")
 extern pub fn SPFieee(parm: u32) -> u32
+/// obtain the arcsine of the floating point number
+///
+/// Accepts a floating point number representing the sine
+/// of an angle and returns the value of said angle in
+/// radians
+///
+/// # Synopsis
+///
+/// fnum2 = SPAsin(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPCos()
 @library("mathtrans.library")
 extern pub fn SPAsin(parm: u32) -> u32
+/// obtain the arccosine of the floating point number
+///
+/// Accepts a floating point number representing the cosine
+/// of an angle and returns the value of said angle in
+/// radians
+///
+/// # Synopsis
+///
+/// fnum2 = SPAcos(fnum1);
+///                       d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPSin()
 @library("mathtrans.library")
 extern pub fn SPAcos(parm: u32) -> u32
+/// obtain the naperian logarithm(base 10) of the
+///
+/// Accepts a floating point number and returns the naperian
+/// logarithm (base 10) of said number
+///
+/// # Synopsis
+///
+/// fnum2 = SPLog10(fnum1);
+///                        d0.l
+/// float fnum2;
+/// float fnum1;
+///
+/// # Arguments
+///
+/// * `fnum1` - Motorola fast floating point number
+///
+/// # Returns
+///
+/// fnum2 - Motorola fast floating point number
+///
+/// # Bugs
+///
+/// None
+///
+/// # See Also
+///
+/// SPExp(), SpLog()
 @library("mathtrans.library")
 extern pub fn SPLog10(parm: u32) -> u32

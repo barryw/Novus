@@ -1,0 +1,550 @@
+from std::core import Result
+from std::string import Str
+from std::test::test import expect
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::consts import ICONA_ErrorCode, ICONCTRLA_GetHeight, ICONCTRLA_GetWidth
+from amiga::raw::consts import ICONDRAWA_Frameless, ICONGETA_GetPaletteMappedIcon
+from amiga::raw::consts import ICONGETA_RemapIcon, IDS_NORMAL, IDS_SELECTED
+from amiga::raw::consts import ICONDUPA_DuplicateDefaultTool, ICONDUPA_DuplicateImages
+from amiga::raw::consts import ICONGETA_GetDefaultType, ICONPUTA_NotifyWorkbench
+from amiga::raw::consts import MEMF_CLEAR, MEMF_PUBLIC, TAG_DONE, WB_DISKMAGIC, WB_DISKVERSION, WBTOOL
+from amiga::raw::dos import Close, DeleteFile, Open
+from amiga::raw::exec import AllocMem, FreeMem
+from amiga::raw::amiga_lib import NewList
+from amiga::raw::icon import AddFreeList, BumpRevision, ChangeToSelectedIconColor
+from amiga::raw::icon import DeleteDiskObject, DupDiskObject, DupDiskObjectA
+from amiga::raw::icon import DrawIconState, DrawIconStateA
+from amiga::raw::icon import FindToolType, FreeDiskObject, FreeFreeList
+from amiga::raw::icon import GetDefDiskObject, GetDiskObject, GetDiskObjectNew
+from amiga::raw::icon import GetIconRectangle, GetIconRectangleA
+from amiga::raw::icon import GetIconTagList, GetIconTags, IconControl, IconControlA
+from amiga::raw::icon import LayoutIcon, LayoutIconA
+from amiga::raw::icon import MatchToolValue, NewDiskObject, PutDefDiskObject, PutDiskObject
+from amiga::raw::icon import PutIconTagList, PutIconTags
+from amiga::raw::graphics import InitRastPort, ReadPixel, WaitBlit
+from amiga::raw::structs import ColorRegister, DiskObject, FreeList, Node, RastPort, Rectangle, TagItem
+
+const DOS_NEW: i32 = 1006
+const ICON_TYPE_TOOL: i32 = 3
+
+fn cstr(value: Str) -> *u8 {
+    return value.as_cstr()
+}
+
+fn path() -> *u8 {
+    return cstr("RAM:novus_ndk_icon")
+}
+
+fn delete_fixture() {
+    DeleteDiskObject(path())
+    DeleteFile(path())
+}
+
+fn default_tool() -> *DiskObject {
+    return GetDefDiskObject(ICON_TYPE_TOOL)
+}
+
+fn palette_tool() -> *DiskObject {
+    var tags = [
+        TagItem { ti_Tag: ICONGETA_GetDefaultType, ti_Data: WBTOOL },
+        TagItem { ti_Tag: ICONGETA_GetPaletteMappedIcon, ti_Data: 1 },
+        TagItem { ti_Tag: ICONGETA_RemapIcon, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return GetIconTagList(null, &var tags[0])
+}
+
+fn bitmap() -> Result<BitMapHandle, i32> {
+    return match BitMapHandle::alloc(128, 80, 2, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => Result::Ok(value),
+        Result::Err(_) => Result::Err(1),
+    }
+}
+
+fn attach(bitmap: &BitMapHandle, rastport: *RastPort) {
+    InitRastPort(rastport)
+    unsafe { (*rastport).BitMap = bitmap.as_raw() }
+}
+
+fn painted_pixels(rastport: *RastPort) -> i32 {
+    var count: i32 = 0
+    var y: i16 = 0
+    while y < 80 {
+        var x: i16 = 0
+        while x < 128 {
+            if ReadPixel(rastport, x, y) != 0 { count++ }
+            x++
+        }
+        y++
+    }
+    return count
+}
+
+fn put_fixture() -> bool {
+    delete_fixture()
+    let icon = default_tool()
+    return false if icon == null
+    unsafe {
+        (*icon).do_CurrentX = 37
+        (*icon).do_CurrentY = 23
+    }
+    let written = PutDiskObject(path(), icon) != 0
+    FreeDiskObject(icon)
+    return written
+}
+
+fn c_equals(left: *u8, right: Str) -> bool {
+    return false if left == null
+    let expected = right.as_cstr()
+    var index: i32 = 0
+    forever {
+        let a = unsafe { left[index] }
+        let b = unsafe { expected[index] }
+        return false if a != b
+        return true if a == 0
+        index++
+    }
+}
+
+// @covers-ndk function|icon.library|NewDiskObject
+// @ndk-side-effects Allocates a valid empty WBTOOL DiskObject with exact magic, version, type, and zero image dimensions, then releases all library-owned storage
+@test("icon.library NewDiskObject creates exact empty icon state")
+pub fn icon_new_disk_object() {
+    let icon = NewDiskObject(ICON_TYPE_TOOL)
+    expect(icon != null, "empty tool icon allocates")
+    if icon != null {
+        unsafe {
+            expect((*icon).do_Magic == WB_DISKMAGIC && (*icon).do_Version == WB_DISKVERSION,
+                "new icon has canonical disk magic and version")
+            expect((*icon).do_Type == WBTOOL, "new icon preserves requested WBTOOL type")
+            expect((*icon).do_Gadget.Width == 0 && (*icon).do_Gadget.Height == 0,
+                "new icon has documented empty dimensions")
+        }
+        FreeDiskObject(icon)
+    }
+}
+
+// @covers-ndk function|icon.library|FreeDiskObject
+// @ndk-side-effects Releases one complete default icon including its images, strings, tool types, and private free list; the process leak gate verifies every owned allocation returns
+@test("icon.library FreeDiskObject releases complete icon ownership")
+pub fn icon_free_disk_object() {
+    let icon = default_tool()
+    expect(icon != null, "default tool icon allocates")
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|GetDefDiskObject
+// @ndk-side-effects Loads the installed WBTOOL default icon, verifies its exact public type and usable nonzero image dimensions, then releases it
+@test("icon.library GetDefDiskObject loads installed tool default")
+pub fn icon_get_default() {
+    let icon = default_tool()
+    expect(icon != null, "default tool icon loads")
+    if icon != null {
+        unsafe {
+            expect((*icon).do_Type == WBTOOL, "default icon is WBTOOL")
+            expect((*icon).do_Gadget.Width > 0 && (*icon).do_Gadget.Height > 0,
+                "installed default icon has renderable dimensions")
+        }
+        FreeDiskObject(icon)
+    }
+}
+
+// @covers-ndk function|icon.library|PutDefDiskObject
+// @ndk-side-effects Rewrites the current ENV: WBTOOL default with an unchanged library-owned copy, reloads and verifies the same public type, and frees both copies
+@test("icon.library PutDefDiskObject round-trips current default safely")
+pub fn icon_put_default() {
+    let original = default_tool()
+    expect(original != null, "current default loads")
+    if original != null {
+        expect(PutDefDiskObject(original) != 0, "unchanged default writes successfully")
+        let reloaded = default_tool()
+        expect(reloaded != null && unsafe { (*reloaded).do_Type == WBTOOL },
+            "rewritten default reloads as WBTOOL")
+        FreeDiskObject(reloaded)
+        FreeDiskObject(original)
+    }
+}
+
+// @covers-ndk function|icon.library|PutDiskObject
+// @ndk-side-effects Writes a default icon to a disposable RAM:.info file with exact custom coordinates, reloads those coordinates, then deletes the file and frees both icons
+@test("icon.library PutDiskObject persists exact public fields")
+pub fn icon_put_disk_object() {
+    expect(put_fixture(), "disposable icon writes")
+    let icon = GetDiskObject(path())
+    expect(icon != null, "written icon reloads")
+    if icon != null {
+        unsafe { expect((*icon).do_CurrentX == 37 && (*icon).do_CurrentY == 23, "coordinates round-trip exactly") }
+        FreeDiskObject(icon)
+    }
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|GetDiskObject
+// @ndk-side-effects Reads a real disposable RAM:.info file, verifies its canonical magic/type and exact persisted coordinates, then releases the returned object and removes the file
+@test("icon.library GetDiskObject decodes real icon file")
+pub fn icon_get_disk_object() {
+    expect(put_fixture(), "disposable icon writes")
+    let icon = GetDiskObject(path())
+    expect(icon != null, "disk icon loads")
+    if icon != null {
+        unsafe {
+            expect((*icon).do_Magic == WB_DISKMAGIC && (*icon).do_Type == WBTOOL,
+                "disk icon preserves canonical header and type")
+            expect((*icon).do_CurrentX == 37 && (*icon).do_CurrentY == 23,
+                "disk icon preserves coordinates")
+        }
+        FreeDiskObject(icon)
+    }
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|DeleteDiskObject
+// @ndk-side-effects Deletes a real disposable RAM:.info file and proves a subsequent GetDiskObject cannot retrieve it
+@test("icon.library DeleteDiskObject removes exact info file")
+pub fn icon_delete_disk_object() {
+    expect(put_fixture(), "disposable icon writes")
+    expect(DeleteDiskObject(path()) != 0, "icon file deletes")
+    let missing = GetDiskObject(path())
+    expect(missing == null, "deleted icon cannot reload")
+    FreeDiskObject(missing)
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|GetDiskObjectNew
+// @ndk-side-effects Creates a real RAM: file without an icon, retrieves the documented default fallback for it, verifies a valid public icon type, then removes the file and frees the fallback
+@test("icon.library GetDiskObjectNew supplies missing icon fallback")
+pub fn icon_get_disk_object_new() {
+    delete_fixture()
+    let file = Open(path(), DOS_NEW)
+    expect(file != 0, "plain RAM file creates")
+    if file != 0 { Close(file) }
+    let icon = GetDiskObjectNew(path())
+    expect(icon != null, "missing .info receives a default icon")
+    if icon != null {
+        unsafe { expect((*icon).do_Type >= 1 && (*icon).do_Type <= 7, "fallback has a valid Workbench type") }
+        FreeDiskObject(icon)
+    }
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|FindToolType
+// @ndk-side-effects Searches caller-owned terminated tool-type strings case-insensitively, returns the exact value substring for MODE, and returns null for a missing key without mutation
+@test("icon.library FindToolType returns exact value substring")
+pub fn icon_find_tool_type() {
+    var entries: [*u8] = [cstr("MODE=FAST|SAFE"), cstr("COUNT = 42"), (*u8)null]
+    let mode = FindToolType(&var entries[0], cstr("mode"))
+    let count = FindToolType(&var entries[0], cstr("COUNT"))
+    expect(c_equals(mode, "FAST|SAFE"), "case-insensitive MODE lookup returns its value")
+    expect(c_equals(count, "42"), "V44 accepts blanks around equals")
+    expect(FindToolType(&var entries[0], cstr("MISSING")) == null, "missing key returns null")
+}
+
+// @covers-ndk function|icon.library|MatchToolValue
+// @ndk-side-effects Matches complete case-insensitive alternatives with surrounding spaces and rejects both substrings and absent alternatives without allocation or mutation
+@test("icon.library MatchToolValue parses exact alternatives")
+pub fn icon_match_tool_value() {
+    expect(MatchToolValue(cstr("FAST | SAFE | DEBUG"), cstr("safe")) != 0,
+        "case-insensitive complete alternative matches")
+    expect(MatchToolValue(cstr("FAST|SAFE"), cstr("AF")) == 0, "substring does not match")
+    expect(MatchToolValue(cstr("FAST|SAFE"), cstr("DEBUG")) == 0, "absent alternative does not match")
+}
+
+// @covers-ndk function|icon.library|BumpRevision
+// @ndk-side-effects Rewrites caller-owned buffers through first-copy and numbered-copy forms, returns the exact buffer address, and produces documented names without allocation
+@test("icon.library BumpRevision advances copy names exactly")
+pub fn icon_bump_revision() {
+    var first: [u8; 31] = @zeroed([u8; 31])
+    var second: [u8; 31] = @zeroed([u8; 31])
+    let first_pointer = unsafe { (*u8)&var first[0] }
+    let second_pointer = unsafe { (*u8)&var second[0] }
+    expect(BumpRevision(first_pointer, cstr("foo")) == first_pointer, "first call returns caller buffer")
+    expect(c_equals(first_pointer, "Copy_of_foo"), "first copy name matches live classic behavior")
+    expect(BumpRevision(second_pointer, first_pointer) == second_pointer, "second call returns second buffer")
+    expect(c_equals(second_pointer, "Copy_2_of_foo"), "numbered copy advances exactly")
+}
+
+// @covers-ndk function|icon.library|DupDiskObjectA
+// @ndk-side-effects Duplicates a default icon into independent ownership while tags omit images and default tool; verifies omitted fields are null and frees both objects
+@test("icon.library DupDiskObjectA honors selective ownership tags")
+pub fn icon_duplicate_a() {
+    let source = default_tool()
+    var tags = [
+        TagItem { ti_Tag: ICONDUPA_DuplicateImages, ti_Data: 0 },
+        TagItem { ti_Tag: ICONDUPA_DuplicateDefaultTool, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let copy = if source != null { DupDiskObjectA(source, &var tags[0]) } else { (*DiskObject)null }
+    expect(source != null && copy != null && copy != source, "independent duplicate allocates")
+    if copy != null {
+        unsafe {
+            expect((*copy).do_Type == WBTOOL, "duplicate preserves public type")
+            expect((*copy).do_DefaultTool == null && (*copy).do_Gadget.GadgetRender == null,
+                "disabled fields are omitted")
+        }
+    }
+    FreeDiskObject(copy)
+    FreeDiskObject(source)
+}
+
+// @covers-ndk function|icon.library|DupDiskObject
+// @ndk-side-effects Exercises the varargs duplicate entry point, omits default-tool ownership, preserves type and independent identity, then frees source and copy
+@test("icon.library DupDiskObject varargs duplicates selected fields")
+pub fn icon_duplicate_varargs() {
+    let source = default_tool()
+    let copy = if source != null {
+        DupDiskObject(source, ICONDUPA_DuplicateDefaultTool, 0, TAG_DONE)
+    } else { (*DiskObject)null }
+    expect(source != null && copy != null && copy != source, "varargs duplicate allocates independently")
+    if copy != null {
+        unsafe { expect((*copy).do_Type == WBTOOL && (*copy).do_DefaultTool == null, "varargs tag is applied") }
+    }
+    FreeDiskObject(copy)
+    FreeDiskObject(source)
+}
+
+// @covers-ndk function|icon.library|IconControlA
+// @ndk-side-effects Queries the exact width of a live default icon through a caller-owned TagItem and destination longword without mutating icon ownership
+@test("icon.library IconControlA writes queried dimensions")
+pub fn icon_control_a() {
+    let icon = default_tool()
+    var width: u32 = 0
+    var tags = [
+        TagItem { ti_Tag: ICONCTRLA_GetWidth, ti_Data: unsafe { (u32)(*u32)&var width } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let processed = if icon != null { IconControlA(icon, &var tags[0]) } else { 0 }
+    expect(processed == 1 && width > 0, "one width query writes a nonzero dimension")
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|IconControl
+// @ndk-side-effects Exercises the varargs entry point to query the exact height of a live default icon into caller storage and reports one processed tag
+@test("icon.library IconControl varargs writes queried dimensions")
+pub fn icon_control_varargs() {
+    let icon = default_tool()
+    var height: u32 = 0
+    let processed = if icon != null { IconControl(icon, ICONCTRLA_GetHeight, &var height, TAG_DONE) } else { 0 }
+    expect(processed == 1 && height > 0, "one varargs height query writes a nonzero dimension")
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|GetIconTagList
+// @ndk-side-effects Retrieves the WBTOOL default through an explicit tag list, initializes the caller error code to zero, verifies exact type, and frees the icon
+@test("icon.library GetIconTagList retrieves tagged default")
+pub fn icon_get_tag_list() {
+    var error: i32 = -1
+    var tags = [
+        TagItem { ti_Tag: ICONGETA_GetDefaultType, ti_Data: WBTOOL },
+        TagItem { ti_Tag: ICONA_ErrorCode, ti_Data: unsafe { (u32)(*i32)&var error } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let icon = GetIconTagList(null, &var tags[0])
+    expect(icon != null && error == 0, "tagged default loads without error")
+    if icon != null { unsafe { expect((*icon).do_Type == WBTOOL, "tagged default type is exact") } }
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|GetIconTags
+// @ndk-side-effects Exercises the varargs retrieval entry point for the WBTOOL default, writes a zero error code, verifies exact type, and frees the icon
+@test("icon.library GetIconTags varargs retrieves tagged default")
+pub fn icon_get_tags() {
+    var error: i32 = -1
+    let icon = GetIconTags(null, ICONGETA_GetDefaultType, WBTOOL, ICONA_ErrorCode, &var error, TAG_DONE)
+    expect(icon != null && error == 0, "varargs default loads without error")
+    if icon != null { unsafe { expect((*icon).do_Type == WBTOOL, "varargs default type is exact") } }
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|PutIconTagList
+// @ndk-side-effects Writes an icon to disposable RAM: storage with Workbench notification disabled, reloads its exact type, then deletes the file and frees both objects
+@test("icon.library PutIconTagList writes tagged icon")
+pub fn icon_put_tag_list() {
+    delete_fixture()
+    let icon = default_tool()
+    var tags = [
+        TagItem { ti_Tag: ICONPUTA_NotifyWorkbench, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let written = if icon != null { PutIconTagList(path(), icon, &var tags[0]) } else { 0 }
+    let reloaded = if written != 0 { GetDiskObject(path()) } else { (*DiskObject)null }
+    expect(reloaded != null && unsafe { (*reloaded).do_Type == WBTOOL }, "tag-list write reloads exact type")
+    FreeDiskObject(reloaded)
+    FreeDiskObject(icon)
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|PutIconTags
+// @ndk-side-effects Exercises the varargs writer with Workbench notification disabled, reloads the disposable RAM: icon, verifies exact type, and removes every resource
+@test("icon.library PutIconTags varargs writes tagged icon")
+pub fn icon_put_tags() {
+    delete_fixture()
+    let icon = default_tool()
+    let written = if icon != null { PutIconTags(path(), icon, ICONPUTA_NotifyWorkbench, 0, TAG_DONE) } else { 0 }
+    let reloaded = if written != 0 { GetDiskObject(path()) } else { (*DiskObject)null }
+    expect(reloaded != null && unsafe { (*reloaded).do_Type == WBTOOL }, "varargs write reloads exact type")
+    FreeDiskObject(reloaded)
+    FreeDiskObject(icon)
+    delete_fixture()
+}
+
+// @covers-ndk function|icon.library|AddFreeList
+// @ndk-side-effects Records one exact Exec allocation in a caller-owned initialized FreeList, increments its public count, and transfers allocation ownership to the list
+@test("icon.library AddFreeList records exact allocation ownership")
+pub fn icon_add_free_list() {
+    var free_list: FreeList = @zeroed(FreeList)
+    NewList(&var free_list.fl_MemList)
+    let memory = unsafe { AllocMem(32, MEMF_PUBLIC | MEMF_CLEAR) }
+    expect(memory != null, "tracked memory allocates")
+    if memory != null {
+        let added = AddFreeList(&var free_list, memory, 32)
+        let tail = unsafe { (*Node)&var free_list.fl_MemList.lh_Tail }
+        expect(added != 0 && free_list.fl_MemList.lh_Head != tail,
+            "free list records one exact allocation")
+        if added != 0 { FreeFreeList(&var free_list) } else { unsafe { FreeMem(memory, 32) } }
+    }
+}
+
+// @covers-ndk function|icon.library|FreeFreeList
+// @ndk-side-effects Releases two exact Exec allocations previously transferred into one FreeList; the whole-process leak gate proves both payloads and tracking entries return
+@test("icon.library FreeFreeList releases every tracked allocation")
+pub fn icon_free_free_list() {
+    var free_list: FreeList = @zeroed(FreeList)
+    NewList(&var free_list.fl_MemList)
+    let first = unsafe { AllocMem(16, MEMF_PUBLIC) }
+    let second = unsafe { AllocMem(24, MEMF_PUBLIC) }
+    let first_added = first != null && AddFreeList(&var free_list, first, 16) != 0
+    let second_added = second != null && AddFreeList(&var free_list, second, 24) != 0
+    let tail = unsafe { (*Node)&var free_list.fl_MemList.lh_Tail }
+    expect(first_added && second_added && free_list.fl_MemList.lh_Head != tail,
+        "both allocations transfer to free list")
+    if first_added && second_added {
+        FreeFreeList(&var free_list)
+    } else {
+        if first != null && !first_added { unsafe { FreeMem(first, 16) } }
+        if second != null && !second_added { unsafe { FreeMem(second, 24) } }
+        if first_added || second_added { FreeFreeList(&var free_list) }
+    }
+}
+
+// @covers-ndk function|icon.library|ChangeToSelectedIconColor
+// @ndk-side-effects Mutates one caller-owned RGB register to the selected-image variant and keeps every channel within its exact byte ABI
+@test("icon.library ChangeToSelectedIconColor transforms RGB value")
+pub fn icon_change_selected_color() {
+    var color = ColorRegister { red: 200, green: 100, blue: 50 }
+    ChangeToSelectedIconColor(&var color)
+    expect(color.red != 200 || color.green != 100 || color.blue != 50,
+        "selected color differs from original RGB")
+}
+
+// @covers-ndk function|icon.library|GetIconRectangleA
+// @ndk-side-effects Computes the exact nonempty rendering bounds of a live default icon into caller-owned Rectangle storage without drawing or changing icon ownership
+@test("icon.library GetIconRectangleA returns usable bounds")
+pub fn icon_get_rectangle_a() {
+    let icon = default_tool()
+    var rectangle: Rectangle = @zeroed(Rectangle)
+    let success = if icon != null { GetIconRectangleA(null, icon, null, &var rectangle, null) } else { 0 }
+    expect(success != 0, "default icon bounds compute")
+    expect(rectangle.MaxX >= rectangle.MinX && rectangle.MaxY >= rectangle.MinY,
+        "computed rectangle has nonempty inclusive bounds")
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|GetIconRectangle
+// @ndk-side-effects Exercises the varargs rectangle entry point with a real label and RastPort, proving the resulting inclusive bounds cover a positive icon-plus-label area
+@test("icon.library GetIconRectangle varargs includes label bounds")
+pub fn icon_get_rectangle_varargs() {
+    let icon = default_tool()
+    var rectangle: Rectangle = @zeroed(Rectangle)
+    var rastport: RastPort = @zeroed(RastPort)
+    InitRastPort(&var rastport)
+    let success = if icon != null {
+        GetIconRectangle(&var rastport, icon, cstr("Novus"), &var rectangle, TAG_DONE)
+    } else { 0 }
+    expect(success != 0, "varargs icon-plus-label bounds compute")
+    expect(rectangle.MaxX > rectangle.MinX && rectangle.MaxY > rectangle.MinY,
+        "icon-plus-label bounds have positive area")
+    FreeDiskObject(icon)
+}
+
+// @covers-ndk function|icon.library|LayoutIconA
+// @ndk-side-effects Remaps an unremapped palette default icon to the library's four-color fallback using an explicit empty tag list and leaves a renderable nonzero icon
+@test("icon.library LayoutIconA remaps palette icon without screen")
+pub fn icon_layout_a() {
+    let icon = palette_tool()
+    expect(icon != null, "unremapped palette tool icon loads")
+    if icon != null {
+        var tags = [TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }]
+        expect(LayoutIconA(icon, null, &var tags[0]) != 0, "palette icon remaps to fallback palette")
+        var width: u32 = 0
+        var query = [
+            TagItem { ti_Tag: ICONCTRLA_GetWidth, ti_Data: unsafe { (u32)(*u32)&var width } },
+            TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+        ]
+        expect(IconControlA(icon, &var query[0]) == 1 && width > 0, "remapped icon remains renderable")
+        FreeDiskObject(icon)
+    }
+}
+
+// @covers-ndk function|icon.library|LayoutIcon
+// @ndk-side-effects Exercises the varargs layout entry point to remap an unremapped palette icon to the fallback palette, then verifies a nonzero rendered height and releases allocated image state
+@test("icon.library LayoutIcon varargs remaps palette icon")
+pub fn icon_layout_varargs() {
+    let icon = palette_tool()
+    expect(icon != null, "unremapped palette tool icon loads")
+    if icon != null {
+        expect(LayoutIcon(icon, null, TAG_DONE) != 0, "varargs layout remaps icon")
+        var height: u32 = 0
+        expect(IconControl(icon, ICONCTRLA_GetHeight, &var height, TAG_DONE) == 1 && height > 0,
+            "varargs-remapped icon has nonzero height")
+        FreeDiskObject(icon)
+    }
+}
+
+// @covers-ndk function|icon.library|DrawIconStateA
+// @ndk-side-effects Draws a real default icon in normal state into a cleared owned off-screen bitmap; exact pixel readback proves nonempty rendering before bitmap and icon teardown
+@test("icon.library DrawIconStateA changes real bitmap pixels")
+pub fn icon_draw_state_a() {
+    let icon = default_tool()
+    var surface = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "off-screen bitmap allocates")
+            FreeDiskObject(icon)
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&surface, &var rastport)
+    expect(icon != null, "default icon loads")
+    if icon != null {
+        DrawIconStateA(&var rastport, icon, null, 4, 4, IDS_NORMAL, null)
+        WaitBlit()
+        expect(painted_pixels(&var rastport) > 0, "normal icon paints nonzero pixels")
+        FreeDiskObject(icon)
+    }
+}
+
+// @covers-ndk function|icon.library|DrawIconState
+// @ndk-side-effects Exercises the varargs renderer in selected frameless state on a cleared owned off-screen bitmap and requires nonzero pixel readback before complete teardown
+@test("icon.library DrawIconState varargs paints selected state")
+pub fn icon_draw_state_varargs() {
+    let icon = default_tool()
+    var surface = match bitmap() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "off-screen bitmap allocates")
+            FreeDiskObject(icon)
+            return
+        },
+    }
+    var rastport: RastPort = @zeroed(RastPort)
+    attach(&surface, &var rastport)
+    expect(icon != null, "default icon loads")
+    if icon != null {
+        DrawIconState(&var rastport, icon, null, 4, 4, IDS_SELECTED, ICONDRAWA_Frameless, 1, TAG_DONE)
+        WaitBlit()
+        expect(painted_pixels(&var rastport) > 0, "selected frameless icon paints nonzero pixels")
+        FreeDiskObject(icon)
+    }
+}

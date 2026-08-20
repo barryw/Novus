@@ -1,0 +1,234 @@
+from std::core import Result
+from std::test::test import expect, expect_true, expect_eq
+from amiga::raw::consts import BMF_CLEAR, BMF_DISPLAYABLE
+from amiga::raw::structs import BitMap, Task
+from amiga::raw::exec import FindTask, Signal, Wait
+from amiga::raw::graphics import OwnBlitter, DisownBlitter
+from amiga::raw::dos import Delay
+from amiga::sys::graphics::bitmap import BitMapHandle
+from amiga::sys::graphics::blitter import BlitterOps, BlitterGuard
+from amiga::sys::graphics::copper import CopperListBuilder
+from amiga::sys::graphics::sprite import SpriteData
+from amiga::sys::graphics::os_sprite import OsSpriteHandle
+from amiga::sys::intuition import ScreenHandle
+from amiga::sys::exec import SignalHandle
+from amiga::sys::exec::thread import spawn_thread, run_thread_loop
+from amiga::sys::timer import AsyncTimer, Duration
+
+struct BlitterContest {
+    parent: *Task,
+    started_mask: u32,
+    phase: u32,
+}
+
+const BLITTER_CONTEST_WAKE: u32 = 1 << 20
+static var BLITTER_CONTEST: BlitterContest = BlitterContest {
+    parent: null,
+    started_mask: 0,
+    phase: 0,
+}
+
+fn blitter_contender_tick(_state: *u8) -> bool {
+    unsafe {
+        BLITTER_CONTEST.phase = 1
+        Signal(BLITTER_CONTEST.parent, BLITTER_CONTEST.started_mask)
+    }
+    OwnBlitter()
+    unsafe {
+        BLITTER_CONTEST.phase = 2
+    }
+    DisownBlitter()
+    unsafe {
+        BLITTER_CONTEST.phase = 3
+    }
+    return false
+}
+
+fn blitter_contender() -> i32 {
+    return run_thread_loop(BLITTER_CONTEST_WAKE, null, blitter_contender_tick)
+}
+
+fn plane_word(bitmap: &BitMapHandle) -> u16 {
+    unsafe {
+        let raw: *BitMap = bitmap.as_raw()
+        return *(*u16)(*raw).Planes[0]
+    }
+}
+
+// @covers-ndk function|graphics.library|AllocBitMap
+// @covers-ndk function|graphics.library|FreeBitMap
+// @covers-ndk function|graphics.library|OwnBlitter
+// @covers-ndk function|graphics.library|WaitBlit
+// @covers-ndk function|graphics.library|DisownBlitter
+// @covers-ndk function|exec.library|TypeOfMem
+// @ndk-side-effects AllocBitMap reserves two cleared displayable bitmaps; TypeOfMem validates every DMA plane; OwnBlitter serializes direct hardware access; WaitBlit completes each DMA transfer; DisownBlitter releases ownership; scope exit waits and frees both bitmaps with FreeBitMap
+@test("graphics.library bitmap and blitter lifecycle preserves pixels")
+pub fn graphics_bitmap_blitter_lifecycle() {
+    let source = match BitMapHandle::alloc(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "source bitmap allocated")
+            return
+        },
+    }
+    var destination = match BitMapHandle::alloc(64, 32, 1, BMF_CLEAR | BMF_DISPLAYABLE, null) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "destination bitmap allocated")
+            return
+        },
+    }
+    var source_mut = source
+
+    expect(BlitterOps::set_rect(&var source_mut, 0, 0, 16, 1).is_ok(), "source filled")
+    source_mut.wait_blit()
+    expect_eq(plane_word(&source_mut), $FFFF, "fill reached chip RAM")
+
+    expect(BlitterOps::copy_rect(&source_mut, 0, 0, &var destination, 0, 0, 16, 1).is_ok(), "bitmap copied")
+    destination.wait_blit()
+    expect_eq(plane_word(&destination), $FFFF, "copy reached destination")
+
+    expect(BlitterOps::clear_rect(&var destination, 0, 0, 16, 1).is_ok(), "destination cleared")
+    destination.wait_blit()
+    expect_eq(plane_word(&destination), 0, "clear reached destination")
+}
+
+// @covers-ndk function|graphics.library|OwnBlitter
+// @covers-ndk function|graphics.library|WaitBlit
+// @covers-ndk function|graphics.library|DisownBlitter
+// @ndk-side-effects OwnBlitter gives the parent exclusive access; a competing task remains at phase 1 until the guard's Drop calls WaitBlit and DisownBlitter, then advances through acquisition and release to phase 3; a timer bounds startup and emergency recovery preserves the machine on failure
+@test("graphics.library blitter ownership is released by scope")
+pub fn graphics_blitter_guard_lifecycle() {
+    let current = unsafe { FindTask(null) }
+    let started = match SignalHandle::alloc() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "contender start signal allocated")
+            return
+        },
+    }
+    var timer = match AsyncTimer::new() {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "bounded ownership timer opened")
+            return
+        },
+    }
+    unsafe {
+        BLITTER_CONTEST.parent = current
+        BLITTER_CONTEST.started_mask = started.mask()
+        BLITTER_CONTEST.phase = 0
+    }
+    var contender = match spawn_thread("Blitter contender", blitter_contender, 8192) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "blitter contender spawned")
+            return
+        },
+    }
+    var started_ok = false
+    {
+        let guard = BlitterGuard::acquire()
+        guard.wait()
+        expect_true(!guard.is_busy(), "blitter idle while owned")
+        expect_true(contender.signal(BLITTER_CONTEST_WAKE), "blitter contender started")
+        timer.start(Duration::secs(1))
+        let received = Wait(started.mask() | timer.signal_mask())
+        started_ok = (received & started.mask()) != 0
+        if started_ok {
+            timer.abort()
+            Delay(2)
+            unsafe {
+                expect_eq(BLITTER_CONTEST.phase, 1, "competing task remains blocked while guard owns blitter")
+            }
+        } else {
+            timer.wait()
+        }
+    }
+
+    Delay(2)
+    let released = unsafe { BLITTER_CONTEST.phase == 3 }
+    if !released {
+        // Restore the machine even when the guard is broken so later tests can run.
+        DisownBlitter()
+    }
+    contender.wait()
+    expect_true(started_ok, "competing task reaches OwnBlitter")
+    expect_true(released, "competing task acquires after guard releases blitter")
+    unsafe {
+        expect_eq(BLITTER_CONTEST.phase, 3, "competing task releases blitter before completion")
+    }
+}
+
+// @covers-ndk function|exec.library|AllocVec
+// @covers-ndk function|exec.library|CopyMem
+// @covers-ndk function|exec.library|FreeVec
+// @ndk-side-effects AllocVec reserves cleared chip RAM for the builder and finalized list; CopyMem copies the encoded instructions; both owned buffers are returned exactly once with FreeVec on scope exit
+@test("copper lists build in chip RAM and release both buffers")
+pub fn graphics_copper_lifecycle() {
+    var builder = CopperListBuilder::new()
+    expect(builder.wait(10, 0).is_ok(), "copper wait encoded")
+    expect(builder.move_color(0, $00F).is_ok(), "copper color move encoded")
+    match builder.build() {
+        Result::Ok(list) => {
+            expect_true(list.ptr() != null, "copper list allocated")
+            expect_eq(list.size(), 12, "two instructions plus terminator")
+        },
+        Result::Err(_) => expect(false, "copper list built"),
+    }
+}
+
+// @covers-ndk function|exec.library|AllocVec
+// @covers-ndk function|exec.library|FreeVec
+// @ndk-side-effects AllocVec reserves chip RAM for a private copy of the sprite words; SpriteData owns it and returns it exactly once with FreeVec on scope exit
+@test("sprite data owns copied chip memory exactly once")
+pub fn graphics_sprite_data_lifecycle() {
+    var words: [u16] = [0, 0, $FFFF, 0, 0, 0]
+    match SpriteData::from_raw(&words[0], 6) {
+        Result::Ok(sprite) => {
+            expect_true(sprite.as_ptr() != null, "sprite copied to chip RAM")
+            expect_eq(sprite.width(), 16, "hardware sprite width")
+            expect_eq(sprite.height(), 1, "sprite scanline count")
+        },
+        Result::Err(_) => expect(false, "sprite data created"),
+    }
+}
+
+// @covers-ndk function|intuition.library|OpenScreenTagList
+// @covers-ndk function|intuition.library|CloseScreen
+// @covers-ndk function|exec.library|AllocVec
+// @covers-ndk function|exec.library|FreeVec
+// @covers-ndk function|graphics.library|GetSprite
+// @covers-ndk function|graphics.library|ChangeSprite
+// @covers-ndk function|graphics.library|MoveSprite
+// @covers-ndk function|graphics.library|WaitTOF
+// @covers-ndk function|graphics.library|FreeSprite
+// @ndk-side-effects OpenScreenTagList opens a private display and CloseScreen closes it; AllocVec owns the sprite image until FreeVec; GetSprite reserves one OS sprite; ChangeSprite installs its data; MoveSprite shows, moves, and hides it; WaitTOF synchronizes changes; Drop hides it and returns the channel with FreeSprite
+@test("graphics.library sprites show move hide and release through the OS")
+pub fn graphics_os_sprite_lifecycle() {
+    let screen = match ScreenHandle::lores("Novus sprite test", 2) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "test screen opened")
+            return
+        },
+    }
+    var words: [u16] = [0, 0, $FFFF, 0, 0, 0]
+    let data = match SpriteData::from_raw(&words[0], 6) {
+        Result::Ok(value) => value,
+        Result::Err(_) => {
+            expect(false, "sprite data created")
+            return
+        },
+    }
+    match OsSpriteHandle::alloc(screen.viewport(), -1) {
+        Result::Ok(sprite) => {
+            var handle = sprite
+            expect_true(handle.is_allocated(), "OS sprite allocated")
+            expect(handle.show(&data, 32, 32).is_ok(), "sprite shown")
+            expect(handle.move_to(48, 40).is_ok(), "sprite moved")
+            expect(handle.hide().is_ok(), "sprite hidden")
+        },
+        Result::Err(_) => expect(false, "OS sprite allocated"),
+    }
+}

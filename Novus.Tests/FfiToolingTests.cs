@@ -8,6 +8,28 @@ namespace Novus.Tests;
 public class FfiToolingTests
 {
     [Fact]
+    public void CHeaderParser_UsesFinalDefinitionAfterUndef()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """
+                #define BASE 1
+                #undef BASE
+                #define BASE 2
+                """);
+
+            var constants = CHeaderParser.ParseFile(path).Constants;
+
+            Assert.Equal("2", Assert.Single(constants, value => value.Name == "BASE").Value);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void CHeaderParser_ExpandsCommaSeparatedFields()
     {
         var path = Path.GetTempFileName();
@@ -80,7 +102,7 @@ public class FfiToolingTests
             Assert.False(channel.IsSynthetic);
             Assert.Equal(["data"], channel.Fields.Select(field => field.Name));
             Assert.Equal(["x", "y"], Assert.Single(structs, value => value.Name == "Point").Fields.Select(field => field.Name));
-            Assert.Empty(Assert.Single(structs, value => value.Name == "tPoint").Fields);
+            Assert.Equal(["x", "y"], Assert.Single(structs, value => value.Name == "tPoint").Fields.Select(field => field.Name));
             Assert.Equal("4", Assert.Single(header.Constants, value => value.Name == "RESULT_OK").Value);
             Assert.Equal("(RESULT_OK + 1)", Assert.Single(header.Constants, value => value.Name == "RESULT_RETRY").Value);
             Assert.Equal("(RESULT_RETRY + 1)", Assert.Single(header.Constants, value => value.Name == "RESULT_FAILED").Value);
@@ -108,6 +130,22 @@ public class FfiToolingTests
                 // Library: window.library
                 // Base: _WindowBase
                 """);
+            var graphicsPath = Path.Combine(directory, "graphics.novus");
+            var arexxPath = Path.Combine(directory, "arexx.novus");
+            var popcyclePath = Path.Combine(directory, "popcycle.novus");
+            var requesterPath = Path.Combine(directory, "requester.novus");
+            var consolePath = Path.Combine(directory, "console.novus");
+            var colorwheelPath = Path.Combine(directory, "colorwheel.novus");
+            var staticPath = Path.Combine(directory, "amiga_lib.novus");
+            File.WriteAllText(graphicsPath, "// Library: graphics.library\n// Base: _GfxBase\n");
+            File.WriteAllText(arexxPath, "// Library: arexx.library\n// Base: _ARexxBase\n");
+            File.WriteAllText(popcyclePath, "// Library: popcycle.library\n// Base: _PopCycleBase\n");
+            File.WriteAllText(requesterPath, "// Library: requester.library\n// Base: _RequesterBase\n");
+            File.WriteAllText(consolePath, "// Library: console.device\n// Base: _ConsoleDevice\n// Unit: -1\n");
+            File.WriteAllText(colorwheelPath, "// Library: colorwheel.library\n// Base: _ColorWheelBase\n");
+            File.WriteAllText(staticPath, "// Static support library\n");
+            File.WriteAllText(Path.Combine(directory, "ndk_dependencies.txt"),
+                "amiga_lib|AddTOF|graphics\n");
 
             var window = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(path));
             var timer = new FfiModuleMetadata(path, "timer_device", "timer.device", "timer.device", "_TimerBase", FfiModuleKind.Device, 0);
@@ -116,6 +154,13 @@ public class FfiToolingTests
 
             Assert.Equal("window.class", window.OpenName);
             Assert.Equal(44, window.MinimumVersion);
+            Assert.Equal("arexx.class", FfiModuleMetadata.TryRead(arexxPath)!.OpenName);
+            Assert.Equal("gadgets/popcycle.gadget", FfiModuleMetadata.TryRead(popcyclePath)!.OpenName);
+            Assert.Equal("requester.class", FfiModuleMetadata.TryRead(requesterPath)!.OpenName);
+            var console = Assert.IsType<FfiModuleMetadata>(FfiModuleMetadata.TryRead(consolePath));
+            Assert.Equal(-1, console.DeviceUnit);
+            Assert.Contains("moveq\t#-1,d0\t; unit", FfiRuntimeGenerator.Generate([console]));
+            Assert.Equal("gadgets/colorwheel.gadget", FfiModuleMetadata.TryRead(colorwheelPath)!.OpenName);
 
             var assembly = FfiRuntimeGenerator.Generate([window, window, timer, resource, dos]);
             Assert.Equal(1, Count(assembly, "__novus_window_name:"));
@@ -125,6 +170,11 @@ public class FfiToolingTests
             Assert.Contains("_SysBase:\tds.l\t1", assembly);
             Assert.Contains("_WBStartupMsg:\tds.l\t1", assembly);
             Assert.Contains("jsr\t-444(a6)\t; OpenDevice", assembly);
+            Assert.Contains("jsr\t-666(a6)\t; CreateMsgPort", assembly);
+            Assert.Contains("jsr\t-654(a6)\t; CreateIORequest", assembly);
+            Assert.Contains("movea.l\ta2,a0\t; device name", assembly);
+            Assert.Contains("jsr\t-660(a6)\t; DeleteIORequest", assembly);
+            Assert.Contains("jsr\t-672(a6)\t; DeleteMsgPort", assembly);
             Assert.Contains("jsr\t-498(a6)\t; OpenResource", assembly);
             Assert.Contains("dc.b\t'window.class',0", assembly);
             Assert.DoesNotContain(".__novus_battmem_resource_closed:", assembly);
@@ -132,8 +182,14 @@ public class FfiToolingTests
                         assembly.IndexOf("__novus_window_name:", StringComparison.Ordinal));
             Assert.Contains("jsr\t___novus_library_not_found", assembly);
             Assert.Contains("moveq\t#0,d1", assembly);
+            Assert.Contains("movem.l\td1/d6/a0-a2/a6,-(sp)", assembly);
+            Assert.Contains("movea.l\ta0,a2", assembly);
+            Assert.Contains("move.l\td6,-(sp)\n\tmove.l\ta2,-(sp)", assembly);
             Assert.DoesNotContain("move.l\td0,_DOSBase\n\ttst.l\t_DOSBase", assembly);
             Assert.DoesNotContain("_WBStartupMsg", FfiRuntimeGenerator.Generate([dos], includeWorkbenchStartup: false));
+            var dependency = Assert.Single(FfiModuleMetadata.ReadMappedFunctionDependencies(
+                directory, new HashSet<string>(["AddTOF"], StringComparer.Ordinal)));
+            Assert.Equal("graphics.library", dependency.LibraryName);
         }
         finally
         {
@@ -159,6 +215,9 @@ public class FfiToolingTests
             Assert.Contains("__novus_ffi_table:", assembly);
             Assert.Contains("\tdc.l\t_IntuitionBase", assembly);
             Assert.Contains("\tmove.w\t(a4)+,d0", assembly);
+            Assert.Contains("\taddq.w\t#2,a4", assembly);
+            Assert.Contains("\tmove.l\t-12(a4),-(sp)", assembly);
+            Assert.Contains("\tsuba.w\t#12,a4", assembly);
             Assert.Contains("\tdbra\td4,.__novus_ffi_close_next", assembly);
             Assert.DoesNotContain(".__novus_intuition_ready:", assembly);
         }
@@ -177,7 +236,8 @@ public class FfiToolingTests
         var assembly = FfiRuntimeGenerator.Generate([binding]);
 
         Assert.Contains("move.l\td0,_ClientBase", assembly);
-        Assert.Contains("beq.s\t.__novus_client_ready", assembly);
+        Assert.Contains("beq", assembly.AsSpan());
+        Assert.Contains(".__novus_client_ready", assembly.AsSpan());
         Assert.DoesNotContain("__novus_ffi_table:", assembly);
     }
 
@@ -305,6 +365,46 @@ public class FfiToolingTests
                 ==alias
                 VOID ReportMouse1(struct Window * flag, BOOL window) (d0,a0)
                 """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "utility_lib.sfd"), """
+                ==base _UtilityBase
+                ==libname utility.library
+                ==bias 150
+                LONG SDivMod32(LONG dividend, LONG divisor) (d0,d1)
+                ULONG UDivMod32(ULONG dividend, ULONG divisor) (d0,d1)
+                LONG SMult64(LONG arg1, LONG arg2) (d0,d1)
+                ULONG UMult64(ULONG arg1, ULONG arg2) (d0,d1)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "dos_lib.sfd"), """
+                ==base _DOSBase
+                ==libname dos.library
+                ==bias 540
+                BOOL SetArgStr(CONST_STRPTR string) (d1)
+                BOOL Fault(LONG code, CONST_STRPTR header, STRPTR buffer, LONG len) (d1,d2,d3,d4)
+                LONG FindArg(CONST_STRPTR keyword, CONST_STRPTR arg_template) (d1,d2)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "mathffp_lib.sfd"), """
+                ==base _MathBase
+                ==libname mathffp.library
+                ==bias 30
+                LONG SPFix(FLOAT parm) (d0)
+                FLOAT SPFlt(LONG integer) (d0)
+                FLOAT SPAbs(FLOAT parm) (d0)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "mathtrans_lib.sfd"), """
+                ==base _MathTransBase
+                ==libname mathtrans.library
+                ==bias 30
+                FLOAT SPSin(FLOAT parm) (d0)
+                FLOAT SPSincos(FLOAT * cosResult, FLOAT parm) (d1,d0)
+                """);
+            File.WriteAllText(Path.Combine(sfdDirectory, "diskfont_lib.sfd"), """
+                ==base _DiskfontBase
+                ==libname diskfont.library
+                ==bias 30
+                VOID SetDiskFontCtrlA(struct TagItem * taglist) (a0)
+                ==varargs
+                VOID SetDiskFontCtrl(...) (a0)
+                """);
 
             new SfdGenerator(ndk, output).GenerateAllBindings();
 
@@ -337,7 +437,16 @@ public class FfiToolingTests
             Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("Msg"));
             Assert.Equal("*u32", SfdParser.MapAmigaTypeToNovus("ULONG *"));
             Assert.Equal("*u8", SfdParser.MapAmigaTypeToNovus("void *"));
-            Assert.Equal("amiga fn(*HDWCallbackMsg in a0) -> i32 in d0",
+            Assert.Equal("*CxObj", SfdParser.MapAmigaTypeToNovus("CxObj *"));
+            Assert.Equal("*CxMsg", SfdParser.MapAmigaTypeToNovus("CxMsg *"));
+            Assert.Equal("*InputXpression", SfdParser.MapAmigaTypeToNovus("IX *"));
+            Assert.Equal("amiga fn(*AVLNode in a0, *AVLNode in a1) -> i32",
+                SfdParser.MapAmigaTypeToNovus("AVLNODECOMP"));
+            Assert.Equal("amiga fn(*AVLNode in a0, *u8 in a1) -> i32",
+                SfdParser.MapAmigaTypeToNovus("AVLKEYCOMP"));
+            Assert.Contains("pub struct CxObj {}", structs);
+            Assert.Contains("pub struct CxMsg {}", structs);
+            Assert.Equal("amiga fn(*HDWCallbackMsg in a0) -> i32",
                 SfdParser.MapAmigaTypeToNovus("LONG (*Callback)(register __a0 struct HDWCallbackMsg *msg)"));
             Assert.Contains("pub const POINTERSIZE: u32 = (1 + 16 + 1) * 2", constants);
             Assert.Contains("pub const ALIAS_TAG: u32 = (BASE_TAG + $01)", constants);
@@ -399,8 +508,74 @@ public class FfiToolingTests
             var intuitionStub = File.ReadAllText(Path.Combine(output, "stubs", "intuition_stubs.s"));
             Assert.Contains("ReportMouse1(window: *Window, flag: i32)", intuitionBinding);
             Assert.Contains("movea.l\t8(sp),a0\n\tmove.l\t12(sp),d0", intuitionStub);
-            Assert.Equal(3, Directory.GetFiles(sfdDirectory, "*_lib.sfd").Length);
-            Assert.Equal(3, Directory.GetFiles(Path.Combine(output, "stubs"), "*_stubs.s").Length);
+            var utilityBinding = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "utility.novus"));
+            Assert.Contains("SDivMod32(dividend: i32, divisor: i32) -> i64", utilityBinding);
+            Assert.Contains("UDivMod32(dividend: u32, divisor: u32) -> u64", utilityBinding);
+            Assert.Contains("SMult64(arg1: i32, arg2: i32) -> i64", utilityBinding);
+            Assert.Contains("UMult64(arg1: u32, arg2: u32) -> u64", utilityBinding);
+            var utilityStub = File.ReadAllText(Path.Combine(output, "stubs", "utility_stubs.s"));
+            Assert.Contains("jsr\t-162(a6)\n\texg\td0,d1", utilityStub);
+            Assert.Contains("jsr\t-168(a6)\n\texg\td0,d1", utilityStub);
+            Assert.Contains("SetArgStr(string: *u8) -> *u8",
+                File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "dos.novus")));
+            Assert.Contains("Fault(code: i32, header: *u8, buffer: *u8, len: i32) -> i32",
+                File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "dos.novus")));
+            Assert.Contains("FindArg(template: *u8, keyword: *u8) -> i32",
+                File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "dos.novus")));
+            var mathFfpBinding = File.ReadAllText(
+                Path.Combine(output, "std", "amiga", "raw", "mathffp.novus"));
+            Assert.Contains("SPFix(parm: u32) -> i32", mathFfpBinding);
+            Assert.Contains("SPFlt(integer: i32) -> u32", mathFfpBinding);
+            Assert.Contains("SPAbs(parm: u32) -> u32", mathFfpBinding);
+            var mathTransBinding = File.ReadAllText(
+                Path.Combine(output, "std", "amiga", "raw", "mathtrans.novus"));
+            Assert.Contains("SPSin(parm: u32) -> u32", mathTransBinding);
+            Assert.Contains("SPSincos(cosResult: *u32, parm: u32) -> u32", mathTransBinding);
+            Assert.Contains("SetDiskFontCtrl(tag1: u32, ...args)", File.ReadAllText(
+                Path.Combine(output, "std", "amiga", "raw", "diskfont.novus")));
+            Assert.Equal(8, Directory.GetFiles(sfdDirectory, "*_lib.sfd").Length);
+            Assert.Equal(8, Directory.GetFiles(Path.Combine(output, "stubs"), "*_stubs.s").Length);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SfdGenerator_DisambiguatesHdwrenchBootBlockAndPreservesTaggedTypedefLayouts()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"novus-hdw-{Guid.NewGuid():N}");
+        var ndk = Path.Combine(root, "ndk");
+        var output = Path.Combine(root, "output");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(ndk, "Include", "sfd"));
+            Directory.CreateDirectory(Path.Combine(ndk, "Include", "include_h"));
+            File.WriteAllText(Path.Combine(ndk, "Include", "include_h", "hdwrench.h"), """
+                struct BootBlock { ULONG checksum; };
+                typedef struct bootblock {
+                    LONG blockNumber;
+                    BYTE spares[4-sizeof(BOOL)];
+                } BootBlock;
+                """);
+            File.WriteAllText(Path.Combine(ndk, "Include", "sfd", "hdwrench_lib.sfd"), """
+                ==base _HDWBase
+                ==libname hdwrench.library
+                ==bias 30
+                ==include <hdwrench.h>
+                USHORT RawRead(BootBlock * bbk, USHORT size)(a0,d0)
+                """);
+
+            new SfdGenerator(ndk, output).GenerateAllBindings();
+
+            var binding = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "hdwrench.novus"));
+            var structs = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "structs.novus"));
+            var types = File.ReadAllText(Path.Combine(output, "std", "amiga", "raw", "ndk_types.h"));
+            Assert.Contains("RawRead(bbk: *HdwBootBlock, size: u16)", binding);
+            Assert.Contains("pub struct BootBlock {\n    checksum: u32,", structs);
+            Assert.Contains("pub struct HdwBootBlock {\n    blockNumber: i32,\n    spares: [i8; 4-4],", structs);
+            Assert.Contains("typedef struct bootblock HdwBootBlock;", types);
         }
         finally
         {

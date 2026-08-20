@@ -6,7 +6,7 @@ from amiga::sys::intuition import ScreenHandle, WindowHandle
 from amiga::sys::graphics::draw import DrawContext, DrawMode
 from amiga::sys::graphics::shapes import Point, Rect
 from amiga::raw::structs import Window, RastPort
-from amiga::sys::graphics::errors import GraphicsError
+from amiga::sys::graphics::errors import GraphicsError, graphics_error_to_code
 
 // ============================================================================
 // DrawContext Creation Tests
@@ -18,10 +18,12 @@ pub fn test_draw_context_from_window() {
     match win_result {
         Result::Ok(window) => {
             var w = window
-            let ctx_result = DrawContext::from_rastport(w.rastport())
+            let raw_window = unsafe { &*w.as_raw() }
+            let ctx_result = DrawContext::from_window(raw_window)
             match ctx_result {
                 Result::Ok(ctx) => {
-                    expect(true, "DrawContext created successfully")
+                    let window_rp = unsafe { (*RastPort)w.rastport() }
+                    expect(ctx.as_raw() == window_rp, "DrawContext borrows the window RastPort")
                 },
                 Result::Err(_) => {
                     expect(false, "DrawContext::from_window should succeed")
@@ -37,10 +39,7 @@ pub fn test_draw_context_null_rastport() {
     let ctx_result = unsafe { DrawContext::borrow_raw((*RastPort)0) }
     match ctx_result {
         Result::Ok(_) => expect(false, "should reject null RastPort"),
-        Result::Err(err) => {
-            // Should get InvalidRastPort error
-            expect(true, "correctly rejected null RastPort")
-        }
+        Result::Err(err) => expect(graphics_error_to_code(err) == -304, "null RastPort returns InvalidRastPort")
     }
 }
 
@@ -48,6 +47,9 @@ pub fn test_draw_context_null_rastport() {
 // Pen Operations Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|SetAPen
+// @covers-ndk function|graphics.library|GetAPen
+// @ndk-side-effects SetAPen replaces the RastPort foreground pen twice and GetAPen returns each exact live value
 @test("DrawContext::pen and get_pen work correctly")
 pub fn test_draw_pen_get_set() {
     let win_result = WindowHandle::simple("Pen Test", 200, 150)
@@ -74,6 +76,9 @@ pub fn test_draw_pen_get_set() {
     }
 }
 
+// @covers-ndk function|graphics.library|SetBPen
+// @covers-ndk function|graphics.library|GetBPen
+// @ndk-side-effects SetBPen replaces the RastPort background pen and GetBPen returns the exact live value
 @test("DrawContext::bg_pen and get_bg_pen work correctly")
 pub fn test_draw_bg_pen_get_set() {
     let win_result = WindowHandle::simple("BG Pen Test", 200, 150)
@@ -94,6 +99,9 @@ pub fn test_draw_bg_pen_get_set() {
     }
 }
 
+// @covers-ndk function|graphics.library|SetDrMd
+// @covers-ndk function|graphics.library|GetDrMd
+// @ndk-side-effects SetDrMd installs JAM2 in the RastPort and GetDrMd returns that exact mode
 @test("DrawContext::mode and get_mode work correctly")
 pub fn test_draw_mode_get_set() {
     let win_result = WindowHandle::simple("Mode Test", 200, 150)
@@ -104,11 +112,7 @@ pub fn test_draw_mode_get_set() {
             match ctx_result {
                 Result::Ok(ctx) => {
                     ctx.mode(DrawMode::Jam2)
-                    let mode = ctx.draw_mode()
-                    match mode {
-                        DrawMode::Jam2 => expect(true, "mode is Jam2"),
-                        _ => expect(false, "mode should be Jam2")
-                    }
+                    expect_eq((u32)ctx.draw_mode().to_raw(), (u32)DrawMode::Jam2.to_raw(), "mode is Jam2")
                 },
                 Result::Err(_) => expect(false, "context should create")
             }
@@ -121,6 +125,11 @@ pub fn test_draw_mode_get_set() {
 // Pixel Drawing Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|SetRast
+// @covers-ndk function|graphics.library|SetAPen
+// @covers-ndk function|graphics.library|WritePixel
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects SetRast clears the screen bitmap; SetAPen selects color 1; WritePixel changes exactly the requested coordinate; ReadPixel observes that pixel and an untouched neighbor
 @test("DrawContext::pixel writes and can be read back")
 pub fn test_draw_pixel_readback() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -181,6 +190,10 @@ pub fn test_draw_pixel_at() {
 // Line Drawing Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|Move
+// @covers-ndk function|graphics.library|Draw
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects Move positions the RastPort cursor; Draw writes both endpoints and an interior horizontal pixel while leaving the adjacent row unchanged; ReadPixel verifies all four locations
 @test("DrawContext::line draws a horizontal line")
 pub fn test_draw_line_horizontal() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -242,6 +255,9 @@ pub fn test_draw_line_vertical() {
 // Rectangle Fill Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|RectFill
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects RectFill writes the inclusive corners and interior of the requested rectangle while preserving pixels immediately outside both horizontal edges
 @test("DrawContext::rect_fill fills a rectangle")
 pub fn test_draw_rect_fill() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -307,6 +323,9 @@ pub fn test_draw_fill_rect() {
 // Clear Operations Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|SetRast
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects SetRast changes distant bitmap coordinates to color 1, then changes a sampled coordinate back to color 0; ReadPixel observes both whole-raster fills
 @test("DrawContext::clear fills entire window")
 pub fn test_draw_clear() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -335,6 +354,9 @@ pub fn test_draw_clear() {
     }
 }
 
+// @covers-ndk function|graphics.library|EraseRect
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects EraseRect applies the live background pen inside the requested region while preserving a pixel outside it
 @test("DrawContext::rect_erase erases a region")
 pub fn test_draw_rect_erase() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -369,6 +391,10 @@ pub fn test_draw_rect_erase() {
 // Move/Draw (Pen Position) Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|Move
+// @covers-ndk function|graphics.library|Draw
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects Move selects the line origin; Draw writes through the requested endpoint; ReadPixel observes the start, middle, and end
 @test("DrawContext::move_to and line_to work together")
 pub fn test_draw_move_line_to() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -439,6 +465,10 @@ pub fn test_rect_operations() {
 // Draw Mode Tests
 // ============================================================================
 
+// @covers-ndk function|graphics.library|SetDrMd
+// @covers-ndk function|graphics.library|WritePixel
+// @covers-ndk function|graphics.library|ReadPixel
+// @ndk-side-effects WritePixel first stores color 1; SetDrMd selects COMPLEMENT; the second WritePixel toggles every active bitplane so ReadPixel returns color 2 on the two-plane screen
 @test("DrawMode::Complement XORs pixels")
 pub fn test_draw_mode_complement() {
     let win_result = ScreenHandle::lores("Drawing Test", 2)
@@ -459,10 +489,7 @@ pub fn test_draw_mode_complement() {
                     ctx.mode(DrawMode::Complement)
                     let _ = ctx.pixel(50, 40)
 
-                    // XOR with 1 should toggle the pixel back
-                    // Note: exact behavior depends on pen color in complement mode
-                    // This test verifies complement mode doesn't crash
-                    expect(true, "complement mode works")
+                    expect_eq(ctx.get_pixel(50, 40), 2, "complement toggles every active bitplane")
                 },
                 Result::Err(_) => expect(false, "context should create")
             }

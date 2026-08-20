@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple
 # Import the autodoc parser
 sys.path.insert(0, os.path.dirname(__file__))
 from autodoc_parser import AutodocParser, FunctionDoc
+from generate_api_docs import sfd_aliases
 
 
 class FFIUpdater:
@@ -36,9 +37,11 @@ class FFIUpdater:
     # Pattern to match existing doc comments before a declaration
     DOC_COMMENT_PATTERN = re.compile(r'^(\s*)///.*$', re.MULTILINE)
 
-    def __init__(self, autodoc_parser: AutodocParser, force_update: bool = False):
+    def __init__(self, autodoc_parser: AutodocParser, force_update: bool = False,
+                 aliases: Dict[Tuple[str, str], str] | None = None):
         self.autodoc_parser = autodoc_parser
         self.force_update = force_update
+        self.aliases = aliases or {}
         self.stats = {
             'functions_found': 0,
             'functions_documented': 0,
@@ -50,6 +53,9 @@ class FFIUpdater:
         """Update a single FFI file with autodoc documentation"""
         content = filepath.read_text()
         lines = content.split('\n')
+        declared_library = re.search(r'^//\s*Library:\s*(\S+)', content, re.MULTILINE)
+        file_library = "amiga.lib" if filepath.stem == "amiga_lib" else \
+            declared_library.group(1) if declared_library else ""
 
         new_lines = []
         i = 0
@@ -68,7 +74,28 @@ class FFIUpdater:
                 while new_lines and new_lines[-1].strip().startswith('@'):
                     attributes.insert(0, new_lines.pop())
                 has_existing_docs = self._has_doc_comment_before(new_lines)
-                doc = self.autodoc_parser.get_function(func_name)
+                annotation = next((re.match(r'\s*@library\("([^"]+)"\)', item)
+                                   for item in attributes if '@library(' in item), None)
+                library = annotation.group(1) if annotation else file_library
+                candidates = [func_name, func_name + "A"]
+                if (library, func_name) in self.aliases:
+                    candidates.insert(0, self.aliases[(library, func_name)])
+                if func_name.endswith("A"):
+                    candidates.append(func_name[:-1])
+                if func_name.endswith("Tags"):
+                    candidates.extend((func_name[:-4] + "A", func_name[:-4]))
+                candidates.extend(name.replace("Attrs", "Attr") for name in list(candidates)
+                                  if "Attrs" in name)
+                if func_name.startswith("Is") and func_name != "IsXXXX":
+                    candidates.append("IsXXXX")
+                if func_name == "UCopperListInit":
+                    candidates.append("CINIT")
+                doc = next((self.autodoc_parser.get_function(name, library)
+                            for name in candidates
+                            if self.autodoc_parser.get_function(name, library)), None)
+                doc = doc or next((self.autodoc_parser.get_unique_function(name)
+                                   for name in candidates
+                                   if self.autodoc_parser.get_unique_function(name)), None)
 
                 if has_existing_docs and not self.force_update:
                     self.stats['functions_already_documented'] += 1
@@ -139,7 +166,8 @@ def main():
         print(f"Error: {ffi_path} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    updater = FFIUpdater(autodoc_parser, force_update=args.force)
+    updater = FFIUpdater(autodoc_parser, force_update=args.force,
+                         aliases=sfd_aliases(Path(args.autodocs_dir).parents[1]))
     files = sorted(ffi_path.rglob('*.novus')) if ffi_path.is_dir() else [ffi_path]
     for path in files:
         print(f"Updating {path}...", file=sys.stderr)

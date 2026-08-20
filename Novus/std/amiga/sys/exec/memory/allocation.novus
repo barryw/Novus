@@ -21,13 +21,11 @@ from amiga::raw::consts import MEMF_CHIP, MEMF_FAST, MEMF_CLEAR, MEMF_PUBLIC, ME
 ///
 /// Example:
 /// ```novus
-/// // Allocate chip memory for graphics
+/// // Allocate chip memory for graphics; the handle frees it when it goes out of scope
 /// let chip_mem = MemHandle::new_chip(1024)?
-/// defer { chip_mem.drop() }
 ///
 /// // Allocate fast memory for general use
 /// let fast_mem = MemHandle::new_fast(2048)?
-/// defer { fast_mem.drop() }
 ///
 /// // Allocate with custom flags
 /// let any_mem = MemHandle::new_with_flags(512, MEMF_ANY | MEMF_CLEAR)?
@@ -87,6 +85,16 @@ impl MemHandle {
     @inline
     pub fn is_valid(&self) -> bool {
         return (u32)self.ptr != 0
+    }
+
+    /// Transfer ownership of the allocation to the caller.
+    ///
+    /// The caller must eventually release the pointer with `FreeVec`.
+    pub fn into_raw(consuming self) -> *u8 {
+        let ptr = self.ptr
+        self.ptr = null
+        self.size = 0
+        return ptr
     }
 }
 

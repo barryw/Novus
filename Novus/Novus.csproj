@@ -39,7 +39,7 @@
         <None Include="std/**/*.novus">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
-        <None Include="std/amiga/raw/ndk_headers.txt;std/amiga/raw/ndk_versions.txt;std/amiga/raw/ndk_unsupported_macros.txt;std/amiga/raw/ndk_coverage.json">
+        <None Include="std/amiga/raw/ndk_headers.txt;std/amiga/raw/ndk_versions.txt;std/amiga/raw/ndk_dependencies.txt;std/amiga/raw/ndk_link_gaps.txt;std/amiga/raw/ndk_unsupported_macros.txt;std/amiga/raw/ndk_coverage.json">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
         <None Include="std/amiga/raw/ndk_types.h">

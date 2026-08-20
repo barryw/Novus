@@ -1,0 +1,266 @@
+from std::test::test import expect
+from amiga::raw::consts import JP_TYPE_JOYSTK, JP_TYPE_MASK, JP_TYPE_MOUSE, LANG_KOREAN, SCON_AddCreateKeys, SCON_RemCreateKeys, SJA_Reinitialize, SJA_TYPE_AUTOSENSE, SJA_TYPE_JOYSTK, SJA_TYPE_MOUSE, SJA_Type, TAG_DONE
+from amiga::raw::dos import Delay
+from amiga::raw::graphics import WaitTOF
+from amiga::raw::lowlevel import AddKBInt, AddTimerInt, AddVBlankInt, ElapsedTime, GetKey, GetLanguageSelection, QueryKeys, ReadJoyPort, RemKBInt, RemTimerInt, RemVBlankInt, SetJoyPortAttrs, SetJoyPortAttrsA, StartTimerInt, StopTimerInt, SystemControl, SystemControlA
+from amiga::raw::structs import EClockVal, KeyQuery, TagItem
+
+type LowLevelInterrupt = amiga fn(u32 in d0, *u8 in a1) -> u32 in d0
+
+union LowLevelInterruptAddress {
+    entry: LowLevelInterrupt,
+    raw: *u8,
+}
+
+amiga fn lowlevel_interrupt(_event: u32 in d0, data: *u8 in a1) -> u32 in d0 {
+    if data != null {
+        unsafe {
+            let count = (*u32)data
+            write_volatile(count, read_volatile(count) + 1)
+        }
+    }
+    return 0
+}
+
+fn interrupt_entry() -> *u8 {
+    let address = LowLevelInterruptAddress { entry: lowlevel_interrupt }
+    return unsafe { address.raw }
+}
+
+fn wait_frames(count: u32) {
+    var index: u32 = 0
+    while index < count {
+        WaitTOF()
+        index += 1
+    }
+}
+
+fn force_port_a(port: u32, controller_type: u32) -> i16 {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SJA_Type, ti_Data: controller_type },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    return SetJoyPortAttrsA(port, &var tags[0])
+}
+
+fn reset_port_a(port: u32) {
+    var tags: [TagItem] = [
+        TagItem { ti_Tag: SJA_Reinitialize, ti_Data: 0 },
+        TagItem { ti_Tag: SJA_Type, ti_Data: SJA_TYPE_AUTOSENSE },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    SetJoyPortAttrsA(port, &var tags[0])
+}
+
+// @covers-ndk function|lowlevel.library|GetLanguageSelection
+// @ndk-side-effects Reads the machine-wide language byte without changing it and verifies it is one of the complete NDK-defined selections
+@test("lowlevel.library GetLanguageSelection returns a defined language")
+pub fn lowlevel_language() {
+    let language = GetLanguageSelection()
+    expect((u32)language <= LANG_KOREAN, "language selection is within the NDK-defined range")
+}
+
+// @covers-ndk function|lowlevel.library|GetKey
+// @ndk-side-effects Queries live hardware while the harness holds A, then pins the tested A4000/FS-UAE discrepancy where GetKey returns the documented no-key sentinel despite QueryKeys reporting A pressed
+@test("lowlevel.library GetKey pins the A4000 injected-key discrepancy")
+pub fn lowlevel_get_key() {
+    var query = KeyQuery { kq_KeyCode: $20, kq_Pressed: 0 }
+    QueryKeys(&var query, 1)
+    let key = GetKey()
+    expect(query.kq_Pressed != 0, "same-moment hardware query observes injected A")
+    expect((key & $FFFF) == $FFFF, "tested GetKey returns its no-key sentinel despite the held key")
+}
+
+// @covers-ndk function|lowlevel.library|QueryKeys
+// @ndk-side-effects Queries live keyboard hardware for A and B while the harness holds only A and verifies both exact result fields
+@test("lowlevel.library QueryKeys distinguishes held and released keys")
+pub fn lowlevel_query_keys() {
+    var keys: [KeyQuery] = [
+        KeyQuery { kq_KeyCode: $20, kq_Pressed: 0 },
+        KeyQuery { kq_KeyCode: $35, kq_Pressed: -1 },
+    ]
+    QueryKeys(&var keys[0], 2)
+    expect(keys[0].kq_Pressed != 0, "A raw key is reported pressed")
+    expect(keys[1].kq_Pressed == 0, "B raw key is reported released")
+}
+
+// @covers-ndk function|lowlevel.library|ReadJoyPort
+// @ndk-side-effects Forces free game port one to the mouse protocol, reads the live port type, and reinitializes the port to automatic sensing before returning
+@test("lowlevel.library ReadJoyPort reports a forced mouse port")
+pub fn lowlevel_read_joy_port() {
+    let forced = force_port_a(1, SJA_TYPE_MOUSE)
+    let state = if forced != 0 { ReadJoyPort(1) } else { 0 }
+    reset_port_a(1)
+    expect(forced != 0, "free game port accepts a forced protocol")
+    expect((state & JP_TYPE_MASK) == JP_TYPE_MOUSE, "forced port read reports the mouse protocol")
+}
+
+// @covers-ndk function|lowlevel.library|SetJoyPortAttrsA
+// @ndk-side-effects Forces free game port one to joystick mode through a terminated tag list, verifies ReadJoyPort exposes that exact type, and reinitializes the port
+@test("lowlevel.library SetJoyPortAttrsA forces a controller type")
+pub fn lowlevel_set_joy_a() {
+    let changed = force_port_a(1, SJA_TYPE_JOYSTK)
+    let state = if changed != 0 { ReadJoyPort(1) } else { 0 }
+    reset_port_a(1)
+    expect(changed != 0, "free game port accepts tag-list attributes")
+    expect((state & JP_TYPE_MASK) == JP_TYPE_JOYSTK, "tag-list setter forces joystick interpretation")
+}
+
+// @covers-ndk function|lowlevel.library|SetJoyPortAttrs
+// @ndk-side-effects Forces free game port one to mouse mode through the varargs stub, verifies ReadJoyPort exposes that exact type, and reinitializes the port through varargs
+@test("lowlevel.library SetJoyPortAttrs forces a controller type")
+pub fn lowlevel_set_joy() {
+    let changed = SetJoyPortAttrs(1, SJA_Type, SJA_TYPE_MOUSE, TAG_DONE)
+    let state = if changed != 0 { ReadJoyPort(1) } else { 0 }
+    SetJoyPortAttrs(1, SJA_Reinitialize, 0, SJA_Type, SJA_TYPE_AUTOSENSE, TAG_DONE)
+    expect(changed != 0, "free game port accepts varargs attributes")
+    expect((state & JP_TYPE_MASK) == JP_TYPE_MOUSE, "varargs setter forces mouse interpretation")
+}
+
+// @covers-ndk function|lowlevel.library|AddKBInt
+// @ndk-side-effects Installs one real keyboard interrupt extension, proves the documented singleton rejects a competing extension, then removes the owned handler
+@test("lowlevel.library AddKBInt grants exclusive keyboard extension ownership")
+pub fn lowlevel_add_kb() {
+    var count: u32 = 0
+    let first = AddKBInt(interrupt_entry(), (*u8)&var count)
+    let second = if first != null { AddKBInt(interrupt_entry(), (*u8)&var count) } else { (*u8)null }
+    if second != null { RemKBInt(second) }
+    if first != null { RemKBInt(first) }
+    expect(first != null, "keyboard interrupt extension installs")
+    expect(second == null, "competing keyboard interrupt extension is rejected")
+}
+
+// @covers-ndk function|lowlevel.library|RemKBInt
+// @ndk-side-effects Installs and removes a keyboard interrupt extension, immediately reacquires the singleton with the same callback, and removes the replacement
+@test("lowlevel.library RemKBInt releases keyboard extension ownership")
+pub fn lowlevel_remove_kb() {
+    var count: u32 = 0
+    let first = AddKBInt(interrupt_entry(), (*u8)&var count)
+    if first != null { RemKBInt(first) }
+    let second = if first != null { AddKBInt(interrupt_entry(), (*u8)&var count) } else { (*u8)null }
+    if second != null { RemKBInt(second) }
+    expect(first != null && second != null, "removed keyboard extension can be reacquired")
+}
+
+// @covers-ndk function|lowlevel.library|AddTimerInt
+// @ndk-side-effects Allocates the singleton low-level CIA timer, proves a competing allocation is rejected, and removes the exact owned handle
+@test("lowlevel.library AddTimerInt grants exclusive timer ownership")
+pub fn lowlevel_add_timer() {
+    var count: u32 = 0
+    let first = AddTimerInt(interrupt_entry(), (*u8)&var count)
+    let second = if first != null { AddTimerInt(interrupt_entry(), (*u8)&var count) } else { (*u8)null }
+    if second != null { RemTimerInt(second) }
+    if first != null { RemTimerInt(first) }
+    expect(first != null, "low-level CIA timer allocates")
+    expect(second == null, "competing low-level timer allocation is rejected")
+}
+
+// @covers-ndk function|lowlevel.library|StartTimerInt
+// @ndk-side-effects Starts a real one-shot CIA timer at 20 milliseconds, waits until its interrupt callback increments caller storage exactly once, then removes the timer
+@test("lowlevel.library StartTimerInt fires a one-shot timer")
+pub fn lowlevel_start_timer() {
+    var count: u32 = 0
+    let handle = AddTimerInt(interrupt_entry(), (*u8)&var count)
+    if handle != null { StartTimerInt(handle, 20000, 0) }
+    Delay(3)
+    if handle != null { RemTimerInt(handle) }
+    expect(handle != null && count == 1, "one-shot timer invokes its callback exactly once")
+}
+
+// @covers-ndk function|lowlevel.library|StopTimerInt
+// @ndk-side-effects Runs a continuous 20-millisecond CIA timer until callbacks are observed, stops it, proves the callback count remains stable for three DOS ticks, then removes it
+@test("lowlevel.library StopTimerInt halts a continuous timer")
+pub fn lowlevel_stop_timer() {
+    var count: u32 = 0
+    let handle = AddTimerInt(interrupt_entry(), (*u8)&var count)
+    if handle != null { StartTimerInt(handle, 20000, 1) }
+    Delay(3)
+    if handle != null { StopTimerInt(handle) }
+    let stopped = count
+    Delay(3)
+    if handle != null { RemTimerInt(handle) }
+    expect(handle != null && stopped > 0, "continuous timer fires before stop")
+    expect(count == stopped, "stopped timer produces no later callbacks")
+}
+
+// @covers-ndk function|lowlevel.library|RemTimerInt
+// @ndk-side-effects Allocates and removes the singleton low-level CIA timer, immediately reacquires it with the same callback, and removes the replacement
+@test("lowlevel.library RemTimerInt releases its CIA timer")
+pub fn lowlevel_remove_timer() {
+    var count: u32 = 0
+    let first = AddTimerInt(interrupt_entry(), (*u8)&var count)
+    if first != null { RemTimerInt(first) }
+    let second = if first != null { AddTimerInt(interrupt_entry(), (*u8)&var count) } else { (*u8)null }
+    if second != null { RemTimerInt(second) }
+    expect(first != null && second != null, "removed low-level timer can be reacquired")
+}
+
+// @covers-ndk function|lowlevel.library|ElapsedTime
+// @ndk-side-effects Seeds a zeroed EClock context, waits two DOS ticks, and verifies the second fixed-point result measures a positive sub-second interval in the documented range
+@test("lowlevel.library ElapsedTime measures a real interval")
+pub fn lowlevel_elapsed_time() {
+    var context = EClockVal { ev_hi: 0, ev_lo: 0 }
+    ElapsedTime(&var context)
+    Delay(2)
+    let elapsed = ElapsedTime(&var context)
+    expect(elapsed > 1000 && elapsed < 65536, "two DOS ticks produce a positive sub-second 16.16 interval")
+}
+
+// @covers-ndk function|lowlevel.library|AddVBlankInt
+// @ndk-side-effects Installs a vertical-blank callback over three real display frames, observes its caller-owned counter advance, and removes the exact handle
+@test("lowlevel.library AddVBlankInt receives display interrupts")
+pub fn lowlevel_add_vblank() {
+    var count: u32 = 0
+    let handle = AddVBlankInt(interrupt_entry(), (*u8)&var count)
+    wait_frames(3)
+    if handle != null { RemVBlankInt(handle) }
+    expect(handle != null && count >= 2, "vertical-blank callback runs across real frames")
+}
+
+// @covers-ndk function|lowlevel.library|RemVBlankInt
+// @ndk-side-effects Installs a vertical-blank callback, observes it run, removes it, and proves its caller-owned counter remains unchanged over three later display frames
+@test("lowlevel.library RemVBlankInt stops display callbacks")
+pub fn lowlevel_remove_vblank() {
+    var count: u32 = 0
+    let handle = AddVBlankInt(interrupt_entry(), (*u8)&var count)
+    wait_frames(2)
+    if handle != null { RemVBlankInt(handle) }
+    let removed = count
+    wait_frames(3)
+    expect(handle != null && removed > 0, "vertical-blank callback runs before removal")
+    expect(count == removed, "removed callback receives no later display interrupts")
+}
+
+// @covers-ndk function|lowlevel.library|SystemControlA
+// @ndk-side-effects Adds and removes reversible controller-to-rawkey generation for valid port one through terminated tag lists and verifies invalid port four reports the exact failing tag without partial change
+@test("lowlevel.library SystemControlA validates and reverses key generation")
+pub fn lowlevel_system_control_a() {
+    var invalid_tags: [TagItem] = [
+        TagItem { ti_Tag: SCON_AddCreateKeys, ti_Data: 4 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let invalid = SystemControlA(&var invalid_tags[0])
+    var add_tags: [TagItem] = [
+        TagItem { ti_Tag: SCON_AddCreateKeys, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let added = SystemControlA(&var add_tags[0])
+    var remove_tags: [TagItem] = [
+        TagItem { ti_Tag: SCON_RemCreateKeys, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let removed = if added == 0 { SystemControlA(&var remove_tags[0]) } else { SCON_RemCreateKeys }
+    expect(invalid == SCON_AddCreateKeys, "invalid unit reports the exact failing tag")
+    expect(added == 0 && removed == 0, "valid tag-list key generation is added and removed")
+}
+
+// @covers-ndk function|lowlevel.library|SystemControl
+// @ndk-side-effects Adds and removes reversible controller-to-rawkey generation for valid port one through the varargs stub and verifies invalid port four reports the exact failing tag
+@test("lowlevel.library SystemControl validates and reverses key generation")
+pub fn lowlevel_system_control() {
+    let invalid = SystemControl(SCON_AddCreateKeys, 4, TAG_DONE)
+    let added = SystemControl(SCON_AddCreateKeys, 1, TAG_DONE)
+    let removed = if added == 0 { SystemControl(SCON_RemCreateKeys, 1, TAG_DONE) } else { SCON_RemCreateKeys }
+    expect(invalid == SCON_AddCreateKeys, "varargs invalid unit reports the exact failing tag")
+    expect(added == 0 && removed == 0, "valid varargs key generation is added and removed")
+}

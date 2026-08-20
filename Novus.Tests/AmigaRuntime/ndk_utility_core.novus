@@ -1,0 +1,407 @@
+from std::core import Option, Result
+from std::test::test import expect
+from amiga::sys::exec import MsgPortHandle
+from amiga::sys::utility import free_named_object
+from amiga::raw::consts import TAG_DONE, TAG_IGNORE, TAG_MORE, TAG_SKIP, TAG_USER
+from amiga::raw::consts import TAGFILTER_AND, TAGFILTER_NOT, MAP_REMOVE_NOT_FOUND
+from amiga::raw::consts import ANO_Flags, ANO_NameSpace, ANO_UserSpace, NSF_NODUPS
+from amiga::raw::consts import PACK_ENDTABLE, PKCTRL_ULONG
+from amiga::raw::structs import ClockData, Hook, Message, MinNode, NamedObject, TagItem
+from amiga::raw::utility import FindTagItem, GetTagData, PackBoolTags, NextTagItem
+from amiga::raw::utility import FilterTagChanges, MapTags, ApplyTagChanges
+from amiga::raw::utility import AllocateTagItems, CloneTagItems, FreeTagItems, RefreshTagItemClones
+from amiga::raw::utility import TagInArray, FilterTagItems
+from amiga::raw::utility import Amiga2Date, Date2Amiga, CheckDate
+from amiga::raw::utility import SMult32, UMult32, SDivMod32, UDivMod32, SMult64, UMult64
+from amiga::raw::utility import Stricmp, Strnicmp, ToUpper, ToLower, GetUniqueID
+from amiga::raw::utility import CallHookPkt, PackStructureTags, UnpackStructureTags
+from amiga::raw::utility import AddNamedObject, AllocNamedObject, AllocNamedObjectA
+from amiga::raw::utility import AttemptRemNamedObject, FindNamedObject
+from amiga::raw::utility import NamedObjectName, ReleaseNamedObject, RemNamedObject
+
+const TAG_A: u32 = TAG_USER + 1
+const TAG_B: u32 = TAG_USER + 2
+const TAG_C: u32 = TAG_USER + 3
+const TAG_D: u32 = TAG_USER + 4
+const PACK_BASE: u32 = TAG_USER + 100
+
+amiga fn utility_hook_entry(hook: *Hook in a0, object: *u8 in a2, message: *u8 in a1) -> u32 in d0 {
+    return 0 if hook == null || object == null || message == null
+    unsafe {
+        let state = (*u32)(*hook).h_Data
+        state[0] = ((*u32)object)[0] + ((*u32)message)[0]
+        return state[0]
+    }
+}
+
+// @covers-ndk function|utility.library|FindTagItem
+// @covers-ndk function|utility.library|GetTagData
+// @covers-ndk function|utility.library|PackBoolTags
+// @covers-ndk function|utility.library|NextTagItem
+// @covers-ndk function|utility.library|TagInArray
+// @ndk-side-effects FindTagItem, GetTagData, and NextTagItem follow TAG_IGNORE, TAG_SKIP, and TAG_MORE without mutating either list; PackBoolTags sets and clears mapped bits from the last boolean values; TagInArray stops at TAG_DONE
+@test("utility tag lookup and iteration honor every control tag")
+pub fn utility_tag_lookup_iteration() {
+    var tail = [
+        TagItem { ti_Tag: TAG_C, ti_Data: 33 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let tail_address = unsafe { (u32)(*TagItem)&var tail[0] }
+    var tags = [
+        TagItem { ti_Tag: TAG_IGNORE, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_A, ti_Data: 11 },
+        TagItem { ti_Tag: TAG_SKIP, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 22 },
+        TagItem { ti_Tag: TAG_MORE, ti_Data: tail_address },
+    ]
+
+    let found_a = FindTagItem(TAG_A, &var tags[0])
+    let tag_a_ptr = unsafe { (*TagItem)&var tags[1] }
+    let tail_c_ptr = unsafe { (*TagItem)&var tail[0] }
+    expect(found_a == tag_a_ptr, "FindTagItem returns the exact matching item")
+    expect(FindTagItem(TAG_B, &var tags[0]) == null, "FindTagItem skips the item hidden by TAG_SKIP")
+    expect(GetTagData(TAG_C, 99, &var tags[0]) == 33, "GetTagData follows TAG_MORE")
+    expect(GetTagData(TAG_D, 99, &var tags[0]) == 99, "GetTagData returns the supplied default")
+
+    var state: *TagItem = &var tags[0]
+    let first = NextTagItem(&var state)
+    let second = NextTagItem(&var state)
+    let end = NextTagItem(&var state)
+    unsafe {
+        expect(first == tag_a_ptr && (*first).ti_Tag == TAG_A, "NextTagItem returns the first usable item")
+        expect(second == tail_c_ptr && (*second).ti_Tag == TAG_C, "NextTagItem follows the chained list")
+    }
+    expect(end == null, "NextTagItem stops at TAG_DONE")
+
+    var bool_tags = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 0 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 7 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    var bool_map = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 4 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    expect(PackBoolTags(2, &var bool_tags[0], &var bool_map[0]) == 5, "PackBoolTags sets A and C while clearing B")
+
+    var tag_array: [u32] = [TAG_A, TAG_C, TAG_DONE]
+    expect(TagInArray(TAG_C, &var tag_array[0]) != 0, "TagInArray finds a listed tag")
+    expect(TagInArray(TAG_B, &var tag_array[0]) == 0, "TagInArray rejects an absent tag")
+}
+
+// @covers-ndk function|utility.library|FilterTagChanges
+// @covers-ndk function|utility.library|MapTags
+// @covers-ndk function|utility.library|ApplyTagChanges
+// @covers-ndk function|utility.library|FilterTagItems
+// @ndk-side-effects FilterTagChanges converts unchanged entries to TAG_IGNORE and optionally updates matching originals; ApplyTagChanges updates only existing tags; MapTags substitutes mapped IDs and hides missing or TAG_DONE mappings; FilterTagItems returns and leaves exactly the requested set
+@test("utility tag transforms mutate only documented entries")
+pub fn utility_tag_transforms() {
+    var original = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 10 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 20 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    var changes = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 10 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 21 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 30 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    FilterTagChanges(&var changes[0], &var original[0], 1)
+    expect(changes[0].ti_Tag == TAG_IGNORE, "FilterTagChanges hides unchanged data")
+    expect(changes[1].ti_Tag == TAG_B && original[1].ti_Data == 21, "FilterTagChanges preserves and applies changed data")
+    expect(changes[2].ti_Tag == TAG_C && original[0].ti_Data == 10, "FilterTagChanges preserves unknown changes without touching neighbors")
+
+    var apply = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 12 },
+        TagItem { ti_Tag: TAG_D, ti_Data: 40 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    ApplyTagChanges(&var original[0], &var apply[0])
+    expect(original[0].ti_Data == 12 && original[1].ti_Data == 21, "ApplyTagChanges updates only matching tags")
+
+    var mapped = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 3 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    var mapping = [
+        TagItem { ti_Tag: TAG_A, ti_Data: TAG_D },
+        TagItem { ti_Tag: TAG_C, ti_Data: TAG_DONE },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    MapTags(&var mapped[0], &var mapping[0], MAP_REMOVE_NOT_FOUND)
+    expect(mapped[0].ti_Tag == TAG_D, "MapTags substitutes a mapped tag")
+    expect(mapped[1].ti_Tag == TAG_IGNORE, "MapTags removes an unmapped tag")
+    expect(mapped[2].ti_Tag == TAG_IGNORE, "MapTags substitutes TAG_IGNORE for a mapped TAG_DONE")
+
+    var filter_values: [u32] = [TAG_A, TAG_C, TAG_DONE]
+    var included = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 3 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    expect(FilterTagItems(&var included[0], &var filter_values[0], TAGFILTER_AND) == 2, "TAGFILTER_AND reports two retained tags")
+    expect(included[0].ti_Tag == TAG_A && included[1].ti_Tag == TAG_IGNORE && included[2].ti_Tag == TAG_C, "TAGFILTER_AND retains only filter hits")
+
+    var excluded = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 2 },
+        TagItem { ti_Tag: TAG_C, ti_Data: 3 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    expect(FilterTagItems(&var excluded[0], &var filter_values[0], TAGFILTER_NOT) == 1, "TAGFILTER_NOT reports one retained tag")
+    expect(excluded[0].ti_Tag == TAG_IGNORE && excluded[1].ti_Tag == TAG_B && excluded[2].ti_Tag == TAG_IGNORE, "TAGFILTER_NOT removes only filter hits")
+}
+
+// @covers-ndk function|utility.library|AllocateTagItems
+// @covers-ndk function|utility.library|CloneTagItems
+// @covers-ndk function|utility.library|RefreshTagItemClones
+// @covers-ndk function|utility.library|FreeTagItems
+// @ndk-side-effects AllocateTagItems and CloneTagItems reserve independent tag storage; RefreshTagItemClones restores a modified clone from its unchanged source; FreeTagItems releases both allocations, verified by the suite memory check
+@test("utility allocated tag lists clone, refresh, and free")
+pub fn utility_tag_allocation_lifecycle() {
+    let allocated = AllocateTagItems(3)
+    expect(allocated != null, "AllocateTagItems returns storage")
+    if allocated != null {
+        unsafe {
+            allocated[0] = TagItem { ti_Tag: TAG_A, ti_Data: 41 }
+            allocated[1] = TagItem { ti_Tag: TAG_B, ti_Data: 42 }
+            allocated[2] = TagItem { ti_Tag: TAG_DONE, ti_Data: 0 }
+        }
+        expect(GetTagData(TAG_B, 0, allocated) == 42, "allocated tag storage is readable by utility.library")
+        FreeTagItems(allocated)
+    }
+
+    var original = [
+        TagItem { ti_Tag: TAG_A, ti_Data: 51 },
+        TagItem { ti_Tag: TAG_B, ti_Data: 52 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let clone = CloneTagItems(&var original[0])
+    let original_ptr = unsafe { (*TagItem)&var original[0] }
+    expect(clone != null && clone != original_ptr, "CloneTagItems returns independent storage")
+    if clone != null {
+        unsafe {
+            expect(clone[0].ti_Tag == TAG_A && clone[0].ti_Data == 51 && clone[1].ti_Data == 52, "clone preserves order and data")
+            clone[0].ti_Data = 99
+        }
+        expect(original[0].ti_Data == 51, "changing the clone leaves the source unchanged")
+        RefreshTagItemClones(clone, &var original[0])
+        unsafe { expect(clone[0].ti_Data == 51 && clone[1].ti_Data == 52, "RefreshTagItemClones restores source values") }
+        FreeTagItems(clone)
+    }
+}
+
+// @covers-ndk function|utility.library|CallHookPkt
+// @ndk-side-effects CallHookPkt passes the exact Hook in A0, object in A2, and message in A1; the callback mutates only Hook.h_Data and its return value is preserved in D0
+@test("utility hook dispatch preserves register arguments and callback result")
+pub fn utility_hook_dispatch() {
+    var state: u32 = 0
+    var object: u32 = 19
+    var message: u32 = 23
+    var hook = Hook {
+        h_MinNode: MinNode { mln_Succ: null, mln_Pred: null },
+        h_Entry: utility_hook_entry,
+        h_SubEntry: utility_hook_entry,
+        h_Data: unsafe { (*u8)&var state },
+    }
+    let result = CallHookPkt(&var hook, unsafe { (*u8)&var object }, unsafe { (*u8)&var message })
+    expect(result == 42 && state == 42, "CallHookPkt passes A0/A2/A1 correctly and returns D0")
+}
+
+// @covers-ndk function|utility.library|PackStructureTags
+// @covers-ndk function|utility.library|UnpackStructureTags
+// @ndk-side-effects PackStructureTags writes only the two table-selected structure fields and leaves its tag list unchanged; UnpackStructureTags writes the selected fields to the exact longword addresses in ti_Data and leaves the packed structure unchanged
+@test("utility structure packing round-trips selected longwords")
+pub fn utility_structure_packing() {
+    var table: [u32] = [
+        PACK_BASE,
+        PKCTRL_ULONG,
+        PKCTRL_ULONG | (1 << 16) | 4,
+        PACK_ENDTABLE,
+    ]
+    var packed: [u32] = [0, 0]
+    var input = [
+        TagItem { ti_Tag: PACK_BASE, ti_Data: $12345678 },
+        TagItem { ti_Tag: PACK_BASE + 1, ti_Data: $89abcdef },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let count = PackStructureTags(unsafe { (*u8)&var packed[0] }, &var table[0], &var input[0])
+    expect(count == 2, "PackStructureTags reports both selected tags")
+    expect(packed[0] == $12345678 && packed[1] == $89abcdef, "PackStructureTags writes exact longwords at table offsets")
+    expect(input[0].ti_Tag == PACK_BASE && input[1].ti_Data == $89abcdef, "PackStructureTags leaves input tags unchanged")
+
+    var first: u32 = 0
+    var second: u32 = 0
+    var output = [
+        TagItem { ti_Tag: PACK_BASE, ti_Data: unsafe { (u32)(*u32)&var first } },
+        TagItem { ti_Tag: PACK_BASE + 1, ti_Data: unsafe { (u32)(*u32)&var second } },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let unpacked = UnpackStructureTags(unsafe { (*u8)&var packed[0] }, &var table[0], &var output[0])
+    expect(unpacked == 2, "UnpackStructureTags reports both selected fields")
+    expect(first == $12345678 && second == $89abcdef, "UnpackStructureTags writes exact destination longwords")
+    expect(packed[0] == $12345678 && packed[1] == $89abcdef, "UnpackStructureTags leaves packed storage unchanged")
+}
+
+// @covers-ndk function|utility.library|AllocNamedObjectA
+// @covers-ndk function|utility.library|FreeNamedObject
+// @covers-ndk function|utility.library|NamedObjectName
+// @ndk-side-effects AllocNamedObjectA owns aligned writable user space and an immutable name; raw FreeNamedObject is superseded because utility.library 47.3 passes FreeVec its pointer in the wrong register; free_named_object releases the allocation safely; NamedObjectName(null) returns null without mutation
+@test("utility tag-list named object allocation owns name and user storage")
+pub fn utility_named_object_allocation_a() {
+    var tags = [
+        TagItem { ti_Tag: ANO_UserSpace, ti_Data: 8 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let tagged = AllocNamedObjectA("Alpha", &var tags[0])
+    expect(tagged != null, "tag-list named object allocation succeeds")
+    expect(NamedObjectName(null) == null, "NamedObjectName accepts null")
+    if tagged != null {
+        expect(Stricmp(NamedObjectName(tagged), "Alpha") == 0, "AllocNamedObjectA preserves its name")
+        unsafe {
+            let user_space = (*u32)(*tagged).no_Object
+            expect(user_space != null && ((u32)user_space & 3) == 0, "AllocNamedObjectA user space is aligned")
+            user_space[0] = $decafbad
+            expect(user_space[0] == $decafbad, "AllocNamedObjectA user space is writable")
+        }
+        free_named_object(tagged)
+    }
+}
+
+// @covers-ndk function|utility.library|AllocNamedObject
+// @ndk-side-effects the variadic allocator consumes tags through TAG_DONE, owns aligned writable user space, and the version-aware safe release returns the unlinked allocation
+@test("utility variadic named object allocation consumes its tag list")
+pub fn utility_named_object_allocation_variadic() {
+    let object = AllocNamedObject("Beta", ANO_UserSpace, 8, TAG_DONE)
+    expect(object != null, "variadic named object allocation succeeds")
+    if object != null {
+        expect(Stricmp(NamedObjectName(object), "Beta") == 0, "AllocNamedObject preserves its name")
+        unsafe { expect((*object).no_Object != null, "AllocNamedObject honors ANO_UserSpace") }
+        free_named_object(object)
+    }
+}
+
+// @covers-ndk function|utility.library|AddNamedObject
+// @covers-ndk function|utility.library|AttemptRemNamedObject
+// @covers-ndk function|utility.library|FindNamedObject
+// @covers-ndk function|utility.library|ReleaseNamedObject
+// @ndk-side-effects NSF_NODUPS rejects a caseless duplicate; Release balances the allocation use; Find returns the exact object and acquires one use; AttemptRem consumes that use and removes the object synchronously
+@test("utility named namespace enforces duplicates and synchronous removal")
+pub fn utility_named_namespace_attempt() {
+    var namespace_tags = [
+        TagItem { ti_Tag: ANO_NameSpace, ti_Data: 1 },
+        TagItem { ti_Tag: ANO_Flags, ti_Data: NSF_NODUPS },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let namespace = AllocNamedObjectA("novus.utility.tests", &var namespace_tags[0])
+    let first = AllocNamedObjectA("Alpha", null)
+    let duplicate = AllocNamedObjectA("alpha", null)
+    expect(namespace != null && first != null && duplicate != null, "namespace test objects allocate")
+    if namespace == null || first == null || duplicate == null { return }
+    expect(AddNamedObject(namespace, first) != 0, "AddNamedObject inserts the first name")
+    expect(AddNamedObject(namespace, duplicate) == 0, "NSF_NODUPS rejects a caseless duplicate")
+    free_named_object(duplicate)
+    ReleaseNamedObject(first)
+    let found_first = FindNamedObject(namespace, "ALPHA", null)
+    expect(found_first == first, "FindNamedObject performs the namespace's caseless lookup")
+    expect(AttemptRemNamedObject(found_first) != 0, "AttemptRemNamedObject removes the only held reference")
+    free_named_object(first)
+    ReleaseNamedObject(null)
+    free_named_object(namespace)
+}
+
+// @covers-ndk function|utility.library|RemNamedObject
+// @ndk-side-effects RemNamedObject consumes the caller's found-object use, removes the last-held object, signals the supplied reply port, and replies the exact Message with its ln_Name set to the removed object
+@test("utility named object asynchronous removal replies before free")
+pub fn utility_named_async_removal() {
+    var namespace_tags = [
+        TagItem { ti_Tag: ANO_NameSpace, ti_Data: 1 },
+        TagItem { ti_Tag: TAG_DONE, ti_Data: 0 },
+    ]
+    let namespace = AllocNamedObjectA("novus.utility.async", &var namespace_tags[0])
+    let second = AllocNamedObjectA("Beta", null)
+    expect(namespace != null && second != null, "async removal objects allocate")
+    if namespace == null || second == null { return }
+    expect(AddNamedObject(namespace, second) != 0, "object enters the namespace")
+    ReleaseNamedObject(second)
+    let found_second = FindNamedObject(namespace, "Beta", null)
+    expect(found_second == second, "FindNamedObject returns the exact allocation")
+    match MsgPortHandle::create() {
+        Result::Ok(port) => {
+            var reply: Message = @zeroed(Message)
+            reply.mn_ReplyPort = port.as_raw()
+            let reply_ptr = unsafe { (*Message)&var reply }
+            RemNamedObject(found_second, reply_ptr)
+            expect((port.wait() & port.signal_mask()) != 0, "RemNamedObject signals after removal completes")
+            match port.get_msg() {
+                Option::Some(message) => unsafe {
+                    expect(message == reply_ptr, "RemNamedObject replies the supplied message")
+                    expect((*message).mn_Node.ln_Name == (*i8)second, "RemNamedObject reports the removed object")
+                },
+                Option::None => expect(false, "RemNamedObject replies after removing the last reference"),
+            }
+        },
+        Result::Err(_) => expect(false, "reply port allocates"),
+    }
+    free_named_object(second)
+    free_named_object(namespace)
+}
+
+// @covers-ndk function|utility.library|Amiga2Date
+// @covers-ndk function|utility.library|Date2Amiga
+// @covers-ndk function|utility.library|CheckDate
+// @ndk-side-effects Amiga2Date fills every calendar field for a fixed timestamp; Date2Amiga and CheckDate reproduce the exact timestamp; CheckDate returns zero after an invalid month without modifying the structure
+@test("utility date conversion round-trips and rejects invalid input")
+pub fn utility_date_roundtrip() {
+    var date = ClockData { sec: 0, min: 0, hour: 0, mday: 0, month: 0, year: 0, wday: 0 }
+    let timestamp: u32 = 123456789
+    Amiga2Date(timestamp, &var date)
+    expect(Date2Amiga(&var date) == timestamp, "Date2Amiga reverses Amiga2Date exactly")
+    expect(CheckDate(&var date) == timestamp, "CheckDate accepts the converted calendar")
+    date.month = 13
+    expect(CheckDate(&var date) == 0, "CheckDate rejects month 13")
+}
+
+// @covers-ndk function|utility.library|SMult32
+// @covers-ndk function|utility.library|UMult32
+// @covers-ndk function|utility.library|SDivMod32
+// @covers-ndk function|utility.library|UDivMod32
+// @covers-ndk function|utility.library|SMult64
+// @covers-ndk function|utility.library|UMult64
+// @covers-ndk function|utility.library|Stricmp
+// @covers-ndk function|utility.library|Strnicmp
+// @covers-ndk function|utility.library|ToUpper
+// @covers-ndk function|utility.library|ToLower
+// @covers-ndk function|utility.library|GetUniqueID
+// @ndk-side-effects The math and character calls are pure for these inputs; division preserves both D0 quotient and D1 remainder and wide multiplication preserves all 64 result bits; case-insensitive comparisons read but do not alter both strings; GetUniqueID advances utility.library's interrupt-safe global identifier counter exactly once per call
+@test("utility math, strings, case conversion, and IDs match contracts")
+pub fn utility_scalar_contracts() {
+    let signed_division: i64 = -8589934594
+    let unsigned_division: u64 = 12884901890
+    let signed_product: i64 = -4900000000
+    let unsigned_product: u64 = 4900000000
+    expect(SMult32(-12345, 67) == -827115, "SMult32 returns the signed product")
+    expect(UMult32(70000, 60000) == 4200000000, "UMult32 returns the unsigned product")
+    expect(SDivMod32(-17, 5) == signed_division, "SDivMod32 preserves signed quotient -3 and remainder -2")
+    expect(UDivMod32(17, 5) == unsigned_division, "UDivMod32 preserves quotient 3 and remainder 2")
+    expect(SMult64(-70000, 70000) == signed_product, "SMult64 preserves the full signed product")
+    expect(UMult64(70000, 70000) == unsigned_product, "UMult64 preserves the full unsigned product")
+
+    expect(Stricmp("NoVuS", "novus") == 0, "Stricmp ignores ASCII case")
+    expect(Stricmp("abc", "abd") < 0, "Stricmp preserves lexical ordering")
+    expect(Strnicmp("NovusX", "novusY", 5) == 0, "Strnicmp stops at its length")
+    expect(Strnicmp("NovusX", "novusY", 6) < 0, "Strnicmp compares the final requested character")
+    expect(ToUpper((u8)'q') == (u8)'Q' && ToUpper((u8)'7') == (u8)'7', "ToUpper converts letters and preserves digits")
+    expect(ToLower((u8)'Q') == (u8)'q' && ToLower((u8)'7') == (u8)'7', "ToLower converts letters and preserves digits")
+
+    let first = GetUniqueID()
+    let second = GetUniqueID()
+    expect(first != second, "successive GetUniqueID calls differ")
+}

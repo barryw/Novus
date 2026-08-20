@@ -1,0 +1,159 @@
+from std::test::test import expect
+from amiga::raw::consts import NT_MESSAGE, RXCOMM
+from amiga::raw::exec import CloseLibrary, CreateMsgPort, DeleteMsgPort, FindTask, OpenLibrary
+from amiga::raw::rexxsyslib import ClearRexxMsg, CreateArgstring, CreateRexxMsg, DeleteArgstring, DeleteRexxMsg, FillRexxMsg, IsRexxMsg, LengthArgstring, LockRexxBase, UnlockRexxBase
+from amiga::raw::structs import RexxMsg, RxsLib
+
+// @covers-ndk function|rexxsyslib.library|CreateArgstring
+// @ndk-side-effects Allocates a three-byte ARexx argstring containing an embedded NUL, verifies the exact copied bytes and stored length, then releases it
+@test("rexxsyslib CreateArgstring copies counted binary data")
+pub fn rexx_create_argstring() {
+    var source: [u8] = ['A', 0, 'B']
+    let arg = CreateArgstring(&var source[0], 3)
+    let valid = arg != null && LengthArgstring(arg) == 3 && unsafe { arg[0] == 'A' && arg[1] == 0 && arg[2] == 'B' }
+    if arg != null { DeleteArgstring(arg) }
+    expect(valid, "counted data including an embedded NUL is copied exactly")
+}
+
+// @covers-ndk function|rexxsyslib.library|DeleteArgstring
+// @ndk-side-effects Allocates and deletes an ARexx argstring; the per-test A4000 memory check verifies that the allocation is returned
+@test("rexxsyslib DeleteArgstring releases its allocation")
+pub fn rexx_delete_argstring() {
+    let arg = CreateArgstring("release", 7)
+    if arg != null { DeleteArgstring(arg) }
+    expect(arg != null, "argstring exists before deletion")
+}
+
+// @covers-ndk function|rexxsyslib.library|LengthArgstring
+// @ndk-side-effects Reads the stored counted length of an ARexx argstring containing an embedded NUL, proving it does not use C string termination, then releases it
+@test("rexxsyslib LengthArgstring returns the counted length")
+pub fn rexx_length_argstring() {
+    var source: [u8] = ['X', 0, 'Y', 'Z']
+    let arg = CreateArgstring(&var source[0], 4)
+    let length = if arg != null { LengthArgstring(arg) } else { 0 }
+    if arg != null { DeleteArgstring(arg) }
+    expect(length == 4, "embedded NUL does not shorten an argstring")
+}
+
+// @covers-ndk function|rexxsyslib.library|CreateRexxMsg
+// @ndk-side-effects Creates a RexxMsg using a live reply port, verifies the exact reply-port, extension, and host pointers retained by the message, then deletes both allocations
+@test("rexxsyslib CreateRexxMsg preserves caller metadata")
+pub fn rexx_create_message() {
+    let port = CreateMsgPort()
+    let extension: *u8 = "novus"
+    let host: *u8 = "NOVUS.TEST"
+    let message = if port != null { CreateRexxMsg(port, extension, host) } else { (*RexxMsg)null }
+    let valid = message != null && message.rm_Node.mn_ReplyPort == port && message.rm_FileExt == extension && message.rm_CommAddr == host
+    if message != null { DeleteRexxMsg(message) }
+    if port != null { DeleteMsgPort(port) }
+    expect(valid, "message retains its exact reply port and caller-owned strings")
+}
+
+// @covers-ndk function|rexxsyslib.library|DeleteRexxMsg
+// @ndk-side-effects Allocates and deletes an empty RexxMsg and its separate reply port; the per-test A4000 memory check verifies that DeleteRexxMsg returns its allocation
+@test("rexxsyslib DeleteRexxMsg releases an empty message")
+pub fn rexx_delete_message() {
+    let port = CreateMsgPort()
+    let message = if port != null { CreateRexxMsg(port, null, null) } else { (*RexxMsg)null }
+    if message != null { DeleteRexxMsg(message) }
+    if port != null { DeleteMsgPort(port) }
+    expect(message != null, "message exists before deletion")
+}
+
+// @covers-ndk function|rexxsyslib.library|ClearRexxMsg
+// @ndk-side-effects Installs two owned argstrings in a RexxMsg, clears exactly two slots, verifies both pointers are nulled, then deletes the empty message and reply port
+@test("rexxsyslib ClearRexxMsg frees and clears selected arguments")
+pub fn rexx_clear_message() {
+    let port = CreateMsgPort()
+    let message = if port != null { CreateRexxMsg(port, null, null) } else { (*RexxMsg)null }
+    let first = CreateArgstring("one", 3)
+    let second = CreateArgstring("two", 3)
+    let ready = message != null && first != null && second != null
+    if ready {
+        message.rm_Args[0] = first
+        message.rm_Args[1] = second
+        ClearRexxMsg(message, 2)
+    }
+    let cleared = ready && message.rm_Args[0] == null && message.rm_Args[1] == null
+    if !ready {
+        if first != null { DeleteArgstring(first) }
+        if second != null { DeleteArgstring(second) }
+    }
+    if message != null { DeleteRexxMsg(message) }
+    if port != null { DeleteMsgPort(port) }
+    expect(cleared, "both selected argument slots are freed and cleared")
+}
+
+// @covers-ndk function|rexxsyslib.library|FillRexxMsg
+// @ndk-side-effects Converts one C string and one integer-valued argument slot into owned ARexx argstrings, verifies their exact counted text, then clears and deletes every allocation
+@test("rexxsyslib FillRexxMsg converts string and integer arguments")
+pub fn rexx_fill_message() {
+    let port = CreateMsgPort()
+    let message = if port != null { CreateRexxMsg(port, null, null) } else { (*RexxMsg)null }
+    if message != null {
+        message.rm_Args[0] = "alpha"
+        message.rm_Args[1] = (*u8)42
+    }
+    let filled = if message != null { FillRexxMsg(message, 2, 2) != 0 } else { false }
+    let valid = filled && LengthArgstring(message.rm_Args[0]) == 5 && LengthArgstring(message.rm_Args[1]) == 2 && unsafe {
+        message.rm_Args[0][0] == 'a' && message.rm_Args[0][4] == 'a' &&
+        message.rm_Args[1][0] == '4' && message.rm_Args[1][1] == '2'
+    }
+    if filled { ClearRexxMsg(message, 2) }
+    if message != null { DeleteRexxMsg(message) }
+    if port != null { DeleteMsgPort(port) }
+    expect(valid, "string and integer slots become exact counted argstrings")
+}
+
+// @covers-ndk function|rexxsyslib.library|IsRexxMsg
+// @ndk-side-effects Creates an outgoing RexxMsg and verifies it is not yet classified as incoming, supplies RexxMaster's delivered-message type, action, live task, and "REXX" node-name marker, verifies recognition, then deletes it and its reply port
+@test("rexxsyslib IsRexxMsg recognizes a delivered ARexx message")
+@suppress("W0002", "NDK action and node-type constants fit their exact i32/u8 ABI fields")
+pub fn rexx_identifies_message() {
+    let port = CreateMsgPort()
+    let message = if port != null { CreateRexxMsg(port, null, null) } else { (*RexxMsg)null }
+    let outgoing = message != null && IsRexxMsg(message) == 0
+    if message != null {
+        message.rm_Action = (i32)RXCOMM
+        message.rm_Node.mn_Node.ln_Type = (u8)NT_MESSAGE
+        message.rm_Node.mn_Node.ln_Name = (*i8)"REXX"
+        message.rm_TaskBlock = (*u8)FindTask(null)
+    }
+    let recognized = message != null && IsRexxMsg(message) != 0
+    if message != null { DeleteRexxMsg(message) }
+    if port != null { DeleteMsgPort(port) }
+    expect(outgoing, "new outgoing RexxMsg is not misclassified as received")
+    expect(recognized, "delivered RXCOMM RexxMsg is recognized")
+}
+
+// @covers-ndk function|rexxsyslib.library|LockRexxBase
+// @ndk-side-effects Opens the live RexxSysBase for observation, locks documented resource zero, verifies the library's read-lock count increases exactly once, balances the lock, and closes the observational library reference
+@test("rexxsyslib LockRexxBase increments the resource lock")
+pub fn rexx_lock_excludes() {
+    let library = unsafe { OpenLibrary("rexxsyslib.library", 0) }
+    let base = (*RxsLib)library
+    let before = if base != null { base.rl_ReadLock } else { 0 }
+    if base != null { LockRexxBase(0) }
+    let during = if base != null { base.rl_ReadLock } else { 0 }
+    if base != null { UnlockRexxBase(0) }
+    let after = if base != null { base.rl_ReadLock } else { 0 }
+    if library != null { unsafe { CloseLibrary(library) } }
+    expect(base != null, "live RexxSysBase can be observed")
+    expect(during == before + 1 && after == before, "lock count increments exactly once and balances")
+}
+
+// @covers-ndk function|rexxsyslib.library|UnlockRexxBase
+// @ndk-side-effects Opens the live RexxSysBase for observation, takes one resource-zero lock, unlocks it, verifies the read-lock count returns exactly to its starting value, and closes the observational library reference
+@test("rexxsyslib UnlockRexxBase balances the resource lock")
+pub fn rexx_unlock_releases() {
+    let library = unsafe { OpenLibrary("rexxsyslib.library", 0) }
+    let base = (*RxsLib)library
+    let before = if base != null { base.rl_ReadLock } else { 0 }
+    if base != null { LockRexxBase(0) }
+    let locked = if base != null { base.rl_ReadLock } else { 0 }
+    if base != null { UnlockRexxBase(0) }
+    let after = if base != null { base.rl_ReadLock } else { 0 }
+    if library != null { unsafe { CloseLibrary(library) } }
+    expect(base != null && locked == before + 1, "resource zero is held before unlock")
+    expect(after == before, "unlock restores the exact starting lock count")
+}

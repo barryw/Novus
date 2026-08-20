@@ -1,0 +1,31 @@
+from std::test::test import expect
+from amiga::ui::text_editor import *
+
+@test("corrected TextEditor tags retain the tag base")
+pub fn corrected_text_editor_tags() {
+    expect(TAG_AREA_MARKED == 0x85026014 && TAG_COLOR_MAP == 0x8502602f,
+        "selection and color tags")
+    expect(TAG_CONTENTS == 0x85026002 && TAG_CURSOR_X == 0x85026004 && TAG_CURSOR_Y == 0x85026005,
+        "content and cursor tags")
+    expect(TAG_DOUBLE_CLICK_HOOK == 0x85026006 && TAG_EXPORT_HOOK == 0x85026008 && TAG_EXPORT_WRAP == 0x85026009,
+        "export tags")
+    expect(TAG_FIXED_FONT == 0x8502600a && TAG_FLOW == 0x8502600b && TAG_HAS_CHANGED == 0x8502600c,
+        "font and flow tags")
+    expect(TAG_HORIZONTAL_SCROLL == 0x8502602d && TAG_IMPORT_HOOK == 0x8502600e && TAG_IMPORT_WRAP == 0x85026010,
+        "scroll and import tags")
+    expect(TAG_INSERT_MODE == 0x8502600f && TAG_KEY_BINDINGS == 0x85026011 && TAG_NUM_LOCK == 0x85026018,
+        "input tags")
+    expect(TAG_PEN == 0x8502602e && TAG_POP_WINDOW_OPEN == 0x85026003,
+        "display tags")
+    expect(TAG_PROP_DELTA_FACTOR == 0x8502600d && TAG_PROP_ENTRIES == 0x85026015 &&
+        TAG_PROP_FIRST == 0x85026020 && TAG_PROP_RELEASE == 0x85026001 && TAG_PROP_VISIBLE == 0x85026016,
+        "proportional gadget tags")
+    expect(TAG_QUIET == 0x85026017 && TAG_READ_ONLY == 0x85026019 &&
+        TAG_REDO_AVAILABLE == 0x85026013 && TAG_SEPARATOR == 0x8502602c,
+        "editor state tags")
+    expect(TAG_STYLE_BOLD == 0x8502601c && TAG_STYLE_ITALIC == 0x8502601d &&
+        TAG_STYLE_UNDERLINE == 0x8502601e && TAG_TYPE_AND_SPELL == 0x85026007,
+        "style tags")
+    expect(TAG_UNDO_AVAILABLE == 0x85026012 && TAG_WRAP_BORDER == 0x85026021,
+        "undo and wrapping tags")
+}
