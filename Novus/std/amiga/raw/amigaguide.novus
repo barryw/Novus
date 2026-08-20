@@ -815,7 +815,7 @@ extern pub fn SendAmigaGuideCmd(cl: *u8, cmd: *u8, attrs: u32, ...args) -> i32
 ///
 /// # Returns
 ///
-/// The installed AmigaGuide 45.7 returns a nonzero value when the supplied
+/// The installed AmigaGuide 45 returns a nonzero value when the supplied
 /// attribute is applied. The pinned NDK leaves this `LONG` result undocumented;
 /// callers should treat zero as failure rather than depending on an exact count.
 ///
@@ -852,7 +852,7 @@ extern pub fn SetAmigaGuideAttrsA(cl: *u8, attrs: *TagItem) -> i32
 ///
 /// # Returns
 ///
-/// The installed AmigaGuide 45.7 returns a nonzero value when the supplied
+/// The installed AmigaGuide 45 returns a nonzero value when the supplied
 /// attribute is applied. The pinned NDK leaves this `LONG` result undocumented;
 /// callers should treat zero as failure rather than depending on an exact count.
 ///
@@ -887,7 +887,7 @@ extern pub fn SetAmigaGuideAttrs(cl: *u8, attrs: u32, ...args) -> i32
 /// # Returns
 ///
 /// Nonzero when the requested attribute was written to `storage`; zero when it
-/// is unavailable or unsupported. AmigaGuide 45.7 on the verified A4000 returns
+/// is unavailable or unsupported. AmigaGuide 45 on the verified A4000 returns
 /// zero for `AGA_Path`, leaving storage at zero, even when the client was opened
 /// relative to a retained valid DOS lock. `AGA_XRefList` succeeds normally.
 ///
@@ -902,7 +902,7 @@ extern pub fn GetAmigaGuideAttr(tag: u32, cl: *u8, storage: *u32) -> i32
 /// Returns `-1` when loading was aborted by Ctrl-C, `0` on failure, `1` when
 /// the table was loaded, or `2` when the table was already loaded. The loaded
 /// references remain owned by AmigaGuide until ExpungeXRef is called.
-/// AmigaGuide 45.7 on the verified A4000 returns `1`, not `2`, when the same
+/// AmigaGuide 45 on the verified A4000 returns `1`, not `2`, when the same
 /// table is loaded twice; see `docs/NDK_BUGS.md`.
 extern pub fn LoadXRef(lock: i32, name: *u8) -> i32
 @library("amigaguide.library")
@@ -1291,7 +1291,7 @@ extern pub fn RemoveAmigaGuideHost(hh: *u8, attrs: u32, ...args) -> i32
 ///
 /// # Bugs
 ///
-/// AmigaGuide 45.7 on the verified A4000 does not return for tested invalid
+/// AmigaGuide 45 on the verified A4000 does not return for tested invalid
 /// IDs `-1` and `9999`; each call remained blocked until the external 45-second
 /// guest-command timeout. Pass only published IDs such as the `HTERR_*`
 /// constants. A safe wrapper must reject unknown IDs before entering Tier 3.

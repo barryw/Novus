@@ -32,7 +32,7 @@ symbols as `unsigned_normalized`: it recompiles the authoritative expression
 with unsigned literals and still requires an exact match, so the NDK defect is
 documented without weakening value verification.
 
-## amigaguide.library 45.7 AGA_Path failure
+## amigaguide.library 45 AGA_Path failure
 
 The pinned autodoc says `GetAmigaGuideAttr(AGA_Path, ...)` returns the current
 AmigaGuide path as a `BPTR`. Live A4000 testing against amigaguide.library 45.7
@@ -43,7 +43,8 @@ The same locked client returned a valid initialized `AGA_XRefList`, so the
 failure is specific to `AGA_Path`, not the client or raw register binding.
 
 Tier 3 preserves and documents the clean failure. The A4000 test accepts it
-only for version 45.7; another version must either return a nameable DOS lock or
+across amigaguide 45 - measured identically on 45.7 (A4000) and 45.5 (A1200) -
+while another major version must either return a nameable DOS lock or
 fail verification. A safe path query above Tier 3 should retain the caller's
 original directory lock as its fallback rather than inventing a pointer.
 
@@ -60,7 +61,7 @@ Tier 3 documents the precondition and tests only a published ID. Callers must
 not probe the ID space. A safe wrapper above Tier 3 should accept a closed enum
 of published IDs and reject unknown integers without calling the library.
 
-## amigaguide.library 45.7 duplicate XRef result
+## amigaguide.library 45 duplicate XRef result
 
 The Commodore V34 autodoc defines `LoadXRef` results as `-1` for Ctrl-C, `0`
 for failure, `1` for a newly loaded table, and `2` when that table is already
@@ -71,7 +72,8 @@ functional: loading the same file after expunging again returned `1`.
 
 Tier 3 preserves the documented numeric contract and records the installed
 library defect. The runtime test accepts the wrong duplicate result only for
-version 45.7; other versions must return `2`.
+amigaguide 45, measured identically on 45.7 (A4000) and 45.5 (A1200); another
+major version must return `2`.
 
 ## intuition.library 47 RemoveGList stale link
 
